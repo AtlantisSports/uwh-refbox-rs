@@ -15,5 +15,9 @@ gio = "0.6.0"
 glib = "0.7.1"
 gtk = "0.6.0"
 log = "0.4.6"
+serde = "1.0.91"
+serde_derive = "1.0.91"
 toml = "0.5"
 
+[dev-dependencies]
+indoc = "0.3.4"

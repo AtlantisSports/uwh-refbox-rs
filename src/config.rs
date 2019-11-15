@@ -61,7 +61,7 @@ impl Default for RS485 {
             port: "/dev/ttyUSB0".to_string(),
             #[cfg(not(target_os = "linux"))]
             port: "/dev/tty.usbserial-DN03ZRU8".to_string(),
-            baud: 115200,
+            baud: 115_200,
         }
     }
 }
@@ -160,6 +160,16 @@ mod test {
            white_on_right = false"#
     );
 
+    #[cfg(target_os = "linux")]
+    const XBEE_STRING: &str = indoc!(
+        r#"port = "/dev/ttyUSB0"
+           baud = 9600
+           clients = []
+           ch = "000C"
+           id = "000D""#
+    );
+
+    #[cfg(not(target_os = "linux"))]
     const XBEE_STRING: &str = indoc!(
         r#"port = "/dev/tty.usbserial-DN03ZRU8"
            baud = 9600
@@ -168,6 +178,13 @@ mod test {
            id = "000D""#
     );
 
+    #[cfg(target_os = "linux")]
+    const RS485_STRING: &str = indoc!(
+        r#"port = "/dev/ttyUSB0"
+           baud = 115200"#
+    );
+
+    #[cfg(not(target_os = "linux"))]
     const RS485_STRING: &str = indoc!(
         r#"port = "/dev/tty.usbserial-DN03ZRU8"
            baud = 115200"#

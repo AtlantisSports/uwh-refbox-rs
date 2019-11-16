@@ -44,3 +44,9 @@ jobs:
           packages: gtk+3
           update: true
       script: cargo build --all
+
+branches:
+  only:
+  - master
+  - staging
+  - trying

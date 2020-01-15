@@ -122,32 +122,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         win.set_title("UWH Refbox");
         win.set_resizable(true);
 
-        // Timeout Ribbon
-        let timeout_ribbon = gtk::Grid::new();
-        timeout_ribbon.set_column_homogeneous(true);
-        timeout_ribbon.insert_column(0);
-        timeout_ribbon.insert_column(1);
-        timeout_ribbon.insert_column(2);
-        timeout_ribbon.insert_column(3);
-        timeout_ribbon.insert_row(0);
-
-        timeout_ribbon.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
-        timeout_ribbon.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
-
-        let new_white_timeout =
-            new_button("WHITE TIMEOUT", "white", Some((-1, BUTTON_STANDARD_HEIGHT)));
-        let new_referee_timeout = new_button(
-            "REFEREE TIMEOUT",
-            "yellow",
-            Some((-1, BUTTON_STANDARD_HEIGHT)),
-        );
-        let new_black_timeout =
-            new_button("BLACK TIMEOUT", "black", Some((-1, BUTTON_STANDARD_HEIGHT)));
-
-        timeout_ribbon.attach(&new_white_timeout, 0, 0, 1, 1);
-        timeout_ribbon.attach(&new_referee_timeout, 1, 0, 2, 1);
-        timeout_ribbon.attach(&new_black_timeout, 3, 0, 1, 1);
-
         // Main Page
         let main_layout = gtk::Grid::new();
         main_layout.set_column_homogeneous(true);
@@ -206,6 +180,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         black_box.pack_start(&black_header, false, false, 0);
         black_box.pack_start(&edit_black_score, false, false, 0);
 
+        let timeout_ribbon = new_timeout_ribbon();
+
         main_layout.attach(&white_box, 0, 0, 1, 1);
         main_layout.attach(&game_box, 1, 0, 2, 1);
         main_layout.attach(&black_box, 3, 0, 1, 1);
@@ -259,8 +235,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         new_score_upper_layout.attach(&score_player_number, 1, 4, 1, 1);
         new_score_upper_layout.attach(&score_submit, 2, 4, 1, 1);
 
+        let timeout_ribbon = new_timeout_ribbon();
+
         new_score_layout.pack_start(&new_score_upper_layout, false, false, 0);
-        //        new_score_layout.pack_start(&timeout_ribbon, false, false, 0);
+        new_score_layout.pack_start(&timeout_ribbon, false, false, 0);
 
         // Score Edit Page
 
@@ -298,8 +276,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         time_penalty_conf_upper_layout.attach(&new_time_penalty, 2, 1, 2, 1);
         //        time_penalty_conf_upper_layout.attach(&start_time_penalty, 4, 1, 2,1);
 
+        let timeout_ribbon = new_timeout_ribbon();
+
         time_penalty_conf_layout.pack_start(&time_penalty_conf_upper_layout, false, false, 0);
-        //        time_penalty_conf_layout.pack_start(&timeout_ribbon, false, false, 0);
+        time_penalty_conf_layout.pack_start(&timeout_ribbon, false, false, 0);
 
         // Time Penalty Add/Edit Page
         let penalty_add_layout = gtk::Box::new(gtk::Orientation::Vertical, BUTTON_SPACING);
@@ -347,8 +327,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         penalty_add_upper_layout.attach(&penalty_5min, 2, 2, 1, 1);
         penalty_add_upper_layout.attach(&penalty_dismiss, 2, 3, 1, 1);
 
+        let timeout_ribbon = new_timeout_ribbon();
+
         penalty_add_layout.pack_start(&penalty_add_upper_layout, false, false, 0);
-        //        penalty_add_layout.pack_start(&timeout_ribbon, false, false, 0);
+        penalty_add_layout.pack_start(&timeout_ribbon, false, false, 0);
 
         // Time Edit Page
         let time_edit_layout = gtk::Grid::new();
@@ -542,4 +524,26 @@ fn new_keypad() -> gtk::Grid {
     keypad.attach(&button_0, 0, 3, 1, 1);
     keypad.attach(&button_backspace, 1, 3, 2, 1);
     keypad
+}
+
+fn new_timeout_ribbon() -> gtk::Grid {
+    let timeout_ribbon = gtk::Grid::new();
+    timeout_ribbon.set_column_homogeneous(true);
+    timeout_ribbon.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
+    timeout_ribbon.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
+
+    let new_white_timeout =
+        new_button("WHITE TIMEOUT", "white", Some((-1, BUTTON_STANDARD_HEIGHT)));
+    let new_referee_timeout = new_button(
+        "REFEREE TIMEOUT",
+        "yellow",
+        Some((-1, BUTTON_STANDARD_HEIGHT)),
+    );
+    let new_black_timeout =
+        new_button("BLACK TIMEOUT", "black", Some((-1, BUTTON_STANDARD_HEIGHT)));
+
+    timeout_ribbon.attach(&new_white_timeout, 0, 0, 1, 1);
+    timeout_ribbon.attach(&new_referee_timeout, 1, 0, 2, 1);
+    timeout_ribbon.attach(&new_black_timeout, 3, 0, 1, 1);
+    timeout_ribbon
 }

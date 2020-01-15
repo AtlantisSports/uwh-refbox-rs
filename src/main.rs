@@ -152,68 +152,133 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         timeout_ribbon.attach(&new_black_timeout, 3, 0, 1, 1);
 
 
-// Keypad
-        let keypad = gtk::Grid::new();
-        keypad.set_column_homogeneous(true);
-        keypad.set_row_homogeneous(true);
-        keypad.insert_column(0);
-        keypad.insert_column(1);
-        keypad.insert_column(2);
-        keypad.insert_row(0);
-        keypad.insert_row(1);
-        keypad.insert_row(2);
-        keypad.insert_row(3);
+// Score Keypad
+        let score_keypad = gtk::Grid::new();
+        score_keypad.set_column_homogeneous(true);
+        score_keypad.set_row_homogeneous(true);
+        score_keypad.insert_column(0);
+        score_keypad.insert_column(1);
+        score_keypad.insert_column(2);
+        score_keypad.insert_row(0);
+        score_keypad.insert_row(1);
+        score_keypad.insert_row(2);
+        score_keypad.insert_row(3);
 
-        let keypad_backspace = gtk::Button::new_with_label("<--");
-        keypad_backspace.get_style_context().add_class("keypad");
+        let score_keypad_backspace = gtk::Button::new_with_label("<--");
+        score_keypad_backspace.get_style_context().add_class("keypad");
 
-        let keypad_0 = gtk::Button::new_with_label("0");
-        keypad_0.get_style_context().add_class("keypad");
-        keypad_0.set_size_request(-1, KEYPAD_BUTTON_SIZE);
+        let score_keypad_0 = gtk::Button::new_with_label("0");
+        score_keypad_0.get_style_context().add_class("keypad");
+        score_keypad_0.set_size_request(-1, KEYPAD_BUTTON_SIZE);
 
-        let keypad_1 = gtk::Button::new_with_label("1");
-        keypad_1.get_style_context().add_class("keypad");
-        keypad_1.set_size_request(-1, KEYPAD_BUTTON_SIZE);
+        let score_keypad_1 = gtk::Button::new_with_label("1");
+        score_keypad_1.get_style_context().add_class("keypad");
+        score_keypad_1.set_size_request(-1, KEYPAD_BUTTON_SIZE);
 
-        let keypad_2 = gtk::Button::new_with_label("2");
-        keypad_2.get_style_context().add_class("keypad");
+        let score_keypad_2 = gtk::Button::new_with_label("2");
+        score_keypad_2.get_style_context().add_class("keypad");
 
-        let keypad_3 = gtk::Button::new_with_label("3");
-        keypad_3.get_style_context().add_class("keypad");
+        let score_keypad_3 = gtk::Button::new_with_label("3");
+        score_keypad_3.get_style_context().add_class("keypad");
 
-        let keypad_4 = gtk::Button::new_with_label("4");
-        keypad_4.get_style_context().add_class("keypad");
-        keypad_4.set_size_request(-1, KEYPAD_BUTTON_SIZE);
+        let score_keypad_4 = gtk::Button::new_with_label("4");
+        score_keypad_4.get_style_context().add_class("keypad");
+        score_keypad_4.set_size_request(-1, KEYPAD_BUTTON_SIZE);
 
-        let keypad_5 = gtk::Button::new_with_label("5");
-        keypad_5.get_style_context().add_class("keypad");
+        let score_keypad_5 = gtk::Button::new_with_label("5");
+        score_keypad_5.get_style_context().add_class("keypad");
 
-        let keypad_6 = gtk::Button::new_with_label("6");
-        keypad_6.get_style_context().add_class("keypad");
+        let score_keypad_6 = gtk::Button::new_with_label("6");
+        score_keypad_6.get_style_context().add_class("keypad");
 
-        let keypad_7 = gtk::Button::new_with_label("7");
-        keypad_7.get_style_context().add_class("keypad");
-        keypad_7.set_size_request(KEYPAD_BUTTON_SIZE, KEYPAD_BUTTON_SIZE);
+        let score_keypad_7 = gtk::Button::new_with_label("7");
+        score_keypad_7.get_style_context().add_class("keypad");
+        score_keypad_7.set_size_request(KEYPAD_BUTTON_SIZE, KEYPAD_BUTTON_SIZE);
 
-        let keypad_8 = gtk::Button::new_with_label("8");
-        keypad_8.get_style_context().add_class("keypad");
-        keypad_8.set_size_request(KEYPAD_BUTTON_SIZE, -1);
+        let score_keypad_8 = gtk::Button::new_with_label("8");
+        score_keypad_8.get_style_context().add_class("keypad");
+        score_keypad_8.set_size_request(KEYPAD_BUTTON_SIZE, -1);
 
-        let keypad_9 = gtk::Button::new_with_label("9");
-        keypad_9.get_style_context().add_class("keypad");
-        keypad_9.set_size_request(KEYPAD_BUTTON_SIZE, -1);
+        let score_keypad_9 = gtk::Button::new_with_label("9");
+        score_keypad_9.get_style_context().add_class("keypad");
+        score_keypad_9.set_size_request(KEYPAD_BUTTON_SIZE, -1);
 
-        keypad.attach(&keypad_7, 0, 0, 1, 1);
-        keypad.attach(&keypad_8, 1, 0, 1, 1);
-        keypad.attach(&keypad_9, 2, 0, 1, 1);
-        keypad.attach(&keypad_4, 0, 1, 1, 1);
-        keypad.attach(&keypad_5, 1, 1, 1, 1);
-        keypad.attach(&keypad_6, 2, 1, 1, 1);
-        keypad.attach(&keypad_1, 0, 2, 1, 1);
-        keypad.attach(&keypad_2, 1, 2, 1, 1);
-        keypad.attach(&keypad_3, 2, 2, 1, 1);
-        keypad.attach(&keypad_0, 0, 3, 1, 1);
-        keypad.attach(&keypad_backspace, 1, 3, 2, 1);
+        score_keypad.attach(&score_keypad_7, 0, 0, 1, 1);
+        score_keypad.attach(&score_keypad_8, 1, 0, 1, 1);
+        score_keypad.attach(&score_keypad_9, 2, 0, 1, 1);
+        score_keypad.attach(&score_keypad_4, 0, 1, 1, 1);
+        score_keypad.attach(&score_keypad_5, 1, 1, 1, 1);
+        score_keypad.attach(&score_keypad_6, 2, 1, 1, 1);
+        score_keypad.attach(&score_keypad_1, 0, 2, 1, 1);
+        score_keypad.attach(&score_keypad_2, 1, 2, 1, 1);
+        score_keypad.attach(&score_keypad_3, 2, 2, 1, 1);
+        score_keypad.attach(&score_keypad_0, 0, 3, 1, 1);
+        score_keypad.attach(&score_keypad_backspace, 1, 3, 2, 1);
+
+
+// Penalty Keypad
+        let penalty_keypad = gtk::Grid::new();
+        penalty_keypad.set_column_homogeneous(true);
+        penalty_keypad.set_row_homogeneous(true);
+        penalty_keypad.insert_column(0);
+        penalty_keypad.insert_column(1);
+        penalty_keypad.insert_column(2);
+        penalty_keypad.insert_row(0);
+        penalty_keypad.insert_row(1);
+        penalty_keypad.insert_row(2);
+        penalty_keypad.insert_row(3);
+
+        let penalty_keypad_backspace = gtk::Button::new_with_label("<--");
+        penalty_keypad_backspace.get_style_context().add_class("keypad");
+
+        let penalty_keypad_0 = gtk::Button::new_with_label("0");
+        penalty_keypad_0.get_style_context().add_class("keypad");
+        penalty_keypad_0.set_size_request(-1, KEYPAD_BUTTON_SIZE);
+
+        let penalty_keypad_1 = gtk::Button::new_with_label("1");
+        penalty_keypad_1.get_style_context().add_class("keypad");
+        penalty_keypad_1.set_size_request(-1, KEYPAD_BUTTON_SIZE);
+
+        let penalty_keypad_2 = gtk::Button::new_with_label("2");
+        penalty_keypad_2.get_style_context().add_class("keypad");
+
+        let penalty_keypad_3 = gtk::Button::new_with_label("3");
+        penalty_keypad_3.get_style_context().add_class("keypad");
+
+        let penalty_keypad_4 = gtk::Button::new_with_label("4");
+        penalty_keypad_4.get_style_context().add_class("keypad");
+        penalty_keypad_4.set_size_request(-1, KEYPAD_BUTTON_SIZE);
+
+        let penalty_keypad_5 = gtk::Button::new_with_label("5");
+        penalty_keypad_5.get_style_context().add_class("keypad");
+
+        let penalty_keypad_6 = gtk::Button::new_with_label("6");
+        penalty_keypad_6.get_style_context().add_class("keypad");
+
+        let penalty_keypad_7 = gtk::Button::new_with_label("7");
+        penalty_keypad_7.get_style_context().add_class("keypad");
+        penalty_keypad_7.set_size_request(KEYPAD_BUTTON_SIZE, KEYPAD_BUTTON_SIZE);
+
+        let penalty_keypad_8 = gtk::Button::new_with_label("8");
+        penalty_keypad_8.get_style_context().add_class("keypad");
+        penalty_keypad_8.set_size_request(KEYPAD_BUTTON_SIZE, -1);
+
+        let penalty_keypad_9 = gtk::Button::new_with_label("9");
+        penalty_keypad_9.get_style_context().add_class("keypad");
+        penalty_keypad_9.set_size_request(KEYPAD_BUTTON_SIZE, -1);
+
+        penalty_keypad.attach(&penalty_keypad_7, 0, 0, 1, 1);
+        penalty_keypad.attach(&penalty_keypad_8, 1, 0, 1, 1);
+        penalty_keypad.attach(&penalty_keypad_9, 2, 0, 1, 1);
+        penalty_keypad.attach(&penalty_keypad_4, 0, 1, 1, 1);
+        penalty_keypad.attach(&penalty_keypad_5, 1, 1, 1, 1);
+        penalty_keypad.attach(&penalty_keypad_6, 2, 1, 1, 1);
+        penalty_keypad.attach(&penalty_keypad_1, 0, 2, 1, 1);
+        penalty_keypad.attach(&penalty_keypad_2, 1, 2, 1, 1);
+        penalty_keypad.attach(&penalty_keypad_3, 2, 2, 1, 1);
+        penalty_keypad.attach(&penalty_keypad_0, 0, 3, 1, 1);
+        penalty_keypad.attach(&penalty_keypad_backspace, 1, 3, 2, 1);
+
 
 
 // Main Page
@@ -329,11 +394,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         new_score_upper_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         new_score_upper_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());       
 
-        let white_select = gtk::Button::new_with_label("WHITE");
-        white_select.get_style_context().add_class("white");
+        let score_white_select = gtk::Button::new_with_label("WHITE");
+        score_white_select.get_style_context().add_class("white");
         
-        let black_select = gtk::Button::new_with_label("BLACK");
-        black_select.get_style_context().add_class("black");
+        let score_black_select = gtk::Button::new_with_label("BLACK");
+        score_black_select.get_style_context().add_class("black");
 
         let score_cancel = gtk::Button::new_with_label("CANCEL");
         score_cancel.get_style_context().add_class("red");
@@ -343,19 +408,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         score_submit.get_style_context().add_class("green");
         score_submit.set_size_request(-1, BUTTON_STANDARD_HEIGHT);        
 
-        let player_number = gtk::Label::new(Some("#P"));
-        player_number.get_style_context().add_class("gray");
-        player_number.set_size_request(-1, LABEL_STANDARD_HEIGHT);
+        let score_player_number = gtk::Label::new(Some("#P"));
+        score_player_number.get_style_context().add_class("gray");
+        score_player_number.set_size_request(-1, LABEL_STANDARD_HEIGHT);
 
-        new_score_upper_layout.attach(&keypad, 0, 0, 1, 4);
-        new_score_upper_layout.attach(&white_select, 1, 0, 1, 2);
-        new_score_upper_layout.attach(&black_select, 1, 2, 1, 2);
+        new_score_upper_layout.attach(&score_keypad, 0, 0, 1, 4);
+        new_score_upper_layout.attach(&score_white_select, 1, 0, 1, 2);
+        new_score_upper_layout.attach(&score_black_select, 1, 2, 1, 2);
         new_score_upper_layout.attach(&score_cancel, 0, 4, 1, 1);
-        new_score_upper_layout.attach(&player_number, 1, 4, 1, 1);
+        new_score_upper_layout.attach(&score_player_number, 1, 4, 1, 1);
         new_score_upper_layout.attach(&score_submit, 2, 4, 1, 1);
 
         new_score_layout.pack_start(&new_score_upper_layout, false, false, 0);
-        new_score_layout.pack_start(&timeout_ribbon, false, false, 0);
+//        new_score_layout.pack_start(&timeout_ribbon, false, false, 0);
 
 
 // Score Edit Page
@@ -382,6 +447,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         time_penalty_conf_upper_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         time_penalty_conf_upper_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());   
 
+        let white_time_list = gtk::Button::new_with_label("WHITE PENALTIES");
+        let black_time_list = gtk::Button::new_with_label("BLACK PENALTIES");
+
         let cancel_time_penalty_edit = gtk::Button::new_with_label("CANCEL");
         cancel_time_penalty_edit.get_style_context().add_class("red");
 
@@ -391,16 +459,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let start_time_penalty = gtk::Button::new_with_label("START");
         start_time_penalty.get_style_context().add_class("green");
 
-//        time_penalty_conf_upper_layout.attach(&white_time_list, 0, 0, 1, 3);
-//        time_penalty_conf_upper_layout.attach(&black_time_list, 3, 0, 1, 3);
-        time_penalty_conf_upper_layout.attach(&cancel_time_penalty_edit, 0, 1, 2, 1);
+//        time_penalty_conf_upper_layout.attach(&white_time_list, 0, 0, 1, 1);
+//        time_penalty_conf_upper_layout.attach(&black_time_list, 0, 1, 1, 1);
+//        time_penalty_conf_upper_layout.attach(&cancel_time_penalty_edit, 0, 1, 2, 1);
         time_penalty_conf_upper_layout.attach(&new_time_penalty, 2, 1, 2, 1);
-        time_penalty_conf_upper_layout.attach(&start_time_penalty, 4, 1, 2,1);
+//        time_penalty_conf_upper_layout.attach(&start_time_penalty, 4, 1, 2,1);
 
         time_penalty_conf_layout.pack_start(&time_penalty_conf_upper_layout, false, false, 0);
-        time_penalty_conf_layout.pack_start(&timeout_ribbon, false, false, 0);
+//        time_penalty_conf_layout.pack_start(&timeout_ribbon, false, false, 0);
 
-/*
+
 // Time Penalty Add/Edit Page
         let penalty_add_layout = gtk::Box::new(gtk::Orientation::Vertical, BUTTON_SPACING);
         penalty_add_layout.set_margin_top(BUTTON_MARGIN);
@@ -422,6 +490,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         penalty_add_upper_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         penalty_add_upper_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());       
 
+        let penalty_white_select = gtk::Button::new_with_label("WHITE");
+        penalty_white_select.get_style_context().add_class("white");
+        
+        let penalty_black_select = gtk::Button::new_with_label("BLACK");
+        penalty_black_select.get_style_context().add_class("black");
+
+        let penalty_player_number = gtk::Label::new(Some("#P"));
+        penalty_player_number.get_style_context().add_class("gray");
+        
         let penalty_1min = gtk::Button::new_with_label("1 MIN");
         penalty_1min.get_style_context().add_class("yellow");
 
@@ -437,14 +514,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let delete_time_penalty = gtk::Button::new_with_label("DELETE");
         delete_time_penalty.get_style_context().add_class("red");
 
-        let start_time_penalty = gtk::Button::new_with_label("START");
+        let start_time_penalty = gtk::Button::new_with_label("ADD");
         start_time_penalty.get_style_context().add_class("green");
 
-        penalty_add_upper_layout.attach(&keypad, 0, 0, 1, 4);
-        penalty_add_upper_layout.attach(&white_select, 1, 0, 1, 2);
-        penalty_add_upper_layout.attach(&black_select, 1, 2, 1, 2);
+        penalty_add_upper_layout.attach(&penalty_keypad, 0, 0, 1, 4);
+        penalty_add_upper_layout.attach(&penalty_white_select, 1, 0, 1, 2);
+        penalty_add_upper_layout.attach(&penalty_black_select, 1, 2, 1, 2);
         penalty_add_upper_layout.attach(&delete_time_penalty, 0, 4, 1, 1);
-        penalty_add_upper_layout.attach(&player_number, 1, 4, 1, 1);
+        penalty_add_upper_layout.attach(&penalty_player_number, 1, 4, 1, 1);
         penalty_add_upper_layout.attach(&start_time_penalty, 2, 4, 1, 1);
         penalty_add_upper_layout.attach(&penalty_1min, 2, 0, 1, 1);
         penalty_add_upper_layout.attach(&penalty_2min, 2, 1, 1, 1);
@@ -452,9 +529,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         penalty_add_upper_layout.attach(&penalty_dismiss, 2, 3, 1, 1);
 
         penalty_add_layout.pack_start(&penalty_add_upper_layout, false, false, 0);
-        penalty_add_layout.pack_start(&timeout_ribbon, false, false, 0);
+//        penalty_add_layout.pack_start(&timeout_ribbon, false, false, 0);
 
-*/        
+      
 
 // Time Edit Page
         let time_edit_layout = gtk::Grid::new();
@@ -528,7 +605,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         layout_stack.add_named(&time_edit_layout, "Time Edit Layout");
         layout_stack.add_named(&game_information_edit_layout, "Game Information Edit Layout");
         layout_stack.add_named(&new_score_layout, "New Score Layout");
-//        layout_stack.add_named(&penalty_add_layout, "Penalty Add/Edit Layout");
+        layout_stack.add_named(&penalty_add_layout, "Penalty Add/Edit Layout");
+        layout_stack.add_named(&time_penalty_conf_layout, "Time Penalty Confirmation Layout");
 
 
 // Set up the buttons to switch between layouts
@@ -555,7 +633,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
         time_edit_submit.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
-/*
+
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
         delete_time_penalty.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
@@ -563,8 +641,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
         start_time_penalty.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
-*/
 
+        
         let time_edit_layout_ = time_edit_layout.clone();
         let layout_stack_ = layout_stack.clone();
         edit_game_time.connect_clicked(move |_| layout_stack_.set_visible_child(&time_edit_layout_));
@@ -580,7 +658,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let game_information_edit_layout_ = game_information_edit_layout.clone();
         let layout_stack_ = layout_stack.clone();
         edit_game_information.connect_clicked(move |_| layout_stack_.set_visible_child(&game_information_edit_layout_));
-/*
+
         let time_penalty_conf_layout_ = time_penalty_conf_layout.clone();
         let layout_stack_ = layout_stack.clone();
         edit_white_time_penalty.connect_clicked(move |_| layout_stack_.set_visible_child(&time_penalty_conf_layout_));
@@ -593,11 +671,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let layout_stack_ = layout_stack.clone();
         new_time_penalty.connect_clicked(move |_| layout_stack_.set_visible_child(&penalty_add_layout_));
 
-        let penalty_add_layout_ = penalty_add_layout.clone();
-        let layout_stack_ = layout_stack.clone();
-        edit_black_time_penalty.connect_clicked(move |_| layout_stack_.set_visible_child(&penalty_add_layout_));
-*/
-          
+
+//        let penalty_add_layout_ = penalty_add_layout.clone();
+//        let layout_stack_ = layout_stack.clone();
+//        edit_white_time_penalty.connect_clicked(move |_| layout_stack_.set_visible_child(&penalty_add_layout_));
+
 
         // Make everything visible
         win.add(&layout_stack);

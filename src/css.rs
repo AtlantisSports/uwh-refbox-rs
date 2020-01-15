@@ -34,6 +34,8 @@ button:hover {
 button.keypad {
     background-color: #00FFFB;
     color: #000000;
+    font-size: 50px;
+    font-weight: bold;
     border-radius: 0px;
     border-width: 2px;
     border-color: #696969;
@@ -87,11 +89,11 @@ button.light-green {
 button.blue {
     background-color: #0000FF;
     color: #FFFFFF;
-    font-size:80px;
+    font-size: 80px;
 }
 button.grayed-out {
     background-color: #999999;
-    color: #000000;
+    color: #696969;
 }
 button.white-score {
     background-color: #FFFFFF;
@@ -110,6 +112,10 @@ button.game-time {
     color: #22FF00;
     font-size: 40px;
     font-weight: bold;
+}
+button.gray {
+    background-color: #999999;
+    color: #000000;
 }
 button.blue:active {
     background-color: #0000DD;

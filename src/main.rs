@@ -148,86 +148,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         timeout_ribbon.attach(&new_referee_timeout, 1, 0, 2, 1);
         timeout_ribbon.attach(&new_black_timeout, 3, 0, 1, 1);
 
-        // Score Keypad
-        let score_keypad = gtk::Grid::new();
-        score_keypad.set_column_homogeneous(true);
-        score_keypad.set_row_homogeneous(true);
-        score_keypad.insert_column(0);
-        score_keypad.insert_column(1);
-        score_keypad.insert_column(2);
-        score_keypad.insert_row(0);
-        score_keypad.insert_row(1);
-        score_keypad.insert_row(2);
-        score_keypad.insert_row(3);
-
-        let score_keypad_backspace = new_button("<--", "keypad", None);
-        let score_keypad_0 = new_button("0", "keypad", Some((-1, KEYPAD_BUTTON_SIZE)));
-        let score_keypad_1 = new_button("1", "keypad", Some((-1, KEYPAD_BUTTON_SIZE)));
-        let score_keypad_2 = new_button("2", "keypad", None);
-        let score_keypad_3 = new_button("3", "keypad", None);
-        let score_keypad_4 = new_button("4", "keypad", Some((-1, KEYPAD_BUTTON_SIZE)));
-        let score_keypad_5 = new_button("5", "keypad", None);
-        let score_keypad_6 = new_button("6", "keypad", None);
-        let score_keypad_7 = new_button(
-            "7",
-            "keypad",
-            Some((KEYPAD_BUTTON_SIZE, KEYPAD_BUTTON_SIZE)),
-        );
-        let score_keypad_8 = new_button("8", "keypad", Some((KEYPAD_BUTTON_SIZE, -1)));
-        let score_keypad_9 = new_button("9", "keypad", Some((KEYPAD_BUTTON_SIZE, -1)));
-
-        score_keypad.attach(&score_keypad_7, 0, 0, 1, 1);
-        score_keypad.attach(&score_keypad_8, 1, 0, 1, 1);
-        score_keypad.attach(&score_keypad_9, 2, 0, 1, 1);
-        score_keypad.attach(&score_keypad_4, 0, 1, 1, 1);
-        score_keypad.attach(&score_keypad_5, 1, 1, 1, 1);
-        score_keypad.attach(&score_keypad_6, 2, 1, 1, 1);
-        score_keypad.attach(&score_keypad_1, 0, 2, 1, 1);
-        score_keypad.attach(&score_keypad_2, 1, 2, 1, 1);
-        score_keypad.attach(&score_keypad_3, 2, 2, 1, 1);
-        score_keypad.attach(&score_keypad_0, 0, 3, 1, 1);
-        score_keypad.attach(&score_keypad_backspace, 1, 3, 2, 1);
-
-        // Penalty Keypad
-        let penalty_keypad = gtk::Grid::new();
-        penalty_keypad.set_column_homogeneous(true);
-        penalty_keypad.set_row_homogeneous(true);
-        penalty_keypad.insert_column(0);
-        penalty_keypad.insert_column(1);
-        penalty_keypad.insert_column(2);
-        penalty_keypad.insert_row(0);
-        penalty_keypad.insert_row(1);
-        penalty_keypad.insert_row(2);
-        penalty_keypad.insert_row(3);
-
-        let penalty_keypad_backspace = new_button("<--", "keypad", None);
-        let penalty_keypad_0 = new_button("0", "keypad", Some((-1, KEYPAD_BUTTON_SIZE)));
-        let penalty_keypad_1 = new_button("1", "keypad", Some((-1, KEYPAD_BUTTON_SIZE)));
-        let penalty_keypad_2 = new_button("2", "keypad", None);
-        let penalty_keypad_3 = new_button("3", "keypad", None);
-        let penalty_keypad_4 = new_button("4", "keypad", Some((-1, KEYPAD_BUTTON_SIZE)));
-        let penalty_keypad_5 = new_button("5", "keypad", None);
-        let penalty_keypad_6 = new_button("6", "keypad", None);
-        let penalty_keypad_7 = new_button(
-            "7",
-            "keypad",
-            Some((KEYPAD_BUTTON_SIZE, KEYPAD_BUTTON_SIZE)),
-        );
-        let penalty_keypad_8 = new_button("8", "keypad", Some((KEYPAD_BUTTON_SIZE, -1)));
-        let penalty_keypad_9 = new_button("9", "keypad", Some((KEYPAD_BUTTON_SIZE, -1)));
-
-        penalty_keypad.attach(&penalty_keypad_7, 0, 0, 1, 1);
-        penalty_keypad.attach(&penalty_keypad_8, 1, 0, 1, 1);
-        penalty_keypad.attach(&penalty_keypad_9, 2, 0, 1, 1);
-        penalty_keypad.attach(&penalty_keypad_4, 0, 1, 1, 1);
-        penalty_keypad.attach(&penalty_keypad_5, 1, 1, 1, 1);
-        penalty_keypad.attach(&penalty_keypad_6, 2, 1, 1, 1);
-        penalty_keypad.attach(&penalty_keypad_1, 0, 2, 1, 1);
-        penalty_keypad.attach(&penalty_keypad_2, 1, 2, 1, 1);
-        penalty_keypad.attach(&penalty_keypad_3, 2, 2, 1, 1);
-        penalty_keypad.attach(&penalty_keypad_0, 0, 3, 1, 1);
-        penalty_keypad.attach(&penalty_keypad_backspace, 1, 3, 2, 1);
-
         // Main Page
         let main_layout = gtk::Grid::new();
         main_layout.set_column_homogeneous(true);
@@ -330,6 +250,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         score_player_number.get_style_context().add_class("gray");
         score_player_number.set_size_request(-1, LABEL_STANDARD_HEIGHT);
 
+        let score_keypad = new_keypad();
+
         new_score_upper_layout.attach(&score_keypad, 0, 0, 1, 4);
         new_score_upper_layout.attach(&score_white_select, 1, 0, 1, 2);
         new_score_upper_layout.attach(&score_black_select, 1, 2, 1, 2);
@@ -411,6 +333,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let penalty_player_number = gtk::Label::new(Some("#P"));
         penalty_player_number.get_style_context().add_class("gray");
+
+        let penalty_keypad = new_keypad();
 
         penalty_add_upper_layout.attach(&penalty_keypad, 0, 0, 1, 4);
         penalty_add_upper_layout.attach(&penalty_white_select, 1, 0, 1, 2);
@@ -583,4 +507,39 @@ fn new_button(text: &str, style: &str, size: Option<(i32, i32)>) -> gtk::Button 
         button.set_size_request(x, y);
     }
     button
+}
+
+fn new_keypad() -> gtk::Grid {
+    let keypad = gtk::Grid::new();
+    keypad.set_column_homogeneous(true);
+    keypad.set_row_homogeneous(true);
+
+    let button_backspace = new_button("<--", "keypad", None);
+    let button_0 = new_button("0", "keypad", Some((-1, KEYPAD_BUTTON_SIZE)));
+    let button_1 = new_button("1", "keypad", Some((-1, KEYPAD_BUTTON_SIZE)));
+    let button_2 = new_button("2", "keypad", None);
+    let button_3 = new_button("3", "keypad", None);
+    let button_4 = new_button("4", "keypad", Some((-1, KEYPAD_BUTTON_SIZE)));
+    let button_5 = new_button("5", "keypad", None);
+    let button_6 = new_button("6", "keypad", None);
+    let button_7 = new_button(
+        "7",
+        "keypad",
+        Some((KEYPAD_BUTTON_SIZE, KEYPAD_BUTTON_SIZE)),
+    );
+    let button_8 = new_button("8", "keypad", Some((KEYPAD_BUTTON_SIZE, -1)));
+    let button_9 = new_button("9", "keypad", Some((KEYPAD_BUTTON_SIZE, -1)));
+
+    keypad.attach(&button_7, 0, 0, 1, 1);
+    keypad.attach(&button_8, 1, 0, 1, 1);
+    keypad.attach(&button_9, 2, 0, 1, 1);
+    keypad.attach(&button_4, 0, 1, 1, 1);
+    keypad.attach(&button_5, 1, 1, 1, 1);
+    keypad.attach(&button_6, 2, 1, 1, 1);
+    keypad.attach(&button_1, 0, 2, 1, 1);
+    keypad.attach(&button_2, 1, 2, 1, 1);
+    keypad.attach(&button_3, 2, 2, 1, 1);
+    keypad.attach(&button_0, 0, 3, 1, 1);
+    keypad.attach(&button_backspace, 1, 3, 2, 1);
+    keypad
 }

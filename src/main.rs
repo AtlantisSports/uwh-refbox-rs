@@ -452,7 +452,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "Time Penalty Confirmation Layout",
         );
         layout_stack.add_named(&edit_score_layout, "Edit Score Layout");
-        //        layout_stack.add_named(&edit_time_layout, "Edit Time Layout");
 
         // Set up the buttons to switch between layouts
 

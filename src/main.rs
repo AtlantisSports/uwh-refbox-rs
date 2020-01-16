@@ -142,11 +142,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let edit_black_score = new_button("#B", "black-score", None);
         let add_black_score = new_button("SCORE BLACK", "black", None);
         let edit_black_time_penalty = new_button("BLACK TIME PENALTY", "black", None);
-        /*
-                let main_white_timeout = new_button("WHITE TIMEOUT", "white", None);
-                let main_referee_timeout = new_button("REFEREE TIMEOUT", "yellow", None);
-                let main_black_timeout = new_button("BLACK TIMEOUT", "black", None);
-        */
+        let main_white_timeout = new_button("WHITE TIMEOUT", "white", None);
+        let main_referee_timeout = new_button("REFEREE TIMEOUT", "yellow", None);
+        let main_black_timeout = new_button("BLACK TIMEOUT", "black", None);
 
         let game_state_header = gtk::Label::new(Some("GAME STATE"));
         game_state_header
@@ -177,8 +175,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         black_box.attach(&black_header, 0, 0, 1, 1);
         black_box.attach(&edit_black_score, 0, 1, 1, 2);
 
-        let main_timeout_ribbon = new_timeout_ribbon();
-
         main_layout.attach(&white_box, 0, 0, 3, 3);
         main_layout.attach(&game_box, 3, 0, 6, 3);
         main_layout.attach(&black_box, 9, 0, 3, 3);
@@ -188,12 +184,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         main_layout.attach(&edit_white_time_penalty, 0, 5, 3, 4);
         main_layout.attach(&edit_game_information, 3, 5, 6, 4);
         main_layout.attach(&edit_black_time_penalty, 9, 5, 3, 4);
-        main_layout.attach(&main_timeout_ribbon, 0, 9, 12, 2);
-        /*
-                main_layout.attach(&main_white_timeout, 0, 9, 3, 2);
-                main_layout.attach(&main_referee_timeout, 3, 9, 6, 2);
-                main_layout.attach(&main_black_timeout, 9, 9, 3, 2);
-        */
+        main_layout.attach(&main_white_timeout, 0, 9, 3, 2);
+        main_layout.attach(&main_referee_timeout, 3, 9, 6, 2);
+        main_layout.attach(&main_black_timeout, 9, 9, 3, 2);
 
         // New Score Page
         let new_score_layout = gtk::Grid::new();
@@ -210,17 +203,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let score_black_select = new_button("BLACK", "black", None);
         let score_cancel = new_button("CANCEL", "red", None);
         let score_submit = new_button("SUBMIT", "green", None);
-        /*
-                let score_white_timeout = new_button("WHITE TIMEOUT", "white", None);
-                let score_referee_timeout = new_button("REFEREE TIMEOUT", "yellow", None);
-                let score_black_timeout = new_button("BLACK TIMEOUT", "black", None);
-        */
+        let score_white_timeout = new_button("WHITE TIMEOUT", "white", None);
+        let score_referee_timeout = new_button("REFEREE TIMEOUT", "yellow", None);
+        let score_black_timeout = new_button("BLACK TIMEOUT", "black", None);
+
         let score_player_number = gtk::Label::new(Some("#P"));
         score_player_number.get_style_context().add_class("gray");
 
         let score_keypad = new_keypad();
-
-        let new_score_timeout_ribbon = new_timeout_ribbon();
 
         new_score_layout.attach(&score_keypad, 0, 0, 4, 7);
         new_score_layout.attach(&score_white_select, 4, 0, 4, 3);
@@ -228,12 +218,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         new_score_layout.attach(&score_cancel, 0, 7, 4, 2);
         new_score_layout.attach(&score_player_number, 4, 7, 4, 2);
         new_score_layout.attach(&score_submit, 8, 7, 4, 2);
-        new_score_layout.attach(&new_score_timeout_ribbon, 0, 9, 12, 2);
-        /*
-                new_score_layout.attach(&score_white_timeout, 0, 9, 3, 2);
-                new_score_layout.attach(&score_referee_timeout, 3, 9, 6, 2);
-                new_score_layout.attach(&score_black_timeout, 9, 9, 3, 2);
-        */
+        new_score_layout.attach(&score_white_timeout, 0, 9, 3, 2);
+        new_score_layout.attach(&score_referee_timeout, 3, 9, 6, 2);
+        new_score_layout.attach(&score_black_timeout, 9, 9, 3, 2);
 
         // Score Edit Page
         let edit_score_layout = gtk::Grid::new();
@@ -252,6 +239,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let black_score_minus = new_button("-", "light-blue", None);
         let score_edit_cancel = new_button("CANCEL", "red", None);
         let score_edit_submit = new_button("SUBMIT", "green", None);
+        let score_edit_white_timeout = new_button("WHITE TIMEOUT", "white", None);
+        let score_edit_referee_timeout = new_button("REFEREE TIMEOUT", "yellow", None);
+        let score_edit_black_timeout = new_button("BLACK TIMEOUT", "black", None);
 
         let white_score_header = gtk::Label::new(Some("WHITE SCORE"));
         white_score_header
@@ -287,8 +277,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         black_score_header_box.attach(&modified_black_score, 0, 1, 1, 2);
         black_score_header_box.attach(&black_score_plus, 1, 1, 1, 2);
 
-        let score_edit_timeout_ribbon = new_timeout_ribbon();
-
         edit_score_layout.attach(&white_score_header_box, 0, 0, 6, 3);
         edit_score_layout.attach(&black_score_header_box, 6, 0, 6, 3);
         edit_score_layout.attach(&white_score_minus, 0, 3, 3, 2);
@@ -296,7 +284,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         edit_score_layout.attach(&empty_score_edit_label, 0, 5, 12, 2);
         edit_score_layout.attach(&score_edit_cancel, 0, 7, 4, 2);
         edit_score_layout.attach(&score_edit_submit, 8, 7, 4, 2);
-        edit_score_layout.attach(&score_edit_timeout_ribbon, 0, 9, 12, 2);
+        edit_score_layout.attach(&score_submit, 8, 7, 4, 2);
+        edit_score_layout.attach(&score_edit_white_timeout, 0, 9, 3, 2);
+        edit_score_layout.attach(&score_edit_referee_timeout, 3, 9, 6, 2);
+        edit_score_layout.attach(&score_edit_black_timeout, 9, 9, 3, 2);
 
         // Time Penalty Confirmation Page
         let time_penalty_conf_layout = gtk::Grid::new();
@@ -386,6 +377,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let second_minus = new_button("-", "light-blue", None);
         let time_edit_cancel = new_button("CANCEL", "red", None);
         let time_edit_submit = new_button("SUBMIT", "green", None);
+        let time_edit_white_timeout = new_button("WHITE TIMEOUT", "white", None);
+        let time_edit_referee_timeout = new_button("REFEREE TIMEOUT", "yellow", None);
+        let time_edit_black_timeout = new_button("BLACK TIMEOUT", "black", None);
 
         let minute_header = gtk::Label::new(Some("MINUTE"));
         minute_header.get_style_context().add_class("time-mod");
@@ -415,8 +409,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         second_header_box.attach(&second_header, 0, 0, 1, 1);
         second_header_box.attach(&second_plus, 0, 1, 1, 2);
 
-        let time_edit_timeout_ribbon = new_timeout_ribbon();
-
         time_edit_layout.attach(&minute_header_box, 0, 0, 3, 3);
         time_edit_layout.attach(&new_time_header_box, 3, 0, 6, 3);
         time_edit_layout.attach(&second_header_box, 9, 0, 3, 3);
@@ -425,7 +417,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         time_edit_layout.attach(&empty_time_edit_label, 0, 5, 12, 2);
         time_edit_layout.attach(&time_edit_cancel, 0, 7, 4, 2);
         time_edit_layout.attach(&time_edit_submit, 8, 7, 4, 2);
-        time_edit_layout.attach(&time_edit_timeout_ribbon, 0, 9, 12, 2);
+        time_edit_layout.attach(&time_edit_white_timeout, 0, 9, 3, 2);
+        time_edit_layout.attach(&time_edit_referee_timeout, 3, 9, 6, 2);
+        time_edit_layout.attach(&time_edit_black_timeout, 9, 9, 3, 2);
 
         // Game Over Confirmation Page
 
@@ -620,21 +614,4 @@ fn new_keypad() -> gtk::Grid {
     keypad.attach(&button_0, 0, 3, 1, 1);
     keypad.attach(&button_backspace, 1, 3, 2, 1);
     keypad
-}
-
-fn new_timeout_ribbon() -> gtk::Grid {
-    let timeout_ribbon = gtk::Grid::new();
-    timeout_ribbon.set_column_homogeneous(true);
-    timeout_ribbon.set_row_homogeneous(true);
-    timeout_ribbon.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
-    timeout_ribbon.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
-
-    let new_white_timeout = new_button("WHITE TIMEOUT", "white", None);
-    let new_referee_timeout = new_button("REFEREE TIMEOUT", "yellow", None);
-    let new_black_timeout = new_button("BLACK TIMEOUT", "black", None);
-
-    timeout_ribbon.attach(&new_white_timeout, 0, 0, 3, 2);
-    timeout_ribbon.attach(&new_referee_timeout, 3, 0, 6, 2);
-    timeout_ribbon.attach(&new_black_timeout, 9, 0, 3, 2);
-    timeout_ribbon
 }

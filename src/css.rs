@@ -142,18 +142,24 @@ button.blue:active {
 label.game-state-header {
     background-color: #696969;
     color: #22FF00;
+    border-top-right-radius: 5px;
+    border-top-left-radius: 5px;
     font-size: 10px;
     font-weight: bold;
 }
 label.white-header {
     background-color: #FFFFFF;
     color: #000000;
+    border-top-right-radius: 5px;
+    border-top-left-radius: 5px;
     font-size: 10px;
     font-weight: bold;
 }
 label.black-header {
     background-color: #000000;
     color: #FFFFFF;
+    border-top-right-radius: 5px;
+    border-top-left-radius: 5px;
     font-size: 10px;
     font-weight: bold;
 }

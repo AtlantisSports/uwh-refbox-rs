@@ -24,7 +24,10 @@ grid.black {
     background-color: #000000;
     border-radius: 5px;
 }
-
+grid.keypad {
+    background-color: #696969;
+    border-radius: 5px;
+}
 
 button {
     border-style: none;
@@ -48,7 +51,7 @@ button.keypad {
     font-weight: bold;
     border-style: solid;
     border-radius: 5px;
-    border-color: #D3D3D3;
+    border-color: #696969;
 }
 button.blue:active {
     background-color: #0000DD;
@@ -200,8 +203,10 @@ label.edit-black-score-header {
     font-weight: bold;
 }
 label.player-number {
-    background-color: #D3D3D3;
+    background-color: #696969;
     color: #000000;
+    border-top-right-radius: 5px;
+    border-top-left-radius: 5px;
 }
 label.modified-score {
     background-color: #D3D3D3;

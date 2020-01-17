@@ -122,20 +122,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         win.set_title("UWH Refbox");
         win.set_resizable(true);
 
-        /*
-        //Attempting to size the keypad buttons based on the screen size and screen ratio
-        let screen_width = config.hardware.screen_x;
-        let screen_height = config.hardware.screen_y;
-
-        let screen_ratio = screen_height / screen_width;
-
-        if screen_ratio < 1.4 {
-            KEYPAD_BUTTON_SIZE: i32 = screen_width * .116;
-        } else {
-            KEYPAD_BUTTON_SIZE: i32 = screen_height * .0825;
-        }
-        */
-
         // Main Page
         let main_layout = gtk::Grid::new();
         main_layout.set_column_homogeneous(true);

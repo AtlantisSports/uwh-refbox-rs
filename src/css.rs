@@ -16,6 +16,16 @@ pub(crate) const STYLE: &str = "
 window {
     background-color: #D3D3D3;
 }
+grid.white {
+    background-color: #FFFFFF;
+    border-radius: 5px;
+}
+grid.black {
+    background-color: #000000;
+    border-radius: 5px;
+}
+
+
 button {
     border-style: none;
     outline-style: none;
@@ -34,11 +44,11 @@ button:hover {
 button.keypad {
     background-color: #00FFFB;
     color: #000000;
-    font-size: 50px;
+    font-size: 20px;
     font-weight: bold;
-    border-radius: 0px;
-    border-width: 2px;
-    border-color: #696969;
+    border-style: solid;
+    border-radius: 5px;
+    border-color: #D3D3D3;
 }
 button.blue:active {
     background-color: #0000DD;
@@ -89,7 +99,14 @@ button.light-green {
 button.blue {
     background-color: #0000FF;
     color: #FFFFFF;
-    font-size: 80px;
+    font-size: 30px;
+}
+button.blue-top {
+    background-color: #0000FF;
+    color: #FFFFFF;
+    border-top-right-radius: 0px;
+    border-top-left-radius: 0px;
+    font-size: 30px;
 }
 button.grayed-out {
     background-color: #999999;
@@ -98,21 +115,28 @@ button.grayed-out {
 button.white-score {
     background-color: #FFFFFF;
     color: #000000;
+    border-top-right-radius: 0px;
+    border-top-left-radius: 0px;
     font-size: 40px;
     font-weight: bold;
 }
 button.black-score {
     background-color: #000000;
     color: #FFFFFF;
+    border-top-right-radius: 0px;
+    border-top-left-radius: 0px;
     font-size: 40px;
     font-weight: bold;
 }
 button.game-time {
     background-color: #696969;
     color: #22FF00;
+    border-top-right-radius: 0px;
+    border-top-left-radius: 0px;
     font-size: 40px;
     font-weight: bold;
 }
+
 button.gray {
     background-color: #999999;
     color: #000000;
@@ -128,18 +152,24 @@ button.blue:active {
 label.game-state-header {
     background-color: #696969;
     color: #22FF00;
+    border-top-right-radius: 5px;
+    border-top-left-radius: 5px;
     font-size: 10px;
     font-weight: bold;
 }
 label.white-header {
     background-color: #FFFFFF;
     color: #000000;
+    border-top-right-radius: 5px;
+    border-top-left-radius: 5px;
     font-size: 10px;
     font-weight: bold;
 }
 label.black-header {
     background-color: #000000;
     color: #FFFFFF;
+    border-top-right-radius: 5px;
+    border-top-left-radius: 5px;
     font-size: 10px;
     font-weight: bold;
 }
@@ -153,15 +183,48 @@ label.time-mod {
     background-color: #D3D3D3;
     color: #000000;
 }
+label.edit-white-score-header {
+    background-color: #FFFFFF;
+    color: #000000;
+    border-top-right-radius: 5px;
+    border-top-left-radius: 5px;
+    font-size: 10px;
+    font-weight: bold;
+}
+label.edit-black-score-header {
+    background-color: #000000;
+    color: #FFFFFF;
+    border-top-right-radius: 5px;
+    border-top-left-radius: 5px;
+    font-size: 10px;
+    font-weight: bold;
+}
 label.player-number {
     background-color: #D3D3D3;
     color: #000000;
 }
-label.new_time_header {
-    background-color: #999999;
+label.modified-score {
+    background-color: #D3D3D3;
     color: #000000;
 }
-label.modified-game-time {
-    background-color: #999999;
+label.modified-white-score {
+    background-color: #FFFFFF;
     color: #000000;
-}";
+    border-bottom-right-radius: 5px;
+    border-bottom-left-radius: 5px;
+}
+label.modified-black-score {
+    background-color: #000000;
+    color: #FFFFFF;
+    border-bottom-right-radius: 5px;
+    border-bottom-left-radius: 5px;
+}
+label.gray-top {
+    background-color: #696969;
+    color: #000000;
+    border-top-right-radius: 0px;
+    border-top-left-radius: 0px;
+}
+
+
+";

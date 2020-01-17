@@ -207,16 +207,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let score_referee_timeout = new_button("REFEREE TIMEOUT", "yellow", None);
         let score_black_timeout = new_button("BLACK TIMEOUT", "black", None);
 
-        let score_player_number = gtk::Label::new(Some("#P"));
-        score_player_number.get_style_context().add_class("gray");
-
         let score_keypad = new_keypad();
 
-        new_score_layout.attach(&score_keypad, 0, 0, 4, 7);
+        new_score_layout.attach(&score_keypad, 0, 0, 4, 9);
         new_score_layout.attach(&score_white_select, 4, 0, 4, 3);
         new_score_layout.attach(&score_black_select, 8, 0, 4, 3);
-        new_score_layout.attach(&score_cancel, 0, 7, 4, 2);
-        new_score_layout.attach(&score_player_number, 4, 7, 4, 2);
+        new_score_layout.attach(&score_cancel, 4, 7, 4, 2);
         new_score_layout.attach(&score_submit, 8, 7, 4, 2);
         new_score_layout.attach(&score_white_timeout, 0, 9, 3, 2);
         new_score_layout.attach(&score_referee_timeout, 3, 9, 6, 2);
@@ -329,8 +325,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         time_penalty_conf_layout.attach(&white_time_list, 0, 0, 6, 7);
         time_penalty_conf_layout.attach(&black_time_list, 6, 0, 6, 7);
-        time_penalty_conf_layout.attach(&penalty_conf_cancel, 0, 7, 4, 2);
-        time_penalty_conf_layout.attach(&penalty_conf_new, 4, 7, 4, 2);
+        time_penalty_conf_layout.attach(&penalty_conf_new, 0, 7, 4, 2);
+        time_penalty_conf_layout.attach(&penalty_conf_cancel, 4, 7, 4, 2);
         time_penalty_conf_layout.attach(&penalty_conf_start, 8, 7, 4, 2);
         time_penalty_conf_layout.attach(&penalty_conf_white_timeout, 0, 9, 3, 2);
         time_penalty_conf_layout.attach(&penalty_conf_referee_timeout, 3, 9, 6, 2);
@@ -359,20 +355,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let penalty_referee_timeout = new_button("REFEREE TIMEOUT", "yellow", None);
         let penalty_black_timeout = new_button("BLACK TIMEOUT", "black", None);
 
-        let penalty_player_number = gtk::Label::new(Some("#P"));
-        penalty_player_number.get_style_context().add_class("gray");
-
         let penalty_keypad = new_keypad();
 
-        penalty_add_layout.attach(&penalty_keypad, 0, 0, 4, 7);
+        penalty_add_layout.attach(&penalty_keypad, 0, 0, 4, 9);
         penalty_add_layout.attach(&penalty_white_select, 4, 0, 4, 3);
         penalty_add_layout.attach(&penalty_black_select, 8, 0, 4, 3);
         penalty_add_layout.attach(&penalty_1min, 4, 3, 2, 4);
         penalty_add_layout.attach(&penalty_2min, 6, 3, 2, 4);
         penalty_add_layout.attach(&penalty_5min, 8, 3, 2, 4);
         penalty_add_layout.attach(&penalty_dismiss, 10, 3, 2, 4);
-        penalty_add_layout.attach(&penalty_delete, 0, 7, 4, 2);
-        penalty_add_layout.attach(&penalty_player_number, 4, 7, 4, 2);
+        penalty_add_layout.attach(&penalty_delete, 4, 7, 4, 2);
         penalty_add_layout.attach(&penalty_add, 8, 7, 4, 2);
         penalty_add_layout.attach(&penalty_white_timeout, 0, 9, 3, 2);
         penalty_add_layout.attach(&penalty_referee_timeout, 3, 9, 6, 2);
@@ -602,33 +594,53 @@ fn new_button(text: &str, style: &str, size: Option<(i32, i32)>) -> gtk::Button 
     button
 }
 
+fn new_keypad_button(text: &str, style: &str, size: Option<(i32, i32)>) -> gtk::Button {
+    let keypad_button = gtk::Button::new_with_label(text);
+    keypad_button.get_style_context().add_class(style);
+    keypad_button.set_margin_start(BUTTON_MARGIN);
+    keypad_button.set_margin_bottom(BUTTON_MARGIN);
+    if let Some((x, y)) = size {
+        keypad_button.set_size_request(x, y);
+    }
+    keypad_button
+}
+
 fn new_keypad() -> gtk::Grid {
     let keypad = gtk::Grid::new();
     keypad.set_column_homogeneous(true);
     keypad.set_row_homogeneous(true);
+    keypad.get_style_context().add_class("keypad");
 
-    let button_backspace = new_button("<--", "keypad", None);
-    let button_0 = new_button("0", "keypad", None);
-    let button_1 = new_button("1", "keypad", None);
-    let button_2 = new_button("2", "keypad", None);
-    let button_3 = new_button("3", "keypad", None);
-    let button_4 = new_button("4", "keypad", None);
-    let button_5 = new_button("5", "keypad", None);
-    let button_6 = new_button("6", "keypad", None);
-    let button_7 = new_button("7", "keypad", None);
-    let button_8 = new_button("8", "keypad", None);
-    let button_9 = new_button("9", "keypad", None);
+    let player_number = gtk::Label::new(Some("##"));
+    player_number.get_style_context().add_class("player-number");
 
-    keypad.attach(&button_7, 0, 0, 1, 1);
-    keypad.attach(&button_8, 1, 0, 1, 1);
-    keypad.attach(&button_9, 2, 0, 1, 1);
-    keypad.attach(&button_4, 0, 1, 1, 1);
-    keypad.attach(&button_5, 1, 1, 1, 1);
-    keypad.attach(&button_6, 2, 1, 1, 1);
-    keypad.attach(&button_1, 0, 2, 1, 1);
-    keypad.attach(&button_2, 1, 2, 1, 1);
-    keypad.attach(&button_3, 2, 2, 1, 1);
-    keypad.attach(&button_0, 0, 3, 1, 1);
-    keypad.attach(&button_backspace, 1, 3, 2, 1);
+    let button_backspace = new_keypad_button("<--", "keypad", None);
+    button_backspace.set_margin_end(BUTTON_MARGIN);
+    let button_0 = new_keypad_button("0", "keypad", None);
+    let button_1 = new_keypad_button("1", "keypad", None);
+    let button_2 = new_keypad_button("2", "keypad", None);
+    let button_3 = new_keypad_button("3", "keypad", None);
+    button_3.set_margin_end(BUTTON_MARGIN);
+    let button_4 = new_keypad_button("4", "keypad", None);
+    let button_5 = new_keypad_button("5", "keypad", None);
+    let button_6 = new_keypad_button("6", "keypad", None);
+    button_6.set_margin_end(BUTTON_MARGIN);
+    let button_7 = new_keypad_button("7", "keypad", None);
+    let button_8 = new_keypad_button("8", "keypad", None);
+    let button_9 = new_keypad_button("9", "keypad", None);
+    button_9.set_margin_end(BUTTON_MARGIN);
+
+    keypad.attach(&player_number, 0, 0, 3, 2);
+    keypad.attach(&button_7, 0, 2, 1, 1);
+    keypad.attach(&button_8, 1, 2, 1, 1);
+    keypad.attach(&button_9, 2, 2, 1, 1);
+    keypad.attach(&button_4, 0, 3, 1, 1);
+    keypad.attach(&button_5, 1, 3, 1, 1);
+    keypad.attach(&button_6, 2, 3, 1, 1);
+    keypad.attach(&button_1, 0, 4, 1, 1);
+    keypad.attach(&button_2, 1, 4, 1, 1);
+    keypad.attach(&button_3, 2, 4, 1, 1);
+    keypad.attach(&button_0, 0, 5, 1, 1);
+    keypad.attach(&button_backspace, 1, 5, 2, 1);
     keypad
 }

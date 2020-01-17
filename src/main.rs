@@ -233,10 +233,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         edit_score_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         edit_score_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
 
-        let white_score_plus = new_button("+", "blue-top", None);
-        let white_score_minus = new_button("-", "light-blue", None);
-        let black_score_plus = new_button("+", "blue-top", None);
-        let black_score_minus = new_button("-", "light-blue", None);
+        let white_score_plus = new_button("+", "blue", None);
+        white_score_plus.set_margin_start(BUTTON_MARGIN);
+        white_score_plus.set_margin_top(BUTTON_MARGIN);
+        white_score_plus.set_margin_bottom(BUTTON_MARGIN);
+        let white_score_minus = new_button("-", "blue", None);
+        white_score_minus.set_margin_start(BUTTON_MARGIN);
+        white_score_minus.set_margin_top(BUTTON_MARGIN);
+        white_score_minus.set_margin_bottom(BUTTON_MARGIN);
+        let black_score_plus = new_button("+", "blue", None);
+        black_score_plus.set_margin_end(BUTTON_MARGIN);
+        black_score_plus.set_margin_top(BUTTON_MARGIN);
+        black_score_plus.set_margin_bottom(BUTTON_MARGIN);
+        let black_score_minus = new_button("-", "blue", None);
+        black_score_minus.set_margin_end(BUTTON_MARGIN);
+        black_score_minus.set_margin_top(BUTTON_MARGIN);
+        black_score_minus.set_margin_bottom(BUTTON_MARGIN);
+
         let score_edit_cancel = new_button("CANCEL", "red", None);
         let score_edit_submit = new_button("SUBMIT", "green", None);
         let score_edit_white_timeout = new_button("WHITE TIMEOUT", "white", None);
@@ -246,45 +259,50 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let white_score_header = gtk::Label::new(Some("WHITE SCORE"));
         white_score_header
             .get_style_context()
-            .add_class("white-header");
+            .add_class("edit-white-score-header");
         let black_score_header = gtk::Label::new(Some("BLACK SCORE"));
         black_score_header
             .get_style_context()
-            .add_class("black-header");
+            .add_class("edit-black-score-header");
         let modified_white_score = gtk::Label::new(Some("##"));
         modified_white_score
             .get_style_context()
-            .add_class("modified-score");
+            .add_class("modified-white-score");
         let modified_black_score = gtk::Label::new(Some("##"));
         modified_black_score
             .get_style_context()
-            .add_class("modified-score");
+            .add_class("modified-black-score");
         let empty_score_edit_label = gtk::Label::new(None);
 
         let white_score_header_box = gtk::Grid::new();
+        white_score_header_box
+            .get_style_context()
+            .add_class("white");
         white_score_header_box.set_column_homogeneous(true);
         white_score_header_box.set_row_homogeneous(true);
         white_score_header_box.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         white_score_header_box.attach(&white_score_header, 0, 0, 2, 1);
         white_score_header_box.attach(&white_score_plus, 0, 1, 1, 2);
-        white_score_header_box.attach(&modified_white_score, 1, 1, 1, 2);
+        white_score_header_box.attach(&white_score_minus, 0, 3, 1, 2);
+        white_score_header_box.attach(&modified_white_score, 1, 1, 1, 4);
 
         let black_score_header_box = gtk::Grid::new();
+        black_score_header_box
+            .get_style_context()
+            .add_class("black");
         black_score_header_box.set_column_homogeneous(true);
         black_score_header_box.set_row_homogeneous(true);
         black_score_header_box.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         black_score_header_box.attach(&black_score_header, 0, 0, 2, 1);
-        black_score_header_box.attach(&modified_black_score, 0, 1, 1, 2);
+        black_score_header_box.attach(&modified_black_score, 0, 1, 1, 4);
         black_score_header_box.attach(&black_score_plus, 1, 1, 1, 2);
+        black_score_header_box.attach(&black_score_minus, 1, 3, 1, 2);
 
-        edit_score_layout.attach(&white_score_header_box, 0, 0, 6, 3);
-        edit_score_layout.attach(&black_score_header_box, 6, 0, 6, 3);
-        edit_score_layout.attach(&white_score_minus, 0, 3, 3, 2);
-        edit_score_layout.attach(&black_score_minus, 9, 3, 3, 2);
+        edit_score_layout.attach(&white_score_header_box, 0, 0, 6, 5);
+        edit_score_layout.attach(&black_score_header_box, 6, 0, 6, 5);
         edit_score_layout.attach(&empty_score_edit_label, 0, 5, 12, 2);
         edit_score_layout.attach(&score_edit_cancel, 0, 7, 4, 2);
         edit_score_layout.attach(&score_edit_submit, 8, 7, 4, 2);
-        edit_score_layout.attach(&score_submit, 8, 7, 4, 2);
         edit_score_layout.attach(&score_edit_white_timeout, 0, 9, 3, 2);
         edit_score_layout.attach(&score_edit_referee_timeout, 3, 9, 6, 2);
         edit_score_layout.attach(&score_edit_black_timeout, 9, 9, 3, 2);
@@ -372,9 +390,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         time_edit_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
 
         let minute_plus = new_button("+", "blue", None);
-        let minute_minus = new_button("-", "light-blue", None);
+        let minute_minus = new_button("-", "blue", None);
         let second_plus = new_button("+", "blue", None);
-        let second_minus = new_button("-", "light-blue", None);
+        let second_minus = new_button("-", "blue", None);
         let time_edit_cancel = new_button("CANCEL", "red", None);
         let time_edit_submit = new_button("SUBMIT", "green", None);
         let time_edit_white_timeout = new_button("WHITE TIMEOUT", "white", None);

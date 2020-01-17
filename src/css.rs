@@ -16,6 +16,16 @@ pub(crate) const STYLE: &str = "
 window {
     background-color: #D3D3D3;
 }
+grid.white {
+    background-color: #FFFFFF;
+    border-radius: 5px;
+}
+grid.black {
+    background-color: #000000;
+    border-radius: 5px;
+}
+
+
 button {
     border-style: none;
     outline-style: none;
@@ -36,9 +46,9 @@ button.keypad {
     color: #000000;
     font-size: 20px;
     font-weight: bold;
-    border-radius: 0px;
-    border-width: 2px;
-    border-color: #696969;
+    border-style: solid;
+    border-radius: 5px;
+    border-color: #D3D3D3;
 }
 button.blue:active {
     background-color: #0000DD;
@@ -173,6 +183,22 @@ label.time-mod {
     background-color: #D3D3D3;
     color: #000000;
 }
+label.edit-white-score-header {
+    background-color: #FFFFFF;
+    color: #000000;
+    border-top-right-radius: 5px;
+    border-top-left-radius: 5px;
+    font-size: 10px;
+    font-weight: bold;
+}
+label.edit-black-score-header {
+    background-color: #000000;
+    color: #FFFFFF;
+    border-top-right-radius: 5px;
+    border-top-left-radius: 5px;
+    font-size: 10px;
+    font-weight: bold;
+}
 label.player-number {
     background-color: #D3D3D3;
     color: #000000;
@@ -180,6 +206,18 @@ label.player-number {
 label.modified-score {
     background-color: #D3D3D3;
     color: #000000;
+}
+label.modified-white-score {
+    background-color: #FFFFFF;
+    color: #000000;
+    border-bottom-right-radius: 5px;
+    border-bottom-left-radius: 5px;
+}
+label.modified-black-score {
+    background-color: #000000;
+    color: #FFFFFF;
+    border-bottom-right-radius: 5px;
+    border-bottom-left-radius: 5px;
 }
 label.gray-top {
     background-color: #696969;

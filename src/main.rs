@@ -147,16 +147,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let main_referee_timeout = new_button("REFEREE TIMEOUT", "yellow", None);
         let main_black_timeout = new_button("BLACK TIMEOUT", "black", None);
 
-        let game_state_header = gtk::Label::new(Some("GAME STATE"));
-        game_state_header
-            .get_style_context()
-            .add_class("game-state-header");
-
-        let white_header = gtk::Label::new(Some("WHITE"));
-        white_header.get_style_context().add_class("white-header");
-
-        let black_header = gtk::Label::new(Some("Black"));
-        black_header.get_style_context().add_class("black-header");
+        let game_state_header = new_label("GAME STATE", "game-state-header");
+        let white_header = new_label("WHITE", "white-header");
+        let black_header = new_label("Black", "black-header");
 
         let white_box = gtk::Grid::new();
         white_box.set_column_homogeneous(true);
@@ -254,22 +247,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let score_edit_referee_timeout = new_button("REFEREE TIMEOUT", "yellow", None);
         let score_edit_black_timeout = new_button("BLACK TIMEOUT", "black", None);
 
-        let white_score_header = gtk::Label::new(Some("WHITE SCORE"));
-        white_score_header
-            .get_style_context()
-            .add_class("edit-white-score-header");
-        let black_score_header = gtk::Label::new(Some("BLACK SCORE"));
-        black_score_header
-            .get_style_context()
-            .add_class("edit-black-score-header");
-        let modified_white_score = gtk::Label::new(Some("##"));
-        modified_white_score
-            .get_style_context()
-            .add_class("modified-white-score");
-        let modified_black_score = gtk::Label::new(Some("##"));
-        modified_black_score
-            .get_style_context()
-            .add_class("modified-black-score");
+        let white_score_header = new_label("WHITE SCORE", "edit-white-score-header");
+        let black_score_header = new_label("BLACK SCORE", "edit-black-score-header");
+        let modified_white_score = new_label("#W", "modified-white-score");
+        let modified_black_score = new_label("#B", "modified-black-score");
         let empty_score_edit_label = gtk::Label::new(None);
 
         let white_score_header_box = gtk::Grid::new();
@@ -393,14 +374,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let time_edit_referee_timeout = new_button("REFEREE TIMEOUT", "yellow", None);
         let time_edit_black_timeout = new_button("BLACK TIMEOUT", "black", None);
 
-        let minute_header = gtk::Label::new(Some("MINUTE"));
-        minute_header.get_style_context().add_class("time-mod");
-        let second_header = gtk::Label::new(Some("SECOND"));
-        second_header.get_style_context().add_class("time-mod");
-        let new_time_header = gtk::Label::new(Some("NEW TIME"));
-        new_time_header.get_style_context().add_class("time-mod");
-        let modified_game_time = gtk::Label::new(Some("##:##"));
-        modified_game_time.get_style_context().add_class("time-mod");
+        let minute_header = new_label("MINUTE", "time-mod");
+        let second_header = new_label("SECOND", "time-mod");
+        let new_time_header = new_label("NEW TIME", "time-mod");
+        let modified_game_time = new_label("##:##", "time-mod");
         let empty_time_edit_label = gtk::Label::new(None);
 
         let minute_header_box = gtk::Grid::new();

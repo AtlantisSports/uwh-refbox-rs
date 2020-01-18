@@ -4,7 +4,7 @@
 // Green = #22FF00
 // Lavender = #FF00FF
 // Teal = #00FFFB
-// Light Blue = #5555F5
+// Light Blue = #4E4EF4
 // Light Green = #38AA38
 // Background Gray = #D3D3D3
 // Grayed-Out Gray = #999999
@@ -92,7 +92,7 @@ button.lavender {
     color: #000000;
 }
 button.light-blue {
-    background-color: #5555F5;
+    background-color: #4E4EF4;
     color: #000000;
 }
 button.light-green {
@@ -147,9 +147,14 @@ button.gray {
 button.blue:active {
     background-color: #0000DD;
 }
-
-
-
+button.time-mod {
+    background-color: #D3D3D3;
+    color: #000000;
+}
+button.time-edit {
+    background-color: #4E4EF4;
+    color: #000000;
+}
 
 
 label.game-state-header {
@@ -182,10 +187,6 @@ label.game-time {
     font-size: 25px;
     font-weight: bold;
 }
-label.time-mod {
-    background-color: #D3D3D3;
-    color: #000000;
-}
 label.edit-white-score-header {
     background-color: #FFFFFF;
     color: #000000;
@@ -201,6 +202,15 @@ label.edit-black-score-header {
     border-top-left-radius: 5px;
     font-size: 10px;
     font-weight: bold;
+}
+label.edit-parameter-header {
+    background-color: #696969;
+    color: #000000;
+    border-radius: 5px;
+}
+label.edit-parameter-time {
+    background-color: #D3D3D3;
+    color: #000000;
 }
 label.player-number {
     background-color: #696969;

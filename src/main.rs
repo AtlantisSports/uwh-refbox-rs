@@ -304,7 +304,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let white_time_list = new_button("WHITE PENALTIES", "white", None);
         let black_time_list = new_button("BLACK PENALTIES", "black", None);
-        let penalty_conf_cancel = new_button("CANCEL", "red", None);
         let penalty_conf_new = new_button("NEW", "blue", None);
         let penalty_conf_start = new_button("START", "green", None);
         let penalty_conf_white_timeout = new_button("WHITE\nTIMEOUT", "white", None);
@@ -314,7 +313,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         time_penalty_conf_layout.attach(&white_time_list, 0, 0, 6, 7);
         time_penalty_conf_layout.attach(&black_time_list, 6, 0, 6, 7);
         time_penalty_conf_layout.attach(&penalty_conf_new, 0, 7, 4, 2);
-        time_penalty_conf_layout.attach(&penalty_conf_cancel, 4, 7, 4, 2);
         time_penalty_conf_layout.attach(&penalty_conf_start, 8, 7, 4, 2);
         time_penalty_conf_layout.attach(&penalty_conf_white_timeout, 0, 9, 3, 2);
         time_penalty_conf_layout.attach(&penalty_conf_referee_timeout, 3, 9, 6, 2);
@@ -503,13 +501,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         edit_game_parameters_layout.attach(&halftime_length_time_edit, 6, 1, 4, 1);
         edit_game_parameters_layout.attach(&between_game_length_time_edit, 6, 2, 4, 1);
         edit_game_parameters_layout.attach(&min_between_game_length_time_edit, 6, 3, 4, 1);
-        edit_game_parameters_layout.attach(&edit_game_parameters_ot_yes, 6, 4, 2, 1);
-        edit_game_parameters_layout.attach(&edit_game_parameters_ot_no, 8, 4, 2, 1);
+        edit_game_parameters_layout.attach(&edit_game_parameters_ot_no, 6, 4, 2, 1);
+        edit_game_parameters_layout.attach(&edit_game_parameters_ot_yes, 8, 4, 2, 1);
         edit_game_parameters_layout.attach(&pre_overtime_length_time_edit, 6, 5, 4, 1);
         edit_game_parameters_layout.attach(&overtime_half_length_time_edit, 6, 6, 4, 1);
         edit_game_parameters_layout.attach(&overtime_halftime_length_time_edit, 6, 7, 4, 1);
-        edit_game_parameters_layout.attach(&edit_game_parameters_sd_yes, 6, 8, 2, 1);
-        edit_game_parameters_layout.attach(&edit_game_parameters_sd_no, 8, 8, 2, 1);
+        edit_game_parameters_layout.attach(&edit_game_parameters_sd_no, 6, 8, 2, 1);
+        edit_game_parameters_layout.attach(&edit_game_parameters_sd_yes, 8, 8, 2, 1);
         edit_game_parameters_layout.attach(&sudden_death_length_time_edit, 6, 9, 4, 1);
 
         edit_game_parameters_layout.attach(&edit_game_parameters_cancel, 0, 10, 4, 2);
@@ -569,11 +567,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
         time_edit_submit.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
-
-        let main_layout_ = main_layout.clone();
-        let layout_stack_ = layout_stack.clone();
-        penalty_conf_cancel
-            .connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
 
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();

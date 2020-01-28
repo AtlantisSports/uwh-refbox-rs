@@ -120,7 +120,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let win = gtk::ApplicationWindow::new(app);
         win.set_default_size(config.hardware.screen_x, config.hardware.screen_y);
         win.set_title("UWH Refbox");
-        win.set_resizable(true);
+        win.set_resizable(false);
 
         // Main Page
         let main_layout = gtk::Grid::new();
@@ -133,30 +133,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         main_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         main_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
 
-        let edit_game_time = new_button("##:##", "game-time", None);
+        let edit_game_time = new_button("##:##", "game-time-green", None);
         let new_penalty_shot = new_button("PENALTY SHOT", "red", None);
         let edit_game_information = new_button("GAME INFORMATION", "gray", None);
         let edit_game_parameters = new_button("GAME PARAMETERS", "gray", None);
+
         let edit_white_score = new_button("#W", "white-score", None);
-        let add_white_score = new_button("SCORE WHITE", "white", None);
-        let edit_white_time_penalty = new_button("WHITE TIME PENALTY", "white", None);
+        /*let button_label = edit_white_score.get_child().unwrap().downcast::<gtk::Label>().unwrap();
+        button_label.set_justify(gtk::Justification::Center);
+        button_label.set_property_margin(0);
+        */
+        let add_white_score = new_button("SCORE\nWHITE", "white", None);
+        let edit_white_time_penalty = new_button("WHITE\nTIME\nPENALTY\nLIST", "white", None);
         let edit_black_score = new_button("#B", "black-score", None);
-        let add_black_score = new_button("SCORE BLACK", "black", None);
-        let edit_black_time_penalty = new_button("BLACK TIME PENALTY", "black", None);
-        let main_white_timeout = new_button("WHITE TIMEOUT", "white", None);
+        let add_black_score = new_button("SCORE\nBLACK", "black", None);
+        let edit_black_time_penalty = new_button("BLACK\nTIME\nPENALTY\nLIST", "black", None);
+        let main_white_timeout = new_button("WHITE\nTIMEOUT", "white", None);
         let main_referee_timeout = new_button("REFEREE TIMEOUT", "yellow", None);
-        let main_black_timeout = new_button("BLACK TIMEOUT", "black", None);
+        let main_black_timeout = new_button("BLACK\nTIMEOUT", "black", None);
 
-        let game_state_header = gtk::Label::new(Some("GAME STATE"));
-        game_state_header
-            .get_style_context()
-            .add_class("game-state-header");
-
-        let white_header = gtk::Label::new(Some("WHITE"));
-        white_header.get_style_context().add_class("white-header");
-
-        let black_header = gtk::Label::new(Some("Black"));
-        black_header.get_style_context().add_class("black-header");
+        let game_state_header = new_label("GAME STATE", "header-dark-gray");
+        let white_header = new_label("WHITE", "header-white");
+        let black_header = new_label("BLACK", "header-black");
 
         let white_box = gtk::Grid::new();
         white_box.set_column_homogeneous(true);
@@ -205,9 +203,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let score_black_select = new_button("BLACK", "black", None);
         let score_cancel = new_button("CANCEL", "red", None);
         let score_submit = new_button("SUBMIT", "green", None);
-        let score_white_timeout = new_button("WHITE TIMEOUT", "white", None);
+        let score_white_timeout = new_button("WHITE\nTIMEOUT", "white", None);
         let score_referee_timeout = new_button("REFEREE TIMEOUT", "yellow", None);
-        let score_black_timeout = new_button("BLACK TIMEOUT", "black", None);
+        let score_black_timeout = new_button("BLACK\nTIMEOUT", "black", None);
 
         let score_keypad = new_keypad();
 
@@ -231,45 +229,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         edit_score_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         edit_score_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
 
-        let white_score_plus = new_button("+", "blue", None);
+        let white_score_plus = new_button("+", "blue-modifier", None);
         white_score_plus.set_margin_start(BUTTON_MARGIN);
         white_score_plus.set_margin_top(BUTTON_MARGIN);
         white_score_plus.set_margin_bottom(BUTTON_MARGIN);
-        let white_score_minus = new_button("-", "blue", None);
+        let white_score_minus = new_button("-", "blue-modifier", None);
         white_score_minus.set_margin_start(BUTTON_MARGIN);
         white_score_minus.set_margin_top(BUTTON_MARGIN);
         white_score_minus.set_margin_bottom(BUTTON_MARGIN);
-        let black_score_plus = new_button("+", "blue", None);
+        let black_score_plus = new_button("+", "blue-modifier", None);
         black_score_plus.set_margin_end(BUTTON_MARGIN);
         black_score_plus.set_margin_top(BUTTON_MARGIN);
         black_score_plus.set_margin_bottom(BUTTON_MARGIN);
-        let black_score_minus = new_button("-", "blue", None);
+        let black_score_minus = new_button("-", "blue-modifier", None);
         black_score_minus.set_margin_end(BUTTON_MARGIN);
         black_score_minus.set_margin_top(BUTTON_MARGIN);
         black_score_minus.set_margin_bottom(BUTTON_MARGIN);
 
         let score_edit_cancel = new_button("CANCEL", "red", None);
         let score_edit_submit = new_button("SUBMIT", "green", None);
-        let score_edit_white_timeout = new_button("WHITE TIMEOUT", "white", None);
+        let score_edit_white_timeout = new_button("WHITE\nTIMEOUT", "white", None);
         let score_edit_referee_timeout = new_button("REFEREE TIMEOUT", "yellow", None);
-        let score_edit_black_timeout = new_button("BLACK TIMEOUT", "black", None);
+        let score_edit_black_timeout = new_button("BLACK\nTIMEOUT", "black", None);
 
-        let white_score_header = gtk::Label::new(Some("WHITE SCORE"));
-        white_score_header
-            .get_style_context()
-            .add_class("edit-white-score-header");
-        let black_score_header = gtk::Label::new(Some("BLACK SCORE"));
-        black_score_header
-            .get_style_context()
-            .add_class("edit-black-score-header");
-        let modified_white_score = gtk::Label::new(Some("##"));
-        modified_white_score
-            .get_style_context()
-            .add_class("modified-white-score");
-        let modified_black_score = gtk::Label::new(Some("##"));
-        modified_black_score
-            .get_style_context()
-            .add_class("modified-black-score");
+        let white_score_header = new_label("WHITE SCORE", "header-white");
+        let black_score_header = new_label("BLACK SCORE", "header-black");
+        let modified_white_score = new_label("#W", "modified-score-white");
+        let modified_black_score = new_label("#B", "modified-score-black");
         let empty_score_edit_label = gtk::Label::new(None);
 
         let white_score_header_box = gtk::Grid::new();
@@ -321,9 +307,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let penalty_conf_cancel = new_button("CANCEL", "red", None);
         let penalty_conf_new = new_button("NEW", "blue", None);
         let penalty_conf_start = new_button("START", "green", None);
-        let penalty_conf_white_timeout = new_button("WHITE TIMEOUT", "white", None);
+        let penalty_conf_white_timeout = new_button("WHITE\nTIMEOUT", "white", None);
         let penalty_conf_referee_timeout = new_button("REFEREE TIMEOUT", "yellow", None);
-        let penalty_conf_black_timeout = new_button("BLACK TIMEOUT", "black", None);
+        let penalty_conf_black_timeout = new_button("BLACK\nTIMEOUT", "black", None);
 
         time_penalty_conf_layout.attach(&white_time_list, 0, 0, 6, 7);
         time_penalty_conf_layout.attach(&black_time_list, 6, 0, 6, 7);
@@ -350,12 +336,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let penalty_1min = new_button("1 MIN", "yellow", None);
         let penalty_2min = new_button("2 MIN", "orange", None);
         let penalty_5min = new_button("5 MIN", "red", None);
-        let penalty_dismiss = new_button("DISMISS", "lavender", None);
+        let penalty_dismiss = new_button("DISMISS", "blue", None);
         let penalty_delete = new_button("DELETE", "red", None);
         let penalty_add = new_button("ADD", "green", None);
-        let penalty_white_timeout = new_button("WHITE TIMEOUT", "white", None);
+        let penalty_white_timeout = new_button("WHITE\nTIMEOUT", "white", None);
         let penalty_referee_timeout = new_button("REFEREE TIMEOUT", "yellow", None);
-        let penalty_black_timeout = new_button("BLACK TIMEOUT", "black", None);
+        let penalty_black_timeout = new_button("BLACK\nTIMEOUT", "black", None);
 
         let penalty_keypad = new_keypad();
 
@@ -383,24 +369,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         time_edit_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         time_edit_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
 
-        let minute_plus = new_button("+", "blue", None);
-        let minute_minus = new_button("-", "blue", None);
-        let second_plus = new_button("+", "blue", None);
-        let second_minus = new_button("-", "blue", None);
+        let minute_plus = new_button("+", "blue-modifier", None);
+        let minute_minus = new_button("-", "blue-modifier", None);
+        let second_plus = new_button("+", "blue-modifier", None);
+        let second_minus = new_button("-", "blue-modifier", None);
         let time_edit_cancel = new_button("CANCEL", "red", None);
         let time_edit_submit = new_button("SUBMIT", "green", None);
-        let time_edit_white_timeout = new_button("WHITE TIMEOUT", "white", None);
+        let time_edit_white_timeout = new_button("WHITE\nTIMEOUT", "white", None);
         let time_edit_referee_timeout = new_button("REFEREE TIMEOUT", "yellow", None);
-        let time_edit_black_timeout = new_button("BLACK TIMEOUT", "black", None);
+        let time_edit_black_timeout = new_button("BLACK\nTIMEOUT", "black", None);
 
-        let minute_header = gtk::Label::new(Some("MINUTE"));
-        minute_header.get_style_context().add_class("time-mod");
-        let second_header = gtk::Label::new(Some("SECOND"));
-        second_header.get_style_context().add_class("time-mod");
-        let new_time_header = gtk::Label::new(Some("NEW TIME"));
-        new_time_header.get_style_context().add_class("time-mod");
-        let modified_game_time = gtk::Label::new(Some("##:##"));
-        modified_game_time.get_style_context().add_class("time-mod");
+        let minute_header = new_label("MINUTE", "header-gray");
+        let second_header = new_label("SECOND", "header-gray");
+        let new_time_header = new_label("NEW TIME", "header-gray");
+        let modified_game_time = new_label("##:##", "modified-time-gray");
         let empty_time_edit_label = gtk::Label::new(None);
 
         let minute_header_box = gtk::Grid::new();
@@ -458,10 +440,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         edit_game_parameters_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         edit_game_parameters_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
 
-        let edit_game_parameters_ot_yes = new_button("YES", "green", None);
-        let edit_game_parameters_ot_no = new_button("NO", "red", None);
-        let edit_game_parameters_sd_yes = new_button("YES", "green", None);
-        let edit_game_parameters_sd_no = new_button("NO", "red", None);
+        let edit_game_parameters_ot_yes = new_button("YES", "little-green", None);
+        let edit_game_parameters_ot_no = new_button("NO", "little-red", None);
+        let edit_game_parameters_sd_yes = new_button("YES", "little-green", None);
+        let edit_game_parameters_sd_no = new_button("NO", "little-red", None);
 
         let edit_game_parameters_cancel = new_button("CANCEL", "red", None);
         let edit_game_parameters_submit = new_button("SUBMIT", "green", None);
@@ -469,13 +451,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let edit_half_length = new_label("HALF LENGTH", "edit-parameter-header");
         let edit_halftime_length = new_label("HALF-TIME", "edit-parameter-header");
         let edit_between_game_length = new_label("BETWEEN", "edit-parameter-header");
-        let edit_overtime_allow = new_label("OVERTIME", "edit-parameter-header");
+        let edit_overtime_allow = new_label("OVERTIME ALLOWED?", "edit-parameter-header");
         let edit_min_between_game_length = new_label("MIN BETWEEN", "edit-parameter-header");
         let edit_pre_overtime_length = new_label("PRE-OVERTIME BREAK", "edit-parameter-header");
         let edit_overtime_half_length = new_label("OVERTIME HALF LENGTH", "edit-parameter-header");
         let edit_overtime_halftime_length =
             new_label("OVERTIME HALF-TIME LENGTH", "edit-parameter-header");
-        let edit_sudden_death_allow = new_label("SUDDEN DEATH", "edit-parameter-header");
+        let edit_sudden_death_allow = new_label("SUDDEN DEATH ALLOWED?", "edit-parameter-header");
         let edit_pre_sudden_death_length =
             new_label("PRE-SUDDEN DEATH BREAK", "edit-parameter-header");
 
@@ -730,7 +712,9 @@ fn new_keypad() -> gtk::Grid {
     keypad.get_style_context().add_class("keypad");
 
     let player_number = gtk::Label::new(Some("##"));
-    player_number.get_style_context().add_class("player-number");
+    player_number
+        .get_style_context()
+        .add_class("player-number-dark-gray");
 
     let button_backspace = new_keypad_button("<--", "keypad", None);
     button_backspace.set_margin_end(BUTTON_MARGIN);
@@ -770,10 +754,10 @@ fn time_edit_ribbon() -> gtk::Grid {
     time_edit.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
     time_edit.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
 
-    let plus_60 = new_button("+60", "time-edit", None);
-    let minus_60 = new_button("-60", "time-edit", None);
-    let plus_15 = new_button("+15", "time-edit", None);
-    let minus_15 = new_button("-15", "time-edit", None);
+    let plus_60 = new_button("+60", "little-blue", None);
+    let minus_60 = new_button("-60", "little-blue", None);
+    let plus_15 = new_button("+15", "little-blue", None);
+    let minus_15 = new_button("-15", "little-blue", None);
 
     time_edit.attach(&plus_60, 0, 0, 1, 1);
     time_edit.attach(&minus_60, 1, 0, 1, 1);

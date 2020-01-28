@@ -1,10 +1,13 @@
 // Red = #FF0000
+// Dark Red = #6C0303
 // Orange = FF8500
 // Yellow = #FFFF00
 // Green = #22FF00
 // Lavender = #FF00FF
 // Teal = #00FFFB
+// Blue = #0000FF
 // Light Blue = #4E4EF4
+// Dark Blue = 0000DD
 // Light Green = #38AA38
 // Background Gray = #D3D3D3
 // Grayed-Out Gray = #999999
@@ -29,6 +32,7 @@ grid.keypad {
     border-radius: 5px;
 }
 
+
 button {
     border-style: none;
     outline-style: none;
@@ -39,207 +43,294 @@ button {
     text-shadow: none;
     -gtk-icon-shadow: none;
     -gtk-icon-effect: none;
+    padding: 0px;
+}
+button:active {
+    background-color: #DD0000;
 }
 button:hover {
     -gtk-icon-shadow: none;
     -gtk-icon-effect: none;
 }
-button.keypad {
-    background-color: #00FFFB;
-    color: #000000;
-    font-size: 20px;
-    font-weight: bold;
-    border-style: solid;
-    border-radius: 5px;
-    border-color: #696969;
-}
-button.blue:active {
-    background-color: #0000DD;
-}
-button:active {
-    background-color: #DD0000;
-}
-button.white {
-    background-color: #FFFFFF;
-    color: #000000;
-}
-button.black {
-    background-color: #000000;
-    color: #FFFFFF;
-}
-button.dark-gray {
-    background-color: #696969;
-    color: #22FF00;
-}
-button.red {
-    background-color: #FF0000;
-    color: #000000;
-}
-button.orange {
-    background-color: #FF8500;
-    color: #000000;
-}
-button.yellow {
-    background-color: #FFFF00;
-    color: #000000;
-}
-button.green {
-    background-color: #22FF00;
-    color: #000000;
-}
-button.lavender {
-    background-color: #FF00FF;
-    color: #000000;
-}
-button.light-blue {
-    background-color: #4E4EF4;
-    color: #000000;
-}
-button.light-green {
-    background-color: #38AA38;
-    color: #000000;
-}
-button.blue {
-    background-color: #0000FF;
-    color: #FFFFFF;
-    font-size: 30px;
-}
-button.blue-top {
-    background-color: #0000FF;
-    color: #FFFFFF;
-    border-top-right-radius: 0px;
-    border-top-left-radius: 0px;
-    font-size: 30px;
-}
-button.grayed-out {
+button:disabled {
     background-color: #999999;
     color: #696969;
 }
+
 button.white-score {
     background-color: #FFFFFF;
     color: #000000;
     border-top-right-radius: 0px;
     border-top-left-radius: 0px;
-    font-size: 40px;
+    font-size: 60px;
     font-weight: bold;
+}
+button.white-score:active {
+    background-color: #696969;
 }
 button.black-score {
     background-color: #000000;
     color: #FFFFFF;
     border-top-right-radius: 0px;
     border-top-left-radius: 0px;
-    font-size: 40px;
+    font-size: 60px;
     font-weight: bold;
 }
-button.game-time {
+button.black-score:active {
+    background-color: #696969;
+}
+button.game-time-green {
     background-color: #696969;
     color: #22FF00;
     border-top-right-radius: 0px;
     border-top-left-radius: 0px;
-    font-size: 40px;
+    font-size: 60px;
     font-weight: bold;
 }
-
-button.gray {
+button.game-time-green:active {
+    background-color: #999999;
+}
+button.game-time-yellow {
+    background-color: #FFFF00;
+    color: #22FF00;
+    border-top-right-radius: 0px;
+    border-top-left-radius: 0px;
+    font-size: 60px;
+    font-weight: bold;
+}
+button.game-time-yellow:active {
+    background-color: #999999;
+}
+button.game-time-red {
+    background-color: #FF0000;
+    color: #22FF00;
+    border-top-right-radius: 0px;
+    border-top-left-radius: 0px;
+    font-size: 60px;
+    font-weight: bold;
+}
+button.game-time-red:active {
+    background-color: #999999;
+}
+button.game-time-gray {
     background-color: #999999;
     color: #000000;
+    border-top-right-radius: 0px;
+    border-top-left-radius: 0px;
+    font-size: 60px;
+    font-weight: bold;
 }
-button.blue:active {
-    background-color: #0000DD;
-}
-button.time-mod {
-    background-color: #D3D3D3;
+button.keypad {
+    background-color: #00FFFB;
     color: #000000;
+    font-size: 50px;
+    font-weight: bold;
+    border-style: solid;
+    border-radius: 5px;
+    border-color: #696969;
 }
-button.time-edit {
+button.keypad:active {
     background-color: #4E4EF4;
     color: #000000;
 }
-
-
-label.game-state-header {
-    background-color: #696969;
-    color: #22FF00;
-    border-top-right-radius: 5px;
-    border-top-left-radius: 5px;
-    font-size: 10px;
-    font-weight: bold;
-}
-label.white-header {
+button.white {
     background-color: #FFFFFF;
     color: #000000;
-    border-top-right-radius: 5px;
-    border-top-left-radius: 5px;
-    font-size: 10px;
-    font-weight: bold;
-}
-label.black-header {
-    background-color: #000000;
-    color: #FFFFFF;
-    border-top-right-radius: 5px;
-    border-top-left-radius: 5px;
-    font-size: 10px;
-    font-weight: bold;
-}
-label.game-time {
-    background-color: #696969;
-    color: #22FF00;
     font-size: 25px;
     font-weight: bold;
 }
-label.edit-white-score-header {
+button.white:active {
+    background-color: #999999;
+}
+button.black {
+    background-color: #000000;
+    color: #FFFFFF;
+    font-size: 25px;
+    font-weight: bold;
+}
+button.black:active {
+    background-color: #999999;
+}
+button.red {
+    background-color: #FF0000;
+    color: #000000;
+    font-size: 25px;
+    font-weight: bold;
+}
+button.red:active {
+    background-color: #6C0303;
+}
+button.little-red {
+    background-color: #FF0000;
+    color: #000000;
+    font-size: 20px;
+    font-weight: bold;
+}
+button.little-red:active {
+    background-color: #6C0303;
+    border-style: solid;
+    border-radius: 5px;
+    border-color: #696969;
+}
+button.orange {
+    background-color: #FF8500;
+    color: #000000;
+    font-size: 25px;
+    font-weight: bold;
+}
+button.orange:active {
+    background-color: #DF7500;
+}
+button.yellow {
+    background-color: #FFFF00;
+    color: #000000;
+    font-size: 25px;
+    font-weight: bold;
+}
+button.yellow:active {
+    background-color: #D0D000;
+}
+button.green {
+    background-color: #22FF00;
+    color: #000000;
+    font-size: 25px;
+    font-weight: bold;
+}
+button.green:active {
+    background-color: #1ABB00;
+}
+button.little-green {
+    background-color: #22FF00;
+    color: #000000;
+    font-size: 20px;
+    font-weight: bold;
+}
+button.little-green:active {
+    background-color: #1ABB00;
+    border-style: solid;
+    border-radius: 5px;
+    border-color: #696969;
+}
+button.blue {
+    background-color: #4E4EF4;
+    color: #000000;
+    font-size: 25px;
+    font-weight: bold;
+}
+button.blue:active {
+    background-color: #0000BB;
+}
+button.little-blue {
+    background-color: #4E4EF4;
+    color: #000000;
+    font-size: 20px;
+    font-weight: bold;
+}
+button.little-blue:active {
+    background-color: #0000BB;
+    border-style: solid;
+    border-radius: 5px;
+    border-color: #696969;
+}
+button.blue-modifier {
+    background-color: #4E4EF4;
+    color: #000000;
+    font-size: 40px;
+    font-weight: bold;
+}
+button.blue-modifier:active {
+    background-color: #0000BB;
+}
+button.gray {
+    background-color: #999999;
+    color: #000000;
+    font-size: 25px;
+    font-weight: bold;
+}
+button.gray:active {
+    background-color: #696969;
+}
+button.gray:disabled {
+    background-color: #D3D3D3;
+    color: #000000;
+}
+
+
+
+
+label.header-white {
     background-color: #FFFFFF;
     color: #000000;
     border-top-right-radius: 5px;
     border-top-left-radius: 5px;
-    font-size: 10px;
+    font-size: 25px;
     font-weight: bold;
 }
-label.edit-black-score-header {
+label.header-black {
     background-color: #000000;
     color: #FFFFFF;
     border-top-right-radius: 5px;
     border-top-left-radius: 5px;
-    font-size: 10px;
+    font-size: 25px;
+    font-weight: bold;
+}
+label.header-gray {
+    background-color: #D3D3D3;
+    color: #000000;
+    border-top-right-radius: 5px;
+    border-top-left-radius: 5px;
+    font-size: 25px;
+    font-weight: bold;
+}
+label.header-dark-gray {
+    background-color: #696969;
+    color: #22FF00;
+    border-top-right-radius: 5px;
+    border-top-left-radius: 5px;
+    font-size: 25px;
     font-weight: bold;
 }
 label.edit-parameter-header {
     background-color: #696969;
     color: #000000;
+    font-size: 20px;
+    font-weight: bold;
     border-radius: 5px;
 }
 label.edit-parameter-time {
     background-color: #D3D3D3;
     color: #000000;
+    font-size: 25px;
+    font-weight: bold;
 }
-label.player-number {
+label.player-number-dark-gray {
     background-color: #696969;
     color: #000000;
+    font-size: 60px;
+    font-weight: bold;
     border-top-right-radius: 5px;
     border-top-left-radius: 5px;
 }
-label.modified-score {
+label.modified-time-gray {
     background-color: #D3D3D3;
     color: #000000;
+    font-size: 60px;
+    font-weight: bold;
 }
-label.modified-white-score {
+label.modified-score-white {
     background-color: #FFFFFF;
     color: #000000;
+    font-size: 60px;
+    font-weight: bold;
     border-bottom-right-radius: 5px;
     border-bottom-left-radius: 5px;
 }
-label.modified-black-score {
+label.modified-score-black {
     background-color: #000000;
     color: #FFFFFF;
+    font-size: 60px;
+    font-weight: bold;
     border-bottom-right-radius: 5px;
     border-bottom-left-radius: 5px;
 }
-label.gray-top {
-    background-color: #696969;
-    color: #000000;
-    border-top-right-radius: 0px;
-    border-top-left-radius: 0px;
-}
-
-
 ";

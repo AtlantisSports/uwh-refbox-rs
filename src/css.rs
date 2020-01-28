@@ -43,6 +43,7 @@ button {
     text-shadow: none;
     -gtk-icon-shadow: none;
     -gtk-icon-effect: none;
+    padding: 0px;
 }
 button:active {
     background-color: #DD0000;

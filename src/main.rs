@@ -137,7 +137,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let new_penalty_shot = new_button("PENALTY SHOT", "red", None);
         let edit_game_information = new_button("GAME INFORMATION", "gray", None);
         let edit_game_parameters = new_button("GAME PARAMETERS", "gray", None);
+
         let edit_white_score = new_button("#W", "white-score", None);
+        /*let button_label = edit_white_score.get_child().unwrap().downcast::<gtk::Label>().unwrap();
+        button_label.set_justify(gtk::Justification::Center);
+        button_label.set_property_margin(0);
+        */
         let add_white_score = new_button("SCORE\nWHITE", "white", None);
         let edit_white_time_penalty = new_button("WHITE\nTIME\nPENALTY\nLIST", "white", None);
         let edit_black_score = new_button("#B", "black-score", None);

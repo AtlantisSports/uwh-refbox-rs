@@ -139,10 +139,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let edit_game_parameters = new_button("GAME PARAMETERS", "gray", None);
 
         let edit_white_score = new_button("#W", "white-score", None);
-        /*let button_label = edit_white_score.get_child().unwrap().downcast::<gtk::Label>().unwrap();
-        button_label.set_justify(gtk::Justification::Center);
-        button_label.set_property_margin(0);
-        */
         let add_white_score = new_button("SCORE\nWHITE", "white", None);
         let edit_white_time_penalty = new_button("WHITE\nTIME\nPENALTY\nLIST", "white", None);
         let edit_black_score = new_button("#B", "black-score", None);
@@ -674,6 +670,12 @@ fn create_new_file(path: &str) -> std::io::Result<File> {
 
 fn new_button(text: &str, style: &str, size: Option<(i32, i32)>) -> gtk::Button {
     let button = gtk::Button::new_with_label(text);
+    button
+        .get_child()
+        .unwrap()
+        .downcast::<gtk::Label>()
+        .unwrap()
+        .set_justify(gtk::Justification::Center);
     button.get_style_context().add_class(style);
     if let Some((x, y)) = size {
         button.set_size_request(x, y);
@@ -683,6 +685,12 @@ fn new_button(text: &str, style: &str, size: Option<(i32, i32)>) -> gtk::Button 
 
 fn new_keypad_button(text: &str, style: &str, size: Option<(i32, i32)>) -> gtk::Button {
     let keypad_button = gtk::Button::new_with_label(text);
+    keypad_button
+        .get_child()
+        .unwrap()
+        .downcast::<gtk::Label>()
+        .unwrap()
+        .set_justify(gtk::Justification::Center);
     keypad_button.get_style_context().add_class(style);
     keypad_button.set_margin_start(BUTTON_MARGIN);
     keypad_button.set_margin_bottom(BUTTON_MARGIN);
@@ -694,6 +702,7 @@ fn new_keypad_button(text: &str, style: &str, size: Option<(i32, i32)>) -> gtk::
 
 fn new_label(text: &str, style: &str) -> gtk::Label {
     let label = gtk::Label::new(Some(text));
+    label.set_justify(gtk::Justification::Center);
     label.get_style_context().add_class(style);
     label
 }

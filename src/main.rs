@@ -133,20 +133,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         main_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         main_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
 
-        let edit_game_time = new_button("##:##", "game-time-green", None);
-        let new_penalty_shot = new_button("PENALTY SHOT", "red", None);
-        let edit_game_information = new_button("GAME INFORMATION", "gray", None);
-        let edit_game_parameters = new_button("GAME PARAMETERS", "gray", None);
+        let edit_game_time = new_button("##:##", &["game-time-green"], None);
+        let new_penalty_shot = new_button("PENALTY SHOT", &["red"], None);
+        let edit_game_information = new_button("GAME INFORMATION", &["gray"], None);
+        let edit_game_parameters = new_button("GAME PARAMETERS", &["gray"], None);
 
-        let edit_white_score = new_button("#W", "white-score", None);
-        let add_white_score = new_button("SCORE\nWHITE", "white", None);
-        let edit_white_time_penalty = new_button("WHITE\nTIME\nPENALTY\nLIST", "white", None);
-        let edit_black_score = new_button("#B", "black-score", None);
-        let add_black_score = new_button("SCORE\nBLACK", "black", None);
-        let edit_black_time_penalty = new_button("BLACK\nTIME\nPENALTY\nLIST", "black", None);
-        let main_white_timeout = new_button("WHITE\nTIMEOUT", "white", None);
-        let main_referee_timeout = new_button("REFEREE TIMEOUT", "yellow", None);
-        let main_black_timeout = new_button("BLACK\nTIMEOUT", "black", None);
+        let edit_white_score = new_button("#W", &["white-score"], None);
+        let add_white_score = new_button("SCORE\nWHITE", &["white"], None);
+        let edit_white_time_penalty = new_button("WHITE\nTIME\nPENALTY\nLIST", &["white"], None);
+        let edit_black_score = new_button("#B", &["black-score"], None);
+        let add_black_score = new_button("SCORE\nBLACK", &["black"], None);
+        let edit_black_time_penalty = new_button("BLACK\nTIME\nPENALTY\nLIST", &["black"], None);
+        let main_white_timeout = new_button("WHITE\nTIMEOUT", &["white"], None);
+        let main_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
+        let main_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
 
         let game_state_header = new_label("GAME STATE", "header-dark-gray");
         let white_header = new_label("WHITE", "header-white");
@@ -195,13 +195,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         new_score_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         new_score_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
 
-        let score_white_select = new_button("WHITE", "white", None);
-        let score_black_select = new_button("BLACK", "black", None);
-        let score_cancel = new_button("CANCEL", "red", None);
-        let score_submit = new_button("SUBMIT", "green", None);
-        let score_white_timeout = new_button("WHITE\nTIMEOUT", "white", None);
-        let score_referee_timeout = new_button("REFEREE TIMEOUT", "yellow", None);
-        let score_black_timeout = new_button("BLACK\nTIMEOUT", "black", None);
+        let score_white_select = new_button("WHITE", &["white"], None);
+        let score_black_select = new_button("BLACK", &["black"], None);
+        let score_cancel = new_button("CANCEL", &["red"], None);
+        let score_submit = new_button("SUBMIT", &["green"], None);
+        let score_white_timeout = new_button("WHITE\nTIMEOUT", &["white"], None);
+        let score_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
+        let score_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
 
         let score_keypad = new_keypad();
 
@@ -225,28 +225,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         edit_score_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         edit_score_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
 
-        let white_score_plus = new_button("+", "blue-modifier", None);
+        let white_score_plus = new_button("+", &["blue-modifier"], None);
         white_score_plus.set_margin_start(BUTTON_MARGIN);
         white_score_plus.set_margin_top(BUTTON_MARGIN);
         white_score_plus.set_margin_bottom(BUTTON_MARGIN);
-        let white_score_minus = new_button("-", "blue-modifier", None);
+        let white_score_minus = new_button("-", &["blue-modifier"], None);
         white_score_minus.set_margin_start(BUTTON_MARGIN);
         white_score_minus.set_margin_top(BUTTON_MARGIN);
         white_score_minus.set_margin_bottom(BUTTON_MARGIN);
-        let black_score_plus = new_button("+", "blue-modifier", None);
+        let black_score_plus = new_button("+", &["blue-modifier"], None);
         black_score_plus.set_margin_end(BUTTON_MARGIN);
         black_score_plus.set_margin_top(BUTTON_MARGIN);
         black_score_plus.set_margin_bottom(BUTTON_MARGIN);
-        let black_score_minus = new_button("-", "blue-modifier", None);
+        let black_score_minus = new_button("-", &["blue-modifier"], None);
         black_score_minus.set_margin_end(BUTTON_MARGIN);
         black_score_minus.set_margin_top(BUTTON_MARGIN);
         black_score_minus.set_margin_bottom(BUTTON_MARGIN);
 
-        let score_edit_cancel = new_button("CANCEL", "red", None);
-        let score_edit_submit = new_button("SUBMIT", "green", None);
-        let score_edit_white_timeout = new_button("WHITE\nTIMEOUT", "white", None);
-        let score_edit_referee_timeout = new_button("REFEREE TIMEOUT", "yellow", None);
-        let score_edit_black_timeout = new_button("BLACK\nTIMEOUT", "black", None);
+        let score_edit_cancel = new_button("CANCEL", &["red"], None);
+        let score_edit_submit = new_button("SUBMIT", &["green"], None);
+        let score_edit_white_timeout = new_button("WHITE\nTIMEOUT", &["white"], None);
+        let score_edit_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
+        let score_edit_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
 
         let white_score_header = new_label("WHITE SCORE", "header-white");
         let black_score_header = new_label("BLACK SCORE", "header-black");
@@ -298,13 +298,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         time_penalty_conf_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         time_penalty_conf_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
 
-        let white_time_list = new_button("WHITE PENALTIES", "white", None);
-        let black_time_list = new_button("BLACK PENALTIES", "black", None);
-        let penalty_conf_new = new_button("NEW", "blue", None);
-        let penalty_conf_start = new_button("START", "green", None);
-        let penalty_conf_white_timeout = new_button("WHITE\nTIMEOUT", "white", None);
-        let penalty_conf_referee_timeout = new_button("REFEREE TIMEOUT", "yellow", None);
-        let penalty_conf_black_timeout = new_button("BLACK\nTIMEOUT", "black", None);
+        let white_time_list = new_button("WHITE PENALTIES", &["white"], None);
+        let black_time_list = new_button("BLACK PENALTIES", &["black"], None);
+        let penalty_conf_new = new_button("NEW", &["blue"], None);
+        let penalty_conf_start = new_button("START", &["green"], None);
+        let penalty_conf_white_timeout = new_button("WHITE\nTIMEOUT", &["white"], None);
+        let penalty_conf_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
+        let penalty_conf_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
 
         time_penalty_conf_layout.attach(&white_time_list, 0, 0, 6, 7);
         time_penalty_conf_layout.attach(&black_time_list, 6, 0, 6, 7);
@@ -325,17 +325,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         penalty_add_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         penalty_add_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
 
-        let penalty_white_select = new_button("WHITE", "white", None);
-        let penalty_black_select = new_button("BLACK", "black", None);
-        let penalty_1min = new_button("1 MIN", "yellow", None);
-        let penalty_2min = new_button("2 MIN", "orange", None);
-        let penalty_5min = new_button("5 MIN", "red", None);
-        let penalty_dismiss = new_button("DISMISS", "blue", None);
-        let penalty_delete = new_button("DELETE", "red", None);
-        let penalty_add = new_button("ADD", "green", None);
-        let penalty_white_timeout = new_button("WHITE\nTIMEOUT", "white", None);
-        let penalty_referee_timeout = new_button("REFEREE TIMEOUT", "yellow", None);
-        let penalty_black_timeout = new_button("BLACK\nTIMEOUT", "black", None);
+        let penalty_white_select = new_button("WHITE", &["white"], None);
+        let penalty_black_select = new_button("BLACK", &["black"], None);
+        let penalty_1min = new_button("1 MIN", &["yellow"], None);
+        let penalty_2min = new_button("2 MIN", &["orange"], None);
+        let penalty_5min = new_button("5 MIN", &["red"], None);
+        let penalty_dismiss = new_button("DISMISS", &["blue"], None);
+        let penalty_delete = new_button("DELETE", &["red"], None);
+        let penalty_add = new_button("ADD", &["green"], None);
+        let penalty_white_timeout = new_button("WHITE\nTIMEOUT", &["white"], None);
+        let penalty_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
+        let penalty_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
 
         let penalty_keypad = new_keypad();
 
@@ -363,15 +363,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         time_edit_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         time_edit_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
 
-        let minute_plus = new_button("+", "blue-modifier", None);
-        let minute_minus = new_button("-", "blue-modifier", None);
-        let second_plus = new_button("+", "blue-modifier", None);
-        let second_minus = new_button("-", "blue-modifier", None);
-        let time_edit_cancel = new_button("CANCEL", "red", None);
-        let time_edit_submit = new_button("SUBMIT", "green", None);
-        let time_edit_white_timeout = new_button("WHITE\nTIMEOUT", "white", None);
-        let time_edit_referee_timeout = new_button("REFEREE TIMEOUT", "yellow", None);
-        let time_edit_black_timeout = new_button("BLACK\nTIMEOUT", "black", None);
+        let minute_plus = new_button("+", &["blue-modifier"], None);
+        let minute_minus = new_button("-", &["blue-modifier"], None);
+        let second_plus = new_button("+", &["blue-modifier"], None);
+        let second_minus = new_button("-", &["blue-modifier"], None);
+        let time_edit_cancel = new_button("CANCEL", &["red"], None);
+        let time_edit_submit = new_button("SUBMIT", &["green"], None);
+        let time_edit_white_timeout = new_button("WHITE\nTIMEOUT", &["white"], None);
+        let time_edit_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
+        let time_edit_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
 
         let minute_header = new_label("MINUTE", "header-gray");
         let second_header = new_label("SECOND", "header-gray");
@@ -419,7 +419,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         edit_game_information_layout.set_margin_bottom(BUTTON_MARGIN);
         edit_game_information_layout.set_margin_end(BUTTON_MARGIN);
 
-        let edit_game_information_submit = new_button("SUBMIT", "green", None);
+        let edit_game_information_submit = new_button("SUBMIT", &["green"], None);
 
         edit_game_information_layout.pack_start(&edit_game_information_submit, false, false, 0);
 
@@ -434,13 +434,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         edit_game_parameters_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         edit_game_parameters_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
 
-        let edit_game_parameters_ot_yes = new_button("YES", "little-green", None);
-        let edit_game_parameters_ot_no = new_button("NO", "little-red", None);
-        let edit_game_parameters_sd_yes = new_button("YES", "little-green", None);
-        let edit_game_parameters_sd_no = new_button("NO", "little-red", None);
+        let edit_game_parameters_ot_yes = new_button("YES", &["little-green"], None);
+        let edit_game_parameters_ot_no = new_button("NO", &["little-red"], None);
+        let edit_game_parameters_sd_yes = new_button("YES", &["little-green"], None);
+        let edit_game_parameters_sd_no = new_button("NO", &["little-red"], None);
 
-        let edit_game_parameters_cancel = new_button("CANCEL", "red", None);
-        let edit_game_parameters_submit = new_button("SUBMIT", "green", None);
+        let edit_game_parameters_cancel = new_button("CANCEL", &["red"], None);
+        let edit_game_parameters_submit = new_button("SUBMIT", &["green"], None);
 
         let edit_half_length = new_label("HALF LENGTH", "edit-parameter-header");
         let edit_halftime_length = new_label("HALF-TIME", "edit-parameter-header");
@@ -668,7 +668,7 @@ fn create_new_file(path: &str) -> std::io::Result<File> {
         .open(path)
 }
 
-fn new_button(text: &str, style: &str, size: Option<(i32, i32)>) -> gtk::Button {
+fn new_button(text: &str, styles: &[&str], size: Option<(i32, i32)>) -> gtk::Button {
     let button = gtk::Button::new_with_label(text);
     button
         .get_child()
@@ -676,7 +676,9 @@ fn new_button(text: &str, style: &str, size: Option<(i32, i32)>) -> gtk::Button 
         .downcast::<gtk::Label>()
         .unwrap()
         .set_justify(gtk::Justification::Center);
-    button.get_style_context().add_class(style);
+    for style in styles {
+        button.get_style_context().add_class(style);
+    }
     if let Some((x, y)) = size {
         button.set_size_request(x, y);
     }
@@ -756,10 +758,10 @@ fn time_edit_ribbon() -> gtk::Grid {
     time_edit.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
     time_edit.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
 
-    let plus_60 = new_button("+60", "little-blue", None);
-    let minus_60 = new_button("-60", "little-blue", None);
-    let plus_15 = new_button("+15", "little-blue", None);
-    let minus_15 = new_button("-15", "little-blue", None);
+    let plus_60 = new_button("+60", &["little-blue"], None);
+    let minus_60 = new_button("-60", &["little-blue"], None);
+    let plus_15 = new_button("+15", &["little-blue"], None);
+    let minus_15 = new_button("-15", &["little-blue"], None);
 
     time_edit.attach(&plus_60, 0, 0, 1, 1);
     time_edit.attach(&minus_60, 1, 0, 1, 1);

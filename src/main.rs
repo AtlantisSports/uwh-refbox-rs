@@ -652,6 +652,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Make everything visible
         win.add(&layout_stack);
         win.show_all();
+
+        let size = win.get_size();
+        if size != (config.hardware.screen_x, config.hardware.screen_y) {
+            error!(
+                "Window size is wrong. Current: {:?}, Expected: {:?}",
+                size,
+                (config.hardware.screen_x, config.hardware.screen_y)
+            );
+        }
     });
 
     // Actually run the program

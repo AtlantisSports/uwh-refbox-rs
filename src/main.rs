@@ -97,8 +97,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::new_from_file(config_path)?;
 
     // Setup the application that gets run
-    let uiapp = gtk::Application::new("org.navisjon.refbox", gio::ApplicationFlags::FLAGS_NONE)
-        .expect("Application::new() failed");
+    let uiapp = gtk::Application::new(
+        Some("org.navisjon.refbox"),
+        gio::ApplicationFlags::FLAGS_NONE,
+    )
+    .expect("Application::new() failed");
 
     // Some debugging output
     info!("App initialized");

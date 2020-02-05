@@ -2,16 +2,25 @@ use clap::{
     app_from_crate, crate_authors, crate_description, crate_name, crate_version, AppSettings, Arg,
     SubCommand,
 };
+use embedded_graphics::prelude::*;
+use embedded_graphics::{egcircle, egline, pixelcolor, text_6x8};
+use embedded_graphics_simulator::DisplayBuilder;
 use gio::prelude::*;
 use gtk::prelude::*;
 use log::*;
-use std::convert::TryInto;
-use std::fs::{File, OpenOptions};
-use std::io::{ErrorKind, Write};
+use std::{
+    convert::TryInto,
+    fs::{File, OpenOptions},
+    io::{ErrorKind, Write},
+    thread,
+    time::Duration,
+};
 
 mod config;
 mod css;
+mod game_state;
 use config::Config;
+use game_state::*;
 
 const BUTTON_SPACING: i32 = 12;
 const BUTTON_MARGIN: i32 = 6;
@@ -48,6 +57,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .subcommand(
                     SubCommand::with_name("generate").about("Generate a default config file"),
                 ),
+        )
+        .subcommand(
+            SubCommand::with_name("simulate").about("Run the simulation of the display panels"),
         )
         .get_matches();
 
@@ -92,7 +104,59 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // If we get here, no CLI subcommands were given, so run the refbox program
+    // If the user asks, simulate the display panels instead
+    if matches.subcommand_matches("simulate").is_some() {
+        // Make a fake game state
+        let state = DrawableGameState {
+            current_period: GamePeriod::FirstHalf,
+            secs_in_period: 754, // 12:34
+            timeout: TimeoutState::None,
+            b_score: 1,
+            w_score: 2,
+            penalties: vec![],
+        };
+
+        let red = pixelcolor::Rgb888::new(255, 0, 0);
+        let green = pixelcolor::Rgb888::new(0, 255, 0);
+        let blue = pixelcolor::Rgb888::new(0, 0, 255);
+        let white = pixelcolor::Rgb888::new(255, 255, 255);
+
+        let mut display = DisplayBuilder::new()
+            .size(256, 64)
+            .scale(3)
+            .pixel_spacing(1)
+            .build_rgb();
+
+        display.draw(text_6x8!("Hello World!", stroke = Some(white)));
+        display.draw(
+            text_6x8!(
+                &format!(
+                    "Game Time: {}:{}",
+                    state.secs_in_period / 60,
+                    state.secs_in_period % 60
+                ),
+                stroke = Some(white)
+            )
+            .translate(Point::new(150, 30)),
+        );
+
+        display.draw(egcircle!((96, 32), 31, stroke = Some(red)));
+
+        display.draw(egline!((32, 32), (1, 32), stroke = Some(green)).translate(Point::new(64, 0)));
+        display.draw(egline!((32, 32), (40, 40), stroke = Some(blue)).translate(Point::new(64, 0)));
+
+        loop {
+            let end = display.run_once();
+
+            if end {
+                break;
+            }
+
+            thread::sleep(Duration::from_millis(200))
+        }
+
+        return Ok(());
+    }
 
     let config = Config::new_from_file(config_path)?;
 
@@ -668,6 +732,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Actually run the program
     uiapp.run(&[]);
+
+    // Wait for the simulator to close
+    //    if let Some(t) = simulator_thread {
+    //        t.join().unwrap();
+    //    }
 
     Ok(())
 }

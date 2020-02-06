@@ -20,20 +20,26 @@ jobs:
       name: test-linux
       addons:
         apt:
-          packages: libgtk-3-dev
+          packages:
+            - libgtk-3-dev
+            - libsdl2-dev
       script: cargo test --all
     - stage: test
       name: build-linux
       addons:
         apt:
-          packages: libgtk-3-dev
+          packages: 
+            - libgtk-3-dev
+            - libsdl2-dev
       script: cargo build --all
     - stage: test
       name: test-mac
       os: osx
       addons:
         homebrew:
-          packages: gtk+3
+          packages:
+            - gtk+3
+            - sdl2
           update: true
       script: cargo test --all
     - stage: test
@@ -41,7 +47,9 @@ jobs:
       os: osx
       addons:
         homebrew:
-          packages: gtk+3
+          packages:
+            - gtk+3
+            - sdl2
           update: true
       script: cargo build --all
 

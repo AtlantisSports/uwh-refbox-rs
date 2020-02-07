@@ -11,6 +11,7 @@ clap = "2.33.0"
 embedded-graphics = "=0.6.0-alpha.2"
 embedded-graphics-simulator = "=0.2.0-alpha.1"
 env_logger = "0.6.1"
+fonts = { version = "0.1.0", path = "../fonts" }
 gdk = "0.12.0"
 gio = "0.8.0"
 gtk = "0.8.0"

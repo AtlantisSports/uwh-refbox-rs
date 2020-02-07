@@ -1,0 +1,24 @@
+[package]
+name = "uwh-refbox"
+version = "0.1.0"
+authors = ["Tristan Debrunner <tpwd@me.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clap = "2.33.0"
+embedded-graphics = "=0.6.0-alpha.2"
+embedded-graphics-simulator = "=0.2.0-alpha.1"
+env_logger = "0.6.1"
+fonts = { version = "0.1.0", path = "../fonts" }
+gdk = "0.12.0"
+gio = "0.8.0"
+gtk = "0.8.0"
+log = "0.4.6"
+serde = "1.0.91"
+serde_derive = "1.0.91"
+toml = "0.5"
+
+[dev-dependencies]
+indoc = "0.3.4"

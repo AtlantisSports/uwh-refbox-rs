@@ -3,8 +3,10 @@ use clap::{
     SubCommand,
 };
 use embedded_graphics::prelude::*;
-use embedded_graphics::{egcircle, egline, pixelcolor, text_6x8};
+use embedded_graphics::{egcircle, egline, fonts::Font, pixelcolor, text_6x8};
 use embedded_graphics_simulator::DisplayBuilder;
+use fonts::fonts::Font6x8 as CustomFont6x8;
+use fonts::fonts::{Font11x25, Font16x31, Font22x46, Font32x64, Font8x15};
 use gio::prelude::*;
 use gtk::prelude::*;
 use log::*;
@@ -117,6 +119,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         let red = pixelcolor::Rgb888::new(255, 0, 0);
+        let yellow = pixelcolor::Rgb888::new(255, 255, 0);
         let green = pixelcolor::Rgb888::new(0, 255, 0);
         let blue = pixelcolor::Rgb888::new(0, 0, 255);
         let white = pixelcolor::Rgb888::new(255, 255, 255);
@@ -127,7 +130,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .pixel_spacing(1)
             .build_rgb();
 
-        display.draw(text_6x8!("Hello World!", stroke = Some(white)));
         display.draw(
             text_6x8!(
                 &format!(
@@ -135,15 +137,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     state.secs_in_period / 60,
                     state.secs_in_period % 60
                 ),
-                stroke = Some(white)
+                stroke = Some(yellow)
             )
-            .translate(Point::new(150, 30)),
+            .translate(Point::new(1, 0)),
         );
 
         display.draw(egcircle!((96, 32), 31, stroke = Some(red)));
 
         display.draw(egline!((32, 32), (1, 32), stroke = Some(green)).translate(Point::new(64, 0)));
         display.draw(egline!((32, 32), (40, 40), stroke = Some(blue)).translate(Point::new(64, 0)));
+
+        display.draw(
+            CustomFont6x8::render_str("12:34")
+                .stroke(Some(white))
+                .translate(Point::new(2, 8)),
+        );
+        display.draw(
+            Font8x15::render_str("12:34")
+                .stroke(Some(red))
+                .translate(Point::new(2, 16)),
+        );
+        display.draw(
+            Font11x25::render_str("12:34")
+                .stroke(Some(green))
+                .translate(Point::new(2, 31)),
+        );
+        display.draw(
+            Font16x31::render_str("12:34")
+                .stroke(Some(blue))
+                .translate(Point::new(64, 8)),
+        );
+        display.draw(
+            Font22x46::render_str("12:34")
+                .stroke(Some(white))
+                .translate(Point::new(64, 31)),
+        );
+        display.draw(
+            Font32x64::render_str("12:34")
+                .stroke(Some(red))
+                .translate(Point::new(128, 0)),
+        );
 
         loop {
             let end = display.run_once();

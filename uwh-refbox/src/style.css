@@ -1,3 +1,4 @@
+/*
 // Red = #FF0000
 // Dark Red = #6C0303
 // Orange = FF8500
@@ -14,8 +15,8 @@
 // Dark Gray = #696969
 // Black = #000000
 // White = #FFFFFF
+*/
 
-pub(crate) const STYLE: &str = " 
 window {
     background-color: #D3D3D3;
 }
@@ -333,4 +334,4 @@ label.modified-score-black {
     border-bottom-right-radius: 5px;
     border-bottom-left-radius: 5px;
 }
-";
+

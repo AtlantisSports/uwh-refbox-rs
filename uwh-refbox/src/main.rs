@@ -19,7 +19,6 @@ use std::{
 };
 
 mod config;
-mod css;
 mod game_state;
 use config::Config;
 use game_state::*;
@@ -33,6 +32,8 @@ const BUTTON_MARGIN: i32 = 6;
 
 //const LABEL_STANDARD_HEIGHT: i32 = 35;
 //const KEYPAD_BUTTON_SIZE: i32 = 70;
+
+const STYLE: &str = std::include_str!("style.css");
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // This allows the use of error!(), warn!(), info!(), etc.
@@ -208,7 +209,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Setup the app to use the CSS Style defined at the top of this file
         let provider = gtk::CssProvider::new();
         provider
-            .load_from_data(css::STYLE.as_bytes())
+            .load_from_data(STYLE.as_bytes())
             .expect("Failed to load CSS Style");
         gtk::StyleContext::add_provider_for_screen(
             &gdk::Screen::get_default().expect("Error initializing CSS provider"),

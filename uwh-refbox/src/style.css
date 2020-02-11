@@ -1,35 +1,33 @@
-/*
-// Red = #FF0000
-// Dark Red = #6C0303
-// Orange = FF8500
-// Yellow = #FFFF00
-// Green = #22FF00
-// Lavender = #FF00FF
-// Teal = #00FFFB
-// Blue = #0000FF
-// Light Blue = #4E4EF4
-// Dark Blue = 0000DD
-// Light Green = #38AA38
-// Background Gray = #D3D3D3
-// Grayed-Out Gray = #999999
-// Dark Gray = #696969
-// Black = #000000
-// White = #FFFFFF
-*/
+@define-color red #FF0000;
+@define-color dark_red #6C0303;
+@define-color orange #FF8500;
+@define-color dark_orange #DF7500;
+@define-color yellow #FFFF00;
+@define-color dark_yellow #D0D000;
+@define-color green #22FF00;
+@define-color dark_green #1ABB00;
+@define-color teal #00FFFB;
+@define-color light_blue #4E4EF4;
+@define-color dark_blue #0000BB;
+@define-color background_gray #D3D3D3;
+@define-color grayed_out_gray #999999;
+@define-color dark_gray #696969;
+@define-color black #000000;
+@define-color white #FFFFFF;
 
 window {
-    background-color: #D3D3D3;
+    background-color: @background_gray;
 }
 grid.white {
-    background-color: #FFFFFF;
+    background-color: @white;
     border-radius: 5px;
 }
 grid.black {
-    background-color: #000000;
+    background-color: @black;
     border-radius: 5px;
 }
 grid.keypad {
-    background-color: #696969;
+    background-color: @dark_gray;
     border-radius: 5px;
 }
 
@@ -38,8 +36,8 @@ button {
     border-style: none;
     outline-style: none;
     box-shadow: none;
-    background-color: #FF0000;
-    color: #000000;
+    background-color: @red;
+    color: @black;
     background-image: none;
     text-shadow: none;
     -gtk-icon-shadow: none;
@@ -47,288 +45,288 @@ button {
     padding: 0px;
 }
 button:active {
-    background-color: #DD0000;
+    background-color: @dark_red;
 }
 button:hover {
     -gtk-icon-shadow: none;
     -gtk-icon-effect: none;
 }
 button:disabled {
-    background-color: #999999;
-    color: #696969;
+    background-color: @grayed_out_gray;
+    color: @dark_gray;
 }
 
 button.white-score {
-    background-color: #FFFFFF;
-    color: #000000;
+    background-color: @white;
+    color: @black;
     border-top-right-radius: 0px;
     border-top-left-radius: 0px;
     font-size: 60px;
     font-weight: bold;
 }
 button.white-score:active {
-    background-color: #696969;
+    background-color: @dark_gray;
 }
 button.black-score {
-    background-color: #000000;
-    color: #FFFFFF;
+    background-color: @black;
+    color: @white;
     border-top-right-radius: 0px;
     border-top-left-radius: 0px;
     font-size: 60px;
     font-weight: bold;
 }
 button.black-score:active {
-    background-color: #696969;
+    background-color: @dark_gray;
 }
 button.game-time-green {
-    background-color: #696969;
-    color: #22FF00;
+    background-color: @dark_gray;
+    color: @green;
     border-top-right-radius: 0px;
     border-top-left-radius: 0px;
     font-size: 60px;
     font-weight: bold;
 }
 button.game-time-green:active {
-    background-color: #999999;
+    background-color: @grayed_out_gray;
 }
 button.game-time-yellow {
-    background-color: #FFFF00;
-    color: #22FF00;
+    background-color: @yellow;
+    color: @green;
     border-top-right-radius: 0px;
     border-top-left-radius: 0px;
     font-size: 60px;
     font-weight: bold;
 }
 button.game-time-yellow:active {
-    background-color: #999999;
+    background-color: @grayed_out_gray;
 }
 button.game-time-red {
-    background-color: #FF0000;
-    color: #22FF00;
+    background-color: @red;
+    color: @green;
     border-top-right-radius: 0px;
     border-top-left-radius: 0px;
     font-size: 60px;
     font-weight: bold;
 }
 button.game-time-red:active {
-    background-color: #999999;
+    background-color: @grayed_out_gray;
 }
 button.game-time-gray {
-    background-color: #999999;
-    color: #000000;
+    background-color: @grayed_out_gray;
+    color: @black;
     border-top-right-radius: 0px;
     border-top-left-radius: 0px;
     font-size: 60px;
     font-weight: bold;
 }
 button.keypad {
-    background-color: #00FFFB;
-    color: #000000;
+    background-color: @teal;
+    color: @black;
     font-size: 50px;
     font-weight: bold;
     border-style: solid;
     border-radius: 5px;
-    border-color: #696969;
+    border-color: @dark_gray;
 }
 button.keypad:active {
-    background-color: #4E4EF4;
-    color: #000000;
+    background-color: @light_blue;
+    color: @black;
 }
 button.white {
-    background-color: #FFFFFF;
-    color: #000000;
+    background-color: @white;
+    color: @black;
     font-size: 25px;
     font-weight: bold;
 }
 button.white:active {
-    background-color: #999999;
+    background-color: @grayed_out_gray;
 }
 button.black {
-    background-color: #000000;
-    color: #FFFFFF;
+    background-color: @black;
+    color: @white;
     font-size: 25px;
     font-weight: bold;
 }
 button.black:active {
-    background-color: #999999;
+    background-color: @grayed_out_gray;
 }
 button.red {
-    background-color: #FF0000;
-    color: #000000;
+    background-color: @red;
+    color: @black;
     font-size: 25px;
     font-weight: bold;
 }
 button.red:active {
-    background-color: #6C0303;
+    background-color: @dark_red;
 }
 button.little-red {
-    background-color: #FF0000;
-    color: #000000;
+    background-color: @red;
+    color: @black;
     font-size: 20px;
     font-weight: bold;
 }
 button.little-red:active {
-    background-color: #6C0303;
+    background-color: @dark_red;
     border-style: solid;
     border-radius: 5px;
-    border-color: #696969;
+    border-color: @dark_gray;
 }
 button.orange {
-    background-color: #FF8500;
-    color: #000000;
+    background-color: @orange;
+    color: @black;
     font-size: 25px;
     font-weight: bold;
 }
 button.orange:active {
-    background-color: #DF7500;
+    background-color: @dark_orange;
 }
 button.yellow {
-    background-color: #FFFF00;
-    color: #000000;
+    background-color: @yellow;
+    color: @black;
     font-size: 25px;
     font-weight: bold;
 }
 button.yellow:active {
-    background-color: #D0D000;
+    background-color: @dark_yellow;
 }
 button.green {
-    background-color: #22FF00;
-    color: #000000;
+    background-color: @green;
+    color: @black;
     font-size: 25px;
     font-weight: bold;
 }
 button.green:active {
-    background-color: #1ABB00;
+    background-color: @dark_green;
 }
 button.little-green {
-    background-color: #22FF00;
-    color: #000000;
+    background-color: @green;
+    color: @black;
     font-size: 20px;
     font-weight: bold;
 }
 button.little-green:active {
-    background-color: #1ABB00;
+    background-color: @dark_green;
     border-style: solid;
     border-radius: 5px;
-    border-color: #696969;
+    border-color: @dark_gray;
 }
 button.blue {
-    background-color: #4E4EF4;
-    color: #000000;
+    background-color: @light_blue;
+    color: @black;
     font-size: 25px;
     font-weight: bold;
 }
 button.blue:active {
-    background-color: #0000BB;
+    background-color: @dark_blue;
 }
 button.little-blue {
-    background-color: #4E4EF4;
-    color: #000000;
+    background-color: @light_blue;
+    color: @black;
     font-size: 20px;
     font-weight: bold;
 }
 button.little-blue:active {
-    background-color: #0000BB;
+    background-color: @dark_blue;
     border-style: solid;
     border-radius: 5px;
-    border-color: #696969;
+    border-color: @dark_gray;
 }
 button.blue-modifier {
-    background-color: #4E4EF4;
-    color: #000000;
+    background-color: @light_blue;
+    color: @black;
     font-size: 40px;
     font-weight: bold;
 }
 button.blue-modifier:active {
-    background-color: #0000BB;
+    background-color: @dark_blue;
 }
 button.gray {
-    background-color: #999999;
-    color: #000000;
+    background-color: @grayed_out_gray;
+    color: @black;
     font-size: 25px;
     font-weight: bold;
 }
 button.gray:active {
-    background-color: #696969;
+    background-color: @dark_gray;
 }
 button.gray:disabled {
-    background-color: #D3D3D3;
-    color: #000000;
+    background-color: @background_gray;
+    color: @black;
 }
 
 
 
 
 label.header-white {
-    background-color: #FFFFFF;
-    color: #000000;
+    background-color: @white;
+    color: @black;
     border-top-right-radius: 5px;
     border-top-left-radius: 5px;
     font-size: 25px;
     font-weight: bold;
 }
 label.header-black {
-    background-color: #000000;
-    color: #FFFFFF;
+    background-color: @black;
+    color: @white;
     border-top-right-radius: 5px;
     border-top-left-radius: 5px;
     font-size: 25px;
     font-weight: bold;
 }
 label.header-gray {
-    background-color: #D3D3D3;
-    color: #000000;
+    background-color: @background_gray;
+    color: @black;
     border-top-right-radius: 5px;
     border-top-left-radius: 5px;
     font-size: 25px;
     font-weight: bold;
 }
 label.header-dark-gray {
-    background-color: #696969;
-    color: #22FF00;
+    background-color: @dark_gray;
+    color: @green;
     border-top-right-radius: 5px;
     border-top-left-radius: 5px;
     font-size: 25px;
     font-weight: bold;
 }
 label.edit-parameter-header {
-    background-color: #696969;
-    color: #000000;
+    background-color: @dark_gray;
+    color: @black;
     font-size: 20px;
     font-weight: bold;
     border-radius: 5px;
 }
 label.edit-parameter-time {
-    background-color: #D3D3D3;
-    color: #000000;
+    background-color: @background_gray;
+    color: @black;
     font-size: 25px;
     font-weight: bold;
 }
 label.player-number-dark-gray {
-    background-color: #696969;
-    color: #000000;
+    background-color: @dark_gray;
+    color: @black;
     font-size: 60px;
     font-weight: bold;
     border-top-right-radius: 5px;
     border-top-left-radius: 5px;
 }
 label.modified-time-gray {
-    background-color: #D3D3D3;
-    color: #000000;
+    background-color: @background_gray;
+    color: @black;
     font-size: 60px;
     font-weight: bold;
 }
 label.modified-score-white {
-    background-color: #FFFFFF;
-    color: #000000;
+    background-color: @white;
+    color: @black;
     font-size: 60px;
     font-weight: bold;
     border-bottom-right-radius: 5px;
     border-bottom-left-radius: 5px;
 }
 label.modified-score-black {
-    background-color: #000000;
-    color: #FFFFFF;
+    background-color: @black;
+    color: @white;
     font-size: 60px;
     font-weight: bold;
     border-bottom-right-radius: 5px;

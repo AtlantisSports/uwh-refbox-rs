@@ -535,10 +535,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         edit_game_parameters_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         edit_game_parameters_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
 
-        let edit_game_parameters_ot_yes = new_button("YES", &["little-green"], None);
-        let edit_game_parameters_ot_no = new_button("NO", &["little-red"], None);
-        let edit_game_parameters_sd_yes = new_button("YES", &["little-green"], None);
-        let edit_game_parameters_sd_no = new_button("NO", &["little-red"], None);
+        let edit_game_parameters_ot_yes = new_toggle_button("YES", &["little-green"], None);
+        let edit_game_parameters_ot_no = new_toggle_button("NO", &["little-red"], None);
+        let edit_game_parameters_sd_yes = new_toggle_button("YES", &["little-green"], None);
+        let edit_game_parameters_sd_no = new_toggle_button("NO", &["little-red"], None);
 
         let edit_game_parameters_cancel = new_button("CANCEL", &["red"], None);
         let edit_game_parameters_submit = new_button("SUBMIT", &["green"], None);
@@ -609,6 +609,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         edit_game_parameters_layout.attach(&edit_game_parameters_cancel, 0, 10, 4, 2);
         edit_game_parameters_layout.attach(&edit_game_parameters_submit, 6, 10, 4, 2);
+
+        edit_game_parameters_ot_yes.set_active(true);
+
+        let mut ot_edit_buttons = pre_overtime_length_time_edit.get_children();
+        ot_edit_buttons.append(&mut overtime_half_length_time_edit.get_children());
+        ot_edit_buttons.append(&mut overtime_halftime_length_time_edit.get_children());
+
+        let edit_game_parameters_ot_no_ = edit_game_parameters_ot_no.clone();
+        let ot_edit_buttons_: Vec<_> = ot_edit_buttons.to_vec();
+        edit_game_parameters_ot_yes.connect_clicked(move |b| {
+            if b.get_active() {
+                edit_game_parameters_ot_no_.set_active(false);
+                for button in &ot_edit_buttons_ {
+                    button.set_sensitive(true);
+                }
+            }
+        });
+
+        edit_game_parameters_ot_no.connect_clicked(move |b| {
+            if b.get_active() {
+                edit_game_parameters_ot_yes.set_active(false);
+                for button in &ot_edit_buttons {
+                    button.set_sensitive(false);
+                }
+            }
+        });
 
         // Roster Edit Page
 
@@ -783,22 +809,29 @@ fn create_new_file(path: &str) -> std::io::Result<File> {
         .open(path)
 }
 
-fn new_button(text: &str, styles: &[&str], size: Option<(i32, i32)>) -> gtk::Button {
-    let button = gtk::Button::new_with_label(text);
-    button
-        .get_child()
-        .unwrap()
-        .downcast::<gtk::Label>()
-        .unwrap()
-        .set_justify(gtk::Justification::Center);
-    for style in styles {
-        button.get_style_context().add_class(style);
-    }
-    if let Some((x, y)) = size {
-        button.set_size_request(x, y);
-    }
-    button
+macro_rules! new_button_func {
+    ($type:ty, $name:ident) => {
+        fn $name(text: &str, styles: &[&str], size: Option<(i32, i32)>) -> $type {
+            let button = <$type>::new_with_label(text);
+            button
+                .get_child()
+                .unwrap()
+                .downcast::<gtk::Label>()
+                .unwrap()
+                .set_justify(gtk::Justification::Center);
+            for style in styles {
+                button.get_style_context().add_class(style);
+            }
+            if let Some((x, y)) = size {
+                button.set_size_request(x, y);
+            }
+            button
+        }
+    };
 }
+
+new_button_func!(gtk::Button, new_button);
+new_button_func!(gtk::ToggleButton, new_toggle_button);
 
 fn new_keypad_button(text: &str, style: &str, size: Option<(i32, i32)>) -> gtk::Button {
     let keypad_button = gtk::Button::new_with_label(text);

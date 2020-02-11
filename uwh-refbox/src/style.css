@@ -14,6 +14,7 @@
 @define-color dark_gray #696969;
 @define-color black #000000;
 @define-color white #FFFFFF;
+@define-color selected_border #0000FF;
 
 window {
     background-color: @background_gray;
@@ -46,6 +47,11 @@ button {
 }
 button:active {
     background-color: @dark_red;
+}
+button:checked {
+    border-style: solid;
+    border-color: @selected_border;
+    border-width: 6px;
 }
 button:hover {
     -gtk-icon-shadow: none;
@@ -230,6 +236,10 @@ button.little-blue:active {
     border-style: solid;
     border-radius: 5px;
     border-color: @dark_gray;
+}
+button.little-blue:disabled {
+    background-color: @grayed_out_gray;
+    color: @dark_gray;
 }
 button.blue-modifier {
     background-color: @light_blue;

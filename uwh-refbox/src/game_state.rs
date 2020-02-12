@@ -1,5 +1,6 @@
 #![allow(dead_code)] // TODO: This is really ugly, needs to be removed
 
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct DrawableGameState {
     pub current_period: GamePeriod,
     pub secs_in_period: u16,
@@ -9,23 +10,28 @@ pub struct DrawableGameState {
     pub penalties: Vec<DrawablePenalty>,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct DrawablePenalty {
     pub color: Color,
     pub player_number: u8,
     pub time: PenaltyTime,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum GamePeriod {
     BetweenGames,
     FirstHalf,
     HalfTime,
     SecondHalf,
     PreOvertime,
-    Overtime,
+    OvertimeFirstHalf,
+    OvertimeHalfTime,
+    OvertimeSecondHalf,
     PreSuddenDeath,
     SuddenDeath,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TimeoutState {
     None,
     White(u16),
@@ -34,11 +40,13 @@ pub enum TimeoutState {
     PenaltyShot(u16),
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Color {
     Black,
     White,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum PenaltyTime {
     Seconds(u16),
     TotalDismissal,

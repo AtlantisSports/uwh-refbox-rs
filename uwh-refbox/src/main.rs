@@ -20,6 +20,7 @@ use std::{
 
 mod config;
 mod game_state;
+mod tournament_manager;
 use config::Config;
 use game_state::*;
 

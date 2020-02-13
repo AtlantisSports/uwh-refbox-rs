@@ -10,7 +10,9 @@
 @define-color light_blue #4E4EF4;
 @define-color dark_blue #0000BB;
 @define-color background_gray #D3D3D3;
-@define-color grayed_out_gray #999999;
+@define-color selected_gray #999999;
+@define-color disabled_gray #B0B0B0;
+@define-color text_disabled_gray #373737;
 @define-color dark_gray #696969;
 @define-color black #000000;
 @define-color white #FFFFFF;
@@ -28,7 +30,7 @@ grid.black {
     border-radius: 5px;
 }
 grid.keypad {
-    background-color: @dark_gray;
+    background-color: @selected_gray;
     border-radius: 5px;
 }
 
@@ -57,9 +59,12 @@ button:hover {
     -gtk-icon-shadow: none;
     -gtk-icon-effect: none;
 }
-button:disabled {
-    background-color: @grayed_out_gray;
-    color: @dark_gray;
+button:disabled,
+button.little-blue:disabled {
+    background-color: @disabled_gray;
+}
+button:disabled label {
+    color: @text_disabled_gray;
 }
 
 button.white-score {
@@ -71,7 +76,7 @@ button.white-score {
     font-weight: bold;
 }
 button.white-score:active {
-    background-color: @dark_gray;
+    background-color: @selected_gray;
 }
 button.black-score {
     background-color: @black;
@@ -82,7 +87,7 @@ button.black-score {
     font-weight: bold;
 }
 button.black-score:active {
-    background-color: @dark_gray;
+    background-color: @selected_gray;
 }
 button.game-time-green {
     background-color: @dark_gray;
@@ -93,37 +98,40 @@ button.game-time-green {
     font-weight: bold;
 }
 button.game-time-green:active {
-    background-color: @grayed_out_gray;
+    background-color: @selected_gray;
 }
 button.game-time-yellow {
-    background-color: @yellow;
-    color: @green;
+    background-color: @dark_gray;
+    color: @yellow;
     border-top-right-radius: 0px;
     border-top-left-radius: 0px;
     font-size: 60px;
     font-weight: bold;
 }
 button.game-time-yellow:active {
-    background-color: @grayed_out_gray;
+    background-color: @selected_gray;
 }
 button.game-time-red {
-    background-color: @red;
-    color: @green;
+    background-color: @dark_gray;
+    color: @red;
     border-top-right-radius: 0px;
     border-top-left-radius: 0px;
     font-size: 60px;
     font-weight: bold;
 }
 button.game-time-red:active {
-    background-color: @grayed_out_gray;
+    background-color: @selected_gray;
 }
 button.game-time-gray {
-    background-color: @grayed_out_gray;
+    background-color: @dark_gray;
     color: @black;
     border-top-right-radius: 0px;
     border-top-left-radius: 0px;
     font-size: 60px;
     font-weight: bold;
+}
+button.game-time-gray:active {
+    background-color: @selected_gray;
 }
 button.keypad {
     background-color: @teal;
@@ -132,7 +140,7 @@ button.keypad {
     font-weight: bold;
     border-style: solid;
     border-radius: 5px;
-    border-color: @dark_gray;
+    border-color: @selected;
 }
 button.keypad:active {
     background-color: @light_blue;
@@ -145,7 +153,7 @@ button.white {
     font-weight: bold;
 }
 button.white:active {
-    background-color: @grayed_out_gray;
+    background-color: @selected_gray;
 }
 button.black {
     background-color: @black;
@@ -154,7 +162,7 @@ button.black {
     font-weight: bold;
 }
 button.black:active {
-    background-color: @grayed_out_gray;
+    background-color: @selected_gray;
 }
 button.red {
     background-color: @red;
@@ -233,13 +241,6 @@ button.little-blue {
 }
 button.little-blue:active {
     background-color: @dark_blue;
-    border-style: solid;
-    border-radius: 5px;
-    border-color: @dark_gray;
-}
-button.little-blue:disabled {
-    background-color: @grayed_out_gray;
-    color: @dark_gray;
 }
 button.blue-modifier {
     background-color: @light_blue;
@@ -251,7 +252,7 @@ button.blue-modifier:active {
     background-color: @dark_blue;
 }
 button.gray {
-    background-color: @grayed_out_gray;
+    background-color: @selected_gray;
     color: @black;
     font-size: 25px;
     font-weight: bold;
@@ -259,11 +260,6 @@ button.gray {
 button.gray:active {
     background-color: @dark_gray;
 }
-button.gray:disabled {
-    background-color: @background_gray;
-    color: @black;
-}
-
 
 
 
@@ -306,14 +302,21 @@ label.edit-parameter-header {
     font-weight: bold;
     border-radius: 5px;
 }
+label.edit-parameter-header:disabled {
+    background-color: @disabled_gray;
+    color: @text_disabled_gray;
+}
 label.edit-parameter-time {
     background-color: @background_gray;
     color: @black;
     font-size: 25px;
     font-weight: bold;
 }
-label.player-number-dark-gray {
-    background-color: @dark_gray;
+label.edit-parameter-time:disabled {
+    color: @disabled_gray;
+}
+label.player-number-gray {
+    background-color: @selected_gray;
     color: @black;
     font-size: 60px;
     font-weight: bold;

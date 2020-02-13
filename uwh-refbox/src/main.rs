@@ -223,7 +223,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         win.set_title("UWH Refbox");
         win.set_resizable(false);
 
+        //
+        //
         // Start Page
+        //
         let start_layout = gtk::Grid::new();
         start_layout.set_column_homogeneous(true);
         start_layout.set_row_homogeneous(true);
@@ -245,7 +248,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         start_layout.attach(&choose_auto, 0, 4, 1, 3);
         start_layout.attach(&choose_exit, 0, 7, 1, 2);
 
+        //
+        //
         // Main Page
+        //
         let main_layout = gtk::Grid::new();
         main_layout.set_column_homogeneous(true);
         main_layout.set_row_homogeneous(true);
@@ -307,7 +313,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         main_layout.attach(&main_referee_timeout, 3, 9, 6, 2);
         main_layout.attach(&main_black_timeout, 9, 9, 3, 2);
 
+        //
+        //
         // New Score Page
+        //
         let new_score_layout = gtk::Grid::new();
         new_score_layout.set_column_homogeneous(true);
         new_score_layout.set_row_homogeneous(true);
@@ -318,8 +327,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         new_score_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         new_score_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
 
-        let score_white_select = new_button("WHITE", &["white"], None);
-        let score_black_select = new_button("BLACK", &["black"], None);
+        let score_white_select = new_toggle_button("WHITE", &["white"], None);
+        let score_black_select = new_toggle_button("BLACK", &["black"], None);
+
         let score_cancel = new_button("CANCEL", &["red"], None);
         let score_submit = new_button("SUBMIT", &["green"], None);
         let score_white_timeout = new_button("WHITE\nTIMEOUT", &["white"], None);
@@ -337,7 +347,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         new_score_layout.attach(&score_referee_timeout, 3, 9, 6, 2);
         new_score_layout.attach(&score_black_timeout, 9, 9, 3, 2);
 
+        //Setting up the selected buttons
+        let score_black_select_ = score_black_select.clone();
+        let score_white_select_ = score_white_select.clone();
+
+        score_black_select.connect_clicked(move |b| {
+            if b.get_active() {
+                score_white_select_.set_active(false);
+            } else if !score_white_select_.get_active() {
+                b.set_active(true);
+            }
+        });
+
+        score_white_select.connect_clicked(move |b| {
+            if b.get_active() {
+                score_black_select_.set_active(false);
+            } else if !score_black_select.get_active() {
+                b.set_active(true);
+            }
+        });
+
+        //
+        //
         // Score Edit Page
+        //
         let edit_score_layout = gtk::Grid::new();
         edit_score_layout.set_column_homogeneous(true);
         edit_score_layout.set_row_homogeneous(true);
@@ -410,7 +443,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         edit_score_layout.attach(&score_edit_referee_timeout, 3, 9, 6, 2);
         edit_score_layout.attach(&score_edit_black_timeout, 9, 9, 3, 2);
 
+        //
+        //
         // Time Penalty Confirmation Page
+        //
         let time_penalty_conf_layout = gtk::Grid::new();
         time_penalty_conf_layout.set_column_homogeneous(true);
         time_penalty_conf_layout.set_row_homogeneous(true);
@@ -437,7 +473,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         time_penalty_conf_layout.attach(&penalty_conf_referee_timeout, 3, 9, 6, 2);
         time_penalty_conf_layout.attach(&penalty_conf_black_timeout, 9, 9, 3, 2);
 
+        //
+        //
         // Time Penalty Add/Edit Page
+        //
         let penalty_add_layout = gtk::Grid::new();
         penalty_add_layout.set_column_homogeneous(true);
         penalty_add_layout.set_row_homogeneous(true);
@@ -448,12 +487,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         penalty_add_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         penalty_add_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
 
-        let penalty_white_select = new_button("WHITE", &["white"], None);
-        let penalty_black_select = new_button("BLACK", &["black"], None);
-        let penalty_1min = new_button("1 MIN", &["yellow"], None);
-        let penalty_2min = new_button("2 MIN", &["orange"], None);
-        let penalty_5min = new_button("5 MIN", &["red"], None);
-        let penalty_dismiss = new_button("DISMISS", &["blue"], None);
+        let penalty_white_select = new_toggle_button("WHITE", &["white"], None);
+        let penalty_black_select = new_toggle_button("BLACK", &["black"], None);
+        let penalty_1min = new_toggle_button("1 MIN", &["yellow"], None);
+        let penalty_2min = new_toggle_button("2 MIN", &["orange"], None);
+        let penalty_5min = new_toggle_button("5 MIN", &["red"], None);
+        let penalty_dismiss = new_toggle_button("DISMISS", &["blue"], None);
+
         let penalty_delete = new_button("DELETE", &["red"], None);
         let penalty_add = new_button("ADD", &["green"], None);
         let penalty_white_timeout = new_button("WHITE\nTIMEOUT", &["white"], None);
@@ -475,7 +515,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         penalty_add_layout.attach(&penalty_referee_timeout, 3, 9, 6, 2);
         penalty_add_layout.attach(&penalty_black_timeout, 9, 9, 3, 2);
 
+        //Setting up the selected buttons
+        let penalty_black_select_ = penalty_black_select.clone();
+        let penalty_white_select_ = penalty_white_select.clone();
+
+        penalty_black_select.connect_clicked(move |b| {
+            if b.get_active() {
+                penalty_white_select_.set_active(false);
+            } else if !penalty_white_select_.get_active() {
+                b.set_active(true);
+            }
+        });
+
+        penalty_white_select.connect_clicked(move |b| {
+            if b.get_active() {
+                penalty_black_select_.set_active(false);
+            } else if !penalty_black_select.get_active() {
+                b.set_active(true);
+            }
+        });
+
+        //
+        //
         // Time Edit Page
+        //
         let time_edit_layout = gtk::Grid::new();
         time_edit_layout.set_column_homogeneous(true);
         time_edit_layout.set_row_homogeneous(true);
@@ -532,10 +595,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         time_edit_layout.attach(&time_edit_referee_timeout, 3, 9, 6, 2);
         time_edit_layout.attach(&time_edit_black_timeout, 9, 9, 3, 2);
 
+        //
+        //
         // Game Over Confirmation Page
+        //
 
+        //
+        //
         // Edit Game Information Page
-
+        //
         let edit_game_information_layout = gtk::Grid::new();
         edit_game_information_layout.set_column_homogeneous(true);
         edit_game_information_layout.set_row_homogeneous(true);
@@ -552,7 +620,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         edit_game_information_layout.attach(&edit_game_information_submit, 0, 0, 1, 1);
         edit_game_information_layout.attach(&edit_uwhscores, 0, 1, 1, 1);
 
+        //
+        //
         // Edit Game Parameters Page
+        //
         let edit_game_parameters_layout = gtk::Grid::new();
         edit_game_parameters_layout.set_column_homogeneous(true);
         edit_game_parameters_layout.set_row_homogeneous(true);
@@ -572,27 +643,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let edit_game_parameters_type = new_button("ENABLE / DISABLE", &["blue"], None);
         let edit_game_parameters_submit = new_button("SUBMIT", &["green"], None);
 
-        let edit_half_length = new_label("HALF LENGTH", "edit-parameter-header");
-        let edit_halftime_length = new_label("HALF-TIME", "edit-parameter-header");
-        let edit_between_game_length = new_label("BETWEEN", "edit-parameter-header");
-        let edit_overtime_allow = new_label("OVERTIME ALLOWED?", "edit-parameter-header");
-        let edit_min_between_game_length = new_label("MIN BETWEEN", "edit-parameter-header");
-        let edit_pre_overtime_length = new_label("PRE-OVERTIME BREAK", "edit-parameter-header");
-        let edit_overtime_half_length = new_label("OVERTIME HALF LENGTH", "edit-parameter-header");
-        let edit_overtime_halftime_length =
+        let edit_half_length_label = new_label("HALF LENGTH", "edit-parameter-header");
+        let edit_halftime_length_label = new_label("HALF-TIME", "edit-parameter-header");
+        let edit_between_game_length_label = new_label("BETWEEN", "edit-parameter-header");
+        let edit_overtime_allow_label = new_label("OVERTIME ALLOWED?", "edit-parameter-header");
+        let edit_min_between_game_length_label = new_label("MIN BETWEEN", "edit-parameter-header");
+        let edit_pre_overtime_length_label =
+            new_label("PRE-OVERTIME BREAK", "edit-parameter-header");
+        let edit_overtime_half_length_label =
+            new_label("OVERTIME HALF LENGTH", "edit-parameter-header");
+        let edit_overtime_halftime_length_label =
             new_label("OVERTIME HALF-TIME LENGTH", "edit-parameter-header");
-        let edit_sudden_death_allow = new_label("SUDDEN DEATH ALLOWED?", "edit-parameter-header");
-        let edit_pre_sudden_death_length =
+        let edit_sudden_death_allow_label =
+            new_label("SUDDEN DEATH ALLOWED?", "edit-parameter-header");
+        let edit_pre_sudden_death_length_label =
             new_label("PRE-SUDDEN DEATH BREAK", "edit-parameter-header");
 
-        let half_length_time = new_label("15:00", "edit-parameter-time");
-        let halftime_length_time = new_label("3:00", "edit-parameter-time");
-        let between_game_length_time = new_label("8:00", "edit-parameter-time");
-        let min_between_game_length_time = new_label("4:00", "edit-parameter-time");
-        let pre_overtime_length_time = new_label("3:00", "edit-parameter-time");
-        let overtime_half_length_time = new_label("5:00", "edit-parameter-time");
-        let overtime_halftime_length_time = new_label("1:00", "edit-parameter-time");
-        let pre_sudden_death_length_time = new_label("1:00", "edit-parameter-time");
+        let half_length_label = new_label("15:00", "edit-parameter-time");
+        let halftime_length_label = new_label("3:00", "edit-parameter-time");
+        let between_game_length_label = new_label("8:00", "edit-parameter-time");
+        let min_between_game_length_label = new_label("4:00", "edit-parameter-time");
+        let pre_overtime_length_label = new_label("3:00", "edit-parameter-time");
+        let overtime_half_length_label = new_label("5:00", "edit-parameter-time");
+        let overtime_halftime_length_label = new_label("1:00", "edit-parameter-time");
+        let pre_sudden_death_length_label = new_label("1:00", "edit-parameter-time");
 
         let half_length_time_edit = time_edit_ribbon();
         let halftime_length_time_edit = time_edit_ribbon();
@@ -601,27 +675,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let pre_overtime_length_time_edit = time_edit_ribbon();
         let overtime_half_length_time_edit = time_edit_ribbon();
         let overtime_halftime_length_time_edit = time_edit_ribbon();
-        let sudden_death_length_time_edit = time_edit_ribbon();
+        let pre_sudden_death_length_time_edit = time_edit_ribbon();
 
-        edit_game_parameters_layout.attach(&edit_half_length, 0, 0, 6, 1);
-        edit_game_parameters_layout.attach(&edit_halftime_length, 0, 1, 6, 1);
-        edit_game_parameters_layout.attach(&edit_between_game_length, 0, 2, 6, 1);
-        edit_game_parameters_layout.attach(&edit_min_between_game_length, 0, 3, 6, 1);
-        edit_game_parameters_layout.attach(&edit_overtime_allow, 0, 4, 6, 1);
-        edit_game_parameters_layout.attach(&edit_pre_overtime_length, 0, 5, 6, 1);
-        edit_game_parameters_layout.attach(&edit_overtime_half_length, 0, 6, 6, 1);
-        edit_game_parameters_layout.attach(&edit_overtime_halftime_length, 0, 7, 6, 1);
-        edit_game_parameters_layout.attach(&edit_sudden_death_allow, 0, 8, 6, 1);
-        edit_game_parameters_layout.attach(&edit_pre_sudden_death_length, 0, 9, 6, 1);
+        edit_game_parameters_layout.attach(&edit_half_length_label, 0, 0, 6, 1);
+        edit_game_parameters_layout.attach(&edit_halftime_length_label, 0, 1, 6, 1);
+        edit_game_parameters_layout.attach(&edit_between_game_length_label, 0, 2, 6, 1);
+        edit_game_parameters_layout.attach(&edit_min_between_game_length_label, 0, 3, 6, 1);
+        edit_game_parameters_layout.attach(&edit_overtime_allow_label, 0, 4, 6, 1);
+        edit_game_parameters_layout.attach(&edit_pre_overtime_length_label, 0, 5, 6, 1);
+        edit_game_parameters_layout.attach(&edit_overtime_half_length_label, 0, 6, 6, 1);
+        edit_game_parameters_layout.attach(&edit_overtime_halftime_length_label, 0, 7, 6, 1);
+        edit_game_parameters_layout.attach(&edit_sudden_death_allow_label, 0, 8, 6, 1);
+        edit_game_parameters_layout.attach(&edit_pre_sudden_death_length_label, 0, 9, 6, 1);
 
-        edit_game_parameters_layout.attach(&half_length_time, 6, 0, 2, 1);
-        edit_game_parameters_layout.attach(&halftime_length_time, 6, 1, 2, 1);
-        edit_game_parameters_layout.attach(&between_game_length_time, 6, 2, 2, 1);
-        edit_game_parameters_layout.attach(&min_between_game_length_time, 6, 3, 2, 1);
-        edit_game_parameters_layout.attach(&pre_overtime_length_time, 6, 5, 2, 1);
-        edit_game_parameters_layout.attach(&overtime_half_length_time, 6, 6, 2, 1);
-        edit_game_parameters_layout.attach(&overtime_halftime_length_time, 6, 7, 2, 1);
-        edit_game_parameters_layout.attach(&pre_sudden_death_length_time, 6, 9, 2, 1);
+        edit_game_parameters_layout.attach(&half_length_label, 6, 0, 2, 1);
+        edit_game_parameters_layout.attach(&halftime_length_label, 6, 1, 2, 1);
+        edit_game_parameters_layout.attach(&between_game_length_label, 6, 2, 2, 1);
+        edit_game_parameters_layout.attach(&min_between_game_length_label, 6, 3, 2, 1);
+        edit_game_parameters_layout.attach(&pre_overtime_length_label, 6, 5, 2, 1);
+        edit_game_parameters_layout.attach(&overtime_half_length_label, 6, 6, 2, 1);
+        edit_game_parameters_layout.attach(&overtime_halftime_length_label, 6, 7, 2, 1);
+        edit_game_parameters_layout.attach(&pre_sudden_death_length_label, 6, 9, 2, 1);
 
         edit_game_parameters_layout.attach(&half_length_time_edit, 8, 0, 4, 1);
         edit_game_parameters_layout.attach(&halftime_length_time_edit, 8, 1, 4, 1);
@@ -634,17 +708,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         edit_game_parameters_layout.attach(&overtime_halftime_length_time_edit, 8, 7, 4, 1);
         edit_game_parameters_layout.attach(&edit_game_parameters_sd_no, 8, 8, 2, 1);
         edit_game_parameters_layout.attach(&edit_game_parameters_sd_yes, 10, 8, 2, 1);
-        edit_game_parameters_layout.attach(&sudden_death_length_time_edit, 8, 9, 4, 1);
+        edit_game_parameters_layout.attach(&pre_sudden_death_length_time_edit, 8, 9, 4, 1);
 
         edit_game_parameters_layout.attach(&edit_game_parameters_cancel, 0, 10, 4, 2);
         edit_game_parameters_layout.attach(&edit_game_parameters_type, 4, 10, 4, 2);
         edit_game_parameters_layout.attach(&edit_game_parameters_submit, 8, 10, 4, 2);
 
+        //Setting initial status
         edit_game_parameters_ot_yes.set_active(true);
+        edit_game_parameters_sd_yes.set_active(true);
 
+        //Selecting Overtime buttons
         let mut ot_edit_buttons = pre_overtime_length_time_edit.get_children();
         ot_edit_buttons.append(&mut overtime_half_length_time_edit.get_children());
         ot_edit_buttons.append(&mut overtime_halftime_length_time_edit.get_children());
+        ot_edit_buttons.push(edit_pre_overtime_length_label.upcast::<gtk::Widget>());
+        ot_edit_buttons.push(edit_overtime_half_length_label.upcast::<gtk::Widget>());
+        ot_edit_buttons.push(edit_overtime_halftime_length_label.upcast::<gtk::Widget>());
+        ot_edit_buttons.push(pre_overtime_length_label.upcast::<gtk::Widget>());
+        ot_edit_buttons.push(overtime_half_length_label.upcast::<gtk::Widget>());
+        ot_edit_buttons.push(overtime_halftime_length_label.upcast::<gtk::Widget>());
 
         let edit_game_parameters_ot_no_ = edit_game_parameters_ot_no.clone();
         let ot_edit_buttons_: Vec<_> = ot_edit_buttons.to_vec();
@@ -654,6 +737,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 for button in &ot_edit_buttons_ {
                     button.set_sensitive(true);
                 }
+            } else if !edit_game_parameters_ot_no_.get_active() {
+                b.set_active(true);
             }
         });
 
@@ -663,12 +748,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 for button in &ot_edit_buttons {
                     button.set_sensitive(false);
                 }
+            } else if !edit_game_parameters_ot_yes.get_active() {
+                b.set_active(true);
             }
         });
 
-        // Roster Edit Page
+        //Selecting Sudden Death buttons
+        let mut sd_edit_buttons = pre_sudden_death_length_time_edit.get_children();
+        sd_edit_buttons.push(edit_pre_sudden_death_length_label.upcast::<gtk::Widget>());
+        sd_edit_buttons.push(pre_sudden_death_length_label.upcast::<gtk::Widget>());
 
-        //UWHSCores Edit Page
+        let edit_game_parameters_sd_no_ = edit_game_parameters_sd_no.clone();
+        let sd_edit_buttons_: Vec<_> = sd_edit_buttons.to_vec();
+        edit_game_parameters_sd_yes.connect_clicked(move |b| {
+            if b.get_active() {
+                edit_game_parameters_sd_no_.set_active(false);
+                for button in &sd_edit_buttons_ {
+                    button.set_sensitive(true);
+                }
+            } else if !edit_game_parameters_sd_no_.get_active() {
+                b.set_active(true);
+            }
+        });
+
+        edit_game_parameters_sd_no.connect_clicked(move |b| {
+            if b.get_active() {
+                edit_game_parameters_sd_yes.set_active(false);
+                for button in &sd_edit_buttons {
+                    button.set_sensitive(false);
+                }
+            } else if !edit_game_parameters_sd_yes.get_active() {
+                b.set_active(true);
+            }
+        });
+
+        //
+        //
+        // Roster Edit Page
+        //
+
+        //
+        //
+        // UWHSCores Edit Page
+        //
         let uwhscores_edit_layout = gtk::Box::new(gtk::Orientation::Vertical, BUTTON_SPACING);
         uwhscores_edit_layout.set_margin_top(BUTTON_MARGIN);
         uwhscores_edit_layout.set_margin_start(BUTTON_MARGIN);
@@ -679,7 +801,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         uwhscores_edit_layout.pack_start(&uwhscores_submit, false, false, 0);
 
+        //
+        //
         // Build the Stack, which switches between screen layouts
+        //
         let layout_stack = gtk::Stack::new();
         layout_stack.add_named(&start_layout, "Start Layout");
         layout_stack.add_named(&main_layout, "Main Layout");
@@ -699,12 +824,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         layout_stack.add_named(&uwhscores_edit_layout, "UWH Scores Layout");
 
         //
+        //
         // Buttons for moving back to the Main Layout
         //
 
         let main_layout_ = main_layout.clone(); // need this first clone part for all but the last call to that page
         let layout_stack_ = layout_stack.clone();
-        choose_auto.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
+        choose_auto.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_)); //need the _ at the end for all except the last call to that page
 
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
@@ -757,9 +883,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         penalty_conf_start.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout));
 
         //
-        //Buttons for navigating between Layouts that are not Main Layout
         //
-
+        // Buttons for navigating between Layouts that are not Main Layout
+        //
         //move to edit_time_layout
         let layout_stack_ = layout_stack.clone();
         edit_game_time.connect_clicked(move |_| layout_stack_.set_visible_child(&time_edit_layout));
@@ -832,7 +958,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         edit_uwhscores
             .connect_clicked(move |_| layout_stack_.set_visible_child(&uwhscores_edit_layout));
 
+        //
+        //
         // Make everything visible
+        //
         win.add(&layout_stack);
         win.show_all();
 
@@ -922,7 +1051,7 @@ fn new_keypad() -> gtk::Grid {
     let player_number = gtk::Label::new(Some("##"));
     player_number
         .get_style_context()
-        .add_class("player-number-dark-gray");
+        .add_class("player-number-gray");
 
     let button_backspace = new_keypad_button("<--", "keypad", None);
     button_backspace.set_margin_end(BUTTON_MARGIN);

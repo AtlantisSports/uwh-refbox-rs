@@ -59,8 +59,11 @@ button:hover {
     -gtk-icon-shadow: none;
     -gtk-icon-effect: none;
 }
-button:disabled {
+button:disabled,
+button.little-blue:disabled {
     background-color: @disabled_gray;
+}
+button:disabled label {
     color: @text_disabled_gray;
 }
 
@@ -235,17 +238,9 @@ button.little-blue {
     color: @black;
     font-size: 20px;
     font-weight: bold;
-    border-style: solid;
-    border-color: @light_blue;
-    border-radius: 5px;
 }
 button.little-blue:active {
     background-color: @dark_blue;
-}
-button.little-blue:disabled {
-    background-color: @disabled_gray;
-    border-color: @disabled_gray;
-    color: @text_disabled_gray;
 }
 button.blue-modifier {
     background-color: @light_blue;
@@ -265,17 +260,9 @@ button.gray {
 button.gray:active {
     background-color: @dark_gray;
 }
-button.gray:disabled {
-    background-color: @background_gray;
-    color: @black;
-}
 
 
 
-label:disabled {
-    background-color: @disabled_gray;
-    color: @text_disabled_gray;
-}
 label.header-white {
     background-color: @white;
     color: @black;
@@ -326,7 +313,6 @@ label.edit-parameter-time {
     font-weight: bold;
 }
 label.edit-parameter-time:disabled {
-    background-color: @background_gray;
     color: @disabled_gray;
 }
 label.player-number-gray {

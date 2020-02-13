@@ -223,7 +223,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         win.set_title("UWH Refbox");
         win.set_resizable(false);
 
-
         //
         //
         // Start Page
@@ -248,7 +247,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         start_layout.attach(&choose_manual, 0, 1, 1, 3);
         start_layout.attach(&choose_auto, 0, 4, 1, 3);
         start_layout.attach(&choose_exit, 0, 7, 1, 2);
-
 
         //
         //
@@ -537,7 +535,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
 
-
         //
         //
         // Time Edit Page
@@ -606,7 +603,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         //
         //
         // Edit Game Information Page
-        // 
+        //
         let edit_game_information_layout = gtk::Grid::new();
         edit_game_information_layout.set_column_homogeneous(true);
         edit_game_information_layout.set_row_homogeneous(true);
@@ -790,7 +787,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Roster Edit Page
         //
 
-
         //
         //
         // UWHSCores Edit Page
@@ -842,7 +838,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
-        edit_game_information_submit.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
+        edit_game_information_submit
+            .connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
 
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
@@ -874,11 +871,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
-        edit_game_parameters_cancel.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
+        edit_game_parameters_cancel
+            .connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
 
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
-        edit_game_parameters_submit.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
+        edit_game_parameters_submit
+            .connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
 
         let layout_stack_ = layout_stack.clone();
         penalty_conf_start.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout));
@@ -894,39 +893,51 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         //move to new_score_layout
         let new_score_layout_ = new_score_layout.clone();
         let layout_stack_ = layout_stack.clone();
-        add_white_score.connect_clicked(move |_| layout_stack_.set_visible_child(&new_score_layout_));
+        add_white_score
+            .connect_clicked(move |_| layout_stack_.set_visible_child(&new_score_layout_));
 
         let layout_stack_ = layout_stack.clone();
-        add_black_score.connect_clicked(move |_| layout_stack_.set_visible_child(&new_score_layout));
+        add_black_score
+            .connect_clicked(move |_| layout_stack_.set_visible_child(&new_score_layout));
 
         //move to edit_game_parameters_layout
         let edit_game_parameters_layout_ = edit_game_parameters_layout.clone();
         let layout_stack_ = layout_stack.clone();
-        edit_game_parameters.connect_clicked(move |_| layout_stack_.set_visible_child(&edit_game_parameters_layout_));
+        edit_game_parameters.connect_clicked(move |_| {
+            layout_stack_.set_visible_child(&edit_game_parameters_layout_)
+        });
 
         let layout_stack_ = layout_stack.clone();
-        choose_manual.connect_clicked(move |_| layout_stack_.set_visible_child(&edit_game_parameters_layout));
+        choose_manual.connect_clicked(move |_| {
+            layout_stack_.set_visible_child(&edit_game_parameters_layout)
+        });
 
         //move to edit_score_layout
         let edit_score_layout_ = edit_score_layout.clone();
         let layout_stack_ = layout_stack.clone();
-        edit_white_score.connect_clicked(move |_| layout_stack_.set_visible_child(&edit_score_layout_));
+        edit_white_score
+            .connect_clicked(move |_| layout_stack_.set_visible_child(&edit_score_layout_));
 
         let layout_stack_ = layout_stack.clone();
-        edit_black_score.connect_clicked(move |_| layout_stack_.set_visible_child(&edit_score_layout));
+        edit_black_score
+            .connect_clicked(move |_| layout_stack_.set_visible_child(&edit_score_layout));
 
         //move to edit_game_information_layout
         let layout_stack_ = layout_stack.clone();
-        edit_game_information.connect_clicked(move |_| layout_stack_.set_visible_child(&edit_game_information_layout));
+        edit_game_information.connect_clicked(move |_| {
+            layout_stack_.set_visible_child(&edit_game_information_layout)
+        });
 
         //move to time_penalty_add_layout
         let layout_stack_ = layout_stack.clone();
-        penalty_conf_new.connect_clicked(move |_| layout_stack_.set_visible_child(&penalty_add_layout));
+        penalty_conf_new
+            .connect_clicked(move |_| layout_stack_.set_visible_child(&penalty_add_layout));
 
         //move to time_penalty_conf_layout
         let time_penalty_conf_layout_ = time_penalty_conf_layout.clone();
         let layout_stack_ = layout_stack.clone();
-        edit_white_time_penalty.connect_clicked(move |_| layout_stack_.set_visible_child(&time_penalty_conf_layout_));
+        edit_white_time_penalty
+            .connect_clicked(move |_| layout_stack_.set_visible_child(&time_penalty_conf_layout_));
 
         let time_penalty_conf_layout_ = time_penalty_conf_layout.clone();
         let layout_stack_ = layout_stack.clone();
@@ -935,14 +946,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let time_penalty_conf_layout_ = time_penalty_conf_layout.clone();
         let layout_stack_ = layout_stack.clone();
-        penalty_delete.connect_clicked(move |_| layout_stack_.set_visible_child(&time_penalty_conf_layout_));
+        penalty_delete
+            .connect_clicked(move |_| layout_stack_.set_visible_child(&time_penalty_conf_layout_));
 
         let layout_stack_ = layout_stack.clone();
-        penalty_add.connect_clicked(move |_| layout_stack_.set_visible_child(&time_penalty_conf_layout));
+        penalty_add
+            .connect_clicked(move |_| layout_stack_.set_visible_child(&time_penalty_conf_layout));
 
         //move to uwhscores_edit_layout
         let layout_stack_ = layout_stack.clone();
-        edit_uwhscores.connect_clicked(move |_| layout_stack_.set_visible_child(&uwhscores_edit_layout));
+        edit_uwhscores
+            .connect_clicked(move |_| layout_stack_.set_visible_child(&uwhscores_edit_layout));
 
         //
         //

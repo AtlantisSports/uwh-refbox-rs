@@ -59,7 +59,7 @@ button:hover {
     -gtk-icon-shadow: none;
     -gtk-icon-effect: none;
 }
-button*:disabled {
+button.*:disabled {
     background-color: @disabled_gray;
     color: @text_disabled_gray;
 }
@@ -268,7 +268,8 @@ button.gray:disabled {
 
 
 
-label.*:disabled {
+label:disabled, label.edit-parameter-header:disabled
+{
     background-color: @disabled_gray;
     color: @text_disabled_gray;
 }
@@ -310,10 +311,6 @@ label.edit-parameter-header {
     font-size: 20px;
     font-weight: bold;
     border-radius: 5px;
-}
-label.edit-parameter-header:disabled {
-    background-color: @disabled_gray;
-    color: @text_disabled_gray;
 }
 label.edit-parameter-time {
     background-color: @background_gray;

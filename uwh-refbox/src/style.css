@@ -59,7 +59,7 @@ button:hover {
     -gtk-icon-shadow: none;
     -gtk-icon-effect: none;
 }
-button.*:disabled {
+button:disabled {
     background-color: @disabled_gray;
     color: @text_disabled_gray;
 }
@@ -235,12 +235,17 @@ button.little-blue {
     color: @black;
     font-size: 20px;
     font-weight: bold;
+    border-style: solid;
+    border-color: @light_blue;
+    border-radius: 5px;
 }
 button.little-blue:active {
     background-color: @dark_blue;
-    border-style: solid;
-    border-radius: 5px;
-    border-color: @dark_gray;
+}
+button.little-blue:disabled {
+    background-color: @disabled_gray;
+    border-color: @disabled_gray;
+    color: @text_disabled_gray;
 }
 button.blue-modifier {
     background-color: @light_blue;
@@ -267,9 +272,7 @@ button.gray:disabled {
 
 
 
-
-label:disabled, label.edit-parameter-header:disabled
-{
+label:disabled {
     background-color: @disabled_gray;
     color: @text_disabled_gray;
 }
@@ -311,6 +314,10 @@ label.edit-parameter-header {
     font-size: 20px;
     font-weight: bold;
     border-radius: 5px;
+}
+label.edit-parameter-header:disabled {
+    background-color: @disabled_gray;
+    color: @text_disabled_gray;
 }
 label.edit-parameter-time {
     background-color: @background_gray;

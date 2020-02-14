@@ -537,9 +537,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
 
-        // Setting up the time penalty selected buttons
+        
 
-        let penalty_1min_ = penalty_1min.clone();
+        // Setting up the time penalty selected buttons
         let penalty_2min_ = penalty_2min.clone();
         let penalty_5min_ = penalty_5min.clone();
         let penalty_dismiss_ = penalty_dismiss.clone();
@@ -549,43 +549,53 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 penalty_2min_.set_active(false);
                 penalty_5min_.set_active(false);
                 penalty_dismiss_.set_active(false);
-            } 
+            } else if !penalty_2min_.get_active() && !penalty_5min_.get_active() && !penalty_dismiss_.get_active() {
+                b.set_active(true);
+            }        
         });
+
+        let penalty_1min_ = penalty_1min.clone();
+        let penalty_5min_ = penalty_5min.clone();
+        let penalty_dismiss_ = penalty_dismiss.clone();
 
         penalty_2min.connect_clicked(move |b| {
             if b.get_active() {
                 penalty_1min_.set_active(false);
                 penalty_5min_.set_active(false);
                 penalty_dismiss_.set_active(false);
-            } 
+            } else if !penalty_1min_.get_active() && !penalty_5min_.get_active() && !penalty_dismiss_.get_active() {
+                b.set_active(true);
+            }
         });
+
+        let penalty_1min_ = penalty_1min.clone();
+        let penalty_2min_ = penalty_2min.clone();
+        let penalty_dismiss_ = penalty_dismiss.clone();
 
         penalty_5min.connect_clicked(move |b| {
             if b.get_active() {
                 penalty_1min_.set_active(false);
                 penalty_2min_.set_active(false);
                 penalty_dismiss_.set_active(false);
-            } 
+            } else if !penalty_1min_.get_active() && !penalty_2min_.get_active() && !penalty_dismiss_.get_active() {
+                b.set_active(true);
+            }
         });
+
+        let penalty_1min_ = penalty_1min.clone();
+        let penalty_2min_ = penalty_2min.clone();
+        let penalty_5min_ = penalty_5min.clone();
 
         penalty_dismiss.connect_clicked(move |b| {
             if b.get_active() {
                 penalty_1min_.set_active(false);
                 penalty_2min_.set_active(false);
                 penalty_5min_.set_active(false);
-            } 
+            } else if !penalty_1min_.get_active() && !penalty_2min_.get_active() && !penalty_5min_.get_active() {
+                b.set_active(true);
+            }
         });
 
-
-
-
-
-/*
-        let penalty_1min = new_toggle_button("1 MIN", &["yellow"], None);
-        let penalty_2min = new_toggle_button("2 MIN", &["orange"], None);
-        let penalty_5min = new_toggle_button("5 MIN", &["red"], None);
-        let penalty_dismiss = new_toggle_button("DISMISS", &["blue"], None);
-*/
 
 
         //
@@ -831,11 +841,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 b.set_active(true);
             }
         });
-
-
 /*
-        let mut enable_edit_buttons = half_length_time_edit.get_children();
+        // Selecting Enable/Disable All button
+        let mut all_parameter_buttons = half_length_time_edit.get_children();
         enable_edit_buttons.append(&mut halftime_length_time_edit.get_children());
+
         enable_edit_buttons.append(&mut between_game_length_time_edit.get_children());
         enable_edit_buttons.append(&mut min_between_game_length_time_edit.get_children());
         enable_edit_buttons.append(&mut edit_game_parameters_ot_no.get_children());
@@ -848,42 +858,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         enable_edit_buttons.append(&mut overtime_halftime_length_time_edit.get_children());
 
 
-        
         enable_edit_buttons.push(edit_half_length_label.upcast::<gtk::Widget>());
         enable_edit_buttons.push(half_length_label.upcast::<gtk::Widget>());
-
         enable_edit_buttons.push(edit_halftime_length_label.upcast::<gtk::Widget>());
         enable_edit_buttons.push(halftime_length_label.upcast::<gtk::Widget>());
-        
+
         enable_edit_buttons.push(edit_between_game_length_label.upcast::<gtk::Widget>());
         enable_edit_buttons.push(between_game_length_label.upcast::<gtk::Widget>());
-        
         enable_edit_buttons.push(edit_min_between_game_length_label.upcast::<gtk::Widget>());
         enable_edit_buttons.push(min_between_game_length_label.upcast::<gtk::Widget>());
-        
         enable_edit_buttons.push(edit_overtime_allow_label.upcast::<gtk::Widget>());
-        
         enable_edit_buttons.push(edit_pre_overtime_length_label.upcast::<gtk::Widget>());
         enable_edit_buttons.push(pre_overtime_length_label.upcast::<gtk::Widget>());
-        
         enable_edit_buttons.push(edit_overtime_half_length_label.upcast::<gtk::Widget>());
         enable_edit_buttons.push(overtime_half_length_label.upcast::<gtk::Widget>());
-        
         enable_edit_buttons.push(edit_overtime_halftime_length_label.upcast::<gtk::Widget>());
         enable_edit_buttons.push(overtime_halftime_length_label.upcast::<gtk::Widget>());
-        
         enable_edit_buttons.push(edit_sudden_death_allow_label.upcast::<gtk::Widget>());
-        
         enable_edit_buttons.push(edit_pre_sudden_death_length_label.upcast::<gtk::Widget>());
         enable_edit_buttons.push(pre_sudden_death_length_label.upcast::<gtk::Widget>());
 
 
         let edit_game_parameters_type_ = edit_game_parameters_type.clone();
-        let enable_edit_buttons_: Vec<_> = enable_edit_buttons.to_vec();
+        let all_parameter_buttons_: Vec<_> = all_parameter_buttons.to_vec();
         edit_game_parameters_type.connect_clicked(move |b| {
             if b.get_active() {
                 edit_game_parameters_type_.set_active(false);
-                for button in &enable_edit_buttons_ {
+                for button in &all_parameter_buttons_ {
                     button.set_sensitive(true);
                 }
             } 

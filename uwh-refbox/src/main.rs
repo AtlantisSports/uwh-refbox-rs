@@ -539,8 +539,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Setting up the time penalty selected buttons
 
-        //let penalty_1min_ = penalty
+        let penalty_1min_ = penalty_1min.clone();
+        let penalty_2min_ = penalty_2min.clone();
+        let penalty_5min_ = penalty_5min.clone();
+        let penalty_dismiss_ = penalty_dismiss.clone();
 
+        penalty_1min.connect_clicked(move |b| {
+            if b.get_active() {
+                penalty_2min_.set_active(false);
+                penalty_5min_.set_active(false);
+                penalty_dismiss_.set_active(false);
+            } 
+        });
+
+        penalty_2min.connect_clicked(move |b| {
+            if b.get_active() {
+                penalty_1min_.set_active(false);
+                penalty_5min_.set_active(false);
+                penalty_dismiss_.set_active(false);
+            } 
+        });
+
+        penalty_5min.connect_clicked(move |b| {
+            if b.get_active() {
+                penalty_1min_.set_active(false);
+                penalty_2min_.set_active(false);
+                penalty_dismiss_.set_active(false);
+            } 
+        });
+
+        penalty_dismiss.connect_clicked(move |b| {
+            if b.get_active() {
+                penalty_1min_.set_active(false);
+                penalty_2min_.set_active(false);
+                penalty_5min_.set_active(false);
+            } 
+        });
 
 
 

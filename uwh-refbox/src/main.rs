@@ -241,7 +241,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let choose_auto = new_button("AUTOMATIC", &["green"], None);
         let choose_exit = new_button("EXIT TO DESKTOP", &["red"], None);
 
-        let choose_type = new_label("CHOOSE TIMING CONFIGURATOIN", "header-gray");
+        let choose_type = new_label("CHOOSE TIMING CONFIGURATION", "header-gray");
 
         start_layout.attach(&choose_type, 0, 0, 1, 1);
         start_layout.attach(&choose_manual, 0, 1, 1, 3);
@@ -347,7 +347,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         new_score_layout.attach(&score_referee_timeout, 3, 9, 6, 2);
         new_score_layout.attach(&score_black_timeout, 9, 9, 3, 2);
 
-        //Setting up the selected buttons
+        // Setting up the white/black selected buttons
         let score_black_select_ = score_black_select.clone();
         let score_white_select_ = score_white_select.clone();
 
@@ -362,7 +362,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         score_white_select.connect_clicked(move |b| {
             if b.get_active() {
                 score_black_select_.set_active(false);
-            } else if !score_black_select.get_active() {
+            } else if !score_black_select_.get_active() {
                 b.set_active(true);
             }
         });
@@ -459,8 +459,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let white_time_list = new_button("WHITE PENALTIES", &["white"], None);
         let black_time_list = new_button("BLACK PENALTIES", &["black"], None);
+        let penalty_conf_cancel = new_button("CANCEL", &["red"], None);
         let penalty_conf_new = new_button("NEW", &["blue"], None);
-        let penalty_conf_start = new_button("START", &["green"], None);
+        let penalty_conf_start = new_button("START /\nDONE", &["green"], None);
         let penalty_conf_white_timeout = new_button("WHITE\nTIMEOUT", &["white"], None);
         let penalty_conf_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
         let penalty_conf_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
@@ -468,6 +469,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         time_penalty_conf_layout.attach(&white_time_list, 0, 0, 6, 7);
         time_penalty_conf_layout.attach(&black_time_list, 6, 0, 6, 7);
         time_penalty_conf_layout.attach(&penalty_conf_new, 0, 7, 4, 2);
+        time_penalty_conf_layout.attach(&penalty_conf_cancel, 4, 7, 4, 2);
         time_penalty_conf_layout.attach(&penalty_conf_start, 8, 7, 4, 2);
         time_penalty_conf_layout.attach(&penalty_conf_white_timeout, 0, 9, 3, 2);
         time_penalty_conf_layout.attach(&penalty_conf_referee_timeout, 3, 9, 6, 2);
@@ -515,7 +517,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         penalty_add_layout.attach(&penalty_referee_timeout, 3, 9, 6, 2);
         penalty_add_layout.attach(&penalty_black_timeout, 9, 9, 3, 2);
 
-        //Setting up the selected buttons
+        // Setting up the white/black selected buttons
         let penalty_black_select_ = penalty_black_select.clone();
         let penalty_white_select_ = penalty_white_select.clone();
 
@@ -530,7 +532,72 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         penalty_white_select.connect_clicked(move |b| {
             if b.get_active() {
                 penalty_black_select_.set_active(false);
-            } else if !penalty_black_select.get_active() {
+            } else if !penalty_black_select_.get_active() {
+                b.set_active(true);
+            }
+        });
+
+        // Setting up the time penalty selected buttons
+        let penalty_2min_ = penalty_2min.clone();
+        let penalty_5min_ = penalty_5min.clone();
+        let penalty_dismiss_ = penalty_dismiss.clone();
+
+        penalty_1min.connect_clicked(move |b| {
+            if b.get_active() {
+                penalty_2min_.set_active(false);
+                penalty_5min_.set_active(false);
+                penalty_dismiss_.set_active(false);
+            } else if !penalty_2min_.get_active()
+                && !penalty_5min_.get_active()
+                && !penalty_dismiss_.get_active()
+            {
+                b.set_active(true);
+            }
+        });
+
+        let penalty_1min_ = penalty_1min.clone();
+        let penalty_5min_ = penalty_5min.clone();
+        let penalty_dismiss_ = penalty_dismiss.clone();
+
+        penalty_2min.connect_clicked(move |b| {
+            if b.get_active() {
+                penalty_1min_.set_active(false);
+                penalty_5min_.set_active(false);
+                penalty_dismiss_.set_active(false);
+            } else if !penalty_1min_.get_active()
+                && !penalty_5min_.get_active()
+                && !penalty_dismiss_.get_active()
+            {
+                b.set_active(true);
+            }
+        });
+
+        let penalty_1min_ = penalty_1min.clone();
+        let penalty_2min_ = penalty_2min.clone();
+        let penalty_dismiss_ = penalty_dismiss.clone();
+
+        penalty_5min.connect_clicked(move |b| {
+            if b.get_active() {
+                penalty_1min_.set_active(false);
+                penalty_2min_.set_active(false);
+                penalty_dismiss_.set_active(false);
+            } else if !penalty_1min_.get_active()
+                && !penalty_2min_.get_active()
+                && !penalty_dismiss_.get_active()
+            {
+                b.set_active(true);
+            }
+        });
+
+        penalty_dismiss.connect_clicked(move |b| {
+            if b.get_active() {
+                penalty_1min.set_active(false);
+                penalty_2min.set_active(false);
+                penalty_5min.set_active(false);
+            } else if !penalty_1min.get_active()
+                && !penalty_2min.get_active()
+                && !penalty_5min.get_active()
+            {
                 b.set_active(true);
             }
         });
@@ -638,9 +705,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let edit_game_parameters_ot_no = new_toggle_button("NO", &["little-red"], None);
         let edit_game_parameters_sd_yes = new_toggle_button("YES", &["little-green"], None);
         let edit_game_parameters_sd_no = new_toggle_button("NO", &["little-red"], None);
+        let edit_game_parameters_type = new_toggle_button("DISABLE", &["blue"], None);
 
         let edit_game_parameters_cancel = new_button("CANCEL", &["red"], None);
-        let edit_game_parameters_type = new_button("ENABLE / DISABLE", &["blue"], None);
         let edit_game_parameters_submit = new_button("SUBMIT", &["green"], None);
 
         let edit_half_length_label = new_label("HALF LENGTH", "edit-parameter-header");
@@ -714,23 +781,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         edit_game_parameters_layout.attach(&edit_game_parameters_type, 4, 10, 4, 2);
         edit_game_parameters_layout.attach(&edit_game_parameters_submit, 8, 10, 4, 2);
 
-        //Setting initial status
+        // Setting initial status
         edit_game_parameters_ot_yes.set_active(true);
         edit_game_parameters_sd_yes.set_active(true);
 
-        //Selecting Overtime buttons
+        // Selecting Overtime buttons
         let mut ot_edit_buttons = pre_overtime_length_time_edit.get_children();
         ot_edit_buttons.append(&mut overtime_half_length_time_edit.get_children());
         ot_edit_buttons.append(&mut overtime_halftime_length_time_edit.get_children());
         ot_edit_buttons.push(edit_pre_overtime_length_label.upcast::<gtk::Widget>());
-        ot_edit_buttons.push(edit_overtime_half_length_label.upcast::<gtk::Widget>());
-        ot_edit_buttons.push(edit_overtime_halftime_length_label.upcast::<gtk::Widget>());
         ot_edit_buttons.push(pre_overtime_length_label.upcast::<gtk::Widget>());
+        ot_edit_buttons.push(edit_overtime_half_length_label.upcast::<gtk::Widget>());
         ot_edit_buttons.push(overtime_half_length_label.upcast::<gtk::Widget>());
+        ot_edit_buttons.push(edit_overtime_halftime_length_label.upcast::<gtk::Widget>());
         ot_edit_buttons.push(overtime_halftime_length_label.upcast::<gtk::Widget>());
 
         let edit_game_parameters_ot_no_ = edit_game_parameters_ot_no.clone();
         let ot_edit_buttons_: Vec<_> = ot_edit_buttons.to_vec();
+
         edit_game_parameters_ot_yes.connect_clicked(move |b| {
             if b.get_active() {
                 edit_game_parameters_ot_no_.set_active(false);
@@ -742,24 +810,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
 
+        let ot_edit_buttons_: Vec<_> = ot_edit_buttons.to_vec();
+        let edit_game_parameters_ot_yes_ = edit_game_parameters_ot_yes.clone();
+
         edit_game_parameters_ot_no.connect_clicked(move |b| {
             if b.get_active() {
-                edit_game_parameters_ot_yes.set_active(false);
-                for button in &ot_edit_buttons {
+                edit_game_parameters_ot_yes_.set_active(false);
+                for button in &ot_edit_buttons_ {
                     button.set_sensitive(false);
                 }
-            } else if !edit_game_parameters_ot_yes.get_active() {
+            } else if !edit_game_parameters_ot_yes_.get_active() {
                 b.set_active(true);
             }
         });
 
-        //Selecting Sudden Death buttons
+        // Selecting Sudden Death buttons
         let mut sd_edit_buttons = pre_sudden_death_length_time_edit.get_children();
         sd_edit_buttons.push(edit_pre_sudden_death_length_label.upcast::<gtk::Widget>());
         sd_edit_buttons.push(pre_sudden_death_length_label.upcast::<gtk::Widget>());
 
         let edit_game_parameters_sd_no_ = edit_game_parameters_sd_no.clone();
         let sd_edit_buttons_: Vec<_> = sd_edit_buttons.to_vec();
+
         edit_game_parameters_sd_yes.connect_clicked(move |b| {
             if b.get_active() {
                 edit_game_parameters_sd_no_.set_active(false);
@@ -771,14 +843,83 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
 
+        let edit_game_parameters_sd_yes_ = edit_game_parameters_sd_yes.clone();
+        let sd_edit_buttons_: Vec<_> = sd_edit_buttons.to_vec();
+
         edit_game_parameters_sd_no.connect_clicked(move |b| {
             if b.get_active() {
-                edit_game_parameters_sd_yes.set_active(false);
-                for button in &sd_edit_buttons {
+                edit_game_parameters_sd_yes_.set_active(false);
+                for button in &sd_edit_buttons_ {
                     button.set_sensitive(false);
                 }
-            } else if !edit_game_parameters_sd_yes.get_active() {
+            } else if !edit_game_parameters_sd_yes_.get_active() {
                 b.set_active(true);
+            }
+        });
+
+        // Selecting Enable/Disable All button
+
+        let ot_edit_buttons_ = ot_edit_buttons.to_vec();
+        let sd_edit_buttons_ = sd_edit_buttons.to_vec();
+        let edit_game_parameters_ot_no_ = edit_game_parameters_ot_no.clone();
+        let edit_game_parameters_sd_no_ = edit_game_parameters_sd_no.clone();
+
+        let mut all_parameter_widgets = ot_edit_buttons_.to_vec();
+        all_parameter_widgets.append(&mut sd_edit_buttons_.to_vec());
+        all_parameter_widgets.append(&mut half_length_time_edit.get_children());
+        all_parameter_widgets.append(&mut halftime_length_time_edit.get_children());
+        all_parameter_widgets.append(&mut between_game_length_time_edit.get_children());
+        all_parameter_widgets.append(&mut min_between_game_length_time_edit.get_children());
+        all_parameter_widgets.push(edit_game_parameters_ot_no_.upcast::<gtk::Widget>());
+        all_parameter_widgets.push(edit_game_parameters_ot_yes.upcast::<gtk::Widget>());
+        all_parameter_widgets.push(edit_game_parameters_sd_no_.upcast::<gtk::Widget>());
+        all_parameter_widgets.push(edit_game_parameters_sd_yes.upcast::<gtk::Widget>());
+
+        all_parameter_widgets.push(edit_half_length_label.upcast::<gtk::Widget>());
+        all_parameter_widgets.push(half_length_label.upcast::<gtk::Widget>());
+        all_parameter_widgets.push(edit_halftime_length_label.upcast::<gtk::Widget>());
+        all_parameter_widgets.push(halftime_length_label.upcast::<gtk::Widget>());
+        all_parameter_widgets.push(edit_between_game_length_label.upcast::<gtk::Widget>());
+        all_parameter_widgets.push(between_game_length_label.upcast::<gtk::Widget>());
+        all_parameter_widgets.push(edit_min_between_game_length_label.upcast::<gtk::Widget>());
+        all_parameter_widgets.push(min_between_game_length_label.upcast::<gtk::Widget>());
+        all_parameter_widgets.push(edit_overtime_allow_label.upcast::<gtk::Widget>());
+        all_parameter_widgets.push(edit_sudden_death_allow_label.upcast::<gtk::Widget>());
+
+        let all_parameter_widgets_: Vec<_> = all_parameter_widgets.to_vec();
+
+        //        let ot_edit_buttons_ = ot_edit_buttons.to_vec();
+        //        let sd_edit_buttons_ = sd_edit_buttons.to_vec();
+
+        edit_game_parameters_type.connect_clicked(move |b| {
+            if b.get_active() {
+                for button in &all_parameter_widgets_ {
+                    b.get_child()
+                        .unwrap()
+                        .downcast::<gtk::Label>()
+                        .unwrap()
+                        .set_label("ENABLE");
+                    button.set_sensitive(false);
+                }
+            } else {
+                for button in &all_parameter_widgets_ {
+                    b.get_child()
+                        .unwrap()
+                        .downcast::<gtk::Label>()
+                        .unwrap()
+                        .set_label("DISABLE");
+                    button.set_sensitive(true);
+                }
+                if edit_game_parameters_ot_no.get_active() {
+                    for button1 in &ot_edit_buttons_ {
+                        button1.set_sensitive(false);
+                    }
+                }
+                if edit_game_parameters_sd_no.get_active() {
+                    for button2 in &sd_edit_buttons_ {
+                        button2.set_sensitive(false);
+                    }
+                }
             }
         });
 
@@ -830,7 +971,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let main_layout_ = main_layout.clone(); // need this first clone part for all but the last call to that page
         let layout_stack_ = layout_stack.clone();
-        choose_auto.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_)); //need the _ at the end for all except the last call to that page
+        let edit_game_parameters_type_ = edit_game_parameters_type.clone();
+        choose_auto.connect_clicked(move |_| {
+            edit_game_parameters_type_.set_active(true);
+            layout_stack_.set_visible_child(&main_layout_); //need the _ at the end for all except the last call to that page
+        });
 
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
@@ -879,6 +1024,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         edit_game_parameters_submit
             .connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
 
+        let main_layout_ = main_layout.clone();
+        let layout_stack_ = layout_stack.clone();
+        penalty_conf_cancel
+            .connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
+
         let layout_stack_ = layout_stack.clone();
         penalty_conf_start.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout));
 
@@ -886,21 +1036,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         //
         // Buttons for navigating between Layouts that are not Main Layout
         //
-        //move to edit_time_layout
+        // move to edit_time_layout
         let layout_stack_ = layout_stack.clone();
         edit_game_time.connect_clicked(move |_| layout_stack_.set_visible_child(&time_edit_layout));
 
-        //move to new_score_layout
+        // move to new_score_layout
         let new_score_layout_ = new_score_layout.clone();
         let layout_stack_ = layout_stack.clone();
-        add_white_score
-            .connect_clicked(move |_| layout_stack_.set_visible_child(&new_score_layout_));
+        add_white_score.connect_clicked(move |_| {
+            score_white_select.set_active(true);
+            layout_stack_.set_visible_child(&new_score_layout_);
+        });
 
         let layout_stack_ = layout_stack.clone();
-        add_black_score
-            .connect_clicked(move |_| layout_stack_.set_visible_child(&new_score_layout));
+        add_black_score.connect_clicked(move |_| {
+            score_black_select.set_active(true);
+            layout_stack_.set_visible_child(&new_score_layout);
+        });
 
-        //move to edit_game_parameters_layout
+        // move to edit_game_parameters_layout
         let edit_game_parameters_layout_ = edit_game_parameters_layout.clone();
         let layout_stack_ = layout_stack.clone();
         edit_game_parameters.connect_clicked(move |_| {
@@ -909,10 +1063,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let layout_stack_ = layout_stack.clone();
         choose_manual.connect_clicked(move |_| {
+            edit_game_parameters_type.set_active(false);
             layout_stack_.set_visible_child(&edit_game_parameters_layout)
         });
 
-        //move to edit_score_layout
+        // move to edit_score_layout
         let edit_score_layout_ = edit_score_layout.clone();
         let layout_stack_ = layout_stack.clone();
         edit_white_score
@@ -922,27 +1077,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         edit_black_score
             .connect_clicked(move |_| layout_stack_.set_visible_child(&edit_score_layout));
 
-        //move to edit_game_information_layout
+        // move to edit_game_information_layout
         let layout_stack_ = layout_stack.clone();
         edit_game_information.connect_clicked(move |_| {
             layout_stack_.set_visible_child(&edit_game_information_layout)
         });
 
-        //move to time_penalty_add_layout
+        // move to time_penalty_add_layout
         let layout_stack_ = layout_stack.clone();
         penalty_conf_new
             .connect_clicked(move |_| layout_stack_.set_visible_child(&penalty_add_layout));
 
-        //move to time_penalty_conf_layout
+        // move to time_penalty_conf_layout
         let time_penalty_conf_layout_ = time_penalty_conf_layout.clone();
         let layout_stack_ = layout_stack.clone();
-        edit_white_time_penalty
-            .connect_clicked(move |_| layout_stack_.set_visible_child(&time_penalty_conf_layout_));
+        edit_white_time_penalty.connect_clicked(move |_| {
+            penalty_white_select.set_active(true);
+            layout_stack_.set_visible_child(&time_penalty_conf_layout_)
+        });
 
         let time_penalty_conf_layout_ = time_penalty_conf_layout.clone();
         let layout_stack_ = layout_stack.clone();
-        edit_black_time_penalty
-            .connect_clicked(move |_| layout_stack_.set_visible_child(&time_penalty_conf_layout_));
+        edit_black_time_penalty.connect_clicked(move |_| {
+            penalty_black_select.set_active(true);
+            layout_stack_.set_visible_child(&time_penalty_conf_layout_)
+        });
 
         let time_penalty_conf_layout_ = time_penalty_conf_layout.clone();
         let layout_stack_ = layout_stack.clone();
@@ -953,7 +1112,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         penalty_add
             .connect_clicked(move |_| layout_stack_.set_visible_child(&time_penalty_conf_layout));
 
-        //move to uwhscores_edit_layout
+        // move to uwhscores_edit_layout
         let layout_stack_ = layout_stack.clone();
         edit_uwhscores
             .connect_clicked(move |_| layout_stack_.set_visible_child(&uwhscores_edit_layout));

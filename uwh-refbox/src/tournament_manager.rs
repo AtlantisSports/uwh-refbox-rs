@@ -1,7 +1,12 @@
 use crate::config::Game as GameConfig;
-use crate::game_state::GamePeriod;
-use std::cmp::max;
-use std::time::{Duration, Instant};
+use crate::game_state::{GamePeriod, GameSnapshot, TimeoutState};
+use log::*;
+use std::{
+    cmp::max,
+    convert::TryInto,
+    sync::mpsc::Sender,
+    time::{Duration, Instant},
+};
 
 #[derive(Debug, Clone)]
 pub struct TournamentManager {
@@ -12,6 +17,7 @@ pub struct TournamentManager {
     clock_state: ClockState,
     b_score: u8,
     w_score: u8,
+    start_stop_senders: Vec<Sender<bool>>,
 }
 
 impl TournamentManager {
@@ -26,6 +32,7 @@ impl TournamentManager {
             config,
             b_score: 0,
             w_score: 0,
+            start_stop_senders: vec![],
         }
     }
 
@@ -231,8 +238,16 @@ impl TournamentManager {
         }
     }
 
+    pub fn add_start_stop_sender(&mut self, sender: Sender<bool>) {
+        self.start_stop_senders.push(sender);
+    }
+
     pub fn start_clock(&mut self, now: Instant) {
         if let ClockState::Stopped { clock_time } = self.clock_state {
+            info!("Starting the clock");
+            for sender in &self.start_stop_senders {
+                sender.send(true).unwrap();
+            }
             match self.current_period {
                 GamePeriod::SuddenDeath => {
                     self.clock_state = ClockState::CountingUp {
@@ -260,6 +275,10 @@ impl TournamentManager {
                 start_time: _,
                 time_at_start: _,
             } => {
+                info!("Stopping the clock");
+                for sender in &self.start_stop_senders {
+                    sender.send(false).unwrap();
+                }
                 self.clock_state = ClockState::Stopped {
                     clock_time: self.clock_time(now).unwrap(),
                 }
@@ -287,8 +306,8 @@ impl TournamentManager {
         }
     }
 
-    // Returns `None` if the clock time would be negative, or if `now` is before the start
-    // of the current period
+    /// Returns `None` if the clock time would be negative, or if `now` is before the start
+    /// of the current period
     pub fn clock_time(&self, now: Instant) -> Option<Duration> {
         match self.clock_state {
             ClockState::CountingDown {
@@ -305,6 +324,25 @@ impl TournamentManager {
                 .map(|s| s + time_at_start),
             ClockState::Stopped { clock_time } => Some(clock_time),
         }
+    }
+
+    pub fn generate_snapshot(&self, now: Instant) -> Option<GameSnapshot> {
+        self.clock_time(now)
+            .and_then(|clock_time| clock_time.as_secs().try_into().ok())
+            .and_then(|secs_in_period| {
+                Some(GameSnapshot {
+                    current_period: self.current_period,
+                    secs_in_period,
+                    timeout: if self.clock_is_running() {
+                        TimeoutState::None
+                    } else {
+                        TimeoutState::Ref(0)
+                    },
+                    b_score: self.b_score,
+                    w_score: self.w_score,
+                    penalties: vec![],
+                })
+            })
     }
 }
 

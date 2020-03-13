@@ -943,6 +943,7 @@ dependencies = [
  "fonts",
  "gdk",
  "gio",
+ "glib",
  "gtk",
  "indoc",
  "log",

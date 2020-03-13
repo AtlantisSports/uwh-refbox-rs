@@ -1,17 +1,17 @@
 #![allow(dead_code)] // TODO: This is really ugly, needs to be removed
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct DrawableGameState {
+pub struct GameSnapshot {
     pub current_period: GamePeriod,
     pub secs_in_period: u16,
     pub timeout: TimeoutState,
     pub b_score: u8,
     pub w_score: u8,
-    pub penalties: Vec<DrawablePenalty>,
+    pub penalties: Vec<PenaltySnapshot>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct DrawablePenalty {
+pub struct PenaltySnapshot {
     pub color: Color,
     pub player_number: u8,
     pub time: PenaltyTime,

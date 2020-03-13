@@ -14,8 +14,12 @@ use std::{
     convert::TryInto,
     fs::{File, OpenOptions},
     io::{ErrorKind, Write},
-    thread,
-    time::Duration,
+    sync::{
+        mpsc::{self, RecvTimeoutError, Sender},
+        Arc, Mutex, MutexGuard,
+    },
+    thread::{self, JoinHandle},
+    time::{Duration, Instant},
 };
 
 mod config;
@@ -23,6 +27,7 @@ mod game_state;
 mod tournament_manager;
 use config::Config;
 use game_state::*;
+use tournament_manager::*;
 
 const BUTTON_SPACING: i32 = 12;
 const BUTTON_MARGIN: i32 = 6;
@@ -111,7 +116,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // If the user asks, simulate the display panels instead
     if matches.subcommand_matches("simulate").is_some() {
         // Make a fake game state
-        let state = DrawableGameState {
+        let state = GameSnapshot {
             current_period: GamePeriod::FirstHalf,
             secs_in_period: 754, // 12:34
             timeout: TimeoutState::None,
@@ -195,6 +200,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = Config::new_from_file(config_path)?;
 
+    let tm = Arc::new(Mutex::new(TournamentManager::new(config.game.clone())));
+
     // Setup the application that gets run
     let uiapp = gtk::Application::new(
         Some("org.navisjon.refbox"),
@@ -275,7 +282,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let add_black_score = new_button("SCORE\nBLACK", &["black"], None);
         let edit_black_time_penalty = new_button("BLACK\nTIME\nPENALTY\nLIST", &["black"], None);
         let main_white_timeout = new_button("WHITE\nTIMEOUT", &["white"], None);
-        let main_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
+        let main_referee_timeout = new_button("START", &["yellow"], None);
         let main_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
 
         let game_state_header = new_label("GAME STATE", "header-dark-gray");
@@ -1120,6 +1127,115 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         //
         //
+        // Connect to the backend
+        //
+        let tm_ = tm.clone();
+        main_referee_timeout.connect_clicked(move |b| {
+            let tm = tm_.clone();
+            match b.get_label().unwrap().as_str() {
+                "REFEREE TIMEOUT" => {
+                    debug!("Button stopping clock");
+                    tm.lock().unwrap().stop_clock(Instant::now())
+                }
+                "RESUME" => {
+                    debug!("Button starting clock");
+                    tm.lock().unwrap().start_clock(Instant::now())
+                }
+                "START" => {
+                    debug!("Button starting clock for first time");
+                    tm_.lock().unwrap().start_clock(Instant::now())
+                }
+                _ => panic!("Unknown button label: {}", b.get_label().unwrap()),
+            }
+        });
+
+        // start a thread that updates the tm every second and sends the result to the UI
+        let (clock_running_send, clock_running_recv) = mpsc::channel();
+        let (state_send, state_recv) = glib::MainContext::channel(glib::source::PRIORITY_DEFAULT);
+        clock_running_send.send(false).unwrap();
+        tm.lock().unwrap().add_start_stop_sender(clock_running_send);
+        let tm_ = tm.clone();
+        thread::spawn(move || {
+            let mut timeout = Duration::from_secs(1);
+
+            let update_and_send_snapshot = move |tm: &mut MutexGuard<TournamentManager>| {
+                let now = Instant::now();
+                tm.update(now);
+                if let Some(snapshot) = tm.generate_snapshot(now) {
+                    trace!("Updater: sending snapshot");
+                    state_send.send(snapshot).unwrap();
+                } else {
+                    panic!("Failed to generate snapshot");
+                }
+                now
+            };
+
+            loop {
+                match clock_running_recv.recv_timeout(timeout) {
+                    Ok(false) => loop {
+                        trace!("Updater: locking tm");
+                        update_and_send_snapshot(&mut tm_.lock().unwrap());
+                        info!("Updater: Waiting for Clock to start");
+                        if clock_running_recv.recv().unwrap() == true {
+                            info!("Updater: Clock has restarted");
+                            timeout = Duration::from_secs(0);
+                            break;
+                        }
+                    },
+                    Err(RecvTimeoutError::Disconnected) => break,
+                    Ok(true) | Err(RecvTimeoutError::Timeout) => {
+                        trace!("Updater: locking tm");
+                        let mut tm = tm_.lock().unwrap();
+                        let now = update_and_send_snapshot(&mut tm);
+                        if let Some(nanos) = tm
+                            .clock_time(now)
+                            .and_then(|clock_time| Some(clock_time.subsec_nanos()))
+                        {
+                            debug!("Updater: waiting for up to {} ns", nanos);
+                            timeout = Duration::from_nanos(nanos.into());
+                        } else {
+                            panic!("Failed to get current clock time");
+                        }
+                    }
+                }
+            }
+        });
+
+        // Update the gui when a snapshot is received
+        let mut last_snapshot = tm
+            .lock()
+            .unwrap()
+            .generate_snapshot(Instant::now())
+            .unwrap();
+        state_recv.attach(None, move |snapshot: GameSnapshot| {
+            let min = snapshot.secs_in_period / 60;
+            let sec = snapshot.secs_in_period % 60;
+            edit_game_time.set_label(&format!("{:2}:{:02}", min, sec));
+
+            if snapshot.timeout != last_snapshot.timeout {
+                match snapshot.timeout {
+                    TimeoutState::None => {
+                        debug!("GUI Drawer: Received clock started");
+                        main_referee_timeout.set_label("REFEREE TIMEOUT");
+                    }
+                    TimeoutState::Ref(_) => {
+                        debug!("GUI Drawer: Received clock stopped");
+                        main_referee_timeout.set_label("RESUME");
+                    }
+                    _ => panic!(
+                        "Received unimplemented timeout value: {:?}",
+                        snapshot.timeout
+                    ),
+                }
+            }
+
+            last_snapshot = snapshot;
+
+            glib::source::Continue(true)
+        });
+
+        //
+        //
         // Make everything visible
         //
         win.add(&layout_stack);
@@ -1152,6 +1268,15 @@ fn create_new_file(path: &str) -> std::io::Result<File> {
         .write(true)
         .create_new(true)
         .open(path)
+}
+
+fn edit_button_label(button: &gtk::Button, label: &str) {
+    button
+        .get_child()
+        .unwrap()
+        .downcast::<gtk::Label>()
+        .unwrap()
+        .set_label(label);
 }
 
 macro_rules! new_button_func {

@@ -18,10 +18,10 @@ use std::{
     ops::{Div, Rem},
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc::{self, RecvTimeoutError, Sender},
+        mpsc::{self, RecvTimeoutError},
         Arc, Mutex, MutexGuard,
     },
-    thread::{self, JoinHandle},
+    thread,
     time::{Duration, Instant},
 };
 
@@ -1266,10 +1266,13 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         trace!("Updater: locking tm");
                         let mut tm = tm_.lock().unwrap();
                         let now = update_and_send_snapshot(&mut tm);
-                        if let Some(nanos) = tm
-                            .clock_time(now)
-                            .and_then(|clock_time| Some(clock_time.subsec_nanos()))
-                        {
+                        if let Some(nanos) = tm.clock_time(now).and_then(|clock_time| {
+                            if tm.current_period() == GamePeriod::SuddenDeath {
+                                Some(1_000_000_000 - clock_time.subsec_nanos())
+                            } else {
+                                Some(clock_time.subsec_nanos())
+                            }
+                        }) {
                             debug!("Updater: waiting for up to {} ns", nanos);
                             timeout = Duration::from_nanos(nanos.into());
                         } else {

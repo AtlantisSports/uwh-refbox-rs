@@ -7,6 +7,7 @@ use std::{
     sync::mpsc::Sender,
     time::{Duration, Instant},
 };
+use thiserror::Error;
 
 #[derive(Debug, Clone)]
 pub struct TournamentManager {
@@ -287,6 +288,15 @@ impl TournamentManager {
         };
     }
 
+    pub fn set_clock_time(&mut self, clock_time: Duration) -> Result<()> {
+        if let ClockState::Stopped { clock_time: _ } = self.clock_state {
+            self.clock_state = ClockState::Stopped { clock_time };
+            Ok(())
+        } else {
+            Err(TournamentManagerError::ClockIsRunning)
+        }
+    }
+
     #[cfg(test)]
     pub(super) fn set_period_and_clock_time(&mut self, period: GamePeriod, clock_time: Duration) {
         if let ClockState::Stopped { clock_time: _ } = self.clock_state {
@@ -360,6 +370,14 @@ enum ClockState {
         time_at_start: Duration,
     },
 }
+
+#[derive(Debug, Error)]
+pub enum TournamentManagerError {
+    #[error("Can't edit clock time while clock is running")]
+    ClockIsRunning,
+}
+
+pub type Result<T> = std::result::Result<T, TournamentManagerError>;
 
 #[cfg(test)]
 mod test {

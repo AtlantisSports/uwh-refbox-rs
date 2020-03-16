@@ -12,9 +12,12 @@ use gtk::prelude::*;
 use log::*;
 use std::{
     convert::TryInto,
+    fmt::Display,
     fs::{File, OpenOptions},
     io::{ErrorKind, Write},
+    ops::{Div, Rem},
     sync::{
+        atomic::{AtomicBool, Ordering},
         mpsc::{self, RecvTimeoutError, Sender},
         Arc, Mutex, MutexGuard,
     },
@@ -41,7 +44,7 @@ const BUTTON_MARGIN: i32 = 6;
 
 const STYLE: &str = std::include_str!("style.css");
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // This allows the use of error!(), warn!(), info!(), etc.
     env_logger::init();
 
@@ -230,6 +233,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         win.set_default_size(config.hardware.screen_x, config.hardware.screen_y);
         win.set_title("UWH Refbox");
         win.set_resizable(false);
+
+        // create the channel that sends updates to be drawn
+        let (state_send, state_recv) = glib::MainContext::channel(glib::source::PRIORITY_DEFAULT);
 
         //
         //
@@ -670,6 +676,48 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         time_edit_layout.attach(&time_edit_referee_timeout, 3, 9, 6, 2);
         time_edit_layout.attach(&time_edit_black_timeout, 9, 9, 3, 2);
 
+        let modified_game_time_ = modified_game_time.clone();
+        let get_displayed_time = move || {
+            let label = modified_game_time_.get_label().unwrap();
+            let current: Vec<&str> = label.as_str().split(':').collect();
+            assert_eq!(2, current.len());
+            let current =
+                current[0].trim().parse::<u64>().unwrap() * 60 + current[1].parse::<u64>().unwrap();
+            current
+        };
+
+        let modified_game_time_ = modified_game_time.clone();
+        let get_displayed_time_ = get_displayed_time.clone();
+        minute_plus.connect_clicked(move |_| {
+            modified_game_time_.set_label(&secs_to_time_string(
+                get_displayed_time_().saturating_add(60),
+            ))
+        });
+
+        let modified_game_time_ = modified_game_time.clone();
+        let get_displayed_time_ = get_displayed_time.clone();
+        minute_minus.connect_clicked(move |_| {
+            modified_game_time_.set_label(&secs_to_time_string(
+                get_displayed_time_().saturating_sub(60),
+            ))
+        });
+
+        let modified_game_time_ = modified_game_time.clone();
+        let get_displayed_time_ = get_displayed_time.clone();
+        second_plus.connect_clicked(move |_| {
+            modified_game_time_.set_label(&secs_to_time_string(
+                get_displayed_time_().saturating_add(1),
+            ))
+        });
+
+        let modified_game_time_ = modified_game_time.clone();
+        let get_displayed_time_ = get_displayed_time.clone();
+        second_minus.connect_clicked(move |_| {
+            modified_game_time_.set_label(&secs_to_time_string(
+                get_displayed_time_().saturating_sub(1),
+            ))
+        });
+
         //
         //
         // Game Over Confirmation Page
@@ -972,6 +1020,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         layout_stack.add_named(&edit_score_layout, "Edit Score Layout");
         layout_stack.add_named(&uwhscores_edit_layout, "UWH Scores Layout");
 
+        // Set up the buttons to switch between layouts
+        let clock_was_running = Arc::new(AtomicBool::new(false));
+
         //
         //
         // Buttons for moving back to the Main Layout
@@ -996,10 +1047,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
-        time_edit_submit.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
-
-        let main_layout_ = main_layout.clone();
-        let layout_stack_ = layout_stack.clone();
         score_submit.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
 
         let main_layout_ = main_layout.clone();
@@ -1016,11 +1063,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
-        time_edit_cancel.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
+        let tm_ = tm.clone();
+        let clock_was_running_ = clock_was_running.clone();
+        time_edit_cancel.connect_clicked(move |_| {
+            if clock_was_running_.load(Ordering::SeqCst) {
+                tm_.lock().unwrap().start_clock(Instant::now());
+            }
+            layout_stack_.set_visible_child(&main_layout_)
+        });
 
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
-        time_edit_submit.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
+        let state_send_ = state_send.clone();
+        let get_displayed_time_ = get_displayed_time.clone();
+        let tm_ = tm.clone();
+        let clock_was_running_ = clock_was_running.clone();
+        time_edit_submit.connect_clicked(move |_| {
+            let mut tm = tm_.lock().unwrap();
+            tm.set_clock_time(Duration::from_secs(get_displayed_time_()))
+                .unwrap();
+            if clock_was_running_.load(Ordering::SeqCst) {
+                tm.start_clock(Instant::now());
+            } else {
+                state_send_
+                    .send(tm.generate_snapshot(Instant::now()).unwrap())
+                    .unwrap();
+            }
+            layout_stack_.set_visible_child(&main_layout_)
+        });
 
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
@@ -1046,7 +1116,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         //
         // move to edit_time_layout
         let layout_stack_ = layout_stack.clone();
-        edit_game_time.connect_clicked(move |_| layout_stack_.set_visible_child(&time_edit_layout));
+        let tm_ = tm.clone();
+        edit_game_time.connect_clicked(move |_| {
+            let mut tm = tm_.lock().unwrap();
+            let now = Instant::now();
+            tm.update(now);
+            clock_was_running.store(tm.clock_is_running(), Ordering::SeqCst);
+            tm.stop_clock(now);
+            modified_game_time
+                .set_label(&secs_to_time_string(tm.clock_time(now).unwrap().as_secs()));
+            layout_stack_.set_visible_child(&time_edit_layout);
+        });
 
         // move to new_score_layout
         let new_score_layout_ = new_score_layout.clone();
@@ -1151,7 +1231,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // start a thread that updates the tm every second and sends the result to the UI
         let (clock_running_send, clock_running_recv) = mpsc::channel();
-        let (state_send, state_recv) = glib::MainContext::channel(glib::source::PRIORITY_DEFAULT);
         clock_running_send.send(false).unwrap();
         tm.lock().unwrap().add_start_stop_sender(clock_running_send);
         let tm_ = tm.clone();
@@ -1208,9 +1287,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .generate_snapshot(Instant::now())
             .unwrap();
         state_recv.attach(None, move |snapshot: GameSnapshot| {
-            let min = snapshot.secs_in_period / 60;
-            let sec = snapshot.secs_in_period % 60;
-            edit_game_time.set_label(&format!("{:2}:{:02}", min, sec));
+            edit_game_time.set_label(&secs_to_time_string(snapshot.secs_in_period));
 
             if snapshot.timeout != last_snapshot.timeout {
                 match snapshot.timeout {
@@ -1277,6 +1354,17 @@ fn edit_button_label(button: &gtk::Button, label: &str) {
         .downcast::<gtk::Label>()
         .unwrap()
         .set_label(label);
+}
+
+fn secs_to_time_string<T>(secs: T) -> String
+where
+    T: Div<T> + Rem<T> + From<u8> + Copy,
+    <T as Div>::Output: Display,
+    <T as Rem>::Output: Display,
+{
+    let min = secs / T::from(60u8);
+    let sec = secs % T::from(60u8);
+    format!("{:2}:{:02}", min, sec)
 }
 
 macro_rules! new_button_func {

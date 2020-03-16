@@ -1447,25 +1447,47 @@ fn new_keypad() -> gtk::Grid {
     keypad.set_row_homogeneous(true);
     keypad.get_style_context().add_class("keypad");
 
-    let player_number = gtk::Label::new(Some("##"));
-    player_number
-        .get_style_context()
-        .add_class("player-number-gray");
+    let player_number = new_label("Player #:\n", "player-number-gray");
 
     let button_backspace = new_keypad_button("<--", "keypad", None);
     button_backspace.set_margin_end(BUTTON_MARGIN);
-    let button_0 = new_keypad_button("0", "keypad", None);
-    let button_1 = new_keypad_button("1", "keypad", None);
-    let button_2 = new_keypad_button("2", "keypad", None);
-    let button_3 = new_keypad_button("3", "keypad", None);
+
+    let player_number_ = player_number.clone();
+    button_backspace.connect_clicked(move |_| {
+        let label = player_number_.get_label().unwrap();
+        if label.as_str().chars().next_back().unwrap().is_digit(10) {
+            let mut updated_label = label.as_str().to_string();
+            updated_label.pop();
+            player_number_.set_label(&updated_label);
+        }
+    });
+
+    macro_rules! new_number_button {
+        ($name:ident, $text:literal, $value:literal) => {
+            let $name = new_keypad_button($text, "keypad", None);
+            let player_number_ = player_number.clone();
+            $name.connect_clicked(move |_| {
+                let mut updated_label = player_number_.get_label().unwrap().as_str().to_string();
+                if updated_label.len() < 12 {
+                    updated_label.push($value);
+                    player_number_.set_label(&updated_label);
+                }
+            });
+        };
+    }
+
+    new_number_button!(button_0, "0", '0');
+    new_number_button!(button_1, "1", '1');
+    new_number_button!(button_2, "2", '2');
+    new_number_button!(button_3, "3", '3');
+    new_number_button!(button_4, "4", '4');
+    new_number_button!(button_5, "5", '5');
+    new_number_button!(button_6, "6", '6');
+    new_number_button!(button_7, "7", '7');
+    new_number_button!(button_8, "8", '8');
+    new_number_button!(button_9, "9", '9');
     button_3.set_margin_end(BUTTON_MARGIN);
-    let button_4 = new_keypad_button("4", "keypad", None);
-    let button_5 = new_keypad_button("5", "keypad", None);
-    let button_6 = new_keypad_button("6", "keypad", None);
     button_6.set_margin_end(BUTTON_MARGIN);
-    let button_7 = new_keypad_button("7", "keypad", None);
-    let button_8 = new_keypad_button("8", "keypad", None);
-    let button_9 = new_keypad_button("9", "keypad", None);
     button_9.set_margin_end(BUTTON_MARGIN);
 
     keypad.attach(&player_number, 0, 0, 3, 2);

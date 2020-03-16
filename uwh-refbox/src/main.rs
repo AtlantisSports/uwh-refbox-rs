@@ -291,7 +291,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let main_referee_timeout = new_button("START", &["yellow"], None);
         let main_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
 
-        let game_state_header = new_label("GAME STATE", "header-dark-gray");
+        let game_state_header = new_label("FIRST GAME IN", "header-dark-gray");
         let white_header = new_label("WHITE", "header-white");
         let black_header = new_label("BLACK", "header-black");
 
@@ -1303,6 +1303,29 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         "Received unimplemented timeout value: {:?}",
                         snapshot.timeout
                     ),
+                }
+            }
+
+            if snapshot.current_period != last_snapshot.current_period {
+                match snapshot.current_period {
+                    GamePeriod::BetweenGames => game_state_header.set_label("NEXT GAME IN"),
+                    GamePeriod::FirstHalf => game_state_header.set_label("FIRST HALF"),
+                    GamePeriod::HalfTime => game_state_header.set_label("HALF TIME"),
+                    GamePeriod::SecondHalf => game_state_header.set_label("SECOND HALF"),
+                    GamePeriod::PreOvertime => game_state_header.set_label("PRE OVERTIME BREAK"),
+                    GamePeriod::OvertimeFirstHalf => {
+                        game_state_header.set_label("OVERTIME FIRST HALF")
+                    }
+                    GamePeriod::OvertimeHalfTime => {
+                        game_state_header.set_label("OVERTIME HALF TIME")
+                    }
+                    GamePeriod::OvertimeSecondHalf => {
+                        game_state_header.set_label("OVERTIME SECOND HALF")
+                    }
+                    GamePeriod::PreSuddenDeath => {
+                        game_state_header.set_label("PRE SUDDEN DEATH BREAK")
+                    }
+                    GamePeriod::SuddenDeath => game_state_header.set_label("SUDDEN DEATH"),
                 }
             }
 

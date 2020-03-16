@@ -350,7 +350,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let score_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
         let score_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
 
-        let score_keypad = new_keypad();
+        let (score_keypad, score_player_number) = new_keypad();
 
         new_score_layout.attach(&score_keypad, 0, 0, 4, 9);
         new_score_layout.attach(&score_white_select, 4, 0, 4, 3);
@@ -516,7 +516,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let penalty_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
         let penalty_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
 
-        let penalty_keypad = new_keypad();
+        let (penalty_keypad, _penalty_player_number) = new_keypad();
 
         penalty_add_layout.attach(&penalty_keypad, 0, 0, 4, 9);
         penalty_add_layout.attach(&penalty_white_select, 4, 0, 4, 3);
@@ -1047,7 +1047,33 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
-        score_submit.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
+        let score_player_number_ = score_player_number.clone();
+        let score_white_select_ = score_white_select.clone();
+        let tm_ = tm.clone();
+        let state_send_ = state_send.clone();
+        score_submit.connect_clicked(move |_| {
+            let player = score_player_number_
+                .get_label()
+                .unwrap()
+                .as_str()
+                .lines()
+                .last()
+                .unwrap()
+                .trim()
+                .parse::<u8>()
+                .unwrap_or(std::u8::MAX);
+            let now = Instant::now();
+            let mut tm = tm_.lock().unwrap();
+            if score_white_select_.get_active() {
+                tm.add_w_score(player, now);
+            } else {
+                tm.add_b_score(player, now);
+            }
+            state_send_
+                .send(tm.generate_snapshot(now).unwrap())
+                .unwrap();
+            layout_stack_.set_visible_child(&main_layout_)
+        });
 
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
@@ -1131,14 +1157,17 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         // move to new_score_layout
         let new_score_layout_ = new_score_layout.clone();
         let layout_stack_ = layout_stack.clone();
+        let score_player_number_ = score_player_number.clone();
         add_white_score.connect_clicked(move |_| {
             score_white_select.set_active(true);
+            score_player_number_.set_label("Player #:\n");
             layout_stack_.set_visible_child(&new_score_layout_);
         });
 
         let layout_stack_ = layout_stack.clone();
         add_black_score.connect_clicked(move |_| {
             score_black_select.set_active(true);
+            score_player_number.set_label("Player #:\n");
             layout_stack_.set_visible_child(&new_score_layout);
         });
 
@@ -1289,6 +1318,9 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             .unwrap()
             .generate_snapshot(Instant::now())
             .unwrap();
+        last_snapshot.w_score = std::u8::MAX;
+        last_snapshot.b_score = std::u8::MAX;
+
         state_recv.attach(None, move |snapshot: GameSnapshot| {
             edit_game_time.set_label(&secs_to_time_string(snapshot.secs_in_period));
 
@@ -1330,6 +1362,14 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     }
                     GamePeriod::SuddenDeath => game_state_header.set_label("SUDDEN DEATH"),
                 }
+            }
+
+            if snapshot.w_score != last_snapshot.w_score {
+                edit_white_score.set_label(&format!("{}", snapshot.w_score));
+            }
+
+            if snapshot.b_score != last_snapshot.b_score {
+                edit_black_score.set_label(&format!("{}", snapshot.b_score));
             }
 
             last_snapshot = snapshot;
@@ -1441,7 +1481,7 @@ fn new_label(text: &str, style: &str) -> gtk::Label {
     label
 }
 
-fn new_keypad() -> gtk::Grid {
+fn new_keypad() -> (gtk::Grid, gtk::Label) {
     let keypad = gtk::Grid::new();
     keypad.set_column_homogeneous(true);
     keypad.set_row_homogeneous(true);
@@ -1502,7 +1542,7 @@ fn new_keypad() -> gtk::Grid {
     keypad.attach(&button_3, 2, 4, 1, 1);
     keypad.attach(&button_0, 0, 5, 1, 1);
     keypad.attach(&button_backspace, 1, 5, 2, 1);
-    keypad
+    (keypad, player_number)
 }
 
 fn time_edit_ribbon() -> gtk::Grid {

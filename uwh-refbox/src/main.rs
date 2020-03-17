@@ -26,10 +26,10 @@ use std::{
 };
 
 mod config;
-mod game_state;
+mod game_snapshot;
 mod tournament_manager;
 use config::Config;
-use game_state::*;
+use game_snapshot::*;
 use tournament_manager::*;
 
 const BUTTON_SPACING: i32 = 12;
@@ -725,9 +725,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             let label = modified_game_time_.get_label().unwrap();
             let current: Vec<&str> = label.as_str().split(':').collect();
             assert_eq!(2, current.len());
-            let current =
-                current[0].trim().parse::<u64>().unwrap() * 60 + current[1].parse::<u64>().unwrap();
-            current
+            current[0].trim().parse::<u64>().unwrap() * 60 + current[1].parse::<u64>().unwrap()
         };
 
         let modified_game_time_ = modified_game_time.clone();
@@ -1178,12 +1176,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
         let state_send_ = state_send.clone();
-        let get_displayed_time_ = get_displayed_time.clone();
         let tm_ = tm.clone();
         let clock_was_running_ = clock_was_running.clone();
         time_edit_submit.connect_clicked(move |_| {
             let mut tm = tm_.lock().unwrap();
-            tm.set_clock_time(Duration::from_secs(get_displayed_time_()))
+            tm.set_clock_time(Duration::from_secs(get_displayed_time()))
                 .unwrap();
             if clock_was_running_.load(Ordering::SeqCst) {
                 tm.start_clock(Instant::now());
@@ -1361,7 +1358,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         trace!("Updater: locking tm");
                         update_and_send_snapshot(&mut tm_.lock().unwrap());
                         info!("Updater: Waiting for Clock to start");
-                        if clock_running_recv.recv().unwrap() == true {
+                        if clock_running_recv.recv().unwrap() {
                             info!("Updater: Clock has restarted");
                             timeout = Duration::from_secs(0);
                             break;
@@ -1490,15 +1487,6 @@ fn create_new_file(path: &str) -> std::io::Result<File> {
         .write(true)
         .create_new(true)
         .open(path)
-}
-
-fn edit_button_label(button: &gtk::Button, label: &str) {
-    button
-        .get_child()
-        .unwrap()
-        .downcast::<gtk::Label>()
-        .unwrap()
-        .set_label(label);
 }
 
 fn secs_to_time_string<T>(secs: T) -> String

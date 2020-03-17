@@ -1,5 +1,5 @@
 use crate::config::Game as GameConfig;
-use crate::game_state::{GamePeriod, GameSnapshot, TimeoutState};
+use crate::game_snapshot::{GamePeriod, GameSnapshot, TimeoutState};
 use log::*;
 use std::{
     cmp::max,
@@ -39,15 +39,8 @@ impl TournamentManager {
 
     pub fn clock_is_running(&self) -> bool {
         match self.clock_state {
-            ClockState::CountingDown {
-                start_time: _,
-                time_remaining_at_start: _,
-            }
-            | ClockState::CountingUp {
-                start_time: _,
-                time_at_start: _,
-            } => true,
-            ClockState::Stopped { clock_time: _ } => false,
+            ClockState::CountingDown { .. } | ClockState::CountingUp { .. } => true,
+            ClockState::Stopped { .. } => false,
         }
     }
 
@@ -55,10 +48,12 @@ impl TournamentManager {
         self.current_period
     }
 
+    #[cfg(test)]
     pub fn current_game(&self) -> u16 {
         self.current_game
     }
 
+    #[cfg(test)]
     pub fn game_start_time(&self) -> Instant {
         self.game_start_time
     }
@@ -101,11 +96,7 @@ impl TournamentManager {
                 start_time,
                 time_remaining_at_start,
             } => start_time + time_remaining_at_start,
-            ClockState::CountingUp {
-                start_time: _,
-                time_at_start: _,
-            }
-            | ClockState::Stopped { clock_time: _ } => now,
+            ClockState::CountingUp { .. } | ClockState::Stopped { .. } => now,
         };
 
         let time_remaining_at_start =
@@ -276,14 +267,7 @@ impl TournamentManager {
 
     pub fn stop_clock(&mut self, now: Instant) {
         match self.clock_state {
-            ClockState::CountingDown {
-                start_time: _,
-                time_remaining_at_start: _,
-            }
-            | ClockState::CountingUp {
-                start_time: _,
-                time_at_start: _,
-            } => {
+            ClockState::CountingDown { .. } | ClockState::CountingUp { .. } => {
                 info!("Stopping the clock");
                 for sender in &self.start_stop_senders {
                     sender.send(false).unwrap();
@@ -292,12 +276,12 @@ impl TournamentManager {
                     clock_time: self.clock_time(now).unwrap(),
                 }
             }
-            ClockState::Stopped { clock_time: _ } => {}
+            ClockState::Stopped { .. } => {}
         };
     }
 
     pub fn set_clock_time(&mut self, clock_time: Duration) -> Result<()> {
-        if let ClockState::Stopped { clock_time: _ } = self.clock_state {
+        if let ClockState::Stopped { .. } = self.clock_state {
             self.clock_state = ClockState::Stopped { clock_time };
             Ok(())
         } else {
@@ -307,7 +291,7 @@ impl TournamentManager {
 
     #[cfg(test)]
     pub(super) fn set_period_and_clock_time(&mut self, period: GamePeriod, clock_time: Duration) {
-        if let ClockState::Stopped { clock_time: _ } = self.clock_state {
+        if let ClockState::Stopped { .. } = self.clock_state {
             self.current_period = period;
             self.clock_state = ClockState::Stopped { clock_time }
         } else {
@@ -317,7 +301,7 @@ impl TournamentManager {
 
     #[cfg(test)]
     pub(super) fn set_game_start(&mut self, time: Instant) {
-        if let ClockState::Stopped { clock_time: _ } = self.clock_state {
+        if let ClockState::Stopped { .. } = self.clock_state {
             self.game_start_time = time;
         } else {
             panic!("Can't edit game start time while clock is running");
@@ -347,19 +331,17 @@ impl TournamentManager {
     pub fn generate_snapshot(&self, now: Instant) -> Option<GameSnapshot> {
         self.clock_time(now)
             .and_then(|clock_time| clock_time.as_secs().try_into().ok())
-            .and_then(|secs_in_period| {
-                Some(GameSnapshot {
-                    current_period: self.current_period,
-                    secs_in_period,
-                    timeout: if self.clock_is_running() {
-                        TimeoutState::None
-                    } else {
-                        TimeoutState::Ref(0)
-                    },
-                    b_score: self.b_score,
-                    w_score: self.w_score,
-                    penalties: vec![],
-                })
+            .map(|secs_in_period| GameSnapshot {
+                current_period: self.current_period,
+                secs_in_period,
+                timeout: if self.clock_is_running() {
+                    TimeoutState::None
+                } else {
+                    TimeoutState::Ref(0)
+                },
+                b_score: self.b_score,
+                w_score: self.w_score,
+                penalties: vec![],
             })
     }
 }

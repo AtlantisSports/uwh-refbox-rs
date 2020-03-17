@@ -457,6 +457,50 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         edit_score_layout.attach(&score_edit_referee_timeout, 3, 9, 6, 2);
         edit_score_layout.attach(&score_edit_black_timeout, 9, 9, 3, 2);
 
+        let modified_white_score_ = modified_white_score.clone();
+        white_score_plus.connect_clicked(move |_| {
+            let old = modified_white_score_
+                .get_label()
+                .unwrap()
+                .as_str()
+                .parse::<u8>()
+                .unwrap();
+            modified_white_score_.set_label(&format!("{}", old.saturating_add(1)));
+        });
+
+        let modified_white_score_ = modified_white_score.clone();
+        white_score_minus.connect_clicked(move |_| {
+            let old = modified_white_score_
+                .get_label()
+                .unwrap()
+                .as_str()
+                .parse::<u8>()
+                .unwrap();
+            modified_white_score_.set_label(&format!("{}", old.saturating_sub(1)));
+        });
+
+        let modified_black_score_ = modified_black_score.clone();
+        black_score_plus.connect_clicked(move |_| {
+            let old = modified_black_score_
+                .get_label()
+                .unwrap()
+                .as_str()
+                .parse::<u8>()
+                .unwrap();
+            modified_black_score_.set_label(&format!("{}", old.saturating_add(1)));
+        });
+
+        let modified_black_score_ = modified_black_score.clone();
+        black_score_minus.connect_clicked(move |_| {
+            let old = modified_black_score_
+                .get_label()
+                .unwrap()
+                .as_str()
+                .parse::<u8>()
+                .unwrap();
+            modified_black_score_.set_label(&format!("{}", old.saturating_sub(1)));
+        });
+
         //
         //
         // Time Penalty Confirmation Page
@@ -1081,11 +1125,44 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
-        score_edit_cancel.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
+        let tm_ = tm.clone();
+        let modified_white_score_ = modified_white_score.clone();
+        let modified_black_score_ = modified_black_score.clone();
+        score_edit_cancel.connect_clicked(move |_| {
+            let tm = tm_.lock().unwrap();
+            modified_white_score_.set_label(&format!("{}", tm.get_w_score()));
+            modified_black_score_.set_label(&format!("{}", tm.get_b_score()));
+            layout_stack_.set_visible_child(&main_layout_)
+        });
 
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
-        score_edit_submit.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
+        let tm_ = tm.clone();
+        let state_send_ = state_send.clone();
+        let modified_white_score_ = modified_white_score.clone();
+        let modified_black_score_ = modified_black_score.clone();
+        score_edit_submit.connect_clicked(move |_| {
+            let w_score = modified_white_score_
+                .get_label()
+                .unwrap()
+                .as_str()
+                .parse::<u8>()
+                .unwrap();
+            let b_score = modified_black_score_
+                .get_label()
+                .unwrap()
+                .as_str()
+                .parse::<u8>()
+                .unwrap();
+
+            let now = Instant::now();
+            let mut tm = tm_.lock().unwrap();
+            tm.set_scores(b_score, w_score, now);
+            state_send_
+                .send(tm.generate_snapshot(now).unwrap())
+                .unwrap();
+            layout_stack_.set_visible_child(&main_layout_)
+        });
 
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
@@ -1366,10 +1443,12 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
             if snapshot.w_score != last_snapshot.w_score {
                 edit_white_score.set_label(&format!("{}", snapshot.w_score));
+                modified_white_score.set_label(&format!("{}", snapshot.w_score));
             }
 
             if snapshot.b_score != last_snapshot.b_score {
                 edit_black_score.set_label(&format!("{}", snapshot.b_score));
+                modified_black_score.set_label(&format!("{}", snapshot.b_score));
             }
 
             last_snapshot = snapshot;

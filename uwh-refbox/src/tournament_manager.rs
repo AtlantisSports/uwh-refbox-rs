@@ -71,6 +71,14 @@ impl TournamentManager {
         self.set_scores(self.b_score, self.w_score + 1, now);
     }
 
+    pub fn get_b_score(&self) -> u8 {
+        self.b_score
+    }
+
+    pub fn get_w_score(&self) -> u8 {
+        self.w_score
+    }
+
     pub fn set_scores(&mut self, b_score: u8, w_score: u8, now: Instant) {
         self.b_score = b_score;
         self.w_score = w_score;

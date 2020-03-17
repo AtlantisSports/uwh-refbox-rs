@@ -4,7 +4,7 @@ use std::fs::read_to_string;
 use std::path::Path;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub(crate) struct Hardware {
+pub struct Hardware {
     pub screen_x: i32,
     pub screen_y: i32,
     pub has_xbee: bool,
@@ -25,7 +25,7 @@ impl Default for Hardware {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub(crate) struct XBee {
+pub struct XBee {
     pub port: String,
     pub baud: u32,
     pub clients: Vec<String>,
@@ -49,7 +49,7 @@ impl Default for XBee {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub(crate) struct RS485 {
+pub struct RS485 {
     pub port: String,
     pub baud: u32,
 }
@@ -67,13 +67,14 @@ impl Default for RS485 {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub(crate) struct Game {
+pub struct Game {
     pub half_play_duration: u16,
     pub half_time_duration: u16,
     pub team_timeout_duration: u16,
     pub team_timeouts_allowed: u16,
     pub has_overtime: bool,
     pub ot_half_play_duration: u16,
+    pub ot_half_time_duration: u16,
     pub pre_overtime_break: u16,
     pub overtime_break_duration: u16,
     pub pre_sudden_death_duration: u16,
@@ -99,6 +100,7 @@ impl Default for Game {
             team_timeouts_allowed: 1,
             has_overtime: true,
             ot_half_play_duration: 300,
+            ot_half_time_duration: 180,
             pre_overtime_break: 180,
             overtime_break_duration: 60,
             pre_sudden_death_duration: 60,
@@ -118,7 +120,7 @@ impl Default for Game {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub(crate) struct Config {
+pub struct Config {
     pub game: Game,
     pub hardware: Hardware,
     pub xbee: XBee,
@@ -126,9 +128,7 @@ pub(crate) struct Config {
 }
 
 impl Config {
-    pub(crate) fn new_from_file<P: AsRef<Path>>(
-        path: P,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new_from_file<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error>> {
         let config_file = match read_to_string(path) {
             Ok(f) => f,
             Err(e) => {
@@ -197,6 +197,7 @@ mod test {
            team_timeouts_allowed = 1
            has_overtime = true
            ot_half_play_duration = 300
+           ot_half_time_duration = 180
            pre_overtime_break = 180
            overtime_break_duration = 60
            pre_sudden_death_duration = 60

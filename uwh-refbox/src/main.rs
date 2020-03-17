@@ -12,16 +12,25 @@ use gtk::prelude::*;
 use log::*;
 use std::{
     convert::TryInto,
+    fmt::Display,
     fs::{File, OpenOptions},
     io::{ErrorKind, Write},
+    ops::{Div, Rem},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc::{self, RecvTimeoutError},
+        Arc, Mutex, MutexGuard,
+    },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 mod config;
-mod game_state;
+mod game_snapshot;
+mod tournament_manager;
 use config::Config;
-use game_state::*;
+use game_snapshot::*;
+use tournament_manager::*;
 
 const BUTTON_SPACING: i32 = 12;
 const BUTTON_MARGIN: i32 = 6;
@@ -35,7 +44,7 @@ const BUTTON_MARGIN: i32 = 6;
 
 const STYLE: &str = std::include_str!("style.css");
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // This allows the use of error!(), warn!(), info!(), etc.
     env_logger::init();
 
@@ -110,7 +119,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // If the user asks, simulate the display panels instead
     if matches.subcommand_matches("simulate").is_some() {
         // Make a fake game state
-        let state = DrawableGameState {
+        let state = GameSnapshot {
             current_period: GamePeriod::FirstHalf,
             secs_in_period: 754, // 12:34
             timeout: TimeoutState::None,
@@ -194,6 +203,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = Config::new_from_file(config_path)?;
 
+    let tm = Arc::new(Mutex::new(TournamentManager::new(config.game.clone())));
+
     // Setup the application that gets run
     let uiapp = gtk::Application::new(
         Some("org.navisjon.refbox"),
@@ -222,6 +233,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         win.set_default_size(config.hardware.screen_x, config.hardware.screen_y);
         win.set_title("UWH Refbox");
         win.set_resizable(false);
+
+        // create the channel that sends updates to be drawn
+        let (state_send, state_recv) = glib::MainContext::channel(glib::source::PRIORITY_DEFAULT);
 
         //
         //
@@ -274,10 +288,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let add_black_score = new_button("SCORE\nBLACK", &["black"], None);
         let edit_black_time_penalty = new_button("BLACK\nTIME\nPENALTY\nLIST", &["black"], None);
         let main_white_timeout = new_button("WHITE\nTIMEOUT", &["white"], None);
-        let main_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
+        let main_referee_timeout = new_button("START", &["yellow"], None);
         let main_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
 
-        let game_state_header = new_label("GAME STATE", "header-dark-gray");
+        let game_state_header = new_label("FIRST GAME IN", "header-dark-gray");
         let white_header = new_label("WHITE", "header-white");
         let black_header = new_label("BLACK", "header-black");
 
@@ -336,7 +350,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let score_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
         let score_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
 
-        let score_keypad = new_keypad();
+        let (score_keypad, score_player_number) = new_keypad();
 
         new_score_layout.attach(&score_keypad, 0, 0, 4, 9);
         new_score_layout.attach(&score_white_select, 4, 0, 4, 3);
@@ -443,6 +457,50 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         edit_score_layout.attach(&score_edit_referee_timeout, 3, 9, 6, 2);
         edit_score_layout.attach(&score_edit_black_timeout, 9, 9, 3, 2);
 
+        let modified_white_score_ = modified_white_score.clone();
+        white_score_plus.connect_clicked(move |_| {
+            let old = modified_white_score_
+                .get_label()
+                .unwrap()
+                .as_str()
+                .parse::<u8>()
+                .unwrap();
+            modified_white_score_.set_label(&format!("{}", old.saturating_add(1)));
+        });
+
+        let modified_white_score_ = modified_white_score.clone();
+        white_score_minus.connect_clicked(move |_| {
+            let old = modified_white_score_
+                .get_label()
+                .unwrap()
+                .as_str()
+                .parse::<u8>()
+                .unwrap();
+            modified_white_score_.set_label(&format!("{}", old.saturating_sub(1)));
+        });
+
+        let modified_black_score_ = modified_black_score.clone();
+        black_score_plus.connect_clicked(move |_| {
+            let old = modified_black_score_
+                .get_label()
+                .unwrap()
+                .as_str()
+                .parse::<u8>()
+                .unwrap();
+            modified_black_score_.set_label(&format!("{}", old.saturating_add(1)));
+        });
+
+        let modified_black_score_ = modified_black_score.clone();
+        black_score_minus.connect_clicked(move |_| {
+            let old = modified_black_score_
+                .get_label()
+                .unwrap()
+                .as_str()
+                .parse::<u8>()
+                .unwrap();
+            modified_black_score_.set_label(&format!("{}", old.saturating_sub(1)));
+        });
+
         //
         //
         // Time Penalty Confirmation Page
@@ -502,7 +560,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let penalty_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
         let penalty_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
 
-        let penalty_keypad = new_keypad();
+        let (penalty_keypad, _penalty_player_number) = new_keypad();
 
         penalty_add_layout.attach(&penalty_keypad, 0, 0, 4, 9);
         penalty_add_layout.attach(&penalty_white_select, 4, 0, 4, 3);
@@ -661,6 +719,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         time_edit_layout.attach(&time_edit_white_timeout, 0, 9, 3, 2);
         time_edit_layout.attach(&time_edit_referee_timeout, 3, 9, 6, 2);
         time_edit_layout.attach(&time_edit_black_timeout, 9, 9, 3, 2);
+
+        let modified_game_time_ = modified_game_time.clone();
+        let get_displayed_time = move || {
+            let label = modified_game_time_.get_label().unwrap();
+            let current: Vec<&str> = label.as_str().split(':').collect();
+            assert_eq!(2, current.len());
+            current[0].trim().parse::<u64>().unwrap() * 60 + current[1].parse::<u64>().unwrap()
+        };
+
+        let modified_game_time_ = modified_game_time.clone();
+        let get_displayed_time_ = get_displayed_time.clone();
+        minute_plus.connect_clicked(move |_| {
+            modified_game_time_.set_label(&secs_to_time_string(
+                get_displayed_time_().saturating_add(60),
+            ))
+        });
+
+        let modified_game_time_ = modified_game_time.clone();
+        let get_displayed_time_ = get_displayed_time.clone();
+        minute_minus.connect_clicked(move |_| {
+            modified_game_time_.set_label(&secs_to_time_string(
+                get_displayed_time_().saturating_sub(60),
+            ))
+        });
+
+        let modified_game_time_ = modified_game_time.clone();
+        let get_displayed_time_ = get_displayed_time.clone();
+        second_plus.connect_clicked(move |_| {
+            modified_game_time_.set_label(&secs_to_time_string(
+                get_displayed_time_().saturating_add(1),
+            ))
+        });
+
+        let modified_game_time_ = modified_game_time.clone();
+        let get_displayed_time_ = get_displayed_time.clone();
+        second_minus.connect_clicked(move |_| {
+            modified_game_time_.set_label(&secs_to_time_string(
+                get_displayed_time_().saturating_sub(1),
+            ))
+        });
 
         //
         //
@@ -964,6 +1062,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         layout_stack.add_named(&edit_score_layout, "Edit Score Layout");
         layout_stack.add_named(&uwhscores_edit_layout, "UWH Scores Layout");
 
+        // Set up the buttons to switch between layouts
+        let clock_was_running = Arc::new(AtomicBool::new(false));
+
         //
         //
         // Buttons for moving back to the Main Layout
@@ -988,11 +1089,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
-        time_edit_submit.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
-
-        let main_layout_ = main_layout.clone();
-        let layout_stack_ = layout_stack.clone();
-        score_submit.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
+        let score_player_number_ = score_player_number.clone();
+        let score_white_select_ = score_white_select.clone();
+        let tm_ = tm.clone();
+        let state_send_ = state_send.clone();
+        score_submit.connect_clicked(move |_| {
+            let player = score_player_number_
+                .get_label()
+                .unwrap()
+                .as_str()
+                .lines()
+                .last()
+                .unwrap()
+                .trim()
+                .parse::<u8>()
+                .unwrap_or(std::u8::MAX);
+            let now = Instant::now();
+            let mut tm = tm_.lock().unwrap();
+            if score_white_select_.get_active() {
+                tm.add_w_score(player, now);
+            } else {
+                tm.add_b_score(player, now);
+            }
+            state_send_
+                .send(tm.generate_snapshot(now).unwrap())
+                .unwrap();
+            layout_stack_.set_visible_child(&main_layout_)
+        });
 
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
@@ -1000,19 +1123,74 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
-        score_edit_cancel.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
+        let tm_ = tm.clone();
+        let modified_white_score_ = modified_white_score.clone();
+        let modified_black_score_ = modified_black_score.clone();
+        score_edit_cancel.connect_clicked(move |_| {
+            let tm = tm_.lock().unwrap();
+            modified_white_score_.set_label(&format!("{}", tm.get_w_score()));
+            modified_black_score_.set_label(&format!("{}", tm.get_b_score()));
+            layout_stack_.set_visible_child(&main_layout_)
+        });
 
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
-        score_edit_submit.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
+        let tm_ = tm.clone();
+        let state_send_ = state_send.clone();
+        let modified_white_score_ = modified_white_score.clone();
+        let modified_black_score_ = modified_black_score.clone();
+        score_edit_submit.connect_clicked(move |_| {
+            let w_score = modified_white_score_
+                .get_label()
+                .unwrap()
+                .as_str()
+                .parse::<u8>()
+                .unwrap();
+            let b_score = modified_black_score_
+                .get_label()
+                .unwrap()
+                .as_str()
+                .parse::<u8>()
+                .unwrap();
+
+            let now = Instant::now();
+            let mut tm = tm_.lock().unwrap();
+            tm.set_scores(b_score, w_score, now);
+            state_send_
+                .send(tm.generate_snapshot(now).unwrap())
+                .unwrap();
+            layout_stack_.set_visible_child(&main_layout_)
+        });
 
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
-        time_edit_cancel.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
+        let tm_ = tm.clone();
+        let clock_was_running_ = clock_was_running.clone();
+        time_edit_cancel.connect_clicked(move |_| {
+            if clock_was_running_.load(Ordering::SeqCst) {
+                tm_.lock().unwrap().start_clock(Instant::now());
+            }
+            layout_stack_.set_visible_child(&main_layout_)
+        });
 
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
-        time_edit_submit.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
+        let state_send_ = state_send.clone();
+        let tm_ = tm.clone();
+        let clock_was_running_ = clock_was_running.clone();
+        time_edit_submit.connect_clicked(move |_| {
+            let mut tm = tm_.lock().unwrap();
+            tm.set_clock_time(Duration::from_secs(get_displayed_time()))
+                .unwrap();
+            if clock_was_running_.load(Ordering::SeqCst) {
+                tm.start_clock(Instant::now());
+            } else {
+                state_send_
+                    .send(tm.generate_snapshot(Instant::now()).unwrap())
+                    .unwrap();
+            }
+            layout_stack_.set_visible_child(&main_layout_)
+        });
 
         let main_layout_ = main_layout.clone();
         let layout_stack_ = layout_stack.clone();
@@ -1038,19 +1216,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         //
         // move to edit_time_layout
         let layout_stack_ = layout_stack.clone();
-        edit_game_time.connect_clicked(move |_| layout_stack_.set_visible_child(&time_edit_layout));
+        let tm_ = tm.clone();
+        edit_game_time.connect_clicked(move |_| {
+            let mut tm = tm_.lock().unwrap();
+            let now = Instant::now();
+            tm.update(now);
+            clock_was_running.store(tm.clock_is_running(), Ordering::SeqCst);
+            tm.stop_clock(now);
+            modified_game_time
+                .set_label(&secs_to_time_string(tm.clock_time(now).unwrap().as_secs()));
+            layout_stack_.set_visible_child(&time_edit_layout);
+        });
 
         // move to new_score_layout
         let new_score_layout_ = new_score_layout.clone();
         let layout_stack_ = layout_stack.clone();
+        let score_player_number_ = score_player_number.clone();
         add_white_score.connect_clicked(move |_| {
             score_white_select.set_active(true);
+            score_player_number_.set_label("Player #:\n");
             layout_stack_.set_visible_child(&new_score_layout_);
         });
 
         let layout_stack_ = layout_stack.clone();
         add_black_score.connect_clicked(move |_| {
             score_black_select.set_active(true);
+            score_player_number.set_label("Player #:\n");
             layout_stack_.set_visible_child(&new_score_layout);
         });
 
@@ -1119,6 +1310,151 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         //
         //
+        // Connect to the backend
+        //
+        let tm_ = tm.clone();
+        main_referee_timeout.connect_clicked(move |b| {
+            let tm = tm_.clone();
+            match b.get_label().unwrap().as_str() {
+                "REFEREE TIMEOUT" => {
+                    debug!("Button stopping clock");
+                    tm.lock().unwrap().stop_clock(Instant::now())
+                }
+                "RESUME" => {
+                    debug!("Button starting clock");
+                    tm.lock().unwrap().start_clock(Instant::now())
+                }
+                "START" => {
+                    debug!("Button starting clock for first time");
+                    tm_.lock().unwrap().start_clock(Instant::now())
+                }
+                _ => panic!("Unknown button label: {}", b.get_label().unwrap()),
+            }
+        });
+
+        // start a thread that updates the tm every second and sends the result to the UI
+        let (clock_running_send, clock_running_recv) = mpsc::channel();
+        clock_running_send.send(false).unwrap();
+        tm.lock().unwrap().add_start_stop_sender(clock_running_send);
+        let tm_ = tm.clone();
+        thread::spawn(move || {
+            let mut timeout = Duration::from_secs(1);
+
+            let update_and_send_snapshot = move |tm: &mut MutexGuard<TournamentManager>| {
+                let now = Instant::now();
+                tm.update(now);
+                if let Some(snapshot) = tm.generate_snapshot(now) {
+                    trace!("Updater: sending snapshot");
+                    state_send.send(snapshot).unwrap();
+                } else {
+                    panic!("Failed to generate snapshot");
+                }
+                now
+            };
+
+            loop {
+                match clock_running_recv.recv_timeout(timeout) {
+                    Ok(false) => loop {
+                        trace!("Updater: locking tm");
+                        update_and_send_snapshot(&mut tm_.lock().unwrap());
+                        info!("Updater: Waiting for Clock to start");
+                        if clock_running_recv.recv().unwrap() {
+                            info!("Updater: Clock has restarted");
+                            timeout = Duration::from_secs(0);
+                            break;
+                        }
+                    },
+                    Err(RecvTimeoutError::Disconnected) => break,
+                    Ok(true) | Err(RecvTimeoutError::Timeout) => {
+                        trace!("Updater: locking tm");
+                        let mut tm = tm_.lock().unwrap();
+                        let now = update_and_send_snapshot(&mut tm);
+                        if let Some(nanos) = tm.clock_time(now).and_then(|clock_time| {
+                            if tm.current_period() == GamePeriod::SuddenDeath {
+                                Some(1_000_000_000 - clock_time.subsec_nanos())
+                            } else {
+                                Some(clock_time.subsec_nanos())
+                            }
+                        }) {
+                            debug!("Updater: waiting for up to {} ns", nanos);
+                            timeout = Duration::from_nanos(nanos.into());
+                        } else {
+                            panic!("Failed to get current clock time");
+                        }
+                    }
+                }
+            }
+        });
+
+        // Update the gui when a snapshot is received
+        let mut last_snapshot = tm
+            .lock()
+            .unwrap()
+            .generate_snapshot(Instant::now())
+            .unwrap();
+        last_snapshot.w_score = std::u8::MAX;
+        last_snapshot.b_score = std::u8::MAX;
+
+        state_recv.attach(None, move |snapshot: GameSnapshot| {
+            edit_game_time.set_label(&secs_to_time_string(snapshot.secs_in_period));
+
+            if snapshot.timeout != last_snapshot.timeout {
+                match snapshot.timeout {
+                    TimeoutState::None => {
+                        debug!("GUI Drawer: Received clock started");
+                        main_referee_timeout.set_label("REFEREE TIMEOUT");
+                    }
+                    TimeoutState::Ref(_) => {
+                        debug!("GUI Drawer: Received clock stopped");
+                        main_referee_timeout.set_label("RESUME");
+                    }
+                    _ => panic!(
+                        "Received unimplemented timeout value: {:?}",
+                        snapshot.timeout
+                    ),
+                }
+            }
+
+            if snapshot.current_period != last_snapshot.current_period {
+                match snapshot.current_period {
+                    GamePeriod::BetweenGames => game_state_header.set_label("NEXT GAME IN"),
+                    GamePeriod::FirstHalf => game_state_header.set_label("FIRST HALF"),
+                    GamePeriod::HalfTime => game_state_header.set_label("HALF TIME"),
+                    GamePeriod::SecondHalf => game_state_header.set_label("SECOND HALF"),
+                    GamePeriod::PreOvertime => game_state_header.set_label("PRE OVERTIME BREAK"),
+                    GamePeriod::OvertimeFirstHalf => {
+                        game_state_header.set_label("OVERTIME FIRST HALF")
+                    }
+                    GamePeriod::OvertimeHalfTime => {
+                        game_state_header.set_label("OVERTIME HALF TIME")
+                    }
+                    GamePeriod::OvertimeSecondHalf => {
+                        game_state_header.set_label("OVERTIME SECOND HALF")
+                    }
+                    GamePeriod::PreSuddenDeath => {
+                        game_state_header.set_label("PRE SUDDEN DEATH BREAK")
+                    }
+                    GamePeriod::SuddenDeath => game_state_header.set_label("SUDDEN DEATH"),
+                }
+            }
+
+            if snapshot.w_score != last_snapshot.w_score {
+                edit_white_score.set_label(&format!("{}", snapshot.w_score));
+                modified_white_score.set_label(&format!("{}", snapshot.w_score));
+            }
+
+            if snapshot.b_score != last_snapshot.b_score {
+                edit_black_score.set_label(&format!("{}", snapshot.b_score));
+                modified_black_score.set_label(&format!("{}", snapshot.b_score));
+            }
+
+            last_snapshot = snapshot;
+
+            glib::source::Continue(true)
+        });
+
+        //
+        //
         // Make everything visible
         //
         win.add(&layout_stack);
@@ -1151,6 +1487,17 @@ fn create_new_file(path: &str) -> std::io::Result<File> {
         .write(true)
         .create_new(true)
         .open(path)
+}
+
+fn secs_to_time_string<T>(secs: T) -> String
+where
+    T: Div<T> + Rem<T> + From<u8> + Copy,
+    <T as Div>::Output: Display,
+    <T as Rem>::Output: Display,
+{
+    let min = secs / T::from(60u8);
+    let sec = secs % T::from(60u8);
+    format!("{:2}:{:02}", min, sec)
 }
 
 macro_rules! new_button_func {
@@ -1201,31 +1548,53 @@ fn new_label(text: &str, style: &str) -> gtk::Label {
     label
 }
 
-fn new_keypad() -> gtk::Grid {
+fn new_keypad() -> (gtk::Grid, gtk::Label) {
     let keypad = gtk::Grid::new();
     keypad.set_column_homogeneous(true);
     keypad.set_row_homogeneous(true);
     keypad.get_style_context().add_class("keypad");
 
-    let player_number = gtk::Label::new(Some("##"));
-    player_number
-        .get_style_context()
-        .add_class("player-number-gray");
+    let player_number = new_label("Player #:\n", "player-number-gray");
 
     let button_backspace = new_keypad_button("<--", "keypad", None);
     button_backspace.set_margin_end(BUTTON_MARGIN);
-    let button_0 = new_keypad_button("0", "keypad", None);
-    let button_1 = new_keypad_button("1", "keypad", None);
-    let button_2 = new_keypad_button("2", "keypad", None);
-    let button_3 = new_keypad_button("3", "keypad", None);
+
+    let player_number_ = player_number.clone();
+    button_backspace.connect_clicked(move |_| {
+        let label = player_number_.get_label().unwrap();
+        if label.as_str().chars().next_back().unwrap().is_digit(10) {
+            let mut updated_label = label.as_str().to_string();
+            updated_label.pop();
+            player_number_.set_label(&updated_label);
+        }
+    });
+
+    macro_rules! new_number_button {
+        ($name:ident, $text:literal, $value:literal) => {
+            let $name = new_keypad_button($text, "keypad", None);
+            let player_number_ = player_number.clone();
+            $name.connect_clicked(move |_| {
+                let mut updated_label = player_number_.get_label().unwrap().as_str().to_string();
+                if updated_label.len() < 12 {
+                    updated_label.push($value);
+                    player_number_.set_label(&updated_label);
+                }
+            });
+        };
+    }
+
+    new_number_button!(button_0, "0", '0');
+    new_number_button!(button_1, "1", '1');
+    new_number_button!(button_2, "2", '2');
+    new_number_button!(button_3, "3", '3');
+    new_number_button!(button_4, "4", '4');
+    new_number_button!(button_5, "5", '5');
+    new_number_button!(button_6, "6", '6');
+    new_number_button!(button_7, "7", '7');
+    new_number_button!(button_8, "8", '8');
+    new_number_button!(button_9, "9", '9');
     button_3.set_margin_end(BUTTON_MARGIN);
-    let button_4 = new_keypad_button("4", "keypad", None);
-    let button_5 = new_keypad_button("5", "keypad", None);
-    let button_6 = new_keypad_button("6", "keypad", None);
     button_6.set_margin_end(BUTTON_MARGIN);
-    let button_7 = new_keypad_button("7", "keypad", None);
-    let button_8 = new_keypad_button("8", "keypad", None);
-    let button_9 = new_keypad_button("9", "keypad", None);
     button_9.set_margin_end(BUTTON_MARGIN);
 
     keypad.attach(&player_number, 0, 0, 3, 2);
@@ -1240,7 +1609,7 @@ fn new_keypad() -> gtk::Grid {
     keypad.attach(&button_3, 2, 4, 1, 1);
     keypad.attach(&button_0, 0, 5, 1, 1);
     keypad.attach(&button_backspace, 1, 5, 2, 1);
-    keypad
+    (keypad, player_number)
 }
 
 fn time_edit_ribbon() -> gtk::Grid {

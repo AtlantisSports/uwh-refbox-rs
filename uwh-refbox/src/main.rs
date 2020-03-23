@@ -6,7 +6,7 @@ use embedded_graphics::prelude::*;
 use embedded_graphics::{egcircle, egline, fonts::Font, pixelcolor, text_6x8};
 use embedded_graphics_simulator::DisplayBuilder;
 use fonts::fonts::Font6x8 as CustomFont6x8;
-use fonts::fonts::{Font11x25, Font16x31, Font22x46, Font32x64, Font8x15};
+use fonts::fonts::{Font8x15, Font11x25, Font16x31, Font22x46, Font32x64};
 use gio::prelude::*;
 use gtk::prelude::*;
 use log::*;
@@ -120,11 +120,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     if matches.subcommand_matches("simulate").is_some() {
         // Make a fake game state
         let state = GameSnapshot {
-            current_period: GamePeriod::FirstHalf,
+            current_period: GamePeriod::OvertimeFirstHalf,
             secs_in_period: 754, // 12:34
-            timeout: TimeoutState::None,
-            b_score: 1,
-            w_score: 2,
+            timeout: TimeoutState::None, //PenaltyShot(34),
+            b_score: 67,
+            w_score: 5,
             penalties: vec![],
         };
 
@@ -133,60 +133,126 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let green = pixelcolor::Rgb888::new(0, 255, 0);
         let blue = pixelcolor::Rgb888::new(0, 0, 255);
         let white = pixelcolor::Rgb888::new(255, 255, 255);
-
+        
         let mut display = DisplayBuilder::new()
             .size(256, 64)
             .scale(3)
             .pixel_spacing(1)
             .build_rgb();
 
-        display.draw(
-            text_6x8!(
-                &format!(
-                    "Game Time: {}:{}",
-                    state.secs_in_period / 60,
-                    state.secs_in_period % 60
-                ),
-                stroke = Some(yellow)
-            )
-            .translate(Point::new(1, 0)),
-        );
+        let game_color = match state.timeout {
+            TimeoutState::PenaltyShot(_) => red,
+            TimeoutState::Ref(_) => yellow,
+            _ => match state.current_period {
+                GamePeriod::FirstHalf | GamePeriod::SecondHalf | GamePeriod::OvertimeFirstHalf | GamePeriod::OvertimeSecondHalf => green,
+                GamePeriod::BetweenGames | GamePeriod::HalfTime | GamePeriod::PreOvertime | GamePeriod::OvertimeHalfTime | GamePeriod::PreSuddenDeath => yellow,
+                GamePeriod::SuddenDeath => red,
+            },
+        };
 
-        display.draw(egcircle!((96, 32), 31, stroke = Some(red)));
+        let timeout_color = match state.timeout {
+            TimeoutState::White(_) => white,
+            TimeoutState::Black(_) => blue,
+            _ => red,
+        };
 
-        display.draw(egline!((32, 32), (1, 32), stroke = Some(green)).translate(Point::new(64, 0)));
-        display.draw(egline!((32, 32), (40, 40), stroke = Some(blue)).translate(Point::new(64, 0)));
+        // EVERYTHING TO BE DISPLAYED ON THE CENTER 2 TIME PANELS
+        let _center_time_panels = match state.timeout {
+            TimeoutState::None => {
+                display.draw(Font22x46::render_str(&secs_to_time_string(state.secs_in_period)).stroke(Some(game_color)).translate(Point::new(74, 18)));
+                match state.current_period {
+                    GamePeriod::BetweenGames => display.draw(Font8x15::render_str("NEXT GAME").stroke(Some(game_color)).translate(Point::new(92, 2))),
+                    GamePeriod::FirstHalf => display.draw(Font8x15::render_str("1ST HALF").stroke(Some(game_color)).translate(Point::new(100, 2))),
+                    GamePeriod::HalfTime => display.draw(Font8x15::render_str("HALF-TIME").stroke(Some(game_color)).translate(Point::new(92, 2))),
+                    GamePeriod::SecondHalf => display.draw(Font8x15::render_str("2ND HALF").stroke(Some(game_color)).translate(Point::new(100, 2))),
+                    GamePeriod::PreOvertime => display.draw(Font8x15::render_str("PRE-OVERTIME").stroke(Some(game_color)).translate(Point::new(80, 2))),
+                    GamePeriod::OvertimeFirstHalf => display.draw(Font8x15::render_str("O/T 1ST HALF").stroke(Some(game_color)).translate(Point::new(80, 2))),
+                    GamePeriod::OvertimeHalfTime => display.draw(Font8x15::render_str("O/T HALF TIME").stroke(Some(game_color)).translate(Point::new(76, 2))),
+                    GamePeriod::OvertimeSecondHalf => display.draw(Font8x15::render_str("O/T 2ND HALF").stroke(Some(game_color)).translate(Point::new(80, 2))),
+                    GamePeriod::PreSuddenDeath => display.draw(Font8x15::render_str("PRE-SUDDEN DEATH").stroke(Some(game_color)).translate(Point::new(64, 2))),
+                    GamePeriod::SuddenDeath => display.draw(Font8x15::render_str("SUDDEN DEATH").stroke(Some(game_color)).translate(Point::new(80, 2))),
+                    _ => display.draw(Font8x15::render_str("ERROR_1").stroke(Some(game_color)).translate(Point::new(64, 2))),
+                }
+            },
+            _ => {
+                display.draw(Font16x31::render_str(&secs_to_time_string(state.secs_in_period)).stroke(Some(game_color)).translate(Point::new(108, 33)));
+                match state.current_period {
+                    GamePeriod::FirstHalf => {
+                        display.draw(Font8x15::render_str("1ST").stroke(Some(game_color)).translate(Point::new(72, 33)));
+                        display.draw(Font8x15::render_str("HALF").stroke(Some(game_color)).translate(Point::new(68, 48)));
+                    }
+                    GamePeriod::SecondHalf => {
+                        display.draw(Font8x15::render_str("2ND").stroke(Some(game_color)).translate(Point::new(72, 33)));
+                        display.draw(Font8x15::render_str("HALF").stroke(Some(game_color)).translate(Point::new(68, 48)));
+                    }
+                    _ => display.draw(Font8x15::render_str("ERROR_2").stroke(Some(game_color)).translate(Point::new(64, 2))),
+                }
+                match state.timeout {
+                TimeoutState::White(_) => {
+                    display.draw(Font8x15::render_str("WHITE").stroke(Some(timeout_color)).translate(Point::new(76, 2)));
+                    display.draw(Font8x15::render_str("TIMEOUT").stroke(Some(timeout_color)).translate(Point::new(68, 17)));
+                    display.draw(Font16x31::render_str(":59").stroke(Some(timeout_color)).translate(Point::new(132, 2)));
+                }
+                TimeoutState::Black(_) => {
+                    display.draw(Font8x15::render_str("BLACK").stroke(Some(timeout_color)).translate(Point::new(76, 2)));
+                    display.draw(Font8x15::render_str("TIMEOUT").stroke(Some(timeout_color)).translate(Point::new(68, 17)));
+                    display.draw(Font16x31::render_str(":59").stroke(Some(timeout_color)).translate(Point::new(132, 2)));
+                }
+                TimeoutState::Ref(_) => {
+                    display.draw(Font11x25::render_str("REF TIMEOUT").stroke(Some(game_color)).translate(Point::new(68, 4)));
+                }
+                TimeoutState::PenaltyShot(_) => {
+                    display.draw(Font11x25::render_str("PENALTY").stroke(Some(timeout_color)).translate(Point::new(65, 4)));
+                    display.draw(Font11x25::render_str("SHOT").stroke(Some(timeout_color)).translate(Point::new(149, 4)));
+                }
+                _ => display.draw(Font22x46::render_str("ERROR_3").stroke(Some(red)).translate(Point::new(64, 18))),
+                };                   
+            }   
+        };
 
-        display.draw(
-            CustomFont6x8::render_str("12:34")
-                .stroke(Some(white))
-                .translate(Point::new(2, 8)),
-        );
-        display.draw(
-            Font8x15::render_str("12:34")
-                .stroke(Some(red))
-                .translate(Point::new(2, 16)),
-        );
-        display.draw(
-            Font11x25::render_str("12:34")
-                .stroke(Some(green))
-                .translate(Point::new(2, 31)),
-        );
-        display.draw(
-            Font16x31::render_str("12:34")
-                .stroke(Some(blue))
-                .translate(Point::new(64, 8)),
-        );
-        display.draw(
-            Font22x46::render_str("12:34")
-                .stroke(Some(white))
-                .translate(Point::new(64, 31)),
-        );
-        display.draw(
-            Font32x64::render_str("12:34")
-                .stroke(Some(red))
-                .translate(Point::new(128, 0)),
-        );
+
+
+        let black_penalty_count = 0;
+        let white_penalty_count = 0;
+
+        // EVERYTHING TO BE DISPLAYED ON THE BLACK SCORE PANEL
+        if black_penalty_count > 0 {
+            if state.b_score < 10 {        
+                display.draw(Font32x64::render_str(&format!("{:>2}", state.b_score)).stroke(Some(blue)).translate(Point::new(2, 2)));
+            } else {        
+                display.draw(Font22x46::render_str(&format!("{:<2}", state.b_score)).stroke(Some(blue)).translate(Point::new(11, 2)));
+            }
+        } else {
+            if state.b_score < 10 {        
+                display.draw(Font32x64::render_str(&format!("{:<2}", state.b_score)).stroke(Some(blue)).translate(Point::new(2 + 16, 2)));
+            } else {        
+                display.draw(Font32x64::render_str(&format!("{:<2}", state.b_score)).stroke(Some(blue)).translate(Point::new(2, 2)));
+            }
+        }
+
+        // EVERYTHING TO BE DISPLAYED ON THE WHITE SCORE PANEL
+        if white_penalty_count > 0 {
+            if state.w_score < 10 {
+                display.draw(Font32x64::render_str(&format!("{:<2}", state.w_score)).stroke(Some(white)).translate(Point::new(194, 2)));
+            } else {
+                display.draw(Font22x46::render_str(&format!("{:<2}", state.w_score)).stroke(Some(white)).translate(Point::new(203, 2)));
+            }
+        } else {
+            if state.w_score < 10 {
+                display.draw(Font32x64::render_str(&format!("{:<2}", state.w_score)).stroke(Some(white)).translate(Point::new(194 + 16, 2)));
+            } else {
+                display.draw(Font32x64::render_str(&format!("{:<2}", state.w_score)).stroke(Some(white)).translate(Point::new(194, 2)));
+            }
+        }
+
+
+
+
+
+
+
+
+
 
         loop {
             let end = display.run_once();
@@ -1497,8 +1563,25 @@ where
 {
     let min = secs / T::from(60u8);
     let sec = secs % T::from(60u8);
-    format!("{:2}:{:02}", min, sec)
+    format!("{:>2}:{:>02}", min, sec)
 }
+
+
+
+
+
+/*
+
+fn time_panel_center(text: &str) -> std::string::String
+{
+    text_length = text.len();
+    format!("{:^1$}",text, 16 + text_length)
+}
+
+*/
+
+
+
 
 macro_rules! new_button_func {
     ($type:ty, $name:ident) => {

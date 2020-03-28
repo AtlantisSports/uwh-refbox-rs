@@ -8,7 +8,7 @@ use embedded_graphics::{fonts::Font, pixelcolor};
 use embedded_graphics_simulator::DisplayBuilder;
 //use fonts::fonts::Font6x8 as CustomFont6x8;
 //use fonts::fonts::{Font8x15, Font11x25, Font16x31, Font22x46, Font32x64};
-use fonts::fonts::{Font8x15, Font16x31, Font22x46, Font32x64};
+use fonts::fonts::{Font16x31, Font22x46, Font32x64, Font8x15};
 use gio::prelude::*;
 use gtk::prelude::*;
 use log::*;
@@ -166,7 +166,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         };
 
         // EVERYTHING TO BE DISPLAYED ON THE CENTER 2 TIME PANELS
-        let _center_time_panels = match state.timeout {
+        match state.timeout {
             TimeoutState::None => {
                 //No current timeout
                 display.draw(
@@ -247,10 +247,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         132,
                         2,
                     ),
-                    TimeoutState::Ref(secs) => {
-                        ("REF TIMEOUT", 68, 4, "", 0, 0, String::new(), 0, 0)
-                    }
-                    TimeoutState::PenaltyShot(secs) => {
+                    TimeoutState::Ref(_) => ("REF TIMEOUT", 68, 4, "", 0, 0, String::new(), 0, 0),
+                    TimeoutState::PenaltyShot(_) => {
                         ("PENALTY", 65, 4, "SHOT", 149, 4, String::new(), 0, 0)
                     }
                     _ => ("T/O ERROR", 76, 2, "", 0, 0, String::new(), 0, 0),
@@ -298,19 +296,18 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 );
             }
         } else if state.b_score < 10 {
-                display.draw(
-                    Font32x64::render_str(&format!("{:<2}", state.b_score))
-                        .stroke(Some(blue))
-                        .translate(Point::new(2 + 16, 2)),
-                );
-            } else {
-                display.draw(
-                    Font32x64::render_str(&format!("{:<2}", state.b_score))
-                        .stroke(Some(blue))
-                        .translate(Point::new(2, 2)),
-                );
-            }
-        
+            display.draw(
+                Font32x64::render_str(&format!("{:<2}", state.b_score))
+                    .stroke(Some(blue))
+                    .translate(Point::new(2 + 16, 2)),
+            );
+        } else {
+            display.draw(
+                Font32x64::render_str(&format!("{:<2}", state.b_score))
+                    .stroke(Some(blue))
+                    .translate(Point::new(2, 2)),
+            );
+        }
 
         // EVERYTHING TO BE DISPLAYED ON THE WHITE SCORE PANEL
         if white_penalty_count > 0 {
@@ -328,23 +325,18 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 );
             }
         } else if state.w_score < 10 {
-                display.draw(
-                    Font32x64::render_str(&format!("{:<2}", state.w_score))
-                        .stroke(Some(white))
-                        .translate(Point::new(194 + 16, 2)),
-                );
-            } else {
-                display.draw(
-                    Font32x64::render_str(&format!("{:<2}", state.w_score))
-                        .stroke(Some(white))
-                        .translate(Point::new(194, 2)),
-                );
-            }
-        
-
-
-
-
+            display.draw(
+                Font32x64::render_str(&format!("{:<2}", state.w_score))
+                    .stroke(Some(white))
+                    .translate(Point::new(194 + 16, 2)),
+            );
+        } else {
+            display.draw(
+                Font32x64::render_str(&format!("{:<2}", state.w_score))
+                    .stroke(Some(white))
+                    .translate(Point::new(194, 2)),
+            );
+        }
 
         loop {
             let end = display.run_once();

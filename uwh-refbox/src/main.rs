@@ -122,8 +122,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         // Make a fake game state
         let state = GameSnapshot {
             current_period: GamePeriod::SuddenDeath,
-            secs_in_period: 754,                    // 12:34
-            timeout: TimeoutState::PenaltyShot(42), //Black(25), // None, White (34), Ref(34), PenaltyShot(34),
+            secs_in_period: 754,                       // 12:34
+            timeout: TimeoutSnapshot::PenaltyShot(42), //Black(25), // None, White (34), Ref(34), PenaltyShot(34),
             b_score: 67,
             w_score: 5,
             penalties: vec![],
@@ -142,8 +142,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             .build_rgb();
 
         let game_color = match state.timeout {
-            TimeoutState::PenaltyShot(_) => red,
-            TimeoutState::Ref(_) => yellow,
+            TimeoutSnapshot::PenaltyShot(_) => red,
+            TimeoutSnapshot::Ref(_) => yellow,
             _ => match state.current_period {
                 GamePeriod::FirstHalf
                 | GamePeriod::SecondHalf
@@ -159,15 +159,15 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         };
 
         let timeout_color = match state.timeout {
-            TimeoutState::White(_) => white,
-            TimeoutState::Black(_) => blue,
-            TimeoutState::Ref(_) => yellow,
+            TimeoutSnapshot::White(_) => white,
+            TimeoutSnapshot::Black(_) => blue,
+            TimeoutSnapshot::Ref(_) => yellow,
             _ => red,
         };
 
         // EVERYTHING TO BE DISPLAYED ON THE CENTER 2 TIME PANELS
         match state.timeout {
-            TimeoutState::None => {
+            TimeoutSnapshot::None => {
                 //No timeout currently
                 display.draw(
                     Font22x46::render_str(&secs_to_time_string(state.secs_in_period))
@@ -231,7 +231,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 );
 
                 match state.timeout {
-                    TimeoutState::White(secs) => {
+                    TimeoutSnapshot::White(secs) => {
                         display.draw(
                             Font8x15::render_str("WHITE")
                                 .stroke(Some(timeout_color))
@@ -249,7 +249,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         );
                     }
 
-                    TimeoutState::Black(secs) => {
+                    TimeoutSnapshot::Black(secs) => {
                         display.draw(
                             Font8x15::render_str("BLACK")
                                 .stroke(Some(timeout_color))
@@ -267,13 +267,13 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         );
                     }
 
-                    TimeoutState::Ref(_) => display.draw(
+                    TimeoutSnapshot::Ref(_) => display.draw(
                         Font11x25::render_str("REF TIMEOUT")
                             .stroke(Some(timeout_color))
                             .translate(Point::new(68, 3)),
                     ),
 
-                    TimeoutState::PenaltyShot(_) => {
+                    TimeoutSnapshot::PenaltyShot(_) => {
                         display.draw(
                             Font11x25::render_str("PENALTY")
                                 .stroke(Some(timeout_color))
@@ -1350,7 +1350,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let clock_was_running_ = clock_was_running.clone();
         time_edit_submit.connect_clicked(move |_| {
             let mut tm = tm_.lock().unwrap();
-            tm.set_clock_time(Duration::from_secs(get_displayed_time()))
+            tm.set_game_clock_time(Duration::from_secs(get_displayed_time()))
                 .unwrap();
             if clock_was_running_.load(Ordering::SeqCst) {
                 tm.start_clock(Instant::now());
@@ -1393,8 +1393,9 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             tm.update(now);
             clock_was_running.store(tm.clock_is_running(), Ordering::SeqCst);
             tm.stop_clock(now);
-            modified_game_time
-                .set_label(&secs_to_time_string(tm.clock_time(now).unwrap().as_secs()));
+            modified_game_time.set_label(&secs_to_time_string(
+                tm.game_clock_time(now).unwrap().as_secs(),
+            ));
             layout_stack_.set_visible_child(&time_edit_layout);
         });
 
@@ -1488,7 +1489,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             match b.get_label().unwrap().as_str() {
                 "REFEREE TIMEOUT" => {
                     debug!("Button stopping clock");
-                    tm.lock().unwrap().stop_clock(Instant::now())
+                    tm.lock().unwrap().stop_clock(Instant::now()).unwrap() // TODO: Get rid of unwrap here
                 }
                 "RESUME" => {
                     debug!("Button starting clock");
@@ -1539,7 +1540,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         trace!("Updater: locking tm");
                         let mut tm = tm_.lock().unwrap();
                         let now = update_and_send_snapshot(&mut tm);
-                        if let Some(nanos) = tm.clock_time(now).and_then(|clock_time| {
+                        if let Some(nanos) = tm.game_clock_time(now).and_then(|clock_time| {
                             if tm.current_period() == GamePeriod::SuddenDeath {
                                 Some(1_000_000_000 - clock_time.subsec_nanos())
                             } else {
@@ -1570,11 +1571,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
             if snapshot.timeout != last_snapshot.timeout {
                 match snapshot.timeout {
-                    TimeoutState::None => {
+                    TimeoutSnapshot::None => {
                         debug!("GUI Drawer: Received clock started");
                         main_referee_timeout.set_label("REFEREE TIMEOUT");
                     }
-                    TimeoutState::Ref(_) => {
+                    TimeoutSnapshot::Ref(_) => {
                         debug!("GUI Drawer: Received clock stopped");
                         main_referee_timeout.set_label("RESUME");
                     }

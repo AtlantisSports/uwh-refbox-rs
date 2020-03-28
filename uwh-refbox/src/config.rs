@@ -15,8 +15,8 @@ pub struct Hardware {
 impl Default for Hardware {
     fn default() -> Self {
         Self {
-            screen_x: 800,
-            screen_y: 480,
+            screen_x: 1024,
+            screen_y: 768,
             has_xbee: false,
             has_rs485: false,
             white_on_right: false,
@@ -153,8 +153,8 @@ mod test {
     use indoc::indoc;
 
     const HW_STRING: &str = indoc!(
-        r#"screen_x = 800
-           screen_y = 480
+        r#"screen_x = 1024
+           screen_y = 768
            has_xbee = false
            has_rs485 = false
            white_on_right = false"#

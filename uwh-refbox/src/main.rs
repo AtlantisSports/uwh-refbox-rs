@@ -7,8 +7,7 @@ use embedded_graphics::prelude::*;
 use embedded_graphics::{fonts::Font, pixelcolor};
 use embedded_graphics_simulator::DisplayBuilder;
 //use fonts::fonts::Font6x8 as CustomFont6x8;
-//use fonts::fonts::{Font8x15, Font11x25, Font16x31, Font22x46, Font32x64};
-use fonts::fonts::{Font16x31, Font22x46, Font32x64, Font8x15};
+use fonts::fonts::{Font11x25, Font16x31, Font22x46, Font32x64, Font6x8, Font8x15};
 use gio::prelude::*;
 use gtk::prelude::*;
 use log::*;
@@ -123,8 +122,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         // Make a fake game state
         let state = GameSnapshot {
             current_period: GamePeriod::OvertimeFirstHalf,
-            secs_in_period: 754,              // 12:34
-            timeout: TimeoutState::White(34), //None, //PenaltyShot(34),
+            secs_in_period: 754,                    // 12:34
+            timeout: TimeoutState::PenaltyShot(42), //Black(25), // None, White (34), Ref(34), PenaltyShot(34),
             b_score: 67,
             w_score: 5,
             penalties: vec![],
@@ -162,13 +161,14 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let timeout_color = match state.timeout {
             TimeoutState::White(_) => white,
             TimeoutState::Black(_) => blue,
+            TimeoutState::Ref(_) => yellow,
             _ => red,
         };
 
         // EVERYTHING TO BE DISPLAYED ON THE CENTER 2 TIME PANELS
         match state.timeout {
             TimeoutState::None => {
-                //No current timeout
+                //No timeout currently
                 display.draw(
                     Font22x46::render_str(&secs_to_time_string(state.secs_in_period))
                         .stroke(Some(game_color))
@@ -196,21 +196,21 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             }
 
             _ => {
-                //Some current timeout
+                //Some timeout currently
                 display.draw(
                     Font16x31::render_str(&secs_to_time_string(state.secs_in_period))
                         .stroke(Some(game_color))
                         .translate(Point::new(108, 33)),
                 );
 
-                let (text1, x1, y1, text2, x2, y2) = match state.current_period {
-                    GamePeriod::FirstHalf | GamePeriod::OvertimeFirstHalf => {
-                        ("1ST", 72, 33, "HALF", 68, 48)
+                let (text1, x1, y1, text2, x2, y2, text3, x3, y3) = match state.current_period {
+                    GamePeriod::FirstHalf => ("1ST", 72, 33, "", 0, 0, "HALF", 68, 48),
+                    GamePeriod::SecondHalf => ("2ND", 72, 33, "", 0, 0, "HALF", 68, 48),
+                    GamePeriod::OvertimeFirstHalf => ("OT 1", 64, 33, "ST", 96, 33, "HALF", 68, 48),
+                    GamePeriod::OvertimeSecondHalf => {
+                        ("OT 2", 64, 33, "ND", 96, 33, "HALF", 68, 48)
                     }
-                    GamePeriod::SecondHalf | GamePeriod::OvertimeSecondHalf => {
-                        ("2ND", 72, 33, "HALF", 68, 48)
-                    }
-                    _ => ("PERIOD ERROR", 72, 33, "", 0, 0),
+                    _ => ("PERIOD ERROR", 72, 33, "", 0, 0, "", 0, 0),
                 };
 
                 display.draw(
@@ -219,65 +219,84 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         .translate(Point::new(x1, y1)),
                 );
                 display.draw(
-                    Font8x15::render_str(text2)
+                    Font6x8::render_str(text2)
                         .stroke(Some(game_color))
                         .translate(Point::new(x2, y2)),
                 );
-
-                let (text1, x1, y1, text2, x2, y2, text3, x3, y3) = match state.timeout {
-                    TimeoutState::White(secs) => (
-                        "WHITE",
-                        76,
-                        2,
-                        "TIMEOUT",
-                        68,
-                        17,
-                        format!(":{}", secs),
-                        132,
-                        2,
-                    ),
-                    TimeoutState::Black(secs) => (
-                        "BLACK",
-                        76,
-                        2,
-                        "TIMEOUT",
-                        68,
-                        17,
-                        format!(":{}", secs),
-                        132,
-                        2,
-                    ),
-                    TimeoutState::Ref(_) => ("REF TIMEOUT", 68, 4, "", 0, 0, String::new(), 0, 0),
-                    TimeoutState::PenaltyShot(_) => {
-                        ("PENALTY", 65, 4, "SHOT", 149, 4, String::new(), 0, 0)
-                    }
-                    _ => ("T/O ERROR", 76, 2, "", 0, 0, String::new(), 0, 0),
-                };
                 display.draw(
-                    Font8x15::render_str(text1)
-                        .stroke(Some(timeout_color))
-                        .translate(Point::new(x1, y1)),
-                );
-                display.draw(
-                    Font8x15::render_str(text2)
-                        .stroke(Some(timeout_color))
-                        .translate(Point::new(x2, y2)),
-                );
-                display.draw(
-                    Font16x31::render_str(&text3)
-                        .stroke(Some(timeout_color))
+                    Font8x15::render_str(text3)
+                        .stroke(Some(game_color))
                         .translate(Point::new(x3, y3)),
                 );
-                display.draw(
-                    Font16x31::render_str(&secs_to_time_string(state.secs_in_period))
-                        .stroke(Some(game_color))
-                        .translate(Point::new(108, 33)),
-                );
+
+                match state.timeout {
+                    TimeoutState::White(secs) => {
+                        display.draw(
+                            Font8x15::render_str("WHITE")
+                                .stroke(Some(timeout_color))
+                                .translate(Point::new(76, 2)),
+                        );
+                        display.draw(
+                            Font8x15::render_str("TIMEOUT")
+                                .stroke(Some(timeout_color))
+                                .translate(Point::new(68, 17)),
+                        );
+                        display.draw(
+                            Font16x31::render_str(&format!(":{}", secs))
+                                .stroke(Some(timeout_color))
+                                .translate(Point::new(132, 2)),
+                        );
+                    }
+
+                    TimeoutState::Black(secs) => {
+                        display.draw(
+                            Font8x15::render_str("BLACK")
+                                .stroke(Some(timeout_color))
+                                .translate(Point::new(76, 2)),
+                        );
+                        display.draw(
+                            Font8x15::render_str("TIMEOUT")
+                                .stroke(Some(timeout_color))
+                                .translate(Point::new(68, 17)),
+                        );
+                        display.draw(
+                            Font16x31::render_str(&format!(":{}", secs))
+                                .stroke(Some(timeout_color))
+                                .translate(Point::new(132, 2)),
+                        );
+                    }
+
+                    TimeoutState::Ref(_) => display.draw(
+                        Font11x25::render_str("REF TIMEOUT")
+                            .stroke(Some(timeout_color))
+                            .translate(Point::new(68, 3)),
+                    ),
+
+                    TimeoutState::PenaltyShot(_) => {
+                        display.draw(
+                            Font11x25::render_str("PENALTY")
+                                .stroke(Some(timeout_color))
+                                .translate(Point::new(65, 3)),
+                        );
+                        display.draw(
+                            Font11x25::render_str("SHOT")
+                                .stroke(Some(timeout_color))
+                                .translate(Point::new(149, 3)),
+                        );
+                    }
+
+                    _ => display.draw(
+                        Font8x15::render_str("T/O ERROR")
+                            .stroke(Some(red))
+                            .translate(Point::new(64, 133)),
+                    ),
+                };
             }
         };
 
-        let black_penalty_count = 1;
-        let white_penalty_count = 1;
+        //temporary values for assigning a penalty
+        let black_penalty_count = 0;
+        let white_penalty_count = 0;
 
         // EVERYTHING TO BE DISPLAYED ON THE BLACK SCORE PANEL
 

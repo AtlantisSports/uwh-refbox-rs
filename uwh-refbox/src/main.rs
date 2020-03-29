@@ -121,7 +121,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     if matches.subcommand_matches("simulate").is_some() {
         // Make a fake game state
         let state = GameSnapshot {
-            current_period: GamePeriod::OvertimeFirstHalf,
+            current_period: GamePeriod::SuddenDeath,
             secs_in_period: 754,                    // 12:34
             timeout: TimeoutState::PenaltyShot(42), //Black(25), // None, White (34), Ref(34), PenaltyShot(34),
             b_score: 67,
@@ -210,6 +210,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     GamePeriod::OvertimeSecondHalf => {
                         ("OT 2", 64, 33, "ND", 96, 33, "HALF", 68, 48)
                     }
+                    GamePeriod::SuddenDeath => ("", 0, 0, "SUDDEN", 70, 39, "DEATH", 68, 48),
                     _ => ("PERIOD ERROR", 72, 33, "", 0, 0, "", 0, 0),
                 };
 

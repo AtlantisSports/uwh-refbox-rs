@@ -125,7 +125,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             secs_in_period: 754,                    // 12:34
             timeout: TimeoutState::None, //White (34), //Ref(34), //PenaltyShot(34),
             b_score: 10,
-            w_score: 15,
+            w_score: 5,
             penalties: vec![
                 PenaltySnapshot {
                     color: Color::Black,

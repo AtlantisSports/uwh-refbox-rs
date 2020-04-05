@@ -1,5 +1,7 @@
 #![allow(dead_code)] // TODO: This is really ugly, needs to be removed
 
+//use std::cmp::Ordering
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct GameSnapshot {
     pub current_period: GamePeriod,
@@ -80,3 +82,17 @@ pub enum PenaltyTime {
     Seconds(u16),
     TotalDismissal,
 }
+/*
+impl Ord for PenaltySnapshot {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self {
+            PenaltyTime::TotalDismissal => match other {
+                PenaltyTime::TotalDismissal => Ordering::Equal,
+                PenaltyTime::Seconds(_) => Ordering::Greater,
+
+
+
+        }
+    }
+}
+*/

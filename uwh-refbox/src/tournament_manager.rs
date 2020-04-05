@@ -161,7 +161,7 @@ impl TournamentManager {
             | GamePeriod::OvertimeFirstHalf
             | GamePeriod::OvertimeSecondHalf
             | GamePeriod::SuddenDeath => Ok(()),
-            gp @ _ => Err(TournamentManagerError::WrongGamePeriod(
+            gp => Err(TournamentManagerError::WrongGamePeriod(
                 TimeoutSnapshot::PenaltyShot(0),
                 gp,
             )),
@@ -171,36 +171,44 @@ impl TournamentManager {
     /// Returns `Ok` if timeout type can be switched, otherwise returns `Err` describing why not
     pub fn can_switch_to_w_timeout(&self) -> Result<()> {
         if let TimeoutState::Black(_) = &self.timeout_state {
-            Err(TournamentManagerError::NotInBlackTimeout)
+            if self.w_timeouts_used < self.config.team_timeouts_per_half {
+                Ok(())
+            } else {
+                Err(TournamentManagerError::TooManyTeamTimeouts("white"))
+            }
         } else {
-            Ok(())
+            Err(TournamentManagerError::NotInBlackTimeout)
         }
     }
 
     /// Returns `Ok` if timeout type can be switched, otherwise returns `Err` describing why not
     pub fn can_switch_to_b_timeout(&self) -> Result<()> {
         if let TimeoutState::White(_) = &self.timeout_state {
-            Err(TournamentManagerError::NotInWhiteTimeout)
+            if self.b_timeouts_used < self.config.team_timeouts_per_half {
+                Ok(())
+            } else {
+                Err(TournamentManagerError::TooManyTeamTimeouts("black"))
+            }
         } else {
-            Ok(())
+            Err(TournamentManagerError::NotInWhiteTimeout)
         }
     }
 
     /// Returns `Ok` if timeout type can be switched, otherwise returns `Err` describing why not
     pub fn can_switch_to_ref_timeout(&self) -> Result<()> {
         if let TimeoutState::PenaltyShot(_) = &self.timeout_state {
-            Err(TournamentManagerError::NotInPenaltyShot)
-        } else {
             Ok(())
+        } else {
+            Err(TournamentManagerError::NotInPenaltyShot)
         }
     }
 
     /// Returns `Ok` if timeout type can be switched, otherwise returns `Err` describing why not
     pub fn can_switch_to_penalty_shot(&self) -> Result<()> {
         if let TimeoutState::Ref(_) = &self.timeout_state {
-            Err(TournamentManagerError::NotInRefTimeout)
-        } else {
             Ok(())
+        } else {
+            Err(TournamentManagerError::NotInRefTimeout)
         }
     }
 
@@ -208,13 +216,19 @@ impl TournamentManager {
         match self.can_start_w_timeout() {
             Ok(()) => {
                 info!("Starting a white timeout");
-                self.stop_game_clock(now)?;
-                self.timeout_state = TimeoutState::White(ClockState::CountingDown {
-                    start_time: now,
-                    time_remaining_at_start: Duration::from_secs(
-                        self.config.team_timeout_duration.into(),
-                    ),
-                });
+                if self.clock_is_running() {
+                    self.stop_game_clock(now)?;
+                    self.timeout_state = TimeoutState::White(ClockState::CountingDown {
+                        start_time: now,
+                        time_remaining_at_start: Duration::from_secs(
+                            self.config.team_timeout_duration.into(),
+                        ),
+                    });
+                } else {
+                    self.timeout_state = TimeoutState::White(ClockState::Stopped {
+                        clock_time: Duration::from_secs(self.config.team_timeout_duration.into()),
+                    });
+                }
                 self.w_timeouts_used += 1;
                 Ok(())
             }
@@ -226,13 +240,19 @@ impl TournamentManager {
         match self.can_start_b_timeout() {
             Ok(()) => {
                 info!("Starting a black timeout");
-                self.stop_game_clock(now)?;
-                self.timeout_state = TimeoutState::Black(ClockState::CountingDown {
-                    start_time: now,
-                    time_remaining_at_start: Duration::from_secs(
-                        self.config.team_timeout_duration.into(),
-                    ),
-                });
+                if self.clock_is_running() {
+                    self.stop_game_clock(now)?;
+                    self.timeout_state = TimeoutState::Black(ClockState::CountingDown {
+                        start_time: now,
+                        time_remaining_at_start: Duration::from_secs(
+                            self.config.team_timeout_duration.into(),
+                        ),
+                    });
+                } else {
+                    self.timeout_state = TimeoutState::Black(ClockState::Stopped {
+                        clock_time: Duration::from_secs(self.config.team_timeout_duration.into()),
+                    });
+                }
                 self.b_timeouts_used += 1;
                 Ok(())
             }
@@ -244,11 +264,17 @@ impl TournamentManager {
         match self.can_start_ref_timeout() {
             Ok(()) => {
                 info!("Starting a ref timeout");
-                self.stop_game_clock(now)?;
-                self.timeout_state = TimeoutState::Ref(ClockState::CountingUp {
-                    start_time: now,
-                    time_at_start: Duration::from_secs(0),
-                });
+                if self.clock_is_running() {
+                    self.stop_game_clock(now)?;
+                    self.timeout_state = TimeoutState::Ref(ClockState::CountingUp {
+                        start_time: now,
+                        time_at_start: Duration::from_secs(0),
+                    });
+                } else {
+                    self.timeout_state = TimeoutState::Ref(ClockState::Stopped {
+                        clock_time: Duration::from_secs(0),
+                    });
+                }
                 Ok(())
             }
             e @ Err(_) => e,
@@ -259,11 +285,17 @@ impl TournamentManager {
         match self.can_start_penalty_shot() {
             Ok(()) => {
                 info!("Starting a penalty shot");
-                self.stop_game_clock(now)?;
-                self.timeout_state = TimeoutState::PenaltyShot(ClockState::CountingUp {
-                    start_time: now,
-                    time_at_start: Duration::from_secs(0),
-                });
+                if self.clock_is_running() {
+                    self.stop_game_clock(now)?;
+                    self.timeout_state = TimeoutState::PenaltyShot(ClockState::CountingUp {
+                        start_time: now,
+                        time_at_start: Duration::from_secs(0),
+                    });
+                } else {
+                    self.timeout_state = TimeoutState::PenaltyShot(ClockState::Stopped {
+                        clock_time: Duration::from_secs(0),
+                    });
+                }
                 Ok(())
             }
             e @ Err(_) => e,
@@ -278,7 +310,7 @@ impl TournamentManager {
                     self.timeout_state = TimeoutState::White(cs.clone());
                 }
                 self.w_timeouts_used += 1;
-                self.b_timeouts_used -= 1;
+                self.b_timeouts_used = self.b_timeouts_used.saturating_sub(1);
                 Ok(())
             }
             e @ Err(_) => e,
@@ -293,7 +325,7 @@ impl TournamentManager {
                     self.timeout_state = TimeoutState::Black(cs.clone());
                 }
                 self.b_timeouts_used += 1;
-                self.w_timeouts_used -= 1;
+                self.w_timeouts_used = self.w_timeouts_used.saturating_sub(1);
                 Ok(())
             }
             e @ Err(_) => e,
@@ -323,6 +355,36 @@ impl TournamentManager {
                 Ok(())
             }
             e @ Err(_) => e,
+        }
+    }
+
+    pub fn end_timeout(&mut self, now: Instant) -> Result<()> {
+        match &self.timeout_state {
+            TimeoutState::None => Err(TournamentManagerError::NotInTimeout),
+            TimeoutState::Black(cs) | TimeoutState::White(cs) => {
+                info!("Ending team timeout");
+                match cs {
+                    ClockState::Stopped { .. } => self.timeout_state = TimeoutState::None,
+                    ClockState::CountingDown { .. } => {
+                        self.start_game_clock(now);
+                        self.timeout_state = TimeoutState::None;
+                    }
+                    ClockState::CountingUp { .. } => panic!("Invalid timeout state"),
+                };
+                Ok(())
+            }
+            TimeoutState::Ref(cs) | TimeoutState::PenaltyShot(cs) => {
+                info!("Ending ref timeout or penalty shot");
+                match cs {
+                    ClockState::Stopped { .. } => self.timeout_state = TimeoutState::None,
+                    ClockState::CountingUp { .. } => {
+                        self.start_game_clock(now);
+                        self.timeout_state = TimeoutState::None;
+                    }
+                    ClockState::CountingDown { .. } => panic!("Invalid timeout state"),
+                };
+                Ok(())
+            }
         }
     }
 
@@ -531,6 +593,7 @@ impl TournamentManager {
                             } else {
                                 panic!("Cannot end team timeout because game clock isn't stopped");
                             }
+                            self.timeout_state = TimeoutState::None;
                         }
                     }
                     ClockState::CountingUp { .. } | ClockState::Stopped { .. } => {}
@@ -683,6 +746,26 @@ impl TournamentManager {
         }
     }
 
+    #[cfg(test)]
+    fn set_timeout_state(&mut self, state: TimeoutState) {
+        if let ClockState::Stopped { .. } = self.clock_state {
+            self.timeout_state = state;
+        } else {
+            panic!("Can't edit timeout state while clock is running");
+        }
+    }
+
+    #[cfg(test)]
+    fn get_timeout_state(&self) -> TimeoutState {
+        self.timeout_state.clone()
+    }
+
+    #[cfg(test)]
+    pub(super) fn set_timeouts_used(&mut self, b: u16, w: u16) {
+        self.b_timeouts_used = b;
+        self.w_timeouts_used = w;
+    }
+
     /// Returns `None` if the clock time would be negative, or if `now` is before the start
     /// of the current period
     pub fn game_clock_time(&self, now: Instant) -> Option<Duration> {
@@ -719,7 +802,7 @@ impl TournamentManager {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 enum ClockState {
     Stopped {
         clock_time: Duration,
@@ -772,14 +855,14 @@ impl ClockState {
 
     fn as_secs_u16(&self, now: Instant) -> u16 {
         self.clock_time(now)
-            .unwrap_or(Duration::from_secs(std::u16::MAX.into()))
+            .unwrap_or_else(|| Duration::from_secs(std::u16::MAX.into()))
             .as_secs()
             .try_into()
             .unwrap()
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 enum TimeoutState {
     None,
     Black(ClockState),
@@ -800,7 +883,7 @@ impl TimeoutState {
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, PartialEq, Error)]
 pub enum TournamentManagerError {
     #[error("Can't edit clock time while clock is running")]
     ClockIsRunning,
@@ -818,6 +901,8 @@ pub enum TournamentManagerError {
     NotInBlackTimeout,
     #[error("Can only switch to Black Timeout from White Timeout")]
     NotInWhiteTimeout,
+    #[error("Need to be in a timeout to end it")]
+    NotInTimeout,
     #[error("update() needs to be called before this action can be performed")]
     NeedsUpdate,
 }
@@ -826,6 +911,7 @@ pub type Result<T> = std::result::Result<T, TournamentManagerError>;
 
 #[cfg(test)]
 mod test {
+    use super::TournamentManagerError as TMErr;
     use super::*;
     use std::convert::TryInto;
 
@@ -864,6 +950,636 @@ mod test {
         tm.stop_game_clock(next_time).unwrap();
         assert_eq!(tm.clock_is_running(), false);
         assert_eq!(tm.game_clock_time(next_time), Some(Duration::from_secs(23)));
+    }
+
+    #[test]
+    fn test_clock_start_stop_with_timeouts() {
+        let config = GameConfig {
+            nominal_break: 13,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        let stop = start + Duration::from_secs(2);
+
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(18));
+        tm.set_timeout_state(TimeoutState::Black(ClockState::Stopped {
+            clock_time: Duration::from_secs(5),
+        }));
+
+        assert_eq!(tm.clock_is_running(), false);
+        assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
+        assert_eq!(tm.timeout_time(start), Some(Duration::from_secs(5)));
+        tm.start_clock(start);
+        assert_eq!(tm.clock_is_running(), true);
+        assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
+        assert_eq!(tm.timeout_time(start), Some(Duration::from_secs(5)));
+        tm.stop_clock(stop).unwrap();
+        assert_eq!(tm.clock_is_running(), false);
+        assert_eq!(tm.game_clock_time(stop), Some(Duration::from_secs(18)));
+        assert_eq!(tm.timeout_time(stop), Some(Duration::from_secs(3)));
+
+        tm.set_timeout_state(TimeoutState::White(ClockState::Stopped {
+            clock_time: Duration::from_secs(5),
+        }));
+
+        assert_eq!(tm.clock_is_running(), false);
+        assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
+        assert_eq!(tm.timeout_time(start), Some(Duration::from_secs(5)));
+        tm.start_clock(start);
+        assert_eq!(tm.clock_is_running(), true);
+        assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
+        assert_eq!(tm.timeout_time(start), Some(Duration::from_secs(5)));
+        tm.stop_clock(stop).unwrap();
+        assert_eq!(tm.clock_is_running(), false);
+        assert_eq!(tm.game_clock_time(stop), Some(Duration::from_secs(18)));
+        assert_eq!(tm.timeout_time(stop), Some(Duration::from_secs(3)));
+
+        tm.set_timeout_state(TimeoutState::Ref(ClockState::Stopped {
+            clock_time: Duration::from_secs(5),
+        }));
+
+        assert_eq!(tm.clock_is_running(), false);
+        assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
+        assert_eq!(tm.timeout_time(start), Some(Duration::from_secs(5)));
+        tm.start_clock(start);
+        assert_eq!(tm.clock_is_running(), true);
+        assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
+        assert_eq!(tm.timeout_time(start), Some(Duration::from_secs(5)));
+        tm.stop_clock(stop).unwrap();
+        assert_eq!(tm.clock_is_running(), false);
+        assert_eq!(tm.game_clock_time(stop), Some(Duration::from_secs(18)));
+        assert_eq!(tm.timeout_time(stop), Some(Duration::from_secs(7)));
+
+        tm.set_timeout_state(TimeoutState::PenaltyShot(ClockState::Stopped {
+            clock_time: Duration::from_secs(5),
+        }));
+
+        assert_eq!(tm.clock_is_running(), false);
+        assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
+        assert_eq!(tm.timeout_time(start), Some(Duration::from_secs(5)));
+        tm.start_clock(start);
+        assert_eq!(tm.clock_is_running(), true);
+        assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
+        assert_eq!(tm.timeout_time(start), Some(Duration::from_secs(5)));
+        tm.stop_clock(stop).unwrap();
+        assert_eq!(tm.clock_is_running(), false);
+        assert_eq!(tm.game_clock_time(stop), Some(Duration::from_secs(18)));
+        assert_eq!(tm.timeout_time(stop), Some(Duration::from_secs(7)));
+    }
+
+    #[test]
+    fn test_can_start_timeouts() {
+        let config = GameConfig {
+            team_timeouts_per_half: 1,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let to_b = TimeoutSnapshot::Black(0);
+        let to_w = TimeoutSnapshot::White(0);
+        let to_r = TimeoutSnapshot::Ref(0);
+        let to_ps = TimeoutSnapshot::PenaltyShot(0);
+
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(10));
+        assert_eq!(tm.can_start_b_timeout(), Ok(()));
+        assert_eq!(tm.can_start_w_timeout(), Ok(()));
+        assert_eq!(tm.can_start_ref_timeout(), Ok(()));
+        assert_eq!(tm.can_start_penalty_shot(), Ok(()));
+
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(10));
+        assert_eq!(tm.can_start_b_timeout(), Ok(()));
+        assert_eq!(tm.can_start_w_timeout(), Ok(()));
+        assert_eq!(tm.can_start_ref_timeout(), Ok(()));
+        assert_eq!(tm.can_start_penalty_shot(), Ok(()));
+
+        let otfh = GamePeriod::OvertimeFirstHalf;
+        tm.set_period_and_game_clock_time(otfh, Duration::from_secs(10));
+        assert_eq!(
+            tm.can_start_b_timeout(),
+            Err(TMErr::WrongGamePeriod(to_b, otfh))
+        );
+        assert_eq!(
+            tm.can_start_w_timeout(),
+            Err(TMErr::WrongGamePeriod(to_w, otfh))
+        );
+        assert_eq!(tm.can_start_ref_timeout(), Ok(()));
+        assert_eq!(tm.can_start_penalty_shot(), Ok(()));
+
+        let otsh = GamePeriod::OvertimeSecondHalf;
+        tm.set_period_and_game_clock_time(otsh, Duration::from_secs(10));
+        assert_eq!(
+            tm.can_start_b_timeout(),
+            Err(TMErr::WrongGamePeriod(to_b, otsh))
+        );
+        assert_eq!(
+            tm.can_start_w_timeout(),
+            Err(TournamentManagerError::WrongGamePeriod(to_w, otsh))
+        );
+        assert_eq!(tm.can_start_ref_timeout(), Ok(()));
+        assert_eq!(tm.can_start_penalty_shot(), Ok(()));
+
+        let otsd = GamePeriod::SuddenDeath;
+        tm.set_period_and_game_clock_time(otsd, Duration::from_secs(10));
+        assert_eq!(
+            tm.can_start_b_timeout(),
+            Err(TournamentManagerError::WrongGamePeriod(to_b, otsd))
+        );
+        assert_eq!(
+            tm.can_start_w_timeout(),
+            Err(TournamentManagerError::WrongGamePeriod(to_w, otsd))
+        );
+        assert_eq!(tm.can_start_ref_timeout(), Ok(()));
+        assert_eq!(tm.can_start_penalty_shot(), Ok(()));
+
+        let ht = GamePeriod::HalfTime;
+        tm.set_period_and_game_clock_time(ht, Duration::from_secs(10));
+        assert_eq!(
+            tm.can_start_b_timeout(),
+            Err(TournamentManagerError::WrongGamePeriod(to_b, ht))
+        );
+        assert_eq!(
+            tm.can_start_w_timeout(),
+            Err(TournamentManagerError::WrongGamePeriod(to_w, ht))
+        );
+        assert_eq!(tm.can_start_ref_timeout(), Ok(()));
+        assert_eq!(
+            tm.can_start_penalty_shot(),
+            Err(TournamentManagerError::WrongGamePeriod(to_ps, ht))
+        );
+
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(10));
+        tm.set_timeout_state(TimeoutState::Black(ClockState::Stopped {
+            clock_time: Duration::from_secs(0),
+        }));
+        assert_eq!(
+            tm.can_start_b_timeout(),
+            Err(TournamentManagerError::AlreadyInTimeout(to_b))
+        );
+        assert_eq!(tm.can_start_w_timeout(), Ok(()));
+        assert_eq!(tm.can_start_ref_timeout(), Ok(()));
+        assert_eq!(tm.can_start_penalty_shot(), Ok(()));
+
+        tm.set_timeout_state(TimeoutState::White(ClockState::Stopped {
+            clock_time: Duration::from_secs(0),
+        }));
+        assert_eq!(tm.can_start_b_timeout(), Ok(()));
+        assert_eq!(
+            tm.can_start_w_timeout(),
+            Err(TournamentManagerError::AlreadyInTimeout(to_w))
+        );
+        assert_eq!(tm.can_start_ref_timeout(), Ok(()));
+        assert_eq!(tm.can_start_penalty_shot(), Ok(()));
+
+        tm.set_timeout_state(TimeoutState::Ref(ClockState::Stopped {
+            clock_time: Duration::from_secs(0),
+        }));
+        assert_eq!(tm.can_start_b_timeout(), Ok(()));
+        assert_eq!(tm.can_start_w_timeout(), Ok(()));
+        assert_eq!(
+            tm.can_start_ref_timeout(),
+            Err(TournamentManagerError::AlreadyInTimeout(to_r))
+        );
+        assert_eq!(tm.can_start_penalty_shot(), Ok(()));
+
+        tm.set_timeout_state(TimeoutState::PenaltyShot(ClockState::Stopped {
+            clock_time: Duration::from_secs(0),
+        }));
+        assert_eq!(tm.can_start_b_timeout(), Ok(()));
+        assert_eq!(tm.can_start_w_timeout(), Ok(()));
+        assert_eq!(tm.can_start_ref_timeout(), Ok(()));
+        assert_eq!(
+            tm.can_start_penalty_shot(),
+            Err(TournamentManagerError::AlreadyInTimeout(to_ps))
+        );
+
+        tm.set_timeout_state(TimeoutState::None);
+        tm.set_timeouts_used(1, 1);
+        assert_eq!(
+            tm.can_start_b_timeout(),
+            Err(TournamentManagerError::TooManyTeamTimeouts("black"))
+        );
+        assert_eq!(
+            tm.can_start_w_timeout(),
+            Err(TournamentManagerError::TooManyTeamTimeouts("white"))
+        );
+        assert_eq!(tm.can_start_ref_timeout(), Ok(()));
+        assert_eq!(tm.can_start_penalty_shot(), Ok(()));
+    }
+
+    #[test]
+    fn test_start_timeouts() {
+        let config = GameConfig {
+            team_timeouts_per_half: 1,
+            team_timeout_duration: 10,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start = Instant::now();
+        let t_o_start = start + Duration::from_secs(2);
+        let mid_t_o = t_o_start + Duration::from_secs(3);
+        let t_o_end = t_o_start + Duration::from_secs(10);
+        let after_t_o = t_o_end + Duration::from_secs(2);
+
+        // Test starting timeouts with the clock stopped
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(30));
+        assert_eq!(tm.start_b_timeout(start), Ok(()));
+        assert_eq!(
+            tm.get_timeout_state(),
+            TimeoutState::Black(ClockState::Stopped {
+                clock_time: Duration::from_secs(10)
+            })
+        );
+
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(30));
+        assert_eq!(tm.start_w_timeout(start), Ok(()));
+        assert_eq!(
+            tm.get_timeout_state(),
+            TimeoutState::White(ClockState::Stopped {
+                clock_time: Duration::from_secs(10)
+            })
+        );
+
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(30));
+        assert_eq!(tm.start_ref_timeout(start), Ok(()));
+        assert_eq!(
+            tm.get_timeout_state(),
+            TimeoutState::Ref(ClockState::Stopped {
+                clock_time: Duration::from_secs(0)
+            })
+        );
+
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(30));
+        assert_eq!(tm.start_penalty_shot(start), Ok(()));
+        assert_eq!(
+            tm.get_timeout_state(),
+            TimeoutState::PenaltyShot(ClockState::Stopped {
+                clock_time: Duration::from_secs(0)
+            })
+        );
+
+        // Test starting timeouts with clock running, and test team timeouts ending
+        tm.set_timeouts_used(0, 0);
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(30));
+        tm.set_timeout_state(TimeoutState::None);
+        tm.start_clock(start);
+        assert_eq!(tm.start_b_timeout(t_o_start), Ok(()));
+        assert_eq!(
+            tm.get_timeout_state(),
+            TimeoutState::Black(ClockState::CountingDown {
+                start_time: t_o_start,
+                time_remaining_at_start: Duration::from_secs(10)
+            })
+        );
+        assert_eq!(tm.game_clock_time(t_o_start), Some(Duration::from_secs(28)));
+        assert_eq!(tm.timeout_time(mid_t_o), Some(Duration::from_secs(7)));
+        assert_eq!(tm.game_clock_time(mid_t_o), Some(Duration::from_secs(28)));
+        tm.update(mid_t_o);
+        assert_eq!(
+            tm.get_timeout_state(),
+            TimeoutState::Black(ClockState::CountingDown {
+                start_time: t_o_start,
+                time_remaining_at_start: Duration::from_secs(10)
+            })
+        );
+        assert_eq!(tm.timeout_time(t_o_end), Some(Duration::from_secs(0)));
+        assert_eq!(tm.timeout_time(after_t_o), None);
+        tm.update(after_t_o);
+        assert_eq!(tm.get_timeout_state(), TimeoutState::None);
+        assert_eq!(tm.timeout_time(after_t_o), None);
+        assert_eq!(tm.game_clock_time(after_t_o), Some(Duration::from_secs(26)));
+        assert_eq!(
+            tm.start_b_timeout(t_o_start),
+            Err(TournamentManagerError::TooManyTeamTimeouts("black"))
+        );
+
+        tm.stop_clock(after_t_o).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(30));
+        tm.set_timeout_state(TimeoutState::None);
+        tm.start_clock(start);
+        assert_eq!(tm.start_w_timeout(t_o_start), Ok(()));
+        assert_eq!(
+            tm.get_timeout_state(),
+            TimeoutState::White(ClockState::CountingDown {
+                start_time: t_o_start,
+                time_remaining_at_start: Duration::from_secs(10)
+            })
+        );
+        assert_eq!(tm.game_clock_time(t_o_start), Some(Duration::from_secs(28)));
+        assert_eq!(tm.timeout_time(mid_t_o), Some(Duration::from_secs(7)));
+        assert_eq!(tm.game_clock_time(mid_t_o), Some(Duration::from_secs(28)));
+        tm.update(mid_t_o);
+        assert_eq!(
+            tm.get_timeout_state(),
+            TimeoutState::White(ClockState::CountingDown {
+                start_time: t_o_start,
+                time_remaining_at_start: Duration::from_secs(10)
+            })
+        );
+        assert_eq!(tm.timeout_time(t_o_end), Some(Duration::from_secs(0)));
+        assert_eq!(tm.timeout_time(after_t_o), None);
+        tm.update(after_t_o);
+        assert_eq!(tm.get_timeout_state(), TimeoutState::None);
+        assert_eq!(tm.timeout_time(after_t_o), None);
+        assert_eq!(tm.game_clock_time(after_t_o), Some(Duration::from_secs(26)));
+        assert_eq!(
+            tm.start_w_timeout(t_o_start),
+            Err(TournamentManagerError::TooManyTeamTimeouts("white"))
+        );
+
+        tm.stop_clock(after_t_o).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(30));
+        tm.set_timeout_state(TimeoutState::None);
+        tm.start_clock(start);
+        assert_eq!(tm.start_ref_timeout(t_o_start), Ok(()));
+        assert_eq!(
+            tm.get_timeout_state(),
+            TimeoutState::Ref(ClockState::CountingUp {
+                start_time: t_o_start,
+                time_at_start: Duration::from_secs(0)
+            })
+        );
+        assert_eq!(tm.game_clock_time(t_o_start), Some(Duration::from_secs(28)));
+        assert_eq!(tm.timeout_time(mid_t_o), Some(Duration::from_secs(3)));
+        assert_eq!(tm.game_clock_time(mid_t_o), Some(Duration::from_secs(28)));
+        tm.update(mid_t_o);
+        assert_eq!(
+            tm.get_timeout_state(),
+            TimeoutState::Ref(ClockState::CountingUp {
+                start_time: t_o_start,
+                time_at_start: Duration::from_secs(0)
+            })
+        );
+        assert_eq!(tm.timeout_time(t_o_end), Some(Duration::from_secs(10)));
+
+        tm.stop_clock(after_t_o).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(30));
+        tm.set_timeout_state(TimeoutState::None);
+        tm.start_clock(start);
+        assert_eq!(tm.start_penalty_shot(t_o_start), Ok(()));
+        assert_eq!(
+            tm.get_timeout_state(),
+            TimeoutState::PenaltyShot(ClockState::CountingUp {
+                start_time: t_o_start,
+                time_at_start: Duration::from_secs(0)
+            })
+        );
+        assert_eq!(tm.game_clock_time(t_o_start), Some(Duration::from_secs(28)));
+        assert_eq!(tm.timeout_time(mid_t_o), Some(Duration::from_secs(3)));
+        assert_eq!(tm.game_clock_time(mid_t_o), Some(Duration::from_secs(28)));
+        tm.update(mid_t_o);
+        assert_eq!(
+            tm.get_timeout_state(),
+            TimeoutState::PenaltyShot(ClockState::CountingUp {
+                start_time: t_o_start,
+                time_at_start: Duration::from_secs(0)
+            })
+        );
+        assert_eq!(tm.timeout_time(t_o_end), Some(Duration::from_secs(10)));
+    }
+
+    #[test]
+    fn test_end_timeouts() {
+        let config = GameConfig::default();
+        let mut tm = TournamentManager::new(config);
+
+        let start = Instant::now();
+        let t_o_start = start - Duration::from_secs(2);
+        let t_o_end = start + Duration::from_secs(5);
+        let after_t_o = t_o_end + Duration::from_secs(10);
+
+        let two_secs = Duration::from_secs(2);
+        let ten_secs = Duration::from_secs(10);
+        let twenty_secs = Duration::from_secs(20);
+        let thirty_secs = Duration::from_secs(30);
+
+        // Test ending timeouts with the clock stopped
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
+        assert_eq!(tm.end_timeout(t_o_end), Err(TMErr::NotInTimeout));
+        tm.set_timeout_state(TimeoutState::Black(ClockState::Stopped {
+            clock_time: two_secs,
+        }));
+        assert_eq!(tm.clock_is_running(), false);
+        assert_eq!(tm.end_timeout(t_o_end), Ok(()));
+        assert_eq!(tm.get_timeout_state(), TimeoutState::None);
+        assert_eq!(tm.game_clock_time(t_o_end), Some(thirty_secs));
+        assert_eq!(tm.clock_is_running(), false);
+
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
+        tm.set_timeout_state(TimeoutState::White(ClockState::Stopped {
+            clock_time: two_secs,
+        }));
+        assert_eq!(tm.clock_is_running(), false);
+        assert_eq!(tm.end_timeout(t_o_end), Ok(()));
+        assert_eq!(tm.get_timeout_state(), TimeoutState::None);
+        assert_eq!(tm.game_clock_time(t_o_end), Some(thirty_secs));
+        assert_eq!(tm.clock_is_running(), false);
+
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
+        tm.set_timeout_state(TimeoutState::Ref(ClockState::Stopped {
+            clock_time: two_secs,
+        }));
+        assert_eq!(tm.clock_is_running(), false);
+        assert_eq!(tm.end_timeout(t_o_end), Ok(()));
+        assert_eq!(tm.get_timeout_state(), TimeoutState::None);
+        assert_eq!(tm.game_clock_time(t_o_end), Some(thirty_secs));
+        assert_eq!(tm.clock_is_running(), false);
+
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
+        tm.set_timeout_state(TimeoutState::PenaltyShot(ClockState::Stopped {
+            clock_time: two_secs,
+        }));
+        assert_eq!(tm.clock_is_running(), false);
+        assert_eq!(tm.end_timeout(t_o_end), Ok(()));
+        assert_eq!(tm.get_timeout_state(), TimeoutState::None);
+        assert_eq!(tm.game_clock_time(t_o_end), Some(thirty_secs));
+        assert_eq!(tm.clock_is_running(), false);
+
+        // Test ending timeouts with the clock running
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
+        tm.set_timeout_state(TimeoutState::Black(ClockState::CountingDown {
+            start_time: t_o_start,
+            time_remaining_at_start: ten_secs,
+        }));
+        assert_eq!(tm.clock_is_running(), true);
+        assert_eq!(tm.end_timeout(t_o_end), Ok(()));
+        assert_eq!(tm.get_timeout_state(), TimeoutState::None);
+        assert_eq!(tm.game_clock_time(after_t_o), Some(twenty_secs));
+        assert_eq!(tm.clock_is_running(), true);
+
+        tm.stop_clock(after_t_o).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
+        tm.set_timeout_state(TimeoutState::White(ClockState::CountingDown {
+            start_time: t_o_start,
+            time_remaining_at_start: ten_secs,
+        }));
+        assert_eq!(tm.clock_is_running(), true);
+        assert_eq!(tm.end_timeout(t_o_end), Ok(()));
+        assert_eq!(tm.get_timeout_state(), TimeoutState::None);
+        assert_eq!(tm.game_clock_time(after_t_o), Some(twenty_secs));
+        assert_eq!(tm.clock_is_running(), true);
+
+        tm.stop_clock(after_t_o).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
+        tm.set_timeout_state(TimeoutState::Ref(ClockState::CountingUp {
+            start_time: t_o_start,
+            time_at_start: ten_secs,
+        }));
+        assert_eq!(tm.clock_is_running(), true);
+        assert_eq!(tm.end_timeout(t_o_end), Ok(()));
+        assert_eq!(tm.get_timeout_state(), TimeoutState::None);
+        assert_eq!(tm.game_clock_time(after_t_o), Some(twenty_secs));
+        assert_eq!(tm.clock_is_running(), true);
+
+        tm.stop_clock(after_t_o).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
+        tm.set_timeout_state(TimeoutState::PenaltyShot(ClockState::CountingUp {
+            start_time: t_o_start,
+            time_at_start: ten_secs,
+        }));
+        assert_eq!(tm.clock_is_running(), true);
+        assert_eq!(tm.end_timeout(t_o_end), Ok(()));
+        assert_eq!(tm.get_timeout_state(), TimeoutState::None);
+        assert_eq!(tm.game_clock_time(after_t_o), Some(twenty_secs));
+        assert_eq!(tm.clock_is_running(), true);
+    }
+
+    #[test]
+    fn test_can_switch_timeouts() {
+        let config = GameConfig {
+            team_timeouts_per_half: 1,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        let ten_secs = Duration::from_secs(10);
+
+        tm.set_timeouts_used(1, 1);
+
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(30));
+        tm.set_timeout_state(TimeoutState::Black(ClockState::CountingDown {
+            start_time: start,
+            time_remaining_at_start: ten_secs,
+        }));
+        assert_eq!(
+            tm.can_switch_to_w_timeout(),
+            Err(TMErr::TooManyTeamTimeouts("white"))
+        );
+        tm.set_timeout_state(TimeoutState::White(ClockState::CountingDown {
+            start_time: start,
+            time_remaining_at_start: ten_secs,
+        }));
+        assert_eq!(
+            tm.can_switch_to_b_timeout(),
+            Err(TMErr::TooManyTeamTimeouts("black"))
+        );
+
+        tm.set_timeouts_used(0, 0);
+
+        tm.set_timeout_state(TimeoutState::Black(ClockState::CountingDown {
+            start_time: start,
+            time_remaining_at_start: ten_secs,
+        }));
+        assert_eq!(tm.can_switch_to_b_timeout(), Err(TMErr::NotInWhiteTimeout));
+        assert_eq!(tm.can_switch_to_w_timeout(), Ok(()));
+        assert_eq!(tm.can_switch_to_ref_timeout(), Err(TMErr::NotInPenaltyShot));
+        assert_eq!(tm.can_switch_to_penalty_shot(), Err(TMErr::NotInRefTimeout));
+
+        tm.set_timeout_state(TimeoutState::White(ClockState::CountingDown {
+            start_time: start,
+            time_remaining_at_start: ten_secs,
+        }));
+        assert_eq!(tm.can_switch_to_b_timeout(), Ok(()));
+        assert_eq!(tm.can_switch_to_w_timeout(), Err(TMErr::NotInBlackTimeout));
+        assert_eq!(tm.can_switch_to_ref_timeout(), Err(TMErr::NotInPenaltyShot));
+        assert_eq!(tm.can_switch_to_penalty_shot(), Err(TMErr::NotInRefTimeout));
+
+        tm.set_timeout_state(TimeoutState::Ref(ClockState::CountingUp {
+            start_time: start,
+            time_at_start: ten_secs,
+        }));
+        assert_eq!(tm.can_switch_to_b_timeout(), Err(TMErr::NotInWhiteTimeout));
+        assert_eq!(tm.can_switch_to_w_timeout(), Err(TMErr::NotInBlackTimeout));
+        assert_eq!(tm.can_switch_to_ref_timeout(), Err(TMErr::NotInPenaltyShot));
+        assert_eq!(tm.can_switch_to_penalty_shot(), Ok(()));
+
+        tm.set_timeout_state(TimeoutState::PenaltyShot(ClockState::CountingUp {
+            start_time: start,
+            time_at_start: ten_secs,
+        }));
+        assert_eq!(tm.can_switch_to_b_timeout(), Err(TMErr::NotInWhiteTimeout));
+        assert_eq!(tm.can_switch_to_w_timeout(), Err(TMErr::NotInBlackTimeout));
+        assert_eq!(tm.can_switch_to_ref_timeout(), Ok(()));
+        assert_eq!(tm.can_switch_to_penalty_shot(), Err(TMErr::NotInRefTimeout));
+    }
+
+    #[test]
+    fn test_switch_timeouts() {
+        let config = GameConfig {
+            team_timeouts_per_half: 1,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        let ten_secs = Duration::from_secs(10);
+
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(30));
+        tm.set_timeout_state(TimeoutState::Black(ClockState::CountingDown {
+            start_time: start,
+            time_remaining_at_start: ten_secs,
+        }));
+        assert_eq!(tm.switch_to_b_timeout(), Err(TMErr::NotInWhiteTimeout));
+        assert_eq!(tm.switch_to_ref_timeout(), Err(TMErr::NotInPenaltyShot));
+        assert_eq!(tm.switch_to_penalty_shot(), Err(TMErr::NotInRefTimeout));
+        assert_eq!(tm.switch_to_w_timeout(), Ok(()));
+
+        assert_eq!(
+            tm.get_timeout_state(),
+            TimeoutState::White(ClockState::CountingDown {
+                start_time: start,
+                time_remaining_at_start: ten_secs,
+            })
+        );
+        assert_eq!(tm.switch_to_w_timeout(), Err(TMErr::NotInBlackTimeout));
+        assert_eq!(tm.switch_to_ref_timeout(), Err(TMErr::NotInPenaltyShot));
+        assert_eq!(tm.switch_to_penalty_shot(), Err(TMErr::NotInRefTimeout));
+        assert_eq!(tm.switch_to_b_timeout(), Ok(()));
+        assert_eq!(
+            tm.get_timeout_state(),
+            TimeoutState::Black(ClockState::CountingDown {
+                start_time: start,
+                time_remaining_at_start: ten_secs,
+            })
+        );
+
+        tm.set_timeout_state(TimeoutState::Ref(ClockState::CountingUp {
+            start_time: start,
+            time_at_start: ten_secs,
+        }));
+        assert_eq!(tm.switch_to_b_timeout(), Err(TMErr::NotInWhiteTimeout));
+        assert_eq!(tm.switch_to_w_timeout(), Err(TMErr::NotInBlackTimeout));
+        assert_eq!(tm.switch_to_ref_timeout(), Err(TMErr::NotInPenaltyShot));
+        assert_eq!(tm.switch_to_penalty_shot(), Ok(()));
+
+        assert_eq!(
+            tm.get_timeout_state(),
+            TimeoutState::PenaltyShot(ClockState::CountingUp {
+                start_time: start,
+                time_at_start: ten_secs,
+            })
+        );
+        assert_eq!(tm.switch_to_b_timeout(), Err(TMErr::NotInWhiteTimeout));
+        assert_eq!(tm.switch_to_w_timeout(), Err(TMErr::NotInBlackTimeout));
+        assert_eq!(tm.switch_to_penalty_shot(), Err(TMErr::NotInRefTimeout));
+        assert_eq!(tm.switch_to_ref_timeout(), Ok(()));
+        assert_eq!(
+            tm.get_timeout_state(),
+            TimeoutState::Ref(ClockState::CountingUp {
+                start_time: start,
+                time_at_start: ten_secs,
+            })
+        );
     }
 
     struct TransitionTestSetup {

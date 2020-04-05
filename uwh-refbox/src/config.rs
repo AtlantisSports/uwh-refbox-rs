@@ -190,7 +190,6 @@ mod test {
         r#"half_play_duration = 900
            half_time_duration = 180
            team_timeout_duration = 60
-           team_timeouts_allowed = 1
            has_overtime = true
            ot_half_play_duration = 300
            ot_half_time_duration = 180
@@ -198,8 +197,7 @@ mod test {
            overtime_break_duration = 60
            pre_sudden_death_duration = 60
            sudden_death_allowed = true
-           overtime_timeouts_allowed = true
-           team_timeouts_per_half = true
+           team_timeouts_per_half = 1
            pre_game_duration = 180
            nominal_break = 900
            minimum_break = 240

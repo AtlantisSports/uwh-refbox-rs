@@ -15,8 +15,8 @@ pub struct Hardware {
 impl Default for Hardware {
     fn default() -> Self {
         Self {
-            screen_x: 800,
-            screen_y: 480,
+            screen_x: 1024,
+            screen_y: 768,
             has_xbee: false,
             has_rs485: false,
             white_on_right: false,
@@ -71,7 +71,7 @@ pub struct Game {
     pub half_play_duration: u16,
     pub half_time_duration: u16,
     pub team_timeout_duration: u16,
-    pub team_timeouts_allowed: u16,
+    pub team_timeouts_per_half: u16,
     pub has_overtime: bool,
     pub ot_half_play_duration: u16,
     pub ot_half_time_duration: u16,
@@ -79,8 +79,6 @@ pub struct Game {
     pub overtime_break_duration: u16,
     pub pre_sudden_death_duration: u16,
     pub sudden_death_allowed: bool,
-    pub overtime_timeouts_allowed: bool, // TODO: Should this be a bool?
-    pub team_timeouts_per_half: bool,
     pub pre_game_duration: u16,
     pub nominal_break: u16,
     pub minimum_break: u16,
@@ -97,7 +95,7 @@ impl Default for Game {
             half_play_duration: 900,
             half_time_duration: 180,
             team_timeout_duration: 60,
-            team_timeouts_allowed: 1,
+            team_timeouts_per_half: 1,
             has_overtime: true,
             ot_half_play_duration: 300,
             ot_half_time_duration: 180,
@@ -105,8 +103,6 @@ impl Default for Game {
             overtime_break_duration: 60,
             pre_sudden_death_duration: 60,
             sudden_death_allowed: true,
-            overtime_timeouts_allowed: true,
-            team_timeouts_per_half: true,
             pre_game_duration: 180,
             nominal_break: 900,
             minimum_break: 240,
@@ -153,8 +149,8 @@ mod test {
     use indoc::indoc;
 
     const HW_STRING: &str = indoc!(
-        r#"screen_x = 800
-           screen_y = 480
+        r#"screen_x = 1024
+           screen_y = 768
            has_xbee = false
            has_rs485 = false
            white_on_right = false"#
@@ -194,7 +190,6 @@ mod test {
         r#"half_play_duration = 900
            half_time_duration = 180
            team_timeout_duration = 60
-           team_timeouts_allowed = 1
            has_overtime = true
            ot_half_play_duration = 300
            ot_half_time_duration = 180
@@ -202,8 +197,7 @@ mod test {
            overtime_break_duration = 60
            pre_sudden_death_duration = 60
            sudden_death_allowed = true
-           overtime_timeouts_allowed = true
-           team_timeouts_per_half = true
+           team_timeouts_per_half = 1
            pre_game_duration = 180
            nominal_break = 900
            minimum_break = 240

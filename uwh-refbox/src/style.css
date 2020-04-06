@@ -60,7 +60,13 @@ button:hover {
     -gtk-icon-effect: none;
 }
 button:disabled,
-button.little-blue:disabled, button.little-red:disabled, button.little-green:disabled {
+button.little-blue:disabled,
+button.little-red:disabled,
+button.little-green:disabled,
+button.red:disabled,
+button.white:disabled,
+button.black:disabled,
+button.yellow:disabled {
     background-color: @disabled_gray;
     color: @text_disabled_gray;
     border-color: @disabled_gray;

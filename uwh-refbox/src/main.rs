@@ -45,6 +45,7 @@ const BUTTON_MARGIN: i32 = 6;
 
 const STYLE: &str = std::include_str!("style.css");
 
+#[allow(clippy::cognitive_complexity)]
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // This allows the use of error!(), warn!(), info!(), etc.
     env_logger::init();
@@ -122,17 +123,17 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // If the user asks, simulate the display panels instead
     if matches.subcommand_matches("simulate").is_some() {
         // Make a fake game state
-        let state = GameSnapshot {
+        let mut state = GameSnapshot {
             current_period: GamePeriod::FirstHalf,
-            secs_in_period: 754,         // 12:34
-            timeout: TimeoutState::None, //White (34), //Ref(34), //PenaltyShot(34),
+            secs_in_period: 754,            // 12:34
+            timeout: TimeoutSnapshot::None, //Black(34), //Ref(34), //PenaltyShot(34),
             b_score: 10,
             w_score: 5,
             penalties: vec![
                 PenaltySnapshot {
                     color: Color::Black,
                     player_number: 1,
-                    time: PenaltyTime::Seconds(23),
+                    time: PenaltyTime::TotalDismissal, //Seconds(73),
                 },
                 PenaltySnapshot {
                     color: Color::Black,
@@ -140,7 +141,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     time: PenaltyTime::Seconds(56),
                 },
                 PenaltySnapshot {
-                    color: Color::Black,
+                    color: Color::White,
                     player_number: 7,
                     time: PenaltyTime::Seconds(89),
                 },
@@ -149,11 +150,12 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     player_number: 10,
                     time: PenaltyTime::Seconds(12),
                 },
-                PenaltySnapshot {
-                    color: Color::White,
-                    player_number: 3,
-                    time: PenaltyTime::Seconds(45),
-                },
+                /*                PenaltySnapshot {
+                                    color: Color::Black,
+                                    player_number: 3,
+                                    time: PenaltyTime::Seconds(45),
+                                },
+                */
                 PenaltySnapshot {
                     color: Color::White,
                     player_number: 6,
@@ -165,7 +167,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let red = pixelcolor::Rgb888::new(255, 0, 0);
         let yellow = pixelcolor::Rgb888::new(255, 255, 0);
         let green = pixelcolor::Rgb888::new(0, 255, 0);
-        let blue = pixelcolor::Rgb888::new(0, 0, 255);
+        let blue = pixelcolor::Rgb888::new(64, 128, 255); //purple (225, 0, 255)
         let white = pixelcolor::Rgb888::new(255, 255, 255);
 
         let mut display = DisplayBuilder::new()
@@ -264,7 +266,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 );
 
                 match state.timeout {
-                    TimeoutState::White(secs) => {
+                    TimeoutSnapshot::White(secs) => {
                         display.draw(
                             Font8x15::render_str("WHITE")
                                 .stroke(Some(timeout_color))
@@ -282,7 +284,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         );
                     }
 
-                    TimeoutState::Black(secs) => {
+                    TimeoutSnapshot::Black(secs) => {
                         display.draw(
                             Font8x15::render_str("BLACK")
                                 .stroke(Some(timeout_color))
@@ -300,13 +302,13 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         );
                     }
 
-                    TimeoutState::Ref(_) => display.draw(
+                    TimeoutSnapshot::Ref(_) => display.draw(
                         Font11x25::render_str("REF TIMEOUT")
                             .stroke(Some(timeout_color))
                             .translate(Point::new(68, 3)),
                     ),
 
-                    TimeoutState::PenaltyShot(_) => {
+                    TimeoutSnapshot::PenaltyShot(_) => {
                         display.draw(
                             Font11x25::render_str("PENALTY")
                                 .stroke(Some(timeout_color))
@@ -328,9 +330,28 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             }
         };
 
-        // Temporary values for assigning a penalty
-        let black_penalties = true;
-        let white_penalties = true;
+        // Create an Vector for the Black and White Penalty lists
+        let mut black_penalties = vec![];
+        let mut white_penalties = vec![];
+
+        // Sorting Penalties by Time and then by Color
+        if !state.penalties.is_empty() {
+            state.penalties.sort_by(|a, b| a.time.cmp(&b.time));
+
+            // println!("List of time penalties after the time & color sort:");
+
+            for b_penalty in 0..state.penalties.len() {
+                if state.penalties[b_penalty].color == Color::Black {
+                    black_penalties.push(b_penalty);
+                }
+            }
+
+            for w_penalty in 0..state.penalties.len() {
+                if state.penalties[w_penalty].color == Color::White {
+                    white_penalties.push(w_penalty);
+                }
+            }
+        }
 
         // Assigning X-Offsets depending on which sides the teams/colors are
         struct XOffsets {
@@ -383,7 +404,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         };
 
         // Black Score Panel
-        if black_penalties {
+        if !black_penalties.is_empty() {
             if state.b_score < 10 {
                 // Full Size Black Score, Single Digit - Justified Inside (Towards Time Panels)
                 display.draw(
@@ -391,40 +412,116 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         .stroke(Some(blue))
                         .translate(Point::new(b_x.offset + b_x.single_w_pen, 2)),
                 );
+
                 // Vertical Penalties (Up to 3) - Justified Outside (Away from Time Panels)
-                // Top Penalty
+                // Penalties Fall-Off the Bottom as they run out
+
+                // Bottom Penalty - There is at least 1 Penalty
                 display.draw(
-                    Font6x8::render_str(&format!("{:^4}", "#1"))
-                        .stroke(Some(blue))
-                        .translate(Point::new(b_x.offset + b_x.vert_pen, 2)),
+                    Font6x8::render_str(&format!(
+                        "#{}",
+                        state.penalties[black_penalties[0]].player_number
+                    ))
+                    .stroke(Some(blue))
+                    .translate(Point::new(
+                        if state.penalties[black_penalties[0]].player_number > 9 {
+                            3
+                        } else {
+                            6
+                        } + b_x.offset
+                            + b_x.vert_pen,
+                        47,
+                    )),
                 );
-                display.draw(
-                    Font6x8::render_str(&format!("{:^4}", "0:23"))
+                match state.penalties[black_penalties[0]].time {
+                    PenaltyTime::Seconds(secs) => {
+                        display.draw(
+                            Font6x8::render_str(&secs_to_time_string(secs))
+                                .stroke(Some(blue))
+                                .translate(Point::new(b_x.offset + b_x.vert_pen - 6, 55)),
+                        );
+                    }
+                    PenaltyTime::TotalDismissal => {
+                        display.draw(
+                            Font6x8::render_str(&"DSMS".to_string())
+                                .stroke(Some(red))
+                                .translate(Point::new(b_x.offset + b_x.vert_pen, 55)),
+                        );
+                    }
+                }
+
+                // Middle Penalty - If there are 2 or more Penalties
+                if black_penalties.len() >= 2 {
+                    display.draw(
+                        Font6x8::render_str(&format!(
+                            "#{}",
+                            state.penalties[black_penalties[1]].player_number
+                        ))
                         .stroke(Some(blue))
-                        .translate(Point::new(b_x.offset + b_x.vert_pen, 10)),
-                );
-                // Middle Penalty -
-                display.draw(
-                    Font6x8::render_str(&format!("{:^4}", "#4"))
+                        .translate(Point::new(
+                            if state.penalties[black_penalties[1]].player_number > 9 {
+                                3
+                            } else {
+                                6
+                            } + b_x.offset
+                                + b_x.vert_pen,
+                            24,
+                        )),
+                    );
+
+                    match state.penalties[black_penalties[1]].time {
+                        PenaltyTime::Seconds(secs) => {
+                            display.draw(
+                                Font6x8::render_str(&secs_to_time_string(secs))
+                                    .stroke(Some(blue))
+                                    .translate(Point::new(b_x.offset + b_x.vert_pen - 6, 32)),
+                            );
+                        }
+                        PenaltyTime::TotalDismissal => {
+                            display.draw(
+                                Font6x8::render_str(&"DSMS".to_string())
+                                    .stroke(Some(red))
+                                    .translate(Point::new(b_x.offset + b_x.vert_pen, 32)),
+                            );
+                        }
+                    }
+                }
+
+                // Top Penalty - If there are 3 or more Penalties
+                if black_penalties.len() >= 3 {
+                    display.draw(
+                        Font6x8::render_str(&format!(
+                            "#{}",
+                            state.penalties[black_penalties[2]].player_number
+                        ))
                         .stroke(Some(blue))
-                        .translate(Point::new(b_x.offset + b_x.vert_pen, 24)),
-                );
-                display.draw(
-                    Font6x8::render_str(&format!("{:^4}", "0:56"))
-                        .stroke(Some(blue))
-                        .translate(Point::new(b_x.offset + b_x.vert_pen, 32)),
-                );
-                // Bottom Penalty
-                display.draw(
-                    Font6x8::render_str(&format!("{:^4}", "#7"))
-                        .stroke(Some(blue))
-                        .translate(Point::new(b_x.offset + b_x.vert_pen, 47)),
-                );
-                display.draw(
-                    Font6x8::render_str(&format!("{:^4}", "1:29"))
-                        .stroke(Some(blue))
-                        .translate(Point::new(b_x.offset + b_x.vert_pen, 55)),
-                );
+                        .translate(Point::new(
+                            if state.penalties[black_penalties[2]].player_number > 9 {
+                                3
+                            } else {
+                                6
+                            } + b_x.offset
+                                + b_x.vert_pen,
+                            2,
+                        )),
+                    );
+                    match state.penalties[black_penalties[2]].time {
+                        PenaltyTime::Seconds(secs) => {
+                            display.draw(
+                                Font6x8::render_str(&secs_to_time_string(secs))
+                                    .stroke(Some(blue))
+                                    .translate(Point::new(b_x.offset + b_x.vert_pen - 6, 10)),
+                            );
+                        }
+                        PenaltyTime::TotalDismissal => {
+                            display.draw(
+                                Font6x8::render_str(&"DSMS".to_string())
+                                    .stroke(Some(red))
+                                    .translate(Point::new(b_x.offset + b_x.vert_pen, 10)),
+                            );
+                        }
+                    }
+                }
             } else {
                 // 3/4 Size Black Score (Double Digit - Centered on Score Panel)
                 display.draw(
@@ -432,35 +529,86 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         .stroke(Some(blue))
                         .translate(Point::new(b_x.offset + b_x.small_score, 2)),
                 );
+
                 // Horizontal Penalties (Up to 2) - Justified Outside (Away from Time Panels)
-                // Outside Penalty
+                // Penalties Fall-Off the Outside Side as they run out
+
+                // Outside Penalty - There is at least 1 Penalty
                 display.draw(
-                    Font6x8::render_str(&format!("{:^4}", "#1"))
-                        .stroke(Some(blue))
-                        .translate(Point::new(b_x.offset + 18 + 14 * b_x.sign, 47)),
+                    Font6x8::render_str(&format!(
+                        "#{}",
+                        state.penalties[black_penalties[0]].player_number
+                    ))
+                    .stroke(Some(blue))
+                    .translate(Point::new(
+                        if state.penalties[black_penalties[0]].player_number > 9 {
+                            3
+                        } else {
+                            6
+                        } + b_x.offset
+                            + b_x.vert_pen,
+                        47,
+                    )),
                 );
-                display.draw(
-                    Font6x8::render_str(&format!("{:^4}", "0:23"))
-                        .stroke(Some(blue))
-                        .translate(Point::new(b_x.offset + 18 + 14 * b_x.sign, 55)),
-                );
-                // Inside Penalty
-                display.draw(
-                    Font6x8::render_str(&format!("{:^4}", "#4"))
+                match state.penalties[black_penalties[0]].time {
+                    PenaltyTime::Seconds(secs) => {
+                        display.draw(
+                            Font6x8::render_str(&secs_to_time_string(secs))
+                                .stroke(Some(blue))
+                                .translate(Point::new(b_x.offset + b_x.vert_pen - 6, 55)),
+                        );
+                    }
+                    PenaltyTime::TotalDismissal => {
+                        display.draw(
+                            Font6x8::render_str(&"DSMS".to_string())
+                                .stroke(Some(red))
+                                .translate(Point::new(b_x.offset + b_x.vert_pen, 55)),
+                        );
+                    }
+                }
+
+                // Inside Penalty - If there are 2 or more Penalties
+                if black_penalties.len() >= 2 {
+                    display.draw(
+                        Font6x8::render_str(&format!(
+                            "#{}",
+                            state.penalties[black_penalties[1]].player_number
+                        ))
                         .stroke(Some(blue))
                         .translate(Point::new(
-                            b_x.offset + 18 + 14 * b_x.sign - 29 * b_x.sign,
+                            if state.penalties[black_penalties[1]].player_number > 9 {
+                                3
+                            } else {
+                                6
+                            } + b_x.offset
+                                + b_x.vert_pen
+                                - 29 * b_x.sign,
                             47,
                         )),
-                );
-                display.draw(
-                    Font6x8::render_str(&format!("{:^4}", "0:56"))
-                        .stroke(Some(blue))
-                        .translate(Point::new(
-                            b_x.offset + 18 + 14 * b_x.sign - 29 * b_x.sign,
-                            55,
-                        )),
-                );
+                    );
+                    match state.penalties[black_penalties[1]].time {
+                        PenaltyTime::Seconds(secs) => {
+                            display.draw(
+                                Font6x8::render_str(&secs_to_time_string(secs))
+                                    .stroke(Some(blue))
+                                    .translate(Point::new(
+                                        b_x.offset + b_x.vert_pen - 29 * b_x.sign - 6,
+                                        55,
+                                    )),
+                            );
+                        }
+                        PenaltyTime::TotalDismissal => {
+                            display.draw(
+                                Font6x8::render_str(&"DSMS".to_string())
+                                    .stroke(Some(red))
+                                    .translate(Point::new(
+                                        b_x.offset + b_x.vert_pen - 29 * b_x.sign,
+                                        55,
+                                    )),
+                            );
+                        }
+                    }
+                }
             }
         } else if state.b_score < 10 {
             // Full Size Black Score (Single Digit Centered)
@@ -479,48 +627,125 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         }
 
         // White Score Panel
-        if white_penalties {
+        if !white_penalties.is_empty() {
             if state.w_score < 10 {
                 // Full Size White Score, Single Digit - Justified Inside (Towards Time Panels)
+                //
+
                 display.draw(
                     Font32x64::render_str(&format!("{:<2}", state.w_score))
                         .stroke(Some(white))
                         .translate(Point::new(w_x.offset + w_x.single_w_pen, 2)),
                 );
+
                 // Vertical Penalties (Up to 3) - Justified Outside (Away from Time Panels)
-                // Top Penalty
+                // Penalties Fall-Off the Bottom as they run out
+
+                // Bottom Penalty - There is at least 1 Penalty
                 display.draw(
-                    Font6x8::render_str(&format!("{:^4}", "#10"))
-                        .stroke(Some(white))
-                        .translate(Point::new(w_x.offset + w_x.vert_pen, 2)),
+                    Font6x8::render_str(&format!(
+                        "#{}",
+                        state.penalties[white_penalties[0]].player_number
+                    ))
+                    .stroke(Some(white))
+                    .translate(Point::new(
+                        if state.penalties[white_penalties[0]].player_number > 9 {
+                            3
+                        } else {
+                            6
+                        } + w_x.offset
+                            + w_x.vert_pen,
+                        47,
+                    )),
                 );
-                display.draw(
-                    Font6x8::render_str(&format!("{:^4}", "0:12"))
+                match state.penalties[white_penalties[0]].time {
+                    PenaltyTime::Seconds(secs) => {
+                        display.draw(
+                            Font6x8::render_str(&secs_to_time_string(secs))
+                                .stroke(Some(white))
+                                .translate(Point::new(w_x.offset + w_x.vert_pen - 6, 55)),
+                        );
+                    }
+                    PenaltyTime::TotalDismissal => {
+                        display.draw(
+                            Font6x8::render_str(&"DSMS".to_string())
+                                .stroke(Some(red))
+                                .translate(Point::new(w_x.offset + w_x.vert_pen, 55)),
+                        );
+                    }
+                }
+
+                // Middle Penalty - If there are 2 or more Penalties
+                if white_penalties.len() >= 2 {
+                    display.draw(
+                        Font6x8::render_str(&format!(
+                            "#{}",
+                            state.penalties[white_penalties[1]].player_number
+                        ))
                         .stroke(Some(white))
-                        .translate(Point::new(w_x.offset + w_x.vert_pen, 10)),
-                );
-                // Middle Penalty -
-                display.draw(
-                    Font6x8::render_str(&format!("{:^4}", "#3"))
+                        .translate(Point::new(
+                            if state.penalties[white_penalties[1]].player_number > 9 {
+                                3
+                            } else {
+                                6
+                            } + w_x.offset
+                                + w_x.vert_pen,
+                            24,
+                        )),
+                    );
+                    match state.penalties[white_penalties[1]].time {
+                        PenaltyTime::Seconds(secs) => {
+                            display.draw(
+                                Font6x8::render_str(&secs_to_time_string(secs))
+                                    .stroke(Some(white))
+                                    .translate(Point::new(w_x.offset + w_x.vert_pen - 6, 32)),
+                            );
+                        }
+                        PenaltyTime::TotalDismissal => {
+                            display.draw(
+                                Font6x8::render_str(&"DSMS".to_string())
+                                    .stroke(Some(red))
+                                    .translate(Point::new(w_x.offset + w_x.vert_pen, 32)),
+                            );
+                        }
+                    }
+                }
+
+                // Top Penalty - If there are 3 or more Penalties
+                if white_penalties.len() >= 3 {
+                    display.draw(
+                        Font6x8::render_str(&format!(
+                            "#{}",
+                            state.penalties[white_penalties[2]].player_number
+                        ))
                         .stroke(Some(white))
-                        .translate(Point::new(w_x.offset + w_x.vert_pen, 24)),
-                );
-                display.draw(
-                    Font6x8::render_str(&format!("{:^4}", "0:45"))
-                        .stroke(Some(white))
-                        .translate(Point::new(w_x.offset + w_x.vert_pen, 32)),
-                );
-                // Bottom Penalty
-                display.draw(
-                    Font6x8::render_str(&format!("{:^4}", "#6"))
-                        .stroke(Some(white))
-                        .translate(Point::new(w_x.offset + w_x.vert_pen, 47)),
-                );
-                display.draw(
-                    Font6x8::render_str(&format!("{:^4}", "T-D"))
-                        .stroke(Some(white))
-                        .translate(Point::new(w_x.offset + w_x.vert_pen, 55)),
-                );
+                        .translate(Point::new(
+                            if state.penalties[white_penalties[2]].player_number > 9 {
+                                3
+                            } else {
+                                6
+                            } + w_x.offset
+                                + w_x.vert_pen,
+                            2,
+                        )),
+                    );
+                    match state.penalties[white_penalties[2]].time {
+                        PenaltyTime::Seconds(secs) => {
+                            display.draw(
+                                Font6x8::render_str(&secs_to_time_string(secs))
+                                    .stroke(Some(white))
+                                    .translate(Point::new(w_x.offset + w_x.vert_pen - 6, 10)),
+                            );
+                        }
+                        PenaltyTime::TotalDismissal => {
+                            display.draw(
+                                Font6x8::render_str(&"DSMS".to_string())
+                                    .stroke(Some(red))
+                                    .translate(Point::new(w_x.offset + w_x.vert_pen, 10)),
+                            );
+                        }
+                    }
+                }
             } else {
                 // 3/4 Size White Score (Double Digit - Centered on Score Panel)
                 display.draw(
@@ -529,34 +754,84 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         .translate(Point::new(w_x.offset + w_x.small_score, 2)),
                 );
                 // Horizontal Penalties (Up to 2) - Justified Outside (Away from Time Panels)
+                // Penalties Fall-Off the Outside Side as they run out
+
                 // Outside Penalty
                 display.draw(
-                    Font6x8::render_str(&format!("{:^4}", "#10"))
-                        .stroke(Some(white))
-                        .translate(Point::new(w_x.offset + 18 + 14 * w_x.sign, 47)),
+                    Font6x8::render_str(&format!(
+                        "#{}",
+                        state.penalties[white_penalties[0]].player_number
+                    ))
+                    .stroke(Some(white))
+                    .translate(Point::new(
+                        if state.penalties[white_penalties[0]].player_number > 9 {
+                            3
+                        } else {
+                            6
+                        } + w_x.offset
+                            + w_x.vert_pen,
+                        47,
+                    )),
                 );
-                display.draw(
-                    Font6x8::render_str(&format!("{:^4}", "0:12"))
-                        .stroke(Some(white))
-                        .translate(Point::new(w_x.offset + 18 + 14 * w_x.sign, 55)),
-                );
+                match state.penalties[white_penalties[0]].time {
+                    PenaltyTime::Seconds(secs) => {
+                        display.draw(
+                            Font6x8::render_str(&secs_to_time_string(secs))
+                                .stroke(Some(white))
+                                .translate(Point::new(w_x.offset + w_x.vert_pen - 6, 55)),
+                        );
+                    }
+                    PenaltyTime::TotalDismissal => {
+                        display.draw(
+                            Font6x8::render_str(&"DSMS".to_string())
+                                .stroke(Some(red))
+                                .translate(Point::new(w_x.offset + w_x.vert_pen, 55)),
+                        );
+                    }
+                }
+
                 // Inside Penalty
-                display.draw(
-                    Font6x8::render_str(&format!("{:^4}", "#3"))
+                if white_penalties.len() >= 2 {
+                    display.draw(
+                        Font6x8::render_str(&format!(
+                            "#{}",
+                            state.penalties[white_penalties[1]].player_number
+                        ))
                         .stroke(Some(white))
                         .translate(Point::new(
-                            w_x.offset + 18 + 14 * w_x.sign - 29 * w_x.sign,
+                            if state.penalties[white_penalties[1]].player_number > 9 {
+                                3
+                            } else {
+                                6
+                            } + w_x.offset
+                                + w_x.vert_pen
+                                - 29 * w_x.sign,
                             47,
                         )),
-                );
-                display.draw(
-                    Font6x8::render_str(&format!("{:^4}", "0:45"))
-                        .stroke(Some(white))
-                        .translate(Point::new(
-                            w_x.offset + 18 + 14 * w_x.sign - 29 * w_x.sign,
-                            55,
-                        )),
-                );
+                    );
+                    match state.penalties[white_penalties[1]].time {
+                        PenaltyTime::Seconds(secs) => {
+                            display.draw(
+                                Font6x8::render_str(&secs_to_time_string(secs))
+                                    .stroke(Some(white))
+                                    .translate(Point::new(
+                                        w_x.offset + w_x.vert_pen - 29 * w_x.sign - 6,
+                                        55,
+                                    )),
+                            );
+                        }
+                        PenaltyTime::TotalDismissal => {
+                            display.draw(
+                                Font6x8::render_str(&"DSMS".to_string())
+                                    .stroke(Some(red))
+                                    .translate(Point::new(
+                                        w_x.offset + w_x.vert_pen - 29 * w_x.sign,
+                                        55,
+                                    )),
+                            );
+                        }
+                    }
+                }
             }
         } else if state.w_score < 10 {
             // Full Size White Score (Single Digit Centered)

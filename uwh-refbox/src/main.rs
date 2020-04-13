@@ -131,39 +131,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             timeout: TimeoutSnapshot::None, //Black(34), //Ref(34), //PenaltyShot(34),
             b_score: 1,
             w_score: 5,
-            penalties: vec![
-                /*                PenaltySnapshot {
-                                    color: Color::Black,
-                                    player_number: 1,
-                                    time: PenaltyTime::TotalDismissal, //Seconds(73),
-                                },
-                                PenaltySnapshot {
-                                    color: Color::Black,
-                                    player_number: 4,
-                                    time: PenaltyTime::Seconds(56),
-                                },
-                                PenaltySnapshot {
-                                    color: Color::White,
-                                    player_number: 7,
-                                    time: PenaltyTime::Seconds(89),
-                                },
-                                PenaltySnapshot {
-                                    color: Color::White,
-                                    player_number: 10,
-                                    time: PenaltyTime::Seconds(12),
-                                },
-                */
-                PenaltySnapshot {
-                    color: Color::Black,
-                    player_number: 3,
-                    time: PenaltyTime::Seconds(45),
-                },
-                PenaltySnapshot {
-                    color: Color::White,
-                    player_number: 6,
-                    time: PenaltyTime::TotalDismissal,
-                },
-            ],
+            penalties: vec![],
         };
 
         let red = pixelcolor::Rgb888::new(255, 0, 0);
@@ -337,15 +305,14 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut white_penalties = vec![];
 
         // Sorting Penalties by Time and then by Color
-        if !state.penalties.is_empty() {
-            state.penalties.sort_by(|a, b| a.time.cmp(&b.time));
 
-            for penalty in &state.penalties {
-                if penalty.color == Color::Black {
-                    black_penalties.push(penalty);
-                } else {
-                    white_penalties.push(penalty);
-                }
+        state.penalties.sort_by(|a, b| a.time.cmp(&b.time));
+
+        for penalty in &state.penalties {
+            if penalty.color == Color::Black {
+                black_penalties.push(penalty);
+            } else {
+                white_penalties.push(penalty);
             }
         }
 

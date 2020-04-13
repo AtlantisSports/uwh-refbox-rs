@@ -967,6 +967,7 @@ dependencies = [
  "gtk",
  "indoc",
  "log",
+ "paste",
  "serde",
  "serde_derive",
  "thiserror",

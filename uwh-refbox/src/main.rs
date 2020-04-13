@@ -3,22 +3,15 @@ use clap::{
     app_from_crate, crate_authors, crate_description, crate_name, crate_version, AppSettings, Arg,
     SubCommand,
 };
-use embedded_graphics::prelude::*;
-//use embedded_graphics::fonts::font_builder::FontBuilder;
-//use embedded_graphics::{egcircle, egline, fonts::Font, pixelcolor, text_6x8};
-use embedded_graphics::{fonts::Font, pixelcolor};
 use embedded_graphics_simulator::DisplayBuilder;
-//use fonts::fonts::Font6x8 as CustomFont6x8;
-use fonts::fonts::{Font11x25, Font16x31, Font22x46, Font32x64, Font6x8, Font8x15};
 use gio::prelude::*;
+use glib::clone;
 use gtk::prelude::*;
 use log::*;
 use std::{
     convert::TryInto,
-    fmt::Display,
     fs::{File, OpenOptions},
     io::{ErrorKind, Write},
-    ops::{Div, Rem},
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc::{self, RecvTimeoutError},
@@ -29,25 +22,19 @@ use std::{
 };
 
 mod config;
+mod drawing;
 mod game_snapshot;
 mod tournament_manager;
 use config::Config;
+use drawing::*;
 use game_snapshot::*;
 use tournament_manager::*;
 
 const BUTTON_SPACING: i32 = 12;
 const BUTTON_MARGIN: i32 = 6;
-//const RETURN_BTN_SIZE_X: i32 = 400;
-//const RETURN_BTN_SIZE_Y: i32 = 250;
-//const BUTTON_STANDARD_HEIGHT: i32 = 70;
-//const BUTTON_STANDARD_HEIGHT: config.hardware.screen_y / 6;
-
-//const LABEL_STANDARD_HEIGHT: i32 = 35;
-//const KEYPAD_BUTTON_SIZE: i32 = 70;
 
 const STYLE: &str = std::include_str!("style.css");
 
-#[allow(clippy::cognitive_complexity)]
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // This allows the use of error!(), warn!(), info!(), etc.
     env_logger::init();
@@ -125,20 +112,18 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // If the user asks, simulate the display panels instead
     if matches.subcommand_matches("simulate").is_some() {
         // Make a fake game state
-        let mut state = GameSnapshot {
+        let state = GameSnapshot {
             current_period: GamePeriod::FirstHalf,
-            secs_in_period: 754,            // 12:34
-            timeout: TimeoutSnapshot::None, //Black(34), //Ref(34), //PenaltyShot(34),
+            secs_in_period: 754, // 12:34
+            timeout: TimeoutSnapshot::None,
             b_score: 1,
             w_score: 5,
-            penalties: vec![],
+            penalties: vec![PenaltySnapshot {
+                player_number: 3,
+                color: Color::Black,
+                time: PenaltyTime::Seconds(74),
+            }],
         };
-
-        let red = pixelcolor::Rgb888::new(255, 0, 0);
-        let yellow = pixelcolor::Rgb888::new(255, 255, 0);
-        let green = pixelcolor::Rgb888::new(0, 255, 0);
-        let blue = pixelcolor::Rgb888::new(64, 128, 255); //purple (225, 0, 255)
-        let white = pixelcolor::Rgb888::new(255, 255, 255);
 
         let mut display = DisplayBuilder::new()
             .size(256, 64)
@@ -146,336 +131,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             .pixel_spacing(1)
             .build_rgb();
 
-        let game_color = match state.timeout {
-            TimeoutSnapshot::PenaltyShot(_) => red,
-            TimeoutSnapshot::Ref(_) => yellow,
-            _ => match state.current_period {
-                GamePeriod::FirstHalf
-                | GamePeriod::SecondHalf
-                | GamePeriod::OvertimeFirstHalf
-                | GamePeriod::OvertimeSecondHalf => green,
-                GamePeriod::BetweenGames
-                | GamePeriod::HalfTime
-                | GamePeriod::PreOvertime
-                | GamePeriod::OvertimeHalfTime
-                | GamePeriod::PreSuddenDeath => yellow,
-                GamePeriod::SuddenDeath => red,
-            },
-        };
-
-        let timeout_color = match state.timeout {
-            TimeoutSnapshot::White(_) => white,
-            TimeoutSnapshot::Black(_) => blue,
-            TimeoutSnapshot::Ref(_) => yellow,
-            _ => red,
-        };
-
-        // EVERYTHING TO BE DISPLAYED ON THE CENTER 2 TIME PANELS
-        match state.timeout {
-            TimeoutSnapshot::None => {
-                //No timeout currently
-                display.draw(
-                    Font22x46::render_str(&secs_to_time_string(state.secs_in_period))
-                        .stroke(Some(game_color))
-                        .translate(Point::new(74, 18)),
-                );
-
-                let (text, x, y) = match state.current_period {
-                    GamePeriod::BetweenGames => ("NEXT GAME", 92, 2),
-                    GamePeriod::FirstHalf => ("1ST HALF", 100, 2),
-                    GamePeriod::HalfTime => ("HALF-TIME", 92, 2),
-                    GamePeriod::SecondHalf => ("2ND HALF", 100, 2),
-                    GamePeriod::PreOvertime => ("PRE-OVERTIME", 80, 2),
-                    GamePeriod::OvertimeFirstHalf => ("O/T 1ST HALF", 80, 2),
-                    GamePeriod::OvertimeHalfTime => ("O/T HALF TIME", 76, 2),
-                    GamePeriod::OvertimeSecondHalf => ("O/T 2ND HALF", 80, 2),
-                    GamePeriod::PreSuddenDeath => ("PRE-SUDDEN DEATH", 64, 2),
-                    GamePeriod::SuddenDeath => ("SUDDEN DEATH", 80, 2),
-                };
-
-                display.draw(
-                    Font8x15::render_str(text)
-                        .stroke(Some(game_color))
-                        .translate(Point::new(x, y)),
-                );
-            }
-
-            _ => {
-                //Some timeout currently
-                display.draw(
-                    Font16x31::render_str(&secs_to_time_string(state.secs_in_period))
-                        .stroke(Some(game_color))
-                        .translate(Point::new(108, 33)),
-                );
-
-                let (text1, x1, y1, text2, x2, y2, text3, x3, y3) = match state.current_period {
-                    GamePeriod::FirstHalf => ("1ST", 72, 33, "", 0, 0, "HALF", 68, 48),
-                    GamePeriod::SecondHalf => ("2ND", 72, 33, "", 0, 0, "HALF", 68, 48),
-                    GamePeriod::OvertimeFirstHalf => ("OT 1", 64, 33, "ST", 96, 33, "HALF", 68, 48),
-                    GamePeriod::OvertimeSecondHalf => {
-                        ("OT 2", 64, 33, "ND", 96, 33, "HALF", 68, 48)
-                    }
-                    GamePeriod::SuddenDeath => ("", 0, 0, "SUDDEN", 70, 39, "DEATH", 68, 48),
-                    _ => ("PERIOD ERROR", 72, 33, "", 0, 0, "", 0, 0),
-                };
-
-                display.draw(
-                    Font8x15::render_str(text1)
-                        .stroke(Some(game_color))
-                        .translate(Point::new(x1, y1)),
-                );
-                display.draw(
-                    Font6x8::render_str(text2)
-                        .stroke(Some(game_color))
-                        .translate(Point::new(x2, y2)),
-                );
-                display.draw(
-                    Font8x15::render_str(text3)
-                        .stroke(Some(game_color))
-                        .translate(Point::new(x3, y3)),
-                );
-
-                match state.timeout {
-                    TimeoutSnapshot::White(secs) => {
-                        display.draw(
-                            Font8x15::render_str("WHITE")
-                                .stroke(Some(timeout_color))
-                                .translate(Point::new(76, 2)),
-                        );
-                        display.draw(
-                            Font8x15::render_str("TIMEOUT")
-                                .stroke(Some(timeout_color))
-                                .translate(Point::new(68, 17)),
-                        );
-                        display.draw(
-                            Font16x31::render_str(&format!(":{}", secs))
-                                .stroke(Some(timeout_color))
-                                .translate(Point::new(132, 2)),
-                        );
-                    }
-
-                    TimeoutSnapshot::Black(secs) => {
-                        display.draw(
-                            Font8x15::render_str("BLACK")
-                                .stroke(Some(timeout_color))
-                                .translate(Point::new(76, 2)),
-                        );
-                        display.draw(
-                            Font8x15::render_str("TIMEOUT")
-                                .stroke(Some(timeout_color))
-                                .translate(Point::new(68, 17)),
-                        );
-                        display.draw(
-                            Font16x31::render_str(&format!(":{}", secs))
-                                .stroke(Some(timeout_color))
-                                .translate(Point::new(132, 2)),
-                        );
-                    }
-
-                    TimeoutSnapshot::Ref(_) => display.draw(
-                        Font11x25::render_str("REF TIMEOUT")
-                            .stroke(Some(timeout_color))
-                            .translate(Point::new(68, 3)),
-                    ),
-
-                    TimeoutSnapshot::PenaltyShot(_) => {
-                        display.draw(
-                            Font11x25::render_str("PENALTY")
-                                .stroke(Some(timeout_color))
-                                .translate(Point::new(64, 3)),
-                        );
-                        display.draw(
-                            Font11x25::render_str("SHOT")
-                                .stroke(Some(timeout_color))
-                                .translate(Point::new(149, 3)),
-                        );
-                    }
-
-                    _ => display.draw(
-                        Font8x15::render_str("T/O ERROR")
-                            .stroke(Some(red))
-                            .translate(Point::new(64, 133)),
-                    ),
-                };
-            }
-        };
-
-        // Create Vectors for the Black and White Penalty lists
-        let mut black_penalties = vec![];
-        let mut white_penalties = vec![];
-
-        // Sorting Penalties by Time and then by Color
-
-        state.penalties.sort_by(|a, b| a.time.cmp(&b.time));
-
-        for penalty in &state.penalties {
-            if penalty.color == Color::Black {
-                black_penalties.push(penalty);
-            } else {
-                white_penalties.push(penalty);
-            }
-        }
-
-        let left_penalties;
-        let right_penalties;
-        let left_score;
-        let right_score;
-        let left_color;
-        let right_color;
-
-        if config.hardware.white_on_right {
-            left_penalties = black_penalties;
-            right_penalties = white_penalties;
-            left_score = state.b_score;
-            right_score = state.w_score;
-            left_color = blue;
-            right_color = white;
-        } else {
-            left_penalties = white_penalties;
-            right_penalties = black_penalties;
-            left_score = state.w_score;
-            right_score = state.b_score;
-            left_color = white;
-            right_color = blue;
-        }
-
-        // Score on Left Score Panel
-        let left_score_string = format!("{:<2}", left_score);
-        if left_penalties.is_empty() {
-            if left_score < 10 {
-                // Full Size Left Score (Single Digit Centered)
-                display.draw(
-                    Font32x64::render_str(&left_score_string)
-                        .stroke(Some(left_color))
-                        .translate(Point::new(18, 2)),
-                );
-            } else {
-                // Full Size Left Score (Double Digit Centered)
-                display.draw(
-                    Font32x64::render_str(&left_score_string)
-                        .stroke(Some(left_color))
-                        .translate(Point::new(2, 2)),
-                );
-            }
-        } else if left_score < 10 {
-            // Full Size Left Score, Single Digit - Justified Right/Inside/Towards Time Panels
-            display.draw(
-                Font32x64::render_str(&left_score_string)
-                    .stroke(Some(left_color))
-                    .translate(Point::new(34, 2)),
-            );
-        } else {
-            // 3/4 Size Left Score (Double Digit - Centered on Score Panel)
-            display.draw(
-                Font22x46::render_str(&left_score_string)
-                    .stroke(Some(left_color))
-                    .translate(Point::new(11, 2)),
-            );
-        };
-
-        // Score on Right Score Panel
-        let right_score_string = format!("{:<2}", right_score);
-        if right_penalties.is_empty() {
-            if right_score < 10 {
-                // Full Size Right Score (Single Digit Centered)
-                display.draw(
-                    Font32x64::render_str(&right_score_string)
-                        .stroke(Some(right_color))
-                        .translate(Point::new(210, 2)),
-                );
-            } else {
-                // Full Size Right Score (Double Digit Centered)
-                display.draw(
-                    Font32x64::render_str(&right_score_string)
-                        .stroke(Some(right_color))
-                        .translate(Point::new(194, 2)),
-                );
-            }
-        } else if right_score < 10 {
-            // Full Size Right Score, Single Digit - Justified Right/Inside/Towards Time Panels
-            display.draw(
-                Font32x64::render_str(&right_score_string)
-                    .stroke(Some(right_color))
-                    .translate(Point::new(194, 2)),
-            );
-        } else {
-            // 3/4 Size Right Score (Double Digit - Centered on Score Panel)
-            display.draw(
-                Font22x46::render_str(&right_score_string)
-                    .stroke(Some(right_color))
-                    .translate(Point::new(203, 2)),
-            );
-        };
-
-        // Define layout for Penalties
-        let mut draw_penalty = |x_pos: i32, y_pos: i32, color, penalty: &PenaltySnapshot| {
-            display.draw(
-                Font6x8::render_str(&format!("#{}", penalty.player_number))
-                    .stroke(Some(color))
-                    .translate(Point::new(
-                        if penalty.player_number > 9 { 3 } else { 6 } + x_pos,
-                        y_pos,
-                    )),
-            );
-            match penalty.time {
-                PenaltyTime::Seconds(secs) => {
-                    display.draw(
-                        Font6x8::render_str(&secs_to_time_string(secs))
-                            .stroke(Some(color))
-                            .translate(Point::new(x_pos - 6, y_pos + 8)),
-                    );
-                }
-                PenaltyTime::TotalDismissal => {
-                    display.draw(
-                        Font6x8::render_str(&"DSMS".to_string())
-                            .stroke(Some(red))
-                            .translate(Point::new(x_pos, y_pos + 8)),
-                    );
-                }
-            }
-        };
-
-        // Penalties on Left Score Panel
-        if left_score < 10 {
-            // Vertical Penalties (Up to 3) - Justified Left/Outside/Away from Time Panels
-            // Penalties "Fall-Off" the Bottom as they run out
-            for (i, penalty) in left_penalties.iter().take(3).enumerate() {
-                let i: i32 = i.try_into().unwrap();
-                let x_pos = 5;
-                let y_pos: i32 = 47 - i * 22;
-                draw_penalty(x_pos, y_pos, left_color, penalty);
-            }
-        } else {
-            // Horizontal Penalties (Up to 2) - Justified Left/Outside/Away from Time Panels
-            // Penalties "Fall-Off" the Left Side as they run out
-            for (i, penalty) in left_penalties.iter().take(2).enumerate() {
-                let i: i32 = i.try_into().unwrap();
-                let x_pos: i32 = 5 + i * 29;
-                let y_pos = 47;
-                draw_penalty(x_pos, y_pos, left_color, penalty);
-            }
-        }
-
-        // Penalties on Right Score Panel
-        if right_score < 10 {
-            // Vertical Penalties (Up to 3) - Justified Right/Outside/Away from Time Panels
-            // Penalties "Fall-Off" the Bottom as they run out
-            for (i, penalty) in right_penalties.iter().take(3).enumerate() {
-                let i: i32 = i.try_into().unwrap();
-                let x_pos = 228;
-                let y_pos: i32 = 47i32 - i * 22i32;
-                draw_penalty(x_pos, y_pos, right_color, penalty);
-            }
-        } else {
-            // Horizontal Penalties (Up to 2) - Justified Right/Outside/Away from Time Panels
-            // Penalties "Fall-Off" the Right Side as they run out
-            for (i, penalty) in right_penalties.iter().take(2).enumerate() {
-                let i: i32 = i.try_into().unwrap();
-                let x_pos: i32 = 228i32 - i * 29i32;
-                let y_pos = 47;
-                draw_penalty(x_pos, y_pos, right_color, penalty);
-            }
-        }
+        draw_panels(&mut display, state, &config);
 
         loop {
             let end = display.run_once();
@@ -499,12 +155,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     )
     .expect("Application::new() failed");
 
-    // Some debugging output
     info!("App initialized");
 
     // Initialize the app
     uiapp.connect_activate(move |app| {
-        // Setup the app to use the CSS Style defined at the top of this file
+        // Setup the app to use the CSS Style defined in style.css
         let provider = gtk::CssProvider::new();
         provider
             .load_from_data(STYLE.as_bytes())
@@ -649,24 +304,21 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         new_score_layout.attach(&score_black_timeout, 9, 9, 3, 2);
 
         // Setting up the white/black selected buttons
-        let score_black_select_ = score_black_select.clone();
-        let score_white_select_ = score_white_select.clone();
-
-        score_black_select.connect_clicked(move |b| {
+        score_black_select.connect_clicked(clone!(@strong score_white_select => move |b| {
             if b.get_active() {
-                score_white_select_.set_active(false);
-            } else if !score_white_select_.get_active() {
+                score_white_select.set_active(false);
+            } else if !score_white_select.get_active() {
                 b.set_active(true);
             }
-        });
+        }));
 
-        score_white_select.connect_clicked(move |b| {
+        score_white_select.connect_clicked(clone!(@strong score_black_select => move |b| {
             if b.get_active() {
-                score_black_select_.set_active(false);
-            } else if !score_black_select_.get_active() {
+                score_black_select.set_active(false);
+            } else if !score_black_select.get_active() {
                 b.set_active(true);
             }
-        });
+        }));
 
         //
         //
@@ -744,49 +396,45 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         edit_score_layout.attach(&score_edit_referee_timeout, 3, 9, 6, 2);
         edit_score_layout.attach(&score_edit_black_timeout, 9, 9, 3, 2);
 
-        let modified_white_score_ = modified_white_score.clone();
-        white_score_plus.connect_clicked(move |_| {
-            let old = modified_white_score_
+        white_score_plus.connect_clicked(clone!(@strong modified_white_score => move |_| {
+            let old = modified_white_score
                 .get_label()
                 .unwrap()
                 .as_str()
                 .parse::<u8>()
                 .unwrap();
-            modified_white_score_.set_label(&format!("{}", old.saturating_add(1)));
-        });
+            modified_white_score.set_label(&format!("{}", old.saturating_add(1)));
+        }));
 
-        let modified_white_score_ = modified_white_score.clone();
-        white_score_minus.connect_clicked(move |_| {
-            let old = modified_white_score_
+        white_score_minus.connect_clicked(clone!(@strong modified_white_score => move |_| {
+            let old = modified_white_score
                 .get_label()
                 .unwrap()
                 .as_str()
                 .parse::<u8>()
                 .unwrap();
-            modified_white_score_.set_label(&format!("{}", old.saturating_sub(1)));
-        });
+            modified_white_score.set_label(&format!("{}", old.saturating_sub(1)));
+        }));
 
-        let modified_black_score_ = modified_black_score.clone();
-        black_score_plus.connect_clicked(move |_| {
-            let old = modified_black_score_
+        black_score_plus.connect_clicked(clone!(@strong modified_black_score => move |_| {
+            let old = modified_black_score
                 .get_label()
                 .unwrap()
                 .as_str()
                 .parse::<u8>()
                 .unwrap();
-            modified_black_score_.set_label(&format!("{}", old.saturating_add(1)));
-        });
+            modified_black_score.set_label(&format!("{}", old.saturating_add(1)));
+        }));
 
-        let modified_black_score_ = modified_black_score.clone();
-        black_score_minus.connect_clicked(move |_| {
-            let old = modified_black_score_
+        black_score_minus.connect_clicked(clone!(@strong modified_black_score => move |_| {
+            let old = modified_black_score
                 .get_label()
                 .unwrap()
                 .as_str()
                 .parse::<u8>()
                 .unwrap();
-            modified_black_score_.set_label(&format!("{}", old.saturating_sub(1)));
-        });
+            modified_black_score.set_label(&format!("{}", old.saturating_sub(1)));
+        }));
 
         //
         //
@@ -863,76 +511,61 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         penalty_add_layout.attach(&penalty_black_timeout, 9, 9, 3, 2);
 
         // Setting up the white/black selected buttons
-        let penalty_black_select_ = penalty_black_select.clone();
-        let penalty_white_select_ = penalty_white_select.clone();
-
-        penalty_black_select.connect_clicked(move |b| {
+        penalty_black_select.connect_clicked(clone!(@strong penalty_white_select => move |b| {
             if b.get_active() {
-                penalty_white_select_.set_active(false);
-            } else if !penalty_white_select_.get_active() {
+                penalty_white_select.set_active(false);
+            } else if !penalty_white_select.get_active() {
                 b.set_active(true);
             }
-        });
+        }));
 
-        penalty_white_select.connect_clicked(move |b| {
+        penalty_white_select.connect_clicked(clone!(@strong penalty_black_select => move |b| {
             if b.get_active() {
-                penalty_black_select_.set_active(false);
-            } else if !penalty_black_select_.get_active() {
+                penalty_black_select.set_active(false);
+            } else if !penalty_black_select.get_active() {
                 b.set_active(true);
             }
-        });
+        }));
 
         // Setting up the time penalty selected buttons
-        let penalty_2min_ = penalty_2min.clone();
-        let penalty_5min_ = penalty_5min.clone();
-        let penalty_dismiss_ = penalty_dismiss.clone();
-
-        penalty_1min.connect_clicked(move |b| {
+        penalty_1min.connect_clicked(clone!(@strong penalty_2min, @strong penalty_5min, @strong penalty_dismiss => move |b| {
             if b.get_active() {
-                penalty_2min_.set_active(false);
-                penalty_5min_.set_active(false);
-                penalty_dismiss_.set_active(false);
-            } else if !penalty_2min_.get_active()
-                && !penalty_5min_.get_active()
-                && !penalty_dismiss_.get_active()
+                penalty_2min.set_active(false);
+                penalty_5min.set_active(false);
+                penalty_dismiss.set_active(false);
+            } else if !penalty_2min.get_active()
+                && !penalty_5min.get_active()
+                && !penalty_dismiss.get_active()
             {
                 b.set_active(true);
             }
-        });
+        }));
 
-        let penalty_1min_ = penalty_1min.clone();
-        let penalty_5min_ = penalty_5min.clone();
-        let penalty_dismiss_ = penalty_dismiss.clone();
-
-        penalty_2min.connect_clicked(move |b| {
+        penalty_2min.connect_clicked(clone!(@strong penalty_1min, @strong penalty_5min, @strong penalty_dismiss => move |b| {
             if b.get_active() {
-                penalty_1min_.set_active(false);
-                penalty_5min_.set_active(false);
-                penalty_dismiss_.set_active(false);
-            } else if !penalty_1min_.get_active()
-                && !penalty_5min_.get_active()
-                && !penalty_dismiss_.get_active()
+                penalty_1min.set_active(false);
+                penalty_5min.set_active(false);
+                penalty_dismiss.set_active(false);
+            } else if !penalty_1min.get_active()
+                && !penalty_5min.get_active()
+                && !penalty_dismiss.get_active()
             {
                 b.set_active(true);
             }
-        });
+        }));
 
-        let penalty_1min_ = penalty_1min.clone();
-        let penalty_2min_ = penalty_2min.clone();
-        let penalty_dismiss_ = penalty_dismiss.clone();
-
-        penalty_5min.connect_clicked(move |b| {
+        penalty_5min.connect_clicked(clone!(@strong penalty_1min, @strong penalty_2min, @strong penalty_dismiss => move |b| {
             if b.get_active() {
-                penalty_1min_.set_active(false);
-                penalty_2min_.set_active(false);
-                penalty_dismiss_.set_active(false);
-            } else if !penalty_1min_.get_active()
-                && !penalty_2min_.get_active()
-                && !penalty_dismiss_.get_active()
+                penalty_1min.set_active(false);
+                penalty_2min.set_active(false);
+                penalty_dismiss.set_active(false);
+            } else if !penalty_1min.get_active()
+                && !penalty_2min.get_active()
+                && !penalty_dismiss.get_active()
             {
                 b.set_active(true);
             }
-        });
+        }));
 
         penalty_dismiss.connect_clicked(move |b| {
             if b.get_active() {
@@ -1007,45 +640,36 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         time_edit_layout.attach(&time_edit_referee_timeout, 3, 9, 6, 2);
         time_edit_layout.attach(&time_edit_black_timeout, 9, 9, 3, 2);
 
-        let modified_game_time_ = modified_game_time.clone();
-        let get_displayed_time = move || {
-            let label = modified_game_time_.get_label().unwrap();
+        let get_displayed_time = clone!(@strong modified_game_time => move || {
+            let label = modified_game_time.get_label().unwrap();
             let current: Vec<&str> = label.as_str().split(':').collect();
             assert_eq!(2, current.len());
             current[0].trim().parse::<u64>().unwrap() * 60 + current[1].parse::<u64>().unwrap()
-        };
-
-        let modified_game_time_ = modified_game_time.clone();
-        let get_displayed_time_ = get_displayed_time.clone();
-        minute_plus.connect_clicked(move |_| {
-            modified_game_time_.set_label(&secs_to_time_string(
-                get_displayed_time_().saturating_add(60),
-            ))
         });
 
-        let modified_game_time_ = modified_game_time.clone();
-        let get_displayed_time_ = get_displayed_time.clone();
-        minute_minus.connect_clicked(move |_| {
-            modified_game_time_.set_label(&secs_to_time_string(
-                get_displayed_time_().saturating_sub(60),
+        minute_plus.connect_clicked(clone!(@strong modified_game_time, @strong get_displayed_time => move |_| {
+            modified_game_time.set_label(&secs_to_time_string(
+                get_displayed_time().saturating_add(60),
             ))
-        });
+        }));
 
-        let modified_game_time_ = modified_game_time.clone();
-        let get_displayed_time_ = get_displayed_time.clone();
-        second_plus.connect_clicked(move |_| {
-            modified_game_time_.set_label(&secs_to_time_string(
-                get_displayed_time_().saturating_add(1),
+        minute_minus.connect_clicked(clone!(@strong modified_game_time, @strong get_displayed_time => move |_| {
+            modified_game_time.set_label(&secs_to_time_string(
+                get_displayed_time().saturating_sub(60),
             ))
-        });
+        }));
 
-        let modified_game_time_ = modified_game_time.clone();
-        let get_displayed_time_ = get_displayed_time.clone();
-        second_minus.connect_clicked(move |_| {
-            modified_game_time_.set_label(&secs_to_time_string(
-                get_displayed_time_().saturating_sub(1),
+        second_plus.connect_clicked(clone!(@strong modified_game_time, @strong get_displayed_time => move |_| {
+            modified_game_time.set_label(&secs_to_time_string(
+                get_displayed_time().saturating_add(1),
             ))
-        });
+        }));
+
+        second_minus.connect_clicked(clone!(@strong modified_game_time, @strong get_displayed_time => move |_| {
+            modified_game_time.set_label(&secs_to_time_string(
+                get_displayed_time().saturating_sub(1),
+            ))
+        }));
 
         //
         //
@@ -1181,83 +805,65 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         ot_edit_buttons.push(edit_overtime_halftime_length_label.upcast::<gtk::Widget>());
         ot_edit_buttons.push(overtime_halftime_length_label.upcast::<gtk::Widget>());
 
-        let edit_game_parameters_ot_no_ = edit_game_parameters_ot_no.clone();
-        let ot_edit_buttons_: Vec<_> = ot_edit_buttons.to_vec();
-
-        edit_game_parameters_ot_yes.connect_clicked(move |b| {
+        edit_game_parameters_ot_yes.connect_clicked(clone!(@strong edit_game_parameters_ot_no, @strong ot_edit_buttons => move |b| {
             if b.get_active() {
-                edit_game_parameters_ot_no_.set_active(false);
-                for button in &ot_edit_buttons_ {
+                edit_game_parameters_ot_no.set_active(false);
+                for button in &ot_edit_buttons {
                     button.set_sensitive(true);
                 }
-            } else if !edit_game_parameters_ot_no_.get_active() {
+            } else if !edit_game_parameters_ot_no.get_active() {
                 b.set_active(true);
             }
-        });
+        }));
 
-        let ot_edit_buttons_: Vec<_> = ot_edit_buttons.to_vec();
-        let edit_game_parameters_ot_yes_ = edit_game_parameters_ot_yes.clone();
-
-        edit_game_parameters_ot_no.connect_clicked(move |b| {
+        edit_game_parameters_ot_no.connect_clicked(clone!(@strong ot_edit_buttons, @strong edit_game_parameters_ot_yes => move |b| {
             if b.get_active() {
-                edit_game_parameters_ot_yes_.set_active(false);
-                for button in &ot_edit_buttons_ {
+                edit_game_parameters_ot_yes.set_active(false);
+                for button in &ot_edit_buttons {
                     button.set_sensitive(false);
                 }
-            } else if !edit_game_parameters_ot_yes_.get_active() {
+            } else if !edit_game_parameters_ot_yes.get_active() {
                 b.set_active(true);
             }
-        });
+        }));
 
         // Selecting Sudden Death buttons
         let mut sd_edit_buttons = pre_sudden_death_length_time_edit.get_children();
         sd_edit_buttons.push(edit_pre_sudden_death_length_label.upcast::<gtk::Widget>());
         sd_edit_buttons.push(pre_sudden_death_length_label.upcast::<gtk::Widget>());
 
-        let edit_game_parameters_sd_no_ = edit_game_parameters_sd_no.clone();
-        let sd_edit_buttons_: Vec<_> = sd_edit_buttons.to_vec();
-
-        edit_game_parameters_sd_yes.connect_clicked(move |b| {
+        edit_game_parameters_sd_yes.connect_clicked(clone!(@strong edit_game_parameters_sd_no, @strong sd_edit_buttons => move |b| {
             if b.get_active() {
-                edit_game_parameters_sd_no_.set_active(false);
-                for button in &sd_edit_buttons_ {
+                edit_game_parameters_sd_no.set_active(false);
+                for button in &sd_edit_buttons {
                     button.set_sensitive(true);
                 }
-            } else if !edit_game_parameters_sd_no_.get_active() {
+            } else if !edit_game_parameters_sd_no.get_active() {
                 b.set_active(true);
             }
-        });
+        }));
 
-        let edit_game_parameters_sd_yes_ = edit_game_parameters_sd_yes.clone();
-        let sd_edit_buttons_: Vec<_> = sd_edit_buttons.to_vec();
-
-        edit_game_parameters_sd_no.connect_clicked(move |b| {
+        edit_game_parameters_sd_no.connect_clicked(clone!(@strong edit_game_parameters_sd_yes, @strong sd_edit_buttons => move |b| {
             if b.get_active() {
-                edit_game_parameters_sd_yes_.set_active(false);
-                for button in &sd_edit_buttons_ {
+                edit_game_parameters_sd_yes.set_active(false);
+                for button in &sd_edit_buttons {
                     button.set_sensitive(false);
                 }
-            } else if !edit_game_parameters_sd_yes_.get_active() {
+            } else if !edit_game_parameters_sd_yes.get_active() {
                 b.set_active(true);
             }
-        });
+        }));
 
         // Selecting Enable/Disable All button
-
-        let ot_edit_buttons_ = ot_edit_buttons.to_vec();
-        let sd_edit_buttons_ = sd_edit_buttons.to_vec();
-        let edit_game_parameters_ot_no_ = edit_game_parameters_ot_no.clone();
-        let edit_game_parameters_sd_no_ = edit_game_parameters_sd_no.clone();
-
-        let mut all_parameter_widgets = ot_edit_buttons_.to_vec();
-        all_parameter_widgets.append(&mut sd_edit_buttons_.to_vec());
+        let mut all_parameter_widgets = ot_edit_buttons.to_vec();
+        all_parameter_widgets.append(&mut sd_edit_buttons.to_vec());
         all_parameter_widgets.append(&mut half_length_time_edit.get_children());
         all_parameter_widgets.append(&mut halftime_length_time_edit.get_children());
         all_parameter_widgets.append(&mut between_game_length_time_edit.get_children());
         all_parameter_widgets.append(&mut min_between_game_length_time_edit.get_children());
-        all_parameter_widgets.push(edit_game_parameters_ot_no_.upcast::<gtk::Widget>());
+        all_parameter_widgets.push(edit_game_parameters_ot_no.clone().upcast::<gtk::Widget>());
         all_parameter_widgets.push(edit_game_parameters_ot_yes.upcast::<gtk::Widget>());
-        all_parameter_widgets.push(edit_game_parameters_sd_no_.upcast::<gtk::Widget>());
+        all_parameter_widgets.push(edit_game_parameters_sd_no.clone().upcast::<gtk::Widget>());
         all_parameter_widgets.push(edit_game_parameters_sd_yes.upcast::<gtk::Widget>());
 
         all_parameter_widgets.push(edit_half_length_label.upcast::<gtk::Widget>());
@@ -1271,14 +877,9 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         all_parameter_widgets.push(edit_overtime_allow_label.upcast::<gtk::Widget>());
         all_parameter_widgets.push(edit_sudden_death_allow_label.upcast::<gtk::Widget>());
 
-        let all_parameter_widgets_: Vec<_> = all_parameter_widgets.to_vec();
-
-        //        let ot_edit_buttons_ = ot_edit_buttons.to_vec();
-        //        let sd_edit_buttons_ = sd_edit_buttons.to_vec();
-
-        edit_game_parameters_type.connect_clicked(move |b| {
+        edit_game_parameters_type.connect_clicked(clone!(@strong all_parameter_widgets, @strong ot_edit_buttons, @strong sd_edit_buttons => move |b| {
             if b.get_active() {
-                for button in &all_parameter_widgets_ {
+                for button in &all_parameter_widgets {
                     b.get_child()
                         .unwrap()
                         .downcast::<gtk::Label>()
@@ -1287,7 +888,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     button.set_sensitive(false);
                 }
             } else {
-                for button in &all_parameter_widgets_ {
+                for button in &all_parameter_widgets {
                     b.get_child()
                         .unwrap()
                         .downcast::<gtk::Label>()
@@ -1296,17 +897,17 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     button.set_sensitive(true);
                 }
                 if edit_game_parameters_ot_no.get_active() {
-                    for button1 in &ot_edit_buttons_ {
+                    for button1 in &ot_edit_buttons {
                         button1.set_sensitive(false);
                     }
                 }
                 if edit_game_parameters_sd_no.get_active() {
-                    for button2 in &sd_edit_buttons_ {
+                    for button2 in &sd_edit_buttons {
                         button2.set_sensitive(false);
                     }
                 }
             }
-        });
+        }));
 
         //
         //
@@ -1357,31 +958,17 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         // Buttons for moving back to the Main Layout
         //
 
-        let main_layout_ = main_layout.clone(); // need this first clone part for all but the last call to that page
-        let layout_stack_ = layout_stack.clone();
-        let edit_game_parameters_type_ = edit_game_parameters_type.clone();
-        choose_auto.connect_clicked(move |_| {
-            edit_game_parameters_type_.set_active(true);
-            layout_stack_.set_visible_child(&main_layout_); //need the _ at the end for all except the last call to that page
-        });
+        choose_auto.connect_clicked(clone!(@strong main_layout, @strong layout_stack, @strong edit_game_parameters_type => move |_| {
+            edit_game_parameters_type.set_active(true);
+            layout_stack.set_visible_child(&main_layout);
+        }));
 
-        let main_layout_ = main_layout.clone();
-        let layout_stack_ = layout_stack.clone();
-        uwhscores_submit.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
+        uwhscores_submit.connect_clicked(clone!(@strong main_layout, @strong layout_stack => move |_| layout_stack.set_visible_child(&main_layout)));
 
-        let main_layout_ = main_layout.clone();
-        let layout_stack_ = layout_stack.clone();
-        edit_game_information_submit
-            .connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
+        edit_game_information_submit.connect_clicked(clone!(@strong main_layout, @strong layout_stack => move |_| layout_stack.set_visible_child(&main_layout)));
 
-        let main_layout_ = main_layout.clone();
-        let layout_stack_ = layout_stack.clone();
-        let score_player_number_ = score_player_number.clone();
-        let score_white_select_ = score_white_select.clone();
-        let tm_ = tm.clone();
-        let state_send_ = state_send.clone();
-        score_submit.connect_clicked(move |_| {
-            let player = score_player_number_
+        score_submit.connect_clicked(clone!(@strong main_layout, @strong layout_stack, @strong score_player_number, @strong score_white_select, @strong tm, @strong state_send => move |_| {
+            let player = score_player_number
                 .get_label()
                 .unwrap()
                 .as_str()
@@ -1392,48 +979,35 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 .parse::<u8>()
                 .unwrap_or(std::u8::MAX);
             let now = Instant::now();
-            let mut tm = tm_.lock().unwrap();
-            if score_white_select_.get_active() {
+            let mut tm = tm.lock().unwrap();
+            if score_white_select.get_active() {
                 tm.add_w_score(player, now);
             } else {
                 tm.add_b_score(player, now);
             }
-            state_send_
+            state_send
                 .send((tm.generate_snapshot(now).unwrap(), false))
                 .unwrap();
-            layout_stack_.set_visible_child(&main_layout_)
-        });
+            layout_stack.set_visible_child(&main_layout)
+        }));
 
-        let main_layout_ = main_layout.clone();
-        let layout_stack_ = layout_stack.clone();
-        score_cancel.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
+        score_cancel.connect_clicked(clone!(@strong main_layout, @strong layout_stack => move |_| layout_stack.set_visible_child(&main_layout)));
 
-        let main_layout_ = main_layout.clone();
-        let layout_stack_ = layout_stack.clone();
-        let tm_ = tm.clone();
-        let modified_white_score_ = modified_white_score.clone();
-        let modified_black_score_ = modified_black_score.clone();
-        score_edit_cancel.connect_clicked(move |_| {
-            let tm = tm_.lock().unwrap();
-            modified_white_score_.set_label(&format!("{}", tm.get_w_score()));
-            modified_black_score_.set_label(&format!("{}", tm.get_b_score()));
-            layout_stack_.set_visible_child(&main_layout_)
-        });
+        score_edit_cancel.connect_clicked(clone!(@strong main_layout, @strong layout_stack, @strong tm, @strong modified_white_score, @strong modified_black_score => move |_| {
+            let tm = tm.lock().unwrap();
+            modified_white_score.set_label(&format!("{}", tm.get_w_score()));
+            modified_black_score.set_label(&format!("{}", tm.get_b_score()));
+            layout_stack.set_visible_child(&main_layout)
+        }));
 
-        let main_layout_ = main_layout.clone();
-        let layout_stack_ = layout_stack.clone();
-        let tm_ = tm.clone();
-        let state_send_ = state_send.clone();
-        let modified_white_score_ = modified_white_score.clone();
-        let modified_black_score_ = modified_black_score.clone();
-        score_edit_submit.connect_clicked(move |_| {
-            let w_score = modified_white_score_
+        score_edit_submit.connect_clicked(clone!(@strong main_layout, @strong layout_stack, @strong tm, @strong state_send, @strong modified_white_score, @strong modified_black_score => move |_| {
+            let w_score = modified_white_score
                 .get_label()
                 .unwrap()
                 .as_str()
                 .parse::<u8>()
                 .unwrap();
-            let b_score = modified_black_score_
+            let b_score = modified_black_score
                 .get_label()
                 .unwrap()
                 .as_str()
@@ -1441,71 +1015,50 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 .unwrap();
 
             let now = Instant::now();
-            let mut tm = tm_.lock().unwrap();
+            let mut tm = tm.lock().unwrap();
             tm.set_scores(b_score, w_score, now);
-            state_send_
+            state_send
                 .send((tm.generate_snapshot(now).unwrap(), false))
                 .unwrap();
-            layout_stack_.set_visible_child(&main_layout_)
-        });
+            layout_stack.set_visible_child(&main_layout)
+        }));
 
-        let main_layout_ = main_layout.clone();
-        let layout_stack_ = layout_stack.clone();
-        let tm_ = tm.clone();
-        let clock_was_running_ = clock_was_running.clone();
-        time_edit_cancel.connect_clicked(move |_| {
-            if clock_was_running_.load(Ordering::SeqCst) {
-                tm_.lock().unwrap().start_clock(Instant::now());
+        time_edit_cancel.connect_clicked(clone!(@strong main_layout, @strong layout_stack, @strong tm, @strong clock_was_running => move |_| {
+            if clock_was_running.load(Ordering::SeqCst) {
+                tm.lock().unwrap().start_clock(Instant::now());
             }
-            layout_stack_.set_visible_child(&main_layout_)
-        });
+            layout_stack.set_visible_child(&main_layout)
+        }));
 
-        let main_layout_ = main_layout.clone();
-        let layout_stack_ = layout_stack.clone();
-        let state_send_ = state_send.clone();
-        let tm_ = tm.clone();
-        let clock_was_running_ = clock_was_running.clone();
-        time_edit_submit.connect_clicked(move |_| {
-            let mut tm = tm_.lock().unwrap();
+        time_edit_submit.connect_clicked(clone!(@strong main_layout, @strong layout_stack, @strong state_send, @strong tm, @strong clock_was_running => move |_| {
+            let mut tm = tm.lock().unwrap();
             tm.set_game_clock_time(Duration::from_secs(get_displayed_time()))
                 .unwrap();
-            if clock_was_running_.load(Ordering::SeqCst) {
+            if clock_was_running.load(Ordering::SeqCst) {
                 tm.start_clock(Instant::now());
             } else {
-                state_send_
+                state_send
                     .send((tm.generate_snapshot(Instant::now()).unwrap(), false))
                     .unwrap();
             }
-            layout_stack_.set_visible_child(&main_layout_)
-        });
+            layout_stack.set_visible_child(&main_layout)
+        }));
 
-        let main_layout_ = main_layout.clone();
-        let layout_stack_ = layout_stack.clone();
-        edit_game_parameters_cancel
-            .connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
+        edit_game_parameters_cancel.connect_clicked(clone!(@strong main_layout, @strong layout_stack => move |_| layout_stack.set_visible_child(&main_layout)));
 
-        let main_layout_ = main_layout.clone();
-        let layout_stack_ = layout_stack.clone();
-        edit_game_parameters_submit
-            .connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
+        edit_game_parameters_submit.connect_clicked(clone!(@strong main_layout, @strong layout_stack => move |_| layout_stack.set_visible_child(&main_layout)));
 
-        let main_layout_ = main_layout.clone();
-        let layout_stack_ = layout_stack.clone();
-        penalty_conf_cancel
-            .connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout_));
+        penalty_conf_cancel.connect_clicked(clone!(@strong main_layout, @strong layout_stack => move |_| layout_stack.set_visible_child(&main_layout)));
 
-        let layout_stack_ = layout_stack.clone();
-        penalty_conf_start.connect_clicked(move |_| layout_stack_.set_visible_child(&main_layout));
+        penalty_conf_start.connect_clicked(clone!(@strong main_layout, @strong layout_stack => move |_| layout_stack.set_visible_child(&main_layout)));
 
         //
         //
         // Buttons for navigating between Layouts that are not Main Layout
         //
         // move to edit_time_layout
-        let layout_stack_ = layout_stack.clone();
-        let tm_ = tm.clone();
-        edit_game_time.connect_clicked(move |_| {
-            let mut tm = tm_.lock().unwrap();
+        edit_game_time.connect_clicked(clone!(@strong layout_stack, @strong tm => move |_| {
+            let mut tm = tm.lock().unwrap();
             let now = Instant::now();
             tm.update(now);
             clock_was_running.store(tm.clock_is_running(), Ordering::SeqCst);
@@ -1513,97 +1066,69 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             modified_game_time.set_label(&secs_to_time_string(
                 tm.game_clock_time(now).unwrap().as_secs(),
             ));
-            layout_stack_.set_visible_child(&time_edit_layout);
-        });
+            layout_stack.set_visible_child(&time_edit_layout);
+        }));
 
         // move to new_score_layout
-        let new_score_layout_ = new_score_layout.clone();
-        let layout_stack_ = layout_stack.clone();
-        let score_player_number_ = score_player_number.clone();
-        add_white_score.connect_clicked(move |_| {
+        add_white_score.connect_clicked(clone!(@strong new_score_layout, @strong layout_stack, @strong score_player_number => move |_| {
             score_white_select.set_active(true);
-            score_player_number_.set_label("Player #:\n");
-            layout_stack_.set_visible_child(&new_score_layout_);
-        });
+            score_player_number.set_label("Player #:\n");
+            layout_stack.set_visible_child(&new_score_layout);
+        }));
 
-        let layout_stack_ = layout_stack.clone();
-        add_black_score.connect_clicked(move |_| {
+        add_black_score.connect_clicked(clone!(@strong layout_stack => move |_| {
             score_black_select.set_active(true);
             score_player_number.set_label("Player #:\n");
-            layout_stack_.set_visible_child(&new_score_layout);
-        });
+            layout_stack.set_visible_child(&new_score_layout);
+        }));
 
         // move to edit_game_parameters_layout
-        let edit_game_parameters_layout_ = edit_game_parameters_layout.clone();
-        let layout_stack_ = layout_stack.clone();
-        edit_game_parameters.connect_clicked(move |_| {
-            layout_stack_.set_visible_child(&edit_game_parameters_layout_)
-        });
+        edit_game_parameters.connect_clicked(clone!(@strong edit_game_parameters_layout, @strong layout_stack => move |_| {
+            layout_stack.set_visible_child(&edit_game_parameters_layout)
+        }));
 
-        let layout_stack_ = layout_stack.clone();
-        choose_manual.connect_clicked(move |_| {
+        choose_manual.connect_clicked(clone!(@strong layout_stack => move |_| {
             edit_game_parameters_type.set_active(false);
-            layout_stack_.set_visible_child(&edit_game_parameters_layout)
-        });
+            layout_stack.set_visible_child(&edit_game_parameters_layout)
+        }));
 
         // move to edit_score_layout
-        let edit_score_layout_ = edit_score_layout.clone();
-        let layout_stack_ = layout_stack.clone();
-        edit_white_score
-            .connect_clicked(move |_| layout_stack_.set_visible_child(&edit_score_layout_));
+        edit_white_score.connect_clicked(clone!(@strong edit_score_layout, @strong layout_stack => move |_| layout_stack.set_visible_child(&edit_score_layout)));
 
-        let layout_stack_ = layout_stack.clone();
-        edit_black_score
-            .connect_clicked(move |_| layout_stack_.set_visible_child(&edit_score_layout));
+        edit_black_score.connect_clicked(clone!(@strong layout_stack => move |_| layout_stack.set_visible_child(&edit_score_layout)));
 
         // move to edit_game_information_layout
-        let layout_stack_ = layout_stack.clone();
-        edit_game_information.connect_clicked(move |_| {
-            layout_stack_.set_visible_child(&edit_game_information_layout)
-        });
+        edit_game_information.connect_clicked(clone!(@strong layout_stack => move |_| {
+            layout_stack.set_visible_child(&edit_game_information_layout)
+        }));
 
         // move to time_penalty_add_layout
-        let layout_stack_ = layout_stack.clone();
-        penalty_conf_new
-            .connect_clicked(move |_| layout_stack_.set_visible_child(&penalty_add_layout));
+        penalty_conf_new.connect_clicked(clone!(@strong layout_stack => move |_| layout_stack.set_visible_child(&penalty_add_layout)));
 
         // move to time_penalty_conf_layout
-        let time_penalty_conf_layout_ = time_penalty_conf_layout.clone();
-        let layout_stack_ = layout_stack.clone();
-        edit_white_time_penalty.connect_clicked(move |_| {
+        edit_white_time_penalty.connect_clicked(clone!(@strong time_penalty_conf_layout, @strong layout_stack => move |_| {
             penalty_white_select.set_active(true);
-            layout_stack_.set_visible_child(&time_penalty_conf_layout_)
-        });
+            layout_stack.set_visible_child(&time_penalty_conf_layout)
+        }));
 
-        let time_penalty_conf_layout_ = time_penalty_conf_layout.clone();
-        let layout_stack_ = layout_stack.clone();
-        edit_black_time_penalty.connect_clicked(move |_| {
+        edit_black_time_penalty.connect_clicked(clone!(@strong time_penalty_conf_layout, @strong layout_stack => move |_| {
             penalty_black_select.set_active(true);
-            layout_stack_.set_visible_child(&time_penalty_conf_layout_)
-        });
+            layout_stack.set_visible_child(&time_penalty_conf_layout)
+        }));
 
-        let time_penalty_conf_layout_ = time_penalty_conf_layout.clone();
-        let layout_stack_ = layout_stack.clone();
-        penalty_delete
-            .connect_clicked(move |_| layout_stack_.set_visible_child(&time_penalty_conf_layout_));
+        penalty_delete.connect_clicked(clone!(@strong time_penalty_conf_layout, @strong layout_stack => move |_| layout_stack.set_visible_child(&time_penalty_conf_layout)));
 
-        let layout_stack_ = layout_stack.clone();
-        penalty_add
-            .connect_clicked(move |_| layout_stack_.set_visible_child(&time_penalty_conf_layout));
+        penalty_add.connect_clicked(clone!(@strong layout_stack => move |_| layout_stack.set_visible_child(&time_penalty_conf_layout)));
 
         // move to uwhscores_edit_layout
-        let layout_stack_ = layout_stack.clone();
-        edit_uwhscores
-            .connect_clicked(move |_| layout_stack_.set_visible_child(&uwhscores_edit_layout));
+        edit_uwhscores.connect_clicked(clone!(@strong layout_stack => move |_| layout_stack.set_visible_child(&uwhscores_edit_layout)));
 
         //
         //
         // Connect to the backend
         //
-        let tm_ = tm.clone();
-        let state_send_ = state_send.clone();
-        main_referee_timeout.connect_clicked(move |b| {
-            let mut tm = tm_.lock().unwrap();
+        main_referee_timeout.connect_clicked(clone!(@strong tm, @strong state_send => move |b| {
+            let mut tm = tm.lock().unwrap();
             match b.get_label().unwrap().as_str() {
                 "REFEREE TIMEOUT" | "START REFEREE TIMEOUT" => {
                     debug!("Button starting Ref timeout");
@@ -1623,15 +1148,13 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 }
                 l => panic!("Unknown button label: {}", l),
             }
-            state_send_
+            state_send
                 .send((tm.generate_snapshot(Instant::now()).unwrap(), false))
                 .unwrap();
-        });
+        }));
 
-        let tm_ = tm.clone();
-        let state_send_ = state_send.clone();
-        new_penalty_shot.connect_clicked(move |b| {
-            let mut tm = tm_.lock().unwrap();
+        new_penalty_shot.connect_clicked(clone!(@strong tm, @strong state_send => move |b| {
+            let mut tm = tm.lock().unwrap();
             match b.get_label().unwrap().as_str() {
                 "RESUME" => {
                     debug!("Button starting clock");
@@ -1643,15 +1166,13 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 }
                 l => panic!("Unknown button label: {}", l),
             }
-            state_send_
+            state_send
                 .send((tm.generate_snapshot(Instant::now()).unwrap(), false))
                 .unwrap();
-        });
+        }));
 
-        let tm_ = tm.clone();
-        let state_send_ = state_send.clone();
-        main_white_timeout.connect_clicked(move |b| {
-            let mut tm = tm_.lock().unwrap();
+        main_white_timeout.connect_clicked(clone!(@strong tm, @strong state_send => move |b| {
+            let mut tm = tm.lock().unwrap();
             match b.get_label().unwrap().as_str() {
                 "SWITCH TO\nWHITE" => {
                     debug!("Button switching to White timeout");
@@ -1663,15 +1184,13 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 }
                 l => panic!("Unknown button label: {}", l),
             }
-            state_send_
+            state_send
                 .send((tm.generate_snapshot(Instant::now()).unwrap(), false))
                 .unwrap();
-        });
+        }));
 
-        let tm_ = tm.clone();
-        let state_send_ = state_send.clone();
-        main_black_timeout.connect_clicked(move |b| {
-            let mut tm = tm_.lock().unwrap();
+        main_black_timeout.connect_clicked(clone!(@strong tm, @strong state_send => move |b| {
+            let mut tm = tm.lock().unwrap();
             match b.get_label().unwrap().as_str() {
                 "SWITCH TO\nBLACK" => {
                     debug!("Button switching to Black timeout");
@@ -1683,18 +1202,17 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 }
                 l => panic!("Unknown button label: {}", l),
             }
-            state_send_
+            state_send
                 .send((tm.generate_snapshot(Instant::now()).unwrap(), false))
                 .unwrap();
-        });
+        }));
 
         // start a thread that updates the tm every second and sends the result to the UI
         let (clock_running_send, clock_running_recv) = mpsc::channel();
         clock_running_send.send(false).unwrap();
         tm.lock().unwrap().add_start_stop_sender(clock_running_send);
-        let tm_ = tm.clone();
         let mut just_started = false;
-        thread::spawn(move || {
+        thread::spawn(clone!(@strong tm => move || {
             let mut timeout = Duration::from_secs(1);
 
             let update_and_send_snapshot =
@@ -1714,7 +1232,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 match clock_running_recv.recv_timeout(timeout) {
                     Ok(false) => loop {
                         trace!("Updater: locking tm");
-                        update_and_send_snapshot(&mut tm_.lock().unwrap(), just_started);
+                        update_and_send_snapshot(&mut tm.lock().unwrap(), just_started);
                         info!("Updater: Waiting for Clock to start");
                         if clock_running_recv.recv().unwrap() {
                             info!("Updater: Clock has restarted");
@@ -1726,7 +1244,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     Err(RecvTimeoutError::Disconnected) => break,
                     Ok(true) | Err(RecvTimeoutError::Timeout) => {
                         trace!("Updater: locking tm");
-                        let mut tm = tm_.lock().unwrap();
+                        let mut tm = tm.lock().unwrap();
                         let now = update_and_send_snapshot(&mut tm, just_started);
                         just_started = false;
                         if let Some(nanos) = tm.nanos_to_update(now) {
@@ -1738,7 +1256,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
-        });
+        }));
 
         // Update the gui when a snapshot is received
         let mut last_snapshot = tm
@@ -1749,8 +1267,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         last_snapshot.w_score = std::u8::MAX;
         last_snapshot.b_score = std::u8::MAX;
 
-        let tm_ = tm.clone();
-        state_recv.attach(None, move |(snapshot, just_started)| {
+        state_recv.attach(None, clone!(@strong tm => move |(snapshot, just_started)| {
             edit_game_time.set_label(&secs_to_time_string(match snapshot.timeout {
                 TimeoutSnapshot::White(t)
                 | TimeoutSnapshot::Black(t)
@@ -1867,7 +1384,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         },
                     };
 
-                let tm = tm_.lock().unwrap();
+                let tm = tm.lock().unwrap();
 
                 game_state_header.set_label(game_header);
                 main_referee_timeout.set_label(ref_t_o_text);
@@ -1920,7 +1437,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             last_snapshot = snapshot;
 
             glib::source::Continue(true)
-        });
+        }));
 
         //
         //
@@ -1942,11 +1459,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // Actually run the program
     uiapp.run(&[]);
 
-    // Wait for the simulator to close
-    //    if let Some(t) = simulator_thread {
-    //        t.join().unwrap();
-    //    }
-
     Ok(())
 }
 
@@ -1956,17 +1468,6 @@ fn create_new_file(path: &str) -> std::io::Result<File> {
         .write(true)
         .create_new(true)
         .open(path)
-}
-
-fn secs_to_time_string<T>(secs: T) -> String
-where
-    T: Div<T> + Rem<T> + From<u8> + Copy,
-    <T as Div>::Output: Display,
-    <T as Rem>::Output: Display,
-{
-    let min = secs / T::from(60u8);
-    let sec = secs % T::from(60u8);
-    format!("{:2}:{:02}", min, sec)
 }
 
 macro_rules! new_button_func {
@@ -2028,27 +1529,25 @@ fn new_keypad() -> (gtk::Grid, gtk::Label) {
     let button_backspace = new_keypad_button("<--", "keypad", None);
     button_backspace.set_margin_end(BUTTON_MARGIN);
 
-    let player_number_ = player_number.clone();
-    button_backspace.connect_clicked(move |_| {
-        let label = player_number_.get_label().unwrap();
+    button_backspace.connect_clicked(clone!(@strong player_number => move |_| {
+        let label = player_number.get_label().unwrap();
         if label.as_str().chars().next_back().unwrap().is_digit(10) {
             let mut updated_label = label.as_str().to_string();
             updated_label.pop();
-            player_number_.set_label(&updated_label);
+            player_number.set_label(&updated_label);
         }
-    });
+    }));
 
     macro_rules! new_number_button {
         ($name:ident, $text:literal, $value:literal) => {
             let $name = new_keypad_button($text, "keypad", None);
-            let player_number_ = player_number.clone();
-            $name.connect_clicked(move |_| {
-                let mut updated_label = player_number_.get_label().unwrap().as_str().to_string();
+            $name.connect_clicked(clone!(@strong player_number => move |_| {
+                let mut updated_label = player_number.get_label().unwrap().as_str().to_string();
                 if updated_label.len() < 12 {
                     updated_label.push($value);
-                    player_number_.set_label(&updated_label);
+                    player_number.set_label(&updated_label);
                 }
-            });
+            }));
         };
     }
 

@@ -1,8 +1,10 @@
+#![allow(clippy::useless_let_if_seq)]
 use clap::{
     app_from_crate, crate_authors, crate_description, crate_name, crate_version, AppSettings, Arg,
     SubCommand,
 };
 use embedded_graphics::prelude::*;
+//use embedded_graphics::fonts::font_builder::FontBuilder;
 //use embedded_graphics::{egcircle, egline, fonts::Font, pixelcolor, text_6x8};
 use embedded_graphics::{fonts::Font, pixelcolor};
 use embedded_graphics_simulator::DisplayBuilder;
@@ -45,6 +47,7 @@ const BUTTON_MARGIN: i32 = 6;
 
 const STYLE: &str = std::include_str!("style.css");
 
+#[allow(clippy::cognitive_complexity)]
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // This allows the use of error!(), warn!(), info!(), etc.
     env_logger::init();
@@ -117,14 +120,16 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    let config = Config::new_from_file(config_path)?;
+
     // If the user asks, simulate the display panels instead
     if matches.subcommand_matches("simulate").is_some() {
         // Make a fake game state
-        let state = GameSnapshot {
-            current_period: GamePeriod::SuddenDeath,
-            secs_in_period: 754,                       // 12:34
-            timeout: TimeoutSnapshot::PenaltyShot(42), //Black(25), // None, White (34), Ref(34), PenaltyShot(34),
-            b_score: 67,
+        let mut state = GameSnapshot {
+            current_period: GamePeriod::FirstHalf,
+            secs_in_period: 754,            // 12:34
+            timeout: TimeoutSnapshot::None, //Black(34), //Ref(34), //PenaltyShot(34),
+            b_score: 1,
             w_score: 5,
             penalties: vec![],
         };
@@ -132,7 +137,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let red = pixelcolor::Rgb888::new(255, 0, 0);
         let yellow = pixelcolor::Rgb888::new(255, 255, 0);
         let green = pixelcolor::Rgb888::new(0, 255, 0);
-        let blue = pixelcolor::Rgb888::new(0, 0, 255);
+        let blue = pixelcolor::Rgb888::new(64, 128, 255); //purple (225, 0, 255)
         let white = pixelcolor::Rgb888::new(255, 255, 255);
 
         let mut display = DisplayBuilder::new()
@@ -277,7 +282,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         display.draw(
                             Font11x25::render_str("PENALTY")
                                 .stroke(Some(timeout_color))
-                                .translate(Point::new(65, 3)),
+                                .translate(Point::new(64, 3)),
                         );
                         display.draw(
                             Font11x25::render_str("SHOT")
@@ -295,67 +300,181 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             }
         };
 
-        //temporary values for assigning a penalty
-        let black_penalty_count = 0;
-        let white_penalty_count = 0;
+        // Create Vectors for the Black and White Penalty lists
+        let mut black_penalties = vec![];
+        let mut white_penalties = vec![];
 
-        // EVERYTHING TO BE DISPLAYED ON THE BLACK SCORE PANEL
+        // Sorting Penalties by Time and then by Color
 
-        if black_penalty_count > 0 {
-            if state.b_score < 10 {
-                display.draw(
-                    Font32x64::render_str(&format!("{:>2}", state.b_score))
-                        .stroke(Some(blue))
-                        .translate(Point::new(2, 2)),
-                );
+        state.penalties.sort_by(|a, b| a.time.cmp(&b.time));
+
+        for penalty in &state.penalties {
+            if penalty.color == Color::Black {
+                black_penalties.push(penalty);
             } else {
-                display.draw(
-                    Font22x46::render_str(&format!("{:<2}", state.b_score))
-                        .stroke(Some(blue))
-                        .translate(Point::new(11, 2)),
-                );
+                white_penalties.push(penalty);
             }
-        } else if state.b_score < 10 {
-            display.draw(
-                Font32x64::render_str(&format!("{:<2}", state.b_score))
-                    .stroke(Some(blue))
-                    .translate(Point::new(2 + 16, 2)),
-            );
-        } else {
-            display.draw(
-                Font32x64::render_str(&format!("{:<2}", state.b_score))
-                    .stroke(Some(blue))
-                    .translate(Point::new(2, 2)),
-            );
         }
 
-        // EVERYTHING TO BE DISPLAYED ON THE WHITE SCORE PANEL
-        if white_penalty_count > 0 {
-            if state.w_score < 10 {
+        let left_penalties;
+        let right_penalties;
+        let left_score;
+        let right_score;
+        let left_color;
+        let right_color;
+
+        if config.hardware.white_on_right {
+            left_penalties = black_penalties;
+            right_penalties = white_penalties;
+            left_score = state.b_score;
+            right_score = state.w_score;
+            left_color = blue;
+            right_color = white;
+        } else {
+            left_penalties = white_penalties;
+            right_penalties = black_penalties;
+            left_score = state.w_score;
+            right_score = state.b_score;
+            left_color = white;
+            right_color = blue;
+        }
+
+        // Score on Left Score Panel
+        let left_score_string = format!("{:<2}", left_score);
+        if left_penalties.is_empty() {
+            if left_score < 10 {
+                // Full Size Left Score (Single Digit Centered)
                 display.draw(
-                    Font32x64::render_str(&format!("{:<2}", state.w_score))
-                        .stroke(Some(white))
-                        .translate(Point::new(194, 2)),
+                    Font32x64::render_str(&left_score_string)
+                        .stroke(Some(left_color))
+                        .translate(Point::new(18, 2)),
                 );
             } else {
+                // Full Size Left Score (Double Digit Centered)
                 display.draw(
-                    Font22x46::render_str(&format!("{:<2}", state.w_score))
-                        .stroke(Some(white))
-                        .translate(Point::new(203, 2)),
+                    Font32x64::render_str(&left_score_string)
+                        .stroke(Some(left_color))
+                        .translate(Point::new(2, 2)),
                 );
             }
-        } else if state.w_score < 10 {
+        } else if left_score < 10 {
+            // Full Size Left Score, Single Digit - Justified Right/Inside/Towards Time Panels
             display.draw(
-                Font32x64::render_str(&format!("{:<2}", state.w_score))
-                    .stroke(Some(white))
-                    .translate(Point::new(194 + 16, 2)),
+                Font32x64::render_str(&left_score_string)
+                    .stroke(Some(left_color))
+                    .translate(Point::new(34, 2)),
             );
         } else {
+            // 3/4 Size Left Score (Double Digit - Centered on Score Panel)
             display.draw(
-                Font32x64::render_str(&format!("{:<2}", state.w_score))
-                    .stroke(Some(white))
+                Font22x46::render_str(&left_score_string)
+                    .stroke(Some(left_color))
+                    .translate(Point::new(11, 2)),
+            );
+        };
+
+        // Score on Right Score Panel
+        let right_score_string = format!("{:<2}", right_score);
+        if right_penalties.is_empty() {
+            if right_score < 10 {
+                // Full Size Right Score (Single Digit Centered)
+                display.draw(
+                    Font32x64::render_str(&right_score_string)
+                        .stroke(Some(right_color))
+                        .translate(Point::new(210, 2)),
+                );
+            } else {
+                // Full Size Right Score (Double Digit Centered)
+                display.draw(
+                    Font32x64::render_str(&right_score_string)
+                        .stroke(Some(right_color))
+                        .translate(Point::new(194, 2)),
+                );
+            }
+        } else if right_score < 10 {
+            // Full Size Right Score, Single Digit - Justified Right/Inside/Towards Time Panels
+            display.draw(
+                Font32x64::render_str(&right_score_string)
+                    .stroke(Some(right_color))
                     .translate(Point::new(194, 2)),
             );
+        } else {
+            // 3/4 Size Right Score (Double Digit - Centered on Score Panel)
+            display.draw(
+                Font22x46::render_str(&right_score_string)
+                    .stroke(Some(right_color))
+                    .translate(Point::new(203, 2)),
+            );
+        };
+
+        // Define layout for Penalties
+        let mut draw_penalty = |x_pos: i32, y_pos: i32, color, penalty: &PenaltySnapshot| {
+            display.draw(
+                Font6x8::render_str(&format!("#{}", penalty.player_number))
+                    .stroke(Some(color))
+                    .translate(Point::new(
+                        if penalty.player_number > 9 { 3 } else { 6 } + x_pos,
+                        y_pos,
+                    )),
+            );
+            match penalty.time {
+                PenaltyTime::Seconds(secs) => {
+                    display.draw(
+                        Font6x8::render_str(&secs_to_time_string(secs))
+                            .stroke(Some(color))
+                            .translate(Point::new(x_pos - 6, y_pos + 8)),
+                    );
+                }
+                PenaltyTime::TotalDismissal => {
+                    display.draw(
+                        Font6x8::render_str(&"DSMS".to_string())
+                            .stroke(Some(red))
+                            .translate(Point::new(x_pos, y_pos + 8)),
+                    );
+                }
+            }
+        };
+
+        // Penalties on Left Score Panel
+        if left_score < 10 {
+            // Vertical Penalties (Up to 3) - Justified Left/Outside/Away from Time Panels
+            // Penalties "Fall-Off" the Bottom as they run out
+            for (i, penalty) in left_penalties.iter().take(3).enumerate() {
+                let i: i32 = i.try_into().unwrap();
+                let x_pos = 5;
+                let y_pos: i32 = 47 - i * 22;
+                draw_penalty(x_pos, y_pos, left_color, penalty);
+            }
+        } else {
+            // Horizontal Penalties (Up to 2) - Justified Left/Outside/Away from Time Panels
+            // Penalties "Fall-Off" the Left Side as they run out
+            for (i, penalty) in left_penalties.iter().take(2).enumerate() {
+                let i: i32 = i.try_into().unwrap();
+                let x_pos: i32 = 5 + i * 29;
+                let y_pos = 47;
+                draw_penalty(x_pos, y_pos, left_color, penalty);
+            }
+        }
+
+        // Penalties on Right Score Panel
+        if right_score < 10 {
+            // Vertical Penalties (Up to 3) - Justified Right/Outside/Away from Time Panels
+            // Penalties "Fall-Off" the Bottom as they run out
+            for (i, penalty) in right_penalties.iter().take(3).enumerate() {
+                let i: i32 = i.try_into().unwrap();
+                let x_pos = 228;
+                let y_pos: i32 = 47i32 - i * 22i32;
+                draw_penalty(x_pos, y_pos, right_color, penalty);
+            }
+        } else {
+            // Horizontal Penalties (Up to 2) - Justified Right/Outside/Away from Time Panels
+            // Penalties "Fall-Off" the Right Side as they run out
+            for (i, penalty) in right_penalties.iter().take(2).enumerate() {
+                let i: i32 = i.try_into().unwrap();
+                let x_pos: i32 = 228i32 - i * 29i32;
+                let y_pos = 47;
+                draw_penalty(x_pos, y_pos, right_color, penalty);
+            }
         }
 
         loop {
@@ -370,8 +489,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
         return Ok(());
     }
-
-    let config = Config::new_from_file(config_path)?;
 
     let tm = Arc::new(Mutex::new(TournamentManager::new(config.game.clone())));
 

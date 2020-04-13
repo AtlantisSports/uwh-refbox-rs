@@ -3,10 +3,7 @@ use clap::{
     app_from_crate, crate_authors, crate_description, crate_name, crate_version, AppSettings, Arg,
     SubCommand,
 };
-//use embedded_graphics::fonts::font_builder::FontBuilder;
-//use embedded_graphics::{egcircle, egline, fonts::Font, pixelcolor, text_6x8};
 use embedded_graphics_simulator::DisplayBuilder;
-//use fonts::fonts::Font6x8 as CustomFont6x8;
 use gio::prelude::*;
 use glib::clone;
 use gtk::prelude::*;
@@ -35,13 +32,6 @@ use tournament_manager::*;
 
 const BUTTON_SPACING: i32 = 12;
 const BUTTON_MARGIN: i32 = 6;
-//const RETURN_BTN_SIZE_X: i32 = 400;
-//const RETURN_BTN_SIZE_Y: i32 = 250;
-//const BUTTON_STANDARD_HEIGHT: i32 = 70;
-//const BUTTON_STANDARD_HEIGHT: config.hardware.screen_y / 6;
-
-//const LABEL_STANDARD_HEIGHT: i32 = 35;
-//const KEYPAD_BUTTON_SIZE: i32 = 70;
 
 const STYLE: &str = std::include_str!("style.css");
 
@@ -124,8 +114,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         // Make a fake game state
         let state = GameSnapshot {
             current_period: GamePeriod::FirstHalf,
-            secs_in_period: 754,            // 12:34
-            timeout: TimeoutSnapshot::None, //Black(34), //Ref(34), //PenaltyShot(34),
+            secs_in_period: 754, // 12:34
+            timeout: TimeoutSnapshot::None,
             b_score: 1,
             w_score: 5,
             penalties: vec![PenaltySnapshot {
@@ -165,12 +155,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     )
     .expect("Application::new() failed");
 
-    // Some debugging output
     info!("App initialized");
 
     // Initialize the app
     uiapp.connect_activate(move |app| {
-        // Setup the app to use the CSS Style defined at the top of this file
+        // Setup the app to use the CSS Style defined in style.css
         let provider = gtk::CssProvider::new();
         provider
             .load_from_data(STYLE.as_bytes())
@@ -888,9 +877,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         all_parameter_widgets.push(edit_overtime_allow_label.upcast::<gtk::Widget>());
         all_parameter_widgets.push(edit_sudden_death_allow_label.upcast::<gtk::Widget>());
 
-        //        let ot_edit_buttons_ = ot_edit_buttons.to_vec();
-        //        let sd_edit_buttons_ = sd_edit_buttons.to_vec();
-
         edit_game_parameters_type.connect_clicked(clone!(@strong all_parameter_widgets, @strong ot_edit_buttons, @strong sd_edit_buttons => move |b| {
             if b.get_active() {
                 for button in &all_parameter_widgets {
@@ -1472,11 +1458,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     // Actually run the program
     uiapp.run(&[]);
-
-    // Wait for the simulator to close
-    //    if let Some(t) = simulator_thread {
-    //        t.join().unwrap();
-    //    }
 
     Ok(())
 }

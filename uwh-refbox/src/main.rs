@@ -222,7 +222,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let new_penalty_shot = new_button("PENALTY SHOT", &["red"], None);
         let edit_game_information = new_button("GAME INFORMATION", &["gray"], None);
         let edit_game_parameters = new_button("GAME PARAMETERS", &["gray"], None);
-
         let edit_white_score = new_button("#W", &["white-score"], None);
         let add_white_score = new_button("SCORE\nWHITE", &["white"], None);
         let edit_white_time_penalty = new_button("WHITE\nTIME\nPENALTY\nLIST", &["white"], None);
@@ -230,7 +229,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let add_black_score = new_button("SCORE\nBLACK", &["black"], None);
         let edit_black_time_penalty = new_button("BLACK\nTIME\nPENALTY\nLIST", &["black"], None);
         let main_white_timeout = new_button("WHITE\nTIMEOUT", &["white"], None);
-        let main_referee_timeout = new_button("START", &["yellow"], None);
+        let main_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
         let main_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
 
         let game_state_header = new_label("FIRST GAME IN", "header-dark-gray");
@@ -283,39 +282,33 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         new_score_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         new_score_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
 
-        let score_white_select = new_toggle_button("WHITE", &["white"], None);
-        let score_black_select = new_toggle_button("BLACK", &["black"], None);
+        let new_score_white_select = new_toggle_button("WHITE", &["white"], None);
+        let new_score_black_select = new_toggle_button("BLACK", &["black"], None);
 
-        let score_cancel = new_button("CANCEL", &["red"], None);
-        let score_submit = new_button("SUBMIT", &["green"], None);
-        let score_white_timeout = new_button("WHITE\nTIMEOUT", &["white"], None);
-        let score_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
-        let score_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
+        let new_score_cancel = new_button("CANCEL", &["red"], None);
+        let new_score_submit = new_button("SUBMIT", &["green"], None);
 
         let (score_keypad, score_player_number) = new_keypad();
 
         new_score_layout.attach(&score_keypad, 0, 0, 4, 9);
-        new_score_layout.attach(&score_white_select, 4, 0, 4, 3);
-        new_score_layout.attach(&score_black_select, 8, 0, 4, 3);
-        new_score_layout.attach(&score_cancel, 4, 7, 4, 2);
-        new_score_layout.attach(&score_submit, 8, 7, 4, 2);
-        new_score_layout.attach(&score_white_timeout, 0, 9, 3, 2);
-        new_score_layout.attach(&score_referee_timeout, 3, 9, 6, 2);
-        new_score_layout.attach(&score_black_timeout, 9, 9, 3, 2);
+        new_score_layout.attach(&new_score_white_select, 4, 0, 4, 3);
+        new_score_layout.attach(&new_score_black_select, 8, 0, 4, 3);
+        new_score_layout.attach(&new_score_cancel, 4, 7, 4, 2);
+        new_score_layout.attach(&new_score_submit, 8, 7, 4, 2);
 
         // Setting up the white/black selected buttons
-        score_black_select.connect_clicked(clone!(@strong score_white_select => move |b| {
+         new_score_black_select.connect_clicked(clone!(@strong new_score_white_select => move |b| {
             if b.get_active() {
-                score_white_select.set_active(false);
-            } else if !score_white_select.get_active() {
+                new_score_white_select.set_active(false);
+            } else if !new_score_white_select.get_active() {
                 b.set_active(true);
             }
         }));
 
-        score_white_select.connect_clicked(clone!(@strong score_black_select => move |b| {
+        new_score_white_select.connect_clicked(clone!(@strong new_score_black_select => move |b| {
             if b.get_active() {
-                score_black_select.set_active(false);
-            } else if !score_black_select.get_active() {
+                new_score_black_select.set_active(false);
+            } else if !new_score_black_select.get_active() {
                 b.set_active(true);
             }
         }));
@@ -353,9 +346,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
         let score_edit_cancel = new_button("CANCEL", &["red"], None);
         let score_edit_submit = new_button("SUBMIT", &["green"], None);
-        let score_edit_white_timeout = new_button("WHITE\nTIMEOUT", &["white"], None);
-        let score_edit_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
-        let score_edit_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
 
         let white_score_header = new_label("WHITE SCORE", "header-white");
         let black_score_header = new_label("BLACK SCORE", "header-black");
@@ -364,9 +354,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let empty_score_edit_label = gtk::Label::new(None);
 
         let white_score_header_box = gtk::Grid::new();
-        white_score_header_box
-            .get_style_context()
-            .add_class("white");
+        white_score_header_box.get_style_context().add_class("white");
         white_score_header_box.set_column_homogeneous(true);
         white_score_header_box.set_row_homogeneous(true);
         white_score_header_box.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
@@ -376,9 +364,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         white_score_header_box.attach(&modified_white_score, 1, 1, 1, 4);
 
         let black_score_header_box = gtk::Grid::new();
-        black_score_header_box
-            .get_style_context()
-            .add_class("black");
+        black_score_header_box.get_style_context().add_class("black");
         black_score_header_box.set_column_homogeneous(true);
         black_score_header_box.set_row_homogeneous(true);
         black_score_header_box.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
@@ -392,9 +378,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         edit_score_layout.attach(&empty_score_edit_label, 0, 5, 12, 2);
         edit_score_layout.attach(&score_edit_cancel, 0, 7, 4, 2);
         edit_score_layout.attach(&score_edit_submit, 8, 7, 4, 2);
-        edit_score_layout.attach(&score_edit_white_timeout, 0, 9, 3, 2);
-        edit_score_layout.attach(&score_edit_referee_timeout, 3, 9, 6, 2);
-        edit_score_layout.attach(&score_edit_black_timeout, 9, 9, 3, 2);
 
         white_score_plus.connect_clicked(clone!(@strong modified_white_score => move |_| {
             let old = modified_white_score
@@ -455,18 +438,12 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let penalty_conf_cancel = new_button("CANCEL", &["red"], None);
         let penalty_conf_new = new_button("NEW", &["blue"], None);
         let penalty_conf_start = new_button("START /\nDONE", &["green"], None);
-        let penalty_conf_white_timeout = new_button("WHITE\nTIMEOUT", &["white"], None);
-        let penalty_conf_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
-        let penalty_conf_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
 
         time_penalty_conf_layout.attach(&white_time_list, 0, 0, 6, 7);
         time_penalty_conf_layout.attach(&black_time_list, 6, 0, 6, 7);
         time_penalty_conf_layout.attach(&penalty_conf_new, 0, 7, 4, 2);
         time_penalty_conf_layout.attach(&penalty_conf_cancel, 4, 7, 4, 2);
         time_penalty_conf_layout.attach(&penalty_conf_start, 8, 7, 4, 2);
-        time_penalty_conf_layout.attach(&penalty_conf_white_timeout, 0, 9, 3, 2);
-        time_penalty_conf_layout.attach(&penalty_conf_referee_timeout, 3, 9, 6, 2);
-        time_penalty_conf_layout.attach(&penalty_conf_black_timeout, 9, 9, 3, 2);
 
         //
         //
@@ -491,10 +468,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
         let penalty_delete = new_button("DELETE", &["red"], None);
         let penalty_add = new_button("ADD", &["green"], None);
-        let penalty_white_timeout = new_button("WHITE\nTIMEOUT", &["white"], None);
-        let penalty_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
-        let penalty_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
-
         let (penalty_keypad, _penalty_player_number) = new_keypad();
 
         penalty_add_layout.attach(&penalty_keypad, 0, 0, 4, 9);
@@ -506,9 +479,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         penalty_add_layout.attach(&penalty_dismiss, 10, 3, 2, 4);
         penalty_add_layout.attach(&penalty_delete, 4, 7, 4, 2);
         penalty_add_layout.attach(&penalty_add, 8, 7, 4, 2);
-        penalty_add_layout.attach(&penalty_white_timeout, 0, 9, 3, 2);
-        penalty_add_layout.attach(&penalty_referee_timeout, 3, 9, 6, 2);
-        penalty_add_layout.attach(&penalty_black_timeout, 9, 9, 3, 2);
 
         // Setting up the white/black selected buttons
         penalty_black_select.connect_clicked(clone!(@strong penalty_white_select => move |b| {
@@ -600,9 +570,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let second_minus = new_button("-", &["blue-modifier"], None);
         let time_edit_cancel = new_button("CANCEL", &["red"], None);
         let time_edit_submit = new_button("SUBMIT", &["green"], None);
-        let time_edit_white_timeout = new_button("WHITE\nTIMEOUT", &["white"], None);
-        let time_edit_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
-        let time_edit_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
 
         let minute_header = new_label("MINUTE", "header-gray");
         let second_header = new_label("SECOND", "header-gray");
@@ -636,9 +603,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         time_edit_layout.attach(&empty_time_edit_label, 0, 5, 12, 2);
         time_edit_layout.attach(&time_edit_cancel, 0, 7, 4, 2);
         time_edit_layout.attach(&time_edit_submit, 8, 7, 4, 2);
-        time_edit_layout.attach(&time_edit_white_timeout, 0, 9, 3, 2);
-        time_edit_layout.attach(&time_edit_referee_timeout, 3, 9, 6, 2);
-        time_edit_layout.attach(&time_edit_black_timeout, 9, 9, 3, 2);
 
         let get_displayed_time = clone!(@strong modified_game_time => move || {
             let label = modified_game_time.get_label().unwrap();
@@ -714,7 +678,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let edit_game_parameters_ot_no = new_toggle_button("NO", &["little-red"], None);
         let edit_game_parameters_sd_yes = new_toggle_button("YES", &["little-green"], None);
         let edit_game_parameters_sd_no = new_toggle_button("NO", &["little-red"], None);
-        let edit_game_parameters_type = new_toggle_button("DISABLE", &["blue"], None);
+        let edit_game_parameters_allow_button = new_toggle_button("DISABLE", &["blue"], None);
 
         let edit_game_parameters_cancel = new_button("CANCEL", &["red"], None);
         let edit_game_parameters_submit = new_button("SUBMIT", &["green"], None);
@@ -787,7 +751,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         edit_game_parameters_layout.attach(&pre_sudden_death_length_time_edit, 8, 9, 4, 1);
 
         edit_game_parameters_layout.attach(&edit_game_parameters_cancel, 0, 10, 4, 2);
-        edit_game_parameters_layout.attach(&edit_game_parameters_type, 4, 10, 4, 2);
+        edit_game_parameters_layout.attach(&edit_game_parameters_allow_button, 4, 10, 4, 2);
         edit_game_parameters_layout.attach(&edit_game_parameters_submit, 8, 10, 4, 2);
 
         // Setting initial status
@@ -877,7 +841,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         all_parameter_widgets.push(edit_overtime_allow_label.upcast::<gtk::Widget>());
         all_parameter_widgets.push(edit_sudden_death_allow_label.upcast::<gtk::Widget>());
 
-        edit_game_parameters_type.connect_clicked(clone!(@strong all_parameter_widgets, @strong ot_edit_buttons, @strong sd_edit_buttons => move |b| {
+        edit_game_parameters_allow_button.connect_clicked(clone!(@strong all_parameter_widgets, @strong ot_edit_buttons, @strong sd_edit_buttons => move |b| {
             if b.get_active() {
                 for button in &all_parameter_widgets {
                     b.get_child()
@@ -928,46 +892,158 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
         uwhscores_edit_layout.pack_start(&uwhscores_submit, false, false, 0);
 
-        //
-        //
-        // Build the Stack, which switches between screen layouts
-        //
-        let layout_stack = gtk::Stack::new();
-        layout_stack.add_named(&start_layout, "Start Layout");
-        layout_stack.add_named(&main_layout, "Main Layout");
-        layout_stack.add_named(&time_edit_layout, "Time Edit Layout");
-        layout_stack.add_named(
-            &edit_game_information_layout,
-            "Edit Game Information Layout",
-        );
-        layout_stack.add_named(&edit_game_parameters_layout, "Edit Game Parameters");
-        layout_stack.add_named(&new_score_layout, "New Score Layout");
-        layout_stack.add_named(&penalty_add_layout, "Penalty Add/Edit Layout");
-        layout_stack.add_named(
-            &time_penalty_conf_layout,
-            "Time Penalty Confirmation Layout",
-        );
-        layout_stack.add_named(&edit_score_layout, "Edit Score Layout");
-        layout_stack.add_named(&uwhscores_edit_layout, "UWH Scores Layout");
 
-        // Set up the buttons to switch between layouts
+        //
+        //
+        // No Timeout Ribbon
+        //
+        let no_timeout_layout = gtk::Grid::new();
+        no_timeout_layout.set_column_homogeneous(true);
+        no_timeout_layout.set_row_homogeneous(true);
+        no_timeout_layout.set_margin_top(BUTTON_MARGIN);
+        no_timeout_layout.set_margin_start(BUTTON_MARGIN);
+        no_timeout_layout.set_margin_end(BUTTON_MARGIN);
+        no_timeout_layout.set_margin_bottom(BUTTON_MARGIN);
+        no_timeout_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
+        no_timeout_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
+
+        let no_timeout_white_timeout = new_button("WHITE\nTIMEOUT", &["white"], None);
+        let no_timeout_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
+        let no_timeout_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
+
+        no_timeout_layout.attach(&no_timeout_white_timeout, 0, 0, 3, 2);
+        no_timeout_layout.attach(&no_timeout_referee_timeout, 3, 0, 6, 2);
+        no_timeout_layout.attach(&no_timeout_black_timeout, 9, 0, 3, 2);
+
+
+        //
+        //
+        // In Timeout Ribbon
+        //
+        let in_timeout_layout = gtk::Grid::new();
+        in_timeout_layout.set_column_homogeneous(true);
+        in_timeout_layout.set_row_homogeneous(true);
+        in_timeout_layout.set_margin_top(BUTTON_MARGIN);
+        in_timeout_layout.set_margin_start(BUTTON_MARGIN);
+        in_timeout_layout.set_margin_end(BUTTON_MARGIN);
+        in_timeout_layout.set_margin_bottom(BUTTON_MARGIN);
+        in_timeout_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
+        in_timeout_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
+
+        let in_timeout_white_timeout = new_button("WHITE\nTIMEOUT", &["white"], None);
+        let in_timeout_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
+        let in_timeout_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
+
+        in_timeout_layout.attach(&in_timeout_white_timeout, 0, 0, 3, 2);
+        in_timeout_layout.attach(&in_timeout_referee_timeout, 3, 0, 6, 2);
+        in_timeout_layout.attach(&in_timeout_black_timeout, 9, 0, 3, 2);
+
+
+        //
+        //
+        // Change Timeout Ribbon
+        //
+        let change_timeout_layout = gtk::Grid::new();
+        change_timeout_layout.set_column_homogeneous(true);
+        change_timeout_layout.set_row_homogeneous(true);
+        change_timeout_layout.set_margin_top(BUTTON_MARGIN);
+        change_timeout_layout.set_margin_start(BUTTON_MARGIN);
+        change_timeout_layout.set_margin_end(BUTTON_MARGIN);
+        change_timeout_layout.set_margin_bottom(BUTTON_MARGIN);
+        change_timeout_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
+        change_timeout_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
+
+        let change_timeout_white_timeout = new_button("WHITE\nTIMEOUT", &["white"], None);
+        let change_timeout_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
+        let change_timeout_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
+
+        change_timeout_layout.attach(&change_timeout_white_timeout, 0, 0, 3, 2);
+        change_timeout_layout.attach(&change_timeout_referee_timeout, 3, 0, 6, 2);
+        change_timeout_layout.attach(&change_timeout_black_timeout, 9, 0, 3, 2);
+
+
+        //
+        //
+        // Build the Stacks and Layouts
+        //
+        // Play Stack, which switches the different layouts that can be reached during a game
+        let adjust_stack = gtk::Stack::new();
+        adjust_stack.add_named(&time_edit_layout, "Time Edit Layout");
+        adjust_stack.add_named(&new_score_layout, "New Score Layout");
+        adjust_stack.add_named(&penalty_add_layout, "Penalty Add/Edit Layout");
+        adjust_stack.add_named(&time_penalty_conf_layout, "Time Penalty Confirmation Layout");
+        adjust_stack.add_named(&edit_score_layout, "Edit Score Layout");
+
+        // Timeout Ribbon, which defines the timeout layout
+        let timeout_ribbon_stack = gtk::Stack::new();
+        timeout_ribbon_stack.add_named(&in_timeout_layout, "In Timeout");
+        timeout_ribbon_stack.add_named(&no_timeout_layout, "No Timeout");
+        timeout_ribbon_stack.add_named(&change_timeout_layout, "Change Timeout");
+
+        // Play Layout, which defines the relative position of the Play Stack and the Timeout Ribbon
+        let adjust_layout = gtk::Grid::new();
+        adjust_layout.attach(&adjust_stack, 0, 0, 12, 9);
+        adjust_layout.attach(&timeout_ribbon_stack, 0, 9, 12, 2);
+
+        // Full Stack, which switches between the different full screen layouts
+        let full_stack = gtk::Stack::new();
+        full_stack.add_named(&start_layout, "Start Layout"); 
+        full_stack.add_named(&main_layout, "Main Layout");
+        full_stack.add_named(&adjust_layout, "Adjust Layout");
+        full_stack.add_named(&edit_game_information_layout, "Edit Game Information Layout"); 
+        full_stack.add_named(&edit_game_parameters_layout, "Edit Game Parameters");
+        full_stack.add_named(&uwhscores_edit_layout, "UWH Scores Layout"); 
+
+
+        // 
+        //
+        // Clock stuff
+        //
         let clock_was_running = Arc::new(AtomicBool::new(false));
 
-        //
-        //
-        // Buttons for moving back to the Main Layout
-        //
 
-        choose_auto.connect_clicked(clone!(@strong main_layout, @strong layout_stack, @strong edit_game_parameters_type => move |_| {
-            edit_game_parameters_type.set_active(true);
-            layout_stack.set_visible_child(&main_layout);
+        //
+        //
+        // Set up Buttons for moving/transferring between Layouts
+        //
+        // Start Page - Transfer Buttons
+         choose_auto.connect_clicked(clone!(@strong full_stack, @strong main_layout, @strong edit_game_parameters_allow_button => move |_| {
+            edit_game_parameters_allow_button.set_active(true);
+            full_stack.set_visible_child(&main_layout);
         }));
 
-        uwhscores_submit.connect_clicked(clone!(@strong main_layout, @strong layout_stack => move |_| layout_stack.set_visible_child(&main_layout)));
+        choose_manual.connect_clicked(clone!(@strong edit_game_parameters_layout, @strong full_stack, @strong edit_game_parameters_allow_button => move |_| {
+            edit_game_parameters_allow_button.set_active(false);
+            full_stack.set_visible_child(&edit_game_parameters_layout)
+        }));
 
-        edit_game_information_submit.connect_clicked(clone!(@strong main_layout, @strong layout_stack => move |_| layout_stack.set_visible_child(&main_layout)));
+        // Edit Game Information Page - Transfer Buttons
+        edit_game_information_submit.connect_clicked(clone!(@strong full_stack, @strong main_layout => move |_| full_stack.set_visible_child(&main_layout)));
+        
+        edit_uwhscores.connect_clicked(clone!(@strong full_stack, @strong uwhscores_edit_layout => move |_| full_stack.set_visible_child(&uwhscores_edit_layout)));
 
-        score_submit.connect_clicked(clone!(@strong main_layout, @strong layout_stack, @strong score_player_number, @strong score_white_select, @strong tm, @strong state_send => move |_| {
+        // Edit UWH Scores Page - Transfer Buttons
+        uwhscores_submit.connect_clicked(clone!(@strong full_stack, @strong main_layout => move |_| full_stack.set_visible_child(&main_layout)));
+
+        // Edit Game Parameters Page - Transfer Buttons
+        edit_game_parameters_cancel.connect_clicked(clone!(@strong full_stack, @strong main_layout => move |_| full_stack.set_visible_child(&main_layout)));
+
+        edit_game_parameters_submit.connect_clicked(clone!(@strong full_stack, @strong main_layout => move |_| full_stack.set_visible_child(&main_layout)));
+
+        // Penalty Confirmation Page - Transfer Buttons
+        penalty_conf_cancel.connect_clicked(clone!(@strong full_stack, @strong main_layout => move |_| full_stack.set_visible_child(&main_layout)));
+ 
+        penalty_conf_new.connect_clicked(clone!(@strong adjust_stack => move |_| adjust_stack.set_visible_child(&penalty_add_layout)));
+  
+        penalty_conf_start.connect_clicked(clone!(@strong full_stack, @strong main_layout => move |_| full_stack.set_visible_child(&main_layout)));
+
+        // Time Penalty Add/Edit Page
+        penalty_delete.connect_clicked(clone!(@strong adjust_stack, @strong time_penalty_conf_layout => move |_| adjust_stack.set_visible_child(&time_penalty_conf_layout)));
+
+        penalty_add.connect_clicked(clone!(@strong adjust_stack, @strong time_penalty_conf_layout => move |_| adjust_stack.set_visible_child(&time_penalty_conf_layout)));
+
+        // New Score Page - Transfer Buttons
+        new_score_submit.connect_clicked(clone!(@strong full_stack, @strong main_layout, @strong score_player_number, @strong new_score_white_select, @strong tm, @strong state_send => move |_| {
             let player = score_player_number
                 .get_label()
                 .unwrap()
@@ -980,7 +1056,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 .unwrap_or(std::u8::MAX);
             let now = Instant::now();
             let mut tm = tm.lock().unwrap();
-            if score_white_select.get_active() {
+            if new_score_white_select.get_active() {
                 tm.add_w_score(player, now);
             } else {
                 tm.add_b_score(player, now);
@@ -988,19 +1064,20 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             state_send
                 .send((tm.generate_snapshot(now).unwrap(), false))
                 .unwrap();
-            layout_stack.set_visible_child(&main_layout)
+            full_stack.set_visible_child(&main_layout)
         }));
 
-        score_cancel.connect_clicked(clone!(@strong main_layout, @strong layout_stack => move |_| layout_stack.set_visible_child(&main_layout)));
+        new_score_cancel.connect_clicked(clone!(@strong full_stack, @strong main_layout => move |_| full_stack.set_visible_child(&main_layout)));
 
-        score_edit_cancel.connect_clicked(clone!(@strong main_layout, @strong layout_stack, @strong tm, @strong modified_white_score, @strong modified_black_score => move |_| {
+        // Edit Score Page - Transfer Buttons
+        score_edit_cancel.connect_clicked(clone!(@strong full_stack, @strong main_layout, @strong tm, @strong modified_white_score, @strong modified_black_score => move |_| {
             let tm = tm.lock().unwrap();
             modified_white_score.set_label(&format!("{}", tm.get_w_score()));
             modified_black_score.set_label(&format!("{}", tm.get_b_score()));
-            layout_stack.set_visible_child(&main_layout)
+            full_stack.set_visible_child(&main_layout)
         }));
 
-        score_edit_submit.connect_clicked(clone!(@strong main_layout, @strong layout_stack, @strong tm, @strong state_send, @strong modified_white_score, @strong modified_black_score => move |_| {
+        score_edit_submit.connect_clicked(clone!(@strong full_stack, @strong main_layout, @strong tm, @strong state_send, @strong modified_white_score, @strong modified_black_score => move |_| {
             let w_score = modified_white_score
                 .get_label()
                 .unwrap()
@@ -1020,17 +1097,18 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             state_send
                 .send((tm.generate_snapshot(now).unwrap(), false))
                 .unwrap();
-            layout_stack.set_visible_child(&main_layout)
+            full_stack.set_visible_child(&main_layout)
         }));
 
-        time_edit_cancel.connect_clicked(clone!(@strong main_layout, @strong layout_stack, @strong tm, @strong clock_was_running => move |_| {
+        // Edit Time Page - Transfer Buttons
+        time_edit_cancel.connect_clicked(clone!(@strong full_stack, @strong main_layout, @strong tm, @strong clock_was_running => move |_| {
             if clock_was_running.load(Ordering::SeqCst) {
                 tm.lock().unwrap().start_clock(Instant::now());
             }
-            layout_stack.set_visible_child(&main_layout)
+            full_stack.set_visible_child(&main_layout)
         }));
 
-        time_edit_submit.connect_clicked(clone!(@strong main_layout, @strong layout_stack, @strong state_send, @strong tm, @strong clock_was_running => move |_| {
+        time_edit_submit.connect_clicked(clone!(@strong full_stack, @strong main_layout, @strong state_send, @strong tm, @strong clock_was_running => move |_| {
             let mut tm = tm.lock().unwrap();
             tm.set_game_clock_time(Duration::from_secs(get_displayed_time()))
                 .unwrap();
@@ -1041,23 +1119,12 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     .send((tm.generate_snapshot(Instant::now()).unwrap(), false))
                     .unwrap();
             }
-            layout_stack.set_visible_child(&main_layout)
+            full_stack.set_visible_child(&main_layout)
         }));
 
-        edit_game_parameters_cancel.connect_clicked(clone!(@strong main_layout, @strong layout_stack => move |_| layout_stack.set_visible_child(&main_layout)));
 
-        edit_game_parameters_submit.connect_clicked(clone!(@strong main_layout, @strong layout_stack => move |_| layout_stack.set_visible_child(&main_layout)));
-
-        penalty_conf_cancel.connect_clicked(clone!(@strong main_layout, @strong layout_stack => move |_| layout_stack.set_visible_child(&main_layout)));
-
-        penalty_conf_start.connect_clicked(clone!(@strong main_layout, @strong layout_stack => move |_| layout_stack.set_visible_child(&main_layout)));
-
-        //
-        //
-        // Buttons for navigating between Layouts that are not Main Layout
-        //
-        // move to edit_time_layout
-        edit_game_time.connect_clicked(clone!(@strong layout_stack, @strong tm => move |_| {
+        // Main Page - Transfer Buttons
+        edit_game_time.connect_clicked(clone!(@strong full_stack, @strong adjust_stack, @strong adjust_layout, @strong time_edit_layout, @strong tm => move |_| {
             let mut tm = tm.lock().unwrap();
             let now = Instant::now();
             tm.update(now);
@@ -1066,68 +1133,61 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             modified_game_time.set_label(&secs_to_time_string(
                 tm.game_clock_time(now).unwrap().as_secs(),
             ));
-            layout_stack.set_visible_child(&time_edit_layout);
+            full_stack.set_visible_child(&adjust_layout);
+            adjust_stack.set_visible_child(&time_edit_layout);
         }));
 
-        // move to new_score_layout
-        add_white_score.connect_clicked(clone!(@strong new_score_layout, @strong layout_stack, @strong score_player_number => move |_| {
-            score_white_select.set_active(true);
+        add_white_score.connect_clicked(clone!(@strong full_stack, @strong adjust_stack, @strong adjust_layout, @strong new_score_layout, @strong score_player_number => move |_| {
+            new_score_white_select.set_active(true);
             score_player_number.set_label("Player #:\n");
-            layout_stack.set_visible_child(&new_score_layout);
+            full_stack.set_visible_child(&adjust_layout);
+            adjust_stack.set_visible_child(&new_score_layout);
         }));
 
-        add_black_score.connect_clicked(clone!(@strong layout_stack => move |_| {
-            score_black_select.set_active(true);
+        add_black_score.connect_clicked(clone!(@strong full_stack, @strong adjust_stack, @strong adjust_layout, @strong new_score_layout, @strong score_player_number => move |_| {
+            new_score_black_select.set_active(true);
             score_player_number.set_label("Player #:\n");
-            layout_stack.set_visible_child(&new_score_layout);
+            full_stack.set_visible_child(&adjust_layout);
+            adjust_stack.set_visible_child(&new_score_layout);
         }));
 
-        // move to edit_game_parameters_layout
-        edit_game_parameters.connect_clicked(clone!(@strong edit_game_parameters_layout, @strong layout_stack => move |_| {
-            layout_stack.set_visible_child(&edit_game_parameters_layout)
+
+        edit_white_score.connect_clicked(clone!(@strong full_stack, @strong adjust_stack, @strong adjust_layout, @strong edit_score_layout => move |_| {
+            full_stack.set_visible_child(&adjust_layout);
+            adjust_stack.set_visible_child(&edit_score_layout)
         }));
 
-        choose_manual.connect_clicked(clone!(@strong layout_stack => move |_| {
-            edit_game_parameters_type.set_active(false);
-            layout_stack.set_visible_child(&edit_game_parameters_layout)
+        edit_black_score.connect_clicked(clone!(@strong full_stack, @strong adjust_stack, @strong adjust_layout, @strong edit_score_layout => move |_| {
+            full_stack.set_visible_child(&adjust_layout);
+            adjust_stack.set_visible_child(&edit_score_layout)
         }));
 
-        // move to edit_score_layout
-        edit_white_score.connect_clicked(clone!(@strong edit_score_layout, @strong layout_stack => move |_| layout_stack.set_visible_child(&edit_score_layout)));
-
-        edit_black_score.connect_clicked(clone!(@strong layout_stack => move |_| layout_stack.set_visible_child(&edit_score_layout)));
-
-        // move to edit_game_information_layout
-        edit_game_information.connect_clicked(clone!(@strong layout_stack => move |_| {
-            layout_stack.set_visible_child(&edit_game_information_layout)
-        }));
-
-        // move to time_penalty_add_layout
-        penalty_conf_new.connect_clicked(clone!(@strong layout_stack => move |_| layout_stack.set_visible_child(&penalty_add_layout)));
-
-        // move to time_penalty_conf_layout
-        edit_white_time_penalty.connect_clicked(clone!(@strong time_penalty_conf_layout, @strong layout_stack => move |_| {
+        edit_white_time_penalty.connect_clicked(clone!(@strong full_stack, @strong adjust_stack, @strong adjust_layout, @strong time_penalty_conf_layout => move |_| {
             penalty_white_select.set_active(true);
-            layout_stack.set_visible_child(&time_penalty_conf_layout)
+            full_stack.set_visible_child(&adjust_layout);
+            adjust_stack.set_visible_child(&time_penalty_conf_layout)
         }));
 
-        edit_black_time_penalty.connect_clicked(clone!(@strong time_penalty_conf_layout, @strong layout_stack => move |_| {
+        edit_black_time_penalty.connect_clicked(clone!(@strong full_stack, @strong adjust_stack, @strong adjust_layout, @strong time_penalty_conf_layout => move |_| {
             penalty_black_select.set_active(true);
-            layout_stack.set_visible_child(&time_penalty_conf_layout)
+            full_stack.set_visible_child(&adjust_layout);
+            adjust_stack.set_visible_child(&time_penalty_conf_layout)
         }));
 
-        penalty_delete.connect_clicked(clone!(@strong time_penalty_conf_layout, @strong layout_stack => move |_| layout_stack.set_visible_child(&time_penalty_conf_layout)));
 
-        penalty_add.connect_clicked(clone!(@strong layout_stack => move |_| layout_stack.set_visible_child(&time_penalty_conf_layout)));
+        edit_game_parameters.connect_clicked(clone!(@strong full_stack, @strong edit_game_parameters_layout => move |_| full_stack.set_visible_child(&edit_game_parameters_layout)));
 
-        // move to uwhscores_edit_layout
-        edit_uwhscores.connect_clicked(clone!(@strong layout_stack => move |_| layout_stack.set_visible_child(&uwhscores_edit_layout)));
+        edit_game_information.connect_clicked(clone!(@strong full_stack => move |_| full_stack.set_visible_child(&edit_game_information_layout)));
+
+
+
+
 
         //
         //
         // Connect to the backend
         //
-        main_referee_timeout.connect_clicked(clone!(@strong tm, @strong state_send => move |b| {
+        no_timeout_referee_timeout.connect_clicked(clone!(@strong tm, @strong state_send => move |b| {
             let mut tm = tm.lock().unwrap();
             match b.get_label().unwrap().as_str() {
                 "REFEREE TIMEOUT" | "START REFEREE TIMEOUT" => {
@@ -1171,7 +1231,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 .unwrap();
         }));
 
-        main_white_timeout.connect_clicked(clone!(@strong tm, @strong state_send => move |b| {
+        no_timeout_white_timeout.connect_clicked(clone!(@strong tm, @strong state_send => move |b| {
             let mut tm = tm.lock().unwrap();
             match b.get_label().unwrap().as_str() {
                 "SWITCH TO\nWHITE" => {
@@ -1189,7 +1249,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 .unwrap();
         }));
 
-        main_black_timeout.connect_clicked(clone!(@strong tm, @strong state_send => move |b| {
+        no_timeout_black_timeout.connect_clicked(clone!(@strong tm, @strong state_send => move |b| {
             let mut tm = tm.lock().unwrap();
             match b.get_label().unwrap().as_str() {
                 "SWITCH TO\nBLACK" => {
@@ -1387,10 +1447,10 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 let tm = tm.lock().unwrap();
 
                 game_state_header.set_label(game_header);
-                main_referee_timeout.set_label(ref_t_o_text);
+                no_timeout_referee_timeout.set_label(ref_t_o_text);
                 new_penalty_shot.set_label(p_s_text);
-                main_white_timeout.set_label(w_t_o_text);
-                main_black_timeout.set_label(b_t_o_text);
+                no_timeout_white_timeout.set_label(w_t_o_text);
+                no_timeout_black_timeout.set_label(b_t_o_text);
 
                 let ref_t_o_en = if let TimeoutSnapshot::Ref(_) = snapshot.timeout {
                     tm.can_start_penalty_shot().is_ok()
@@ -1418,10 +1478,10 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     )
                 };
 
-                main_referee_timeout.set_sensitive(ref_t_o_en);
+                no_timeout_referee_timeout.set_sensitive(ref_t_o_en);
                 new_penalty_shot.set_sensitive(p_s_en);
-                main_white_timeout.set_sensitive(w_t_o_en);
-                main_black_timeout.set_sensitive(b_t_o_en);
+                no_timeout_white_timeout.set_sensitive(w_t_o_en);
+                no_timeout_black_timeout.set_sensitive(b_t_o_en);
             }
 
             if snapshot.w_score != last_snapshot.w_score {
@@ -1443,7 +1503,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         //
         // Make everything visible
         //
-        win.add(&layout_stack);
+        win.add(&full_stack);
         win.show_all();
 
         let size = win.get_size();

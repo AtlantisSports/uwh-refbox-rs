@@ -984,6 +984,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let adjust_layout = gtk::Grid::new();
         adjust_layout.attach(&adjust_stack, 0, 0, 12, 9);
         adjust_layout.attach(&timeout_ribbon_stack, 0, 9, 12, 2);
+        adjust_layout.set_column_homogeneous(true);
+        adjust_layout.set_row_homogeneous(true);
 
         // Full Stack, which switches between the different full screen layouts
         let full_stack = gtk::Stack::new();

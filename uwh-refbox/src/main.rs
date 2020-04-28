@@ -229,7 +229,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let add_black_score = new_button("SCORE\nBLACK", &["black"], None);
         let edit_black_time_penalty = new_button("BLACK\nTIME\nPENALTY\nLIST", &["black"], None);
         let main_white_timeout = new_button("WHITE\nTIMEOUT", &["white"], None);
-        let main_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
+        let main_referee_timeout = new_button("START", &["yellow"], None);
         let main_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
 
         let game_state_header = new_label("FIRST GAME IN", "header-dark-gray");
@@ -1189,19 +1189,19 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         //
         // Connect to the backend
         //
-        no_timeout_referee_timeout.connect_clicked(clone!(@strong tm, @strong state_send => move |b| {
+        main_referee_timeout.connect_clicked(clone!(@strong tm, @strong state_send => move |b| {
             let mut tm = tm.lock().unwrap();
             match b.get_label().unwrap().as_str() {
                 "REFEREE TIMEOUT" | "START REFEREE TIMEOUT" => {
                     debug!("Button starting Ref timeout");
                     tm.start_ref_timeout(Instant::now()).unwrap() // TODO: Get rid of unwrap here
                 }
-                "SWITCH TO REFEREE TIMEOUT" => {
+                "SWITCH TO REFEREE TIMEOUT" | "CANCEL & SWITCH TO\n    REFEREE TIMEOUT" => {
                     debug!("Button switching to Penalty Shot");
                     tm.switch_to_ref_timeout().unwrap()
                 }
-                "SWITCH TO PENALTY SHOT" => {
-                    debug!("Button switching to Penalty Shot");
+                "RESUME" => {
+                    debug!("Button cancelling Referee Timeout");
                     tm.switch_to_penalty_shot().unwrap()
                 }
                 "START" => {
@@ -1218,8 +1218,12 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         new_penalty_shot.connect_clicked(clone!(@strong tm, @strong state_send => move |b| {
             let mut tm = tm.lock().unwrap();
             match b.get_label().unwrap().as_str() {
+                "CANCEL & SWITCH TO\n      PENALTY SHOT" => {
+                    debug!("Button switching to Penalty Shot from a different timeout");
+                    tm.switch_to_penalty_shot().unwrap()
+                }
                 "RESUME" => {
-                    debug!("Button starting clock");
+                    debug!("Button starting clock after Penalty Shot");
                     tm.end_timeout(Instant::now()).unwrap()
                 }
                 "PENALTY SHOT" => {
@@ -1233,7 +1237,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 .unwrap();
         }));
 
-        no_timeout_white_timeout.connect_clicked(clone!(@strong tm, @strong state_send => move |b| {
+        main_white_timeout.connect_clicked(clone!(@strong tm, @strong state_send => move |b| {
             let mut tm = tm.lock().unwrap();
             match b.get_label().unwrap().as_str() {
                 "SWITCH TO\nWHITE" => {
@@ -1251,7 +1255,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 .unwrap();
         }));
 
-        no_timeout_black_timeout.connect_clicked(clone!(@strong tm, @strong state_send => move |b| {
+        main_black_timeout.connect_clicked(clone!(@strong tm, @strong state_send => move |b| {
             let mut tm = tm.lock().unwrap();
             match b.get_label().unwrap().as_str() {
                 "SWITCH TO\nBLACK" => {
@@ -1259,7 +1263,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     tm.switch_to_b_timeout().unwrap()
                 }
                 "START\nBLACK T/O" | "BLACK\nTIMEOUT" => {
-                    debug!("Button starting a White timeout");
+                    debug!("Button starting a Black timeout");
                     tm.start_b_timeout(Instant::now()).unwrap()
                 }
                 l => panic!("Unknown button label: {}", l),
@@ -1338,30 +1342,35 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 TimeoutSnapshot::None => snapshot.secs_in_period,
             }));
 
+        println!("Old: {:#?}, New: {:#?}", last_snapshot, snapshot);
+
             if (snapshot.current_period != last_snapshot.current_period)
                 | (snapshot.timeout != last_snapshot.timeout)
                 | just_started
             {
+
+        debug!("Updating main layout buttons");
+
                 let (game_header, ref_t_o_text, p_s_text, w_t_o_text, b_t_o_text) =
                     match snapshot.timeout {
                         TimeoutSnapshot::Black(_) => (
                             "BLACK TIMEOUT",
-                            "START REFEREE TIMEOUT",
-                            "RESUME",
-                            "SWITCH TO\nWHITE",
-                            "SWITCH TO\nBLACK",
+                            "CANCEL & SWITCH TO\n    REFEREE TIMEOUT",
+                            "CANCEL & SWITCH TO\n      PENALTY SHOT",
+                            "SWITCH TO\nWHITE T/O",
+                            "CANCEL\nBLACK T/O",
                         ),
                         TimeoutSnapshot::White(_) => (
                             "WHITE TIMEOUT",
-                            "START REFEREE TIMEOUT",
-                            "RESUME",
-                            "SWITCH TO\nWHITE",
-                            "SWITCH TO\nBLACK",
+                            "CANCEL & SWITCH TO\n    REFEREE TIMEOUT",
+                            "CANCEL & SWITCH TO\n      PENALTY SHOT",
+                            "CANCEL\nWHITE T/O",
+                            "SWITCH TO\nBLACK T/O",
                         ),
                         TimeoutSnapshot::Ref(_) => (
                             "REFEREE TIMEOUT",
-                            "SWITCH TO PENALTY SHOT",
                             "RESUME",
+                            "SWITCH TO PENALTY SHOT",
                             "START\nWHITE T/O",
                             "START\nBLACK T/O",
                         ),

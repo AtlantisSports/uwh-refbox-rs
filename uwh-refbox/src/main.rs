@@ -911,8 +911,18 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let no_timeout_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
         let no_timeout_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
 
+        let no_timeout_game_state_and_time_header = new_label("GAME STATE  ##:##", "header-dark-gray");
+
+        let no_timeout_game_box = gtk::Grid::new();
+        no_timeout_game_box.set_column_homogeneous(true);
+        no_timeout_game_box.set_row_homogeneous(true);
+        no_timeout_game_box.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
+
+        no_timeout_game_box.attach(&no_timeout_game_state_and_time_header, 0, 0, 1, 1);
+        no_timeout_game_box.attach(&no_timeout_referee_timeout, 0, 1, 1, 1);
+
         no_timeout_layout.attach(&no_timeout_white_timeout, 0, 0, 3, 2);
-        no_timeout_layout.attach(&no_timeout_referee_timeout, 3, 0, 6, 2);
+        no_timeout_layout.attach(&no_timeout_game_box, 3, 0, 6, 2);
         no_timeout_layout.attach(&no_timeout_black_timeout, 9, 0, 3, 2);
 
 
@@ -930,13 +940,21 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         in_timeout_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         in_timeout_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
 
-        let in_timeout_white_timeout = new_button("WHITE\nTIMEOUT", &["white"], None);
-        let in_timeout_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
-        let in_timeout_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
+        let in_timeout_cancel_timeout = new_button("CANCEL\nTIMEOUT", &["red"], None);
+        let in_timeout_change_timeout = new_button("CHANGE\nTIMEOUT", &["yellow"], None);
 
-        in_timeout_layout.attach(&in_timeout_white_timeout, 0, 0, 3, 2);
-        in_timeout_layout.attach(&in_timeout_referee_timeout, 3, 0, 6, 2);
-        in_timeout_layout.attach(&in_timeout_black_timeout, 9, 0, 3, 2);
+        let in_timeout_game_state_and_time_header = new_label("GAME STATE  ##:##", "header-dark-gray");
+        let in_timeout_type_and_time_footer = new_label("TIMEOUT TYPE  ##:##", "header-black");
+
+        let in_timeout_game_box = gtk::Grid::new();
+        in_timeout_game_box.set_column_homogeneous(true);
+        in_timeout_game_box.set_row_homogeneous(true);
+        in_timeout_game_box.attach(&in_timeout_game_state_and_time_header, 0, 0, 1, 1);
+        in_timeout_game_box.attach(&in_timeout_type_and_time_footer, 0, 1, 1, 1);
+
+        in_timeout_layout.attach(&in_timeout_cancel_timeout, 0, 0, 3, 2);
+        in_timeout_layout.attach(&in_timeout_game_box, 3, 0, 6, 2);
+        in_timeout_layout.attach(&in_timeout_change_timeout, 9, 0, 3, 2);
 
 
         //
@@ -953,12 +971,14 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         change_timeout_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         change_timeout_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
 
-        let change_timeout_white_timeout = new_button("WHITE\nTIMEOUT", &["white"], None);
-        let change_timeout_referee_timeout = new_button("REFEREE TIMEOUT", &["yellow"], None);
-        let change_timeout_black_timeout = new_button("BLACK\nTIMEOUT", &["black"], None);
+        let change_timeout_white_timeout = new_button("SWITCH TO\nWHITE", &["white"], None);
+        let change_timeout_referee_timeout = new_button("SWITCH TO\nREFEREE", &["yellow"], None);
+        let change_timeout_cancel_timeout = new_button("CANCEL\nCHANGE", &["red"], None);
+        let change_timeout_black_timeout = new_button("SWITCH TO\nBLACK", &["black"], None);
 
         change_timeout_layout.attach(&change_timeout_white_timeout, 0, 0, 3, 2);
-        change_timeout_layout.attach(&change_timeout_referee_timeout, 3, 0, 6, 2);
+        change_timeout_layout.attach(&change_timeout_referee_timeout, 3, 0, 3, 2);
+        change_timeout_layout.attach(&change_timeout_cancel_timeout, 6, 0, 3, 2);
         change_timeout_layout.attach(&change_timeout_black_timeout, 9, 0, 3, 2);
 
 
@@ -976,8 +996,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
         // Timeout Ribbon, which defines the timeout layout
         let timeout_ribbon_stack = gtk::Stack::new();
-        timeout_ribbon_stack.add_named(&in_timeout_layout, "In Timeout");
         timeout_ribbon_stack.add_named(&no_timeout_layout, "No Timeout");
+        timeout_ribbon_stack.add_named(&in_timeout_layout, "In Timeout");
         timeout_ribbon_stack.add_named(&change_timeout_layout, "Change Timeout");
 
         // Play Layout, which defines the relative position of the Play Stack and the Timeout Ribbon
@@ -1182,9 +1202,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         edit_game_information.connect_clicked(clone!(@strong full_stack => move |_| full_stack.set_visible_child(&edit_game_information_layout)));
 
 
-
-
-
         //
         //
         // Connect to the backend
@@ -1192,20 +1209,24 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         main_referee_timeout.connect_clicked(clone!(@strong tm, @strong state_send => move |b| {
             let mut tm = tm.lock().unwrap();
             match b.get_label().unwrap().as_str() {
-                "REFEREE TIMEOUT" | "START REFEREE TIMEOUT" => {
-                    debug!("Button starting Ref timeout");
+                "REFEREE TIMEOUT" => {
+                    debug!("Button starting Ref timeout normally");
                     tm.start_ref_timeout(Instant::now()).unwrap() // TODO: Get rid of unwrap here
                 }
-                "SWITCH TO REFEREE TIMEOUT" | "CANCEL & SWITCH TO\n    REFEREE TIMEOUT" => {
-                    debug!("Button switching to Penalty Shot");
+                "CANCEL & SWITCH\nTO REFEREE TIMEOUT" => {
+                    debug!("Button switching from a team timeout in the case of a mistaken team timeout or referees not being ready");
+                    tm.start_ref_timeout(Instant::now()).unwrap()
+                }
+                "SWITCH TO\nREFEREE TIMEOUT" => {
+                    debug!("Button cancelling Penalty Shot");
                     tm.switch_to_ref_timeout().unwrap()
                 }
-                "RESUME" => {
+                "RESUME TIME" => {
                     debug!("Button cancelling Referee Timeout");
-                    tm.switch_to_penalty_shot().unwrap()
+                    tm.end_timeout(Instant::now()).unwrap()
                 }
                 "START" => {
-                    debug!("Button starting clock for first time");
+                    debug!("Button starting game clock for first time");
                     tm.start_clock(Instant::now())
                 }
                 l => panic!("Unknown button label: {}", l),
@@ -1218,17 +1239,17 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         new_penalty_shot.connect_clicked(clone!(@strong tm, @strong state_send => move |b| {
             let mut tm = tm.lock().unwrap();
             match b.get_label().unwrap().as_str() {
-                "CANCEL & SWITCH TO\n      PENALTY SHOT" => {
-                    debug!("Button switching to Penalty Shot from a different timeout");
+                "PENALTY SHOT" | "CANCEL & SWITCH\nTO PENALTY SHOT" => {
+                    debug!("Button switching to Penalty Shot from a team timeout");
+                    tm.start_penalty_shot(Instant::now()).unwrap()
+                }
+                "SWITCH TO PENALTY SHOT" => {
+                    debug!("Button switching to Penalty Shot from a ref timeout");
                     tm.switch_to_penalty_shot().unwrap()
                 }
-                "RESUME" => {
-                    debug!("Button starting clock after Penalty Shot");
-                    tm.end_timeout(Instant::now()).unwrap()
-                }
-                "PENALTY SHOT" => {
-                    debug!("Button starting Penalty Shot");
-                    tm.start_penalty_shot(Instant::now()).unwrap()
+                "GOAL DEFENDED" => {
+                    debug!("Button switching to referee timeout after a defended Penalty Shot");
+                    tm.switch_to_ref_timeout().unwrap()
                 }
                 l => panic!("Unknown button label: {}", l),
             }
@@ -1240,13 +1261,17 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         main_white_timeout.connect_clicked(clone!(@strong tm, @strong state_send => move |b| {
             let mut tm = tm.lock().unwrap();
             match b.get_label().unwrap().as_str() {
-                "SWITCH TO\nWHITE" => {
+                "SWITCH TO\nWHITE T/O" => {
                     debug!("Button switching to White timeout");
                     tm.switch_to_w_timeout().unwrap()
                 }
                 "START\nWHITE T/O" | "WHITE\nTIMEOUT" => {
                     debug!("Button starting a White timeout");
                     tm.start_w_timeout(Instant::now()).unwrap()
+                }
+                "CANCEL\nWHITE T/O" => {
+                    debug!("Button cancelling a White timeout");
+                    tm.end_timeout(Instant::now()).unwrap()
                 }
                 l => panic!("Unknown button label: {}", l),
             }
@@ -1258,7 +1283,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         main_black_timeout.connect_clicked(clone!(@strong tm, @strong state_send => move |b| {
             let mut tm = tm.lock().unwrap();
             match b.get_label().unwrap().as_str() {
-                "SWITCH TO\nBLACK" => {
+                "SWITCH TO\nBLACK T/O" => {
                     debug!("Button switching to Black timeout");
                     tm.switch_to_b_timeout().unwrap()
                 }
@@ -1266,12 +1291,17 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                     debug!("Button starting a Black timeout");
                     tm.start_b_timeout(Instant::now()).unwrap()
                 }
+                "CANCEL\nBLACK T/O" => {
+                    debug!("Button cancelling a Black timeout");
+                    tm.end_timeout(Instant::now()).unwrap()
+                }
                 l => panic!("Unknown button label: {}", l),
             }
             state_send
                 .send((tm.generate_snapshot(Instant::now()).unwrap(), false))
                 .unwrap();
         }));
+
 
         // start a thread that updates the tm every second and sends the result to the UI
         let (clock_running_send, clock_running_recv) = mpsc::channel();
@@ -1334,166 +1364,245 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         last_snapshot.b_score = std::u8::MAX;
 
         state_recv.attach(None, clone!(@strong tm => move |(snapshot, just_started)| {
-            edit_game_time.set_label(&secs_to_time_string(match snapshot.timeout {
-                TimeoutSnapshot::White(t)
-                | TimeoutSnapshot::Black(t)
-                | TimeoutSnapshot::Ref(t)
-                | TimeoutSnapshot::PenaltyShot(t) => t,
-                TimeoutSnapshot::None => snapshot.secs_in_period,
-            }));
-
-        println!("Old: {:#?}, New: {:#?}", last_snapshot, snapshot);
 
             if (snapshot.current_period != last_snapshot.current_period)
                 | (snapshot.timeout != last_snapshot.timeout)
                 | just_started
             {
 
-        debug!("Updating main layout buttons");
-
-                let (game_header, ref_t_o_text, p_s_text, w_t_o_text, b_t_o_text) =
+                let (game_header, p_s_text, ref_t_o_text, w_t_o_text, b_t_o_text) =
                     match snapshot.timeout {
                         TimeoutSnapshot::Black(_) => (
-                            "BLACK TIMEOUT",
-                            "CANCEL & SWITCH TO\n    REFEREE TIMEOUT",
-                            "CANCEL & SWITCH TO\n      PENALTY SHOT",
-                            "SWITCH TO\nWHITE T/O",
+                            "BLACK T/O", 
+                            "CANCEL & SWITCH\nTO PENALTY SHOT", 
+                            "CANCEL & SWITCH\nTO REFEREE TIMEOUT", 
+                            "SWITCH TO\nWHITE T/O", 
                             "CANCEL\nBLACK T/O",
-                        ),
+                            ),
                         TimeoutSnapshot::White(_) => (
-                            "WHITE TIMEOUT",
-                            "CANCEL & SWITCH TO\n    REFEREE TIMEOUT",
-                            "CANCEL & SWITCH TO\n      PENALTY SHOT",
-                            "CANCEL\nWHITE T/O",
+                            "WHITE T/O", 
+                            "CANCEL & SWITCH\nTO PENALTY SHOT", 
+                            "CANCEL & SWITCH\nTO REFEREE TIMEOUT", 
+                            "CANCEL\nWHITE T/O", 
                             "SWITCH TO\nBLACK T/O",
-                        ),
+                            ),
                         TimeoutSnapshot::Ref(_) => (
-                            "REFEREE TIMEOUT",
-                            "RESUME",
-                            "SWITCH TO PENALTY SHOT",
-                            "START\nWHITE T/O",
+                            "REFEREE TIMEOUT", 
+                            "SWITCH TO PENALTY SHOT", 
+                            "RESUME TIME", 
+                            "START\nWHITE T/O", 
                             "START\nBLACK T/O",
-                        ),
+                            ),
                         TimeoutSnapshot::PenaltyShot(_) => (
-                            "PENALTY SHOT",
-                            "SWITCH TO REFEREE TIMEOUT",
-                            "RESUME",
-                            "START\nWHITE T/O",
+                            "PENALTY SHOT", 
+                            "GOAL DEFENDED", 
+                            "SWITCH TO\nREFEREE TIMEOUT", 
+                            "START\nWHITE T/O", 
                             "START\nBLACK T/O",
-                        ),
+                            ),
                         TimeoutSnapshot::None => match snapshot.current_period {
                             GamePeriod::BetweenGames => (
-                                "NEXT GAME IN",
-                                "REFEREE TIMEOUT",
-                                "PENALTY SHOT",
-                                "WHITE\nTIMEOUT",
+                                "NEXT GAME IN", 
+                                "PENALTY SHOT", 
+                                "REFEREE TIMEOUT", 
+                                "WHITE\nTIMEOUT", 
                                 "BLACK\nTIMEOUT",
-                            ),
+                                ),
                             GamePeriod::FirstHalf => (
-                                "FIRST HALF",
-                                "REFEREE TIMEOUT",
-                                "PENALTY SHOT",
-                                "WHITE\nTIMEOUT",
+                                "FIRST HALF", 
+                                "PENALTY SHOT", 
+                                "REFEREE TIMEOUT", 
+                                "WHITE\nTIMEOUT", 
                                 "BLACK\nTIMEOUT",
-                            ),
+                                ),
                             GamePeriod::HalfTime => (
-                                "HALF TIME",
-                                "REFEREE TIMEOUT",
-                                "PENALTY SHOT",
-                                "WHITE\nTIMEOUT",
+                                "HALF TIME", 
+                                "PENALTY SHOT", 
+                                "REFEREE TIMEOUT", 
+                                "WHITE\nTIMEOUT", 
                                 "BLACK\nTIMEOUT",
-                            ),
+                                ),
                             GamePeriod::SecondHalf => (
-                                "SECOND HALF",
-                                "REFEREE TIMEOUT",
-                                "PENALTY SHOT",
-                                "WHITE\nTIMEOUT",
+                                "SECOND HALF", 
+                                "PENALTY SHOT", 
+                                "REFEREE TIMEOUT", 
+                                "WHITE\nTIMEOUT", 
                                 "BLACK\nTIMEOUT",
-                            ),
+                                ),
                             GamePeriod::PreOvertime => (
-                                "PRE OVERTIME BREAK",
-                                "REFEREE TIMEOUT",
-                                "PENALTY SHOT",
-                                "WHITE\nTIMEOUT",
+                                "PRE OVERTIME BREAK", 
+                                "PENALTY SHOT", 
+                                "REFEREE TIMEOUT", 
+                                "WHITE\nTIMEOUT", 
                                 "BLACK\nTIMEOUT",
-                            ),
+                                ),
                             GamePeriod::OvertimeFirstHalf => (
-                                "OVERTIME FIRST HALF",
-                                "REFEREE TIMEOUT",
-                                "PENALTY SHOT",
-                                "WHITE\nTIMEOUT",
+                                "OVERTIME FIRST HALF", 
+                                "PENALTY SHOT", 
+                                "REFEREE TIMEOUT", 
+                                "WHITE\nTIMEOUT", 
                                 "BLACK\nTIMEOUT",
-                            ),
+                                ),
                             GamePeriod::OvertimeHalfTime => (
-                                "OVERTIME HALF TIME",
-                                "REFEREE TIMEOUT",
-                                "PENALTY SHOT",
-                                "WHITE\nTIMEOUT",
+                                "OVERTIME HALF TIME", 
+                                "PENALTY SHOT", 
+                                "REFEREE TIMEOUT", 
+                                "WHITE\nTIMEOUT", 
                                 "BLACK\nTIMEOUT",
-                            ),
+                                ),
                             GamePeriod::OvertimeSecondHalf => (
-                                "OVERTIME SECOND HALF",
-                                "REFEREE TIMEOUT",
-                                "PENALTY SHOT",
-                                "WHITE\nTIMEOUT",
+                                "OVERTIME SECOND HALF", 
+                                "PENALTY SHOT", 
+                                "REFEREE TIMEOUT", 
+                                "WHITE\nTIMEOUT", 
                                 "BLACK\nTIMEOUT",
-                            ),
+                                ),
                             GamePeriod::PreSuddenDeath => (
-                                "PRE SUDDEN DEATH BREAK",
-                                "REFEREE TIMEOUT",
-                                "PENALTY SHOT",
-                                "WHITE\nTIMEOUT",
+                                "PRE SUDDEN DEATH BREAK", 
+                                "PENALTY SHOT", 
+                                "REFEREE TIMEOUT", 
+                                "WHITE\nTIMEOUT", 
                                 "BLACK\nTIMEOUT",
-                            ),
+                                ),
                             GamePeriod::SuddenDeath => (
-                                "SUDDEN DEATH",
-                                "REFEREE TIMEOUT",
-                                "PENALTY SHOT",
-                                "WHITE\nTIMEOUT",
+                                "SUDDEN DEATH", 
+                                "PENALTY SHOT", 
+                                "REFEREE TIMEOUT", 
+                                "WHITE\nTIMEOUT", 
                                 "BLACK\nTIMEOUT",
-                            ),
+                                ),
                         },
                     };
 
                 let tm = tm.lock().unwrap();
 
                 game_state_header.set_label(game_header);
-                no_timeout_referee_timeout.set_label(ref_t_o_text);
                 new_penalty_shot.set_label(p_s_text);
+
+                main_white_timeout.set_label(w_t_o_text);
+                main_referee_timeout.set_label(ref_t_o_text);
+                main_black_timeout.set_label(b_t_o_text);
+
                 no_timeout_white_timeout.set_label(w_t_o_text);
+                no_timeout_referee_timeout.set_label(ref_t_o_text);
                 no_timeout_black_timeout.set_label(b_t_o_text);
 
-                let ref_t_o_en = if let TimeoutSnapshot::Ref(_) = snapshot.timeout {
-                    tm.can_start_penalty_shot().is_ok()
-                } else {
-                    true
+
+                // Select which timeout ribbon to show based on Timeout State
+                match snapshot.timeout {
+                        TimeoutSnapshot::Black(_) | TimeoutSnapshot::White(_) | TimeoutSnapshot::Ref(_) | TimeoutSnapshot::PenaltyShot(_) => {
+                                timeout_ribbon_stack.set_visible_child(&in_timeout_layout);
+                        }
+                        TimeoutSnapshot::None => {
+                                timeout_ribbon_stack.set_visible_child(&no_timeout_layout);
+                        }
                 };
 
-                let p_s_en = if let TimeoutSnapshot::None = snapshot.timeout {
-                    tm.can_start_penalty_shot().is_ok()
-                } else {
-                    true
-                };
+                //
+                //
+                //
+                //
+                //
+                // THIS SECTION MAY OR MAY NOT BE USEFUL
+                //
+                //vvvvvvvvvvvvvvvv
 
-                let (w_t_o_en, b_t_o_en) = if let TimeoutSnapshot::White(_)
-                | TimeoutSnapshot::Black(_) = snapshot.timeout
-                {
-                    (
-                        tm.can_switch_to_w_timeout().is_ok(),
-                        tm.can_switch_to_b_timeout().is_ok(),
-                    )
-                } else {
-                    (
-                        tm.can_start_w_timeout().is_ok(),
-                        tm.can_start_b_timeout().is_ok(),
-                    )
-                };
+                // Activate/Deactivate Buttons
+                match snapshot.current_period {
+                    GamePeriod::BetweenGames => {
+                        edit_white_score.set_sensitive(true);
+                        add_white_score.set_sensitive(true);
+                        edit_black_score.set_sensitive(true);
+                        add_black_score.set_sensitive(true);
+                        new_penalty_shot.set_sensitive(true);
+                        main_white_timeout.set_sensitive(true);
+                        main_black_timeout.set_sensitive(true);
+                        no_timeout_white_timeout.set_sensitive(true);
+                        no_timeout_black_timeout.set_sensitive(true);
+                    }
+                    GamePeriod::HalfTime
+                    | GamePeriod::PreOvertime
+                    | GamePeriod::OvertimeHalfTime
+                    | GamePeriod::PreSuddenDeath => {
+                        new_penalty_shot.set_sensitive(true);
+                        main_white_timeout.set_sensitive(true);
+                        main_referee_timeout.set_sensitive(true);
+                        main_black_timeout.set_sensitive(true);
+                        no_timeout_white_timeout.set_sensitive(true);
+                        no_timeout_black_timeout.set_sensitive(true);
+                    }
+                    GamePeriod::SuddenDeath => {
+                        main_white_timeout.set_sensitive(true);
+                        main_black_timeout.set_sensitive(true);
+                        no_timeout_white_timeout.set_sensitive(true);
+                        no_timeout_black_timeout.set_sensitive(true);
+                    }
+                    _ => {
 
-                no_timeout_referee_timeout.set_sensitive(ref_t_o_en);
-                new_penalty_shot.set_sensitive(p_s_en);
-                no_timeout_white_timeout.set_sensitive(w_t_o_en);
-                no_timeout_black_timeout.set_sensitive(b_t_o_en);
-            }
+                // ^^^^^^^^^^^^^^^
+                //
+                //
+                //
+                //
+                //
+                //
+
+                        let ref_t_o_en = if let TimeoutSnapshot::Ref(_) = snapshot.timeout {
+                            tm.can_start_penalty_shot().is_ok()
+                        } else {
+                            true
+                        };
+
+                        let p_s_en = if let TimeoutSnapshot::None = snapshot.timeout {
+                            tm.can_start_penalty_shot().is_ok()
+                        } else {
+                            true
+                        };
+
+                        let (w_t_o_en, b_t_o_en) = if let TimeoutSnapshot::White(_) | TimeoutSnapshot::Black(_) = snapshot.timeout {
+                            (
+                                tm.can_switch_to_w_timeout().is_ok(),
+                                tm.can_switch_to_b_timeout().is_ok(),
+                            )
+                        } else {
+                            (
+                                tm.can_start_w_timeout().is_ok(),
+                                tm.can_start_b_timeout().is_ok(),
+                            )
+                        };
+
+                        main_referee_timeout.set_sensitive(ref_t_o_en);
+                        new_penalty_shot.set_sensitive(p_s_en);
+                        main_white_timeout.set_sensitive(w_t_o_en);
+                        main_black_timeout.set_sensitive(b_t_o_en);
+                        no_timeout_referee_timeout.set_sensitive(ref_t_o_en);
+                        no_timeout_white_timeout.set_sensitive(w_t_o_en);
+                        no_timeout_black_timeout.set_sensitive(b_t_o_en);
+                    } // End of last match statement
+                }
+
+            } // End of If()
+
+
+            // Header Display
+            match snapshot.timeout {
+                TimeoutSnapshot::White(t)
+                | TimeoutSnapshot::Black(t)
+                | TimeoutSnapshot::Ref(t)
+                | TimeoutSnapshot::PenaltyShot(t) => {
+                    game_state_header.set_label(&format!("{} {}", snapshot.timeout, &secs_to_time_string(t)));
+                    in_timeout_type_and_time_footer.set_label(&format!("{} {}", snapshot.timeout, &secs_to_time_string(t)));
+                },
+                TimeoutSnapshot::None => game_state_header.set_label(&format!("{}", snapshot.current_period)),
+            };
+
+            // Main Clock Display
+            edit_game_time.set_label(&secs_to_time_string(snapshot.secs_in_period));
+
+            // Ribbon Header State and Time Definitions
+            no_timeout_game_state_and_time_header.set_label(&format!("{} {}", snapshot.current_period, &secs_to_time_string(snapshot.secs_in_period)));
+            in_timeout_game_state_and_time_header.set_label(&format!("{} {}", snapshot.current_period, &secs_to_time_string(snapshot.secs_in_period)));
+
 
             if snapshot.w_score != last_snapshot.w_score {
                 edit_white_score.set_label(&format!("{}", snapshot.w_score));
@@ -1508,7 +1617,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             last_snapshot = snapshot;
 
             glib::source::Continue(true)
-        }));
+        })); // End of state_recv.attach()
 
         //
         //

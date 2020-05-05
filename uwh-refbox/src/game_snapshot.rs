@@ -66,7 +66,7 @@ impl std::fmt::Display for TimeoutSnapshot {
             TimeoutSnapshot::Black(_) => write!(f, "Black Timeout"),
             TimeoutSnapshot::White(_) => write!(f, "White Timeout"),
             TimeoutSnapshot::Ref(_) => write!(f, "Ref Timeout"),
-            TimeoutSnapshot::PenaltyShot(_) => write!(f, "PenaltyShot"),
+            TimeoutSnapshot::PenaltyShot(_) => write!(f, "Penalty Shot"),
         }
     }
 }

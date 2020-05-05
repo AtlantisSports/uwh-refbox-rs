@@ -295,9 +295,25 @@ label.header-gray {
     font-size: 25px;
     font-weight: bold;
 }
-label.header-dark-gray {
+label.header-dark-gray-green {
     background-color: @dark_gray;
     color: @green;
+    border-top-right-radius: 5px;
+    border-top-left-radius: 5px;
+    font-size: 25px;
+    font-weight: bold;
+}
+label.header-yellow {
+    background-color: @yellow;
+    color: @black;
+    border-top-right-radius: 5px;
+    border-top-left-radius: 5px;
+    font-size: 25px;
+    font-weight: bold;
+}
+label.header-red {
+    background-color: @red;
+    color: @black;
     border-top-right-radius: 5px;
     border-top-left-radius: 5px;
     font-size: 25px;
@@ -352,5 +368,47 @@ label.modified-score-black {
     font-weight: bold;
     border-bottom-right-radius: 5px;
     border-bottom-left-radius: 5px;
+}
+label.floating-dark-gray-green {
+    background-color: @dark_gray;
+    color: @green;
+    border-top-right-radius: 5px;
+    border-top-left-radius: 5px;
+    border-bottom-right-radius: 5px;
+    border-bottom-left-radius: 5px;
+    font-size: 25px;
+    font-weight: bold;
+}
+label.footer-white {
+    background-color: @white;
+    color: @black;
+    border-bottom-right-radius: 5px;
+    border-bottom-left-radius: 5px;
+    font-size: 25px;
+    font-weight: bold;
+}
+label.footer-black {
+    background-color: @black;
+    color: @white;
+    border-bottom-right-radius: 5px;
+    border-bottom-left-radius: 5px;
+    font-size: 25px;
+    font-weight: bold;
+}
+label.footer-dark-gray-yellow {
+    background-color: @dark_gray;
+    color: @yellow;
+    border-bottom-right-radius: 5px;
+    border-bottom-left-radius: 5px;
+    font-size: 25px;
+    font-weight: bold;
+}
+label.footer-dark-gray-red {
+    background-color: @dark_gray;
+    color: @red;
+    border-bottom-right-radius: 5px;
+    border-bottom-left-radius: 5px;
+    font-size: 25px;
+    font-weight: bold;
 }
 

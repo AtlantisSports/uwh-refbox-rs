@@ -74,73 +74,11 @@ button.yellow:disabled {
 button:disabled label {
     color: @text_disabled_gray;
 }
+button:active label {
+   background-color: @disabled_gray;
+   color: @selected_gray;
+}
 
-button.white-score {
-    background-color: @white;
-    color: @black;
-    border-top-right-radius: 0px;
-    border-top-left-radius: 0px;
-    font-size: 60px;
-    font-weight: bold;
-}
-button.white-score:active {
-    background-color: @selected_gray;
-}
-button.black-score {
-    background-color: @black;
-    color: @white;
-    border-top-right-radius: 0px;
-    border-top-left-radius: 0px;
-    font-size: 60px;
-    font-weight: bold;
-}
-button.black-score:active {
-    background-color: @selected_gray;
-}
-button.game-time-green {
-    background-color: @dark_gray;
-    color: @green;
-    border-top-right-radius: 0px;
-    border-top-left-radius: 0px;
-    font-size: 60px;
-    font-weight: bold;
-}
-button.game-time-green:active {
-    background-color: @selected_gray;
-}
-button.game-time-yellow {
-    background-color: @dark_gray;
-    color: @yellow;
-    border-top-right-radius: 0px;
-    border-top-left-radius: 0px;
-    font-size: 60px;
-    font-weight: bold;
-}
-button.game-time-yellow:active {
-    background-color: @selected_gray;
-}
-button.game-time-red {
-    background-color: @dark_gray;
-    color: @red;
-    border-top-right-radius: 0px;
-    border-top-left-radius: 0px;
-    font-size: 60px;
-    font-weight: bold;
-}
-button.game-time-red:active {
-    background-color: @selected_gray;
-}
-button.game-time-gray {
-    background-color: @dark_gray;
-    color: @black;
-    border-top-right-radius: 0px;
-    border-top-left-radius: 0px;
-    font-size: 60px;
-    font-weight: bold;
-}
-button.game-time-gray:active {
-    background-color: @selected_gray;
-}
 button.keypad {
     background-color: @teal;
     color: @black;
@@ -270,7 +208,30 @@ button.gray:active {
 }
 
 
-
+label.game-time-green {
+    background-color: @dark_gray;
+    color: @green;
+    border-top-right-radius: 0px;
+    border-top-left-radius: 0px;
+    font-size: 60px;
+    font-weight: bold;
+}
+label.white-score {
+    background-color: @white;
+    color: @black;
+    border-bottom-right-radius: 5px;
+    border-bottom-left-radius: 5px;
+    font-size: 60px;
+    font-weight: bold;
+}
+label.black-score {
+    background-color: @black;
+    color: @white;
+    border-bottom-right-radius: 5px;
+    border-bottom-left-radius: 5px;
+    font-size: 60px;
+    font-weight: bold;
+}
 label.header-white {
     background-color: @white;
     color: @black;
@@ -406,6 +367,90 @@ label.footer-dark-gray-yellow {
 label.footer-dark-gray-red {
     background-color: @dark_gray;
     color: @red;
+    border-bottom-right-radius: 5px;
+    border-bottom-left-radius: 5px;
+    font-size: 25px;
+    font-weight: bold;
+}
+
+label.penalty-top-yellow {
+    background-color: @yellow;
+    color: @black;
+    border-top-right-radius: 5px;
+    border-top-left-radius: 5px;
+    border-bottom-right-radius: 0px;
+    border-bottom-left-radius: 0px;
+    font-size: 60px;
+    font-weight: bold;
+}
+label.penalty-bottom-yellow {
+    background-color: @yellow;
+    color: @black;
+    border-top-right-radius: 0px;
+    border-top-left-radius: 0px;
+    border-bottom-right-radius: 5px;
+    border-bottom-left-radius: 5px;
+    font-size: 25px;
+    font-weight: bold;
+}
+
+label.penalty-top-orange {
+    background-color: @orange;
+    color: @black;
+    border-top-right-radius: 5px;
+    border-top-left-radius: 5px;
+    border-bottom-right-radius: 0px;
+    border-bottom-left-radius: 0px;
+    font-size: 60px;
+    font-weight: bold;
+}
+label.penalty-bottom-orange {
+    background-color: @orange;
+    color: @black;
+    border-top-right-radius: 0px;
+    border-top-left-radius: 0px;
+    border-bottom-right-radius: 5px;
+    border-bottom-left-radius: 5px;
+    font-size: 25px;
+    font-weight: bold;
+}
+
+label.penalty-top-red {
+    background-color: @red;
+    color: @black;
+    border-top-right-radius: 5px;
+    border-top-left-radius: 5px;
+    border-bottom-right-radius: 0px;
+    border-bottom-left-radius: 0px;
+    font-size: 60px;
+    font-weight: bold;
+}
+label.penalty-bottom-red {
+    background-color: @red;
+    color: @black;
+    border-top-right-radius: 0px;
+    border-top-left-radius: 0px;
+    border-bottom-right-radius: 5px;
+    border-bottom-left-radius: 5px;
+    font-size: 25px;
+    font-weight: bold;
+}
+
+label.penalty-top-blue {
+    background-color: @light_blue;
+    color: @black;
+    border-top-right-radius: 5px;
+    border-top-left-radius: 5px;
+    border-bottom-right-radius: 0px;
+    border-bottom-left-radius: 0px;
+    font-size: 60px;
+    font-weight: bold;
+}
+label.penalty-bottom-blue {
+    background-color: @light_blue;
+    color: @black;
+    border-top-right-radius: 0px;
+    border-top-left-radius: 0px;
     border-bottom-right-radius: 5px;
     border-bottom-left-radius: 5px;
     font-size: 25px;

@@ -218,7 +218,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         main_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         main_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
 
-        let edit_game_time_button = new_button("##:##", &["game-time-green"]);
         let new_penalty_shot_button = new_button("PENALTY SHOT", &["red"]);
         let edit_game_info_button = new_button("GAME INFORMATION", &["gray"]);
         let edit_game_parameters_button = new_button("GAME PARAMETERS", &["gray"]);
@@ -243,31 +242,34 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let game_state_header = new_label("FIRST GAME IN", "header-dark-gray-green");
         let white_header = new_label("WHITE", "header-white");
         let black_header = new_label("BLACK", "header-black");
+        let game_time_label = new_label("##:##", "game-time-green");
+        let w_score_label = new_label("#W", "white-score");
+        let b_score_label = new_label("#B", "black-score");
 
-        let edit_w_score_button = new_button("#W", &["white-score"]);
-        let edit_b_score_button = new_button("#B", &["black-score"]);
+        let white_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        white_box.pack_start(&white_header, true, true, 0);
+        white_box.pack_start(&w_score_label, true, true, 0);
 
-        let white_box = gtk::Grid::new();
-        white_box.set_column_homogeneous(true);
-        white_box.set_row_homogeneous(true);
-        white_box.attach(&white_header, 0, 0, 1, 1);
-        white_box.attach(&edit_w_score_button, 0, 1, 1, 2);
+        let white_box_button = gtk::Button::new();
+        white_box_button.add(&white_box);
 
-        let game_box = gtk::Grid::new();
-        game_box.set_column_homogeneous(true);
-        game_box.set_row_homogeneous(true);
-        game_box.attach(&game_state_header, 0, 0, 1, 1);
-        game_box.attach(&edit_game_time_button, 0, 1, 1, 2);
+        let black_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        black_box.pack_start(&black_header, true, true, 0);
+        black_box.pack_start(&b_score_label, true, true, 0);
 
-        let black_box = gtk::Grid::new();
-        black_box.set_column_homogeneous(true);
-        black_box.set_row_homogeneous(true);
-        black_box.attach(&black_header, 0, 0, 1, 1);
-        black_box.attach(&edit_b_score_button, 0, 1, 1, 2);
+        let black_box_button = gtk::Button::new();
+        black_box_button.add(&black_box);
 
-        main_layout.attach(&white_box, 0, 0, 3, 3);
-        main_layout.attach(&game_box, 3, 0, 6, 3);
-        main_layout.attach(&black_box, 9, 0, 3, 3);
+        let game_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        game_box.pack_start(&game_state_header, true, true, 0);
+        game_box.pack_start(&game_time_label, true, true, 0);
+
+        let game_box_button = gtk::Button::new();
+        game_box_button.add(&game_box);
+
+        main_layout.attach(&white_box_button, 0, 0, 3, 3);
+        main_layout.attach(&game_box_button, 3, 0, 6, 3);
+        main_layout.attach(&black_box_button, 9, 0, 3, 3);
         main_layout.attach(&add_w_score_button, 0, 3, 3, 2);
         main_layout.attach(&add_b_score_button, 9, 3, 3, 2);
         main_layout.attach(&edit_game_info_button, 3, 3, 6, 1);
@@ -481,10 +483,43 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
         let penalty_w_select_button = new_toggle_button("WHITE", &["white"]);
         let penalty_b_select_button = new_toggle_button("BLACK", &["black"]);
-        let penalty_1min_button = new_toggle_button("1 MIN", &["yellow"]);
-        let penalty_2min_button = new_toggle_button("2 MIN", &["orange"]);
-        let penalty_5min_button = new_toggle_button("5 MIN", &["red"]);
-        let penalty_dismiss_button = new_toggle_button("DISMISS", &["blue"]);
+
+        let penalty_1min_top_label = new_label("1", "penalty-top-yellow");
+        let penalty_1min_bottom_label = new_label("MINUTE", "penalty-bottom-yellow");
+        let penalty_2min_top_label = new_label("2", "penalty-top-orange");
+        let penalty_2min_bottom_label = new_label("MINUTE", "penalty-bottom-orange");
+        let penalty_5min_top_label = new_label("5", "penalty-top-red");
+        let penalty_5min_bottom_label = new_label("MINUTE", "penalty-bottom-red");
+        let penalty_dismiss_top_label = new_label("X", "penalty-top-blue");
+        let penalty_dismiss_bottom_label = new_label("DISMISS", "penalty-bottom-blue");
+
+        let penalty_1min_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        penalty_1min_box.pack_start(&penalty_1min_top_label, true, true, 0);
+        penalty_1min_box.pack_start(&penalty_1min_bottom_label, true, true, 0);
+
+        let penalty_2min_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        penalty_2min_box.pack_start(&penalty_2min_top_label, true, true, 0);
+        penalty_2min_box.pack_start(&penalty_2min_bottom_label, true, true, 0);
+
+        let penalty_5min_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        penalty_5min_box.pack_start(&penalty_5min_top_label, true, true, 0);
+        penalty_5min_box.pack_start(&penalty_5min_bottom_label, true, true, 0);
+
+        let penalty_dismiss_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        penalty_dismiss_box.pack_start(&penalty_dismiss_top_label, true, true, 0);
+        penalty_dismiss_box.pack_start(&penalty_dismiss_bottom_label, true, true, 0);
+
+        let penalty_1min_button = gtk::ToggleButton::new();
+        penalty_1min_button.add(&penalty_1min_box);
+
+        let penalty_2min_button = gtk::ToggleButton::new();
+        penalty_2min_button.add(&penalty_2min_box);
+
+        let penalty_5min_button = gtk::ToggleButton::new();
+        penalty_5min_button.add(&penalty_5min_box);
+
+        let penalty_dismiss_button = gtk::ToggleButton::new();
+        penalty_dismiss_button.add(&penalty_dismiss_box);
 
         let penalty_delete_button = new_button("DELETE", &["red"]);
         let penalty_add_button = new_button("ADD", &["green"]);
@@ -1598,7 +1633,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
 
         // Main Page - Transfer Buttons
-        edit_game_time_button.connect_clicked(clone!(@strong full_stack, @strong adjust_stack, @strong adjust_layout, @strong time_edit_layout, @strong tm => move |_| {
+        game_box_button.connect_clicked(clone!(@strong full_stack, @strong adjust_stack, @strong adjust_layout, @strong time_edit_layout, @strong tm => move |_| {
             let mut tm = tm.lock().unwrap();
             let now = Instant::now();
             tm.update(now);
@@ -1626,12 +1661,12 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         }));
 
 
-        edit_w_score_button.connect_clicked(clone!(@strong full_stack, @strong adjust_stack, @strong adjust_layout, @strong edit_score_layout => move |_| {
+        white_box_button.connect_clicked(clone!(@strong full_stack, @strong adjust_stack, @strong adjust_layout, @strong edit_score_layout => move |_| {
             full_stack.set_visible_child(&adjust_layout);
             adjust_stack.set_visible_child(&edit_score_layout)
         }));
 
-        edit_b_score_button.connect_clicked(clone!(@strong full_stack, @strong adjust_stack, @strong adjust_layout, @strong edit_score_layout => move |_| {
+        black_box_button.connect_clicked(clone!(@strong full_stack, @strong adjust_stack, @strong adjust_layout, @strong edit_score_layout => move |_| {
             full_stack.set_visible_child(&adjust_layout);
             adjust_stack.set_visible_child(&edit_score_layout)
         }));
@@ -2153,19 +2188,19 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             };
 
             // Main Clock Display
-            edit_game_time_button.set_label(&secs_to_time_string(snapshot.secs_in_period));
+            game_time_label.set_label(&secs_to_time_string(snapshot.secs_in_period));
 
             // Ribbon Header State and Time Definitions
             no_timeout_game_state_and_time_floating_header.set_label(&format!("{} {}", snapshot.current_period, &secs_to_time_string(snapshot.secs_in_period)));
             in_timeout_game_state_and_time_footer.set_label(&format!("{} {}", snapshot.current_period, &secs_to_time_string(snapshot.secs_in_period)));
 
             if snapshot.w_score != last_snapshot.w_score {
-                edit_w_score_button.set_label(&format!("{}", snapshot.w_score));
+                w_score_label.set_label(&format!("{}", snapshot.w_score));
                 modified_white_score.set_label(&format!("{}", snapshot.w_score));
             }
 
             if snapshot.b_score != last_snapshot.b_score {
-                edit_b_score_button.set_label(&format!("{}", snapshot.b_score));
+                b_score_label.set_label(&format!("{}", snapshot.b_score));
                 modified_black_score.set_label(&format!("{}", snapshot.b_score));
             }
 

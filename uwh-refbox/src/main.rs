@@ -296,8 +296,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         new_score_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         new_score_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
 
-        let new_score_w_select_button = new_toggle_button("WHITE", &["white"]);
-        let new_score_b_select_button = new_toggle_button("BLACK", &["black"]);
+        let new_score_w_button = new_toggle_button("WHITE", &["white"]);
+        let new_score_b_button = new_toggle_button("BLACK", &["black"]);
 
         let new_score_cancel_button = new_button("CANCEL", &["red"]);
         let new_score_submit_button = new_button("SUBMIT", &["green"]);
@@ -308,24 +308,24 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
         new_score_layout.attach(&score_keypad, 0, 0, 4, 9);
         new_score_layout.attach(&new_score_page_header, 4, 0, 8, 1);
-        new_score_layout.attach(&new_score_w_select_button, 4, 1, 4, 3);
-        new_score_layout.attach(&new_score_b_select_button, 8, 1, 4, 3);
+        new_score_layout.attach(&new_score_w_button, 4, 1, 4, 3);
+        new_score_layout.attach(&new_score_b_button, 8, 1, 4, 3);
         new_score_layout.attach(&new_score_cancel_button, 4, 7, 4, 2);
         new_score_layout.attach(&new_score_submit_button, 8, 7, 4, 2);
 
         // Setting up the white/black selected buttons
-         new_score_b_select_button.connect_clicked(clone!(@strong new_score_w_select_button => move |b| {
+        new_score_b_button.connect_clicked(clone!(@strong new_score_w_button => move |b| {
             if b.get_active() {
-                new_score_w_select_button.set_active(false);
-            } else if !new_score_w_select_button.get_active() {
+                new_score_w_button.set_active(false);
+            } else if !new_score_w_button.get_active() {
                 b.set_active(true);
             }
         }));
 
-        new_score_w_select_button.connect_clicked(clone!(@strong new_score_b_select_button => move |b| {
+        new_score_w_button.connect_clicked(clone!(@strong new_score_b_button => move |b| {
             if b.get_active() {
-                new_score_b_select_button.set_active(false);
-            } else if !new_score_b_select_button.get_active() {
+                new_score_b_button.set_active(false);
+            } else if !new_score_b_button.get_active() {
                 b.set_active(true);
             }
         }));
@@ -348,14 +348,17 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         w_score_plus_button.set_margin_start(BUTTON_MARGIN);
         w_score_plus_button.set_margin_top(BUTTON_MARGIN);
         w_score_plus_button.set_margin_bottom(BUTTON_MARGIN);
+
         let w_score_minus_button = new_button("-", &["blue-modifier"]);
         w_score_minus_button.set_margin_start(BUTTON_MARGIN);
         w_score_minus_button.set_margin_top(BUTTON_MARGIN);
         w_score_minus_button.set_margin_bottom(BUTTON_MARGIN);
+
         let b_score_plus_button = new_button("+", &["blue-modifier"]);
         b_score_plus_button.set_margin_end(BUTTON_MARGIN);
         b_score_plus_button.set_margin_top(BUTTON_MARGIN);
         b_score_plus_button.set_margin_bottom(BUTTON_MARGIN);
+
         let b_score_minus_button = new_button("-", &["blue-modifier"]);
         b_score_minus_button.set_margin_end(BUTTON_MARGIN);
         b_score_minus_button.set_margin_top(BUTTON_MARGIN);
@@ -371,29 +374,30 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let modified_black_score = new_label("#B", "modified-score-black");
         let empty_score_edit_label = gtk::Label::new(None);
 
-        let white_score_header_box = gtk::Grid::new();
-        white_score_header_box.get_style_context().add_class("white");
-        white_score_header_box.set_column_homogeneous(true);
-        white_score_header_box.set_row_homogeneous(true);
-        white_score_header_box.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
-        white_score_header_box.attach(&white_score_header, 0, 0, 2, 1);
-        white_score_header_box.attach(&w_score_plus_button, 0, 1, 1, 2);
-        white_score_header_box.attach(&w_score_minus_button, 0, 3, 1, 2);
-        white_score_header_box.attach(&modified_white_score, 1, 1, 1, 4);
+        let white_score_header_grid = gtk::Grid::new();
+        white_score_header_grid.get_style_context().add_class("white");
+        white_score_header_grid.set_column_homogeneous(true);
+        white_score_header_grid.set_row_homogeneous(true);
+        white_score_header_grid.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
+        white_score_header_grid.attach(&white_score_header, 0, 0, 2, 1);
+        white_score_header_grid.attach(&w_score_plus_button, 0, 1, 1, 2);
+        white_score_header_grid.attach(&w_score_minus_button, 0, 3, 1, 2);
+        white_score_header_grid.attach(&modified_white_score, 1, 1, 1, 4);
 
-        let black_score_header_box = gtk::Grid::new();
-        black_score_header_box.get_style_context().add_class("black");
-        black_score_header_box.set_column_homogeneous(true);
-        black_score_header_box.set_row_homogeneous(true);
-        black_score_header_box.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
-        black_score_header_box.attach(&black_score_header, 0, 0, 2, 1);
-        black_score_header_box.attach(&modified_black_score, 0, 1, 1, 4);
-        black_score_header_box.attach(&b_score_plus_button, 1, 1, 1, 2);
-        black_score_header_box.attach(&b_score_minus_button, 1, 3, 1, 2);
+        let black_score_header_grid = gtk::Grid::new();
+        black_score_header_grid.get_style_context().add_class("black");
+        black_score_header_grid.set_column_homogeneous(true);
+        black_score_header_grid.set_row_homogeneous(true);
+        black_score_header_grid.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
+        black_score_header_grid.attach(&black_score_header, 0, 0, 2, 1);
+        black_score_header_grid.attach(&modified_black_score, 0, 1, 1, 4);
+        black_score_header_grid.attach(&b_score_plus_button, 1, 1, 1, 2);
+        black_score_header_grid.attach(&b_score_minus_button, 1, 3, 1, 2);
+
 
         edit_score_layout.attach(&edit_score_page_header, 0, 0, 12, 1);
-        edit_score_layout.attach(&white_score_header_box, 0, 1, 6, 5);
-        edit_score_layout.attach(&black_score_header_box, 6, 1, 6, 5);
+        edit_score_layout.attach(&white_score_header_grid, 0, 1, 6, 5);
+        edit_score_layout.attach(&black_score_header_grid, 6, 1, 6, 5);
         edit_score_layout.attach(&empty_score_edit_label, 0, 6, 12, 1);
         edit_score_layout.attach(&score_edit_cancel_button, 0, 7, 4, 2);
         edit_score_layout.attach(&score_edit_submit_button, 8, 7, 4, 2);
@@ -481,8 +485,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         penalty_add_layout.set_column_spacing(BUTTON_SPACING.try_into().unwrap());
         penalty_add_layout.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
 
-        let penalty_w_select_button = new_toggle_button("WHITE", &["white"]);
-        let penalty_b_select_button = new_toggle_button("BLACK", &["black"]);
+        let penalty_w_button = new_toggle_button("WHITE", &["white"]);
+        let penalty_b_button = new_toggle_button("BLACK", &["black"]);
 
         let penalty_1min_top_label = new_label("1", "penalty-top-yellow");
         let penalty_1min_bottom_label = new_label("MINUTE", "penalty-bottom-yellow");
@@ -530,8 +534,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
         penalty_add_layout.attach(&penalty_add_page_header, 4, 0, 8, 1);
         penalty_add_layout.attach(&penalty_keypad, 0, 0, 4, 9);
-        penalty_add_layout.attach(&penalty_w_select_button, 4, 1, 4, 3);
-        penalty_add_layout.attach(&penalty_b_select_button, 8, 1, 4, 3);
+        penalty_add_layout.attach(&penalty_w_button, 4, 1, 4, 3);
+        penalty_add_layout.attach(&penalty_b_button, 8, 1, 4, 3);
         penalty_add_layout.attach(&penalty_1min_button, 4, 4, 2, 3);
         penalty_add_layout.attach(&penalty_2min_button, 6, 4, 2, 3);
         penalty_add_layout.attach(&penalty_5min_button, 8, 4, 2, 3);
@@ -540,18 +544,18 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         penalty_add_layout.attach(&penalty_add_button, 8, 7, 4, 2);
 
         // Setting up the white/black selected buttons
-        penalty_b_select_button.connect_clicked(clone!(@strong penalty_w_select_button => move |b| {
+        penalty_b_button.connect_clicked(clone!(@strong penalty_w_button => move |b| {
             if b.get_active() {
-                penalty_w_select_button.set_active(false);
-            } else if !penalty_w_select_button.get_active() {
+                penalty_w_button.set_active(false);
+            } else if !penalty_w_button.get_active() {
                 b.set_active(true);
             }
         }));
 
-        penalty_w_select_button.connect_clicked(clone!(@strong penalty_b_select_button => move |b| {
+        penalty_w_button.connect_clicked(clone!(@strong penalty_b_button => move |b| {
             if b.get_active() {
-                penalty_b_select_button.set_active(false);
-            } else if !penalty_b_select_button.get_active() {
+                penalty_b_button.set_active(false);
+            } else if !penalty_b_button.get_active() {
                 b.set_active(true);
             }
         }));
@@ -1048,33 +1052,33 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
         let time_edit_page_header = new_label("MANUALLY ADJUST TIME", "header-gray");
 
-        let minute_header_box = gtk::Grid::new();
-        minute_header_box.set_column_homogeneous(true);
-        minute_header_box.set_row_homogeneous(true);
-        minute_header_box.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
-        minute_header_box.attach(&minute_header, 0, 0, 1, 1);
-        minute_header_box.attach(&minute_plus_button, 0, 1, 1, 2);
-        minute_header_box.attach(&minute_minus_button, 0, 3, 1, 2);
+        let minute_adjust_grid = gtk::Grid::new();
+        minute_adjust_grid.set_column_homogeneous(true);
+        minute_adjust_grid.set_row_homogeneous(true);
+        minute_adjust_grid.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
+        minute_adjust_grid.attach(&minute_header, 0, 0, 1, 1);
+        minute_adjust_grid.attach(&minute_plus_button, 0, 1, 1, 2);
+        minute_adjust_grid.attach(&minute_minus_button, 0, 3, 1, 2);
 
-        let new_time_header_box = gtk::Grid::new();
-        new_time_header_box.set_column_homogeneous(true);
-        new_time_header_box.set_row_homogeneous(true);
-        new_time_header_box.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
-        new_time_header_box.attach(&new_time_header, 0, 0, 1, 1);
-        new_time_header_box.attach(&modified_game_time, 0, 1, 1, 4);
+        let new_time_header_grid = gtk::Grid::new();
+        new_time_header_grid.set_column_homogeneous(true);
+        new_time_header_grid.set_row_homogeneous(true);
+        new_time_header_grid.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
+        new_time_header_grid.attach(&new_time_header, 0, 0, 1, 1);
+        new_time_header_grid.attach(&modified_game_time, 0, 1, 1, 4);
 
-        let second_header_box = gtk::Grid::new();
-        second_header_box.set_column_homogeneous(true);
-        second_header_box.set_row_homogeneous(true);
-        second_header_box.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
-        second_header_box.attach(&second_header, 0, 0, 1, 1);
-        second_header_box.attach(&second_plus_button, 0, 1, 1, 2);
-        second_header_box.attach(&second_minus_button, 0, 3, 1, 2);
+        let second_adjust_grid = gtk::Grid::new();
+        second_adjust_grid.set_column_homogeneous(true);
+        second_adjust_grid.set_row_homogeneous(true);
+        second_adjust_grid.set_row_spacing(BUTTON_SPACING.try_into().unwrap());
+        second_adjust_grid.attach(&second_header, 0, 0, 1, 1);
+        second_adjust_grid.attach(&second_plus_button, 0, 1, 1, 2);
+        second_adjust_grid.attach(&second_minus_button, 0, 3, 1, 2);
 
         time_edit_layout.attach(&time_edit_page_header, 0, 0, 12, 1);
-        time_edit_layout.attach(&minute_header_box, 0, 1, 3, 5);
-        time_edit_layout.attach(&new_time_header_box, 3, 1, 6, 5);
-        time_edit_layout.attach(&second_header_box, 9, 1, 3, 5);
+        time_edit_layout.attach(&minute_adjust_grid, 0, 1, 3, 5);
+        time_edit_layout.attach(&new_time_header_grid, 3, 1, 6, 5);
+        time_edit_layout.attach(&second_adjust_grid, 9, 1, 3, 5);
         time_edit_layout.attach(&empty_time_edit_label, 0, 6, 12, 1);
         time_edit_layout.attach(&time_edit_cancel_button, 0, 7, 4, 2);
         time_edit_layout.attach(&time_edit_submit_button, 8, 7, 4, 2);
@@ -1552,7 +1556,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         advantage_add_submit_button.connect_clicked(clone!(@strong full_stack, @strong main_layout => move |_| full_stack.set_visible_child(&main_layout)));
 
         // New Score Page - Transfer Buttons
-        new_score_submit_button.connect_clicked(clone!(@strong full_stack, @strong main_layout, @strong score_player_number, @strong new_score_w_select_button, @strong tm, @strong state_send => move |_| {
+        new_score_submit_button.connect_clicked(clone!(@strong full_stack, @strong main_layout, @strong score_player_number, @strong new_score_w_button, @strong tm, @strong state_send => move |_| {
             let player = score_player_number
                 .get_label()
                 .unwrap()
@@ -1565,7 +1569,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 .unwrap_or(std::u8::MAX);
             let now = Instant::now();
             let mut tm = tm.lock().unwrap();
-            if new_score_w_select_button.get_active() {
+            if new_score_w_button.get_active() {
                 tm.add_w_score(player, now);
             } else {
                 tm.add_b_score(player, now);
@@ -1647,14 +1651,14 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         }));
 
         add_w_score_button.connect_clicked(clone!(@strong full_stack, @strong adjust_stack, @strong adjust_layout, @strong new_score_layout, @strong score_player_number => move |_| {
-            new_score_w_select_button.set_active(true);
+            new_score_w_button.set_active(true);
             score_player_number.set_label("Player #:\n");
             full_stack.set_visible_child(&adjust_layout);
             adjust_stack.set_visible_child(&new_score_layout);
         }));
 
         add_b_score_button.connect_clicked(clone!(@strong full_stack, @strong adjust_stack, @strong adjust_layout, @strong new_score_layout, @strong score_player_number => move |_| {
-            new_score_b_select_button.set_active(true);
+            new_score_b_button.set_active(true);
             score_player_number.set_label("Player #:\n");
             full_stack.set_visible_child(&adjust_layout);
             adjust_stack.set_visible_child(&new_score_layout);
@@ -1672,13 +1676,13 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         }));
 
         edit_w_time_penalty_button.connect_clicked(clone!(@strong full_stack, @strong adjust_stack, @strong adjust_layout, @strong time_penalty_conf_layout => move |_| {
-            penalty_w_select_button.set_active(true);
+            penalty_w_button.set_active(true);
             full_stack.set_visible_child(&adjust_layout);
             adjust_stack.set_visible_child(&time_penalty_conf_layout)
         }));
 
         edit_b_time_penalty_button.connect_clicked(clone!(@strong full_stack, @strong adjust_stack, @strong adjust_layout, @strong time_penalty_conf_layout => move |_| {
-            penalty_b_select_button.set_active(true);
+            penalty_b_button.set_active(true);
             full_stack.set_visible_child(&adjust_layout);
             adjust_stack.set_visible_child(&time_penalty_conf_layout)
         }));
@@ -2079,45 +2083,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         }
                 };
 
-                 //
-                // THIS SECTION MAY OR MAY NOT BE USEFUL TO SUPRESS BUTTONS BASED ON GAME STATE
-                //
-                //vvvvvvvvvvvvvvvv
-                // Activate/Deactivate Buttons
-/*                match snapshot.current_period {
-                    GamePeriod::BetweenGames => {
-                        edit_w_score_button.set_sensitive(true);
-                        add_w_score_button.set_sensitive(true);
-                        edit_b_score_button.set_sensitive(true);
-                        add_b_score_button.set_sensitive(true);
-                        new_penalty_shot_button.set_sensitive(true);
-                        main_w_timeout_button.set_sensitive(true);
-                        main_b_timeout_button.set_sensitive(true);
-                        no_t_o_w_t_o_button.set_sensitive(true);
-                        no_t_o_b_t_o_button.set_sensitive(true);
-                    }
-                    GamePeriod::HalfTime
-                    | GamePeriod::PreOvertime
-                    | GamePeriod::OvertimeHalfTime
-                    | GamePeriod::PreSuddenDeath => {
-                        new_penalty_shot_button.set_sensitive(true);
-                        main_w_timeout_button.set_sensitive(true);
-                        main_ref_timeout_button.set_sensitive(true);
-                        main_b_timeout_button.set_sensitive(true);
-                        no_t_o_w_t_o_button.set_sensitive(true);
-                        no_t_o_b_t_o_button.set_sensitive(true);
-                    }
-                    GamePeriod::SuddenDeath => {
-                        main_w_timeout_button.set_sensitive(true);
-                        main_b_timeout_button.set_sensitive(true);
-                        no_t_o_w_t_o_button.set_sensitive(true);
-                        no_t_o_b_t_o_button.set_sensitive(true);
-                    }
-                    _ => {
-
-                // ^^^^^^^^^^^^^^^
-                //
-*/
                         let ref_t_o_en = if let TimeoutSnapshot::Ref(_) = snapshot.timeout {
                             tm.can_start_penalty_shot().is_ok()
                         } else {
@@ -2149,8 +2114,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                         no_t_o_ref_t_o_button.set_sensitive(ref_t_o_en);
                         no_t_o_w_t_o_button.set_sensitive(w_t_o_en);
                         no_t_o_b_t_o_button.set_sensitive(b_t_o_en);
-//                    } 
-//                } // End of last match statement
 
             } // End of If()
 

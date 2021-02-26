@@ -118,10 +118,13 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             timeout: TimeoutSnapshot::None,
             b_score: 1,
             w_score: 5,
-            penalties: vec![PenaltySnapshot {
+            b_penalties: vec![PenaltySnapshot {
                 player_number: 3,
-                color: Color::Black,
                 time: PenaltyTime::Seconds(74),
+            }],
+            w_penalties: vec![PenaltySnapshot {
+                player_number: 5,
+                time: PenaltyTime::Seconds(32),
             }],
         };
 

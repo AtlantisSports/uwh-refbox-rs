@@ -1,5 +1,3 @@
-#![allow(dead_code)] // TODO: This is really ugly, needs to be removed
-
 use crate::config::Game;
 use std::{
     cmp::{Ordering, PartialOrd},
@@ -13,12 +11,12 @@ pub struct GameSnapshot {
     pub timeout: TimeoutSnapshot,
     pub b_score: u8,
     pub w_score: u8,
-    pub penalties: Vec<PenaltySnapshot>,
+    pub b_penalties: Vec<PenaltySnapshot>,
+    pub w_penalties: Vec<PenaltySnapshot>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct PenaltySnapshot {
-    pub color: Color,
     pub player_number: u8,
     pub time: PenaltyTime,
 }
@@ -38,7 +36,7 @@ pub enum GamePeriod {
 }
 
 impl GamePeriod {
-    fn penalties_run(self, config: &Game) -> bool {
+    pub fn penalties_run(self, config: &Game) -> bool {
         match self {
             Self::BetweenGames
             | Self::HalfTime
@@ -51,7 +49,7 @@ impl GamePeriod {
         }
     }
 
-    fn duration(self, config: &Game) -> Option<Duration> {
+    pub fn duration(self, config: &Game) -> Option<Duration> {
         match self {
             Self::BetweenGames | Self::SuddenDeath => None,
             Self::FirstHalf | Self::SecondHalf => {
@@ -71,7 +69,7 @@ impl GamePeriod {
         }
     }
 
-    fn time_elapsed_at(self, time: Duration, config: &Game) -> Option<Duration> {
+    pub fn time_elapsed_at(self, time: Duration, config: &Game) -> Option<Duration> {
         match self {
             p @ Self::BetweenGames
             | p @ Self::FirstHalf
@@ -86,7 +84,7 @@ impl GamePeriod {
         }
     }
 
-    fn time_between(self, start: Duration, end: Duration) -> Option<Duration> {
+    pub fn time_between(self, start: Duration, end: Duration) -> Option<Duration> {
         match self {
             Self::BetweenGames
             | Self::FirstHalf
@@ -101,7 +99,7 @@ impl GamePeriod {
         }
     }
 
-    fn next_period(self) -> Option<GamePeriod> {
+    pub fn next_period(self) -> Option<GamePeriod> {
         match self {
             Self::BetweenGames => Some(Self::FirstHalf),
             Self::FirstHalf => Some(Self::HalfTime),
@@ -159,6 +157,15 @@ impl std::fmt::Display for TimeoutSnapshot {
 pub enum Color {
     Black,
     White,
+}
+
+impl std::fmt::Display for Color {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match *self {
+            Self::Black => write!(f, "Black"),
+            Self::White => write!(f, "White"),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -333,7 +340,7 @@ mod test {
     }
 
     #[test]
-    fn test_penalty_duration() {
+    fn test_period_duration() {
         let config = Game {
             half_play_duration: 5,
             half_time_duration: 7,
@@ -381,7 +388,7 @@ mod test {
     }
 
     #[test]
-    fn test_penalty_time_elapsed_at() {
+    fn test_period_time_elapsed_at() {
         let config = Game {
             half_play_duration: 5,
             half_time_duration: 7,
@@ -468,7 +475,7 @@ mod test {
     }
 
     #[test]
-    fn test_penalty_time_between() {
+    fn test_period_time_between() {
         let mut period = GamePeriod::BetweenGames;
         while period != GamePeriod::SuddenDeath {
             assert_eq!(
@@ -492,7 +499,7 @@ mod test {
     }
 
     #[test]
-    fn test_penalty_next_period() {
+    fn test_next_period() {
         assert_eq!(
             GamePeriod::BetweenGames.next_period(),
             Some(GamePeriod::FirstHalf)

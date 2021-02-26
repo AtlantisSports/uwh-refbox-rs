@@ -1063,7 +1063,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         edit_game_time.connect_clicked(clone!(@strong layout_stack, @strong tm => move |_| {
             let mut tm = tm.lock().unwrap();
             let now = Instant::now();
-            tm.update(now);
+            tm.update(now).unwrap();
             clock_was_running.store(tm.clock_is_running(), Ordering::SeqCst);
             tm.stop_clock(now).unwrap();
             modified_game_time.set_label(&secs_to_time_string(
@@ -1221,7 +1221,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             let update_and_send_snapshot =
                 move |tm: &mut MutexGuard<TournamentManager>, just_started: bool| {
                     let now = Instant::now();
-                    tm.update(now);
+                    tm.update(now).unwrap();
                     if let Some(snapshot) = tm.generate_snapshot(now) {
                         trace!("Updater: sending snapshot");
                         state_send.send((snapshot, just_started)).unwrap();

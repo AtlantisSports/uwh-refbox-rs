@@ -490,7 +490,11 @@ impl TournamentManager {
             .map(|k| !k)
             .collect();
         let mut i = 0;
-        self.b_penalties.retain(|_| (keep[i], i += 1).0);
+        self.b_penalties.retain(|_| {
+            let k = keep[i];
+            i += 1;
+            k
+        });
 
         let keep: Vec<_> = self
             .w_penalties
@@ -502,7 +506,11 @@ impl TournamentManager {
             .map(|k| !k)
             .collect();
         let mut i = 0;
-        self.w_penalties.retain(|_| (keep[i], i += 1).0);
+        self.w_penalties.retain(|_| {
+            let k = keep[i];
+            i += 1;
+            k
+        });
 
         Ok(())
     }
@@ -550,7 +558,7 @@ impl TournamentManager {
         }
     }
 
-    pub(super) fn update(&mut self, now: Instant) {
+    pub(super) fn update(&mut self, now: Instant) -> Result<()> {
         // Case of clock running, with no timeout and not SD
         if let ClockState::CountingDown {
             start_time,
@@ -568,7 +576,11 @@ impl TournamentManager {
             }
 
             //TODO: Panics if `now` is invalid
-            if now.duration_since(start_time) >= time_remaining_at_start {
+            if now
+                .checked_duration_since(start_time)
+                .ok_or(TournamentManagerError::InvalidNowValue)?
+                >= time_remaining_at_start
+            {
                 match self.current_period {
                     GamePeriod::BetweenGames => {
                         self.current_game += 1;
@@ -607,7 +619,7 @@ impl TournamentManager {
                         };
                         self.w_timeouts_used = 0;
                         self.b_timeouts_used = 0;
-                        self.cull_penalties(now);
+                        self.cull_penalties(now)?;
                     }
                     GamePeriod::SecondHalf => {
                         if self.b_score != self.w_score
@@ -649,7 +661,7 @@ impl TournamentManager {
                                 self.config.ot_half_play_duration.into(),
                             ),
                         };
-                        self.cull_penalties(now);
+                        self.cull_penalties(now)?;
                     }
                     GamePeriod::OvertimeFirstHalf => {
                         info!("Entering overtime half time");
@@ -670,7 +682,7 @@ impl TournamentManager {
                                 self.config.ot_half_play_duration.into(),
                             ),
                         };
-                        self.cull_penalties(now);
+                        self.cull_penalties(now)?;
                     }
                     GamePeriod::OvertimeSecondHalf => {
                         if self.b_score != self.w_score || !self.config.sudden_death_allowed {
@@ -696,7 +708,7 @@ impl TournamentManager {
                             start_time: start_time + time_remaining_at_start,
                             time_at_start: Duration::from_secs(0),
                         };
-                        self.cull_penalties(now);
+                        self.cull_penalties(now)?;
                     }
                     GamePeriod::SuddenDeath => {
                         error!("Impossible state: in sudden death with clock counting down")
@@ -728,7 +740,9 @@ impl TournamentManager {
                 },
                 TimeoutState::Ref(_) | TimeoutState::PenaltyShot(_) | TimeoutState::None => {}
             };
-        }
+        };
+
+        Ok(())
     }
 
     pub fn add_start_stop_sender(&mut self, sender: Sender<bool>) {
@@ -1515,7 +1529,7 @@ mod test {
         assert_eq!(tm.game_clock_time(t_o_start), Some(Duration::from_secs(28)));
         assert_eq!(tm.timeout_time(mid_t_o), Some(Duration::from_secs(7)));
         assert_eq!(tm.game_clock_time(mid_t_o), Some(Duration::from_secs(28)));
-        tm.update(mid_t_o);
+        tm.update(mid_t_o).unwrap();
         assert_eq!(
             tm.get_timeout_state(),
             TimeoutState::Black(ClockState::CountingDown {
@@ -1525,7 +1539,7 @@ mod test {
         );
         assert_eq!(tm.timeout_time(t_o_end), Some(Duration::from_secs(0)));
         assert_eq!(tm.timeout_time(after_t_o), None);
-        tm.update(after_t_o);
+        tm.update(after_t_o).unwrap();
         assert_eq!(tm.get_timeout_state(), TimeoutState::None);
         assert_eq!(tm.timeout_time(after_t_o), None);
         assert_eq!(tm.game_clock_time(after_t_o), Some(Duration::from_secs(26)));
@@ -1549,7 +1563,7 @@ mod test {
         assert_eq!(tm.game_clock_time(t_o_start), Some(Duration::from_secs(28)));
         assert_eq!(tm.timeout_time(mid_t_o), Some(Duration::from_secs(7)));
         assert_eq!(tm.game_clock_time(mid_t_o), Some(Duration::from_secs(28)));
-        tm.update(mid_t_o);
+        tm.update(mid_t_o).unwrap();
         assert_eq!(
             tm.get_timeout_state(),
             TimeoutState::White(ClockState::CountingDown {
@@ -1559,7 +1573,7 @@ mod test {
         );
         assert_eq!(tm.timeout_time(t_o_end), Some(Duration::from_secs(0)));
         assert_eq!(tm.timeout_time(after_t_o), None);
-        tm.update(after_t_o);
+        tm.update(after_t_o).unwrap();
         assert_eq!(tm.get_timeout_state(), TimeoutState::None);
         assert_eq!(tm.timeout_time(after_t_o), None);
         assert_eq!(tm.game_clock_time(after_t_o), Some(Duration::from_secs(26)));
@@ -1583,7 +1597,7 @@ mod test {
         assert_eq!(tm.game_clock_time(t_o_start), Some(Duration::from_secs(28)));
         assert_eq!(tm.timeout_time(mid_t_o), Some(Duration::from_secs(3)));
         assert_eq!(tm.game_clock_time(mid_t_o), Some(Duration::from_secs(28)));
-        tm.update(mid_t_o);
+        tm.update(mid_t_o).unwrap();
         assert_eq!(
             tm.get_timeout_state(),
             TimeoutState::Ref(ClockState::CountingUp {
@@ -1608,7 +1622,7 @@ mod test {
         assert_eq!(tm.game_clock_time(t_o_start), Some(Duration::from_secs(28)));
         assert_eq!(tm.timeout_time(mid_t_o), Some(Duration::from_secs(3)));
         assert_eq!(tm.game_clock_time(mid_t_o), Some(Duration::from_secs(28)));
-        tm.update(mid_t_o);
+        tm.update(mid_t_o).unwrap();
         assert_eq!(
             tm.get_timeout_state(),
             TimeoutState::PenaltyShot(ClockState::CountingUp {
@@ -1916,7 +1930,7 @@ mod test {
         if let Some((b, w)) = score {
             tm.set_scores(b, w, start);
         }
-        tm.update(next_time);
+        tm.update(next_time).unwrap();
 
         assert_eq!(tm.current_period(), end_period);
         assert_eq!(
@@ -1940,7 +1954,7 @@ mod test {
         tm.set_period_and_game_clock_time(GamePeriod::BetweenGames, Duration::from_secs(1));
         tm.set_game_start(start);
         tm.start_game_clock(start);
-        tm.update(next_time);
+        tm.update(next_time).unwrap();
 
         assert_eq!(GamePeriod::FirstHalf, tm.current_period());
         assert_eq!(tm.game_clock_time(next_time), Some(Duration::from_secs(3)));
@@ -2328,7 +2342,7 @@ mod test {
         tm.set_game_start(game_start);
         tm.start_game_clock(start);
         tm.set_scores(2, 2, start);
-        tm.update(second_time);
+        tm.update(second_time).unwrap();
 
         assert_eq!(tm.current_period(), GamePeriod::SuddenDeath);
         assert_eq!(

@@ -433,20 +433,16 @@ impl TournamentManager {
     }
 
     pub fn delete_penalty(&mut self, color: Color, index: usize) -> Result<()> {
-        match color {
-            Color::Black => {
-                if self.b_penalties.len() < index + 1 {
-                    return Err(TournamentManagerError::InvalidIndex(color, index));
-                }
-                self.b_penalties.remove(index);
-            }
-            Color::White => {
-                if self.w_penalties.len() < index + 1 {
-                    return Err(TournamentManagerError::InvalidIndex(color, index));
-                }
-                self.w_penalties.remove(index);
-            }
+        let vec = match color {
+            Color::Black => &mut self.b_penalties,
+            Color::White => &mut self.w_penalties,
+        };
+
+        if vec.len() < index + 1 {
+            return Err(TournamentManagerError::InvalidIndex(color, index));
         }
+        vec.remove(index);
+
         Ok(())
     }
 
@@ -479,38 +475,26 @@ impl TournamentManager {
         let time = self
             .game_clock_time(now)
             .ok_or(TournamentManagerError::InvalidNowValue)?;
+        let period = self.current_period;
+        let config = self.config.clone(); // TODO: Clean up with iter on tuple
 
-        let keep: Vec<_> = self
-            .b_penalties
-            .iter()
-            .map(|pen| pen.is_complete(self.current_period, time, &self.config))
-            .collect::<Option<Vec<_>>>()
-            .ok_or(TournamentManagerError::InvalidNowValue)?
-            .iter()
-            .map(|k| !k)
-            .collect();
-        let mut i = 0;
-        self.b_penalties.retain(|_| {
-            let k = keep[i];
-            i += 1;
-            k
-        });
-
-        let keep: Vec<_> = self
-            .w_penalties
-            .iter()
-            .map(|pen| pen.is_complete(self.current_period, time, &self.config))
-            .collect::<Option<Vec<_>>>()
-            .ok_or(TournamentManagerError::InvalidNowValue)?
-            .iter()
-            .map(|k| !k)
-            .collect();
-        let mut i = 0;
-        self.w_penalties.retain(|_| {
-            let k = keep[i];
-            i += 1;
-            k
-        });
+        for vec in vec![&mut self.b_penalties, &mut self.w_penalties] {
+            //TODO: Possible to iter on tuple here?
+            let keep: Vec<_> = vec
+                .iter()
+                .map(|pen| pen.is_complete(period, time, &config))
+                .collect::<Option<Vec<_>>>()
+                .ok_or(TournamentManagerError::InvalidNowValue)?
+                .iter()
+                .map(|k| !k)
+                .collect();
+            let mut i = 0;
+            vec.retain(|_| {
+                let k = keep[i];
+                i += 1;
+                k
+            });
+        }
 
         Ok(())
     }
@@ -909,6 +893,11 @@ impl TournamentManager {
     pub(super) fn set_timeouts_used(&mut self, b: u16, w: u16) {
         self.b_timeouts_used = b;
         self.w_timeouts_used = w;
+    }
+
+    #[cfg(test)]
+    fn get_penalties(&self) -> (Vec<Penalty>, Vec<Penalty>) {
+        (self.b_penalties.clone(), self.w_penalties.clone())
     }
 
     /// Returns `None` if the clock time would be negative, or if `now` is before the start
@@ -2698,6 +2687,882 @@ mod test {
         assert_eq!(
             penalty.is_complete(GamePeriod::SuddenDeath, Duration::from_secs(310), &config),
             Some(false)
+        );
+    }
+
+    #[test]
+    fn test_start_penalty() {
+        let start = Instant::now();
+        let next_time = start + Duration::from_secs(1);
+
+        let mut tm = TournamentManager::new(Default::default());
+
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(25));
+        tm.start_game_clock(start);
+        tm.start_penalty(Color::Black, 2, PenaltyKind::OneMinute, next_time)
+            .unwrap();
+
+        let next_time = next_time + Duration::from_secs(1);
+        tm.update(next_time).unwrap();
+        assert_eq!(
+            tm.get_penalties(),
+            (
+                vec![Penalty {
+                    kind: PenaltyKind::OneMinute,
+                    player_number: 2,
+                    start_period: GamePeriod::FirstHalf,
+                    start_time: Duration::from_secs(24)
+                }],
+                vec![]
+            )
+        );
+
+        let next_time = next_time + Duration::from_secs(1);
+        tm.start_penalty(Color::Black, 3, PenaltyKind::TwoMinute, next_time)
+            .unwrap();
+        tm.start_penalty(Color::Black, 4, PenaltyKind::FiveMinute, next_time)
+            .unwrap();
+        tm.start_penalty(Color::Black, 5, PenaltyKind::TotalDismissal, next_time)
+            .unwrap();
+        tm.start_penalty(Color::White, 6, PenaltyKind::OneMinute, next_time)
+            .unwrap();
+        tm.start_penalty(Color::White, 7, PenaltyKind::TwoMinute, next_time)
+            .unwrap();
+        tm.start_penalty(Color::White, 8, PenaltyKind::FiveMinute, next_time)
+            .unwrap();
+        tm.start_penalty(Color::White, 9, PenaltyKind::TotalDismissal, next_time)
+            .unwrap();
+
+        let next_time = next_time + Duration::from_secs(1);
+        tm.update(next_time).unwrap();
+        assert_eq!(
+            tm.get_penalties(),
+            (
+                vec![
+                    Penalty {
+                        kind: PenaltyKind::OneMinute,
+                        player_number: 2,
+                        start_period: GamePeriod::FirstHalf,
+                        start_time: Duration::from_secs(24)
+                    },
+                    Penalty {
+                        kind: PenaltyKind::TwoMinute,
+                        player_number: 3,
+                        start_period: GamePeriod::FirstHalf,
+                        start_time: Duration::from_secs(22)
+                    },
+                    Penalty {
+                        kind: PenaltyKind::FiveMinute,
+                        player_number: 4,
+                        start_period: GamePeriod::FirstHalf,
+                        start_time: Duration::from_secs(22)
+                    },
+                    Penalty {
+                        kind: PenaltyKind::TotalDismissal,
+                        player_number: 5,
+                        start_period: GamePeriod::FirstHalf,
+                        start_time: Duration::from_secs(22)
+                    },
+                ],
+                vec![
+                    Penalty {
+                        kind: PenaltyKind::OneMinute,
+                        player_number: 6,
+                        start_period: GamePeriod::FirstHalf,
+                        start_time: Duration::from_secs(22)
+                    },
+                    Penalty {
+                        kind: PenaltyKind::TwoMinute,
+                        player_number: 7,
+                        start_period: GamePeriod::FirstHalf,
+                        start_time: Duration::from_secs(22)
+                    },
+                    Penalty {
+                        kind: PenaltyKind::FiveMinute,
+                        player_number: 8,
+                        start_period: GamePeriod::FirstHalf,
+                        start_time: Duration::from_secs(22)
+                    },
+                    Penalty {
+                        kind: PenaltyKind::TotalDismissal,
+                        player_number: 9,
+                        start_period: GamePeriod::FirstHalf,
+                        start_time: Duration::from_secs(22)
+                    },
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn test_delete_penalty() {
+        let start = Instant::now();
+        let next_time = start + Duration::from_secs(1);
+
+        let mut tm = TournamentManager::new(Default::default());
+
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(25));
+        tm.start_game_clock(start);
+        tm.start_penalty(Color::Black, 2, PenaltyKind::OneMinute, next_time)
+            .unwrap();
+
+        let next_time = next_time + Duration::from_secs(1);
+        tm.update(next_time).unwrap();
+        assert_eq!(
+            tm.get_penalties(),
+            (
+                vec![Penalty {
+                    kind: PenaltyKind::OneMinute,
+                    player_number: 2,
+                    start_period: GamePeriod::FirstHalf,
+                    start_time: Duration::from_secs(24)
+                }],
+                vec![]
+            )
+        );
+
+        let next_time = next_time + Duration::from_secs(1);
+        assert_eq!(
+            tm.delete_penalty(Color::Black, 1,),
+            Err(TournamentManagerError::InvalidIndex(Color::Black, 1))
+        );
+        assert_eq!(
+            tm.delete_penalty(Color::White, 0,),
+            Err(TournamentManagerError::InvalidIndex(Color::White, 0))
+        );
+        assert_eq!(
+            tm.delete_penalty(Color::White, 1,),
+            Err(TournamentManagerError::InvalidIndex(Color::White, 1))
+        );
+        tm.delete_penalty(Color::Black, 0).unwrap();
+        assert_eq!(tm.get_penalties(), (vec![], vec![]));
+
+        let next_time = next_time + Duration::from_secs(1);
+        tm.start_penalty(Color::White, 3, PenaltyKind::OneMinute, next_time)
+            .unwrap();
+
+        let next_time = next_time + Duration::from_secs(1);
+        tm.update(next_time).unwrap();
+        assert_eq!(
+            tm.get_penalties(),
+            (
+                vec![],
+                vec![Penalty {
+                    kind: PenaltyKind::OneMinute,
+                    player_number: 3,
+                    start_period: GamePeriod::FirstHalf,
+                    start_time: Duration::from_secs(21)
+                }],
+            )
+        );
+
+        assert_eq!(
+            tm.delete_penalty(Color::White, 1,),
+            Err(TournamentManagerError::InvalidIndex(Color::White, 1))
+        );
+        assert_eq!(
+            tm.delete_penalty(Color::Black, 0),
+            Err(TournamentManagerError::InvalidIndex(Color::Black, 0))
+        );
+        assert_eq!(
+            tm.delete_penalty(Color::Black, 1),
+            Err(TournamentManagerError::InvalidIndex(Color::Black, 1))
+        );
+        tm.delete_penalty(Color::White, 0).unwrap();
+        assert_eq!(tm.get_penalties(), (vec![], vec![]));
+    }
+
+    #[test]
+    fn test_edit_penalty() {
+        let start = Instant::now();
+        let next_time = start + Duration::from_secs(1);
+
+        let mut tm = TournamentManager::new(Default::default());
+
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(25));
+        tm.start_game_clock(start);
+        tm.start_penalty(Color::Black, 2, PenaltyKind::OneMinute, next_time)
+            .unwrap();
+
+        let next_time = next_time + Duration::from_secs(1);
+        tm.update(next_time).unwrap();
+        assert_eq!(
+            tm.get_penalties(),
+            (
+                vec![Penalty {
+                    kind: PenaltyKind::OneMinute,
+                    player_number: 2,
+                    start_period: GamePeriod::FirstHalf,
+                    start_time: Duration::from_secs(24)
+                }],
+                vec![]
+            )
+        );
+
+        let next_time = next_time + Duration::from_secs(1);
+        assert_eq!(
+            tm.edit_penalty(Color::Black, 1, Color::Black, 2, PenaltyKind::TwoMinute),
+            Err(TournamentManagerError::InvalidIndex(Color::Black, 1))
+        );
+        assert_eq!(
+            tm.edit_penalty(Color::White, 0, Color::Black, 2, PenaltyKind::TwoMinute),
+            Err(TournamentManagerError::InvalidIndex(Color::White, 0))
+        );
+        assert_eq!(
+            tm.edit_penalty(Color::White, 1, Color::Black, 2, PenaltyKind::TwoMinute),
+            Err(TournamentManagerError::InvalidIndex(Color::White, 1))
+        );
+        tm.edit_penalty(Color::Black, 0, Color::Black, 3, PenaltyKind::TwoMinute)
+            .unwrap();
+        tm.update(next_time).unwrap();
+        assert_eq!(
+            tm.get_penalties(),
+            (
+                vec![Penalty {
+                    kind: PenaltyKind::TwoMinute,
+                    player_number: 3,
+                    start_period: GamePeriod::FirstHalf,
+                    start_time: Duration::from_secs(24)
+                }],
+                vec![],
+            )
+        );
+
+        let next_time = next_time + Duration::from_secs(1);
+        tm.edit_penalty(Color::Black, 0, Color::Black, 4, PenaltyKind::FiveMinute)
+            .unwrap();
+        tm.update(next_time).unwrap();
+        assert_eq!(
+            tm.get_penalties(),
+            (
+                vec![Penalty {
+                    kind: PenaltyKind::FiveMinute,
+                    player_number: 4,
+                    start_period: GamePeriod::FirstHalf,
+                    start_time: Duration::from_secs(24)
+                }],
+                vec![],
+            )
+        );
+
+        let next_time = next_time + Duration::from_secs(1);
+        tm.edit_penalty(
+            Color::Black,
+            0,
+            Color::Black,
+            5,
+            PenaltyKind::TotalDismissal,
+        )
+        .unwrap();
+        tm.update(next_time).unwrap();
+        assert_eq!(
+            tm.get_penalties(),
+            (
+                vec![Penalty {
+                    kind: PenaltyKind::TotalDismissal,
+                    player_number: 5,
+                    start_period: GamePeriod::FirstHalf,
+                    start_time: Duration::from_secs(24)
+                }],
+                vec![],
+            )
+        );
+
+        let next_time = next_time + Duration::from_secs(1);
+        tm.edit_penalty(
+            Color::Black,
+            0,
+            Color::White,
+            6,
+            PenaltyKind::TotalDismissal,
+        )
+        .unwrap();
+        tm.update(next_time).unwrap();
+        assert_eq!(
+            tm.get_penalties(),
+            (
+                vec![],
+                vec![Penalty {
+                    kind: PenaltyKind::TotalDismissal,
+                    player_number: 6,
+                    start_period: GamePeriod::FirstHalf,
+                    start_time: Duration::from_secs(24)
+                }],
+            )
+        );
+
+        let next_time = next_time + Duration::from_secs(1);
+        assert_eq!(
+            tm.edit_penalty(Color::White, 1, Color::White, 2, PenaltyKind::TwoMinute),
+            Err(TournamentManagerError::InvalidIndex(Color::White, 1))
+        );
+        assert_eq!(
+            tm.edit_penalty(Color::Black, 0, Color::Black, 2, PenaltyKind::TwoMinute),
+            Err(TournamentManagerError::InvalidIndex(Color::Black, 0))
+        );
+        assert_eq!(
+            tm.edit_penalty(Color::Black, 1, Color::Black, 2, PenaltyKind::TwoMinute),
+            Err(TournamentManagerError::InvalidIndex(Color::Black, 1))
+        );
+        tm.edit_penalty(Color::White, 0, Color::White, 7, PenaltyKind::FiveMinute)
+            .unwrap();
+        tm.update(next_time).unwrap();
+        assert_eq!(
+            tm.get_penalties(),
+            (
+                vec![],
+                vec![Penalty {
+                    kind: PenaltyKind::FiveMinute,
+                    player_number: 7,
+                    start_period: GamePeriod::FirstHalf,
+                    start_time: Duration::from_secs(24)
+                }],
+            )
+        );
+
+        let next_time = next_time + Duration::from_secs(1);
+        tm.edit_penalty(Color::White, 0, Color::White, 8, PenaltyKind::TwoMinute)
+            .unwrap();
+        tm.update(next_time).unwrap();
+        assert_eq!(
+            tm.get_penalties(),
+            (
+                vec![],
+                vec![Penalty {
+                    kind: PenaltyKind::TwoMinute,
+                    player_number: 8,
+                    start_period: GamePeriod::FirstHalf,
+                    start_time: Duration::from_secs(24)
+                }],
+            )
+        );
+
+        let next_time = next_time + Duration::from_secs(1);
+        tm.edit_penalty(Color::White, 0, Color::White, 10, PenaltyKind::OneMinute)
+            .unwrap();
+        tm.update(next_time).unwrap();
+        assert_eq!(
+            tm.get_penalties(),
+            (
+                vec![],
+                vec![Penalty {
+                    kind: PenaltyKind::OneMinute,
+                    player_number: 10,
+                    start_period: GamePeriod::FirstHalf,
+                    start_time: Duration::from_secs(24)
+                }],
+            )
+        );
+    }
+
+    #[test]
+    fn test_snapshot_penalty() {
+        let config = GameConfig {
+            half_play_duration: 900,
+            half_time_duration: 180,
+            ..Default::default()
+        };
+
+        let start = Instant::now();
+        let next_time = start + Duration::from_secs(1);
+
+        let mut tm = TournamentManager::new(config);
+
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(25));
+        tm.start_game_clock(start);
+        tm.start_penalty(Color::Black, 2, PenaltyKind::OneMinute, next_time)
+            .unwrap();
+
+        let next_time = next_time + Duration::from_secs(1);
+        tm.update(next_time).unwrap();
+        let snapshot = tm.generate_snapshot(next_time).unwrap();
+        assert_eq!(
+            snapshot.b_penalties,
+            vec![PenaltySnapshot {
+                player_number: 2,
+                time: PenaltyTime::Seconds(59)
+            }]
+        );
+        assert_eq!(snapshot.w_penalties, vec![]);
+
+        let next_time = next_time + Duration::from_secs(1);
+        tm.start_penalty(Color::White, 3, PenaltyKind::OneMinute, next_time)
+            .unwrap();
+
+        let next_time = next_time + Duration::from_secs(1);
+        tm.update(next_time).unwrap();
+        let snapshot = tm.generate_snapshot(next_time).unwrap();
+        assert_eq!(
+            snapshot.b_penalties,
+            vec![PenaltySnapshot {
+                player_number: 2,
+                time: PenaltyTime::Seconds(57)
+            }]
+        );
+        assert_eq!(
+            snapshot.w_penalties,
+            vec![PenaltySnapshot {
+                player_number: 3,
+                time: PenaltyTime::Seconds(59)
+            }]
+        );
+
+        let next_time = next_time + Duration::from_secs(1);
+        tm.start_penalty(Color::Black, 4, PenaltyKind::TwoMinute, next_time)
+            .unwrap();
+        tm.start_penalty(Color::White, 5, PenaltyKind::TwoMinute, next_time)
+            .unwrap();
+
+        let next_time = next_time + Duration::from_secs(1);
+        tm.update(next_time).unwrap();
+        let snapshot = tm.generate_snapshot(next_time).unwrap();
+        assert_eq!(
+            snapshot.b_penalties,
+            vec![
+                PenaltySnapshot {
+                    player_number: 2,
+                    time: PenaltyTime::Seconds(55)
+                },
+                PenaltySnapshot {
+                    player_number: 4,
+                    time: PenaltyTime::Seconds(119)
+                },
+            ]
+        );
+        assert_eq!(
+            snapshot.w_penalties,
+            vec![
+                PenaltySnapshot {
+                    player_number: 3,
+                    time: PenaltyTime::Seconds(57)
+                },
+                PenaltySnapshot {
+                    player_number: 5,
+                    time: PenaltyTime::Seconds(119)
+                },
+            ]
+        );
+
+        let next_time = next_time + Duration::from_secs(1);
+        tm.start_penalty(Color::Black, 6, PenaltyKind::FiveMinute, next_time)
+            .unwrap();
+        tm.start_penalty(Color::White, 7, PenaltyKind::FiveMinute, next_time)
+            .unwrap();
+
+        let next_time = next_time + Duration::from_secs(1);
+        tm.update(next_time).unwrap();
+        let snapshot = tm.generate_snapshot(next_time).unwrap();
+        assert_eq!(
+            snapshot.b_penalties,
+            vec![
+                PenaltySnapshot {
+                    player_number: 2,
+                    time: PenaltyTime::Seconds(53)
+                },
+                PenaltySnapshot {
+                    player_number: 4,
+                    time: PenaltyTime::Seconds(117)
+                },
+                PenaltySnapshot {
+                    player_number: 6,
+                    time: PenaltyTime::Seconds(299)
+                },
+            ]
+        );
+        assert_eq!(
+            snapshot.w_penalties,
+            vec![
+                PenaltySnapshot {
+                    player_number: 3,
+                    time: PenaltyTime::Seconds(55)
+                },
+                PenaltySnapshot {
+                    player_number: 5,
+                    time: PenaltyTime::Seconds(117)
+                },
+                PenaltySnapshot {
+                    player_number: 7,
+                    time: PenaltyTime::Seconds(299)
+                },
+            ]
+        );
+
+        let next_time = next_time + Duration::from_secs(1);
+        tm.start_penalty(Color::Black, 8, PenaltyKind::TotalDismissal, next_time)
+            .unwrap();
+        tm.start_penalty(Color::White, 9, PenaltyKind::TotalDismissal, next_time)
+            .unwrap();
+
+        let next_time = next_time + Duration::from_secs(1);
+        tm.update(next_time).unwrap();
+        let snapshot = tm.generate_snapshot(next_time).unwrap();
+        assert_eq!(
+            snapshot.b_penalties,
+            vec![
+                PenaltySnapshot {
+                    player_number: 2,
+                    time: PenaltyTime::Seconds(51)
+                },
+                PenaltySnapshot {
+                    player_number: 4,
+                    time: PenaltyTime::Seconds(115)
+                },
+                PenaltySnapshot {
+                    player_number: 6,
+                    time: PenaltyTime::Seconds(297)
+                },
+                PenaltySnapshot {
+                    player_number: 8,
+                    time: PenaltyTime::TotalDismissal
+                },
+            ]
+        );
+        assert_eq!(
+            snapshot.w_penalties,
+            vec![
+                PenaltySnapshot {
+                    player_number: 3,
+                    time: PenaltyTime::Seconds(53)
+                },
+                PenaltySnapshot {
+                    player_number: 5,
+                    time: PenaltyTime::Seconds(115)
+                },
+                PenaltySnapshot {
+                    player_number: 7,
+                    time: PenaltyTime::Seconds(297)
+                },
+                PenaltySnapshot {
+                    player_number: 9,
+                    time: PenaltyTime::TotalDismissal
+                },
+            ]
+        );
+
+        // Check 5 seconds after Half Time has started (there were 15s remaining in first half)
+        let next_time = next_time + Duration::from_secs(20);
+        tm.update(next_time).unwrap();
+        let snapshot = tm.generate_snapshot(next_time).unwrap();
+        assert_eq!(
+            snapshot.b_penalties,
+            vec![
+                PenaltySnapshot {
+                    player_number: 2,
+                    time: PenaltyTime::Seconds(36)
+                },
+                PenaltySnapshot {
+                    player_number: 4,
+                    time: PenaltyTime::Seconds(100)
+                },
+                PenaltySnapshot {
+                    player_number: 6,
+                    time: PenaltyTime::Seconds(282)
+                },
+                PenaltySnapshot {
+                    player_number: 8,
+                    time: PenaltyTime::TotalDismissal
+                },
+            ]
+        );
+        assert_eq!(
+            snapshot.w_penalties,
+            vec![
+                PenaltySnapshot {
+                    player_number: 3,
+                    time: PenaltyTime::Seconds(38)
+                },
+                PenaltySnapshot {
+                    player_number: 5,
+                    time: PenaltyTime::Seconds(100)
+                },
+                PenaltySnapshot {
+                    player_number: 7,
+                    time: PenaltyTime::Seconds(282)
+                },
+                PenaltySnapshot {
+                    player_number: 9,
+                    time: PenaltyTime::TotalDismissal
+                },
+            ]
+        );
+
+        // Check 10 seconds after Second Half has started (there were 175s remaining in Half Time)
+        let next_time = next_time + Duration::from_secs(185);
+        tm.update(next_time).unwrap();
+        let snapshot = tm.generate_snapshot(next_time).unwrap();
+        assert_eq!(
+            snapshot.b_penalties,
+            vec![
+                PenaltySnapshot {
+                    player_number: 2,
+                    time: PenaltyTime::Seconds(26)
+                },
+                PenaltySnapshot {
+                    player_number: 4,
+                    time: PenaltyTime::Seconds(90)
+                },
+                PenaltySnapshot {
+                    player_number: 6,
+                    time: PenaltyTime::Seconds(272)
+                },
+                PenaltySnapshot {
+                    player_number: 8,
+                    time: PenaltyTime::TotalDismissal
+                },
+            ]
+        );
+        assert_eq!(
+            snapshot.w_penalties,
+            vec![
+                PenaltySnapshot {
+                    player_number: 3,
+                    time: PenaltyTime::Seconds(28)
+                },
+                PenaltySnapshot {
+                    player_number: 5,
+                    time: PenaltyTime::Seconds(90)
+                },
+                PenaltySnapshot {
+                    player_number: 7,
+                    time: PenaltyTime::Seconds(272)
+                },
+                PenaltySnapshot {
+                    player_number: 9,
+                    time: PenaltyTime::TotalDismissal
+                },
+            ]
+        );
+
+        // Check after the first two penalties have finished
+        let next_time = next_time + Duration::from_secs(30);
+        tm.update(next_time).unwrap();
+        let snapshot = tm.generate_snapshot(next_time).unwrap();
+        assert_eq!(
+            snapshot.b_penalties,
+            vec![
+                PenaltySnapshot {
+                    player_number: 2,
+                    time: PenaltyTime::Seconds(0)
+                },
+                PenaltySnapshot {
+                    player_number: 4,
+                    time: PenaltyTime::Seconds(60)
+                },
+                PenaltySnapshot {
+                    player_number: 6,
+                    time: PenaltyTime::Seconds(242)
+                },
+                PenaltySnapshot {
+                    player_number: 8,
+                    time: PenaltyTime::TotalDismissal
+                },
+            ]
+        );
+        assert_eq!(
+            snapshot.w_penalties,
+            vec![
+                PenaltySnapshot {
+                    player_number: 3,
+                    time: PenaltyTime::Seconds(0)
+                },
+                PenaltySnapshot {
+                    player_number: 5,
+                    time: PenaltyTime::Seconds(60)
+                },
+                PenaltySnapshot {
+                    player_number: 7,
+                    time: PenaltyTime::Seconds(242)
+                },
+                PenaltySnapshot {
+                    player_number: 9,
+                    time: PenaltyTime::TotalDismissal
+                },
+            ]
+        );
+
+        // Check after all the penalties have finished
+        let next_time = next_time + Duration::from_secs(250);
+        tm.update(next_time).unwrap();
+        let snapshot = tm.generate_snapshot(next_time).unwrap();
+        assert_eq!(
+            snapshot.b_penalties,
+            vec![
+                PenaltySnapshot {
+                    player_number: 2,
+                    time: PenaltyTime::Seconds(0)
+                },
+                PenaltySnapshot {
+                    player_number: 4,
+                    time: PenaltyTime::Seconds(0)
+                },
+                PenaltySnapshot {
+                    player_number: 6,
+                    time: PenaltyTime::Seconds(0)
+                },
+                PenaltySnapshot {
+                    player_number: 8,
+                    time: PenaltyTime::TotalDismissal
+                },
+            ]
+        );
+        assert_eq!(
+            snapshot.w_penalties,
+            vec![
+                PenaltySnapshot {
+                    player_number: 3,
+                    time: PenaltyTime::Seconds(0)
+                },
+                PenaltySnapshot {
+                    player_number: 5,
+                    time: PenaltyTime::Seconds(0)
+                },
+                PenaltySnapshot {
+                    player_number: 7,
+                    time: PenaltyTime::Seconds(0)
+                },
+                PenaltySnapshot {
+                    player_number: 9,
+                    time: PenaltyTime::TotalDismissal
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn test_cull_penalties() {
+        let config = GameConfig {
+            half_play_duration: 900,
+            half_time_duration: 180,
+            ..Default::default()
+        };
+
+        let start = Instant::now();
+        let next_time = start + Duration::from_secs(1);
+
+        let mut tm = TournamentManager::new(config);
+
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(71));
+        tm.start_game_clock(start);
+        tm.start_penalty(Color::Black, 2, PenaltyKind::OneMinute, next_time)
+            .unwrap();
+        tm.start_penalty(Color::White, 3, PenaltyKind::OneMinute, next_time)
+            .unwrap();
+        tm.start_penalty(Color::Black, 4, PenaltyKind::TwoMinute, next_time)
+            .unwrap();
+        tm.start_penalty(Color::White, 5, PenaltyKind::TwoMinute, next_time)
+            .unwrap();
+        tm.start_penalty(Color::Black, 6, PenaltyKind::TotalDismissal, next_time)
+            .unwrap();
+        tm.start_penalty(Color::White, 7, PenaltyKind::TotalDismissal, next_time)
+            .unwrap();
+
+        // Check before culling
+        let next_time = next_time + Duration::from_secs(1);
+        tm.update(next_time).unwrap();
+        let snapshot = tm.generate_snapshot(next_time).unwrap();
+        assert_eq!(
+            snapshot.b_penalties,
+            vec![
+                PenaltySnapshot {
+                    player_number: 2,
+                    time: PenaltyTime::Seconds(59)
+                },
+                PenaltySnapshot {
+                    player_number: 4,
+                    time: PenaltyTime::Seconds(119)
+                },
+                PenaltySnapshot {
+                    player_number: 6,
+                    time: PenaltyTime::TotalDismissal
+                },
+            ]
+        );
+        assert_eq!(
+            snapshot.w_penalties,
+            vec![
+                PenaltySnapshot {
+                    player_number: 3,
+                    time: PenaltyTime::Seconds(59)
+                },
+                PenaltySnapshot {
+                    player_number: 5,
+                    time: PenaltyTime::Seconds(119)
+                },
+                PenaltySnapshot {
+                    player_number: 7,
+                    time: PenaltyTime::TotalDismissal
+                },
+            ]
+        );
+
+        // Check during half time (pre-culling)
+        let next_time = next_time + Duration::from_secs(75);
+        tm.update(next_time).unwrap();
+        let snapshot = tm.generate_snapshot(next_time).unwrap();
+        assert_eq!(
+            snapshot.b_penalties,
+            vec![
+                PenaltySnapshot {
+                    player_number: 2,
+                    time: PenaltyTime::Seconds(0)
+                },
+                PenaltySnapshot {
+                    player_number: 4,
+                    time: PenaltyTime::Seconds(50)
+                },
+                PenaltySnapshot {
+                    player_number: 6,
+                    time: PenaltyTime::TotalDismissal
+                },
+            ]
+        );
+        assert_eq!(
+            snapshot.w_penalties,
+            vec![
+                PenaltySnapshot {
+                    player_number: 3,
+                    time: PenaltyTime::Seconds(0)
+                },
+                PenaltySnapshot {
+                    player_number: 5,
+                    time: PenaltyTime::Seconds(50)
+                },
+                PenaltySnapshot {
+                    player_number: 7,
+                    time: PenaltyTime::TotalDismissal
+                },
+            ]
+        );
+
+        // Check 6s after half time (post-culling)
+        let next_time = next_time + Duration::from_secs(180);
+        tm.update(next_time).unwrap();
+        let snapshot = tm.generate_snapshot(next_time).unwrap();
+        assert_eq!(
+            snapshot.b_penalties,
+            vec![
+                PenaltySnapshot {
+                    player_number: 4,
+                    time: PenaltyTime::Seconds(44)
+                },
+                PenaltySnapshot {
+                    player_number: 6,
+                    time: PenaltyTime::TotalDismissal
+                },
+            ]
+        );
+        assert_eq!(
+            snapshot.w_penalties,
+            vec![
+                PenaltySnapshot {
+                    player_number: 5,
+                    time: PenaltyTime::Seconds(44)
+                },
+                PenaltySnapshot {
+                    player_number: 7,
+                    time: PenaltyTime::TotalDismissal
+                },
+            ]
         );
     }
 }

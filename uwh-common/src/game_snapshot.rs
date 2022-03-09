@@ -7,8 +7,11 @@ use core::{
     time::Duration,
 };
 use defmt::Format;
+use derivative::Derivative;
 use displaydoc::Display;
 use serde_derive::{Deserialize, Serialize};
+
+const PANEL_PENALTY_COUNT: usize = 3;
 
 /// Game snapshot information that the LED matrices need. Excludes some fields, limits to three
 /// penalties (the three with the lowest remaining time), and places the penalties on a stack based
@@ -20,8 +23,8 @@ pub struct GameSnapshotNoHeap {
     pub timeout: TimeoutSnapshot,
     pub b_score: u8,
     pub w_score: u8,
-    pub b_penalties: ArrayVec<PenaltySnapshot, 3>,
-    pub w_penalties: ArrayVec<PenaltySnapshot, 3>,
+    pub b_penalties: ArrayVec<PenaltySnapshot, PANEL_PENALTY_COUNT>,
+    pub w_penalties: ArrayVec<PenaltySnapshot, PANEL_PENALTY_COUNT>,
 }
 
 /// All the information needed by a UI to draw the current state of the game. Requires the `std`
@@ -42,17 +45,27 @@ pub struct GameSnapshot {
 
 #[cfg(feature = "std")]
 impl From<GameSnapshot> for GameSnapshotNoHeap {
-    fn from(mut snapshot: GameSnapshot) -> Self {
-        snapshot.b_penalties.sort_by(|a, b| a.time.cmp(&b.time));
-        snapshot.w_penalties.sort_by(|a, b| a.time.cmp(&b.time));
+    fn from(snapshot: GameSnapshot) -> Self {
+        let process_penalties = |mut orig: Vec<PenaltySnapshot>| {
+            orig.retain(|pen| {
+                if let PenaltyTime::Seconds(secs) = pen.time {
+                    secs != 0
+                } else {
+                    true
+                }
+            });
+            orig.sort_by(|a, b| a.time.cmp(&b.time));
+            orig.into_iter().take(3).collect()
+        };
+
         Self {
             current_period: snapshot.current_period,
             secs_in_period: snapshot.secs_in_period,
             timeout: snapshot.timeout,
             b_score: snapshot.b_score,
             w_score: snapshot.w_score,
-            b_penalties: snapshot.b_penalties.into_iter().take(3).collect(),
-            w_penalties: snapshot.w_penalties.into_iter().take(3).collect(),
+            b_penalties: process_penalties(snapshot.b_penalties),
+            w_penalties: process_penalties(snapshot.w_penalties),
         }
     }
 }
@@ -63,8 +76,10 @@ pub struct PenaltySnapshot {
     pub time: PenaltyTime,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize, Deserialize)]
+#[derive(Derivative, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derivative(Debug, Default, Clone, Copy)]
 pub enum GamePeriod {
+    #[derivative(Default)]
     BetweenGames,
     FirstHalf,
     HalfTime,
@@ -177,15 +192,10 @@ impl core::fmt::Display for GamePeriod {
     }
 }
 
-// TODO: Replace once https://github.com/rust-lang/rust/issues/87517 stabilizes
-impl core::default::Default for GamePeriod {
-    fn default() -> Self {
-        Self::BetweenGames
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+#[derive(Derivative, Serialize, Deserialize)]
+#[derivative(Debug, Default, PartialEq, Eq, Clone, Copy)]
 pub enum TimeoutSnapshot {
+    #[derivative(Default)]
     None,
     White(u16),
     Black(u16),
@@ -205,15 +215,10 @@ impl core::fmt::Display for TimeoutSnapshot {
     }
 }
 
-// TODO: Replace once https://github.com/rust-lang/rust/issues/87517 stabilizes
-impl core::default::Default for TimeoutSnapshot {
-    fn default() -> Self {
-        Self::None
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+#[derive(Derivative, Serialize, Deserialize)]
+#[derivative(Debug, Default, PartialEq, Eq, Clone, Copy)]
 pub enum Color {
+    #[derivative(Default)]
     Black,
     White,
 }

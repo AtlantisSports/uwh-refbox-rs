@@ -15,6 +15,7 @@ use std::{
 use uwh_common::config::Config;
 use uwh_matrix_drawing::{transmitted_data::TransmittedData, *};
 
+mod penalty_editor;
 mod tournament_manager;
 
 mod app;

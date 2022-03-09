@@ -1,5 +1,5 @@
 use super::APP_CONFIG_NAME;
-use crate::tournament_manager::*;
+use crate::{penalty_editor::*, tournament_manager::*};
 use async_std::{
     channel::{unbounded, Receiver, TryRecvError},
     task,
@@ -44,6 +44,7 @@ pub struct RefBoxApp {
     edited_game_num: u16,
     snapshot: GameSnapshot,
     time_updater: TimeUpdater,
+    pen_edit: PenaltyEditor,
     states: States,
     app_state: AppState,
     last_app_state: AppState,
@@ -56,6 +57,7 @@ enum AppState {
     MainPage,
     TimeEdit(bool, Duration, Option<Duration>),
     ScoreEdit { black: u8, white: u8 },
+    PenaltyOverview { black_idx: usize, white_idx: usize },
     KeypadPage(KeypadPage, u16),
     EditGameConfig,
     ParameterEditor(GameParameter, Duration),
@@ -65,20 +67,22 @@ enum AppState {
 #[derive(Debug, Clone, Copy)]
 pub enum KeypadPage {
     AddScore(GameColor),
+    Penalty(Option<(GameColor, usize)>, GameColor, PenaltyKind),
     GameNumber,
     TeamTimeouts(Duration),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum ConfirmationKind {
     GameNumberChanged,
     GameConfigChanged,
+    Error(String),
 }
 
 impl KeypadPage {
     fn max_val(&self) -> u16 {
         match self {
-            Self::AddScore(_) => 99,
+            Self::AddScore(_) | Self::Penalty(_, _, _) => 99,
             Self::GameNumber => 9999,
             Self::TeamTimeouts(_) => 999,
         }
@@ -86,7 +90,7 @@ impl KeypadPage {
 
     fn text(&self) -> &'static str {
         match self {
-            Self::AddScore(_) => "PLAYER\nNUMBER:",
+            Self::AddScore(_) | Self::Penalty(_, _, _) => "PLAYER\nNUMBER:",
             Self::GameNumber => "GAME\nNUMBER:",
             Self::TeamTimeouts(_) => "NUM T/Os\nPER HALF:",
         }
@@ -132,6 +136,19 @@ pub enum Message {
     ScoreEditComplete {
         canceled: bool,
     },
+    PenaltyOverview,
+    Scroll {
+        color: GameColor,
+        up: bool,
+    },
+    PenaltyOverviewComplete {
+        canceled: bool,
+    },
+    ChangeKind(PenaltyKind),
+    PenaltyEditComplete {
+        canceled: bool,
+        deleted: bool,
+    },
     KeypadPage(KeypadPage),
     KeypadButtonPress(KeypadButton),
     ChangeColor(GameColor),
@@ -156,7 +173,7 @@ pub enum Message {
     NoAction, // TODO: Remove once UI is functional
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeypadButton {
     Zero,
     One,
@@ -171,7 +188,7 @@ pub enum KeypadButton {
     Delete,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConfirmationOption {
     DiscardChanges,
     GoBack,
@@ -237,6 +254,7 @@ impl Application for RefBoxApp {
 
         (
             Self {
+                pen_edit: PenaltyEditor::new(tm.clone()),
                 time_updater: TimeUpdater {
                     tm: tm.clone(),
                     clock_running_receiver: Some(clk_run_rx),
@@ -319,7 +337,9 @@ impl Application for RefBoxApp {
                         }
                     }
                     if was_running {
-                        tm.start_clock(Instant::now());
+                        let now = Instant::now();
+                        tm.start_clock(now);
+                        tm.update(now).unwrap();
                     }
                     self.app_state = self.last_app_state.clone();
                     trace!("AppState changed to {:?}", self.app_state);
@@ -386,9 +406,105 @@ impl Application for RefBoxApp {
                 self.app_state = AppState::MainPage;
                 trace!("AppState changed to {:?}", self.app_state);
             }
+            Message::PenaltyOverview => {
+                self.pen_edit.start_session().unwrap();
+                self.app_state = AppState::PenaltyOverview {
+                    black_idx: 0,
+                    white_idx: 0,
+                };
+                trace!("AppState changed to {:?}", self.app_state);
+            }
+            Message::Scroll { color, up } => {
+                if let AppState::PenaltyOverview {
+                    ref mut black_idx,
+                    ref mut white_idx,
+                } = self.app_state
+                {
+                    let idx = match color {
+                        GameColor::Black => black_idx,
+                        GameColor::White => white_idx,
+                    };
+                    if up {
+                        *idx = idx.saturating_sub(1);
+                    } else {
+                        *idx = idx.saturating_add(1);
+                    }
+                } else {
+                    unreachable!();
+                }
+                trace!("AppState changed to {:?}", self.app_state);
+            }
+            Message::PenaltyOverviewComplete { canceled } => {
+                if canceled {
+                    self.pen_edit.abort_session();
+                    self.app_state = AppState::MainPage;
+                } else {
+                    if let Err(e) = self.pen_edit.apply_changes(Instant::now()) {
+                        let err_string = format!("An error occurred while applying the changes to the penalties. \
+                            Some of the changes may have been applied. Please retry any remaining changes.\n\n\
+                            Error Message:\n{e}");
+                        error!("{err_string}");
+                        self.pen_edit.abort_session();
+                        self.app_state =
+                            AppState::ConfirmationPage(ConfirmationKind::Error(err_string));
+                    } else {
+                        self.app_state = AppState::MainPage;
+                    }
+                }
+                trace!("AppState changed to {:?}", self.app_state);
+            }
+            Message::ChangeKind(new_kind) => {
+                if let AppState::KeypadPage(KeypadPage::Penalty(_, _, ref mut kind), _) =
+                    self.app_state
+                {
+                    *kind = new_kind;
+                } else {
+                    unreachable!()
+                }
+                trace!("AppState changed to {:?}", self.app_state);
+            }
+            Message::PenaltyEditComplete { canceled, deleted } => {
+                if !canceled {
+                    if let AppState::KeypadPage(
+                        KeypadPage::Penalty(origin, color, kind),
+                        player_num,
+                    ) = self.app_state
+                    {
+                        if deleted {
+                            if let Some((old_color, index)) = origin {
+                                self.pen_edit.delete_penalty(old_color, index).unwrap();
+                            } else {
+                                unreachable!();
+                            }
+                        } else {
+                            let player_num = player_num.try_into().unwrap();
+                            if let Some((old_color, index)) = origin {
+                                self.pen_edit
+                                    .edit_penalty(old_color, index, color, player_num, kind)
+                                    .unwrap();
+                            } else {
+                                self.pen_edit.add_penalty(color, player_num, kind).unwrap();
+                            }
+                        }
+                    } else {
+                        unreachable!();
+                    }
+                }
+                self.app_state = AppState::PenaltyOverview {
+                    black_idx: 0,
+                    white_idx: 0,
+                };
+                trace!("AppState changed to {:?}", self.app_state);
+            }
             Message::KeypadPage(page) => {
                 let init_val = match page {
-                    KeypadPage::AddScore(_) => 0,
+                    KeypadPage::AddScore(_) | KeypadPage::Penalty(None, _, _) => 0,
+                    KeypadPage::Penalty(Some((color, index)), _, _) => {
+                        self.pen_edit
+                            .get_penalty(color, index)
+                            .unwrap()
+                            .player_number as u16
+                    }
                     KeypadPage::TeamTimeouts(_) => self.config.game.team_timeouts_per_half,
                     KeypadPage::GameNumber => self.edited_game_num,
                 };
@@ -419,11 +535,14 @@ impl Application for RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
             }
             Message::ChangeColor(new_color) => {
-                if let AppState::KeypadPage(KeypadPage::AddScore(ref mut color), _) = self.app_state
-                {
-                    *color = new_color;
-                } else {
-                    unreachable!()
+                match self.app_state {
+                    AppState::KeypadPage(KeypadPage::AddScore(ref mut color), _)
+                    | AppState::KeypadPage(KeypadPage::Penalty(_, ref mut color, _), _) => {
+                        *color = new_color;
+                    }
+                    _ => {
+                        unreachable!()
+                    }
                 }
                 trace!("AppState changed to {:?}", self.app_state);
             }
@@ -562,8 +681,8 @@ impl Application for RefBoxApp {
                 }
             },
             Message::ConfirmationSelected(selection) => {
-                let kind = if let AppState::ConfirmationPage(kind) = self.app_state {
-                    kind
+                let config_changed = if let AppState::ConfirmationPage(ref kind) = self.app_state {
+                    kind == &ConfirmationKind::GameConfigChanged
                 } else {
                     unreachable!()
                 };
@@ -575,7 +694,7 @@ impl Application for RefBoxApp {
                         let mut tm = self.tm.lock().unwrap();
                         let now = Instant::now();
                         tm.reset_game(now);
-                        if kind == ConfirmationKind::GameConfigChanged {
+                        if config_changed {
                             tm.set_config(self.config.game.clone()).unwrap();
                             confy::store(APP_CONFIG_NAME, &self.config).unwrap();
                         }
@@ -695,6 +814,18 @@ impl Application for RefBoxApp {
                     black,
                     white,
                 ),
+                AppState::PenaltyOverview {
+                    black_idx,
+                    white_idx,
+                } => build_penalty_overview_page(
+                    &self.snapshot,
+                    &mut self.states.penalty_overview,
+                    self.pen_edit.get_printable_lists(Instant::now()).unwrap(),
+                    BlackWhiteBundle {
+                        black: black_idx,
+                        white: white_idx,
+                    },
+                ),
                 AppState::KeypadPage(page, player_num) => build_keypad_page(
                     &self.snapshot,
                     &mut self.states.keypad_page,
@@ -713,7 +844,7 @@ impl Application for RefBoxApp {
                     param,
                     dur,
                 ),
-                AppState::ConfirmationPage(kind) => build_confirmation_page(
+                AppState::ConfirmationPage(ref kind) => build_confirmation_page(
                     &self.snapshot,
                     &mut self.states.confirmation_page,
                     kind,
@@ -824,6 +955,7 @@ struct States {
     time_edit_view: TimeEditViewStates,
     score_edit_view: ScoreEditViewStates,
     timeout_ribbon: TimeoutRibbonStates,
+    penalty_overview: PenaltyOverviewStates,
     keypad_page: KeypadPageStates,
     game_config_edit: GameConfigEditStates,
     game_param_edit: GameParamEditStates,
@@ -892,6 +1024,23 @@ struct GameConfigEditStates {
 }
 
 #[derive(Clone, Default, Debug)]
+struct PenaltyOverviewStates {
+    game_time: button::State,
+    b_list: PenaltyListStates,
+    w_list: PenaltyListStates,
+    new: button::State,
+    done: button::State,
+    cancel: button::State,
+}
+
+#[derive(Clone, Default, Debug)]
+struct PenaltyListStates {
+    up: button::State,
+    down: button::State,
+    list: [button::State; PENALTY_LIST_LEN],
+}
+
+#[derive(Clone, Default, Debug)]
 struct KeypadPageStates {
     game_time: button::State,
     zero: button::State,
@@ -906,6 +1055,7 @@ struct KeypadPageStates {
     nine: button::State,
     delete: button::State,
     add_score: AddScoreStates,
+    eidt_penalty: EditPenaltyStates,
     edit_game_num: EditGameNumStates,
     team_timeout: EditTeamTimeoutStates,
 }
@@ -915,6 +1065,19 @@ struct AddScoreStates {
     black: button::State,
     white: button::State,
     done: button::State,
+    cancel: button::State,
+}
+
+#[derive(Clone, Default, Debug)]
+struct EditPenaltyStates {
+    black: button::State,
+    white: button::State,
+    one_min: button::State,
+    two_min: button::State,
+    five_min: button::State,
+    total_dismis: button::State,
+    done: button::State,
+    delete: button::State,
     cancel: button::State,
 }
 

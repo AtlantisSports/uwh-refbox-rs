@@ -1,7 +1,7 @@
 use super::{
     style::{
-        self, BLACK, GREEN, LARGE_TEXT, MEDIUM_TEXT, MIN_BUTTON_SIZE, PADDING, RED, SMALL_TEXT,
-        SPACING, WHITE, YELLOW,
+        self, BLACK, GREEN, LARGE_TEXT, MEDIUM_TEXT, MIN_BUTTON_SIZE, ORANGE, PADDING, RED,
+        SMALL_TEXT, SPACING, WHITE, YELLOW,
     },
     *,
 };
@@ -15,9 +15,13 @@ use std::{
 };
 use uwh_common::{
     config::Game as GameConfig,
-    game_snapshot::{Color as GameColor, GamePeriod, GameSnapshot, TimeoutSnapshot},
+    game_snapshot::{
+        Color as GameColor, GamePeriod, GameSnapshot, PenaltySnapshot, PenaltyTime, TimeoutSnapshot,
+    },
 };
 use uwh_matrix_drawing::secs_to_time_string;
+
+pub const PENALTY_LIST_LEN: usize = 3;
 
 pub(super) fn build_main_view<'a>(
     snapshot: &GameSnapshot,
@@ -118,6 +122,34 @@ pub(super) fn build_main_view<'a>(
         .on_press(Message::EditGameConfig),
     );
 
+    let make_penalty_button =
+        |state: &'a mut button::State, penalties: &[PenaltySnapshot]| -> Button<'a, _> {
+            Button::new(
+                state,
+                Column::new()
+                    .spacing(SPACING)
+                    .push(
+                        Text::new("Penalties")
+                            .vertical_alignment(VerticalAlignment::Center)
+                            .horizontal_alignment(HorizontalAlignment::Center)
+                            .width(Length::Fill),
+                    )
+                    .push(
+                        Text::new(penalty_string(penalties))
+                            .vertical_alignment(VerticalAlignment::Top)
+                            .horizontal_alignment(HorizontalAlignment::Left)
+                            .width(Length::Fill)
+                            .height(Length::Fill),
+                    )
+                    .width(Length::Fill)
+                    .height(Length::Fill),
+            )
+            .padding(PADDING)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .on_press(Message::PenaltyOverview)
+        };
+
     let black_col = Column::new()
         .spacing(SPACING)
         .align_items(Align::Center)
@@ -142,10 +174,8 @@ pub(super) fn build_main_view<'a>(
                 .on_press(Message::KeypadPage(KeypadPage::AddScore(GameColor::Black))),
         )
         .push(
-            make_button(&mut states.black_penalties, "Penalties")
-                .style(style::Button::Black)
-                .on_press(Message::NoAction)
-                .height(Length::Fill),
+            make_penalty_button(&mut states.black_penalties, &snapshot.b_penalties)
+                .style(style::Button::Black),
         );
 
     let white_col = Column::new()
@@ -172,10 +202,8 @@ pub(super) fn build_main_view<'a>(
                 .on_press(Message::KeypadPage(KeypadPage::AddScore(GameColor::White))),
         )
         .push(
-            make_button(&mut states.white_penalties, "Penalties")
-                .style(style::Button::White)
-                .on_press(Message::NoAction)
-                .height(Length::Fill),
+            make_penalty_button(&mut states.white_penalties, &snapshot.w_penalties)
+                .style(style::Button::White),
         );
 
     Row::new()
@@ -378,6 +406,237 @@ pub(super) fn build_score_edit_view<'a>(
         .into()
 }
 
+pub(super) fn build_penalty_overview_page<'a>(
+    snapshot: &GameSnapshot,
+    states: &'a mut PenaltyOverviewStates,
+    penalties: BlackWhiteBundle<Vec<(String, FormatHint, PenaltyKind)>>,
+    indices: BlackWhiteBundle<usize>,
+) -> Element<'a, Message> {
+    Column::new()
+        .spacing(SPACING)
+        .height(Length::Fill)
+        .push(make_game_time_button(snapshot, &mut states.game_time).on_press(Message::EditTime))
+        .push(
+            Row::new()
+                .spacing(SPACING)
+                .height(Length::Fill)
+                .push(make_penalty_list(
+                    &mut states.b_list,
+                    penalties.black,
+                    indices.black,
+                    GameColor::Black,
+                ))
+                .push(make_penalty_list(
+                    &mut states.w_list,
+                    penalties.white,
+                    indices.white,
+                    GameColor::White,
+                )),
+        )
+        .push(
+            Row::new()
+                .spacing(SPACING)
+                .push(
+                    make_button(&mut states.cancel, "CANCEL")
+                        .style(style::Button::Red)
+                        .width(Length::Fill)
+                        .on_press(Message::PenaltyOverviewComplete { canceled: true }),
+                )
+                .push(
+                    make_button(&mut states.new, "NEW")
+                        .style(style::Button::Blue)
+                        .width(Length::Fill)
+                        .on_press(Message::KeypadPage(KeypadPage::Penalty(
+                            None,
+                            GameColor::Black,
+                            PenaltyKind::OneMinute,
+                        ))),
+                )
+                .push(
+                    make_button(&mut states.done, "DONE")
+                        .style(style::Button::Green)
+                        .width(Length::Fill)
+                        .on_press(Message::PenaltyOverviewComplete { canceled: false }),
+                ),
+        )
+        .into()
+}
+
+fn make_penalty_list<'a>(
+    states: &'a mut PenaltyListStates,
+    penalties: Vec<(String, FormatHint, PenaltyKind)>,
+    index: usize,
+    color: GameColor,
+) -> Container<'a, Message> {
+    let mut pen_col = Column::new().spacing(SPACING).width(Length::Fill).push(
+        Text::new(format!("{} PENALTIES", color.to_string().to_uppercase()))
+            .height(Length::Fill)
+            .width(Length::Fill)
+            .horizontal_alignment(HorizontalAlignment::Center)
+            .vertical_alignment(VerticalAlignment::Center),
+    );
+
+    let num_pens = penalties.len();
+
+    let iter = penalties
+        .into_iter()
+        .enumerate()
+        .skip(index)
+        .take(PENALTY_LIST_LEN)
+        .map(|v| Some(v))
+        .chain([None].into_iter().cycle())
+        .zip(states.list.iter_mut());
+
+    for (pen, state) in iter {
+        pen_col = pen_col.push(if let Some((i, (text, format, kind))) = pen {
+            let mut text = Text::new(text)
+                .vertical_alignment(VerticalAlignment::Center)
+                .horizontal_alignment(HorizontalAlignment::Left)
+                .width(Length::Fill);
+
+            match format {
+                FormatHint::NoChange => {}
+                FormatHint::Edited => text = text.color(ORANGE),
+                FormatHint::Deleted => text = text.color(RED),
+                FormatHint::New => text = text.color(GREEN),
+            }
+
+            Button::new(state, text)
+                .padding(PADDING)
+                .min_height(MIN_BUTTON_SIZE)
+                .width(Length::Fill)
+                .style(style::Button::Gray)
+                .on_press(Message::KeypadPage(KeypadPage::Penalty(
+                    Some((color, i)),
+                    color,
+                    kind,
+                )))
+        } else {
+            Button::new(state, Space::new(Length::Shrink, Length::Shrink))
+                .min_height(MIN_BUTTON_SIZE)
+                .width(Length::Fill)
+                .style(style::Button::Gray)
+                .on_press(Message::KeypadPage(KeypadPage::Penalty(
+                    None,
+                    color,
+                    PenaltyKind::OneMinute,
+                )))
+        });
+    }
+
+    let top_len;
+    let bottom_len;
+    let can_scroll_up;
+    let can_scroll_down;
+
+    if num_pens <= PENALTY_LIST_LEN {
+        top_len = 0;
+        bottom_len = 0;
+        can_scroll_up = false;
+        can_scroll_down = false;
+    } else {
+        top_len = index as u16;
+        bottom_len = (num_pens - PENALTY_LIST_LEN - index) as u16;
+        can_scroll_up = index > 0;
+        can_scroll_down = index + PENALTY_LIST_LEN < num_pens;
+    }
+
+    let top_len = match top_len {
+        0 => Length::Shrink,
+        other => Length::FillPortion(other),
+    };
+
+    let bottom_len = match bottom_len {
+        0 => Length::Shrink,
+        other => Length::FillPortion(other),
+    };
+
+    let mut up_btn = Button::new(
+        &mut states.up,
+        Container::new(Svg::new(svg::Handle::from_memory(
+            &include_bytes!("../../arrow_drop_up_white_48dp.svg")[..],
+        )))
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .center_x()
+        .center_y(),
+    )
+    .width(Length::Units(MIN_BUTTON_SIZE as u16))
+    .height(Length::Units(MIN_BUTTON_SIZE as u16))
+    .style(style::Button::Blue);
+
+    let mut down_btn = Button::new(
+        &mut states.down,
+        Container::new(Svg::new(svg::Handle::from_memory(
+            &include_bytes!("../../arrow_drop_down_white_48dp.svg")[..],
+        )))
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .center_x()
+        .center_y(),
+    )
+    .width(Length::Units(MIN_BUTTON_SIZE as u16))
+    .height(Length::Units(MIN_BUTTON_SIZE as u16))
+    .style(style::Button::Blue);
+
+    if can_scroll_up {
+        up_btn = up_btn.on_press(Message::Scroll { color, up: true });
+    }
+
+    if can_scroll_down {
+        down_btn = down_btn.on_press(Message::Scroll { color, up: false });
+    }
+
+    let cont_style = match color {
+        GameColor::Black => style::Container::Black,
+        GameColor::White => style::Container::White,
+    };
+
+    let scroll_bar = Row::new()
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .push(Space::new(Length::Fill, Length::Shrink))
+        .push(
+            Container::new(
+                Column::new()
+                    .push(Space::new(Length::Shrink, top_len))
+                    .push(
+                        Container::new(Space::new(Length::Fill, Length::Fill))
+                            .width(Length::Fill)
+                            .height(Length::FillPortion(PENALTY_LIST_LEN as u16))
+                            .style(style::Container::Gray),
+                    )
+                    .push(Space::new(Length::Shrink, bottom_len)),
+            )
+            .padding(PADDING)
+            .width(Length::FillPortion(2))
+            .height(Length::Fill)
+            .style(style::Container::LightGray),
+        )
+        .push(Space::new(Length::Fill, Length::Shrink));
+
+    Container::new(
+        Row::new()
+            .spacing(SPACING)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .push(pen_col)
+            .push(
+                Column::new()
+                    .spacing(SPACING)
+                    .width(Length::Units(MIN_BUTTON_SIZE as u16))
+                    .height(Length::Fill)
+                    .push(up_btn)
+                    .push(scroll_bar)
+                    .push(down_btn),
+            ),
+    )
+    .padding(PADDING)
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .style(cont_style)
+}
+
 pub(super) fn build_keypad_page<'a>(
     snapshot: &GameSnapshot,
     states: &'a mut KeypadPageStates,
@@ -521,6 +780,9 @@ pub(super) fn build_keypad_page<'a>(
                     KeypadPage::AddScore(color) => {
                         make_add_score_page(&mut states.add_score, color)
                     }
+                    KeypadPage::Penalty(origin, color, kind) => {
+                        make_edit_penalty_page(&mut states.eidt_penalty, origin, color, kind)
+                    }
                     KeypadPage::GameNumber => make_game_number_edit_page(&mut states.edit_game_num),
                     KeypadPage::TeamTimeouts(dur) => {
                         make_team_timeout_edit_page(&mut states.team_timeout, dur)
@@ -573,6 +835,123 @@ fn make_add_score_page<'a>(
                         .on_press(Message::AddScoreComplete { canceled: false }),
                 ),
         )
+        .into()
+}
+
+fn make_edit_penalty_page<'a>(
+    states: &'a mut EditPenaltyStates,
+    origin: Option<(GameColor, usize)>,
+    color: GameColor,
+    kind: PenaltyKind,
+) -> Element<'a, Message> {
+    let (black_style, white_style) = match color {
+        GameColor::Black => (style::Button::BlackSelected, style::Button::White),
+        GameColor::White => (style::Button::Black, style::Button::WhiteSelected),
+    };
+
+    let (one_min_style, two_min_style, five_min_style, td_style) = match kind {
+        PenaltyKind::OneMinute => (
+            style::Button::GreenSelected,
+            style::Button::Yellow,
+            style::Button::Orange,
+            style::Button::Red,
+        ),
+        PenaltyKind::TwoMinute => (
+            style::Button::Green,
+            style::Button::YellowSelected,
+            style::Button::Orange,
+            style::Button::Red,
+        ),
+        PenaltyKind::FiveMinute => (
+            style::Button::Green,
+            style::Button::Yellow,
+            style::Button::OrangeSelected,
+            style::Button::Red,
+        ),
+        PenaltyKind::TotalDismissal => (
+            style::Button::Green,
+            style::Button::Yellow,
+            style::Button::Orange,
+            style::Button::RedSelected,
+        ),
+    };
+
+    let mut exit_row = Row::new().spacing(SPACING).push(
+        make_button(&mut states.cancel, "CANCEL")
+            .style(style::Button::Red)
+            .width(Length::Fill)
+            .on_press(Message::PenaltyEditComplete {
+                canceled: true,
+                deleted: false,
+            }),
+    );
+
+    if origin.is_some() {
+        exit_row = exit_row.push(
+            make_button(&mut states.delete, "DELETE")
+                .style(style::Button::Orange)
+                .width(Length::Fill)
+                .on_press(Message::PenaltyEditComplete {
+                    canceled: false,
+                    deleted: true,
+                }),
+        );
+    }
+
+    exit_row = exit_row.push(
+        make_button(&mut states.done, "DONE")
+            .style(style::Button::Green)
+            .width(Length::Fill)
+            .on_press(Message::PenaltyEditComplete {
+                canceled: false,
+                deleted: false,
+            }),
+    );
+
+    Column::new()
+        .spacing(SPACING)
+        .push(Space::new(Length::Shrink, Length::Fill))
+        .push(
+            Row::new()
+                .spacing(SPACING)
+                .push(
+                    make_button(&mut states.black, "BLACK")
+                        .style(black_style)
+                        .on_press(Message::ChangeColor(GameColor::Black)),
+                )
+                .push(
+                    make_button(&mut states.white, "WHITE")
+                        .style(white_style)
+                        .on_press(Message::ChangeColor(GameColor::White)),
+                ),
+        )
+        .push(Space::new(Length::Shrink, Length::Fill))
+        .push(
+            Row::new()
+                .spacing(SPACING)
+                .push(
+                    make_button(&mut states.one_min, "1m")
+                        .style(one_min_style)
+                        .on_press(Message::ChangeKind(PenaltyKind::OneMinute)),
+                )
+                .push(
+                    make_button(&mut states.two_min, "2m")
+                        .style(two_min_style)
+                        .on_press(Message::ChangeKind(PenaltyKind::TwoMinute)),
+                )
+                .push(
+                    make_button(&mut states.five_min, "5m")
+                        .style(five_min_style)
+                        .on_press(Message::ChangeKind(PenaltyKind::FiveMinute)),
+                )
+                .push(
+                    make_button(&mut states.total_dismis, "TD")
+                        .style(td_style)
+                        .on_press(Message::ChangeKind(PenaltyKind::TotalDismissal)),
+                ),
+        )
+        .push(Space::new(Length::Shrink, Length::Fill))
+        .push(exit_row)
         .into()
 }
 
@@ -852,11 +1231,12 @@ pub(super) fn build_game_parameter_editor<'a>(
 pub(super) fn build_confirmation_page<'a>(
     snapshot: &GameSnapshot,
     states: &'a mut ConfirmationPageStates,
-    kind: ConfirmationKind,
+    kind: &ConfirmationKind,
 ) -> Element<'a, Message> {
     let header_text = match kind {
         ConfirmationKind::GameConfigChanged => "The game configuration can not be changed while a game is in progress.\n\nWhat would you like to do?",
         ConfirmationKind::GameNumberChanged => "How would you like to apply this game number change?",
+        ConfirmationKind::Error(string) => string,
             };
 
     let buttons = match kind {
@@ -899,6 +1279,13 @@ pub(super) fn build_confirmation_page<'a>(
                 ConfirmationOption::EndGameAndApply,
             ),
         ],
+        ConfirmationKind::Error(_) => {
+            vec![(
+                "OK",
+                style::Button::Green,
+                ConfirmationOption::DiscardChanges,
+            )]
+        }
     };
 
     let buttons = buttons
@@ -1178,6 +1565,29 @@ fn bool_string(val: bool) -> String {
         true => "YES".to_string(),
         false => "NO".to_string(),
     }
+}
+
+fn penalty_string(penalties: &[PenaltySnapshot]) -> String {
+    use std::fmt::Write;
+
+    let mut string = String::new();
+
+    for pen in penalties.iter() {
+        write!(&mut string, "#{} - ", pen.player_number).unwrap();
+        match pen.time {
+            PenaltyTime::Seconds(secs) => {
+                if secs != 0 {
+                    write!(&mut string, "{}:{:02}\n", secs / 60, secs % 60).unwrap();
+                } else {
+                    string.push_str("Served\n");
+                }
+            }
+            PenaltyTime::TotalDismissal => string.push_str("DSMS\n"),
+        }
+    }
+    // if the string is not empty, the last char is a '\n' that we don't want
+    string.pop();
+    string
 }
 
 fn config_string(snapshot: &GameSnapshot, config: &GameConfig) -> String {

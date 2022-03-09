@@ -1,4 +1,5 @@
 use async_std::channel::Sender;
+use derivative::Derivative;
 use log::*;
 use std::{
     cmp::{max, Ordering},
@@ -66,12 +67,18 @@ impl TournamentManager {
     }
 
     pub fn add_b_score(&mut self, player_num: u8, now: Instant) {
-        info!("Score by Black player #{player_num}");
+        info!(
+            "{} Score by Black player #{player_num}",
+            self.status_string(now)
+        );
         self.set_scores(self.b_score + 1, self.w_score, now);
     }
 
     pub fn add_w_score(&mut self, player_num: u8, now: Instant) {
-        info!("Score by White player #{player_num}");
+        info!(
+            "{} Score by White player #{player_num}",
+            self.status_string(now)
+        );
         self.set_scores(self.b_score, self.w_score + 1, now);
     }
 
@@ -86,6 +93,10 @@ impl TournamentManager {
     pub fn set_scores(&mut self, b_score: u8, w_score: u8, now: Instant) {
         self.b_score = b_score;
         self.w_score = w_score;
+        info!(
+            "{} Scores set to B({b_score}) W({w_score})",
+            self.status_string(now)
+        );
         if self.current_period == GamePeriod::SuddenDeath && b_score != w_score {
             self.end_game(now);
         }
@@ -122,6 +133,7 @@ impl TournamentManager {
     }
 
     pub fn set_game_number(&mut self, number: u16) {
+        info!("Game Number set to {number}");
         self.game_number = number;
     }
 
@@ -130,6 +142,7 @@ impl TournamentManager {
     }
 
     pub fn reset_game(&mut self, now: Instant) {
+        info!("{} Resetting Game", self.status_string(now));
         let was_running = self.clock_is_running();
 
         self.current_period = GamePeriod::BetweenGames;
@@ -288,7 +301,7 @@ impl TournamentManager {
     pub fn start_w_timeout(&mut self, now: Instant) -> Result<()> {
         match self.can_start_w_timeout() {
             Ok(()) => {
-                info!("Starting a white timeout");
+                info!("{} Starting a white timeout", self.status_string(now));
                 if self.clock_is_running() {
                     self.stop_game_clock(now)?;
                     self.timeout_state = TimeoutState::White(ClockState::CountingDown {
@@ -312,7 +325,7 @@ impl TournamentManager {
     pub fn start_b_timeout(&mut self, now: Instant) -> Result<()> {
         match self.can_start_b_timeout() {
             Ok(()) => {
-                info!("Starting a black timeout");
+                info!("{} Starting a black timeout", self.status_string(now));
                 if self.clock_is_running() {
                     self.stop_game_clock(now)?;
                     self.timeout_state = TimeoutState::Black(ClockState::CountingDown {
@@ -336,7 +349,7 @@ impl TournamentManager {
     pub fn start_ref_timeout(&mut self, now: Instant) -> Result<()> {
         match self.can_start_ref_timeout() {
             Ok(()) => {
-                info!("Starting a ref timeout");
+                info!("{} Starting a ref timeout", self.status_string(now));
                 if self.clock_is_running() {
                     self.stop_game_clock(now)?;
                     self.timeout_state = TimeoutState::Ref(ClockState::CountingUp {
@@ -357,7 +370,7 @@ impl TournamentManager {
     pub fn start_penalty_shot(&mut self, now: Instant) -> Result<()> {
         match self.can_start_penalty_shot() {
             Ok(()) => {
-                info!("Starting a penalty shot");
+                info!("{} Starting a penalty shot", self.status_string(now));
                 if self.clock_is_running() {
                     self.stop_game_clock(now)?;
                     self.timeout_state = TimeoutState::PenaltyShot(ClockState::CountingUp {
@@ -435,7 +448,7 @@ impl TournamentManager {
         match &self.timeout_state {
             TimeoutState::None => Err(TournamentManagerError::NotInTimeout),
             TimeoutState::Black(cs) | TimeoutState::White(cs) => {
-                info!("Ending team timeout");
+                info!("{} Ending team timeout", self.status_string(now));
                 match cs {
                     ClockState::Stopped { .. } => self.timeout_state = TimeoutState::None,
                     ClockState::CountingDown { .. } => {
@@ -447,7 +460,10 @@ impl TournamentManager {
                 Ok(())
             }
             TimeoutState::Ref(cs) | TimeoutState::PenaltyShot(cs) => {
-                info!("Ending ref timeout or penalty shot");
+                info!(
+                    "{} Ending ref timeout or penalty shot",
+                    self.status_string(now)
+                );
                 match cs {
                     ClockState::Stopped { .. } => self.timeout_state = TimeoutState::None,
                     ClockState::CountingUp { .. } => {
@@ -461,7 +477,6 @@ impl TournamentManager {
         }
     }
 
-    #[allow(dead_code)]
     pub fn start_penalty(
         &mut self,
         color: Color,
@@ -469,6 +484,10 @@ impl TournamentManager {
         kind: PenaltyKind,
         now: Instant,
     ) -> Result<()> {
+        info!(
+            "{} Starting a {kind:?} penalty for {color} player #{player_number}",
+            self.status_string(now)
+        );
         let start_time = if let Some(t) = self.game_clock_time(now) {
             t
         } else {
@@ -487,7 +506,6 @@ impl TournamentManager {
         Ok(())
     }
 
-    #[allow(dead_code)]
     pub fn delete_penalty(&mut self, color: Color, index: usize) -> Result<()> {
         let vec = match color {
             Color::Black => &mut self.b_penalties,
@@ -497,12 +515,17 @@ impl TournamentManager {
         if vec.len() < index + 1 {
             return Err(TournamentManagerError::InvalidIndex(color, index));
         }
-        vec.remove(index);
+        let pen = vec.remove(index);
+        info!(
+            "{} Deleting {color} player #{}'s {:?} penalty",
+            self.status_string(Instant::now()),
+            pen.player_number,
+            pen.kind
+        );
 
         Ok(())
     }
 
-    #[allow(dead_code)]
     pub fn edit_penalty(
         &mut self,
         old_color: Color,
@@ -511,11 +534,17 @@ impl TournamentManager {
         new_player_number: u8,
         new_kind: PenaltyKind,
     ) -> Result<()> {
+        let status_str = self.status_string(Instant::now());
         let penalty = match old_color {
             Color::Black => self.b_penalties.get_mut(index),
             Color::White => self.w_penalties.get_mut(index),
         }
         .ok_or(TournamentManagerError::InvalidIndex(old_color, index))?;
+        info!(
+            "{status_str} Editing {old_color} player #{}'s {:?} penalty: \
+            it is now {new_color} player #{new_player_number}'s {new_kind:?} penalty",
+            penalty.player_number, penalty.kind
+        );
 
         penalty.player_number = new_player_number;
         penalty.kind = new_kind;
@@ -534,15 +563,14 @@ impl TournamentManager {
             .ok_or(TournamentManagerError::InvalidNowValue)?;
         let period = self.current_period;
 
+        info!("{} Culling penalties", self.status_string(now));
+
         for vec in [&mut self.b_penalties, &mut self.w_penalties].into_iter() {
-            let keep: Vec<_> = vec
+            let keep = vec
                 .iter()
-                .map(|pen| pen.is_complete(period, time, &self.config))
+                .map(|pen| pen.is_complete(period, time, &self.config).map(|k| !k))
                 .collect::<Option<Vec<_>>>()
-                .ok_or(TournamentManagerError::InvalidNowValue)?
-                .iter()
-                .map(|k| !k)
-                .collect();
+                .ok_or(TournamentManagerError::InvalidNowValue)?;
             let mut i = 0;
             vec.retain(|_| {
                 let k = keep[i];
@@ -559,8 +587,11 @@ impl TournamentManager {
         self.current_period = GamePeriod::BetweenGames;
 
         info!(
-            "Ending game {}. Score is B({}), W({})",
-            self.game_number, self.b_score, self.w_score
+            "{} Ending game {}. Score is B({}), W({})",
+            self.status_string(now),
+            self.game_number,
+            self.b_score,
+            self.w_score
         );
 
         let scheduled_start = self.game_start_time
@@ -587,7 +618,8 @@ impl TournamentManager {
             };
 
         info!(
-            "Entering between games, time to next game is {} seconds",
+            "{} Entering between games, time to next game is {} seconds",
+            self.status_string(now),
             time_remaining_at_start.as_secs()
         );
 
@@ -626,7 +658,11 @@ impl TournamentManager {
                     GamePeriod::BetweenGames => {
                         self.game_number = self.next_game_number();
                         self.next_game_number = None;
-                        info!("Entering first half of game {}", self.game_number);
+                        info!(
+                            "{} Entering first half of game {}",
+                            self.status_string(now),
+                            self.game_number
+                        );
                         self.current_period = GamePeriod::FirstHalf;
                         self.game_start_time = start_time + time_remaining_at_start;
                         self.b_timeouts_used = 0;
@@ -634,11 +670,11 @@ impl TournamentManager {
                         self.has_reset = false;
                     }
                     GamePeriod::FirstHalf => {
-                        info!("Entering half time");
+                        info!("{} Entering half time", self.status_string(now));
                         self.current_period = GamePeriod::HalfTime;
                     }
                     GamePeriod::HalfTime => {
-                        info!("Entering second half");
+                        info!("{} Entering second half", self.status_string(now));
                         self.current_period = GamePeriod::SecondHalf;
                         self.w_timeouts_used = 0;
                         self.b_timeouts_used = 0;
@@ -664,16 +700,16 @@ impl TournamentManager {
                         }
                     }
                     GamePeriod::PreOvertime => {
-                        info!("Entering overtime first half");
+                        info!("{} Entering overtime first half", self.status_string(now));
                         self.current_period = GamePeriod::OvertimeFirstHalf;
                         need_cull = true;
                     }
                     GamePeriod::OvertimeFirstHalf => {
-                        info!("Entering overtime half time");
+                        info!("{} Entering overtime half time", self.status_string(now));
                         self.current_period = GamePeriod::OvertimeHalfTime;
                     }
                     GamePeriod::OvertimeHalfTime => {
-                        info!("Entering ovetime second half");
+                        info!("{} Entering ovetime second half", self.status_string(now));
                         self.current_period = GamePeriod::OvertimeSecondHalf;
                         need_cull = true;
                     }
@@ -689,7 +725,7 @@ impl TournamentManager {
                         }
                     }
                     GamePeriod::PreSuddenDeath => {
-                        info!("Entering sudden death");
+                        info!("{} Entering sudden death", self.status_string(now));
                         self.current_period = GamePeriod::SuddenDeath;
                         need_cull = true;
                     }
@@ -754,7 +790,7 @@ impl TournamentManager {
     // Returns true if the clock was started, false if it was already running
     fn start_game_clock(&mut self, now: Instant) -> bool {
         if let ClockState::Stopped { clock_time } = self.clock_state {
-            info!("Starting the game clock");
+            info!("{} Starting the game clock", self.status_string(now));
             match self.current_period {
                 GamePeriod::SuddenDeath => {
                     self.clock_state = ClockState::CountingUp {
@@ -779,7 +815,7 @@ impl TournamentManager {
     fn stop_game_clock(&mut self, now: Instant) -> Result<bool> {
         match self.clock_state {
             ClockState::CountingDown { .. } | ClockState::CountingUp { .. } => {
-                info!("Stopping the game clock");
+                info!("{} Stopping the game clock", self.status_string(now));
                 self.clock_state = ClockState::Stopped {
                     clock_time: self
                         .clock_state
@@ -800,11 +836,12 @@ impl TournamentManager {
 
     pub fn start_clock(&mut self, now: Instant) {
         let mut need_to_send = false;
+        let status_str = self.status_string(now);
         match &mut self.timeout_state {
             TimeoutState::None => need_to_send = self.start_game_clock(now),
             TimeoutState::Black(ref mut cs) | TimeoutState::White(ref mut cs) => {
                 if let ClockState::Stopped { clock_time } = cs {
-                    info!("Starting the timeout clock");
+                    info!("{status_str} Starting the timeout clock");
                     *cs = ClockState::CountingDown {
                         start_time: now,
                         time_remaining_at_start: *clock_time,
@@ -814,7 +851,7 @@ impl TournamentManager {
             }
             TimeoutState::Ref(ref mut cs) | TimeoutState::PenaltyShot(ref mut cs) => {
                 if let ClockState::Stopped { clock_time } = cs {
-                    info!("Starting the timeout clock");
+                    info!("{status_str} Starting the timeout clock");
                     *cs = ClockState::CountingUp {
                         start_time: now,
                         time_at_start: *clock_time,
@@ -830,11 +867,12 @@ impl TournamentManager {
 
     pub fn stop_clock(&mut self, now: Instant) -> Result<()> {
         let mut need_to_send = false;
+        let status_str = self.status_string(now);
         match &mut self.timeout_state {
             TimeoutState::None => need_to_send = self.stop_game_clock(now)?,
             TimeoutState::Black(ref mut cs) | TimeoutState::White(ref mut cs) => {
                 if let ClockState::CountingDown { .. } = cs {
-                    info!("Stopping the timeout clock");
+                    info!("{status_str} Stopping the timeout clock");
                     *cs = ClockState::Stopped {
                         clock_time: cs
                             .clock_time(now)
@@ -845,7 +883,7 @@ impl TournamentManager {
             }
             TimeoutState::Ref(ref mut cs) | TimeoutState::PenaltyShot(ref mut cs) => {
                 if let ClockState::CountingUp { .. } = cs {
-                    info!("Starting the timeout clock");
+                    info!("{status_str} Starting the timeout clock");
                     *cs = ClockState::Stopped {
                         clock_time: cs
                             .clock_time(now)
@@ -880,7 +918,11 @@ impl TournamentManager {
             GamePeriod::BetweenGames => {
                 self.game_number = self.next_game_number();
                 self.next_game_number = None;
-                info!("Entering first half of game {}", self.game_number);
+                info!(
+                    "{} Entering first half of game {}",
+                    self.status_string(now),
+                    self.game_number
+                );
                 self.current_period = GamePeriod::FirstHalf;
                 self.game_start_time = now;
                 self.b_timeouts_used = 0;
@@ -888,24 +930,24 @@ impl TournamentManager {
                 self.has_reset = false;
             }
             GamePeriod::HalfTime => {
-                info!("Entering second half");
+                info!("{} Entering second half", self.status_string(now));
                 self.current_period = GamePeriod::SecondHalf;
                 self.w_timeouts_used = 0;
                 self.b_timeouts_used = 0;
                 need_cull = true;
             }
             GamePeriod::PreOvertime => {
-                info!("Entering overtime first half");
+                info!("{} Entering overtime first half", self.status_string(now));
                 self.current_period = GamePeriod::OvertimeFirstHalf;
                 need_cull = true;
             }
             GamePeriod::OvertimeHalfTime => {
-                info!("Entering ovetime second half");
+                info!("{} Entering ovetime second half", self.status_string(now));
                 self.current_period = GamePeriod::OvertimeSecondHalf;
                 need_cull = true;
             }
             GamePeriod::PreSuddenDeath => {
-                info!("Entering sudden death");
+                info!("{} Entering sudden death", self.status_string(now));
                 self.current_period = GamePeriod::SuddenDeath;
                 need_cull = true;
             }
@@ -928,7 +970,11 @@ impl TournamentManager {
             self.cull_penalties(now)?;
         }
 
-        info!("{} manually started by refs", self.current_period);
+        info!(
+            "{} {} manually started by refs",
+            self.status_string(now),
+            self.current_period
+        );
 
         if !was_running {
             self.send_clock_running(true);
@@ -996,6 +1042,26 @@ impl TournamentManager {
         }
     }
 
+    pub(crate) fn get_penalties(&self) -> BlackWhiteBundle<Vec<Penalty>> {
+        BlackWhiteBundle {
+            black: self.b_penalties.clone(),
+            white: self.w_penalties.clone(),
+        }
+    }
+
+    pub(crate) fn printable_penalty_time(&self, pen: &Penalty, now: Instant) -> Option<String> {
+        let cur_time = self.game_clock_time(now)?;
+        if pen.is_complete(self.current_period, cur_time, &self.config)? {
+            return Some("Served".to_string());
+        }
+        if let Some(time) = pen.time_remaining(self.current_period, cur_time, &self.config) {
+            let time = time.as_secs();
+            return Some(format!("{}:{:02}", time / 60, time % 60));
+        } else {
+            return Some("DSMS".to_string());
+        };
+    }
+
     /// Returns `None` if the clock time would be negative, or if `now` is before the start
     /// of the current period
     pub fn game_clock_time(&self, now: Instant) -> Option<Duration> {
@@ -1061,6 +1127,40 @@ impl TournamentManager {
                 .clock_time(now)
                 .map(|ct| now + Duration::from_nanos(ct.subsec_nanos() as u64)),
         }
+    }
+
+    fn status_string(&self, now: Instant) -> String {
+        use std::fmt::Write;
+
+        let mut string = String::new();
+
+        if let Some(time) = self.game_clock_time(now).map(|dur| dur.as_secs_f64()) {
+            if let Err(e) = write!(
+                &mut string,
+                "[{:02.0}:{:06.3} ",
+                (time / 60.0).floor(),
+                time % 60.0
+            ) {
+                error!("Error with time string: {}", e);
+            }
+        } else {
+            string.push_str("[XX:XX ");
+        }
+
+        string.push_str(match self.current_period {
+            GamePeriod::BetweenGames => "BTWNGMS]",
+            GamePeriod::FirstHalf => "FRSTHLF]",
+            GamePeriod::HalfTime => "HLFTIME]",
+            GamePeriod::SecondHalf => "SCNDHLF]",
+            GamePeriod::PreOvertime => "PREOVTM]",
+            GamePeriod::OvertimeFirstHalf => "OTFRSTH]",
+            GamePeriod::OvertimeHalfTime => "OTHLFTM]",
+            GamePeriod::OvertimeSecondHalf => "OTSCNDH]",
+            GamePeriod::PreSuddenDeath => "PRESDND]",
+            GamePeriod::SuddenDeath => "SUDNDTH]",
+        });
+
+        string
     }
 }
 
@@ -1145,9 +1245,10 @@ impl TimeoutState {
     }
 }
 
-#[allow(dead_code)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Derivative)]
+#[derivative(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum PenaltyKind {
+    #[derivative(Default)]
     OneMinute,
     TwoMinute,
     FiveMinute,
@@ -1155,7 +1256,7 @@ pub enum PenaltyKind {
 }
 
 impl PenaltyKind {
-    fn as_duration(self) -> Option<Duration> {
+    pub(crate) fn as_duration(self) -> Option<Duration> {
         match self {
             Self::OneMinute => Some(Duration::from_secs(60)),
             Self::TwoMinute => Some(Duration::from_secs(120)),
@@ -1165,12 +1266,12 @@ impl PenaltyKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct Penalty {
-    kind: PenaltyKind,
-    player_number: u8,
-    start_period: GamePeriod,
-    start_time: Duration,
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub(crate) struct Penalty {
+    pub(crate) kind: PenaltyKind,
+    pub(crate) player_number: u8,
+    pub(crate) start_period: GamePeriod,
+    pub(crate) start_time: Duration,
 }
 
 impl Penalty {
@@ -1260,6 +1361,13 @@ impl Penalty {
             time,
         })
     }
+}
+
+#[derive(Derivative)]
+#[derivative(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BlackWhiteBundle<T> {
+    pub black: T,
+    pub white: T,
 }
 
 #[derive(Debug, PartialEq, Error)]

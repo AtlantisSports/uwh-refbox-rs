@@ -55,9 +55,13 @@ pub enum Button {
     Black,
     BlackSelected,
     Red,
+    RedSelected,
     Orange,
+    OrangeSelected,
     Yellow,
+    YellowSelected,
     Green,
+    GreenSelected,
     Blue,
     Gray,
     LightGray,
@@ -68,10 +72,10 @@ impl button::StyleSheet for Button {
         let (background_color, text_color) = match self {
             Self::White | Self::WhiteSelected => (WHITE, BLACK),
             Self::Black | Self::BlackSelected => (BLACK, WHITE),
-            Self::Red => (RED, BLACK),
-            Self::Orange => (ORANGE, BLACK),
-            Self::Yellow => (YELLOW, BLACK),
-            Self::Green => (GREEN, BLACK),
+            Self::Red | Self::RedSelected => (RED, BLACK),
+            Self::Orange | Self::OrangeSelected => (ORANGE, BLACK),
+            Self::Yellow | Self::YellowSelected => (YELLOW, BLACK),
+            Self::Green | Self::GreenSelected => (GREEN, BLACK),
             Self::Blue => (BLUE, WHITE),
             Self::Gray => (GRAY, BLACK),
             Self::LightGray => (LIGHT_GRAY, BLACK),
@@ -87,7 +91,12 @@ impl button::StyleSheet for Button {
             | Self::Blue
             | Self::Gray
             | Self::LightGray => 0.0,
-            Self::WhiteSelected | Self::BlackSelected => BORDER_WIDTH,
+            Self::WhiteSelected
+            | Self::BlackSelected
+            | Self::RedSelected
+            | Self::OrangeSelected
+            | Self::YellowSelected
+            | Self::GreenSelected => BORDER_WIDTH,
         };
 
         let background = Some(Background::Color(background_color));
@@ -110,10 +119,10 @@ impl button::StyleSheet for Button {
         let background_color = match self {
             Self::White | Self::WhiteSelected => WHITE_PRESSED,
             Self::Black | Self::BlackSelected => BLACK_PRESSED,
-            Self::Red => RED_PRESSED,
-            Self::Orange => ORANGE_PRESSED,
-            Self::Yellow => YELLOW_PRESSED,
-            Self::Green => GREEN_PRESSED,
+            Self::Red | Self::RedSelected => RED_PRESSED,
+            Self::Orange | Self::OrangeSelected => ORANGE_PRESSED,
+            Self::Yellow | Self::YellowSelected => YELLOW_PRESSED,
+            Self::Green | Self::GreenSelected => GREEN_PRESSED,
             Self::Blue => BLUE_PRESSED,
             Self::Gray => GRAY_PRESSED,
             Self::LightGray => LIGHT_GRAY_PRESSED,
@@ -129,10 +138,10 @@ impl button::StyleSheet for Button {
         let (background_color, text_color) = match self {
             Self::White | Self::WhiteSelected => (WHITE_DISABLED, BLACK_DISABLED),
             Self::Black | Self::BlackSelected => (BLACK_DISABLED, WHITE_DISABLED),
-            Self::Red => (RED_DISABLED, BLACK_DISABLED),
-            Self::Orange => (ORANGE_DISABLED, BLACK_DISABLED),
-            Self::Yellow => (YELLOW_DISABLED, BLACK_DISABLED),
-            Self::Green => (GREEN_DISABLED, BLACK_DISABLED),
+            Self::Red | Self::RedSelected => (RED_DISABLED, BLACK_DISABLED),
+            Self::Orange | Self::OrangeSelected => (ORANGE_DISABLED, BLACK_DISABLED),
+            Self::Yellow | Self::YellowSelected => (YELLOW_DISABLED, BLACK_DISABLED),
+            Self::Green | Self::GreenSelected => (GREEN_DISABLED, BLACK_DISABLED),
             Self::Blue => (BLUE_DISABLED, WHITE_DISABLED),
             Self::Gray => (GRAY_DISABLED, BLACK_DISABLED),
             Self::LightGray => (LIGHT_GRAY_DISABLED, BLACK_DISABLED),
@@ -149,6 +158,7 @@ impl button::StyleSheet for Button {
 #[derive(Clone, Copy, Debug)]
 pub enum Container {
     LightGray,
+    Gray,
     Black,
     White,
 }
@@ -157,6 +167,7 @@ impl container::StyleSheet for Container {
     fn style(&self) -> container::Style {
         match self {
             Self::LightGray => cont_style(LIGHT_GRAY, BLACK),
+            Self::Gray => cont_style(GRAY, BLACK),
             Self::Black => cont_style(BLACK, WHITE),
             Self::White => cont_style(WHITE, BLACK),
         }

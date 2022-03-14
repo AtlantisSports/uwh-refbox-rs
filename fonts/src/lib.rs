@@ -1,42 +1,37 @@
+#![no_std]
+
 pub mod fonts {
     macro_rules! font {
-        ($name:ident, $file:literal, $w:literal, $h:literal) => {
-            paste::item! {
-            #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-            pub struct [<$name Config>];
+        ($name:ident, $file:literal, $w:literal, $h:literal, $spacing:literal, $base:literal) => {
+            pub const $name: embedded_graphics::mono_font::MonoFont =
+                embedded_graphics::mono_font::MonoFont {
+                    image: embedded_graphics::image::ImageRaw::new_binary(
+                        core::include_bytes!(core::concat!(core::env!("OUT_DIR"), "/", $file)),
+                        $w * 8,
+                    ),
+                    glyph_mapping: &embedded_graphics::mono_font::mapping::StrGlyphMapping::new(
+                        " #-/0123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZ[]_",
+                        44,
+                    ),
+                    character_size: embedded_graphics::geometry::Size::new($w, $h),
+                    character_spacing: $spacing,
+                    baseline: $base,
+                    underline:
+                        embedded_graphics::mono_font::DecorationDimensions::default_underline($h),
+                    strikethrough:
+                        embedded_graphics::mono_font::DecorationDimensions::default_strikethrough(
+                            $h,
+                        ),
+                };
+        };
+    }
 
-            impl embedded_graphics::fonts::font_builder::FontBuilderConf for [<$name Config>] {
-                const FONT_IMAGE: &'static [u8] =
-                    include_bytes!(concat!(env!("OUT_DIR"), "/", $file));
-                const FONT_IMAGE_WIDTH: u32 = $w * 8;
-
-                const CHAR_HEIGHT: u32 = $h;
-                const CHAR_WIDTH: u32 = $w;
-
-                fn char_offset(c: char) -> u32 {
-                    match c {
-                        ' ' => 0,
-                        '#' => 1,
-                        '-' => 2,
-                        '/'..=':' => c as u32 - '/' as u32 + 3,
-                        'A'..='Z' => c as u32 - 'A' as u32 + 15,
-                        '[' => 41,
-                        ']' => 42,
-                        '_' => 43,
-                        _ => 44,
-                    }
-                }
-            }
-
-            pub type $name<'a, C> = embedded_graphics::fonts::font_builder::FontBuilder<'a, C, [<$name Config>]>;
-            }};
-        }
-    font!(Font6x8, "font_6x8.raw", 6, 8);
-    font!(Font8x15, "font_8x15.raw", 8, 15);
-    font!(Font11x25, "font_11x25.raw", 11, 25);
-    font!(Font16x31, "font_16x31.raw", 16, 31);
-    font!(Font22x46, "font_22x46.raw", 22, 46);
-    font!(Font32x64, "font_32x64.raw", 32, 64);
+    font!(FONT_5X8, "font_5x8.raw", 5, 8, 1, 7);
+    font!(FONT_7X15, "font_7x15.raw", 7, 15, 1, 14);
+    font!(FONT_10X25, "font_10x25.raw", 10, 25, 1, 24);
+    font!(FONT_14X31, "font_14x31.raw", 14, 31, 2, 29);
+    font!(FONT_20X46, "font_20x46.raw", 20, 46, 2, 44);
+    font!(FONT_28X64, "font_28x64.raw", 28, 64, 4, 60);
 }
 
 #[cfg(test)]

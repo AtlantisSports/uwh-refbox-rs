@@ -154,6 +154,7 @@ impl std::fmt::Display for TimeoutSnapshot {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[allow(dead_code)]
 pub enum Color {
     Black,
     White,

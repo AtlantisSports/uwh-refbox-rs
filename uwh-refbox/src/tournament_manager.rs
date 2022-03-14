@@ -407,6 +407,7 @@ impl TournamentManager {
         }
     }
 
+    #[allow(dead_code)]
     pub fn start_penalty(
         &mut self,
         color: Color,
@@ -432,6 +433,7 @@ impl TournamentManager {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn delete_penalty(&mut self, color: Color, index: usize) -> Result<()> {
         let vec = match color {
             Color::Black => &mut self.b_penalties,
@@ -446,6 +448,7 @@ impl TournamentManager {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn edit_penalty(
         &mut self,
         old_color: Color,
@@ -1045,6 +1048,7 @@ impl TimeoutState {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PenaltyKind {
     OneMinute,
@@ -1186,6 +1190,7 @@ pub enum TournamentManagerError {
     #[error("The `now` value passed is not valid")]
     InvalidNowValue,
     #[error("No {0} penalty exists at the index {1}")]
+    #[allow(dead_code)]
     InvalidIndex(Color, usize),
 }
 

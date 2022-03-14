@@ -20,15 +20,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-
-mod config;
-mod drawing;
-mod game_snapshot;
-mod tournament_manager;
-use config::Config;
-use drawing::*;
-use game_snapshot::*;
-use tournament_manager::*;
+use uwh_refbox::{config::Config, drawnig::*, game_snapshot::*, tournament_manager::*}
 
 const BUTTON_SPACING: i32 = 12;
 const BUTTON_MARGIN: i32 = 6;

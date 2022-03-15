@@ -169,21 +169,9 @@ pub fn draw_panels(display: &mut RgbDisplay, mut state: GameSnapshot, config: &C
         }
     };
 
-    // Create Vectors for the Black and White Penalty lists
-    let mut black_penalties = vec![];
-    let mut white_penalties = vec![];
-
-    // Sorting Penalties by Time and then by Color
-
-    state.penalties.sort_by(|a, b| a.time.cmp(&b.time));
-
-    for penalty in &state.penalties {
-        if penalty.color == Color::Black {
-            black_penalties.push(penalty);
-        } else {
-            white_penalties.push(penalty);
-        }
-    }
+    // Sorting Penalties by Time
+    state.b_penalties.sort_by(|a, b| a.time.cmp(&b.time));
+    state.w_penalties.sort_by(|a, b| a.time.cmp(&b.time));
 
     let left_penalties;
     let right_penalties;
@@ -193,15 +181,15 @@ pub fn draw_panels(display: &mut RgbDisplay, mut state: GameSnapshot, config: &C
     let right_color;
 
     if config.hardware.white_on_right {
-        left_penalties = black_penalties;
-        right_penalties = white_penalties;
+        left_penalties = state.b_penalties;
+        right_penalties = state.w_penalties;
         left_score = state.b_score;
         right_score = state.w_score;
         left_color = blue;
         right_color = white;
     } else {
-        left_penalties = white_penalties;
-        right_penalties = black_penalties;
+        left_penalties = state.w_penalties;
+        right_penalties = state.b_penalties;
         left_score = state.w_score;
         right_score = state.b_score;
         left_color = white;

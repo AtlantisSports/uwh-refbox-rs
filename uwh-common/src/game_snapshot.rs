@@ -1,9 +1,23 @@
+#[cfg(feature = "std")]
 use crate::config::Game;
-use std::{
+use arrayvec::ArrayVec;
+use core::{
     cmp::{Ordering, PartialOrd},
     time::Duration,
 };
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct GameSnapshotNoHeap {
+    pub current_period: GamePeriod,
+    pub secs_in_period: u16,
+    pub timeout: TimeoutSnapshot,
+    pub b_score: u8,
+    pub w_score: u8,
+    pub b_penalties: ArrayVec<PenaltySnapshot, 3>,
+    pub w_penalties: ArrayVec<PenaltySnapshot, 3>,
+}
+
+#[cfg(feature = "std")]
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct GameSnapshot {
     pub current_period: GamePeriod,
@@ -13,6 +27,23 @@ pub struct GameSnapshot {
     pub w_score: u8,
     pub b_penalties: Vec<PenaltySnapshot>,
     pub w_penalties: Vec<PenaltySnapshot>,
+}
+
+#[cfg(feature = "std")]
+impl From<GameSnapshot> for GameSnapshotNoHeap {
+    fn from(mut snapshot: GameSnapshot) -> Self {
+        snapshot.b_penalties.sort_by(|a, b| a.time.cmp(&b.time));
+        snapshot.w_penalties.sort_by(|a, b| a.time.cmp(&b.time));
+        Self {
+            current_period: snapshot.current_period,
+            secs_in_period: snapshot.secs_in_period,
+            timeout: snapshot.timeout,
+            b_score: snapshot.b_score,
+            w_score: snapshot.w_score,
+            b_penalties: snapshot.b_penalties.into_iter().take(3).collect(),
+            w_penalties: snapshot.w_penalties.into_iter().take(3).collect(),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -36,6 +67,7 @@ pub enum GamePeriod {
 }
 
 impl GamePeriod {
+    #[cfg(feature = "std")]
     pub fn penalties_run(self, config: &Game) -> bool {
         match self {
             Self::BetweenGames
@@ -49,6 +81,7 @@ impl GamePeriod {
         }
     }
 
+    #[cfg(feature = "std")]
     pub fn duration(self, config: &Game) -> Option<Duration> {
         match self {
             Self::BetweenGames | Self::SuddenDeath => None,
@@ -69,6 +102,7 @@ impl GamePeriod {
         }
     }
 
+    #[cfg(feature = "std")]
     pub fn time_elapsed_at(self, time: Duration, config: &Game) -> Option<Duration> {
         match self {
             p @ Self::BetweenGames
@@ -115,8 +149,8 @@ impl GamePeriod {
     }
 }
 
-impl std::fmt::Display for GamePeriod {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl core::fmt::Display for GamePeriod {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match *self {
             GamePeriod::BetweenGames => write!(f, "Between Games"),
             GamePeriod::FirstHalf => write!(f, "First Half"),
@@ -141,8 +175,8 @@ pub enum TimeoutSnapshot {
     PenaltyShot(u16),
 }
 
-impl std::fmt::Display for TimeoutSnapshot {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl core::fmt::Display for TimeoutSnapshot {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match *self {
             TimeoutSnapshot::None => write!(f, "No Timeout"),
             TimeoutSnapshot::Black(_) => write!(f, "Black Timeout"),
@@ -154,14 +188,13 @@ impl std::fmt::Display for TimeoutSnapshot {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-#[allow(dead_code)]
 pub enum Color {
     Black,
     White,
 }
 
-impl std::fmt::Display for Color {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl core::fmt::Display for Color {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match *self {
             Self::Black => write!(f, "Black"),
             Self::White => write!(f, "White"),

@@ -1,6 +1,8 @@
 [workspace]
 
 members = [
-    "uwh-refbox",
     "fonts",
+    "uwh-common",
+    "uwh-matrix-drawing",
+    "uwh-refbox",
 ]

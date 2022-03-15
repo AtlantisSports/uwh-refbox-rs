@@ -1,0 +1,15 @@
+[package]
+name = "uwh-matrix-drawing"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["std"]
+std = ["arrayvec/std", "embedded-graphics-simulator", "uwh-common"]
+
+[dependencies]
+arrayvec = { version = "0.7.2", default-features = false }
+embedded-graphics = "0.7.1"
+embedded-graphics-simulator = { version = "0.3.0", optional = true }
+fonts = { version = "0.1.0", path = "../fonts" }
+uwh-common = { version = "0.1.0", path = "../uwh-common", optional = true }

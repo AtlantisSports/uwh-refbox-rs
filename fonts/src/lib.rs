@@ -33,11 +33,3 @@ pub mod fonts {
     font!(FONT_20X46, "font_20x46.raw", 20, 46, 2, 44);
     font!(FONT_28X64, "font_28x64.raw", 28, 64, 4, 60);
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
-}

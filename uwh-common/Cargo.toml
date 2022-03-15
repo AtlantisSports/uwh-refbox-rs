@@ -1,0 +1,19 @@
+[package]
+name = "uwh-common"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["std"]
+std = ["arrayvec/std"]
+
+[dependencies]
+arrayvec = { version = "0.7.2", default-features = false }
+fonts = { version = "0.1.0", path = "../fonts" }
+log = "0.4.6"
+serde = "1.0.91"
+serde_derive = "1.0.91"
+toml = "0.5"
+
+[dev-dependencies]
+indoc = "0.3.4"

@@ -1,7 +1,3 @@
-use crate::config::Game as GameConfig;
-use crate::game_snapshot::{
-    Color, GamePeriod, GameSnapshot, PenaltySnapshot, PenaltyTime, TimeoutSnapshot,
-};
 use log::*;
 use std::{
     cmp::{max, Ordering},
@@ -10,6 +6,12 @@ use std::{
     time::{Duration, Instant},
 };
 use thiserror::Error;
+use uwh_common::{
+    config::Game as GameConfig,
+    game_snapshot::{
+        Color, GamePeriod, GameSnapshot, PenaltySnapshot, PenaltyTime, TimeoutSnapshot,
+    },
+};
 
 #[derive(Debug, Clone)]
 pub struct TournamentManager {

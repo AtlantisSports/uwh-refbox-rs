@@ -3,7 +3,8 @@ use clap::{
     app_from_crate, crate_authors, crate_description, crate_name, crate_version, AppSettings, Arg,
     SubCommand,
 };
-use embedded_graphics_simulator::DisplayBuilder;
+use embedded_graphics::{pixelcolor::Rgb888, prelude::*};
+use embedded_graphics_simulator::{OutputSettingsBuilder, SimulatorDisplay, Window};
 use gio::prelude::*;
 use glib::clone;
 use gtk::prelude::*;
@@ -20,14 +21,10 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+use uwh_common::{config::Config, game_snapshot::*};
+use uwh_matrix_drawing::*;
 
-mod config;
-mod drawing;
-mod game_snapshot;
 mod tournament_manager;
-use config::Config;
-use drawing::*;
-use game_snapshot::*;
 use tournament_manager::*;
 
 const BUTTON_SPACING: i32 = 12;
@@ -128,23 +125,18 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             }],
         };
 
-        let mut display = DisplayBuilder::new()
-            .size(256, 64)
+        let mut display = SimulatorDisplay::<Rgb888>::new(Size::new(256, 64));
+
+        let output_settings = OutputSettingsBuilder::new()
             .scale(3)
             .pixel_spacing(1)
-            .build_rgb();
+            .build();
 
-        draw_panels(&mut display, state, &config);
+        draw_panels(&mut display, state.into(), config.hardware.white_on_right).unwrap();
 
-        loop {
-            let end = display.run_once();
+        let mut window = Window::new("Panel Simulator", &output_settings);
 
-            if end {
-                break;
-            }
-
-            thread::sleep(Duration::from_millis(200))
-        }
+        window.show_static(&display);
 
         return Ok(());
     }

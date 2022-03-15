@@ -296,7 +296,7 @@ pub fn draw_panels(display: &mut RgbDisplay, mut state: GameSnapshot, config: &C
             }
             PenaltyTime::TotalDismissal => {
                 display.draw(
-                    Font6x8::render_str(&"DSMS".to_string())
+                    Font6x8::render_str("DSMS")
                         .stroke(Some(red))
                         .translate(Point::new(x_pos, y_pos + 8)),
                 );

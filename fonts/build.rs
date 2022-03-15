@@ -15,13 +15,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         let file = res?;
         if file.file_type()?.is_file() {
             let name = file.file_name().into_string().unwrap();
-            let input;
-            if name.starts_with("font_") && name.ends_with(".txt") {
+            let input = if name.starts_with("font_") && name.ends_with(".txt") {
                 eprintln!("Reading {}", file.path().to_str().unwrap());
-                input = read_to_string(file.path())?;
+                read_to_string(file.path())?
             } else {
                 continue;
-            }
+            };
 
             let mut out_path = Path::new(&std::env::var("OUT_DIR").unwrap()).to_path_buf();
             out_path.push(&name);

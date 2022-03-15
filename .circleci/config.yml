@@ -1,0 +1,38 @@
+version: 2.1
+
+jobs:
+  check-build:
+    docker:
+      - image: magycian/refbox-ci:1.59.0
+    steps:
+      - checkout
+      - restore_cache:
+          key: v1-uwh-refbox-rs-{{ arch }}
+          paths:
+            - /home/circleci/.cache/sccache
+            - /home/circleci/.cargo
+            - /home/circleci/.rustup
+            - target
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all -- --deny=warnings
+      - run: cargo build --all
+      - run: cargo test --all
+      - run: rm -rf "/home/circleci/.cargo/registry/src"
+      - save_cache:
+          key: v1-uwh-refbox-rs-{{ arch }}
+          paths:
+            - /home/circleci/.cache/sccache
+            - /home/circleci/.cargo
+            - /home/circleci/.rustup
+            - target
+
+workflows:
+  check:
+    jobs:
+      - check-build:
+          filters:
+            branches:
+              only:
+                - master
+                - staging
+                - trying

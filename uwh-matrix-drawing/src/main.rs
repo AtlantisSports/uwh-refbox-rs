@@ -120,7 +120,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         GamePeriod::SuddenDeath,
     ];
 
-    let score_loop_count: u8 = 0;
+    let score_loop_count: u16 = 0;
 
     let repeat_state = if let Some(Commands::State(state_args)) = args.command {
         if let Some(path) = state_args.generate {
@@ -282,15 +282,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 b_penalties = vec![];
                                 w_penalties = vec![];
                             }
-                            _ => {
+                            count => {
                                 b_penalties = vec![
                                     PenaltySnapshot {
                                         player_number: 4,
-                                        time: PenaltyTime::Seconds(66),
+                                        time: PenaltyTime::Seconds(76 - count),
                                     },
                                     PenaltySnapshot {
                                         player_number: 7,
-                                        time: PenaltyTime::Seconds(21),
+                                        time: PenaltyTime::Seconds(31 - count),
                                     },
                                     PenaltySnapshot {
                                         player_number: 13,
@@ -300,11 +300,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 w_penalties = vec![
                                     PenaltySnapshot {
                                         player_number: 1,
-                                        time: PenaltyTime::Seconds(300),
+                                        time: PenaltyTime::Seconds(310 - count),
                                     },
                                     PenaltySnapshot {
                                         player_number: 5,
-                                        time: PenaltyTime::Seconds(50),
+                                        time: PenaltyTime::Seconds(60 - count),
                                     },
                                     PenaltySnapshot {
                                         player_number: 2,

@@ -1,5 +1,6 @@
 /target
 **/*.rs.bk
 timeshark.toml
+uwh-matrix-drawing/state.json
 
 *.swp

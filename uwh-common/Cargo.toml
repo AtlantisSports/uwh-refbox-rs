@@ -8,7 +8,7 @@ default = ["std"]
 std = ["arrayvec/std"]
 
 [dependencies]
-arrayvec = { version = "0.7.2", default-features = false }
+arrayvec = { version = "0.7.2", default-features = false, features = ["serde"] }
 fonts = { version = "0.1.0", path = "../fonts" }
 log = "0.4.6"
 serde = "1.0.91"

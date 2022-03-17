@@ -1,5 +1,6 @@
 #![cfg(feature = "std")]
 
+use clap::{ArgGroup, Args, Parser, Subcommand};
 use embedded_graphics::{
     pixelcolor::Rgb888,
     prelude::*,
@@ -8,27 +9,51 @@ use embedded_graphics::{
 use embedded_graphics_simulator::{
     OutputSettingsBuilder, SimulatorDisplay, SimulatorEvent, Window,
 };
-use std::{thread, time::Duration};
+use serialport::{self, DataBits, FlowControl, Parity, StopBits};
+use std::{fs, path::PathBuf, thread, time::Duration};
 use uwh_common::game_snapshot::*;
 use uwh_matrix_drawing::*;
 
-fn main() {
-    let mut display = SimulatorDisplay::<Rgb888>::new(Size::new(256, 64));
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+#[clap(propagate_version = true)]
+struct Cli {
+    #[clap(long)]
+    /// Run the simulator GUI
+    simulate: bool,
 
-    let output_settings = OutputSettingsBuilder::new()
-        .scale(4)
-        .pixel_spacing(1)
-        .build();
+    #[clap(
+        long,
+        value_name = "SERIAL_PORT",
+        default_missing_value = "/dev/ttyAMA0"
+    )]
+    /// Serialize the states and send them over the provided port
+    hardware: Option<String>,
 
-    let mut state = GameSnapshot {
-        current_period: GamePeriod::PreOvertime,
-        secs_in_period: 901,
-        timeout: TimeoutSnapshot::None,
-        b_score: 0,
-        w_score: 0,
-        b_penalties: vec![],
-        w_penalties: vec![],
-    };
+    #[clap(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Use a state file instead of automatically generating states
+    State(StateFile),
+}
+
+#[derive(Args, Debug)]
+#[clap(group(ArgGroup::new("state_file").required(true).args(&["file", "generate"])))]
+struct StateFile {
+    #[clap(value_name = "PATH")]
+    /// File to read state information from
+    file: Option<PathBuf>,
+
+    #[clap(long, value_name = "PATH", default_missing_value = "state.json")]
+    /// Location to generate a sample state file in
+    generate: Option<PathBuf>,
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = Cli::parse();
 
     let long_time_cycle = [900, 743, 154, 60, 59, 58, 7, 6, 5, 4, 3, 2, 1, 0];
     let medium_time_cycle = [180, 154, 60, 59, 58, 7, 6, 5, 4, 3, 2, 1, 0];
@@ -82,178 +107,295 @@ fn main() {
         TimeoutSnapshot::None,
     ];
 
-    let mut window = Window::new("Panel Simulator", &output_settings);
+    let period_cycle = [
+        GamePeriod::BetweenGames,
+        GamePeriod::FirstHalf,
+        GamePeriod::HalfTime,
+        GamePeriod::SecondHalf,
+        GamePeriod::PreOvertime,
+        GamePeriod::OvertimeFirstHalf,
+        GamePeriod::OvertimeHalfTime,
+        GamePeriod::OvertimeSecondHalf,
+        GamePeriod::PreSuddenDeath,
+        GamePeriod::SuddenDeath,
+    ];
 
-    let mut loop_count = 0;
+    let score_loop_count: u8 = 0;
 
-    'running: loop {
-        let mut do_update = |state: &mut GameSnapshot| {
+    let repeat_state = if let Some(Commands::State(state_args)) = args.command {
+        if let Some(path) = state_args.generate {
+            let state = GameSnapshot {
+                current_period: GamePeriod::FirstHalf,
+                secs_in_period: 900,
+                timeout: TimeoutSnapshot::White(36),
+                b_score: 2,
+                w_score: 6,
+                b_penalties: vec![
+                    PenaltySnapshot {
+                        player_number: 4,
+                        time: PenaltyTime::Seconds(66),
+                    },
+                    PenaltySnapshot {
+                        player_number: 7,
+                        time: PenaltyTime::Seconds(21),
+                    },
+                    PenaltySnapshot {
+                        player_number: 13,
+                        time: PenaltyTime::TotalDismissal,
+                    },
+                ],
+                w_penalties: vec![
+                    PenaltySnapshot {
+                        player_number: 1,
+                        time: PenaltyTime::Seconds(300),
+                    },
+                    PenaltySnapshot {
+                        player_number: 5,
+                        time: PenaltyTime::Seconds(50),
+                    },
+                    PenaltySnapshot {
+                        player_number: 2,
+                        time: PenaltyTime::TotalDismissal,
+                    },
+                ],
+            };
+
+            let to_save = serde_json::to_vec_pretty(&state)?;
+            fs::write(&path, to_save)?;
+
+            let state: GameSnapshotNoHeap = state.into();
+
+            let len = bincode::serialize(&state)?.len();
+
+            println!(
+                "The encoded length of the state (as would be sent to the panels) was {len} bytes"
+            );
+
+            return Ok(());
+        } else {
+            let state: GameSnapshot =
+                serde_json::from_slice(&fs::read(&state_args.file.unwrap())?)?;
+            Some(state)
+        }
+    } else {
+        None
+    };
+
+    let state_iter: Box<dyn Iterator<Item = GameSnapshot>> = if let Some(state) = repeat_state {
+        Box::new([state].into_iter().cycle())
+    } else {
+        Box::new(
+            period_cycle
+                .into_iter()
+                .cycle()
+                .flat_map(
+                    |period| -> Box<dyn Iterator<Item = ((GamePeriod, TimeoutSnapshot), u16)>> {
+                        match period {
+                            GamePeriod::FirstHalf
+                            | GamePeriod::SecondHalf
+                            | GamePeriod::SuddenDeath => Box::new(
+                                [period]
+                                    .into_iter()
+                                    .cycle()
+                                    .zip(timeout_cycle.into_iter())
+                                    .zip([long_time_cycle[0]].into_iter().cycle())
+                                    .chain(
+                                        [period]
+                                            .into_iter()
+                                            .cycle()
+                                            .zip(
+                                                [*timeout_cycle.last().unwrap()]
+                                                    .into_iter()
+                                                    .cycle(),
+                                            )
+                                            .zip(long_time_cycle.into_iter()),
+                                    ),
+                            ),
+                            GamePeriod::OvertimeFirstHalf | GamePeriod::OvertimeSecondHalf => {
+                                Box::new(
+                                    [period]
+                                        .into_iter()
+                                        .cycle()
+                                        .zip(timeout_cycle.into_iter())
+                                        .zip([medium_time_cycle[0]].into_iter().cycle())
+                                        .chain(
+                                            [period]
+                                                .into_iter()
+                                                .cycle()
+                                                .zip(
+                                                    [*timeout_cycle.last().unwrap()]
+                                                        .into_iter()
+                                                        .cycle(),
+                                                )
+                                                .zip(medium_time_cycle.into_iter()),
+                                        ),
+                                )
+                            }
+                            GamePeriod::HalfTime | GamePeriod::BetweenGames => Box::new(
+                                [period]
+                                    .into_iter()
+                                    .cycle()
+                                    .zip([*timeout_cycle.last().unwrap()].into_iter().cycle())
+                                    .zip(medium_time_cycle.into_iter()),
+                            ),
+                            GamePeriod::PreOvertime
+                            | GamePeriod::OvertimeHalfTime
+                            | GamePeriod::PreSuddenDeath => Box::new(
+                                [period]
+                                    .into_iter()
+                                    .cycle()
+                                    .zip([*timeout_cycle.last().unwrap()].into_iter().cycle())
+                                    .zip(short_time_cycle.into_iter()),
+                            ),
+                        }
+                    },
+                )
+                .scan(
+                    score_loop_count,
+                    |score_loop_count, ((current_period, timeout), secs_in_period)| {
+                        let b_score;
+                        let w_score;
+                        let b_penalties;
+                        let w_penalties;
+
+                        match *score_loop_count {
+                            0..=4 => {
+                                b_score = 4;
+                                w_score = 9;
+                            }
+                            5..=9 => {
+                                b_score = 11;
+                                w_score = 24;
+                            }
+                            10..=14 => {
+                                b_score = 2;
+                                w_score = 5;
+                            }
+                            _ => {
+                                b_score = 13;
+                                w_score = 27;
+                            }
+                        };
+
+                        match *score_loop_count {
+                            0..=9 => {
+                                b_penalties = vec![];
+                                w_penalties = vec![];
+                            }
+                            _ => {
+                                b_penalties = vec![
+                                    PenaltySnapshot {
+                                        player_number: 4,
+                                        time: PenaltyTime::Seconds(66),
+                                    },
+                                    PenaltySnapshot {
+                                        player_number: 7,
+                                        time: PenaltyTime::Seconds(21),
+                                    },
+                                    PenaltySnapshot {
+                                        player_number: 13,
+                                        time: PenaltyTime::TotalDismissal,
+                                    },
+                                ];
+                                w_penalties = vec![
+                                    PenaltySnapshot {
+                                        player_number: 1,
+                                        time: PenaltyTime::Seconds(300),
+                                    },
+                                    PenaltySnapshot {
+                                        player_number: 5,
+                                        time: PenaltyTime::Seconds(50),
+                                    },
+                                    PenaltySnapshot {
+                                        player_number: 2,
+                                        time: PenaltyTime::TotalDismissal,
+                                    },
+                                ];
+                            }
+                        };
+
+                        *score_loop_count = (*score_loop_count + 1) % 20;
+
+                        Some(GameSnapshot {
+                            current_period,
+                            secs_in_period,
+                            timeout,
+                            b_score,
+                            w_score,
+                            b_penalties,
+                            w_penalties,
+                        })
+                    },
+                ),
+        )
+    };
+
+    let simulate = if args.hardware.is_some() {
+        args.simulate
+    } else {
+        true
+    };
+
+    let mut serial = if let Some(path) = args.hardware {
+        Some(
+            serialport::new(path, 115200)
+                .data_bits(DataBits::Eight)
+                .flow_control(FlowControl::None)
+                .parity(Parity::Even)
+                .stop_bits(StopBits::One)
+                .open()?,
+        )
+    } else {
+        None
+    };
+
+    let output_settings = OutputSettingsBuilder::new()
+        .scale(4)
+        .pixel_spacing(1)
+        .build();
+
+    let mut simulation = if simulate {
+        let display = SimulatorDisplay::<Rgb888>::new(Size::new(256, 64));
+        let window = Window::new("Panel Simulator", &output_settings);
+        Some((display, window))
+    } else {
+        None
+    };
+
+    if simulation.is_none() {
+        println!("Press Ctrl-C to stop");
+    }
+
+    'running: for state in state_iter {
+        let state: GameSnapshotNoHeap = state.into();
+
+        if let Some(port) = serial.as_mut() {
+            let to_send = bincode::serialize(&state)?;
+            port.write_all(&to_send)?;
+        }
+
+        if let Some((display, window)) = simulation.as_mut() {
             display.clear(Rgb888::BLACK).unwrap();
 
             Rectangle::new(Point::new(0, 0), Size::new(64, 64))
                 .into_styled(PrimitiveStyle::with_fill(Rgb888::CSS_DIM_GRAY))
-                .draw(&mut display)
+                .draw(display)
                 .unwrap();
             Rectangle::new(Point::new(192, 0), Size::new(64, 64))
                 .into_styled(PrimitiveStyle::with_fill(Rgb888::CSS_DIM_GRAY))
-                .draw(&mut display)
+                .draw(display)
                 .unwrap();
 
-            match loop_count {
-                0..=4 => {
-                    state.b_score = 4;
-                    state.w_score = 9;
-                    state.b_penalties = vec![];
-                    state.w_penalties = vec![];
-                }
-                5..=9 => {
-                    state.b_score = 11;
-                    state.w_score = 24;
-                    state.b_penalties = vec![];
-                    state.w_penalties = vec![];
-                }
-                10..=14 => {
-                    state.b_score = 2;
-                    state.w_score = 5;
-                    state.b_penalties = vec![
-                        PenaltySnapshot {
-                            player_number: 4,
-                            time: PenaltyTime::Seconds(66),
-                        },
-                        PenaltySnapshot {
-                            player_number: 7,
-                            time: PenaltyTime::Seconds(21),
-                        },
-                        PenaltySnapshot {
-                            player_number: 13,
-                            time: PenaltyTime::TotalDismissal,
-                        },
-                    ];
-                    state.w_penalties = vec![
-                        PenaltySnapshot {
-                            player_number: 1,
-                            time: PenaltyTime::Seconds(300),
-                        },
-                        PenaltySnapshot {
-                            player_number: 5,
-                            time: PenaltyTime::Seconds(50),
-                        },
-                        PenaltySnapshot {
-                            player_number: 2,
-                            time: PenaltyTime::TotalDismissal,
-                        },
-                    ];
-                }
-                _ => {
-                    state.b_score = 11;
-                    state.w_score = 24;
-                    state.b_penalties = vec![
-                        PenaltySnapshot {
-                            player_number: 4,
-                            time: PenaltyTime::Seconds(66),
-                        },
-                        PenaltySnapshot {
-                            player_number: 7,
-                            time: PenaltyTime::Seconds(21),
-                        },
-                        PenaltySnapshot {
-                            player_number: 13,
-                            time: PenaltyTime::TotalDismissal,
-                        },
-                    ];
-                    state.w_penalties = vec![
-                        PenaltySnapshot {
-                            player_number: 1,
-                            time: PenaltyTime::Seconds(300),
-                        },
-                        PenaltySnapshot {
-                            player_number: 5,
-                            time: PenaltyTime::Seconds(50),
-                        },
-                        PenaltySnapshot {
-                            player_number: 2,
-                            time: PenaltyTime::TotalDismissal,
-                        },
-                    ];
-                }
-            };
+            draw_panels(display, state, true).unwrap();
 
-            loop_count = (loop_count + 1) % 20;
-
-            draw_panels(&mut display, state.clone().into(), true).unwrap();
-
-            window.update(&display);
+            window.update(display);
 
             if window.events().any(|e| e == SimulatorEvent::Quit) {
-                return true;
+                break 'running;
             }
-            thread::sleep(Duration::from_secs(1));
-            false
-        };
-
-        state.current_period = if let Some(per) = state.current_period.next_period() {
-            per
-        } else {
-            GamePeriod::BetweenGames
-        };
-
-        match state.current_period {
-            GamePeriod::FirstHalf | GamePeriod::SecondHalf | GamePeriod::SuddenDeath => {
-                state.secs_in_period = long_time_cycle[0];
-                if do_update(&mut state) {
-                    break 'running;
-                }
-
-                for timeout in timeout_cycle.iter() {
-                    state.timeout = *timeout;
-                    if do_update(&mut state) {
-                        break 'running;
-                    }
-                }
-
-                for time in long_time_cycle.iter() {
-                    state.secs_in_period = *time;
-                    if do_update(&mut state) {
-                        break 'running;
-                    }
-                }
-            }
-            GamePeriod::OvertimeFirstHalf | GamePeriod::OvertimeSecondHalf => {
-                state.secs_in_period = medium_time_cycle[0];
-                if do_update(&mut state) {
-                    break 'running;
-                }
-
-                for timeout in timeout_cycle.iter() {
-                    state.timeout = *timeout;
-                    if do_update(&mut state) {
-                        break 'running;
-                    }
-                }
-
-                for time in medium_time_cycle.iter() {
-                    state.secs_in_period = *time;
-                    if do_update(&mut state) {
-                        break 'running;
-                    }
-                }
-            }
-            GamePeriod::HalfTime | GamePeriod::BetweenGames => {
-                for time in medium_time_cycle.iter() {
-                    state.secs_in_period = *time;
-                    if do_update(&mut state) {
-                        break 'running;
-                    }
-                }
-            }
-            GamePeriod::PreOvertime | GamePeriod::OvertimeHalfTime | GamePeriod::PreSuddenDeath => {
-                for time in short_time_cycle.iter() {
-                    state.secs_in_period = *time;
-                    if do_update(&mut state) {
-                        break 'running;
-                    }
-                }
-            }
-        };
+        }
+        thread::sleep(Duration::from_secs(1));
     }
+
+    Ok(())
 }

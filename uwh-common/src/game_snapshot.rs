@@ -5,8 +5,9 @@ use core::{
     cmp::{Ordering, PartialOrd},
     time::Duration,
 };
+use serde_derive::{Deserialize, Serialize};
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct GameSnapshotNoHeap {
     pub current_period: GamePeriod,
     pub secs_in_period: u16,
@@ -18,7 +19,7 @@ pub struct GameSnapshotNoHeap {
 }
 
 #[cfg(feature = "std")]
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct GameSnapshot {
     pub current_period: GamePeriod,
     pub secs_in_period: u16,
@@ -46,13 +47,13 @@ impl From<GameSnapshot> for GameSnapshotNoHeap {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct PenaltySnapshot {
     pub player_number: u8,
     pub time: PenaltyTime,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize, Deserialize)]
 pub enum GamePeriod {
     BetweenGames,
     FirstHalf,
@@ -166,7 +167,7 @@ impl core::fmt::Display for GamePeriod {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum TimeoutSnapshot {
     None,
     White(u16),
@@ -187,7 +188,7 @@ impl core::fmt::Display for TimeoutSnapshot {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum Color {
     Black,
     White,
@@ -202,7 +203,7 @@ impl core::fmt::Display for Color {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum PenaltyTime {
     Seconds(u16),
     TotalDismissal,

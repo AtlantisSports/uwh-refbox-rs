@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package snapshot;
+
+enum GamePeriod {
+    BetweenGames = 0;
+    FirstHalf = 1;
+    HalfTime = 2;
+    SecondHalf = 3;
+    PreOvertime = 4;
+    OvertimeFirstHalf = 5;
+    OvertimeHalfTime = 6;
+    OvertimeSecondHalf = 7;
+    PreSuddenDeath = 8;
+    SuddenDeath = 9;
+}
+
+message TimeoutSnapshot {
+    enum TimeoutType {
+        None = 0;
+        White = 1;
+        Black = 2;
+        Ref = 3;
+        PenaltyShot = 4;
+    }
+
+    TimeoutType type = 1;
+    uint32 time = 2;
+}
+
+message PenaltySnapshot {
+    uint32 player_number = 1;
+    oneof time {
+        uint32 seconds = 2;
+        bool total_dismissal = 3;
+    }
+}
+
+message GameSnapshot {
+    GamePeriod current_period = 1;
+    uint32 secs_in_period = 2;
+    TimeoutSnapshot timeout = 3;
+    uint32 b_score = 4;
+    uint32 w_score = 5;
+    repeated PenaltySnapshot b_penalties = 6;
+    repeated PenaltySnapshot w_penalties = 7;
+}
+

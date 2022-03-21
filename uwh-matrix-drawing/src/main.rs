@@ -163,14 +163,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let to_save = serde_json::to_vec_pretty(&state)?;
             fs::write(&path, to_save)?;
 
-            let state: GameSnapshotNoHeap = state.into();
-
-            let len = bincode::serialize(&state)?.len();
-
-            println!(
-                "The encoded length of the state (as would be sent to the panels) was {len} bytes"
-            );
-
             return Ok(());
         } else {
             let state: GameSnapshot =
@@ -370,7 +362,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let state: GameSnapshotNoHeap = state.into();
 
         if let Some(port) = serial.as_mut() {
-            let to_send = bincode::serialize(&state)?;
+            let to_send = state.encode()?;
             port.write_all(&to_send)?;
         }
 

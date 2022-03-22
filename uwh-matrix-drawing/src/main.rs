@@ -364,6 +364,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(port) = serial.as_mut() {
             let to_send = state.encode()?;
             port.write_all(&to_send)?;
+            port.set_break()?;
+            thread::sleep(Duration::from_micros(10));
+            port.clear_break()?;
         }
 
         if let Some((display, window)) = simulation.as_mut() {

@@ -1,5 +1,6 @@
 #![cfg(feature = "std")]
 
+use arrayvec::ArrayVec;
 use clap::{ArgGroup, Args, Parser, Subcommand};
 use embedded_graphics::{
     pixelcolor::Rgb888,
@@ -12,7 +13,7 @@ use embedded_graphics_simulator::{
 use serialport::{self, DataBits, FlowControl, Parity, StopBits};
 use std::{fs, path::PathBuf, thread, time::Duration};
 use uwh_common::game_snapshot::*;
-use uwh_matrix_drawing::*;
+use uwh_matrix_drawing::{transmitted_data::TransmittedData, *};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -124,40 +125,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let repeat_state = if let Some(Commands::State(state_args)) = args.command {
         if let Some(path) = state_args.generate {
-            let state = GameSnapshot {
-                current_period: GamePeriod::FirstHalf,
-                secs_in_period: 900,
-                timeout: TimeoutSnapshot::White(36),
-                b_score: 2,
-                w_score: 6,
-                b_penalties: vec![
-                    PenaltySnapshot {
-                        player_number: 4,
-                        time: PenaltyTime::Seconds(66),
-                    },
-                    PenaltySnapshot {
-                        player_number: 7,
-                        time: PenaltyTime::Seconds(21),
-                    },
-                    PenaltySnapshot {
-                        player_number: 13,
-                        time: PenaltyTime::TotalDismissal,
-                    },
-                ],
-                w_penalties: vec![
-                    PenaltySnapshot {
-                        player_number: 1,
-                        time: PenaltyTime::Seconds(300),
-                    },
-                    PenaltySnapshot {
-                        player_number: 5,
-                        time: PenaltyTime::Seconds(50),
-                    },
-                    PenaltySnapshot {
-                        player_number: 2,
-                        time: PenaltyTime::TotalDismissal,
-                    },
-                ],
+            let state = TransmittedData {
+                white_on_right: true,
+                snapshot: GameSnapshotNoHeap {
+                    current_period: GamePeriod::FirstHalf,
+                    secs_in_period: 900,
+                    timeout: TimeoutSnapshot::White(36),
+                    b_score: 2,
+                    w_score: 6,
+                    b_penalties: ArrayVec::from([
+                        PenaltySnapshot {
+                            player_number: 4,
+                            time: PenaltyTime::Seconds(66),
+                        },
+                        PenaltySnapshot {
+                            player_number: 7,
+                            time: PenaltyTime::Seconds(21),
+                        },
+                        PenaltySnapshot {
+                            player_number: 13,
+                            time: PenaltyTime::TotalDismissal,
+                        },
+                    ]),
+                    w_penalties: ArrayVec::from([
+                        PenaltySnapshot {
+                            player_number: 1,
+                            time: PenaltyTime::Seconds(300),
+                        },
+                        PenaltySnapshot {
+                            player_number: 5,
+                            time: PenaltyTime::Seconds(50),
+                        },
+                        PenaltySnapshot {
+                            player_number: 2,
+                            time: PenaltyTime::TotalDismissal,
+                        },
+                    ]),
+                },
             };
 
             let to_save = serde_json::to_vec_pretty(&state)?;
@@ -165,7 +169,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             return Ok(());
         } else {
-            let state: GameSnapshot =
+            let state: TransmittedData =
                 serde_json::from_slice(&fs::read(&state_args.file.unwrap())?)?;
             Some(state)
         }
@@ -173,7 +177,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         None
     };
 
-    let state_iter: Box<dyn Iterator<Item = GameSnapshot>> = if let Some(state) = repeat_state {
+    let state_iter: Box<dyn Iterator<Item = TransmittedData>> = if let Some(state) = repeat_state {
         Box::new([state].into_iter().cycle())
     } else {
         Box::new(
@@ -245,6 +249,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .scan(
                     score_loop_count,
                     |score_loop_count, ((current_period, timeout), secs_in_period)| {
+                        let white_on_right;
                         let b_score;
                         let w_score;
                         let b_penalties;
@@ -252,18 +257,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         match *score_loop_count {
                             0..=4 => {
+                                white_on_right = true;
                                 b_score = 4;
                                 w_score = 9;
                             }
                             5..=9 => {
+                                white_on_right = true;
                                 b_score = 11;
                                 w_score = 24;
                             }
                             10..=14 => {
+                                white_on_right = false;
                                 b_score = 2;
                                 w_score = 5;
                             }
                             _ => {
+                                white_on_right = false;
                                 b_score = 13;
                                 w_score = 27;
                             }
@@ -271,11 +280,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         match *score_loop_count {
                             0..=9 => {
-                                b_penalties = vec![];
-                                w_penalties = vec![];
+                                b_penalties = ArrayVec::new();
+                                w_penalties = ArrayVec::new();
                             }
                             count => {
-                                b_penalties = vec![
+                                b_penalties = ArrayVec::from([
                                     PenaltySnapshot {
                                         player_number: 4,
                                         time: PenaltyTime::Seconds(76 - count),
@@ -288,8 +297,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         player_number: 13,
                                         time: PenaltyTime::TotalDismissal,
                                     },
-                                ];
-                                w_penalties = vec![
+                                ]);
+                                w_penalties = ArrayVec::from([
                                     PenaltySnapshot {
                                         player_number: 1,
                                         time: PenaltyTime::Seconds(310 - count),
@@ -302,20 +311,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         player_number: 2,
                                         time: PenaltyTime::TotalDismissal,
                                     },
-                                ];
+                                ]);
                             }
                         };
 
                         *score_loop_count = (*score_loop_count + 1) % 20;
 
-                        Some(GameSnapshot {
-                            current_period,
-                            secs_in_period,
-                            timeout,
-                            b_score,
-                            w_score,
-                            b_penalties,
-                            w_penalties,
+                        Some(TransmittedData {
+                            white_on_right,
+                            snapshot: GameSnapshotNoHeap {
+                                current_period,
+                                secs_in_period,
+                                timeout,
+                                b_score,
+                                w_score,
+                                b_penalties,
+                                w_penalties,
+                            },
                         })
                     },
                 ),
@@ -359,8 +371,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     'running: for state in state_iter {
-        let state: GameSnapshotNoHeap = state.into();
-
         if let Some(port) = serial.as_mut() {
             let to_send = state.encode()?;
             port.write_all(&to_send)?;
@@ -381,7 +391,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .draw(display)
                 .unwrap();
 
-            draw_panels(display, state, true).unwrap();
+            draw_panels(display, state.snapshot, state.white_on_right).unwrap();
 
             window.update(display);
 

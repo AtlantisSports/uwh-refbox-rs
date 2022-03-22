@@ -8,8 +8,8 @@ default = ["std", "prost"]
 std = ["arrayvec/std", "displaydoc/std", "prost/std", "serde/std",  "toml"]
 
 [dependencies]
-arrayvec = { version = "0.7.2", default-features = false, features = ["serde"] }
 arrayref = "0.3.2"
+arrayvec = { version = "0.7.2", default-features = false, features = ["serde"] }
 defmt = "0.3.0"
 displaydoc = { version = "0.2.3", default-features = false }
 fonts = { version = "0.1.0", path = "../fonts" }

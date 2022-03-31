@@ -11,7 +11,7 @@ use embedded_graphics_simulator::{
     OutputSettingsBuilder, SimulatorDisplay, SimulatorEvent, Window,
 };
 use serialport::{self, DataBits, FlowControl, Parity, StopBits};
-use std::{fs, path::PathBuf, thread, time::Duration};
+use std::{fs, path::PathBuf, thread, time::{Duration, Instant}};
 use uwh_common::game_snapshot::*;
 use uwh_matrix_drawing::{transmitted_data::TransmittedData, *};
 
@@ -52,6 +52,8 @@ struct StateFile {
     /// Location to generate a sample state file in
     generate: Option<PathBuf>,
 }
+
+const INTER_LOOP_TIME: Duration = Duration::from_millis(100);
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Cli::parse();
@@ -370,7 +372,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Press Ctrl-C to stop");
     }
 
+    let mut next_run = Instant::now() + INTER_LOOP_TIME;
     'running: for state in state_iter {
+        // Send each state 10 times over the course of a second
+        for _ in 0..10 {
         if let Some(port) = serial.as_mut() {
             let to_send = state.encode()?;
             port.write_all(&to_send)?;
@@ -391,7 +396,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .draw(display)
                 .unwrap();
 
-            draw_panels(display, state.snapshot, state.white_on_right).unwrap();
+            draw_panels(display, state.snapshot.clone(), state.white_on_right).unwrap();
 
             window.update(display);
 
@@ -399,7 +404,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 break 'running;
             }
         }
-        thread::sleep(Duration::from_secs(1));
+
+        let sleep_time = next_run - Instant::now();
+        next_run += INTER_LOOP_TIME;
+        thread::sleep(sleep_time);
+        }
     }
 
     Ok(())

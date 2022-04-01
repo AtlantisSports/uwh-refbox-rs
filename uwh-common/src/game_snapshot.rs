@@ -24,7 +24,7 @@ pub struct GameSnapshotNoHeap {
 }
 
 #[cfg(feature = "std")]
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Default, Clone, Serialize, Deserialize)]
 pub struct GameSnapshot {
     pub current_period: GamePeriod,
     pub secs_in_period: u16,
@@ -172,6 +172,13 @@ impl core::fmt::Display for GamePeriod {
     }
 }
 
+// TODO: Replace once https://github.com/rust-lang/rust/issues/87517 stabilizes
+impl core::default::Default for GamePeriod {
+    fn default() -> Self {
+        Self::BetweenGames
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum TimeoutSnapshot {
     None,
@@ -190,6 +197,13 @@ impl core::fmt::Display for TimeoutSnapshot {
             TimeoutSnapshot::Ref(_) => write!(f, "Ref Timeout"),
             TimeoutSnapshot::PenaltyShot(_) => write!(f, "PenaltyShot"),
         }
+    }
+}
+
+// TODO: Replace once https://github.com/rust-lang/rust/issues/87517 stabilizes
+impl core::default::Default for TimeoutSnapshot {
+    fn default() -> Self {
+        Self::None
     }
 }
 

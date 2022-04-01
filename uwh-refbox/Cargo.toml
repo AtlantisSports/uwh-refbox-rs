@@ -4,17 +4,20 @@ version = "0.1.0"
 authors = ["Tristan Debrunner <tpwd@me.com>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = []
+oldui = ["gdk", "gio", "glib", "gtk"]
 
 [dependencies]
 clap = "2.33.0"
 embedded-graphics = "0.7.1"
 embedded-graphics-simulator = "0.3.0"
+eframe = "0.17.0"
 env_logger = "0.6.1"
-gdk = "0.12.0"
-gio = "0.8.0"
-glib = "0.9.1"
-gtk = "0.8.0"
+gdk = { version = "0.12.0", optional = true }
+gio = { version = "0.8.0", optional = true }
+glib = { version = "0.9.1", optional = true }
+gtk = { version = "0.8.0", optional = true }
 log = "0.4.6"
 thiserror = "1.0.11"
 toml = "0.5"

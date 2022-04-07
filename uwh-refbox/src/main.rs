@@ -5,6 +5,7 @@ use clap::{
 };
 use embedded_graphics::{pixelcolor::Rgb888, prelude::*};
 use embedded_graphics_simulator::{OutputSettingsBuilder, SimulatorDisplay, Window};
+use iced::{Application, Settings};
 use log::*;
 use std::{
     fs::{File, OpenOptions},
@@ -20,6 +21,8 @@ mod old_main;
 
 #[cfg(not(feature = "oldui"))]
 mod app;
+#[cfg(not(feature = "oldui"))]
+mod style;
 
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // This allows the use of error!(), warn!(), info!(), etc.
@@ -134,11 +137,17 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     old_main::old_main(config)?;
 
     #[cfg(not(feature = "oldui"))]
-    let options = eframe::NativeOptions::default();
-    #[cfg(not(feature = "oldui"))]
-    info!("Starting UI");
-    #[cfg(not(feature = "oldui"))]
-    eframe::run_native(Box::new(app::RefBoxApp::new(config.game)), options);
+    {
+        let mut settings = Settings::with_flags(config.game);
+        settings.window.size = (
+            config.hardware.screen_x as u32,
+            config.hardware.screen_y as u32,
+        );
+        settings.window.resizable = false;
+        settings.default_text_size = crate::style::NORMAL_TEXT;
+        info!("Starting UI");
+        app::RefBoxApp::run(settings)
+    }?;
 
     Ok(())
 }

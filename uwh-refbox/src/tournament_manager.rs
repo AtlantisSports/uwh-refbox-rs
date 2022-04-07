@@ -1,8 +1,11 @@
+#[cfg(not(feature = "oldui"))]
+use async_std::channel::Sender;
 use log::*;
+#[cfg(feature = "oldui")]
+use std::sync::mpsc::Sender;
 use std::{
     cmp::{max, Ordering},
     convert::TryInto,
-    sync::mpsc::Sender,
     time::{Duration, Instant},
 };
 use thiserror::Error;
@@ -781,6 +784,9 @@ impl TournamentManager {
 
     fn send_clock_running(&self, running: bool) {
         for sender in &self.start_stop_senders {
+            #[cfg(not(feature = "oldui"))]
+            sender.try_send(running).unwrap();
+            #[cfg(feature = "oldui")]
             sender.send(running).unwrap();
         }
     }
@@ -857,6 +863,24 @@ impl TournamentManager {
         }
     }
 
+    pub fn set_timeout_clock_time(&mut self, clock_time: Duration) -> Result<()> {
+        if !self.clock_is_running() {
+            let new_cs = ClockState::Stopped { clock_time };
+            match self.timeout_state {
+                TimeoutState::Black(ref mut cs)
+                | TimeoutState::White(ref mut cs)
+                | TimeoutState::Ref(ref mut cs)
+                | TimeoutState::PenaltyShot(ref mut cs) => *cs = new_cs,
+                TimeoutState::None => {
+                    return Err(TournamentManagerError::NotInTimeout);
+                }
+            };
+            Ok(())
+        } else {
+            Err(TournamentManagerError::ClockIsRunning)
+        }
+    }
+
     #[cfg(test)]
     pub(super) fn set_period_and_game_clock_time(
         &mut self,
@@ -911,16 +935,15 @@ impl TournamentManager {
         self.clock_state.clock_time(now)
     }
 
-    /// Returns `None` if the clock time would be negative, if `now` is before the start
-    /// of the timeout, or if there is no timeout
-    #[cfg(test)]
-    pub fn timeout_time(&self, now: Instant) -> Option<Duration> {
-        match &self.timeout_state {
+    /// Returns `None` if there is no timeout, if the clock time would be negative, or if `now` is
+    /// before the start of the current timeout
+    pub fn timeout_clock_time(&self, now: Instant) -> Option<Duration> {
+        match self.timeout_state {
             TimeoutState::None => None,
-            TimeoutState::Black(cs)
-            | TimeoutState::White(cs)
-            | TimeoutState::Ref(cs)
-            | TimeoutState::PenaltyShot(cs) => cs.clock_time(now),
+            TimeoutState::Black(ref cs)
+            | TimeoutState::White(ref cs)
+            | TimeoutState::Ref(ref cs)
+            | TimeoutState::PenaltyShot(ref cs) => cs.clock_time(now),
         }
     }
 
@@ -950,6 +973,7 @@ impl TournamentManager {
         })
     }
 
+    #[cfg(feature = "oldui")]
     pub fn nanos_to_update(&self, now: Instant) -> Option<u32> {
         match (&self.timeout_state, self.current_period) {
             // cases where the clock is counting up
@@ -965,6 +989,28 @@ impl TournamentManager {
                 cs.clock_time(now).map(|ct| ct.subsec_nanos())
             }
             (TimeoutState::None, _) => self.clock_state.clock_time(now).map(|ct| ct.subsec_nanos()),
+        }
+    }
+
+    #[cfg(not(feature = "oldui"))]
+    pub fn next_update_time(&self, now: Instant) -> Option<Instant> {
+        match (&self.timeout_state, self.current_period) {
+            // cases where the clock is counting up
+            (TimeoutState::Ref(cs), _) | (TimeoutState::PenaltyShot(cs), _) => cs
+                .clock_time(now)
+                .map(|ct| now + Duration::from_nanos(1_000_000_000 - ct.subsec_nanos() as u64)),
+            (TimeoutState::None, GamePeriod::SuddenDeath) => self
+                .clock_state
+                .clock_time(now)
+                .map(|ct| now + Duration::from_nanos(1_000_000_000 - ct.subsec_nanos() as u64)),
+            // cases where the clock is counting down
+            (TimeoutState::Black(cs), _) | (TimeoutState::White(cs), _) => cs
+                .clock_time(now)
+                .map(|ct| now + Duration::from_nanos(ct.subsec_nanos() as u64)),
+            (TimeoutState::None, _) => self
+                .clock_state
+                .clock_time(now)
+                .map(|ct| now + Duration::from_nanos(ct.subsec_nanos() as u64)),
         }
     }
 }
@@ -1259,15 +1305,15 @@ mod test {
 
         assert_eq!(tm.clock_is_running(), false);
         assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
-        assert_eq!(tm.timeout_time(start), Some(Duration::from_secs(5)));
+        assert_eq!(tm.timeout_clock_time(start), Some(Duration::from_secs(5)));
         tm.start_clock(start);
         assert_eq!(tm.clock_is_running(), true);
         assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
-        assert_eq!(tm.timeout_time(start), Some(Duration::from_secs(5)));
+        assert_eq!(tm.timeout_clock_time(start), Some(Duration::from_secs(5)));
         tm.stop_clock(stop).unwrap();
         assert_eq!(tm.clock_is_running(), false);
         assert_eq!(tm.game_clock_time(stop), Some(Duration::from_secs(18)));
-        assert_eq!(tm.timeout_time(stop), Some(Duration::from_secs(3)));
+        assert_eq!(tm.timeout_clock_time(stop), Some(Duration::from_secs(3)));
 
         tm.set_timeout_state(TimeoutState::White(ClockState::Stopped {
             clock_time: Duration::from_secs(5),
@@ -1275,15 +1321,15 @@ mod test {
 
         assert_eq!(tm.clock_is_running(), false);
         assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
-        assert_eq!(tm.timeout_time(start), Some(Duration::from_secs(5)));
+        assert_eq!(tm.timeout_clock_time(start), Some(Duration::from_secs(5)));
         tm.start_clock(start);
         assert_eq!(tm.clock_is_running(), true);
         assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
-        assert_eq!(tm.timeout_time(start), Some(Duration::from_secs(5)));
+        assert_eq!(tm.timeout_clock_time(start), Some(Duration::from_secs(5)));
         tm.stop_clock(stop).unwrap();
         assert_eq!(tm.clock_is_running(), false);
         assert_eq!(tm.game_clock_time(stop), Some(Duration::from_secs(18)));
-        assert_eq!(tm.timeout_time(stop), Some(Duration::from_secs(3)));
+        assert_eq!(tm.timeout_clock_time(stop), Some(Duration::from_secs(3)));
 
         tm.set_timeout_state(TimeoutState::Ref(ClockState::Stopped {
             clock_time: Duration::from_secs(5),
@@ -1291,15 +1337,15 @@ mod test {
 
         assert_eq!(tm.clock_is_running(), false);
         assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
-        assert_eq!(tm.timeout_time(start), Some(Duration::from_secs(5)));
+        assert_eq!(tm.timeout_clock_time(start), Some(Duration::from_secs(5)));
         tm.start_clock(start);
         assert_eq!(tm.clock_is_running(), true);
         assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
-        assert_eq!(tm.timeout_time(start), Some(Duration::from_secs(5)));
+        assert_eq!(tm.timeout_clock_time(start), Some(Duration::from_secs(5)));
         tm.stop_clock(stop).unwrap();
         assert_eq!(tm.clock_is_running(), false);
         assert_eq!(tm.game_clock_time(stop), Some(Duration::from_secs(18)));
-        assert_eq!(tm.timeout_time(stop), Some(Duration::from_secs(7)));
+        assert_eq!(tm.timeout_clock_time(stop), Some(Duration::from_secs(7)));
 
         tm.set_timeout_state(TimeoutState::PenaltyShot(ClockState::Stopped {
             clock_time: Duration::from_secs(5),
@@ -1307,15 +1353,15 @@ mod test {
 
         assert_eq!(tm.clock_is_running(), false);
         assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
-        assert_eq!(tm.timeout_time(start), Some(Duration::from_secs(5)));
+        assert_eq!(tm.timeout_clock_time(start), Some(Duration::from_secs(5)));
         tm.start_clock(start);
         assert_eq!(tm.clock_is_running(), true);
         assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
-        assert_eq!(tm.timeout_time(start), Some(Duration::from_secs(5)));
+        assert_eq!(tm.timeout_clock_time(start), Some(Duration::from_secs(5)));
         tm.stop_clock(stop).unwrap();
         assert_eq!(tm.clock_is_running(), false);
         assert_eq!(tm.game_clock_time(stop), Some(Duration::from_secs(18)));
-        assert_eq!(tm.timeout_time(stop), Some(Duration::from_secs(7)));
+        assert_eq!(tm.timeout_clock_time(stop), Some(Duration::from_secs(7)));
     }
 
     #[test]
@@ -1523,7 +1569,7 @@ mod test {
             })
         );
         assert_eq!(tm.game_clock_time(t_o_start), Some(Duration::from_secs(28)));
-        assert_eq!(tm.timeout_time(mid_t_o), Some(Duration::from_secs(7)));
+        assert_eq!(tm.timeout_clock_time(mid_t_o), Some(Duration::from_secs(7)));
         assert_eq!(tm.game_clock_time(mid_t_o), Some(Duration::from_secs(28)));
         tm.update(mid_t_o).unwrap();
         assert_eq!(
@@ -1533,11 +1579,11 @@ mod test {
                 time_remaining_at_start: Duration::from_secs(10)
             })
         );
-        assert_eq!(tm.timeout_time(t_o_end), Some(Duration::from_secs(0)));
-        assert_eq!(tm.timeout_time(after_t_o), None);
+        assert_eq!(tm.timeout_clock_time(t_o_end), Some(Duration::from_secs(0)));
+        assert_eq!(tm.timeout_clock_time(after_t_o), None);
         tm.update(after_t_o).unwrap();
         assert_eq!(tm.get_timeout_state(), TimeoutState::None);
-        assert_eq!(tm.timeout_time(after_t_o), None);
+        assert_eq!(tm.timeout_clock_time(after_t_o), None);
         assert_eq!(tm.game_clock_time(after_t_o), Some(Duration::from_secs(26)));
         assert_eq!(
             tm.start_b_timeout(t_o_start),
@@ -1557,7 +1603,7 @@ mod test {
             })
         );
         assert_eq!(tm.game_clock_time(t_o_start), Some(Duration::from_secs(28)));
-        assert_eq!(tm.timeout_time(mid_t_o), Some(Duration::from_secs(7)));
+        assert_eq!(tm.timeout_clock_time(mid_t_o), Some(Duration::from_secs(7)));
         assert_eq!(tm.game_clock_time(mid_t_o), Some(Duration::from_secs(28)));
         tm.update(mid_t_o).unwrap();
         assert_eq!(
@@ -1567,11 +1613,11 @@ mod test {
                 time_remaining_at_start: Duration::from_secs(10)
             })
         );
-        assert_eq!(tm.timeout_time(t_o_end), Some(Duration::from_secs(0)));
-        assert_eq!(tm.timeout_time(after_t_o), None);
+        assert_eq!(tm.timeout_clock_time(t_o_end), Some(Duration::from_secs(0)));
+        assert_eq!(tm.timeout_clock_time(after_t_o), None);
         tm.update(after_t_o).unwrap();
         assert_eq!(tm.get_timeout_state(), TimeoutState::None);
-        assert_eq!(tm.timeout_time(after_t_o), None);
+        assert_eq!(tm.timeout_clock_time(after_t_o), None);
         assert_eq!(tm.game_clock_time(after_t_o), Some(Duration::from_secs(26)));
         assert_eq!(
             tm.start_w_timeout(t_o_start),
@@ -1591,7 +1637,7 @@ mod test {
             })
         );
         assert_eq!(tm.game_clock_time(t_o_start), Some(Duration::from_secs(28)));
-        assert_eq!(tm.timeout_time(mid_t_o), Some(Duration::from_secs(3)));
+        assert_eq!(tm.timeout_clock_time(mid_t_o), Some(Duration::from_secs(3)));
         assert_eq!(tm.game_clock_time(mid_t_o), Some(Duration::from_secs(28)));
         tm.update(mid_t_o).unwrap();
         assert_eq!(
@@ -1601,7 +1647,10 @@ mod test {
                 time_at_start: Duration::from_secs(0)
             })
         );
-        assert_eq!(tm.timeout_time(t_o_end), Some(Duration::from_secs(10)));
+        assert_eq!(
+            tm.timeout_clock_time(t_o_end),
+            Some(Duration::from_secs(10))
+        );
 
         tm.stop_clock(after_t_o).unwrap();
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(30));
@@ -1616,7 +1665,7 @@ mod test {
             })
         );
         assert_eq!(tm.game_clock_time(t_o_start), Some(Duration::from_secs(28)));
-        assert_eq!(tm.timeout_time(mid_t_o), Some(Duration::from_secs(3)));
+        assert_eq!(tm.timeout_clock_time(mid_t_o), Some(Duration::from_secs(3)));
         assert_eq!(tm.game_clock_time(mid_t_o), Some(Duration::from_secs(28)));
         tm.update(mid_t_o).unwrap();
         assert_eq!(
@@ -1626,7 +1675,10 @@ mod test {
                 time_at_start: Duration::from_secs(0)
             })
         );
-        assert_eq!(tm.timeout_time(t_o_end), Some(Duration::from_secs(10)));
+        assert_eq!(
+            tm.timeout_clock_time(t_o_end),
+            Some(Duration::from_secs(10))
+        );
     }
 
     #[test]

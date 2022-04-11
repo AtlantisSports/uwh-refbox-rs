@@ -856,6 +856,53 @@ impl TournamentManager {
         Ok(())
     }
 
+    pub fn start_play_now(&mut self, now: Instant) -> Result<()> {
+        if self.timeout_state != TimeoutState::None {
+            return Err(TournamentManagerError::AlreadyInTimeout(
+                self.timeout_state.as_snapshot(Instant::now()),
+            ));
+        }
+
+        let was_running = self.clock_is_running();
+
+        match self.current_period {
+            GamePeriod::FirstHalf
+            | GamePeriod::SecondHalf
+            | GamePeriod::OvertimeFirstHalf
+            | GamePeriod::OvertimeSecondHalf
+            | GamePeriod::SuddenDeath => return Err(TournamentManagerError::AlreadyInPlayPeriod),
+            GamePeriod::BetweenGames
+            | GamePeriod::HalfTime
+            | GamePeriod::PreOvertime
+            | GamePeriod::OvertimeHalfTime
+            | GamePeriod::PreSuddenDeath => {
+                self.current_period = self.current_period.next_period().unwrap();
+                self.clock_state = match self.current_period {
+                    p @ GamePeriod::FirstHalf
+                    | p @ GamePeriod::SecondHalf
+                    | p @ GamePeriod::OvertimeFirstHalf
+                    | p @ GamePeriod::OvertimeSecondHalf => ClockState::CountingDown {
+                        start_time: now,
+                        time_remaining_at_start: p.duration(&self.config).unwrap(),
+                    },
+                    GamePeriod::SuddenDeath => ClockState::CountingUp {
+                        start_time: now,
+                        time_at_start: Duration::ZERO,
+                    },
+                    _ => unreachable!(),
+                }
+            }
+        }
+
+        info!("{} manually started by refs", self.current_period);
+
+        if !was_running {
+            self.send_clock_running(true);
+        }
+
+        Ok(())
+    }
+
     pub fn set_game_clock_time(&mut self, clock_time: Duration) -> Result<()> {
         if !self.clock_is_running() {
             self.clock_state = ClockState::Stopped { clock_time };
@@ -1239,6 +1286,8 @@ pub enum TournamentManagerError {
     NeedsUpdate,
     #[error("The `now` value passed is not valid")]
     InvalidNowValue,
+    #[error("Can't 'start now' when in a play period")]
+    AlreadyInPlayPeriod,
     #[error("No {0} penalty exists at the index {1}")]
     #[allow(dead_code)]
     InvalidIndex(Color, usize),
@@ -1937,6 +1986,86 @@ mod test {
                 time_at_start: ten_secs,
             })
         );
+    }
+
+    #[test]
+    fn test_start_play_now() {
+        let config = GameConfig {
+            half_play_duration: 900,
+            has_overtime: true,
+            ot_half_play_duration: 300,
+            sudden_death_allowed: true,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let mut now = Instant::now();
+
+        let fifteen_secs = Duration::from_secs(15);
+
+        let to_b = TimeoutSnapshot::Black(0);
+        let to_w = TimeoutSnapshot::White(0);
+        let to_r = TimeoutSnapshot::Ref(0);
+        let to_ps = TimeoutSnapshot::PenaltyShot(0);
+
+        tm.set_timeout_state(TimeoutState::Black(ClockState::Stopped {
+            clock_time: Duration::from_secs(0),
+        }));
+        assert_eq!(tm.start_play_now(now), Err(TMErr::AlreadyInTimeout(to_b)));
+
+        tm.set_timeout_state(TimeoutState::White(ClockState::Stopped {
+            clock_time: Duration::from_secs(0),
+        }));
+        assert_eq!(tm.start_play_now(now), Err(TMErr::AlreadyInTimeout(to_w)));
+
+        tm.set_timeout_state(TimeoutState::Ref(ClockState::Stopped {
+            clock_time: Duration::from_secs(0),
+        }));
+        assert_eq!(tm.start_play_now(now), Err(TMErr::AlreadyInTimeout(to_r)));
+
+        tm.set_timeout_state(TimeoutState::PenaltyShot(ClockState::Stopped {
+            clock_time: Duration::from_secs(0),
+        }));
+        assert_eq!(tm.start_play_now(now), Err(TMErr::AlreadyInTimeout(to_ps)));
+
+        tm.set_timeout_state(TimeoutState::None);
+        assert_eq!(tm.current_period(), GamePeriod::BetweenGames);
+        assert_eq!(tm.start_play_now(now), Ok(()));
+        assert_eq!(tm.current_period(), GamePeriod::FirstHalf);
+        assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(900)));
+        assert_eq!(tm.start_play_now(now), Err(TMErr::AlreadyInPlayPeriod));
+
+        now += Duration::from_secs(10);
+        tm.stop_game_clock(now).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::HalfTime, fifteen_secs);
+        assert_eq!(tm.start_play_now(now), Ok(()));
+        assert_eq!(tm.current_period(), GamePeriod::SecondHalf);
+        assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(900)));
+        assert_eq!(tm.start_play_now(now), Err(TMErr::AlreadyInPlayPeriod));
+
+        now += Duration::from_secs(10);
+        tm.stop_game_clock(now).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::PreOvertime, fifteen_secs);
+        assert_eq!(tm.start_play_now(now), Ok(()));
+        assert_eq!(tm.current_period(), GamePeriod::OvertimeFirstHalf);
+        assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(300)));
+        assert_eq!(tm.start_play_now(now), Err(TMErr::AlreadyInPlayPeriod));
+
+        now += Duration::from_secs(10);
+        tm.stop_game_clock(now).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::OvertimeHalfTime, fifteen_secs);
+        assert_eq!(tm.start_play_now(now), Ok(()));
+        assert_eq!(tm.current_period(), GamePeriod::OvertimeSecondHalf);
+        assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(300)));
+        assert_eq!(tm.start_play_now(now), Err(TMErr::AlreadyInPlayPeriod));
+
+        now += Duration::from_secs(10);
+        tm.stop_game_clock(now).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::PreSuddenDeath, fifteen_secs);
+        assert_eq!(tm.start_play_now(now), Ok(()));
+        assert_eq!(tm.current_period(), GamePeriod::SuddenDeath);
+        assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(0)));
+        assert_eq!(tm.start_play_now(now), Err(TMErr::AlreadyInPlayPeriod));
     }
 
     struct TransitionTestSetup {

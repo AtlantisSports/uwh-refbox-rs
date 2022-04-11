@@ -62,6 +62,7 @@ pub enum Message {
     IncreaseTime { secs: u64, timeout: bool },
     DecreaseTime { secs: u64, timeout: bool },
     TimeEditComplete { canceled: bool },
+    StartPlayNow,
     EditScores,
     ChangeScore { color: GameColor, increase: bool },
     ScoreEditComplete { canceled: bool },
@@ -200,6 +201,12 @@ impl Application for RefBoxApp {
                 } else {
                     unreachable!();
                 }
+            }
+            Message::StartPlayNow => {
+                let mut tm = self.tm.lock().unwrap();
+                let now = Instant::now();
+                tm.start_play_now(now).unwrap();
+                self.snapshot = tm.generate_snapshot(now).unwrap();
             }
             Message::EditScores => {
                 let tm = self.tm.lock().unwrap();
@@ -519,7 +526,7 @@ fn build_main_view<'a>(
                     center_col = center_col.push(
                         make_button(&mut states.start_now, "START NOW")
                             .style(style::Button::Green)
-                            .on_press(Message::NoAction),
+                            .on_press(Message::StartPlayNow),
                     )
                 }
                 GamePeriod::FirstHalf

@@ -79,11 +79,13 @@ impl TournamentManager {
         self.game_start_time
     }
 
-    pub fn add_b_score(&mut self, _player_num: u8, now: Instant) {
+    pub fn add_b_score(&mut self, player_num: u8, now: Instant) {
+        info!("Score by Black player #{player_num}");
         self.set_scores(self.b_score + 1, self.w_score, now);
     }
 
-    pub fn add_w_score(&mut self, _player_num: u8, now: Instant) {
+    pub fn add_w_score(&mut self, player_num: u8, now: Instant) {
+        info!("Score by White player #{player_num}");
         self.set_scores(self.b_score, self.w_score + 1, now);
     }
 
@@ -115,7 +117,7 @@ impl TournamentManager {
                     if self.w_timeouts_used < self.config.team_timeouts_per_half {
                         Ok(())
                     } else {
-                        Err(TournamentManagerError::TooManyTeamTimeouts("white"))
+                        Err(TournamentManagerError::TooManyTeamTimeouts(Color::White))
                     }
                 }
                 _ => Err(TournamentManagerError::WrongGamePeriod(
@@ -138,7 +140,7 @@ impl TournamentManager {
                     if self.b_timeouts_used < self.config.team_timeouts_per_half {
                         Ok(())
                     } else {
-                        Err(TournamentManagerError::TooManyTeamTimeouts("black"))
+                        Err(TournamentManagerError::TooManyTeamTimeouts(Color::Black))
                     }
                 }
                 _ => Err(TournamentManagerError::WrongGamePeriod(
@@ -186,7 +188,7 @@ impl TournamentManager {
             if self.w_timeouts_used < self.config.team_timeouts_per_half {
                 Ok(())
             } else {
-                Err(TournamentManagerError::TooManyTeamTimeouts("white"))
+                Err(TournamentManagerError::TooManyTeamTimeouts(Color::White))
             }
         } else {
             Err(TournamentManagerError::NotInBlackTimeout)
@@ -199,7 +201,7 @@ impl TournamentManager {
             if self.b_timeouts_used < self.config.team_timeouts_per_half {
                 Ok(())
             } else {
-                Err(TournamentManagerError::TooManyTeamTimeouts("black"))
+                Err(TournamentManagerError::TooManyTeamTimeouts(Color::Black))
             }
         } else {
             Err(TournamentManagerError::NotInWhiteTimeout)
@@ -1220,7 +1222,7 @@ pub enum TournamentManagerError {
     #[error("Can't start a {0} during {1}")]
     WrongGamePeriod(TimeoutSnapshot, GamePeriod),
     #[error("The {0} team has no more timeouts to use")]
-    TooManyTeamTimeouts(&'static str),
+    TooManyTeamTimeouts(Color),
     #[error("Already in a {0}")]
     AlreadyInTimeout(TimeoutSnapshot),
     #[error("Can only switch to Penalty Shot from Ref Timeout")]
@@ -1233,7 +1235,7 @@ pub enum TournamentManagerError {
     NotInWhiteTimeout,
     #[error("Need to be in a timeout to end it")]
     NotInTimeout,
-    #[error("update() needs to be called before this action can be performed")]
+    #[error("`update()` needs to be called before this action can be performed")]
     NeedsUpdate,
     #[error("The `now` value passed is not valid")]
     InvalidNowValue,
@@ -1493,11 +1495,11 @@ mod test {
         tm.set_timeouts_used(1, 1);
         assert_eq!(
             tm.can_start_b_timeout(),
-            Err(TournamentManagerError::TooManyTeamTimeouts("black"))
+            Err(TournamentManagerError::TooManyTeamTimeouts(Color::Black))
         );
         assert_eq!(
             tm.can_start_w_timeout(),
-            Err(TournamentManagerError::TooManyTeamTimeouts("white"))
+            Err(TournamentManagerError::TooManyTeamTimeouts(Color::White))
         );
         assert_eq!(tm.can_start_ref_timeout(), Ok(()));
         assert_eq!(tm.can_start_penalty_shot(), Ok(()));
@@ -1587,7 +1589,7 @@ mod test {
         assert_eq!(tm.game_clock_time(after_t_o), Some(Duration::from_secs(26)));
         assert_eq!(
             tm.start_b_timeout(t_o_start),
-            Err(TournamentManagerError::TooManyTeamTimeouts("black"))
+            Err(TournamentManagerError::TooManyTeamTimeouts(Color::Black))
         );
 
         tm.stop_clock(after_t_o).unwrap();
@@ -1621,7 +1623,7 @@ mod test {
         assert_eq!(tm.game_clock_time(after_t_o), Some(Duration::from_secs(26)));
         assert_eq!(
             tm.start_w_timeout(t_o_start),
-            Err(TournamentManagerError::TooManyTeamTimeouts("white"))
+            Err(TournamentManagerError::TooManyTeamTimeouts(Color::White))
         );
 
         tm.stop_clock(after_t_o).unwrap();
@@ -1806,7 +1808,7 @@ mod test {
         }));
         assert_eq!(
             tm.can_switch_to_w_timeout(),
-            Err(TMErr::TooManyTeamTimeouts("white"))
+            Err(TMErr::TooManyTeamTimeouts(Color::White))
         );
         tm.set_timeout_state(TimeoutState::White(ClockState::CountingDown {
             start_time: start,
@@ -1814,7 +1816,7 @@ mod test {
         }));
         assert_eq!(
             tm.can_switch_to_b_timeout(),
-            Err(TMErr::TooManyTeamTimeouts("black"))
+            Err(TMErr::TooManyTeamTimeouts(Color::Black))
         );
 
         tm.set_timeouts_used(0, 0);

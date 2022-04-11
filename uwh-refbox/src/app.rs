@@ -28,7 +28,7 @@ use std::{
 };
 use uwh_common::{
     config::Game,
-    game_snapshot::{GamePeriod, GameSnapshot, TimeoutSnapshot},
+    game_snapshot::{Color as GameColor, GamePeriod, GameSnapshot, TimeoutSnapshot},
 };
 use uwh_matrix_drawing::secs_to_time_string;
 
@@ -39,12 +39,20 @@ pub struct RefBoxApp {
     time_updater: TimeUpdater,
     states: States,
     app_state: AppState,
+    last_app_state: AppState,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum AppState {
     MainPage,
     TimeEdit(bool, Duration, Option<Duration>),
+    ScoreEdit { black: u8, white: u8 },
+    KeypadPage(KeypadPage, u8),
+}
+
+#[derive(Debug, Clone)]
+pub enum KeypadPage {
+    AddScore(GameColor),
 }
 
 #[derive(Debug, Clone)]
@@ -54,12 +62,34 @@ pub enum Message {
     IncreaseTime { secs: u64, timeout: bool },
     DecreaseTime { secs: u64, timeout: bool },
     TimeEditComplete { canceled: bool },
+    EditScores,
+    ChangeScore { color: GameColor, increase: bool },
+    ScoreEditComplete { canceled: bool },
+    KeypadPage(KeypadPage),
+    KeypadButtonPress(KeypadButton),
+    ChangeColor(GameColor),
+    AddScoreComplete { canceled: bool },
     BlackTimeout(bool),
     WhiteTimeout(bool),
     RefTimeout(bool),
     PenaltyShot(bool),
     EndTimeout,
     NoAction, // TODO: Remove once UI is functional
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum KeypadButton {
+    Zero,
+    One,
+    Two,
+    Three,
+    Four,
+    Five,
+    Six,
+    Seven,
+    Eight,
+    Nine,
+    Delete,
 }
 
 impl Application for RefBoxApp {
@@ -88,6 +118,7 @@ impl Application for RefBoxApp {
                 snapshot,
                 states: Default::default(),
                 app_state: AppState::MainPage,
+                last_app_state: AppState::MainPage,
             },
             Command::none(),
         )
@@ -110,6 +141,7 @@ impl Application for RefBoxApp {
                 let mut tm = self.tm.lock().unwrap();
                 let was_running = tm.clock_is_running();
                 tm.stop_clock(now).unwrap();
+                self.last_app_state = self.app_state.clone();
                 self.app_state = AppState::TimeEdit(
                     was_running,
                     tm.game_clock_time(now).unwrap(),
@@ -163,11 +195,115 @@ impl Application for RefBoxApp {
                     if was_running {
                         tm.start_clock(Instant::now());
                     }
-                    self.app_state = AppState::MainPage;
+                    self.app_state = self.last_app_state.clone();
                     trace!("AppState changed to {:?}", self.app_state);
                 } else {
                     unreachable!();
                 }
+            }
+            Message::EditScores => {
+                let tm = self.tm.lock().unwrap();
+                self.app_state = AppState::ScoreEdit {
+                    black: tm.get_b_score(),
+                    white: tm.get_w_score(),
+                };
+                trace!("AppState changed to {:?}", self.app_state);
+            }
+            Message::ChangeScore { color, increase } => {
+                if let AppState::ScoreEdit {
+                    ref mut black,
+                    ref mut white,
+                } = self.app_state
+                {
+                    match color {
+                        GameColor::Black => {
+                            if increase {
+                                *black = black.saturating_add(1);
+                            } else {
+                                *black = black.saturating_sub(1);
+                            }
+                        }
+                        GameColor::White => {
+                            if increase {
+                                *white = white.saturating_add(1);
+                            } else {
+                                *white = white.saturating_sub(1);
+                            }
+                        }
+                    }
+                } else {
+                    unreachable!()
+                }
+                trace!("AppState changed to {:?}", self.app_state);
+            }
+            Message::ScoreEditComplete { canceled } => {
+                let mut tm = self.tm.lock().unwrap();
+                if let AppState::ScoreEdit { black, white } = self.app_state {
+                    if !canceled {
+                        tm.set_scores(black, white, Instant::now());
+                    }
+                } else {
+                    unreachable!()
+                }
+                self.snapshot = tm.generate_snapshot(Instant::now()).unwrap();
+                self.app_state = AppState::MainPage;
+                trace!("AppState changed to {:?}", self.app_state);
+            }
+            Message::KeypadPage(page) => {
+                self.app_state = AppState::KeypadPage(page, 0);
+                trace!("AppState changed to {:?}", self.app_state);
+            }
+            Message::KeypadButtonPress(key) => {
+                if let AppState::KeypadPage(_, ref mut val) = self.app_state {
+                    let new_val = match key {
+                        KeypadButton::Zero => val.saturating_mul(10),
+                        KeypadButton::One => val.saturating_mul(10).saturating_add(1),
+                        KeypadButton::Two => val.saturating_mul(10).saturating_add(2),
+                        KeypadButton::Three => val.saturating_mul(10).saturating_add(3),
+                        KeypadButton::Four => val.saturating_mul(10).saturating_add(4),
+                        KeypadButton::Five => val.saturating_mul(10).saturating_add(5),
+                        KeypadButton::Six => val.saturating_mul(10).saturating_add(6),
+                        KeypadButton::Seven => val.saturating_mul(10).saturating_add(7),
+                        KeypadButton::Eight => val.saturating_mul(10).saturating_add(8),
+                        KeypadButton::Nine => val.saturating_mul(10).saturating_add(9),
+                        KeypadButton::Delete => val.saturating_div(10),
+                    };
+                    if new_val < 100 {
+                        *val = new_val;
+                    }
+                } else {
+                    unreachable!()
+                }
+                trace!("AppState changed to {:?}", self.app_state);
+            }
+            Message::ChangeColor(new_color) => {
+                if let AppState::KeypadPage(KeypadPage::AddScore(ref mut color), _) = self.app_state
+                {
+                    *color = new_color;
+                } else {
+                    unreachable!()
+                }
+                trace!("AppState changed to {:?}", self.app_state);
+            }
+            Message::AddScoreComplete { canceled } => {
+                if !canceled {
+                    if let AppState::KeypadPage(KeypadPage::AddScore(color), player) =
+                        self.app_state
+                    {
+                        match color {
+                            GameColor::Black => {
+                                self.tm.lock().unwrap().add_b_score(player, Instant::now())
+                            }
+                            GameColor::White => {
+                                self.tm.lock().unwrap().add_w_score(player, Instant::now())
+                            }
+                        };
+                    } else {
+                        unreachable!()
+                    }
+                }
+                self.app_state = AppState::MainPage;
+                trace!("AppState changed to {:?}", self.app_state);
             }
             Message::BlackTimeout(switch) => {
                 let mut tm = self.tm.lock().unwrap();
@@ -247,6 +383,18 @@ impl Application for RefBoxApp {
                     &mut self.states.time_edit_view,
                     time,
                     timeout_time,
+                ),
+                AppState::ScoreEdit { black, white } => build_score_edit_view(
+                    &self.snapshot,
+                    &mut self.states.score_edit_view,
+                    black,
+                    white,
+                ),
+                AppState::KeypadPage(ref page, player_num) => build_keypad_page(
+                    &self.snapshot,
+                    &mut self.states.keypad_page,
+                    page,
+                    player_num,
                 ),
             })
             .push(build_timeout_ribbon(
@@ -409,12 +557,12 @@ fn build_main_view<'a>(
             .padding(PADDING)
             .width(Length::Fill)
             .style(style::Button::Black)
-            .on_press(Message::NoAction),
+            .on_press(Message::EditScores),
         )
         .push(
             make_button(&mut states.black_new_score, "SCORE\nBLACK")
                 .style(style::Button::Black)
-                .on_press(Message::NoAction),
+                .on_press(Message::KeypadPage(KeypadPage::AddScore(GameColor::Black))),
         )
         .push(
             make_button(&mut states.black_penalties, "Penalties")
@@ -440,12 +588,12 @@ fn build_main_view<'a>(
             .padding(PADDING)
             .width(Length::Fill)
             .style(style::Button::White)
-            .on_press(Message::NoAction),
+            .on_press(Message::EditScores),
         )
         .push(
             make_button(&mut states.white_new_score, "SCORE\nWHITE")
                 .style(style::Button::White)
-                .on_press(Message::NoAction),
+                .on_press(Message::KeypadPage(KeypadPage::AddScore(GameColor::White))),
         )
         .push(
             make_button(&mut states.white_penalties, "Penalties")
@@ -623,6 +771,313 @@ fn build_time_edit_view<'a>(
                         .style(style::Button::Green)
                         .width(Length::Fill)
                         .on_press(Message::TimeEditComplete { canceled: false }),
+                ),
+        )
+        .into()
+}
+
+fn build_score_edit_view<'a>(
+    snapshot: &GameSnapshot,
+    states: &'a mut ScoreEditViewStates,
+    black: u8,
+    white: u8,
+) -> Element<'a, Message> {
+    Column::new()
+        .spacing(SPACING)
+        .height(Length::Fill)
+        .push(make_game_time_button(snapshot, &mut states.game_time).on_press(Message::EditTime))
+        .push(Space::new(Length::Fill, Length::Fill))
+        .push(
+            Row::new()
+                .spacing(SPACING)
+                .push(Space::new(Length::Fill, Length::Shrink))
+                .push(
+                    Container::new(
+                        Row::new()
+                            .spacing(SPACING)
+                            .align_items(Align::Center)
+                            .push(
+                                Column::new()
+                                    .spacing(SPACING)
+                                    .push(
+                                        make_small_button(&mut states.b_up, "+", LARGE_TEXT)
+                                            .style(style::Button::Blue)
+                                            .on_press(Message::ChangeScore {
+                                                color: GameColor::Black,
+                                                increase: true,
+                                            }),
+                                    )
+                                    .push(
+                                        make_small_button(&mut states.b_down, "-", LARGE_TEXT)
+                                            .style(style::Button::Blue)
+                                            .on_press(Message::ChangeScore {
+                                                color: GameColor::Black,
+                                                increase: false,
+                                            }),
+                                    ),
+                            )
+                            .push(
+                                Column::new()
+                                    .spacing(SPACING)
+                                    .width(Length::Fill)
+                                    .align_items(Align::Center)
+                                    .push(Text::new("BLACK"))
+                                    .push(Text::new(black.to_string()).size(LARGE_TEXT)),
+                            ),
+                    )
+                    .padding(PADDING)
+                    .width(Length::FillPortion(2))
+                    .style(style::Container::Black),
+                )
+                .push(Space::new(Length::Fill, Length::Shrink))
+                .push(
+                    Container::new(
+                        Row::new()
+                            .spacing(SPACING)
+                            .align_items(Align::Center)
+                            .push(
+                                Column::new()
+                                    .spacing(SPACING)
+                                    .width(Length::Fill)
+                                    .align_items(Align::Center)
+                                    .push(Text::new("WHITE"))
+                                    .push(Text::new(white.to_string()).size(LARGE_TEXT)),
+                            )
+                            .push(
+                                Column::new()
+                                    .spacing(SPACING)
+                                    .push(
+                                        make_small_button(&mut states.w_up, "+", LARGE_TEXT)
+                                            .style(style::Button::Blue)
+                                            .on_press(Message::ChangeScore {
+                                                color: GameColor::White,
+                                                increase: true,
+                                            }),
+                                    )
+                                    .push(
+                                        make_small_button(&mut states.w_down, "-", LARGE_TEXT)
+                                            .style(style::Button::Blue)
+                                            .on_press(Message::ChangeScore {
+                                                color: GameColor::White,
+                                                increase: false,
+                                            }),
+                                    ),
+                            ),
+                    )
+                    .padding(PADDING)
+                    .width(Length::FillPortion(2))
+                    .style(style::Container::White),
+                )
+                .push(Space::new(Length::Fill, Length::Shrink)),
+        )
+        .push(Space::new(Length::Fill, Length::Fill))
+        .push(
+            Row::new()
+                .spacing(SPACING)
+                .push(
+                    make_button(&mut states.cancel, "CANCEL")
+                        .style(style::Button::Red)
+                        .width(Length::Fill)
+                        .on_press(Message::ScoreEditComplete { canceled: true }),
+                )
+                .push(Space::new(Length::Fill, Length::Shrink))
+                .push(
+                    make_button(&mut states.done, "DONE")
+                        .style(style::Button::Green)
+                        .width(Length::Fill)
+                        .on_press(Message::ScoreEditComplete { canceled: false }),
+                ),
+        )
+        .into()
+}
+
+fn build_keypad_page<'a>(
+    snapshot: &GameSnapshot,
+    states: &'a mut KeypadPageStates,
+    page: &KeypadPage,
+    player_num: u8,
+) -> Element<'a, Message> {
+    Column::new()
+        .spacing(SPACING)
+        .height(Length::Fill)
+        .push(make_game_time_button(snapshot, &mut states.game_time).on_press(Message::EditTime))
+        .push(
+            Row::new()
+                .spacing(SPACING)
+                .height(Length::Fill)
+                .push(
+                    Container::new(
+                        Column::new()
+                            .spacing(SPACING)
+                            .push(
+                                Row::new()
+                                    .spacing(SPACING)
+                                    .align_items(Align::Center)
+                                    .height(Length::Fill)
+                                    .width(Length::Units(3 * MIN_BUTTON_SIZE as u16 + 2 * SPACING))
+                                    .push(
+                                        Text::new("PLAYER NUMBER:")
+                                            .horizontal_alignment(HorizontalAlignment::Center)
+                                            .vertical_alignment(VerticalAlignment::Center),
+                                    )
+                                    .push(
+                                        Text::new(player_num.to_string())
+                                            .size(LARGE_TEXT)
+                                            .width(Length::Fill)
+                                            .horizontal_alignment(HorizontalAlignment::Right)
+                                            .vertical_alignment(VerticalAlignment::Center),
+                                    ),
+                            )
+                            .push(
+                                Row::new()
+                                    .spacing(SPACING)
+                                    .push(
+                                        make_small_button(&mut states.seven, "7", MEDIUM_TEXT)
+                                            .style(style::Button::Blue)
+                                            .on_press(Message::KeypadButtonPress(
+                                                KeypadButton::Seven,
+                                            )),
+                                    )
+                                    .push(
+                                        make_small_button(&mut states.eight, "8", MEDIUM_TEXT)
+                                            .style(style::Button::Blue)
+                                            .on_press(Message::KeypadButtonPress(
+                                                KeypadButton::Eight,
+                                            )),
+                                    )
+                                    .push(
+                                        make_small_button(&mut states.nine, "9", MEDIUM_TEXT)
+                                            .style(style::Button::Blue)
+                                            .on_press(Message::KeypadButtonPress(
+                                                KeypadButton::Nine,
+                                            )),
+                                    ),
+                            )
+                            .push(
+                                Row::new()
+                                    .spacing(SPACING)
+                                    .push(
+                                        make_small_button(&mut states.four, "4", MEDIUM_TEXT)
+                                            .style(style::Button::Blue)
+                                            .on_press(Message::KeypadButtonPress(
+                                                KeypadButton::Four,
+                                            )),
+                                    )
+                                    .push(
+                                        make_small_button(&mut states.five, "5", MEDIUM_TEXT)
+                                            .style(style::Button::Blue)
+                                            .on_press(Message::KeypadButtonPress(
+                                                KeypadButton::Five,
+                                            )),
+                                    )
+                                    .push(
+                                        make_small_button(&mut states.six, "6", MEDIUM_TEXT)
+                                            .style(style::Button::Blue)
+                                            .on_press(Message::KeypadButtonPress(
+                                                KeypadButton::Six,
+                                            )),
+                                    ),
+                            )
+                            .push(
+                                Row::new()
+                                    .spacing(SPACING)
+                                    .push(
+                                        make_small_button(&mut states.one, "1", MEDIUM_TEXT)
+                                            .style(style::Button::Blue)
+                                            .on_press(Message::KeypadButtonPress(
+                                                KeypadButton::One,
+                                            )),
+                                    )
+                                    .push(
+                                        make_small_button(&mut states.two, "2", MEDIUM_TEXT)
+                                            .style(style::Button::Blue)
+                                            .on_press(Message::KeypadButtonPress(
+                                                KeypadButton::Two,
+                                            )),
+                                    )
+                                    .push(
+                                        make_small_button(&mut states.three, "3", MEDIUM_TEXT)
+                                            .style(style::Button::Blue)
+                                            .on_press(Message::KeypadButtonPress(
+                                                KeypadButton::Three,
+                                            )),
+                                    ),
+                            )
+                            .push(
+                                Row::new()
+                                    .spacing(SPACING)
+                                    .push(
+                                        make_small_button(&mut states.zero, "0", MEDIUM_TEXT)
+                                            .style(style::Button::Blue)
+                                            .on_press(Message::KeypadButtonPress(
+                                                KeypadButton::Zero,
+                                            )),
+                                    )
+                                    .push(
+                                        make_small_button(&mut states.delete, "⬅︎", MEDIUM_TEXT)
+                                            .width(Length::Units(
+                                                2 * MIN_BUTTON_SIZE as u16 + SPACING,
+                                            ))
+                                            .style(style::Button::Blue)
+                                            .on_press(Message::KeypadButtonPress(
+                                                KeypadButton::Delete,
+                                            )),
+                                    ),
+                            ),
+                    )
+                    .style(style::Container::LightGray)
+                    .padding(PADDING),
+                )
+                .push(match page {
+                    KeypadPage::AddScore(color) => {
+                        make_add_score_page(&mut states.add_score, *color)
+                    }
+                }),
+        )
+        .into()
+}
+
+fn make_add_score_page<'a>(
+    states: &'a mut AddScoreStates,
+    color: GameColor,
+) -> Element<'a, Message> {
+    let (black_style, white_style) = match color {
+        GameColor::Black => (style::Button::BlackSelected, style::Button::White),
+        GameColor::White => (style::Button::Black, style::Button::WhiteSelected),
+    };
+
+    Column::new()
+        .spacing(SPACING)
+        .push(Space::new(Length::Shrink, Length::Fill))
+        .push(
+            Row::new()
+                .spacing(SPACING)
+                .push(
+                    make_button(&mut states.black, "BLACK")
+                        .style(black_style)
+                        .on_press(Message::ChangeColor(GameColor::Black)),
+                )
+                .push(
+                    make_button(&mut states.white, "WHITE")
+                        .style(white_style)
+                        .on_press(Message::ChangeColor(GameColor::White)),
+                ),
+        )
+        .push(Space::new(Length::Shrink, Length::Fill))
+        .push(
+            Row::new()
+                .spacing(SPACING)
+                .push(
+                    make_button(&mut states.cancel, "CANCEL")
+                        .style(style::Button::Red)
+                        .width(Length::Fill)
+                        .on_press(Message::AddScoreComplete { canceled: true }),
+                )
+                .push(
+                    make_button(&mut states.done, "DONE")
+                        .style(style::Button::Green)
+                        .width(Length::Fill)
+                        .on_press(Message::AddScoreComplete { canceled: false }),
                 ),
         )
         .into()
@@ -921,7 +1376,9 @@ impl<H: Hasher, I> Recipe<H, I> for TimeUpdater {
 struct States {
     main_view: MainViewStates,
     time_edit_view: TimeEditViewStates,
+    score_edit_view: ScoreEditViewStates,
     timeout_ribbon: TimeoutRibbonStates,
+    keypad_page: KeypadPageStates,
 }
 
 #[derive(Clone, Default, Debug)]
@@ -947,6 +1404,42 @@ struct TimeEditViewStates {
     timeout_min_down: button::State,
     timeout_sec_up: button::State,
     timeout_sec_down: button::State,
+    done: button::State,
+    cancel: button::State,
+}
+
+#[derive(Clone, Default, Debug)]
+struct ScoreEditViewStates {
+    game_time: button::State,
+    b_up: button::State,
+    b_down: button::State,
+    w_up: button::State,
+    w_down: button::State,
+    done: button::State,
+    cancel: button::State,
+}
+
+#[derive(Clone, Default, Debug)]
+struct KeypadPageStates {
+    game_time: button::State,
+    zero: button::State,
+    one: button::State,
+    two: button::State,
+    three: button::State,
+    four: button::State,
+    five: button::State,
+    six: button::State,
+    seven: button::State,
+    eight: button::State,
+    nine: button::State,
+    delete: button::State,
+    add_score: AddScoreStates,
+}
+
+#[derive(Clone, Default, Debug)]
+struct AddScoreStates {
+    black: button::State,
+    white: button::State,
     done: button::State,
     cancel: button::State,
 }

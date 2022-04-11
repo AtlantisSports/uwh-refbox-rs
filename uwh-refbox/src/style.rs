@@ -2,7 +2,7 @@ use iced::{button, container, Background, Color, Vector};
 use paste::paste;
 
 pub const BORDER_RADIUS: f32 = 9.0;
-pub const BORDER_WIDTH: f32 = 3.0;
+pub const BORDER_WIDTH: f32 = 6.0;
 pub const SPACING: u16 = 12; // Must be a multiple of 4
 pub const PADDING: u16 = 12;
 pub const MIN_BUTTON_SIZE: u32 = 96;
@@ -44,14 +44,16 @@ pub const BLACK_PRESSED: Color = Color::from_rgb(0.15, 0.15, 0.15);
 pub const BLACK_DISABLED: Color = Color::from_rgb(0.3, 0.3, 0.3);
 pub const LIGHT_GRAY: Color = WHITE_DISABLED;
 
-pub const BORDER_COLOR: Color = Color::from_rgb(0.0, 0.0, 0.6);
+pub const BORDER_COLOR: Color = Color::from_rgb(0.3, 0.47, 1.0);
 
 pub const WINDOW_BACKGORUND: Color = Color::from_rgb(0.82, 0.82, 0.82);
 
 #[derive(Clone, Copy, Debug)]
 pub enum Button {
     White,
+    WhiteSelected,
     Black,
+    BlackSelected,
     Red,
     Orange,
     Yellow,
@@ -63,8 +65,8 @@ pub enum Button {
 impl button::StyleSheet for Button {
     fn active(&self) -> button::Style {
         let (background_color, text_color) = match self {
-            Self::White => (WHITE, BLACK),
-            Self::Black => (BLACK, WHITE),
+            Self::White | Self::WhiteSelected => (WHITE, BLACK),
+            Self::Black | Self::BlackSelected => (BLACK, WHITE),
             Self::Red => (RED, BLACK),
             Self::Orange => (ORANGE, BLACK),
             Self::Yellow => (YELLOW, BLACK),
@@ -73,13 +75,25 @@ impl button::StyleSheet for Button {
             Self::Gray => (GRAY, BLACK),
         };
 
+        let border_width = match self {
+            Self::White
+            | Self::Black
+            | Self::Red
+            | Self::Orange
+            | Self::Yellow
+            | Self::Green
+            | Self::Blue
+            | Self::Gray => 0.0,
+            Self::WhiteSelected | Self::BlackSelected => BORDER_WIDTH,
+        };
+
         let background = Some(Background::Color(background_color));
 
         button::Style {
             shadow_offset: Vector::default(),
             background,
             border_radius: BORDER_RADIUS,
-            border_width: 0.0,
+            border_width,
             border_color: BORDER_COLOR,
             text_color,
         }
@@ -91,8 +105,8 @@ impl button::StyleSheet for Button {
 
     fn pressed(&self) -> button::Style {
         let background_color = match self {
-            Self::White => WHITE_PRESSED,
-            Self::Black => BLACK_PRESSED,
+            Self::White | Self::WhiteSelected => WHITE_PRESSED,
+            Self::Black | Self::BlackSelected => BLACK_PRESSED,
             Self::Red => RED_PRESSED,
             Self::Orange => ORANGE_PRESSED,
             Self::Yellow => YELLOW_PRESSED,
@@ -109,8 +123,8 @@ impl button::StyleSheet for Button {
 
     fn disabled(&self) -> button::Style {
         let background_color = match self {
-            Self::White => WHITE_DISABLED,
-            Self::Black => BLACK_DISABLED,
+            Self::White | Self::WhiteSelected => WHITE_DISABLED,
+            Self::Black | Self::BlackSelected => BLACK_DISABLED,
             Self::Red => RED_DISABLED,
             Self::Orange => ORANGE_DISABLED,
             Self::Yellow => YELLOW_DISABLED,
@@ -129,12 +143,16 @@ impl button::StyleSheet for Button {
 #[derive(Clone, Copy, Debug)]
 pub enum Container {
     LightGray,
+    Black,
+    White,
 }
 
 impl container::StyleSheet for Container {
     fn style(&self) -> container::Style {
         match self {
             Self::LightGray => cont_style(LIGHT_GRAY, BLACK),
+            Self::Black => cont_style(BLACK, WHITE),
+            Self::White => cont_style(WHITE, BLACK),
         }
     }
 }

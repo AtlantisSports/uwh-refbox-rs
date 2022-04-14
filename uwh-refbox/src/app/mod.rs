@@ -414,7 +414,12 @@ impl Application for RefBoxApp {
                             AppState::MainPage
                         }
                     } else if self.edited_game_num != self.snapshot.game_number {
-                        AppState::ConfirmationPage(ConfirmationKind::GameNumberChanged)
+                        if tm.current_period() == GamePeriod::BetweenGames {
+                            tm.set_next_game_number(self.edited_game_num);
+                            AppState::MainPage
+                        } else {
+                            AppState::ConfirmationPage(ConfirmationKind::GameNumberChanged)
+                        }
                     } else {
                         AppState::MainPage
                     }

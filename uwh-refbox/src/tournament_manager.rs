@@ -32,6 +32,7 @@ pub struct TournamentManager {
     w_penalties: Vec<Penalty>,
     has_reset: bool,
     start_stop_senders: Vec<Sender<bool>>,
+    next_game_number: Option<u16>,
 }
 
 impl TournamentManager {
@@ -53,6 +54,7 @@ impl TournamentManager {
             w_penalties: vec![],
             has_reset: true,
             start_stop_senders: vec![],
+            next_game_number: None,
         }
     }
 
@@ -114,11 +116,20 @@ impl TournamentManager {
     }
 
     pub fn next_game_number(&self) -> u16 {
+        if self.current_period == GamePeriod::BetweenGames {
+            if let Some(num) = self.next_game_number {
+                return num;
+            }
+        }
         self.game_number + 1
     }
 
     pub fn set_game_number(&mut self, number: u16) {
         self.game_number = number;
+    }
+
+    pub fn set_next_game_number(&mut self, number: u16) {
+        self.next_game_number = Some(number);
     }
 
     pub fn reset_game(&mut self, now: Instant) {
@@ -617,6 +628,7 @@ impl TournamentManager {
                 match self.current_period {
                     GamePeriod::BetweenGames => {
                         self.game_number = self.next_game_number();
+                        self.next_game_number = None;
                         info!("Entering first half of game {}", self.game_number);
                         self.current_period = GamePeriod::FirstHalf;
                         self.game_start_time = start_time + time_remaining_at_start;

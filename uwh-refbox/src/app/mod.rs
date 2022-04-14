@@ -80,9 +80,9 @@ impl KeypadPage {
 
     fn text(&self) -> &'static str {
         match self {
-            Self::AddScore(_) => "PLAYER NUMBER:",
+            Self::AddScore(_) => "PLAYER\nNUMBER:",
             Self::GameNumber => "GAME\nNUMBER:",
-            Self::TeamTimeouts(_) => "NUM TIMEOUTS\nPER HALF:",
+            Self::TeamTimeouts(_) => "NUM T/Os\nPER HALF:",
         }
     }
 }

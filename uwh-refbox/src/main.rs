@@ -83,7 +83,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut settings = Settings::with_flags(config);
         settings.window.size = window_size;
         settings.window.resizable = false;
-        settings.default_text_size = app::style::NORMAL_TEXT;
+        settings.default_text_size = app::style::SMALL_PLUS_TEXT;
+        settings.default_font = Some(include_bytes!("../Roboto-Medium.ttf"));
         info!("Starting UI");
         app::RefBoxApp::run(settings)
     }?;

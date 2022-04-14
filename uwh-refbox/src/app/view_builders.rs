@@ -1,13 +1,13 @@
 use super::{
     style::{
-        self, BLACK, GREEN, LARGE_TEXT, MEDIUM_TEXT, MIN_BUTTON_SIZE, PADDING, RED, SPACING, WHITE,
-        YELLOW,
+        self, BLACK, GREEN, LARGE_TEXT, MEDIUM_TEXT, MIN_BUTTON_SIZE, PADDING, RED, SMALL_TEXT,
+        SPACING, WHITE, YELLOW,
     },
     *,
 };
 use iced::{
-    button, Align, Button, Color, Column, Container, Element, HorizontalAlignment, Length, Row,
-    Space, Text, VerticalAlignment,
+    button, widget::svg, Align, Button, Color, Column, Container, Element, HorizontalAlignment,
+    Length, Row, Space, Svg, Text, VerticalAlignment,
 };
 use std::{
     sync::{Arc, Mutex},
@@ -26,7 +26,6 @@ pub(super) fn build_main_view<'a>(
 ) -> Element<'a, Message> {
     let (period_text, period_color) = period_text_and_color(snapshot.current_period);
     let game_time_info = Column::new()
-        .spacing(SPACING)
         .width(Length::Fill)
         .align_items(Align::Center)
         .push(Text::new(period_text).color(period_color))
@@ -36,72 +35,31 @@ pub(super) fn build_main_view<'a>(
                 .size(LARGE_TEXT),
         );
 
-    let time_button_content: Element<'a, Message> = match snapshot.timeout {
-        TimeoutSnapshot::Black(_) => Row::new()
+    let time_button_content: Element<'a, Message> = if snapshot.timeout == TimeoutSnapshot::None {
+        game_time_info.width(Length::Fill).into()
+    } else {
+        let (text, color) = match snapshot.timeout {
+            TimeoutSnapshot::Black(_) => ("BLK TIMEOUT", BLACK),
+            TimeoutSnapshot::White(_) => ("WHT TIMEOUT", WHITE),
+            TimeoutSnapshot::Ref(_) => ("REF TIMEOUT", YELLOW),
+            TimeoutSnapshot::PenaltyShot(_) => ("PENALTY SHOT", RED),
+            TimeoutSnapshot::None => unreachable!(),
+        };
+        Row::new()
             .spacing(SPACING)
             .push(game_time_info)
             .push(
                 Column::new()
-                    .spacing(SPACING)
                     .width(Length::Fill)
                     .align_items(Align::Center)
-                    .push(Text::new("BLACK TIMEOUT").color(BLACK))
+                    .push(Text::new(text).color(color))
                     .push(
                         Text::new(timeout_time_string(snapshot))
-                            .color(BLACK)
+                            .color(color)
                             .size(LARGE_TEXT),
                     ),
             )
-            .into(),
-        TimeoutSnapshot::White(_) => Row::new()
-            .spacing(SPACING)
-            .push(game_time_info)
-            .push(
-                Column::new()
-                    .spacing(SPACING)
-                    .width(Length::Fill)
-                    .align_items(Align::Center)
-                    .push(Text::new("WHITE TIMEOUT").color(WHITE))
-                    .push(
-                        Text::new(timeout_time_string(snapshot))
-                            .color(WHITE)
-                            .size(LARGE_TEXT),
-                    ),
-            )
-            .into(),
-        TimeoutSnapshot::Ref(_) => Row::new()
-            .spacing(SPACING)
-            .push(game_time_info)
-            .push(
-                Column::new()
-                    .spacing(SPACING)
-                    .width(Length::Fill)
-                    .align_items(Align::Center)
-                    .push(Text::new("REF TIMEOUT").color(YELLOW))
-                    .push(
-                        Text::new(timeout_time_string(snapshot))
-                            .color(YELLOW)
-                            .size(LARGE_TEXT),
-                    ),
-            )
-            .into(),
-        TimeoutSnapshot::PenaltyShot(_) => Row::new()
-            .spacing(SPACING)
-            .push(game_time_info)
-            .push(
-                Column::new()
-                    .spacing(SPACING)
-                    .width(Length::Fill)
-                    .align_items(Align::Center)
-                    .push(Text::new("PENALTY SHOT").color(RED))
-                    .push(
-                        Text::new(timeout_time_string(snapshot))
-                            .color(RED)
-                            .size(LARGE_TEXT),
-                    ),
-            )
-            .into(),
-        TimeoutSnapshot::None => game_time_info.width(Length::Fill).into(),
+            .into()
     };
 
     let mut center_col = Column::new().spacing(SPACING).width(Length::Fill).push(
@@ -149,6 +107,7 @@ pub(super) fn build_main_view<'a>(
         Button::new(
             &mut states.game_config,
             Text::new(config_string(snapshot, config))
+                .size(SMALL_TEXT)
                 .vertical_alignment(VerticalAlignment::Center)
                 .horizontal_alignment(HorizontalAlignment::Left),
         )
@@ -167,7 +126,6 @@ pub(super) fn build_main_view<'a>(
             Button::new(
                 &mut states.black_score,
                 Column::new()
-                    .spacing(SPACING)
                     .align_items(Align::Center)
                     .width(Length::Fill)
                     .push(Text::new("BLACK"))
@@ -198,7 +156,6 @@ pub(super) fn build_main_view<'a>(
             Button::new(
                 &mut states.white_score,
                 Column::new()
-                    .spacing(SPACING)
                     .align_items(Align::Center)
                     .width(Length::Fill)
                     .push(Text::new("WHITE"))
@@ -441,7 +398,6 @@ pub(super) fn build_keypad_page<'a>(
                             .spacing(SPACING)
                             .push(
                                 Row::new()
-                                    .spacing(SPACING)
                                     .align_items(Align::Center)
                                     .height(Length::Fill)
                                     .width(Length::Units(3 * MIN_BUTTON_SIZE as u16 + 2 * SPACING))
@@ -544,14 +500,17 @@ pub(super) fn build_keypad_page<'a>(
                                             )),
                                     )
                                     .push(
-                                        make_small_button(&mut states.delete, "<-", MEDIUM_TEXT)
-                                            .width(Length::Units(
-                                                2 * MIN_BUTTON_SIZE as u16 + SPACING,
-                                            ))
-                                            .style(style::Button::Blue)
-                                            .on_press(Message::KeypadButtonPress(
-                                                KeypadButton::Delete,
-                                            )),
+                                        Button::new(
+                                            &mut states.delete,
+                                            Container::new(Svg::new(svg::Handle::from_memory(&include_bytes!(
+                                                "../../backspace_white_48dp.svg"
+                                            )[..]))).width(Length::Fill).center_x()
+                                        )
+                                        .padding((MIN_BUTTON_SIZE as u16 - MEDIUM_TEXT) / 2)
+                                        .width(Length::Units(2 * MIN_BUTTON_SIZE as u16 + SPACING))
+                                        .height(Length::Units(MIN_BUTTON_SIZE as u16))
+                                        .style(style::Button::Blue)
+                                        .on_press(Message::KeypadButtonPress(KeypadButton::Delete)),
                                     ),
                             ),
                     )
@@ -866,6 +825,7 @@ pub(super) fn build_game_parameter_editor<'a>(
         .push(Space::new(Length::Shrink, Length::Fill))
         .push(
             Text::new(String::from("Help: ") + hint)
+                .size(SMALL_TEXT)
                 .horizontal_alignment(HorizontalAlignment::Center),
         )
         .push(Space::new(Length::Shrink, Length::Fill))
@@ -1035,7 +995,7 @@ pub(super) fn build_timeout_ribbon<'a>(
     let mut penalty = make_button(
         &mut states.penalty_shot,
         if in_timeout {
-            "SWITCH TO\nPENALTY SHOT"
+            "SWITCH TO\nPEN SHOT"
         } else {
             "PENALTY\nSHOT"
         },
@@ -1342,7 +1302,11 @@ fn make_value_button<'a, Message: 'a + Clone, T: Into<String>, U: Into<String>>(
         Row::new()
             .spacing(SPACING)
             .align_items(Align::Center)
-            .push(Text::new(first_label).vertical_alignment(VerticalAlignment::Center))
+            .push(
+                Text::new(first_label)
+                    .size(SMALL_TEXT)
+                    .vertical_alignment(VerticalAlignment::Center),
+            )
             .push(Space::new(Length::Fill, Length::Shrink))
             .push(
                 Text::new(second_label)

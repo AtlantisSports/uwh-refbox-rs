@@ -7,7 +7,8 @@ pub const SPACING: u16 = 12; // Must be a multiple of 4
 pub const PADDING: u16 = 12;
 pub const MIN_BUTTON_SIZE: u32 = 96;
 
-pub const NORMAL_TEXT: u16 = 24;
+pub const SMALL_TEXT: u16 = 24;
+pub const SMALL_PLUS_TEXT: u16 = 36;
 pub const MEDIUM_TEXT: u16 = 48;
 pub const LARGE_TEXT: u16 = 90;
 
@@ -126,15 +127,15 @@ impl button::StyleSheet for Button {
 
     fn disabled(&self) -> button::Style {
         let (background_color, text_color) = match self {
-            Self::White | Self::WhiteSelected => (WHITE_DISABLED, BLACK),
+            Self::White | Self::WhiteSelected => (WHITE_DISABLED, BLACK_DISABLED),
             Self::Black | Self::BlackSelected => (BLACK_DISABLED, WHITE_DISABLED),
-            Self::Red => (RED_DISABLED, BLACK),
-            Self::Orange => (ORANGE_DISABLED, BLACK),
-            Self::Yellow => (YELLOW_DISABLED, BLACK),
-            Self::Green => (GREEN_DISABLED, BLACK),
+            Self::Red => (RED_DISABLED, BLACK_DISABLED),
+            Self::Orange => (ORANGE_DISABLED, BLACK_DISABLED),
+            Self::Yellow => (YELLOW_DISABLED, BLACK_DISABLED),
+            Self::Green => (GREEN_DISABLED, BLACK_DISABLED),
             Self::Blue => (BLUE_DISABLED, WHITE_DISABLED),
-            Self::Gray => (GRAY_DISABLED, BLACK),
-            Self::LightGray => (LIGHT_GRAY_DISABLED, BLACK),
+            Self::Gray => (GRAY_DISABLED, BLACK_DISABLED),
+            Self::LightGray => (LIGHT_GRAY_DISABLED, BLACK_DISABLED),
         };
 
         button::Style {

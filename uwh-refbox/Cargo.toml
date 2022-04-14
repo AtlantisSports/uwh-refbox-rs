@@ -10,7 +10,8 @@ oldui = ["gdk", "gio", "glib", "gtk"]
 
 [dependencies]
 async-std = "1.11.0"
-clap = "2.33.0"
+clap = { version = "3.1.6", features = ["derive"] }
+confy = "0.4.0"
 embedded-graphics = "0.7.1"
 embedded-graphics-simulator = "0.3.0"
 env_logger = "0.6.1"

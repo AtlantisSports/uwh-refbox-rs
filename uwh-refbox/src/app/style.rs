@@ -7,7 +7,6 @@ pub const SPACING: u16 = 12; // Must be a multiple of 4
 pub const PADDING: u16 = 12;
 pub const MIN_BUTTON_SIZE: u32 = 96;
 
-pub const SMALL_TEXT: u16 = 18;
 pub const NORMAL_TEXT: u16 = 24;
 pub const MEDIUM_TEXT: u16 = 48;
 pub const LARGE_TEXT: u16 = 90;
@@ -38,11 +37,11 @@ make_color!(YELLOW, 1.0, 1.0, 0.0);
 make_color!(GREEN, 0.0, 1.0, 0.0);
 make_color!(BLUE, 0.0, 0.0, 1.0);
 make_color!(GRAY, 0.5, 0.5, 0.5);
+make_color!(LIGHT_GRAY, 0.7, 0.7, 0.7);
 
 pub const BLACK: Color = Color::from_rgb(0.0, 0.0, 0.0);
 pub const BLACK_PRESSED: Color = Color::from_rgb(0.15, 0.15, 0.15);
 pub const BLACK_DISABLED: Color = Color::from_rgb(0.3, 0.3, 0.3);
-pub const LIGHT_GRAY: Color = WHITE_DISABLED;
 
 pub const BORDER_COLOR: Color = Color::from_rgb(0.3, 0.47, 1.0);
 
@@ -60,6 +59,7 @@ pub enum Button {
     Green,
     Blue,
     Gray,
+    LightGray,
 }
 
 impl button::StyleSheet for Button {
@@ -73,6 +73,7 @@ impl button::StyleSheet for Button {
             Self::Green => (GREEN, BLACK),
             Self::Blue => (BLUE, WHITE),
             Self::Gray => (GRAY, BLACK),
+            Self::LightGray => (LIGHT_GRAY, BLACK),
         };
 
         let border_width = match self {
@@ -83,7 +84,8 @@ impl button::StyleSheet for Button {
             | Self::Yellow
             | Self::Green
             | Self::Blue
-            | Self::Gray => 0.0,
+            | Self::Gray
+            | Self::LightGray => 0.0,
             Self::WhiteSelected | Self::BlackSelected => BORDER_WIDTH,
         };
 
@@ -113,6 +115,7 @@ impl button::StyleSheet for Button {
             Self::Green => GREEN_PRESSED,
             Self::Blue => BLUE_PRESSED,
             Self::Gray => GRAY_PRESSED,
+            Self::LightGray => LIGHT_GRAY_PRESSED,
         };
 
         button::Style {
@@ -122,19 +125,21 @@ impl button::StyleSheet for Button {
     }
 
     fn disabled(&self) -> button::Style {
-        let background_color = match self {
-            Self::White | Self::WhiteSelected => WHITE_DISABLED,
-            Self::Black | Self::BlackSelected => BLACK_DISABLED,
-            Self::Red => RED_DISABLED,
-            Self::Orange => ORANGE_DISABLED,
-            Self::Yellow => YELLOW_DISABLED,
-            Self::Green => GREEN_DISABLED,
-            Self::Blue => BLUE_DISABLED,
-            Self::Gray => GRAY_DISABLED,
+        let (background_color, text_color) = match self {
+            Self::White | Self::WhiteSelected => (WHITE_DISABLED, BLACK),
+            Self::Black | Self::BlackSelected => (BLACK_DISABLED, WHITE_DISABLED),
+            Self::Red => (RED_DISABLED, BLACK),
+            Self::Orange => (ORANGE_DISABLED, BLACK),
+            Self::Yellow => (YELLOW_DISABLED, BLACK),
+            Self::Green => (GREEN_DISABLED, BLACK),
+            Self::Blue => (BLUE_DISABLED, WHITE_DISABLED),
+            Self::Gray => (GRAY_DISABLED, BLACK),
+            Self::LightGray => (LIGHT_GRAY_DISABLED, BLACK),
         };
 
         button::Style {
             background: Some(Background::Color(background_color)),
+            text_color,
             ..self.active()
         }
     }

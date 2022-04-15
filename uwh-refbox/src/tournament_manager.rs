@@ -619,12 +619,12 @@ impl TournamentManager {
                 }
             }
 
-            //TODO: Panics if `now` is invalid
             if now
                 .checked_duration_since(start_time)
                 .ok_or(TournamentManagerError::InvalidNowValue)?
                 >= time_remaining_at_start
             {
+                let mut need_cull = false;
                 match self.current_period {
                     GamePeriod::BetweenGames => {
                         self.game_number = self.next_game_number();
@@ -632,12 +632,6 @@ impl TournamentManager {
                         info!("Entering first half of game {}", self.game_number);
                         self.current_period = GamePeriod::FirstHalf;
                         self.game_start_time = start_time + time_remaining_at_start;
-                        self.clock_state = ClockState::CountingDown {
-                            start_time: start_time + time_remaining_at_start,
-                            time_remaining_at_start: Duration::from_secs(
-                                self.config.half_play_duration.into(),
-                            ),
-                        };
                         self.b_timeouts_used = 0;
                         self.w_timeouts_used = 0;
                         self.has_reset = false;
@@ -645,25 +639,13 @@ impl TournamentManager {
                     GamePeriod::FirstHalf => {
                         info!("Entering half time");
                         self.current_period = GamePeriod::HalfTime;
-                        self.clock_state = ClockState::CountingDown {
-                            start_time: start_time + time_remaining_at_start,
-                            time_remaining_at_start: Duration::from_secs(
-                                self.config.half_time_duration.into(),
-                            ),
-                        }
                     }
                     GamePeriod::HalfTime => {
-                        info!("Entering half time");
+                        info!("Entering second half");
                         self.current_period = GamePeriod::SecondHalf;
-                        self.clock_state = ClockState::CountingDown {
-                            start_time: start_time + time_remaining_at_start,
-                            time_remaining_at_start: Duration::from_secs(
-                                self.config.half_play_duration.into(),
-                            ),
-                        };
                         self.w_timeouts_used = 0;
                         self.b_timeouts_used = 0;
-                        self.cull_penalties(now)?;
+                        need_cull = true;
                     }
                     GamePeriod::SecondHalf => {
                         if self.b_score != self.w_score
@@ -676,57 +658,27 @@ impl TournamentManager {
                                 self.b_score, self.w_score
                             );
                             self.current_period = GamePeriod::PreOvertime;
-                            self.clock_state = ClockState::CountingDown {
-                                start_time: start_time + time_remaining_at_start,
-                                time_remaining_at_start: Duration::from_secs(
-                                    self.config.pre_overtime_break.into(),
-                                ),
-                            }
                         } else {
                             info!(
                                 "Entering pre-sudden death. Score is B({}), W({})",
                                 self.b_score, self.w_score
                             );
                             self.current_period = GamePeriod::PreSuddenDeath;
-                            self.clock_state = ClockState::CountingDown {
-                                start_time: start_time + time_remaining_at_start,
-                                time_remaining_at_start: Duration::from_secs(
-                                    self.config.pre_sudden_death_duration.into(),
-                                ),
-                            }
                         }
                     }
                     GamePeriod::PreOvertime => {
                         info!("Entering overtime first half");
                         self.current_period = GamePeriod::OvertimeFirstHalf;
-                        self.clock_state = ClockState::CountingDown {
-                            start_time: start_time + time_remaining_at_start,
-                            time_remaining_at_start: Duration::from_secs(
-                                self.config.ot_half_play_duration.into(),
-                            ),
-                        };
-                        self.cull_penalties(now)?;
+                        need_cull = true;
                     }
                     GamePeriod::OvertimeFirstHalf => {
                         info!("Entering overtime half time");
                         self.current_period = GamePeriod::OvertimeHalfTime;
-                        self.clock_state = ClockState::CountingDown {
-                            start_time: start_time + time_remaining_at_start,
-                            time_remaining_at_start: Duration::from_secs(
-                                self.config.ot_half_time_duration.into(),
-                            ),
-                        }
                     }
                     GamePeriod::OvertimeHalfTime => {
                         info!("Entering ovetime second half");
                         self.current_period = GamePeriod::OvertimeSecondHalf;
-                        self.clock_state = ClockState::CountingDown {
-                            start_time: start_time + time_remaining_at_start,
-                            time_remaining_at_start: Duration::from_secs(
-                                self.config.ot_half_play_duration.into(),
-                            ),
-                        };
-                        self.cull_penalties(now)?;
+                        need_cull = true;
                     }
                     GamePeriod::OvertimeSecondHalf => {
                         if self.b_score != self.w_score || !self.config.sudden_death_allowed {
@@ -737,25 +689,34 @@ impl TournamentManager {
                                 self.b_score, self.w_score
                             );
                             self.current_period = GamePeriod::PreSuddenDeath;
-                            self.clock_state = ClockState::CountingDown {
-                                start_time: start_time + time_remaining_at_start,
-                                time_remaining_at_start: Duration::from_secs(
-                                    self.config.pre_sudden_death_duration.into(),
-                                ),
-                            }
                         }
                     }
                     GamePeriod::PreSuddenDeath => {
                         info!("Entering sudden death");
                         self.current_period = GamePeriod::SuddenDeath;
-                        self.clock_state = ClockState::CountingUp {
-                            start_time: start_time + time_remaining_at_start,
-                            time_at_start: Duration::from_secs(0),
-                        };
-                        self.cull_penalties(now)?;
+                        need_cull = true;
                     }
                     GamePeriod::SuddenDeath => {
                         error!("Impossible state: in sudden death with clock counting down")
+                    }
+                }
+                if self.current_period != GamePeriod::BetweenGames {
+                    self.clock_state = if self.current_period != GamePeriod::SuddenDeath {
+                        ClockState::CountingDown {
+                            start_time: start_time + time_remaining_at_start,
+                            time_remaining_at_start: self
+                                .current_period
+                                .duration(&self.config)
+                                .unwrap(),
+                        }
+                    } else {
+                        ClockState::CountingUp {
+                            start_time: start_time + time_remaining_at_start,
+                            time_at_start: Duration::ZERO,
+                        }
+                    };
+                    if need_cull {
+                        self.cull_penalties(now)?;
                     }
                 }
             }
@@ -915,33 +876,62 @@ impl TournamentManager {
 
         let was_running = self.clock_is_running();
 
+        let mut need_cull = false;
         match self.current_period {
             GamePeriod::FirstHalf
             | GamePeriod::SecondHalf
             | GamePeriod::OvertimeFirstHalf
             | GamePeriod::OvertimeSecondHalf
             | GamePeriod::SuddenDeath => return Err(TournamentManagerError::AlreadyInPlayPeriod),
-            GamePeriod::BetweenGames
-            | GamePeriod::HalfTime
-            | GamePeriod::PreOvertime
-            | GamePeriod::OvertimeHalfTime
-            | GamePeriod::PreSuddenDeath => {
-                self.current_period = self.current_period.next_period().unwrap();
-                self.clock_state = match self.current_period {
-                    p @ GamePeriod::FirstHalf
-                    | p @ GamePeriod::SecondHalf
-                    | p @ GamePeriod::OvertimeFirstHalf
-                    | p @ GamePeriod::OvertimeSecondHalf => ClockState::CountingDown {
-                        start_time: now,
-                        time_remaining_at_start: p.duration(&self.config).unwrap(),
-                    },
-                    GamePeriod::SuddenDeath => ClockState::CountingUp {
-                        start_time: now,
-                        time_at_start: Duration::ZERO,
-                    },
-                    _ => unreachable!(),
-                }
+            GamePeriod::BetweenGames => {
+                self.game_number = self.next_game_number();
+                self.next_game_number = None;
+                info!("Entering first half of game {}", self.game_number);
+                self.current_period = GamePeriod::FirstHalf;
+                self.game_start_time = now;
+                self.b_timeouts_used = 0;
+                self.w_timeouts_used = 0;
+                self.has_reset = false;
             }
+            GamePeriod::HalfTime => {
+                info!("Entering second half");
+                self.current_period = GamePeriod::SecondHalf;
+                self.w_timeouts_used = 0;
+                self.b_timeouts_used = 0;
+                need_cull = true;
+            }
+            GamePeriod::PreOvertime => {
+                info!("Entering overtime first half");
+                self.current_period = GamePeriod::OvertimeFirstHalf;
+                need_cull = true;
+            }
+            GamePeriod::OvertimeHalfTime => {
+                info!("Entering ovetime second half");
+                self.current_period = GamePeriod::OvertimeSecondHalf;
+                need_cull = true;
+            }
+            GamePeriod::PreSuddenDeath => {
+                info!("Entering sudden death");
+                self.current_period = GamePeriod::SuddenDeath;
+                need_cull = true;
+            }
+        }
+        self.clock_state = match self.current_period {
+            p @ GamePeriod::FirstHalf
+            | p @ GamePeriod::SecondHalf
+            | p @ GamePeriod::OvertimeFirstHalf
+            | p @ GamePeriod::OvertimeSecondHalf => ClockState::CountingDown {
+                start_time: now,
+                time_remaining_at_start: p.duration(&self.config).unwrap(),
+            },
+            GamePeriod::SuddenDeath => ClockState::CountingUp {
+                start_time: now,
+                time_at_start: Duration::ZERO,
+            },
+            _ => unreachable!(),
+        };
+        if need_cull {
+            self.cull_penalties(now)?;
         }
 
         info!("{} manually started by refs", self.current_period);

@@ -19,6 +19,9 @@ use log::*;
 use std::{
     cmp::min,
     hash::Hasher,
+    io::Write,
+    net::{Shutdown, TcpStream},
+    process::Child,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -26,6 +29,7 @@ use uwh_common::{
     config::Config,
     game_snapshot::{Color as GameColor, GamePeriod, GameSnapshot},
 };
+use uwh_matrix_drawing::transmitted_data::TransmittedData;
 
 mod view_builders;
 use view_builders::*;
@@ -43,6 +47,8 @@ pub struct RefBoxApp {
     states: States,
     app_state: AppState,
     last_app_state: AppState,
+    sim_sender: Option<TcpStream>,
+    sim_child: Option<Child>,
 }
 
 #[derive(Debug, Clone)]
@@ -173,12 +179,52 @@ pub enum ConfirmationOption {
     KeepGameAndApply,
 }
 
+impl RefBoxApp {
+    fn apply_snapshot(&mut self, snapshot: GameSnapshot) {
+        let mut connection_lost = false;
+        if let Some(ref mut sender) = self.sim_sender {
+            match sender.write_all(
+                &TransmittedData {
+                    snapshot: snapshot.clone().into(),
+                    white_on_right: self.config.hardware.white_on_right,
+                }
+                .encode()
+                .unwrap(),
+            ) {
+                Ok(_) => {}
+                Err(_) => {
+                    error!("Connection to simulator lost");
+                    connection_lost = true;
+                }
+            }
+        }
+        if connection_lost {
+            self.sim_sender = None;
+        }
+        self.snapshot = snapshot;
+    }
+}
+
+impl Drop for RefBoxApp {
+    fn drop(&mut self) {
+        if let Some(socket) = self.sim_sender.take() {
+            socket.shutdown(Shutdown::Both).unwrap();
+        }
+        if let Some(mut child) = self.sim_child.take() {
+            info!("Waiting for child");
+            child.wait().unwrap();
+        }
+    }
+}
+
 impl Application for RefBoxApp {
     type Executor = executor::Default;
     type Message = Message;
-    type Flags = Config;
+    type Flags = (Config, Option<TcpStream>, Option<Child>);
 
-    fn new(config: Self::Flags) -> (Self, Command<Message>) {
+    fn new(flags: Self::Flags) -> (Self, Command<Message>) {
+        let (config, sim_sender, sim_child) = flags;
+
         let mut tm = TournamentManager::new(config.game.clone());
         tm.start_clock(Instant::now());
 
@@ -202,6 +248,8 @@ impl Application for RefBoxApp {
                 states: Default::default(),
                 app_state: AppState::MainPage,
                 last_app_state: AppState::MainPage,
+                sim_sender,
+                sim_child,
             },
             Command::none(),
         )
@@ -218,7 +266,9 @@ impl Application for RefBoxApp {
     fn update(&mut self, message: Message, _clipboard: &mut Clipboard) -> Command<Message> {
         trace!("Handling message: {message:?}");
         match message {
-            Message::NewSnapshot(snapshot) => self.snapshot = snapshot,
+            Message::NewSnapshot(snapshot) => {
+                self.apply_snapshot(snapshot);
+            }
             Message::EditTime => {
                 let now = Instant::now();
                 let mut tm = self.tm.lock().unwrap();
@@ -281,7 +331,9 @@ impl Application for RefBoxApp {
                 let mut tm = self.tm.lock().unwrap();
                 let now = Instant::now();
                 tm.start_play_now(now).unwrap();
-                self.snapshot = tm.generate_snapshot(now).unwrap();
+                let snapshot = tm.generate_snapshot(now).unwrap();
+                std::mem::drop(tm);
+                self.apply_snapshot(snapshot);
             }
             Message::EditScores => {
                 let tm = self.tm.lock().unwrap();
@@ -320,14 +372,17 @@ impl Application for RefBoxApp {
             }
             Message::ScoreEditComplete { canceled } => {
                 let mut tm = self.tm.lock().unwrap();
+                let now = Instant::now();
                 if let AppState::ScoreEdit { black, white } = self.app_state {
                     if !canceled {
-                        tm.set_scores(black, white, Instant::now());
+                        tm.set_scores(black, white, now);
                     }
                 } else {
                     unreachable!()
                 }
-                self.snapshot = tm.generate_snapshot(Instant::now()).unwrap();
+                let snapshot = tm.generate_snapshot(now).unwrap();
+                std::mem::drop(tm);
+                self.apply_snapshot(snapshot);
                 self.app_state = AppState::MainPage;
                 trace!("AppState changed to {:?}", self.app_state);
             }
@@ -377,18 +432,15 @@ impl Application for RefBoxApp {
                     if let AppState::KeypadPage(KeypadPage::AddScore(color), player) =
                         self.app_state
                     {
+                        let mut tm = self.tm.lock().unwrap();
+                        let now = Instant::now();
                         match color {
-                            GameColor::Black => self
-                                .tm
-                                .lock()
-                                .unwrap()
-                                .add_b_score(player.try_into().unwrap(), Instant::now()),
-                            GameColor::White => self
-                                .tm
-                                .lock()
-                                .unwrap()
-                                .add_w_score(player.try_into().unwrap(), Instant::now()),
+                            GameColor::Black => tm.add_b_score(player.try_into().unwrap(), now),
+                            GameColor::White => tm.add_w_score(player.try_into().unwrap(), now),
                         };
+                        let snapshot = tm.generate_snapshot(now).unwrap();
+                        std::mem::drop(tm);
+                        self.apply_snapshot(snapshot);
                     } else {
                         unreachable!()
                     }
@@ -521,19 +573,24 @@ impl Application for RefBoxApp {
                     ConfirmationOption::GoBack => AppState::EditGameConfig,
                     ConfirmationOption::EndGameAndApply => {
                         let mut tm = self.tm.lock().unwrap();
-                        tm.reset_game(Instant::now());
+                        let now = Instant::now();
+                        tm.reset_game(now);
                         if kind == ConfirmationKind::GameConfigChanged {
                             tm.set_config(self.config.game.clone()).unwrap();
                             confy::store(APP_CONFIG_NAME, &self.config).unwrap();
                         }
                         tm.set_game_number(self.edited_game_num);
-                        self.snapshot = tm.generate_snapshot(Instant::now()).unwrap();
+                        let snapshot = tm.generate_snapshot(now).unwrap();
+                        std::mem::drop(tm);
+                        self.apply_snapshot(snapshot);
                         AppState::MainPage
                     }
                     ConfirmationOption::KeepGameAndApply => {
                         let mut tm = self.tm.lock().unwrap();
                         tm.set_game_number(self.edited_game_num);
-                        self.snapshot = tm.generate_snapshot(Instant::now()).unwrap();
+                        let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
+                        std::mem::drop(tm);
+                        self.apply_snapshot(snapshot);
                         AppState::MainPage
                     }
                 };
@@ -550,7 +607,9 @@ impl Application for RefBoxApp {
                 if let AppState::TimeEdit(_, _, ref mut time) = self.app_state {
                     *time = Some(tm.timeout_clock_time(now).unwrap());
                 }
-                self.snapshot = tm.generate_snapshot(Instant::now()).unwrap();
+                let snapshot = tm.generate_snapshot(now).unwrap();
+                std::mem::drop(tm);
+                self.apply_snapshot(snapshot);
             }
             Message::WhiteTimeout(switch) => {
                 let mut tm = self.tm.lock().unwrap();
@@ -563,7 +622,9 @@ impl Application for RefBoxApp {
                 if let AppState::TimeEdit(_, _, ref mut time) = self.app_state {
                     *time = Some(tm.timeout_clock_time(now).unwrap());
                 }
-                self.snapshot = tm.generate_snapshot(Instant::now()).unwrap();
+                let snapshot = tm.generate_snapshot(now).unwrap();
+                std::mem::drop(tm);
+                self.apply_snapshot(snapshot);
             }
             Message::RefTimeout(switch) => {
                 let mut tm = self.tm.lock().unwrap();
@@ -576,7 +637,9 @@ impl Application for RefBoxApp {
                 if let AppState::TimeEdit(_, _, ref mut time) = self.app_state {
                     *time = Some(tm.timeout_clock_time(now).unwrap());
                 }
-                self.snapshot = tm.generate_snapshot(Instant::now()).unwrap();
+                let snapshot = tm.generate_snapshot(now).unwrap();
+                std::mem::drop(tm);
+                self.apply_snapshot(snapshot);
             }
             Message::PenaltyShot(switch) => {
                 let mut tm = self.tm.lock().unwrap();
@@ -589,12 +652,16 @@ impl Application for RefBoxApp {
                 if let AppState::TimeEdit(_, _, ref mut time) = self.app_state {
                     *time = Some(tm.timeout_clock_time(now).unwrap());
                 }
-                self.snapshot = tm.generate_snapshot(Instant::now()).unwrap();
+                let snapshot = tm.generate_snapshot(now).unwrap();
+                std::mem::drop(tm);
+                self.apply_snapshot(snapshot);
             }
             Message::EndTimeout => {
                 let mut tm = self.tm.lock().unwrap();
                 tm.end_timeout(Instant::now()).unwrap();
-                self.snapshot = tm.generate_snapshot(Instant::now()).unwrap();
+                let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
+                std::mem::drop(tm);
+                self.apply_snapshot(snapshot);
             }
             Message::NoAction => {}
         };

@@ -1,8 +1,5 @@
-#[cfg(not(feature = "oldui"))]
 use async_std::channel::Sender;
 use log::*;
-#[cfg(feature = "oldui")]
-use std::sync::mpsc::Sender;
 use std::{
     cmp::{max, Ordering},
     convert::TryInto,
@@ -797,10 +794,7 @@ impl TournamentManager {
 
     fn send_clock_running(&self, running: bool) {
         for sender in &self.start_stop_senders {
-            #[cfg(not(feature = "oldui"))]
             sender.try_send(running).unwrap();
-            #[cfg(feature = "oldui")]
-            sender.send(running).unwrap();
         }
     }
 
@@ -1048,26 +1042,6 @@ impl TournamentManager {
         })
     }
 
-    #[cfg(feature = "oldui")]
-    pub fn nanos_to_update(&self, now: Instant) -> Option<u32> {
-        match (&self.timeout_state, self.current_period) {
-            // cases where the clock is counting up
-            (TimeoutState::Ref(cs), _) | (TimeoutState::PenaltyShot(cs), _) => cs
-                .clock_time(now)
-                .map(|ct| 1_000_000_000 - ct.subsec_nanos()),
-            (TimeoutState::None, GamePeriod::SuddenDeath) => self
-                .clock_state
-                .clock_time(now)
-                .map(|ct| 1_000_000_000 - ct.subsec_nanos()),
-            // cases where the clock is counting down
-            (TimeoutState::Black(cs), _) | (TimeoutState::White(cs), _) => {
-                cs.clock_time(now).map(|ct| ct.subsec_nanos())
-            }
-            (TimeoutState::None, _) => self.clock_state.clock_time(now).map(|ct| ct.subsec_nanos()),
-        }
-    }
-
-    #[cfg(not(feature = "oldui"))]
     pub fn next_update_time(&self, now: Instant) -> Option<Instant> {
         match (&self.timeout_state, self.current_period) {
             // cases where the clock is counting up

@@ -1,4 +1,3 @@
-#![allow(clippy::useless_let_if_seq)]
 use clap::Parser;
 use embedded_graphics::{pixelcolor::Rgb888, prelude::*};
 use embedded_graphics_simulator::{
@@ -18,10 +17,6 @@ use uwh_matrix_drawing::{transmitted_data::TransmittedData, *};
 
 mod tournament_manager;
 
-#[cfg(feature = "oldui")]
-mod old_main;
-
-#[cfg(not(feature = "oldui"))]
 mod app;
 
 const APP_CONFIG_NAME: &str = "uwh-refbox";
@@ -42,7 +37,6 @@ struct Cli {
 }
 
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
-    // This allows the use of error!(), warn!(), info!(), etc.
     env_logger::init();
 
     let args = Cli::parse();
@@ -132,23 +126,17 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     let config: Config = confy::load(APP_CONFIG_NAME).unwrap();
 
-    #[cfg(feature = "oldui")]
-    old_main::old_main(config)?;
-
-    #[cfg(not(feature = "oldui"))]
-    {
-        let window_size = (
-            config.hardware.screen_x as u32,
-            config.hardware.screen_y as u32,
-        );
-        let mut settings = Settings::with_flags((config, stream, child));
-        settings.window.size = window_size;
-        settings.window.resizable = false;
-        settings.default_text_size = app::style::SMALL_PLUS_TEXT;
-        settings.default_font = Some(include_bytes!("../Roboto-Medium.ttf"));
-        info!("Starting UI");
-        app::RefBoxApp::run(settings)
-    }?;
+    let window_size = (
+        config.hardware.screen_x as u32,
+        config.hardware.screen_y as u32,
+    );
+    let mut settings = Settings::with_flags((config, stream, child));
+    settings.window.size = window_size;
+    settings.window.resizable = false;
+    settings.default_text_size = app::style::SMALL_PLUS_TEXT;
+    settings.default_font = Some(include_bytes!("../Roboto-Medium.ttf"));
+    info!("Starting UI");
+    app::RefBoxApp::run(settings)?;
 
     Ok(())
 }

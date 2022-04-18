@@ -1618,11 +1618,14 @@ dependencies = [
 name = "uwh-matrix-drawing"
 version = "0.1.0"
 dependencies = [
+ "arrayref",
  "arrayvec",
  "clap 3.1.6",
  "embedded-graphics",
  "embedded-graphics-simulator",
  "fonts",
+ "serde",
+ "serde_derive",
  "serde_json",
  "serialport",
  "uwh-common",

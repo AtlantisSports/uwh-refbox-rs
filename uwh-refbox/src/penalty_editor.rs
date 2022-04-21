@@ -272,7 +272,7 @@ impl PenaltyEditor {
 
 fn generate_printable_list(
     tm: &TournamentManager,
-    penalties: &Vec<EditablePenalty>,
+    penalties: &[EditablePenalty],
     now: Instant,
 ) -> Option<Vec<(String, FormatHint, PenaltyKind)>> {
     penalties

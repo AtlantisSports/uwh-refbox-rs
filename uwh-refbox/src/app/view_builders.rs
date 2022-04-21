@@ -462,12 +462,12 @@ pub(super) fn build_penalty_overview_page<'a>(
         .into()
 }
 
-fn make_penalty_list<'a>(
-    states: &'a mut PenaltyListStates,
+fn make_penalty_list(
+    states: &mut PenaltyListStates,
     penalties: Vec<(String, FormatHint, PenaltyKind)>,
     index: usize,
     color: GameColor,
-) -> Container<'a, Message> {
+) -> Container<'_, Message> {
     let mut pen_col = Column::new().spacing(SPACING).width(Length::Fill).push(
         Text::new(format!("{} PENALTIES", color.to_string().to_uppercase()))
             .height(Length::Fill)
@@ -483,7 +483,7 @@ fn make_penalty_list<'a>(
         .enumerate()
         .skip(index)
         .take(PENALTY_LIST_LEN)
-        .map(|v| Some(v))
+        .map(Some)
         .chain([None].into_iter().cycle())
         .zip(states.list.iter_mut());
 
@@ -792,10 +792,7 @@ pub(super) fn build_keypad_page<'a>(
         .into()
 }
 
-fn make_add_score_page<'a>(
-    states: &'a mut AddScoreStates,
-    color: GameColor,
-) -> Element<'a, Message> {
+fn make_add_score_page(states: &mut AddScoreStates, color: GameColor) -> Element<'_, Message> {
     let (black_style, white_style) = match color {
         GameColor::Black => (style::Button::BlackSelected, style::Button::White),
         GameColor::White => (style::Button::Black, style::Button::WhiteSelected),
@@ -838,12 +835,12 @@ fn make_add_score_page<'a>(
         .into()
 }
 
-fn make_edit_penalty_page<'a>(
-    states: &'a mut EditPenaltyStates,
+fn make_edit_penalty_page(
+    states: &mut EditPenaltyStates,
     origin: Option<(GameColor, usize)>,
     color: GameColor,
     kind: PenaltyKind,
-) -> Element<'a, Message> {
+) -> Element<'_, Message> {
     let (black_style, white_style) = match color {
         GameColor::Black => (style::Button::BlackSelected, style::Button::White),
         GameColor::White => (style::Button::Black, style::Button::WhiteSelected),
@@ -955,7 +952,7 @@ fn make_edit_penalty_page<'a>(
         .into()
 }
 
-fn make_game_number_edit_page<'a>(states: &'a mut EditGameNumStates) -> Element<'a, Message> {
+fn make_game_number_edit_page(states: &mut EditGameNumStates) -> Element<'_, Message> {
     Column::new()
         .spacing(SPACING)
         .push(Space::new(Length::Shrink, Length::Fill))
@@ -978,10 +975,10 @@ fn make_game_number_edit_page<'a>(states: &'a mut EditGameNumStates) -> Element<
         .into()
 }
 
-fn make_team_timeout_edit_page<'a>(
-    states: &'a mut EditTeamTimeoutStates,
+fn make_team_timeout_edit_page(
+    states: &mut EditTeamTimeoutStates,
     duration: Duration,
-) -> Element<'a, Message> {
+) -> Element<'_, Message> {
     Column::new()
         .spacing(SPACING)
         .push(Space::new(Length::Shrink, Length::Fill))
@@ -1048,7 +1045,7 @@ pub(super) fn build_game_config_edit_page<'a>(
                     &mut states.half_length,
                     "HALF LENGTH:",
                     time_string(config.half_play_duration),
-                    Some(Message::EditParameter(GameParameter::HalfLength)),
+                    Some(Message::EditParameter(LengthParameter::Half)),
                 ))
                 .push(make_value_button(
                     &mut states.overtime_allowed,
@@ -1074,14 +1071,14 @@ pub(super) fn build_game_config_edit_page<'a>(
                     &mut states.half_time_length,
                     "HALF TIME\nLENGTH:",
                     time_string(config.half_time_duration),
-                    Some(Message::EditParameter(GameParameter::HalfTimeLength)),
+                    Some(Message::EditParameter(LengthParameter::HalfTime)),
                 ))
                 .push(make_value_button(
                     &mut states.pre_ot_break,
                     "PRE OT\nBREAK LENGTH:",
                     time_string(config.pre_overtime_break),
                     if config.has_overtime {
-                        Some(Message::EditParameter(GameParameter::PreOvertimeLength))
+                        Some(Message::EditParameter(LengthParameter::PreOvertime))
                     } else {
                         None
                     },
@@ -1091,7 +1088,7 @@ pub(super) fn build_game_config_edit_page<'a>(
                     "PRE SD\nBREAK LENGTH:",
                     time_string(config.pre_sudden_death_duration),
                     if config.sudden_death_allowed {
-                        Some(Message::EditParameter(GameParameter::PreSuddenDeathLength))
+                        Some(Message::EditParameter(LengthParameter::PreSuddenDeath))
                     } else {
                         None
                     },
@@ -1104,16 +1101,14 @@ pub(super) fn build_game_config_edit_page<'a>(
                     &mut states.nom_between_games,
                     "NOMINAL BRK\nBTWN GAMES:",
                     time_string(config.nominal_break),
-                    Some(Message::EditParameter(
-                        GameParameter::NominalBetweenGameLength,
-                    )),
+                    Some(Message::EditParameter(LengthParameter::NominalBetweenGame)),
                 ))
                 .push(make_value_button(
                     &mut states.ot_half_length,
                     "OT HALF\nLENGTH:",
                     time_string(config.ot_half_play_duration),
                     if config.has_overtime {
-                        Some(Message::EditParameter(GameParameter::OvertimeHalfLength))
+                        Some(Message::EditParameter(LengthParameter::OvertimeHalf))
                     } else {
                         None
                     },
@@ -1134,18 +1129,14 @@ pub(super) fn build_game_config_edit_page<'a>(
                     &mut states.min_between_games,
                     "MINIMUM BRK\nBTWN GAMES:",
                     time_string(config.minimum_break),
-                    Some(Message::EditParameter(
-                        GameParameter::MinimumBetweenGameLength,
-                    )),
+                    Some(Message::EditParameter(LengthParameter::MinimumBetweenGame)),
                 ))
                 .push(make_value_button(
                     &mut states.ot_half_time_length,
                     "OT HALF\nTIME LENGTH:",
                     time_string(config.ot_half_time_duration),
                     if config.has_overtime {
-                        Some(Message::EditParameter(
-                            GameParameter::OvertimeHalfTimeLength,
-                        ))
+                        Some(Message::EditParameter(LengthParameter::OvertimeHalfTime))
                     } else {
                         None
                     },
@@ -1174,18 +1165,18 @@ pub(super) fn build_game_config_edit_page<'a>(
 pub(super) fn build_game_parameter_editor<'a>(
     snapshot: &GameSnapshot,
     states: &'a mut GameParamEditStates,
-    param: GameParameter,
+    param: LengthParameter,
     length: Duration,
 ) -> Element<'a, Message> {
     let (title, hint) = match param {
-        GameParameter::HalfLength => ("HALF LEN", "The length of a half during regular play"),
-        GameParameter::HalfTimeLength => ("HALF TIME LEN", "The length of the Half Time period"),
-        GameParameter::NominalBetweenGameLength => ("NOM BREAK", "If a game runs exactly as long as scheduled, this is the length of the break between games"),
-        GameParameter::MinimumBetweenGameLength => ("MIN BREAK", "If a game runs longer than scheduled, this is the minimum time between games that the system will allot. If the games fall behind, the system will automatically try to catch up after subsequent games, always respecting this minimum time between games."),
-        GameParameter::PreOvertimeLength => ("PRE OT BREAK", "If overtime is enabled and needed, this is the length of the break between Second Half and Overtime First Half"),
-        GameParameter::OvertimeHalfLength => ("OT HALF LEN", "The length of a half during overtime"),
-        GameParameter::OvertimeHalfTimeLength => ("OT HLF TM LEN", "The length of Overtime Half Time"),
-        GameParameter::PreSuddenDeathLength => ("PRE SD BREAK", "The length of the break between the preceeding play period and Sudden Death"),
+        LengthParameter::Half => ("HALF LEN", "The length of a half during regular play"),
+        LengthParameter::HalfTime => ("HALF TIME LEN", "The length of the Half Time period"),
+        LengthParameter::NominalBetweenGame => ("NOM BREAK", "If a game runs exactly as long as scheduled, this is the length of the break between games"),
+        LengthParameter::MinimumBetweenGame => ("MIN BREAK", "If a game runs longer than scheduled, this is the minimum time between games that the system will allot. If the games fall behind, the system will automatically try to catch up after subsequent games, always respecting this minimum time between games."),
+        LengthParameter::PreOvertime => ("PRE OT BREAK", "If overtime is enabled and needed, this is the length of the break between Second Half and Overtime First Half"),
+        LengthParameter::OvertimeHalf => ("OT HALF LEN", "The length of a half during overtime"),
+        LengthParameter::OvertimeHalfTime => ("OT HLF TM LEN", "The length of Overtime Half Time"),
+        LengthParameter::PreSuddenDeath => ("PRE SD BREAK", "The length of the break between the preceeding play period and Sudden Death"),
     };
 
     Column::new()
@@ -1344,10 +1335,7 @@ pub(super) fn build_timeout_ribbon<'a>(
     states: &'a mut TimeoutRibbonStates,
     tm: &Arc<Mutex<TournamentManager>>,
 ) -> Row<'a, Message> {
-    let in_timeout = match snapshot.timeout {
-        TimeoutSnapshot::None => false,
-        _ => true,
-    };
+    let in_timeout = !matches!(snapshot.timeout, TimeoutSnapshot::None);
 
     let mut black = make_button(
         &mut states.black_timeout,
@@ -1475,12 +1463,12 @@ fn make_game_time_button<'a>(
         .style(style::Button::Gray)
 }
 
-fn make_time_editor<'a, T: Into<String>>(
-    states: &'a mut TimeEditorStates,
+fn make_time_editor<T: Into<String>>(
+    states: &mut TimeEditorStates,
     title: T,
     time: Duration,
     timeout: bool,
-) -> Container<'a, Message> {
+) -> Container<'_, Message> {
     Container::new(
         Column::new()
             .spacing(SPACING)
@@ -1556,7 +1544,7 @@ fn timeout_time_string(snapshot: &GameSnapshot) -> String {
         | TimeoutSnapshot::White(secs)
         | TimeoutSnapshot::Ref(secs)
         | TimeoutSnapshot::PenaltyShot(secs) => secs_to_time_string(secs).trim().to_string(),
-        TimeoutSnapshot::None => return String::new(),
+        TimeoutSnapshot::None => String::new(),
     }
 }
 
@@ -1577,7 +1565,7 @@ fn penalty_string(penalties: &[PenaltySnapshot]) -> String {
         match pen.time {
             PenaltyTime::Seconds(secs) => {
                 if secs != 0 {
-                    write!(&mut string, "{}:{:02}\n", secs / 60, secs % 60).unwrap();
+                    writeln!(&mut string, "{}:{:02}", secs / 60, secs % 60).unwrap();
                 } else {
                     string.push_str("Served\n");
                 }
@@ -1667,10 +1655,10 @@ fn period_text_and_color(period: GamePeriod) -> (&'static str, Color) {
     }
 }
 
-fn make_button<'a, Message: Clone, T: Into<String>>(
-    state: &'a mut button::State,
+fn make_button<Message: Clone, T: Into<String>>(
+    state: &mut button::State,
     label: T,
-) -> Button<'a, Message> {
+) -> Button<'_, Message> {
     Button::new(
         state,
         Text::new(label)
@@ -1684,11 +1672,11 @@ fn make_button<'a, Message: Clone, T: Into<String>>(
     .width(Length::Fill)
 }
 
-fn make_small_button<'a, Message: Clone, T: Into<String>>(
-    state: &'a mut button::State,
+fn make_small_button<Message: Clone, T: Into<String>>(
+    state: &mut button::State,
     label: T,
     size: u16,
-) -> Button<'a, Message> {
+) -> Button<'_, Message> {
     Button::new(
         state,
         Text::new(label)

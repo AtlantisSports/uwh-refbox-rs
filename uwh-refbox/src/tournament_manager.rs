@@ -106,7 +106,7 @@ impl TournamentManager {
         self.current_period
     }
 
-    pub fn config<'a>(&'a self) -> &'a GameConfig {
+    pub fn config(&self) -> &GameConfig {
         &self.config
     }
 
@@ -488,11 +488,10 @@ impl TournamentManager {
             "{} Starting a {kind:?} penalty for {color} player #{player_number}",
             self.status_string(now)
         );
-        let start_time = if let Some(t) = self.game_clock_time(now) {
-            t
-        } else {
-            return Err(TournamentManagerError::InvalidNowValue);
-        };
+        let start_time = self
+            .game_clock_time(now)
+            .ok_or(TournamentManagerError::InvalidNowValue)?;
+
         let penalty = Penalty {
             start_time,
             start_period: self.current_period,
@@ -1056,10 +1055,10 @@ impl TournamentManager {
         }
         if let Some(time) = pen.time_remaining(self.current_period, cur_time, &self.config) {
             let time = time.as_secs();
-            return Some(format!("{}:{:02}", time / 60, time % 60));
+            Some(format!("{}:{:02}", time / 60, time % 60))
         } else {
-            return Some("DSMS".to_string());
-        };
+            Some("DSMS".to_string())
+        }
     }
 
     /// Returns `None` if the clock time would be negative, or if `now` is before the start
@@ -1399,7 +1398,6 @@ pub enum TournamentManagerError {
     #[error("Action impossible unless in BetweenGames period")]
     GameInProgress,
     #[error("No {0} penalty exists at the index {1}")]
-    #[allow(dead_code)]
     InvalidIndex(Color, usize),
 }
 

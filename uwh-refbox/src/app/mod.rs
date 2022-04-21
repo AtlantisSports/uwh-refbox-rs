@@ -60,7 +60,7 @@ enum AppState {
     PenaltyOverview { black_idx: usize, white_idx: usize },
     KeypadPage(KeypadPage, u16),
     EditGameConfig,
-    ParameterEditor(GameParameter, Duration),
+    ParameterEditor(LengthParameter, Duration),
     ConfirmationPage(ConfirmationKind),
 }
 
@@ -98,15 +98,15 @@ impl KeypadPage {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum GameParameter {
-    HalfLength,
-    HalfTimeLength,
-    NominalBetweenGameLength,
-    MinimumBetweenGameLength,
-    PreOvertimeLength,
-    OvertimeHalfLength,
-    OvertimeHalfTimeLength,
-    PreSuddenDeathLength,
+pub enum LengthParameter {
+    Half,
+    HalfTime,
+    NominalBetweenGame,
+    MinimumBetweenGame,
+    PreOvertime,
+    OvertimeHalf,
+    OvertimeHalfTime,
+    PreSuddenDeath,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -159,7 +159,7 @@ pub enum Message {
     ConfigEditComplete {
         canceled: bool,
     },
-    EditParameter(GameParameter),
+    EditParameter(LengthParameter),
     ParameterEditComplete {
         canceled: bool,
     },
@@ -438,18 +438,16 @@ impl Application for RefBoxApp {
                 if canceled {
                     self.pen_edit.abort_session();
                     self.app_state = AppState::MainPage;
-                } else {
-                    if let Err(e) = self.pen_edit.apply_changes(Instant::now()) {
-                        let err_string = format!("An error occurred while applying the changes to the penalties. \
+                } else if let Err(e) = self.pen_edit.apply_changes(Instant::now()) {
+                    let err_string = format!("An error occurred while applying the changes to the penalties. \
                             Some of the changes may have been applied. Please retry any remaining changes.\n\n\
                             Error Message:\n{e}");
-                        error!("{err_string}");
-                        self.pen_edit.abort_session();
-                        self.app_state =
-                            AppState::ConfirmationPage(ConfirmationKind::Error(err_string));
-                    } else {
-                        self.app_state = AppState::MainPage;
-                    }
+                    error!("{err_string}");
+                    self.pen_edit.abort_session();
+                    self.app_state =
+                        AppState::ConfirmationPage(ConfirmationKind::Error(err_string));
+                } else {
+                    self.app_state = AppState::MainPage;
                 }
                 trace!("AppState changed to {:?}", self.app_state);
             }
@@ -603,24 +601,22 @@ impl Application for RefBoxApp {
                 self.app_state = AppState::ParameterEditor(
                     param,
                     Duration::from_secs(match param {
-                        GameParameter::HalfLength => self.config.game.half_play_duration.into(),
-                        GameParameter::HalfTimeLength => self.config.game.half_time_duration.into(),
-                        GameParameter::NominalBetweenGameLength => {
+                        LengthParameter::Half => self.config.game.half_play_duration.into(),
+                        LengthParameter::HalfTime => self.config.game.half_time_duration.into(),
+                        LengthParameter::NominalBetweenGame => {
                             self.config.game.nominal_break.into()
                         }
-                        GameParameter::MinimumBetweenGameLength => {
+                        LengthParameter::MinimumBetweenGame => {
                             self.config.game.minimum_break.into()
                         }
-                        GameParameter::PreOvertimeLength => {
-                            self.config.game.pre_overtime_break.into()
-                        }
-                        GameParameter::OvertimeHalfLength => {
+                        LengthParameter::PreOvertime => self.config.game.pre_overtime_break.into(),
+                        LengthParameter::OvertimeHalf => {
                             self.config.game.ot_half_play_duration.into()
                         }
-                        GameParameter::OvertimeHalfTimeLength => {
+                        LengthParameter::OvertimeHalfTime => {
                             self.config.game.ot_half_time_duration.into()
                         }
-                        GameParameter::PreSuddenDeathLength => {
+                        LengthParameter::PreSuddenDeath => {
                             self.config.game.pre_sudden_death_duration.into()
                         }
                     }),
@@ -633,28 +629,26 @@ impl Application for RefBoxApp {
                         AppState::ParameterEditor(param, dur) => {
                             let val: u16 = dur.as_secs().try_into().unwrap();
                             match param {
-                                GameParameter::HalfLength => {
-                                    self.config.game.half_play_duration = val
-                                }
-                                GameParameter::HalfTimeLength => {
+                                LengthParameter::Half => self.config.game.half_play_duration = val,
+                                LengthParameter::HalfTime => {
                                     self.config.game.half_time_duration = val
                                 }
-                                GameParameter::NominalBetweenGameLength => {
+                                LengthParameter::NominalBetweenGame => {
                                     self.config.game.nominal_break = val
                                 }
-                                GameParameter::MinimumBetweenGameLength => {
+                                LengthParameter::MinimumBetweenGame => {
                                     self.config.game.minimum_break = val
                                 }
-                                GameParameter::PreOvertimeLength => {
+                                LengthParameter::PreOvertime => {
                                     self.config.game.pre_overtime_break = val
                                 }
-                                GameParameter::OvertimeHalfLength => {
+                                LengthParameter::OvertimeHalf => {
                                     self.config.game.ot_half_play_duration = val
                                 }
-                                GameParameter::OvertimeHalfTimeLength => {
+                                LengthParameter::OvertimeHalfTime => {
                                     self.config.game.ot_half_time_duration = val
                                 }
-                                GameParameter::PreSuddenDeathLength => {
+                                LengthParameter::PreSuddenDeath => {
                                     self.config.game.pre_sudden_death_duration = val
                                 }
                             }

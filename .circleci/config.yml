@@ -3,7 +3,7 @@ version: 2.1
 jobs:
   check-build:
     docker:
-      - image: magycian/refbox-ci:1.59.0
+      - image: magycian/refbox-ci:1.60.0.1
     steps:
       - checkout
       - restore_cache:
@@ -19,7 +19,7 @@ jobs:
       - run: cargo test --all
       - run: rm -rf "/home/circleci/.cargo/registry/src"
       - save_cache:
-          key: v1-uwh-refbox-rs-{{ arch }}
+          key: v1-uwh-refbox-rs-{{ arch }}-{{ checksum "Cargo.lock" }}
           paths:
             - /home/circleci/.cache/sccache
             - /home/circleci/.cargo

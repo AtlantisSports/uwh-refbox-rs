@@ -4,23 +4,20 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["std", "prost"]
-std = ["arrayvec/std", "displaydoc/std", "prost/std", "serde/std",  "toml"]
+default = ["std"]
+std = ["arrayvec/std", "displaydoc/std", "serde/std",  "toml"]
 
 [dependencies]
-arrayref = "0.3.2"
+arrayref = "0.3.6"
 arrayvec = { version = "0.7.2", default-features = false, features = ["serde"] }
-defmt = "0.3.0"
+defmt = "0.3.1"
+derivative = "2.2.0"
 displaydoc = { version = "0.2.3", default-features = false }
 fonts = { version = "0.1.0", path = "../fonts" }
-log = "0.4.6"
-prost = { version = "0.9.0", default-features = false, optional = true }
-serde = { version = "1.0.91", default-features = false }
-serde_derive = "1.0.91"
+log = "0.4.16"
+serde = { version = "1.0", default-features = false }
+serde_derive = "1.0"
 toml = { version = "0.5", optional = true }
 
-[build-dependencies]
-prost-build = "0.9.0"
-
 [dev-dependencies]
-indoc = "0.3.4"
+indoc = "1.0.4"

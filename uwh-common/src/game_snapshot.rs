@@ -1,7 +1,5 @@
 #[cfg(feature = "std")]
 use crate::config::Game;
-#[cfg(feature = "prost")]
-use crate::sendable_snapshot as ss;
 use arrayref::array_ref;
 use arrayvec::ArrayVec;
 use core::{
@@ -9,9 +7,15 @@ use core::{
     time::Duration,
 };
 use defmt::Format;
+use derivative::Derivative;
 use displaydoc::Display;
 use serde_derive::{Deserialize, Serialize};
 
+const PANEL_PENALTY_COUNT: usize = 3;
+
+/// Game snapshot information that the LED matrices need. Excludes some fields, limits to three
+/// penalties (the three with the lowest remaining time), and places the penalties on a stack based
+/// `ArrayVec`, instead of the heap based `Vec`
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct GameSnapshotNoHeap {
     pub current_period: GamePeriod,
@@ -19,12 +23,14 @@ pub struct GameSnapshotNoHeap {
     pub timeout: TimeoutSnapshot,
     pub b_score: u8,
     pub w_score: u8,
-    pub b_penalties: ArrayVec<PenaltySnapshot, 3>,
-    pub w_penalties: ArrayVec<PenaltySnapshot, 3>,
+    pub b_penalties: ArrayVec<PenaltySnapshot, PANEL_PENALTY_COUNT>,
+    pub w_penalties: ArrayVec<PenaltySnapshot, PANEL_PENALTY_COUNT>,
 }
 
+/// All the information needed by a UI to draw the current state of the game. Requires the `std`
+/// feature.
 #[cfg(feature = "std")]
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Default, Clone, Serialize, Deserialize)]
 pub struct GameSnapshot {
     pub current_period: GamePeriod,
     pub secs_in_period: u16,
@@ -33,21 +39,33 @@ pub struct GameSnapshot {
     pub w_score: u8,
     pub b_penalties: Vec<PenaltySnapshot>,
     pub w_penalties: Vec<PenaltySnapshot>,
+    pub game_number: u16,
+    pub next_game_number: u16,
 }
 
 #[cfg(feature = "std")]
 impl From<GameSnapshot> for GameSnapshotNoHeap {
-    fn from(mut snapshot: GameSnapshot) -> Self {
-        snapshot.b_penalties.sort_by(|a, b| a.time.cmp(&b.time));
-        snapshot.w_penalties.sort_by(|a, b| a.time.cmp(&b.time));
+    fn from(snapshot: GameSnapshot) -> Self {
+        let process_penalties = |mut orig: Vec<PenaltySnapshot>| {
+            orig.retain(|pen| {
+                if let PenaltyTime::Seconds(secs) = pen.time {
+                    secs != 0
+                } else {
+                    true
+                }
+            });
+            orig.sort_by(|a, b| a.time.cmp(&b.time));
+            orig.into_iter().take(3).collect()
+        };
+
         Self {
             current_period: snapshot.current_period,
             secs_in_period: snapshot.secs_in_period,
             timeout: snapshot.timeout,
             b_score: snapshot.b_score,
             w_score: snapshot.w_score,
-            b_penalties: snapshot.b_penalties.into_iter().take(3).collect(),
-            w_penalties: snapshot.w_penalties.into_iter().take(3).collect(),
+            b_penalties: process_penalties(snapshot.b_penalties),
+            w_penalties: process_penalties(snapshot.w_penalties),
         }
     }
 }
@@ -58,8 +76,10 @@ pub struct PenaltySnapshot {
     pub time: PenaltyTime,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize, Deserialize)]
+#[derive(Derivative, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derivative(Debug, Default, Clone, Copy)]
 pub enum GamePeriod {
+    #[derivative(Default)]
     BetweenGames,
     FirstHalf,
     HalfTime,
@@ -172,8 +192,10 @@ impl core::fmt::Display for GamePeriod {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+#[derive(Derivative, Serialize, Deserialize)]
+#[derivative(Debug, Default, PartialEq, Eq, Clone, Copy)]
 pub enum TimeoutSnapshot {
+    #[derivative(Default)]
     None,
     White(u16),
     Black(u16),
@@ -193,8 +215,10 @@ impl core::fmt::Display for TimeoutSnapshot {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+#[derive(Derivative, Serialize, Deserialize)]
+#[derivative(Debug, Default, PartialEq, Eq, Clone, Copy)]
 pub enum Color {
+    #[derivative(Default)]
     Black,
     White,
 }
@@ -232,222 +256,6 @@ impl Ord for PenaltyTime {
 impl PartialOrd for PenaltyTime {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
-    }
-}
-
-#[derive(Debug, Display, PartialEq, Eq, Clone)]
-pub enum ConversionError {
-    /// Period enum had invalid value of {0}
-    InvalidPeriod(i32),
-    /// Game time was too large for a u16: {0}
-    GameTimeTooLarge(u32),
-    /// {0} score was too large for a u8: {1}
-    ScoreTooLarge(Color, u32),
-    /// Penalty time was too large for a u16: {0}
-    PenaltyTimeTooLarge(u32),
-    /// Penalty time was missing
-    PenaltyTimeMissing,
-    /// Player number was too large for a u8: {0}
-    PlayerNumTooLarge(u32),
-    /// Timeout type enum had invalid value of {0}
-    InvalidTimeoutType(i32),
-    /// Timeout time was too large for a u16: {0}
-    TimeoutTimeTooLarge(u32),
-    /// Timeout snapshot was missing
-    TimeoutMissing,
-}
-
-#[cfg(feature = "std")]
-impl std::error::Error for ConversionError {}
-
-#[cfg(feature = "prost")]
-impl TryFrom<ss::penalty_snapshot::Time> for PenaltyTime {
-    type Error = ConversionError;
-
-    fn try_from(snapshot: ss::penalty_snapshot::Time) -> Result<Self, Self::Error> {
-        Ok(match snapshot {
-            ss::penalty_snapshot::Time::Seconds(val) => PenaltyTime::Seconds(
-                val.try_into()
-                    .map_err(|_| ConversionError::PenaltyTimeTooLarge(val))?,
-            ),
-            ss::penalty_snapshot::Time::TotalDismissal(_) => PenaltyTime::TotalDismissal,
-        })
-    }
-}
-
-#[cfg(feature = "prost")]
-impl TryFrom<ss::PenaltySnapshot> for PenaltySnapshot {
-    type Error = ConversionError;
-
-    fn try_from(snapshot: ss::PenaltySnapshot) -> Result<Self, Self::Error> {
-        Ok(Self {
-            player_number: snapshot
-                .player_number
-                .try_into()
-                .map_err(|_| ConversionError::PlayerNumTooLarge(snapshot.player_number))?,
-            time: snapshot
-                .time
-                .ok_or(ConversionError::PenaltyTimeMissing)?
-                .try_into()?,
-        })
-    }
-}
-
-#[cfg(feature = "prost")]
-impl TryFrom<ss::TimeoutSnapshot> for TimeoutSnapshot {
-    type Error = ConversionError;
-
-    fn try_from(snapshot: ss::TimeoutSnapshot) -> Result<Self, Self::Error> {
-        use ss::timeout_snapshot::TimeoutType;
-
-        let timeout_type = TimeoutType::from_i32(snapshot.r#type)
-            .ok_or(ConversionError::InvalidTimeoutType(snapshot.r#type))?;
-        let time = if let TimeoutType::None = timeout_type {
-            0
-        } else {
-            snapshot
-                .time
-                .try_into()
-                .map_err(|_| ConversionError::TimeoutTimeTooLarge(snapshot.time))?
-        };
-
-        Ok(match timeout_type {
-            TimeoutType::None => Self::None,
-            TimeoutType::White => Self::White(time),
-            TimeoutType::Black => Self::Black(time),
-            TimeoutType::Ref => Self::Ref(time),
-            TimeoutType::PenaltyShot => Self::PenaltyShot(time),
-        })
-    }
-}
-
-#[cfg(feature = "prost")]
-impl From<ss::GamePeriod> for GamePeriod {
-    fn from(snapshot: ss::GamePeriod) -> Self {
-        match snapshot {
-            ss::GamePeriod::BetweenGames => Self::BetweenGames,
-            ss::GamePeriod::FirstHalf => Self::FirstHalf,
-            ss::GamePeriod::HalfTime => Self::HalfTime,
-            ss::GamePeriod::SecondHalf => Self::SecondHalf,
-            ss::GamePeriod::PreOvertime => Self::PreOvertime,
-            ss::GamePeriod::OvertimeFirstHalf => Self::OvertimeFirstHalf,
-            ss::GamePeriod::OvertimeHalfTime => Self::OvertimeHalfTime,
-            ss::GamePeriod::OvertimeSecondHalf => Self::OvertimeSecondHalf,
-            ss::GamePeriod::PreSuddenDeath => Self::PreSuddenDeath,
-            ss::GamePeriod::SuddenDeath => Self::SuddenDeath,
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-impl TryFrom<ss::GameSnapshot> for GameSnapshot {
-    type Error = ConversionError;
-
-    fn try_from(snapshot: ss::GameSnapshot) -> Result<Self, Self::Error> {
-        Ok(Self {
-            current_period: ss::GamePeriod::from_i32(snapshot.current_period)
-                .ok_or(ConversionError::InvalidPeriod(snapshot.current_period))?
-                .into(),
-            secs_in_period: snapshot
-                .secs_in_period
-                .try_into()
-                .map_err(|_| ConversionError::GameTimeTooLarge(snapshot.secs_in_period))?,
-            timeout: snapshot
-                .timeout
-                .ok_or(ConversionError::TimeoutMissing)?
-                .try_into()?,
-            b_score: snapshot
-                .b_score
-                .try_into()
-                .map_err(|_| ConversionError::ScoreTooLarge(Color::Black, snapshot.b_score))?,
-            w_score: snapshot
-                .w_score
-                .try_into()
-                .map_err(|_| ConversionError::ScoreTooLarge(Color::White, snapshot.w_score))?,
-            b_penalties: snapshot
-                .b_penalties
-                .into_iter()
-                .map(|pen| pen.try_into())
-                .collect::<Result<Vec<_>, Self::Error>>()?,
-            w_penalties: snapshot
-                .w_penalties
-                .into_iter()
-                .map(|pen| pen.try_into())
-                .collect::<Result<Vec<_>, Self::Error>>()?,
-        })
-    }
-}
-
-#[cfg(feature = "prost")]
-#[allow(clippy::from_over_into)]
-impl Into<ss::PenaltySnapshot> for PenaltySnapshot {
-    fn into(self) -> ss::PenaltySnapshot {
-        let time = match self.time {
-            PenaltyTime::Seconds(val) => ss::penalty_snapshot::Time::Seconds(val.into()),
-            PenaltyTime::TotalDismissal => ss::penalty_snapshot::Time::TotalDismissal(true),
-        };
-
-        ss::PenaltySnapshot {
-            player_number: self.player_number.into(),
-            time: Some(time),
-        }
-    }
-}
-
-#[cfg(feature = "prost")]
-#[allow(clippy::from_over_into)]
-impl Into<ss::TimeoutSnapshot> for TimeoutSnapshot {
-    fn into(self) -> ss::TimeoutSnapshot {
-        use ss::timeout_snapshot::TimeoutType;
-
-        let (timeout_type, time) = match self {
-            TimeoutSnapshot::None => (TimeoutType::None, 0),
-            TimeoutSnapshot::White(t) => (TimeoutType::White, t.into()),
-            TimeoutSnapshot::Black(t) => (TimeoutType::Black, t.into()),
-            TimeoutSnapshot::Ref(t) => (TimeoutType::Ref, t.into()),
-            TimeoutSnapshot::PenaltyShot(t) => (TimeoutType::PenaltyShot, t.into()),
-        };
-
-        ss::TimeoutSnapshot {
-            r#type: timeout_type as i32,
-            time,
-        }
-    }
-}
-
-#[cfg(feature = "prost")]
-#[allow(clippy::from_over_into)]
-impl Into<ss::GamePeriod> for GamePeriod {
-    fn into(self) -> ss::GamePeriod {
-        match self {
-            Self::BetweenGames => ss::GamePeriod::BetweenGames,
-            Self::FirstHalf => ss::GamePeriod::FirstHalf,
-            Self::HalfTime => ss::GamePeriod::HalfTime,
-            Self::SecondHalf => ss::GamePeriod::SecondHalf,
-            Self::PreOvertime => ss::GamePeriod::PreOvertime,
-            Self::OvertimeFirstHalf => ss::GamePeriod::OvertimeFirstHalf,
-            Self::OvertimeHalfTime => ss::GamePeriod::OvertimeHalfTime,
-            Self::OvertimeSecondHalf => ss::GamePeriod::OvertimeSecondHalf,
-            Self::PreSuddenDeath => ss::GamePeriod::PreSuddenDeath,
-            Self::SuddenDeath => ss::GamePeriod::SuddenDeath,
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-#[allow(clippy::from_over_into)]
-impl Into<ss::GameSnapshot> for GameSnapshot {
-    fn into(self) -> ss::GameSnapshot {
-        let current_period: ss::GamePeriod = self.current_period.into();
-        ss::GameSnapshot {
-            current_period: current_period as i32,
-            secs_in_period: self.secs_in_period.into(),
-            timeout: Some(self.timeout.into()),
-            b_score: self.b_score.into(),
-            w_score: self.w_score.into(),
-            b_penalties: self.b_penalties.into_iter().map(|pen| pen.into()).collect(),
-            w_penalties: self.w_penalties.into_iter().map(|pen| pen.into()).collect(),
-        }
     }
 }
 
@@ -650,7 +458,6 @@ impl GameSnapshotNoHeap {
 #[cfg(test)]
 mod test {
     use super::*;
-    use prost::Message;
 
     #[test]
     fn test_penalty_time_ord() {
@@ -990,134 +797,6 @@ mod test {
             Some(GamePeriod::SuddenDeath)
         );
         assert_eq!(GamePeriod::SuddenDeath.next_period(), None);
-    }
-
-    #[test]
-    fn test_prost_serialize_and_desereialize() -> Result<(), Box<dyn std::error::Error>> {
-        let mut state = GameSnapshot {
-            current_period: GamePeriod::BetweenGames,
-            secs_in_period: 0,
-            timeout: TimeoutSnapshot::None,
-            b_score: 0,
-            w_score: 0,
-            b_penalties: vec![],
-            w_penalties: vec![],
-        };
-
-        let test_state = |state: &mut GameSnapshot| -> Result<(), Box<dyn std::error::Error>> {
-            let sendable: ss::GameSnapshot = state.clone().into();
-            let mut serialization = vec![];
-            sendable.encode(&mut serialization)?;
-            let recieved = ss::GameSnapshot::decode(&serialization[..])?;
-            let mut recreated: GameSnapshot = recieved.clone().try_into()?;
-            assert_eq!(sendable, recieved);
-            assert_eq!(state, &mut recreated);
-            Ok(())
-        };
-
-        test_state(&mut state)?;
-
-        state.current_period = GamePeriod::FirstHalf;
-        state.secs_in_period = 345;
-        state.timeout = TimeoutSnapshot::Black(16);
-        state.b_score = 2;
-        state.w_score = 5;
-        state.b_penalties.push(PenaltySnapshot {
-            player_number: 1,
-            time: PenaltyTime::Seconds(48),
-        });
-        state.w_penalties.push(PenaltySnapshot {
-            player_number: 12,
-            time: PenaltyTime::Seconds(96),
-        });
-
-        test_state(&mut state)?;
-
-        state.current_period = GamePeriod::HalfTime;
-        state.secs_in_period = 66;
-        state.timeout = TimeoutSnapshot::White(60);
-        state.b_score = 12;
-        state.w_score = 25;
-        state.b_penalties.push(PenaltySnapshot {
-            player_number: 4,
-            time: PenaltyTime::Seconds(245),
-        });
-        state.w_penalties.push(PenaltySnapshot {
-            player_number: 14,
-            time: PenaltyTime::Seconds(300),
-        });
-
-        test_state(&mut state)?;
-
-        state.current_period = GamePeriod::SecondHalf;
-        state.secs_in_period = 900;
-        state.timeout = TimeoutSnapshot::Ref(432);
-        state.b_score = 99;
-        state.w_score = 99;
-        state.b_penalties.push(PenaltySnapshot {
-            player_number: 7,
-            time: PenaltyTime::TotalDismissal,
-        });
-        state.w_penalties.push(PenaltySnapshot {
-            player_number: 15,
-            time: PenaltyTime::TotalDismissal,
-        });
-
-        test_state(&mut state)?;
-
-        state.current_period = GamePeriod::PreOvertime;
-        state.secs_in_period = 58;
-        state.timeout = TimeoutSnapshot::PenaltyShot(16);
-        state.b_penalties.push(PenaltySnapshot {
-            player_number: 99,
-            time: PenaltyTime::Seconds(32),
-        });
-        state.w_penalties.push(PenaltySnapshot {
-            player_number: 99,
-            time: PenaltyTime::Seconds(222),
-        });
-
-        test_state(&mut state)?;
-
-        state.current_period = GamePeriod::OvertimeFirstHalf;
-        state.secs_in_period = 300;
-        state.b_penalties.push(PenaltySnapshot {
-            player_number: 34,
-            time: PenaltyTime::Seconds(33),
-        });
-        state.w_penalties.push(PenaltySnapshot {
-            player_number: 34,
-            time: PenaltyTime::Seconds(22),
-        });
-
-        test_state(&mut state)?;
-
-        state.current_period = GamePeriod::OvertimeHalfTime;
-        state.secs_in_period = 53;
-        state.b_penalties.push(PenaltySnapshot {
-            player_number: 52,
-            time: PenaltyTime::Seconds(78),
-        });
-        state.w_penalties.push(PenaltySnapshot {
-            player_number: 95,
-            time: PenaltyTime::Seconds(12),
-        });
-
-        test_state(&mut state)?;
-
-        state.current_period = GamePeriod::OvertimeSecondHalf;
-
-        test_state(&mut state)?;
-
-        state.current_period = GamePeriod::PreSuddenDeath;
-
-        test_state(&mut state)?;
-
-        state.current_period = GamePeriod::SuddenDeath;
-
-        test_state(&mut state)?;
-
-        Ok(())
     }
 
     #[test]

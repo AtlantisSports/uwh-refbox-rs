@@ -34,7 +34,7 @@ pub(super) fn build_main_view<'a>(
         .align_items(Align::Center)
         .push(Text::new(period_text).color(period_color))
         .push(
-            Text::new(time_string(snapshot.secs_in_period))
+            Text::new(secs_to_time_string(snapshot.secs_in_period).trim())
                 .color(period_color)
                 .size(LARGE_TEXT),
         );
@@ -1118,7 +1118,7 @@ pub(super) fn build_game_config_edit_page<'a>(
                     "NUM TEAM T/Os\nALLWD PER HALF:",
                     config.team_timeouts_per_half.to_string(),
                     Some(Message::KeypadPage(KeypadPage::TeamTimeouts(
-                        Duration::from_secs(config.team_timeout_duration.into()),
+                        config.team_timeout_duration,
                     ))),
                 )),
         )
@@ -1424,7 +1424,7 @@ fn make_game_time_button<'a>(
                 .horizontal_alignment(HorizontalAlignment::Right),
         )
         .push(
-            Text::new(time_string(snapshot.secs_in_period))
+            Text::new(secs_to_time_string(snapshot.secs_in_period).trim())
                 .color(period_color)
                 .size(LARGE_TEXT)
                 .width(Length::Fill)
@@ -1501,7 +1501,7 @@ fn make_time_editor<T: Into<String>>(
                             ),
                     )
                     .push(
-                        Text::new(time_string(time.as_secs().try_into().unwrap()))
+                        Text::new(time_string(time))
                             .size(LARGE_TEXT)
                             .horizontal_alignment(HorizontalAlignment::Center)
                             .width(Length::Units(200)),
@@ -1534,8 +1534,8 @@ fn make_time_editor<T: Into<String>>(
     .padding(PADDING)
 }
 
-fn time_string(time: u16) -> String {
-    secs_to_time_string(time).trim().to_string()
+fn time_string(time: Duration) -> String {
+    secs_to_time_string(time.as_secs()).trim().to_string()
 }
 
 fn timeout_time_string(snapshot: &GameSnapshot) -> String {

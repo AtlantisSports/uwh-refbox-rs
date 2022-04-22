@@ -40,7 +40,7 @@ impl TournamentManager {
             game_start_time: Instant::now(),
             current_period: GamePeriod::BetweenGames,
             clock_state: ClockState::Stopped {
-                clock_time: Duration::from_secs(config.nominal_break.into()),
+                clock_time: config.nominal_break,
             },
             timeout_state: TimeoutState::None,
             w_timeouts_used: 0,
@@ -147,7 +147,7 @@ impl TournamentManager {
 
         self.current_period = GamePeriod::BetweenGames;
         self.clock_state = ClockState::Stopped {
-            clock_time: Duration::from_secs(self.config.pre_game_duration.into()),
+            clock_time: self.config.pre_game_duration,
         };
         self.timeout_state = TimeoutState::None;
         self.reset();
@@ -306,13 +306,11 @@ impl TournamentManager {
                     self.stop_game_clock(now)?;
                     self.timeout_state = TimeoutState::White(ClockState::CountingDown {
                         start_time: now,
-                        time_remaining_at_start: Duration::from_secs(
-                            self.config.team_timeout_duration.into(),
-                        ),
+                        time_remaining_at_start: self.config.team_timeout_duration,
                     });
                 } else {
                     self.timeout_state = TimeoutState::White(ClockState::Stopped {
-                        clock_time: Duration::from_secs(self.config.team_timeout_duration.into()),
+                        clock_time: self.config.team_timeout_duration,
                     });
                 }
                 self.w_timeouts_used += 1;
@@ -330,13 +328,11 @@ impl TournamentManager {
                     self.stop_game_clock(now)?;
                     self.timeout_state = TimeoutState::Black(ClockState::CountingDown {
                         start_time: now,
-                        time_remaining_at_start: Duration::from_secs(
-                            self.config.team_timeout_duration.into(),
-                        ),
+                        time_remaining_at_start: self.config.team_timeout_duration,
                     });
                 } else {
                     self.timeout_state = TimeoutState::Black(ClockState::Stopped {
-                        clock_time: Duration::from_secs(self.config.team_timeout_duration.into()),
+                        clock_time: self.config.team_timeout_duration,
                     });
                 }
                 self.b_timeouts_used += 1;
@@ -594,9 +590,9 @@ impl TournamentManager {
         );
 
         let scheduled_start = self.game_start_time
-            + 2 * Duration::from_secs(self.config.half_play_duration.into())
-            + Duration::from_secs(self.config.half_time_duration.into())
-            + Duration::from_secs(self.config.nominal_break.into());
+            + 2 * self.config.half_play_duration
+            + self.config.half_time_duration
+            + self.config.nominal_break;
 
         let game_end = match self.clock_state {
             ClockState::CountingDown {
@@ -608,12 +604,9 @@ impl TournamentManager {
 
         let time_remaining_at_start =
             if let Some(time_until_start) = scheduled_start.checked_duration_since(game_end) {
-                max(
-                    time_until_start,
-                    Duration::from_secs(self.config.minimum_break.into()),
-                )
+                max(time_until_start, self.config.minimum_break)
             } else {
-                Duration::from_secs(self.config.minimum_break.into())
+                self.config.minimum_break
             };
 
         info!(
@@ -636,8 +629,8 @@ impl TournamentManager {
         } = self.clock_state
         {
             if !self.has_reset {
-                if let Some(time_before_reset) = time_remaining_at_start
-                    .checked_sub(Duration::from_secs(self.config.pre_game_duration.into()))
+                if let Some(time_before_reset) =
+                    time_remaining_at_start.checked_sub(self.config.pre_game_duration)
                 {
                     if self.current_period == GamePeriod::BetweenGames
                         && now.duration_since(start_time) > time_before_reset
@@ -1143,7 +1136,7 @@ impl TournamentManager {
                 error!("Error with time string: {}", e);
             }
         } else {
-            string.push_str("[XX:XX ");
+            string.push_str("[XX:XX.XXX ");
         }
 
         string.push_str(match self.current_period {
@@ -1414,7 +1407,7 @@ mod test {
     #[test]
     fn test_clock_start_stop() {
         let config = GameConfig {
-            nominal_break: 13,
+            nominal_break: Duration::from_secs(13),
             ..Default::default()
         };
         let mut tm = TournamentManager::new(config);
@@ -1449,7 +1442,7 @@ mod test {
     #[test]
     fn test_clock_start_stop_with_timeouts() {
         let config = GameConfig {
-            nominal_break: 13,
+            nominal_break: Duration::from_secs(13),
             ..Default::default()
         };
         let mut tm = TournamentManager::new(config);
@@ -1525,7 +1518,7 @@ mod test {
     #[test]
     fn test_reset() {
         let config = GameConfig {
-            pre_game_duration: 3,
+            pre_game_duration: Duration::from_secs(3),
             ..Default::default()
         };
         let mut tm = TournamentManager::new(config);
@@ -1629,11 +1622,11 @@ mod test {
     #[test]
     fn test_change_config() {
         let config = GameConfig {
-            half_play_duration: 20,
+            half_play_duration: Duration::from_secs(20),
             ..Default::default()
         };
         let other_config = GameConfig {
-            half_play_duration: 40,
+            half_play_duration: Duration::from_secs(40),
             ..config.clone()
         };
         let mut tm = TournamentManager::new(config);
@@ -1792,7 +1785,7 @@ mod test {
     fn test_start_timeouts() {
         let config = GameConfig {
             team_timeouts_per_half: 1,
-            team_timeout_duration: 10,
+            team_timeout_duration: Duration::from_secs(10),
             ..Default::default()
         };
         let mut tm = TournamentManager::new(config);
@@ -2228,9 +2221,9 @@ mod test {
     #[test]
     fn test_start_play_now() {
         let config = GameConfig {
-            half_play_duration: 900,
+            half_play_duration: Duration::from_secs(900),
             has_overtime: true,
-            ot_half_play_duration: 300,
+            ot_half_play_duration: Duration::from_secs(300),
             sudden_death_allowed: true,
             ..Default::default()
         };
@@ -2358,7 +2351,7 @@ mod test {
     #[test]
     fn test_transition_bg_to_fh() {
         let config = GameConfig {
-            half_play_duration: 3,
+            half_play_duration: Duration::from_secs(3),
             ..Default::default()
         };
 
@@ -2381,7 +2374,7 @@ mod test {
     #[test]
     fn test_transition_bg_to_fh_delayed() {
         let config = GameConfig {
-            half_play_duration: 3,
+            half_play_duration: Duration::from_secs(3),
             ..Default::default()
         };
         test_transition(TransitionTestSetup {
@@ -2399,7 +2392,7 @@ mod test {
     #[test]
     fn test_transition_fh_to_ht() {
         let config = GameConfig {
-            half_time_duration: 5,
+            half_time_duration: Duration::from_secs(5),
             ..Default::default()
         };
         test_transition(TransitionTestSetup {
@@ -2417,7 +2410,7 @@ mod test {
     #[test]
     fn test_transition_ht_to_sh() {
         let config = GameConfig {
-            half_play_duration: 6,
+            half_play_duration: Duration::from_secs(6),
             ..Default::default()
         };
         test_transition(TransitionTestSetup {
@@ -2436,7 +2429,7 @@ mod test {
     fn test_transition_sh_to_pot() {
         let config = GameConfig {
             has_overtime: true,
-            pre_overtime_break: 7,
+            pre_overtime_break: Duration::from_secs(7),
             ..Default::default()
         };
         test_transition(TransitionTestSetup {
@@ -2456,7 +2449,7 @@ mod test {
         let config = GameConfig {
             has_overtime: false,
             sudden_death_allowed: true,
-            pre_sudden_death_duration: 8,
+            pre_sudden_death_duration: Duration::from_secs(8),
             ..Default::default()
         };
         test_transition(TransitionTestSetup {
@@ -2476,10 +2469,10 @@ mod test {
         let config = GameConfig {
             has_overtime: false,
             sudden_death_allowed: false,
-            half_play_duration: 9,
-            half_time_duration: 2,
-            nominal_break: 5,
-            minimum_break: 1,
+            half_play_duration: Duration::from_secs(9),
+            half_time_duration: Duration::from_secs(2),
+            nominal_break: Duration::from_secs(5),
+            minimum_break: Duration::from_secs(1),
             ..Default::default()
         };
         // 2*9 + 2 + 5 = 25 sec from game start to game start
@@ -2500,10 +2493,10 @@ mod test {
         let config = GameConfig {
             has_overtime: false,
             sudden_death_allowed: false,
-            half_play_duration: 9,
-            half_time_duration: 2,
-            nominal_break: 7,
-            minimum_break: 5,
+            half_play_duration: Duration::from_secs(9),
+            half_time_duration: Duration::from_secs(2),
+            nominal_break: Duration::from_secs(7),
+            minimum_break: Duration::from_secs(5),
             ..Default::default()
         };
         // 2*9 + 2 + 7 = 27 sec from game start to game start
@@ -2524,10 +2517,10 @@ mod test {
         let config = GameConfig {
             has_overtime: false,
             sudden_death_allowed: false,
-            half_play_duration: 9,
-            half_time_duration: 2,
-            nominal_break: 6,
-            minimum_break: 1,
+            half_play_duration: Duration::from_secs(9),
+            half_time_duration: Duration::from_secs(2),
+            nominal_break: Duration::from_secs(6),
+            minimum_break: Duration::from_secs(1),
             ..Default::default()
         };
         // 2*9 + 2 + 6 = 26 sec from game start to game start
@@ -2548,10 +2541,10 @@ mod test {
         let config = GameConfig {
             has_overtime: true,
             sudden_death_allowed: true,
-            half_play_duration: 9,
-            half_time_duration: 2,
-            nominal_break: 8,
-            minimum_break: 1,
+            half_play_duration: Duration::from_secs(9),
+            half_time_duration: Duration::from_secs(2),
+            nominal_break: Duration::from_secs(8),
+            minimum_break: Duration::from_secs(1),
             ..Default::default()
         };
         // 2*9 + 2 + 8 = 28 sec from game start to game start
@@ -2571,7 +2564,7 @@ mod test {
     fn test_transition_pot_to_otfh() {
         let config = GameConfig {
             has_overtime: true,
-            ot_half_play_duration: 4,
+            ot_half_play_duration: Duration::from_secs(4),
             ..Default::default()
         };
         test_transition(TransitionTestSetup {
@@ -2590,7 +2583,7 @@ mod test {
     fn test_transition_otfh_to_otht() {
         let config = GameConfig {
             has_overtime: true,
-            ot_half_time_duration: 5,
+            ot_half_time_duration: Duration::from_secs(5),
             ..Default::default()
         };
         test_transition(TransitionTestSetup {
@@ -2609,7 +2602,7 @@ mod test {
     fn test_transition_otht_to_otsh() {
         let config = GameConfig {
             has_overtime: true,
-            ot_half_play_duration: 7,
+            ot_half_play_duration: Duration::from_secs(7),
             ..Default::default()
         };
         test_transition(TransitionTestSetup {
@@ -2629,7 +2622,7 @@ mod test {
         let config = GameConfig {
             has_overtime: true,
             sudden_death_allowed: true,
-            pre_sudden_death_duration: 9,
+            pre_sudden_death_duration: Duration::from_secs(9),
             ..Default::default()
         };
         test_transition(TransitionTestSetup {
@@ -2649,10 +2642,10 @@ mod test {
         let config = GameConfig {
             has_overtime: true,
             sudden_death_allowed: false,
-            half_play_duration: 9,
-            half_time_duration: 2,
-            nominal_break: 8,
-            minimum_break: 1,
+            half_play_duration: Duration::from_secs(9),
+            half_time_duration: Duration::from_secs(2),
+            nominal_break: Duration::from_secs(8),
+            minimum_break: Duration::from_secs(1),
             ..Default::default()
         };
         // 2*9 + 2 + 8 = 28 sec from game start to game start
@@ -2673,10 +2666,10 @@ mod test {
         let config = GameConfig {
             has_overtime: true,
             sudden_death_allowed: false,
-            half_play_duration: 9,
-            half_time_duration: 2,
-            nominal_break: 8,
-            minimum_break: 1,
+            half_play_duration: Duration::from_secs(9),
+            half_time_duration: Duration::from_secs(2),
+            nominal_break: Duration::from_secs(8),
+            minimum_break: Duration::from_secs(1),
             ..Default::default()
         };
         // 2*9 + 2 + 8 = 28 sec from game start to game start
@@ -2697,10 +2690,10 @@ mod test {
         let config = GameConfig {
             has_overtime: true,
             sudden_death_allowed: true,
-            half_play_duration: 9,
-            half_time_duration: 2,
-            nominal_break: 8,
-            minimum_break: 1,
+            half_play_duration: Duration::from_secs(9),
+            half_time_duration: Duration::from_secs(2),
+            nominal_break: Duration::from_secs(8),
+            minimum_break: Duration::from_secs(1),
             ..Default::default()
         };
         // 2*9 + 2 + 8 = 28 sec from game start to game start
@@ -2738,10 +2731,10 @@ mod test {
     fn test_end_sd() {
         let config = GameConfig {
             sudden_death_allowed: true,
-            half_play_duration: 9,
-            half_time_duration: 2,
-            nominal_break: 8,
-            minimum_break: 1,
+            half_play_duration: Duration::from_secs(9),
+            half_time_duration: Duration::from_secs(2),
+            nominal_break: Duration::from_secs(8),
+            minimum_break: Duration::from_secs(1),
             ..Default::default()
         };
         // 2*9 + 2 + 8 = 28 sec from game start to game start
@@ -2800,12 +2793,12 @@ mod test {
         let all_periods_config = GameConfig {
             has_overtime: true,
             sudden_death_allowed: true,
-            half_play_duration: 5,
-            half_time_duration: 7,
-            pre_overtime_break: 9,
-            ot_half_play_duration: 11,
-            ot_half_time_duration: 13,
-            pre_sudden_death_duration: 15,
+            half_play_duration: Duration::from_secs(5),
+            half_time_duration: Duration::from_secs(7),
+            pre_overtime_break: Duration::from_secs(9),
+            ot_half_play_duration: Duration::from_secs(11),
+            ot_half_time_duration: Duration::from_secs(13),
+            pre_sudden_death_duration: Duration::from_secs(15),
             ..Default::default()
         };
         let sd_only_config = GameConfig {
@@ -2952,12 +2945,12 @@ mod test {
         let config = GameConfig {
             has_overtime: true,
             sudden_death_allowed: true,
-            half_play_duration: 5,
-            half_time_duration: 7,
-            pre_overtime_break: 9,
-            ot_half_play_duration: 11,
-            ot_half_time_duration: 13,
-            pre_sudden_death_duration: 15,
+            half_play_duration: Duration::from_secs(5),
+            half_time_duration: Duration::from_secs(7),
+            pre_overtime_break: Duration::from_secs(9),
+            ot_half_play_duration: Duration::from_secs(11),
+            ot_half_time_duration: Duration::from_secs(13),
+            pre_sudden_death_duration: Duration::from_secs(15),
             ..Default::default()
         };
 
@@ -3031,12 +3024,12 @@ mod test {
         let config = GameConfig {
             has_overtime: true,
             sudden_death_allowed: true,
-            half_play_duration: 5,
-            half_time_duration: 7,
-            pre_overtime_break: 9,
-            ot_half_play_duration: 11,
-            ot_half_time_duration: 13,
-            pre_sudden_death_duration: 15,
+            half_play_duration: Duration::from_secs(5),
+            half_time_duration: Duration::from_secs(7),
+            pre_overtime_break: Duration::from_secs(9),
+            ot_half_play_duration: Duration::from_secs(11),
+            ot_half_time_duration: Duration::from_secs(13),
+            pre_sudden_death_duration: Duration::from_secs(15),
             ..Default::default()
         };
 
@@ -3466,8 +3459,8 @@ mod test {
     #[test]
     fn test_snapshot_penalty() {
         let config = GameConfig {
-            half_play_duration: 900,
-            half_time_duration: 180,
+            half_play_duration: Duration::from_secs(900),
+            half_time_duration: Duration::from_secs(180),
             ..Default::default()
         };
 
@@ -3839,8 +3832,8 @@ mod test {
     #[test]
     fn test_cull_penalties() {
         let config = GameConfig {
-            half_play_duration: 900,
-            half_time_duration: 180,
+            half_play_duration: Duration::from_secs(900),
+            half_time_duration: Duration::from_secs(180),
             ..Default::default()
         };
 

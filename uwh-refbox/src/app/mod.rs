@@ -600,65 +600,51 @@ impl Application for RefBoxApp {
             Message::EditParameter(param) => {
                 self.app_state = AppState::ParameterEditor(
                     param,
-                    Duration::from_secs(match param {
-                        LengthParameter::Half => self.config.game.half_play_duration.into(),
-                        LengthParameter::HalfTime => self.config.game.half_time_duration.into(),
-                        LengthParameter::NominalBetweenGame => {
-                            self.config.game.nominal_break.into()
-                        }
-                        LengthParameter::MinimumBetweenGame => {
-                            self.config.game.minimum_break.into()
-                        }
-                        LengthParameter::PreOvertime => self.config.game.pre_overtime_break.into(),
-                        LengthParameter::OvertimeHalf => {
-                            self.config.game.ot_half_play_duration.into()
-                        }
-                        LengthParameter::OvertimeHalfTime => {
-                            self.config.game.ot_half_time_duration.into()
-                        }
+                    match param {
+                        LengthParameter::Half => self.config.game.half_play_duration,
+                        LengthParameter::HalfTime => self.config.game.half_time_duration,
+                        LengthParameter::NominalBetweenGame => self.config.game.nominal_break,
+                        LengthParameter::MinimumBetweenGame => self.config.game.minimum_break,
+                        LengthParameter::PreOvertime => self.config.game.pre_overtime_break,
+                        LengthParameter::OvertimeHalf => self.config.game.ot_half_play_duration,
+                        LengthParameter::OvertimeHalfTime => self.config.game.ot_half_time_duration,
                         LengthParameter::PreSuddenDeath => {
-                            self.config.game.pre_sudden_death_duration.into()
+                            self.config.game.pre_sudden_death_duration
                         }
-                    }),
+                    },
                 );
                 trace!("AppState changed to {:?}", self.app_state);
             }
             Message::ParameterEditComplete { canceled } => {
                 if !canceled {
                     match self.app_state {
-                        AppState::ParameterEditor(param, dur) => {
-                            let val: u16 = dur.as_secs().try_into().unwrap();
-                            match param {
-                                LengthParameter::Half => self.config.game.half_play_duration = val,
-                                LengthParameter::HalfTime => {
-                                    self.config.game.half_time_duration = val
-                                }
-                                LengthParameter::NominalBetweenGame => {
-                                    self.config.game.nominal_break = val
-                                }
-                                LengthParameter::MinimumBetweenGame => {
-                                    self.config.game.minimum_break = val
-                                }
-                                LengthParameter::PreOvertime => {
-                                    self.config.game.pre_overtime_break = val
-                                }
-                                LengthParameter::OvertimeHalf => {
-                                    self.config.game.ot_half_play_duration = val
-                                }
-                                LengthParameter::OvertimeHalfTime => {
-                                    self.config.game.ot_half_time_duration = val
-                                }
-                                LengthParameter::PreSuddenDeath => {
-                                    self.config.game.pre_sudden_death_duration = val
-                                }
+                        AppState::ParameterEditor(param, dur) => match param {
+                            LengthParameter::Half => self.config.game.half_play_duration = dur,
+                            LengthParameter::HalfTime => self.config.game.half_time_duration = dur,
+                            LengthParameter::NominalBetweenGame => {
+                                self.config.game.nominal_break = dur
                             }
-                        }
+                            LengthParameter::MinimumBetweenGame => {
+                                self.config.game.minimum_break = dur
+                            }
+                            LengthParameter::PreOvertime => {
+                                self.config.game.pre_overtime_break = dur
+                            }
+                            LengthParameter::OvertimeHalf => {
+                                self.config.game.ot_half_play_duration = dur
+                            }
+                            LengthParameter::OvertimeHalfTime => {
+                                self.config.game.ot_half_time_duration = dur
+                            }
+                            LengthParameter::PreSuddenDeath => {
+                                self.config.game.pre_sudden_death_duration = dur
+                            }
+                        },
                         AppState::KeypadPage(KeypadPage::GameNumber, num) => {
                             self.edited_game_num = num;
                         }
                         AppState::KeypadPage(KeypadPage::TeamTimeouts(len), num) => {
-                            self.config.game.team_timeout_duration =
-                                len.as_secs().try_into().unwrap();
+                            self.config.game.team_timeout_duration = len;
                             self.config.game.team_timeouts_per_half = num;
                         }
                         _ => unreachable!(),

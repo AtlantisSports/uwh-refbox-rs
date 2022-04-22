@@ -366,7 +366,7 @@ mod test {
     #[test]
     fn test_add_penalty() {
         let config = GameConfig {
-            half_play_duration: 900,
+            half_play_duration: Duration::from_secs(900),
             ..Default::default()
         };
 
@@ -437,7 +437,7 @@ mod test {
     #[test]
     fn test_delete_penalty() {
         let config = GameConfig {
-            half_play_duration: 900,
+            half_play_duration: Duration::from_secs(900),
             ..Default::default()
         };
 
@@ -624,7 +624,7 @@ mod test {
     #[test]
     fn test_edit_penalty() {
         let config = GameConfig {
-            half_play_duration: 900,
+            half_play_duration: Duration::from_secs(900),
             ..Default::default()
         };
 

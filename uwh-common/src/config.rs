@@ -1,7 +1,6 @@
 use log::*;
 use serde_derive::{Deserialize, Serialize};
-use std::fs::read_to_string;
-use std::path::Path;
+use std::{fs::read_to_string, path::Path, time::Duration};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Hardware {
@@ -66,51 +65,53 @@ impl Default for RS485 {
     }
 }
 
+// Due to requirements of the TOML language, items stored as tables in TOML (like `Duration`s) need
+// to be after items that are not stored as tables (`u16`, `u32`, `bool`, `String`)
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Game {
-    pub half_play_duration: u16,
-    pub half_time_duration: u16,
-    pub team_timeout_duration: u16,
     pub team_timeouts_per_half: u16,
     pub has_overtime: bool,
-    pub ot_half_play_duration: u16,
-    pub ot_half_time_duration: u16,
-    pub pre_overtime_break: u16,
-    pub overtime_break_duration: u16,
-    pub pre_sudden_death_duration: u16,
     pub sudden_death_allowed: bool,
-    pub pre_game_duration: u16,
-    pub nominal_break: u16,
-    pub minimum_break: u16,
     pub timezone: String,
     pub use_wallclock: bool,
     pub pool: String,
     pub tid: u32,
     pub uwhscores_url: String,
+    pub half_play_duration: Duration,
+    pub half_time_duration: Duration,
+    pub team_timeout_duration: Duration,
+    pub ot_half_play_duration: Duration,
+    pub ot_half_time_duration: Duration,
+    pub pre_overtime_break: Duration,
+    pub overtime_break_duration: Duration,
+    pub pre_sudden_death_duration: Duration,
+    pub pre_game_duration: Duration,
+    pub nominal_break: Duration,
+    pub minimum_break: Duration,
 }
 
 impl Default for Game {
     fn default() -> Self {
         Self {
-            half_play_duration: 900,
-            half_time_duration: 180,
-            team_timeout_duration: 60,
             team_timeouts_per_half: 1,
             has_overtime: true,
-            ot_half_play_duration: 300,
-            ot_half_time_duration: 180,
-            pre_overtime_break: 180,
-            overtime_break_duration: 60,
-            pre_sudden_death_duration: 60,
             sudden_death_allowed: true,
-            pre_game_duration: 180,
-            nominal_break: 900,
-            minimum_break: 240,
             timezone: "mst".to_string(),
             use_wallclock: true,
             pool: "1".to_string(),
             tid: 16,
             uwhscores_url: "http://uwhscores.com/api/v1/".to_string(),
+            half_play_duration: Duration::from_secs(900),
+            half_time_duration: Duration::from_secs(180),
+            team_timeout_duration: Duration::from_secs(60),
+            ot_half_play_duration: Duration::from_secs(300),
+            ot_half_time_duration: Duration::from_secs(180),
+            pre_overtime_break: Duration::from_secs(180),
+            overtime_break_duration: Duration::from_secs(60),
+            pre_sudden_death_duration: Duration::from_secs(60),
+            pre_game_duration: Duration::from_secs(180),
+            nominal_break: Duration::from_secs(900),
+            minimum_break: Duration::from_secs(240),
         }
     }
 }
@@ -187,20 +188,20 @@ mod test {
     );
 
     const GAME_STRING: &str = indoc!(
-        r#"half_play_duration = 900
-           half_time_duration = 180
-           team_timeout_duration = 60
+        r#"half_play_duration = { secs = 900, nanos = 0 }
+           half_time_duration = { secs = 180, nanos = 0 }
+           team_timeout_duration = { secs = 60, nanos = 0 }
            has_overtime = true
-           ot_half_play_duration = 300
-           ot_half_time_duration = 180
-           pre_overtime_break = 180
-           overtime_break_duration = 60
-           pre_sudden_death_duration = 60
+           ot_half_play_duration = { secs = 300, nanos = 0 }
+           ot_half_time_duration = { secs = 180, nanos = 0 }
+           pre_overtime_break = { secs = 180, nanos = 0 }
+           overtime_break_duration = { secs = 60, nanos = 0 }
+           pre_sudden_death_duration = { secs = 60, nanos = 0 }
            sudden_death_allowed = true
            team_timeouts_per_half = 1
-           pre_game_duration = 180
-           nominal_break = 900
-           minimum_break = 240
+           pre_game_duration = { secs = 180, nanos = 0 }
+           nominal_break = { secs = 900, nanos = 0 }
+           minimum_break = { secs = 240, nanos = 0 }
            timezone = "mst"
            use_wallclock = true
            pool = "1"
@@ -216,33 +217,63 @@ mod test {
     }
 
     #[test]
+    fn test_ser_hardware() {
+        let hw: Hardware = Default::default();
+        toml::to_string(&hw).unwrap();
+    }
+
+    #[test]
     fn test_deser_xbee() {
-        let hw: XBee = Default::default();
+        let xb: XBee = Default::default();
         let deser = toml::from_str(XBEE_STRING);
-        assert_eq!(deser, Ok(hw));
+        assert_eq!(deser, Ok(xb));
+    }
+
+    #[test]
+    fn test_ser_xbee() {
+        let xb: XBee = Default::default();
+        toml::to_string(&xb).unwrap();
     }
 
     #[test]
     fn test_deser_rs485() {
-        let hw: RS485 = Default::default();
+        let rs: RS485 = Default::default();
         let deser = toml::from_str(RS485_STRING);
-        assert_eq!(deser, Ok(hw));
+        assert_eq!(deser, Ok(rs));
+    }
+
+    #[test]
+    fn test_ser_rs485() {
+        let rs: RS485 = Default::default();
+        toml::to_string(&rs).unwrap();
     }
 
     #[test]
     fn test_deser_game() {
-        let hw: Game = Default::default();
+        let gm: Game = Default::default();
         let deser = toml::from_str(GAME_STRING);
-        assert_eq!(deser, Ok(hw));
+        assert_eq!(deser, Ok(gm));
+    }
+
+    #[test]
+    fn test_ser_game() {
+        let gm: Game = Default::default();
+        toml::to_string(&gm).unwrap();
     }
 
     #[test]
     fn test_deser_config() {
-        let hw: Config = Default::default();
+        let config: Config = Default::default();
         let deser = toml::from_str(&format!(
             "[game]\n{}\n[hardware]\n{}\n[xbee]\n{}\n[rs485]\n{}",
             GAME_STRING, HW_STRING, XBEE_STRING, RS485_STRING
         ));
-        assert_eq!(deser, Ok(hw));
+        assert_eq!(deser, Ok(config));
+    }
+
+    #[test]
+    fn test_ser_config() {
+        let config: Config = Default::default();
+        toml::to_string(&config).unwrap();
     }
 }

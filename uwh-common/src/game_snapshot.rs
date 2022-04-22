@@ -111,20 +111,14 @@ impl GamePeriod {
     pub fn duration(self, config: &Game) -> Option<Duration> {
         match self {
             Self::BetweenGames | Self::SuddenDeath => None,
-            Self::FirstHalf | Self::SecondHalf => {
-                Some(Duration::from_secs(config.half_play_duration.into()))
-            }
-            Self::HalfTime => Some(Duration::from_secs(config.half_time_duration.into())),
-            Self::PreOvertime => Some(Duration::from_secs(config.pre_overtime_break.into())),
+            Self::FirstHalf | Self::SecondHalf => Some(config.half_play_duration),
+            Self::HalfTime => Some(config.half_time_duration),
+            Self::PreOvertime => Some(config.pre_overtime_break),
             Self::OvertimeFirstHalf | Self::OvertimeSecondHalf => {
-                Some(Duration::from_secs(config.ot_half_play_duration.into()))
+                Some(config.ot_half_play_duration)
             }
-            Self::OvertimeHalfTime => {
-                Some(Duration::from_secs(config.ot_half_time_duration.into()))
-            }
-            Self::PreSuddenDeath => {
-                Some(Duration::from_secs(config.pre_sudden_death_duration.into()))
-            }
+            Self::OvertimeHalfTime => Some(config.ot_half_time_duration),
+            Self::PreSuddenDeath => Some(config.pre_sudden_death_duration),
         }
     }
 
@@ -602,12 +596,12 @@ mod test {
     #[test]
     fn test_period_duration() {
         let config = Game {
-            half_play_duration: 5,
-            half_time_duration: 7,
-            pre_overtime_break: 9,
-            ot_half_play_duration: 11,
-            ot_half_time_duration: 13,
-            pre_sudden_death_duration: 15,
+            half_play_duration: Duration::from_secs(5),
+            half_time_duration: Duration::from_secs(7),
+            pre_overtime_break: Duration::from_secs(9),
+            ot_half_play_duration: Duration::from_secs(11),
+            ot_half_time_duration: Duration::from_secs(13),
+            pre_sudden_death_duration: Duration::from_secs(15),
             ..Default::default()
         };
 
@@ -650,12 +644,12 @@ mod test {
     #[test]
     fn test_period_time_elapsed_at() {
         let config = Game {
-            half_play_duration: 5,
-            half_time_duration: 7,
-            pre_overtime_break: 9,
-            ot_half_play_duration: 11,
-            ot_half_time_duration: 13,
-            pre_sudden_death_duration: 15,
+            half_play_duration: Duration::from_secs(5),
+            half_time_duration: Duration::from_secs(7),
+            pre_overtime_break: Duration::from_secs(9),
+            ot_half_play_duration: Duration::from_secs(11),
+            ot_half_time_duration: Duration::from_secs(13),
+            pre_sudden_death_duration: Duration::from_secs(15),
             ..Default::default()
         };
 

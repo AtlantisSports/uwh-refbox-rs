@@ -1136,7 +1136,7 @@ impl TournamentManager {
                 error!("Error with time string: {}", e);
             }
         } else {
-            string.push_str("[XX:XX ");
+            string.push_str("[XX:XX.XXX ");
         }
 
         string.push_str(match self.current_period {

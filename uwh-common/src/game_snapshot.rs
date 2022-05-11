@@ -6,6 +6,7 @@ use core::{
     cmp::{Ordering, PartialOrd},
     time::Duration,
 };
+#[cfg(not(target_os = "windows"))]
 use defmt::Format;
 use derivative::Derivative;
 use displaydoc::Display;
@@ -253,7 +254,8 @@ impl PartialOrd for PenaltyTime {
     }
 }
 
-#[derive(Debug, Display, Format, PartialEq, Eq, Clone)]
+#[cfg_attr(not(target_os = "windows"), derive(Format))]
+#[derive(Debug, Display, PartialEq, Eq, Clone)]
 pub enum EncodingError {
     /// Player number was more than two digits: {0}
     PlayerNumTooLarge(u8),
@@ -266,7 +268,8 @@ pub enum EncodingError {
 #[cfg(feature = "std")]
 impl std::error::Error for EncodingError {}
 
-#[derive(Debug, Display, Format, PartialEq, Eq, Clone)]
+#[cfg_attr(not(target_os = "windows"), derive(Format))]
+#[derive(Debug, Display, PartialEq, Eq, Clone)]
 pub enum DecodingError {
     /// Invalid timeout type: {0:#06x}
     InvalidTimeoutType(u16),

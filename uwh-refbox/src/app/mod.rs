@@ -5,8 +5,10 @@ use async_std::{
     task,
 };
 use iced::{
-    button, executor, futures::FutureExt, Application, Clipboard, Column, Command, Element,
-    Subscription,
+    executor,
+    futures::FutureExt,
+    pure::{column, Application, Element},
+    Command, Subscription,
 };
 use iced_futures::{
     futures::{
@@ -45,7 +47,6 @@ pub struct RefBoxApp {
     snapshot: GameSnapshot,
     time_updater: TimeUpdater,
     pen_edit: PenaltyEditor,
-    states: States,
     app_state: AppState,
     last_app_state: AppState,
     sim_sender: Option<TcpStream>,
@@ -263,7 +264,6 @@ impl Application for RefBoxApp {
                 config,
                 edited_game_num: 0,
                 snapshot,
-                states: Default::default(),
                 app_state: AppState::MainPage,
                 last_app_state: AppState::MainPage,
                 sim_sender,
@@ -281,7 +281,7 @@ impl Application for RefBoxApp {
         "UWH Ref Box".into()
     }
 
-    fn update(&mut self, message: Message, _clipboard: &mut Clipboard) -> Command<Message> {
+    fn update(&mut self, message: Message) -> Command<Message> {
         trace!("Handling message: {message:?}");
         match message {
             Message::NewSnapshot(snapshot) => {
@@ -772,69 +772,45 @@ impl Application for RefBoxApp {
         WINDOW_BACKGORUND
     }
 
-    fn view(&mut self) -> Element<Message> {
-        Column::new()
+    fn view(&self) -> Element<Message> {
+        column()
             .spacing(SPACING)
             .padding(PADDING)
             .push(match self.app_state {
-                AppState::MainPage => build_main_view(
-                    &self.snapshot,
-                    &mut self.states.main_view,
-                    &self.config.game,
-                ),
-                AppState::TimeEdit(_, time, timeout_time) => build_time_edit_view(
-                    &self.snapshot,
-                    &mut self.states.time_edit_view,
-                    time,
-                    timeout_time,
-                ),
-                AppState::ScoreEdit { black, white } => build_score_edit_view(
-                    &self.snapshot,
-                    &mut self.states.score_edit_view,
-                    black,
-                    white,
-                ),
+                AppState::MainPage => build_main_view(&self.snapshot, &self.config.game),
+                AppState::TimeEdit(_, time, timeout_time) => {
+                    build_time_edit_view(&self.snapshot, time, timeout_time)
+                }
+                AppState::ScoreEdit { black, white } => {
+                    build_score_edit_view(&self.snapshot, black, white)
+                }
                 AppState::PenaltyOverview {
                     black_idx,
                     white_idx,
                 } => build_penalty_overview_page(
                     &self.snapshot,
-                    &mut self.states.penalty_overview,
                     self.pen_edit.get_printable_lists(Instant::now()).unwrap(),
                     BlackWhiteBundle {
                         black: black_idx,
                         white: white_idx,
                     },
                 ),
-                AppState::KeypadPage(page, player_num) => build_keypad_page(
-                    &self.snapshot,
-                    &mut self.states.keypad_page,
-                    page,
-                    player_num,
-                ),
+                AppState::KeypadPage(page, player_num) => {
+                    build_keypad_page(&self.snapshot, page, player_num)
+                }
                 AppState::EditGameConfig => build_game_config_edit_page(
                     &self.snapshot,
-                    &mut self.states.game_config_edit,
                     &self.config.game,
                     self.edited_game_num,
                 ),
-                AppState::ParameterEditor(param, dur) => build_game_parameter_editor(
-                    &self.snapshot,
-                    &mut self.states.game_param_edit,
-                    param,
-                    dur,
-                ),
-                AppState::ConfirmationPage(ref kind) => build_confirmation_page(
-                    &self.snapshot,
-                    &mut self.states.confirmation_page,
-                    kind,
-                ),
+                AppState::ParameterEditor(param, dur) => {
+                    build_game_parameter_editor(&self.snapshot, param, dur)
+                }
+                AppState::ConfirmationPage(ref kind) => {
+                    build_confirmation_page(&self.snapshot, kind)
+                }
             })
-            .push(build_timeout_ribbon(
-                &self.snapshot,
-                &mut self.states.timeout_ribbon,
-                &self.tm,
-            ))
+            .push(build_timeout_ribbon(&self.snapshot, &self.tm))
             .into()
     }
 }
@@ -927,174 +903,4 @@ impl<H: Hasher, I> Recipe<H, I> for TimeUpdater {
             Some((snapshot, state))
         }))
     }
-}
-
-#[derive(Clone, Default, Debug)]
-struct States {
-    main_view: MainViewStates,
-    time_edit_view: TimeEditViewStates,
-    score_edit_view: ScoreEditViewStates,
-    timeout_ribbon: TimeoutRibbonStates,
-    penalty_overview: PenaltyOverviewStates,
-    keypad_page: KeypadPageStates,
-    game_config_edit: GameConfigEditStates,
-    game_param_edit: GameParamEditStates,
-    confirmation_page: ConfirmationPageStates,
-}
-
-#[derive(Clone, Default, Debug)]
-struct MainViewStates {
-    black_score: button::State,
-    white_score: button::State,
-    black_new_score: button::State,
-    white_new_score: button::State,
-    black_penalties: button::State,
-    white_penalties: button::State,
-    game_config: button::State,
-    game_time: button::State,
-    start_now: button::State,
-}
-
-#[derive(Clone, Default, Debug)]
-struct TimeEditorStates {
-    min_up: button::State,
-    min_down: button::State,
-    sec_up: button::State,
-    sec_down: button::State,
-}
-
-#[derive(Clone, Default, Debug)]
-struct TimeEditViewStates {
-    game_time: button::State,
-    game_time_edit: TimeEditorStates,
-    timeout_time_edit: TimeEditorStates,
-    done: button::State,
-    cancel: button::State,
-}
-
-#[derive(Clone, Default, Debug)]
-struct ScoreEditViewStates {
-    game_time: button::State,
-    b_up: button::State,
-    b_down: button::State,
-    w_up: button::State,
-    w_down: button::State,
-    done: button::State,
-    cancel: button::State,
-}
-
-#[derive(Clone, Default, Debug)]
-struct GameConfigEditStates {
-    game_time: button::State,
-    using_uwhscores: button::State,
-    game_number: button::State,
-    half_length: button::State,
-    half_time_length: button::State,
-    nom_between_games: button::State,
-    min_between_games: button::State,
-    overtime_allowed: button::State,
-    pre_ot_break: button::State,
-    ot_half_length: button::State,
-    ot_half_time_length: button::State,
-    sd_allowed: button::State,
-    pre_sd_break: button::State,
-    team_timeouts: button::State,
-    done: button::State,
-    cancel: button::State,
-}
-
-#[derive(Clone, Default, Debug)]
-struct PenaltyOverviewStates {
-    game_time: button::State,
-    b_list: PenaltyListStates,
-    w_list: PenaltyListStates,
-    new: button::State,
-    done: button::State,
-    cancel: button::State,
-}
-
-#[derive(Clone, Default, Debug)]
-struct PenaltyListStates {
-    up: button::State,
-    down: button::State,
-    list: [button::State; PENALTY_LIST_LEN],
-}
-
-#[derive(Clone, Default, Debug)]
-struct KeypadPageStates {
-    game_time: button::State,
-    zero: button::State,
-    one: button::State,
-    two: button::State,
-    three: button::State,
-    four: button::State,
-    five: button::State,
-    six: button::State,
-    seven: button::State,
-    eight: button::State,
-    nine: button::State,
-    delete: button::State,
-    add_score: AddScoreStates,
-    eidt_penalty: EditPenaltyStates,
-    edit_game_num: EditGameNumStates,
-    team_timeout: EditTeamTimeoutStates,
-}
-
-#[derive(Clone, Default, Debug)]
-struct AddScoreStates {
-    black: button::State,
-    white: button::State,
-    done: button::State,
-    cancel: button::State,
-}
-
-#[derive(Clone, Default, Debug)]
-struct EditPenaltyStates {
-    black: button::State,
-    white: button::State,
-    one_min: button::State,
-    two_min: button::State,
-    five_min: button::State,
-    total_dismis: button::State,
-    done: button::State,
-    delete: button::State,
-    cancel: button::State,
-}
-
-#[derive(Clone, Default, Debug)]
-struct EditGameNumStates {
-    done: button::State,
-    cancel: button::State,
-}
-
-#[derive(Clone, Default, Debug)]
-struct EditTeamTimeoutStates {
-    length_edit: TimeEditorStates,
-    done: button::State,
-    cancel: button::State,
-}
-
-#[derive(Clone, Default, Debug)]
-struct GameParamEditStates {
-    game_time: button::State,
-    length_edit: TimeEditorStates,
-    done: button::State,
-    cancel: button::State,
-}
-
-#[derive(Clone, Default, Debug)]
-struct ConfirmationPageStates {
-    game_time: button::State,
-    button_1: button::State,
-    button_2: button::State,
-    button_3: button::State,
-    button_4: button::State,
-}
-
-#[derive(Clone, Default, Debug)]
-struct TimeoutRibbonStates {
-    white_timeout: button::State,
-    ref_timeout: button::State,
-    penalty_shot: button::State,
-    black_timeout: button::State,
 }

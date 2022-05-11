@@ -16,9 +16,9 @@ derivative = "2.2.0"
 embedded-graphics = "0.7.1"
 embedded-graphics-simulator = "0.3.0"
 env_logger = "0.9.0"
-iced = { version = "0.3.0", features = ["async-std", "svg"] }
-iced_futures = { version = "0.3.0", features = ["async-std"] }
-iced_native = "0.4.0"
+iced = { version = "0.4", features = ["async-std", "svg", "pure"] }
+iced_futures = { version = "0.4", features = ["async-std"] }
+iced_native = "0.5"
 log = "0.4.16"
 paste = "1.0.7"
 thiserror = "1.0"

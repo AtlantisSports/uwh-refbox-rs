@@ -3,7 +3,7 @@ use embedded_graphics::{pixelcolor::Rgb888, prelude::*};
 use embedded_graphics_simulator::{
     OutputSettingsBuilder, SimulatorDisplay, SimulatorEvent, Window,
 };
-use iced::{Application, Settings};
+use iced::{pure::Application, Settings};
 use log::*;
 use std::{
     io::Read,

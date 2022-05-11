@@ -1,4 +1,7 @@
-use iced::{button, container, Background, Color, Vector};
+use iced::{
+    pure::widget::{button, container},
+    Background, Color, Vector,
+};
 use paste::paste;
 
 pub const BORDER_RADIUS: f32 = 9.0;

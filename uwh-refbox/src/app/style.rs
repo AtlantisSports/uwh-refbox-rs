@@ -5,7 +5,7 @@ pub const BORDER_RADIUS: f32 = 9.0;
 pub const BORDER_WIDTH: f32 = 6.0;
 pub const SPACING: u16 = 12; // Must be a multiple of 4
 pub const PADDING: u16 = 12;
-pub const MIN_BUTTON_SIZE: u32 = 96;
+pub const MIN_BUTTON_SIZE: u16 = 96;
 
 pub const SMALL_TEXT: u16 = 24;
 pub const SMALL_PLUS_TEXT: u16 = 36;

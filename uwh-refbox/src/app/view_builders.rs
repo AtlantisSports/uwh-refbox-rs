@@ -6,8 +6,10 @@ use super::{
     *,
 };
 use iced::{
-    button, widget::svg, Align, Button, Color, Column, Container, Element, HorizontalAlignment,
-    Length, Row, Space, Svg, Text, VerticalAlignment,
+    alignment::{Horizontal, Vertical},
+    button,
+    widget::svg,
+    Alignment, Button, Color, Column, Container, Element, Length, Row, Space, Svg, Text,
 };
 use std::{
     sync::{Arc, Mutex},
@@ -31,7 +33,7 @@ pub(super) fn build_main_view<'a>(
     let (period_text, period_color) = period_text_and_color(snapshot.current_period);
     let game_time_info = Column::new()
         .width(Length::Fill)
-        .align_items(Align::Center)
+        .align_items(Alignment::Center)
         .push(Text::new(period_text).color(period_color))
         .push(
             Text::new(secs_to_time_string(snapshot.secs_in_period).trim())
@@ -55,7 +57,7 @@ pub(super) fn build_main_view<'a>(
             .push(
                 Column::new()
                     .width(Length::Fill)
-                    .align_items(Align::Center)
+                    .align_items(Alignment::Center)
                     .push(Text::new(text).color(color))
                     .push(
                         Text::new(timeout_time_string(snapshot))
@@ -112,8 +114,8 @@ pub(super) fn build_main_view<'a>(
             &mut states.game_config,
             Text::new(config_string(snapshot, config))
                 .size(SMALL_TEXT)
-                .vertical_alignment(VerticalAlignment::Center)
-                .horizontal_alignment(HorizontalAlignment::Left),
+                .vertical_alignment(Vertical::Center)
+                .horizontal_alignment(Horizontal::Left),
         )
         .padding(PADDING)
         .style(style::Button::LightGray)
@@ -130,14 +132,14 @@ pub(super) fn build_main_view<'a>(
                     .spacing(SPACING)
                     .push(
                         Text::new("Penalties")
-                            .vertical_alignment(VerticalAlignment::Center)
-                            .horizontal_alignment(HorizontalAlignment::Center)
+                            .vertical_alignment(Vertical::Center)
+                            .horizontal_alignment(Horizontal::Center)
                             .width(Length::Fill),
                     )
                     .push(
                         Text::new(penalty_string(penalties))
-                            .vertical_alignment(VerticalAlignment::Top)
-                            .horizontal_alignment(HorizontalAlignment::Left)
+                            .vertical_alignment(Vertical::Top)
+                            .horizontal_alignment(Horizontal::Left)
                             .width(Length::Fill)
                             .height(Length::Fill),
                     )
@@ -152,13 +154,13 @@ pub(super) fn build_main_view<'a>(
 
     let black_col = Column::new()
         .spacing(SPACING)
-        .align_items(Align::Center)
+        .align_items(Alignment::Center)
         .width(Length::Fill)
         .push(
             Button::new(
                 &mut states.black_score,
                 Column::new()
-                    .align_items(Align::Center)
+                    .align_items(Alignment::Center)
                     .width(Length::Fill)
                     .push(Text::new("BLACK"))
                     .push(Text::new(snapshot.b_score.to_string()).size(LARGE_TEXT)),
@@ -180,13 +182,13 @@ pub(super) fn build_main_view<'a>(
 
     let white_col = Column::new()
         .spacing(SPACING)
-        .align_items(Align::Center)
+        .align_items(Alignment::Center)
         .width(Length::Fill)
         .push(
             Button::new(
                 &mut states.white_score,
                 Column::new()
-                    .align_items(Align::Center)
+                    .align_items(Alignment::Center)
                     .width(Length::Fill)
                     .push(Text::new("WHITE"))
                     .push(Text::new(snapshot.w_score.to_string()).size(LARGE_TEXT)),
@@ -242,7 +244,7 @@ pub(super) fn build_time_edit_view<'a>(
 ) -> Element<'a, Message> {
     let mut edit_row = Row::new()
         .spacing(SPACING)
-        .align_items(Align::Center)
+        .align_items(Alignment::Center)
         .push(Space::new(Length::Fill, Length::Shrink))
         .push(make_time_editor(
             &mut states.game_time_edit,
@@ -310,7 +312,7 @@ pub(super) fn build_score_edit_view<'a>(
                     Container::new(
                         Row::new()
                             .spacing(SPACING)
-                            .align_items(Align::Center)
+                            .align_items(Alignment::Center)
                             .push(
                                 Column::new()
                                     .spacing(SPACING)
@@ -335,7 +337,7 @@ pub(super) fn build_score_edit_view<'a>(
                                 Column::new()
                                     .spacing(SPACING)
                                     .width(Length::Fill)
-                                    .align_items(Align::Center)
+                                    .align_items(Alignment::Center)
                                     .push(Text::new("BLACK"))
                                     .push(Text::new(black.to_string()).size(LARGE_TEXT)),
                             ),
@@ -349,12 +351,12 @@ pub(super) fn build_score_edit_view<'a>(
                     Container::new(
                         Row::new()
                             .spacing(SPACING)
-                            .align_items(Align::Center)
+                            .align_items(Alignment::Center)
                             .push(
                                 Column::new()
                                     .spacing(SPACING)
                                     .width(Length::Fill)
-                                    .align_items(Align::Center)
+                                    .align_items(Alignment::Center)
                                     .push(Text::new("WHITE"))
                                     .push(Text::new(white.to_string()).size(LARGE_TEXT)),
                             )
@@ -472,8 +474,8 @@ fn make_penalty_list(
         Text::new(format!("{} PENALTIES", color.to_string().to_uppercase()))
             .height(Length::Fill)
             .width(Length::Fill)
-            .horizontal_alignment(HorizontalAlignment::Center)
-            .vertical_alignment(VerticalAlignment::Center),
+            .horizontal_alignment(Horizontal::Center)
+            .vertical_alignment(Vertical::Center),
     );
 
     let num_pens = penalties.len();
@@ -490,8 +492,8 @@ fn make_penalty_list(
     for (pen, state) in iter {
         pen_col = pen_col.push(if let Some((i, (text, format, kind))) = pen {
             let mut text = Text::new(text)
-                .vertical_alignment(VerticalAlignment::Center)
-                .horizontal_alignment(HorizontalAlignment::Left)
+                .vertical_alignment(Vertical::Center)
+                .horizontal_alignment(Horizontal::Left)
                 .width(Length::Fill);
 
             match format {
@@ -503,7 +505,7 @@ fn make_penalty_list(
 
             Button::new(state, text)
                 .padding(PADDING)
-                .min_height(MIN_BUTTON_SIZE)
+                .height(Length::Units(MIN_BUTTON_SIZE))
                 .width(Length::Fill)
                 .style(style::Button::Gray)
                 .on_press(Message::KeypadPage(KeypadPage::Penalty(
@@ -513,7 +515,7 @@ fn make_penalty_list(
                 )))
         } else {
             Button::new(state, Space::new(Length::Shrink, Length::Shrink))
-                .min_height(MIN_BUTTON_SIZE)
+                .height(Length::Units(MIN_BUTTON_SIZE))
                 .width(Length::Fill)
                 .style(style::Button::Gray)
                 .on_press(Message::KeypadPage(KeypadPage::Penalty(
@@ -561,8 +563,8 @@ fn make_penalty_list(
         .center_x()
         .center_y(),
     )
-    .width(Length::Units(MIN_BUTTON_SIZE as u16))
-    .height(Length::Units(MIN_BUTTON_SIZE as u16))
+    .width(Length::Units(MIN_BUTTON_SIZE))
+    .height(Length::Units(MIN_BUTTON_SIZE))
     .style(style::Button::Blue);
 
     let mut down_btn = Button::new(
@@ -575,8 +577,8 @@ fn make_penalty_list(
         .center_x()
         .center_y(),
     )
-    .width(Length::Units(MIN_BUTTON_SIZE as u16))
-    .height(Length::Units(MIN_BUTTON_SIZE as u16))
+    .width(Length::Units(MIN_BUTTON_SIZE))
+    .height(Length::Units(MIN_BUTTON_SIZE))
     .style(style::Button::Blue);
 
     if can_scroll_up {
@@ -624,7 +626,7 @@ fn make_penalty_list(
             .push(
                 Column::new()
                     .spacing(SPACING)
-                    .width(Length::Units(MIN_BUTTON_SIZE as u16))
+                    .width(Length::Units(MIN_BUTTON_SIZE))
                     .height(Length::Fill)
                     .push(up_btn)
                     .push(scroll_bar)
@@ -657,20 +659,20 @@ pub(super) fn build_keypad_page<'a>(
                             .spacing(SPACING)
                             .push(
                                 Row::new()
-                                    .align_items(Align::Center)
+                                    .align_items(Alignment::Center)
                                     .height(Length::Fill)
-                                    .width(Length::Units(3 * MIN_BUTTON_SIZE as u16 + 2 * SPACING))
+                                    .width(Length::Units(3 * MIN_BUTTON_SIZE + 2 * SPACING))
                                     .push(
                                         Text::new(page.text())
-                                            .horizontal_alignment(HorizontalAlignment::Left)
-                                            .vertical_alignment(VerticalAlignment::Center),
+                                            .horizontal_alignment(Horizontal::Left)
+                                            .vertical_alignment(Vertical::Center),
                                     )
                                     .push(
                                         Text::new(player_num.to_string())
                                             .size(LARGE_TEXT)
                                             .width(Length::Fill)
-                                            .horizontal_alignment(HorizontalAlignment::Right)
-                                            .vertical_alignment(VerticalAlignment::Center),
+                                            .horizontal_alignment(Horizontal::Right)
+                                            .vertical_alignment(Vertical::Center),
                                     ),
                             )
                             .push(
@@ -765,9 +767,9 @@ pub(super) fn build_keypad_page<'a>(
                                                 "../../backspace_white_48dp.svg"
                                             )[..]))).width(Length::Fill).center_x()
                                         )
-                                        .padding((MIN_BUTTON_SIZE as u16 - MEDIUM_TEXT) / 2)
-                                        .width(Length::Units(2 * MIN_BUTTON_SIZE as u16 + SPACING))
-                                        .height(Length::Units(MIN_BUTTON_SIZE as u16))
+                                        .padding((MIN_BUTTON_SIZE - MEDIUM_TEXT) / 2)
+                                        .width(Length::Units(2 * MIN_BUTTON_SIZE + SPACING))
+                                        .height(Length::Units(MIN_BUTTON_SIZE))
                                         .style(style::Button::Blue)
                                         .on_press(Message::KeypadButtonPress(KeypadButton::Delete)),
                                     ),
@@ -1181,7 +1183,7 @@ pub(super) fn build_game_parameter_editor<'a>(
 
     Column::new()
         .spacing(SPACING)
-        .align_items(Align::Center)
+        .align_items(Alignment::Center)
         .width(Length::Fill)
         .height(Length::Fill)
         .push(make_game_time_button(snapshot, &mut states.game_time).on_press(Message::EditTime))
@@ -1196,7 +1198,7 @@ pub(super) fn build_game_parameter_editor<'a>(
         .push(
             Text::new(String::from("Help: ") + hint)
                 .size(SMALL_TEXT)
-                .horizontal_alignment(HorizontalAlignment::Center),
+                .horizontal_alignment(Horizontal::Center),
         )
         .push(Space::new(Length::Shrink, Length::Fill))
         .push(
@@ -1302,7 +1304,7 @@ pub(super) fn build_confirmation_page<'a>(
     Column::new()
         .width(Length::Fill)
         .height(Length::Fill)
-        .align_items(Align::Center)
+        .align_items(Alignment::Center)
         .push(make_game_time_button(snapshot, &mut states.game_time).on_press(Message::EditTime))
         .push(Space::new(Length::Shrink, Length::Fill))
         .push(
@@ -1313,11 +1315,8 @@ pub(super) fn build_confirmation_page<'a>(
                         Column::new()
                             .spacing(SPACING)
                             .width(Length::Fill)
-                            .align_items(Align::Center)
-                            .push(
-                                Text::new(header_text)
-                                    .horizontal_alignment(HorizontalAlignment::Center),
-                            )
+                            .align_items(Alignment::Center)
+                            .push(Text::new(header_text).horizontal_alignment(Horizontal::Center))
                             .push(button_col),
                     )
                     .width(Length::FillPortion(3))
@@ -1415,21 +1414,21 @@ fn make_game_time_button<'a>(
     let mut content = Row::new()
         .spacing(SPACING)
         .height(Length::Fill)
-        .align_items(Align::Center)
+        .align_items(Alignment::Center)
         .push(
             Text::new(period_text)
                 .color(period_color)
                 .width(Length::Fill)
-                .vertical_alignment(VerticalAlignment::Center)
-                .horizontal_alignment(HorizontalAlignment::Right),
+                .vertical_alignment(Vertical::Center)
+                .horizontal_alignment(Horizontal::Right),
         )
         .push(
             Text::new(secs_to_time_string(snapshot.secs_in_period).trim())
                 .color(period_color)
                 .size(LARGE_TEXT)
                 .width(Length::Fill)
-                .vertical_alignment(VerticalAlignment::Center)
-                .horizontal_alignment(HorizontalAlignment::Left),
+                .vertical_alignment(Vertical::Center)
+                .horizontal_alignment(Horizontal::Left),
         );
 
     if let Some((text, color)) = match snapshot.timeout {
@@ -1444,14 +1443,14 @@ fn make_game_time_button<'a>(
                 Text::new(text)
                     .color(color)
                     .width(Length::Fill)
-                    .vertical_alignment(VerticalAlignment::Center)
-                    .horizontal_alignment(HorizontalAlignment::Right),
+                    .vertical_alignment(Vertical::Center)
+                    .horizontal_alignment(Horizontal::Right),
             )
             .push(
                 Text::new(timeout_time_string(snapshot))
                     .width(Length::Fill)
-                    .vertical_alignment(VerticalAlignment::Center)
-                    .horizontal_alignment(HorizontalAlignment::Left)
+                    .vertical_alignment(Vertical::Center)
+                    .horizontal_alignment(Horizontal::Left)
                     .color(color)
                     .size(LARGE_TEXT),
             );
@@ -1459,7 +1458,7 @@ fn make_game_time_button<'a>(
 
     Button::new(state, content)
         .width(Length::Fill)
-        .min_height(MIN_BUTTON_SIZE)
+        .height(Length::Units(MIN_BUTTON_SIZE))
         .style(style::Button::Gray)
 }
 
@@ -1472,12 +1471,12 @@ fn make_time_editor<T: Into<String>>(
     Container::new(
         Column::new()
             .spacing(SPACING)
-            .align_items(Align::Center)
+            .align_items(Alignment::Center)
             .push(Text::new(title).size(MEDIUM_TEXT))
             .push(
                 Row::new()
                     .spacing(SPACING)
-                    .align_items(Align::Center)
+                    .align_items(Alignment::Center)
                     .push(
                         Column::new()
                             .spacing(SPACING)
@@ -1503,7 +1502,7 @@ fn make_time_editor<T: Into<String>>(
                     .push(
                         Text::new(time_string(time))
                             .size(LARGE_TEXT)
-                            .horizontal_alignment(HorizontalAlignment::Center)
+                            .horizontal_alignment(Horizontal::Center)
                             .width(Length::Units(200)),
                     )
                     .push(
@@ -1662,13 +1661,12 @@ fn make_button<Message: Clone, T: Into<String>>(
     Button::new(
         state,
         Text::new(label)
-            .vertical_alignment(VerticalAlignment::Center)
-            .horizontal_alignment(HorizontalAlignment::Center)
+            .vertical_alignment(Vertical::Center)
+            .horizontal_alignment(Horizontal::Center)
             .width(Length::Fill),
     )
     .padding(PADDING)
-    .min_height(MIN_BUTTON_SIZE)
-    .min_width(MIN_BUTTON_SIZE)
+    .height(Length::Units(MIN_BUTTON_SIZE))
     .width(Length::Fill)
 }
 
@@ -1681,12 +1679,12 @@ fn make_small_button<Message: Clone, T: Into<String>>(
         state,
         Text::new(label)
             .size(size)
-            .vertical_alignment(VerticalAlignment::Center)
-            .horizontal_alignment(HorizontalAlignment::Center)
+            .vertical_alignment(Vertical::Center)
+            .horizontal_alignment(Horizontal::Center)
             .width(Length::Fill),
     )
-    .width(Length::Units(MIN_BUTTON_SIZE as u16))
-    .height(Length::Units(MIN_BUTTON_SIZE as u16))
+    .width(Length::Units(MIN_BUTTON_SIZE))
+    .height(Length::Units(MIN_BUTTON_SIZE))
 }
 
 fn make_value_button<'a, Message: 'a + Clone, T: Into<String>, U: Into<String>>(
@@ -1699,22 +1697,21 @@ fn make_value_button<'a, Message: 'a + Clone, T: Into<String>, U: Into<String>>(
         state,
         Row::new()
             .spacing(SPACING)
-            .align_items(Align::Center)
+            .align_items(Alignment::Center)
             .push(
                 Text::new(first_label)
                     .size(SMALL_TEXT)
-                    .vertical_alignment(VerticalAlignment::Center),
+                    .vertical_alignment(Vertical::Center),
             )
             .push(Space::new(Length::Fill, Length::Shrink))
             .push(
                 Text::new(second_label)
                     .size(MEDIUM_TEXT)
-                    .vertical_alignment(VerticalAlignment::Center),
+                    .vertical_alignment(Vertical::Center),
             ),
     )
     .padding(PADDING)
-    .min_height(MIN_BUTTON_SIZE)
-    .min_width(MIN_BUTTON_SIZE)
+    .height(Length::Units(MIN_BUTTON_SIZE))
     .width(Length::Fill)
     .style(style::Button::LightGray);
 

@@ -5,8 +5,7 @@ use async_std::{
     task,
 };
 use iced::{
-    button, executor, futures::FutureExt, Application, Clipboard, Column, Command, Element,
-    Subscription,
+    button, executor, futures::FutureExt, Application, Column, Command, Element, Subscription,
 };
 use iced_futures::{
     futures::{
@@ -281,7 +280,7 @@ impl Application for RefBoxApp {
         "UWH Ref Box".into()
     }
 
-    fn update(&mut self, message: Message, _clipboard: &mut Clipboard) -> Command<Message> {
+    fn update(&mut self, message: Message) -> Command<Message> {
         trace!("Handling message: {message:?}");
         match message {
             Message::NewSnapshot(snapshot) => {

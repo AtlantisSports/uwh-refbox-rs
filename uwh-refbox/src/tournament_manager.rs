@@ -138,6 +138,7 @@ impl TournamentManager {
     }
 
     pub fn set_next_game_number(&mut self, number: u16) {
+        info!("Next Game Number set to {number}");
         self.next_game_number = Some(number);
     }
 
@@ -756,6 +757,7 @@ impl TournamentManager {
                     } => {
                         if now.duration_since(*start_time) >= *time_remaining_at_start {
                             if let ClockState::Stopped { clock_time } = self.clock_state {
+                                info!("{} Ending team timeout", self.status_string(now));
                                 self.clock_state = ClockState::CountingDown {
                                     start_time: *start_time + *time_remaining_at_start,
                                     time_remaining_at_start: clock_time,
@@ -875,7 +877,7 @@ impl TournamentManager {
             }
             TimeoutState::Ref(ref mut cs) | TimeoutState::PenaltyShot(ref mut cs) => {
                 if let ClockState::CountingUp { .. } = cs {
-                    info!("{status_str} Starting the timeout clock");
+                    info!("{status_str} Stopping the timeout clock");
                     *cs = ClockState::Stopped {
                         clock_time: cs
                             .clock_time(now)
@@ -977,6 +979,12 @@ impl TournamentManager {
 
     pub fn set_game_clock_time(&mut self, clock_time: Duration) -> Result<()> {
         if !self.clock_is_running() {
+            let time = clock_time.as_secs_f64();
+            info!(
+                "Setting Game clock to {:02.0}:{:06.3} ",
+                (time / 60.0).floor(),
+                time % 60.0
+            );
             self.clock_state = ClockState::Stopped { clock_time };
             Ok(())
         } else {
@@ -986,6 +994,12 @@ impl TournamentManager {
 
     pub fn set_timeout_clock_time(&mut self, clock_time: Duration) -> Result<()> {
         if !self.clock_is_running() {
+            let time = clock_time.as_secs_f64();
+            info!(
+                "Setting Timeout clock to {:02.0}:{:06.3} ",
+                (time / 60.0).floor(),
+                time % 60.0
+            );
             let new_cs = ClockState::Stopped { clock_time };
             match self.timeout_state {
                 TimeoutState::Black(ref mut cs)

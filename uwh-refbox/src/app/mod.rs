@@ -37,7 +37,7 @@ mod view_builders;
 use view_builders::*;
 
 pub mod style;
-use style::{PADDING, SPACING, WINDOW_BACKGORUND};
+use style::{PADDING, SPACING, WINDOW_BACKGROUND};
 
 #[derive(Debug)]
 pub struct RefBoxApp {
@@ -769,7 +769,7 @@ impl Application for RefBoxApp {
     }
 
     fn background_color(&self) -> iced::Color {
-        WINDOW_BACKGORUND
+        WINDOW_BACKGROUND
     }
 
     fn view(&self) -> Element<Message> {

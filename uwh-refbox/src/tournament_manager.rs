@@ -610,6 +610,9 @@ impl TournamentManager {
                 self.config.minimum_break
             };
 
+        self.b_penalties.clear();
+        self.w_penalties.clear();
+
         info!(
             "{} Entering between games, time to next game is {} seconds",
             self.status_string(now),

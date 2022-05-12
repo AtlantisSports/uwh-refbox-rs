@@ -888,9 +888,13 @@ impl<H: Hasher, I> Recipe<H, I> for TimeUpdater {
             let mut tm = state.tm.lock().unwrap();
             let now = Instant::now();
             tm.update(now).unwrap();
-            let snapshot = tm
-                .generate_snapshot(now)
-                .expect("Failed to generate snapshot");
+            let snapshot = match tm.generate_snapshot(now) {
+                Some(val) => val,
+                None => {
+                    error!("Failed to generate snapshot. State:\n{tm:#?}");
+                    panic!("No snapshot");
+                }
+            };
 
             state.next_time = if clock_running {
                 Some(tm.next_update_time(now).unwrap())

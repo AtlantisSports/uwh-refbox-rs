@@ -125,7 +125,12 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         (Some(stream), Some(child))
     };
 
-    let config: Config = confy::load(APP_CONFIG_NAME).unwrap();
+    info!(
+        "Reading config file from {:?}",
+        confy::get_configuration_file_path(APP_CONFIG_NAME, None).unwrap()
+    );
+
+    let config: Config = confy::load(APP_CONFIG_NAME, None).unwrap();
 
     let window_size = (
         config.hardware.screen_x as u32,

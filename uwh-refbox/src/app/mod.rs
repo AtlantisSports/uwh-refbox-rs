@@ -44,6 +44,7 @@ pub struct RefBoxApp {
     tm: Arc<Mutex<TournamentManager>>,
     config: Config,
     edited_game_num: u16,
+    edited_white_on_right: bool,
     snapshot: GameSnapshot,
     time_updater: TimeUpdater,
     pen_edit: PenaltyEditor,
@@ -114,6 +115,7 @@ pub enum LengthParameter {
 pub enum BoolGameParameter {
     OvertimeAllowed,
     SuddenDeathAllowed,
+    WhiteOnRight,
 }
 
 #[derive(Debug, Clone)]
@@ -263,6 +265,7 @@ impl Application for RefBoxApp {
                 tm,
                 config,
                 edited_game_num: 0,
+                edited_white_on_right: false,
                 snapshot,
                 app_state: AppState::MainPage,
                 last_app_state: AppState::MainPage,
@@ -567,7 +570,12 @@ impl Application for RefBoxApp {
             }
             Message::EditGameConfig => {
                 self.config.game = self.tm.lock().unwrap().config().clone();
-                self.edited_game_num = self.snapshot.game_number;
+                self.edited_game_num = if self.snapshot.current_period == GamePeriod::BetweenGames {
+                    self.snapshot.next_game_number
+                } else {
+                    self.snapshot.game_number
+                };
+                self.edited_white_on_right = self.config.hardware.white_on_right;
                 self.app_state = AppState::EditGameConfig;
                 trace!("AppState changed to {:?}", self.app_state);
             }
@@ -579,17 +587,22 @@ impl Application for RefBoxApp {
                             AppState::ConfirmationPage(ConfirmationKind::GameConfigChanged)
                         } else {
                             tm.set_config(self.config.game.clone()).unwrap();
-                            confy::store(APP_CONFIG_NAME, &self.config).unwrap();
+                            self.config.hardware.white_on_right = self.edited_white_on_right;
+                            confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
                             AppState::MainPage
                         }
                     } else if self.edited_game_num != self.snapshot.game_number {
-                        if tm.current_period() == GamePeriod::BetweenGames {
+                        if tm.current_period() != GamePeriod::BetweenGames {
+                            AppState::ConfirmationPage(ConfirmationKind::GameNumberChanged)
+                        } else {
+                            self.config.hardware.white_on_right = self.edited_white_on_right;
+                            confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
                             tm.set_next_game_number(self.edited_game_num);
                             AppState::MainPage
-                        } else {
-                            AppState::ConfirmationPage(ConfirmationKind::GameNumberChanged)
                         }
                     } else {
+                        self.config.hardware.white_on_right = self.edited_white_on_right;
+                        confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
                         AppState::MainPage
                     }
                 } else {
@@ -659,6 +672,7 @@ impl Application for RefBoxApp {
                 BoolGameParameter::SuddenDeathAllowed => {
                     self.config.game.sudden_death_allowed ^= true
                 }
+                BoolGameParameter::WhiteOnRight => self.edited_white_on_right ^= true,
             },
             Message::ConfirmationSelected(selection) => {
                 let config_changed = if let AppState::ConfirmationPage(ref kind) = self.app_state {
@@ -676,8 +690,9 @@ impl Application for RefBoxApp {
                         tm.reset_game(now);
                         if config_changed {
                             tm.set_config(self.config.game.clone()).unwrap();
-                            confy::store(APP_CONFIG_NAME, &self.config).unwrap();
                         }
+                        self.config.hardware.white_on_right = self.edited_white_on_right;
+                        confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
                         tm.set_game_number(self.edited_game_num);
                         let snapshot = tm.generate_snapshot(now).unwrap();
                         std::mem::drop(tm);
@@ -689,6 +704,8 @@ impl Application for RefBoxApp {
                         tm.set_game_number(self.edited_game_num);
                         let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
                         std::mem::drop(tm);
+                        self.config.hardware.white_on_right = self.edited_white_on_right;
+                        confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
                         self.apply_snapshot(snapshot);
                         AppState::MainPage
                     }
@@ -802,6 +819,7 @@ impl Application for RefBoxApp {
                     &self.snapshot,
                     &self.config.game,
                     self.edited_game_num,
+                    self.edited_white_on_right,
                 ),
                 AppState::ParameterEditor(param, dur) => {
                     build_game_parameter_editor(&self.snapshot, param, dur)

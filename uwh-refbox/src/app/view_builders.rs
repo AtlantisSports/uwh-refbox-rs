@@ -1,7 +1,7 @@
 use super::{
     style::{
-        self, BLACK, GREEN, LARGE_TEXT, MEDIUM_TEXT, MIN_BUTTON_SIZE, ORANGE, PADDING, RED,
-        SMALL_TEXT, SPACING, WHITE, YELLOW,
+        self, BLACK, BORDER_RADIUS, GREEN, LARGE_TEXT, MEDIUM_TEXT, MIN_BUTTON_SIZE, ORANGE,
+        PADDING, RED, SMALL_TEXT, SPACING, WHITE, YELLOW,
     },
     *,
 };
@@ -983,7 +983,88 @@ pub(super) fn build_game_config_edit_page<'a>(
     snapshot: &GameSnapshot,
     config: &GameConfig,
     game_number: u16,
+    white_on_right: bool,
 ) -> Element<'a, Message> {
+    let white_inner = container("WHITE")
+        .center_x()
+        .center_y()
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(style::Container::White);
+    let black_inner = container("BLACK")
+        .center_x()
+        .center_y()
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(style::Container::Black);
+    let white_spacer = container("")
+        .width(Length::Units(BORDER_RADIUS.ceil() as u16))
+        .height(Length::Fill)
+        .style(style::Container::WhiteSharpCorner);
+    let black_spacer = container("")
+        .width(Length::Units(BORDER_RADIUS.ceil() as u16))
+        .height(Length::Fill)
+        .style(style::Container::BlackSharpCorner);
+
+    // `white_on_right` is based on the view from the front of the panels, so for the ref's point
+    // of view we need to reverse the direction
+    let sides = if !white_on_right {
+        // White to Ref's right
+        let white_outer = container(
+            row()
+                .push(white_spacer)
+                .push(white_inner)
+                .push(horizontal_space(Length::Units(BORDER_RADIUS.ceil() as u16))),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .padding(0)
+        .style(style::Container::White);
+        let black_outer = container(
+            row()
+                .push(horizontal_space(Length::Units(BORDER_RADIUS.ceil() as u16)))
+                .push(black_inner)
+                .push(black_spacer),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .padding(0)
+        .style(style::Container::Black);
+        row().push(black_outer).push(white_outer)
+    } else {
+        // White to Ref's left
+        let white_outer = container(
+            row()
+                .push(horizontal_space(Length::Units(BORDER_RADIUS.ceil() as u16)))
+                .push(white_inner)
+                .push(white_spacer),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .padding(0)
+        .style(style::Container::White);
+        let black_outer = container(
+            row()
+                .push(black_spacer)
+                .push(black_inner)
+                .push(horizontal_space(Length::Units(BORDER_RADIUS.ceil() as u16))),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .padding(0)
+        .style(style::Container::Black);
+        row().push(white_outer).push(black_outer)
+    };
+
+    let sides_btn = button(sides.width(Length::Fill).height(Length::Fill))
+        .height(Length::Units(MIN_BUTTON_SIZE))
+        .width(Length::Fill)
+        .padding(0)
+        .style(style::Button::Gray)
+        .on_press(Message::ToggleBoolParameter(
+            BoolGameParameter::WhiteOnRight,
+        ));
+
     column()
         .spacing(SPACING)
         .push(make_game_time_button(snapshot).on_press(Message::EditTime))
@@ -995,6 +1076,7 @@ pub(super) fn build_game_config_edit_page<'a>(
                     "NO",
                     Some(Message::NoAction),
                 ))
+                .push(sides_btn)
                 .push(make_value_button(
                     "GAME NUMBER:",
                     game_number.to_string(),

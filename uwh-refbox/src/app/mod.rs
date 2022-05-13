@@ -442,9 +442,13 @@ impl Application for RefBoxApp {
                     self.pen_edit.abort_session();
                     self.app_state = AppState::MainPage;
                 } else if let Err(e) = self.pen_edit.apply_changes(Instant::now()) {
-                    let err_string = format!("An error occurred while applying the changes to the penalties. \
+                    let err_string = match e {
+                        PenaltyEditorError::ListTooLong(colors) => format!("The {colors} penalty list(s) \
+                            is/are too long. Some penalties will not be visible on the main page."),
+                        e => format!("An error occurred while applying the changes to the penalties. \
                             Some of the changes may have been applied. Please retry any remaining changes.\n\n\
-                            Error Message:\n{e}");
+                            Error Message:\n{e}"),
+                    };
                     error!("{err_string}");
                     self.pen_edit.abort_session();
                     self.app_state =

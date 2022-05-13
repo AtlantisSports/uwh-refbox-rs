@@ -4,6 +4,7 @@ use log::*;
 use std::{
     cmp::{max, Ordering},
     convert::TryInto,
+    ops::{Index, IndexMut},
     time::{Duration, Instant},
 };
 use thiserror::Error;
@@ -549,6 +550,38 @@ impl TournamentManager {
                 Color::Black => self.w_penalties.push(self.b_penalties.remove(index)),
                 Color::White => self.b_penalties.push(self.w_penalties.remove(index)),
             };
+        }
+        Ok(())
+    }
+
+    pub fn limit_pen_list_len(&mut self, color: Color, limit: usize, now: Instant) -> Result<()> {
+        let time = self
+            .game_clock_time(now)
+            .ok_or(TournamentManagerError::InvalidNowValue)?;
+        let period = self.current_period;
+
+        let list = match color {
+            Color::Black => &mut self.b_penalties,
+            Color::White => &mut self.w_penalties,
+        };
+
+        while list.len() > limit {
+            let mut index = None;
+            'inner: for (i, pen) in list.iter().enumerate() {
+                if pen
+                    .is_complete(period, time, &self.config)
+                    .ok_or(TournamentManagerError::InvalidNowValue)?
+                {
+                    index = Some(i);
+                    break 'inner;
+                }
+            }
+
+            if let Some(i) = index {
+                list.remove(i);
+            } else {
+                return Err(TournamentManagerError::TooManyPenalties(limit));
+            }
         }
         Ok(())
     }
@@ -1379,6 +1412,26 @@ pub struct BlackWhiteBundle<T> {
     pub white: T,
 }
 
+impl<T> Index<Color> for BlackWhiteBundle<T> {
+    type Output = T;
+
+    fn index(&self, color: Color) -> &Self::Output {
+        match color {
+            Color::Black => &self.black,
+            Color::White => &self.white,
+        }
+    }
+}
+
+impl<T> IndexMut<Color> for BlackWhiteBundle<T> {
+    fn index_mut(&mut self, color: Color) -> &mut Self::Output {
+        match color {
+            Color::Black => &mut self.black,
+            Color::White => &mut self.white,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Error)]
 pub enum TournamentManagerError {
     #[error("Can't edit clock time while clock is running")]
@@ -1407,6 +1460,8 @@ pub enum TournamentManagerError {
     AlreadyInPlayPeriod,
     #[error("Action impossible unless in BetweenGames period")]
     GameInProgress,
+    #[error("Too many active penalties, can't limit list to {0} values")]
+    TooManyPenalties(usize),
     #[error("No {0} penalty exists at the index {1}")]
     InvalidIndex(Color, usize),
 }
@@ -3982,5 +4037,61 @@ mod test {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn test_limit_penalty_list_length() {
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(900),
+            ..Default::default()
+        };
+
+        let mut tm = TournamentManager::new(config);
+
+        let mut now = Instant::now();
+
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(900));
+        tm.start_game_clock(now);
+
+        let pen_start = now + Duration::from_secs(30);
+        tm.start_penalty(Color::Black, 2, PenaltyKind::OneMinute, pen_start)
+            .unwrap();
+        tm.start_penalty(Color::White, 3, PenaltyKind::OneMinute, pen_start)
+            .unwrap();
+        tm.start_penalty(Color::Black, 4, PenaltyKind::TwoMinute, pen_start)
+            .unwrap();
+        tm.start_penalty(Color::White, 5, PenaltyKind::TwoMinute, pen_start)
+            .unwrap();
+        tm.start_penalty(Color::Black, 6, PenaltyKind::TotalDismissal, pen_start)
+            .unwrap();
+        tm.start_penalty(Color::White, 7, PenaltyKind::TotalDismissal, pen_start)
+            .unwrap();
+
+        // Check while all penalties are still running, too many
+        now += Duration::from_secs(60);
+        assert_eq!(
+            tm.limit_pen_list_len(Color::Black, 2, now),
+            Err(TMErr::TooManyPenalties(2))
+        );
+        assert_eq!(
+            tm.limit_pen_list_len(Color::White, 2, now),
+            Err(TMErr::TooManyPenalties(2))
+        );
+        assert_eq!(tm.b_penalties.len(), 3);
+        assert_eq!(tm.w_penalties.len(), 3);
+
+        // Check while two penalties are still running per color
+        now += Duration::from_secs(60);
+        assert_eq!(tm.limit_pen_list_len(Color::Black, 2, now), Ok(()));
+        assert_eq!(tm.limit_pen_list_len(Color::White, 2, now), Ok(()));
+        assert_eq!(tm.b_penalties.len(), 2);
+        assert_eq!(tm.w_penalties.len(), 2);
+
+        // Check while one penalty is still running per color
+        now += Duration::from_secs(60);
+        assert_eq!(tm.limit_pen_list_len(Color::Black, 2, now), Ok(()));
+        assert_eq!(tm.limit_pen_list_len(Color::White, 2, now), Ok(()));
+        assert_eq!(tm.b_penalties.len(), 2);
+        assert_eq!(tm.w_penalties.len(), 2);
     }
 }

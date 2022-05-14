@@ -111,62 +111,26 @@ pub fn draw_panels<D: DrawTarget<Color = Rgb888>>(
             )
             .draw(display)?;
 
-            match state.current_period {
-                GamePeriod::FirstHalf => {
-                    Text::with_text_style(
-                        "1ST\nHALF",
-                        Point::new(87, 33),
-                        MonoTextStyle::new(&FONT_7X15, game_color),
-                        CENTERED,
-                    )
-                    .draw(display)?;
-                }
-                GamePeriod::SecondHalf => {
-                    Text::with_text_style(
-                        "2ND\nHALF",
-                        Point::new(87, 33),
-                        MonoTextStyle::new(&FONT_7X15, game_color),
-                        CENTERED,
-                    )
-                    .draw(display)?;
-                }
-                GamePeriod::OvertimeFirstHalf => {
-                    Text::with_text_style(
-                        "OT 1ST\nHALF",
-                        Point::new(87, 33),
-                        MonoTextStyle::new(&FONT_7X15, game_color),
-                        CENTERED,
-                    )
-                    .draw(display)?;
-                }
-                GamePeriod::OvertimeSecondHalf => {
-                    Text::with_text_style(
-                        "OT 2ND\nHALF",
-                        Point::new(87, 33),
-                        MonoTextStyle::new(&FONT_7X15, game_color),
-                        CENTERED,
-                    )
-                    .draw(display)?;
-                }
-                GamePeriod::SuddenDeath => {
-                    Text::with_text_style(
-                        "SUDDEN\nDEATH",
-                        Point::new(87, 33),
-                        MonoTextStyle::new(&FONT_7X15, game_color),
-                        CENTERED,
-                    )
-                    .draw(display)?;
-                }
-                _ => {
-                    Text::with_text_style(
-                        "PERIOD\nERROR",
-                        Point::new(87, 33),
-                        MonoTextStyle::new(&FONT_7X15, RED),
-                        CENTERED,
-                    )
-                    .draw(display)?;
-                }
+            let period_text = match state.current_period {
+                GamePeriod::BetweenGames => "NEXT\nGAME",
+                GamePeriod::FirstHalf => "1ST\nHALF",
+                GamePeriod::HalfTime => "HALF\nTIME",
+                GamePeriod::SecondHalf => "2ND\nHALF",
+                GamePeriod::PreOvertime => "PRE OT\nBREAK",
+                GamePeriod::OvertimeFirstHalf => "OT 1ST\nHALF",
+                GamePeriod::OvertimeHalfTime => "OT HLF\nTIME",
+                GamePeriod::OvertimeSecondHalf => "OT 2ND\nHALF",
+                GamePeriod::PreSuddenDeath => "PRE SD\nBREAK",
+                GamePeriod::SuddenDeath => "SUDDEN\nDEATH",
             };
+
+            Text::with_text_style(
+                period_text,
+                Point::new(87, 33),
+                MonoTextStyle::new(&FONT_7X15, game_color),
+                CENTERED,
+            )
+            .draw(display)?;
 
             match state.timeout {
                 TimeoutSnapshot::White(secs) => {

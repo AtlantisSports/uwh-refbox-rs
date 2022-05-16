@@ -696,11 +696,12 @@ impl TournamentManager {
                 .checked_duration_since(start_time)
                 .ok_or(TournamentManagerError::InvalidNowValue)?;
 
-            if !self.has_reset {
-                if self.current_period == GamePeriod::BetweenGames && time <= self.reset_game_time {
-                    self.reset();
-                }
-            }
+            if !self.has_reset
+                && self.current_period == GamePeriod::BetweenGames
+                && time <= self.reset_game_time
+            {
+                self.reset();
+            };
 
             if time >= time_remaining_at_start {
                 let mut need_cull = false;

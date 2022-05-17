@@ -55,6 +55,10 @@ RUN set -eux; \
     # Remove unneeded files to reduce image size
     rm -rf .xwin-cache /usr/local/cargo/bin/xwin;
 
+WORKDIR /workdir
+
+COPY SDL2.lib lib/
+
 # Note that we're using the full target triple for each variable instead of the
 # simple CC/CXX/AR shorthands to avoid issues when compiling any C/C++ code for
 # build dependencies that need to compile and execute in the host environment
@@ -72,7 +76,7 @@ ENV CC_x86_64_pc_windows_msvc="clang-cl" \
     # Let cargo know what linker to invoke if you haven't already specified it
     # in a .cargo/config.toml file
     CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER="lld-link" \
-    RUSTFLAGS="-Lnative=/xwin/crt/lib/x86_64 -Lnative=/xwin/sdk/lib/um/x86_64 -Lnative=/xwin/sdk/lib/ucrt/x86_64"
+    RUSTFLAGS="-Lnative=/xwin/crt/lib/x86_64 -Lnative=/xwin/sdk/lib/um/x86_64 -Lnative=/xwin/sdk/lib/ucrt/x86_64 -Lnative=/workdir/lib"
 
 # These are separate since docker/podman won't transform environment variables defined in the same ENV block
 ENV CFLAGS_x86_64_pc_windows_msvc="$CL_FLAGS" \

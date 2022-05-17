@@ -203,9 +203,11 @@ impl RefBoxApp {
     fn apply_snapshot(&mut self, snapshot: GameSnapshot) {
         let mut connection_lost = false;
         if let Some(ref mut sender) = self.sim_sender {
+            let snapshot_tx = snapshot.clone().into();
+            trace!("Sending to sim: {snapshot_tx:?}");
             match sender.write_all(
                 &TransmittedData {
-                    snapshot: snapshot.clone().into(),
+                    snapshot: snapshot_tx,
                     white_on_right: self.config.hardware.white_on_right,
                 }
                 .encode()

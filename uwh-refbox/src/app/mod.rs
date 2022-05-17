@@ -37,13 +37,14 @@ mod view_builders;
 use view_builders::*;
 
 pub mod style;
-use style::{PADDING, SPACING, WINDOW_BACKGORUND};
+use style::{PADDING, SPACING, WINDOW_BACKGROUND};
 
 #[derive(Debug)]
 pub struct RefBoxApp {
     tm: Arc<Mutex<TournamentManager>>,
     config: Config,
     edited_game_num: u16,
+    edited_white_on_right: bool,
     snapshot: GameSnapshot,
     time_updater: TimeUpdater,
     pen_edit: PenaltyEditor,
@@ -114,6 +115,7 @@ pub enum LengthParameter {
 pub enum BoolGameParameter {
     OvertimeAllowed,
     SuddenDeathAllowed,
+    WhiteOnRight,
 }
 
 #[derive(Debug, Clone)]
@@ -201,9 +203,11 @@ impl RefBoxApp {
     fn apply_snapshot(&mut self, snapshot: GameSnapshot) {
         let mut connection_lost = false;
         if let Some(ref mut sender) = self.sim_sender {
+            let snapshot_tx = snapshot.clone().into();
+            trace!("Sending to sim: {snapshot_tx:?}");
             match sender.write_all(
                 &TransmittedData {
-                    snapshot: snapshot.clone().into(),
+                    snapshot: snapshot_tx,
                     white_on_right: self.config.hardware.white_on_right,
                 }
                 .encode()
@@ -263,6 +267,7 @@ impl Application for RefBoxApp {
                 tm,
                 config,
                 edited_game_num: 0,
+                edited_white_on_right: false,
                 snapshot,
                 app_state: AppState::MainPage,
                 last_app_state: AppState::MainPage,
@@ -439,9 +444,13 @@ impl Application for RefBoxApp {
                     self.pen_edit.abort_session();
                     self.app_state = AppState::MainPage;
                 } else if let Err(e) = self.pen_edit.apply_changes(Instant::now()) {
-                    let err_string = format!("An error occurred while applying the changes to the penalties. \
+                    let err_string = match e {
+                        PenaltyEditorError::ListTooLong(colors) => format!("The {colors} penalty list(s) \
+                            is/are too long. Some penalties will not be visible on the main page."),
+                        e => format!("An error occurred while applying the changes to the penalties. \
                             Some of the changes may have been applied. Please retry any remaining changes.\n\n\
-                            Error Message:\n{e}");
+                            Error Message:\n{e}"),
+                    };
                     error!("{err_string}");
                     self.pen_edit.abort_session();
                     self.app_state =
@@ -567,7 +576,12 @@ impl Application for RefBoxApp {
             }
             Message::EditGameConfig => {
                 self.config.game = self.tm.lock().unwrap().config().clone();
-                self.edited_game_num = self.snapshot.game_number;
+                self.edited_game_num = if self.snapshot.current_period == GamePeriod::BetweenGames {
+                    self.snapshot.next_game_number
+                } else {
+                    self.snapshot.game_number
+                };
+                self.edited_white_on_right = self.config.hardware.white_on_right;
                 self.app_state = AppState::EditGameConfig;
                 trace!("AppState changed to {:?}", self.app_state);
             }
@@ -579,17 +593,22 @@ impl Application for RefBoxApp {
                             AppState::ConfirmationPage(ConfirmationKind::GameConfigChanged)
                         } else {
                             tm.set_config(self.config.game.clone()).unwrap();
-                            confy::store(APP_CONFIG_NAME, &self.config).unwrap();
+                            self.config.hardware.white_on_right = self.edited_white_on_right;
+                            confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
                             AppState::MainPage
                         }
                     } else if self.edited_game_num != self.snapshot.game_number {
-                        if tm.current_period() == GamePeriod::BetweenGames {
+                        if tm.current_period() != GamePeriod::BetweenGames {
+                            AppState::ConfirmationPage(ConfirmationKind::GameNumberChanged)
+                        } else {
+                            self.config.hardware.white_on_right = self.edited_white_on_right;
+                            confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
                             tm.set_next_game_number(self.edited_game_num);
                             AppState::MainPage
-                        } else {
-                            AppState::ConfirmationPage(ConfirmationKind::GameNumberChanged)
                         }
                     } else {
+                        self.config.hardware.white_on_right = self.edited_white_on_right;
+                        confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
                         AppState::MainPage
                     }
                 } else {
@@ -659,6 +678,7 @@ impl Application for RefBoxApp {
                 BoolGameParameter::SuddenDeathAllowed => {
                     self.config.game.sudden_death_allowed ^= true
                 }
+                BoolGameParameter::WhiteOnRight => self.edited_white_on_right ^= true,
             },
             Message::ConfirmationSelected(selection) => {
                 let config_changed = if let AppState::ConfirmationPage(ref kind) = self.app_state {
@@ -676,8 +696,9 @@ impl Application for RefBoxApp {
                         tm.reset_game(now);
                         if config_changed {
                             tm.set_config(self.config.game.clone()).unwrap();
-                            confy::store(APP_CONFIG_NAME, &self.config).unwrap();
                         }
+                        self.config.hardware.white_on_right = self.edited_white_on_right;
+                        confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
                         tm.set_game_number(self.edited_game_num);
                         let snapshot = tm.generate_snapshot(now).unwrap();
                         std::mem::drop(tm);
@@ -689,6 +710,8 @@ impl Application for RefBoxApp {
                         tm.set_game_number(self.edited_game_num);
                         let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
                         std::mem::drop(tm);
+                        self.config.hardware.white_on_right = self.edited_white_on_right;
+                        confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
                         self.apply_snapshot(snapshot);
                         AppState::MainPage
                     }
@@ -769,7 +792,7 @@ impl Application for RefBoxApp {
     }
 
     fn background_color(&self) -> iced::Color {
-        WINDOW_BACKGORUND
+        WINDOW_BACKGROUND
     }
 
     fn view(&self) -> Element<Message> {
@@ -802,6 +825,7 @@ impl Application for RefBoxApp {
                     &self.snapshot,
                     &self.config.game,
                     self.edited_game_num,
+                    self.edited_white_on_right,
                 ),
                 AppState::ParameterEditor(param, dur) => {
                     build_game_parameter_editor(&self.snapshot, param, dur)
@@ -888,9 +912,13 @@ impl<H: Hasher, I> Recipe<H, I> for TimeUpdater {
             let mut tm = state.tm.lock().unwrap();
             let now = Instant::now();
             tm.update(now).unwrap();
-            let snapshot = tm
-                .generate_snapshot(now)
-                .expect("Failed to generate snapshot");
+            let snapshot = match tm.generate_snapshot(now) {
+                Some(val) => val,
+                None => {
+                    error!("Failed to generate snapshot. State:\n{tm:#?}");
+                    panic!("No snapshot");
+                }
+            };
 
             state.next_time = if clock_running {
                 Some(tm.next_update_time(now).unwrap())

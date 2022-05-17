@@ -10,6 +10,8 @@ use std::{
 use thiserror::Error;
 use uwh_common::game_snapshot::Color;
 
+const MAX_LIST_LEN: usize = 8;
+
 #[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
 pub struct Origin {
     color: Color,
@@ -127,15 +129,6 @@ impl PenaltyEditor {
             mem::take(pen)
         };
 
-        //        match pen {
-        //            EditablePenalty::Original(o, p) | EditablePenalty::Edited(o, p) => {
-        //                *pen = EditablePenalty::Deleted(o, p.clone())
-        //            }
-        //            EditablePenalty::Deleted(_, _) => {}
-        //            EditablePenalty::New(_, _) => {
-        //                remove = true;
-        //            }
-        //        };
         if remove {
             match color {
                 Color::Black => self.penalties.black.remove(index),
@@ -258,8 +251,29 @@ impl PenaltyEditor {
             tm.start_penalty(color, player_number, kind, now)?;
         }
 
+        let b_too_long = match tm.limit_pen_list_len(Color::Black, MAX_LIST_LEN, now) {
+            Ok(()) => false,
+            Err(TournamentManagerError::TooManyPenalties(_)) => true,
+            Err(e) => return Err(e.into()),
+        };
+        let w_too_long = match tm.limit_pen_list_len(Color::White, MAX_LIST_LEN, now) {
+            Ok(()) => false,
+            Err(TournamentManagerError::TooManyPenalties(_)) => true,
+            Err(e) => return Err(e.into()),
+        };
+
         std::mem::drop(tm);
+
         self.abort_session();
+
+        if b_too_long & w_too_long {
+            return Err(PenaltyEditorError::ListTooLong("Black and White"));
+        } else if b_too_long {
+            return Err(PenaltyEditorError::ListTooLong("Black"));
+        } else if w_too_long {
+            return Err(PenaltyEditorError::ListTooLong("White"));
+        };
+
         Ok(())
     }
 
@@ -330,6 +344,8 @@ pub enum PenaltyEditorError {
     InvalidIndex(Color, usize),
     #[error("The `now` value passed is not valid")]
     InvalidNowValue,
+    #[error("The {0} penalty list(s) are too long")]
+    ListTooLong(&'static str),
     #[error(transparent)]
     TMError(#[from] TournamentManagerError),
 }

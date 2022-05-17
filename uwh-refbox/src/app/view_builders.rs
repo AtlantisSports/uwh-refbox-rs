@@ -1,7 +1,7 @@
 use super::{
     style::{
-        self, BLACK, GREEN, LARGE_TEXT, MEDIUM_TEXT, MIN_BUTTON_SIZE, ORANGE, PADDING, RED,
-        SMALL_TEXT, SPACING, WHITE, YELLOW,
+        self, BLACK, BORDER_RADIUS, GREEN, LARGE_TEXT, MEDIUM_TEXT, MIN_BUTTON_SIZE, ORANGE,
+        PADDING, RED, SMALL_TEXT, SPACING, WHITE, YELLOW,
     },
     *,
 };
@@ -983,7 +983,88 @@ pub(super) fn build_game_config_edit_page<'a>(
     snapshot: &GameSnapshot,
     config: &GameConfig,
     game_number: u16,
+    white_on_right: bool,
 ) -> Element<'a, Message> {
+    let white_inner = container("WHITE")
+        .center_x()
+        .center_y()
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(style::Container::White);
+    let black_inner = container("BLACK")
+        .center_x()
+        .center_y()
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(style::Container::Black);
+    let white_spacer = container("")
+        .width(Length::Units(BORDER_RADIUS.ceil() as u16))
+        .height(Length::Fill)
+        .style(style::Container::WhiteSharpCorner);
+    let black_spacer = container("")
+        .width(Length::Units(BORDER_RADIUS.ceil() as u16))
+        .height(Length::Fill)
+        .style(style::Container::BlackSharpCorner);
+
+    // `white_on_right` is based on the view from the front of the panels, so for the ref's point
+    // of view we need to reverse the direction
+    let sides = if !white_on_right {
+        // White to Ref's right
+        let white_outer = container(
+            row()
+                .push(white_spacer)
+                .push(white_inner)
+                .push(horizontal_space(Length::Units(BORDER_RADIUS.ceil() as u16))),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .padding(0)
+        .style(style::Container::White);
+        let black_outer = container(
+            row()
+                .push(horizontal_space(Length::Units(BORDER_RADIUS.ceil() as u16)))
+                .push(black_inner)
+                .push(black_spacer),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .padding(0)
+        .style(style::Container::Black);
+        row().push(black_outer).push(white_outer)
+    } else {
+        // White to Ref's left
+        let white_outer = container(
+            row()
+                .push(horizontal_space(Length::Units(BORDER_RADIUS.ceil() as u16)))
+                .push(white_inner)
+                .push(white_spacer),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .padding(0)
+        .style(style::Container::White);
+        let black_outer = container(
+            row()
+                .push(black_spacer)
+                .push(black_inner)
+                .push(horizontal_space(Length::Units(BORDER_RADIUS.ceil() as u16))),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .padding(0)
+        .style(style::Container::Black);
+        row().push(white_outer).push(black_outer)
+    };
+
+    let sides_btn = button(sides.width(Length::Fill).height(Length::Fill))
+        .height(Length::Units(MIN_BUTTON_SIZE))
+        .width(Length::Fill)
+        .padding(0)
+        .style(style::Button::Gray)
+        .on_press(Message::ToggleBoolParameter(
+            BoolGameParameter::WhiteOnRight,
+        ));
+
     column()
         .spacing(SPACING)
         .push(make_game_time_button(snapshot).on_press(Message::EditTime))
@@ -995,6 +1076,7 @@ pub(super) fn build_game_config_edit_page<'a>(
                     "NO",
                     Some(Message::NoAction),
                 ))
+                .push(sides_btn)
                 .push(make_value_button(
                     "GAME NUMBER:",
                     game_number.to_string(),
@@ -1268,57 +1350,95 @@ pub(super) fn build_timeout_ribbon<'a>(
     snapshot: &GameSnapshot,
     tm: &Arc<Mutex<TournamentManager>>,
 ) -> Row<'a, Message> {
-    let in_timeout = !matches!(snapshot.timeout, TimeoutSnapshot::None);
-
-    let mut black = make_button(if in_timeout {
-        "SWITCH TO\nBLACK"
-    } else {
-        "BLACK\nTIMEOUT"
-    })
-    .style(style::Button::Black);
-
-    let mut white = make_button(if in_timeout {
-        "SWITCH TO\nWHITE"
-    } else {
-        "WHITE\nTIMEOUT"
-    })
-    .style(style::Button::White);
-
-    let mut referee = make_button(if in_timeout {
-        "SWITCH TO\nREF"
-    } else {
-        "REF\nTIMEOUT"
-    })
-    .style(style::Button::Yellow);
-
-    let mut penalty = make_button(if in_timeout {
-        "SWITCH TO\nPEN SHOT"
-    } else {
-        "PENALTY\nSHOT"
-    })
-    .style(style::Button::Red);
-
     let tm = tm.lock().unwrap();
-    if (in_timeout & tm.can_switch_to_b_timeout().is_ok())
-        | (!in_timeout & tm.can_start_b_timeout().is_ok())
-    {
-        black = black.on_press(Message::BlackTimeout(in_timeout));
-    }
-    if (in_timeout & tm.can_switch_to_w_timeout().is_ok())
-        | (!in_timeout & tm.can_start_w_timeout().is_ok())
-    {
-        white = white.on_press(Message::WhiteTimeout(in_timeout));
-    }
-    if (in_timeout & tm.can_switch_to_ref_timeout().is_ok())
-        | (!in_timeout & tm.can_start_ref_timeout().is_ok())
-    {
-        referee = referee.on_press(Message::RefTimeout(in_timeout));
-    }
-    if (in_timeout & tm.can_switch_to_penalty_shot().is_ok())
-        | (!in_timeout & tm.can_start_penalty_shot().is_ok())
-    {
-        penalty = penalty.on_press(Message::PenaltyShot(in_timeout));
-    }
+
+    let black = match snapshot.timeout {
+        TimeoutSnapshot::None => make_message_button(
+            "BLACK\nTIMEOUT",
+            tm.can_start_b_timeout()
+                .ok()
+                .map(|_| Message::BlackTimeout(false)),
+        )
+        .style(style::Button::Black),
+        TimeoutSnapshot::Black(_) => make_message_button("END\nTIMEOUT", Some(Message::EndTimeout))
+            .style(style::Button::Yellow),
+        TimeoutSnapshot::White(_) | TimeoutSnapshot::Ref(_) | TimeoutSnapshot::PenaltyShot(_) => {
+            make_message_button(
+                "SWITCH TO\nBLACK",
+                tm.can_switch_to_b_timeout()
+                    .ok()
+                    .map(|_| Message::BlackTimeout(true)),
+            )
+            .style(style::Button::Black)
+        }
+    };
+
+    let white = match snapshot.timeout {
+        TimeoutSnapshot::None => make_message_button(
+            "WHITE\nTIMEOUT",
+            tm.can_start_w_timeout()
+                .ok()
+                .map(|_| Message::WhiteTimeout(false)),
+        )
+        .style(style::Button::White),
+        TimeoutSnapshot::White(_) => make_message_button("END\nTIMEOUT", Some(Message::EndTimeout))
+            .style(style::Button::Yellow),
+        TimeoutSnapshot::Black(_) | TimeoutSnapshot::Ref(_) | TimeoutSnapshot::PenaltyShot(_) => {
+            make_message_button(
+                "SWITCH TO\nWHITE",
+                tm.can_switch_to_w_timeout()
+                    .ok()
+                    .map(|_| Message::WhiteTimeout(true)),
+            )
+            .style(style::Button::White)
+        }
+    };
+
+    let referee = match snapshot.timeout {
+        TimeoutSnapshot::None => make_message_button(
+            "REF\nTIMEOUT",
+            tm.can_start_ref_timeout()
+                .ok()
+                .map(|_| Message::RefTimeout(false)),
+        )
+        .style(style::Button::Yellow),
+        TimeoutSnapshot::Ref(_) => make_message_button("END\nTIMEOUT", Some(Message::EndTimeout))
+            .style(style::Button::Yellow),
+        TimeoutSnapshot::Black(_) | TimeoutSnapshot::White(_) | TimeoutSnapshot::PenaltyShot(_) => {
+            make_message_button(
+                "SWITCH TO\nREF",
+                tm.can_switch_to_ref_timeout()
+                    .ok()
+                    .map(|_| Message::RefTimeout(true)),
+            )
+            .style(style::Button::Yellow)
+        }
+    };
+
+    let penalty = match snapshot.timeout {
+        TimeoutSnapshot::None => make_message_button(
+            "PENALTY\nSHOT",
+            tm.can_start_penalty_shot()
+                .ok()
+                .map(|_| Message::PenaltyShot(false)),
+        )
+        .style(style::Button::Red),
+        TimeoutSnapshot::PenaltyShot(_) => {
+            make_message_button("END\nTIMEOUT", Some(Message::EndTimeout))
+                .style(style::Button::Yellow)
+        }
+        TimeoutSnapshot::Black(_) | TimeoutSnapshot::White(_) | TimeoutSnapshot::Ref(_) => {
+            make_message_button(
+                "SWITCH TO\nPEN SHOT",
+                tm.can_switch_to_penalty_shot()
+                    .ok()
+                    .map(|_| Message::PenaltyShot(true)),
+            )
+            .style(style::Button::Red)
+        }
+    };
+
+    drop(tm);
 
     row()
         .spacing(SPACING)
@@ -1582,6 +1702,17 @@ fn make_button<'a, Message: Clone, T: Into<String>>(label: T) -> Button<'a, Mess
     .padding(PADDING)
     .height(Length::Units(MIN_BUTTON_SIZE))
     .width(Length::Fill)
+}
+
+fn make_message_button<'a, Message: Clone, T: Into<String>>(
+    label: T,
+    message: Option<Message>,
+) -> Button<'a, Message> {
+    if let Some(msg) = message {
+        make_button(label).on_press(msg)
+    } else {
+        make_button(label)
+    }
 }
 
 fn make_small_button<'a, Message: Clone, T: Into<String>>(

@@ -85,7 +85,7 @@ pub struct Game {
     pub pre_overtime_break: Duration,
     pub overtime_break_duration: Duration,
     pub pre_sudden_death_duration: Duration,
-    pub pre_game_duration: Duration,
+    pub post_game_duration: Duration,
     pub nominal_break: Duration,
     pub minimum_break: Duration,
 }
@@ -109,7 +109,7 @@ impl Default for Game {
             pre_overtime_break: Duration::from_secs(180),
             overtime_break_duration: Duration::from_secs(60),
             pre_sudden_death_duration: Duration::from_secs(60),
-            pre_game_duration: Duration::from_secs(180),
+            post_game_duration: Duration::from_secs(60),
             nominal_break: Duration::from_secs(900),
             minimum_break: Duration::from_secs(240),
         }
@@ -199,7 +199,7 @@ mod test {
            pre_sudden_death_duration = { secs = 60, nanos = 0 }
            sudden_death_allowed = true
            team_timeouts_per_half = 1
-           pre_game_duration = { secs = 180, nanos = 0 }
+           post_game_duration = { secs = 60, nanos = 0 }
            nominal_break = { secs = 900, nanos = 0 }
            minimum_break = { secs = 240, nanos = 0 }
            timezone = "mst"

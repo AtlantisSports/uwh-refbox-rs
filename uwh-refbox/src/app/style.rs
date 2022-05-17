@@ -26,10 +26,6 @@ macro_rules! make_color {
                 $r * 0.85,
                 $g * 0.85,
                 $b * 0.85);
-            pub const [<$name _DISABLED>]: iced::Color = iced::Color::from_rgb(
-                $r * 0.7,
-                $g * 0.7,
-                $b * 0.7);
         }
     };
 }
@@ -45,11 +41,12 @@ make_color!(LIGHT_GRAY, 0.7, 0.7, 0.7);
 
 pub const BLACK: Color = Color::from_rgb(0.0, 0.0, 0.0);
 pub const BLACK_PRESSED: Color = Color::from_rgb(0.15, 0.15, 0.15);
-pub const BLACK_DISABLED: Color = Color::from_rgb(0.3, 0.3, 0.3);
 
 pub const BORDER_COLOR: Color = Color::from_rgb(0.3, 0.47, 1.0);
 
-pub const WINDOW_BACKGORUND: Color = Color::from_rgb(0.82, 0.82, 0.82);
+pub const DISABLED_COLOR: Color = GRAY;
+
+pub const WINDOW_BACKGROUND: Color = Color::from_rgb(0.82, 0.82, 0.82);
 
 #[derive(Clone, Copy, Debug)]
 pub enum Button {
@@ -138,21 +135,11 @@ impl button::StyleSheet for Button {
     }
 
     fn disabled(&self) -> button::Style {
-        let (background_color, text_color) = match self {
-            Self::White | Self::WhiteSelected => (WHITE_DISABLED, BLACK_DISABLED),
-            Self::Black | Self::BlackSelected => (BLACK_DISABLED, WHITE_DISABLED),
-            Self::Red | Self::RedSelected => (RED_DISABLED, BLACK_DISABLED),
-            Self::Orange | Self::OrangeSelected => (ORANGE_DISABLED, BLACK_DISABLED),
-            Self::Yellow | Self::YellowSelected => (YELLOW_DISABLED, BLACK_DISABLED),
-            Self::Green | Self::GreenSelected => (GREEN_DISABLED, BLACK_DISABLED),
-            Self::Blue => (BLUE_DISABLED, WHITE_DISABLED),
-            Self::Gray => (GRAY_DISABLED, BLACK_DISABLED),
-            Self::LightGray => (LIGHT_GRAY_DISABLED, BLACK_DISABLED),
-        };
-
         button::Style {
-            background: Some(Background::Color(background_color)),
-            text_color,
+            background: Some(Background::Color(WINDOW_BACKGROUND)),
+            border_color: DISABLED_COLOR,
+            border_width: BORDER_WIDTH,
+            text_color: DISABLED_COLOR,
             ..self.active()
         }
     }
@@ -163,25 +150,29 @@ pub enum Container {
     LightGray,
     Gray,
     Black,
+    BlackSharpCorner,
     White,
+    WhiteSharpCorner,
 }
 
 impl container::StyleSheet for Container {
     fn style(&self) -> container::Style {
         match self {
-            Self::LightGray => cont_style(LIGHT_GRAY, BLACK),
-            Self::Gray => cont_style(GRAY, BLACK),
-            Self::Black => cont_style(BLACK, WHITE),
-            Self::White => cont_style(WHITE, BLACK),
+            Self::LightGray => cont_style(LIGHT_GRAY, BLACK, false),
+            Self::Gray => cont_style(GRAY, BLACK, false),
+            Self::Black => cont_style(BLACK, WHITE, false),
+            Self::BlackSharpCorner => cont_style(BLACK, WHITE, true),
+            Self::White => cont_style(WHITE, BLACK, false),
+            Self::WhiteSharpCorner => cont_style(WHITE, BLACK, true),
         }
     }
 }
 
-fn cont_style(bkgnd: Color, text: Color) -> container::Style {
+fn cont_style(bkgnd: Color, text: Color, sharp_corner: bool) -> container::Style {
     container::Style {
         text_color: Some(text),
         background: Some(Background::Color(bkgnd)),
-        border_radius: BORDER_RADIUS,
+        border_radius: if sharp_corner { 0.0 } else { BORDER_RADIUS },
         border_width: 0.0,
         border_color: BORDER_COLOR,
     }

@@ -2,8 +2,9 @@ use async_std::channel::Sender;
 use derivative::Derivative;
 use log::*;
 use std::{
-    cmp::{max, Ordering},
+    cmp::{max, min, Ordering},
     convert::TryInto,
+    ops::{Index, IndexMut},
     time::{Duration, Instant},
 };
 use thiserror::Error;
@@ -13,6 +14,8 @@ use uwh_common::{
         Color, GamePeriod, GameSnapshot, PenaltySnapshot, PenaltyTime, TimeoutSnapshot,
     },
 };
+
+const MAX_TIME_VAL: Duration = Duration::from_secs(5999); // 99:59 is the largest displayable value
 
 #[derive(Debug, Clone)]
 pub struct TournamentManager {
@@ -31,6 +34,8 @@ pub struct TournamentManager {
     has_reset: bool,
     start_stop_senders: Vec<Sender<bool>>,
     next_game_number: Option<u16>,
+    next_scheduled_start: Option<Instant>,
+    reset_game_time: Duration,
 }
 
 impl TournamentManager {
@@ -45,7 +50,6 @@ impl TournamentManager {
             timeout_state: TimeoutState::None,
             w_timeouts_used: 0,
             b_timeouts_used: 0,
-            config,
             b_score: 0,
             w_score: 0,
             b_penalties: vec![],
@@ -53,6 +57,9 @@ impl TournamentManager {
             has_reset: true,
             start_stop_senders: vec![],
             next_game_number: None,
+            next_scheduled_start: None,
+            reset_game_time: config.nominal_break,
+            config,
         }
     }
 
@@ -138,6 +145,7 @@ impl TournamentManager {
     }
 
     pub fn set_next_game_number(&mut self, number: u16) {
+        info!("Next Game Number set to {number}");
         self.next_game_number = Some(number);
     }
 
@@ -147,7 +155,7 @@ impl TournamentManager {
 
         self.current_period = GamePeriod::BetweenGames;
         self.clock_state = ClockState::Stopped {
-            clock_time: self.config.pre_game_duration,
+            clock_time: self.config.minimum_break,
         };
         self.timeout_state = TimeoutState::None;
         self.reset();
@@ -350,11 +358,11 @@ impl TournamentManager {
                     self.stop_game_clock(now)?;
                     self.timeout_state = TimeoutState::Ref(ClockState::CountingUp {
                         start_time: now,
-                        time_at_start: Duration::from_secs(0),
+                        time_at_start: Duration::ZERO,
                     });
                 } else {
                     self.timeout_state = TimeoutState::Ref(ClockState::Stopped {
-                        clock_time: Duration::from_secs(0),
+                        clock_time: Duration::ZERO,
                     });
                 }
                 Ok(())
@@ -371,11 +379,11 @@ impl TournamentManager {
                     self.stop_game_clock(now)?;
                     self.timeout_state = TimeoutState::PenaltyShot(ClockState::CountingUp {
                         start_time: now,
-                        time_at_start: Duration::from_secs(0),
+                        time_at_start: Duration::ZERO,
                     });
                 } else {
                     self.timeout_state = TimeoutState::PenaltyShot(ClockState::Stopped {
-                        clock_time: Duration::from_secs(0),
+                        clock_time: Duration::ZERO,
                     });
                 }
                 Ok(())
@@ -552,6 +560,38 @@ impl TournamentManager {
         Ok(())
     }
 
+    pub fn limit_pen_list_len(&mut self, color: Color, limit: usize, now: Instant) -> Result<()> {
+        let time = self
+            .game_clock_time(now)
+            .ok_or(TournamentManagerError::InvalidNowValue)?;
+        let period = self.current_period;
+
+        let list = match color {
+            Color::Black => &mut self.b_penalties,
+            Color::White => &mut self.w_penalties,
+        };
+
+        while list.len() > limit {
+            let mut index = None;
+            'inner: for (i, pen) in list.iter().enumerate() {
+                if pen
+                    .is_complete(period, time, &self.config)
+                    .ok_or(TournamentManagerError::InvalidNowValue)?
+                {
+                    index = Some(i);
+                    break 'inner;
+                }
+            }
+
+            if let Some(i) = index {
+                list.remove(i);
+            } else {
+                return Err(TournamentManagerError::TooManyPenalties(limit));
+            }
+        }
+        Ok(())
+    }
+
     fn cull_penalties(&mut self, now: Instant) -> Result<()> {
         let time = self
             .game_clock_time(now)
@@ -577,7 +617,6 @@ impl TournamentManager {
         Ok(())
     }
 
-    // TODO: Doesn't handle getting behind and catching up correctly
     fn end_game(&mut self, now: Instant) {
         self.current_period = GamePeriod::BetweenGames;
 
@@ -589,10 +628,9 @@ impl TournamentManager {
             self.w_score
         );
 
-        let scheduled_start = self.game_start_time
-            + 2 * self.config.half_play_duration
-            + self.config.half_time_duration
-            + self.config.nominal_break;
+        let scheduled_start = self
+            .next_scheduled_start
+            .unwrap_or(now + self.config.nominal_break);
 
         let game_end = match self.clock_state {
             ClockState::CountingDown {
@@ -609,6 +647,9 @@ impl TournamentManager {
                 self.config.minimum_break
             };
 
+        // Make sure the value isn't too big
+        let time_remaining_at_start = min(time_remaining_at_start, MAX_TIME_VAL);
+
         info!(
             "{} Entering between games, time to next game is {} seconds",
             self.status_string(now),
@@ -618,7 +659,37 @@ impl TournamentManager {
         self.clock_state = ClockState::CountingDown {
             start_time: game_end,
             time_remaining_at_start,
-        }
+        };
+        self.reset_game_time =
+            time_remaining_at_start.saturating_sub(self.config.post_game_duration);
+        info!(
+            "{} Will reset game at {:?}",
+            self.status_string(now),
+            self.reset_game_time
+        )
+    }
+
+    fn start_game(&mut self, start_time: Instant) {
+        self.game_number = self.next_game_number();
+        self.next_game_number = None;
+        info!(
+            "{} Entering first half of game {}",
+            self.status_string(start_time),
+            self.game_number
+        );
+        self.current_period = GamePeriod::FirstHalf;
+        self.game_start_time = start_time;
+        self.b_timeouts_used = 0;
+        self.w_timeouts_used = 0;
+        self.has_reset = false;
+
+        let sched_start = self.next_scheduled_start.unwrap_or(start_time);
+        self.next_scheduled_start = Some(
+            sched_start
+                + 2 * self.config.half_play_duration
+                + self.config.half_time_duration
+                + self.config.nominal_break,
+        );
     }
 
     pub(super) fn update(&mut self, now: Instant) -> Result<()> {
@@ -628,38 +699,23 @@ impl TournamentManager {
             time_remaining_at_start,
         } = self.clock_state
         {
-            if !self.has_reset {
-                if let Some(time_before_reset) =
-                    time_remaining_at_start.checked_sub(self.config.pre_game_duration)
-                {
-                    if self.current_period == GamePeriod::BetweenGames
-                        && now.duration_since(start_time) > time_before_reset
-                    {
-                        self.reset();
-                    }
-                }
-            }
-
-            if now
+            let time = now
                 .checked_duration_since(start_time)
-                .ok_or(TournamentManagerError::InvalidNowValue)?
-                >= time_remaining_at_start
+                .ok_or(TournamentManagerError::InvalidNowValue)?;
+
+            if !self.has_reset
+                && self.current_period == GamePeriod::BetweenGames
+                && self.game_clock_time(now).unwrap_or(Duration::ZERO) <= self.reset_game_time
             {
+                info!("{} Resetting game", self.status_string(now));
+                self.reset();
+            };
+
+            if time >= time_remaining_at_start {
                 let mut need_cull = false;
                 match self.current_period {
                     GamePeriod::BetweenGames => {
-                        self.game_number = self.next_game_number();
-                        self.next_game_number = None;
-                        info!(
-                            "{} Entering first half of game {}",
-                            self.status_string(now),
-                            self.game_number
-                        );
-                        self.current_period = GamePeriod::FirstHalf;
-                        self.game_start_time = start_time + time_remaining_at_start;
-                        self.b_timeouts_used = 0;
-                        self.w_timeouts_used = 0;
-                        self.has_reset = false;
+                        self.start_game(start_time + time_remaining_at_start);
                     }
                     GamePeriod::FirstHalf => {
                         info!("{} Entering half time", self.status_string(now));
@@ -756,6 +812,7 @@ impl TournamentManager {
                     } => {
                         if now.duration_since(*start_time) >= *time_remaining_at_start {
                             if let ClockState::Stopped { clock_time } = self.clock_state {
+                                info!("{} Ending team timeout", self.status_string(now));
                                 self.clock_state = ClockState::CountingDown {
                                     start_time: *start_time + *time_remaining_at_start,
                                     time_remaining_at_start: clock_time,
@@ -875,7 +932,7 @@ impl TournamentManager {
             }
             TimeoutState::Ref(ref mut cs) | TimeoutState::PenaltyShot(ref mut cs) => {
                 if let ClockState::CountingUp { .. } = cs {
-                    info!("{status_str} Starting the timeout clock");
+                    info!("{status_str} Stopping the timeout clock");
                     *cs = ClockState::Stopped {
                         clock_time: cs
                             .clock_time(now)
@@ -908,18 +965,7 @@ impl TournamentManager {
             | GamePeriod::OvertimeSecondHalf
             | GamePeriod::SuddenDeath => return Err(TournamentManagerError::AlreadyInPlayPeriod),
             GamePeriod::BetweenGames => {
-                self.game_number = self.next_game_number();
-                self.next_game_number = None;
-                info!(
-                    "{} Entering first half of game {}",
-                    self.status_string(now),
-                    self.game_number
-                );
-                self.current_period = GamePeriod::FirstHalf;
-                self.game_start_time = now;
-                self.b_timeouts_used = 0;
-                self.w_timeouts_used = 0;
-                self.has_reset = false;
+                self.start_game(now);
             }
             GamePeriod::HalfTime => {
                 info!("{} Entering second half", self.status_string(now));
@@ -977,6 +1023,12 @@ impl TournamentManager {
 
     pub fn set_game_clock_time(&mut self, clock_time: Duration) -> Result<()> {
         if !self.clock_is_running() {
+            let time = clock_time.as_secs_f64();
+            info!(
+                "Setting Game clock to {:02.0}:{:06.3} ",
+                (time / 60.0).floor(),
+                time % 60.0
+            );
             self.clock_state = ClockState::Stopped { clock_time };
             Ok(())
         } else {
@@ -986,6 +1038,12 @@ impl TournamentManager {
 
     pub fn set_timeout_clock_time(&mut self, clock_time: Duration) -> Result<()> {
         if !self.clock_is_running() {
+            let time = clock_time.as_secs_f64();
+            info!(
+                "Setting Timeout clock to {:02.0}:{:06.3} ",
+                (time / 60.0).floor(),
+                time % 60.0
+            );
             let new_cs = ClockState::Stopped { clock_time };
             match self.timeout_state {
                 TimeoutState::Black(ref mut cs)
@@ -1020,6 +1078,11 @@ impl TournamentManager {
     pub(super) fn set_game_start(&mut self, time: Instant) {
         if let ClockState::Stopped { .. } = self.clock_state {
             self.game_start_time = time;
+            self.next_scheduled_start = Some(
+                time + 2 * self.config.half_play_duration
+                    + self.config.half_time_duration
+                    + self.config.nominal_break,
+            );
         } else {
             panic!("Can't edit game start time while clock is running");
         }
@@ -1281,14 +1344,14 @@ impl Penalty {
                     // Capture a None if the timing is impossible, but no penalty time can have elapsed
                     cur_per
                         .time_between(self.start_time, cur_time)
-                        .map(|_| Duration::from_secs(0))
+                        .map(|_| Duration::ZERO)
                 }
             }
             Ordering::Greater => {
                 let mut elapsed = if self.start_period.penalties_run(config) {
                     self.start_time
                 } else {
-                    Duration::from_secs(0)
+                    Duration::ZERO
                 };
                 let mut period = self.start_period.next_period()?;
                 while period < cur_per {
@@ -1312,9 +1375,19 @@ impl Penalty {
         cur_time: Duration,
         config: &GameConfig,
     ) -> Option<Duration> {
-        let elapsed = self.time_elapsed(cur_per, cur_time, config)?;
-        let total = self.kind.as_duration()?;
-        Some(total.checked_sub(elapsed).unwrap_or(Duration::from_secs(0)))
+        let elapsed = self.time_elapsed(cur_per, cur_time, config);
+        let total = self.kind.as_duration();
+
+        if cur_per == GamePeriod::BetweenGames && self.start_period != GamePeriod::BetweenGames {
+            // In this case, the game in which the penalty started has completed, and we
+            // are counting down to the next game. By definition, any penalties have been
+            // served in this situation.
+            Some(Duration::ZERO)
+        } else {
+            // In all other cases we do the normal calculation and return `None` if the
+            // penalty is a TD or an error occurred
+            Some(total?.checked_sub(elapsed?).unwrap_or(Duration::ZERO))
+        }
     }
 
     fn is_complete(
@@ -1327,7 +1400,7 @@ impl Penalty {
             PenaltyKind::TotalDismissal => Some(false),
             PenaltyKind::OneMinute | PenaltyKind::TwoMinute | PenaltyKind::FiveMinute => self
                 .time_remaining(cur_per, cur_time, config)
-                .map(|rem| rem == Duration::from_secs(0)),
+                .map(|rem| rem == Duration::ZERO),
         }
     }
 
@@ -1337,17 +1410,16 @@ impl Penalty {
         cur_time: Duration,
         config: &GameConfig,
     ) -> Option<PenaltySnapshot> {
-        let time = match self.kind {
-            PenaltyKind::OneMinute | PenaltyKind::TwoMinute | PenaltyKind::FiveMinute => {
-                PenaltyTime::Seconds(
-                    self.time_remaining(cur_per, cur_time, config)?
-                        .as_secs()
-                        .try_into()
-                        .unwrap(),
-                )
-            }
-            PenaltyKind::TotalDismissal => PenaltyTime::TotalDismissal,
-        };
+        let time = self.time_remaining(cur_per, cur_time, config).map_or_else(
+            || {
+                if self.kind == PenaltyKind::TotalDismissal {
+                    Some(PenaltyTime::TotalDismissal)
+                } else {
+                    None
+                }
+            },
+            |dur| Some(PenaltyTime::Seconds(dur.as_secs().try_into().unwrap())),
+        )?;
         Some(PenaltySnapshot {
             player_number: self.player_number,
             time,
@@ -1360,6 +1432,26 @@ impl Penalty {
 pub struct BlackWhiteBundle<T> {
     pub black: T,
     pub white: T,
+}
+
+impl<T> Index<Color> for BlackWhiteBundle<T> {
+    type Output = T;
+
+    fn index(&self, color: Color) -> &Self::Output {
+        match color {
+            Color::Black => &self.black,
+            Color::White => &self.white,
+        }
+    }
+}
+
+impl<T> IndexMut<Color> for BlackWhiteBundle<T> {
+    fn index_mut(&mut self, color: Color) -> &mut Self::Output {
+        match color {
+            Color::Black => &mut self.black,
+            Color::White => &mut self.white,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Error)]
@@ -1390,6 +1482,8 @@ pub enum TournamentManagerError {
     AlreadyInPlayPeriod,
     #[error("Action impossible unless in BetweenGames period")]
     GameInProgress,
+    #[error("Too many active penalties, can't limit list to {0} values")]
+    TooManyPenalties(usize),
     #[error("No {0} penalty exists at the index {1}")]
     InvalidIndex(Color, usize),
 }
@@ -1400,12 +1494,23 @@ pub type Result<T> = std::result::Result<T, TournamentManagerError>;
 mod test {
     use super::TournamentManagerError as TMErr;
     use super::*;
+    use env_logger;
     use std::convert::TryInto;
+    use std::sync::Once;
+
+    static INIT: Once = Once::new();
+
+    pub fn initialize() {
+        INIT.call_once(|| {
+            env_logger::init();
+        });
+    }
 
     // TODO: test correct sending of time start/stop signals
 
     #[test]
     fn test_clock_start_stop() {
+        initialize();
         let config = GameConfig {
             nominal_break: Duration::from_secs(13),
             ..Default::default()
@@ -1441,6 +1546,7 @@ mod test {
 
     #[test]
     fn test_clock_start_stop_with_timeouts() {
+        initialize();
         let config = GameConfig {
             nominal_break: Duration::from_secs(13),
             ..Default::default()
@@ -1516,9 +1622,72 @@ mod test {
     }
 
     #[test]
-    fn test_reset() {
+    fn test_between_game_timing() {
+        initialize();
+        // Total time between starts of games is nominally 32s
         let config = GameConfig {
-            pre_game_duration: Duration::from_secs(3),
+            half_play_duration: Duration::from_secs(10),
+            half_time_duration: Duration::from_secs(3),
+            nominal_break: Duration::from_secs(9),
+            minimum_break: Duration::from_secs(2),
+            has_overtime: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let mut now = Instant::now();
+        tm.start_clock(now);
+        assert_eq!(tm.next_scheduled_start, None);
+        tm.start_play_now(now).unwrap();
+        assert_eq!(tm.next_scheduled_start, Some(now + Duration::from_secs(32)));
+
+        now += Duration::from_secs(1);
+        tm.stop_clock(now).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(1));
+        tm.start_clock(now);
+
+        now += Duration::from_secs(2);
+        tm.update(now).unwrap();
+        // Check that when a game runs short, the between games is lengthened to compensate
+        assert_eq!(tm.current_period(), GamePeriod::BetweenGames);
+        assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(29)));
+
+        now += Duration::from_secs(30);
+        tm.update(now).unwrap();
+        assert_eq!(tm.next_scheduled_start, Some(now + Duration::from_secs(31)));
+
+        tm.stop_clock(now).unwrap();
+        now += Duration::from_secs(35);
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(1));
+        tm.start_clock(now);
+
+        now += Duration::from_secs(2);
+        tm.update(now).unwrap();
+        // Check that when a game runs long, the between games is shortened to match, down to the
+        // minimum break length
+        assert_eq!(tm.current_period(), GamePeriod::BetweenGames);
+        assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(1)));
+
+        now += Duration::from_secs(10);
+        tm.update(now).unwrap();
+        tm.stop_clock(now).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(1));
+        tm.start_clock(now);
+
+        now += Duration::from_secs(2);
+        tm.update(now).unwrap();
+        // Check that after falling behind the system tries to catch up
+        assert_eq!(tm.current_period(), GamePeriod::BetweenGames);
+        assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(14)));
+    }
+
+    #[test]
+    fn test_reset() {
+        initialize();
+        let config = GameConfig {
+            post_game_duration: Duration::from_secs(4),
+            minimum_break: Duration::from_secs(3),
             ..Default::default()
         };
         let mut tm = TournamentManager::new(config);
@@ -1551,7 +1720,8 @@ mod test {
         tm.b_penalties.push(b_pen.clone());
         tm.w_penalties.push(w_pen.clone());
         tm.stop_clock(now).unwrap();
-        tm.set_period_and_game_clock_time(GamePeriod::BetweenGames, Duration::from_secs(5));
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(2));
+        tm.next_scheduled_start = Some(now + Duration::from_secs(12));
         tm.start_clock(now);
 
         assert_eq!(tm.b_score, 2);
@@ -1570,6 +1740,26 @@ mod test {
         assert_eq!(tm.has_reset, false);
 
         now += Duration::from_secs(2);
+        tm.update(now).unwrap();
+
+        assert_eq!(tm.b_score, 2);
+        assert_eq!(tm.w_score, 3);
+        assert_eq!(tm.b_penalties, vec![b_pen.clone()]);
+        assert_eq!(tm.w_penalties, vec![w_pen.clone()]);
+        assert_eq!(tm.has_reset, false);
+        // 10s between games, 4s before reset
+        assert_eq!(tm.reset_game_time, Duration::from_secs(6));
+
+        now += Duration::from_secs(1);
+        tm.update(now).unwrap();
+
+        assert_eq!(tm.b_score, 2);
+        assert_eq!(tm.w_score, 3);
+        assert_eq!(tm.b_penalties, vec![b_pen.clone()]);
+        assert_eq!(tm.w_penalties, vec![w_pen.clone()]);
+        assert_eq!(tm.has_reset, false);
+
+        now += Duration::from_secs(5);
         tm.update(now).unwrap();
 
         assert_eq!(tm.b_score, 0);
@@ -1621,6 +1811,7 @@ mod test {
 
     #[test]
     fn test_change_config() {
+        initialize();
         let config = GameConfig {
             half_play_duration: Duration::from_secs(20),
             ..Default::default()
@@ -1643,6 +1834,7 @@ mod test {
 
     #[test]
     fn test_can_start_timeouts() {
+        initialize();
         let config = GameConfig {
             team_timeouts_per_half: 1,
             ..Default::default()
@@ -1783,6 +1975,7 @@ mod test {
 
     #[test]
     fn test_start_timeouts() {
+        initialize();
         let config = GameConfig {
             team_timeouts_per_half: 1,
             team_timeout_duration: Duration::from_secs(10),
@@ -1962,6 +2155,7 @@ mod test {
 
     #[test]
     fn test_end_timeouts() {
+        initialize();
         let config = GameConfig::default();
         let mut tm = TournamentManager::new(config);
 
@@ -2068,6 +2262,7 @@ mod test {
 
     #[test]
     fn test_can_switch_timeouts() {
+        initialize();
         let config = GameConfig {
             team_timeouts_per_half: 1,
             ..Default::default()
@@ -2152,6 +2347,7 @@ mod test {
 
     #[test]
     fn test_switch_timeouts() {
+        initialize();
         let config = GameConfig {
             team_timeouts_per_half: 1,
             ..Default::default()
@@ -2220,6 +2416,7 @@ mod test {
 
     #[test]
     fn test_start_play_now() {
+        initialize();
         let config = GameConfig {
             half_play_duration: Duration::from_secs(900),
             has_overtime: true,
@@ -2350,6 +2547,7 @@ mod test {
 
     #[test]
     fn test_transition_bg_to_fh() {
+        initialize();
         let config = GameConfig {
             half_play_duration: Duration::from_secs(3),
             ..Default::default()
@@ -2373,6 +2571,7 @@ mod test {
 
     #[test]
     fn test_transition_bg_to_fh_delayed() {
+        initialize();
         let config = GameConfig {
             half_play_duration: Duration::from_secs(3),
             ..Default::default()
@@ -2391,6 +2590,7 @@ mod test {
 
     #[test]
     fn test_transition_fh_to_ht() {
+        initialize();
         let config = GameConfig {
             half_time_duration: Duration::from_secs(5),
             ..Default::default()
@@ -2409,6 +2609,7 @@ mod test {
 
     #[test]
     fn test_transition_ht_to_sh() {
+        initialize();
         let config = GameConfig {
             half_play_duration: Duration::from_secs(6),
             ..Default::default()
@@ -2427,6 +2628,7 @@ mod test {
 
     #[test]
     fn test_transition_sh_to_pot() {
+        initialize();
         let config = GameConfig {
             has_overtime: true,
             pre_overtime_break: Duration::from_secs(7),
@@ -2446,6 +2648,7 @@ mod test {
 
     #[test]
     fn test_transition_sh_to_psd() {
+        initialize();
         let config = GameConfig {
             has_overtime: false,
             sudden_death_allowed: true,
@@ -2466,6 +2669,7 @@ mod test {
 
     #[test]
     fn test_transition_sh_to_bg_tied_no_ot_no_sd() {
+        initialize();
         let config = GameConfig {
             has_overtime: false,
             sudden_death_allowed: false,
@@ -2490,6 +2694,7 @@ mod test {
 
     #[test]
     fn test_transition_sh_to_bg_tied_no_ot_no_sd_use_min_break() {
+        initialize();
         let config = GameConfig {
             has_overtime: false,
             sudden_death_allowed: false,
@@ -2514,6 +2719,7 @@ mod test {
 
     #[test]
     fn test_transition_sh_to_bg_not_tied_no_ot_no_sd() {
+        initialize();
         let config = GameConfig {
             has_overtime: false,
             sudden_death_allowed: false,
@@ -2538,6 +2744,7 @@ mod test {
 
     #[test]
     fn test_transition_sh_to_bg_not_tied_with_ot() {
+        initialize();
         let config = GameConfig {
             has_overtime: true,
             sudden_death_allowed: true,
@@ -2562,6 +2769,7 @@ mod test {
 
     #[test]
     fn test_transition_pot_to_otfh() {
+        initialize();
         let config = GameConfig {
             has_overtime: true,
             ot_half_play_duration: Duration::from_secs(4),
@@ -2581,6 +2789,7 @@ mod test {
 
     #[test]
     fn test_transition_otfh_to_otht() {
+        initialize();
         let config = GameConfig {
             has_overtime: true,
             ot_half_time_duration: Duration::from_secs(5),
@@ -2600,6 +2809,7 @@ mod test {
 
     #[test]
     fn test_transition_otht_to_otsh() {
+        initialize();
         let config = GameConfig {
             has_overtime: true,
             ot_half_play_duration: Duration::from_secs(7),
@@ -2619,6 +2829,7 @@ mod test {
 
     #[test]
     fn test_transition_otsh_to_psd() {
+        initialize();
         let config = GameConfig {
             has_overtime: true,
             sudden_death_allowed: true,
@@ -2639,6 +2850,7 @@ mod test {
 
     #[test]
     fn test_transition_otsh_to_bg_tied_no_sd() {
+        initialize();
         let config = GameConfig {
             has_overtime: true,
             sudden_death_allowed: false,
@@ -2663,6 +2875,7 @@ mod test {
 
     #[test]
     fn test_transition_otsh_to_bg_not_tied_no_sd() {
+        initialize();
         let config = GameConfig {
             has_overtime: true,
             sudden_death_allowed: false,
@@ -2687,6 +2900,7 @@ mod test {
 
     #[test]
     fn test_transition_otsh_to_bg_not_tied_with_sd() {
+        initialize();
         let config = GameConfig {
             has_overtime: true,
             sudden_death_allowed: true,
@@ -2711,6 +2925,7 @@ mod test {
 
     #[test]
     fn test_transition_psd_to_sd() {
+        initialize();
         let config = GameConfig {
             sudden_death_allowed: true,
             ..Default::default()
@@ -2729,6 +2944,7 @@ mod test {
 
     #[test]
     fn test_end_sd() {
+        initialize();
         let config = GameConfig {
             sudden_death_allowed: true,
             half_play_duration: Duration::from_secs(9),
@@ -2790,6 +3006,7 @@ mod test {
 
     #[test]
     fn test_penalty_time_elapsed() {
+        initialize();
         let all_periods_config = GameConfig {
             has_overtime: true,
             sudden_death_allowed: true,
@@ -2942,6 +3159,7 @@ mod test {
 
     #[test]
     fn test_penalty_time_remaining() {
+        initialize();
         let config = GameConfig {
             has_overtime: true,
             sudden_death_allowed: true,
@@ -3001,6 +3219,24 @@ mod test {
                 Some(Duration::from_secs(0)),
                 "Penalty Complete",
             ),
+            (
+                GamePeriod::FirstHalf,
+                Duration::from_secs(5),
+                PenaltyKind::OneMinute,
+                GamePeriod::BetweenGames,
+                Duration::from_secs(10),
+                Some(Duration::ZERO),
+                "Game Ended",
+            ),
+            (
+                GamePeriod::FirstHalf,
+                Duration::from_secs(5),
+                PenaltyKind::TotalDismissal,
+                GamePeriod::BetweenGames,
+                Duration::from_secs(10),
+                Some(Duration::ZERO),
+                "Game Ended, TD",
+            ),
         ];
 
         for (start_period, start_time, kind, end_period, end_time, result, msg) in test_cases {
@@ -3021,6 +3257,7 @@ mod test {
 
     #[test]
     fn test_penalty_is_complete() {
+        initialize();
         let config = GameConfig {
             has_overtime: true,
             sudden_death_allowed: true,
@@ -3112,6 +3349,7 @@ mod test {
 
     #[test]
     fn test_start_penalty() {
+        initialize();
         let start = Instant::now();
         let next_time = start + Duration::from_secs(1);
 
@@ -3215,6 +3453,7 @@ mod test {
 
     #[test]
     fn test_delete_penalty() {
+        initialize();
         let start = Instant::now();
         let next_time = start + Duration::from_secs(1);
 
@@ -3291,6 +3530,7 @@ mod test {
 
     #[test]
     fn test_edit_penalty() {
+        initialize();
         let start = Instant::now();
         let next_time = start + Duration::from_secs(1);
 
@@ -3458,6 +3698,7 @@ mod test {
 
     #[test]
     fn test_snapshot_penalty() {
+        initialize();
         let config = GameConfig {
             half_play_duration: Duration::from_secs(900),
             half_time_duration: Duration::from_secs(180),
@@ -3830,7 +4071,97 @@ mod test {
     }
 
     #[test]
+    fn test_snapshot_penalty_new_game() {
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(900),
+            ..Default::default()
+        };
+
+        let start = Instant::now();
+        let next_time = start + Duration::from_secs(1);
+
+        let mut tm = TournamentManager::new(config);
+
+        tm.b_score = 1;
+        tm.w_score = 5;
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(25));
+        tm.start_game_clock(start);
+        tm.start_penalty(Color::Black, 2, PenaltyKind::OneMinute, next_time)
+            .unwrap();
+
+        let next_time = next_time + Duration::from_secs(1);
+        tm.update(next_time).unwrap();
+        let snapshot = tm.generate_snapshot(next_time).unwrap();
+        assert_eq!(
+            snapshot.b_penalties,
+            vec![PenaltySnapshot {
+                player_number: 2,
+                time: PenaltyTime::Seconds(59)
+            }]
+        );
+        assert_eq!(snapshot.w_penalties, vec![]);
+
+        let next_time = next_time + Duration::from_secs(1);
+        tm.start_penalty(Color::White, 3, PenaltyKind::TwoMinute, next_time)
+            .unwrap();
+        tm.start_penalty(Color::Black, 5, PenaltyKind::TotalDismissal, next_time)
+            .unwrap();
+
+        let next_time = next_time + Duration::from_secs(1);
+        tm.update(next_time).unwrap();
+        let snapshot = tm.generate_snapshot(next_time).unwrap();
+        assert_eq!(
+            snapshot.b_penalties,
+            vec![
+                PenaltySnapshot {
+                    player_number: 2,
+                    time: PenaltyTime::Seconds(57)
+                },
+                PenaltySnapshot {
+                    player_number: 5,
+                    time: PenaltyTime::TotalDismissal,
+                }
+            ]
+        );
+        assert_eq!(
+            snapshot.w_penalties,
+            vec![PenaltySnapshot {
+                player_number: 3,
+                time: PenaltyTime::Seconds(119)
+            }]
+        );
+
+        // Check after the game has ended
+        let next_time = next_time + Duration::from_secs(30);
+        tm.update(next_time).unwrap();
+        let snapshot = tm.generate_snapshot(next_time).unwrap();
+        assert_eq!(snapshot.current_period, GamePeriod::BetweenGames);
+        assert_eq!(
+            snapshot.b_penalties,
+            vec![
+                PenaltySnapshot {
+                    player_number: 2,
+                    time: PenaltyTime::Seconds(0)
+                },
+                PenaltySnapshot {
+                    player_number: 5,
+                    time: PenaltyTime::Seconds(0)
+                },
+            ]
+        );
+        assert_eq!(
+            snapshot.w_penalties,
+            vec![PenaltySnapshot {
+                player_number: 3,
+                time: PenaltyTime::Seconds(0)
+            },]
+        );
+    }
+
+    #[test]
     fn test_cull_penalties() {
+        initialize();
         let config = GameConfig {
             half_play_duration: Duration::from_secs(900),
             half_time_duration: Duration::from_secs(180),
@@ -3965,5 +4296,62 @@ mod test {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn test_limit_penalty_list_length() {
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(900),
+            ..Default::default()
+        };
+
+        let mut tm = TournamentManager::new(config);
+
+        let mut now = Instant::now();
+
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(900));
+        tm.start_game_clock(now);
+
+        let pen_start = now + Duration::from_secs(30);
+        tm.start_penalty(Color::Black, 2, PenaltyKind::OneMinute, pen_start)
+            .unwrap();
+        tm.start_penalty(Color::White, 3, PenaltyKind::OneMinute, pen_start)
+            .unwrap();
+        tm.start_penalty(Color::Black, 4, PenaltyKind::TwoMinute, pen_start)
+            .unwrap();
+        tm.start_penalty(Color::White, 5, PenaltyKind::TwoMinute, pen_start)
+            .unwrap();
+        tm.start_penalty(Color::Black, 6, PenaltyKind::TotalDismissal, pen_start)
+            .unwrap();
+        tm.start_penalty(Color::White, 7, PenaltyKind::TotalDismissal, pen_start)
+            .unwrap();
+
+        // Check while all penalties are still running, too many
+        now += Duration::from_secs(60);
+        assert_eq!(
+            tm.limit_pen_list_len(Color::Black, 2, now),
+            Err(TMErr::TooManyPenalties(2))
+        );
+        assert_eq!(
+            tm.limit_pen_list_len(Color::White, 2, now),
+            Err(TMErr::TooManyPenalties(2))
+        );
+        assert_eq!(tm.b_penalties.len(), 3);
+        assert_eq!(tm.w_penalties.len(), 3);
+
+        // Check while two penalties are still running per color
+        now += Duration::from_secs(60);
+        assert_eq!(tm.limit_pen_list_len(Color::Black, 2, now), Ok(()));
+        assert_eq!(tm.limit_pen_list_len(Color::White, 2, now), Ok(()));
+        assert_eq!(tm.b_penalties.len(), 2);
+        assert_eq!(tm.w_penalties.len(), 2);
+
+        // Check while one penalty is still running per color
+        now += Duration::from_secs(60);
+        assert_eq!(tm.limit_pen_list_len(Color::Black, 2, now), Ok(()));
+        assert_eq!(tm.limit_pen_list_len(Color::White, 2, now), Ok(()));
+        assert_eq!(tm.b_penalties.len(), 2);
+        assert_eq!(tm.w_penalties.len(), 2);
     }
 }

@@ -42,6 +42,7 @@ pub struct GameSnapshot {
     pub w_penalties: Vec<PenaltySnapshot>,
     pub game_number: u16,
     pub next_game_number: u16,
+    pub tournament_id: u64,
 }
 
 #[cfg(feature = "std")]

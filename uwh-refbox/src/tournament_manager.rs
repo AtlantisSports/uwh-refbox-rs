@@ -1160,6 +1160,7 @@ impl TournamentManager {
             w_penalties,
             game_number: self.game_number(),
             next_game_number: self.next_game_number(),
+            tournament_id: 0, // TODO: placeholder
         })
     }
 

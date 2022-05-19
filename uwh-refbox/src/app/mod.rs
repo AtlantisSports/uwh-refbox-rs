@@ -1,20 +1,12 @@
 use super::APP_CONFIG_NAME;
 use crate::{penalty_editor::*, tournament_manager::*};
-use async_std::{
-    channel::{unbounded, Receiver, TryRecvError},
-    task,
-};
 use iced::{
     executor,
-    futures::FutureExt,
     pure::{column, Application, Element},
     Command, Subscription,
 };
 use iced_futures::{
-    futures::{
-        select,
-        stream::{self, BoxStream},
-    },
+    futures::stream::{self, BoxStream},
     subscription::Recipe,
 };
 use log::*;
@@ -25,7 +17,10 @@ use std::{
     net::{Shutdown, TcpStream},
     process::Child,
     sync::{Arc, Mutex},
-    time::{Duration, Instant},
+};
+use tokio::{
+    sync::watch,
+    time::{timeout_at, Duration, Instant},
 };
 use uwh_common::{
     config::Config,
@@ -250,8 +245,7 @@ impl Application for RefBoxApp {
         let mut tm = TournamentManager::new(config.game.clone());
         tm.start_clock(Instant::now());
 
-        let (clk_run_tx, clk_run_rx) = unbounded();
-        tm.add_start_stop_sender(clk_run_tx);
+        let clock_running_receiver = tm.get_start_stop_rx();
 
         let tm = Arc::new(Mutex::new(tm));
 
@@ -262,7 +256,7 @@ impl Application for RefBoxApp {
                 pen_edit: PenaltyEditor::new(tm.clone()),
                 time_updater: TimeUpdater {
                     tm: tm.clone(),
-                    clock_running_receiver: Some(clk_run_rx),
+                    clock_running_receiver,
                 },
                 tm,
                 config,
@@ -842,7 +836,7 @@ impl Application for RefBoxApp {
 #[derive(Clone, Debug)]
 struct TimeUpdater {
     tm: Arc<Mutex<TournamentManager>>,
-    clock_running_receiver: Option<Receiver<bool>>,
+    clock_running_receiver: watch::Receiver<bool>,
 }
 
 impl<H: Hasher, I> Recipe<H, I> for TimeUpdater {
@@ -854,57 +848,52 @@ impl<H: Hasher, I> Recipe<H, I> for TimeUpdater {
         "TimeUpdater".hash(state);
     }
 
-    fn stream(
-        mut self: Box<Self>,
-        _input: BoxStream<'static, I>,
-    ) -> BoxStream<'static, Self::Output> {
+    fn stream(self: Box<Self>, _input: BoxStream<'static, I>) -> BoxStream<'static, Self::Output> {
         debug!("Updater started");
 
         struct State {
             tm: Arc<Mutex<TournamentManager>>,
-            clock_running_receiver: Receiver<bool>,
+            clock_running_receiver: watch::Receiver<bool>,
             next_time: Option<Instant>,
         }
 
         let state = State {
             tm: self.tm.clone(),
-            clock_running_receiver: self.clock_running_receiver.take().unwrap(),
+            clock_running_receiver: self.clock_running_receiver.clone(),
             next_time: Some(Instant::now()),
         };
 
         Box::pin(stream::unfold(state, |mut state| async move {
             let mut clock_running = true;
             if let Some(next_time) = state.next_time {
-                if let Some(dur) = next_time.checked_duration_since(Instant::now()) {
-                    select! {
-                        _ = Box::pin(task::sleep(dur)).fuse() => {},
-                        res = Box::pin(state.clock_running_receiver.recv()).fuse() => match res {
-                            Err(_) => return None,
-                            Ok(val) => {
-                                debug!("Received clock running message: {val}");
-                                clock_running = val;
-                            },
-                        },
+                if next_time > Instant::now() {
+                    match timeout_at(next_time, state.clock_running_receiver.changed()).await {
+                        Err(_) => {}
+                        Ok(Err(_)) => return None,
+                        Ok(Ok(())) => {
+                            clock_running = *state.clock_running_receiver.borrow();
+                            debug!("Received clock running message: {clock_running}");
+                        }
                     };
                 } else {
-                    match state.clock_running_receiver.try_recv() {
-                        Ok(val) => {
-                            debug!("Received clock running message: {val}");
-                            clock_running = val;
+                    match state.clock_running_receiver.has_changed() {
+                        Ok(true) => {
+                            clock_running = *state.clock_running_receiver.borrow();
+                            debug!("Received clock running message: {clock_running}");
                         }
-                        Err(TryRecvError::Empty) => {}
-                        Err(TryRecvError::Closed) => {
+                        Ok(false) => {}
+                        Err(_) => {
                             return None;
                         }
                     };
                 }
             } else {
                 debug!("Awaiting a new clock running message");
-                match state.clock_running_receiver.recv().await {
+                match state.clock_running_receiver.changed().await {
                     Err(_) => return None,
-                    Ok(val) => {
-                        debug!("Received clock running message: {val}");
-                        clock_running = val
+                    Ok(()) => {
+                        clock_running = *state.clock_running_receiver.borrow();
+                        debug!("Received clock running message: {clock_running}");
                     }
                 };
             };

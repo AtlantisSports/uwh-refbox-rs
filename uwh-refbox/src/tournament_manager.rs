@@ -2968,6 +2968,7 @@ mod test {
         let mut tm = TournamentManager::new(config);
 
         let setup_tm = |tm: &mut TournamentManager| {
+            tm.stop_game_clock(fourth_time).unwrap();
             tm.set_period_and_game_clock_time(GamePeriod::SuddenDeath, Duration::from_secs(5));
             tm.set_game_start(game_start);
             tm.start_game_clock(start);

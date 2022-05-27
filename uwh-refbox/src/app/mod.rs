@@ -13,8 +13,6 @@ use log::*;
 use std::{
     cmp::min,
     hash::Hasher,
-    io::Write,
-    net::{Shutdown, TcpStream},
     process::Child,
     sync::{Arc, Mutex},
 };
@@ -22,17 +20,20 @@ use tokio::{
     sync::watch,
     time::{timeout_at, Duration, Instant},
 };
+use tokio_serial::SerialPortBuilder;
 use uwh_common::{
     config::Config,
     game_snapshot::{Color as GameColor, GamePeriod, GameSnapshot},
 };
-use uwh_matrix_drawing::transmitted_data::TransmittedData;
 
 mod view_builders;
 use view_builders::*;
 
 pub mod style;
 use style::{PADDING, SPACING, WINDOW_BACKGROUND};
+
+pub mod update_sender;
+use update_sender::*;
 
 #[derive(Debug)]
 pub struct RefBoxApp {
@@ -45,8 +46,17 @@ pub struct RefBoxApp {
     pen_edit: PenaltyEditor,
     app_state: AppState,
     last_app_state: AppState,
-    sim_sender: Option<TcpStream>,
+    update_sender: UpdateSender,
     sim_child: Option<Child>,
+}
+
+#[derive(Debug)]
+pub struct RefBoxAppFlags {
+    pub config: Config,
+    pub serial_ports: Vec<SerialPortBuilder>,
+    pub binary_port: u16,
+    pub json_port: u16,
+    pub sim_child: Option<Child>,
 }
 
 #[derive(Debug, Clone)]
@@ -196,37 +206,15 @@ pub enum ConfirmationOption {
 
 impl RefBoxApp {
     fn apply_snapshot(&mut self, snapshot: GameSnapshot) {
-        let mut connection_lost = false;
-        if let Some(ref mut sender) = self.sim_sender {
-            let snapshot_tx = snapshot.clone().into();
-            trace!("Sending to sim: {snapshot_tx:?}");
-            match sender.write_all(
-                &TransmittedData {
-                    snapshot: snapshot_tx,
-                    white_on_right: self.config.hardware.white_on_right,
-                }
-                .encode()
-                .unwrap(),
-            ) {
-                Ok(_) => {}
-                Err(_) => {
-                    error!("Connection to simulator lost");
-                    connection_lost = true;
-                }
-            }
-        }
-        if connection_lost {
-            self.sim_sender = None;
-        }
+        self.update_sender
+            .send_snapshot(snapshot.clone(), self.config.hardware.white_on_right)
+            .unwrap();
         self.snapshot = snapshot;
     }
 }
 
 impl Drop for RefBoxApp {
     fn drop(&mut self) {
-        if let Some(socket) = self.sim_sender.take() {
-            socket.shutdown(Shutdown::Both).unwrap();
-        }
         if let Some(mut child) = self.sim_child.take() {
             info!("Waiting for child");
             child.wait().unwrap();
@@ -237,10 +225,16 @@ impl Drop for RefBoxApp {
 impl Application for RefBoxApp {
     type Executor = executor::Default;
     type Message = Message;
-    type Flags = (Config, Option<TcpStream>, Option<Child>);
+    type Flags = RefBoxAppFlags;
 
     fn new(flags: Self::Flags) -> (Self, Command<Message>) {
-        let (config, sim_sender, sim_child) = flags;
+        let Self::Flags {
+            config,
+            serial_ports,
+            binary_port,
+            json_port,
+            sim_child,
+        } = flags;
 
         let mut tm = TournamentManager::new(config.game.clone());
         tm.start_clock(Instant::now());
@@ -248,6 +242,8 @@ impl Application for RefBoxApp {
         let clock_running_receiver = tm.get_start_stop_rx();
 
         let tm = Arc::new(Mutex::new(tm));
+
+        let update_sender = UpdateSender::new(serial_ports, binary_port, json_port);
 
         let snapshot = Default::default();
 
@@ -265,7 +261,7 @@ impl Application for RefBoxApp {
                 snapshot,
                 app_state: AppState::MainPage,
                 last_app_state: AppState::MainPage,
-                sim_sender,
+                update_sender,
                 sim_child,
             },
             Command::none(),

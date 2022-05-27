@@ -6,12 +6,13 @@ use embedded_graphics_simulator::{
 use iced::{pure::Application, Settings};
 use log::*;
 use std::{
-    io::Read,
-    net::{TcpListener, TcpStream},
+    io::{ErrorKind, Read},
+    net::TcpStream,
     process::{Command, Stdio},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
+use tokio_serial::{DataBits, FlowControl, Parity, StopBits};
 use uwh_common::config::Config;
 use uwh_matrix_drawing::{transmitted_data::TransmittedData, *};
 
@@ -33,8 +34,24 @@ struct Cli {
     /// Scale argument for the simulator
     scale: u32,
 
+    #[clap(long, default_value = "8001")]
+    /// Port to listen on for TCP connections with a binary send type
+    binary_port: u16,
+
+    #[clap(long, default_value = "8000")]
+    /// Port to listen on for TCP connections with a JSON send type
+    json_port: u16,
+
+    #[clap(long, default_missing_value = "/dev/ttyUSB0")]
+    /// Serial Port to send snapshots to
+    serial_port: Option<String>,
+
+    #[clap(long, default_value = "115200")]
+    /// Baud rate for the serial port
+    baud_rate: u32,
+
     #[clap(long, hide = true)]
-    port: Option<u16>,
+    is_simulator: bool,
 }
 
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
@@ -44,8 +61,32 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     info!("Parsed arguments");
 
-    if let Some(port) = args.port {
-        let mut stream = TcpStream::connect(("localhost", port))?;
+    if args.is_simulator {
+        let mut stream;
+        let start_time = Instant::now();
+        loop {
+            match TcpStream::connect(("localhost", args.binary_port)) {
+                Ok(conn) => {
+                    stream = conn;
+                    break;
+                }
+                Err(e) => {
+                    if e.kind() == ErrorKind::ConnectionRefused {
+                        if Instant::now().duration_since(start_time) > Duration::from_secs(5) {
+                            error!("Couldn't connect to refbox within 5 seconds");
+                            Err(std::io::Error::new(
+                                ErrorKind::TimedOut,
+                                "Connection to Refbox Failed",
+                            ))?;
+                        } else {
+                            continue;
+                        }
+                    } else {
+                        Err(e)?;
+                    }
+                }
+            }
+        }
 
         stream.set_read_timeout(None)?;
 
@@ -75,6 +116,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 Ok(val) => match val {
                     TransmittedData::ENCODED_LEN => {
                         error_count = 0;
+                        //info!("Received data: {buffer:?}");
                         TransmittedData::decode(&buffer)?
                     }
                     other => {
@@ -90,6 +132,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 },
             };
 
+            //info!("Decoded data: {state:?}");
             display.clear(Rgb888::BLACK)?;
             draw_panels(&mut display, state.snapshot, state.white_on_right).unwrap();
 
@@ -103,26 +146,46 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    let (stream, child) = if args.no_simulate {
-        (None, None)
+    let child = if args.no_simulate {
+        None
     } else {
         let bin_name = std::env::current_exe()?.into_os_string();
         info!("Current bin_name: {bin_name:?}");
 
-        let listener = TcpListener::bind(("localhost", 0))?;
-        let port = listener.local_addr()?.port().to_string();
+        let binary_port = args.binary_port.to_string();
+        let json_port = args.json_port.to_string();
+        let scale = args.scale.to_string();
 
-        info!("Starting child with port arg {port}");
+        info!("Starting child with birany port {binary_port}");
         let child = Command::new(bin_name)
-            .args(["--port", &port, "--scale", &args.scale.to_string()])
+            .args([
+                "--is-simulator",
+                "--binary-port",
+                &binary_port,
+                "--json-port",
+                &json_port,
+                "--scale",
+                &scale,
+            ])
             .stdin(Stdio::null())
             .spawn()?;
 
-        info!("Waiting for connection from simulator");
-        let (stream, addr) = listener.accept()?;
-        info!("Got connection from {addr}");
+        Some(child)
+    };
 
-        (Some(stream), Some(child))
+    let serial_ports = if let Some(port) = args.serial_port {
+        info!(
+            "Connection to serail port {port}  with baud rate {}",
+            args.baud_rate
+        );
+        let port = tokio_serial::new(port, args.baud_rate)
+            .flow_control(FlowControl::None)
+            .data_bits(DataBits::Eight)
+            .parity(Parity::Even)
+            .stop_bits(StopBits::One);
+        vec![port]
+    } else {
+        vec![]
     };
 
     info!(
@@ -136,7 +199,16 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         config.hardware.screen_x as u32,
         config.hardware.screen_y as u32,
     );
-    let mut settings = Settings::with_flags((config, stream, child));
+
+    let flags = app::RefBoxAppFlags {
+        config,
+        serial_ports,
+        binary_port: args.binary_port,
+        json_port: args.json_port,
+        sim_child: child,
+    };
+
+    let mut settings = Settings::with_flags(flags);
     settings.window.size = window_size;
     settings.window.resizable = false;
     settings.default_text_size = app::style::SMALL_PLUS_TEXT;

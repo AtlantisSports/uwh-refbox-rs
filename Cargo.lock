@@ -357,6 +357,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
 
 [[package]]
+name = "bytes"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c4872d67bab6358e59559027aa3b9157c53d9358c51423c17554809a8858e0f8"
+
+[[package]]
 name = "cache-padded"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -551,6 +557,21 @@ dependencies = [
  "thiserror",
  "toml",
 ]
+
+[[package]]
+name = "conquer-once"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c6d3a9775a69f6d1fe2cc888999b67ed30257d3da4d2af91984e722f2ec918a"
+dependencies = [
+ "conquer-util",
+]
+
+[[package]]
+name = "conquer-util"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e763eef8846b13b380f37dfecda401770b0ca4e56e95170237bd7c25c7db3582"
 
 [[package]]
 name = "copyless"
@@ -1786,6 +1807,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "mio-serial"
+version = "5.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "531e0f6dc55a5aa7b8d320407c5c4ced464e23815c60f6a1e6d9e225d2b45905"
+dependencies = [
+ "log",
+ "mio",
+ "nix 0.23.1",
+ "serialport",
+ "winapi",
+]
+
+[[package]]
+name = "more-asserts"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7843ec2de400bcbc6a6328c958dc38e5359da6e93e72e37bc5246bf1ae776389"
+
+[[package]]
 name = "mutate_once"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2843,9 +2883,40 @@ version = "1.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4903bf0427cf68dddd5aa6a93220756f8be0c34fcfa9f5e6191e103e15a31395"
 dependencies = [
+ "bytes",
+ "libc",
+ "memchr",
+ "mio",
  "num_cpus",
  "once_cell",
  "pin-project-lite",
+ "socket2",
+ "tokio-macros",
+ "winapi",
+]
+
+[[package]]
+name = "tokio-macros"
+version = "1.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b557f72f448c511a979e2564e55d74e6c4432fc96ff4f6241bc6bded342643b7"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "tokio-serial"
+version = "5.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5488e0c75c70e880823aebc3ad4ac0a6da6f48d95bc1b9a52bd3200d6f1e724"
+dependencies = [
+ "cfg-if 1.0.0",
+ "futures",
+ "log",
+ "mio-serial",
+ "tokio",
 ]
 
 [[package]]
@@ -2988,6 +3059,7 @@ dependencies = [
  "embedded-graphics",
  "embedded-graphics-simulator",
  "fonts",
+ "more-asserts",
  "serde",
  "serde_derive",
  "serde_json",
@@ -3001,6 +3073,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "confy",
+ "conquer-once",
  "derivative",
  "embedded-graphics",
  "embedded-graphics-simulator",
@@ -3009,9 +3082,12 @@ dependencies = [
  "iced_futures",
  "iced_native",
  "log",
+ "more-asserts",
  "paste",
+ "serde_json",
  "thiserror",
  "tokio",
+ "tokio-serial",
  "toml",
  "uwh-common",
  "uwh-matrix-drawing",

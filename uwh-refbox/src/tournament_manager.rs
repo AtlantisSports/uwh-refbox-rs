@@ -1,13 +1,15 @@
-use async_std::channel::Sender;
 use derivative::Derivative;
 use log::*;
 use std::{
     cmp::{max, min, Ordering},
     convert::TryInto,
     ops::{Index, IndexMut},
-    time::{Duration, Instant},
 };
 use thiserror::Error;
+use tokio::{
+    sync::watch,
+    time::{Duration, Instant},
+};
 use uwh_common::{
     config::Game as GameConfig,
     game_snapshot::{
@@ -17,7 +19,7 @@ use uwh_common::{
 
 const MAX_TIME_VAL: Duration = Duration::from_secs(5999); // 99:59 is the largest displayable value
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct TournamentManager {
     config: GameConfig,
     game_number: u16,
@@ -32,7 +34,8 @@ pub struct TournamentManager {
     b_penalties: Vec<Penalty>,
     w_penalties: Vec<Penalty>,
     has_reset: bool,
-    start_stop_senders: Vec<Sender<bool>>,
+    start_stop_tx: watch::Sender<bool>,
+    start_stop_rx: watch::Receiver<bool>,
     next_game_number: Option<u16>,
     next_scheduled_start: Option<Instant>,
     reset_game_time: Duration,
@@ -40,6 +43,7 @@ pub struct TournamentManager {
 
 impl TournamentManager {
     pub fn new(config: GameConfig) -> Self {
+        let (start_stop_tx, start_stop_rx) = watch::channel(false);
         Self {
             game_number: 0,
             game_start_time: Instant::now(),
@@ -55,7 +59,8 @@ impl TournamentManager {
             b_penalties: vec![],
             w_penalties: vec![],
             has_reset: true,
-            start_stop_senders: vec![],
+            start_stop_tx,
+            start_stop_rx,
             next_game_number: None,
             next_scheduled_start: None,
             reset_game_time: config.nominal_break,
@@ -832,8 +837,8 @@ impl TournamentManager {
         Ok(())
     }
 
-    pub fn add_start_stop_sender(&mut self, sender: Sender<bool>) {
-        self.start_stop_senders.push(sender);
+    pub fn get_start_stop_rx(&self) -> watch::Receiver<bool> {
+        self.start_stop_rx.clone()
     }
 
     // Returns true if the clock was started, false if it was already running
@@ -878,9 +883,7 @@ impl TournamentManager {
     }
 
     fn send_clock_running(&self, running: bool) {
-        for sender in &self.start_stop_senders {
-            sender.try_send(running).unwrap();
-        }
+        self.start_stop_tx.send(running).unwrap();
     }
 
     pub fn start_clock(&mut self, now: Instant) {
@@ -2964,11 +2967,16 @@ mod test {
 
         let mut tm = TournamentManager::new(config);
 
-        tm.set_period_and_game_clock_time(GamePeriod::SuddenDeath, Duration::from_secs(5));
-        tm.set_game_start(game_start);
-        tm.start_game_clock(start);
-        tm.set_scores(2, 2, start);
-        tm.update(second_time).unwrap();
+        let setup_tm = |tm: &mut TournamentManager| {
+            tm.stop_game_clock(fourth_time).unwrap();
+            tm.set_period_and_game_clock_time(GamePeriod::SuddenDeath, Duration::from_secs(5));
+            tm.set_game_start(game_start);
+            tm.start_game_clock(start);
+            tm.set_scores(2, 2, start);
+            tm.update(second_time).unwrap()
+        };
+
+        setup_tm(&mut tm);
 
         assert_eq!(tm.current_period, GamePeriod::SuddenDeath);
         assert_eq!(
@@ -2976,7 +2984,7 @@ mod test {
             Some(Duration::from_secs(7))
         );
 
-        let tm_clone = tm.clone();
+        setup_tm(&mut tm);
 
         tm.set_scores(3, 2, third_time);
         assert_eq!(tm.current_period, GamePeriod::BetweenGames);
@@ -2985,8 +2993,7 @@ mod test {
             Some(Duration::from_secs(4))
         );
 
-        let mut tm = tm_clone;
-        let tm_clone = tm.clone();
+        setup_tm(&mut tm);
 
         tm.add_b_score(1, third_time);
         assert_eq!(tm.current_period, GamePeriod::BetweenGames);
@@ -2995,7 +3002,7 @@ mod test {
             Some(Duration::from_secs(4))
         );
 
-        let mut tm = tm_clone;
+        setup_tm(&mut tm);
 
         tm.add_w_score(1, third_time);
         assert_eq!(tm.current_period, GamePeriod::BetweenGames);

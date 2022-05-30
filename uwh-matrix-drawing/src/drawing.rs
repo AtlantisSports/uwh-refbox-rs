@@ -1,6 +1,6 @@
 use arrayvec::ArrayString;
 use core::{
-    fmt::{Display, Write},
+    fmt::{Debug, Display, Write},
     ops::{Div, Rem},
 };
 use embedded_graphics::{
@@ -10,6 +10,7 @@ use embedded_graphics::{
     text::{Alignment, Baseline, LineHeight, Text, TextStyle, TextStyleBuilder},
 };
 use fonts::fonts::{FONT_10X25, FONT_14X31, FONT_20X46, FONT_28X64, FONT_5X8, FONT_7X15};
+use more_asserts::*;
 use uwh_common::game_snapshot::*;
 
 /// Draws all the details of the game onto the provided display. Assumes the dispaly is 256x64
@@ -363,12 +364,13 @@ pub fn draw_panels<D: DrawTarget<Color = Rgb888>>(
 
 pub fn secs_to_time_string<T>(secs: T) -> ArrayString<5>
 where
-    T: Div<T> + Rem<T> + From<u8> + Copy,
+    T: Div<T> + Rem<T> + From<u16> + Copy + Ord + Debug,
     <T as Div>::Output: Display,
     <T as Rem>::Output: Display,
 {
-    let min = secs / T::from(60u8);
-    let sec = secs % T::from(60u8);
+    assert_le!(secs, T::from(5999u16));
+    let min = secs / T::from(60u16);
+    let sec = secs % T::from(60u16);
     let mut time_string = ArrayString::new();
     write!(&mut time_string, "{:2}:{:02}", min, sec).unwrap();
     time_string

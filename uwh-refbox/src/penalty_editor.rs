@@ -5,9 +5,9 @@ use derivative::Derivative;
 use std::{
     mem,
     sync::{Arc, Mutex, MutexGuard},
-    time::Instant,
 };
 use thiserror::Error;
+use tokio::time::Instant;
 use uwh_common::game_snapshot::Color;
 
 const MAX_LIST_LEN: usize = 8;

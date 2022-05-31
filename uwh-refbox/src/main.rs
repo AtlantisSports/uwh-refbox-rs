@@ -1,25 +1,15 @@
 use clap::Parser;
-use embedded_graphics::{pixelcolor::Rgb888, prelude::*};
-use embedded_graphics_simulator::{
-    OutputSettingsBuilder, SimulatorDisplay, SimulatorEvent, Window,
-};
 use iced::{pure::Application, Settings};
 use log::*;
-use std::{
-    io::{ErrorKind, Read},
-    net::TcpStream,
-    process::{Command, Stdio},
-    thread,
-    time::{Duration, Instant},
-};
+use std::process::{Command, Stdio};
 use tokio_serial::{DataBits, FlowControl, Parity, StopBits};
 use uwh_common::config::Config;
-use uwh_matrix_drawing::{transmitted_data::TransmittedData, *};
 
 mod penalty_editor;
 mod tournament_manager;
 
 mod app;
+mod sim_app;
 
 const APP_CONFIG_NAME: &str = "uwh-refbox";
 
@@ -31,8 +21,12 @@ struct Cli {
     no_simulate: bool,
 
     #[clap(long, short, default_value = "4")]
-    /// Scale argument for the simulator
-    scale: u32,
+    /// Size of a pixel in the panel the simulator
+    scale: f32,
+
+    #[clap(long)]
+    /// Spacing between pixels in the panel the simulator
+    spacing: Option<f32>,
 
     #[clap(long, default_value = "8001")]
     /// Port to listen on for TCP connections with a binary send type
@@ -61,87 +55,20 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     info!("Parsed arguments");
 
+    let spacing = args.spacing.unwrap_or(args.scale / 4.0);
+
     if args.is_simulator {
-        let mut stream;
-        let start_time = Instant::now();
-        loop {
-            match TcpStream::connect(("localhost", args.binary_port)) {
-                Ok(conn) => {
-                    stream = conn;
-                    break;
-                }
-                Err(e) => {
-                    if e.kind() == ErrorKind::ConnectionRefused {
-                        if Instant::now().duration_since(start_time) > Duration::from_secs(5) {
-                            error!("Couldn't connect to refbox within 5 seconds");
-                            Err(std::io::Error::new(
-                                ErrorKind::TimedOut,
-                                "Connection to Refbox Failed",
-                            ))?;
-                        } else {
-                            continue;
-                        }
-                    } else {
-                        Err(e)?;
-                    }
-                }
-            }
-        }
+        let flags = sim_app::SimRefBoxAppFlags {
+            tcp_port: args.binary_port,
+            scale: args.scale,
+            spacing,
+        };
 
-        stream.set_read_timeout(None)?;
-
-        let mut display = SimulatorDisplay::<Rgb888>::new(Size::new(256, 64));
-
-        let output_settings = OutputSettingsBuilder::new()
-            .scale(args.scale)
-            .pixel_spacing(args.scale.saturating_sub(1) / 4 + 1)
-            .build();
-
-        let mut window = Window::new("Panel Simulator", &output_settings);
-
-        let mut buffer = [0u8; TransmittedData::ENCODED_LEN];
-
-        let mut error_count = 0;
-        loop {
-            let state = match stream.read(&mut buffer) {
-                Err(e) => {
-                    error!("Error reading stream: {}", e);
-                    error_count += 1;
-                    if error_count > 4 {
-                        break;
-                    } else {
-                        continue;
-                    }
-                }
-                Ok(val) => match val {
-                    TransmittedData::ENCODED_LEN => {
-                        error_count = 0;
-                        //info!("Received data: {buffer:?}");
-                        TransmittedData::decode(&buffer)?
-                    }
-                    other => {
-                        error!("Received message wrong length: {other}");
-                        thread::sleep(Duration::from_millis(50));
-                        error_count += 1;
-                        if error_count > 4 {
-                            break;
-                        } else {
-                            continue;
-                        }
-                    }
-                },
-            };
-
-            //info!("Decoded data: {state:?}");
-            display.clear(Rgb888::BLACK)?;
-            draw_panels(&mut display, state.snapshot, state.white_on_right).unwrap();
-
-            window.update(&display);
-
-            if window.events().any(|e| e == SimulatorEvent::Quit) {
-                break;
-            }
-        }
+        let mut settings = Settings::with_flags(flags);
+        settings.window.size = sim_app::window_size(args.scale, spacing);
+        settings.window.resizable = false;
+        info!("Starting Simulator UI");
+        <sim_app::SimRefBoxApp as iced::Application>::run(settings)?;
 
         return Ok(());
     }
@@ -155,6 +82,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let binary_port = args.binary_port.to_string();
         let json_port = args.json_port.to_string();
         let scale = args.scale.to_string();
+        let spacing = spacing.to_string();
 
         info!("Starting child with birany port {binary_port}");
         let child = Command::new(bin_name)
@@ -166,6 +94,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
                 &json_port,
                 "--scale",
                 &scale,
+                "--spacing",
+                &spacing,
             ])
             .stdin(Stdio::null())
             .spawn()?;

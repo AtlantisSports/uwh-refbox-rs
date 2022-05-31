@@ -9,20 +9,21 @@ default = []
 debug = ["iced/debug"]
 
 [dependencies]
+arrayref = "0.3.6"
 clap = { version = "3.1", features = ["derive"] }
 confy = { git = "https://github.com/rust-cli/confy", rev = "642822413139ce38a96b916190e8c7fd5b88e814" }
 conquer-once = "0.3"
 derivative = "2.2.0"
 embedded-graphics = "0.7.1"
-embedded-graphics-simulator = "0.3.0"
 env_logger = "0.9.0"
-iced = { version = "0.4", features = ["tokio", "svg", "pure"] }
+iced = { version = "0.4", features = ["tokio", "svg", "pure", "canvas"] }
 iced_futures = { version = "0.4", features = ["async-std"] }
 iced_native = "0.5"
 log = "0.4.16"
 more-asserts = "0.2"
 paste = "1.0.7"
 serde_json = "1.0"
+skip_error = "3.1"
 thiserror = "1.0"
 tokio = { version = "1.18", features = ["io-util", "macros", "net", "sync", "time"] }
 tokio-serial = "5.4"

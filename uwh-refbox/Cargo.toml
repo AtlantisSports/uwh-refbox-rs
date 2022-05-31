@@ -16,7 +16,7 @@ conquer-once = "0.3"
 derivative = "2.2.0"
 embedded-graphics = "0.7.1"
 env_logger = "0.9.0"
-iced = { version = "0.4", features = ["tokio", "svg", "pure"] }
+iced = { version = "0.4", features = ["tokio", "svg", "pure", "canvas"] }
 iced_futures = { version = "0.4", features = ["async-std"] }
 iced_native = "0.5"
 log = "0.4.16"

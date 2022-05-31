@@ -22,11 +22,11 @@ struct Cli {
 
     #[clap(long, short, default_value = "4")]
     /// Size of a pixel in the panel the simulator
-    scale: u16,
+    scale: f32,
 
     #[clap(long)]
     /// Spacing between pixels in the panel the simulator
-    spacing: Option<u16>,
+    spacing: Option<f32>,
 
     #[clap(long, default_value = "8001")]
     /// Port to listen on for TCP connections with a binary send type
@@ -55,9 +55,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     info!("Parsed arguments");
 
-    let spacing = args
-        .spacing
-        .unwrap_or_else(|| args.scale.saturating_sub(1) / 4 + 1);
+    let spacing = args.spacing.unwrap_or(args.scale / 4.0);
 
     if args.is_simulator {
         let flags = sim_app::SimRefBoxAppFlags {
@@ -70,7 +68,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         settings.window.size = sim_app::window_size(args.scale, spacing);
         settings.window.resizable = false;
         info!("Starting Simulator UI");
-        sim_app::SimRefBoxApp::run(settings)?;
+        <sim_app::SimRefBoxApp as iced::Application>::run(settings)?;
 
         return Ok(());
     }

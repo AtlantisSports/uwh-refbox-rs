@@ -1,9 +1,8 @@
 use arrayref::array_ref;
-use embedded_graphics::pixelcolor::Rgb888;
 use iced::{
-    executor,
-    pure::{Application, Element},
-    Color, Command, Subscription,
+    canvas::{Cache, Cursor, Fill, Geometry, Program},
+    executor, Application, Canvas, Color, Command, Element, Length, Point, Rectangle, Size,
+    Subscription,
 };
 use iced_futures::{
     futures::{
@@ -13,7 +12,7 @@ use iced_futures::{
     subscription::Recipe,
 };
 use log::*;
-use std::hash::Hasher;
+use std::{hash::Hasher, rc::Rc, sync::Mutex};
 use tokio::net::TcpStream;
 use uwh_matrix_drawing::{draw_panels, transmitted_data::TransmittedData};
 
@@ -24,10 +23,10 @@ const WINDOW_BACKGROUND: Color = Color::BLACK;
 const WIDTH: usize = 256;
 const HEIGHT: usize = 64;
 
-pub const fn window_size(scale: u16, spacing: u16) -> (u32, u32) {
+pub fn window_size(scale: f32, spacing: f32) -> (u32, u32) {
     (
-        WIDTH as u32 * (scale as u32) + ((WIDTH as u32 + 1) * (spacing as u32)),
-        HEIGHT as u32 * (scale as u32) + ((HEIGHT as u32 + 1) * (spacing as u32)),
+        (WIDTH as f32 * scale + ((WIDTH as f32 + 1.0) * spacing)).ceil() as u32,
+        (HEIGHT as f32 * scale + ((HEIGHT as f32 + 1.0) * spacing)).ceil() as u32,
     )
 }
 
@@ -40,17 +39,19 @@ pub enum Message {
 
 #[derive(Debug)]
 pub struct SimRefBoxApp {
-    simulator: DisplaySimulator<WIDTH, HEIGHT, Rgb888>,
+    buffer: Rc<Mutex<DisplayBuffer<WIDTH, HEIGHT>>>,
+    scale: f32,
+    spacing: f32,
+    cache: Cache,
     listener: SnapshotListener,
-    has_subscribed: bool,
     should_stop: bool,
 }
 
 #[derive(Clone, Debug)]
 pub struct SimRefBoxAppFlags {
     pub tcp_port: u16,
-    pub scale: u16,
-    pub spacing: u16,
+    pub scale: f32,
+    pub spacing: f32,
 }
 
 impl Application for SimRefBoxApp {
@@ -67,9 +68,11 @@ impl Application for SimRefBoxApp {
 
         (
             Self {
-                simulator: DisplaySimulator::new(scale, spacing),
+                buffer: Rc::new(Mutex::new(Default::default())),
+                scale,
+                spacing,
+                cache: Cache::new(),
                 listener: SnapshotListener { port: tcp_port },
-                has_subscribed: false,
                 should_stop: false,
             },
             Command::none(),
@@ -77,11 +80,7 @@ impl Application for SimRefBoxApp {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        if !self.has_subscribed {
-            Subscription::from_recipe(self.listener.clone())
-        } else {
-            Subscription::none()
-        }
+        Subscription::from_recipe(self.listener.clone())
     }
 
     fn title(&self) -> String {
@@ -100,8 +99,10 @@ impl Application for SimRefBoxApp {
         trace!("Handling message: {message:?}");
         match message {
             Message::NewSnapshot(data) => {
-                self.simulator.clear_buffer();
-                draw_panels(&mut self.simulator, data.snapshot, data.white_on_right).unwrap();
+                let mut buffer = self.buffer.lock().unwrap();
+                buffer.clear_buffer();
+                draw_panels(&mut *buffer, data.snapshot, data.white_on_right).unwrap();
+                self.cache.clear();
             }
             Message::Stop => self.should_stop = true,
             Message::NoAction => {}
@@ -110,8 +111,37 @@ impl Application for SimRefBoxApp {
         Command::none()
     }
 
-    fn view(&self) -> Element<Message> {
-        self.simulator.view().into()
+    fn view(&mut self) -> Element<Message> {
+        Canvas::new(self)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+    }
+}
+
+impl<Message> Program<Message> for SimRefBoxApp {
+    fn draw(&self, bounds: Rectangle, _cursor: Cursor) -> Vec<Geometry> {
+        let buffer_ = self.buffer.clone();
+        let panel =
+            self.cache.draw(bounds.size(), |frame| {
+                let buffer = buffer_.lock().unwrap();
+
+                for (x, y, maybe) in buffer.iter().enumerate().flat_map(|(y, row)| {
+                    row.iter().enumerate().map(move |(x, maybe)| (x, y, maybe))
+                }) {
+                    if let Some(color) = maybe {
+                        let x = self.spacing + x as f32 * (self.scale + self.spacing);
+                        let y = self.spacing + y as f32 * (self.scale + self.spacing);
+                        frame.fill_rectangle(
+                            Point::new(x, y),
+                            Size::new(self.scale, self.scale),
+                            Fill::from(*color),
+                        );
+                    }
+                }
+            });
+
+        vec![panel]
     }
 }
 

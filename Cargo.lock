@@ -2694,6 +2694,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7bd3e3206899af3f8b12af284fafc038cc1dc2b41d1b89dd17297221c5d225de"
 
 [[package]]
+name = "skip_error"
+version = "3.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a17bb801cb94f28c0885ef79ca5b412519ab95e6bfd3160506d5e84570d5173"
+
+[[package]]
 name = "slab"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3071,12 +3077,12 @@ dependencies = [
 name = "uwh-refbox"
 version = "0.1.0"
 dependencies = [
+ "arrayref",
  "clap",
  "confy",
  "conquer-once",
  "derivative",
  "embedded-graphics",
- "embedded-graphics-simulator",
  "env_logger",
  "iced",
  "iced_futures",
@@ -3085,6 +3091,7 @@ dependencies = [
  "more-asserts",
  "paste",
  "serde_json",
+ "skip_error",
  "thiserror",
  "tokio",
  "tokio-serial",

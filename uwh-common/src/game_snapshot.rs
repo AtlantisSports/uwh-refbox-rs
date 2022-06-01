@@ -26,6 +26,7 @@ pub struct GameSnapshotNoHeap {
     pub w_score: u8,
     pub b_penalties: ArrayVec<PenaltySnapshot, PANEL_PENALTY_COUNT>,
     pub w_penalties: ArrayVec<PenaltySnapshot, PANEL_PENALTY_COUNT>,
+    pub is_old_game: bool,
 }
 
 /// All the information needed by a UI to draw the current state of the game. Requires the `std`
@@ -40,6 +41,7 @@ pub struct GameSnapshot {
     pub w_score: u8,
     pub b_penalties: Vec<PenaltySnapshot>,
     pub w_penalties: Vec<PenaltySnapshot>,
+    pub is_old_game: bool,
     pub game_number: u16,
     pub next_game_number: u16,
     pub tournament_id: u64,
@@ -68,6 +70,7 @@ impl From<GameSnapshot> for GameSnapshotNoHeap {
             w_score: snapshot.w_score,
             b_penalties: process_penalties(snapshot.b_penalties),
             w_penalties: process_penalties(snapshot.w_penalties),
+            is_old_game: snapshot.is_old_game,
         }
     }
 }
@@ -392,6 +395,7 @@ impl GameSnapshotNoHeap {
     pub fn encode(&self) -> Result<[u8; Self::ENCODED_LEN], EncodingError> {
         let mut val = [0u8; Self::ENCODED_LEN];
         val[0] = self.current_period.encode();
+        val[0] |= if self.is_old_game { 0x80 } else { 0x00 };
         val[1..=2].copy_from_slice(&self.secs_in_period.to_be_bytes());
         val[3..=4].copy_from_slice(&self.timeout.encode()?);
         val[5] = self.b_score;
@@ -442,13 +446,14 @@ impl GameSnapshotNoHeap {
         }
 
         Ok(Self {
-            current_period: GamePeriod::decode(bytes[0])?,
+            current_period: GamePeriod::decode(bytes[0] & 0x7f)?,
             secs_in_period: u16::from_be_bytes(*array_ref![bytes, 1, 2]),
             timeout: TimeoutSnapshot::decode(array_ref![bytes, 3, 2])?,
             b_score: bytes[5],
             w_score: bytes[6],
             b_penalties,
             w_penalties,
+            is_old_game: ((bytes[0] & 0x80) != 0x00),
         })
     }
 }
@@ -807,6 +812,7 @@ mod test {
             w_score: 0,
             b_penalties: ArrayVec::new(),
             w_penalties: ArrayVec::new(),
+            is_old_game: false,
         };
 
         let test_state =

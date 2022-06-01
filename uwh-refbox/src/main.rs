@@ -142,7 +142,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     settings.window.size = window_size;
     settings.window.resizable = false;
     settings.default_text_size = app::style::SMALL_PLUS_TEXT;
-    settings.default_font = Some(include_bytes!("../Roboto-Medium.ttf"));
+    settings.default_font = Some(include_bytes!("../resources/Roboto-Medium.ttf"));
     info!("Starting UI");
     app::RefBoxApp::run(settings)?;
 

@@ -675,6 +675,11 @@ impl TournamentManager {
     }
 
     fn start_game(&mut self, start_time: Instant) {
+        if !self.has_reset {
+            info!("Resetting game");
+            self.reset();
+        }
+
         self.game_number = self.next_game_number();
         self.next_game_number = None;
         info!(
@@ -740,14 +745,18 @@ impl TournamentManager {
                             self.end_game(now);
                         } else if self.config.has_overtime {
                             info!(
-                                "Entering pre-overtime. Score is B({}), W({})",
-                                self.b_score, self.w_score
+                                "{} Entering pre-overtime. Score is B({}), W({})",
+                                self.status_string(now),
+                                self.b_score,
+                                self.w_score
                             );
                             self.current_period = GamePeriod::PreOvertime;
                         } else {
                             info!(
-                                "Entering pre-sudden death. Score is B({}), W({})",
-                                self.b_score, self.w_score
+                                "{} Entering pre-sudden death. Score is B({}), W({})",
+                                self.status_string(now),
+                                self.b_score,
+                                self.w_score
                             );
                             self.current_period = GamePeriod::PreSuddenDeath;
                         }
@@ -771,8 +780,10 @@ impl TournamentManager {
                             self.end_game(now);
                         } else {
                             info!(
-                                "Entering pre-sudden death. Score is B({}), W({})",
-                                self.b_score, self.w_score
+                                "{} Entering pre-sudden death. Score is B({}), W({})",
+                                self.status_string(now),
+                                self.b_score,
+                                self.w_score
                             );
                             self.current_period = GamePeriod::PreSuddenDeath;
                         }
@@ -783,7 +794,10 @@ impl TournamentManager {
                         need_cull = true;
                     }
                     GamePeriod::SuddenDeath => {
-                        error!("Impossible state: in sudden death with clock counting down")
+                        error!(
+                            "{} Impossible state: in sudden death with clock counting down",
+                            self.status_string(now)
+                        )
                     }
                 }
                 if self.current_period != GamePeriod::BetweenGames {
@@ -1161,6 +1175,7 @@ impl TournamentManager {
             w_score: self.w_score,
             b_penalties,
             w_penalties,
+            is_old_game: !self.has_reset,
             game_number: self.game_number(),
             next_game_number: self.next_game_number(),
             tournament_id: 0, // TODO: placeholder

@@ -35,7 +35,7 @@ pub(super) fn build_main_view<'a>(
     snapshot: &GameSnapshot,
     config: &GameConfig,
 ) -> Element<'a, Message> {
-    let (period_text, period_color) = period_text_and_color(snapshot.current_period);
+    let (period_text, period_color) = period_text_and_color(snapshot);
     let game_time_info = column()
         .width(Length::Fill)
         .align_items(Alignment::Center)
@@ -535,7 +535,7 @@ fn make_penalty_list<'a>(
 
     let mut up_btn = button(
         container(Svg::new(svg::Handle::from_memory(
-            &include_bytes!("../../arrow_drop_up_white_48dp.svg")[..],
+            &include_bytes!("../../resources/arrow_drop_up_white_48dp.svg")[..],
         )))
         .width(Length::Fill)
         .height(Length::Fill)
@@ -548,7 +548,7 @@ fn make_penalty_list<'a>(
 
     let mut down_btn = button(
         container(Svg::new(svg::Handle::from_memory(
-            &include_bytes!("../../arrow_drop_down_white_48dp.svg")[..],
+            &include_bytes!("../../resources/arrow_drop_down_white_48dp.svg")[..],
         )))
         .width(Length::Fill)
         .height(Length::Fill)
@@ -739,9 +739,13 @@ pub(super) fn build_keypad_page<'a>(
                                     )
                                     .push(
                                         button(
-                                            container(Svg::new(svg::Handle::from_memory(&include_bytes!(
-                                                "../../backspace_white_48dp.svg"
-                                            )[..]))).width(Length::Fill).center_x()
+                                            container(Svg::new(svg::Handle::from_memory(
+                                                &include_bytes!(
+                                                    "../../resources/backspace_white_48dp.svg"
+                                                )[..],
+                                            )))
+                                            .width(Length::Fill)
+                                            .center_x(),
                                         )
                                         .padding((MIN_BUTTON_SIZE - MEDIUM_TEXT) / 2)
                                         .width(Length::Units(2 * MIN_BUTTON_SIZE + SPACING))
@@ -755,16 +759,12 @@ pub(super) fn build_keypad_page<'a>(
                     .padding(PADDING),
                 )
                 .push(match page {
-                    KeypadPage::AddScore(color) => {
-                        make_add_score_page(color)
-                    }
+                    KeypadPage::AddScore(color) => make_add_score_page(color),
                     KeypadPage::Penalty(origin, color, kind) => {
                         make_edit_penalty_page(origin, color, kind)
                     }
                     KeypadPage::GameNumber => make_game_number_edit_page(),
-                    KeypadPage::TeamTimeouts(dur) => {
-                        make_team_timeout_edit_page(dur)
-                    }
+                    KeypadPage::TeamTimeouts(dur) => make_team_timeout_edit_page(dur),
                 }),
         )
         .into()
@@ -1452,7 +1452,7 @@ pub(super) fn build_timeout_ribbon<'a>(
 }
 
 fn make_game_time_button<'a>(snapshot: &GameSnapshot) -> Button<'a, Message> {
-    let (period_text, period_color) = period_text_and_color(snapshot.current_period);
+    let (period_text, period_color) = period_text_and_color(snapshot);
     let mut content = row()
         .spacing(SPACING)
         .height(Length::Fill)
@@ -1680,8 +1680,8 @@ fn config_string(snapshot: &GameSnapshot, config: &GameConfig) -> String {
     result
 }
 
-fn period_text_and_color(period: GamePeriod) -> (&'static str, Color) {
-    match period {
+fn period_text_and_color(snapshot: &GameSnapshot) -> (&'static str, Color) {
+    match snapshot.current_period {
         GamePeriod::BetweenGames => ("NEXT GAME", YELLOW),
         GamePeriod::FirstHalf => ("FIRST HALF", GREEN),
         GamePeriod::HalfTime => ("HALF TIME", YELLOW),

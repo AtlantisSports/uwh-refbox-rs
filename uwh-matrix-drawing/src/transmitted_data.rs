@@ -46,6 +46,7 @@ mod test {
             w_score: 0,
             b_penalties: ArrayVec::new(),
             w_penalties: ArrayVec::new(),
+            is_old_game: true,
         };
 
         let mut data = TransmittedData {

@@ -81,7 +81,7 @@ pub fn draw_panels<D: DrawTarget<Color = Rgb888>>(
             .draw(display)?;
 
             let text = match state.current_period {
-                GamePeriod::BetweenGames => "NEXT GAME",
+                GamePeriod::BetweenGames => "NEXT GAME IN",
                 GamePeriod::FirstHalf => "1ST HALF",
                 GamePeriod::HalfTime => "HALF TIME",
                 GamePeriod::SecondHalf => "2ND HALF",

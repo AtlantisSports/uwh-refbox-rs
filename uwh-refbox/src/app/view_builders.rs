@@ -35,7 +35,7 @@ pub(super) fn build_main_view<'a>(
     snapshot: &GameSnapshot,
     config: &GameConfig,
 ) -> Element<'a, Message> {
-    let (period_text, period_color) = period_text_and_color(snapshot.current_period);
+    let (period_text, period_color) = period_text_and_color(snapshot);
     let game_time_info = column()
         .width(Length::Fill)
         .align_items(Alignment::Center)
@@ -1452,7 +1452,7 @@ pub(super) fn build_timeout_ribbon<'a>(
 }
 
 fn make_game_time_button<'a>(snapshot: &GameSnapshot) -> Button<'a, Message> {
-    let (period_text, period_color) = period_text_and_color(snapshot.current_period);
+    let (period_text, period_color) = period_text_and_color(snapshot);
     let mut content = row()
         .spacing(SPACING)
         .height(Length::Fill)
@@ -1680,8 +1680,8 @@ fn config_string(snapshot: &GameSnapshot, config: &GameConfig) -> String {
     result
 }
 
-fn period_text_and_color(period: GamePeriod) -> (&'static str, Color) {
-    match period {
+fn period_text_and_color(snapshot: &GameSnapshot) -> (&'static str, Color) {
+    match snapshot.current_period {
         GamePeriod::BetweenGames => ("NEXT GAME", YELLOW),
         GamePeriod::FirstHalf => ("FIRST HALF", GREEN),
         GamePeriod::HalfTime => ("HALF TIME", YELLOW),

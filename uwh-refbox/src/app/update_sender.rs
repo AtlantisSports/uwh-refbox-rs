@@ -401,6 +401,7 @@ mod test {
                     player_number: 15,
                 },
             ],
+            is_old_game: true,
             game_number: 26,
             next_game_number: 28,
             tournament_id: 1,

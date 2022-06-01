@@ -1161,6 +1161,7 @@ impl TournamentManager {
             w_score: self.w_score,
             b_penalties,
             w_penalties,
+            is_old_game: !self.has_reset,
             game_number: self.game_number(),
             next_game_number: self.next_game_number(),
             tournament_id: 0, // TODO: placeholder

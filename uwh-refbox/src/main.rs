@@ -1,5 +1,5 @@
 use clap::Parser;
-use iced::{pure::Application, Settings};
+use iced::{pure::Application, window::icon::Icon, Settings};
 use log::*;
 use std::process::{Command, Stdio};
 use tokio_serial::{DataBits, FlowControl, Parity, StopBits};
@@ -9,6 +9,7 @@ mod penalty_editor;
 mod tournament_manager;
 
 mod app;
+mod app_icon;
 mod sim_app;
 
 const APP_CONFIG_NAME: &str = "uwh-refbox";
@@ -57,6 +58,9 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     let spacing = args.spacing.unwrap_or(args.scale / 4.0);
 
+    let icon =
+        Icon::from_rgba(Vec::from(app_icon::DATA), app_icon::WIDTH, app_icon::HEIGHT).unwrap();
+
     if args.is_simulator {
         let flags = sim_app::SimRefBoxAppFlags {
             tcp_port: args.binary_port,
@@ -67,6 +71,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut settings = Settings::with_flags(flags);
         settings.window.size = sim_app::window_size(args.scale, spacing);
         settings.window.resizable = false;
+        settings.window.icon = Some(icon);
         info!("Starting Simulator UI");
         <sim_app::SimRefBoxApp as iced::Application>::run(settings)?;
 
@@ -141,6 +146,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let mut settings = Settings::with_flags(flags);
     settings.window.size = window_size;
     settings.window.resizable = false;
+    settings.window.icon = Some(icon);
     settings.default_text_size = app::style::SMALL_PLUS_TEXT;
     settings.default_font = Some(include_bytes!("../resources/Roboto-Medium.ttf"));
     info!("Starting UI");

@@ -154,52 +154,55 @@ pub(super) fn build_main_view<'a>(
         .on_press(Message::PenaltyOverview)
     };
 
+    let mut black_score_btn = button(
+        column()
+            .align_items(Alignment::Center)
+            .width(Length::Fill)
+            .push("BLACK")
+            .push(text(snapshot.b_score.to_string()).size(LARGE_TEXT)),
+    )
+    .padding(PADDING)
+    .width(Length::Fill)
+    .style(style::Button::Black);
+
+    let mut black_new_score_btn = make_button("SCORE\nBLACK").style(style::Button::Black);
+
+    let mut white_score_btn = button(
+        column()
+            .align_items(Alignment::Center)
+            .width(Length::Fill)
+            .push("WHITE")
+            .push(text(snapshot.w_score.to_string()).size(LARGE_TEXT)),
+    )
+    .padding(PADDING)
+    .width(Length::Fill)
+    .style(style::Button::White);
+
+    let mut white_new_score_btn = make_button("SCORE\nWHITE").style(style::Button::White);
+
+    if snapshot.current_period != GamePeriod::BetweenGames {
+        black_score_btn = black_score_btn.on_press(Message::EditScores);
+        black_new_score_btn = black_new_score_btn
+            .on_press(Message::KeypadPage(KeypadPage::AddScore(GameColor::Black)));
+        white_score_btn = white_score_btn.on_press(Message::EditScores);
+        white_new_score_btn = white_new_score_btn
+            .on_press(Message::KeypadPage(KeypadPage::AddScore(GameColor::White)));
+    }
+
     let black_col = column()
         .spacing(SPACING)
         .align_items(Alignment::Center)
         .width(Length::Fill)
-        .push(
-            button(
-                column()
-                    .align_items(Alignment::Center)
-                    .width(Length::Fill)
-                    .push("BLACK")
-                    .push(text(snapshot.b_score.to_string()).size(LARGE_TEXT)),
-            )
-            .padding(PADDING)
-            .width(Length::Fill)
-            .style(style::Button::Black)
-            .on_press(Message::EditScores),
-        )
-        .push(
-            make_button("SCORE\nBLACK")
-                .style(style::Button::Black)
-                .on_press(Message::KeypadPage(KeypadPage::AddScore(GameColor::Black))),
-        )
+        .push(black_score_btn)
+        .push(black_new_score_btn)
         .push(make_penalty_button(&snapshot.b_penalties).style(style::Button::Black));
 
     let white_col = column()
         .spacing(SPACING)
         .align_items(Alignment::Center)
         .width(Length::Fill)
-        .push(
-            button(
-                column()
-                    .align_items(Alignment::Center)
-                    .width(Length::Fill)
-                    .push("WHITE")
-                    .push(text(snapshot.w_score.to_string()).size(LARGE_TEXT)),
-            )
-            .padding(PADDING)
-            .width(Length::Fill)
-            .style(style::Button::White)
-            .on_press(Message::EditScores),
-        )
-        .push(
-            make_button("SCORE\nWHITE")
-                .style(style::Button::White)
-                .on_press(Message::KeypadPage(KeypadPage::AddScore(GameColor::White))),
-        )
+        .push(white_score_btn)
+        .push(white_new_score_btn)
         .push(make_penalty_button(&snapshot.w_penalties).style(style::Button::White));
 
     row()

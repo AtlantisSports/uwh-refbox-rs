@@ -1,3 +1,5 @@
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 use clap::Parser;
 use iced::{pure::Application, window::icon::Icon, Settings};
 use log::*;

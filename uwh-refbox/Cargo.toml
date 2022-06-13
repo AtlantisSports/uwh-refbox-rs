@@ -32,6 +32,9 @@ toml = "0.5"
 uwh-common = { version = "0.1.0", path = "../uwh-common"}
 uwh-matrix-drawing = { version = "0.1.0", path = "../uwh-matrix-drawing"}
 
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"
+
 [package.metadata.bundle]
 identifier = "com.atlantissports.uwhrefbox"
 icon = ["resources/AppIcon.png"]

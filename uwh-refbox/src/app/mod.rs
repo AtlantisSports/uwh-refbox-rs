@@ -10,6 +10,10 @@ use iced_futures::{
     subscription::Recipe,
 };
 use log::*;
+use rodio::{
+    source::{SineWave, Source, Zero},
+    OutputStream, OutputStreamHandle, Sink,
+};
 use std::{
     cmp::min,
     hash::Hasher,
@@ -23,7 +27,7 @@ use tokio::{
 use tokio_serial::SerialPortBuilder;
 use uwh_common::{
     config::Config,
-    game_snapshot::{Color as GameColor, GamePeriod, GameSnapshot},
+    game_snapshot::{Color as GameColor, GamePeriod, GameSnapshot, TimeoutSnapshot},
 };
 
 mod view_builders;
@@ -35,7 +39,6 @@ use style::{PADDING, SPACING, WINDOW_BACKGROUND};
 pub mod update_sender;
 use update_sender::*;
 
-#[derive(Debug)]
 pub struct RefBoxApp {
     tm: Arc<Mutex<TournamentManager>>,
     config: Config,
@@ -47,6 +50,7 @@ pub struct RefBoxApp {
     app_state: AppState,
     last_app_state: AppState,
     update_sender: UpdateSender,
+    sound: Option<(OutputStream, OutputStreamHandle)>,
     sim_child: Option<Child>,
 }
 
@@ -206,10 +210,79 @@ pub enum ConfirmationOption {
 
 impl RefBoxApp {
     fn apply_snapshot(&mut self, snapshot: GameSnapshot) {
+        self.maybe_play_sound(&snapshot);
         self.update_sender
             .send_snapshot(snapshot.clone(), self.config.hardware.white_on_right)
             .unwrap();
         self.snapshot = snapshot;
+    }
+
+    fn maybe_play_sound(&self, new_snapshot: &GameSnapshot) {
+        const NUM_SHORT_SOUNDS: u16 = 10;
+        const SOUND_DUR: std::time::Duration = std::time::Duration::from_millis(250);
+        const LOW_FREQ: f32 = 660.0;
+        const MED_FREQ: f32 = 1000.0;
+        const HIGH_FREQ: f32 = 1500.0;
+
+        if let Some((_, ref handle)) = self.sound {
+            let (play_short_sound, play_long_sound) = match new_snapshot.timeout {
+                TimeoutSnapshot::Black(time) | TimeoutSnapshot::White(time) => {
+                    match self.snapshot.timeout {
+                        TimeoutSnapshot::Black(old_time) | TimeoutSnapshot::White(old_time) => (
+                            time != old_time && time <= NUM_SHORT_SOUNDS,
+                            time != old_time && time == 20,
+                        ),
+                        _ => (false, false),
+                    }
+                }
+                TimeoutSnapshot::Ref(_) | TimeoutSnapshot::PenaltyShot(_) => (false, false),
+                TimeoutSnapshot::None => {
+                    let prereqs = new_snapshot.current_period != GamePeriod::SuddenDeath
+                        && new_snapshot.secs_in_period != self.snapshot.secs_in_period;
+
+                    let is_warn_period = match new_snapshot.current_period {
+                        GamePeriod::BetweenGames
+                        | GamePeriod::HalfTime
+                        | GamePeriod::PreOvertime
+                        | GamePeriod::OvertimeHalfTime
+                        | GamePeriod::PreSuddenDeath => true,
+                        GamePeriod::FirstHalf
+                        | GamePeriod::SecondHalf
+                        | GamePeriod::OvertimeFirstHalf
+                        | GamePeriod::OvertimeSecondHalf
+                        | GamePeriod::SuddenDeath => false,
+                    };
+
+                    (
+                        prereqs && new_snapshot.secs_in_period <= NUM_SHORT_SOUNDS,
+                        prereqs && is_warn_period && new_snapshot.secs_in_period == 35,
+                    )
+                }
+            };
+
+            if play_long_sound {
+                let sink = match Sink::try_new(handle) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        error!("Failed to play long sound: {e}");
+                        return;
+                    }
+                };
+
+                sink.append(SineWave::new(LOW_FREQ).take_duration(SOUND_DUR));
+                sink.append(SineWave::new(MED_FREQ).take_duration(SOUND_DUR));
+                sink.append(SineWave::new(HIGH_FREQ).take_duration(SOUND_DUR));
+                sink.append(Zero::<f32>::new(1, 48_000).take_duration(SOUND_DUR));
+                sink.append(SineWave::new(LOW_FREQ).take_duration(SOUND_DUR));
+                sink.append(SineWave::new(MED_FREQ).take_duration(SOUND_DUR));
+                sink.append(SineWave::new(HIGH_FREQ).take_duration(SOUND_DUR));
+                sink.detach();
+            } else if play_short_sound {
+                if let Err(e) = handle.play_raw(SineWave::new(LOW_FREQ).take_duration(SOUND_DUR)) {
+                    error!("Failed to play short sound: {e}");
+                };
+            }
+        }
     }
 }
 
@@ -235,6 +308,14 @@ impl Application for RefBoxApp {
             json_port,
             sim_child,
         } = flags;
+
+        let sound = match OutputStream::try_default() {
+            Ok(res) => Some(res),
+            Err(e) => {
+                error!("Failed to connect to sound output: {e}");
+                None
+            }
+        };
 
         let mut tm = TournamentManager::new(config.game.clone());
         tm.start_clock(Instant::now());
@@ -262,6 +343,7 @@ impl Application for RefBoxApp {
                 app_state: AppState::MainPage,
                 last_app_state: AppState::MainPage,
                 update_sender,
+                sound,
                 sim_child,
             },
             Command::none(),

@@ -23,7 +23,7 @@ jobs:
       - run: cargo clippy -- --version
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all -- --deny=warnings
-      - run: cargo audit
+      - run: cargo audit --ignore RUSTSEC-2020-0056
       - run: cargo build --all
       - run: cargo test --all
       - run: ./ci/clean-cache.sh

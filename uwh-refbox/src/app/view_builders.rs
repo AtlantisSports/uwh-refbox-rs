@@ -15,7 +15,7 @@ use iced::{
         },
         Element,
     },
-    Alignment, Color, Length,
+    Alignment, Length,
 };
 use std::{
     sync::{Arc, Mutex},
@@ -35,51 +35,12 @@ pub(super) fn build_main_view<'a>(
     snapshot: &GameSnapshot,
     config: &GameConfig,
 ) -> Element<'a, Message> {
-    let (period_text, period_color) = period_text_and_color(snapshot);
-    let game_time_info = column()
+    let time_button = make_game_time_button(snapshot, true, true).on_press(Message::EditTime);
+
+    let mut center_col = column()
+        .spacing(SPACING)
         .width(Length::Fill)
-        .align_items(Alignment::Center)
-        .push(text(period_text).color(period_color))
-        .push(
-            text(secs_to_time_string(snapshot.secs_in_period).trim())
-                .color(period_color)
-                .size(LARGE_TEXT),
-        );
-
-    let time_button_content: Element<'a, Message> = if snapshot.timeout == TimeoutSnapshot::None {
-        game_time_info.width(Length::Fill).into()
-    } else {
-        let (per_text, color) = match snapshot.timeout {
-            TimeoutSnapshot::Black(_) => ("BLK TIMEOUT", BLACK),
-            TimeoutSnapshot::White(_) => ("WHT TIMEOUT", WHITE),
-            TimeoutSnapshot::Ref(_) => ("REF TIMEOUT", YELLOW),
-            TimeoutSnapshot::PenaltyShot(_) => ("PENALTY SHOT", RED),
-            TimeoutSnapshot::None => unreachable!(),
-        };
-        row()
-            .spacing(SPACING)
-            .push(game_time_info)
-            .push(
-                column()
-                    .width(Length::Fill)
-                    .align_items(Alignment::Center)
-                    .push(text(per_text).color(color))
-                    .push(
-                        text(timeout_time_string(snapshot))
-                            .color(color)
-                            .size(LARGE_TEXT),
-                    ),
-            )
-            .into()
-    };
-
-    let mut center_col = column().spacing(SPACING).width(Length::Fill).push(
-        button(time_button_content)
-            .padding(PADDING)
-            .width(Length::Fill)
-            .style(style::Button::Gray)
-            .on_press(Message::EditTime),
-    );
+        .push(time_button);
 
     match snapshot.timeout {
         TimeoutSnapshot::White(_)
@@ -255,7 +216,7 @@ pub(super) fn build_time_edit_view<'a>(
     column()
         .spacing(SPACING)
         .height(Length::Fill)
-        .push(make_game_time_button(snapshot).on_press(Message::NoAction))
+        .push(make_game_time_button(snapshot, false, false).on_press(Message::NoAction))
         .push(vertical_space(Length::Fill))
         .push(edit_row)
         .push(vertical_space(Length::Fill))
@@ -287,7 +248,7 @@ pub(super) fn build_score_edit_view<'a>(
     column()
         .spacing(SPACING)
         .height(Length::Fill)
-        .push(make_game_time_button(snapshot).on_press(Message::EditTime))
+        .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
         .push(vertical_space(Length::Fill))
         .push(
             row()
@@ -401,7 +362,7 @@ pub(super) fn build_penalty_overview_page<'a>(
     column()
         .spacing(SPACING)
         .height(Length::Fill)
-        .push(make_game_time_button(snapshot).on_press(Message::EditTime))
+        .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
         .push(
             row()
                 .spacing(SPACING)
@@ -625,7 +586,7 @@ pub(super) fn build_keypad_page<'a>(
     column()
         .spacing(SPACING)
         .height(Length::Fill)
-        .push(make_game_time_button(snapshot).on_press(Message::EditTime))
+        .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
         .push(
             row()
                 .spacing(SPACING)
@@ -1070,7 +1031,7 @@ pub(super) fn build_game_config_edit_page<'a>(
 
     column()
         .spacing(SPACING)
-        .push(make_game_time_button(snapshot).on_press(Message::EditTime))
+        .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
         .push(
             row()
                 .spacing(SPACING)
@@ -1220,7 +1181,7 @@ pub(super) fn build_game_parameter_editor<'a>(
         .align_items(Alignment::Center)
         .width(Length::Fill)
         .height(Length::Fill)
-        .push(make_game_time_button(snapshot).on_press(Message::EditTime))
+        .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
         .push(vertical_space(Length::Fill))
         .push(make_time_editor(title, length, false))
         .push(vertical_space(Length::Fill))
@@ -1325,7 +1286,7 @@ pub(super) fn build_confirmation_page<'a>(
         .width(Length::Fill)
         .height(Length::Fill)
         .align_items(Alignment::Center)
-        .push(make_game_time_button(snapshot).on_press(Message::EditTime))
+        .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
         .push(vertical_space(Length::Fill))
         .push(
             row()
@@ -1451,57 +1412,164 @@ pub(super) fn build_timeout_ribbon<'a>(
         .push(white)
 }
 
-fn make_game_time_button<'a>(snapshot: &GameSnapshot) -> Button<'a, Message> {
-    let (period_text, period_color) = period_text_and_color(snapshot);
+fn make_game_time_button<'a>(
+    snapshot: &GameSnapshot,
+    tall: bool,
+    allow_red: bool,
+) -> Button<'a, Message> {
+    let make_red = if !allow_red {
+        false
+    } else {
+        match snapshot.timeout {
+            TimeoutSnapshot::Black(time) | TimeoutSnapshot::White(time) => {
+                (time <= 10 && (time % 2 == 0)) || time == 15
+            }
+            TimeoutSnapshot::Ref(_) | TimeoutSnapshot::PenaltyShot(_) => false,
+            TimeoutSnapshot::None => {
+                let is_warn_period = match snapshot.current_period {
+                    GamePeriod::BetweenGames
+                    | GamePeriod::HalfTime
+                    | GamePeriod::PreOvertime
+                    | GamePeriod::OvertimeHalfTime
+                    | GamePeriod::PreSuddenDeath => true,
+                    GamePeriod::FirstHalf
+                    | GamePeriod::SecondHalf
+                    | GamePeriod::OvertimeFirstHalf
+                    | GamePeriod::OvertimeSecondHalf
+                    | GamePeriod::SuddenDeath => false,
+                };
+
+                snapshot.current_period != GamePeriod::SuddenDeath
+                    && ((snapshot.secs_in_period <= 10 && (snapshot.secs_in_period % 2 == 0))
+                        || (is_warn_period && snapshot.secs_in_period == 30))
+            }
+        }
+    };
+
+    let (mut period_text, period_color) = {
+        let (text, color) = match snapshot.current_period {
+            GamePeriod::BetweenGames => ("NEXT GAME", YELLOW),
+            GamePeriod::FirstHalf => ("FIRST HALF", GREEN),
+            GamePeriod::HalfTime => ("HALF TIME", YELLOW),
+            GamePeriod::SecondHalf => ("SECOND HALF", GREEN),
+            GamePeriod::PreOvertime => ("PRE OVERTIME BREAK", YELLOW),
+            GamePeriod::OvertimeFirstHalf => ("OVERTIME FIRST HALF", GREEN),
+            GamePeriod::OvertimeHalfTime => ("OVERTIME HALF TIME", YELLOW),
+            GamePeriod::OvertimeSecondHalf => ("OVERTIME SECOND HALF", GREEN),
+            GamePeriod::PreSuddenDeath => ("PRE SUDDEN DEATH BREAK", YELLOW),
+            GamePeriod::SuddenDeath => ("SUDDEN DEATH", GREEN),
+        };
+
+        if make_red {
+            (text, BLACK)
+        } else {
+            (text, color)
+        }
+    };
+
+    if tall && (snapshot.timeout != TimeoutSnapshot::None) {
+        match snapshot.current_period {
+            GamePeriod::PreOvertime => period_text = "PRE OT BREAK",
+            GamePeriod::OvertimeFirstHalf => period_text = "OT FIRST HALF",
+            GamePeriod::OvertimeHalfTime => period_text = "OT HALF TIME",
+            GamePeriod::OvertimeSecondHalf => period_text = "OT 2ND HALF",
+            GamePeriod::PreSuddenDeath => period_text = "PRE SD BREAK",
+            _ => {}
+        };
+    }
+
+    macro_rules! make_time_view {
+        ($base:ident, $per_text:ident, $time_text:ident) => {
+            $base
+                .width(Length::Fill)
+                .align_items(Alignment::Center)
+                .push($per_text)
+                .push($time_text)
+        };
+    }
+
+    let make_time_view_row = |period_text, time_text, color| {
+        let per = text(period_text)
+            .color(color)
+            .width(Length::Fill)
+            .vertical_alignment(Vertical::Center)
+            .horizontal_alignment(Horizontal::Right);
+        let time = text(time_text)
+            .color(color)
+            .size(LARGE_TEXT)
+            .width(Length::Fill)
+            .vertical_alignment(Vertical::Center)
+            .horizontal_alignment(Horizontal::Left);
+        let r = row().spacing(SPACING);
+        make_time_view!(r, per, time)
+    };
+
+    let make_time_view_col = |period_text, time_text, color| {
+        let per = text(period_text).color(color);
+        let time = text(time_text).color(color).size(LARGE_TEXT);
+        let c = column();
+        make_time_view!(c, per, time)
+    };
+
     let mut content = row()
         .spacing(SPACING)
         .height(Length::Fill)
-        .align_items(Alignment::Center)
-        .push(
-            text(period_text)
-                .color(period_color)
-                .width(Length::Fill)
-                .vertical_alignment(Vertical::Center)
-                .horizontal_alignment(Horizontal::Right),
-        )
-        .push(
-            text(secs_to_time_string(snapshot.secs_in_period).trim())
-                .color(period_color)
-                .size(LARGE_TEXT)
-                .width(Length::Fill)
-                .vertical_alignment(Vertical::Center)
-                .horizontal_alignment(Horizontal::Left),
-        );
+        .width(Length::Fill)
+        .align_items(Alignment::Center);
 
-    if let Some((timeout_text, color)) = match snapshot.timeout {
-        TimeoutSnapshot::White(_) => Some(("WHITE TIMEOUT", WHITE)),
-        TimeoutSnapshot::Black(_) => Some(("BLACK TIMEOUT", BLACK)),
+    let timeout_info = match snapshot.timeout {
+        TimeoutSnapshot::White(_) => Some((
+            if tall { "WHT TIMEOUT" } else { "WHITE TIMEOUT" },
+            if make_red { BLACK } else { WHITE },
+        )),
+        TimeoutSnapshot::Black(_) => {
+            Some((if tall { "BLK TIMEOUT" } else { "BLACK TIMEOUT" }, BLACK))
+        }
         TimeoutSnapshot::Ref(_) => Some(("REF TIMEOUT", YELLOW)),
         TimeoutSnapshot::PenaltyShot(_) => Some(("PENALTY SHOT", RED)),
         TimeoutSnapshot::None => None,
-    } {
-        content = content
-            .push(
-                text(timeout_text)
-                    .color(color)
-                    .width(Length::Fill)
-                    .vertical_alignment(Vertical::Center)
-                    .horizontal_alignment(Horizontal::Right),
-            )
-            .push(
-                text(timeout_time_string(snapshot))
-                    .width(Length::Fill)
-                    .vertical_alignment(Vertical::Center)
-                    .horizontal_alignment(Horizontal::Left)
-                    .color(color)
-                    .size(LARGE_TEXT),
-            );
+    };
+
+    let time_text = secs_to_time_string(snapshot.secs_in_period);
+    let time_text = time_text.trim();
+
+    if tall {
+        content = content.push(make_time_view_col(period_text, time_text, period_color));
+        if let Some((timeout_text, timeout_color)) = timeout_info {
+            content = content.push(make_time_view_col(
+                timeout_text,
+                &timeout_time_string(snapshot),
+                timeout_color,
+            ));
+        }
+    } else {
+        content = content.push(make_time_view_row(period_text, time_text, period_color));
+        if let Some((timeout_text, timeout_color)) = timeout_info {
+            content = content.push(make_time_view_row(
+                timeout_text,
+                &timeout_time_string(snapshot),
+                timeout_color,
+            ));
+        }
+    }
+
+    let button_height = if tall {
+        Length::Shrink
+    } else {
+        Length::Units(MIN_BUTTON_SIZE)
+    };
+
+    let button_style = if make_red {
+        style::Button::Red
+    } else {
+        style::Button::Gray
     };
 
     button(content)
         .width(Length::Fill)
-        .height(Length::Units(MIN_BUTTON_SIZE))
-        .style(style::Button::Gray)
+        .height(button_height)
+        .padding(PADDING)
+        .style(button_style)
 }
 
 fn make_time_editor<'a, T: Into<String>>(
@@ -1678,21 +1746,6 @@ fn config_string(snapshot: &GameSnapshot, config: &GameConfig) -> String {
         time_string(config.minimum_break),
     );
     result
-}
-
-fn period_text_and_color(snapshot: &GameSnapshot) -> (&'static str, Color) {
-    match snapshot.current_period {
-        GamePeriod::BetweenGames => ("NEXT GAME", YELLOW),
-        GamePeriod::FirstHalf => ("FIRST HALF", GREEN),
-        GamePeriod::HalfTime => ("HALF TIME", YELLOW),
-        GamePeriod::SecondHalf => ("SECOND HALF", GREEN),
-        GamePeriod::PreOvertime => ("PRE OVERTIME BREAK", YELLOW),
-        GamePeriod::OvertimeFirstHalf => ("OVERTIME FIRST HALF", GREEN),
-        GamePeriod::OvertimeHalfTime => ("OVERITME HALF TIME", YELLOW),
-        GamePeriod::OvertimeSecondHalf => ("OVERTIME SECOND HALF", GREEN),
-        GamePeriod::PreSuddenDeath => ("PRE SUDDEN DEATH BREAK", YELLOW),
-        GamePeriod::SuddenDeath => ("SUDDEN DEATH", GREEN),
-    }
 }
 
 fn make_button<'a, Message: Clone, T: Into<String>>(label: T) -> Button<'a, Message> {

@@ -1,3 +1,4 @@
+use super::uwhscores::*;
 use super::APP_CONFIG_NAME;
 use crate::{penalty_editor::*, tournament_manager::*};
 use iced::{
@@ -41,9 +42,6 @@ use style::{PADDING, SPACING, WINDOW_BACKGROUND};
 
 pub mod update_sender;
 use update_sender::*;
-
-pub mod uwhscores;
-use uwhscores::*;
 
 pub struct RefBoxApp {
     tm: Arc<Mutex<TournamentManager>>,
@@ -257,12 +255,19 @@ pub enum ConfirmationOption {
 }
 
 impl RefBoxApp {
-    fn apply_snapshot(&mut self, snapshot: GameSnapshot) {
-        self.maybe_play_sound(&snapshot);
+    fn apply_snapshot(&mut self, new_snapshot: GameSnapshot) {
+        if new_snapshot.current_period != self.snapshot.current_period {
+            if new_snapshot.current_period == GamePeriod::BetweenGames {
+                self.handle_game_end();
+            } else if self.snapshot.current_period == GamePeriod::BetweenGames {
+                self.handle_game_start(new_snapshot.game_number);
+            }
+        }
+        self.maybe_play_sound(&new_snapshot);
         self.update_sender
-            .send_snapshot(snapshot.clone(), self.config.hardware.white_on_right)
+            .send_snapshot(new_snapshot.clone(), self.config.hardware.white_on_right)
             .unwrap();
-        self.snapshot = snapshot;
+        self.snapshot = new_snapshot;
     }
 
     fn maybe_play_sound(&self, new_snapshot: &GameSnapshot) {
@@ -413,6 +418,47 @@ impl RefBoxApp {
             format!("game deatils for tid {tid} and gid {gid}"),
             |parsed: GameSingleResponse| Message::RecvGame(parsed.game),
         );
+    }
+
+    fn handle_game_start(&mut self, new_game_num: u32) {
+        if self.using_uwhscores {
+            if let (Some(ref games), Some(ref pool)) = (&self.games, &self.current_pool) {
+                let this_game_start = match games.get(&new_game_num) {
+                    Some(g) => g.start_time,
+                    None => {
+                        error!("Could not find new game's start time (gid {new_game_num}");
+                        return;
+                    }
+                };
+
+                let next_game = games
+                    .values()
+                    .filter(|game| game.pool == *pool)
+                    .filter(|game| game.start_time > this_game_start)
+                    .min_by_key(|game| game.start_time);
+
+                let mut tm = self.tm.lock().unwrap();
+                if let Some(next_game) = next_game {
+                    let info = NextGameInfo {
+                        number: next_game.gid,
+                        timing: next_game.timing_rules.clone(),
+                        start_time: Some(next_game.start_time),
+                    };
+                    tm.set_next_game(info);
+                } else {
+                    error!("Couldn't find a next game");
+                }
+                self.config.game = tm.config().clone();
+            }
+        }
+    }
+
+    fn handle_game_end(&self) {
+        if let Some(tid) = self.current_tid {
+            self.request_game_details(tid, self.snapshot.game_number);
+        } else {
+            error!("Missing current tid to request game info");
+        }
     }
 }
 
@@ -907,7 +953,29 @@ impl Application for RefBoxApp {
                             self.games = edited_settings.games;
 
                             confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
-                            tm.set_next_game_number(edited_settings.game_number);
+
+                            let next_game_info = if edited_settings.using_uwhscores {
+                                NextGameInfo {
+                                    number: edited_settings.game_number,
+                                    timing: self.games.as_ref().and_then(|games| {
+                                        games
+                                            .get(&edited_settings.game_number)?
+                                            .timing_rules
+                                            .clone()
+                                    }),
+                                    start_time: self.games.as_ref().and_then(|games| {
+                                        Some(games.get(&edited_settings.game_number)?.start_time)
+                                    }),
+                                }
+                            } else {
+                                NextGameInfo {
+                                    number: edited_settings.game_number,
+                                    timing: None,
+                                    start_time: None,
+                                }
+                            };
+
+                            tm.set_next_game(next_game_info);
                             AppState::MainPage
                         }
                     } else {
@@ -1225,20 +1293,14 @@ impl Application for RefBoxApp {
                 }
             }
             Message::RecvGame(game) => {
-                let games = if let Some(ref mut edits) = self.edited_settings {
-                    &mut edits.games
-                } else {
-                    &mut self.games
-                };
-
-                if let Some(ref mut games) = games {
+                if let Some(ref mut games) = self.games {
                     games.insert(game.gid, game);
                 } else {
                     warn!(
                         "Received info for gid {}, but there is no game list yet",
                         game.gid
                     );
-                    *games = Some(BTreeMap::from([(game.gid, game)]));
+                    self.games = Some(BTreeMap::from([(game.gid, game)]));
                 }
             }
             Message::NoAction => {}

@@ -1,3 +1,4 @@
+use chrono::{Local, NaiveDateTime};
 use derivative::Derivative;
 use log::*;
 use std::{
@@ -16,6 +17,8 @@ use uwh_common::{
         Color, GamePeriod, GameSnapshot, PenaltySnapshot, PenaltyTime, TimeoutSnapshot,
     },
 };
+
+use crate::uwhscores::TimingRules;
 
 const MAX_TIME_VAL: Duration = Duration::from_secs(5999); // 99:59 is the largest displayable value
 
@@ -36,7 +39,7 @@ pub struct TournamentManager {
     has_reset: bool,
     start_stop_tx: watch::Sender<bool>,
     start_stop_rx: watch::Receiver<bool>,
-    next_game_number: Option<u32>,
+    next_game: Option<NextGameInfo>,
     next_scheduled_start: Option<Instant>,
     reset_game_time: Duration,
 }
@@ -61,7 +64,7 @@ impl TournamentManager {
             has_reset: true,
             start_stop_tx,
             start_stop_rx,
-            next_game_number: None,
+            next_game: None,
             next_scheduled_start: None,
             reset_game_time: config.nominal_break,
             config,
@@ -137,8 +140,8 @@ impl TournamentManager {
 
     pub fn next_game_number(&self) -> u32 {
         if self.current_period == GamePeriod::BetweenGames {
-            if let Some(num) = self.next_game_number {
-                return num;
+            if let Some(ref info) = self.next_game {
+                return info.number;
             }
         }
         self.game_number + 1
@@ -149,9 +152,9 @@ impl TournamentManager {
         self.game_number = number;
     }
 
-    pub fn set_next_game_number(&mut self, number: u32) {
-        info!("Next Game Number set to {number}");
-        self.next_game_number = Some(number);
+    pub fn set_next_game(&mut self, info: NextGameInfo) {
+        info!("Next Game Info set to {info:?}");
+        self.next_game = Some(info);
     }
 
     pub fn reset_game(&mut self, now: Instant) {
@@ -633,9 +636,19 @@ impl TournamentManager {
             self.w_score
         );
 
-        let scheduled_start = self
-            .next_scheduled_start
-            .unwrap_or(now + self.config.nominal_break);
+        let scheduled_start =
+            if let Some(start_time) = self.next_game.as_ref().and_then(|info| info.start_time) {
+                match start_time
+                    .signed_duration_since(Local::now().naive_local())
+                    .to_std()
+                {
+                    Ok(dur) => Instant::now() + dur.into(),
+                    Err(_) => now,
+                }
+            } else {
+                self.next_scheduled_start
+                    .unwrap_or(now + self.config.nominal_break)
+            };
 
         let game_end = match self.clock_state {
             ClockState::CountingDown {
@@ -681,7 +694,11 @@ impl TournamentManager {
         }
 
         self.game_number = self.next_game_number();
-        self.next_game_number = None;
+
+        if let Some(timing) = self.next_game.take().and_then(|info| info.timing) {
+            self.config = timing.into();
+        }
+
         info!(
             "{} Entering first half of game {}",
             self.status_string(start_time),
@@ -1471,6 +1488,13 @@ impl<T> IndexMut<Color> for BlackWhiteBundle<T> {
             Color::White => &mut self.white,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NextGameInfo {
+    pub number: u32,
+    pub timing: Option<TimingRules>,
+    pub start_time: Option<NaiveDateTime>,
 }
 
 #[derive(Debug, PartialEq, Error)]

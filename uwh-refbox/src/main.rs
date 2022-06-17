@@ -13,6 +13,7 @@ mod tournament_manager;
 mod app;
 mod app_icon;
 mod sim_app;
+mod uwhscores;
 
 const APP_CONFIG_NAME: &str = "uwh-refbox";
 

@@ -10,23 +10,26 @@ use iced_futures::{
     subscription::Recipe,
 };
 use log::*;
+use reqwest::{Client, Method, StatusCode};
 use rodio::{
     source::{SineWave, Source, Zero},
     OutputStream, OutputStreamHandle, Sink,
 };
 use std::{
     cmp::min,
+    collections::BTreeMap,
     hash::Hasher,
     process::Child,
     sync::{Arc, Mutex},
 };
 use tokio::{
-    sync::watch,
+    sync::{mpsc, watch},
+    task,
     time::{timeout_at, Duration, Instant},
 };
 use tokio_serial::SerialPortBuilder;
 use uwh_common::{
-    config::Config,
+    config::{Config, Game as GameConfig},
     game_snapshot::{Color as GameColor, GamePeriod, GameSnapshot, TimeoutSnapshot},
 };
 
@@ -39,17 +42,27 @@ use style::{PADDING, SPACING, WINDOW_BACKGROUND};
 pub mod update_sender;
 use update_sender::*;
 
+pub mod uwhscores;
+use uwhscores::*;
+
 pub struct RefBoxApp {
     tm: Arc<Mutex<TournamentManager>>,
     config: Config,
-    edited_game_num: u16,
-    edited_white_on_right: bool,
+    edited_settings: Option<EditableSettings>,
     snapshot: GameSnapshot,
     time_updater: TimeUpdater,
     pen_edit: PenaltyEditor,
     app_state: AppState,
     last_app_state: AppState,
     update_sender: UpdateSender,
+    message_listener: MessageListener,
+    msg_tx: mpsc::UnboundedSender<Message>,
+    client: Option<Client>,
+    using_uwhscores: bool,
+    tournaments: Option<BTreeMap<u32, TournamentInfo>>,
+    games: Option<BTreeMap<u32, GameInfo>>,
+    current_tid: Option<u32>,
+    current_pool: Option<String>,
     sound: Option<(OutputStream, OutputStreamHandle)>,
     sim_child: Option<Child>,
 }
@@ -72,7 +85,19 @@ enum AppState {
     KeypadPage(KeypadPage, u16),
     EditGameConfig,
     ParameterEditor(LengthParameter, Duration),
+    ParameterList(ListableParameter, usize),
     ConfirmationPage(ConfirmationKind),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct EditableSettings {
+    config: GameConfig,
+    game_number: u32,
+    white_on_right: bool,
+    using_uwhscores: bool,
+    current_tid: Option<u32>,
+    current_pool: Option<String>,
+    games: Option<BTreeMap<u32, GameInfo>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -88,6 +113,7 @@ enum ConfirmationKind {
     GameNumberChanged,
     GameConfigChanged,
     Error(String),
+    UwhScoresIncomplete,
 }
 
 impl KeypadPage {
@@ -108,7 +134,7 @@ impl KeypadPage {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LengthParameter {
     Half,
     HalfTime,
@@ -120,15 +146,31 @@ pub enum LengthParameter {
     PreSuddenDeath,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ListableParameter {
+    Tournament,
+    Pool,
+    Game,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BoolGameParameter {
     OvertimeAllowed,
     SuddenDeathAllowed,
     WhiteOnRight,
+    UsingUwhScores,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScrollOption {
+    Black,
+    White,
+    GameParameter,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
+    Init,
     NewSnapshot(GameSnapshot),
     EditTime,
     ChangeTime {
@@ -150,7 +192,7 @@ pub enum Message {
     },
     PenaltyOverview,
     Scroll {
-        color: GameColor,
+        which: ScrollOption,
         up: bool,
     },
     PenaltyOverviewComplete {
@@ -172,9 +214,11 @@ pub enum Message {
         canceled: bool,
     },
     EditParameter(LengthParameter),
+    SelectParameter(ListableParameter),
     ParameterEditComplete {
         canceled: bool,
     },
+    ParameterSelected(ListableParameter, usize),
     ToggleBoolParameter(BoolGameParameter),
     ConfirmationSelected(ConfirmationOption),
     BlackTimeout(bool),
@@ -182,6 +226,10 @@ pub enum Message {
     RefTimeout(bool),
     PenaltyShot(bool),
     EndTimeout,
+    RecvTournamentList(Vec<TournamentInfo>),
+    RecvTournament(TournamentInfo),
+    RecvGameList(Vec<GameInfo>),
+    RecvGame(GameInfo),
     NoAction, // TODO: Remove once UI is functional
 }
 
@@ -284,6 +332,88 @@ impl RefBoxApp {
             }
         }
     }
+
+    fn try_background_request<T, F>(&self, url: String, short_name: String, on_success: F)
+    where
+        T: serde::de::DeserializeOwned,
+        F: Fn(T) -> Message + Send + Sync + 'static,
+    {
+        if let Some(client) = &self.client {
+            info!("Starting request for {short_name}");
+            let request = client.request(Method::GET, url).build().unwrap();
+            let client_ = client.clone();
+            let msg_tx_ = self.msg_tx.clone();
+            task::spawn(async move {
+                let msg = match client_.execute(request).await {
+                    Ok(resp) => {
+                        if resp.status() != StatusCode::OK {
+                            error!(
+                                "Got bad status code from uwhscores when requesting {}: {}",
+                                short_name,
+                                resp.status()
+                            );
+                            None
+                        } else {
+                            match resp.json::<T>().await {
+                                Ok(parsed) => Some(on_success(parsed)),
+                                Err(e) => {
+                                    error!("Couldn't desesrialize {}: {e}", short_name);
+                                    None
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("Request for {} failed: {e}", short_name);
+                        None
+                    }
+                };
+
+                if let Some(msg) = msg {
+                    msg_tx_.send(msg).unwrap();
+                }
+            });
+        }
+    }
+
+    fn request_tournament_list(&self) {
+        let url = format!("{}tournaments", self.config.game.uwhscores_url);
+        self.try_background_request(
+            url,
+            "tournament list".to_string(),
+            |parsed: TournamentListResponse| Message::RecvTournamentList(parsed.tournaments),
+        );
+    }
+
+    fn request_tournament_details(&self, tid: u32) {
+        let url = format!("{}tournaments/{tid}", self.config.game.uwhscores_url);
+        self.try_background_request(
+            url,
+            format!("tournament details for tid {tid}"),
+            |parsed: TournamentSingleResponse| Message::RecvTournament(parsed.tournament),
+        );
+    }
+
+    fn request_game_list(&self, tid: u32) {
+        let url = format!("{}tournaments/{tid}/games", self.config.game.uwhscores_url);
+        self.try_background_request(
+            url,
+            format!("game list for tid {tid}"),
+            |parsed: GameListResponse| Message::RecvGameList(parsed.games),
+        );
+    }
+
+    fn request_game_details(&self, tid: u32, gid: u32) {
+        let url = format!(
+            "{}tournaments/{tid}/games/{gid}",
+            self.config.game.uwhscores_url
+        );
+        self.try_background_request(
+            url,
+            format!("game deatils for tid {tid} and gid {gid}"),
+            |parsed: GameSingleResponse| Message::RecvGame(parsed.game),
+        );
+    }
 }
 
 impl Drop for RefBoxApp {
@@ -317,8 +447,22 @@ impl Application for RefBoxApp {
             }
         };
 
+        let (msg_tx, rx) = mpsc::unbounded_channel();
+        let message_listener = MessageListener {
+            rx: Arc::new(Mutex::new(Some(rx))),
+        };
+        msg_tx.send(Message::Init).unwrap();
+
         let mut tm = TournamentManager::new(config.game.clone());
         tm.start_clock(Instant::now());
+
+        let client = match Client::builder().https_only(true).build() {
+            Ok(c) => Some(c),
+            Err(e) => {
+                error!("Failed to start HTTP Client: {e}");
+                None
+            }
+        };
 
         let clock_running_receiver = tm.get_start_stop_rx();
 
@@ -337,12 +481,19 @@ impl Application for RefBoxApp {
                 },
                 tm,
                 config,
-                edited_game_num: 0,
-                edited_white_on_right: false,
+                edited_settings: Default::default(),
                 snapshot,
                 app_state: AppState::MainPage,
                 last_app_state: AppState::MainPage,
                 update_sender,
+                message_listener,
+                msg_tx,
+                client,
+                using_uwhscores: false,
+                tournaments: None,
+                games: None,
+                current_tid: None,
+                current_pool: None,
                 sound,
                 sim_child,
             },
@@ -351,7 +502,10 @@ impl Application for RefBoxApp {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        Subscription::from_recipe(self.time_updater.clone()).map(Message::NewSnapshot)
+        Subscription::batch([
+            Subscription::from_recipe(self.time_updater.clone()).map(Message::NewSnapshot),
+            Subscription::from_recipe(self.message_listener.clone()),
+        ])
     }
 
     fn title(&self) -> String {
@@ -361,6 +515,7 @@ impl Application for RefBoxApp {
     fn update(&mut self, message: Message) -> Command<Message> {
         trace!("Handling message: {message:?}");
         match message {
+            Message::Init => self.request_tournament_list(),
             Message::NewSnapshot(snapshot) => {
                 self.apply_snapshot(snapshot);
             }
@@ -491,16 +646,24 @@ impl Application for RefBoxApp {
                 };
                 trace!("AppState changed to {:?}", self.app_state);
             }
-            Message::Scroll { color, up } => {
+            Message::Scroll { which, up } => {
                 if let AppState::PenaltyOverview {
                     ref mut black_idx,
                     ref mut white_idx,
                 } = self.app_state
                 {
-                    let idx = match color {
-                        GameColor::Black => black_idx,
-                        GameColor::White => white_idx,
+                    let idx = match which {
+                        ScrollOption::Black => black_idx,
+                        ScrollOption::White => white_idx,
+                        ScrollOption::GameParameter => unreachable!(),
                     };
+                    if up {
+                        *idx = idx.saturating_sub(1);
+                    } else {
+                        *idx = idx.saturating_add(1);
+                    }
+                } else if let AppState::ParameterList(_, ref mut idx) = self.app_state {
+                    debug_assert_eq!(which, ScrollOption::GameParameter);
                     if up {
                         *idx = idx.saturating_sub(1);
                     } else {
@@ -585,7 +748,13 @@ impl Application for RefBoxApp {
                             .player_number as u16
                     }
                     KeypadPage::TeamTimeouts(_) => self.config.game.team_timeouts_per_half,
-                    KeypadPage::GameNumber => self.edited_game_num,
+                    KeypadPage::GameNumber => self
+                        .edited_settings
+                        .as_ref()
+                        .unwrap()
+                        .game_number
+                        .try_into()
+                        .unwrap_or(0),
                 };
                 self.app_state = AppState::KeypadPage(page, init_val);
                 trace!("AppState changed to {:?}", self.app_state);
@@ -647,39 +816,108 @@ impl Application for RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
             }
             Message::EditGameConfig => {
-                self.config.game = self.tm.lock().unwrap().config().clone();
-                self.edited_game_num = if self.snapshot.current_period == GamePeriod::BetweenGames {
-                    self.snapshot.next_game_number
-                } else {
-                    self.snapshot.game_number
+                let edited_settings = EditableSettings {
+                    config: self.tm.lock().unwrap().config().clone(),
+                    game_number: if self.snapshot.current_period == GamePeriod::BetweenGames {
+                        self.snapshot.next_game_number
+                    } else {
+                        self.snapshot.game_number
+                    },
+                    white_on_right: self.config.hardware.white_on_right,
+                    using_uwhscores: self.using_uwhscores,
+                    current_tid: self.current_tid,
+                    current_pool: self.current_pool.clone(),
+                    games: self.games.clone(),
                 };
-                self.edited_white_on_right = self.config.hardware.white_on_right;
+
+                self.edited_settings = Some(edited_settings);
+
                 self.app_state = AppState::EditGameConfig;
                 trace!("AppState changed to {:?}", self.app_state);
             }
             Message::ConfigEditComplete { canceled } => {
                 let mut tm = self.tm.lock().unwrap();
+
+                let edited_settings = self.edited_settings.as_mut().unwrap();
+
+                let mut uwhscores_incomplete = edited_settings.using_uwhscores
+                    && (edited_settings.current_tid.is_none()
+                        || edited_settings.current_pool.is_none()
+                        || edited_settings.games.is_none());
+                if !uwhscores_incomplete {
+                    match edited_settings
+                        .games
+                        .as_ref()
+                        .unwrap()
+                        .get(&edited_settings.game_number)
+                    {
+                        Some(g) => {
+                            uwhscores_incomplete =
+                                g.pool != *edited_settings.current_pool.as_ref().unwrap()
+                        }
+                        None => uwhscores_incomplete = true,
+                    };
+                }
+
                 self.app_state = if !canceled {
-                    if self.config.game != *tm.config() {
+                    let new_config = if edited_settings.using_uwhscores && !uwhscores_incomplete {
+                        match edited_settings
+                            .games
+                            .as_ref()
+                            .unwrap()
+                            .get(&edited_settings.game_number)
+                            .unwrap()
+                            .timing_rules
+                        {
+                            Some(ref rules) => rules.clone().into(),
+                            None => tm.config().clone(),
+                        }
+                    } else {
+                        edited_settings.config.clone()
+                    };
+
+                    if uwhscores_incomplete {
+                        AppState::ConfirmationPage(ConfirmationKind::UwhScoresIncomplete)
+                    } else if new_config != *tm.config() {
                         if tm.current_period() != GamePeriod::BetweenGames {
                             AppState::ConfirmationPage(ConfirmationKind::GameConfigChanged)
                         } else {
-                            tm.set_config(self.config.game.clone()).unwrap();
-                            self.config.hardware.white_on_right = self.edited_white_on_right;
+                            tm.set_config(new_config.clone()).unwrap();
+                            self.config.game = new_config;
+
+                            let edited_settings = self.edited_settings.take().unwrap();
+                            self.config.hardware.white_on_right = edited_settings.white_on_right;
+                            self.using_uwhscores = edited_settings.using_uwhscores;
+                            self.current_tid = edited_settings.current_tid;
+                            self.current_pool = edited_settings.current_pool;
+                            self.games = edited_settings.games;
+
                             confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
                             AppState::MainPage
                         }
-                    } else if self.edited_game_num != self.snapshot.game_number {
+                    } else if edited_settings.game_number != self.snapshot.game_number {
                         if tm.current_period() != GamePeriod::BetweenGames {
                             AppState::ConfirmationPage(ConfirmationKind::GameNumberChanged)
                         } else {
-                            self.config.hardware.white_on_right = self.edited_white_on_right;
+                            let edited_settings = self.edited_settings.take().unwrap();
+                            self.config.hardware.white_on_right = edited_settings.white_on_right;
+                            self.using_uwhscores = edited_settings.using_uwhscores;
+                            self.current_tid = edited_settings.current_tid;
+                            self.current_pool = edited_settings.current_pool;
+                            self.games = edited_settings.games;
+
                             confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
-                            tm.set_next_game_number(self.edited_game_num);
+                            tm.set_next_game_number(edited_settings.game_number);
                             AppState::MainPage
                         }
                     } else {
-                        self.config.hardware.white_on_right = self.edited_white_on_right;
+                        let edited_settings = self.edited_settings.take().unwrap();
+                        self.config.hardware.white_on_right = edited_settings.white_on_right;
+                        self.using_uwhscores = edited_settings.using_uwhscores;
+                        self.current_tid = edited_settings.current_tid;
+                        self.current_pool = edited_settings.current_pool;
+                        self.games = edited_settings.games;
+
                         confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
                         AppState::MainPage
                     }
@@ -706,37 +944,77 @@ impl Application for RefBoxApp {
                 );
                 trace!("AppState changed to {:?}", self.app_state);
             }
+            Message::SelectParameter(param) => {
+                let index = match param {
+                    ListableParameter::Tournament => self.current_tid.and_then(|cur_tid| {
+                        self.tournaments
+                            .as_ref()?
+                            .iter()
+                            .enumerate()
+                            .find(|(_, (tid, _))| **tid == cur_tid)
+                            .map(|(i, _)| i)
+                    }),
+                    ListableParameter::Pool => self.current_pool.as_ref().and_then(|cur_pool| {
+                        self.tournaments
+                            .as_ref()?
+                            .get(&self.current_tid?)?
+                            .pools
+                            .as_ref()?
+                            .iter()
+                            .enumerate()
+                            .find(|(_, pool)| **pool == *cur_pool)
+                            .map(|(i, _)| i)
+                    }),
+                    ListableParameter::Game => self.games.as_ref().and_then(|games| {
+                        games
+                            .iter()
+                            .enumerate()
+                            .find(|(_, (gid, _))| {
+                                **gid == self.edited_settings.as_ref().unwrap().game_number
+                            })
+                            .map(|(i, _)| i)
+                    }),
+                }
+                .unwrap_or(0);
+                self.app_state = AppState::ParameterList(param, index);
+                trace!("AppState changed to {:?}", self.app_state);
+            }
             Message::ParameterEditComplete { canceled } => {
                 if !canceled {
+                    let edited_settings = self.edited_settings.as_mut().unwrap();
                     match self.app_state {
                         AppState::ParameterEditor(param, dur) => match param {
-                            LengthParameter::Half => self.config.game.half_play_duration = dur,
-                            LengthParameter::HalfTime => self.config.game.half_time_duration = dur,
+                            LengthParameter::Half => {
+                                edited_settings.config.half_play_duration = dur
+                            }
+                            LengthParameter::HalfTime => {
+                                edited_settings.config.half_time_duration = dur
+                            }
                             LengthParameter::NominalBetweenGame => {
-                                self.config.game.nominal_break = dur
+                                edited_settings.config.nominal_break = dur
                             }
                             LengthParameter::MinimumBetweenGame => {
-                                self.config.game.minimum_break = dur
+                                edited_settings.config.minimum_break = dur
                             }
                             LengthParameter::PreOvertime => {
-                                self.config.game.pre_overtime_break = dur
+                                edited_settings.config.pre_overtime_break = dur
                             }
                             LengthParameter::OvertimeHalf => {
-                                self.config.game.ot_half_play_duration = dur
+                                edited_settings.config.ot_half_play_duration = dur
                             }
                             LengthParameter::OvertimeHalfTime => {
-                                self.config.game.ot_half_time_duration = dur
+                                edited_settings.config.ot_half_time_duration = dur
                             }
                             LengthParameter::PreSuddenDeath => {
-                                self.config.game.pre_sudden_death_duration = dur
+                                edited_settings.config.pre_sudden_death_duration = dur
                             }
                         },
                         AppState::KeypadPage(KeypadPage::GameNumber, num) => {
-                            self.edited_game_num = num;
+                            edited_settings.game_number = num.into();
                         }
                         AppState::KeypadPage(KeypadPage::TeamTimeouts(len), num) => {
-                            self.config.game.team_timeout_duration = len;
-                            self.config.game.team_timeouts_per_half = num;
+                            edited_settings.config.team_timeout_duration = len;
+                            edited_settings.config.team_timeouts_per_half = num;
                         }
                         _ => unreachable!(),
                     }
@@ -745,13 +1023,46 @@ impl Application for RefBoxApp {
                 self.app_state = AppState::EditGameConfig;
                 trace!("AppState changed to {:?}", self.app_state);
             }
-            Message::ToggleBoolParameter(param) => match param {
-                BoolGameParameter::OvertimeAllowed => self.config.game.has_overtime ^= true,
-                BoolGameParameter::SuddenDeathAllowed => {
-                    self.config.game.sudden_death_allowed ^= true
+            Message::ParameterSelected(param, val) => {
+                let edited_settings = self.edited_settings.as_mut().unwrap();
+                match param {
+                    ListableParameter::Tournament => {
+                        edited_settings.current_tid = Some(val as u32);
+                        self.request_tournament_details(val as u32);
+                        self.request_game_list(val as u32);
+                    }
+                    ListableParameter::Pool => {
+                        edited_settings.current_pool = Some(
+                            self.tournaments
+                                .as_ref()
+                                .unwrap()
+                                .get(&edited_settings.current_tid.unwrap())
+                                .unwrap()
+                                .pools
+                                .as_ref()
+                                .unwrap()[val]
+                                .clone(),
+                        )
+                    }
+                    ListableParameter::Game => edited_settings.game_number = val as u32,
+                };
+
+                self.app_state = AppState::EditGameConfig;
+                trace!("AppState changed to {:?}", self.app_state);
+            }
+            Message::ToggleBoolParameter(param) => {
+                let edited_settings = self.edited_settings.as_mut().unwrap();
+                match param {
+                    BoolGameParameter::OvertimeAllowed => {
+                        edited_settings.config.has_overtime ^= true
+                    }
+                    BoolGameParameter::SuddenDeathAllowed => {
+                        edited_settings.config.sudden_death_allowed ^= true
+                    }
+                    BoolGameParameter::WhiteOnRight => edited_settings.white_on_right ^= true,
+                    BoolGameParameter::UsingUwhScores => edited_settings.using_uwhscores ^= true,
                 }
-                BoolGameParameter::WhiteOnRight => self.edited_white_on_right ^= true,
-            },
+            }
             Message::ConfirmationSelected(selection) => {
                 let config_changed = if let AppState::ConfirmationPage(ref kind) = self.app_state {
                     kind == &ConfirmationKind::GameConfigChanged
@@ -763,26 +1074,40 @@ impl Application for RefBoxApp {
                     ConfirmationOption::DiscardChanges => AppState::MainPage,
                     ConfirmationOption::GoBack => AppState::EditGameConfig,
                     ConfirmationOption::EndGameAndApply => {
+                        let edited_settings = self.edited_settings.take().unwrap();
                         let mut tm = self.tm.lock().unwrap();
                         let now = Instant::now();
                         tm.reset_game(now);
                         if config_changed {
                             tm.set_config(self.config.game.clone()).unwrap();
                         }
-                        self.config.hardware.white_on_right = self.edited_white_on_right;
+
+                        self.config.hardware.white_on_right = edited_settings.white_on_right;
+                        self.using_uwhscores = edited_settings.using_uwhscores;
+                        self.current_tid = edited_settings.current_tid;
+                        self.current_pool = edited_settings.current_pool;
+                        self.games = edited_settings.games;
+
                         confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
-                        tm.set_game_number(self.edited_game_num);
+                        tm.set_game_number(edited_settings.game_number);
                         let snapshot = tm.generate_snapshot(now).unwrap();
                         std::mem::drop(tm);
                         self.apply_snapshot(snapshot);
                         AppState::MainPage
                     }
                     ConfirmationOption::KeepGameAndApply => {
+                        let edited_settings = self.edited_settings.take().unwrap();
                         let mut tm = self.tm.lock().unwrap();
-                        tm.set_game_number(self.edited_game_num);
+                        tm.set_game_number(edited_settings.game_number);
                         let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
                         std::mem::drop(tm);
-                        self.config.hardware.white_on_right = self.edited_white_on_right;
+
+                        self.config.hardware.white_on_right = edited_settings.white_on_right;
+                        self.using_uwhscores = edited_settings.using_uwhscores;
+                        self.current_tid = edited_settings.current_tid;
+                        self.current_pool = edited_settings.current_pool;
+                        self.games = edited_settings.games;
+
                         confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
                         self.apply_snapshot(snapshot);
                         AppState::MainPage
@@ -857,6 +1182,65 @@ impl Application for RefBoxApp {
                 std::mem::drop(tm);
                 self.apply_snapshot(snapshot);
             }
+            Message::RecvTournamentList(t_list) => {
+                let t_map = t_list
+                    .into_iter()
+                    .filter(|t| t.is_active == 1)
+                    .map(|t| (t.tid, t))
+                    .collect();
+                self.tournaments = Some(t_map);
+            }
+            Message::RecvTournament(tournament) => {
+                if let Some(tid) = self.current_tid.or_else(|| {
+                    self.edited_settings
+                        .as_ref()
+                        .and_then(|edits| edits.current_tid)
+                }) {
+                    if tid != tournament.tid {
+                        warn!(
+                            "Received tournament data, but for the wrong tid: {}",
+                            tournament.tid
+                        )
+                    }
+                } else {
+                    warn!("Received tournament data, but there is no current tid")
+                }
+
+                if let Some(ref mut tournaments) = self.tournaments {
+                    tournaments.insert(tournament.tid, tournament);
+                } else {
+                    warn!(
+                        "Received info for tid {}, but there is no tournament list yet",
+                        tournament.tid
+                    );
+                    self.tournaments = Some(BTreeMap::from([(tournament.tid, tournament)]));
+                }
+            }
+            Message::RecvGameList(games_list) => {
+                let games_map = games_list.into_iter().map(|g| (g.gid, g)).collect();
+                if let Some(ref mut edits) = self.edited_settings {
+                    edits.games = Some(games_map);
+                } else {
+                    self.games = Some(games_map);
+                }
+            }
+            Message::RecvGame(game) => {
+                let games = if let Some(ref mut edits) = self.edited_settings {
+                    &mut edits.games
+                } else {
+                    &mut self.games
+                };
+
+                if let Some(ref mut games) = games {
+                    games.insert(game.gid, game);
+                } else {
+                    warn!(
+                        "Received info for gid {}, but there is no game list yet",
+                        game.gid
+                    );
+                    *games = Some(BTreeMap::from([(game.gid, game)]));
+                }
+            }
             Message::NoAction => {}
         };
 
@@ -872,7 +1256,12 @@ impl Application for RefBoxApp {
             .spacing(SPACING)
             .padding(PADDING)
             .push(match self.app_state {
-                AppState::MainPage => build_main_view(&self.snapshot, &self.config.game),
+                AppState::MainPage => build_main_view(
+                    &self.snapshot,
+                    &self.config.game,
+                    self.using_uwhscores,
+                    &self.games,
+                ),
                 AppState::TimeEdit(_, time, timeout_time) => {
                     build_time_edit_view(&self.snapshot, time, timeout_time)
                 }
@@ -895,13 +1284,19 @@ impl Application for RefBoxApp {
                 }
                 AppState::EditGameConfig => build_game_config_edit_page(
                     &self.snapshot,
-                    &self.config.game,
-                    self.edited_game_num,
-                    self.edited_white_on_right,
+                    self.edited_settings.as_ref().unwrap(),
+                    &self.tournaments,
                 ),
                 AppState::ParameterEditor(param, dur) => {
                     build_game_parameter_editor(&self.snapshot, param, dur)
                 }
+                AppState::ParameterList(param, index) => build_list_selector_page(
+                    &self.snapshot,
+                    param,
+                    index,
+                    self.edited_settings.as_ref().unwrap(),
+                    &self.tournaments,
+                ),
                 AppState::ConfirmationPage(ref kind) => {
                     build_confirmation_page(&self.snapshot, kind)
                 }
@@ -999,3 +1394,42 @@ impl<H: Hasher, I> Recipe<H, I> for TimeUpdater {
         }))
     }
 }
+
+#[derive(Debug, Clone)]
+struct MessageListener {
+    rx: Arc<Mutex<Option<mpsc::UnboundedReceiver<Message>>>>,
+}
+
+impl<H: Hasher, I> Recipe<H, I> for MessageListener {
+    type Output = Message;
+
+    fn hash(&self, state: &mut H) {
+        use std::hash::Hash;
+
+        "MessageListener".hash(state);
+    }
+
+    fn stream(self: Box<Self>, _input: BoxStream<'static, I>) -> BoxStream<'static, Self::Output> {
+        info!("Message Listener started");
+
+        let rx = self
+            .rx
+            .lock()
+            .unwrap()
+            .take()
+            .expect("Listener has already been started");
+
+        Box::pin(stream::unfold(rx, |mut rx| async move {
+            match rx.recv().await {
+                Some(msg) => Some((msg, rx)),
+                None => None,
+            }
+        }))
+    }
+}
+
+// impl Clone for MessageListener {
+//     fn clone(&self) -> Self {
+//         Self { rx: None }
+//     }
+// }

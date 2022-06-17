@@ -42,8 +42,8 @@ pub struct GameSnapshot {
     pub b_penalties: Vec<PenaltySnapshot>,
     pub w_penalties: Vec<PenaltySnapshot>,
     pub is_old_game: bool,
-    pub game_number: u16,
-    pub next_game_number: u16,
+    pub game_number: u32,
+    pub next_game_number: u32,
     pub tournament_id: u64,
 }
 

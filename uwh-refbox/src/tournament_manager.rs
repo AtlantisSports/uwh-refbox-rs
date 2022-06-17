@@ -22,7 +22,7 @@ const MAX_TIME_VAL: Duration = Duration::from_secs(5999); // 99:59 is the larges
 #[derive(Debug)]
 pub struct TournamentManager {
     config: GameConfig,
-    game_number: u16,
+    game_number: u32,
     game_start_time: Instant,
     current_period: GamePeriod,
     clock_state: ClockState,
@@ -36,7 +36,7 @@ pub struct TournamentManager {
     has_reset: bool,
     start_stop_tx: watch::Sender<bool>,
     start_stop_rx: watch::Receiver<bool>,
-    next_game_number: Option<u16>,
+    next_game_number: Option<u32>,
     next_scheduled_start: Option<Instant>,
     reset_game_time: Duration,
 }
@@ -131,11 +131,11 @@ impl TournamentManager {
         Ok(())
     }
 
-    pub fn game_number(&self) -> u16 {
+    pub fn game_number(&self) -> u32 {
         self.game_number
     }
 
-    pub fn next_game_number(&self) -> u16 {
+    pub fn next_game_number(&self) -> u32 {
         if self.current_period == GamePeriod::BetweenGames {
             if let Some(num) = self.next_game_number {
                 return num;
@@ -144,12 +144,12 @@ impl TournamentManager {
         self.game_number + 1
     }
 
-    pub fn set_game_number(&mut self, number: u16) {
+    pub fn set_game_number(&mut self, number: u32) {
         info!("Game Number set to {number}");
         self.game_number = number;
     }
 
-    pub fn set_next_game_number(&mut self, number: u16) {
+    pub fn set_next_game_number(&mut self, number: u32) {
         info!("Next Game Number set to {number}");
         self.next_game_number = Some(number);
     }

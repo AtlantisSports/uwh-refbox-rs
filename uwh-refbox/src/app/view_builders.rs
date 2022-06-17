@@ -5,19 +5,21 @@ use super::{
     },
     *,
 };
+use collect_array::CollectArrayResult;
 use iced::{
     alignment::{Horizontal, Vertical},
     pure::{
         button, column, container, horizontal_space, row, text, vertical_space,
         widget::{
             svg::{self, Svg},
-            Button, Container, Row,
+            Button, Container, Row, Text,
         },
         Element,
     },
     Alignment, Length,
 };
 use std::{
+    borrow::Cow,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -29,11 +31,11 @@ use uwh_common::{
 };
 use uwh_matrix_drawing::secs_to_time_string;
 
-pub const PENALTY_LIST_LEN: usize = 3;
-
 pub(super) fn build_main_view<'a>(
     snapshot: &GameSnapshot,
     config: &GameConfig,
+    using_uwhscores: bool,
+    games: &Option<BTreeMap<u32, GameInfo>>,
 ) -> Element<'a, Message> {
     let time_button = make_game_time_button(snapshot, true, true).on_press(Message::EditTime);
 
@@ -77,7 +79,7 @@ pub(super) fn build_main_view<'a>(
 
     center_col = center_col.push(
         button(
-            text(config_string(snapshot, config))
+            text(config_string(snapshot, config, using_uwhscores, games))
                 .size(SMALL_TEXT)
                 .vertical_alignment(Vertical::Center)
                 .horizontal_alignment(Horizontal::Left),
@@ -412,59 +414,93 @@ fn make_penalty_list<'a>(
     index: usize,
     color: GameColor,
 ) -> Container<'a, Message> {
-    let mut pen_col = column().spacing(SPACING).width(Length::Fill).push(
-        text(format!("{} PENALTIES", color.to_string().to_uppercase()))
-            .height(Length::Fill)
-            .width(Length::Fill)
-            .horizontal_alignment(Horizontal::Center)
-            .vertical_alignment(Vertical::Center),
-    );
+    const PENALTY_LIST_LEN: usize = 3;
+
+    let title = text(format!("{} PENALTIES", color.to_string().to_uppercase()))
+        .height(Length::Fill)
+        .width(Length::Fill)
+        .horizontal_alignment(Horizontal::Center)
+        .vertical_alignment(Vertical::Center);
 
     let num_pens = penalties.len();
 
-    let iter = penalties
+    let buttons: CollectArrayResult<_, PENALTY_LIST_LEN> = penalties
         .into_iter()
         .enumerate()
         .skip(index)
         .map(Some)
         .chain([None].into_iter().cycle())
-        .take(PENALTY_LIST_LEN);
+        .take(PENALTY_LIST_LEN)
+        .map(|pen| {
+            if let Some((i, (pen_text, format, kind))) = pen {
+                let mut text = text(pen_text)
+                    .vertical_alignment(Vertical::Center)
+                    .horizontal_alignment(Horizontal::Left)
+                    .width(Length::Fill);
 
-    for pen in iter {
-        pen_col = pen_col.push(if let Some((i, (pen_text, format, kind))) = pen {
-            let mut text = text(pen_text)
-                .vertical_alignment(Vertical::Center)
-                .horizontal_alignment(Horizontal::Left)
-                .width(Length::Fill);
+                match format {
+                    FormatHint::NoChange => {}
+                    FormatHint::Edited => text = text.color(ORANGE),
+                    FormatHint::Deleted => text = text.color(RED),
+                    FormatHint::New => text = text.color(GREEN),
+                }
 
-            match format {
-                FormatHint::NoChange => {}
-                FormatHint::Edited => text = text.color(ORANGE),
-                FormatHint::Deleted => text = text.color(RED),
-                FormatHint::New => text = text.color(GREEN),
+                button(text)
+                    .padding(PADDING)
+                    .height(Length::Units(MIN_BUTTON_SIZE))
+                    .width(Length::Fill)
+                    .style(style::Button::Gray)
+                    .on_press(Message::KeypadPage(KeypadPage::Penalty(
+                        Some((color, i)),
+                        color,
+                        kind,
+                    )))
+            } else {
+                button(horizontal_space(Length::Shrink))
+                    .height(Length::Units(MIN_BUTTON_SIZE))
+                    .width(Length::Fill)
+                    .style(style::Button::Gray)
+                    .on_press(Message::KeypadPage(KeypadPage::Penalty(
+                        None,
+                        color,
+                        PenaltyKind::OneMinute,
+                    )))
             }
+        })
+        .collect();
 
-            button(text)
-                .padding(PADDING)
-                .height(Length::Units(MIN_BUTTON_SIZE))
-                .width(Length::Fill)
-                .style(style::Button::Gray)
-                .on_press(Message::KeypadPage(KeypadPage::Penalty(
-                    Some((color, i)),
-                    color,
-                    kind,
-                )))
-        } else {
-            button(horizontal_space(Length::Shrink))
-                .height(Length::Units(MIN_BUTTON_SIZE))
-                .width(Length::Fill)
-                .style(style::Button::Gray)
-                .on_press(Message::KeypadPage(KeypadPage::Penalty(
-                    None,
-                    color,
-                    PenaltyKind::OneMinute,
-                )))
-        });
+    let cont_style = match color {
+        GameColor::Black => style::Container::Black,
+        GameColor::White => style::Container::White,
+    };
+
+    let scroll_option = match color {
+        GameColor::Black => ScrollOption::Black,
+        GameColor::White => ScrollOption::White,
+    };
+
+    make_scroll_list(
+        buttons.unwrap(),
+        num_pens + 1,
+        index,
+        title,
+        scroll_option,
+        cont_style,
+    )
+}
+
+fn make_scroll_list<'a, const LIST_LEN: usize>(
+    buttons: [Button<'a, Message>; LIST_LEN],
+    num_items: usize,
+    index: usize,
+    title: Text,
+    scroll_option: ScrollOption,
+    cont_style: impl iced::pure::widget::container::StyleSheet + 'a,
+) -> Container<'a, Message> {
+    let mut main_col = column().spacing(SPACING).width(Length::Fill).push(title);
+
+    for button in buttons {
+        main_col = main_col.push(button);
     }
 
     let top_len;
@@ -472,16 +508,16 @@ fn make_penalty_list<'a>(
     let can_scroll_up;
     let can_scroll_down;
 
-    if num_pens < PENALTY_LIST_LEN {
+    if num_items <= LIST_LEN {
         top_len = 0;
         bottom_len = 0;
         can_scroll_up = false;
         can_scroll_down = false;
     } else {
         top_len = index as u16;
-        bottom_len = (1 + num_pens - PENALTY_LIST_LEN - index) as u16;
+        bottom_len = (num_items - LIST_LEN - index) as u16;
         can_scroll_up = index > 0;
-        can_scroll_down = index + PENALTY_LIST_LEN <= num_pens;
+        can_scroll_down = index + LIST_LEN < num_items;
     }
 
     let top_len = match top_len {
@@ -521,17 +557,18 @@ fn make_penalty_list<'a>(
     .style(style::Button::Blue);
 
     if can_scroll_up {
-        up_btn = up_btn.on_press(Message::Scroll { color, up: true });
+        up_btn = up_btn.on_press(Message::Scroll {
+            which: scroll_option,
+            up: true,
+        });
     }
 
     if can_scroll_down {
-        down_btn = down_btn.on_press(Message::Scroll { color, up: false });
+        down_btn = down_btn.on_press(Message::Scroll {
+            which: scroll_option,
+            up: false,
+        });
     }
-
-    let cont_style = match color {
-        GameColor::Black => style::Container::Black,
-        GameColor::White => style::Container::White,
-    };
 
     let scroll_bar = row()
         .width(Length::Fill)
@@ -544,7 +581,7 @@ fn make_penalty_list<'a>(
                     .push(
                         container(vertical_space(Length::Fill))
                             .width(Length::Fill)
-                            .height(Length::FillPortion(PENALTY_LIST_LEN as u16))
+                            .height(Length::FillPortion(LIST_LEN as u16))
                             .style(style::Container::Gray),
                     )
                     .push(vertical_space(bottom_len)),
@@ -561,7 +598,7 @@ fn make_penalty_list<'a>(
             .spacing(SPACING)
             .width(Length::Fill)
             .height(Length::Fill)
-            .push(pen_col)
+            .push(main_col)
             .push(
                 column()
                     .spacing(SPACING)
@@ -576,6 +613,130 @@ fn make_penalty_list<'a>(
     .width(Length::Fill)
     .height(Length::Fill)
     .style(cont_style)
+}
+
+pub(super) fn build_list_selector_page<'a>(
+    snapshot: &GameSnapshot,
+    param: ListableParameter,
+    index: usize,
+    settings: &EditableSettings,
+    tournaments: &Option<BTreeMap<u32, TournamentInfo>>,
+) -> Element<'a, Message> {
+    const LIST_LEN: usize = 4;
+    const TEAM_NAME_LEN_LIMIT: usize = 15;
+
+    let title = match param {
+        ListableParameter::Tournament => "SELECT TOURNAMENT",
+        ListableParameter::Pool => "SELECT POOL",
+        ListableParameter::Game => "SELECT GAME",
+    };
+
+    let title = text(title)
+        .height(Length::Fill)
+        .width(Length::Fill)
+        .horizontal_alignment(Horizontal::Center)
+        .vertical_alignment(Vertical::Center);
+
+    // (btn_text, msg_val)
+
+    macro_rules! make_buttons {
+        ($iter:ident, $transform:ident) => {
+            $iter
+                .skip(index)
+                .map($transform)
+                .map(Some)
+                .chain([None].into_iter().cycle())
+                .take(LIST_LEN)
+                .map(|pen| {
+                    if let Some((btn_text, msg_val)) = pen {
+                        let text = text(btn_text)
+                            .vertical_alignment(Vertical::Center)
+                            .horizontal_alignment(Horizontal::Left)
+                            .width(Length::Fill);
+
+                        button(text)
+                            .padding(PADDING)
+                            .height(Length::Units(MIN_BUTTON_SIZE))
+                            .width(Length::Fill)
+                            .style(style::Button::Gray)
+                            .on_press(Message::ParameterSelected(param, msg_val))
+                    } else {
+                        button(horizontal_space(Length::Shrink))
+                            .height(Length::Units(MIN_BUTTON_SIZE))
+                            .width(Length::Fill)
+                            .style(style::Button::Gray)
+                    }
+                })
+                .collect()
+        };
+    }
+
+    let (num_items, buttons): (usize, CollectArrayResult<_, LIST_LEN>) = match param {
+        ListableParameter::Tournament => {
+            let list = tournaments.as_ref().unwrap();
+            let num_items = list.len();
+            let iter = list.values().rev();
+            let transform = |t: &TournamentInfo| (t.name.clone(), t.tid as usize);
+            (num_items, make_buttons!(iter, transform))
+        }
+        ListableParameter::Pool => {
+            let list = tournaments
+                .as_ref()
+                .unwrap()
+                .get(&settings.current_tid.unwrap())
+                .unwrap()
+                .pools
+                .as_ref()
+                .unwrap();
+            let num_items = list.len();
+            let iter = list.iter().enumerate();
+            let transform = |(i, p): (usize, &String)| (p.clone(), i);
+            (num_items, make_buttons!(iter, transform))
+        }
+        ListableParameter::Game => {
+            let list = settings.games.as_ref().unwrap();
+            let pool = settings.current_pool.clone().unwrap();
+            let num_items = list.values().filter(|g| g.pool == pool).count();
+            let iter = list.values().filter(|g| g.pool == pool);
+            let transform = |g| (game_string_long(g, TEAM_NAME_LEN_LIMIT), g.gid as usize);
+            (num_items, make_buttons!(iter, transform))
+        }
+    };
+
+    let scroll_list = make_scroll_list(
+        buttons.unwrap(),
+        num_items,
+        index,
+        title,
+        ScrollOption::GameParameter,
+        style::Container::LightGray,
+    )
+    .width(Length::FillPortion(4));
+
+    column()
+        .spacing(SPACING)
+        .height(Length::Fill)
+        .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
+        .push(
+            row()
+                .spacing(SPACING)
+                .height(Length::Fill)
+                .width(Length::Fill)
+                .push(scroll_list)
+                .push(
+                    column()
+                        .width(Length::Fill)
+                        .push(vertical_space(Length::Fill))
+                        .push(
+                            make_button("CANCEL")
+                                .style(style::Button::Red)
+                                .width(Length::Fill)
+                                .height(Length::Units(MIN_BUTTON_SIZE))
+                                .on_press(Message::ParameterEditComplete { canceled: true }),
+                        ),
+                ),
+        )
+        .into()
 }
 
 pub(super) fn build_keypad_page<'a>(
@@ -945,10 +1106,24 @@ fn make_team_timeout_edit_page<'a>(duration: Duration) -> Element<'a, Message> {
 
 pub(super) fn build_game_config_edit_page<'a>(
     snapshot: &GameSnapshot,
-    config: &GameConfig,
-    game_number: u16,
-    white_on_right: bool,
+    settings: &EditableSettings,
+    tournaments: &Option<BTreeMap<u32, TournamentInfo>>,
 ) -> Element<'a, Message> {
+    const NO_SELECTION_TXT: &str = "None Selected";
+    const LOADING_TXT: &str = "Loading...";
+
+    let EditableSettings {
+        config,
+        game_number,
+        white_on_right,
+        using_uwhscores,
+        current_tid,
+        current_pool,
+        games,
+    } = settings;
+
+    let using_uwhscores = *using_uwhscores;
+
     let white_inner = container("WHITE")
         .center_x()
         .center_y()
@@ -1029,35 +1204,89 @@ pub(super) fn build_game_config_edit_page<'a>(
             BoolGameParameter::WhiteOnRight,
         ));
 
-    column()
-        .spacing(SPACING)
-        .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
-        .push(
+    let rows: [Element<Message>; 4] = if using_uwhscores {
+        let tournament_label = if let Some(ref tournaments) = tournaments {
+            if let Some(tid) = current_tid {
+                match tournaments.get(&tid) {
+                    Some(t) => t.name.clone(),
+                    None => NO_SELECTION_TXT.to_string(),
+                }
+            } else {
+                NO_SELECTION_TXT.to_string()
+            }
+        } else {
+            LOADING_TXT.to_string()
+        };
+
+        let tournament_btn_msg = if tournaments.is_some() {
+            Some(Message::SelectParameter(ListableParameter::Tournament))
+        } else {
+            None
+        };
+
+        let pool_label = if let Some(tournament) = tournaments
+            .as_ref()
+            .and_then(|tournaments| tournaments.get(&(*current_tid)?))
+        {
+            if tournament.pools.is_some() {
+                if let Some(ref pool) = current_pool {
+                    pool.clone()
+                } else {
+                    NO_SELECTION_TXT.to_string()
+                }
+            } else {
+                LOADING_TXT.to_string()
+            }
+        } else {
+            String::new()
+        };
+
+        let pool_btn_msg = tournaments
+            .as_ref()
+            .and_then(|tourns| tourns.get(&(*current_tid)?)?.pools.as_ref())
+            .map(|_| Message::SelectParameter(ListableParameter::Pool));
+
+        [
+            make_value_button("TOURNAMENT:", tournament_label, true, tournament_btn_msg).into(),
+            make_value_button("POOL:", pool_label, true, pool_btn_msg).into(),
+            vertical_space(Length::Units(MIN_BUTTON_SIZE)).into(),
             row()
                 .spacing(SPACING)
-                .push(make_value_button(
-                    "USING UWHSCORES:",
-                    "NO",
-                    Some(Message::NoAction),
-                ))
-                .push(sides_btn)
-                .push(make_value_button(
-                    "GAME NUMBER:",
-                    game_number.to_string(),
-                    Some(Message::KeypadPage(KeypadPage::GameNumber)),
-                )),
-        )
-        .push(
+                .push(horizontal_space(Length::Fill))
+                .push(horizontal_space(Length::Fill))
+                .push(
+                    row()
+                        .spacing(SPACING)
+                        .width(Length::Fill)
+                        .push(
+                            make_button("CANCEL")
+                                .style(style::Button::Red)
+                                .width(Length::Fill)
+                                .on_press(Message::ConfigEditComplete { canceled: true }),
+                        )
+                        .push(
+                            make_button("DONE")
+                                .style(style::Button::Green)
+                                .width(Length::Fill)
+                                .on_press(Message::ConfigEditComplete { canceled: false }),
+                        ),
+                )
+                .into(),
+        ]
+    } else {
+        [
             row()
                 .spacing(SPACING)
                 .push(make_value_button(
                     "HALF LENGTH:",
                     time_string(config.half_play_duration),
+                    true,
                     Some(Message::EditParameter(LengthParameter::Half)),
                 ))
                 .push(make_value_button(
                     "OVERTIME\nALLOWED:",
                     bool_string(config.has_overtime),
+                    true,
                     Some(Message::ToggleBoolParameter(
                         BoolGameParameter::OvertimeAllowed,
                     )),
@@ -1065,22 +1294,24 @@ pub(super) fn build_game_config_edit_page<'a>(
                 .push(make_value_button(
                     "SUDDEN DEATH\nALLOWED:",
                     bool_string(config.sudden_death_allowed),
+                    true,
                     Some(Message::ToggleBoolParameter(
                         BoolGameParameter::SuddenDeathAllowed,
                     )),
-                )),
-        )
-        .push(
+                ))
+                .into(),
             row()
                 .spacing(SPACING)
                 .push(make_value_button(
                     "HALF TIME\nLENGTH:",
                     time_string(config.half_time_duration),
+                    true,
                     Some(Message::EditParameter(LengthParameter::HalfTime)),
                 ))
                 .push(make_value_button(
                     "PRE OT\nBREAK LENGTH:",
                     time_string(config.pre_overtime_break),
+                    true,
                     if config.has_overtime {
                         Some(Message::EditParameter(LengthParameter::PreOvertime))
                     } else {
@@ -1090,24 +1321,26 @@ pub(super) fn build_game_config_edit_page<'a>(
                 .push(make_value_button(
                     "PRE SD\nBREAK LENGTH:",
                     time_string(config.pre_sudden_death_duration),
+                    true,
                     if config.sudden_death_allowed {
                         Some(Message::EditParameter(LengthParameter::PreSuddenDeath))
                     } else {
                         None
                     },
-                )),
-        )
-        .push(
+                ))
+                .into(),
             row()
                 .spacing(SPACING)
                 .push(make_value_button(
                     "NOMINAL BRK\nBTWN GAMES:",
                     time_string(config.nominal_break),
+                    true,
                     Some(Message::EditParameter(LengthParameter::NominalBetweenGame)),
                 ))
                 .push(make_value_button(
                     "OT HALF\nLENGTH:",
                     time_string(config.ot_half_play_duration),
+                    true,
                     if config.has_overtime {
                         Some(Message::EditParameter(LengthParameter::OvertimeHalf))
                     } else {
@@ -1117,22 +1350,24 @@ pub(super) fn build_game_config_edit_page<'a>(
                 .push(make_value_button(
                     "NUM TEAM T/Os\nALLWD PER HALF:",
                     config.team_timeouts_per_half.to_string(),
+                    true,
                     Some(Message::KeypadPage(KeypadPage::TeamTimeouts(
                         config.team_timeout_duration,
                     ))),
-                )),
-        )
-        .push(
+                ))
+                .into(),
             row()
                 .spacing(SPACING)
                 .push(make_value_button(
                     "MINIMUM BRK\nBTWN GAMES:",
                     time_string(config.minimum_break),
+                    true,
                     Some(Message::EditParameter(LengthParameter::MinimumBetweenGame)),
                 ))
                 .push(make_value_button(
                     "OT HALF\nTIME LENGTH:",
                     time_string(config.ot_half_time_duration),
+                    true,
                     if config.has_overtime {
                         Some(Message::EditParameter(LengthParameter::OvertimeHalfTime))
                     } else {
@@ -1155,9 +1390,77 @@ pub(super) fn build_game_config_edit_page<'a>(
                                 .width(Length::Fill)
                                 .on_press(Message::ConfigEditComplete { canceled: false }),
                         ),
-                ),
-        )
-        .into()
+                )
+                .into(),
+        ]
+    };
+
+    let game_btn_msg = if using_uwhscores {
+        if current_tid.is_some() && current_pool.is_some() {
+            Some(Message::SelectParameter(ListableParameter::Game))
+        } else {
+            None
+        }
+    } else {
+        Some(Message::KeypadPage(KeypadPage::GameNumber))
+    };
+
+    let mut game_large_text = true;
+    let game_label = if using_uwhscores {
+        if let (Some(_), Some(cur_pool)) = (current_tid, current_pool) {
+            if let Some(ref games) = games {
+                match games.get(&game_number) {
+                    Some(game) => {
+                        if game.pool == *cur_pool {
+                            game_string_short(&game)
+                        } else {
+                            game_large_text = false;
+                            NO_SELECTION_TXT.to_string()
+                        }
+                    }
+                    None => {
+                        game_large_text = false;
+                        NO_SELECTION_TXT.to_string()
+                    }
+                }
+            } else {
+                LOADING_TXT.to_string()
+            }
+        } else {
+            String::new()
+        }
+    } else {
+        game_number.to_string()
+    };
+
+    let mut col = column()
+        .spacing(SPACING)
+        .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
+        .push(
+            row()
+                .spacing(SPACING)
+                .push(make_value_button(
+                    "USING UWHSCORES:",
+                    bool_string(using_uwhscores),
+                    true,
+                    Some(Message::ToggleBoolParameter(
+                        BoolGameParameter::UsingUwhScores,
+                    )),
+                ))
+                .push(sides_btn)
+                .push(make_value_button(
+                    "GAME:",
+                    game_label,
+                    game_large_text,
+                    game_btn_msg,
+                )),
+        );
+
+    for row in rows {
+        col = col.push(row);
+    }
+
+    col.into()
 }
 
 pub(super) fn build_game_parameter_editor<'a>(
@@ -1219,6 +1522,7 @@ pub(super) fn build_confirmation_page<'a>(
         ConfirmationKind::GameConfigChanged => "The game configuration can not be changed while a game is in progress.\n\nWhat would you like to do?",
         ConfirmationKind::GameNumberChanged => "How would you like to apply this game number change?",
         ConfirmationKind::Error(string) => string,
+        ConfirmationKind::UwhScoresIncomplete => "When UWHScores is enabled, all fields must be filled out."
             };
 
     let buttons = match kind {
@@ -1268,6 +1572,18 @@ pub(super) fn build_confirmation_page<'a>(
                 ConfirmationOption::DiscardChanges,
             )]
         }
+        ConfirmationKind::UwhScoresIncomplete => vec![
+            (
+                "GO BACK TO EDITOR",
+                style::Button::Green,
+                ConfirmationOption::GoBack,
+            ),
+            (
+                "DISCARD CHANGES",
+                style::Button::Yellow,
+                ConfirmationOption::DiscardChanges,
+            ),
+        ],
     };
 
     let buttons = buttons.into_iter().map(|(text, style, option)| {
@@ -1686,14 +2002,86 @@ fn penalty_string(penalties: &[PenaltySnapshot]) -> String {
     string
 }
 
-fn config_string(snapshot: &GameSnapshot, config: &GameConfig) -> String {
+fn game_string_short(game: &GameInfo) -> String {
+    format!("{}{}", game.game_type, game.gid)
+}
+
+fn game_string_long(game: &GameInfo, len_limit: usize) -> String {
+    const ELIPSIS: [char; 3] = ['.', '.', '.'];
+
+    macro_rules! limit {
+        ($orig:ident) => {
+            if $orig.len() > len_limit {
+                Cow::Owned($orig.chars().take(len_limit - 1).chain(ELIPSIS).collect())
+            } else {
+                Cow::Borrowed($orig)
+            }
+        };
+    }
+
+    let black = &game.black;
+    let black = limit!(black);
+    let white = &game.white;
+    let white = limit!(white);
+
+    format!("{}{} - {} vs {}", game.game_type, game.gid, black, white)
+}
+
+fn config_string(
+    snapshot: &GameSnapshot,
+    config: &GameConfig,
+    using_uwhscores: bool,
+    games: &Option<BTreeMap<u32, GameInfo>>,
+) -> String {
+    const TEAM_NAME_LEN_LIMIT: usize = 12;
+
     let mut result = if snapshot.current_period == GamePeriod::BetweenGames {
-        format!(
-            "Previous Game: {}\nUpcoming Game: {}\n",
-            snapshot.game_number, snapshot.next_game_number
-        )
+        let prev_game;
+        let next_game;
+        if using_uwhscores {
+            if let Some(games) = games {
+                prev_game = match games.get(&snapshot.game_number) {
+                    Some(game) => game_string_long(game, TEAM_NAME_LEN_LIMIT),
+                    None if snapshot.game_number == 0 => "None".to_string(),
+                    None => format!("Error ({})", snapshot.game_number),
+                };
+                next_game = match games.get(&snapshot.next_game_number) {
+                    Some(game) => game_string_long(game, TEAM_NAME_LEN_LIMIT),
+                    None => format!("Error ({})", snapshot.next_game_number),
+                };
+            } else {
+                prev_game = if snapshot.game_number == 0 {
+                    "None".to_string()
+                } else {
+                    format!("Error ({})", snapshot.game_number)
+                };
+                next_game = format!("Error ({})", snapshot.next_game_number);
+            }
+        } else {
+            prev_game = if snapshot.game_number == 0 {
+                "None".to_string()
+            } else {
+                snapshot.game_number.to_string()
+            };
+            next_game = snapshot.next_game_number.to_string();
+        }
+
+        format!("Last Game: {}\nNext Game: {}\n", prev_game, next_game)
     } else {
-        format!("Current Game: {}\n\n", snapshot.game_number)
+        let game;
+        if using_uwhscores {
+            if let Some(games) = games {
+                game = match games.get(&snapshot.game_number) {
+                    Some(game) => game_string_long(game, TEAM_NAME_LEN_LIMIT),
+                    None => format!("Error ({})", snapshot.game_number),
+                };
+            } else {
+                game = format!("Error ({})", snapshot.game_number);
+            }
+        } else {
+            game = snapshot.game_number.to_string();
+        }
+        format!("Game: {}\n\n", game)
     };
     result += &format!(
         "Half Length: {}\n\
@@ -1789,6 +2177,7 @@ fn make_small_button<'a, Message: Clone, T: Into<String>>(
 fn make_value_button<'a, Message: 'a + Clone, T: Into<String>, U: Into<String>>(
     first_label: T,
     second_label: U,
+    second_is_large: bool,
     message: Option<Message>,
 ) -> Button<'a, Message> {
     let mut button = button(
@@ -1803,7 +2192,11 @@ fn make_value_button<'a, Message: 'a + Clone, T: Into<String>, U: Into<String>>(
             .push(horizontal_space(Length::Fill))
             .push(
                 text(second_label)
-                    .size(MEDIUM_TEXT)
+                    .size(if second_is_large {
+                        MEDIUM_TEXT
+                    } else {
+                        SMALL_TEXT
+                    })
                     .vertical_alignment(Vertical::Center),
             ),
     )

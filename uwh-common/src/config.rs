@@ -2,7 +2,7 @@ use log::*;
 use serde_derive::{Deserialize, Serialize};
 use std::{fs::read_to_string, path::Path, time::Duration};
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hardware {
     pub screen_x: i32,
     pub screen_y: i32,
@@ -23,7 +23,7 @@ impl Default for Hardware {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct XBee {
     pub port: String,
     pub baud: u32,
@@ -47,7 +47,7 @@ impl Default for XBee {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RS485 {
     pub port: String,
     pub baud: u32,
@@ -67,7 +67,7 @@ impl Default for RS485 {
 
 // Due to requirements of the TOML language, items stored as tables in TOML (like `Duration`s) need
 // to be after items that are not stored as tables (`u16`, `u32`, `bool`, `String`)
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Game {
     pub team_timeouts_per_half: u16,
     pub has_overtime: bool,
@@ -100,7 +100,7 @@ impl Default for Game {
             use_wallclock: true,
             pool: "1".to_string(),
             tid: 16,
-            uwhscores_url: "http://uwhscores.com/api/v1/".to_string(),
+            uwhscores_url: "https://uwhscores.com/api/v1/".to_string(),
             half_play_duration: Duration::from_secs(900),
             half_time_duration: Duration::from_secs(180),
             team_timeout_duration: Duration::from_secs(60),
@@ -116,7 +116,7 @@ impl Default for Game {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Config {
     pub game: Game,
     pub hardware: Hardware,

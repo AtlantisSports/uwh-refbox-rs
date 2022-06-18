@@ -719,6 +719,27 @@ impl TournamentManager {
         );
     }
 
+    pub fn would_end_game(&self, now: Instant) -> Result<bool> {
+        if let ClockState::CountingDown {
+            start_time,
+            time_remaining_at_start,
+        } = self.clock_state
+        {
+            let time = now
+                .checked_duration_since(start_time)
+                .ok_or(TournamentManagerError::InvalidNowValue)?;
+
+            Ok(time >= time_remaining_at_start
+                && ((self.current_period == GamePeriod::SecondHalf
+                    && (self.b_score != self.w_score
+                        || (!self.config.has_overtime && !self.config.sudden_death_allowed)))
+                    || (self.current_period == GamePeriod::OvertimeSecondHalf
+                        && (self.b_score != self.w_score || !self.config.sudden_death_allowed))))
+        } else {
+            Ok(false)
+        }
+    }
+
     pub(super) fn update(&mut self, now: Instant) -> Result<()> {
         // Case of clock running, with no timeout and not SD
         if let ClockState::CountingDown {
@@ -980,6 +1001,44 @@ impl TournamentManager {
             self.send_clock_running(false);
         }
         Ok(())
+    }
+
+    pub fn halt_clock(&mut self, now: Instant) -> Result<()> {
+        if self.timeout_state != TimeoutState::None {
+            return Err(TournamentManagerError::AlreadyInTimeout(
+                self.timeout_state.as_snapshot(now),
+            ));
+        }
+
+        if let ClockState::CountingDown {
+            start_time,
+            time_remaining_at_start,
+        } = self.clock_state
+        {
+            let clock_time = if let Some(time) = self.clock_state.clock_time(now) {
+                info!("{} Halting the game clock", self.status_string(now));
+                time
+            } else {
+                let lost_time = now
+                    .checked_duration_since(start_time)
+                    .ok_or(TournamentManagerError::InvalidNowValue)?
+                    .checked_sub(time_remaining_at_start)
+                    .unwrap(); // Guaranteed not to fail beacuse `self.clock_state.clock_time(now)` was `None`
+                info!(
+                    "{} Halting the game clock, lost time: {lost_time:?}",
+                    self.status_string(now)
+                );
+
+                Duration::from_nanos(1)
+            };
+
+            self.clock_state = ClockState::Stopped { clock_time };
+            self.send_clock_running(false);
+
+            Ok(())
+        } else {
+            Err(TournamentManagerError::InvalidState)
+        }
     }
 
     pub fn start_play_now(&mut self, now: Instant) -> Result<()> {
@@ -1529,6 +1588,8 @@ pub enum TournamentManagerError {
     TooManyPenalties(usize),
     #[error("No {0} penalty exists at the index {1}")]
     InvalidIndex(Color, usize),
+    #[error("Can't halt game from the current state")]
+    InvalidState,
 }
 
 pub type Result<T> = std::result::Result<T, TournamentManagerError>;
@@ -4400,5 +4461,107 @@ mod test {
         assert_eq!(tm.limit_pen_list_len(Color::White, 2, now), Ok(()));
         assert_eq!(tm.b_penalties.len(), 2);
         assert_eq!(tm.w_penalties.len(), 2);
+    }
+
+    #[test]
+    fn test_would_end_game() {
+        initialize();
+        let config = GameConfig {
+            has_overtime: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start_time = Instant::now();
+        let next_time = start_time + Duration::from_secs(1);
+
+        tm.set_period_and_game_clock_time(GamePeriod::BetweenGames, Duration::from_nanos(10));
+        tm.start_clock(start_time);
+        assert_eq!(Ok(false), tm.would_end_game(next_time));
+
+        tm.current_period = GamePeriod::FirstHalf;
+        assert_eq!(Ok(false), tm.would_end_game(next_time));
+
+        tm.current_period = GamePeriod::HalfTime;
+        assert_eq!(Ok(false), tm.would_end_game(next_time));
+
+        tm.current_period = GamePeriod::SecondHalf;
+        assert_eq!(Ok(true), tm.would_end_game(next_time));
+
+        tm.set_scores(3, 4, start_time);
+        assert_eq!(Ok(true), tm.would_end_game(next_time));
+
+        tm.config.sudden_death_allowed = true;
+        assert_eq!(Ok(true), tm.would_end_game(next_time));
+
+        tm.config.has_overtime = true;
+        assert_eq!(Ok(true), tm.would_end_game(next_time));
+
+        tm.set_scores(4, 4, start_time);
+        assert_eq!(Ok(false), tm.would_end_game(next_time));
+
+        tm.current_period = GamePeriod::PreOvertime;
+        assert_eq!(Ok(false), tm.would_end_game(next_time));
+
+        tm.current_period = GamePeriod::OvertimeFirstHalf;
+        assert_eq!(Ok(false), tm.would_end_game(next_time));
+
+        tm.current_period = GamePeriod::OvertimeHalfTime;
+        assert_eq!(Ok(false), tm.would_end_game(next_time));
+
+        tm.current_period = GamePeriod::OvertimeSecondHalf;
+        assert_eq!(Ok(false), tm.would_end_game(next_time));
+
+        tm.config.sudden_death_allowed = false;
+        assert_eq!(Ok(true), tm.would_end_game(next_time));
+
+        tm.set_scores(4, 5, start_time);
+        tm.config.sudden_death_allowed = true;
+        assert_eq!(Ok(true), tm.would_end_game(next_time));
+
+        tm.clock_state = ClockState::CountingUp {
+            start_time,
+            time_at_start: Duration::ZERO,
+        };
+        tm.set_scores(4, 5, start_time);
+        assert_eq!(Ok(false), tm.would_end_game(next_time));
+    }
+
+    #[test]
+    fn test_halt_game() {
+        initialize();
+        let config = GameConfig {
+            has_overtime: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start_time = Instant::now();
+        let next_time = start_time + Duration::from_secs(1);
+
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_millis(500));
+        tm.start_clock(start_time);
+        tm.halt_clock(next_time).unwrap();
+        assert_eq!(
+            ClockState::Stopped {
+                clock_time: Duration::from_nanos(1)
+            },
+            tm.clock_state
+        );
+
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_millis(500));
+        tm.timeout_state = TimeoutState::Ref(ClockState::CountingUp {
+            start_time,
+            time_at_start: Duration::ZERO,
+        });
+        assert_eq!(
+            Err(TMErr::AlreadyInTimeout(TimeoutSnapshot::Ref(1))),
+            tm.halt_clock(next_time)
+        );
+
+        tm.timeout_state = TimeoutState::None;
+        assert_eq!(Err(TMErr::InvalidState), tm.halt_clock(next_time));
     }
 }

@@ -469,21 +469,40 @@ impl TournamentManager {
                     }
                     ClockState::CountingUp { .. } => panic!("Invalid timeout state"),
                 };
+
                 Ok(())
             }
             TimeoutState::Ref(cs) | TimeoutState::PenaltyShot(cs) => {
-                info!(
-                    "{} Ending ref timeout or penalty shot",
-                    self.status_string(now)
-                );
-                match cs {
-                    ClockState::Stopped { .. } => self.timeout_state = TimeoutState::None,
-                    ClockState::CountingUp { .. } => {
+                let timeout_time = match cs.clone() {
+                    ClockState::Stopped { clock_time } => {
+                        self.timeout_state = TimeoutState::None;
+                        Some(clock_time)
+                    }
+                    ClockState::CountingUp {
+                        start_time,
+                        time_at_start,
+                    } => {
                         self.start_game_clock(now);
                         self.timeout_state = TimeoutState::None;
+                        now.checked_duration_since(start_time)
+                            .map(|d| d + time_at_start)
                     }
                     ClockState::CountingDown { .. } => panic!("Invalid timeout state"),
                 };
+
+                if let Some(dur) = timeout_time {
+                    info!(
+                        "{} Ending ref timeout or penalty shot. The timeout duration was {:?}",
+                        self.status_string(now),
+                        dur
+                    );
+                } else {
+                    info!(
+                        "{} Ending ref timeout or penalty shot",
+                        self.status_string(now)
+                    );
+                }
+
                 Ok(())
             }
         }
@@ -1023,7 +1042,7 @@ impl TournamentManager {
                     .checked_duration_since(start_time)
                     .ok_or(TournamentManagerError::InvalidNowValue)?
                     .checked_sub(time_remaining_at_start)
-                    .unwrap(); // Guaranteed not to fail beacuse `self.clock_state.clock_time(now)` was `None`
+                    .unwrap(); // Guaranteed not to panic beacuse `self.clock_state.clock_time(now)` was `None`
                 info!(
                     "{} Halting the game clock, lost time: {lost_time:?}",
                     self.status_string(now)

@@ -244,112 +244,124 @@ pub(super) fn build_time_edit_view<'a>(
 
 pub(super) fn build_score_edit_view<'a>(
     snapshot: &GameSnapshot,
-    black: u8,
-    white: u8,
+    scores: BlackWhiteBundle<u8>,
+    is_confirmation: bool,
 ) -> Element<'a, Message> {
-    column()
+    let cancel_btn_msg = if is_confirmation {
+        None
+    } else {
+        Some(Message::ScoreEditComplete { canceled: true })
+    };
+
+    let black_edit = container(
+        row()
+            .spacing(SPACING)
+            .align_items(Alignment::Center)
+            .push(
+                column()
+                    .spacing(SPACING)
+                    .push(
+                        make_small_button("+", LARGE_TEXT)
+                            .style(style::Button::Blue)
+                            .on_press(Message::ChangeScore {
+                                color: GameColor::Black,
+                                increase: true,
+                            }),
+                    )
+                    .push(
+                        make_small_button("-", LARGE_TEXT)
+                            .style(style::Button::Blue)
+                            .on_press(Message::ChangeScore {
+                                color: GameColor::Black,
+                                increase: false,
+                            }),
+                    ),
+            )
+            .push(
+                column()
+                    .spacing(SPACING)
+                    .width(Length::Fill)
+                    .align_items(Alignment::Center)
+                    .push("BLACK")
+                    .push(text(scores.black.to_string()).size(LARGE_TEXT)),
+            ),
+    )
+    .padding(PADDING)
+    .width(Length::FillPortion(2))
+    .style(style::Container::Black);
+
+    let white_edit = container(
+        row()
+            .spacing(SPACING)
+            .align_items(Alignment::Center)
+            .push(
+                column()
+                    .spacing(SPACING)
+                    .width(Length::Fill)
+                    .align_items(Alignment::Center)
+                    .push("WHITE")
+                    .push(text(scores.white.to_string()).size(LARGE_TEXT)),
+            )
+            .push(
+                column()
+                    .spacing(SPACING)
+                    .push(
+                        make_small_button("+", LARGE_TEXT)
+                            .style(style::Button::Blue)
+                            .on_press(Message::ChangeScore {
+                                color: GameColor::White,
+                                increase: true,
+                            }),
+                    )
+                    .push(
+                        make_small_button("-", LARGE_TEXT)
+                            .style(style::Button::Blue)
+                            .on_press(Message::ChangeScore {
+                                color: GameColor::White,
+                                increase: false,
+                            }),
+                    ),
+            ),
+    )
+    .padding(PADDING)
+    .width(Length::FillPortion(2))
+    .style(style::Container::White);
+
+    let mut main_col = column()
         .spacing(SPACING)
         .height(Length::Fill)
         .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
-        .push(vertical_space(Length::Fill))
+        .push(vertical_space(Length::Fill));
+
+    if is_confirmation {
+        main_col = main_col
+            .push(
+                text("Please enter the final score")
+                    .horizontal_alignment(Horizontal::Center)
+                    .width(Length::Fill),
+            )
+            .push(vertical_space(Length::Fill));
+    }
+
+    main_col
         .push(
             row()
                 .spacing(SPACING)
                 .push(horizontal_space(Length::Fill))
-                .push(
-                    container(
-                        row()
-                            .spacing(SPACING)
-                            .align_items(Alignment::Center)
-                            .push(
-                                column()
-                                    .spacing(SPACING)
-                                    .push(
-                                        make_small_button("+", LARGE_TEXT)
-                                            .style(style::Button::Blue)
-                                            .on_press(Message::ChangeScore {
-                                                color: GameColor::Black,
-                                                increase: true,
-                                            }),
-                                    )
-                                    .push(
-                                        make_small_button("-", LARGE_TEXT)
-                                            .style(style::Button::Blue)
-                                            .on_press(Message::ChangeScore {
-                                                color: GameColor::Black,
-                                                increase: false,
-                                            }),
-                                    ),
-                            )
-                            .push(
-                                column()
-                                    .spacing(SPACING)
-                                    .width(Length::Fill)
-                                    .align_items(Alignment::Center)
-                                    .push("BLACK")
-                                    .push(text(black.to_string()).size(LARGE_TEXT)),
-                            ),
-                    )
-                    .padding(PADDING)
-                    .width(Length::FillPortion(2))
-                    .style(style::Container::Black),
-                )
+                .push(black_edit)
                 .push(horizontal_space(Length::Fill))
-                .push(
-                    container(
-                        row()
-                            .spacing(SPACING)
-                            .align_items(Alignment::Center)
-                            .push(
-                                column()
-                                    .spacing(SPACING)
-                                    .width(Length::Fill)
-                                    .align_items(Alignment::Center)
-                                    .push("WHITE")
-                                    .push(text(white.to_string()).size(LARGE_TEXT)),
-                            )
-                            .push(
-                                column()
-                                    .spacing(SPACING)
-                                    .push(
-                                        make_small_button("+", LARGE_TEXT)
-                                            .style(style::Button::Blue)
-                                            .on_press(Message::ChangeScore {
-                                                color: GameColor::White,
-                                                increase: true,
-                                            }),
-                                    )
-                                    .push(
-                                        make_small_button("-", LARGE_TEXT)
-                                            .style(style::Button::Blue)
-                                            .on_press(Message::ChangeScore {
-                                                color: GameColor::White,
-                                                increase: false,
-                                            }),
-                                    ),
-                            ),
-                    )
-                    .padding(PADDING)
-                    .width(Length::FillPortion(2))
-                    .style(style::Container::White),
-                )
+                .push(white_edit)
                 .push(horizontal_space(Length::Fill)),
         )
         .push(vertical_space(Length::Fill))
         .push(
             row()
                 .spacing(SPACING)
-                .push(
-                    make_button("CANCEL")
-                        .style(style::Button::Red)
-                        .width(Length::Fill)
-                        .on_press(Message::ScoreEditComplete { canceled: true }),
-                )
+                .push(make_message_button("CANCEL", cancel_btn_msg).style(style::Button::Red))
                 .push(horizontal_space(Length::Fill))
                 .push(
                     make_button("DONE")
                         .style(style::Button::Green)
-                        .width(Length::Fill)
                         .on_press(Message::ScoreEditComplete { canceled: false }),
                 ),
         )
@@ -1626,6 +1638,58 @@ pub(super) fn build_confirmation_page<'a>(
         .into()
 }
 
+pub(super) fn build_score_confirmation_page<'a>(
+    snapshot: &GameSnapshot,
+    scores: BlackWhiteBundle<u8>,
+) -> Element<'a, Message> {
+    let header = text(format!(
+        "Is this score correct?\n\nBlack: {}        White: {}\n",
+        scores.black, scores.white
+    ))
+    .horizontal_alignment(Horizontal::Center);
+
+    let options = row()
+        .spacing(SPACING)
+        .width(Length::Fill)
+        .push(
+            make_button("YES")
+                .style(style::Button::Green)
+                .on_press(Message::ScoreConfirmation { correct: true }),
+        )
+        .push(
+            make_button("NO")
+                .style(style::Button::Red)
+                .on_press(Message::ScoreConfirmation { correct: false }),
+        );
+
+    column()
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_items(Alignment::Center)
+        .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
+        .push(vertical_space(Length::Fill))
+        .push(
+            row()
+                .push(horizontal_space(Length::Fill))
+                .push(
+                    container(
+                        column()
+                            .spacing(SPACING)
+                            .width(Length::Fill)
+                            .align_items(Alignment::Center)
+                            .push(header)
+                            .push(options),
+                    )
+                    .width(Length::FillPortion(3))
+                    .style(style::Container::LightGray)
+                    .padding(PADDING),
+                )
+                .push(horizontal_space(Length::Fill)),
+        )
+        .push(vertical_space(Length::Fill))
+        .into()
+}
+
 pub(super) fn build_timeout_ribbon<'a>(
     snapshot: &GameSnapshot,
     tm: &Arc<Mutex<TournamentManager>>,
@@ -1738,7 +1802,7 @@ fn make_game_time_button<'a>(
     } else {
         match snapshot.timeout {
             TimeoutSnapshot::Black(time) | TimeoutSnapshot::White(time) => {
-                (time <= 10 && (time % 2 == 0)) || time == 15
+                (time <= 10 && (time % 2 == 0) && (time != 0)) || time == 15
             }
             TimeoutSnapshot::Ref(_) | TimeoutSnapshot::PenaltyShot(_) => false,
             TimeoutSnapshot::None => {
@@ -1756,7 +1820,9 @@ fn make_game_time_button<'a>(
                 };
 
                 snapshot.current_period != GamePeriod::SuddenDeath
-                    && ((snapshot.secs_in_period <= 10 && (snapshot.secs_in_period % 2 == 0))
+                    && ((snapshot.secs_in_period <= 10
+                        && (snapshot.secs_in_period % 2 == 0)
+                        && (snapshot.secs_in_period != 0))
                         || (is_warn_period && snapshot.secs_in_period == 30))
             }
         }

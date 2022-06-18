@@ -645,6 +645,8 @@ impl TournamentManager {
     }
 
     fn end_game(&mut self, now: Instant) {
+        let was_running = self.clock_is_running();
+
         self.current_period = GamePeriod::BetweenGames;
 
         info!(
@@ -688,15 +690,19 @@ impl TournamentManager {
         let time_remaining_at_start = min(time_remaining_at_start, MAX_TIME_VAL);
 
         info!(
-            "{} Entering between games, time to next game is {} seconds",
+            "{} Entering between games, time to next game is {time_remaining_at_start:?}",
             self.status_string(now),
-            time_remaining_at_start.as_secs()
         );
 
         self.clock_state = ClockState::CountingDown {
             start_time: game_end,
             time_remaining_at_start,
         };
+
+        if !was_running {
+            self.send_clock_running(true);
+        }
+
         self.reset_game_time =
             time_remaining_at_start.saturating_sub(self.config.post_game_duration);
         info!(

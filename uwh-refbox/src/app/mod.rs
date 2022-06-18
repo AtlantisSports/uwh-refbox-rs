@@ -78,13 +78,17 @@ pub struct RefBoxAppFlags {
 enum AppState {
     MainPage,
     TimeEdit(bool, Duration, Option<Duration>),
-    ScoreEdit { black: u8, white: u8 },
-    PenaltyOverview { black_idx: usize, white_idx: usize },
+    ScoreEdit {
+        scores: BlackWhiteBundle<u8>,
+        is_confirmation: bool,
+    },
+    PenaltyOverview(BlackWhiteBundle<usize>),
     KeypadPage(KeypadPage, u16),
     EditGameConfig,
     ParameterEditor(LengthParameter, Duration),
     ParameterList(ListableParameter, usize),
     ConfirmationPage(ConfirmationKind),
+    ConfirmScores(BlackWhiteBundle<u8>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -224,6 +228,10 @@ pub enum Message {
     RefTimeout(bool),
     PenaltyShot(bool),
     EndTimeout,
+    ConfirmScores(GameSnapshot),
+    ScoreConfirmation {
+        correct: bool,
+    },
     RecvTournamentList(Vec<TournamentInfo>),
     RecvTournament(TournamentInfo),
     RecvGameList(Vec<GameInfo>),
@@ -454,10 +462,12 @@ impl RefBoxApp {
     }
 
     fn handle_game_end(&self) {
-        if let Some(tid) = self.current_tid {
-            self.request_game_details(tid, self.snapshot.game_number);
-        } else {
-            error!("Missing current tid to request game info");
+        if self.using_uwhscores {
+            if let Some(tid) = self.current_tid {
+                self.request_game_details(tid, self.snapshot.game_number);
+            } else {
+                error!("Missing current tid to request game info");
+            }
         }
     }
 }
@@ -549,7 +559,7 @@ impl Application for RefBoxApp {
 
     fn subscription(&self) -> Subscription<Message> {
         Subscription::batch([
-            Subscription::from_recipe(self.time_updater.clone()).map(Message::NewSnapshot),
+            Subscription::from_recipe(self.time_updater.clone()),
             Subscription::from_recipe(self.message_listener.clone()),
         ])
     }
@@ -601,7 +611,10 @@ impl Application for RefBoxApp {
                         dur.saturating_add(Duration::from_secs(secs)),
                     );
                 } else {
-                    *dur = dur.saturating_sub(Duration::from_secs(secs));
+                    *dur = std::cmp::max(
+                        dur.saturating_sub(Duration::from_secs(secs)),
+                        Duration::from_micros(1),
+                    );
                 }
                 trace!("AppState changed to {:?}", self.app_state);
             }
@@ -636,32 +649,20 @@ impl Application for RefBoxApp {
             Message::EditScores => {
                 let tm = self.tm.lock().unwrap();
                 self.app_state = AppState::ScoreEdit {
-                    black: tm.get_b_score(),
-                    white: tm.get_w_score(),
+                    scores: BlackWhiteBundle {
+                        black: tm.get_b_score(),
+                        white: tm.get_w_score(),
+                    },
+                    is_confirmation: false,
                 };
                 trace!("AppState changed to {:?}", self.app_state);
             }
             Message::ChangeScore { color, increase } => {
-                if let AppState::ScoreEdit {
-                    ref mut black,
-                    ref mut white,
-                } = self.app_state
-                {
-                    match color {
-                        GameColor::Black => {
-                            if increase {
-                                *black = black.saturating_add(1);
-                            } else {
-                                *black = black.saturating_sub(1);
-                            }
-                        }
-                        GameColor::White => {
-                            if increase {
-                                *white = white.saturating_add(1);
-                            } else {
-                                *white = white.saturating_sub(1);
-                            }
-                        }
+                if let AppState::ScoreEdit { ref mut scores, .. } = self.app_state {
+                    if increase {
+                        scores[color] = scores[color].saturating_add(1);
+                    } else {
+                        scores[color] = scores[color].saturating_sub(1);
                     }
                 } else {
                     unreachable!()
@@ -671,36 +672,51 @@ impl Application for RefBoxApp {
             Message::ScoreEditComplete { canceled } => {
                 let mut tm = self.tm.lock().unwrap();
                 let now = Instant::now();
-                if let AppState::ScoreEdit { black, white } = self.app_state {
-                    if !canceled {
-                        tm.set_scores(black, white, now);
+
+                self.app_state = if let AppState::ScoreEdit {
+                    scores,
+                    is_confirmation,
+                } = self.app_state
+                {
+                    if is_confirmation {
+                        // TODO: Send scores to uwhscores
+                        tm.set_scores(scores.black, scores.white, now);
+                        tm.start_clock(now);
+                        tm.update(now + Duration::from_millis(2)).unwrap(); // Need to update after game ends
+                        AppState::MainPage
+                    } else if !canceled {
+                        if tm.current_period() == GamePeriod::SuddenDeath
+                            && (scores.black != scores.white)
+                        {
+                            tm.stop_clock(now).unwrap();
+                            AppState::ConfirmScores(scores)
+                        } else {
+                            tm.set_scores(scores.black, scores.white, now);
+                            AppState::MainPage
+                        }
+                    } else {
+                        AppState::MainPage
                     }
                 } else {
                     unreachable!()
-                }
+                };
+
                 let snapshot = tm.generate_snapshot(now).unwrap();
                 std::mem::drop(tm);
                 self.apply_snapshot(snapshot);
-                self.app_state = AppState::MainPage;
+
                 trace!("AppState changed to {:?}", self.app_state);
             }
             Message::PenaltyOverview => {
                 self.pen_edit.start_session().unwrap();
-                self.app_state = AppState::PenaltyOverview {
-                    black_idx: 0,
-                    white_idx: 0,
-                };
+                self.app_state = AppState::PenaltyOverview(BlackWhiteBundle { black: 0, white: 0 });
                 trace!("AppState changed to {:?}", self.app_state);
             }
             Message::Scroll { which, up } => {
-                if let AppState::PenaltyOverview {
-                    ref mut black_idx,
-                    ref mut white_idx,
-                } = self.app_state
-                {
+                if let AppState::PenaltyOverview(ref mut indices) = self.app_state {
                     let idx = match which {
-                        ScrollOption::Black => black_idx,
-                        ScrollOption::White => white_idx,
+                        ScrollOption::Black => &mut indices.black,
+                        ScrollOption::White => &mut indices.white,
                         ScrollOption::GameParameter => unreachable!(),
                     };
                     if up {
@@ -778,10 +794,7 @@ impl Application for RefBoxApp {
                         unreachable!();
                     }
                 }
-                self.app_state = AppState::PenaltyOverview {
-                    black_idx: 0,
-                    white_idx: 0,
-                };
+                self.app_state = AppState::PenaltyOverview(BlackWhiteBundle { black: 0, white: 0 });
                 trace!("AppState changed to {:?}", self.app_state);
             }
             Message::KeypadPage(page) => {
@@ -841,24 +854,41 @@ impl Application for RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
             }
             Message::AddScoreComplete { canceled } => {
-                if !canceled {
+                self.app_state = if !canceled {
                     if let AppState::KeypadPage(KeypadPage::AddScore(color), player) =
                         self.app_state
                     {
                         let mut tm = self.tm.lock().unwrap();
                         let now = Instant::now();
-                        match color {
-                            GameColor::Black => tm.add_b_score(player.try_into().unwrap(), now),
-                            GameColor::White => tm.add_w_score(player.try_into().unwrap(), now),
+
+                        let app_state = if tm.current_period() == GamePeriod::SuddenDeath {
+                            tm.stop_clock(now).unwrap();
+                            let mut scores = BlackWhiteBundle {
+                                black: tm.get_b_score(),
+                                white: tm.get_w_score(),
+                            };
+                            scores[color] = scores[color].saturating_add(1);
+
+                            AppState::ConfirmScores(scores)
+                        } else {
+                            match color {
+                                GameColor::Black => tm.add_b_score(player.try_into().unwrap(), now),
+                                GameColor::White => tm.add_w_score(player.try_into().unwrap(), now),
+                            };
+                            AppState::MainPage
                         };
                         let snapshot = tm.generate_snapshot(now).unwrap();
+
                         std::mem::drop(tm);
                         self.apply_snapshot(snapshot);
+
+                        app_state
                     } else {
                         unreachable!()
                     }
-                }
-                self.app_state = AppState::MainPage;
+                } else {
+                    AppState::MainPage
+                };
                 trace!("AppState changed to {:?}", self.app_state);
             }
             Message::EditGameConfig => {
@@ -890,7 +920,7 @@ impl Application for RefBoxApp {
                     && (edited_settings.current_tid.is_none()
                         || edited_settings.current_pool.is_none()
                         || edited_settings.games.is_none());
-                if !uwhscores_incomplete {
+                if edited_settings.using_uwhscores && !uwhscores_incomplete {
                     match edited_settings
                         .games
                         .as_ref()
@@ -1183,6 +1213,40 @@ impl Application for RefBoxApp {
                 };
                 trace!("AppState changed to {:?}", self.app_state);
             }
+            Message::ConfirmScores(snapshot) => {
+                self.apply_snapshot(snapshot);
+
+                let scores = BlackWhiteBundle {
+                    black: self.snapshot.b_score,
+                    white: self.snapshot.w_score,
+                };
+
+                self.app_state = AppState::ConfirmScores(scores);
+                trace!("AppState changed to {:?}", self.app_state);
+            }
+            Message::ScoreConfirmation { correct } => {
+                self.app_state = if let AppState::ConfirmScores(scores) = self.app_state {
+                    if correct {
+                        // TODO: Send scores to uwhscores
+                        let mut tm = self.tm.lock().unwrap();
+                        let now = Instant::now();
+                        tm.set_scores(scores.black, scores.white, now);
+                        tm.start_clock(now);
+                        tm.update(now + Duration::from_millis(2)).unwrap(); // Need to update after game ends
+
+                        AppState::MainPage
+                    } else {
+                        AppState::ScoreEdit {
+                            scores,
+                            is_confirmation: true,
+                        }
+                    }
+                } else {
+                    unreachable!()
+                };
+
+                trace!("AppState changed to {:?}", self.app_state);
+            }
             Message::BlackTimeout(switch) => {
                 let mut tm = self.tm.lock().unwrap();
                 let now = Instant::now();
@@ -1314,7 +1378,7 @@ impl Application for RefBoxApp {
     }
 
     fn view(&self) -> Element<Message> {
-        column()
+        let mut main_view = column()
             .spacing(SPACING)
             .padding(PADDING)
             .push(match self.app_state {
@@ -1327,19 +1391,14 @@ impl Application for RefBoxApp {
                 AppState::TimeEdit(_, time, timeout_time) => {
                     build_time_edit_view(&self.snapshot, time, timeout_time)
                 }
-                AppState::ScoreEdit { black, white } => {
-                    build_score_edit_view(&self.snapshot, black, white)
-                }
-                AppState::PenaltyOverview {
-                    black_idx,
-                    white_idx,
-                } => build_penalty_overview_page(
+                AppState::ScoreEdit {
+                    scores,
+                    is_confirmation,
+                } => build_score_edit_view(&self.snapshot, scores, is_confirmation),
+                AppState::PenaltyOverview(indices) => build_penalty_overview_page(
                     &self.snapshot,
                     self.pen_edit.get_printable_lists(Instant::now()).unwrap(),
-                    BlackWhiteBundle {
-                        black: black_idx,
-                        white: white_idx,
-                    },
+                    indices,
                 ),
                 AppState::KeypadPage(page, player_num) => {
                     build_keypad_page(&self.snapshot, page, player_num)
@@ -1362,9 +1421,22 @@ impl Application for RefBoxApp {
                 AppState::ConfirmationPage(ref kind) => {
                     build_confirmation_page(&self.snapshot, kind)
                 }
-            })
-            .push(build_timeout_ribbon(&self.snapshot, &self.tm))
-            .into()
+                AppState::ConfirmScores(scores) => {
+                    build_score_confirmation_page(&self.snapshot, scores)
+                }
+            });
+
+        match self.app_state {
+            AppState::ScoreEdit {
+                is_confirmation, ..
+            } if is_confirmation == true => {}
+            AppState::ConfirmScores(_) => {}
+            _ => {
+                main_view = main_view.push(build_timeout_ribbon(&self.snapshot, &self.tm));
+            }
+        }
+
+        main_view.into()
     }
 }
 
@@ -1375,7 +1447,7 @@ struct TimeUpdater {
 }
 
 impl<H: Hasher, I> Recipe<H, I> for TimeUpdater {
-    type Output = GameSnapshot;
+    type Output = Message;
 
     fn hash(&self, state: &mut H) {
         use std::hash::Hash;
@@ -1435,7 +1507,16 @@ impl<H: Hasher, I> Recipe<H, I> for TimeUpdater {
 
             let mut tm = state.tm.lock().unwrap();
             let now = Instant::now();
-            tm.update(now).unwrap();
+
+            let msg_type = if tm.would_end_game(now).unwrap() {
+                tm.halt_clock(now).unwrap();
+                clock_running = false;
+                Message::ConfirmScores
+            } else {
+                tm.update(now).unwrap();
+                Message::NewSnapshot
+            };
+
             let snapshot = match tm.generate_snapshot(now) {
                 Some(val) => val,
                 None => {
@@ -1452,7 +1533,7 @@ impl<H: Hasher, I> Recipe<H, I> for TimeUpdater {
 
             drop(tm);
 
-            Some((snapshot, state))
+            Some((msg_type(snapshot), state))
         }))
     }
 }

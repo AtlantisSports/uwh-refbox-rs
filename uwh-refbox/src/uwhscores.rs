@@ -28,6 +28,7 @@ pub struct TournamentSingleResponse {
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct GameInfo {
     pub black: String,
+    pub black_id: u32,
     pub game_type: String,
     pub gid: u32,
     pub pool: String,
@@ -39,6 +40,7 @@ pub struct GameInfo {
     pub tid: u32,
     pub timing_rules: Option<TimingRules>,
     pub white: String,
+    pub white_id: u32,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
@@ -54,6 +56,7 @@ pub struct TimingRules {
     pub sudden_death_allowed: bool,
 }
 
+#[allow(clippy::from_over_into)]
 impl Into<GameConfig> for TimingRules {
     fn into(self) -> GameConfig {
         GameConfig {
@@ -62,7 +65,7 @@ impl Into<GameConfig> for TimingRules {
             half_play_duration: self.half_duration,
             half_time_duration: self.half_time_duration,
             minimum_break: self.min_game_break,
-            has_overtime: self.overtime_allowed,
+            overtime_allowed: self.overtime_allowed,
             sudden_death_allowed: self.sudden_death_allowed,
             ..Default::default()
         }
@@ -102,4 +105,32 @@ pub struct GameListResponse {
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct GameSingleResponse {
     pub game: GameInfo,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+pub struct LoginResponse {
+    pub token: String,
+    pub ttl: u64,
+    pub user_id: String,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+pub struct GameScoreInfo {
+    pub tid: u32,
+    pub gid: u32,
+    pub score_b: u8,
+    pub score_w: u8,
+    pub black_id: u32,
+    pub white_id: u32,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+pub struct GameScorePostData {
+    pub game_score: GameScoreInfo,
+}
+
+impl GameScorePostData {
+    pub fn new(game_score: GameScoreInfo) -> Self {
+        Self { game_score }
+    }
 }

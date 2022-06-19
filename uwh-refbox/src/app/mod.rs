@@ -72,6 +72,7 @@ pub struct RefBoxAppFlags {
     pub binary_port: u16,
     pub json_port: u16,
     pub sim_child: Option<Child>,
+    pub require_https: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -346,7 +347,7 @@ impl RefBoxApp {
         }
     }
 
-    fn try_background_request<T, F>(&self, url: String, short_name: String, on_success: F)
+    fn do_get_request<T, F>(&self, url: String, short_name: String, on_success: F)
     where
         T: serde::de::DeserializeOwned,
         F: Fn(T) -> Message + Send + Sync + 'static,
@@ -390,8 +391,8 @@ impl RefBoxApp {
     }
 
     fn request_tournament_list(&self) {
-        let url = format!("{}tournaments", self.config.game.uwhscores_url);
-        self.try_background_request(
+        let url = format!("{}tournaments", self.config.uwhscores.url);
+        self.do_get_request(
             url,
             "tournament list".to_string(),
             |parsed: TournamentListResponse| Message::RecvTournamentList(parsed.tournaments),
@@ -399,8 +400,8 @@ impl RefBoxApp {
     }
 
     fn request_tournament_details(&self, tid: u32) {
-        let url = format!("{}tournaments/{tid}", self.config.game.uwhscores_url);
-        self.try_background_request(
+        let url = format!("{}tournaments/{tid}", self.config.uwhscores.url);
+        self.do_get_request(
             url,
             format!("tournament details for tid {tid}"),
             |parsed: TournamentSingleResponse| Message::RecvTournament(parsed.tournament),
@@ -408,8 +409,8 @@ impl RefBoxApp {
     }
 
     fn request_game_list(&self, tid: u32) {
-        let url = format!("{}tournaments/{tid}/games", self.config.game.uwhscores_url);
-        self.try_background_request(
+        let url = format!("{}tournaments/{tid}/games", self.config.uwhscores.url);
+        self.do_get_request(
             url,
             format!("game list for tid {tid}"),
             |parsed: GameListResponse| Message::RecvGameList(parsed.games),
@@ -417,15 +418,88 @@ impl RefBoxApp {
     }
 
     fn request_game_details(&self, tid: u32, gid: u32) {
-        let url = format!(
-            "{}tournaments/{tid}/games/{gid}",
-            self.config.game.uwhscores_url
-        );
-        self.try_background_request(
+        let url = format!("{}tournaments/{tid}/games/{gid}", self.config.uwhscores.url);
+        self.do_get_request(
             url,
             format!("game deatils for tid {tid} and gid {gid}"),
             |parsed: GameSingleResponse| Message::RecvGame(parsed.game),
         );
+    }
+
+    fn post_game_score(&self, game: &GameInfo, scores: BlackWhiteBundle<u8>) {
+        if let Some(client) = &self.client {
+            let tid = game.tid;
+            let gid = game.gid;
+            let post_url = format!("{}tournaments/{tid}/games/{gid}", self.config.uwhscores.url);
+
+            info!("Starting login request");
+
+            let login_request = client
+                .request(Method::GET, format!("{}login", self.config.uwhscores.url))
+                .basic_auth(
+                    self.config.uwhscores.login_email.clone(),
+                    Some(self.config.uwhscores.login_pass.clone()),
+                )
+                .build()
+                .unwrap();
+
+            let post_data = GameScorePostData::new(GameScoreInfo {
+                tid,
+                gid,
+                score_b: scores.black,
+                score_w: scores.white,
+                black_id: game.black_id,
+                white_id: game.white_id,
+            });
+
+            let client_ = client.clone();
+            task::spawn(async move {
+                let login = match client_.execute(login_request).await {
+                    Ok(resp) => {
+                        if resp.status() != StatusCode::OK {
+                            error!(
+                                "Got bad status code from uwhscores when logging in: {}",
+                                resp.status()
+                            );
+                            return;
+                        } else {
+                            match resp.json::<LoginResponse>().await {
+                                Ok(parsed) => parsed,
+                                Err(e) => {
+                                    error!("Couldn't desesrialize login: {e}");
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("Login request failed: {e}");
+                        return;
+                    }
+                };
+
+                let post_request = client_
+                    .request(Method::POST, post_url)
+                    .basic_auth::<_, String>(login.token, None)
+                    .json(&post_data)
+                    .build()
+                    .unwrap();
+
+                match client_.execute(post_request).await {
+                    Ok(resp) => {
+                        if resp.status() != StatusCode::OK {
+                            error!(
+                                "Got bad status code from uwhscores when posting score: {}",
+                                resp.status()
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        error!("Post score request failed: {e}");
+                    }
+                };
+            });
+        }
     }
 
     fn handle_game_start(&mut self, new_game_num: u32) {
@@ -493,6 +567,7 @@ impl Application for RefBoxApp {
             binary_port,
             json_port,
             sim_child,
+            require_https,
         } = flags;
 
         let sound = match OutputStream::try_default() {
@@ -512,7 +587,7 @@ impl Application for RefBoxApp {
         let mut tm = TournamentManager::new(config.game.clone());
         tm.start_clock(Instant::now());
 
-        let client = match Client::builder().https_only(true).build() {
+        let client = match Client::builder().https_only(require_https).build() {
             Ok(c) => Some(c),
             Err(e) => {
                 error!("Failed to start HTTP Client: {e}");
@@ -679,7 +754,14 @@ impl Application for RefBoxApp {
                 } = self.app_state
                 {
                     if is_confirmation {
-                        // TODO: Send scores to uwhscores
+                        if let Some(game) = self
+                            .games
+                            .as_ref()
+                            .and_then(|games| games.get(&tm.game_number()))
+                        {
+                            self.post_game_score(game, scores);
+                        }
+
                         tm.set_scores(scores.black, scores.white, now);
                         tm.start_clock(now);
                         tm.update(now + Duration::from_millis(2)).unwrap(); // Need to update after game ends
@@ -961,6 +1043,19 @@ impl Application for RefBoxApp {
                             tm.set_config(new_config.clone()).unwrap();
                             self.config.game = new_config;
 
+                            let game = edited_settings
+                                .games
+                                .as_ref()
+                                .and_then(|games| games.get(&edited_settings.game_number));
+                            let timing = game.and_then(|g| g.timing_rules.clone());
+                            let start_time = game.map(|g| g.start_time);
+
+                            tm.set_next_game(NextGameInfo {
+                                number: edited_settings.game_number,
+                                timing,
+                                start_time,
+                            });
+
                             let edited_settings = self.edited_settings.take().unwrap();
                             self.config.hardware.white_on_right = edited_settings.white_on_right;
                             self.using_uwhscores = edited_settings.using_uwhscores;
@@ -1152,7 +1247,7 @@ impl Application for RefBoxApp {
                 let edited_settings = self.edited_settings.as_mut().unwrap();
                 match param {
                     BoolGameParameter::OvertimeAllowed => {
-                        edited_settings.config.has_overtime ^= true
+                        edited_settings.config.overtime_allowed ^= true
                     }
                     BoolGameParameter::SuddenDeathAllowed => {
                         edited_settings.config.sudden_death_allowed ^= true
@@ -1180,6 +1275,19 @@ impl Application for RefBoxApp {
                             tm.set_config(self.config.game.clone()).unwrap();
                         }
 
+                        let game = edited_settings
+                            .games
+                            .as_ref()
+                            .and_then(|games| games.get(&edited_settings.game_number));
+                        let timing = game.and_then(|g| g.timing_rules.clone());
+                        let start_time = game.map(|g| g.start_time);
+
+                        tm.set_next_game(NextGameInfo {
+                            number: edited_settings.game_number,
+                            timing,
+                            start_time,
+                        });
+
                         self.config.hardware.white_on_right = edited_settings.white_on_right;
                         self.using_uwhscores = edited_settings.using_uwhscores;
                         self.current_tid = edited_settings.current_tid;
@@ -1187,7 +1295,6 @@ impl Application for RefBoxApp {
                         self.games = edited_settings.games;
 
                         confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
-                        tm.set_game_number(edited_settings.game_number);
                         let snapshot = tm.generate_snapshot(now).unwrap();
                         std::mem::drop(tm);
                         self.apply_snapshot(snapshot);
@@ -1227,9 +1334,17 @@ impl Application for RefBoxApp {
             Message::ScoreConfirmation { correct } => {
                 self.app_state = if let AppState::ConfirmScores(scores) = self.app_state {
                     if correct {
-                        // TODO: Send scores to uwhscores
                         let mut tm = self.tm.lock().unwrap();
                         let now = Instant::now();
+
+                        if let Some(game) = self
+                            .games
+                            .as_ref()
+                            .and_then(|games| games.get(&tm.game_number()))
+                        {
+                            self.post_game_score(game, scores);
+                        }
+
                         tm.set_scores(scores.black, scores.white, now);
                         tm.start_clock(now);
                         tm.update(now + Duration::from_millis(2)).unwrap(); // Need to update after game ends
@@ -1382,12 +1497,26 @@ impl Application for RefBoxApp {
             .spacing(SPACING)
             .padding(PADDING)
             .push(match self.app_state {
-                AppState::MainPage => build_main_view(
-                    &self.snapshot,
-                    &self.config.game,
-                    self.using_uwhscores,
-                    &self.games,
-                ),
+                AppState::MainPage => {
+                    let new_config = if self.snapshot.current_period == GamePeriod::BetweenGames {
+                        self.tm
+                            .lock()
+                            .unwrap()
+                            .next_game_info()
+                            .as_ref()
+                            .and_then(|info| Some(info.timing.as_ref()?.clone().into()))
+                    } else {
+                        None
+                    };
+
+                    let config = if let Some(ref c) = new_config {
+                        c
+                    } else {
+                        &self.config.game
+                    };
+
+                    build_main_view(&self.snapshot, config, self.using_uwhscores, &self.games)
+                }
                 AppState::TimeEdit(_, time, timeout_time) => {
                     build_time_edit_view(&self.snapshot, time, timeout_time)
                 }
@@ -1429,7 +1558,7 @@ impl Application for RefBoxApp {
         match self.app_state {
             AppState::ScoreEdit {
                 is_confirmation, ..
-            } if is_confirmation == true => {}
+            } if is_confirmation => {}
             AppState::ConfirmScores(_) => {}
             _ => {
                 main_view = main_view.push(build_timeout_ribbon(&self.snapshot, &self.tm));
@@ -1563,10 +1692,7 @@ impl<H: Hasher, I> Recipe<H, I> for MessageListener {
             .expect("Listener has already been started");
 
         Box::pin(stream::unfold(rx, |mut rx| async move {
-            match rx.recv().await {
-                Some(msg) => Some((msg, rx)),
-                None => None,
-            }
+            rx.recv().await.map(|msg| (msg, rx))
         }))
     }
 }

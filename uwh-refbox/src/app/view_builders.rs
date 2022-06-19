@@ -1219,7 +1219,7 @@ pub(super) fn build_game_config_edit_page<'a>(
     let rows: [Element<Message>; 4] = if using_uwhscores {
         let tournament_label = if let Some(ref tournaments) = tournaments {
             if let Some(tid) = current_tid {
-                match tournaments.get(&tid) {
+                match tournaments.get(tid) {
                     Some(t) => t.name.clone(),
                     None => NO_SELECTION_TXT.to_string(),
                 }
@@ -1297,7 +1297,7 @@ pub(super) fn build_game_config_edit_page<'a>(
                 ))
                 .push(make_value_button(
                     "OVERTIME\nALLOWED:",
-                    bool_string(config.has_overtime),
+                    bool_string(config.overtime_allowed),
                     true,
                     Some(Message::ToggleBoolParameter(
                         BoolGameParameter::OvertimeAllowed,
@@ -1324,7 +1324,7 @@ pub(super) fn build_game_config_edit_page<'a>(
                     "PRE OT\nBREAK LENGTH:",
                     time_string(config.pre_overtime_break),
                     true,
-                    if config.has_overtime {
+                    if config.overtime_allowed {
                         Some(Message::EditParameter(LengthParameter::PreOvertime))
                     } else {
                         None
@@ -1353,7 +1353,7 @@ pub(super) fn build_game_config_edit_page<'a>(
                     "OT HALF\nLENGTH:",
                     time_string(config.ot_half_play_duration),
                     true,
-                    if config.has_overtime {
+                    if config.overtime_allowed {
                         Some(Message::EditParameter(LengthParameter::OvertimeHalf))
                     } else {
                         None
@@ -1380,7 +1380,7 @@ pub(super) fn build_game_config_edit_page<'a>(
                     "OT HALF\nTIME LENGTH:",
                     time_string(config.ot_half_time_duration),
                     true,
-                    if config.has_overtime {
+                    if config.overtime_allowed {
                         Some(Message::EditParameter(LengthParameter::OvertimeHalfTime))
                     } else {
                         None
@@ -1421,10 +1421,10 @@ pub(super) fn build_game_config_edit_page<'a>(
     let game_label = if using_uwhscores {
         if let (Some(_), Some(cur_pool)) = (current_tid, current_pool) {
             if let Some(ref games) = games {
-                match games.get(&game_number) {
+                match games.get(game_number) {
                     Some(game) => {
                         if game.pool == *cur_pool {
-                            game_string_short(&game)
+                            game_string_short(game)
                         } else {
                             game_large_text = false;
                             NO_SELECTION_TXT.to_string()
@@ -2155,9 +2155,9 @@ fn config_string(
          Overtime Allowed: {}\n",
         time_string(config.half_play_duration),
         time_string(config.half_time_duration),
-        bool_string(config.has_overtime),
+        bool_string(config.overtime_allowed),
     );
-    result += &if config.has_overtime {
+    result += &if config.overtime_allowed {
         format!(
             "Pre-Overtime Break Length: {}\n\
              Overtime Half Length: {}\n\

@@ -6,8 +6,6 @@ use std::{fs::read_to_string, path::Path, time::Duration};
 pub struct Hardware {
     pub screen_x: i32,
     pub screen_y: i32,
-    pub has_xbee: bool,
-    pub has_rs485: bool,
     pub white_on_right: bool,
 }
 
@@ -16,51 +14,24 @@ impl Default for Hardware {
         Self {
             screen_x: 1024,
             screen_y: 768,
-            has_xbee: false,
-            has_rs485: false,
             white_on_right: false,
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct XBee {
-    pub port: String,
-    pub baud: u32,
-    pub clients: Vec<String>,
-    pub ch: String,
-    pub id: String,
+pub struct UwhScores {
+    pub url: String,
+    pub login_email: String,
+    pub login_pass: String,
 }
 
-impl Default for XBee {
+impl Default for UwhScores {
     fn default() -> Self {
         Self {
-            #[cfg(target_os = "linux")]
-            port: "/dev/ttyUSB0".to_string(),
-            #[cfg(not(target_os = "linux"))]
-            port: "/dev/tty.usbserial-DN03ZRU8".to_string(),
-            baud: 9600,
-            clients: vec![],
-            ch: "000C".to_string(),
-            id: "000D".to_string(),
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RS485 {
-    pub port: String,
-    pub baud: u32,
-}
-
-impl Default for RS485 {
-    fn default() -> Self {
-        Self {
-            #[cfg(target_os = "linux")]
-            port: "/dev/ttyUSB0".to_string(),
-            #[cfg(not(target_os = "linux"))]
-            port: "/dev/tty.usbserial-DN03ZRU8".to_string(),
-            baud: 115_200,
+            url: "https://uwhscores.com/api/v1/".to_string(),
+            login_email: String::new(),
+            login_pass: String::new(),
         }
     }
 }
@@ -70,23 +41,29 @@ impl Default for RS485 {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Game {
     pub team_timeouts_per_half: u16,
-    pub has_overtime: bool,
+    pub overtime_allowed: bool,
     pub sudden_death_allowed: bool,
-    pub timezone: String,
-    pub use_wallclock: bool,
-    pub pool: String,
-    pub tid: u32,
-    pub uwhscores_url: String,
+    #[serde(with = "secs_only_duration")]
     pub half_play_duration: Duration,
+    #[serde(with = "secs_only_duration")]
     pub half_time_duration: Duration,
+    #[serde(with = "secs_only_duration")]
     pub team_timeout_duration: Duration,
+    #[serde(with = "secs_only_duration")]
     pub ot_half_play_duration: Duration,
+    #[serde(with = "secs_only_duration")]
     pub ot_half_time_duration: Duration,
+    #[serde(with = "secs_only_duration")]
     pub pre_overtime_break: Duration,
+    #[serde(with = "secs_only_duration")]
     pub overtime_break_duration: Duration,
+    #[serde(with = "secs_only_duration")]
     pub pre_sudden_death_duration: Duration,
+    #[serde(with = "secs_only_duration")]
     pub post_game_duration: Duration,
+    #[serde(with = "secs_only_duration")]
     pub nominal_break: Duration,
+    #[serde(with = "secs_only_duration")]
     pub minimum_break: Duration,
 }
 
@@ -94,13 +71,8 @@ impl Default for Game {
     fn default() -> Self {
         Self {
             team_timeouts_per_half: 1,
-            has_overtime: true,
+            overtime_allowed: true,
             sudden_death_allowed: true,
-            timezone: "mst".to_string(),
-            use_wallclock: true,
-            pool: "1".to_string(),
-            tid: 16,
-            uwhscores_url: "https://uwhscores.com/api/v1/".to_string(),
             half_play_duration: Duration::from_secs(900),
             half_time_duration: Duration::from_secs(180),
             team_timeout_duration: Duration::from_secs(60),
@@ -120,8 +92,7 @@ impl Default for Game {
 pub struct Config {
     pub game: Game,
     pub hardware: Hardware,
-    pub xbee: XBee,
-    pub rs485: RS485,
+    pub uwhscores: UwhScores,
 }
 
 impl Config {
@@ -144,6 +115,25 @@ impl Config {
     }
 }
 
+mod secs_only_duration {
+    use serde::{self, Deserialize, Deserializer, Serializer};
+    use std::time::Duration;
+
+    pub fn serialize<S>(dur: &Duration, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u64(dur.as_secs())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Duration, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(Duration::from_secs(u64::deserialize(deserializer)?))
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -157,56 +147,27 @@ mod test {
            white_on_right = false"#
     );
 
-    #[cfg(target_os = "linux")]
-    const XBEE_STRING: &str = indoc!(
-        r#"port = "/dev/ttyUSB0"
-           baud = 9600
-           clients = []
-           ch = "000C"
-           id = "000D""#
-    );
-
-    #[cfg(not(target_os = "linux"))]
-    const XBEE_STRING: &str = indoc!(
-        r#"port = "/dev/tty.usbserial-DN03ZRU8"
-           baud = 9600
-           clients = []
-           ch = "000C"
-           id = "000D""#
-    );
-
-    #[cfg(target_os = "linux")]
-    const RS485_STRING: &str = indoc!(
-        r#"port = "/dev/ttyUSB0"
-           baud = 115200"#
-    );
-
-    #[cfg(not(target_os = "linux"))]
-    const RS485_STRING: &str = indoc!(
-        r#"port = "/dev/tty.usbserial-DN03ZRU8"
-           baud = 115200"#
+    const UWHSCORES_STRING: &str = indoc!(
+        r#"url = "https://uwhscores.com/api/v1/"
+           login_email = ""
+           login_pass = """#
     );
 
     const GAME_STRING: &str = indoc!(
-        r#"half_play_duration = { secs = 900, nanos = 0 }
-           half_time_duration = { secs = 180, nanos = 0 }
-           team_timeout_duration = { secs = 60, nanos = 0 }
-           has_overtime = true
-           ot_half_play_duration = { secs = 300, nanos = 0 }
-           ot_half_time_duration = { secs = 180, nanos = 0 }
-           pre_overtime_break = { secs = 180, nanos = 0 }
-           overtime_break_duration = { secs = 60, nanos = 0 }
-           pre_sudden_death_duration = { secs = 60, nanos = 0 }
+        r#"half_play_duration = 900
+           half_time_duration = 180
+           team_timeout_duration = 60
+           overtime_allowed = true
+           ot_half_play_duration = 300
+           ot_half_time_duration = 180
+           pre_overtime_break = 180
+           overtime_break_duration = 60
+           pre_sudden_death_duration = 60
            sudden_death_allowed = true
            team_timeouts_per_half = 1
-           post_game_duration = { secs = 60, nanos = 0 }
-           nominal_break = { secs = 900, nanos = 0 }
-           minimum_break = { secs = 240, nanos = 0 }
-           timezone = "mst"
-           use_wallclock = true
-           pool = "1"
-           tid = 16
-           uwhscores_url = "http://uwhscores.com/api/v1/""#
+           post_game_duration = 60
+           nominal_break = 900
+           minimum_break = 240"#
     );
 
     #[test]
@@ -224,28 +185,15 @@ mod test {
 
     #[test]
     fn test_deser_xbee() {
-        let xb: XBee = Default::default();
-        let deser = toml::from_str(XBEE_STRING);
-        assert_eq!(deser, Ok(xb));
+        let u: UwhScores = Default::default();
+        let deser = toml::from_str(UWHSCORES_STRING);
+        assert_eq!(deser, Ok(u));
     }
 
     #[test]
     fn test_ser_xbee() {
-        let xb: XBee = Default::default();
-        toml::to_string(&xb).unwrap();
-    }
-
-    #[test]
-    fn test_deser_rs485() {
-        let rs: RS485 = Default::default();
-        let deser = toml::from_str(RS485_STRING);
-        assert_eq!(deser, Ok(rs));
-    }
-
-    #[test]
-    fn test_ser_rs485() {
-        let rs: RS485 = Default::default();
-        toml::to_string(&rs).unwrap();
+        let u: UwhScores = Default::default();
+        toml::to_string(&u).unwrap();
     }
 
     #[test]
@@ -265,8 +213,8 @@ mod test {
     fn test_deser_config() {
         let config: Config = Default::default();
         let deser = toml::from_str(&format!(
-            "[game]\n{}\n[hardware]\n{}\n[xbee]\n{}\n[rs485]\n{}",
-            GAME_STRING, HW_STRING, XBEE_STRING, RS485_STRING
+            "[game]\n{}\n[hardware]\n{}\n[uwhscores]\n{}",
+            GAME_STRING, HW_STRING, UWHSCORES_STRING
         ));
         assert_eq!(deser, Ok(config));
     }

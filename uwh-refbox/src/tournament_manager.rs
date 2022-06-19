@@ -125,6 +125,10 @@ impl TournamentManager {
         &self.config
     }
 
+    pub fn next_game_info(&self) -> &Option<NextGameInfo> {
+        &self.next_game
+    }
+
     /// The config can only be modified between games
     pub fn set_config(&mut self, config: GameConfig) -> Result<()> {
         if self.current_period != GamePeriod::BetweenGames {
@@ -663,7 +667,7 @@ impl TournamentManager {
                     .signed_duration_since(Local::now().naive_local())
                     .to_std()
                 {
-                    Ok(dur) => Instant::now() + dur.into(),
+                    Ok(dur) => Instant::now() + dur,
                     Err(_) => now,
                 }
             } else {
@@ -757,7 +761,7 @@ impl TournamentManager {
             Ok(time >= time_remaining_at_start
                 && ((self.current_period == GamePeriod::SecondHalf
                     && (self.b_score != self.w_score
-                        || (!self.config.has_overtime && !self.config.sudden_death_allowed)))
+                        || (!self.config.overtime_allowed && !self.config.sudden_death_allowed)))
                     || (self.current_period == GamePeriod::OvertimeSecondHalf
                         && (self.b_score != self.w_score || !self.config.sudden_death_allowed))))
         } else {
@@ -803,10 +807,10 @@ impl TournamentManager {
                     }
                     GamePeriod::SecondHalf => {
                         if self.b_score != self.w_score
-                            || (!self.config.has_overtime && !self.config.sudden_death_allowed)
+                            || (!self.config.overtime_allowed && !self.config.sudden_death_allowed)
                         {
                             self.end_game(now);
-                        } else if self.config.has_overtime {
+                        } else if self.config.overtime_allowed {
                             info!(
                                 "{} Entering pre-overtime. Score is B({}), W({})",
                                 self.status_string(now),
@@ -1759,7 +1763,7 @@ mod test {
             half_time_duration: Duration::from_secs(3),
             nominal_break: Duration::from_secs(9),
             minimum_break: Duration::from_secs(2),
-            has_overtime: false,
+            overtime_allowed: false,
             sudden_death_allowed: false,
             ..Default::default()
         };
@@ -2548,7 +2552,7 @@ mod test {
         initialize();
         let config = GameConfig {
             half_play_duration: Duration::from_secs(900),
-            has_overtime: true,
+            overtime_allowed: true,
             ot_half_play_duration: Duration::from_secs(300),
             sudden_death_allowed: true,
             ..Default::default()
@@ -2759,7 +2763,7 @@ mod test {
     fn test_transition_sh_to_pot() {
         initialize();
         let config = GameConfig {
-            has_overtime: true,
+            overtime_allowed: true,
             pre_overtime_break: Duration::from_secs(7),
             ..Default::default()
         };
@@ -2779,7 +2783,7 @@ mod test {
     fn test_transition_sh_to_psd() {
         initialize();
         let config = GameConfig {
-            has_overtime: false,
+            overtime_allowed: false,
             sudden_death_allowed: true,
             pre_sudden_death_duration: Duration::from_secs(8),
             ..Default::default()
@@ -2800,7 +2804,7 @@ mod test {
     fn test_transition_sh_to_bg_tied_no_ot_no_sd() {
         initialize();
         let config = GameConfig {
-            has_overtime: false,
+            overtime_allowed: false,
             sudden_death_allowed: false,
             half_play_duration: Duration::from_secs(9),
             half_time_duration: Duration::from_secs(2),
@@ -2825,7 +2829,7 @@ mod test {
     fn test_transition_sh_to_bg_tied_no_ot_no_sd_use_min_break() {
         initialize();
         let config = GameConfig {
-            has_overtime: false,
+            overtime_allowed: false,
             sudden_death_allowed: false,
             half_play_duration: Duration::from_secs(9),
             half_time_duration: Duration::from_secs(2),
@@ -2850,7 +2854,7 @@ mod test {
     fn test_transition_sh_to_bg_not_tied_no_ot_no_sd() {
         initialize();
         let config = GameConfig {
-            has_overtime: false,
+            overtime_allowed: false,
             sudden_death_allowed: false,
             half_play_duration: Duration::from_secs(9),
             half_time_duration: Duration::from_secs(2),
@@ -2875,7 +2879,7 @@ mod test {
     fn test_transition_sh_to_bg_not_tied_with_ot() {
         initialize();
         let config = GameConfig {
-            has_overtime: true,
+            overtime_allowed: true,
             sudden_death_allowed: true,
             half_play_duration: Duration::from_secs(9),
             half_time_duration: Duration::from_secs(2),
@@ -2900,7 +2904,7 @@ mod test {
     fn test_transition_pot_to_otfh() {
         initialize();
         let config = GameConfig {
-            has_overtime: true,
+            overtime_allowed: true,
             ot_half_play_duration: Duration::from_secs(4),
             ..Default::default()
         };
@@ -2920,7 +2924,7 @@ mod test {
     fn test_transition_otfh_to_otht() {
         initialize();
         let config = GameConfig {
-            has_overtime: true,
+            overtime_allowed: true,
             ot_half_time_duration: Duration::from_secs(5),
             ..Default::default()
         };
@@ -2940,7 +2944,7 @@ mod test {
     fn test_transition_otht_to_otsh() {
         initialize();
         let config = GameConfig {
-            has_overtime: true,
+            overtime_allowed: true,
             ot_half_play_duration: Duration::from_secs(7),
             ..Default::default()
         };
@@ -2960,7 +2964,7 @@ mod test {
     fn test_transition_otsh_to_psd() {
         initialize();
         let config = GameConfig {
-            has_overtime: true,
+            overtime_allowed: true,
             sudden_death_allowed: true,
             pre_sudden_death_duration: Duration::from_secs(9),
             ..Default::default()
@@ -2981,7 +2985,7 @@ mod test {
     fn test_transition_otsh_to_bg_tied_no_sd() {
         initialize();
         let config = GameConfig {
-            has_overtime: true,
+            overtime_allowed: true,
             sudden_death_allowed: false,
             half_play_duration: Duration::from_secs(9),
             half_time_duration: Duration::from_secs(2),
@@ -3006,7 +3010,7 @@ mod test {
     fn test_transition_otsh_to_bg_not_tied_no_sd() {
         initialize();
         let config = GameConfig {
-            has_overtime: true,
+            overtime_allowed: true,
             sudden_death_allowed: false,
             half_play_duration: Duration::from_secs(9),
             half_time_duration: Duration::from_secs(2),
@@ -3031,7 +3035,7 @@ mod test {
     fn test_transition_otsh_to_bg_not_tied_with_sd() {
         initialize();
         let config = GameConfig {
-            has_overtime: true,
+            overtime_allowed: true,
             sudden_death_allowed: true,
             half_play_duration: Duration::from_secs(9),
             half_time_duration: Duration::from_secs(2),
@@ -3141,7 +3145,7 @@ mod test {
     fn test_penalty_time_elapsed() {
         initialize();
         let all_periods_config = GameConfig {
-            has_overtime: true,
+            overtime_allowed: true,
             sudden_death_allowed: true,
             half_play_duration: Duration::from_secs(5),
             half_time_duration: Duration::from_secs(7),
@@ -3152,12 +3156,12 @@ mod test {
             ..Default::default()
         };
         let sd_only_config = GameConfig {
-            has_overtime: false,
+            overtime_allowed: false,
             sudden_death_allowed: true,
             ..all_periods_config.clone()
         };
         let no_sd_no_ot_config = GameConfig {
-            has_overtime: false,
+            overtime_allowed: false,
             sudden_death_allowed: false,
             ..all_periods_config.clone()
         };
@@ -3294,7 +3298,7 @@ mod test {
     fn test_penalty_time_remaining() {
         initialize();
         let config = GameConfig {
-            has_overtime: true,
+            overtime_allowed: true,
             sudden_death_allowed: true,
             half_play_duration: Duration::from_secs(5),
             half_time_duration: Duration::from_secs(7),
@@ -3392,7 +3396,7 @@ mod test {
     fn test_penalty_is_complete() {
         initialize();
         let config = GameConfig {
-            has_overtime: true,
+            overtime_allowed: true,
             sudden_death_allowed: true,
             half_play_duration: Duration::from_secs(5),
             half_time_duration: Duration::from_secs(7),
@@ -4492,7 +4496,7 @@ mod test {
     fn test_would_end_game() {
         initialize();
         let config = GameConfig {
-            has_overtime: false,
+            overtime_allowed: false,
             sudden_death_allowed: false,
             ..Default::default()
         };
@@ -4520,7 +4524,7 @@ mod test {
         tm.config.sudden_death_allowed = true;
         assert_eq!(Ok(true), tm.would_end_game(next_time));
 
-        tm.config.has_overtime = true;
+        tm.config.overtime_allowed = true;
         assert_eq!(Ok(true), tm.would_end_game(next_time));
 
         tm.set_scores(4, 4, start_time);
@@ -4557,7 +4561,7 @@ mod test {
     fn test_halt_game() {
         initialize();
         let config = GameConfig {
-            has_overtime: false,
+            overtime_allowed: false,
             sudden_death_allowed: false,
             ..Default::default()
         };

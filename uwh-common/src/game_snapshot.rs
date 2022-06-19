@@ -107,7 +107,7 @@ impl GamePeriod {
             | Self::OvertimeHalfTime
             | Self::PreSuddenDeath => false,
             Self::FirstHalf | Self::SecondHalf => true,
-            Self::OvertimeFirstHalf | Self::OvertimeSecondHalf => config.has_overtime,
+            Self::OvertimeFirstHalf | Self::OvertimeSecondHalf => config.overtime_allowed,
             Self::SuddenDeath => config.sudden_death_allowed,
         }
     }
@@ -475,17 +475,17 @@ mod test {
     #[test]
     fn test_period_penalties_run() {
         let all_periods_config = Game {
-            has_overtime: true,
+            overtime_allowed: true,
             sudden_death_allowed: true,
             ..Default::default()
         };
         let sd_only_config = Game {
-            has_overtime: false,
+            overtime_allowed: false,
             sudden_death_allowed: true,
             ..Default::default()
         };
         let no_sd_no_ot_config = Game {
-            has_overtime: false,
+            overtime_allowed: false,
             sudden_death_allowed: false,
             ..Default::default()
         };

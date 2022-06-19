@@ -48,6 +48,10 @@ struct Cli {
     /// Baud rate for the serial port
     baud_rate: u32,
 
+    #[clap(long)]
+    /// Don't require HTTPS to connect to uwhscores
+    allow_http: bool,
+
     #[clap(long, hide = true)]
     is_simulator: bool,
 }
@@ -131,7 +135,15 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         confy::get_configuration_file_path(APP_CONFIG_NAME, None).unwrap()
     );
 
-    let config: Config = confy::load(APP_CONFIG_NAME, None).unwrap();
+    let config: Config = match confy::load(APP_CONFIG_NAME, None) {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("Failed to read config file, overwriting with default. Error: {e}");
+            let config = Config::default();
+            confy::store(APP_CONFIG_NAME, None, &config).unwrap();
+            config
+        }
+    };
 
     let window_size = (
         config.hardware.screen_x as u32,
@@ -144,6 +156,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         binary_port: args.binary_port,
         json_port: args.json_port,
         sim_child: child,
+        require_https: !args.allow_http,
     };
 
     let mut settings = Settings::with_flags(flags);

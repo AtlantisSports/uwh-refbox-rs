@@ -36,6 +36,7 @@ pub struct TournamentSingleResponse {
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct GameInfo {
     pub black: String,
+    #[serde(deserialize_with = "deser_with_null_to_default")]
     pub black_id: u32,
     pub game_type: String,
     pub gid: u32,
@@ -49,6 +50,7 @@ pub struct GameInfo {
     pub tid: u32,
     pub timing_rules: Option<TimingRules>,
     pub white: String,
+    #[serde(deserialize_with = "deser_with_null_to_default")]
     pub white_id: u32,
 }
 

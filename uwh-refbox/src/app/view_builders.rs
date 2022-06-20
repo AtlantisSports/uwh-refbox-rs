@@ -639,7 +639,7 @@ pub(super) fn build_list_selector_page<'a>(
 
     let title = match param {
         ListableParameter::Tournament => "SELECT TOURNAMENT",
-        ListableParameter::Pool => "SELECT POOL",
+        ListableParameter::Pool => "SELECT COURT",
         ListableParameter::Game => "SELECT GAME",
     };
 
@@ -1260,7 +1260,7 @@ pub(super) fn build_game_config_edit_page<'a>(
 
         [
             make_value_button("TOURNAMENT:", tournament_label, true, tournament_btn_msg).into(),
-            make_value_button("POOL:", pool_label, true, pool_btn_msg).into(),
+            make_value_button("COURT:", pool_label, true, pool_btn_msg).into(),
             vertical_space(Length::Units(MIN_BUTTON_SIZE)).into(),
             row()
                 .spacing(SPACING)

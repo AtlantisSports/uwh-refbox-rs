@@ -193,11 +193,12 @@ impl<H: Hasher, I> Recipe<H, I> for SnapshotListener {
                 match TcpStream::connect(("localhost", port)).await {
                     Ok(conn) => state.stream = Some(conn),
                     Err(e) => {
-                        error!("Sim: Failed to connect to refbox: {e:?}");
+                        warn!("Sim: Failed to connect to refbox: {e:?}");
                         state.fail_count += 1;
                         time::sleep(Duration::from_millis(500)).await;
                         if state.fail_count > 20 {
                             state.stop = true;
+                            error!("Failed to connect to refbox too many times. Quitting");
                             return Some((Message::Stop, state));
                         }
                         return Some((Message::NoAction, state));

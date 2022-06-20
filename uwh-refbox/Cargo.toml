@@ -11,7 +11,6 @@ debug = ["iced/debug"]
 
 [dependencies]
 arrayref = "0.3.6"
-chrono = { version = "0.4", features = ["serde"] }
 collect_array = "0.1"
 clap = { version = "3.1", features = ["derive"] }
 confy = { git = "https://github.com/rust-cli/confy", rev = "642822413139ce38a96b916190e8c7fd5b88e814" }
@@ -32,6 +31,7 @@ serde_derive = "1.0"
 serde_json = "1.0"
 skip_error = "3.1"
 thiserror = "1.0"
+time = { version = "0.3", features = ["local-offset", "macros", "serde", "serde-human-readable"] }
 tokio = { version = "1.18", features = ["io-util", "macros", "net", "sync", "time"] }
 tokio-serial = "5.4"
 toml = "0.5"

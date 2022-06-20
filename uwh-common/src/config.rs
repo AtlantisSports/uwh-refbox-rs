@@ -1,6 +1,7 @@
 use log::*;
 use serde_derive::{Deserialize, Serialize};
 use std::{fs::read_to_string, path::Path, time::Duration};
+use time::UtcOffset;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hardware {
@@ -22,16 +23,18 @@ impl Default for Hardware {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UwhScores {
     pub url: String,
-    pub login_email: String,
-    pub login_pass: String,
+    pub email: String,
+    pub password: String,
+    pub timezone: UtcOffset,
 }
 
 impl Default for UwhScores {
     fn default() -> Self {
         Self {
             url: "https://uwhscores.com/api/v1/".to_string(),
-            login_email: String::new(),
-            login_pass: String::new(),
+            email: String::new(),
+            password: String::new(),
+            timezone: UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC),
         }
     }
 }
@@ -149,8 +152,9 @@ mod test {
 
     const UWHSCORES_STRING: &str = indoc!(
         r#"url = "https://uwhscores.com/api/v1/"
-           login_email = ""
-           login_pass = """#
+           email = ""
+           password = ""
+           timezone = "+00:00:00""#
     );
 
     const GAME_STRING: &str = indoc!(
@@ -184,14 +188,14 @@ mod test {
     }
 
     #[test]
-    fn test_deser_xbee() {
+    fn test_deser_uwhscores() {
         let u: UwhScores = Default::default();
         let deser = toml::from_str(UWHSCORES_STRING);
         assert_eq!(deser, Ok(u));
     }
 
     #[test]
-    fn test_ser_xbee() {
+    fn test_ser_uwhscores() {
         let u: UwhScores = Default::default();
         toml::to_string(&u).unwrap();
     }

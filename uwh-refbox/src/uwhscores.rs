@@ -1,17 +1,25 @@
-use chrono::naive::NaiveDateTime;
 use serde::{Deserialize, Deserializer};
 use serde_derive::{Deserialize, Serialize};
+use time::PrimitiveDateTime;
 use tokio::time::Duration;
 use uwh_common::config::Game as GameConfig;
 
+time::serde::format_description!(
+    rfc3339_no_subsec_no_offest,
+    PrimitiveDateTime,
+    "[year]-[month]-[day]T[hour]:[minute]:[second]"
+);
+
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct TournamentInfo {
-    pub end_date: NaiveDateTime,
+    #[serde(with = "rfc3339_no_subsec_no_offest")]
+    pub end_date: PrimitiveDateTime,
     pub is_active: u8,
     pub location: String,
     pub name: String,
     pub pools: Option<Vec<String>>,
-    pub start_date: NaiveDateTime,
+    #[serde(with = "rfc3339_no_subsec_no_offest")]
+    pub start_date: PrimitiveDateTime,
     pub tid: u32,
 }
 
@@ -36,7 +44,8 @@ pub struct GameInfo {
     pub score_b: u8,
     #[serde(deserialize_with = "deser_with_null_to_default")]
     pub score_w: u8,
-    pub start_time: NaiveDateTime,
+    #[serde(with = "rfc3339_no_subsec_no_offest")]
+    pub start_time: PrimitiveDateTime,
     pub tid: u32,
     pub timing_rules: Option<TimingRules>,
     pub white: String,

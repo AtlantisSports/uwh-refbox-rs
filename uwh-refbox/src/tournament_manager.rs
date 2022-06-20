@@ -1,4 +1,3 @@
-use chrono::{Local, NaiveDateTime};
 use derivative::Derivative;
 use log::*;
 use std::{
@@ -7,6 +6,7 @@ use std::{
     ops::{Index, IndexMut},
 };
 use thiserror::Error;
+use time::{OffsetDateTime, PrimitiveDateTime, UtcOffset};
 use tokio::{
     sync::watch,
     time::{Duration, Instant},
@@ -42,6 +42,7 @@ pub struct TournamentManager {
     next_game: Option<NextGameInfo>,
     next_scheduled_start: Option<Instant>,
     reset_game_time: Duration,
+    timezone: UtcOffset,
 }
 
 impl TournamentManager {
@@ -68,6 +69,7 @@ impl TournamentManager {
             next_scheduled_start: None,
             reset_game_time: config.nominal_break,
             config,
+            timezone: UtcOffset::UTC,
         }
     }
 
@@ -115,6 +117,10 @@ impl TournamentManager {
         if self.current_period == GamePeriod::SuddenDeath && b_score != w_score {
             self.end_game(now);
         }
+    }
+
+    pub fn set_timezone(&mut self, timezone: UtcOffset) {
+        self.timezone = timezone;
     }
 
     pub fn current_period(&self) -> GamePeriod {
@@ -663,12 +669,21 @@ impl TournamentManager {
 
         let scheduled_start =
             if let Some(start_time) = self.next_game.as_ref().and_then(|info| info.start_time) {
-                match start_time
-                    .signed_duration_since(Local::now().naive_local())
-                    .to_std()
-                {
+                let cur_time = OffsetDateTime::now_utc().to_offset(self.timezone);
+                info!("Current time is: {cur_time}");
+
+                let start_time = start_time.assume_offset(self.timezone);
+                info!("Start time is: {start_time}");
+
+                let time_to_game = start_time - cur_time;
+                info!("Calculated time to next game: {time_to_game}");
+
+                match time_to_game.try_into() {
                     Ok(dur) => Instant::now() + dur,
-                    Err(_) => now,
+                    Err(e) => {
+                        error!("Failed to calculate time to next game start: {e}");
+                        now
+                    }
                 }
             } else {
                 self.next_scheduled_start
@@ -1582,7 +1597,7 @@ impl<T> IndexMut<Color> for BlackWhiteBundle<T> {
 pub struct NextGameInfo {
     pub number: u32,
     pub timing: Option<TimingRules>,
-    pub start_time: Option<NaiveDateTime>,
+    pub start_time: Option<PrimitiveDateTime>,
 }
 
 #[derive(Debug, PartialEq, Error)]

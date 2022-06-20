@@ -145,6 +145,16 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+    if let Ok(offset) = time::UtcOffset::current_local_offset() {
+        if offset != config.uwhscores.timezone {
+            warn!(
+                "The timezone in the config file ({}) does not match the detected system \
+                 timezone ({offset}). The config timezone will be used.",
+                config.uwhscores.timezone
+            );
+        }
+    }
+
     let window_size = (
         config.hardware.screen_x as u32,
         config.hardware.screen_y as u32,

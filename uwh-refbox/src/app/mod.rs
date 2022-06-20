@@ -437,8 +437,8 @@ impl RefBoxApp {
             let login_request = client
                 .request(Method::GET, format!("{}login", self.config.uwhscores.url))
                 .basic_auth(
-                    self.config.uwhscores.login_email.clone(),
-                    Some(self.config.uwhscores.login_pass.clone()),
+                    self.config.uwhscores.email.clone(),
+                    Some(self.config.uwhscores.password.clone()),
                 )
                 .build()
                 .unwrap();
@@ -585,6 +585,7 @@ impl Application for RefBoxApp {
         msg_tx.send(Message::Init).unwrap();
 
         let mut tm = TournamentManager::new(config.game.clone());
+        tm.set_timezone(config.uwhscores.timezone);
         tm.start_clock(Instant::now());
 
         let client = match Client::builder().https_only(require_https).build() {

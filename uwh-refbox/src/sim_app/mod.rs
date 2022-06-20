@@ -13,7 +13,10 @@ use iced_futures::{
 };
 use log::*;
 use std::{hash::Hasher, rc::Rc, sync::Mutex};
-use tokio::net::TcpStream;
+use tokio::{
+    net::TcpStream,
+    time::{self, Duration},
+};
 use uwh_matrix_drawing::{draw_panels, transmitted_data::TransmittedData};
 
 mod display_simulator;
@@ -166,11 +169,13 @@ impl<H: Hasher, I> Recipe<H, I> for SnapshotListener {
         struct State {
             stream: Option<TcpStream>,
             stop: bool,
+            fail_count: u8,
         }
 
         let state = State {
             stream: None,
             stop: false,
+            fail_count: 0,
         };
 
         let port = self.port;
@@ -184,13 +189,19 @@ impl<H: Hasher, I> Recipe<H, I> for SnapshotListener {
                 pend.await;
             }
 
-            if matches!(state.stream, None) {
+            if state.stream.is_none() {
                 match TcpStream::connect(("localhost", port)).await {
                     Ok(conn) => state.stream = Some(conn),
                     Err(e) => {
-                        error!("Sim: Failed to connect to refbox: {e:?}");
-                        state.stop = true;
-                        return Some((Message::Stop, state));
+                        warn!("Sim: Failed to connect to refbox: {e:?}");
+                        state.fail_count += 1;
+                        time::sleep(Duration::from_millis(500)).await;
+                        if state.fail_count > 20 {
+                            state.stop = true;
+                            error!("Failed to connect to refbox too many times. Quitting");
+                            return Some((Message::Stop, state));
+                        }
+                        return Some((Message::NoAction, state));
                     }
                 };
             }

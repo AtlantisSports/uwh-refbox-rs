@@ -232,7 +232,7 @@ impl Server {
                     ServerMessage::NewSnapshot(snapshot, white_on_right) => {
                         //info!("Server received snapshot: {snapshot:?}");
                         let json = if self.has_json {
-                            serde_json::to_string(&snapshot).unwrap().into_bytes()
+                            (serde_json::to_string(&snapshot).unwrap() + "\n").into_bytes()
                         } else {
                             vec![]
                         };
@@ -290,8 +290,8 @@ impl Drop for Server {
 
 async fn listener_loop(tx: mpsc::Sender<ServerMessage>, binary_port: u16, json_port: u16) {
     info!("Strating Listeners for JSON (port {json_port}) and binary (port {binary_port})");
-    let binary_listener = TcpListener::bind(("localhost", binary_port)).await.unwrap();
-    let json_listener = TcpListener::bind(("localhost", json_port)).await.unwrap();
+    let binary_listener = TcpListener::bind(("::", binary_port)).await.unwrap();
+    let json_listener = TcpListener::bind(("::", json_port)).await.unwrap();
     info!("Listeners started");
 
     loop {

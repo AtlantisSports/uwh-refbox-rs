@@ -44,7 +44,7 @@ pub struct GameSnapshot {
     pub is_old_game: bool,
     pub game_number: u32,
     pub next_game_number: u32,
-    pub tournament_id: u64,
+    pub tournament_id: u32,
 }
 
 #[cfg(feature = "std")]

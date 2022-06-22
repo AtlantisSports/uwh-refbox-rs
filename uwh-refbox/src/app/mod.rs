@@ -264,13 +264,16 @@ pub enum ConfirmationOption {
 }
 
 impl RefBoxApp {
-    fn apply_snapshot(&mut self, new_snapshot: GameSnapshot) {
+    fn apply_snapshot(&mut self, mut new_snapshot: GameSnapshot) {
         if new_snapshot.current_period != self.snapshot.current_period {
             if new_snapshot.current_period == GamePeriod::BetweenGames {
                 self.handle_game_end();
             } else if self.snapshot.current_period == GamePeriod::BetweenGames {
                 self.handle_game_start(new_snapshot.game_number);
             }
+        }
+        if let Some(tid) = self.current_tid {
+            new_snapshot.tournament_id = tid;
         }
         self.maybe_play_sound(&new_snapshot);
         self.update_sender

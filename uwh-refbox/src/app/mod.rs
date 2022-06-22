@@ -63,6 +63,7 @@ pub struct RefBoxApp {
     current_pool: Option<String>,
     sound: Option<(OutputStream, OutputStreamHandle)>,
     sim_child: Option<Child>,
+    fullscreen: bool,
 }
 
 #[derive(Debug)]
@@ -73,6 +74,7 @@ pub struct RefBoxAppFlags {
     pub json_port: u16,
     pub sim_child: Option<Child>,
     pub require_https: bool,
+    pub fullscreen: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -571,6 +573,7 @@ impl Application for RefBoxApp {
             json_port,
             sim_child,
             require_https,
+            fullscreen,
         } = flags;
 
         let sound = match OutputStream::try_default() {
@@ -631,6 +634,7 @@ impl Application for RefBoxApp {
                 current_pool: None,
                 sound,
                 sim_child,
+                fullscreen,
             },
             Command::none(),
         )
@@ -645,6 +649,14 @@ impl Application for RefBoxApp {
 
     fn title(&self) -> String {
         "UWH Ref Box".into()
+    }
+
+    fn mode(&self) -> iced::window::Mode {
+        if self.fullscreen {
+            iced::window::Mode::Fullscreen
+        } else {
+            iced::window::Mode::Windowed
+        }
     }
 
     fn update(&mut self, message: Message) -> Command<Message> {

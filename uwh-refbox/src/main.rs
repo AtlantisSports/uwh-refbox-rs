@@ -32,6 +32,10 @@ struct Cli {
     /// Spacing between pixels in the panel the simulator
     spacing: Option<f32>,
 
+    #[clap(long, short)]
+    /// Make the app fullscreen
+    fullscreen: bool,
+
     #[clap(long, default_value = "8001")]
     /// Port to listen on for TCP connections with a binary send type
     binary_port: u16,
@@ -167,6 +171,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         json_port: args.json_port,
         sim_child: child,
         require_https: !args.allow_http,
+        fullscreen: args.fullscreen,
     };
 
     let mut settings = Settings::with_flags(flags);

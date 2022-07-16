@@ -214,6 +214,10 @@ fn main() {
         glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None)
             .unwrap();
 
+    let mut game_state: Option<GameSnapshot> = None;
+    let (tx, rx) = std::sync::mpsc::channel::<GameSnapshot>();
+
+    std::thread::spawn(|| networking_thread(tx).unwrap());
     event_loop.run(move |event, _, control_flow| {
         match event {
             glutin::event::Event::WindowEvent { event, .. } => match event {
@@ -231,25 +235,41 @@ fn main() {
             _ => return,
         }
 
+        if let Ok(state) = rx.try_recv() {
+            game_state = Some(state);
+        }
+        //TODO fix this to depend on FPS
         let next_frame_time =
             std::time::Instant::now() + std::time::Duration::from_nanos(16_666_667);
         *control_flow = glutin::event_loop::ControlFlow::WaitUntil(next_frame_time);
 
         let mut target = display.draw();
         target.clear_color(1.0, 0.9, 0.9, 1.0);
-        for uniform in pages::final_scores(&textures) {
-            target
-                .draw(
-                    &vertex_buffer,
-                    indices,
-                    &program,
-                    &uniform,
-                    &glium::draw_parameters::DrawParameters {
-                        blend: glium::draw_parameters::Blend::alpha_blending(),
-                        ..Default::default()
-                    },
-                )
-                .unwrap();
+        if game_state.is_some() {
+            for uniform in if game_state.as_ref().unwrap().current_period
+                == uwh_common::game_snapshot::GamePeriod::BetweenGames
+            {
+                match game_state.as_ref().unwrap().secs_in_period {
+                    121..=u16::MAX => pages::next_game(&textures),
+                    30..=120 => pages::roster(&textures),
+                    _ => pages::pre_game_display(&textures),
+                }
+            } else {
+                pages::final_scores(&textures)
+            } {
+                target
+                    .draw(
+                        &vertex_buffer,
+                        indices,
+                        &program,
+                        &uniform,
+                        &glium::draw_parameters::DrawParameters {
+                            blend: glium::draw_parameters::Blend::alpha_blending(),
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap();
+            }
         }
 
         target.finish().unwrap();
@@ -260,7 +280,9 @@ use serde_json::Value;
 use std::net::TcpStream;
 use uwh_common::game_snapshot::GameSnapshot;
 
-fn _unused() -> Result<(), Box<dyn std::error::Error>> {
+fn networking_thread(
+    tx: std::sync::mpsc::Sender<GameSnapshot>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let data: Value = serde_json::from_str(
         &reqwest::blocking::get("https://uwhscores.com/api/v1/tournaments")?.text()?,
     )?;
@@ -288,14 +310,13 @@ fn _unused() -> Result<(), Box<dyn std::error::Error>> {
         ))?
         .text()?,
     )?;
-    println!("{}", serde_json::ser::to_string_pretty(&data)?);
-    let mut stream = TcpStream::connect(("localhost", 8000))?;
-    println!("connected!");
+    let mut stream = TcpStream::connect(("localhost", 8000))
+        .expect("Is the refbox running? We error'd out on the connection.");
     let mut buff = vec![0u8; 1024];
     loop {
         let read_bytes = stream.read(&mut buff).unwrap();
         let snapshot: GameSnapshot = serde_json::de::from_slice(&buff[..read_bytes]).unwrap();
 
-        print!("{:?}", snapshot);
+        tx.send(snapshot).unwrap();
     }
 }

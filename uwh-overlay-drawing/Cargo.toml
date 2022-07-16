@@ -1,0 +1,14 @@
+[package]
+name = "uwh-overlay-drawing"
+description = "Overlays for rendering game state"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+image = "*"
+uwh-common = { git = "https://github.com/AtlantisSports/uwh-refbox-rs" }
+serde_json = "*"
+reqwest = { version = "*", features = ["blocking"] }
+glium = "*"

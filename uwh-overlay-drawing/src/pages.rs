@@ -1,5 +1,4 @@
 use glium::uniforms::{EmptyUniforms, UniformsStorage};
-use glium::{DrawError, Frame, Program, Surface};
 
 type UniformList<'a> = Vec<
     UniformsStorage<
@@ -18,7 +17,7 @@ pub fn roster(textures: &crate::Textures) -> UniformList {
                 [0.0, 0.0, 1.0, 0.0],
                 [ -0.5, 0.0, 0.0, 1.0f32],
             ],
-            tex: &textures.atlantis_logo,
+            tex: &textures.atlantis_logo_graphic,
         },
         uniform! {
             matrix: [
@@ -86,7 +85,7 @@ pub fn next_game(textures: &crate::Textures) -> UniformList {
                 [0.0, 0.0, 1.0, 0.0],
                 [ -0.5, 0.0, 0.0, 1.0f32],
             ],
-            tex: &textures.atlantis_logo,
+            tex: &textures.atlantis_logo_graphic,
         },
         uniform! {
             matrix: [
@@ -127,7 +126,7 @@ pub fn final_scores(textures: &crate::Textures) -> UniformList {
                 [0.0, 0.0, 1.0, 0.0],
                 [ -0.5, 0.0, 0.0, 1.0f32],
             ],
-            tex: &textures.atlantis_logo,
+            tex: &textures.atlantis_logo_graphic,
         },
         uniform! {
             matrix: [
@@ -150,7 +149,7 @@ pub fn pre_game_display(textures: &crate::Textures) -> UniformList {
                 [0.0, 0.0, 1.0, 0.0],
                 [ -0.5, 0.0, 0.0, 1.0f32],
             ],
-            tex: &textures.atlantis_logo,
+            tex: &textures.atlantis_logo_graphic,
         },
         uniform! {
             matrix: [

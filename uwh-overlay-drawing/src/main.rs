@@ -1,11 +1,14 @@
 #[macro_use]
 extern crate glium;
 
-use std::io::{Cursor, Read};
+use std::{
+    io::{Cursor, Read},
+    time,
+};
 mod pages;
 
 pub struct Textures {
-    atlantis_logo: glium::texture::SrgbTexture2d,
+    atlantis_logo_graphic: glium::texture::SrgbTexture2d,
     bottom_graphic: glium::texture::SrgbTexture2d,
     team_information_graphic: glium::texture::SrgbTexture2d,
     team_black_graphic: glium::texture::SrgbTexture2d,
@@ -15,122 +18,75 @@ pub struct Textures {
     final_score_graphic: glium::texture::SrgbTexture2d,
 }
 
+macro_rules! load {
+    ($file:literal, $display:ident, $textures: ident) => {
+        let image = image::load(Cursor::new(&include_bytes!($file)), image::ImageFormat::Png)
+            .unwrap()
+            .to_rgba8();
+        let image_dimensions = image.dimensions();
+        let image =
+            glium::texture::RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
+        $textures.push(glium::texture::SrgbTexture2d::new($display, image).unwrap());
+    };
+}
+
 impl Textures {
     fn init(display: &glium::Display) -> Self {
-        let image = image::load(
-            Cursor::new(&include_bytes!(
-                "../../uwh-overlay-drawing/assets/1080/[PNG] 8K - Atlantis Logo.png"
-            )),
-            image::ImageFormat::Png,
-        )
-        .unwrap()
-        .to_rgba8();
-        let image_dimensions = image.dimensions();
-        let image =
-            glium::texture::RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
-
-        let atlantis_logo = glium::texture::SrgbTexture2d::new(display, image).unwrap();
-        let image = image::load(
-            Cursor::new(&include_bytes!(
-                "../../uwh-overlay-drawing/assets/1080/[PNG] 8K - Bottom Graphic.png"
-            )),
-            image::ImageFormat::Png,
-        )
-        .unwrap()
-        .to_rgba8();
-        let image_dimensions = image.dimensions();
-        let image =
-            glium::texture::RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
-
-        let bottom_graphic = glium::texture::SrgbTexture2d::new(display, image).unwrap();
-        let image = image::load(
-            Cursor::new(&include_bytes!(
-                "../../uwh-overlay-drawing/assets/1080/[PNG] 8K - Team Information Graphic.png"
-            )),
-            image::ImageFormat::Png,
-        )
-        .unwrap()
-        .to_rgba8();
-        let image_dimensions = image.dimensions();
-        let image =
-            glium::texture::RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
-
-        let team_information_graphic = glium::texture::SrgbTexture2d::new(display, image).unwrap();
-        let image = image::load(
-            Cursor::new(&include_bytes!(
-                "../../uwh-overlay-drawing/assets/1080/[PNG] 8K - Team Bars Graphic.png"
-            )),
-            image::ImageFormat::Png,
-        )
-        .unwrap()
-        .to_rgba8();
-        let image_dimensions = image.dimensions();
-        let image =
-            glium::texture::RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
-
-        let team_bar_graphic = glium::texture::SrgbTexture2d::new(display, image).unwrap();
-        let image = image::load(
-            Cursor::new(&include_bytes!(
-                "../../uwh-overlay-drawing/assets/1080/[PNG] 8K - Team White Graphic.png"
-            )),
-            image::ImageFormat::Png,
-        )
-        .unwrap()
-        .to_rgba8();
-        let image_dimensions = image.dimensions();
-        let image =
-            glium::texture::RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
-
-        let team_white_graphic = glium::texture::SrgbTexture2d::new(display, image).unwrap();
-        let image = image::load(
-            Cursor::new(&include_bytes!(
-                "../../uwh-overlay-drawing/assets/1080/[PNG] 8K - Team Black Graphic.png"
-            )),
-            image::ImageFormat::Png,
-        )
-        .unwrap()
-        .to_rgba8();
-        let image_dimensions = image.dimensions();
-        let image =
-            glium::texture::RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
-
-        let team_black_graphic = glium::texture::SrgbTexture2d::new(display, image).unwrap();
-        let image = image::load(
-            Cursor::new(&include_bytes!(
-                "../../uwh-overlay-drawing/assets/1080/[PNG] 8K - Time and Game State Graphic.png"
-            )),
-            image::ImageFormat::Png,
-        )
-        .unwrap()
-        .to_rgba8();
-        let image_dimensions = image.dimensions();
-        let image =
-            glium::texture::RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
-
-        let time_and_game_state_graphic =
-            glium::texture::SrgbTexture2d::new(display, image).unwrap();
-        let image = image::load(
-            Cursor::new(&include_bytes!(
-                "../../uwh-overlay-drawing/assets/1080/[PNG] 8K - Final Score Graphic.png"
-            )),
-            image::ImageFormat::Png,
-        )
-        .unwrap()
-        .to_rgba8();
-        let image_dimensions = image.dimensions();
-        let image =
-            glium::texture::RawImage2d::from_raw_rgba_reversed(&image.into_raw(), image_dimensions);
-
-        let final_score_graphic = glium::texture::SrgbTexture2d::new(display, image).unwrap();
+        let start = time::Instant::now();
+        let mut textures = Vec::new();
+        load!(
+            "../../uwh-overlay-drawing/assets/1080/[PNG] 8K - Final Score Graphic.png",
+            display,
+            textures
+        );
+        load!(
+            "../../uwh-overlay-drawing/assets/1080/[PNG] 8K - Time and Game State Graphic.png",
+            display,
+            textures
+        );
+        load!(
+            "../../uwh-overlay-drawing/assets/1080/[PNG] 8K - Team Black Graphic.png",
+            display,
+            textures
+        );
+        load!(
+            "../../uwh-overlay-drawing/assets/1080/[PNG] 8K - Team White Graphic.png",
+            display,
+            textures
+        );
+        load!(
+            "../../uwh-overlay-drawing/assets/1080/[PNG] 8K - Team Bars Graphic.png",
+            display,
+            textures
+        );
+        load!(
+            "../../uwh-overlay-drawing/assets/1080/[PNG] 8K - Team Information Graphic.png",
+            display,
+            textures
+        );
+        load!(
+            "../../uwh-overlay-drawing/assets/1080/[PNG] 8K - Bottom Graphic.png",
+            display,
+            textures
+        );
+        load!(
+            "../../uwh-overlay-drawing/assets/1080/[PNG] 8K - Atlantis Logo.png",
+            display,
+            textures
+        );
+        println!(
+            "Loaded images in: {} seconds",
+            start.elapsed().as_secs_f32()
+        );
         Self {
-            atlantis_logo,
-            bottom_graphic,
-            team_information_graphic,
-            team_black_graphic,
-            team_white_graphic,
-            team_bar_graphic,
-            time_and_game_state_graphic,
-            final_score_graphic,
+            atlantis_logo_graphic: textures.pop().unwrap(),
+            bottom_graphic: textures.pop().unwrap(),
+            team_information_graphic: textures.pop().unwrap(),
+            team_black_graphic: textures.pop().unwrap(),
+            team_white_graphic: textures.pop().unwrap(),
+            team_bar_graphic: textures.pop().unwrap(),
+            time_and_game_state_graphic: textures.pop().unwrap(),
+            final_score_graphic: textures.pop().unwrap(),
         }
     }
 }
@@ -283,33 +239,33 @@ use uwh_common::game_snapshot::GameSnapshot;
 fn networking_thread(
     tx: std::sync::mpsc::Sender<GameSnapshot>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let data: Value = serde_json::from_str(
-        &reqwest::blocking::get("https://uwhscores.com/api/v1/tournaments")?.text()?,
-    )?;
-    let tournament = &data["tournaments"][0]["tid"];
-    let data: Value = serde_json::from_str(
-        &reqwest::blocking::get(format!(
-            "https://uwhscores.com/api/v1/tournaments/{}",
-            tournament
-        ))?
-        .text()?,
-    )?;
-    let division = &data["tournament"]["divisions"][0].as_str().unwrap();
-    let data: Value = serde_json::from_str(
-        &reqwest::blocking::get(format!(
-            "https://uwhscores.com/api/v1/tournaments/{}/games?div={}",
-            tournament, division
-        ))?
-        .text()?,
-    )?;
-    let game = &data["games"][0]["gid"];
-    let data: Value = serde_json::from_str(
-        &reqwest::blocking::get(format!(
-            "https://uwhscores.com/api/v1/tournaments/{}/games/{}",
-            tournament, game
-        ))?
-        .text()?,
-    )?;
+    //let data: Value = serde_json::from_str(
+    //    &reqwest::blocking::get("https://uwhscores.com/api/v1/tournaments")?.text()?,
+    //)?;
+    //let tournament = &data["tournaments"][0]["tid"];
+    //let data: Value = serde_json::from_str(
+    //    &reqwest::blocking::get(format!(
+    //        "https://uwhscores.com/api/v1/tournaments/{}",
+    //        tournament
+    //    ))?
+    //    .text()?,
+    //)?;
+    //let division = &data["tournament"]["divisions"][0].as_str().unwrap();
+    //let data: Value = serde_json::from_str(
+    //    &reqwest::blocking::get(format!(
+    //        "https://uwhscores.com/api/v1/tournaments/{}/games?div={}",
+    //        tournament, division
+    //    ))?
+    //    .text()?,
+    //)?;
+    //let game = &data["games"][0]["gid"];
+    //let data: Value = serde_json::from_str(
+    //    &reqwest::blocking::get(format!(
+    //        "https://uwhscores.com/api/v1/tournaments/{}/games/{}",
+    //        tournament, game
+    //    ))?
+    //    .text()?,
+    //)?;
     let mut stream = TcpStream::connect(("localhost", 8000))
         .expect("Is the refbox running? We error'd out on the connection.");
     let mut buff = vec![0u8; 1024];

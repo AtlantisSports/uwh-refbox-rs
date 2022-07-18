@@ -1,3 +1,5 @@
+use crate::load_images::Textures;
+use glium::uniform;
 use glium::uniforms::{EmptyUniforms, UniformsStorage};
 
 type UniformList<'a> = Vec<
@@ -8,7 +10,7 @@ type UniformList<'a> = Vec<
     >,
 >;
 
-pub fn roster(textures: &crate::Textures) -> UniformList {
+pub fn roster(textures: &Textures) -> UniformList {
     vec![
         uniform! {
             matrix: [
@@ -76,7 +78,7 @@ pub fn roster(textures: &crate::Textures) -> UniformList {
     ]
 }
 
-pub fn next_game(textures: &crate::Textures) -> UniformList {
+pub fn next_game(textures: &Textures) -> UniformList {
     vec![
         uniform! {
             matrix: [
@@ -108,7 +110,7 @@ pub fn next_game(textures: &crate::Textures) -> UniformList {
     ]
 }
 
-pub fn final_scores(textures: &crate::Textures) -> UniformList {
+pub fn final_scores(textures: &Textures) -> UniformList {
     vec![
         uniform! {
             matrix: [
@@ -140,7 +142,7 @@ pub fn final_scores(textures: &crate::Textures) -> UniformList {
     ]
 }
 
-pub fn pre_game_display(textures: &crate::Textures) -> UniformList {
+pub fn pre_game_display(textures: &Textures) -> UniformList {
     vec![
         uniform! {
             matrix: [

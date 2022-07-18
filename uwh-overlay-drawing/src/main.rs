@@ -16,6 +16,14 @@ pub struct Textures {
     team_bar_graphic: glium::texture::SrgbTexture2d,
     time_and_game_state_graphic: glium::texture::SrgbTexture2d,
     final_score_graphic: glium::texture::SrgbTexture2d,
+    atlantis_logo_graphic_mask: glium::texture::SrgbTexture2d,
+    bottom_graphic_mask: glium::texture::SrgbTexture2d,
+    team_information_graphic_mask: glium::texture::SrgbTexture2d,
+    team_black_graphic_mask: glium::texture::SrgbTexture2d,
+    team_white_graphic_mask: glium::texture::SrgbTexture2d,
+    team_bar_graphic_mask: glium::texture::SrgbTexture2d,
+    time_and_game_state_graphic_mask: glium::texture::SrgbTexture2d,
+    final_score_graphic_mask: glium::texture::SrgbTexture2d,
 }
 
 macro_rules! load {
@@ -35,42 +43,82 @@ impl Textures {
         let start = time::Instant::now();
         let mut textures = Vec::new();
         load!(
-            "../../uwh-overlay-drawing/assets/1080/[PNG] 8K - Final Score Graphic.png",
+            "../../uwh-overlay-drawing/assets/alpha/1080/[PNG] 8K - Final Score Graphic.png",
             display,
             textures
         );
         load!(
-            "../../uwh-overlay-drawing/assets/1080/[PNG] 8K - Time and Game State Graphic.png",
+            "../../uwh-overlay-drawing/assets/alpha/1080/[PNG] 8K - Time and Game State Graphic.png",
             display,
             textures
         );
         load!(
-            "../../uwh-overlay-drawing/assets/1080/[PNG] 8K - Team Black Graphic.png",
+            "../../uwh-overlay-drawing/assets/alpha/1080/[PNG] 8K - Team Black Graphic.png",
             display,
             textures
         );
         load!(
-            "../../uwh-overlay-drawing/assets/1080/[PNG] 8K - Team White Graphic.png",
+            "../../uwh-overlay-drawing/assets/alpha/1080/[PNG] 8K - Team White Graphic.png",
             display,
             textures
         );
         load!(
-            "../../uwh-overlay-drawing/assets/1080/[PNG] 8K - Team Bars Graphic.png",
+            "../../uwh-overlay-drawing/assets/alpha/1080/[PNG] 8K - Team Bars Graphic.png",
             display,
             textures
         );
         load!(
-            "../../uwh-overlay-drawing/assets/1080/[PNG] 8K - Team Information Graphic.png",
+            "../../uwh-overlay-drawing/assets/alpha/1080/[PNG] 8K - Team Information Graphic.png",
             display,
             textures
         );
         load!(
-            "../../uwh-overlay-drawing/assets/1080/[PNG] 8K - Bottom Graphic.png",
+            "../../uwh-overlay-drawing/assets/alpha/1080/[PNG] 8K - Bottom Graphic.png",
             display,
             textures
         );
         load!(
-            "../../uwh-overlay-drawing/assets/1080/[PNG] 8K - Atlantis Logo.png",
+            "../../uwh-overlay-drawing/assets/alpha/1080/[PNG] 8K - Atlantis Logo.png",
+            display,
+            textures
+        );
+        load!(
+            "../../uwh-overlay-drawing/assets/color/1080/[PNG] 8K - Final Score Graphic.png",
+            display,
+            textures
+        );
+        load!(
+            "../../uwh-overlay-drawing/assets/color/1080/[PNG] 8K - Time and Game State Graphic.png",
+            display,
+            textures
+        );
+        load!(
+            "../../uwh-overlay-drawing/assets/color/1080/[PNG] 8K - Team Black Graphic.png",
+            display,
+            textures
+        );
+        load!(
+            "../../uwh-overlay-drawing/assets/color/1080/[PNG] 8K - Team White Graphic.png",
+            display,
+            textures
+        );
+        load!(
+            "../../uwh-overlay-drawing/assets/color/1080/[PNG] 8K - Team Bars Graphic.png",
+            display,
+            textures
+        );
+        load!(
+            "../../uwh-overlay-drawing/assets/color/1080/[PNG] 8K - Team Information Graphic.png",
+            display,
+            textures
+        );
+        load!(
+            "../../uwh-overlay-drawing/assets/color/1080/[PNG] 8K - Bottom Graphic.png",
+            display,
+            textures
+        );
+        load!(
+            "../../uwh-overlay-drawing/assets/color/1080/[PNG] 8K - Atlantis Logo.png",
             display,
             textures
         );
@@ -87,6 +135,14 @@ impl Textures {
             team_bar_graphic: textures.pop().unwrap(),
             time_and_game_state_graphic: textures.pop().unwrap(),
             final_score_graphic: textures.pop().unwrap(),
+            atlantis_logo_graphic_mask: textures.pop().unwrap(),
+            bottom_graphic_mask: textures.pop().unwrap(),
+            team_information_graphic_mask: textures.pop().unwrap(),
+            team_black_graphic_mask: textures.pop().unwrap(),
+            team_white_graphic_mask: textures.pop().unwrap(),
+            team_bar_graphic_mask: textures.pop().unwrap(),
+            time_and_game_state_graphic_mask: textures.pop().unwrap(),
+            final_score_graphic_mask: textures.pop().unwrap(),
         }
     }
 }

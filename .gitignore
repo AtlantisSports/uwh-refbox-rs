@@ -1,4 +1,5 @@
 /target
+uwh-overlay-drawing/generate-alpha-images
 **/*.rs.bk
 timeshark.toml
 uwh-matrix-drawing/state.json

@@ -11,4 +11,3 @@ fn main() {
     std::thread::spawn(|| network::networking_thread(tx).unwrap());
     render::rendering_thread(rx);
 }
-

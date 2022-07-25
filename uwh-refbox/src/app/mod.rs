@@ -1072,6 +1072,8 @@ impl Application for RefBoxApp {
                                 start_time,
                             });
 
+                            tm.clear_scheduled_game_start();
+
                             let edited_settings = self.edited_settings.take().unwrap();
                             self.config.hardware.white_on_right = edited_settings.white_on_right;
                             self.using_uwhscores = edited_settings.using_uwhscores;
@@ -1303,6 +1305,8 @@ impl Application for RefBoxApp {
                             timing,
                             start_time,
                         });
+
+                        tm.clear_scheduled_game_start();
 
                         self.config.hardware.white_on_right = edited_settings.white_on_right;
                         self.using_uwhscores = edited_settings.using_uwhscores;

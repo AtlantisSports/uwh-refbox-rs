@@ -144,6 +144,10 @@ impl TournamentManager {
         Ok(())
     }
 
+    pub fn clear_scheduled_game_start(&mut self) {
+        self.next_scheduled_start = None;
+    }
+
     pub fn game_number(&self) -> u32 {
         self.game_number
     }

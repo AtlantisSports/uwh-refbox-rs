@@ -269,7 +269,7 @@ impl RefBoxApp {
     fn apply_snapshot(&mut self, mut new_snapshot: GameSnapshot) {
         if new_snapshot.current_period != self.snapshot.current_period {
             if new_snapshot.current_period == GamePeriod::BetweenGames {
-                self.handle_game_end();
+                self.handle_game_end(new_snapshot.next_game_number);
             } else if self.snapshot.current_period == GamePeriod::BetweenGames {
                 self.handle_game_start(new_snapshot.game_number);
             }
@@ -540,10 +540,10 @@ impl RefBoxApp {
         }
     }
 
-    fn handle_game_end(&self) {
+    fn handle_game_end(&self, next_game_num: u32) {
         if self.using_uwhscores {
             if let Some(tid) = self.current_tid {
-                self.request_game_details(tid, self.snapshot.game_number);
+                self.request_game_details(tid, next_game_num);
             } else {
                 error!("Missing current tid to request game info");
             }

@@ -1,9 +1,9 @@
 #[cfg(feature = "std")]
-use crate::config::Game;
+use crate::{config::Game, drawing_support::*};
 use arrayref::array_ref;
 use arrayvec::ArrayVec;
 use core::{
-    cmp::{Ordering, PartialOrd},
+    cmp::{min, Ordering, PartialOrd},
     time::Duration,
 };
 #[cfg(not(target_os = "windows"))]
@@ -35,7 +35,7 @@ pub struct GameSnapshotNoHeap {
 #[derive(Debug, PartialEq, Eq, Default, Clone, Serialize, Deserialize)]
 pub struct GameSnapshot {
     pub current_period: GamePeriod,
-    pub secs_in_period: u16,
+    pub secs_in_period: u32,
     pub timeout: TimeoutSnapshot,
     pub b_score: u8,
     pub w_score: u8,
@@ -64,7 +64,13 @@ impl From<GameSnapshot> for GameSnapshotNoHeap {
 
         Self {
             current_period: snapshot.current_period,
-            secs_in_period: snapshot.secs_in_period,
+            secs_in_period: min(
+                snapshot
+                    .secs_in_period
+                    .try_into()
+                    .unwrap_or(MAX_STRINGABLE_SECS),
+                MAX_STRINGABLE_SECS,
+            ),
             timeout: snapshot.timeout,
             b_score: snapshot.b_score,
             w_score: snapshot.w_score,
@@ -324,7 +330,7 @@ impl TimeoutSnapshot {
         match self {
             Self::None => Ok([0x00, 0x00]),
             Self::Black(time) | Self::White(time) | Self::Ref(time) | Self::PenaltyShot(time) => {
-                if *time > 5999 {
+                if *time > MAX_STRINGABLE_SECS {
                     Err(EncodingError::TimeoutTimeTooLarge(*time))
                 } else {
                     let variant = match self {

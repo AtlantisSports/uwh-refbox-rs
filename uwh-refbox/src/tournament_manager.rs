@@ -13,6 +13,7 @@ use tokio::{
 };
 use uwh_common::{
     config::Game as GameConfig,
+    drawing_support::*,
     game_snapshot::{
         Color, GamePeriod, GameSnapshot, PenaltySnapshot, PenaltyTime, TimeoutSnapshot,
     },
@@ -20,7 +21,7 @@ use uwh_common::{
 
 use crate::uwhscores::TimingRules;
 
-const MAX_TIME_VAL: Duration = Duration::from_secs(5999); // 99:59 is the largest displayable value
+const MAX_TIME_VAL: Duration = Duration::from_secs(MAX_LONG_STRINGABLE_SECS as u64);
 
 #[derive(Debug)]
 pub struct TournamentManager {
@@ -1302,7 +1303,7 @@ impl TournamentManager {
             is_old_game: !self.has_reset,
             game_number: self.game_number(),
             next_game_number: self.next_game_number(),
-            tournament_id: 0, // TODO: placeholder
+            tournament_id: 0,
         })
     }
 

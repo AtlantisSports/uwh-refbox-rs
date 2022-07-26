@@ -31,6 +31,7 @@ use tokio::{
 use tokio_serial::SerialPortBuilder;
 use uwh_common::{
     config::{Config, Game as GameConfig},
+    drawing_support::*,
     game_snapshot::{Color as GameColor, GamePeriod, GameSnapshot, TimeoutSnapshot},
 };
 
@@ -368,7 +369,7 @@ impl RefBoxApp {
                     };
 
                     (
-                        prereqs && new_snapshot.secs_in_period <= NUM_SHORT_SOUNDS,
+                        prereqs && new_snapshot.secs_in_period <= NUM_SHORT_SOUNDS as u32,
                         prereqs && is_warn_period && new_snapshot.secs_in_period == 35,
                     )
                 }
@@ -741,21 +742,25 @@ impl Application for RefBoxApp {
                 secs,
                 timeout,
             } => {
-                let dur = match self.app_state {
+                let (dur, large_max) = match self.app_state {
                     AppState::TimeEdit(_, ref mut game_dur, ref mut timeout_dur) => {
                         if timeout {
-                            timeout_dur.as_mut().unwrap()
+                            (timeout_dur.as_mut().unwrap(), false)
                         } else {
-                            game_dur
+                            (game_dur, true)
                         }
                     }
-                    AppState::ParameterEditor(_, ref mut dur) => dur,
-                    AppState::KeypadPage(KeypadPage::TeamTimeouts(ref mut dur), _) => dur,
+                    AppState::ParameterEditor(_, ref mut dur) => (dur, false),
+                    AppState::KeypadPage(KeypadPage::TeamTimeouts(ref mut dur), _) => (dur, false),
                     _ => unreachable!(),
                 };
                 if increase {
                     *dur = min(
-                        Duration::from_secs(5999),
+                        Duration::from_secs(if large_max {
+                            MAX_LONG_STRINGABLE_SECS as u64
+                        } else {
+                            MAX_STRINGABLE_SECS as u64
+                        }),
                         dur.saturating_add(Duration::from_secs(secs)),
                     );
                 } else {

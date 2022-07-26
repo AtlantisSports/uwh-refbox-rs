@@ -1171,7 +1171,11 @@ impl Application for RefBoxApp {
                                 start_time,
                             });
 
-                            tm.clear_scheduled_game_start();
+                            if edited_settings.using_uwhscores {
+                                tm.apply_next_game_start(Instant::now()).unwrap();
+                            } else {
+                                tm.clear_scheduled_game_start();
+                            }
 
                             let edited_settings = self.edited_settings.take().unwrap();
                             self.config.hardware.white_on_right = edited_settings.white_on_right;
@@ -1218,6 +1222,11 @@ impl Application for RefBoxApp {
                             };
 
                             tm.set_next_game(next_game_info);
+
+                            if edited_settings.using_uwhscores {
+                                tm.apply_next_game_start(Instant::now()).unwrap();
+                            }
+
                             AppState::MainPage
                         }
                     } else {
@@ -1276,8 +1285,14 @@ impl Application for RefBoxApp {
                             .map(|(i, _)| i)
                     }),
                     ListableParameter::Game => self.games.as_ref().and_then(|games| {
+                        let pool = self
+                            .edited_settings
+                            .as_ref()
+                            .and_then(|edit| edit.current_pool.clone())?;
+
                         games
                             .iter()
+                            .filter(|(_, game)| game.pool == pool)
                             .enumerate()
                             .find(|(_, (gid, _))| {
                                 **gid == self.edited_settings.as_ref().unwrap().game_number
@@ -1405,7 +1420,11 @@ impl Application for RefBoxApp {
                             start_time,
                         });
 
-                        tm.clear_scheduled_game_start();
+                        if edited_settings.using_uwhscores {
+                            tm.apply_next_game_start(Instant::now()).unwrap();
+                        } else {
+                            tm.clear_scheduled_game_start();
+                        }
 
                         self.config.hardware.white_on_right = edited_settings.white_on_right;
                         self.using_uwhscores = edited_settings.using_uwhscores;

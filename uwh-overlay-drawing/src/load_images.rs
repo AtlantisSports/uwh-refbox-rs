@@ -1,3 +1,4 @@
+use crate::pages::TexturesUWH;
 use std::io::Cursor;
 
 macro_rules! load {
@@ -13,7 +14,7 @@ macro_rules! load {
 }
 
 macro_rules! textures_uwh_impl {
-    ($structure:ty) => {
+    ($structure:ty, $text_color: literal) => {
         impl TexturesUWH for $structure {
             /// Get a reference to the textures alpha's atlantis logo graphic.
             #[must_use]
@@ -62,22 +63,15 @@ macro_rules! textures_uwh_impl {
             fn final_score_graphic(&self) -> &glium::texture::SrgbTexture2d {
                 &self.final_score_graphic
             }
+
+            fn get_text_color(&self) -> (f32, f32, f32, f32) {
+                ($text_color, 0.0, 0.0, 1.0)
+            }
         }
     };
 }
 
-pub trait TexturesUWH {
-    fn atlantis_logo_graphic(&self) -> &glium::texture::SrgbTexture2d;
-    fn bottom_graphic(&self) -> &glium::texture::SrgbTexture2d;
-    fn team_information_graphic(&self) -> &glium::texture::SrgbTexture2d;
-    fn team_black_graphic(&self) -> &glium::texture::SrgbTexture2d;
-    fn team_white_graphic(&self) -> &glium::texture::SrgbTexture2d;
-    fn team_bar_graphic(&self) -> &glium::texture::SrgbTexture2d;
-    fn time_and_game_state_graphic(&self) -> &glium::texture::SrgbTexture2d;
-    fn final_score_graphic(&self) -> &glium::texture::SrgbTexture2d;
-}
-
-textures_uwh_impl!(TexturesColor);
+textures_uwh_impl!(TexturesColor, 0.0);
 pub struct TexturesColor {
     atlantis_logo_graphic: glium::texture::SrgbTexture2d,
     bottom_graphic: glium::texture::SrgbTexture2d,
@@ -145,7 +139,7 @@ impl TexturesColor {
     }
 }
 
-textures_uwh_impl!(TexturesAlpha);
+textures_uwh_impl!(TexturesAlpha, 1.0);
 pub struct TexturesAlpha {
     atlantis_logo_graphic: glium::texture::SrgbTexture2d,
     bottom_graphic: glium::texture::SrgbTexture2d,

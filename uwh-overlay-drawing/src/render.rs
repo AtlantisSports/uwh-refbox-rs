@@ -108,6 +108,16 @@ pub fn rendering_thread(rx: Receiver<crate::GameSnapshot>) {
         glium::Program::from_source(&display2, vertex_shader_src, fragment_shader_src, None)
             .unwrap();
 
+    let system = glium_text_rusttype::TextSystem::new(&display1);
+
+    let font = glium_text_rusttype::FontTexture::new(
+        &display1,
+        &include_bytes!("../BAHNSCHRIFT.TTF")[..],
+        50,
+        glium_text_rusttype::FontTexture::ascii_character_list(),
+    )
+    .unwrap();
+
     let mut game_state: Option<GameSnapshot> = None;
 
     event_loop.run(move |event, _, control_flow| {
@@ -130,7 +140,6 @@ pub fn rendering_thread(rx: Receiver<crate::GameSnapshot>) {
         if let Ok(state) = rx.try_recv() {
             game_state = Some(state);
         }
-        //TODO fix this to depend on FPS
         let next_frame_time =
             std::time::Instant::now() + std::time::Duration::from_nanos(16_666_667);
         *control_flow = glutin::event_loop::ControlFlow::WaitUntil(next_frame_time);
@@ -140,20 +149,26 @@ pub fn rendering_thread(rx: Receiver<crate::GameSnapshot>) {
         target1.clear_color(1.0, 0.9, 0.9, 1.0);
         target2.clear_color(0.0, 0.0, 0.0, 1.0);
         if game_state.is_some() {
-            let (uniforms_color, uniforms_alpha) = if game_state.as_ref().unwrap().current_period
-                == uwh_common::game_snapshot::GamePeriod::BetweenGames
-            {
-                match game_state.as_ref().unwrap().secs_in_period {
-                    121..=u16::MAX => {
-                        call_twice!(pages::next_game, &textures_color, &textures_alpha)
-                    }
-                    30..=120 => call_twice!(pages::roster, &textures_color, &textures_alpha),
-                    _ => call_twice!(pages::pre_game_display, &textures_color, &textures_alpha),
-                }
-            } else {
-                call_twice!(pages::final_scores, &textures_color, &textures_alpha)
-            };
-            for uniform in uniforms_color {
+            // let (uniforms_color, uniforms_alpha) =
+            //     call_twice!(pages::next_game, &textures_color, &textures_alpha);
+            let uniforms_color = pages::next_game(&textures_color);
+
+            // if game_state.as_ref().unwrap().current_period
+            //     == uwh_common::game_snapshot::GamePeriod::BetweenGames
+            // {
+            //     match game_state.as_ref().unwrap().secs_in_period {
+            //         121..=u16::MAX => {
+            //             call_twice!(pages::next_game, &textures_color, &textures_alpha)
+            //         }
+            //         30..=120 => call_twice!(pages::roster, &textures_color, &textures_alpha),
+            //         _ => call_twice!(pages::pre_game_display, &textures_color, &textures_alpha),
+            //     }
+            // } else {
+            //     call_twice!(pages::final_scores, &textures_color, &textures_alpha)
+            // };
+
+            //draw image overlays to color feed
+            for uniform in uniforms_color.0 {
                 target1
                     .draw(
                         &vertex_buffer1,
@@ -167,20 +182,58 @@ pub fn rendering_thread(rx: Receiver<crate::GameSnapshot>) {
                     )
                     .unwrap();
             }
-            for uniform in uniforms_alpha {
-                target2
-                    .draw(
-                        &vertex_buffer2,
-                        indices,
-                        &program2,
-                        &uniform,
-                        &glium::draw_parameters::DrawParameters {
-                            blend: glium::draw_parameters::Blend::alpha_blending(),
-                            ..Default::default()
-                        },
-                    )
-                    .unwrap();
+
+            //draw image overlays to alpha feed
+            // for uniform in uniforms_alpha.0 {
+            //     target2
+            //         .draw(
+            //             &vertex_buffer2,
+            //             indices,
+            //             &program2,
+            //             &uniform,
+            //             &glium::draw_parameters::DrawParameters {
+            //                 blend: glium::draw_parameters::Blend::alpha_blending(),
+            //                 ..Default::default()
+            //             },
+            //         )
+            //         .unwrap();
+            // }
+
+            //draw text to color feed
+            for mut text_params in uniforms_color.1 {
+                let text = glium_text_rusttype::TextDisplay::new(&system, &font, text_params.text);
+                let (w, h) = display1.get_framebuffer_dimensions();
+                let text_width = text.get_width();
+                text_params.matrix[0][0] /= text_width;
+                text_params.matrix[1][1] =
+                    text_params.matrix[1][1] * (w as f32) / (h as f32) / text_width;
+                println!("xoffset: {}", text_params.matrix[3][0]);
+                glium_text_rusttype::draw(
+                    &text,
+                    &system,
+                    &mut target1,
+                    text_params.matrix,
+                    text_params.color,
+                )
+                .unwrap();
             }
+
+            //draw text to alpha feed
+            // for mut text_params in uniforms_alpha.1 {
+            //     let text = glium_text_rusttype::TextDisplay::new(&system, &font, text_params.text);
+            //     let (w, h) = display1.get_framebuffer_dimensions();
+            //     let text_width = text.get_width();
+            //     text_params.matrix[0][0] /= text_width;
+            //     text_params.matrix[1][1] /= text_width * (w as f32 / h as f32);
+            //     glium_text_rusttype::draw(
+            //         &text,
+            //         &system,
+            //         &mut target1,
+            //         text_params.matrix,
+            //         text_params.color,
+            //     )
+            //     .unwrap();
+            // }
         }
 
         target1.finish().unwrap();

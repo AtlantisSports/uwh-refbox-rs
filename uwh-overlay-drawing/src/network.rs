@@ -33,7 +33,7 @@ pub fn networking_thread(
     //    .text()?,
     //)?;
     let mut stream = TcpStream::connect(("localhost", 8000))
-        .expect("Is the refbox running? We error'd out on the connection.");
+        .expect("Is the refbox running? We error'd out on the connection");
     let mut buff = vec![0u8; 1024];
     loop {
         let read_bytes = stream.read(&mut buff).unwrap();

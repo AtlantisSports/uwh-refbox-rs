@@ -44,6 +44,9 @@ use style::{PADDING, SPACING, WINDOW_BACKGROUND};
 pub mod update_sender;
 use update_sender::*;
 
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+const MAX_RETRIES: usize = 6;
+
 pub struct RefBoxApp {
     tm: Arc<Mutex<TournamentManager>>,
     config: Config,
@@ -411,33 +414,41 @@ impl RefBoxApp {
             let client_ = client.clone();
             let msg_tx_ = self.msg_tx.clone();
             task::spawn(async move {
-                let msg = match client_.execute(request).await {
-                    Ok(resp) => {
-                        if resp.status() != StatusCode::OK {
-                            error!(
-                                "Got bad status code from uwhscores when requesting {}: {}",
-                                short_name,
-                                resp.status()
-                            );
-                            None
-                        } else {
-                            match resp.json::<T>().await {
-                                Ok(parsed) => Some(on_success(parsed)),
-                                Err(e) => {
-                                    error!("Couldn't desesrialize {}: {e}", short_name);
-                                    None
+                let mut msg = None;
+                for _ in 0..MAX_RETRIES {
+                    msg = match client_.execute(request.try_clone().unwrap()).await {
+                        Ok(resp) => {
+                            if resp.status() != StatusCode::OK {
+                                error!(
+                                    "Got bad status code from uwhscores when requesting {}: {}",
+                                    short_name,
+                                    resp.status()
+                                );
+                                info!("Maybe retrying");
+                                continue;
+                            } else {
+                                match resp.json::<T>().await {
+                                    Ok(parsed) => Some(on_success(parsed)),
+                                    Err(e) => {
+                                        error!("Couldn't desesrialize {}: {e}", short_name);
+                                        None
+                                    }
                                 }
                             }
                         }
-                    }
-                    Err(e) => {
-                        error!("Request for {} failed: {e}", short_name);
-                        None
-                    }
-                };
+                        Err(e) => {
+                            error!("Request for {} failed: {e}", short_name);
+                            info!("Maybe retrying");
+                            continue;
+                        }
+                    };
+                    break;
+                }
 
                 if let Some(msg) = msg {
                     msg_tx_.send(msg).unwrap();
+                } else {
+                    error!("Too many failures when requesting {short_name}, stopping");
                 }
             });
         }
@@ -507,29 +518,44 @@ impl RefBoxApp {
 
             let client_ = client.clone();
             task::spawn(async move {
-                let login = match client_.execute(login_request).await {
-                    Ok(resp) => {
-                        if resp.status() != StatusCode::OK {
-                            error!(
-                                "Got bad status code from uwhscores when logging in: {}",
-                                resp.status()
-                            );
-                            return;
-                        } else {
-                            match resp.json::<LoginResponse>().await {
-                                Ok(parsed) => parsed,
-                                Err(e) => {
-                                    error!("Couldn't desesrialize login: {e}");
-                                    return;
+                let mut login = None;
+                for _ in 0..MAX_RETRIES {
+                    login = match client_.execute(login_request.try_clone().unwrap()).await {
+                        Ok(resp) => {
+                            if resp.status() != StatusCode::OK {
+                                error!(
+                                    "Got bad status code from uwhscores when logging in: {}",
+                                    resp.status()
+                                );
+                                info!("Maybe retrying");
+                                continue;
+                            } else {
+                                match resp.json::<LoginResponse>().await {
+                                    Ok(parsed) => Some(parsed),
+                                    Err(e) => {
+                                        error!("Couldn't desesrialize login: {e}");
+                                        return;
+                                    }
                                 }
                             }
                         }
-                    }
-                    Err(e) => {
-                        error!("Login request failed: {e}");
-                        return;
-                    }
+                        Err(e) => {
+                            error!("Login request failed: {e}");
+                            info!("Maybe retrying");
+                            continue;
+                        }
+                    };
+                    break;
+                }
+
+                let login = if let Some(l) = login {
+                    l
+                } else {
+                    error!("Too many failures when logging in to uwhscores, stopping");
+                    return;
                 };
+
+                info!("Posting score: {post_data:?}");
 
                 let post_request = client_
                     .request(Method::POST, post_url)
@@ -538,19 +564,26 @@ impl RefBoxApp {
                     .build()
                     .unwrap();
 
-                match client_.execute(post_request).await {
-                    Ok(resp) => {
-                        if resp.status() != StatusCode::OK {
-                            error!(
-                                "Got bad status code from uwhscores when posting score: {}",
-                                resp.status()
-                            );
+                for _ in 0..MAX_RETRIES {
+                    match client_.execute(post_request.try_clone().unwrap()).await {
+                        Ok(resp) => {
+                            if resp.status() != StatusCode::OK {
+                                error!(
+                                    "Got bad status code from uwhscores when posting score: {}",
+                                    resp.status()
+                                );
+                                info!("Maybe retrying");
+                                continue;
+                            }
                         }
-                    }
-                    Err(e) => {
-                        error!("Post score request failed: {e}");
-                    }
-                };
+                        Err(e) => {
+                            error!("Post score request failed: {e}");
+                            info!("Maybe retrying");
+                            continue;
+                        }
+                    };
+                    break;
+                }
             });
         }
     }
@@ -642,7 +675,11 @@ impl Application for RefBoxApp {
         tm.set_timezone(config.uwhscores.timezone);
         tm.start_clock(Instant::now());
 
-        let client = match Client::builder().https_only(require_https).build() {
+        let client = match Client::builder()
+            .https_only(require_https)
+            .timeout(REQUEST_TIMEOUT)
+            .build()
+        {
             Ok(c) => Some(c),
             Err(e) => {
                 error!("Failed to start HTTP Client: {e}");

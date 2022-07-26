@@ -84,7 +84,7 @@ impl Default for Game {
             pre_overtime_break: Duration::from_secs(180),
             overtime_break_duration: Duration::from_secs(60),
             pre_sudden_death_duration: Duration::from_secs(60),
-            post_game_duration: Duration::from_secs(60),
+            post_game_duration: Duration::from_secs(120),
             nominal_break: Duration::from_secs(900),
             minimum_break: Duration::from_secs(240),
         }
@@ -169,7 +169,7 @@ mod test {
            pre_sudden_death_duration = 60
            sudden_death_allowed = true
            team_timeouts_per_half = 1
-           post_game_duration = 60
+           post_game_duration = 120
            nominal_break = 900
            minimum_break = 240"#
     );

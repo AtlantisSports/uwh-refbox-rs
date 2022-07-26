@@ -15,8 +15,8 @@ use serde_derive::{Deserialize, Serialize};
 const PANEL_PENALTY_COUNT: usize = 3;
 
 /// Game snapshot information that the LED matrices need. Excludes some fields, limits to three
-/// penalties (the three with the lowest remaining time), and places the penalties on a stack based
-/// `ArrayVec`, instead of the heap based `Vec`
+/// penalties (the three with the lowest remaining time), and places the penalties on a stack-based
+/// `ArrayVec`, instead of the heap-based `Vec`
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct GameSnapshotNoHeap {
     pub current_period: GamePeriod,

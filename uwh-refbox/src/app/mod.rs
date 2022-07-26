@@ -52,6 +52,7 @@ pub struct RefBoxApp {
     pen_edit: PenaltyEditor,
     app_state: AppState,
     last_app_state: AppState,
+    last_message: Message,
     update_sender: UpdateSender,
     message_listener: MessageListener,
     msg_tx: mpsc::UnboundedSender<Message>,
@@ -105,7 +106,7 @@ struct EditableSettings {
     games: Option<BTreeMap<u32, GameInfo>>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeypadPage {
     AddScore(GameColor),
     Penalty(Option<(GameColor, usize)>, GameColor, PenaltyKind),
@@ -173,7 +174,7 @@ pub enum ScrollOption {
     GameParameter,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Message {
     Init,
     NewSnapshot(GameSnapshot),
@@ -240,6 +241,52 @@ pub enum Message {
     RecvGameList(Vec<GameInfo>),
     RecvGame(GameInfo),
     NoAction, // TODO: Remove once UI is functional
+}
+
+impl Message {
+    fn is_repeatable(&self) -> bool {
+        match self {
+            Self::NewSnapshot(_)
+            | Self::ChangeTime { .. }
+            | Self::ChangeScore { .. }
+            | Self::Scroll { .. }
+            | Self::KeypadButtonPress(_)
+            | Self::ToggleBoolParameter(_)
+            | Self::RecvTournamentList(_)
+            | Self::RecvTournament(_)
+            | Self::RecvGameList(_)
+            | Self::RecvGame(_)
+            | Self::NoAction => true,
+
+            Self::Init
+            | Self::EditTime
+            | Self::TimeEditComplete { .. }
+            | Self::StartPlayNow
+            | Self::EditScores
+            | Self::ScoreEditComplete { .. }
+            | Self::PenaltyOverview
+            | Self::PenaltyOverviewComplete { .. }
+            | Self::ChangeKind(_)
+            | Self::PenaltyEditComplete { .. }
+            | Self::KeypadPage(_)
+            | Self::ChangeColor(_)
+            | Self::AddScoreComplete { .. }
+            | Self::EditGameConfig
+            | Self::ConfigEditComplete { .. }
+            | Self::EditParameter(_)
+            | Self::SelectParameter(_)
+            | Self::ParameterEditComplete { .. }
+            | Self::ParameterSelected(_, _)
+            | Self::ConfirmationSelected(_)
+            | Self::BlackTimeout(_)
+            | Self::WhiteTimeout(_)
+            | Self::RefTimeout(_)
+            | Self::PenaltyShot(_)
+            | Self::EndTimeout
+            | Self::ConfirmScores(_)
+            | Self::ScoreConfirmation { .. } => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -623,6 +670,7 @@ impl Application for RefBoxApp {
                 snapshot,
                 app_state: AppState::MainPage,
                 last_app_state: AppState::MainPage,
+                last_message: Message::NoAction,
                 update_sender,
                 message_listener,
                 msg_tx,
@@ -661,6 +709,15 @@ impl Application for RefBoxApp {
 
     fn update(&mut self, message: Message) -> Command<Message> {
         trace!("Handling message: {message:?}");
+
+        if !message.is_repeatable() && (message == self.last_message) {
+            warn!("Ignoring a repeated message: {message:?}");
+            self.last_message = message.clone();
+            return Command::none();
+        } else {
+            self.last_message = message.clone();
+        }
+
         match message {
             Message::Init => self.request_tournament_list(),
             Message::NewSnapshot(snapshot) => {

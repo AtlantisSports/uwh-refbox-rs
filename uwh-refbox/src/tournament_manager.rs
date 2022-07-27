@@ -13,6 +13,7 @@ use tokio::{
 };
 use uwh_common::{
     config::Game as GameConfig,
+    drawing_support::*,
     game_snapshot::{
         Color, GamePeriod, GameSnapshot, PenaltySnapshot, PenaltyTime, TimeoutSnapshot,
     },
@@ -20,7 +21,7 @@ use uwh_common::{
 
 use crate::uwhscores::TimingRules;
 
-const MAX_TIME_VAL: Duration = Duration::from_secs(5999); // 99:59 is the largest displayable value
+const MAX_TIME_VAL: Duration = Duration::from_secs(MAX_LONG_STRINGABLE_SECS as u64);
 
 #[derive(Debug)]
 pub struct TournamentManager {
@@ -142,6 +143,10 @@ impl TournamentManager {
         }
         self.config = config;
         Ok(())
+    }
+
+    pub fn clear_scheduled_game_start(&mut self) {
+        self.next_scheduled_start = None;
     }
 
     pub fn game_number(&self) -> u32 {
@@ -654,19 +659,8 @@ impl TournamentManager {
         Ok(())
     }
 
-    fn end_game(&mut self, now: Instant) {
-        let was_running = self.clock_is_running();
-
-        self.current_period = GamePeriod::BetweenGames;
-
-        info!(
-            "{} Ending game {}. Score is B({}), W({})",
-            self.status_string(now),
-            self.game_number,
-            self.b_score,
-            self.w_score
-        );
-
+    fn calc_time_to_next_game(&self, now: Instant, from_time: Instant) -> Duration {
+        info!("Next game info is: {:?}", self.next_game);
         let scheduled_start =
             if let Some(start_time) = self.next_game.as_ref().and_then(|info| info.start_time) {
                 let cur_time = OffsetDateTime::now_utc().to_offset(self.timezone);
@@ -690,6 +684,60 @@ impl TournamentManager {
                     .unwrap_or(now + self.config.nominal_break)
             };
 
+        let time_remaining_at_start =
+            if let Some(time_until_start) = scheduled_start.checked_duration_since(from_time) {
+                max(time_until_start, self.config.minimum_break)
+            } else {
+                self.config.minimum_break
+            };
+
+        // Make sure the value isn't too big
+        min(time_remaining_at_start, MAX_TIME_VAL)
+    }
+
+    pub fn apply_next_game_start(&mut self, now: Instant) -> Result<()> {
+        if self.current_period != GamePeriod::BetweenGames {
+            return Err(TournamentManagerError::GameInProgress);
+        }
+
+        let next_game_info = if let Some(info) = self.next_game.as_ref() {
+            info
+        } else {
+            return Err(TournamentManagerError::NoNextGameInfo);
+        };
+
+        if let Some(ref timing) = next_game_info.timing {
+            self.config = timing.clone().into();
+        }
+
+        let time_remaining_at_start = self.calc_time_to_next_game(now, now);
+
+        info!(
+            "{} Setting between games time based on uwhscores info: {time_remaining_at_start:?}",
+            self.status_string(now),
+        );
+
+        self.clock_state = ClockState::CountingDown {
+            start_time: now,
+            time_remaining_at_start,
+        };
+
+        Ok(())
+    }
+
+    fn end_game(&mut self, now: Instant) {
+        let was_running = self.clock_is_running();
+
+        self.current_period = GamePeriod::BetweenGames;
+
+        info!(
+            "{} Ending game {}. Score is B({}), W({})",
+            self.status_string(now),
+            self.game_number,
+            self.b_score,
+            self.w_score
+        );
+
         let game_end = match self.clock_state {
             ClockState::CountingDown {
                 start_time,
@@ -698,15 +746,7 @@ impl TournamentManager {
             ClockState::CountingUp { .. } | ClockState::Stopped { .. } => now,
         };
 
-        let time_remaining_at_start =
-            if let Some(time_until_start) = scheduled_start.checked_duration_since(game_end) {
-                max(time_until_start, self.config.minimum_break)
-            } else {
-                self.config.minimum_break
-            };
-
-        // Make sure the value isn't too big
-        let time_remaining_at_start = min(time_remaining_at_start, MAX_TIME_VAL);
+        let time_remaining_at_start = self.calc_time_to_next_game(now, game_end);
 
         info!(
             "{} Entering between games, time to next game is {time_remaining_at_start:?}",
@@ -1298,7 +1338,7 @@ impl TournamentManager {
             is_old_game: !self.has_reset,
             game_number: self.game_number(),
             next_game_number: self.next_game_number(),
-            tournament_id: 0, // TODO: placeholder
+            tournament_id: 0,
         })
     }
 
@@ -1634,6 +1674,8 @@ pub enum TournamentManagerError {
     InvalidIndex(Color, usize),
     #[error("Can't halt game from the current state")]
     InvalidState,
+    #[error("Next Game Info is needed to perform this action")]
+    NoNextGameInfo,
 }
 
 pub type Result<T> = std::result::Result<T, TournamentManagerError>;

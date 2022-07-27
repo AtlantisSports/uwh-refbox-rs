@@ -31,6 +31,7 @@ use tokio::{
 use tokio_serial::SerialPortBuilder;
 use uwh_common::{
     config::{Config, Game as GameConfig},
+    drawing_support::*,
     game_snapshot::{Color as GameColor, GamePeriod, GameSnapshot, TimeoutSnapshot},
 };
 
@@ -43,6 +44,9 @@ use style::{PADDING, SPACING, WINDOW_BACKGROUND};
 pub mod update_sender;
 use update_sender::*;
 
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+const MAX_RETRIES: usize = 6;
+
 pub struct RefBoxApp {
     tm: Arc<Mutex<TournamentManager>>,
     config: Config,
@@ -52,6 +56,7 @@ pub struct RefBoxApp {
     pen_edit: PenaltyEditor,
     app_state: AppState,
     last_app_state: AppState,
+    last_message: Message,
     update_sender: UpdateSender,
     message_listener: MessageListener,
     msg_tx: mpsc::UnboundedSender<Message>,
@@ -105,7 +110,7 @@ struct EditableSettings {
     games: Option<BTreeMap<u32, GameInfo>>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeypadPage {
     AddScore(GameColor),
     Penalty(Option<(GameColor, usize)>, GameColor, PenaltyKind),
@@ -173,7 +178,7 @@ pub enum ScrollOption {
     GameParameter,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Message {
     Init,
     NewSnapshot(GameSnapshot),
@@ -242,6 +247,52 @@ pub enum Message {
     NoAction, // TODO: Remove once UI is functional
 }
 
+impl Message {
+    fn is_repeatable(&self) -> bool {
+        match self {
+            Self::NewSnapshot(_)
+            | Self::ChangeTime { .. }
+            | Self::ChangeScore { .. }
+            | Self::Scroll { .. }
+            | Self::KeypadButtonPress(_)
+            | Self::ToggleBoolParameter(_)
+            | Self::RecvTournamentList(_)
+            | Self::RecvTournament(_)
+            | Self::RecvGameList(_)
+            | Self::RecvGame(_)
+            | Self::NoAction => true,
+
+            Self::Init
+            | Self::EditTime
+            | Self::TimeEditComplete { .. }
+            | Self::StartPlayNow
+            | Self::EditScores
+            | Self::ScoreEditComplete { .. }
+            | Self::PenaltyOverview
+            | Self::PenaltyOverviewComplete { .. }
+            | Self::ChangeKind(_)
+            | Self::PenaltyEditComplete { .. }
+            | Self::KeypadPage(_)
+            | Self::ChangeColor(_)
+            | Self::AddScoreComplete { .. }
+            | Self::EditGameConfig
+            | Self::ConfigEditComplete { .. }
+            | Self::EditParameter(_)
+            | Self::SelectParameter(_)
+            | Self::ParameterEditComplete { .. }
+            | Self::ParameterSelected(_, _)
+            | Self::ConfirmationSelected(_)
+            | Self::BlackTimeout(_)
+            | Self::WhiteTimeout(_)
+            | Self::RefTimeout(_)
+            | Self::PenaltyShot(_)
+            | Self::EndTimeout
+            | Self::ConfirmScores(_)
+            | Self::ScoreConfirmation { .. } => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeypadButton {
     Zero,
@@ -269,7 +320,7 @@ impl RefBoxApp {
     fn apply_snapshot(&mut self, mut new_snapshot: GameSnapshot) {
         if new_snapshot.current_period != self.snapshot.current_period {
             if new_snapshot.current_period == GamePeriod::BetweenGames {
-                self.handle_game_end();
+                self.handle_game_end(new_snapshot.next_game_number);
             } else if self.snapshot.current_period == GamePeriod::BetweenGames {
                 self.handle_game_start(new_snapshot.game_number);
             }
@@ -321,7 +372,7 @@ impl RefBoxApp {
                     };
 
                     (
-                        prereqs && new_snapshot.secs_in_period <= NUM_SHORT_SOUNDS,
+                        prereqs && new_snapshot.secs_in_period <= NUM_SHORT_SOUNDS as u32,
                         prereqs && is_warn_period && new_snapshot.secs_in_period == 35,
                     )
                 }
@@ -363,33 +414,41 @@ impl RefBoxApp {
             let client_ = client.clone();
             let msg_tx_ = self.msg_tx.clone();
             task::spawn(async move {
-                let msg = match client_.execute(request).await {
-                    Ok(resp) => {
-                        if resp.status() != StatusCode::OK {
-                            error!(
-                                "Got bad status code from uwhscores when requesting {}: {}",
-                                short_name,
-                                resp.status()
-                            );
-                            None
-                        } else {
-                            match resp.json::<T>().await {
-                                Ok(parsed) => Some(on_success(parsed)),
-                                Err(e) => {
-                                    error!("Couldn't desesrialize {}: {e}", short_name);
-                                    None
+                let mut msg = None;
+                for _ in 0..MAX_RETRIES {
+                    msg = match client_.execute(request.try_clone().unwrap()).await {
+                        Ok(resp) => {
+                            if resp.status() != StatusCode::OK {
+                                error!(
+                                    "Got bad status code from uwhscores when requesting {}: {}",
+                                    short_name,
+                                    resp.status()
+                                );
+                                info!("Maybe retrying");
+                                continue;
+                            } else {
+                                match resp.json::<T>().await {
+                                    Ok(parsed) => Some(on_success(parsed)),
+                                    Err(e) => {
+                                        error!("Couldn't desesrialize {}: {e}", short_name);
+                                        None
+                                    }
                                 }
                             }
                         }
-                    }
-                    Err(e) => {
-                        error!("Request for {} failed: {e}", short_name);
-                        None
-                    }
-                };
+                        Err(e) => {
+                            error!("Request for {} failed: {e}", short_name);
+                            info!("Maybe retrying");
+                            continue;
+                        }
+                    };
+                    break;
+                }
 
                 if let Some(msg) = msg {
                     msg_tx_.send(msg).unwrap();
+                } else {
+                    error!("Too many failures when requesting {short_name}, stopping");
                 }
             });
         }
@@ -459,29 +518,44 @@ impl RefBoxApp {
 
             let client_ = client.clone();
             task::spawn(async move {
-                let login = match client_.execute(login_request).await {
-                    Ok(resp) => {
-                        if resp.status() != StatusCode::OK {
-                            error!(
-                                "Got bad status code from uwhscores when logging in: {}",
-                                resp.status()
-                            );
-                            return;
-                        } else {
-                            match resp.json::<LoginResponse>().await {
-                                Ok(parsed) => parsed,
-                                Err(e) => {
-                                    error!("Couldn't desesrialize login: {e}");
-                                    return;
+                let mut login = None;
+                for _ in 0..MAX_RETRIES {
+                    login = match client_.execute(login_request.try_clone().unwrap()).await {
+                        Ok(resp) => {
+                            if resp.status() != StatusCode::OK {
+                                error!(
+                                    "Got bad status code from uwhscores when logging in: {}",
+                                    resp.status()
+                                );
+                                info!("Maybe retrying");
+                                continue;
+                            } else {
+                                match resp.json::<LoginResponse>().await {
+                                    Ok(parsed) => Some(parsed),
+                                    Err(e) => {
+                                        error!("Couldn't desesrialize login: {e}");
+                                        return;
+                                    }
                                 }
                             }
                         }
-                    }
-                    Err(e) => {
-                        error!("Login request failed: {e}");
-                        return;
-                    }
+                        Err(e) => {
+                            error!("Login request failed: {e}");
+                            info!("Maybe retrying");
+                            continue;
+                        }
+                    };
+                    break;
+                }
+
+                let login = if let Some(l) = login {
+                    l
+                } else {
+                    error!("Too many failures when logging in to uwhscores, stopping");
+                    return;
                 };
+
+                info!("Posting score: {post_data:?}");
 
                 let post_request = client_
                     .request(Method::POST, post_url)
@@ -490,19 +564,26 @@ impl RefBoxApp {
                     .build()
                     .unwrap();
 
-                match client_.execute(post_request).await {
-                    Ok(resp) => {
-                        if resp.status() != StatusCode::OK {
-                            error!(
-                                "Got bad status code from uwhscores when posting score: {}",
-                                resp.status()
-                            );
+                for _ in 0..MAX_RETRIES {
+                    match client_.execute(post_request.try_clone().unwrap()).await {
+                        Ok(resp) => {
+                            if resp.status() != StatusCode::OK {
+                                error!(
+                                    "Got bad status code from uwhscores when posting score: {}",
+                                    resp.status()
+                                );
+                                info!("Maybe retrying");
+                                continue;
+                            }
                         }
-                    }
-                    Err(e) => {
-                        error!("Post score request failed: {e}");
-                    }
-                };
+                        Err(e) => {
+                            error!("Post score request failed: {e}");
+                            info!("Maybe retrying");
+                            continue;
+                        }
+                    };
+                    break;
+                }
             });
         }
     }
@@ -540,10 +621,10 @@ impl RefBoxApp {
         }
     }
 
-    fn handle_game_end(&self) {
+    fn handle_game_end(&self, next_game_num: u32) {
         if self.using_uwhscores {
             if let Some(tid) = self.current_tid {
-                self.request_game_details(tid, self.snapshot.game_number);
+                self.request_game_details(tid, next_game_num);
             } else {
                 error!("Missing current tid to request game info");
             }
@@ -594,7 +675,11 @@ impl Application for RefBoxApp {
         tm.set_timezone(config.uwhscores.timezone);
         tm.start_clock(Instant::now());
 
-        let client = match Client::builder().https_only(require_https).build() {
+        let client = match Client::builder()
+            .https_only(require_https)
+            .timeout(REQUEST_TIMEOUT)
+            .build()
+        {
             Ok(c) => Some(c),
             Err(e) => {
                 error!("Failed to start HTTP Client: {e}");
@@ -623,6 +708,7 @@ impl Application for RefBoxApp {
                 snapshot,
                 app_state: AppState::MainPage,
                 last_app_state: AppState::MainPage,
+                last_message: Message::NoAction,
                 update_sender,
                 message_listener,
                 msg_tx,
@@ -661,6 +747,15 @@ impl Application for RefBoxApp {
 
     fn update(&mut self, message: Message) -> Command<Message> {
         trace!("Handling message: {message:?}");
+
+        if !message.is_repeatable() && (message == self.last_message) {
+            warn!("Ignoring a repeated message: {message:?}");
+            self.last_message = message.clone();
+            return Command::none();
+        } else {
+            self.last_message = message.clone();
+        }
+
         match message {
             Message::Init => self.request_tournament_list(),
             Message::NewSnapshot(snapshot) => {
@@ -684,21 +779,25 @@ impl Application for RefBoxApp {
                 secs,
                 timeout,
             } => {
-                let dur = match self.app_state {
+                let (dur, large_max) = match self.app_state {
                     AppState::TimeEdit(_, ref mut game_dur, ref mut timeout_dur) => {
                         if timeout {
-                            timeout_dur.as_mut().unwrap()
+                            (timeout_dur.as_mut().unwrap(), false)
                         } else {
-                            game_dur
+                            (game_dur, true)
                         }
                     }
-                    AppState::ParameterEditor(_, ref mut dur) => dur,
-                    AppState::KeypadPage(KeypadPage::TeamTimeouts(ref mut dur), _) => dur,
+                    AppState::ParameterEditor(_, ref mut dur) => (dur, false),
+                    AppState::KeypadPage(KeypadPage::TeamTimeouts(ref mut dur), _) => (dur, false),
                     _ => unreachable!(),
                 };
                 if increase {
                     *dur = min(
-                        Duration::from_secs(5999),
+                        Duration::from_secs(if large_max {
+                            MAX_LONG_STRINGABLE_SECS as u64
+                        } else {
+                            MAX_STRINGABLE_SECS as u64
+                        }),
                         dur.saturating_add(Duration::from_secs(secs)),
                     );
                 } else {
@@ -1072,6 +1171,12 @@ impl Application for RefBoxApp {
                                 start_time,
                             });
 
+                            if edited_settings.using_uwhscores {
+                                tm.apply_next_game_start(Instant::now()).unwrap();
+                            } else {
+                                tm.clear_scheduled_game_start();
+                            }
+
                             let edited_settings = self.edited_settings.take().unwrap();
                             self.config.hardware.white_on_right = edited_settings.white_on_right;
                             self.using_uwhscores = edited_settings.using_uwhscores;
@@ -1117,6 +1222,11 @@ impl Application for RefBoxApp {
                             };
 
                             tm.set_next_game(next_game_info);
+
+                            if edited_settings.using_uwhscores {
+                                tm.apply_next_game_start(Instant::now()).unwrap();
+                            }
+
                             AppState::MainPage
                         }
                     } else {
@@ -1175,8 +1285,14 @@ impl Application for RefBoxApp {
                             .map(|(i, _)| i)
                     }),
                     ListableParameter::Game => self.games.as_ref().and_then(|games| {
+                        let pool = self
+                            .edited_settings
+                            .as_ref()
+                            .and_then(|edit| edit.current_pool.clone())?;
+
                         games
                             .iter()
+                            .filter(|(_, game)| game.pool == pool)
                             .enumerate()
                             .find(|(_, (gid, _))| {
                                 **gid == self.edited_settings.as_ref().unwrap().game_number
@@ -1303,6 +1419,12 @@ impl Application for RefBoxApp {
                             timing,
                             start_time,
                         });
+
+                        if edited_settings.using_uwhscores {
+                            tm.apply_next_game_start(Instant::now()).unwrap();
+                        } else {
+                            tm.clear_scheduled_game_start();
+                        }
 
                         self.config.hardware.white_on_right = edited_settings.white_on_right;
                         self.using_uwhscores = edited_settings.using_uwhscores;

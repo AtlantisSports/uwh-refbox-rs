@@ -29,7 +29,7 @@ use uwh_common::{
         Color as GameColor, GamePeriod, GameSnapshot, PenaltySnapshot, PenaltyTime, TimeoutSnapshot,
     },
 };
-use uwh_matrix_drawing::secs_to_time_string;
+use uwh_matrix_drawing::{secs_to_long_time_string, secs_to_time_string};
 
 pub(super) fn build_main_view<'a>(
     snapshot: &GameSnapshot,
@@ -1912,7 +1912,7 @@ fn make_game_time_button<'a>(
         TimeoutSnapshot::None => None,
     };
 
-    let time_text = secs_to_time_string(snapshot.secs_in_period);
+    let time_text = secs_to_long_time_string(snapshot.secs_in_period);
     let time_text = time_text.trim();
 
     if tall {
@@ -1959,6 +1959,8 @@ fn make_time_editor<'a, T: Into<String>>(
     time: Duration,
     timeout: bool,
 ) -> Container<'a, Message> {
+    let wide = time > Duration::from_secs(MAX_STRINGABLE_SECS as u64);
+
     container(
         column()
             .spacing(SPACING)
@@ -1994,7 +1996,7 @@ fn make_time_editor<'a, T: Into<String>>(
                         text(time_string(time))
                             .size(LARGE_TEXT)
                             .horizontal_alignment(Horizontal::Center)
-                            .width(Length::Units(200)),
+                            .width(Length::Units(if wide { 300 } else { 200 })),
                     )
                     .push(
                         column()
@@ -2025,7 +2027,7 @@ fn make_time_editor<'a, T: Into<String>>(
 }
 
 fn time_string(time: Duration) -> String {
-    secs_to_time_string(time.as_secs()).trim().to_string()
+    secs_to_long_time_string(time.as_secs()).trim().to_string()
 }
 
 fn timeout_time_string(snapshot: &GameSnapshot) -> String {

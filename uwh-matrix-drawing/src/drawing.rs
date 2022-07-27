@@ -11,7 +11,7 @@ use embedded_graphics::{
 };
 use fonts::fonts::{FONT_10X25, FONT_14X31, FONT_20X46, FONT_28X64, FONT_5X8, FONT_7X15};
 use more_asserts::*;
-use uwh_common::game_snapshot::*;
+use uwh_common::{drawing_support::*, game_snapshot::*};
 
 /// Draws all the details of the game onto the provided display. Assumes the dispaly is 256x64
 ///
@@ -307,8 +307,7 @@ pub fn draw_panels<D: DrawTarget<Color = Rgb888>>(
             .draw(display)?;
             let time: ArrayString<4> = match penalty.time {
                 PenaltyTime::Seconds(secs) => {
-                    let i = if secs >= 60 { 1 } else { 2 };
-                    ArrayString::from(secs_to_time_string(secs).get(i..).unwrap()).unwrap()
+                    ArrayString::from(secs_to_time_string(secs).trim()).unwrap()
                 }
                 PenaltyTime::TotalDismissal => ArrayString::from("DSMS").unwrap(),
             };
@@ -368,7 +367,7 @@ where
     <T as Div>::Output: Display,
     <T as Rem>::Output: Display,
 {
-    assert_le!(secs, T::from(5999u16));
+    assert_le!(secs, T::from(MAX_STRINGABLE_SECS));
     let min = secs / T::from(60u16);
     let sec = secs % T::from(60u16);
     let mut time_string = ArrayString::new();
@@ -376,10 +375,25 @@ where
     time_string
 }
 
+pub fn secs_to_long_time_string<T>(secs: T) -> ArrayString<8>
+where
+    T: Div<T> + Rem<T> + From<u32> + Copy + Ord + Debug,
+    <T as Div>::Output: Display,
+    <T as Rem>::Output: Display,
+{
+    assert_le!(secs, T::from(MAX_LONG_STRINGABLE_SECS));
+    let min = secs / T::from(60u32);
+    let sec = secs % T::from(60u32);
+    let mut time_string = ArrayString::new();
+    write!(&mut time_string, "{:5}:{:02}", min, sec).unwrap();
+    time_string
+}
+
 pub fn secs_to_short_time_string<T>(secs: T) -> ArrayString<3>
 where
-    T: Copy + Display,
+    T: From<u8> + Ord + Copy + Display + Debug,
 {
+    assert_le!(secs, T::from(99u8));
     let mut time_string = ArrayString::new();
     write!(&mut time_string, ":{:02}", secs).unwrap();
     time_string

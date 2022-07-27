@@ -13,7 +13,7 @@ If you want to change the size of the simulated panels, you will need to run via
 1. Open `PowerShell` (to open `PowerShell`, start by typing "PowerShell" into the search bar by the windows icon, then clicking the app)
 2. Drag the `.exe` from `File Explorer` into the `PowerShell` window (this will insert the location of the `.exe` into the command line)
 3. Add the following to the command line: `-s N` (with a space before `-s`) where `N` is any positive decimal number (`4` and `4.0` are both acceptable). `N` sets the size of the panels, the default value is `4`
-4. Confrim that the command line now looks something like this: `'<PATH TO EXE>' -s 5.5`
+4. Confirm that the command line now looks something like this: `'<PATH TO EXE>' -s 5.5`
 5. Press `enter` to start the program
 
 # Running From Source

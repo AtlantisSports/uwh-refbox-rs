@@ -35,8 +35,8 @@ time = { version = "0.3", features = ["local-offset", "macros", "serde", "serde-
 tokio = { version = "1.18", features = ["io-util", "macros", "net", "sync", "time"] }
 tokio-serial = "5.4"
 toml = "0.5"
-uwh-common = { version = "0.1.0", path = "../uwh-common"}
-uwh-matrix-drawing = { version = "0.1.0", path = "../uwh-matrix-drawing"}
+uwh-common = { version = "0.1.1", path = "../uwh-common"}
+uwh-matrix-drawing = { version = "0.1.1", path = "../uwh-matrix-drawing"}
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1"

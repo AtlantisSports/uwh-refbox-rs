@@ -1,5 +1,6 @@
 use glium::uniform;
 use glium::uniforms::{EmptyUniforms, UniformsStorage};
+use uwh_common::game_snapshot::GameSnapshot;
 
 type UniformList<'a> = Vec<
     UniformsStorage<
@@ -9,11 +10,11 @@ type UniformList<'a> = Vec<
     >,
 >;
 
-fn get_input() -> f32 {
+fn get_input<T: std::str::FromStr + std::default::Default>(prompt: &str) -> T {
     let mut buffer = String::new();
-    println!(" Enter size: ");
+    println!(" Enter {}: ", prompt);
     std::io::stdin().read_line(&mut buffer).expect("Failed");
-    buffer.trim().parse::<f32>().unwrap()
+    buffer.trim().parse::<T>().unwrap_or(Default::default())
 }
 
 /// stores all texture data
@@ -30,13 +31,13 @@ pub trait TexturesUWH {
 }
 
 /// contains all the changing information (actual text, text color, text size and position) for drawing text
-pub struct TextParams<'a> {
+pub struct TextParams {
     pub matrix: [[f32; 4]; 4],
-    pub text: &'a str,
+    pub text: String,
     pub color: (f32, f32, f32, f32),
 }
 
-type TextList<'a> = Vec<TextParams<'a>>;
+type TextList = Vec<TextParams>;
 
 pub fn roster(textures: &dyn TexturesUWH) -> UniformList {
     vec![
@@ -106,8 +107,12 @@ pub fn roster(textures: &dyn TexturesUWH) -> UniformList {
     ]
 }
 
-pub fn next_game(textures: &dyn TexturesUWH) -> (UniformList, TextList) {
-    let x = get_input();
+pub fn next_game<'a>(
+    textures: &'a dyn TexturesUWH,
+    state: &GameSnapshot,
+) -> (UniformList<'a>, TextList) {
+    let t: String = String::from("text");
+
     (
         vec![
             uniform! {
@@ -138,16 +143,38 @@ pub fn next_game(textures: &dyn TexturesUWH) -> (UniformList, TextList) {
                 tex: textures.team_information_graphic(),
             },
         ],
-        vec![TextParams {
-            color: (0.0, 0.0, 0.0, 1.0),
-            matrix: [
-                [2.0 / x, 0.0, 0.0, 0.0],
-                [0.0, 2.0 / x, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [-1.0 + (x - 1f32) * (1f32 / x), 0.0, 0.0, 1.0],
-            ],
-            text: "this is a test",
-        }],
+        vec![
+            TextParams {
+                color: (0.0, 0.0, 0.0, 1.0),
+                matrix: [
+                    [2.0 / 4.0, 0.0, 0.0, 0.0],
+                    [0.0, 2.0 / 4.0, 0.0, 0.0],
+                    [0.0, 0.0, 1.0, 0.0],
+                    [
+                        -1.0 + (4.0 - 1f32) * (1f32 / 4.0) - 0.5,
+                        0.0 - 0.5,
+                        0.0,
+                        1.0,
+                    ],
+                ],
+                text: t.clone(),
+            },
+            TextParams {
+                color: (1.0, 0.0, 0.0, 1.0),
+                matrix: [
+                    [2.0 / 4.0, 0.0, 0.0, 0.0],
+                    [0.0, 2.0 / 4.0, 0.0, 0.0],
+                    [0.0, 0.0, 1.0, 0.0],
+                    [
+                        -1.0 + (4.0 - 1f32) * (1f32 / 4.0) + 0.5,
+                        0.0 - 0.5,
+                        0.0,
+                        1.0,
+                    ],
+                ],
+                text: t,
+            },
+        ],
     )
 }
 

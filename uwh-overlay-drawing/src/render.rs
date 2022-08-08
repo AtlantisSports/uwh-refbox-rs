@@ -148,10 +148,10 @@ pub fn rendering_thread(rx: Receiver<crate::GameSnapshot>) {
         let mut target2 = display2.draw();
         target1.clear_color(1.0, 0.9, 0.9, 1.0);
         target2.clear_color(0.0, 0.0, 0.0, 1.0);
-        if game_state.is_some() {
+        if let Some(state) = &game_state {
             // let (uniforms_color, uniforms_alpha) =
             //     call_twice!(pages::next_game, &textures_color, &textures_alpha);
-            let uniforms_color = pages::next_game(&textures_color);
+            let uniforms_color = pages::next_game(&textures_color, &state);
 
             // if game_state.as_ref().unwrap().current_period
             //     == uwh_common::game_snapshot::GamePeriod::BetweenGames
@@ -201,13 +201,16 @@ pub fn rendering_thread(rx: Receiver<crate::GameSnapshot>) {
 
             //draw text to color feed
             for mut text_params in uniforms_color.1 {
-                let text = glium_text_rusttype::TextDisplay::new(&system, &font, text_params.text);
+                let text = glium_text_rusttype::TextDisplay::new(
+                    &system,
+                    &font,
+                    text_params.text.as_str(),
+                );
                 let (w, h) = display1.get_framebuffer_dimensions();
                 let text_width = text.get_width();
                 text_params.matrix[0][0] /= text_width;
                 text_params.matrix[1][1] =
                     text_params.matrix[1][1] * (w as f32) / (h as f32) / text_width;
-                println!("xoffset: {}", text_params.matrix[3][0]);
                 glium_text_rusttype::draw(
                     &text,
                     &system,

@@ -1314,15 +1314,15 @@ dependencies = [
 
 [[package]]
 name = "fonts"
-version = "0.1.1"
+version = "0.1.0"
+source = "git+https://github.com/AtlantisSports/uwh-refbox-rs#fffd453e4a69f607a49f7fb619f18e1a36904ea0"
 dependencies = [
  "embedded-graphics",
 ]
 
 [[package]]
 name = "fonts"
-version = "0.1.0"
-source = "git+https://github.com/AtlantisSports/uwh-refbox-rs#fffd453e4a69f607a49f7fb619f18e1a36904ea0"
+version = "0.1.1"
 dependencies = [
  "embedded-graphics",
 ]
@@ -4264,7 +4264,8 @@ dependencies = [
 
 [[package]]
 name = "uwh-common"
-version = "0.1.1"
+version = "0.1.0"
+source = "git+https://github.com/AtlantisSports/uwh-refbox-rs#fffd453e4a69f607a49f7fb619f18e1a36904ea0"
 dependencies = [
  "arrayref",
  "arrayvec 0.7.2",
@@ -4272,7 +4273,6 @@ dependencies = [
  "derivative",
  "displaydoc",
  "fonts 0.1.0",
- "indoc",
  "log",
  "serde",
  "serde_derive",
@@ -4282,15 +4282,15 @@ dependencies = [
 
 [[package]]
 name = "uwh-common"
-version = "0.1.0"
-source = "git+https://github.com/AtlantisSports/uwh-refbox-rs#fffd453e4a69f607a49f7fb619f18e1a36904ea0"
+version = "0.1.1"
 dependencies = [
  "arrayref",
  "arrayvec 0.7.2",
  "defmt",
  "derivative",
  "displaydoc",
- "fonts 0.1.0 (git+https://github.com/AtlantisSports/uwh-refbox-rs)",
+ "fonts 0.1.1",
+ "indoc",
  "log",
  "serde",
  "serde_derive",
@@ -4305,11 +4305,11 @@ dependencies = [
  "arrayref",
  "arrayvec 0.7.2",
  "embedded-graphics",
- "fonts 0.1.0",
+ "fonts 0.1.1",
  "more-asserts",
  "serde",
  "serde_derive",
- "uwh-common 0.1.0",
+ "uwh-common 0.1.1",
 ]
 
 [[package]]
@@ -4321,7 +4321,7 @@ dependencies = [
  "image",
  "reqwest",
  "serde_json",
- "uwh-common 0.1.0 (git+https://github.com/AtlantisSports/uwh-refbox-rs)",
+ "uwh-common 0.1.0",
 ]
 
 [[package]]
@@ -4353,7 +4353,7 @@ dependencies = [
  "tokio",
  "tokio-serial",
  "toml",
- "uwh-common 0.1.0",
+ "uwh-common 0.1.1",
  "uwh-matrix-drawing",
  "winres",
 ]

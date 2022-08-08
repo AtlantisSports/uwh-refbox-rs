@@ -1,15 +1,15 @@
 [package]
-name = "uwh-overlay-drawing"
-description = "Overlays for rendering game state"
+name = "tempo"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-image = "*"
+macroquad = "*"
 uwh-common = { git = "https://github.com/AtlantisSports/uwh-refbox-rs" }
 serde_json = "*"
 reqwest = { version = "*", features = ["blocking"] }
-glium_text_rusttype = { git = "https://github.com/not-fl3/glium_text_rusttype" }
-glium = "0.29.1"
+pollster = "*"
+
+[workspace]

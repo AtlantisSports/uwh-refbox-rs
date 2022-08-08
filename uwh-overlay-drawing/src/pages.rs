@@ -1,14 +1,5 @@
-use glium::uniform;
-use glium::uniforms::{EmptyUniforms, UniformsStorage};
-use uwh_common::game_snapshot::GameSnapshot;
-
-type UniformList<'a> = Vec<
-    UniformsStorage<
-        'a,
-        &'a glium::texture::SrgbTexture2d,
-        UniformsStorage<'a, [[f32; 4]; 4], EmptyUniforms>,
-    >,
->;
+use crate::{load_images::Textures, network};
+use macroquad::prelude::*;
 
 fn get_input<T: std::str::FromStr + std::default::Default>(prompt: &str) -> T {
     let mut buffer = String::new();
@@ -17,236 +8,126 @@ fn get_input<T: std::str::FromStr + std::default::Default>(prompt: &str) -> T {
     buffer.trim().parse::<T>().unwrap_or(Default::default())
 }
 
-/// stores all texture data
-pub trait TexturesUWH {
-    fn atlantis_logo_graphic(&self) -> &glium::texture::SrgbTexture2d;
-    fn bottom_graphic(&self) -> &glium::texture::SrgbTexture2d;
-    fn team_information_graphic(&self) -> &glium::texture::SrgbTexture2d;
-    fn team_black_graphic(&self) -> &glium::texture::SrgbTexture2d;
-    fn team_white_graphic(&self) -> &glium::texture::SrgbTexture2d;
-    fn team_bar_graphic(&self) -> &glium::texture::SrgbTexture2d;
-    fn time_and_game_state_graphic(&self) -> &glium::texture::SrgbTexture2d;
-    fn final_score_graphic(&self) -> &glium::texture::SrgbTexture2d;
-    fn get_text_color(&self) -> (f32, f32, f32, f32);
+pub fn roster(textures: &Textures, state: &network::State) {
+    draw_texture(*textures.atlantis_logo_graphic(), 0_f32, 0f32, WHITE);
+    draw_texture(*textures.bottom_graphic(), 0_f32, 0f32, WHITE);
+    draw_texture(*textures.team_information_graphic(), 0_f32, -650f32, WHITE);
+    draw_texture(*textures.team_black_graphic(), 1090f32, 220f32, WHITE);
+    draw_texture(*textures.team_white_graphic(), 150f32, 220f32, WHITE);
+    draw_texture(
+        *textures.team_white_graphic(),
+        150f32,
+        220f32 + 60f32,
+        WHITE,
+    );
+    draw_texture(
+        *textures.team_black_graphic(),
+        1090f32,
+        220f32 + 60f32,
+        WHITE,
+    );
+    draw_text_ex(
+        state.white.to_uppercase().as_str(),
+        340f32,
+        155f32,
+        TextParams {
+            font: textures.font(),
+            font_size: 50,
+            color: BLACK,
+            ..Default::default()
+        },
+    );
+    draw_text_ex(
+        state.black.to_uppercase().as_str(),
+        1240f32,
+        155f32,
+        TextParams {
+            font: textures.font(),
+            font_size: 45,
+            ..Default::default()
+        },
+    );
+    let min = state.snapshot.secs_in_period / 60;
+    let secs = state.snapshot.secs_in_period % 60;
+    draw_text_ex(
+        format!("{}:{}", min, secs).as_str(),
+        923f32,
+        1020f32,
+        TextParams {
+            font: textures.font(),
+            font_size: 50,
+            ..Default::default()
+        },
+    );
+    draw_text_ex(
+        "NEXT GAME",
+        905f32,
+        1044f32,
+        TextParams {
+            font: textures.font(),
+            font_size: 20,
+            ..Default::default()
+        },
+    );
 }
 
-/// contains all the changing information (actual text, text color, text size and position) for drawing text
-pub struct TextParams {
-    pub matrix: [[f32; 4]; 4],
-    pub text: String,
-    pub color: (f32, f32, f32, f32),
+pub fn next_game(textures: &Textures, state: &network::State) {
+    draw_texture(*textures.atlantis_logo_graphic(), 0_f32, 0f32, WHITE);
+    draw_texture(*textures.bottom_graphic(), 0_f32, 0f32, WHITE);
+    draw_texture(*textures.team_information_graphic(), 0_f32, 0f32, WHITE);
+    draw_text_ex(
+        state.white.to_uppercase().as_str(),
+        340f32,
+        805f32,
+        TextParams {
+            font: textures.font(),
+            font_size: 50,
+            color: BLACK,
+            ..Default::default()
+        },
+    );
+    draw_text_ex(
+        state.black.to_uppercase().as_str(),
+        1240f32,
+        805f32,
+        TextParams {
+            font: textures.font(),
+            font_size: 45,
+            ..Default::default()
+        },
+    );
+    let min = state.snapshot.secs_in_period / 60;
+    let secs = state.snapshot.secs_in_period % 60;
+    draw_text_ex(
+        format!("{}:{}", min, secs).as_str(),
+        923f32,
+        1020f32,
+        TextParams {
+            font: textures.font(),
+            font_size: 50,
+            ..Default::default()
+        },
+    );
+    draw_text_ex(
+        "NEXT GAME",
+        905f32,
+        1044f32,
+        TextParams {
+            font: textures.font(),
+            font_size: 20,
+            ..Default::default()
+        },
+    );
 }
 
-type TextList = Vec<TextParams>;
-
-pub fn roster(textures: &dyn TexturesUWH) -> UniformList {
-    vec![
-        uniform! {
-            matrix: [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [ -0.5, 0.0, 0.0, 1.0f32],
-            ],
-            tex: textures.atlantis_logo_graphic(),
-        },
-        uniform! {
-            matrix: [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [ -0.5, 0.0, 0.0, 1.0f32],
-            ],
-            tex: textures.bottom_graphic(),
-        },
-        uniform! {
-            matrix: [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [ -0.5, 1.1, 0.0, 1.0f32],
-            ],
-            tex: textures.team_information_graphic(),
-        },
-        uniform! {
-            matrix: [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [0.65, -0.5, 0.0, 1.0f32],
-            ],
-            tex: textures.team_black_graphic(),
-        },
-        uniform! {
-            matrix: [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [0.65, -0.6, 0.0, 1.0f32],
-            ],
-            tex: textures.team_black_graphic(),
-        },
-        uniform! {
-            matrix: [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [-0.35, -0.5, 0.0, 1.0f32],
-            ],
-            tex: textures.team_white_graphic(),
-        },
-        uniform! {
-            matrix: [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [-0.35, -0.6, 0.0, 1.0f32],
-            ],
-            tex: textures.team_white_graphic(),
-        },
-    ]
+pub fn final_scores(textures: &Textures) {
+    draw_texture(*textures.atlantis_logo_graphic(), 0_f32, 0f32, WHITE);
+    draw_texture(*textures.final_score_graphic(), 0_f32, 0f32, WHITE);
+    draw_texture(*textures.team_information_graphic(), 0_f32, 0f32, WHITE);
 }
 
-pub fn next_game<'a>(
-    textures: &'a dyn TexturesUWH,
-    state: &GameSnapshot,
-) -> (UniformList<'a>, TextList) {
-    let t: String = String::from("text");
-
-    (
-        vec![
-            uniform! {
-                matrix: [
-                    [1.0, 0.0, 0.0, 0.0],
-                    [0.0, 1.0, 0.0, 0.0],
-                    [0.0, 0.0, 1.0, 0.0],
-                    [ -0.5, 0.0, 0.0, 1.0f32],
-                ],
-                tex: textures.atlantis_logo_graphic(),
-            },
-            uniform! {
-                matrix: [
-                    [1.0, 0.0, 0.0, 0.0],
-                    [0.0, 1.0, 0.0, 0.0],
-                    [0.0, 0.0, 1.0, 0.0],
-                    [ -0.5, 0.0, 0.0, 1.0f32],
-                ],
-                tex: textures.bottom_graphic(),
-            },
-            uniform! {
-                matrix: [
-                    [1.0, 0.0, 0.0, 0.0],
-                    [0.0, 1.0, 0.0, 0.0],
-                    [0.0, 0.0, 1.0, 0.0],
-                    [ -0.5, -0.01, 0.0, 1.0f32],
-                ],
-                tex: textures.team_information_graphic(),
-            },
-        ],
-        vec![
-            TextParams {
-                color: (0.0, 0.0, 0.0, 1.0),
-                matrix: [
-                    [2.0 / 4.0, 0.0, 0.0, 0.0],
-                    [0.0, 2.0 / 4.0, 0.0, 0.0],
-                    [0.0, 0.0, 1.0, 0.0],
-                    [
-                        -1.0 + (4.0 - 1f32) * (1f32 / 4.0) - 0.5,
-                        0.0 - 0.5,
-                        0.0,
-                        1.0,
-                    ],
-                ],
-                text: t.clone(),
-            },
-            TextParams {
-                color: (1.0, 0.0, 0.0, 1.0),
-                matrix: [
-                    [2.0 / 4.0, 0.0, 0.0, 0.0],
-                    [0.0, 2.0 / 4.0, 0.0, 0.0],
-                    [0.0, 0.0, 1.0, 0.0],
-                    [
-                        -1.0 + (4.0 - 1f32) * (1f32 / 4.0) + 0.5,
-                        0.0 - 0.5,
-                        0.0,
-                        1.0,
-                    ],
-                ],
-                text: t,
-            },
-        ],
-    )
-}
-
-pub fn final_scores(textures: &dyn TexturesUWH) -> UniformList {
-    vec![
-        uniform! {
-            matrix: [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [ -0.5, 0.0, 0.0, 1.0f32],
-            ],
-            tex: textures.final_score_graphic(),
-        },
-        uniform! {
-            matrix: [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [ -0.5, 0.0, 0.0, 1.0f32],
-            ],
-            tex: textures.atlantis_logo_graphic(),
-        },
-        uniform! {
-            matrix: [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [ -0.5, -0.01, 0.0, 1.0f32],
-            ],
-            tex: textures.team_information_graphic(),
-        },
-    ]
-}
-
-pub fn pre_game_display(textures: &dyn TexturesUWH) -> UniformList {
-    vec![
-        uniform! {
-            matrix: [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [ -0.5, 0.0, 0.0, 1.0f32],
-            ],
-            tex: textures.atlantis_logo_graphic(),
-        },
-        uniform! {
-            matrix: [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [ -0.5, 0.0, 0.0, 1.0f32],
-            ],
-            tex: textures.bottom_graphic(),
-        },
-        uniform! {
-            matrix: [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [ -0.5, 0.0, 0.0, 1.0f32],
-            ],
-            tex: textures.team_bar_graphic(),
-        },
-        uniform! {
-            matrix: [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [ -0.5, 0.0, 0.0, 1.0f32],
-            ],
-            tex: textures.time_and_game_state_graphic(),
-        },
-    ]
+pub fn pre_game_display(textures: &Textures) {
+    draw_texture(*textures.atlantis_logo_graphic(), 0_f32, 0f32, WHITE);
+    draw_texture(*textures.bottom_graphic(), 0_f32, 0f32, WHITE);
+    draw_texture(*textures.team_bar_graphic(), 0_f32, 0f32, WHITE);
 }

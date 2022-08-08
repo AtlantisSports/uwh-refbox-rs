@@ -1,10 +1,4 @@
 [workspace]
 resolver = "2"
 
-members = [
-  "fonts",
-  "uwh-common",
-  "uwh-matrix-drawing",
-  "uwh-refbox",
-  "uwh-overlay-drawing",
-]
+members = ["fonts", "uwh-common", "uwh-matrix-drawing", "uwh-refbox"]

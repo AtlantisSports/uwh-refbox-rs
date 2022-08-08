@@ -13,6 +13,7 @@ async fn main() {
     let (tx, rx) = channel::<State>();
     std::thread::spawn(|| network::networking_thread(tx).unwrap());
     let args: Vec<String> = std::env::args().collect();
+    let mut animaion_counter = 0f32;
     if args.len() != 2 {
         panic!("Got {} args instead of one", args.len() - 1);
     }
@@ -35,26 +36,18 @@ async fn main() {
         if let Some(state) = &game_state {
             match state.snapshot.current_period {
                 GamePeriod::BetweenGames => match state.snapshot.secs_in_period {
-                    121..=u16::MAX => {
+                    151..=u16::MAX => {
                         pages::next_game(&textures, &state);
-
-                        //pages::next_game(&alpha_textures);
                     }
-                    30..=120 => {
-                        pages::roster(&textures, &state);
-
-                        //pages::roster(&alpha_textures);
+                    30..=150 => {
+                        pages::roster(&textures, &state, &mut animaion_counter);
                     }
                     _ => {
                         pages::pre_game_display(&textures);
-
-                        //pages::pre_game_display(&alpha_textures);
                     }
                 },
                 _ => {
                     pages::final_scores(&textures);
-
-                    //pages::final_scores(&alpha_textures);
                 }
             }
         }

@@ -1,6 +1,16 @@
 use crate::{load_images::Textures, network};
 use macroquad::prelude::*;
 
+trait Interpolate {
+    fn interpolate_linear(&self, val: f32) -> f32;
+}
+
+impl Interpolate for (f32, f32) {
+    fn interpolate_linear(&self, val: f32) -> f32 {
+        (self.1 - self.0) * val + self.0
+    }
+}
+
 fn get_input<T: std::str::FromStr + std::default::Default>(prompt: &str) -> T {
     let mut buffer = String::new();
     println!(" Enter {}: ", prompt);
@@ -8,10 +18,17 @@ fn get_input<T: std::str::FromStr + std::default::Default>(prompt: &str) -> T {
     buffer.trim().parse::<T>().unwrap_or(Default::default())
 }
 
-pub fn roster(textures: &Textures, state: &network::State) {
+pub fn roster(textures: &Textures, state: &network::State, animation_counter: &mut f32) {
+    let offset = if state.snapshot.secs_in_period == 150 {
+        *animation_counter += 1f32 / 60f32; //difference divided by no of frames in transition period
+        (0f32, -650f32).interpolate_linear(*animation_counter)
+    } else {
+        *animation_counter = 0f32;
+        (0f32, -650f32).interpolate_linear(1f32)
+    };
     draw_texture(*textures.atlantis_logo_graphic(), 0_f32, 0f32, WHITE);
     draw_texture(*textures.bottom_graphic(), 0_f32, 0f32, WHITE);
-    draw_texture(*textures.team_information_graphic(), 0_f32, -650f32, WHITE);
+    draw_texture(*textures.team_information_graphic(), 0_f32, offset, WHITE);
     draw_texture(*textures.team_black_graphic(), 1090f32, 220f32, WHITE);
     draw_texture(*textures.team_white_graphic(), 150f32, 220f32, WHITE);
     draw_texture(
@@ -29,7 +46,7 @@ pub fn roster(textures: &Textures, state: &network::State) {
     draw_text_ex(
         state.white.to_uppercase().as_str(),
         340f32,
-        155f32,
+        805f32 + offset,
         TextParams {
             font: textures.font(),
             font_size: 50,
@@ -40,7 +57,7 @@ pub fn roster(textures: &Textures, state: &network::State) {
     draw_text_ex(
         state.black.to_uppercase().as_str(),
         1240f32,
-        155f32,
+        805f32 + offset,
         TextParams {
             font: textures.font(),
             font_size: 45,

@@ -15,7 +15,7 @@ fn get_input<T: std::str::FromStr + std::default::Default>(prompt: &str) -> T {
     let mut buffer = String::new();
     println!(" Enter {}: ", prompt);
     std::io::stdin().read_line(&mut buffer).expect("Failed");
-    buffer.trim().parse::<T>().unwrap_or(Default::default())
+    buffer.trim().parse::<T>().unwrap_or_default()
 }
 
 pub fn roster(textures: &Textures, state: &network::State, animation_counter: &mut f32) {

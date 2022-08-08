@@ -18,9 +18,9 @@ async fn main() {
         panic!("Got {} args instead of one", args.len() - 1);
     }
 
-    let textures = if args[1] == String::from("--color") {
+    let textures = if args[1] == *"--color" {
         load_images::Textures::init_color()
-    } else if args[1] == String::from("--alpha") {
+    } else if args[1] == *"--alpha" {
         load_images::Textures::init_alpha()
     } else {
         panic!("Expected --color or --alpha arg!")
@@ -37,10 +37,10 @@ async fn main() {
             match state.snapshot.current_period {
                 GamePeriod::BetweenGames => match state.snapshot.secs_in_period {
                     151..=u16::MAX => {
-                        pages::next_game(&textures, &state);
+                        pages::next_game(&textures, state);
                     }
                     30..=150 => {
-                        pages::roster(&textures, &state, &mut animaion_counter);
+                        pages::roster(&textures, state, &mut animaion_counter);
                     }
                     _ => {
                         pages::pre_game_display(&textures);

@@ -17,7 +17,7 @@ async fn main() {
     let mut animaion_counter = 0f32;
     assert!(
         args.len() == 2,
-        "Got {} args instead of one",
+        "Got {} args instead of one. Pass one argument, --color or --alpha to get the color or alpha feed respectively",
         args.len() - 1
     );
     let (textures, is_alpha_mode) = if args[1] == *"--color" {

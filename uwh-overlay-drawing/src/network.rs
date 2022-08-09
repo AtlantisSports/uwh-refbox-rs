@@ -24,8 +24,8 @@ pub fn networking_thread(
         ))?
         .text()?,
     )?;
-    let black = data["game"]["black"].as_str().unwrap().to_string();
-    let white = data["game"]["white"].as_str().unwrap().to_string();
+    let black = data["game"]["black"].as_str().unwrap().to_owned();
+    let white = data["game"]["white"].as_str().unwrap().to_owned();
     if tx
         .send(State {
             snapshot,
@@ -38,17 +38,17 @@ pub fn networking_thread(
     }
     loop {
         read_bytes = stream.read(&mut buff).unwrap();
-        snapshot = serde_json::de::from_slice(&buff[..read_bytes]).unwrap();
-
-        if tx
-            .send(State {
-                snapshot,
-                black: black.clone(),
-                white: white.clone(),
-            })
-            .is_err()
-        {
-            eprintln!("Frontend could not recieve game snapshot!")
+        if let Ok(snapshot) = serde_json::de::from_slice(&buff[..read_bytes]) {
+            if tx
+                .send(State {
+                    snapshot,
+                    black: black.clone(),
+                    white: white.clone(),
+                })
+                .is_err()
+            {
+                eprintln!("Frontend could not recieve game snapshot!")
+            }
         }
     }
 }

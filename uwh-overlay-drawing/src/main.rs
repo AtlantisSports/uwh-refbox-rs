@@ -3,13 +3,23 @@ use std::sync::mpsc::channel;
 use network::State;
 
 use macroquad::prelude::*;
-use uwh_common::{config::Game, game_snapshot::GamePeriod};
+use uwh_common::game_snapshot::GamePeriod;
 mod load_images;
 mod network;
 mod pages_alpha;
 mod pages_color;
 
-#[macroquad::main("UWH Overlay")]
+fn window_conf() -> Conf {
+    Conf {
+        window_title: "UWH Overlay".to_owned(),
+        window_width: 1920,
+        window_height: 1080,
+        window_resizable: false,
+        ..Default::default()
+    }
+}
+
+#[macroquad::main(window_conf)]
 async fn main() {
     let (tx, rx) = channel::<State>();
     std::thread::spawn(|| network::networking_thread(tx).unwrap());
@@ -39,10 +49,19 @@ async fn main() {
             match state.snapshot.current_period {
                 GamePeriod::BetweenGames => match state.snapshot.secs_in_period {
                     151..=u16::MAX => {
-                        if !is_alpha_mode {
-                            pages_color::next_game(&textures, state);
+                        // If an old game just finished, display it's scores for a minute
+                        if state.snapshot.is_old_game && state.snapshot.secs_in_period > 2800 {
+                            if !is_alpha_mode {
+                                pages_color::final_scores(&textures, state);
+                            } else {
+                                pages_alpha::final_scores(&textures, state);
+                            }
                         } else {
-                            pages_alpha::next_game(&textures, state);
+                            if !is_alpha_mode {
+                                pages_color::next_game(&textures, state);
+                            } else {
+                                pages_alpha::next_game(&textures, state);
+                            }
                         }
                     }
                     30..=150 => {
@@ -77,13 +96,7 @@ async fn main() {
                         pages_alpha::half_time_display(&textures);
                     }
                 }
-                _ => {
-                    if !is_alpha_mode {
-                        pages_color::final_scores(&textures);
-                    } else {
-                        pages_alpha::final_scores(&textures);
-                    }
-                }
+                _ => {}
             }
         }
         next_frame().await;

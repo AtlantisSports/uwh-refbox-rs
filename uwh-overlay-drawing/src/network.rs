@@ -16,7 +16,7 @@ pub fn networking_thread(
         .expect("Is the refbox running? We error'd out on the connection");
     let mut buff = vec![0u8; 1024];
     let mut read_bytes = stream.read(&mut buff).unwrap();
-    let mut snapshot: GameSnapshot = serde_json::de::from_slice(&buff[..read_bytes]).unwrap();
+    let snapshot: GameSnapshot = serde_json::de::from_slice(&buff[..read_bytes]).unwrap();
     let data: Value = serde_json::from_str(
         &reqwest::blocking::get(format!(
             "https://uwhscores.com/api/v1/tournaments/{}/games/{}",

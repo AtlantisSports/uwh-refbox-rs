@@ -1,7 +1,4 @@
-use crate::{
-    load_images::Textures,
-    network::{self, State},
-};
+use crate::{load_images::Textures, network::State};
 use macroquad::prelude::*;
 
 trait Interpolate {
@@ -102,10 +99,50 @@ pub fn roster(textures: &Textures, state: &State, animation_counter: &mut f32) {
 }
 
 /// Display final scores after game is done
-pub fn final_scores(textures: &Textures) {
+pub fn final_scores(textures: &Textures, state: &State) {
     draw_texture(*textures.atlantis_logo_graphic(), 0_f32, 0f32, WHITE);
     draw_texture(*textures.final_score_graphic(), 0_f32, 0f32, WHITE);
     draw_texture(*textures.team_information_graphic(), 0_f32, 0f32, WHITE);
+    draw_text_ex(
+        state.white.to_uppercase().as_str(),
+        340f32,
+        805f32,
+        TextParams {
+            font: textures.font(),
+            font_size: 50,
+            ..Default::default()
+        },
+    );
+    draw_text_ex(
+        state.black.to_uppercase().as_str(),
+        1240f32,
+        805f32,
+        TextParams {
+            font: textures.font(),
+            font_size: 45,
+            ..Default::default()
+        },
+    );
+    draw_text_ex(
+        state.snapshot.b_score.to_string().as_str(),
+        1400f32,
+        580f32,
+        TextParams {
+            font: textures.font(),
+            font_size: 180,
+            ..Default::default()
+        },
+    );
+    draw_text_ex(
+        state.snapshot.w_score.to_string().as_str(),
+        430f32,
+        580f32,
+        TextParams {
+            font: textures.font(),
+            font_size: 180,
+            ..Default::default()
+        },
+    );
 }
 
 /// displayed from 30 seconds before a game begins.
@@ -176,6 +213,7 @@ pub fn in_game_display(textures: &Textures, state: &State, animation_counter: &m
     draw_texture(*textures.time_and_game_state_graphic(), offset, 0f32, WHITE);
 }
 
+/// Display during half time. Has no animations
 pub fn half_time_display(textures: &Textures) {
     draw_texture(*textures.team_bar_graphic(), 0_f32, 0f32, WHITE);
     draw_texture(*textures.time_and_game_state_graphic(), 0f32, 0f32, WHITE);

@@ -1,6 +1,7 @@
-use std::sync::mpsc::channel;
+use std::{str::FromStr, sync::mpsc::channel};
 //use uwh_common::game_snapshot::GamePeriod;
 use network::State;
+use std::net::IpAddr;
 
 use macroquad::prelude::*;
 use uwh_common::game_snapshot::GamePeriod;
@@ -19,10 +20,59 @@ fn window_conf() -> Conf {
     }
 }
 
+pub struct AppConfig {
+    refbox_ip: IpAddr,
+    refbox_port: u64,
+    uwhscores_url: String,
+}
+
+impl AppConfig {
+    /// Get the app config's refbox ip.
+    pub fn refbox_ip(&self) -> IpAddr {
+        self.refbox_ip
+    }
+
+    /// Get the app config's refbox port.
+    pub fn refbox_port(&self) -> u64 {
+        self.refbox_port
+    }
+
+    /// Get a reference to the app config's uwhscores url.
+    pub fn uwhscores_url(&self) -> &str {
+        self.uwhscores_url.as_ref()
+    }
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        AppConfig {
+            refbox_ip: IpAddr::from_str("127.0.0.1").unwrap(),
+            refbox_port: 8000,
+            uwhscores_url: String::from("uwhscores.com"),
+        }
+    }
+}
+
 #[macroquad::main(window_conf)]
 async fn main() {
     let (tx, rx) = channel::<State>();
-    std::thread::spawn(|| network::networking_thread(tx).unwrap());
+    let mut conf_directory = home::home_dir().unwrap();
+    conf_directory.push(".config/uwh-overlay/config.json");
+    let config = if let Ok(file) = std::fs::read(conf_directory) {
+        let data: serde_json::Value = serde_json::from_str(std::str::from_utf8(&file).unwrap())
+            .expect("Ill formatted config file!");
+        AppConfig {
+            refbox_ip: IpAddr::from_str(data["refbox_ip"].as_str().unwrap()).unwrap(),
+            refbox_port: data["refbox_port"].as_u64().unwrap(),
+            uwhscores_url: data["uwhscores_url"].as_str().unwrap().to_string(),
+        }
+    } else {
+        AppConfig::default()
+    };
+    std::thread::spawn(|| {
+        network::networking_thread(tx, config)
+            .expect("Networking error. Does the supplied URL exist and is it live?")
+    });
     let args: Vec<String> = std::env::args().collect();
     let mut animaion_counter = 0f32;
     assert!(

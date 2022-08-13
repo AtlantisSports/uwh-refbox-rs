@@ -11,16 +11,19 @@ pub struct State {
 
 pub fn networking_thread(
     tx: std::sync::mpsc::Sender<State>,
+    config: crate::AppConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut stream = TcpStream::connect(("localhost", 8000))
+    let mut stream = TcpStream::connect((config.refbox_ip(), config.refbox_port() as u16))
         .expect("Is the refbox running? We error'd out on the connection");
     let mut buff = vec![0u8; 1024];
     let mut read_bytes = stream.read(&mut buff).unwrap();
     let snapshot: GameSnapshot = serde_json::de::from_slice(&buff[..read_bytes]).unwrap();
     let data: Value = serde_json::from_str(
         &reqwest::blocking::get(format!(
-            "https://uwhscores.com/api/v1/tournaments/{}/games/{}",
-            snapshot.tournament_id, snapshot.game_number
+            "https://{}/api/v1/tournaments/{}/games/{}",
+            config.uwhscores_url(),
+            snapshot.tournament_id,
+            snapshot.game_number
         ))?
         .text()?,
     )?;

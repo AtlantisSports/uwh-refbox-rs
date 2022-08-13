@@ -45,8 +45,6 @@ pub fn next_game(textures: &Textures, state: &State) {
             ..Default::default()
         },
     );
-    let min = state.snapshot.secs_in_period / 60;
-    let secs = state.snapshot.secs_in_period % 60;
 }
 
 /// Second screen, displayed between 150 and 30 seconds before the next game.

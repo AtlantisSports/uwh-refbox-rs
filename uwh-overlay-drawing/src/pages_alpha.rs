@@ -212,7 +212,39 @@ pub fn in_game_display(textures: &Textures, state: &State, animation_counter: &m
 }
 
 /// Display during half time. Has no animations
-pub fn half_time_display(textures: &Textures) {
+pub fn overtime_display(textures: &Textures) {
     draw_texture(*textures.team_bar_graphic(), 0_f32, 0f32, WHITE);
     draw_texture(*textures.time_and_game_state_graphic(), 0f32, 0f32, WHITE);
+}
+
+// Shown every time a goal is made for five second. A second each for fade in and out.
+// Must use a secondary animation counter because this is called along with other draw functions
+pub fn show_goal_graphic(
+    textures: &Textures,
+    animation_counter: &mut f32,
+    show_goal_graphic: &mut bool,
+) {
+    //animate fade for the first second
+    let offset = if *animation_counter < 1f32 {
+        *animation_counter += 1f32 / 60f32; // inverse of number of frames in transition period
+        (0f32, 255f32).interpolate_linear(*animation_counter)
+    } else if *animation_counter < 4f32 {
+        *animation_counter += 1f32 / 60f32; // inverse of number of frames in transition period
+
+        (0f32, 255f32).interpolate_linear(1f32)
+    } else if *animation_counter < 5f32 {
+        //animate fade out in the last one second
+        *animation_counter += 1f32 / 60f32; // inverse of number of frames in transition period
+        (0f32, 255f32).interpolate_linear(5f32 - *animation_counter)
+    } else {
+        *show_goal_graphic = false;
+        *animation_counter = 0f32;
+        0f32
+    } as u8;
+    draw_texture(
+        *textures.team_white_graphic(),
+        25f32,
+        150f32,
+        Color::from_rgba(255, 255, 255, offset),
+    );
 }

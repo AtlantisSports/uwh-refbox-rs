@@ -242,7 +242,23 @@ pub fn in_game_display(textures: &Textures, state: &State, animation_counter: &m
 }
 
 /// Display during half time. Has no animations
-pub fn half_time_display(textures: &Textures) {
+pub fn overtime_display(textures: &Textures) {
     draw_texture(*textures.team_bar_graphic(), 0_f32, 0f32, WHITE);
     draw_texture(*textures.time_and_game_state_graphic(), 0f32, 0f32, WHITE);
+}
+
+// Shown every time a goal is made for five second. A second each for fade in and out.
+pub fn show_goal_graphic(
+    textures: &Textures,
+    animation_counter: &mut f32,
+    show_goal_graphic: &mut bool,
+) {
+    // Stop after 5 seconds
+    if *animation_counter > 5f32 {
+        *show_goal_graphic = false;
+        *animation_counter = 0f32;
+    } else {
+        *animation_counter += 1f32 / (60f32 * 5f32); //tick animation counter for upto 5 seconds
+    }
+    draw_texture(*textures.team_white_graphic(), 25f32, 150f32, WHITE);
 }

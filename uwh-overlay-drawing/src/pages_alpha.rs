@@ -12,11 +12,14 @@ impl Interpolate for (f32, f32) {
     }
 }
 
+#[allow(dead_code)]
 /// utility function used to place overlay elements quickly through user input without recompiling
 fn get_input<T: std::str::FromStr + std::default::Default>(prompt: &str) -> T {
     let mut buffer = String::new();
     println!(" Enter {}: ", prompt);
-    std::io::stdin().read_line(&mut buffer).expect("Failed");
+    std::io::stdin()
+        .read_line(&mut buffer)
+        .expect("Failed to init stdin");
     buffer.trim().parse::<T>().unwrap_or_default()
 }
 
@@ -217,8 +220,8 @@ pub fn overtime_display(textures: &Textures) {
     draw_texture(*textures.time_and_game_state_graphic(), 0f32, 0f32, WHITE);
 }
 
-// Shown every time a goal is made for five second. A second each for fade in and out.
-// Must use a secondary animation counter because this is called along with other draw functions
+/// Shown every time a goal is made for five second. A second each for fade in and out.
+/// Must use a secondary animation counter because this is called along with other draw functions
 pub fn show_goal_graphic(
     textures: &Textures,
     animation_counter: &mut f32,

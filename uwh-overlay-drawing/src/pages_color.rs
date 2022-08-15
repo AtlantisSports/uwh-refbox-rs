@@ -1,11 +1,8 @@
-use crate::{
-    load_images::Textures,
-    network::{self, State},
-};
+use crate::{load_images::Textures, network::State};
 use macroquad::prelude::*;
 
 trait Interpolate {
-    /// value must be a floater varying from 0 to 1, denoting the lowest to highest limits of the range
+    /// value must be a floater varying from 0 to 1, lowest to highest limits of the range
     fn interpolate_linear(&self, value: f32) -> f32;
 }
 
@@ -15,6 +12,7 @@ impl Interpolate for (f32, f32) {
     }
 }
 
+#[allow(dead_code)]
 /// utility function used to place overlay elements quickly through user input without recompiling
 fn get_input<T: std::str::FromStr + std::default::Default>(prompt: &str) -> T {
     let mut buffer = String::new();
@@ -73,7 +71,8 @@ pub fn next_game(textures: &Textures, state: &State) {
     );
 }
 
-/// second screen, displayed between 150 and 30 seconds before the next game. animation counter holds state for the animation. It must be an arbitrary float initlised to 0 and must live across function invocations.
+/// second screen, displayed between 150 and 30 seconds before the next game. animation counter holds state for the animation.
+/// Must be an arbitrary float initlised to 0 and must live across function invocations.
 pub fn roster(textures: &Textures, state: &State, animation_counter: &mut f32) {
     let offset = if state.snapshot.secs_in_period == 150 {
         *animation_counter += 1f32 / 60f32; // inverse of number of frames in transition period
@@ -247,7 +246,7 @@ pub fn overtime_display(textures: &Textures) {
     draw_texture(*textures.time_and_game_state_graphic(), 0f32, 0f32, WHITE);
 }
 
-// Shown every time a goal is made for five second. A second each for fade in and out.
+/// Shown every time a goal is made for five seconds. A second each for fade in and out.
 pub fn show_goal_graphic(
     textures: &Textures,
     animation_counter: &mut f32,

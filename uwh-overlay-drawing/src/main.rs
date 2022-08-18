@@ -1,15 +1,13 @@
 use std::{str::FromStr, sync::mpsc::channel};
 //use uwh_common::game_snapshot::GamePeriod;
-use network::State;
+use network::StatePacket;
 use std::net::IpAddr;
 
 use macroquad::prelude::*;
-use uwh_common::game_snapshot::GamePeriod;
+use uwh_common::game_snapshot::{GamePeriod, GameSnapshot};
 mod load_images;
 mod network;
 mod pages;
-mod pages_alpha;
-mod pages_color;
 
 const APP_CONFIG_NAME: &str = "uwh-overlay-drawing";
 
@@ -30,23 +28,6 @@ pub struct AppConfig {
     uwhscores_url: String,
 }
 
-impl AppConfig {
-    /// Get the app config's refbox ip.
-    pub fn refbox_ip(&self) -> IpAddr {
-        self.refbox_ip
-    }
-
-    /// Get the app config's refbox port.
-    pub fn refbox_port(&self) -> u64 {
-        self.refbox_port
-    }
-
-    /// Get a reference to the app config's uwhscores url.
-    pub fn uwhscores_url(&self) -> &str {
-        self.uwhscores_url.as_ref()
-    }
-}
-
 impl Default for AppConfig {
     fn default() -> Self {
         AppConfig {
@@ -57,9 +38,16 @@ impl Default for AppConfig {
     }
 }
 
+pub struct State {
+    snapshot: GameSnapshot,
+    black: String,
+    white: String,
+    w_flag: Texture2D,
+}
+
 #[macroquad::main(window_conf)]
 async fn main() {
-    let (tx, rx) = channel::<State>();
+    let (tx, rx) = channel::<StatePacket>();
 
     let config: AppConfig = match confy::load(APP_CONFIG_NAME, None) {
         Ok(c) => c,
@@ -106,7 +94,23 @@ async fn main() {
     loop {
         clear_background(BLACK);
         if let Ok(state) = rx.try_recv() {
-            game_state = Some(state);
+            // handle data other than snapshot from networking thread
+            if let Some(game_state) = &mut game_state {
+                game_state.w_flag = if state.w_flag.is_some() {
+                    Texture2D::from_file_with_format(state.w_flag.unwrap(), None)
+                } else {
+                    game_state.w_flag
+                };
+                game_state.black = state.black.unwrap_or(game_state.black.clone());
+                game_state.white = state.white.unwrap_or(game_state.white.clone());
+            } else {
+                game_state = Some(State {
+                    white: state.white.unwrap(),
+                    black: state.black.unwrap(),
+                    w_flag: Texture2D::from_file_with_format(state.w_flag.unwrap(), None),
+                    snapshot: state.snapshot,
+                })
+            }
         }
         // if show_goal {
         //     if !is_alpha_mode {

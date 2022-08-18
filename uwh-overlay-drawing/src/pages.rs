@@ -1,4 +1,4 @@
-use crate::{load_images::Textures, network::State};
+use crate::{load_images::Textures, State};
 use macroquad::prelude::*;
 
 trait Interpolate {
@@ -83,7 +83,16 @@ impl PageRenderer {
                     ..Default::default()
                 },
             );
-            draw_texture(*state.w_flag, 0_f32, 0f32, WHITE);
+            draw_texture_ex(
+                state.w_flag,
+                0_f32,
+                0f32,
+                WHITE,
+                DrawTextureParams {
+                    dest_size: Some(vec2(100f32, 100f32)),
+                    ..Default::default()
+                },
+            );
             let min = state.snapshot.secs_in_period / 60;
             let secs = state.snapshot.secs_in_period % 60;
             draw_text_ex(
@@ -174,7 +183,16 @@ impl PageRenderer {
                     ..Default::default()
                 },
             );
-            draw_texture(*state.w_flag, 0_f32, 0f32, WHITE);
+            draw_texture_ex(
+                state.w_flag,
+                0_f32,
+                0f32,
+                WHITE,
+                DrawTextureParams {
+                    dest_size: Some(vec2(100f32, 100f32)),
+                    ..Default::default()
+                },
+            );
             let min = state.snapshot.secs_in_period / 60;
             let secs = state.snapshot.secs_in_period % 60;
             draw_text_ex(

@@ -1,22 +1,20 @@
-use macroquad::prelude::Texture2D;
 use serde_json::Value;
 use std::io::Read;
 use std::net::TcpStream;
-use std::sync::Arc;
 use uwh_common::game_snapshot::GameSnapshot;
 
-pub struct State {
+pub struct StatePacket<'a> {
     pub snapshot: GameSnapshot,
-    pub black: String,
-    pub white: String,
-    pub w_flag: Arc<Texture2D>,
+    pub black: Option<String>,
+    pub white: Option<String>,
+    pub w_flag: Option<&'a [u8]>,
 }
 
 pub fn networking_thread(
-    tx: std::sync::mpsc::Sender<State>,
+    tx: std::sync::mpsc::Sender<StatePacket>,
     config: crate::AppConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut stream = TcpStream::connect((config.refbox_ip(), config.refbox_port() as u16))
+    let mut stream = TcpStream::connect((config.refbox_ip, config.refbox_port as u16))
         .expect("Is the refbox running? We error'd out on the connection");
     let mut buff = vec![0u8; 1024];
     let mut read_bytes = stream.read(&mut buff).unwrap();
@@ -24,24 +22,19 @@ pub fn networking_thread(
     let data: Value = serde_json::from_str(
         &reqwest::blocking::get(format!(
             "https://{}/api/v1/tournaments/{}/games/{}",
-            config.uwhscores_url(),
-            2,
-            1
+            config.uwhscores_url, 2, 1
         ))?
         .text()?,
     )?;
     let black = data["game"]["black"].as_str().unwrap().to_owned();
     let white = data["game"]["white"].as_str().unwrap().to_owned();
-    let w_flag = Arc::new(Texture2D::from_file_with_format(
-        include_bytes!(".././assets/flags/Seattle (Typical Ratio).png"),
-        None,
-    ));
+    let w_flag = include_bytes!(".././assets/flags/Seattle (Typical Ratio).png");
     if tx
-        .send(State {
+        .send(StatePacket {
             snapshot,
-            black: black.clone(),
-            white: white.clone(),
-            w_flag: w_flag.clone(),
+            black: Some(black.clone()),
+            white: Some(white.clone()),
+            w_flag: Some(w_flag),
         })
         .is_err()
     {
@@ -51,11 +44,11 @@ pub fn networking_thread(
         read_bytes = stream.read(&mut buff).unwrap();
         if let Ok(snapshot) = serde_json::de::from_slice(&buff[..read_bytes]) {
             if tx
-                .send(State {
+                .send(StatePacket {
                     snapshot,
-                    black: black.clone(),
-                    white: white.clone(),
-                    w_flag: w_flag.clone(),
+                    black: None,
+                    white: None,
+                    w_flag: None,
                 })
                 .is_err()
             {

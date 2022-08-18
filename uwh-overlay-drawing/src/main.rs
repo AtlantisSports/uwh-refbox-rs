@@ -126,7 +126,7 @@ async fn main() {
             match state.snapshot.current_period {
                 GamePeriod::BetweenGames => match state.snapshot.secs_in_period {
                     151..=u16::MAX => {
-                        // If an old game just finished, display it's scores for a minute
+                        // If an old game just finished, display its scores for a minute
                         if state.snapshot.is_old_game && state.snapshot.secs_in_period > 2800 {
                             if !is_alpha_mode {
                                 pages_color::final_scores(&textures, state);

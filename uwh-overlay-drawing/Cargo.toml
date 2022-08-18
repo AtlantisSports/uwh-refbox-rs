@@ -9,8 +9,10 @@ edition = "2021"
 macroquad = "0.3.23"
 uwh-common = { git = "https://github.com/AtlantisSports/uwh-refbox-rs" }
 serde_json = { version = "*" }
+serde = { version = "1.0.139", features = ["derive"] }
 home = "0.5.3"
 reqwest = { version = "*", features = ["blocking"] }
 pollster = "*"
+confy = { git = "https://github.com/rust-cli/confy", rev = "642822413139ce38a96b916190e8c7fd5b88e814" }
 
 [workspace]

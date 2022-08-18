@@ -50,7 +50,7 @@ impl TournamentManager {
     pub fn new(config: GameConfig) -> Self {
         let (start_stop_tx, start_stop_rx) = watch::channel(false);
         Self {
-            game_number: 1,
+            game_number: 0,
             game_start_time: Instant::now(),
             current_period: GamePeriod::BetweenGames,
             clock_state: ClockState::Stopped {
@@ -1338,7 +1338,7 @@ impl TournamentManager {
             is_old_game: !self.has_reset,
             game_number: self.game_number(),
             next_game_number: self.next_game_number(),
-            tournament_id: 2,
+            tournament_id: 0,
         })
     }
 

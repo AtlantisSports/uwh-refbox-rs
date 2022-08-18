@@ -214,7 +214,7 @@ pub fn in_game_display(textures: &Textures, state: &State, animation_counter: &m
     draw_texture(*textures.time_and_game_state_graphic(), offset, 0f32, WHITE);
 }
 
-/// Display during half time. Has no animations
+/// Display during overtime. Has no animations
 pub fn overtime_display(textures: &Textures) {
     draw_texture(*textures.team_bar_graphic(), 0_f32, 0f32, WHITE);
     draw_texture(*textures.time_and_game_state_graphic(), 0f32, 0f32, WHITE);

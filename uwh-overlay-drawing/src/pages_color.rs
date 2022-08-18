@@ -17,15 +17,18 @@ impl Interpolate for (f32, f32) {
 fn get_input<T: std::str::FromStr + std::default::Default>(prompt: &str) -> T {
     let mut buffer = String::new();
     println!(" Enter {}: ", prompt);
-    std::io::stdin().read_line(&mut buffer).expect("Failed");
+    std::io::stdin()
+        .read_line(&mut buffer)
+        .expect("Failed to init stdin");
     buffer.trim().parse::<T>().unwrap_or_default()
 }
 
-/// The first screen, shown utpo 150 seconds before the next game, has no animations, so animation_counter is omitted
+/// The first screen, shown upto 150 seconds before the next game, has no animations, so animation_counter is omitted
 pub fn next_game(textures: &Textures, state: &State) {
     draw_texture(*textures.atlantis_logo_graphic(), 0_f32, 0f32, WHITE);
     draw_texture(*textures.bottom_graphic(), 0_f32, 0f32, WHITE);
     draw_texture(*textures.team_information_graphic(), 0_f32, 0f32, WHITE);
+    draw_texture(*state.w_flag, 0_f32, 0f32, WHITE);
     draw_text_ex(
         state.white.to_uppercase().as_str(),
         340f32,
@@ -240,7 +243,7 @@ pub fn in_game_display(textures: &Textures, state: &State, animation_counter: &m
     draw_texture(*textures.time_and_game_state_graphic(), offset, 0f32, WHITE);
 }
 
-/// Display during half time. Has no animations
+/// Display during overtime. Has no animations
 pub fn overtime_display(textures: &Textures) {
     draw_texture(*textures.team_bar_graphic(), 0_f32, 0f32, WHITE);
     draw_texture(*textures.time_and_game_state_graphic(), 0f32, 0f32, WHITE);

@@ -1,12 +1,15 @@
+use macroquad::prelude::Texture2D;
 use serde_json::Value;
 use std::io::Read;
 use std::net::TcpStream;
+use std::sync::Arc;
 use uwh_common::game_snapshot::GameSnapshot;
 
 pub struct State {
     pub snapshot: GameSnapshot,
     pub black: String,
     pub white: String,
+    pub w_flag: Arc<Texture2D>,
 }
 
 pub fn networking_thread(
@@ -29,11 +32,16 @@ pub fn networking_thread(
     )?;
     let black = data["game"]["black"].as_str().unwrap().to_owned();
     let white = data["game"]["white"].as_str().unwrap().to_owned();
+    let w_flag = Arc::new(Texture2D::from_file_with_format(
+        include_bytes!(".././assets/flags/Seattle (Typical Ratio).png"),
+        None,
+    ));
     if tx
         .send(State {
             snapshot,
             black: black.clone(),
             white: white.clone(),
+            w_flag: w_flag.clone(),
         })
         .is_err()
     {
@@ -47,6 +55,7 @@ pub fn networking_thread(
                     snapshot,
                     black: black.clone(),
                     white: white.clone(),
+                    w_flag: w_flag.clone(),
                 })
                 .is_err()
             {

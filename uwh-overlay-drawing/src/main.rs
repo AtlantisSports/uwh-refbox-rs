@@ -10,6 +10,8 @@ mod network;
 mod pages_alpha;
 mod pages_color;
 
+const APP_CONFIG_NAME: &str = "uwh-overlay-drawing";
+
 fn window_conf() -> Conf {
     Conf {
         window_title: "UWH Overlay".to_owned(),
@@ -20,6 +22,7 @@ fn window_conf() -> Conf {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct AppConfig {
     refbox_ip: IpAddr,
     refbox_port: u64,
@@ -58,16 +61,14 @@ async fn main() {
     let (tx, rx) = channel::<State>();
     let mut conf_directory = home::home_dir().unwrap();
     conf_directory.push(".config/uwh-overlay/config.json");
-    let config = if let Ok(file) = std::fs::read(conf_directory) {
-        let data: serde_json::Value = serde_json::from_str(std::str::from_utf8(&file).unwrap())
-            .expect("Ill formatted config file!");
-        AppConfig {
-            refbox_ip: IpAddr::from_str(data["refbox_ip"].as_str().unwrap()).unwrap(),
-            refbox_port: data["refbox_port"].as_u64().unwrap(),
-            uwhscores_url: data["uwhscores_url"].as_str().unwrap().to_string(),
+    let config: AppConfig = match confy::load(APP_CONFIG_NAME, None) {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("Failed to read config file, overwriting with default. Error: {e}");
+            let config = AppConfig::default();
+            confy::store(APP_CONFIG_NAME, None, &config).unwrap();
+            config
         }
-    } else {
-        AppConfig::default()
     };
     std::thread::spawn(|| {
         network::networking_thread(tx, config)

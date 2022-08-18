@@ -5,7 +5,7 @@ use iced::{pure::Application, window::icon::Icon, Settings};
 use log::*;
 use std::process::{Command, Stdio};
 use tokio_serial::{DataBits, FlowControl, Parity, StopBits};
-use uwh_common::config::Config;
+use uwh_common::{config::Config, uwhscores};
 
 mod penalty_editor;
 mod tournament_manager;
@@ -13,7 +13,6 @@ mod tournament_manager;
 mod app;
 mod app_icon;
 mod sim_app;
-mod uwhscores;
 
 const APP_CONFIG_NAME: &str = "uwh-refbox";
 

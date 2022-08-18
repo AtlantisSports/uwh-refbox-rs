@@ -20,7 +20,7 @@ fn get_input<T: std::str::FromStr + std::default::Default>(prompt: &str) -> T {
     buffer.trim().parse::<T>().unwrap_or_default()
 }
 
-/// The first screen, shown utpo 150 seconds before the next game, has no animations, so animation_counter is omitted
+/// The Next Game screen, shown up to 150 seconds before the next game, has no animations, so animation_counter is omitted
 pub fn next_game(textures: &Textures, state: &State) {
     draw_texture(*textures.atlantis_logo_graphic(), 0_f32, 0f32, WHITE);
     draw_texture(*textures.bottom_graphic(), 0_f32, 0f32, WHITE);

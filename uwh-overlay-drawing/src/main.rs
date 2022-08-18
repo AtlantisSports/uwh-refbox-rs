@@ -7,6 +7,7 @@ use macroquad::prelude::*;
 use uwh_common::game_snapshot::GamePeriod;
 mod load_images;
 mod network;
+mod pages;
 mod pages_alpha;
 mod pages_color;
 
@@ -59,8 +60,7 @@ impl Default for AppConfig {
 #[macroquad::main(window_conf)]
 async fn main() {
     let (tx, rx) = channel::<State>();
-    let mut conf_directory = home::home_dir().unwrap();
-    conf_directory.push(".config/uwh-overlay/config.json");
+
     let config: AppConfig = match confy::load(APP_CONFIG_NAME, None) {
         Ok(c) => c,
         Err(e) => {
@@ -70,18 +70,19 @@ async fn main() {
             config
         }
     };
+
     std::thread::spawn(|| {
         network::networking_thread(tx, config)
             .expect("Networking error. Does the supplied URL exist and is it live?")
     });
+
     let args: Vec<String> = std::env::args().collect();
-    let mut animation_counter = 0f32;
-    let mut secondary_animation_counter = 0f32; // for when we call two draw functions with animations, we need two counters
     assert!(
         args.len() == 2,
         "Got {} args instead of one. Pass one argument, --color or --alpha to get the color or alpha feed respectively",
         args.len() - 1
     );
+
     let (textures, is_alpha_mode) = if args[1] == *"--color" {
         (load_images::Textures::init_color(), false)
     } else if args[1] == *"--alpha" {
@@ -93,86 +94,67 @@ async fn main() {
     let mut game_state: Option<State> = None;
 
     // Should the goal graphic be displayed?
-    let mut show_goal = false;
+    // let mut show_goal = false;
     //keeps track of old whit and black scores in order to detect a change and show the goal graphic
-    let (mut b_score, mut w_score) = (0, 0);
+    // let (mut b_score, mut w_score) = (0, 0);
+    let mut renderer = pages::PageRenderer {
+        animation_counter: 0f32,
+        textures,
+        is_alpha_mode,
+    };
 
     loop {
         clear_background(BLACK);
         if let Ok(state) = rx.try_recv() {
             game_state = Some(state);
         }
-        if show_goal {
-            if !is_alpha_mode {
-                pages_color::show_goal_graphic(
-                    &textures,
-                    &mut secondary_animation_counter,
-                    &mut show_goal,
-                );
-            } else {
-                pages_alpha::show_goal_graphic(
-                    &textures,
-                    &mut secondary_animation_counter,
-                    &mut show_goal,
-                );
-            }
-        }
+        // if show_goal {
+        //     if !is_alpha_mode {
+        //         pages_color::show_goal_graphic(
+        //             &textures,
+        //             &mut secondary_animation_counter,
+        //             &mut show_goal,
+        //         );
+        //     } else {
+        //         pages_alpha::show_goal_graphic(
+        //             &textures,
+        //             &mut secondary_animation_counter,
+        //             &mut show_goal,
+        //         );
+        //     }
+        // }
 
         if let Some(state) = &game_state {
-            if state.snapshot.b_score != b_score || state.snapshot.w_score != w_score {
-                w_score = state.snapshot.w_score;
-                b_score = state.snapshot.b_score;
-                show_goal = true;
-            }
+            // if state.snapshot.b_score != b_score || state.snapshot.w_score != w_score {
+            //     w_score = state.snapshot.w_score;
+            //     b_score = state.snapshot.b_score;
+            //     show_goal = true;
+            // }
             match state.snapshot.current_period {
                 GamePeriod::BetweenGames => match state.snapshot.secs_in_period {
                     151..=u16::MAX => {
                         // If an old game just finished, display its scores for a minute
                         if state.snapshot.is_old_game && state.snapshot.secs_in_period > 2800 {
-                            if !is_alpha_mode {
-                                pages_color::final_scores(&textures, state);
-                            } else {
-                                pages_alpha::final_scores(&textures, state);
-                            }
+                            renderer.final_scores(state);
                         } else {
-                            if !is_alpha_mode {
-                                pages_color::next_game(&textures, state);
-                            } else {
-                                pages_alpha::next_game(&textures, state);
-                            }
+                            renderer.next_game(state);
                         }
                     }
                     30..=150 => {
-                        if !is_alpha_mode {
-                            pages_color::roster(&textures, state, &mut animation_counter);
-                        } else {
-                            pages_alpha::roster(&textures, state, &mut animation_counter);
-                        }
+                        renderer.roster(state);
                     }
                     _ => {
-                        if !is_alpha_mode {
-                            pages_color::pre_game_display(&textures, state);
-                        } else {
-                            pages_alpha::pre_game_display(&textures, state, &mut animation_counter);
-                        }
+                        renderer.pre_game_display(state);
                     }
                 },
                 GamePeriod::FirstHalf | GamePeriod::SecondHalf | GamePeriod::HalfTime => {
-                    if !is_alpha_mode {
-                        pages_color::in_game_display(&textures, state, &mut animation_counter);
-                    } else {
-                        pages_alpha::in_game_display(&textures, state, &mut animation_counter);
-                    }
+                    renderer.in_game_display(state);
                 }
                 GamePeriod::OvertimeFirstHalf
                 | GamePeriod::OvertimeHalfTime
                 | GamePeriod::OvertimeSecondHalf
                 | GamePeriod::PreOvertime => {
-                    if !is_alpha_mode {
-                        pages_color::overtime_display(&textures);
-                    } else {
-                        pages_alpha::overtime_display(&textures);
-                    }
+                    renderer.overtime_display();
                 }
                 _ => {}
             }

@@ -25,8 +25,8 @@ pub fn networking_thread(
         &reqwest::blocking::get(format!(
             "https://{}/api/v1/tournaments/{}/games/{}",
             config.uwhscores_url(),
-            snapshot.tournament_id,
-            snapshot.game_number
+            2,
+            1
         ))?
         .text()?,
     )?;

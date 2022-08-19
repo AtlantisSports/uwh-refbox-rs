@@ -258,30 +258,17 @@ impl PageRenderer {
                 ..Default::default()
             },
         );
-        if self.is_alpha_mode {
-            draw_text_ex(
-                state.snapshot.w_score.to_string().as_str(),
-                430f32,
-                580f32,
-                TextParams {
-                    font: self.textures.font(),
-                    font_size: 180,
-                    ..Default::default()
-                },
-            );
-        } else {
-            draw_text_ex(
-                state.snapshot.w_score.to_string().as_str(),
-                430f32,
-                580f32,
-                TextParams {
-                    font: self.textures.font(),
-                    font_size: 180,
-                    color: BLACK,
-                    ..Default::default()
-                },
-            );
-        }
+        draw_text_ex(
+            state.snapshot.w_score.to_string().as_str(),
+            430f32,
+            580f32,
+            TextParams {
+                font: self.textures.font(),
+                font_size: 180,
+                color: if self.is_alpha_mode { WHITE } else { BLACK },
+                ..Default::default()
+            },
+        );
     }
 
     /// displayed from 30 seconds before a game begins.

@@ -119,7 +119,6 @@ impl PageRenderer {
     }
 
     /// Roster screen, displayed between 150 and 30 seconds before the next game.
-    /// Animation counter holds state that represents animation progression. It must be an arbitrary float initlised to 0 and must live across function invocations.
     pub fn roster(&mut self, state: &State) {
         let offset = if state.snapshot.secs_in_period == 150 {
             self.animation_counter += 1f32 / 60f32; // inverse of number of frames in transition period

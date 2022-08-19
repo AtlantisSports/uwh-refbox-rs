@@ -5,7 +5,7 @@ use iced::{pure::Application, window::icon::Icon, Settings};
 use log::*;
 use std::process::{Command, Stdio};
 use tokio_serial::{DataBits, FlowControl, Parity, StopBits};
-use uwh_common::{config::Config, uwhscores};
+use uwh_common::config::Config;
 
 mod penalty_editor;
 mod tournament_manager;

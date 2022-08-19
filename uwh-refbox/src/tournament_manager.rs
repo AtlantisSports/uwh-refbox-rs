@@ -17,11 +17,11 @@ use uwh_common::{
     game_snapshot::{
         Color, GamePeriod, GameSnapshot, PenaltySnapshot, PenaltyTime, TimeoutSnapshot,
     },
+    uwhscores::TimingRules,
 };
 
-use crate::uwhscores::TimingRules;
-
 const MAX_TIME_VAL: Duration = Duration::from_secs(MAX_LONG_STRINGABLE_SECS as u64);
+const RECENT_GOAL_TIME: Duration = Duration::from_secs(20);
 
 #[derive(Debug)]
 pub struct TournamentManager {
@@ -44,6 +44,7 @@ pub struct TournamentManager {
     next_scheduled_start: Option<Instant>,
     reset_game_time: Duration,
     timezone: UtcOffset,
+    recent_goal: Option<(Color, u8, GamePeriod, Duration)>,
 }
 
 impl TournamentManager {
@@ -71,6 +72,7 @@ impl TournamentManager {
             reset_game_time: config.nominal_break,
             config,
             timezone: UtcOffset::UTC,
+            recent_goal: None,
         }
     }
 
@@ -89,6 +91,9 @@ impl TournamentManager {
             "{} Score by Black player #{player_num}",
             self.status_string(now)
         );
+        self.recent_goal = self
+            .game_clock_time(now)
+            .map(|time| (Color::Black, player_num, self.current_period, time));
         self.set_scores(self.b_score + 1, self.w_score, now);
     }
 
@@ -97,6 +102,9 @@ impl TournamentManager {
             "{} Score by White player #{player_num}",
             self.status_string(now)
         );
+        self.recent_goal = self
+            .game_clock_time(now)
+            .map(|time| (Color::White, player_num, self.current_period, time));
         self.set_scores(self.b_score, self.w_score + 1, now);
     }
 
@@ -1312,7 +1320,7 @@ impl TournamentManager {
         }
     }
 
-    pub fn generate_snapshot(&self, now: Instant) -> Option<GameSnapshot> {
+    pub fn generate_snapshot(&mut self, now: Instant) -> Option<GameSnapshot> {
         let cur_time = self.game_clock_time(now)?;
         let secs_in_period = cur_time.as_secs().try_into().ok()?;
 
@@ -1327,6 +1335,14 @@ impl TournamentManager {
             .map(|pen| pen.as_snapshot(self.current_period, cur_time, &self.config))
             .collect::<Option<Vec<_>>>()?;
 
+        if let Some((_, _, goal_per, goal_time)) = self.recent_goal {
+            if (goal_per != self.current_period)
+                | (goal_time.saturating_sub(cur_time) > RECENT_GOAL_TIME)
+            {
+                self.recent_goal = None;
+            }
+        }
+
         Some(GameSnapshot {
             current_period: self.current_period,
             secs_in_period,
@@ -1339,6 +1355,7 @@ impl TournamentManager {
             game_number: self.game_number(),
             next_game_number: self.next_game_number(),
             tournament_id: 0,
+            recent_goal: self.recent_goal.map(|(c, n, _, _)| (c, n)),
         })
     }
 

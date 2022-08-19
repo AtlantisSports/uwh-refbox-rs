@@ -55,6 +55,10 @@ struct Cli {
     /// Don't require HTTPS to connect to uwhscores
     allow_http: bool,
 
+    #[clap(long, short)]
+    /// List all tournaments from uwhscores, including past ones
+    all_tournaments: bool,
+
     #[clap(long, hide = true)]
     is_simulator: bool,
 }
@@ -120,7 +124,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     let serial_ports = if let Some(port) = args.serial_port {
         info!(
-            "Connection to serail port {port}  with baud rate {}",
+            "Connection to serial port {port} with baud rate {}",
             args.baud_rate
         );
         let port = tokio_serial::new(port, args.baud_rate)
@@ -171,6 +175,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         sim_child: child,
         require_https: !args.allow_http,
         fullscreen: args.fullscreen,
+        list_all_tournaments: args.all_tournaments,
     };
 
     let mut settings = Settings::with_flags(flags);

@@ -1,8 +1,8 @@
+use crate::config::Game as GameConfig;
 use serde::{Deserialize, Deserializer};
 use serde_derive::{Deserialize, Serialize};
+use std::time::Duration;
 use time::PrimitiveDateTime;
-use tokio::time::Duration;
-use uwh_common::config::Game as GameConfig;
 
 time::serde::format_description!(
     rfc3339_no_subsec_no_offest,
@@ -41,9 +41,10 @@ pub struct GameInfo {
     pub game_type: String,
     pub gid: u32,
     pub pool: String,
-    #[serde(deserialize_with = "deser_with_null_to_default")]
+    #[serde(deserialize_with = "deser_or_default")]
+    // TODO: Can we get the -1's fixed on uwhscores?
     pub score_b: u8,
-    #[serde(deserialize_with = "deser_with_null_to_default")]
+    #[serde(deserialize_with = "deser_or_default")]
     pub score_w: u8,
     #[serde(with = "rfc3339_no_subsec_no_offest")]
     pub start_time: PrimitiveDateTime,
@@ -108,6 +109,14 @@ where
     Option::<T>::deserialize(deserializer).map(|val| val.unwrap_or_default())
 }
 
+// Deserialize noramlly, but use the value's default if an error occurs
+fn deser_or_default<'de, D, T: Deserialize<'de> + Default>(deserializer: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(T::deserialize(deserializer).unwrap_or_default())
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct GameListResponse {
     pub games: Vec<GameInfo>,
@@ -143,5 +152,83 @@ pub struct GameScorePostData {
 impl GameScorePostData {
     pub fn new(game_score: GameScoreInfo) -> Self {
         Self { game_score }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use log::*;
+    use reqwest::{blocking::Client, Method, StatusCode};
+    use std::sync::Once;
+
+    static INIT: Once = Once::new();
+
+    pub fn initialize() {
+        INIT.call_once(|| {
+            env_logger::init();
+        });
+    }
+
+    #[test]
+    #[ignore]
+    fn test_all_uwhscores_requests() {
+        // NOTE: At last test, this took ~180s to complete
+        const REQUEST_TIMEOUT: Duration = Duration::from_secs(1);
+        const URL: &str = "https://uwhscores.com/api/v1/";
+        initialize();
+
+        let client = Client::builder()
+            .https_only(true)
+            .timeout(REQUEST_TIMEOUT)
+            .build()
+            .unwrap();
+
+        info!("Getting the list of tournaments");
+        let request = client
+            .request(Method::GET, format!("{URL}tournaments"))
+            .build()
+            .unwrap();
+        let resp = client.execute(request).unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let tournaments = resp.json::<TournamentListResponse>().unwrap().tournaments;
+
+        info!("Testing all the tournaments");
+        for t in tournaments {
+            info!("Getting details for tid {} ({})", t.tid, t.name);
+            let request = client
+                .request(Method::GET, format!("{URL}tournaments/{}", t.tid))
+                .build()
+                .unwrap();
+            let resp = client.execute(request).unwrap();
+            assert_eq!(resp.status(), StatusCode::OK);
+            let _t_info = resp.json::<TournamentSingleResponse>().unwrap().tournament;
+
+            info!("Getting game list");
+            let request = client
+                .request(Method::GET, format!("{URL}tournaments/{}/games", t.tid))
+                .build()
+                .unwrap();
+            let resp = client.execute(request).unwrap();
+            assert_eq!(resp.status(), StatusCode::OK);
+            let games = resp.json::<GameListResponse>().unwrap().games;
+
+            info!("Getting the details of each game");
+            for g in games {
+                info!("Getting details of game {}", g.gid);
+                let request = client
+                    .request(
+                        Method::GET,
+                        format!("{URL}tournaments/{}/games/{}", t.tid, g.gid),
+                    )
+                    .build()
+                    .unwrap();
+                let resp = client.execute(request).unwrap();
+                assert_eq!(resp.status(), StatusCode::OK);
+                resp.json::<GameSingleResponse>().unwrap();
+            }
+
+            // TODO: test gettting team details once added
+        }
     }
 }

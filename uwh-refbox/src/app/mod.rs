@@ -1,4 +1,3 @@
-use super::uwhscores::*;
 use super::APP_CONFIG_NAME;
 use crate::{penalty_editor::*, tournament_manager::*};
 use iced::{
@@ -33,6 +32,7 @@ use uwh_common::{
     config::{Config, Game as GameConfig},
     drawing_support::*,
     game_snapshot::{Color as GameColor, GamePeriod, GameSnapshot, TimeoutSnapshot},
+    uwhscores::*,
 };
 
 mod view_builders;
@@ -69,6 +69,7 @@ pub struct RefBoxApp {
     sound: Option<(OutputStream, OutputStreamHandle)>,
     sim_child: Option<Child>,
     fullscreen: bool,
+    list_all_tournaments: bool,
 }
 
 #[derive(Debug)]
@@ -80,6 +81,7 @@ pub struct RefBoxAppFlags {
     pub sim_child: Option<Child>,
     pub require_https: bool,
     pub fullscreen: bool,
+    pub list_all_tournaments: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -655,6 +657,7 @@ impl Application for RefBoxApp {
             sim_child,
             require_https,
             fullscreen,
+            list_all_tournaments,
         } = flags;
 
         let sound = match OutputStream::try_default() {
@@ -721,6 +724,7 @@ impl Application for RefBoxApp {
                 sound,
                 sim_child,
                 fullscreen,
+                list_all_tournaments,
             },
             Command::none(),
         )
@@ -1568,9 +1572,14 @@ impl Application for RefBoxApp {
                 self.apply_snapshot(snapshot);
             }
             Message::RecvTournamentList(t_list) => {
+                let active_filter = if self.list_all_tournaments {
+                    |_: &TournamentInfo| true
+                } else {
+                    |t: &TournamentInfo| t.is_active == 1
+                };
                 let t_map = t_list
                     .into_iter()
-                    .filter(|t| t.is_active == 1)
+                    .filter(active_filter)
                     .map(|t| (t.tid, t))
                     .collect();
                 self.tournaments = Some(t_map);

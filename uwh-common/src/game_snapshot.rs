@@ -45,6 +45,7 @@ pub struct GameSnapshot {
     pub game_number: u32,
     pub next_game_number: u32,
     pub tournament_id: u32,
+    pub recent_goal: Option<(Color, u8)>,
 }
 
 #[cfg(feature = "std")]

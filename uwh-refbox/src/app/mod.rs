@@ -1,4 +1,3 @@
-use super::uwhscores::*;
 use super::APP_CONFIG_NAME;
 use crate::{penalty_editor::*, tournament_manager::*};
 use iced::{
@@ -33,6 +32,7 @@ use uwh_common::{
     config::{Config, Game as GameConfig},
     drawing_support::*,
     game_snapshot::{Color as GameColor, GamePeriod, GameSnapshot, TimeoutSnapshot},
+    uwhscores::*,
 };
 
 mod view_builders;

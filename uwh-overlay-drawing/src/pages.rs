@@ -1,5 +1,6 @@
 use crate::{load_images::Textures, State};
 use macroquad::prelude::*;
+use uwh_common::game_snapshot::GamePeriod;
 
 trait Interpolate {
     /// `value` must be a floater varying from 0 to 1, denoting the lowest to highest limits of the range
@@ -293,22 +294,57 @@ impl PageRenderer {
                     ..Default::default()
                 },
             );
-        } else if state.snapshot.secs_in_period == 15 && self.is_alpha_mode {
+        } else if state.snapshot.secs_in_period == 15 {
             // animate a fade on the fifteenth second in the alpha stream
             self.animation_counter += 1f32 / 60f32; // inverse of number of frames in transition period
-
             let offset = (255f32, 0f32).interpolate_linear(self.animation_counter) as u8;
+
             draw_texture(
                 *self.textures.atlantis_logo_graphic(),
                 0_f32,
                 0f32,
-                Color::from_rgba(255, 255, 255, offset),
+                Color::from_rgba(255, 255, 255, if self.is_alpha_mode { offset } else { 255 }),
             );
             draw_texture(
                 *self.textures.bottom_graphic(),
                 0_f32,
                 0f32,
-                Color::from_rgba(255, 255, 255, offset),
+                Color::from_rgba(255, 255, 255, if self.is_alpha_mode { offset } else { 255 }),
+            );
+            let min = state.snapshot.secs_in_period / 60;
+            let secs = state.snapshot.secs_in_period % 60;
+            draw_text_ex(
+                format!("{}:{}", min, secs).as_str(),
+                923f32,
+                1020f32,
+                TextParams {
+                    font: self.textures.font(),
+                    font_size: 50,
+                    color: Color::from_rgba(
+                        255,
+                        255,
+                        255,
+                        if self.is_alpha_mode { offset } else { 255 },
+                    ),
+                    ..Default::default()
+                },
+            );
+            draw_text_ex(
+                "NEXT GAME",
+                905f32,
+                1044f32,
+                TextParams {
+                    font: self.textures.font(),
+                    font_size: 20,
+                    color: Color::from_rgba(
+                        255,
+                        255,
+                        255,
+                        if self.is_alpha_mode { offset } else { 255 },
+                    ),
+
+                    ..Default::default()
+                },
             );
         } else {
             self.animation_counter = 0f32;
@@ -320,27 +356,222 @@ impl PageRenderer {
             0f32,
             WHITE,
         );
+        draw_text_ex(
+            state.snapshot.b_score.to_string().as_str(),
+            40f32,
+            104f32,
+            TextParams {
+                font: self.textures.font(),
+                font_size: 30,
+                ..Default::default()
+            },
+        );
+        draw_text_ex(
+            state.snapshot.w_score.to_string().as_str(),
+            40f32,
+            65f32,
+            TextParams {
+                font: self.textures.font(),
+                font_size: 30,
+                color: BLACK,
+                ..Default::default()
+            },
+        );
+        draw_text_ex(
+            state.white.to_uppercase().as_str(),
+            160f32,
+            64f32,
+            TextParams {
+                font: self.textures.font(),
+                font_size: 20,
+                color: BLACK,
+                ..Default::default()
+            },
+        );
+        draw_text_ex(
+            state.black.to_uppercase().as_str(),
+            160f32,
+            100f32,
+            TextParams {
+                font: self.textures.font(),
+                font_size: 20,
+                ..Default::default()
+            },
+        );
+        if let Some(flag) = state.w_flag {
+            draw_texture_ex(
+                flag,
+                79f32,
+                39f32,
+                WHITE,
+                DrawTextureParams {
+                    dest_size: Some(vec2(70f32, 33f32)),
+                    ..Default::default()
+                },
+            );
+        }
+        if let Some(flag) = state.b_flag {
+            draw_texture_ex(
+                flag,
+                79f32,
+                75f32,
+                WHITE,
+                DrawTextureParams {
+                    dest_size: Some(vec2(70f32, 33f32)),
+                    ..Default::default()
+                },
+            );
+        }
+        draw_text_ex(
+            "15:00",
+            460f32,
+            67f32,
+            TextParams {
+                font: self.textures.font(),
+                font_size: 50,
+                ..Default::default()
+            },
+        );
+        draw_text_ex(
+            "1ST HALF",
+            460f32,
+            100f32,
+            TextParams {
+                font: self.textures.font(),
+                font_size: 20,
+                ..Default::default()
+            },
+        );
     }
 
     /// Display info during game play
     pub fn in_game_display(&mut self, state: &State) {
         //animate the state and time graphic to the left at 895 secs (5 seconds since period started)
-        let offset = if state.snapshot.secs_in_period == 895 {
+        let (position_offset, alpha_offset) = if state.snapshot.secs_in_period == 895 {
             self.animation_counter += 1f32 / 60f32; // inverse of number of frames in transition period
-            (0f32, -200f32).interpolate_linear(self.animation_counter)
+            (
+                (0f32, -200f32).interpolate_linear(self.animation_counter),
+                (255f32, 0f32).interpolate_linear(self.animation_counter) as u8,
+            )
         } else if state.snapshot.secs_in_period > 895 {
-            (0f32, -200f32).interpolate_linear(0f32)
+            (
+                (0f32, -200f32).interpolate_linear(0f32),
+                (255f32, 0f32).interpolate_linear(0f32) as u8,
+            )
         } else {
             self.animation_counter = 0f32;
-            (0f32, -200f32).interpolate_linear(1f32)
+            (
+                (0f32, -200f32).interpolate_linear(1f32),
+                (255f32, 0f32).interpolate_linear(1f32) as u8,
+            )
         };
         draw_texture(*self.textures.team_bar_graphic(), 0_f32, 0f32, WHITE);
-        draw_texture(*self.textures.in_game_mask(), 200_f32 + offset, 0f32, WHITE);
+        if self.is_alpha_mode {
+            draw_texture(
+                *self.textures.in_game_mask(),
+                200_f32 + position_offset,
+                0f32,
+                WHITE,
+            );
+        }
+        draw_text_ex(
+            state.snapshot.b_score.to_string().as_str(),
+            40f32,
+            104f32,
+            TextParams {
+                font: self.textures.font(),
+                font_size: 30,
+                ..Default::default()
+            },
+        );
+        draw_text_ex(
+            state.snapshot.w_score.to_string().as_str(),
+            40f32,
+            65f32,
+            TextParams {
+                font: self.textures.font(),
+                font_size: 30,
+                color: BLACK,
+                ..Default::default()
+            },
+        );
+        draw_text_ex(
+            state.white.to_uppercase().as_str(),
+            160f32,
+            64f32,
+            TextParams {
+                font: self.textures.font(),
+                font_size: 20,
+                color: Color::from_rgba(0, 0, 0, alpha_offset),
+                ..Default::default()
+            },
+        );
+        draw_text_ex(
+            state.black.to_uppercase().as_str(),
+            160f32,
+            100f32,
+            TextParams {
+                font: self.textures.font(),
+                font_size: 20,
+                color: Color::from_rgba(255, 255, 255, alpha_offset),
+                ..Default::default()
+            },
+        );
         draw_texture(
             *self.textures.time_and_game_state_graphic(),
-            offset,
+            position_offset,
             0f32,
             WHITE,
+        );
+        if let Some(flag) = state.w_flag {
+            draw_texture_ex(
+                flag,
+                79f32,
+                39f32,
+                WHITE,
+                DrawTextureParams {
+                    dest_size: Some(vec2(70f32, 33f32)),
+                    ..Default::default()
+                },
+            );
+        }
+        if let Some(flag) = state.b_flag {
+            draw_texture_ex(
+                flag,
+                79f32,
+                75f32,
+                WHITE,
+                DrawTextureParams {
+                    dest_size: Some(vec2(70f32, 33f32)),
+                    ..Default::default()
+                },
+            );
+        }
+        let min = state.snapshot.secs_in_period / 60;
+        let secs = state.snapshot.secs_in_period % 60;
+        draw_text_ex(
+            format!("{}:{}", min, secs).as_str(),
+            460f32 + position_offset,
+            67f32,
+            TextParams {
+                font: self.textures.font(),
+                font_size: 50,
+                ..Default::default()
+            },
+        );
+        draw_text_ex(
+            match state.snapshot.current_period {
+                GamePeriod::FirstHalf => "1ST HALF",
+                GamePeriod::SecondHalf => "2ND HALF",
+                _ => "HALF TIME",
+            },
+            460f32 + position_offset,
+            100f32,
+            TextParams {
+                font: self.textures.font(),
+                font_size: 20,
+                ..Default::default()
+            },
         );
     }
 

@@ -93,7 +93,7 @@ async fn main() {
     };
 
     loop {
-        clear_background(RED);
+        clear_background(BLACK);
         if let Ok(state) = rx.try_recv() {
             // Update state parameters like team names and flags if they are present.
             if let Some(game_state) = &mut game_state {

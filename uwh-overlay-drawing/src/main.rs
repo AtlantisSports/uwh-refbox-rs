@@ -42,7 +42,8 @@ pub struct State {
     snapshot: GameSnapshot,
     black: String,
     white: String,
-    w_flag: Texture2D,
+    w_flag: Option<Texture2D>,
+    b_flag: Option<Texture2D>,
 }
 
 #[macroquad::main(window_conf)]
@@ -92,22 +93,40 @@ async fn main() {
     };
 
     loop {
-        clear_background(BLACK);
+        clear_background(RED);
         if let Ok(state) = rx.try_recv() {
-            // handle data other than snapshot from networking thread
+            // Update state parameters like team names and flags if they are present.
             if let Some(game_state) = &mut game_state {
                 game_state.w_flag = if state.w_flag.is_some() {
-                    Texture2D::from_file_with_format(state.w_flag.unwrap(), None)
+                    Some(Texture2D::from_file_with_format(
+                        state.w_flag.unwrap(),
+                        None,
+                    ))
                 } else {
                     game_state.w_flag
                 };
-                game_state.black = state.black.unwrap_or(game_state.black.clone());
-                game_state.white = state.white.unwrap_or(game_state.white.clone());
+                if let Some(team_name) = state.black {
+                    game_state.black = team_name;
+                }
+                if let Some(team_name) = state.white {
+                    game_state.white = team_name;
+                }
+                game_state.snapshot = state.snapshot;
             } else {
+                // If `game_state` hasn't been init'd, just copy all the values over.
                 game_state = Some(State {
                     white: state.white.unwrap(),
                     black: state.black.unwrap(),
-                    w_flag: Texture2D::from_file_with_format(state.w_flag.unwrap(), None),
+                    w_flag: if let Some(flag) = state.w_flag {
+                        Some(Texture2D::from_file_with_format(flag, None))
+                    } else {
+                        None
+                    },
+                    b_flag: if let Some(flag) = state.b_flag {
+                        Some(Texture2D::from_file_with_format(flag, None))
+                    } else {
+                        None
+                    },
                     snapshot: state.snapshot,
                 })
             }
@@ -138,7 +157,7 @@ async fn main() {
                 GamePeriod::BetweenGames => match state.snapshot.secs_in_period {
                     151..=u16::MAX => {
                         // If an old game just finished, display its scores for a minute
-                        if state.snapshot.is_old_game && state.snapshot.secs_in_period > 2800 {
+                        if state.snapshot.is_old_game {
                             renderer.final_scores(state);
                         } else {
                             renderer.next_game(state);

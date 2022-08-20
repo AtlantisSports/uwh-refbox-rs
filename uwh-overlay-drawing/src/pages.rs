@@ -2,7 +2,7 @@ use crate::{load_images::Textures, State};
 use macroquad::prelude::*;
 
 trait Interpolate {
-    /// value must be a floater varying from 0 to 1, denoting the lowest to highest limits of the range
+    /// `value` must be a floater varying from 0 to 1, denoting the lowest to highest limits of the range
     fn interpolate_linear(&self, value: f32) -> f32;
 }
 
@@ -13,7 +13,7 @@ impl Interpolate for (f32, f32) {
 }
 
 #[allow(dead_code)]
-/// utility function used to place overlay elements quickly through user input without recompiling
+/// Utility function used to place overlay elements quickly through user input without recompiling
 fn get_input<T: std::str::FromStr + std::default::Default>(prompt: &str) -> T {
     let mut buffer = String::new();
     println!(" Enter {}: ", prompt);
@@ -41,18 +41,8 @@ impl PageRenderer {
             WHITE,
         );
         draw_text_ex(
-            state.white.to_uppercase().as_str(),
-            340f32,
-            805f32,
-            TextParams {
-                font: self.textures.font(),
-                font_size: 50,
-                ..Default::default()
-            },
-        );
-        draw_text_ex(
             state.black.to_uppercase().as_str(),
-            1240f32,
+            1345f32,
             805f32,
             TextParams {
                 font: self.textures.font(),
@@ -60,39 +50,42 @@ impl PageRenderer {
                 ..Default::default()
             },
         );
-        if self.is_alpha_mode {
-            draw_text_ex(
-                state.white.to_uppercase().as_str(),
-                340f32,
-                805f32,
-                TextParams {
-                    font: self.textures.font(),
-                    font_size: 50,
-                    ..Default::default()
-                },
-            );
-        } else {
-            draw_text_ex(
-                state.white.to_uppercase().as_str(),
-                340f32,
-                805f32,
-                TextParams {
-                    font: self.textures.font(),
-                    font_size: 50,
-                    color: BLACK,
-                    ..Default::default()
-                },
-            );
-            draw_texture_ex(
-                state.w_flag,
-                0_f32,
-                0f32,
-                WHITE,
-                DrawTextureParams {
-                    dest_size: Some(vec2(100f32, 100f32)),
-                    ..Default::default()
-                },
-            );
+        draw_text_ex(
+            state.white.to_uppercase().as_str(),
+            200f32,
+            805f32,
+            TextParams {
+                font: self.textures.font(),
+                font_size: 50,
+                color: if self.is_alpha_mode { WHITE } else { BLACK },
+                ..Default::default()
+            },
+        );
+        if !self.is_alpha_mode {
+            if let Some(flag) = state.w_flag {
+                draw_texture_ex(
+                    flag,
+                    580f32,
+                    738f32,
+                    WHITE,
+                    DrawTextureParams {
+                        dest_size: Some(vec2(180f32, 100f32)),
+                        ..Default::default()
+                    },
+                );
+            }
+            if let Some(flag) = state.b_flag {
+                draw_texture_ex(
+                    flag,
+                    1163f32,
+                    738f32,
+                    WHITE,
+                    DrawTextureParams {
+                        dest_size: Some(vec2(180f32, 100f32)),
+                        ..Default::default()
+                    },
+                );
+            }
             let min = state.snapshot.secs_in_period / 60;
             let secs = state.snapshot.secs_in_period % 60;
             draw_text_ex(
@@ -151,7 +144,7 @@ impl PageRenderer {
         );
         draw_text_ex(
             state.black.to_uppercase().as_str(),
-            1240f32,
+            1345f32,
             805f32 + offset,
             TextParams {
                 font: self.textures.font(),
@@ -159,39 +152,42 @@ impl PageRenderer {
                 ..Default::default()
             },
         );
-        if self.is_alpha_mode {
-            draw_text_ex(
-                state.white.to_uppercase().as_str(),
-                340f32,
-                805f32 + offset,
-                TextParams {
-                    font: self.textures.font(),
-                    font_size: 50,
-                    ..Default::default()
-                },
-            );
-        } else {
-            draw_text_ex(
-                state.white.to_uppercase().as_str(),
-                340f32,
-                805f32 + offset,
-                TextParams {
-                    font: self.textures.font(),
-                    font_size: 50,
-                    color: BLACK,
-                    ..Default::default()
-                },
-            );
-            draw_texture_ex(
-                state.w_flag,
-                0_f32,
-                0f32,
-                WHITE,
-                DrawTextureParams {
-                    dest_size: Some(vec2(100f32, 100f32)),
-                    ..Default::default()
-                },
-            );
+        draw_text_ex(
+            state.white.to_uppercase().as_str(),
+            200f32,
+            805f32 + offset,
+            TextParams {
+                font: self.textures.font(),
+                font_size: 50,
+                color: if self.is_alpha_mode { WHITE } else { BLACK },
+                ..Default::default()
+            },
+        );
+        if !self.is_alpha_mode {
+            if let Some(flag) = state.w_flag {
+                draw_texture_ex(
+                    flag,
+                    580f32,
+                    738f32 + offset,
+                    WHITE,
+                    DrawTextureParams {
+                        dest_size: Some(vec2(180f32, 100f32)),
+                        ..Default::default()
+                    },
+                );
+            }
+            if let Some(flag) = state.b_flag {
+                draw_texture_ex(
+                    flag,
+                    1163f32,
+                    738f32 + offset,
+                    WHITE,
+                    DrawTextureParams {
+                        dest_size: Some(vec2(180f32, 100f32)),
+                        ..Default::default()
+                    },
+                );
+            }
             let min = state.snapshot.secs_in_period / 60;
             let secs = state.snapshot.secs_in_period % 60;
             draw_text_ex(
@@ -270,7 +266,7 @@ impl PageRenderer {
         );
     }
 
-    /// displayed from 30 seconds before a game begins.
+    /// Displayed from 30 seconds before a game begins.
     pub fn pre_game_display(&mut self, state: &State) {
         if state.snapshot.secs_in_period > 15 {
             draw_texture(*self.textures.atlantis_logo_graphic(), 0_f32, 0f32, WHITE);

@@ -8,6 +8,7 @@ pub struct StatePacket<'a> {
     pub black: Option<String>,
     pub white: Option<String>,
     pub w_flag: Option<&'a [u8]>,
+    pub b_flag: Option<&'a [u8]>,
 }
 
 pub fn networking_thread(
@@ -29,12 +30,14 @@ pub fn networking_thread(
     let black = data["game"]["black"].as_str().unwrap().to_owned();
     let white = data["game"]["white"].as_str().unwrap().to_owned();
     let w_flag = include_bytes!(".././assets/flags/Seattle (Typical Ratio).png");
+    let b_flag = include_bytes!(".././assets/flags/LA Kraken Stretched (1 to 2 Ratio).png");
     if tx
         .send(StatePacket {
             snapshot,
             black: Some(black.clone()),
             white: Some(white.clone()),
             w_flag: Some(w_flag),
+            b_flag: Some(b_flag),
         })
         .is_err()
     {
@@ -49,6 +52,7 @@ pub fn networking_thread(
                     black: None,
                     white: None,
                     w_flag: None,
+                    b_flag: None,
                 })
                 .is_err()
             {

@@ -545,6 +545,77 @@ impl PageRenderer {
                 0f32,
                 WHITE,
             );
+            draw_texture(
+                *self.textures.time_and_game_state_graphic(),
+                position_offset,
+                0f32,
+                WHITE,
+            );
+            draw_rectangle(79f32, 39f32, 70f32, 33f32, WHITE);
+            draw_rectangle(79f32, 75f32, 70f32, 33f32, WHITE);
+        } else {
+            draw_texture(
+                *self.textures.time_and_game_state_graphic(),
+                position_offset,
+                0f32,
+                WHITE,
+            );
+            let min = state.snapshot.secs_in_period / 60;
+            let secs = state.snapshot.secs_in_period % 60;
+            let x_off = center_text_offset!(
+                90f32,
+                format!("{}:{}", min, secs).as_str(),
+                50,
+                self.textures.font()
+            );
+            draw_text_ex(
+                format!("{}:{}", min, secs).as_str(),
+                430f32 + position_offset + x_off,
+                67f32,
+                TextParams {
+                    font: self.textures.font(),
+                    font_size: 50,
+                    ..Default::default()
+                },
+            );
+            draw_text_ex(
+                match state.snapshot.current_period {
+                    GamePeriod::FirstHalf => "1ST HALF",
+                    GamePeriod::SecondHalf => "2ND HALF",
+                    _ => "HALF TIME",
+                },
+                478f32 + position_offset,
+                100f32,
+                TextParams {
+                    font: self.textures.font(),
+                    font_size: 20,
+                    ..Default::default()
+                },
+            );
+            if let Some(flag) = state.w_flag {
+                draw_texture_ex(
+                    flag,
+                    79f32,
+                    39f32,
+                    WHITE,
+                    DrawTextureParams {
+                        dest_size: Some(vec2(70f32, 33f32)),
+                        ..Default::default()
+                    },
+                );
+            }
+            if let Some(flag) = state.b_flag {
+                draw_texture_ex(
+                    flag,
+                    79f32,
+                    75f32,
+                    WHITE,
+                    DrawTextureParams {
+                        dest_size: Some(vec2(70f32, 33f32)),
+                        ..Default::default()
+                    },
+                );
+            }
         }
         draw_text_ex(
             state.snapshot.b_score.to_string().as_str(),
@@ -563,7 +634,7 @@ impl PageRenderer {
             TextParams {
                 font: self.textures.font(),
                 font_size: 30,
-                color: BLACK,
+                color: if self.is_alpha_mode { WHITE } else { BLACK },
                 ..Default::default()
             },
         );
@@ -586,68 +657,6 @@ impl PageRenderer {
                 font: self.textures.font(),
                 font_size: 20,
                 color: Color::from_rgba(255, 255, 255, alpha_offset),
-                ..Default::default()
-            },
-        );
-        draw_texture(
-            *self.textures.time_and_game_state_graphic(),
-            position_offset,
-            0f32,
-            WHITE,
-        );
-        if let Some(flag) = state.w_flag {
-            draw_texture_ex(
-                flag,
-                79f32,
-                39f32,
-                WHITE,
-                DrawTextureParams {
-                    dest_size: Some(vec2(70f32, 33f32)),
-                    ..Default::default()
-                },
-            );
-        }
-        if let Some(flag) = state.b_flag {
-            draw_texture_ex(
-                flag,
-                79f32,
-                75f32,
-                WHITE,
-                DrawTextureParams {
-                    dest_size: Some(vec2(70f32, 33f32)),
-                    ..Default::default()
-                },
-            );
-        }
-        let min = state.snapshot.secs_in_period / 60;
-        let secs = state.snapshot.secs_in_period % 60;
-        let x_off = center_text_offset!(
-            90f32,
-            format!("{}:{}", min, secs).as_str(),
-            50,
-            self.textures.font()
-        );
-        draw_text_ex(
-            format!("{}:{}", min, secs).as_str(),
-            430f32 + position_offset + x_off,
-            67f32,
-            TextParams {
-                font: self.textures.font(),
-                font_size: 50,
-                ..Default::default()
-            },
-        );
-        draw_text_ex(
-            match state.snapshot.current_period {
-                GamePeriod::FirstHalf => "1ST HALF",
-                GamePeriod::SecondHalf => "2ND HALF",
-                _ => "HALF TIME",
-            },
-            478f32 + position_offset,
-            100f32,
-            TextParams {
-                font: self.textures.font(),
-                font_size: 20,
                 ..Default::default()
             },
         );

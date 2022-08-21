@@ -1,14 +1,16 @@
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::Read;
 use std::net::TcpStream;
 use uwh_common::game_snapshot::GameSnapshot;
 
-pub struct StatePacket<'a> {
+#[derive(Serialize, Deserialize, Clone)]
+pub struct StatePacket {
     pub snapshot: GameSnapshot,
     pub black: Option<String>,
     pub white: Option<String>,
-    pub w_flag: Option<&'a [u8]>,
-    pub b_flag: Option<&'a [u8]>,
+    pub w_flag: Option<Vec<u8>>,
+    pub b_flag: Option<Vec<u8>>,
 }
 
 pub fn networking_thread(
@@ -36,8 +38,8 @@ pub fn networking_thread(
             snapshot,
             black: Some(black.clone()),
             white: Some(white.clone()),
-            w_flag: Some(w_flag),
-            b_flag: Some(b_flag),
+            w_flag: Some(w_flag.to_vec()),
+            b_flag: Some(b_flag.to_vec()),
         })
         .is_err()
     {

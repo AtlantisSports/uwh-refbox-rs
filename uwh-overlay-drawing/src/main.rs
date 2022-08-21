@@ -1,5 +1,7 @@
 use std::{str::FromStr, sync::mpsc::channel};
+
 //use uwh_common::game_snapshot::GamePeriod;
+use ipc_channel::ipc;
 use network::StatePacket;
 use std::net::IpAddr;
 
@@ -10,16 +12,6 @@ mod network;
 mod pages;
 
 const APP_CONFIG_NAME: &str = "uwh-overlay-drawing";
-
-fn window_conf() -> Conf {
-    Conf {
-        window_title: "UWH Overlay".to_owned(),
-        window_width: 1920,
-        window_height: 1080,
-        window_resizable: false,
-        ..Default::default()
-    }
-}
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct AppConfig {
@@ -46,10 +38,11 @@ pub struct State {
     b_flag: Option<Texture2D>,
 }
 
-#[macroquad::main(window_conf)]
-async fn main() {
+fn main() {
+    procspawn::init();
     let (tx, rx) = channel::<StatePacket>();
-
+    let (tx_a, rx_a) = ipc::channel::<StatePacket>().unwrap();
+    let (tx_c, rx_c) = ipc::channel::<StatePacket>().unwrap();
     let config: AppConfig = match confy::load(APP_CONFIG_NAME, None) {
         Ok(c) => c,
         Err(e) => {
@@ -65,19 +58,30 @@ async fn main() {
             .expect("Networking error. Does the supplied URL exist and is it live?")
     });
 
-    let args: Vec<String> = std::env::args().collect();
-    assert!(
-        args.len() == 2,
-        "Got {} args instead of one. Pass one argument, --color or --alpha to get the color or alpha feed respectively",
-        args.len() - 1
-    );
+    procspawn::spawn(rx_a, |rx| {
+        macroquad::Window::new("Alpha Stream", run(true, rx))
+    });
+    procspawn::spawn(rx_c, |rx| {
+        macroquad::Window::new("Color Stream", run(false, rx))
+    });
 
-    let (textures, is_alpha_mode) = if args[1] == *"--color" {
-        (load_images::Textures::init_color(), false)
-    } else if args[1] == *"--alpha" {
-        (load_images::Textures::init_alpha(), true)
+    loop {
+        if let Ok(item) = rx.recv() {
+            if tx_a.send(item.clone()).is_err() & tx_c.send(item).is_err() {
+                panic!("Exiting.. Both windows closed!");
+            }
+        }
+        if net_worker.is_finished() {
+            panic!("Error in Networking thread!");
+        }
+    }
+}
+
+async fn run(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) {
+    let textures = if !is_alpha_mode {
+        load_images::Textures::init_color()
     } else {
-        panic!("Expected --color or --alpha arg!")
+        load_images::Textures::init_alpha()
     };
 
     let mut game_state: Option<State> = None;
@@ -93,13 +97,13 @@ async fn main() {
     };
 
     loop {
-        clear_background(RED);
+        clear_background(BLACK);
         if let Ok(state) = rx.try_recv() {
             // Update state parameters like team names and flags if they are present.
             if let Some(game_state) = &mut game_state {
                 game_state.w_flag = if state.w_flag.is_some() {
                     Some(Texture2D::from_file_with_format(
-                        state.w_flag.unwrap(),
+                        state.w_flag.unwrap().as_ref(),
                         None,
                     ))
                 } else {
@@ -118,12 +122,12 @@ async fn main() {
                     white: state.white.unwrap(),
                     black: state.black.unwrap(),
                     w_flag: if let Some(flag) = state.w_flag {
-                        Some(Texture2D::from_file_with_format(flag, None))
+                        Some(Texture2D::from_file_with_format(flag.as_ref(), None))
                     } else {
                         None
                     },
                     b_flag: if let Some(flag) = state.b_flag {
-                        Some(Texture2D::from_file_with_format(flag, None))
+                        Some(Texture2D::from_file_with_format(flag.as_ref(), None))
                     } else {
                         None
                     },
@@ -181,9 +185,6 @@ async fn main() {
                 }
                 _ => {}
             }
-        }
-        if net_worker.is_finished() {
-            panic!("Error in Networking thread!");
         }
         next_frame().await;
     }

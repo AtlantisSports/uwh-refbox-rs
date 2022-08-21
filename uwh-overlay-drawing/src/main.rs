@@ -60,7 +60,7 @@ async fn main() {
         }
     };
 
-    std::thread::spawn(|| {
+    let net_worker = std::thread::spawn(|| {
         network::networking_thread(tx, config)
             .expect("Networking error. Does the supplied URL exist and is it live?")
     });
@@ -93,7 +93,7 @@ async fn main() {
     };
 
     loop {
-        clear_background(BLACK);
+        clear_background(RED);
         if let Ok(state) = rx.try_recv() {
             // Update state parameters like team names and flags if they are present.
             if let Some(game_state) = &mut game_state {
@@ -181,6 +181,9 @@ async fn main() {
                 }
                 _ => {}
             }
+        }
+        if net_worker.is_finished() {
+            panic!("Error in Networking thread!");
         }
         next_frame().await;
     }

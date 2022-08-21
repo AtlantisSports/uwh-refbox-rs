@@ -13,6 +13,12 @@ impl Interpolate for (f32, f32) {
     }
 }
 
+macro_rules! center_text_offset {
+    ($field_width: expr, $string: expr, $font_size: literal, $font: expr) => {
+        $field_width - measure_text($string, Some($font), $font_size, 1.0).width / 2f32
+    };
+}
+
 #[allow(dead_code)]
 /// Utility function used to place overlay elements quickly through user input without recompiling
 fn get_input<T: std::str::FromStr + std::default::Default>(prompt: &str) -> T {
@@ -21,7 +27,7 @@ fn get_input<T: std::str::FromStr + std::default::Default>(prompt: &str) -> T {
     std::io::stdin()
         .read_line(&mut buffer)
         .expect("Failed to init stdin");
-    buffer.trim().parse::<T>().unwrap_or_default()
+    buffer.trim().parse().unwrap_or_default()
 }
 
 pub struct PageRenderer {
@@ -41,9 +47,16 @@ impl PageRenderer {
             0f32,
             WHITE,
         );
+
+        let x_off = center_text_offset!(
+            200f32,
+            state.black.to_uppercase().as_str(),
+            45,
+            self.textures.font()
+        );
         draw_text_ex(
             state.black.to_uppercase().as_str(),
-            1345f32,
+            1350f32 + x_off,
             805f32,
             TextParams {
                 font: self.textures.font(),
@@ -51,9 +64,15 @@ impl PageRenderer {
                 ..Default::default()
             },
         );
+        let x_off = center_text_offset!(
+            200f32,
+            state.black.to_uppercase().as_str(),
+            45,
+            self.textures.font()
+        );
         draw_text_ex(
             state.white.to_uppercase().as_str(),
-            200f32,
+            120f32 + x_off,
             805f32,
             TextParams {
                 font: self.textures.font(),
@@ -62,7 +81,14 @@ impl PageRenderer {
                 ..Default::default()
             },
         );
-        if !self.is_alpha_mode {
+        if self.is_alpha_mode {
+            if state.w_flag.is_some() {
+                draw_rectangle(580f32, 738f32, 180f32, 100f32, WHITE);
+            }
+            if state.b_flag.is_some() {
+                draw_rectangle(1163f32, 738f32, 180f32, 100f32, WHITE);
+            }
+        } else {
             if let Some(flag) = state.w_flag {
                 draw_texture_ex(
                     flag,
@@ -70,7 +96,7 @@ impl PageRenderer {
                     738f32,
                     WHITE,
                     DrawTextureParams {
-                        dest_size: Some(vec2(180f32, 100f32)),
+                        dest_size: Some(vec2(flag.width() / (flag.height() / 100f32), 100f32)),
                         ..Default::default()
                     },
                 );
@@ -89,9 +115,15 @@ impl PageRenderer {
             }
             let min = state.snapshot.secs_in_period / 60;
             let secs = state.snapshot.secs_in_period % 60;
+            let x_off = center_text_offset!(
+                90f32,
+                format!("{}:{}", min, secs).as_str(),
+                50,
+                self.textures.font()
+            );
             draw_text_ex(
                 format!("{}:{}", min, secs).as_str(),
-                923f32,
+                870f32 + x_off,
                 1020f32,
                 TextParams {
                     font: self.textures.font(),
@@ -101,7 +133,7 @@ impl PageRenderer {
             );
             draw_text_ex(
                 "NEXT GAME",
-                905f32,
+                907f32,
                 1044f32,
                 TextParams {
                     font: self.textures.font(),
@@ -143,9 +175,15 @@ impl PageRenderer {
             220f32 + 60f32,
             WHITE,
         );
+        let x_off = center_text_offset!(
+            200f32,
+            state.black.to_uppercase().as_str(),
+            45,
+            self.textures.font()
+        );
         draw_text_ex(
             state.black.to_uppercase().as_str(),
-            1345f32,
+            1350f32 + x_off,
             805f32 + offset,
             TextParams {
                 font: self.textures.font(),
@@ -153,9 +191,15 @@ impl PageRenderer {
                 ..Default::default()
             },
         );
+        let x_off = center_text_offset!(
+            200f32,
+            state.black.to_uppercase().as_str(),
+            45,
+            self.textures.font()
+        );
         draw_text_ex(
             state.white.to_uppercase().as_str(),
-            200f32,
+            120f32 + x_off,
             805f32 + offset,
             TextParams {
                 font: self.textures.font(),
@@ -164,7 +208,14 @@ impl PageRenderer {
                 ..Default::default()
             },
         );
-        if !self.is_alpha_mode {
+        if self.is_alpha_mode {
+            if state.w_flag.is_some() {
+                draw_rectangle(580f32, 738f32 + offset, 180f32, 100f32, WHITE);
+            }
+            if state.b_flag.is_some() {
+                draw_rectangle(1163f32, 738f32 + offset, 180f32, 100f32, WHITE);
+            }
+        } else {
             if let Some(flag) = state.w_flag {
                 draw_texture_ex(
                     flag,
@@ -191,9 +242,18 @@ impl PageRenderer {
             }
             let min = state.snapshot.secs_in_period / 60;
             let secs = state.snapshot.secs_in_period % 60;
+            let x_off: f32 = 90f32
+                - measure_text(
+                    format!("{}:{}", min, secs).as_str(),
+                    self.textures.font().into(),
+                    50,
+                    1.0,
+                )
+                .width
+                    / 2f32;
             draw_text_ex(
                 format!("{}:{}", min, secs).as_str(),
-                923f32,
+                870f32 + x_off,
                 1020f32,
                 TextParams {
                     font: self.textures.font(),
@@ -274,9 +334,15 @@ impl PageRenderer {
             draw_texture(*self.textures.bottom_graphic(), 0_f32, 0f32, WHITE);
             let min = state.snapshot.secs_in_period / 60;
             let secs = state.snapshot.secs_in_period % 60;
+            let x_off = center_text_offset!(
+                90f32,
+                format!("{}:{}", min, secs).as_str(),
+                50,
+                self.textures.font()
+            );
             draw_text_ex(
                 format!("{}:{}", min, secs).as_str(),
-                923f32,
+                870f32 + x_off,
                 1020f32,
                 TextParams {
                     font: self.textures.font(),
@@ -313,9 +379,15 @@ impl PageRenderer {
             );
             let min = state.snapshot.secs_in_period / 60;
             let secs = state.snapshot.secs_in_period % 60;
+            let x_off = center_text_offset!(
+                90f32,
+                format!("{}:{}", min, secs).as_str(),
+                50,
+                self.textures.font()
+            );
             draw_text_ex(
                 format!("{}:{}", min, secs).as_str(),
-                923f32,
+                870f32 + x_off,
                 1020f32,
                 TextParams {
                     font: self.textures.font(),
@@ -434,7 +506,7 @@ impl PageRenderer {
         );
         draw_text_ex(
             "1ST HALF",
-            460f32,
+            478f32,
             100f32,
             TextParams {
                 font: self.textures.font(),
@@ -549,9 +621,15 @@ impl PageRenderer {
         }
         let min = state.snapshot.secs_in_period / 60;
         let secs = state.snapshot.secs_in_period % 60;
+        let x_off = center_text_offset!(
+            90f32,
+            format!("{}:{}", min, secs).as_str(),
+            50,
+            self.textures.font()
+        );
         draw_text_ex(
             format!("{}:{}", min, secs).as_str(),
-            460f32 + position_offset,
+            430f32 + position_offset + x_off,
             67f32,
             TextParams {
                 font: self.textures.font(),
@@ -565,7 +643,7 @@ impl PageRenderer {
                 GamePeriod::SecondHalf => "2ND HALF",
                 _ => "HALF TIME",
             },
-            460f32 + position_offset,
+            478f32 + position_offset,
             100f32,
             TextParams {
                 font: self.textures.font(),

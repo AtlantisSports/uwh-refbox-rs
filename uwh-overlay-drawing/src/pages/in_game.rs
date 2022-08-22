@@ -4,10 +4,11 @@ use super::PageRenderer;
 use crate::State;
 use macroquad::prelude::*;
 use uwh_common::game_snapshot::GamePeriod;
+
 impl PageRenderer {
     /// Display info during game play
     pub fn in_game_display(&mut self, state: &State) {
-        //animate the state and time graphic to the left at 895 secs (5 seconds since period started)
+        // animate the state and time graphic to the left at 895 secs (5 seconds since period started)
         let (position_offset, alpha_offset) = if state.snapshot.secs_in_period == 895 {
             self.animation_counter += 1f32 / 60f32; // inverse of number of frames in transition period
             (

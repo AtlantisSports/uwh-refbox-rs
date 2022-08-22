@@ -1,8 +1,8 @@
 use super::center_text_offset;
-use super::get_input;
 use super::PageRenderer;
 use crate::State;
 use macroquad::prelude::*;
+
 impl PageRenderer {
     /// Display final scores after game is done
     pub fn final_scores(&mut self, state: &State) {

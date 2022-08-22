@@ -180,10 +180,11 @@ async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) 
                 GamePeriod::OvertimeFirstHalf
                 | GamePeriod::OvertimeHalfTime
                 | GamePeriod::OvertimeSecondHalf
-                | GamePeriod::PreOvertime => {
-                    renderer.overtime_display();
+                | GamePeriod::PreOvertime
+                | GamePeriod::PreSuddenDeath
+                | GamePeriod::SuddenDeath => {
+                    renderer.overtime_and_sudden_death_display(state);
                 }
-                _ => {}
             }
         }
         next_frame().await;

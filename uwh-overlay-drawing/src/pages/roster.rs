@@ -3,6 +3,7 @@ use super::Interpolate;
 use super::PageRenderer;
 use crate::State;
 use macroquad::prelude::*;
+
 impl PageRenderer {
     /// Roster screen, displayed between 150 and 30 seconds before the next game.
     pub fn roster(&mut self, state: &State) {

@@ -3,6 +3,7 @@ use super::Interpolate;
 use super::PageRenderer;
 use crate::State;
 use macroquad::prelude::*;
+
 impl PageRenderer {
     /// Displayed from 30 seconds before a game begins.
     pub fn pre_game_display(&mut self, state: &State) {

@@ -4,7 +4,7 @@ use macroquad::prelude::*;
 mod final_scores;
 mod in_game;
 mod next_game;
-mod overtime;
+mod overtime_and_sudden_death;
 mod pre_game;
 mod roster;
 

@@ -14,24 +14,19 @@ impl PageRenderer {
             self.animation_counter = 0f32;
             (0f32, -650f32).interpolate_linear(1f32)
         };
-        draw_texture(*self.textures.atlantis_logo_graphic(), 0_f32, 0f32, WHITE);
-        draw_texture(*self.textures.bottom_graphic(), 0_f32, 0f32, WHITE);
-        draw_texture(*self.textures.team_black_graphic(), 1090f32, 220f32, WHITE);
-        draw_texture(*self.textures.team_white_graphic(), 150f32, 220f32, WHITE);
+        draw_texture(self.textures.atlantis_logo_graphic, 0_f32, 0f32, WHITE);
+        draw_texture(self.textures.bottom_graphic, 0_f32, 0f32, WHITE);
+        draw_texture(self.textures.team_black_graphic, 1090f32, 220f32, WHITE);
+        draw_texture(self.textures.team_white_graphic, 150f32, 220f32, WHITE);
+        draw_texture(self.textures.team_information_graphic, 0_f32, offset, WHITE);
         draw_texture(
-            *self.textures.team_information_graphic(),
-            0_f32,
-            offset,
-            WHITE,
-        );
-        draw_texture(
-            *self.textures.team_white_graphic(),
+            self.textures.team_white_graphic,
             150f32,
             220f32 + 60f32,
             WHITE,
         );
         draw_texture(
-            *self.textures.team_black_graphic(),
+            self.textures.team_black_graphic,
             1090f32,
             220f32 + 60f32,
             WHITE,
@@ -40,14 +35,14 @@ impl PageRenderer {
             200f32,
             state.black.to_uppercase().as_str(),
             45,
-            self.textures.font()
+            self.textures.font
         );
         draw_text_ex(
             state.black.to_uppercase().as_str(),
             1350f32 + x_off,
             805f32 + offset,
             TextParams {
-                font: self.textures.font(),
+                font: self.textures.font,
                 font_size: 45,
                 ..Default::default()
             },
@@ -56,14 +51,14 @@ impl PageRenderer {
             200f32,
             state.black.to_uppercase().as_str(),
             45,
-            self.textures.font()
+            self.textures.font
         );
         draw_text_ex(
             state.white.to_uppercase().as_str(),
             120f32 + x_off,
             805f32 + offset,
             TextParams {
-                font: self.textures.font(),
+                font: self.textures.font,
                 font_size: 50,
                 color: if self.is_alpha_mode { WHITE } else { BLACK },
                 ..Default::default()
@@ -106,7 +101,7 @@ impl PageRenderer {
             let x_off: f32 = 90f32
                 - measure_text(
                     format!("{}:{}", min, secs).as_str(),
-                    self.textures.font().into(),
+                    self.textures.font.into(),
                     50,
                     1.0,
                 )
@@ -117,7 +112,7 @@ impl PageRenderer {
                 870f32 + x_off,
                 1020f32,
                 TextParams {
-                    font: self.textures.font(),
+                    font: self.textures.font,
                     font_size: 50,
                     ..Default::default()
                 },
@@ -127,7 +122,7 @@ impl PageRenderer {
                 905f32,
                 1044f32,
                 TextParams {
-                    font: self.textures.font(),
+                    font: self.textures.font,
                     font_size: 20,
                     ..Default::default()
                 },

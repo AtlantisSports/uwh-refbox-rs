@@ -7,11 +7,11 @@ use uwh_common::game_snapshot::GamePeriod;
 impl PageRenderer {
     /// Display during overtime. Has no animations
     pub fn overtime_and_sudden_death_display(&mut self, state: &State) {
-        draw_texture(*self.textures.team_bar_graphic(), 0_f32, 0f32, WHITE);
+        draw_texture(self.textures.team_bar_graphic, 0_f32, 0f32, WHITE);
         if self.is_alpha_mode {
-            draw_texture(*self.textures.in_game_mask(), 0f32, 0f32, WHITE);
+            draw_texture(self.textures.in_game_mask, 0f32, 0f32, WHITE);
             draw_texture(
-                *self.textures.time_and_game_state_graphic(),
+                self.textures.time_and_game_state_graphic,
                 -200f32,
                 0f32,
                 WHITE,
@@ -20,7 +20,7 @@ impl PageRenderer {
             draw_rectangle(79f32, 75f32, 70f32, 33f32, WHITE);
         } else {
             draw_texture(
-                *self.textures.time_and_game_state_graphic(),
+                self.textures.time_and_game_state_graphic,
                 -200f32,
                 0f32,
                 WHITE,
@@ -31,14 +31,14 @@ impl PageRenderer {
                 90f32,
                 format!("{}:{}", min, secs).as_str(),
                 50,
-                self.textures.font()
+                self.textures.font
             );
             draw_text_ex(
                 format!("{}:{}", min, secs).as_str(),
                 230f32 + x_off,
                 95f32,
                 TextParams {
-                    font: self.textures.font(),
+                    font: self.textures.font,
                     font_size: 50,
                     color: if [GamePeriod::SuddenDeath, GamePeriod::PreSuddenDeath]
                         .contains(&state.snapshot.current_period)
@@ -58,13 +58,13 @@ impl PageRenderer {
                 GamePeriod::PreSuddenDeath => "PRE SUDDEN DEATH",
                 _ => "PRE OVERTIME",
             };
-            let x_off = center_text_offset!(100f32, ot_text, 20, self.textures.font());
+            let x_off = center_text_offset!(100f32, ot_text, 20, self.textures.font);
             draw_text_ex(
                 ot_text,
                 220f32 + x_off,
                 45f32,
                 TextParams {
-                    font: self.textures.font(),
+                    font: self.textures.font,
                     font_size: 20,
                     color: if [GamePeriod::SuddenDeath, GamePeriod::PreSuddenDeath]
                         .contains(&state.snapshot.current_period)
@@ -106,7 +106,7 @@ impl PageRenderer {
             40f32,
             104f32,
             TextParams {
-                font: self.textures.font(),
+                font: self.textures.font,
                 font_size: 30,
                 ..Default::default()
             },
@@ -116,7 +116,7 @@ impl PageRenderer {
             40f32,
             65f32,
             TextParams {
-                font: self.textures.font(),
+                font: self.textures.font,
                 font_size: 30,
                 color: if self.is_alpha_mode { WHITE } else { BLACK },
                 ..Default::default()

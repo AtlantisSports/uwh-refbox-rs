@@ -7,6 +7,7 @@ use std::net::IpAddr;
 
 use macroquad::prelude::*;
 use uwh_common::game_snapshot::{GamePeriod, GameSnapshot};
+mod flag;
 mod load_images;
 mod network;
 mod pages;
@@ -94,6 +95,7 @@ async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) 
         animation_counter: 0f32,
         textures,
         is_alpha_mode,
+        secondary_animation_counter: 0f32,
     };
 
     loop {

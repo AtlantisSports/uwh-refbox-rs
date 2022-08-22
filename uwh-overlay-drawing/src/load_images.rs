@@ -7,16 +7,16 @@ macro_rules! load {
 }
 
 pub struct Textures {
-    atlantis_logo_graphic: Texture2D,
-    bottom_graphic: Texture2D,
-    team_information_graphic: Texture2D,
-    team_black_graphic: Texture2D,
-    team_white_graphic: Texture2D,
-    team_bar_graphic: Texture2D,
-    time_and_game_state_graphic: Texture2D,
-    final_score_graphic: Texture2D,
-    in_game_mask: Texture2D,
-    font: Font,
+    pub atlantis_logo_graphic: Texture2D,
+    pub bottom_graphic: Texture2D,
+    pub team_information_graphic: Texture2D,
+    pub team_black_graphic: Texture2D,
+    pub team_white_graphic: Texture2D,
+    pub team_bar_graphic: Texture2D,
+    pub time_and_game_state_graphic: Texture2D,
+    pub final_score_graphic: Texture2D,
+    pub in_game_mask: Texture2D,
+    pub font: Font,
 }
 
 impl Textures {
@@ -56,65 +56,5 @@ impl Textures {
             atlantis_logo_graphic: load!("../assets/alpha/1080/[PNG] 8K - Atlantis Logo.png"),
             font: load_ttf_font_from_bytes(include_bytes!("./../assets/BAHNSCHRIFT.TTF")).unwrap(),
         }
-    }
-
-    /// Get a reference to the textures atlantis logo graphic.
-    #[must_use]
-    pub const fn atlantis_logo_graphic(&self) -> &Texture2D {
-        &self.atlantis_logo_graphic
-    }
-
-    /// Get a reference to the textures bottom graphic.
-    #[must_use]
-    pub const fn bottom_graphic(&self) -> &Texture2D {
-        &self.bottom_graphic
-    }
-
-    /// Get a reference to the textures team information graphic.
-    #[must_use]
-    pub const fn team_information_graphic(&self) -> &Texture2D {
-        &self.team_information_graphic
-    }
-
-    /// Get a reference to the textures team black graphic.
-    #[must_use]
-    pub const fn team_black_graphic(&self) -> &Texture2D {
-        &self.team_black_graphic
-    }
-
-    /// Get a reference to the textures team white graphic.
-    #[must_use]
-    pub const fn team_white_graphic(&self) -> &Texture2D {
-        &self.team_white_graphic
-    }
-
-    /// Get a reference to the textures team bar graphic.
-    #[must_use]
-    pub const fn team_bar_graphic(&self) -> &Texture2D {
-        &self.team_bar_graphic
-    }
-
-    /// Get a reference to the textures time and game state graphic.
-    #[must_use]
-    pub const fn time_and_game_state_graphic(&self) -> &Texture2D {
-        &self.time_and_game_state_graphic
-    }
-
-    /// Get a reference to the textures final score graphic.
-    #[must_use]
-    pub const fn final_score_graphic(&self) -> &Texture2D {
-        &self.final_score_graphic
-    }
-
-    /// Get the textures's font.
-    #[must_use]
-    pub const fn font(&self) -> Font {
-        self.font
-    }
-
-    /// Get the textures's in game mask.
-    #[must_use]
-    pub const fn in_game_mask(&self) -> &Texture2D {
-        &self.in_game_mask
     }
 }

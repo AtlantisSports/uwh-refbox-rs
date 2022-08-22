@@ -6,27 +6,22 @@ use macroquad::prelude::*;
 impl PageRenderer {
     /// The Next Game screen, shown up to 150 seconds before the next game
     pub fn next_game(&mut self, state: &State) {
-        draw_texture(*self.textures.atlantis_logo_graphic(), 0_f32, 0f32, WHITE);
-        draw_texture(*self.textures.bottom_graphic(), 0_f32, 0f32, WHITE);
-        draw_texture(
-            *self.textures.team_information_graphic(),
-            0_f32,
-            0f32,
-            WHITE,
-        );
+        draw_texture(self.textures.atlantis_logo_graphic, 0_f32, 0f32, WHITE);
+        draw_texture(self.textures.bottom_graphic, 0_f32, 0f32, WHITE);
+        draw_texture(self.textures.team_information_graphic, 0_f32, 0f32, WHITE);
 
         let x_off = center_text_offset!(
             200f32,
             state.black.to_uppercase().as_str(),
             45,
-            self.textures.font()
+            self.textures.font
         );
         draw_text_ex(
             state.black.to_uppercase().as_str(),
             1350f32 + x_off,
             805f32,
             TextParams {
-                font: self.textures.font(),
+                font: self.textures.font,
                 font_size: 45,
                 ..Default::default()
             },
@@ -35,14 +30,14 @@ impl PageRenderer {
             200f32,
             state.black.to_uppercase().as_str(),
             45,
-            self.textures.font()
+            self.textures.font
         );
         draw_text_ex(
             state.white.to_uppercase().as_str(),
             120f32 + x_off,
             805f32,
             TextParams {
-                font: self.textures.font(),
+                font: self.textures.font,
                 font_size: 50,
                 color: if self.is_alpha_mode { WHITE } else { BLACK },
                 ..Default::default()
@@ -86,14 +81,14 @@ impl PageRenderer {
                 90f32,
                 format!("{}:{}", min, secs).as_str(),
                 50,
-                self.textures.font()
+                self.textures.font
             );
             draw_text_ex(
                 format!("{}:{}", min, secs).as_str(),
                 870f32 + x_off,
                 1020f32,
                 TextParams {
-                    font: self.textures.font(),
+                    font: self.textures.font,
                     font_size: 50,
                     ..Default::default()
                 },
@@ -103,7 +98,7 @@ impl PageRenderer {
                 907f32,
                 1044f32,
                 TextParams {
-                    font: self.textures.font(),
+                    font: self.textures.font,
                     font_size: 20,
                     ..Default::default()
                 },

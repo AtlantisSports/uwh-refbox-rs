@@ -4,6 +4,7 @@ use super::PageRenderer;
 use crate::State;
 use macroquad::prelude::*;
 use uwh_common::game_snapshot::GamePeriod;
+use uwh_common::game_snapshot::TimeoutSnapshot;
 
 impl PageRenderer {
     /// Display info during game play
@@ -22,21 +23,24 @@ impl PageRenderer {
             )
         } else {
             self.animation_counter = 0f32;
+            if state.snapshot.timeout != TimeoutSnapshot::None {
+                self.secondary_animation_counter += 1f32 / 60f32;
+            }
             (
                 (0f32, -200f32).interpolate_linear(1f32),
                 (255f32, 0f32).interpolate_linear(1f32) as u8,
             )
         };
-        draw_texture(*self.textures.team_bar_graphic(), 0_f32, 0f32, WHITE);
+        draw_texture(self.textures.team_bar_graphic, 0_f32, 0f32, WHITE);
         if self.is_alpha_mode {
             draw_texture(
-                *self.textures.in_game_mask(),
+                self.textures.in_game_mask,
                 200_f32 + position_offset,
                 0f32,
                 WHITE,
             );
             draw_texture(
-                *self.textures.time_and_game_state_graphic(),
+                self.textures.time_and_game_state_graphic,
                 position_offset,
                 0f32,
                 WHITE,
@@ -44,8 +48,16 @@ impl PageRenderer {
             draw_rectangle(79f32, 39f32, 70f32, 33f32, WHITE);
             draw_rectangle(79f32, 75f32, 70f32, 33f32, WHITE);
         } else {
+            // if state.snapshot.timeout != TimeoutSnapshot::None {
+            // draw_texture(
+            //     *self.textures,
+            //     position_offset,
+            //     0f32,
+            //     WHITE,
+            // );
+            // }
             draw_texture(
-                *self.textures.time_and_game_state_graphic(),
+                self.textures.time_and_game_state_graphic,
                 position_offset,
                 0f32,
                 WHITE,
@@ -56,14 +68,14 @@ impl PageRenderer {
                 90f32,
                 format!("{}:{}", min, secs).as_str(),
                 50,
-                self.textures.font()
+                self.textures.font
             );
             draw_text_ex(
                 format!("{}:{}", min, secs).as_str(),
                 430f32 + position_offset + x_off,
                 67f32,
                 TextParams {
-                    font: self.textures.font(),
+                    font: self.textures.font,
                     font_size: 50,
                     ..Default::default()
                 },
@@ -77,7 +89,7 @@ impl PageRenderer {
                 478f32 + position_offset,
                 100f32,
                 TextParams {
-                    font: self.textures.font(),
+                    font: self.textures.font,
                     font_size: 20,
                     ..Default::default()
                 },
@@ -112,7 +124,7 @@ impl PageRenderer {
             40f32,
             104f32,
             TextParams {
-                font: self.textures.font(),
+                font: self.textures.font,
                 font_size: 30,
                 ..Default::default()
             },
@@ -122,7 +134,7 @@ impl PageRenderer {
             40f32,
             65f32,
             TextParams {
-                font: self.textures.font(),
+                font: self.textures.font,
                 font_size: 30,
                 color: if self.is_alpha_mode { WHITE } else { BLACK },
                 ..Default::default()
@@ -133,7 +145,7 @@ impl PageRenderer {
             160f32,
             64f32,
             TextParams {
-                font: self.textures.font(),
+                font: self.textures.font,
                 font_size: 20,
                 color: Color::from_rgba(0, 0, 0, alpha_offset),
                 ..Default::default()
@@ -144,7 +156,7 @@ impl PageRenderer {
             160f32,
             100f32,
             TextParams {
-                font: self.textures.font(),
+                font: self.textures.font,
                 font_size: 20,
                 color: Color::from_rgba(255, 255, 255, alpha_offset),
                 ..Default::default()

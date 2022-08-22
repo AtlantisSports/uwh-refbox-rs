@@ -43,6 +43,7 @@ fn main() {
     let (tx, rx) = channel::<StatePacket>();
     let (tx_a, rx_a) = ipc::channel::<StatePacket>().unwrap();
     let (tx_c, rx_c) = ipc::channel::<StatePacket>().unwrap();
+
     let config: AppConfig = match confy::load(APP_CONFIG_NAME, None) {
         Ok(c) => c,
         Err(e) => {
@@ -57,12 +58,11 @@ fn main() {
         network::networking_thread(tx, config)
             .expect("Networking error. Does the supplied URL exist and is it live?")
     });
-
     procspawn::spawn(rx_a, |rx| {
-        macroquad::Window::new("Alpha Stream", run(true, rx))
+        macroquad::Window::new("Alpha Stream", render_process(true, rx))
     });
     procspawn::spawn(rx_c, |rx| {
-        macroquad::Window::new("Color Stream", run(false, rx))
+        macroquad::Window::new("Color Stream", render_process(false, rx))
     });
 
     loop {
@@ -77,7 +77,7 @@ fn main() {
     }
 }
 
-async fn run(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) {
+async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) {
     let textures = if !is_alpha_mode {
         load_images::Textures::init_color()
     } else {

@@ -5,6 +5,7 @@ macro_rules! load {
         Texture2D::from_file_with_format(include_bytes!($file), None)
     };
 }
+pub(crate) use load;
 
 pub struct Textures {
     pub atlantis_logo_graphic: Texture2D,

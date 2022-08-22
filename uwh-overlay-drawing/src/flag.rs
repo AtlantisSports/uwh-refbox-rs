@@ -3,6 +3,9 @@
 //! Flags are discarded automatically after their 5 second show time as long as the draw function is called.
 
 use macroquad::prelude::*;
+use uwh_common::game_snapshot::GameSnapshot;
+
+use crate::load_images::load;
 
 /// Distance from the top of the screen from where the flags are rendered
 const BASE_HEIGHT: f32 = 200f32;
@@ -20,10 +23,11 @@ pub enum FlagType {
 struct Textures {
     black_goal: Texture2D,
     white_goal: Texture2D,
-    white_penalty
+    white_penalty: Texture2D,
+    black_penalty: Texture2D,
 }
 
-struct Flag {
+pub struct Flag {
     player_name: String,
     player_number: u16,
     flag_type: FlagType,
@@ -41,18 +45,35 @@ impl Flag {
     }
 }
 
-struct FlagRenderer {
+pub struct FlagRenderer {
     pub active_flags: Vec<Flag>,
+    textures: Textures,
 }
 
 impl FlagRenderer {
+    pub fn new() -> Self {
+        Self {
+            active_flags: Vec::new(),
+            textures: Textures {
+                black_goal: load!("../assets/alpha/1080/[PNG] 8K - Team Black Graphic.png"),
+                white_goal: load!("../assets/color/1080/[PNG] 8K - Team White Graphic.png"),
+                white_penalty: load!("../assets/color/1080/[PNG] 8K - Penalty White Graphic.png"),
+                black_penalty: load!("../assets/color/1080/[PNG] 8K -  Penalty Black Graphic.png"),
+            },
+        }
+    }
+
     pub fn draw(&mut self) {
         let b: f32 = 200f32;
-
-        /// Vertical space allocated to each flag
         let f: f32 = 20f32;
         for (idx, flag) in self.active_flags.iter().enumerate() {
-
+            // draw_texture(, x, y, color)
+            draw_texture(
+                self.textures.white_penalty,
+                100f32,
+                b + idx as f32 * f,
+                WHITE,
+            );
         }
     }
 }

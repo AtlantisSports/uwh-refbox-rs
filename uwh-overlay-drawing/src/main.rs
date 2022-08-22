@@ -91,15 +91,18 @@ async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) 
     // let mut show_goal = false;
     //keeps track of old whit and black scores in order to detect a change and show the goal graphic
     // let (mut b_score, mut w_score) = (0, 0);
+
     let mut renderer = pages::PageRenderer {
         animation_counter: 0f32,
         textures,
         is_alpha_mode,
         secondary_animation_counter: 0f32,
     };
+    let mut flag_renderer = flag::FlagRenderer::new();
 
     loop {
         clear_background(BLACK);
+
         if let Ok(state) = rx.try_recv() {
             // Update state parameters like team names and flags if they are present.
             if let Some(game_state) = &mut game_state {
@@ -162,7 +165,7 @@ async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) 
             match state.snapshot.current_period {
                 GamePeriod::BetweenGames => match state.snapshot.secs_in_period {
                     151..=u16::MAX => {
-                        // If an old game just finished, display its scores for a minute
+                        // If an old game just finished, display its scores
                         if state.snapshot.is_old_game {
                             renderer.final_scores(state);
                         } else {
@@ -178,6 +181,7 @@ async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) 
                 },
                 GamePeriod::FirstHalf | GamePeriod::SecondHalf | GamePeriod::HalfTime => {
                     renderer.in_game_display(state);
+                    //    flag_renderer.draw();
                 }
                 GamePeriod::OvertimeFirstHalf
                 | GamePeriod::OvertimeHalfTime
@@ -186,6 +190,7 @@ async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) 
                 | GamePeriod::PreSuddenDeath
                 | GamePeriod::SuddenDeath => {
                     renderer.overtime_and_sudden_death_display(state);
+                    //  flag_renderer.draw();
                 }
             }
         }

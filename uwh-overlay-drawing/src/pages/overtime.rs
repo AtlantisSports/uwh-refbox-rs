@@ -1,6 +1,4 @@
-use super::center_text_offset;
 use super::PageRenderer;
-use crate::State;
 use macroquad::prelude::*;
 impl PageRenderer {
     /// Display during overtime. Has no animations

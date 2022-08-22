@@ -1,6 +1,5 @@
-use crate::{load_images::Textures, State};
+use crate::load_images::Textures;
 use macroquad::prelude::*;
-use uwh_common::game_snapshot::GamePeriod;
 
 mod final_scores;
 mod in_game;

@@ -1,4 +1,5 @@
 use super::center_text_offset;
+use super::get_input;
 use super::PageRenderer;
 use crate::State;
 use macroquad::prelude::*;
@@ -33,9 +34,15 @@ impl PageRenderer {
                 ..Default::default()
             },
         );
+        let x_off = center_text_offset!(
+            145f32,
+            state.snapshot.b_score.to_string().as_str(),
+            180,
+            self.textures.font()
+        );
         draw_text_ex(
             state.snapshot.b_score.to_string().as_str(),
-            1400f32,
+            1295f32 + x_off,
             580f32,
             TextParams {
                 font: self.textures.font(),
@@ -43,9 +50,15 @@ impl PageRenderer {
                 ..Default::default()
             },
         );
+        let x_off = center_text_offset!(
+            145f32,
+            state.snapshot.w_score.to_string().as_str(),
+            180,
+            self.textures.font()
+        );
         draw_text_ex(
             state.snapshot.w_score.to_string().as_str(),
-            430f32,
+            340f32 + x_off,
             580f32,
             TextParams {
                 font: self.textures.font(),

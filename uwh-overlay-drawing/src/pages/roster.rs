@@ -1,4 +1,5 @@
 use super::center_text_offset;
+use super::Interpolate;
 use super::PageRenderer;
 use crate::State;
 use macroquad::prelude::*;

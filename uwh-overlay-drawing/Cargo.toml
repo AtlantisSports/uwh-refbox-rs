@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 macroquad = "0.3.23"
-uwh-common = { git = "https://github.com/AtlantisSports/uwh-refbox-rs" }
+uwh-common = { path = "../uwh-common/" }
 serde_json = { version = "*" }
 serde = { version = "1.0.139", features = ["derive"] }
 home = "0.5.3"

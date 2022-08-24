@@ -393,8 +393,7 @@ dependencies = [
 
 [[package]]
 name = "fonts"
-version = "0.1.0"
-source = "git+https://github.com/AtlantisSports/uwh-refbox-rs#fffd453e4a69f607a49f7fb619f18e1a36904ea0"
+version = "0.1.1"
 dependencies = [
  "embedded-graphics",
 ]
@@ -1672,8 +1671,7 @@ dependencies = [
 
 [[package]]
 name = "uwh-common"
-version = "0.1.0"
-source = "git+https://github.com/AtlantisSports/uwh-refbox-rs#fffd453e4a69f607a49f7fb619f18e1a36904ea0"
+version = "0.1.1"
 dependencies = [
  "arrayref",
  "arrayvec",

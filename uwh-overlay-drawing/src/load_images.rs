@@ -17,6 +17,10 @@ pub struct Textures {
     pub time_and_game_state_graphic: Texture2D,
     pub final_score_graphic: Texture2D,
     pub in_game_mask: Texture2D,
+    pub penalty_graphic: Texture2D,
+    pub white_timout_graphic: Texture2D,
+    pub black_timout_graphic: Texture2D,
+    pub referee_timout_graphic: Texture2D,
     pub font: Font,
 }
 
@@ -37,6 +41,10 @@ impl Textures {
             atlantis_logo_graphic: load!("../assets/color/1080/[PNG] 8K - Atlantis Logo.png"),
             in_game_mask: load!("../assets/alpha/1080/mask.png"),
             font: load_ttf_font_from_bytes(include_bytes!("./../assets/BAHNSCHRIFT.TTF")).unwrap(),
+            penalty_graphic: load!("../assets/color/1080/Penalty Shot Flag.png"),
+            white_timout_graphic: load!("../assets/color/1080/White Timeout Flag.png"),
+            black_timout_graphic: load!("../assets/color/1080/Black Timeout Flag.png"),
+            referee_timout_graphic: load!("../assets/color/1080/Referee Timeout Flag.png"),
         }
     }
 
@@ -56,6 +64,10 @@ impl Textures {
             bottom_graphic: load!("../assets/alpha/1080/[PNG] 8K - Bottom Graphic.png"),
             atlantis_logo_graphic: load!("../assets/alpha/1080/[PNG] 8K - Atlantis Logo.png"),
             font: load_ttf_font_from_bytes(include_bytes!("./../assets/BAHNSCHRIFT.TTF")).unwrap(),
+            penalty_graphic: load!("../assets/alpha/1080/Penalty Shot Flag.png"),
+            white_timout_graphic: load!("../assets/alpha/1080/White Timeout Flag.png"),
+            black_timout_graphic: load!("../assets/alpha/1080/Black Timeout Flag.png"),
+            referee_timout_graphic: load!("../assets/alpha/1080/Referee Timeout Flag.png"),
         }
     }
 }

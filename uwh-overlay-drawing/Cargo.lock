@@ -1681,7 +1681,6 @@ dependencies = [
  "fonts",
  "log",
  "serde",
- "serde_derive",
  "time",
  "toml",
 ]

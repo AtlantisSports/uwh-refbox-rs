@@ -4,10 +4,8 @@ use rayon::iter::ParallelIterator;
 use std::fs;
 fn main() {
     let paths = vec![
-        "../../assets/color/1080/Penalty Shot Flag.png",
-        "../../assets/color/1080/Black Timeout Flag.png",
-        "../../assets/color/1080/White Timeout Flag.png",
-        "../../assets/color/1080/Referee Timeout Flag.png",
+        "../../assets/color/1080/Penalty Black Graphic.png",
+        "../../assets/color/1080/Penalty White Graphic.png",
     ];
     paths.iter().par_bridge().for_each(|path| {
         let file = image::open(path).unwrap();

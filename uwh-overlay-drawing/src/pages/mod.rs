@@ -8,7 +8,7 @@ mod overtime_and_sudden_death;
 mod pre_game;
 mod roster;
 
-trait Interpolate {
+pub(crate) trait Interpolate {
     /// `value` must be a floater varying from 0 to 1, denoting the lowest to highest limits of the range
     fn interpolate_linear(&self, value: f32) -> f32;
 }
@@ -28,7 +28,7 @@ pub(crate) use center_text_offset;
 
 #[allow(dead_code)]
 /// Utility function used to place overlay elements quickly through user input without recompiling
-fn get_input<T: std::str::FromStr + std::default::Default>(prompt: &str) -> T {
+pub fn get_input<T: std::str::FromStr + std::default::Default>(prompt: &str) -> T {
     let mut buffer = String::new();
     println!(" Enter {}: ", prompt);
     std::io::stdin()

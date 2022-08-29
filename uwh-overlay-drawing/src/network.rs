@@ -24,14 +24,17 @@ impl TeamInfo {
         let data: Value = serde_json::from_str(
             &reqwest::blocking::get(format!(
                 "https://{}/api/v1/tournaments/{}/teams/{}",
-                config.uwhscores_url, 28, team_id
+                config.uwhscores_url, tournament_id, team_id
             ))
             .unwrap()
             .text()
             .unwrap(),
         )
         .unwrap();
-        let players: Vec<Value> = data["team"]["roster"].as_array().unwrap().clone();
+        let players: Vec<Value> = data["team"]["roster"]
+            .as_array()
+            .unwrap_or(&Vec::new())
+            .clone();
         let mut player_list: Vec<(String, u8)> = Vec::new();
         for player in players {
             player_list.push((
@@ -43,7 +46,7 @@ impl TeamInfo {
         Self {
             team_name: data["team"]["name"].as_str().unwrap().to_string(),
             players: player_list,
-            flag_url: Some(data["team"]["flag_url"].as_str().unwrap().to_string()),
+            flag_url: data["team"]["flag_url"].as_str().map(|s| s.to_string()),
         }
     }
 }
@@ -67,17 +70,14 @@ pub fn networking_thread(
     let data: Value = serde_json::from_str(
         &reqwest::blocking::get(format!(
             "https://{}/api/v1/tournaments/{}/games/{}",
-            config.uwhscores_url, 28, 1
+            config.uwhscores_url, 2, 5
         ))?
         .text()?,
     )?;
     let team_id_black = data["game"]["black_id"].as_u64().unwrap();
     let team_id_white = data["game"]["white_id"].as_u64().unwrap();
-    println!("teams: {} {}", team_id_black, team_id_white);
-    let black = TeamInfo::new(&config, 28, team_id_black);
-    let white = TeamInfo::new(&config, 28, team_id_white);
-    let w_flag = include_bytes!(".././assets/flags/Seattle (Typical Ratio).png");
-    let b_flag = include_bytes!(".././assets/flags/LA Kraken Stretched (1 to 2 Ratio).png");
+    let black = TeamInfo::new(&config, 2, team_id_black);
+    let white = TeamInfo::new(&config, 2, team_id_white);
     if tx
         .send(StatePacket {
             snapshot,

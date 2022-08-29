@@ -1,4 +1,5 @@
 use super::center_text_offset;
+use super::get_input;
 use super::Interpolate;
 use super::PageRenderer;
 use crate::State;
@@ -127,9 +128,14 @@ impl PageRenderer {
                 ..Default::default()
             },
         );
+
         draw_text_ex(
             state.white.team_name.to_uppercase().as_str(),
-            160f32,
+            if let Some(_) = state.white_flag {
+                160f32
+            } else {
+                79f32
+            },
             64f32,
             TextParams {
                 font: self.textures.font,
@@ -140,7 +146,11 @@ impl PageRenderer {
         );
         draw_text_ex(
             state.black.team_name.to_uppercase().as_str(),
-            160f32,
+            if let Some(_) = state.black_flag {
+                160f32
+            } else {
+                79f32
+            },
             100f32,
             TextParams {
                 font: self.textures.font,

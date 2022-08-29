@@ -45,36 +45,80 @@ impl PageRenderer {
                 0f32,
                 WHITE,
             );
-            draw_rectangle(79f32, 39f32, 70f32, 33f32, WHITE);
-            draw_rectangle(79f32, 75f32, 70f32, 33f32, WHITE);
+            if let Some(_) = state.white_flag {
+                draw_rectangle(79f32, 39f32, 70f32, 33f32, WHITE);
+            } else {
+                draw_text_ex(
+                    state.white.team_name.to_uppercase().as_str(),
+                    79f32,
+                    64f32,
+                    TextParams {
+                        font: self.textures.font,
+                        font_size: 20,
+                        ..Default::default()
+                    },
+                );
+            }
+            if let Some(_) = state.black_flag {
+                draw_rectangle(79f32, 75f32, 70f32, 33f32, WHITE);
+            } else {
+                draw_text_ex(
+                    state.black.team_name.to_uppercase().as_str(),
+                    79f32,
+                    100f32,
+                    TextParams {
+                        font: self.textures.font,
+                        font_size: 20,
+                        ..Default::default()
+                    },
+                );
+            }
         } else {
-            // if state.snapshot.timeout != TimeoutSnapshot::None {
-            // draw_texture(
-            //     *self.textures,
-            //     position_offset,
-            //     0f32,
-            //     WHITE,
-            // );
-            // }
             draw_text_ex(
                 state.white.team_name.to_uppercase().as_str(),
-                160f32,
+                if let Some(_) = state.white_flag {
+                    160f32
+                } else {
+                    79f32
+                },
                 64f32,
                 TextParams {
                     font: self.textures.font,
                     font_size: 20,
-                    color: Color::from_rgba(0, 0, 0, alpha_offset),
+                    color: Color::from_rgba(
+                        0,
+                        0,
+                        0,
+                        if let Some(_) = state.black_flag {
+                            alpha_offset
+                        } else {
+                            255
+                        },
+                    ), // don't fade out team name if flags aren't available
                     ..Default::default()
                 },
             );
             draw_text_ex(
                 state.black.team_name.to_uppercase().as_str(),
-                160f32,
+                if let Some(_) = state.black_flag {
+                    160f32
+                } else {
+                    79f32
+                },
                 100f32,
                 TextParams {
                     font: self.textures.font,
                     font_size: 20,
-                    color: Color::from_rgba(255, 255, 255, alpha_offset),
+                    color: Color::from_rgba(
+                        255,
+                        255,
+                        255,
+                        if let Some(_) = state.black_flag {
+                            alpha_offset
+                        } else {
+                            255
+                        },
+                    ),
                     ..Default::default()
                 },
             );

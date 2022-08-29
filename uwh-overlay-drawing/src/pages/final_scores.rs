@@ -10,7 +10,7 @@ impl PageRenderer {
         draw_texture(self.textures.final_score_graphic, 0_f32, 0f32, WHITE);
         draw_texture(self.textures.team_information_graphic, 0_f32, 0f32, WHITE);
         draw_text_ex(
-            state.white.to_uppercase().as_str(),
+            state.white.team_name.to_uppercase().as_str(),
             340f32,
             805f32,
             TextParams {
@@ -20,7 +20,7 @@ impl PageRenderer {
             },
         );
         draw_text_ex(
-            state.black.to_uppercase().as_str(),
+            state.black.team_name.to_uppercase().as_str(),
             1240f32,
             805f32,
             TextParams {

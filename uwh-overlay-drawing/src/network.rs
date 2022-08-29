@@ -5,10 +5,43 @@ use std::net::TcpStream;
 use uwh_common::game_snapshot::GameSnapshot;
 
 #[derive(Serialize, Deserialize, Clone)]
+pub struct TeamInfo {
+    pub team_name: String,
+    pub players: Vec<(String, u8)>,
+}
+
+impl TeamInfo {
+    pub fn new(config: &crate::AppConfig, tournament_id: u32, team_id: u64) -> Self {
+        let data: Value = serde_json::from_str(
+            &reqwest::blocking::get(format!(
+                "https://{}/api/v1/tournaments/{}/teams/{}",
+                config.uwhscores_url, 28, team_id
+            ))
+            .unwrap()
+            .text()
+            .unwrap(),
+        )
+        .unwrap();
+        let players: Vec<Value> = data["team"]["roster"].as_array().unwrap().clone();
+        let mut player_list: Vec<(String, u8)> = Vec::new();
+        for player in players {
+            player_list.push((
+                player["name"].as_str().unwrap().to_string(),
+                player["number"].as_u64().unwrap() as u8,
+            ));
+        }
+        Self {
+            team_name: data["team"]["name"].as_str().unwrap().to_string(),
+            players: player_list,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 pub struct StatePacket {
     pub snapshot: GameSnapshot,
-    pub black: Option<String>,
-    pub white: Option<String>,
+    pub black: Option<TeamInfo>,
+    pub white: Option<TeamInfo>,
     pub w_flag: Option<Vec<u8>>,
     pub b_flag: Option<Vec<u8>>,
 }
@@ -25,12 +58,14 @@ pub fn networking_thread(
     let data: Value = serde_json::from_str(
         &reqwest::blocking::get(format!(
             "https://{}/api/v1/tournaments/{}/games/{}",
-            config.uwhscores_url, 2, 1
+            config.uwhscores_url, 28, 1
         ))?
         .text()?,
     )?;
-    let black = data["game"]["black"].as_str().unwrap().to_owned();
-    let white = data["game"]["white"].as_str().unwrap().to_owned();
+    let team_id_black = data["game"]["black_id"].as_u64().unwrap();
+    let team_id_white = data["game"]["white_id"].as_u64().unwrap();
+    let black = TeamInfo::new(&config, 28, team_id_black);
+    let white = TeamInfo::new(&config, 28, team_id_white);
     let w_flag = include_bytes!(".././assets/flags/Seattle (Typical Ratio).png");
     let b_flag = include_bytes!(".././assets/flags/LA Kraken Stretched (1 to 2 Ratio).png");
     if tx

@@ -33,12 +33,12 @@ impl PageRenderer {
         );
         let x_off = center_text_offset!(
             200f32,
-            state.black.to_uppercase().as_str(),
+            state.black.team_name.to_uppercase().as_str(),
             45,
             self.textures.font
         );
         draw_text_ex(
-            state.black.to_uppercase().as_str(),
+            state.black.team_name.to_uppercase().as_str(),
             1350f32 + x_off,
             805f32 + offset,
             TextParams {
@@ -49,12 +49,12 @@ impl PageRenderer {
         );
         let x_off = center_text_offset!(
             200f32,
-            state.black.to_uppercase().as_str(),
+            state.black.team_name.to_uppercase().as_str(),
             45,
             self.textures.font
         );
         draw_text_ex(
-            state.white.to_uppercase().as_str(),
+            state.white.team_name.to_uppercase().as_str(),
             120f32 + x_off,
             805f32 + offset,
             TextParams {

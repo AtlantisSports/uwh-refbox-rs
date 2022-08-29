@@ -56,6 +56,28 @@ impl PageRenderer {
             //     WHITE,
             // );
             // }
+            draw_text_ex(
+                state.white.team_name.to_uppercase().as_str(),
+                160f32,
+                64f32,
+                TextParams {
+                    font: self.textures.font,
+                    font_size: 20,
+                    color: Color::from_rgba(0, 0, 0, alpha_offset),
+                    ..Default::default()
+                },
+            );
+            draw_text_ex(
+                state.black.team_name.to_uppercase().as_str(),
+                160f32,
+                100f32,
+                TextParams {
+                    font: self.textures.font,
+                    font_size: 20,
+                    color: Color::from_rgba(255, 255, 255, alpha_offset),
+                    ..Default::default()
+                },
+            );
             draw_texture(
                 self.textures.time_and_game_state_graphic,
                 position_offset,
@@ -137,28 +159,6 @@ impl PageRenderer {
                 font: self.textures.font,
                 font_size: 30,
                 color: if self.is_alpha_mode { WHITE } else { BLACK },
-                ..Default::default()
-            },
-        );
-        draw_text_ex(
-            state.white.to_uppercase().as_str(),
-            160f32,
-            64f32,
-            TextParams {
-                font: self.textures.font,
-                font_size: 20,
-                color: Color::from_rgba(0, 0, 0, alpha_offset),
-                ..Default::default()
-            },
-        );
-        draw_text_ex(
-            state.black.to_uppercase().as_str(),
-            160f32,
-            100f32,
-            TextParams {
-                font: self.textures.font,
-                font_size: 20,
-                color: Color::from_rgba(255, 255, 255, alpha_offset),
                 ..Default::default()
             },
         );

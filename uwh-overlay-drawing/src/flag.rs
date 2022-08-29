@@ -63,8 +63,24 @@ pub struct FlagRenderer {
 }
 
 impl FlagRenderer {
-    pub fn add_flag(&mut self, mut flag: Flag) {
+    pub fn add_penalty_flag(&mut self, mut flag: Flag, game_state: &crate::State) {
         flag.vertical_position = self.active_flags.len() as u32;
+        flag.player_name = match flag.flag_type {
+            FlagType::Penalty(UWHColor::Black, _, _) => game_state
+                .black
+                .players
+                .iter()
+                .find(|player| player.1 == flag.player_number)
+                .map(|player| player.0.clone())
+                .unwrap_or(String::from("Unknown Player")),
+            _ => game_state
+                .white
+                .players
+                .iter()
+                .find(|player| player.1 == flag.player_number)
+                .map(|player| player.0.clone())
+                .unwrap_or(String::from("Unknown Player")),
+        };
         self.active_flags.push(flag);
     }
 
@@ -96,11 +112,7 @@ impl FlagRenderer {
 
     /// Used to synchronise penalty info from snapshot with the local penalty list.
     /// Local penalty flags marked unvisited by this function will be faded out and deleted by the draw function.
-    pub fn synchronize_penalties(
-        &mut self,
-        penalty_snapshot: &Vec<PenaltySnapshot>,
-        team_color: UWHColor,
-    ) {
+    pub fn synchronize_penalties(&mut self, team_color: UWHColor, game_state: &crate::State) {
         // mark all penalty flags as unvisited
         for flag in &mut self.active_flags {
             if let Flag {
@@ -115,32 +127,33 @@ impl FlagRenderer {
         }
 
         // update or create local penalty flags for current team_color, marking each as visited if updated.
-        for penalty in penalty_snapshot {
+        for penalty in if team_color == UWHColor::Black {
+            &game_state.snapshot.b_penalties
+        } else {
+            &game_state.snapshot.w_penalties
+        } {
+            // let penalty: PenaltySnapshot = penalty;
             // find the penalty in the local list, create a new penalty if it doesn't exist.
             let flag_pos = self
                 .active_flags
                 .iter()
                 .position(|flag| {
-                    println!(
-                        "Looking in {:?} for {team_color} and {}, got {} ",
-                        flag, penalty.player_number, matches!(flag.flag_type, FlagType::Penalty(color, _, _) if color == team_color )
-                        && flag.player_number == penalty.player_number
-
-                    );
                     matches!(flag.flag_type, FlagType::Penalty(color, _, _) if color == team_color )
                         && flag.player_number == penalty.player_number
                 })
                 .unwrap_or_else(|| {
-                    println!("SOS");
-                    self.add_flag(Flag::new(
-                        String::from("d"),
-                        penalty.player_number,
-                        FlagType::Penalty(team_color, penalty.time, true),
-                    ));
+                    self.add_penalty_flag(
+                        Flag::new(
+                            String::new(),
+                            penalty.player_number,
+                            FlagType::Penalty(team_color, penalty.time, true),
+                        ),
+                        game_state,
+                    );
                     self.active_flags.len() - 1
                 });
 
-            // update the time on all the penalty flags
+            // update time on all the penalty flags
             match self.active_flags.get_mut(flag_pos).unwrap() {
                 Flag {
                     flag_type: FlagType::Penalty(_, time, is_visited),
@@ -152,8 +165,67 @@ impl FlagRenderer {
                 _ => unreachable!(),
             }
         }
+
+        // sort the flags based on: TD penalties on top, then time penalties sorted by longest time and lastly, goal callouts
+        self.active_flags.sort_by(|a, b| {
+            if let (
+                // if both flags are penalty flags
+                Flag {
+                    flag_type: FlagType::Penalty(_, time_a, _),
+                    ..
+                },
+                Flag {
+                    flag_type: FlagType::Penalty(_, time_b, _),
+                    ..
+                },
+            ) = (a, b)
+            {
+                if *time_a == PenaltyTime::TotalDismissal && *time_b == PenaltyTime::TotalDismissal
+                // if they're both TD, keep same ordering
+                {
+                    std::cmp::Ordering::Equal
+                } else if let (PenaltyTime::Seconds(time_a), PenaltyTime::Seconds(time_b)) =
+                    // if they're both timed, sort by time remaining
+                    (time_a, time_b)
+                {
+                    time_b.cmp(time_a)
+                } else {
+                    // if one is TD and the other timed, TD goes on top.
+                    if *time_b == PenaltyTime::TotalDismissal {
+                        std::cmp::Ordering::Greater
+                    } else {
+                        std::cmp::Ordering::Less
+                    }
+                }
+            } else if let (
+                // if both flags are goal flags, keep same ordering
+                Flag {
+                    flag_type: FlagType::Goal(_),
+                    ..
+                },
+                Flag {
+                    flag_type: FlagType::Goal(_),
+                    ..
+                },
+            ) = (a, b)
+            {
+                std::cmp::Ordering::Equal
+            } else {
+                // if one is a goal flag and the other a penalty flag, put the penalty flag on top
+                if let Flag {
+                    flag_type: FlagType::Goal(_),
+                    ..
+                } = a
+                {
+                    std::cmp::Ordering::Greater
+                } else {
+                    std::cmp::Ordering::Less
+                }
+            }
+        })
     }
 
+    /// Responsible for drawing the flags, deleting them, etc.
     pub fn draw(&mut self) {
         for (idx, flag) in self.active_flags.iter_mut().enumerate() {
             let alpha_offset = if let FlagType::Goal(_) = flag.flag_type {
@@ -169,10 +241,8 @@ impl FlagRenderer {
             } else {
                 // fade in the flag, but fade it out when it is marked unvisited by the syncronize function
                 if let FlagType::Penalty(_, _, false) = flag.flag_type {
-                    println!("r");
                     flag.alpha_animation_counter -= 1f32 / 60f32;
                 } else if flag.alpha_animation_counter < 1f32 {
-                    println!("s");
                     flag.alpha_animation_counter += 1f32 / 60f32;
                 }
                 (0f32, 255f32).interpolate_linear(flag.alpha_animation_counter)
@@ -187,8 +257,8 @@ impl FlagRenderer {
                     flag.movement_animation_counter += 1f32 / 60f32;
                 }
                 (
-                    BASE_HEIGHT + flag.vertical_position as f32 * FLAG_HEIGHT - BASE_HEIGHT
-                        + idx as f32 * FLAG_HEIGHT,
+                    (BASE_HEIGHT + flag.vertical_position as f32 * FLAG_HEIGHT)
+                        - (BASE_HEIGHT + idx as f32 * FLAG_HEIGHT),
                     0f32,
                 )
                     .interpolate_linear(flag.movement_animation_counter)

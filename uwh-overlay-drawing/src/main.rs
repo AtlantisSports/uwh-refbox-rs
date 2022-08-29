@@ -2,7 +2,7 @@ use std::{str::FromStr, sync::mpsc::channel};
 
 //use uwh_common::game_snapshot::GamePeriod;
 use ipc_channel::ipc;
-use network::StatePacket;
+use network::{StatePacket, TeamInfo};
 use std::net::IpAddr;
 
 use macroquad::prelude::*;
@@ -33,8 +33,8 @@ impl Default for AppConfig {
 
 pub struct State {
     snapshot: GameSnapshot,
-    black: String,
-    white: String,
+    black: TeamInfo,
+    white: TeamInfo,
     w_flag: Option<Texture2D>,
     b_flag: Option<Texture2D>,
 }
@@ -111,15 +111,15 @@ async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) 
                 } else {
                     game_state.w_flag
                 };
-                if let Some(team_name) = state.black {
-                    game_state.black = team_name;
+                if let Some(team) = state.black {
+                    game_state.black = team;
                 }
-                if let Some(team_name) = state.white {
-                    game_state.white = team_name;
+                if let Some(team) = state.white {
+                    game_state.white = team;
                 }
                 game_state.snapshot = state.snapshot;
             } else {
-                // If `game_state` hasn't been init'd, just copy all the values over.
+                // If `game_state` hasn't been init'd, just copy all the values over. Unwrap because we expect the first snapshot to contain this info always.
                 game_state = Some(State {
                     white: state.white.unwrap(),
                     black: state.black.unwrap(),
@@ -135,11 +135,10 @@ async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) 
             // check if goal has been toggled to a `Some(_)` value; tell the flag renderer about the new goal
             if let Some(goal) = game_state.as_ref().unwrap().snapshot.recent_goal {
                 if Some(goal) != last_recent_goal {
-                    flag_renderer.add_flag(flag::Flag::new(
-                        String::from("re"),
-                        goal.1,
-                        flag::FlagType::Goal(goal.0),
-                    ));
+                    flag_renderer.add_penalty_flag(
+                        flag::Flag::new(String::new(), goal.1, flag::FlagType::Goal(goal.0)),
+                        &game_state.as_ref().unwrap(),
+                    );
                     last_recent_goal = Some(goal);
                 } else {
                     last_recent_goal = game_state.as_ref().unwrap().snapshot.recent_goal;
@@ -158,12 +157,12 @@ async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) 
 
             // sync local penalty list
             flag_renderer.synchronize_penalties(
-                &game_state.as_ref().unwrap().snapshot.w_penalties,
                 uwh_common::game_snapshot::Color::White,
+                game_state.as_ref().unwrap(),
             );
             flag_renderer.synchronize_penalties(
-                &game_state.as_ref().unwrap().snapshot.b_penalties,
                 uwh_common::game_snapshot::Color::Black,
+                game_state.as_ref().unwrap(),
             );
         }
 

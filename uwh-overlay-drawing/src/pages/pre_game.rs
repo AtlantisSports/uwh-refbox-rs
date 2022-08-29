@@ -128,7 +128,7 @@ impl PageRenderer {
             },
         );
         draw_text_ex(
-            state.white.to_uppercase().as_str(),
+            state.white.team_name.to_uppercase().as_str(),
             160f32,
             64f32,
             TextParams {
@@ -139,7 +139,7 @@ impl PageRenderer {
             },
         );
         draw_text_ex(
-            state.black.to_uppercase().as_str(),
+            state.black.team_name.to_uppercase().as_str(),
             160f32,
             100f32,
             TextParams {

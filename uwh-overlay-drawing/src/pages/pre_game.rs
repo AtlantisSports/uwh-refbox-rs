@@ -148,7 +148,7 @@ impl PageRenderer {
                 ..Default::default()
             },
         );
-        if let Some(flag) = state.w_flag {
+        if let Some(flag) = state.white_flag {
             draw_texture_ex(
                 flag,
                 79f32,
@@ -160,7 +160,7 @@ impl PageRenderer {
                 },
             );
         }
-        if let Some(flag) = state.b_flag {
+        if let Some(flag) = state.black_flag {
             draw_texture_ex(
                 flag,
                 79f32,

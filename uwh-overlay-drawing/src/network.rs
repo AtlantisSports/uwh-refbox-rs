@@ -8,6 +8,15 @@ use uwh_common::game_snapshot::GameSnapshot;
 pub struct TeamInfo {
     pub team_name: String,
     pub players: Vec<(String, u8)>,
+    pub flag_url: Option<String>,
+}
+
+pub fn get_flag(flag_url: &str) -> Vec<u8> {
+    reqwest::blocking::get(flag_url)
+        .unwrap()
+        .bytes()
+        .unwrap()
+        .to_vec()
 }
 
 impl TeamInfo {
@@ -30,9 +39,11 @@ impl TeamInfo {
                 player["number"].as_u64().unwrap() as u8,
             ));
         }
+
         Self {
             team_name: data["team"]["name"].as_str().unwrap().to_string(),
             players: player_list,
+            flag_url: Some(data["team"]["flag_url"].as_str().unwrap().to_string()),
         }
     }
 }
@@ -42,8 +53,6 @@ pub struct StatePacket {
     pub snapshot: GameSnapshot,
     pub black: Option<TeamInfo>,
     pub white: Option<TeamInfo>,
-    pub w_flag: Option<Vec<u8>>,
-    pub b_flag: Option<Vec<u8>>,
 }
 
 pub fn networking_thread(
@@ -64,6 +73,7 @@ pub fn networking_thread(
     )?;
     let team_id_black = data["game"]["black_id"].as_u64().unwrap();
     let team_id_white = data["game"]["white_id"].as_u64().unwrap();
+    println!("teams: {} {}", team_id_black, team_id_white);
     let black = TeamInfo::new(&config, 28, team_id_black);
     let white = TeamInfo::new(&config, 28, team_id_white);
     let w_flag = include_bytes!(".././assets/flags/Seattle (Typical Ratio).png");
@@ -71,10 +81,8 @@ pub fn networking_thread(
     if tx
         .send(StatePacket {
             snapshot,
-            black: Some(black.clone()),
-            white: Some(white.clone()),
-            w_flag: Some(w_flag.to_vec()),
-            b_flag: Some(b_flag.to_vec()),
+            black: Some(TeamInfo { ..black.clone() }),
+            white: Some(TeamInfo { ..white.clone() }),
         })
         .is_err()
     {
@@ -88,8 +96,6 @@ pub fn networking_thread(
                     snapshot,
                     black: None,
                     white: None,
-                    w_flag: None,
-                    b_flag: None,
                 })
                 .is_err()
             {

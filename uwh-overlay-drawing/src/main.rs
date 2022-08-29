@@ -35,8 +35,8 @@ pub struct State {
     snapshot: GameSnapshot,
     black: TeamInfo,
     white: TeamInfo,
-    w_flag: Option<Texture2D>,
-    b_flag: Option<Texture2D>,
+    white_flag: Option<Texture2D>,
+    black_flag: Option<Texture2D>,
 }
 
 fn main() {
@@ -84,7 +84,7 @@ async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) 
         load_images::Textures::init_color()
     };
 
-    let mut game_state: Option<State> = None;
+    let mut local_state: Option<State> = None;
 
     //keeps track of last recieved value of recent_goal snapshot to detect a toggle into a `Some(_)` value
     let mut last_recent_goal: Option<(uwh_common::game_snapshot::Color, u8)> = None;
@@ -100,51 +100,63 @@ async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) 
     loop {
         clear_background(BLACK);
 
-        if let Ok(state) = rx.try_recv() {
-            // Update state parameters like team names and flags if they are present.
-            if let Some(game_state) = &mut game_state {
-                game_state.w_flag = if state.w_flag.is_some() {
-                    Some(Texture2D::from_file_with_format(
-                        state.w_flag.unwrap().as_ref(),
-                        None,
-                    ))
-                } else {
-                    game_state.w_flag
-                };
-                if let Some(team) = state.black {
-                    game_state.black = team;
+        if let Ok(recieved_state) = rx.try_recv() {
+            // Update state parameters like team names and flags if they are `Some`.
+            if let Some(local_state) = &mut local_state {
+                if let Some(team) = recieved_state.black {
+                    local_state.black = team;
                 }
-                if let Some(team) = state.white {
-                    game_state.white = team;
+                if let Some(team) = recieved_state.white {
+                    local_state.white = team;
                 }
-                game_state.snapshot = state.snapshot;
+                local_state.snapshot = recieved_state.snapshot;
             } else {
                 // If `game_state` hasn't been init'd, just copy all the values over. Unwrap because we expect the first snapshot to contain this info always.
-                game_state = Some(State {
-                    white: state.white.unwrap(),
-                    black: state.black.unwrap(),
-                    w_flag: state
-                        .w_flag
-                        .map(|flag| Texture2D::from_file_with_format(flag.as_ref(), None)),
-                    b_flag: state
-                        .b_flag
-                        .map(|flag| Texture2D::from_file_with_format(flag.as_ref(), None)),
-                    snapshot: state.snapshot,
+                local_state = Some(State {
+                    snapshot: recieved_state.snapshot,
+                    white_flag: Some(Texture2D::from_file_with_format(
+                        &network::get_flag(
+                            recieved_state
+                                .white
+                                .as_ref()
+                                .unwrap()
+                                .flag_url
+                                .clone()
+                                .unwrap()
+                                .as_str(),
+                        ),
+                        None,
+                    )),
+                    black_flag: Some(Texture2D::from_file_with_format(
+                        &network::get_flag(
+                            recieved_state
+                                .black
+                                .as_ref()
+                                .unwrap()
+                                .flag_url
+                                .clone()
+                                .unwrap()
+                                .as_str(),
+                        ),
+                        None,
+                    )),
+                    white: recieved_state.white.unwrap(),
+                    black: recieved_state.black.unwrap(),
                 });
             }
             // check if goal has been toggled to a `Some(_)` value; tell the flag renderer about the new goal
-            if let Some(goal) = game_state.as_ref().unwrap().snapshot.recent_goal {
+            if let Some(goal) = local_state.as_ref().unwrap().snapshot.recent_goal {
                 if Some(goal) != last_recent_goal {
                     flag_renderer.add_penalty_flag(
                         flag::Flag::new(String::new(), goal.1, flag::FlagType::Goal(goal.0)),
-                        &game_state.as_ref().unwrap(),
+                        &local_state.as_ref().unwrap(),
                     );
                     last_recent_goal = Some(goal);
                 } else {
-                    last_recent_goal = game_state.as_ref().unwrap().snapshot.recent_goal;
+                    last_recent_goal = local_state.as_ref().unwrap().snapshot.recent_goal;
                 }
             } else {
-                last_recent_goal = game_state.as_ref().unwrap().snapshot.recent_goal;
+                last_recent_goal = local_state.as_ref().unwrap().snapshot.recent_goal;
             }
 
             // More concise code works only in nightly, if let chaining not stable yet.
@@ -158,15 +170,15 @@ async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) 
             // sync local penalty list
             flag_renderer.synchronize_penalties(
                 uwh_common::game_snapshot::Color::White,
-                game_state.as_ref().unwrap(),
+                local_state.as_ref().unwrap(),
             );
             flag_renderer.synchronize_penalties(
                 uwh_common::game_snapshot::Color::Black,
-                game_state.as_ref().unwrap(),
+                local_state.as_ref().unwrap(),
             );
         }
 
-        if let Some(state) = &game_state {
+        if let Some(state) = &local_state {
             match state.snapshot.current_period {
                 GamePeriod::BetweenGames => match state.snapshot.secs_in_period {
                     151..=u32::MAX => {

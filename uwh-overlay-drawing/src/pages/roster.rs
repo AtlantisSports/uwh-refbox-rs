@@ -65,14 +65,14 @@ impl PageRenderer {
             },
         );
         if self.is_alpha_mode {
-            if state.w_flag.is_some() {
+            if state.white_flag.is_some() {
                 draw_rectangle(580f32, 738f32 + offset, 180f32, 100f32, WHITE);
             }
-            if state.b_flag.is_some() {
+            if state.black_flag.is_some() {
                 draw_rectangle(1163f32, 738f32 + offset, 180f32, 100f32, WHITE);
             }
         } else {
-            if let Some(flag) = state.w_flag {
+            if let Some(flag) = state.white_flag {
                 draw_texture_ex(
                     flag,
                     580f32,
@@ -84,7 +84,7 @@ impl PageRenderer {
                     },
                 );
             }
-            if let Some(flag) = state.b_flag {
+            if let Some(flag) = state.black_flag {
                 draw_texture_ex(
                     flag,
                     1163f32,

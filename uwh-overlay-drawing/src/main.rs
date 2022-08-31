@@ -60,15 +60,16 @@ fn main() {
         network::networking_thread(tx, config)
             .expect("Networking error. Does the supplied URL exist and is it live?");
     });
-    procspawn::spawn(rx_a, |rx| {
-        macroquad::Window::new("Alpha Stream", render_process(true, rx));
+    procspawn::spawn(rx_a, |rx_a| {
+        macroquad::Window::new("Alpha Stream", render_process(true, rx_a));
     });
-    procspawn::spawn(rx_c, |rx| {
-        macroquad::Window::new("Color Stream", render_process(false, rx));
+    procspawn::spawn(rx_c, |rx_c| {
+        macroquad::Window::new("Color Stream", render_process(false, rx_c));
     });
 
     loop {
         if let Ok(item) = rx.recv() {
+            info!("Main thread recieved snapshot");
             assert!(
                 !(tx_a.send(item.clone()).is_err() & tx_c.send(item).is_err()),
                 "Exiting.. Both windows closed!"

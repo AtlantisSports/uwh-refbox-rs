@@ -99,7 +99,6 @@ pub fn networking_thread(
     loop {
         read_bytes = stream.read(&mut buff).unwrap();
         if let Ok(snapshot) = serde_json::de::from_slice(&buff[..read_bytes]) {
-            info!("Recieved snapshot");
             if tx
                 .send(StatePacket {
                     snapshot,

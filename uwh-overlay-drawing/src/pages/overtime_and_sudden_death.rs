@@ -3,21 +3,196 @@ use super::PageRenderer;
 use crate::State;
 use macroquad::prelude::*;
 use uwh_common::game_snapshot::GamePeriod;
+use uwh_common::game_snapshot::TimeoutSnapshot;
 
 impl PageRenderer {
     /// Display during overtime. Has no animations
     pub fn overtime_and_sudden_death_display(&mut self, state: &State) {
         draw_texture(self.textures.team_bar_graphic, 0_f32, 0f32, WHITE);
+        draw_texture(self.textures.in_game_mask, 0f32, 0f32, WHITE);
+        if state.snapshot.timeout != TimeoutSnapshot::None {
+            draw_texture(
+                match state.snapshot.timeout {
+                    TimeoutSnapshot::Ref(_) => self.textures.referee_timout_graphic,
+                    TimeoutSnapshot::White(_) => self.textures.white_timout_graphic,
+                    TimeoutSnapshot::Black(_) => self.textures.black_timout_graphic,
+                    TimeoutSnapshot::PenaltyShot(_) => self.textures.penalty_graphic,
+                    _ => unreachable!(), // this is ugly. `TimeoutSnapshot` must be made an `Option`
+                },
+                -200f32,
+                0f32,
+                WHITE,
+            );
+            match state.snapshot.timeout {
+                // draw text for each type of penalty
+                TimeoutSnapshot::Ref(_) => {
+                    draw_text_ex(
+                        "REFEREE",
+                        475f32,
+                        67f32,
+                        TextParams {
+                            font: self.textures.font,
+                            font_size: 20,
+                            color: if self.is_alpha_mode { WHITE } else { BLACK },
+                            ..Default::default()
+                        },
+                    );
+                    draw_text_ex(
+                        "TIMEOUT",
+                        480f32,
+                        95f32,
+                        TextParams {
+                            font: self.textures.font,
+                            font_size: 20,
+                            color: if self.is_alpha_mode { WHITE } else { BLACK },
+                            ..Default::default()
+                        },
+                    );
+                }
+                TimeoutSnapshot::White(time) => {
+                    draw_text_ex(
+                        "WHITE",
+                        475f32,
+                        67f32,
+                        TextParams {
+                            font: self.textures.font,
+                            font_size: 20,
+                            color: if self.is_alpha_mode { WHITE } else { BLACK },
+                            ..Default::default()
+                        },
+                    );
+                    draw_text_ex(
+                        "TIMEOUT",
+                        465f32,
+                        95f32,
+                        TextParams {
+                            font: self.textures.font,
+                            font_size: 20,
+                            color: if self.is_alpha_mode { WHITE } else { BLACK },
+                            ..Default::default()
+                        },
+                    );
+                    draw_text_ex(
+                        format!("{time}").as_str(),
+                        565f32,
+                        95f32,
+                        TextParams {
+                            font: self.textures.font,
+                            font_size: 50,
+                            color: if self.is_alpha_mode { WHITE } else { BLACK },
+                            ..Default::default()
+                        },
+                    );
+                }
+                TimeoutSnapshot::Black(time) => {
+                    draw_text_ex(
+                        "BLACK",
+                        475f32,
+                        67f32,
+                        TextParams {
+                            font: self.textures.font,
+                            font_size: 20,
+                            ..Default::default()
+                        },
+                    );
+                    draw_text_ex(
+                        "TIMEOUT",
+                        465f32,
+                        95f32,
+                        TextParams {
+                            font: self.textures.font,
+                            font_size: 20,
+                            ..Default::default()
+                        },
+                    );
+                    draw_text_ex(
+                        format!("{time}").as_str(),
+                        565f32,
+                        95f32,
+                        TextParams {
+                            font: self.textures.font,
+                            font_size: 50,
+                            ..Default::default()
+                        },
+                    );
+                }
+                TimeoutSnapshot::PenaltyShot(_) => {
+                    draw_text_ex(
+                        "PENALTY",
+                        475f32,
+                        67f32,
+                        TextParams {
+                            font: self.textures.font,
+                            font_size: 20,
+                            color: if self.is_alpha_mode { WHITE } else { BLACK },
+                            ..Default::default()
+                        },
+                    );
+                    draw_text_ex(
+                        "SHOT",
+                        490f32,
+                        95f32,
+                        TextParams {
+                            font: self.textures.font,
+                            font_size: 20,
+                            color: if self.is_alpha_mode { WHITE } else { BLACK },
+                            ..Default::default()
+                        },
+                    );
+                }
+                _ => unreachable!(), // this is ugly. `TimeoutSnapshot` must be made an `Option`
+            }
+        }
+        if state.white_flag == None {
+            draw_text_ex(
+                state.white.team_name.to_uppercase().as_str(),
+                if let Some(_) = state.white_flag {
+                    160f32
+                } else {
+                    79f32
+                },
+                64f32,
+                TextParams {
+                    font: self.textures.font,
+                    font_size: 20,
+                    color: Color::from_rgba(
+                        if self.is_alpha_mode { 255 } else { 0 },
+                        if self.is_alpha_mode { 255 } else { 0 },
+                        if self.is_alpha_mode { 255 } else { 0 },
+                        255,
+                    ), // don't fade out team name if flags aren't available
+                    ..Default::default()
+                },
+            );
+            draw_text_ex(
+                state.black.team_name.to_uppercase().as_str(),
+                if let Some(_) = state.black_flag {
+                    160f32
+                } else {
+                    79f32
+                },
+                100f32,
+                TextParams {
+                    font: self.textures.font,
+                    font_size: 20,
+                    color: Color::from_rgba(255, 255, 255, 255),
+                    ..Default::default()
+                },
+            );
+        }
         if self.is_alpha_mode {
-            draw_texture(self.textures.in_game_mask, 0f32, 0f32, WHITE);
+            if let Some(_) = state.white_flag {
+                draw_rectangle(79f32, 39f32, 70f32, 33f32, WHITE);
+            }
+            if let Some(_) = state.black_flag {
+                draw_rectangle(79f32, 75f32, 70f32, 33f32, WHITE);
+            }
             draw_texture(
                 self.textures.time_and_game_state_graphic,
                 -200f32,
                 0f32,
                 WHITE,
             );
-            draw_rectangle(79f32, 39f32, 70f32, 33f32, WHITE);
-            draw_rectangle(79f32, 75f32, 70f32, 33f32, WHITE);
         } else {
             draw_texture(
                 self.textures.time_and_game_state_graphic,
@@ -123,31 +298,4 @@ impl PageRenderer {
             },
         );
     }
-
-    // Shown every time a goal is made for five seconds. A second each for fade in and out.
-    // Must use a secondary animation counter because this is called along with other draw functions
-    // pub fn show_goal_graphic(&mut self) {
-    //     //animate fade for the first second
-    //     let offset = if self.animation_counter < 1f32 {
-    //         self.animation_counter += 1f32 / 60f32; // inverse of number of frames in transition period
-    //         (0f32, 255f32).interpolate_linear(self.animation_counter)
-    //     } else if self.animation_counter < 4f32 {
-    //         self.animation_counter += 1f32 / 60f32; // inverse of number of frames in transition period
-
-    //         (0f32, 255f32).interpolate_linear(1f32)
-    //     } else if self.animation_counter < 5f32 {
-    //         //animate fade out in the last one second
-    //         self.animation_counter += 1f32 / 60f32; // inverse of number of frames in transition period
-    //         (0f32, 255f32).interpolate_linear(5f32 - self.animation_counter)
-    //     } else {
-    //         self.animation_counter = 0f32;
-    //         0f32
-    //     } as u8;
-    //     draw_texture(
-    //         *self.textures.team_white_graphic(),
-    //         25f32,
-    //         150f32,
-    //         Color::from_rgba(255, 255, 255, offset),
-    //     );
-    // }
 }

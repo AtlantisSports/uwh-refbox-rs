@@ -3,11 +3,10 @@
 //! Flags are discarded automatically after their 5 second show time as long as the draw function is called.
 
 use crate::pages::center_text_offset;
-use crate::pages::get_input;
 use crate::pages::Interpolate;
 use macroquad::prelude::*;
+use uwh_common::game_snapshot::Color as UWHColor;
 use uwh_common::game_snapshot::PenaltyTime;
-use uwh_common::game_snapshot::{Color as UWHColor, PenaltySnapshot};
 
 use crate::load_images::load;
 

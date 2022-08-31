@@ -41,6 +41,7 @@ pub struct State {
 
 fn main() {
     procspawn::init();
+    simple_logger::SimpleLogger::new().init().unwrap();
     let (tx, rx) = channel::<StatePacket>();
     let (tx_a, rx_a) = ipc::channel::<StatePacket>().unwrap();
     let (tx_c, rx_c) = ipc::channel::<StatePacket>().unwrap();

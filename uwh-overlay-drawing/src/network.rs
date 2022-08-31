@@ -1,3 +1,4 @@
+use macroquad::prelude::info;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::Read;
@@ -21,6 +22,7 @@ pub fn get_flag(flag_url: &str) -> Vec<u8> {
 
 impl TeamInfo {
     pub fn new(config: &crate::AppConfig, tournament_id: u32, team_id: u64) -> Self {
+        info!("Requesting UWH API for team information");
         let data: Value = serde_json::from_str(
             &reqwest::blocking::get(format!(
                 "https://{}/api/v1/tournaments/{}/teams/{}",
@@ -31,9 +33,13 @@ impl TeamInfo {
             .unwrap(),
         )
         .unwrap();
+        info!("Recieved response");
         let players: Vec<Value> = data["team"]["roster"]
             .as_array()
-            .unwrap_or(&Vec::new())
+            .unwrap_or({
+                info!("Player data not recieved from API");
+                &Vec::new()
+            })
             .clone();
         let mut player_list: Vec<(String, u8)> = Vec::new();
         for player in players {
@@ -67,6 +73,7 @@ pub fn networking_thread(
     let mut buff = vec![0u8; 1024];
     let mut read_bytes = stream.read(&mut buff).unwrap();
     let snapshot: GameSnapshot = serde_json::de::from_slice(&buff[..read_bytes]).unwrap();
+    info!("Requesting game data from UWH API");
     let data: Value = serde_json::from_str(
         &reqwest::blocking::get(format!(
             "https://{}/api/v1/tournaments/{}/games/{}",
@@ -74,6 +81,7 @@ pub fn networking_thread(
         ))?
         .text()?,
     )?;
+    info!("Recieved response");
     let team_id_black = data["game"]["black_id"].as_u64().unwrap();
     let team_id_white = data["game"]["white_id"].as_u64().unwrap();
     let black = TeamInfo::new(&config, 28, team_id_black);
@@ -91,6 +99,7 @@ pub fn networking_thread(
     loop {
         read_bytes = stream.read(&mut buff).unwrap();
         if let Ok(snapshot) = serde_json::de::from_slice(&buff[..read_bytes]) {
+            info!("Recieved snapshot");
             if tx
                 .send(StatePacket {
                     snapshot,
@@ -99,7 +108,7 @@ pub fn networking_thread(
                 })
                 .is_err()
             {
-                eprintln!("Frontend could not recieve game snapshot!")
+                info!("Frontend could not recieve game snapshot!")
             }
         }
     }

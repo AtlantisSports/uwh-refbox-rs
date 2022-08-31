@@ -1,8 +1,10 @@
 use super::center_text_offset;
+use super::get_input;
 use super::Interpolate;
 use super::PageRenderer;
 use crate::State;
 use macroquad::prelude::*;
+use uwh_common::game_snapshot::Color;
 
 impl PageRenderer {
     /// Roster screen, displayed between 150 and 30 seconds before the next game.
@@ -16,21 +18,77 @@ impl PageRenderer {
         };
         draw_texture(self.textures.atlantis_logo_graphic, 0_f32, 0f32, WHITE);
         draw_texture(self.textures.bottom_graphic, 0_f32, 0f32, WHITE);
-        draw_texture(self.textures.team_black_graphic, 1090f32, 220f32, WHITE);
-        draw_texture(self.textures.team_white_graphic, 150f32, 220f32, WHITE);
+        for (i, player_identifier) in state
+            .white
+            .players
+            .iter()
+            .map(|player| (player, Color::White))
+            .enumerate()
+            .chain(
+                state
+                    .black
+                    .players
+                    .iter()
+                    .map(|player| (player, Color::Black))
+                    .enumerate(),
+            )
+        {
+            if 60f32 * i as f32 + 220f32 > 650f32 + offset + 100f32 {
+                draw_texture(
+                    if player_identifier.1 == Color::White {
+                        self.textures.team_white_graphic
+                    } else {
+                        self.textures.team_black_graphic
+                    },
+                    if player_identifier.1 == Color::White {
+                        150f32
+                    } else {
+                        1090f32
+                    },
+                    60f32 * i as f32 + 220f32,
+                    WHITE,
+                );
+                draw_text_ex(
+                    format!("#{}", player_identifier.0 .1).as_str(),
+                    if player_identifier.1 == Color::White {
+                        185f32
+                    } else {
+                        1120f32
+                    },
+                    252f32 + 60f32 * i as f32,
+                    TextParams {
+                        font: self.textures.font,
+                        font_size: 35,
+                        color: if player_identifier.1 == Color::White {
+                            BLACK
+                        } else {
+                            WHITE
+                        },
+                        ..Default::default()
+                    },
+                );
+                draw_text_ex(
+                    player_identifier.0 .0.as_str(),
+                    if player_identifier.1 == Color::White {
+                        285f32
+                    } else {
+                        1220f32
+                    },
+                    252f32 + 60f32 * i as f32,
+                    TextParams {
+                        font: self.textures.font,
+                        font_size: 35,
+                        color: if player_identifier.1 == Color::White {
+                            BLACK
+                        } else {
+                            WHITE
+                        },
+                        ..Default::default()
+                    },
+                );
+            }
+        }
         draw_texture(self.textures.team_information_graphic, 0_f32, offset, WHITE);
-        draw_texture(
-            self.textures.team_white_graphic,
-            150f32,
-            220f32 + 60f32,
-            WHITE,
-        );
-        draw_texture(
-            self.textures.team_black_graphic,
-            1090f32,
-            220f32 + 60f32,
-            WHITE,
-        );
         let x_off = center_text_offset!(
             200f32,
             state.black.team_name.to_uppercase().as_str(),

@@ -131,9 +131,10 @@ impl FlagRenderer {
         } else {
             &game_state.snapshot.w_penalties
         } {
-            // let penalty: PenaltySnapshot = penalty;
-            // find the penalty in the local list, create a new penalty if it doesn't exist.
-            let flag_pos = self
+            if !matches!(penalty.time, PenaltyTime::Seconds(0)) {
+                // let penalty: PenaltySnapshot = penalty;
+                // find the penalty in the local list, create a new penalty if it doesn't exist.
+                let flag_pos = self
                 .active_flags
                 .iter()
                 .position(|flag| {
@@ -152,19 +153,19 @@ impl FlagRenderer {
                     self.active_flags.len() - 1
                 });
 
-            // update time on all the penalty flags
-            match self.active_flags.get_mut(flag_pos).unwrap() {
-                Flag {
-                    flag_type: FlagType::Penalty(_, time, is_visited),
-                    ..
-                } => {
-                    *time = penalty.time;
-                    *is_visited = true;
+                // update time on all the penalty flags
+                match self.active_flags.get_mut(flag_pos).unwrap() {
+                    Flag {
+                        flag_type: FlagType::Penalty(_, time, is_visited),
+                        ..
+                    } => {
+                        *time = penalty.time;
+                        *is_visited = true;
+                    }
+                    _ => unreachable!(),
                 }
-                _ => unreachable!(),
             }
         }
-
         // sort the flags based on: TD penalties on top, then time penalties sorted by longest time and lastly, goal callouts
         self.active_flags.sort_by(|a, b| {
             if let (

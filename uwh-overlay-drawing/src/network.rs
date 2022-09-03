@@ -36,11 +36,12 @@ impl TeamInfo {
         info!("Recieved response");
         let players: Vec<Value> = data["team"]["roster"]
             .as_array()
-            .unwrap_or({
+            .map(|x| x.clone())
+            .unwrap_or_else(|| {
                 info!("Player data not recieved from API");
-                &Vec::new()
-            })
-            .clone();
+                let temp = Vec::new();
+                temp
+            });
         let mut player_list: Vec<(String, u8)> = Vec::new();
         for player in players {
             player_list.push((

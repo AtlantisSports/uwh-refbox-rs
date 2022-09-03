@@ -155,17 +155,23 @@ impl PageRenderer {
             }
             let min = state.snapshot.secs_in_period / 60;
             let secs = state.snapshot.secs_in_period % 60;
+            let text = format!(
+                "{}:{}",
+                if min < 10 {
+                    format!("0{}", min)
+                } else {
+                    format!("{}", min)
+                },
+                if secs < 10 {
+                    format!("0{}", secs)
+                } else {
+                    format!("{}", secs)
+                }
+            );
             let x_off: f32 = 90f32
-                - measure_text(
-                    format!("{}:{}", min, secs).as_str(),
-                    self.textures.font.into(),
-                    50,
-                    1.0,
-                )
-                .width
-                    / 2f32;
+                - measure_text(text.as_str(), self.textures.font.into(), 50, 1.0).width / 2f32;
             draw_text_ex(
-                format!("{}:{}", min, secs).as_str(),
+                text.as_str(),
                 870f32 + x_off,
                 1020f32,
                 TextParams {

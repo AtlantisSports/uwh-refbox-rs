@@ -14,6 +14,16 @@ mod pages;
 
 const APP_CONFIG_NAME: &str = "uwh-overlay-drawing";
 
+fn window_conf(title: &str) -> Conf {
+    Conf {
+        window_title: title.to_string(),
+        window_width: 1920,
+        window_height: 1080,
+        window_resizable: false,
+        ..Default::default()
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct AppConfig {
     refbox_ip: IpAddr,
@@ -61,10 +71,10 @@ fn main() {
             .expect("Networking error. Does the supplied URL exist and is it live?");
     });
     procspawn::spawn(rx_a, |rx_a| {
-        macroquad::Window::new("Alpha Stream", render_process(true, rx_a));
+        macroquad::Window::from_config(window_conf("Alpha Stream"), render_process(true, rx_a));
     });
     procspawn::spawn(rx_c, |rx_c| {
-        macroquad::Window::new("Color Stream", render_process(false, rx_c));
+        macroquad::Window::from_config(window_conf("Color Stream"), render_process(false, rx_c));
     });
 
     loop {

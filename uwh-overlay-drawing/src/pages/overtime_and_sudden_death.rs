@@ -202,14 +202,22 @@ impl PageRenderer {
             );
             let min = state.snapshot.secs_in_period / 60;
             let secs = state.snapshot.secs_in_period % 60;
-            let x_off = center_text_offset!(
-                90f32,
-                format!("{}:{}", min, secs).as_str(),
-                50,
-                self.textures.font
+            let text = format!(
+                "{}:{}",
+                if min < 10 {
+                    format!("0{}", min)
+                } else {
+                    format!("{}", min)
+                },
+                if secs < 10 {
+                    format!("0{}", secs)
+                } else {
+                    format!("{}", secs)
+                }
             );
+            let x_off = center_text_offset!(90f32, text.as_str(), 50, self.textures.font);
             draw_text_ex(
-                format!("{}:{}", min, secs).as_str(),
+                text.as_str(),
                 230f32 + x_off,
                 95f32,
                 TextParams {

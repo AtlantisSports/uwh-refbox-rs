@@ -71,14 +71,14 @@ impl FlagRenderer {
                 .iter()
                 .find(|player| player.1 == flag.player_number)
                 .map(|player| player.0.clone())
-                .unwrap_or(String::from("Unknown Player")),
+                .unwrap_or(String::new()),
             _ => game_state
                 .white
                 .players
                 .iter()
                 .find(|player| player.1 == flag.player_number)
                 .map(|player| player.0.clone())
-                .unwrap_or(String::from("Unknown Player")),
+                .unwrap_or(String::new()),
         };
         self.active_flags.push(flag);
     }

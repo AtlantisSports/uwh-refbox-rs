@@ -239,7 +239,7 @@ impl FlagRenderer {
                     255f32
                 }
             } else {
-                // fade in the flag, but fade it out when it is marked unvisited by the syncronize function
+                // fade in the flag, but fade it out when it is marked unvisited by the synchronize function
                 if let FlagType::Penalty(_, _, false) = flag.flag_type {
                     flag.alpha_animation_counter -= 1f32 / 60f32;
                 } else if flag.alpha_animation_counter < 1f32 {
@@ -284,18 +284,18 @@ impl FlagRenderer {
                 BASE_HEIGHT + idx as f32 * FLAG_HEIGHT + movement_offset,
                 Color::from_rgba(255, 255, 255, alpha_offset as u8),
             );
+            draw_text_ex(
+                format!("#{} {}", flag.player_number, flag.player_name).as_str(),
+                160f32,
+                BASE_HEIGHT + idx as f32 * FLAG_HEIGHT + movement_offset + 33f32,
+                TextParams {
+                    font: self.textures.font,
+                    font_size: 30,
+                    color: Color::from_rgba(255, 255, 255, alpha_offset as u8),
+                    ..Default::default()
+                },
+            );
             if !self.is_alpha_mode {
-                draw_text_ex(
-                    format!("#{} {}", flag.player_number, flag.player_name).as_str(),
-                    160f32,
-                    BASE_HEIGHT + idx as f32 * FLAG_HEIGHT + movement_offset + 33f32,
-                    TextParams {
-                        font: self.textures.font,
-                        font_size: 30,
-                        color: Color::from_rgba(255, 255, 255, alpha_offset as u8),
-                        ..Default::default()
-                    },
-                );
                 match flag.flag_type {
                     FlagType::Goal(_) => draw_text_ex(
                         "GOAL",

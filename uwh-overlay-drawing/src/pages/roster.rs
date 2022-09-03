@@ -47,25 +47,27 @@ impl PageRenderer {
                     60f32 * i as f32 + 220f32,
                     WHITE,
                 );
-                draw_text_ex(
-                    format!("#{}", player_identifier.0 .1).as_str(),
-                    if player_identifier.1 == Color::White {
-                        185f32
-                    } else {
-                        1120f32
-                    },
-                    252f32 + 60f32 * i as f32,
-                    TextParams {
-                        font: self.textures.font,
-                        font_size: 35,
-                        color: if player_identifier.1 == Color::White {
-                            BLACK
+                if !self.is_alpha_mode {
+                    draw_text_ex(
+                        format!("#{}", player_identifier.0 .1).as_str(),
+                        if player_identifier.1 == Color::White {
+                            185f32
                         } else {
-                            WHITE
+                            1120f32
                         },
-                        ..Default::default()
-                    },
-                );
+                        252f32 + 60f32 * i as f32,
+                        TextParams {
+                            font: self.textures.font,
+                            font_size: 35,
+                            color: if player_identifier.1 == Color::White {
+                                BLACK
+                            } else {
+                                WHITE
+                            },
+                            ..Default::default()
+                        },
+                    );
+                }
                 draw_text_ex(
                     player_identifier.0 .0.as_str(),
                     if player_identifier.1 == Color::White {
@@ -77,7 +79,7 @@ impl PageRenderer {
                     TextParams {
                         font: self.textures.font,
                         font_size: 35,
-                        color: if player_identifier.1 == Color::White {
+                        color: if player_identifier.1 == Color::White && !self.is_alpha_mode {
                             BLACK
                         } else {
                             WHITE

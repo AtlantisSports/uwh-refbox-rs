@@ -78,15 +78,15 @@ pub fn networking_thread(
     let data: Value = serde_json::from_str(
         &reqwest::blocking::get(format!(
             "https://{}/api/v1/tournaments/{}/games/{}",
-            config.uwhscores_url, 5, 2
+            config.uwhscores_url, 28, 2
         ))?
         .text()?,
     )?;
     info!("Recieved response");
     let team_id_black = data["game"]["black_id"].as_u64().unwrap();
     let team_id_white = data["game"]["white_id"].as_u64().unwrap();
-    let black = TeamInfo::new(&config, 5, team_id_black);
-    let white = TeamInfo::new(&config, 5, team_id_white);
+    let black = TeamInfo::new(&config, 28, team_id_black);
+    let white = TeamInfo::new(&config, 28, team_id_white);
     if tx
         .send(StatePacket {
             snapshot,

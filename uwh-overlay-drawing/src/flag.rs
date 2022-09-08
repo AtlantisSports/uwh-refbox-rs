@@ -18,7 +18,7 @@ const FLAG_HEIGHT: f32 = 70f32;
 
 #[derive(PartialEq, Debug)]
 pub enum FlagType {
-    Goal(UWHColor),
+    Goal(UWHColor, bool),
     /// Third enum value is used to keep track of whether the flag was visited in last sync. Unvisited flags need to be deleted.
     Penalty(UWHColor, PenaltyTime, bool),
 }
@@ -65,7 +65,7 @@ impl FlagRenderer {
     pub fn add_flag(&mut self, mut flag: Flag, game_state: &crate::State) {
         flag.vertical_position = self.active_flags.len() as u32;
         flag.player_name = match flag.flag_type {
-            FlagType::Penalty(UWHColor::Black, _, _) | FlagType::Goal(UWHColor::Black) => {
+            FlagType::Penalty(UWHColor::Black, _, _) | FlagType::Goal(UWHColor::Black, _) => {
                 game_state
                     .black
                     .players
@@ -111,9 +111,57 @@ impl FlagRenderer {
         }
     }
 
+    pub fn synchronize_flags(&mut self, game_state: &crate::State) {
+        self.synchronize_goals(game_state);
+        self.synchronize_penalties(UWHColor::Black, game_state);
+        self.synchronize_penalties(UWHColor::White, game_state);
+    }
+
+    fn synchronize_goals(&mut self, game_state: &crate::State) {
+        // mark all goal flags as unvisited
+        for flag in &mut self.active_flags {
+            if let Flag {
+                flag_type: FlagType::Goal(_, is_visited),
+                ..
+            } = flag
+            {
+                *is_visited = false
+            }
+        }
+
+        if let Some(goal) = game_state.snapshot.recent_goal {
+            // find the position of the flag in the local list, or else create new
+            let flag_pos = self
+                .active_flags
+                .iter()
+                .position(|flag| {
+                    matches!(flag.flag_type, FlagType::Goal(color, _) if color == goal.0 )
+                        && flag.player_number == goal.1
+                })
+                .unwrap_or_else(|| {
+                    self.add_flag(
+                        Flag::new(String::new(), goal.1, FlagType::Goal(goal.0, true)),
+                        game_state,
+                    );
+                    self.active_flags.len() - 1
+                });
+
+            // get the goal flag in the snapshot and mark it as visited
+            match self.active_flags.get_mut(flag_pos).unwrap() {
+                Flag {
+                    flag_type: FlagType::Goal(_, is_visited),
+                    ..
+                } => {
+                    *is_visited = true;
+                }
+                _ => unreachable!(),
+            }
+        }
+    }
+
     /// Used to synchronise penalty info from snapshot with the local penalty list.
     /// Local penalty flags marked unvisited by this function will be faded out and deleted by the draw function.
-    pub fn synchronize_penalties(&mut self, team_color: UWHColor, game_state: &crate::State) {
+    fn synchronize_penalties(&mut self, team_color: UWHColor, game_state: &crate::State) {
         // mark all penalty flags as unvisited
         for flag in &mut self.active_flags {
             if let Flag {
@@ -202,11 +250,11 @@ impl FlagRenderer {
             } else if let (
                 // if both flags are goal flags, keep same ordering
                 Flag {
-                    flag_type: FlagType::Goal(_),
+                    flag_type: FlagType::Goal(_, _),
                     ..
                 },
                 Flag {
-                    flag_type: FlagType::Goal(_),
+                    flag_type: FlagType::Goal(_, _),
                     ..
                 },
             ) = (a, b)
@@ -215,7 +263,7 @@ impl FlagRenderer {
             } else {
                 // if one is a goal flag and the other a penalty flag, put the penalty flag on top
                 if let Flag {
-                    flag_type: FlagType::Goal(_),
+                    flag_type: FlagType::Goal(_, _),
                     ..
                 } = a
                 {
@@ -230,18 +278,15 @@ impl FlagRenderer {
     /// Responsible for drawing the flags, deleting them, etc.
     pub fn draw(&mut self) {
         for (idx, flag) in self.active_flags.iter_mut().enumerate() {
-            let alpha_offset = if let FlagType::Goal(_) = flag.flag_type {
-                flag.alpha_animation_counter += 1f32 / (60f32 * 5f32);
-                // fade in goal flag, start fade out at the fourth second.
-                if flag.alpha_animation_counter < 0.2f32 {
-                    (0f32, 255f32).interpolate_linear(flag.alpha_animation_counter * 5f32)
-                } else if flag.alpha_animation_counter > 0.8f32 {
-                    (255f32, 0f32).interpolate_linear(flag.alpha_animation_counter * 5f32 - 4f32)
-                } else {
-                    255f32
+            let alpha_offset = if let FlagType::Goal(_, _) = flag.flag_type {
+                if let FlagType::Goal(_, false) = flag.flag_type {
+                    flag.alpha_animation_counter -= 1f32 / 60f32;
+                } else if flag.alpha_animation_counter < 1f32 {
+                    flag.alpha_animation_counter += 1f32 / 60f32;
                 }
+                (0f32, 255f32).interpolate_linear(flag.alpha_animation_counter)
             } else {
-                // fade in the flag, but fade it out when it is marked unvisited by the synchronize function
+                // fade in the flag, fade it out when it is marked unvisited by the synchronize function
                 if let FlagType::Penalty(_, _, false) = flag.flag_type {
                     flag.alpha_animation_counter -= 1f32 / 60f32;
                 } else if flag.alpha_animation_counter < 1f32 {
@@ -267,7 +312,7 @@ impl FlagRenderer {
             };
             draw_texture(
                 match flag.flag_type {
-                    FlagType::Goal(color) => {
+                    FlagType::Goal(color, _) => {
                         if color == UWHColor::White {
                             self.textures.white_goal
                         } else {
@@ -299,7 +344,7 @@ impl FlagRenderer {
             );
             if !self.is_alpha_mode {
                 match flag.flag_type {
-                    FlagType::Goal(_) => draw_text_ex(
+                    FlagType::Goal(_, _) => draw_text_ex(
                         "GOAL",
                         45f32,
                         BASE_HEIGHT + idx as f32 * FLAG_HEIGHT + movement_offset + 33f32,
@@ -336,14 +381,13 @@ impl FlagRenderer {
                 }
             }
         }
-        // delete GOAL flags that have been around for more than five seconds
-        self.active_flags.retain(|x| {
-            !(x.alpha_animation_counter > 1f32 && matches!(x.flag_type, FlagType::Goal(_)))
-        });
-        // delete penalty flags marked as unvisited and that have their alpha_animation_counter below zero (finihed fade out)
+        // delete flags marked as unvisited and that have their alpha_animation_counter below zero (finihed fade out)
         self.active_flags.retain(|x| {
             !(x.alpha_animation_counter < 0f32
-                && matches!(x.flag_type, FlagType::Penalty(_, _, false)))
+                && matches!(
+                    x.flag_type,
+                    FlagType::Penalty(_, _, false) | FlagType::Goal(_, false)
+                ))
         });
     }
 }

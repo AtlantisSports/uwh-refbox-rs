@@ -98,9 +98,6 @@ async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) 
 
     let mut local_state: Option<State> = None;
 
-    //keeps track of last recieved value of recent_goal snapshot to detect a toggle into a `Some(_)` value
-    let mut last_recent_goal: Option<(uwh_common::game_snapshot::Color, u8)> = None;
-
     let mut renderer = pages::PageRenderer {
         animation_counter: 0f32,
         textures,
@@ -140,38 +137,9 @@ async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) 
                     black: recieved_state.black.unwrap(),
                 });
             }
-            // check if goal has been toggled to a `Some(_)` value; tell the flag renderer about the new goal
-            if let Some(goal) = local_state.as_ref().unwrap().snapshot.recent_goal {
-                if Some(goal) != last_recent_goal {
-                    flag_renderer.add_flag(
-                        flag::Flag::new(String::new(), goal.1, flag::FlagType::Goal(goal.0)),
-                        &local_state.as_ref().unwrap(),
-                    );
-                    last_recent_goal = Some(goal);
-                } else {
-                    last_recent_goal = local_state.as_ref().unwrap().snapshot.recent_goal;
-                }
-            } else {
-                last_recent_goal = local_state.as_ref().unwrap().snapshot.recent_goal;
-            }
-
-            // More concise code works only in nightly, if let chaining not stable yet.
-            // if let Some(goal) = game_state.as_ref().unwrap().snapshot.recent_goal && Some(goal) != last_recent_goal  {
-            //     flag_renderer.add_flag(flag::Flag::new(String::from("re"), goal.1, flag::FlagType::Goal( goal.0)));
-            //     last_recent_goal = Some(goal);
-            // } else  {
-            //     last_recent_goal = game_state.as_ref().unwrap().snapshot.recent_goal;
-            // }
 
             // sync local penalty list
-            flag_renderer.synchronize_penalties(
-                uwh_common::game_snapshot::Color::White,
-                local_state.as_ref().unwrap(),
-            );
-            flag_renderer.synchronize_penalties(
-                uwh_common::game_snapshot::Color::Black,
-                local_state.as_ref().unwrap(),
-            );
+            flag_renderer.synchronize_flags(local_state.as_ref().unwrap());
         }
 
         if let Some(state) = &local_state {

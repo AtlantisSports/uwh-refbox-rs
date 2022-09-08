@@ -27,14 +27,14 @@ impl PageRenderer {
             },
         );
         let x_off = center_text_offset!(
-            200f32,
-            state.black.team_name.to_uppercase().as_str(),
+            215f32,
+            state.white.team_name.to_uppercase().as_str(),
             45,
             self.textures.font
         );
         draw_text_ex(
             state.white.team_name.to_uppercase().as_str(),
-            120f32 + x_off,
+            135f32 + x_off,
             805f32,
             TextParams {
                 font: self.textures.font,

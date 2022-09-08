@@ -143,7 +143,7 @@ async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) 
             // check if goal has been toggled to a `Some(_)` value; tell the flag renderer about the new goal
             if let Some(goal) = local_state.as_ref().unwrap().snapshot.recent_goal {
                 if Some(goal) != last_recent_goal {
-                    flag_renderer.add_penalty_flag(
+                    flag_renderer.add_flag(
                         flag::Flag::new(String::new(), goal.1, flag::FlagType::Goal(goal.0)),
                         &local_state.as_ref().unwrap(),
                     );

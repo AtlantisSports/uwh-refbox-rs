@@ -62,16 +62,18 @@ pub struct FlagRenderer {
 }
 
 impl FlagRenderer {
-    pub fn add_penalty_flag(&mut self, mut flag: Flag, game_state: &crate::State) {
+    pub fn add_flag(&mut self, mut flag: Flag, game_state: &crate::State) {
         flag.vertical_position = self.active_flags.len() as u32;
         flag.player_name = match flag.flag_type {
-            FlagType::Penalty(UWHColor::Black, _, _) => game_state
-                .black
-                .players
-                .iter()
-                .find(|player| player.1 == flag.player_number)
-                .map(|player| player.0.clone())
-                .unwrap_or(String::new()),
+            FlagType::Penalty(UWHColor::Black, _, _) | FlagType::Goal(UWHColor::Black) => {
+                game_state
+                    .black
+                    .players
+                    .iter()
+                    .find(|player| player.1 == flag.player_number)
+                    .map(|player| player.0.clone())
+                    .unwrap_or(String::new())
+            }
             _ => game_state
                 .white
                 .players
@@ -142,7 +144,7 @@ impl FlagRenderer {
                         && flag.player_number == penalty.player_number
                 })
                 .unwrap_or_else(|| {
-                    self.add_penalty_flag(
+                    self.add_flag(
                         Flag::new(
                             String::new(),
                             penalty.player_number,

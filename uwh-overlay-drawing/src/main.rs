@@ -45,6 +45,9 @@ pub struct State {
     snapshot: GameSnapshot,
     black: TeamInfo,
     white: TeamInfo,
+    game_id: u32,
+    pool: String,
+    start_time: String,
     white_flag: Option<Texture2D>,
     black_flag: Option<Texture2D>,
 }
@@ -123,6 +126,7 @@ async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) 
                 // If `game_state` hasn't been init'd, just copy all the values over. Unwrap because we expect the first snapshot to contain this info always.
                 local_state = Some(State {
                     snapshot: recieved_state.snapshot,
+                    game_id: recieved_state.game_id.unwrap(),
                     white_flag: recieved_state.white.as_ref().unwrap().flag_url.clone().map(
                         |url| {
                             Texture2D::from_file_with_format(&network::get_flag(url.as_str()), None)
@@ -135,6 +139,8 @@ async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) 
                     ),
                     white: recieved_state.white.unwrap(),
                     black: recieved_state.black.unwrap(),
+                    pool: recieved_state.pool.unwrap(),
+                    start_time: recieved_state.start_time.unwrap(),
                 });
             }
 

@@ -63,6 +63,9 @@ pub struct StatePacket {
     pub snapshot: GameSnapshot,
     pub black: Option<TeamInfo>,
     pub white: Option<TeamInfo>,
+    pub game_id: Option<u32>,
+    pub pool: Option<String>,
+    pub start_time: Option<String>,
 }
 
 pub fn networking_thread(
@@ -85,13 +88,18 @@ pub fn networking_thread(
     info!("Recieved response");
     let team_id_black = data["game"]["black_id"].as_u64().unwrap();
     let team_id_white = data["game"]["white_id"].as_u64().unwrap();
+    let start_time = data["game"]["start_time"].as_str().unwrap().to_string();
+    let pool = data["game"]["pool"].as_str().unwrap().to_string();
     let black = TeamInfo::new(&config, 28, team_id_black);
     let white = TeamInfo::new(&config, 28, team_id_white);
     if tx
         .send(StatePacket {
+            game_id: Some(2),
             snapshot,
             black: Some(TeamInfo { ..black.clone() }),
             white: Some(TeamInfo { ..white.clone() }),
+            pool: Some(pool),
+            start_time: Some(start_time),
         })
         .is_err()
     {
@@ -103,8 +111,11 @@ pub fn networking_thread(
             if tx
                 .send(StatePacket {
                     snapshot,
+                    game_id: None,
                     black: None,
                     white: None,
+                    pool: None,
+                    start_time: None,
                 })
                 .is_err()
             {

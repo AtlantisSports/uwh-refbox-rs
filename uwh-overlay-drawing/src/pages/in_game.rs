@@ -21,10 +21,6 @@ impl PageRenderer {
         } else {
             if state.snapshot.current_period == GamePeriod::FirstHalf {
                 self.animation_counter += 1f32 / 60f32;
-                println!(
-                    "{} {}",
-                    self.animation_counter, self.secondary_animation_counter
-                );
                 if self.animation_counter <= 5f32 {
                     self.secondary_animation_counter = 0f32;
                 } else if self.animation_counter > 5f32 && self.animation_counter < 6f32 {
@@ -54,7 +50,6 @@ impl PageRenderer {
                 )
             }
         };
-        println!("{alpha_offset} {position_offset}");
         draw_texture(self.textures.team_bar_graphic, 0_f32, 0f32, WHITE);
         draw_texture(
             self.textures.in_game_mask,

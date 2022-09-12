@@ -146,7 +146,7 @@ impl PageRenderer {
         if state.white_flag == None {
             draw_text_ex(
                 state.white.team_name.to_uppercase().as_str(),
-                if let Some(_) = state.white_flag {
+                if state.white_flag.is_some() {
                     160f32
                 } else {
                     79f32
@@ -166,7 +166,7 @@ impl PageRenderer {
             );
             draw_text_ex(
                 state.black.team_name.to_uppercase().as_str(),
-                if let Some(_) = state.black_flag {
+                if state.black_flag.is_some() {
                     160f32
                 } else {
                     79f32
@@ -181,10 +181,10 @@ impl PageRenderer {
             );
         }
         if self.is_alpha_mode {
-            if let Some(_) = state.white_flag {
+            if state.white_flag.is_some() {
                 draw_rectangle(79f32, 39f32, 70f32, 33f32, WHITE);
             }
-            if let Some(_) = state.black_flag {
+            if state.black_flag.is_some() {
                 draw_rectangle(79f32, 75f32, 70f32, 33f32, WHITE);
             }
             draw_texture(

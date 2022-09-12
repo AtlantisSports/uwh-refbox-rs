@@ -36,12 +36,8 @@ impl TeamInfo {
         info!("Recieved response");
         let players: Vec<Value> = data["team"]["roster"]
             .as_array()
-            .map(|x| x.clone())
-            .unwrap_or_else(|| {
-                info!("Player data not recieved from API");
-                let temp = Vec::new();
-                temp
-            });
+            .map(|x| x.to_vec())
+            .unwrap_or_default();
         let mut player_list: Vec<(String, u8)> = Vec::new();
         for player in players {
             player_list.push((
@@ -96,8 +92,8 @@ pub fn networking_thread(
         .send(StatePacket {
             game_id: Some(2),
             snapshot,
-            black: Some(TeamInfo { ..black.clone() }),
-            white: Some(TeamInfo { ..white.clone() }),
+            black: Some(TeamInfo { ..black }),
+            white: Some(TeamInfo { ..white }),
             pool: Some(pool),
             start_time: Some(start_time),
         })

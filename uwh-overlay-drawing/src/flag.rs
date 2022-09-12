@@ -72,7 +72,7 @@ impl FlagRenderer {
                     .iter()
                     .find(|player| player.1 == flag.player_number)
                     .map(|player| player.0.clone())
-                    .unwrap_or(String::new())
+                    .unwrap_or_default()
             }
             _ => game_state
                 .white
@@ -80,7 +80,7 @@ impl FlagRenderer {
                 .iter()
                 .find(|player| player.1 == flag.player_number)
                 .map(|player| player.0.clone())
-                .unwrap_or(String::new()),
+                .unwrap_or_default(),
         };
         self.active_flags.push(flag);
     }

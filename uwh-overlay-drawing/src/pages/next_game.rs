@@ -91,14 +91,10 @@ impl PageRenderer {
                     ..Default::default()
                 },
             );
-            let x_off = center_text_offset!(
-                124f32,
-                format!("{}", &state.start_time.to_string()).as_str(),
-                25,
-                self.textures.font
-            );
+            let x_off =
+                center_text_offset!(124f32, state.start_time.as_str(), 25, self.textures.font);
             draw_text_ex(
-                format!("{}", &state.start_time.to_string()).as_str(),
+                state.start_time.as_str(),
                 838f32 + x_off,
                 780f32,
                 TextParams {

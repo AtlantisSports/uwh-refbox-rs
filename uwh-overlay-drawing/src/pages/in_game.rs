@@ -18,37 +18,35 @@ impl PageRenderer {
                 (0f32, -200f32).interpolate_linear(1f32),
                 (255f32, 0f32).interpolate_linear(1f32) as u8,
             )
-        } else {
-            if state.snapshot.current_period == GamePeriod::FirstHalf {
-                self.animation_counter += 1f32 / 60f32;
-                if self.animation_counter <= 5f32 {
-                    self.secondary_animation_counter = 0f32;
-                } else if self.animation_counter > 5f32 && self.animation_counter < 6f32 {
-                    self.secondary_animation_counter += 1f32 / 60f32;
-                } else {
-                    self.secondary_animation_counter = 1f32;
-                }
-                (
-                    (0f32, -200f32).interpolate_linear(self.secondary_animation_counter),
-                    (255f32, 0f32).interpolate_linear(self.secondary_animation_counter) as u8,
-                )
+        } else if state.snapshot.current_period == GamePeriod::FirstHalf {
+            self.animation_counter += 1f32 / 60f32;
+            if self.animation_counter <= 5f32 {
+                self.secondary_animation_counter = 0f32;
+            } else if self.animation_counter > 5f32 && self.animation_counter < 6f32 {
+                self.secondary_animation_counter += 1f32 / 60f32;
             } else {
-                if self.animation_counter == 0f32 {
-                    self.secondary_animation_counter = 1f32;
-                }
-                self.animation_counter += 1f32 / 60f32;
-                if self.animation_counter < 1f32 {
-                    self.secondary_animation_counter -= 1f32 / 60f32;
-                } else if self.animation_counter > 5f32 && self.animation_counter < 6f32 {
-                    self.secondary_animation_counter += 1f32 / 60f32;
-                } else if self.animation_counter >= 6f32 {
-                    self.secondary_animation_counter = 1f32;
-                }
-                (
-                    (0f32, -200f32).interpolate_linear(self.secondary_animation_counter),
-                    (255f32, 0f32).interpolate_linear(self.secondary_animation_counter) as u8,
-                )
+                self.secondary_animation_counter = 1f32;
             }
+            (
+                (0f32, -200f32).interpolate_linear(self.secondary_animation_counter),
+                (255f32, 0f32).interpolate_linear(self.secondary_animation_counter) as u8,
+            )
+        } else {
+            if self.animation_counter == 0f32 {
+                self.secondary_animation_counter = 1f32;
+            }
+            self.animation_counter += 1f32 / 60f32;
+            if self.animation_counter < 1f32 {
+                self.secondary_animation_counter -= 1f32 / 60f32;
+            } else if self.animation_counter > 5f32 && self.animation_counter < 6f32 {
+                self.secondary_animation_counter += 1f32 / 60f32;
+            } else if self.animation_counter >= 6f32 {
+                self.secondary_animation_counter = 1f32;
+            }
+            (
+                (0f32, -200f32).interpolate_linear(self.secondary_animation_counter),
+                (255f32, 0f32).interpolate_linear(self.secondary_animation_counter) as u8,
+            )
         };
         draw_texture(self.textures.team_bar_graphic, 0_f32, 0f32, WHITE);
         draw_texture(
@@ -192,7 +190,7 @@ impl PageRenderer {
         }
         draw_text_ex(
             state.white.team_name.to_uppercase().as_str(),
-            if let Some(_) = state.white_flag {
+            if state.white_flag.is_some() {
                 160f32
             } else {
                 79f32
@@ -205,7 +203,7 @@ impl PageRenderer {
                     if self.is_alpha_mode { 255 } else { 0 },
                     if self.is_alpha_mode { 255 } else { 0 },
                     if self.is_alpha_mode { 255 } else { 0 },
-                    if let Some(_) = state.white_flag {
+                    if state.white_flag.is_some() {
                         alpha_offset
                     } else {
                         255
@@ -216,7 +214,7 @@ impl PageRenderer {
         );
         draw_text_ex(
             state.black.team_name.to_uppercase().as_str(),
-            if let Some(_) = state.black_flag {
+            if state.black_flag.is_some() {
                 160f32
             } else {
                 79f32
@@ -229,7 +227,7 @@ impl PageRenderer {
                     255,
                     255,
                     255,
-                    if let Some(_) = state.black_flag {
+                    if state.black_flag.is_some() {
                         alpha_offset
                     } else {
                         255
@@ -245,10 +243,10 @@ impl PageRenderer {
                 0f32,
                 WHITE,
             );
-            if let Some(_) = state.white_flag {
+            if state.white_flag.is_some() {
                 draw_rectangle(79f32, 39f32, 70f32, 33f32, WHITE);
             }
-            if let Some(_) = state.black_flag {
+            if state.black_flag.is_some() {
                 draw_rectangle(79f32, 75f32, 70f32, 33f32, WHITE);
             }
         } else {

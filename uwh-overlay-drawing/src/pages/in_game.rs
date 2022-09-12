@@ -10,27 +10,51 @@ impl PageRenderer {
     /// Display info during game play
     pub fn in_game_display(&mut self, state: &State) {
         // animate the state and time graphic to the left at 895 secs (5 seconds since period started)
-        let (position_offset, alpha_offset) = if state.snapshot.secs_in_period == 895 {
-            self.animation_counter += 1f32 / 60f32; // inverse of number of frames in transition period
-            (
-                (0f32, -200f32).interpolate_linear(self.animation_counter),
-                (255f32, 0f32).interpolate_linear(self.animation_counter) as u8,
-            )
-        } else if state.snapshot.secs_in_period > 895 {
-            (
-                (0f32, -200f32).interpolate_linear(0f32),
-                (255f32, 0f32).interpolate_linear(0f32) as u8,
-            )
-        } else {
+        let (position_offset, alpha_offset) = if state.snapshot.secs_in_period < 1 {
+            // reset animation counters if page is nearing termination
+            self.secondary_animation_counter = 0f32;
             self.animation_counter = 0f32;
-            if state.snapshot.timeout != TimeoutSnapshot::None {
-                self.secondary_animation_counter += 1f32 / 60f32;
-            }
             (
                 (0f32, -200f32).interpolate_linear(1f32),
                 (255f32, 0f32).interpolate_linear(1f32) as u8,
             )
+        } else {
+            if state.snapshot.current_period == GamePeriod::FirstHalf {
+                self.animation_counter += 1f32 / 60f32;
+                println!(
+                    "{} {}",
+                    self.animation_counter, self.secondary_animation_counter
+                );
+                if self.animation_counter <= 5f32 {
+                    self.secondary_animation_counter = 0f32;
+                } else if self.animation_counter > 5f32 && self.animation_counter < 6f32 {
+                    self.secondary_animation_counter += 1f32 / 60f32;
+                } else {
+                    self.secondary_animation_counter = 1f32;
+                }
+                (
+                    (0f32, -200f32).interpolate_linear(self.secondary_animation_counter),
+                    (255f32, 0f32).interpolate_linear(self.secondary_animation_counter) as u8,
+                )
+            } else {
+                if self.animation_counter == 0f32 {
+                    self.secondary_animation_counter = 1f32;
+                }
+                self.animation_counter += 1f32 / 60f32;
+                if self.animation_counter < 1f32 {
+                    self.secondary_animation_counter -= 1f32 / 60f32;
+                } else if self.animation_counter > 5f32 && self.animation_counter < 6f32 {
+                    self.secondary_animation_counter += 1f32 / 60f32;
+                } else if self.animation_counter >= 6f32 {
+                    self.secondary_animation_counter = 1f32;
+                }
+                (
+                    (0f32, -200f32).interpolate_linear(self.secondary_animation_counter),
+                    (255f32, 0f32).interpolate_linear(self.secondary_animation_counter) as u8,
+                )
+            }
         };
+        println!("{alpha_offset} {position_offset}");
         draw_texture(self.textures.team_bar_graphic, 0_f32, 0f32, WHITE);
         draw_texture(
             self.textures.in_game_mask,

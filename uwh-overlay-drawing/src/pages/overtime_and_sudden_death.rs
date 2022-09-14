@@ -34,51 +34,48 @@ impl PageRenderer {
                 self.secondary_animation_counter += 1f32 / 60f32;
             }
         }
+
         let timeout_offset = (0f32, -200f32).interpolate_linear(self.secondary_animation_counter);
         let timeout_alpha_offset =
             (0f32, 255f32).interpolate_exponential_end(1f32 - self.secondary_animation_counter);
-        match self.last_timeout {
-            // draw text for each type of penalty
-            TimeoutSnapshot::Ref(_) => {
-                draw_texture(
-                    self.textures.referee_timout_graphic,
-                    timeout_offset - 200f32,
-                    0f32,
-                    Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
-                );
-                draw_text_ex(
-                    "REFEREE",
-                    475f32 + timeout_offset,
-                    67f32,
-                    TextParams {
-                        font: self.textures.font,
-                        font_size: 20,
-                        color: if self.is_alpha_mode {
-                            Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
-                        } else {
-                            Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8)
-                        },
-                        ..Default::default()
+        // No penalty shot, black or white timeouts in overtime
+        if let TimeoutSnapshot::Ref(_) = self.last_timeout {
+            draw_texture(
+                self.textures.referee_timout_graphic,
+                timeout_offset - 200f32,
+                0f32,
+                Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
+            );
+            draw_text_ex(
+                "REFEREE",
+                475f32 + timeout_offset,
+                67f32,
+                TextParams {
+                    font: self.textures.font,
+                    font_size: 20,
+                    color: if self.is_alpha_mode {
+                        Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
+                    } else {
+                        Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8)
                     },
-                );
-                draw_text_ex(
-                    "TIMEOUT",
-                    480f32 + timeout_offset,
-                    95f32,
-                    TextParams {
-                        font: self.textures.font,
-                        font_size: 20,
-                        color: if self.is_alpha_mode {
-                            Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
-                        } else {
-                            Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8)
-                        },
-                        ..Default::default()
+                    ..Default::default()
+                },
+            );
+            draw_text_ex(
+                "TIMEOUT",
+                480f32 + timeout_offset,
+                95f32,
+                TextParams {
+                    font: self.textures.font,
+                    font_size: 20,
+                    color: if self.is_alpha_mode {
+                        Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
+                    } else {
+                        Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8)
                     },
-                );
-            }
-            // No penalty shot, black or white timeouts in overtime
-            _ => {} // this is ugly. `TimeoutSnapshot` must be made an `Option`
+                    ..Default::default()
+                },
+            );
         }
         if state.white_flag == None {
             draw_text_ex(

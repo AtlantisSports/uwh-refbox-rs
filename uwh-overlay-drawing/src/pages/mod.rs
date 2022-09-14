@@ -11,11 +11,22 @@ mod roster;
 pub(crate) trait Interpolate {
     /// `value` must be a floater varying from 0 to 1, denoting the lowest to highest limits of the range
     fn interpolate_linear(&self, value: f32) -> f32;
+    fn interpolate_exponential_end(&self, value: f32) -> f32;
 }
 
 impl Interpolate for (f32, f32) {
     fn interpolate_linear(&self, value: f32) -> f32 {
         (self.1 - self.0).mul_add(value, self.0)
+    }
+
+    fn interpolate_exponential_end(&self, value: f32) -> f32 {
+        let offset = ((self.1 - self.0).abs() + 1f32).powf(value);
+        self.0
+            + if self.0 > self.1 {
+                -1f32 * offset
+            } else {
+                offset
+            }
     }
 }
 
@@ -25,6 +36,7 @@ macro_rules! center_text_offset {
     };
 }
 pub(crate) use center_text_offset;
+use uwh_common::game_snapshot::TimeoutSnapshot;
 
 #[allow(dead_code)]
 /// Utility function used to place overlay elements quickly through user input without recompiling
@@ -46,4 +58,6 @@ pub struct PageRenderer {
     pub is_alpha_mode: bool,
     /// Contains textures, alpha in alpha mode, color in color mode
     pub textures: Textures,
+    /// We need to keep track of the last timeout snapshot in order to display information during the fade out
+    pub last_timeout: TimeoutSnapshot,
 }

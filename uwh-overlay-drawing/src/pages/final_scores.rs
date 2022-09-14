@@ -16,6 +16,7 @@ impl PageRenderer {
             TextParams {
                 font: self.textures.font,
                 font_size: 50,
+                color: if self.is_alpha_mode { WHITE } else { BLACK },
                 ..Default::default()
             },
         );

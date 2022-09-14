@@ -1,4 +1,5 @@
 use super::center_text_offset;
+use super::Interpolate;
 use super::PageRenderer;
 use crate::State;
 use macroquad::prelude::*;
@@ -8,140 +9,76 @@ use uwh_common::game_snapshot::TimeoutSnapshot;
 impl PageRenderer {
     /// Display during overtime. Has no animations
     pub fn overtime_and_sudden_death_display(&mut self, state: &State) {
+        if state.snapshot.secs_in_period < 1 {
+            // reset animation counters if page is nearing termination
+            self.secondary_animation_counter = 0f32;
+        }
+
         draw_texture(self.textures.team_bar_graphic, 0_f32, 0f32, WHITE);
         draw_texture(self.textures.in_game_mask, 0f32, 0f32, WHITE);
         if state.snapshot.timeout != TimeoutSnapshot::None {
-            draw_texture(
-                match state.snapshot.timeout {
-                    TimeoutSnapshot::Ref(_) => self.textures.referee_timout_graphic,
-                    TimeoutSnapshot::White(_) => self.textures.white_timout_graphic,
-                    TimeoutSnapshot::Black(_) => self.textures.black_timout_graphic,
-                    TimeoutSnapshot::PenaltyShot(_) => self.textures.penalty_graphic,
-                    _ => unreachable!(), // this is ugly. `TimeoutSnapshot` must be made an `Option`
-                },
-                -200f32,
-                0f32,
-                WHITE,
-            );
-            match state.snapshot.timeout {
-                // draw text for each type of penalty
-                TimeoutSnapshot::Ref(_) => {
-                    draw_text_ex(
-                        "REFEREE",
-                        475f32,
-                        67f32,
-                        TextParams {
-                            font: self.textures.font,
-                            font_size: 20,
-                            color: if self.is_alpha_mode { WHITE } else { BLACK },
-                            ..Default::default()
-                        },
-                    );
-                    draw_text_ex(
-                        "TIMEOUT",
-                        480f32,
-                        95f32,
-                        TextParams {
-                            font: self.textures.font,
-                            font_size: 20,
-                            color: if self.is_alpha_mode { WHITE } else { BLACK },
-                            ..Default::default()
-                        },
-                    );
-                }
-                TimeoutSnapshot::White(time) => {
-                    draw_text_ex(
-                        "WHITE",
-                        475f32,
-                        67f32,
-                        TextParams {
-                            font: self.textures.font,
-                            font_size: 20,
-                            color: if self.is_alpha_mode { WHITE } else { BLACK },
-                            ..Default::default()
-                        },
-                    );
-                    draw_text_ex(
-                        "TIMEOUT",
-                        465f32,
-                        95f32,
-                        TextParams {
-                            font: self.textures.font,
-                            font_size: 20,
-                            color: if self.is_alpha_mode { WHITE } else { BLACK },
-                            ..Default::default()
-                        },
-                    );
-                    draw_text_ex(
-                        format!("{time}").as_str(),
-                        565f32,
-                        95f32,
-                        TextParams {
-                            font: self.textures.font,
-                            font_size: 50,
-                            color: if self.is_alpha_mode { WHITE } else { BLACK },
-                            ..Default::default()
-                        },
-                    );
-                }
-                TimeoutSnapshot::Black(time) => {
-                    draw_text_ex(
-                        "BLACK",
-                        475f32,
-                        67f32,
-                        TextParams {
-                            font: self.textures.font,
-                            font_size: 20,
-                            ..Default::default()
-                        },
-                    );
-                    draw_text_ex(
-                        "TIMEOUT",
-                        465f32,
-                        95f32,
-                        TextParams {
-                            font: self.textures.font,
-                            font_size: 20,
-                            ..Default::default()
-                        },
-                    );
-                    draw_text_ex(
-                        format!("{time}").as_str(),
-                        565f32,
-                        95f32,
-                        TextParams {
-                            font: self.textures.font,
-                            font_size: 50,
-                            ..Default::default()
-                        },
-                    );
-                }
-                TimeoutSnapshot::PenaltyShot(_) => {
-                    draw_text_ex(
-                        "PENALTY",
-                        475f32,
-                        67f32,
-                        TextParams {
-                            font: self.textures.font,
-                            font_size: 20,
-                            color: if self.is_alpha_mode { WHITE } else { BLACK },
-                            ..Default::default()
-                        },
-                    );
-                    draw_text_ex(
-                        "SHOT",
-                        490f32,
-                        95f32,
-                        TextParams {
-                            font: self.textures.font,
-                            font_size: 20,
-                            color: if self.is_alpha_mode { WHITE } else { BLACK },
-                            ..Default::default()
-                        },
-                    );
-                }
-                _ => unreachable!(), // this is ugly. `TimeoutSnapshot` must be made an `Option`
+            if self.last_timeout == TimeoutSnapshot::None {
+                // if this is a new timeout period
+                self.secondary_animation_counter = 1f32;
             }
+            if self.secondary_animation_counter > 0f32 {
+                self.secondary_animation_counter -= 1f32 / 60f32;
+            }
+            self.last_timeout = state.snapshot.timeout;
+        } else if self.last_timeout != TimeoutSnapshot::None {
+            // if a timeout period just finished
+            if self.secondary_animation_counter > 1f32 {
+                self.secondary_animation_counter = 0f32;
+                self.last_timeout = TimeoutSnapshot::None;
+            } else {
+                self.secondary_animation_counter += 1f32 / 60f32;
+            }
+        }
+        let timeout_offset = (0f32, -200f32).interpolate_linear(self.secondary_animation_counter);
+        let timeout_alpha_offset =
+            (0f32, 255f32).interpolate_exponential_end(1f32 - self.secondary_animation_counter);
+        match self.last_timeout {
+            // draw text for each type of penalty
+            TimeoutSnapshot::Ref(_) => {
+                draw_texture(
+                    self.textures.referee_timout_graphic,
+                    timeout_offset - 200f32,
+                    0f32,
+                    Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
+                );
+                draw_text_ex(
+                    "REFEREE",
+                    475f32 + timeout_offset,
+                    67f32,
+                    TextParams {
+                        font: self.textures.font,
+                        font_size: 20,
+                        color: if self.is_alpha_mode {
+                            Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
+                        } else {
+                            Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8)
+                        },
+                        ..Default::default()
+                    },
+                );
+                draw_text_ex(
+                    "TIMEOUT",
+                    480f32 + timeout_offset,
+                    95f32,
+                    TextParams {
+                        font: self.textures.font,
+                        font_size: 20,
+                        color: if self.is_alpha_mode {
+                            Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
+                        } else {
+                            Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8)
+                        },
+                        ..Default::default()
+                    },
+                );
+            }
+            // No penalty shot, black or white timeouts in overtime
+            _ => {} // this is ugly. `TimeoutSnapshot` must be made an `Option`
         }
         if state.white_flag == None {
             draw_text_ex(

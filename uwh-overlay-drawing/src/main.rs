@@ -6,7 +6,7 @@ use network::{StatePacket, TeamInfo};
 use std::net::IpAddr;
 
 use macroquad::prelude::*;
-use uwh_common::game_snapshot::{GamePeriod, GameSnapshot};
+use uwh_common::game_snapshot::{GamePeriod, GameSnapshot, TimeoutSnapshot};
 mod flag;
 mod load_images;
 mod network;
@@ -105,6 +105,7 @@ async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) 
         animation_counter: 0f32,
         textures,
         is_alpha_mode,
+        last_timeout: TimeoutSnapshot::None,
         secondary_animation_counter: 0f32,
     };
     let mut flag_renderer = flag::FlagRenderer::new(is_alpha_mode);

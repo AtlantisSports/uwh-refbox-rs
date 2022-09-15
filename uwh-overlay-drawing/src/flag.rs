@@ -361,7 +361,19 @@ impl FlagRenderer {
                                 let mins = s / 60;
                                 let secs = s % 60;
 
-                                format!("{}:{}", mins, secs)
+                                format!(
+                                    "{}:{}",
+                                    if mins < 10 {
+                                        format!("0{}", mins)
+                                    } else {
+                                        format!("{}", mins)
+                                    },
+                                    if secs < 10 {
+                                        format!("0{}", secs)
+                                    } else {
+                                        format!("{}", secs)
+                                    }
+                                )
                             }
                             PenaltyTime::TotalDismissal => String::from("TD"),
                         };

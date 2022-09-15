@@ -163,15 +163,7 @@ impl PageRenderer {
                     },
                 );
                 draw_text_ex(
-                    format!(
-                        "{}",
-                        if time < 10 {
-                            format!("0{}", time)
-                        } else {
-                            format!("{}", time)
-                        }
-                    )
-                    .as_str(),
+                    format!("{time}").as_str(),
                     765f32 + position_offset + timeout_offset,
                     95f32,
                     TextParams {
@@ -216,15 +208,7 @@ impl PageRenderer {
                     },
                 );
                 draw_text_ex(
-                    format!(
-                        "{}",
-                        if time < 10 {
-                            format!("0{}", time)
-                        } else {
-                            format!("{}", time)
-                        }
-                    )
-                    .as_str(),
+                    format!("{time}").as_str(),
                     765f32 + position_offset + timeout_offset,
                     95f32,
                     TextParams {

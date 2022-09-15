@@ -16,7 +16,7 @@ const BASE_HEIGHT: f32 = 150f32;
 /// Vertical space allocated to each flag
 const FLAG_HEIGHT: f32 = 70f32;
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum FlagType {
     Goal(UWHColor, bool),
     /// Third enum value is used to keep track of whether the flag was visited in last sync. Unvisited flags need to be deleted.
@@ -31,7 +31,7 @@ struct Textures {
     font: Font,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Flag {
     player_name: String,
     player_number: u8,
@@ -57,6 +57,7 @@ impl Flag {
 
 pub struct FlagRenderer {
     active_flags: Vec<Flag>,
+    inactive_flags: Vec<Flag>,
     textures: Textures,
     is_alpha_mode: bool,
 }
@@ -88,6 +89,7 @@ impl FlagRenderer {
     pub fn new(is_alpha_mode: bool) -> Self {
         Self {
             active_flags: Vec::new(),
+            inactive_flags: Vec::new(),
             is_alpha_mode,
             textures: if is_alpha_mode {
                 Textures {
@@ -216,6 +218,24 @@ impl FlagRenderer {
                 }
             }
         }
+        // move out all deleted flags to be faded to the inactive flag section
+        self.active_flags
+            .iter()
+            .filter_map(|x| {
+                if let FlagType::Penalty(_, _, false) = x.flag_type {
+                    Some(x.clone())
+                } else {
+                    None
+                }
+            })
+            .for_each(|x| self.inactive_flags.push(x));
+        self.active_flags.retain(|x| {
+            if let FlagType::Penalty(_, _, false) = x.flag_type {
+                false
+            } else {
+                true
+            }
+        });
         // sort the flags based on: TD penalties on top, then time penalties sorted by longest time and lastly, goal callouts
         self.active_flags.sort_by(|a, b| {
             if let (
@@ -278,22 +298,10 @@ impl FlagRenderer {
     /// Responsible for drawing the flags, deleting them, etc.
     pub fn draw(&mut self) {
         for (idx, flag) in self.active_flags.iter_mut().enumerate() {
-            let alpha_offset = if let FlagType::Goal(_, _) = flag.flag_type {
-                if let FlagType::Goal(_, false) = flag.flag_type {
-                    flag.alpha_animation_counter -= 1f32 / 60f32;
-                } else if flag.alpha_animation_counter < 1f32 {
-                    flag.alpha_animation_counter += 1f32 / 60f32;
-                }
-                (0f32, 255f32).interpolate_linear(flag.alpha_animation_counter)
-            } else {
-                // fade in the flag, fade it out when it is marked unvisited by the synchronize function
-                if let FlagType::Penalty(_, _, false) = flag.flag_type {
-                    flag.alpha_animation_counter -= 1f32 / 60f32;
-                } else if flag.alpha_animation_counter < 1f32 {
-                    flag.alpha_animation_counter += 1f32 / 60f32;
-                }
-                (0f32, 255f32).interpolate_linear(flag.alpha_animation_counter)
-            };
+            if flag.alpha_animation_counter < 1f32 {
+                flag.alpha_animation_counter += 1f32 / 60f32;
+            }
+            let alpha_offset = (0f32, 255f32).interpolate_linear(flag.alpha_animation_counter);
             let movement_offset = if flag.vertical_position == idx as u32 {
                 0f32
             } else {
@@ -393,13 +401,94 @@ impl FlagRenderer {
                 }
             }
         }
+        for flag in self.inactive_flags.iter_mut() {
+            flag.alpha_animation_counter -= 1f32 / 60f32;
+            let alpha_offset = (0f32, 255f32).interpolate_linear(flag.alpha_animation_counter);
+            draw_texture(
+                match flag.flag_type {
+                    FlagType::Goal(color, _) => {
+                        if color == UWHColor::White {
+                            self.textures.white_goal
+                        } else {
+                            self.textures.black_goal
+                        }
+                    }
+                    FlagType::Penalty(color, _, _) => {
+                        if color == UWHColor::White {
+                            self.textures.white_penalty
+                        } else {
+                            self.textures.black_penalty
+                        }
+                    }
+                },
+                25f32,
+                BASE_HEIGHT + flag.vertical_position as f32 * FLAG_HEIGHT,
+                Color::from_rgba(255, 255, 255, alpha_offset as u8),
+            );
+            draw_text_ex(
+                format!("#{} {}", flag.player_number, flag.player_name).as_str(),
+                160f32,
+                BASE_HEIGHT + flag.vertical_position as f32 * FLAG_HEIGHT + 33f32,
+                TextParams {
+                    font: self.textures.font,
+                    font_size: 30,
+                    color: Color::from_rgba(255, 255, 255, alpha_offset as u8),
+                    ..Default::default()
+                },
+            );
+            if !self.is_alpha_mode {
+                match flag.flag_type {
+                    FlagType::Goal(_, _) => draw_text_ex(
+                        "GOAL",
+                        45f32,
+                        BASE_HEIGHT + flag.vertical_position as f32 * FLAG_HEIGHT + 33f32,
+                        TextParams {
+                            font: self.textures.font,
+                            font_size: 30,
+                            color: Color::from_rgba(255, 255, 255, alpha_offset as u8),
+                            ..Default::default()
+                        },
+                    ),
+                    FlagType::Penalty(_, timeout, _) => {
+                        let text = &match timeout {
+                            PenaltyTime::Seconds(s) => {
+                                let mins = s / 60;
+                                let secs = s % 60;
+
+                                format!(
+                                    "{}:{}",
+                                    if mins < 10 {
+                                        format!("0{}", mins)
+                                    } else {
+                                        format!("{}", mins)
+                                    },
+                                    if secs < 10 {
+                                        format!("0{}", secs)
+                                    } else {
+                                        format!("{}", secs)
+                                    }
+                                )
+                            }
+                            PenaltyTime::TotalDismissal => String::from("TD"),
+                        };
+                        let x_off = center_text_offset!(47f32, text, 30, self.textures.font);
+                        draw_text_ex(
+                            text,
+                            35f32 + x_off,
+                            BASE_HEIGHT + flag.vertical_position as f32 * FLAG_HEIGHT + 33f32,
+                            TextParams {
+                                font: self.textures.font,
+                                font_size: 30,
+                                color: Color::from_rgba(255, 255, 255, alpha_offset as u8),
+                                ..Default::default()
+                            },
+                        );
+                    }
+                }
+            }
+        }
         // delete flags marked as unvisited and that have their alpha_animation_counter below zero (finihed fade out)
-        self.active_flags.retain(|x| {
-            !(x.alpha_animation_counter < 0f32
-                && matches!(
-                    x.flag_type,
-                    FlagType::Penalty(_, _, false) | FlagType::Goal(_, false)
-                ))
-        });
+        self.inactive_flags
+            .retain(|x| x.alpha_animation_counter > 0f32);
     }
 }

@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-macroquad = "0.3.23"
+macroquad = "0.3.24"
 uwh-common = { path = "../uwh-common/" }
 serde_json = { version = "*" }
 serde = { version = "1.0.139", features = ["derive"] }

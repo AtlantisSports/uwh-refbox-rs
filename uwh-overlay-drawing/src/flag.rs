@@ -159,6 +159,24 @@ impl FlagRenderer {
                 _ => unreachable!(),
             }
         }
+        // move out all deleted goal flags to be faded to the inactive flag section
+        self.active_flags
+            .iter()
+            .filter_map(|x| {
+                if let FlagType::Goal(_, false) = x.flag_type {
+                    Some(x.clone())
+                } else {
+                    None
+                }
+            })
+            .for_each(|x| self.inactive_flags.push(x));
+        self.active_flags.retain(|x| {
+            if let FlagType::Goal(_, false) = x.flag_type {
+                false
+            } else {
+                true
+            }
+        });
     }
 
     /// Used to synchronise penalty info from snapshot with the local penalty list.

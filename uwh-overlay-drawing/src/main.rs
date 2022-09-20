@@ -54,7 +54,7 @@ pub struct State {
 
 fn main() {
     procspawn::init();
-    simple_logger::SimpleLogger::new().init().unwrap();
+    // simple_logger::SimpleLogger::new().init().unwrap();
     let (tx, rx) = channel::<StatePacket>();
     let (tx_a, rx_a) = ipc::channel::<StatePacket>().unwrap();
     let (tx_c, rx_c) = ipc::channel::<StatePacket>().unwrap();
@@ -112,6 +112,11 @@ async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) 
 
     loop {
         clear_background(BLACK);
+        println!(
+            "{} FPS: {}",
+            if is_alpha_mode { "Alpha" } else { "Colour" },
+            get_fps()
+        );
 
         if let Ok(recieved_state) = rx.try_recv() {
             // Update state parameters like team names and flags if they are `Some`.

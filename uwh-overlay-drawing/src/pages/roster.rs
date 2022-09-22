@@ -15,8 +15,8 @@ impl PageRenderer {
             self.animation_counter = 0f32;
             (0f32, -650f32).interpolate_linear(1f32)
         };
-        draw_texture(self.textures.atlantis_logo_graphic, 0_f32, 0f32, WHITE);
-        draw_texture(self.textures.bottom_graphic, 0_f32, 0f32, WHITE);
+        draw_texture(self.textures.atlantis_logo_graphic, 823f32, 712f32, WHITE);
+        draw_texture(self.textures.bottom_graphic, 822f32, 977f32, WHITE);
         for (i, player_identifier) in state
             .white
             .players
@@ -89,7 +89,12 @@ impl PageRenderer {
                 );
             }
         }
-        draw_texture(self.textures.team_information_graphic, 0_f32, offset, WHITE);
+        draw_texture(
+            self.textures.team_information_graphic,
+            130f32,
+            710f32 + offset,
+            WHITE,
+        );
         let x_off = center_text_offset!(
             200f32,
             state.black.team_name.to_uppercase().as_str(),

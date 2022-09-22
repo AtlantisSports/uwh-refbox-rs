@@ -1,4 +1,5 @@
 use super::center_text_offset;
+use super::get_input;
 use super::PageRenderer;
 use crate::State;
 use macroquad::prelude::*;
@@ -6,9 +7,14 @@ use macroquad::prelude::*;
 impl PageRenderer {
     /// The Next Game screen, shown up to 150 seconds before the next game
     pub fn next_game(&mut self, state: &State) {
-        draw_texture(self.textures.atlantis_logo_graphic, 0_f32, 0f32, WHITE);
-        draw_texture(self.textures.bottom_graphic, 0_f32, 0f32, WHITE);
-        draw_texture(self.textures.team_information_graphic, 0_f32, 0f32, WHITE);
+        draw_texture(self.textures.atlantis_logo_graphic, 823f32, 712f32, WHITE);
+        draw_texture(self.textures.bottom_graphic, 822f32, 977f32, WHITE);
+        draw_texture(
+            self.textures.team_information_graphic,
+            130f32,
+            710f32,
+            WHITE,
+        );
 
         let x_off = center_text_offset!(
             200f32,

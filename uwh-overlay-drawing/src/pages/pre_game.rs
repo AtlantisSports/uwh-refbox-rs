@@ -9,8 +9,8 @@ impl PageRenderer {
     pub fn pre_game_display(&mut self, state: &State) {
         match state.snapshot.secs_in_period {
             16.. => {
-                draw_texture(self.textures.atlantis_logo_graphic, 0_f32, 0f32, WHITE);
-                draw_texture(self.textures.bottom_graphic, 0_f32, 0f32, WHITE);
+                draw_texture(self.textures.atlantis_logo_graphic, 823f32, 712f32, WHITE);
+                draw_texture(self.textures.bottom_graphic, 822f32, 977f32, WHITE);
                 let min = state.snapshot.secs_in_period / 60;
                 let secs = state.snapshot.secs_in_period % 60;
                 if !self.is_alpha_mode {
@@ -57,14 +57,14 @@ impl PageRenderer {
 
                 draw_texture(
                     self.textures.atlantis_logo_graphic,
-                    0_f32,
-                    0_f32,
+                    823f32,
+                    712f32,
                     Color::from_rgba(255, 255, 255, if self.is_alpha_mode { offset } else { 255 }),
                 );
                 draw_texture(
                     self.textures.bottom_graphic,
-                    0_f32,
-                    0_f32,
+                    822f32,
+                    977f32,
                     Color::from_rgba(255, 255, 255, if self.is_alpha_mode { offset } else { 255 }),
                 );
                 if !self.is_alpha_mode {
@@ -123,11 +123,11 @@ impl PageRenderer {
                 self.animation_counter = 0f32;
             }
         }
-        draw_texture(self.textures.team_bar_graphic, 0_f32, 0f32, WHITE);
+        draw_texture(self.textures.team_bar_graphic, 26f32, 37f32, WHITE);
         draw_texture(
             self.textures.time_and_game_state_graphic,
-            0_f32,
-            0f32,
+            367f32,
+            18f32,
             WHITE,
         );
         draw_text_ex(

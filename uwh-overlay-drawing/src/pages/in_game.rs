@@ -1,4 +1,5 @@
 use super::center_text_offset;
+use super::get_input;
 use super::Interpolate;
 use super::PageRenderer;
 use crate::State;
@@ -57,11 +58,11 @@ impl PageRenderer {
                 ),
             }
         };
-        draw_texture(self.textures.team_bar_graphic, 0_f32, 0f32, WHITE);
+        draw_texture(self.textures.team_bar_graphic, 26f32, 37f32, WHITE);
         draw_texture(
             self.textures.in_game_mask,
-            200_f32 + position_offset,
-            0f32,
+            585f32 + position_offset,
+            37f32,
             WHITE,
         );
         if state.snapshot.timeout != TimeoutSnapshot::None {
@@ -90,8 +91,8 @@ impl PageRenderer {
             TimeoutSnapshot::Ref(_) => {
                 draw_texture(
                     self.textures.referee_timout_graphic,
-                    position_offset + timeout_offset,
-                    0f32,
+                    position_offset + timeout_offset + 580f32,
+                    35f32,
                     Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
                 );
                 draw_text_ex(
@@ -128,8 +129,8 @@ impl PageRenderer {
             TimeoutSnapshot::White(time) => {
                 draw_texture(
                     self.textures.white_timout_graphic,
-                    position_offset + timeout_offset,
-                    0f32,
+                    position_offset + timeout_offset + 580f32,
+                    35f32,
                     Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
                 );
                 draw_text_ex(
@@ -181,8 +182,8 @@ impl PageRenderer {
             TimeoutSnapshot::Black(time) => {
                 draw_texture(
                     self.textures.black_timout_graphic,
-                    position_offset + timeout_offset,
-                    0f32,
+                    position_offset + timeout_offset + 580f32,
+                    35f32,
                     Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
                 );
                 draw_text_ex(
@@ -222,8 +223,8 @@ impl PageRenderer {
             TimeoutSnapshot::PenaltyShot(_) => {
                 draw_texture(
                     self.textures.penalty_graphic,
-                    position_offset + timeout_offset,
-                    0f32,
+                    position_offset + timeout_offset + 580f32,
+                    35f32,
                     Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
                 );
                 draw_text_ex(
@@ -311,8 +312,8 @@ impl PageRenderer {
         if self.is_alpha_mode {
             draw_texture(
                 self.textures.time_and_game_state_graphic,
-                position_offset,
-                0f32,
+                position_offset + 367f32,
+                18f32,
                 WHITE,
             );
             if state.white_flag.is_some() {
@@ -324,8 +325,8 @@ impl PageRenderer {
         } else {
             draw_texture(
                 self.textures.time_and_game_state_graphic,
-                position_offset,
-                0f32,
+                position_offset + 367f32,
+                18f32,
                 WHITE,
             );
             let min = state.snapshot.secs_in_period / 60;

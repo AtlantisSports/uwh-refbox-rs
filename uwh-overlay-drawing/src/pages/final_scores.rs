@@ -6,9 +6,14 @@ use macroquad::prelude::*;
 impl PageRenderer {
     /// Display final scores after game is done
     pub fn final_scores(&mut self, state: &State) {
-        draw_texture(self.textures.atlantis_logo_graphic, 0_f32, 0f32, WHITE);
-        draw_texture(self.textures.final_score_graphic, 0_f32, 0f32, WHITE);
-        draw_texture(self.textures.team_information_graphic, 0_f32, 0f32, WHITE);
+        draw_texture(self.textures.atlantis_logo_graphic, 823f32, 712f32, WHITE);
+        draw_texture(self.textures.final_score_graphic, 314f32, 347f32, WHITE);
+        draw_texture(
+            self.textures.team_information_graphic,
+            130f32,
+            710f32,
+            WHITE,
+        );
         let x_off = center_text_offset!(
             200f32,
             state.black.team_name.to_uppercase().as_str(),

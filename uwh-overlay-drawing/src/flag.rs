@@ -93,19 +93,19 @@ impl FlagRenderer {
             is_alpha_mode,
             textures: if is_alpha_mode {
                 Textures {
-                    black_goal: load!("../assets/alpha/1080/[PNG] 8K - Team Black Graphic.png"),
-                    white_goal: load!("../assets/alpha/1080/[PNG] 8K - Team White Graphic.png"),
-                    white_penalty: load!("../assets/alpha/1080/Penalty White Graphic.png"),
-                    black_penalty: load!("../assets/alpha/1080/Penalty Black Graphic.png"),
+                    black_goal: load!("../assets/alpha/1080/Team Black.png"),
+                    white_goal: load!("../assets/alpha/1080/Team White.png"),
+                    white_penalty: load!("../assets/alpha/1080/Penalty White.png"),
+                    black_penalty: load!("../assets/alpha/1080/Penalty Black.png"),
                     font: load_ttf_font_from_bytes(include_bytes!("./../assets/BAHNSCHRIFT.TTF"))
                         .unwrap(),
                 }
             } else {
                 Textures {
-                    black_goal: load!("../assets/color/1080/[PNG] 8K - Team Black Graphic.png"),
-                    white_goal: load!("../assets/color/1080/[PNG] 8K - Team White Graphic.png"),
-                    white_penalty: load!("../assets/color/1080/Penalty White Graphic.png"),
-                    black_penalty: load!("../assets/color/1080/Penalty Black Graphic.png"),
+                    black_goal: load!("../assets/color/1080/Team Black.png"),
+                    white_goal: load!("../assets/color/1080/Team White.png"),
+                    white_penalty: load!("../assets/color/1080/Penalty White.png"),
+                    black_penalty: load!("../assets/color/1080/Penalty Black.png"),
                     font: load_ttf_font_from_bytes(include_bytes!("./../assets/BAHNSCHRIFT.TTF"))
                         .unwrap(),
                 }

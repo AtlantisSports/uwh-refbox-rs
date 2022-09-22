@@ -1,4 +1,4 @@
-use macroquad::prelude::info;
+use macroquad::prelude::{info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::Read;
@@ -99,7 +99,7 @@ pub fn networking_thread(
         })
         .is_err()
     {
-        eprintln!("Frontend could not recieve game snapshot!")
+        warn!("Frontend could not recieve game snapshot!")
     }
     loop {
         read_bytes = stream.read(&mut buff).unwrap();

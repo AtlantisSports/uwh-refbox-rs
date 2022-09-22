@@ -73,9 +73,9 @@ fn main() {
         network::networking_thread(tx, config)
             .expect("Networking error. Does the supplied URL exist and is it live?");
     });
-    procspawn::spawn(rx_a, |rx_a| {
-        macroquad::Window::from_config(window_conf("Alpha Stream"), render_process(true, rx_a));
-    });
+    // procspawn::spawn(rx_a, |rx_a| {
+    //     macroquad::Window::from_config(window_conf("Alpha Stream"), render_process(true, rx_a));
+    // });
     procspawn::spawn(rx_c, |rx_c| {
         macroquad::Window::from_config(window_conf("Color Stream"), render_process(false, rx_c));
     });
@@ -112,11 +112,6 @@ async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) 
 
     loop {
         clear_background(BLACK);
-        println!(
-            "{} FPS: {}",
-            if is_alpha_mode { "Alpha" } else { "Colour" },
-            get_fps()
-        );
 
         if let Ok(recieved_state) = rx.try_recv() {
             // Update state parameters like team names and flags if they are `Some`.

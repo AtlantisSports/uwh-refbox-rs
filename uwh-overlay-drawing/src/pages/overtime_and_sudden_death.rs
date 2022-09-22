@@ -14,8 +14,8 @@ impl PageRenderer {
             self.secondary_animation_counter = 0f32;
         }
 
-        draw_texture(self.textures.team_bar_graphic, 0_f32, 0f32, WHITE);
-        draw_texture(self.textures.in_game_mask, 0f32, 0f32, WHITE);
+        draw_texture(self.textures.team_bar_graphic, 26f32, 37f32, WHITE);
+        draw_texture(self.textures.in_game_mask, 359f32, 0f32, WHITE);
         if state.snapshot.timeout != TimeoutSnapshot::None {
             if self.last_timeout == TimeoutSnapshot::None {
                 // if this is a new timeout period
@@ -42,8 +42,8 @@ impl PageRenderer {
         if let TimeoutSnapshot::Ref(_) = self.last_timeout {
             draw_texture(
                 self.textures.referee_timout_graphic,
-                timeout_offset - 200f32,
-                0f32,
+                timeout_offset + 380f32,
+                185f32,
                 Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
             );
             draw_text_ex(
@@ -123,15 +123,15 @@ impl PageRenderer {
             }
             draw_texture(
                 self.textures.time_and_game_state_graphic,
-                -200f32,
-                0f32,
+                167f32,
+                18f32,
                 WHITE,
             );
         } else {
             draw_texture(
                 self.textures.time_and_game_state_graphic,
-                -200f32,
-                0f32,
+                167f32,
+                18f32,
                 WHITE,
             );
             let min = state.snapshot.secs_in_period / 60;

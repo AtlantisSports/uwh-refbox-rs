@@ -1,5 +1,6 @@
 use std::{str::FromStr, sync::mpsc::channel};
 
+use coarsetime::Instant;
 //use uwh_common::game_snapshot::GamePeriod;
 use ipc_channel::ipc;
 use network::{StatePacket, TeamInfo};
@@ -102,11 +103,12 @@ async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) 
     let mut local_state: Option<State> = None;
 
     let mut renderer = pages::PageRenderer {
-        animation_counter: 0f32,
+        animation_register1: Instant::now(),
+        animation_register2: Instant::now(),
+        animation_register3: false,
         textures,
         is_alpha_mode,
         last_timeout: TimeoutSnapshot::None,
-        secondary_animation_counter: 0f32,
     };
     let mut flag_renderer = flag::FlagRenderer::new(is_alpha_mode);
 

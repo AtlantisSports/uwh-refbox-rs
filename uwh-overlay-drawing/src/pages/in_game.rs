@@ -3,6 +3,7 @@ use super::get_input;
 use super::Interpolate;
 use super::PageRenderer;
 use crate::State;
+use coarsetime::Instant;
 use macroquad::prelude::*;
 use uwh_common::game_snapshot::GamePeriod;
 use uwh_common::game_snapshot::TimeoutSnapshot;
@@ -13,44 +14,45 @@ impl PageRenderer {
         // animate the state and time graphic to the left at 895 secs (5 seconds since period started)
         let (position_offset, alpha_offset) = if state.snapshot.secs_in_period < 1 {
             // reset animation counters if page is nearing termination
-            self.secondary_animation_counter = 0f32;
-            self.animation_counter = 0f32;
+            self.animation_register1 = Instant::now();
             (
                 (0f32, -200f32).interpolate_linear(1f32),
                 (255f32, 0f32).interpolate_linear(1f32) as u8,
             )
         } else if state.snapshot.current_period == GamePeriod::FirstHalf {
-            self.animation_counter += 1f32 / 60f32;
-            if self.animation_counter <= 5f32 {
-                (
+            let time = Instant::now()
+                .duration_since(self.animation_register1)
+                .as_f64();
+            match time {
+                x if (..=5f64).contains(&x) => (
                     (0f32, -200f32).interpolate_linear(0f32),
                     (255f32, 0f32).interpolate_linear(0f32) as u8,
-                )
-            } else if self.animation_counter > 5f32 && self.animation_counter < 6f32 {
-                (
-                    (0f32, -200f32).interpolate_linear(self.animation_counter - 5f32),
-                    (255f32, 0f32).interpolate_linear(self.animation_counter - 5f32) as u8,
-                )
-            } else {
-                (
+                ),
+                x if (5f64..=6f64).contains(&x) => (
+                    (0f32, -200f32).interpolate_linear(time as f32 - 5f32),
+                    (255f32, 0f32).interpolate_linear(time as f32 - 5f32) as u8,
+                ),
+                _ => (
                     (0f32, -200f32).interpolate_linear(1f32),
                     (255f32, 0f32).interpolate_linear(1f32) as u8,
-                )
+                ),
             }
         } else {
-            self.animation_counter += 1f32 / 60f32;
-            match self.animation_counter {
-                x if (..=1f32).contains(&x) => (
-                    (0f32, -200f32).interpolate_linear(1f32 - self.animation_counter),
-                    (255f32, 0f32).interpolate_linear(1f32 - self.animation_counter) as u8,
+            let time = Instant::now()
+                .duration_since(self.animation_register1)
+                .as_f64();
+            match time {
+                x if (..=1f64).contains(&x) => (
+                    (0f32, -200f32).interpolate_linear(1f32 - time as f32),
+                    (255f32, 0f32).interpolate_linear(1f32 - time as f32) as u8,
                 ),
-                x if (1f32..=5f32).contains(&x) => (
+                x if (1f64..=5f64).contains(&x) => (
                     (0f32, -200f32).interpolate_linear(0f32),
                     (255f32, 0f32).interpolate_linear(0f32) as u8,
                 ),
-                x if (5f32..=6f32).contains(&x) => (
-                    (0f32, -200f32).interpolate_linear(self.animation_counter - 5f32),
-                    (255f32, 0f32).interpolate_linear(self.animation_counter - 5f32) as u8,
+                x if (5f64..=6f64).contains(&x) => (
+                    (0f32, -200f32).interpolate_linear(time as f32 - 5f32),
+                    (255f32, 0f32).interpolate_linear(time as f32 - 5f32) as u8,
                 ),
                 _ => (
                     (0f32, -200f32).interpolate_linear(1f32),
@@ -65,27 +67,56 @@ impl PageRenderer {
             37f32,
             WHITE,
         );
-        if state.snapshot.timeout != TimeoutSnapshot::None {
-            if self.last_timeout == TimeoutSnapshot::None {
-                // if this is a new timeout period
-                self.secondary_animation_counter = 1f32;
-            }
-            if self.secondary_animation_counter > 0f32 {
-                self.secondary_animation_counter -= 1f32 / 60f32;
-            }
-            self.last_timeout = state.snapshot.timeout;
-        } else if self.last_timeout != TimeoutSnapshot::None {
-            // if a timeout period just finished
-            if self.secondary_animation_counter > 1f32 {
-                self.secondary_animation_counter = 0f32;
-                self.last_timeout = TimeoutSnapshot::None;
+        let mut time = Instant::now()
+            .duration_since(self.animation_register2)
+            .as_f64() as f32;
+        let (timeout_offset, timeout_alpha_offset) =
+            if state.snapshot.timeout != TimeoutSnapshot::None {
+                if self.last_timeout == TimeoutSnapshot::None {
+                    // if this is a new timeout period
+                    self.animation_register2 = Instant::now();
+                    time = 0.0f32;
+                }
+                self.last_timeout = state.snapshot.timeout;
+                if time < 1f32 {
+                    (
+                        (0f32, -200f32).interpolate_linear(1f32 - time),
+                        (0f32, 255f32).interpolate_exponential_end(time),
+                    )
+                } else {
+                    (
+                        (0f32, -200f32).interpolate_linear(0f32),
+                        (0f32, 255f32).interpolate_exponential_end(1f32),
+                    )
+                }
+            } else if self.last_timeout != TimeoutSnapshot::None {
+                // if a timeout period just finished
+                if !self.animation_register3 {
+                    self.animation_register3 = true;
+                    self.animation_register2 = Instant::now();
+                    time = 0.0f32;
+                }
+                if time > 1f32 {
+                    self.animation_register3 = false;
+                    self.animation_register2 = Instant::now();
+                    self.last_timeout = TimeoutSnapshot::None;
+                    (
+                        (0f32, -200f32).interpolate_linear(1f32),
+                        (0f32, 255f32).interpolate_exponential_end(0f32),
+                    )
+                } else {
+                    (
+                        (0f32, -200f32).interpolate_linear(0f32),
+                        (0f32, 255f32).interpolate_exponential_end(1f32),
+                    )
+                }
             } else {
-                self.secondary_animation_counter += 1f32 / 60f32;
-            }
-        }
-        let timeout_offset = (0f32, -200f32).interpolate_linear(self.secondary_animation_counter);
-        let timeout_alpha_offset =
-            (0f32, 255f32).interpolate_exponential_end(1f32 - self.secondary_animation_counter);
+                // return any values when both are None, cause we won't be redering anyways
+                (
+                    (0f32, -200f32).interpolate_linear(0f32),
+                    (0f32, 255f32).interpolate_exponential_end(1f32),
+                )
+            };
         match self.last_timeout {
             // draw text for each type of penalty
             TimeoutSnapshot::Ref(_) => {

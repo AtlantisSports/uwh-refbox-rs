@@ -2,11 +2,13 @@ use super::center_text_offset;
 use super::get_input;
 use super::PageRenderer;
 use crate::State;
+use coarsetime::Instant;
 use macroquad::prelude::*;
 
 impl PageRenderer {
     /// The Next Game screen, shown up to 150 seconds before the next game
     pub fn next_game(&mut self, state: &State) {
+        self.animation_register1 = Instant::now();
         draw_texture(self.textures.atlantis_logo_graphic, 823f32, 712f32, WHITE);
         draw_texture(self.textures.bottom_graphic, 822f32, 977f32, WHITE);
         draw_texture(

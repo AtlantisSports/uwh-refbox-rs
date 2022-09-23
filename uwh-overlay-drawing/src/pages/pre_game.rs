@@ -2,6 +2,7 @@ use super::center_text_offset;
 use super::Interpolate;
 use super::PageRenderer;
 use crate::State;
+use coarsetime::Instant;
 use macroquad::prelude::*;
 
 impl PageRenderer {
@@ -49,23 +50,27 @@ impl PageRenderer {
                         },
                     );
                 }
+                self.animation_register1 = Instant::now();
             }
             15 => {
-                // animate a fade on the fifteenth second in the alpha stream
-                self.animation_counter += 1f32 / 60f32; // inverse of number of frames in transition period
-                let offset = (255f32, 0f32).interpolate_linear(self.animation_counter) as u8;
+                // animate a fade on the fifteenth second
+                let offset = (255f32, 0f32).interpolate_linear(
+                    Instant::now()
+                        .duration_since(self.animation_register1)
+                        .as_f64() as f32,
+                ) as u8;
 
                 draw_texture(
                     self.textures.atlantis_logo_graphic,
                     823f32,
                     712f32,
-                    Color::from_rgba(255, 255, 255, if self.is_alpha_mode { offset } else { 255 }),
+                    Color::from_rgba(255, 255, 255, offset),
                 );
                 draw_texture(
                     self.textures.bottom_graphic,
                     822f32,
                     977f32,
-                    Color::from_rgba(255, 255, 255, if self.is_alpha_mode { offset } else { 255 }),
+                    Color::from_rgba(255, 255, 255, offset),
                 );
                 if !self.is_alpha_mode {
                     let min = state.snapshot.secs_in_period / 60;
@@ -91,12 +96,7 @@ impl PageRenderer {
                         TextParams {
                             font: self.textures.font,
                             font_size: 50,
-                            color: Color::from_rgba(
-                                255,
-                                255,
-                                255,
-                                if self.is_alpha_mode { offset } else { 255 },
-                            ),
+                            color: Color::from_rgba(255, 255, 255, offset),
                             ..Default::default()
                         },
                     );
@@ -107,12 +107,7 @@ impl PageRenderer {
                         TextParams {
                             font: self.textures.font,
                             font_size: 20,
-                            color: Color::from_rgba(
-                                255,
-                                255,
-                                255,
-                                if self.is_alpha_mode { offset } else { 255 },
-                            ),
+                            color: Color::from_rgba(255, 255, 255, offset),
 
                             ..Default::default()
                         },
@@ -120,7 +115,7 @@ impl PageRenderer {
                 }
             }
             _ => {
-                self.animation_counter = 0f32;
+                self.animation_register1 = Instant::now();
             }
         }
         draw_texture(self.textures.team_bar_graphic, 26f32, 37f32, WHITE);

@@ -1,4 +1,5 @@
 use crate::load_images::Textures;
+use coarsetime::Instant;
 use macroquad::prelude::*;
 
 mod final_scores;
@@ -51,9 +52,10 @@ pub fn get_input<T: std::str::FromStr + std::default::Default>(prompt: &str) -> 
 
 pub struct PageRenderer {
     /// Holds state for progression of an animation
-    pub animation_counter: f32,
+    pub animation_register1: Instant,
     /// Use if there are more than one simultenous animations
-    pub secondary_animation_counter: f32,
+    pub animation_register2: Instant,
+    pub animation_register3: bool,
     /// Should the alpha or color stream be rendered?
     pub is_alpha_mode: bool,
     /// Contains textures, alpha in alpha mode, color in color mode

@@ -18,5 +18,6 @@ procspawn = "*"
 simple_logger = "*"
 log = "*"
 ipc-channel = "*"
+coarsetime = "*"
 
 [workspace]

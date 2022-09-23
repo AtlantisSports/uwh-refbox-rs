@@ -2,6 +2,7 @@ use super::center_text_offset;
 use super::Interpolate;
 use super::PageRenderer;
 use crate::State;
+use coarsetime::Instant;
 use macroquad::prelude::*;
 use uwh_common::game_snapshot::GamePeriod;
 use uwh_common::game_snapshot::TimeoutSnapshot;
@@ -9,35 +10,58 @@ use uwh_common::game_snapshot::TimeoutSnapshot;
 impl PageRenderer {
     /// Display during overtime. Has no animations
     pub fn overtime_and_sudden_death_display(&mut self, state: &State) {
-        if state.snapshot.secs_in_period < 1 {
+        // animate the state and time graphic to the left at 895 secs (5 seconds since period started)
+        let (timeout_offset, timeout_alpha_offset) = if state.snapshot.secs_in_period < 1 {
             // reset animation counters if page is nearing termination
-            self.secondary_animation_counter = 0f32;
-        }
+            self.animation_register1 = Instant::now();
+            (
+                (0f32, -200f32).interpolate_linear(1f32),
+                (255f32, 0f32).interpolate_linear(1f32) as u8,
+            )
+        } else if state.snapshot.current_period == GamePeriod::FirstHalf {
+            let time = Instant::now()
+                .duration_since(self.animation_register1)
+                .as_f64();
+            match time {
+                x if (..=5f64).contains(&x) => (
+                    (0f32, -200f32).interpolate_linear(0f32),
+                    (255f32, 0f32).interpolate_linear(0f32) as u8,
+                ),
+                x if (5f64..=6f64).contains(&x) => (
+                    (0f32, -200f32).interpolate_linear(time as f32 - 5f32),
+                    (255f32, 0f32).interpolate_linear(time as f32 - 5f32) as u8,
+                ),
+                _ => (
+                    (0f32, -200f32).interpolate_linear(1f32),
+                    (255f32, 0f32).interpolate_linear(1f32) as u8,
+                ),
+            }
+        } else {
+            let time = Instant::now()
+                .duration_since(self.animation_register1)
+                .as_f64();
+            match time {
+                x if (..=1f64).contains(&x) => (
+                    (0f32, -200f32).interpolate_linear(1f32 - time as f32),
+                    (255f32, 0f32).interpolate_linear(1f32 - time as f32) as u8,
+                ),
+                x if (1f64..=5f64).contains(&x) => (
+                    (0f32, -200f32).interpolate_linear(0f32),
+                    (255f32, 0f32).interpolate_linear(0f32) as u8,
+                ),
+                x if (5f64..=6f64).contains(&x) => (
+                    (0f32, -200f32).interpolate_linear(time as f32 - 5f32),
+                    (255f32, 0f32).interpolate_linear(time as f32 - 5f32) as u8,
+                ),
+                _ => (
+                    (0f32, -200f32).interpolate_linear(1f32),
+                    (255f32, 0f32).interpolate_linear(1f32) as u8,
+                ),
+            }
+        };
 
         draw_texture(self.textures.team_bar_graphic, 26f32, 37f32, WHITE);
         draw_texture(self.textures.in_game_mask, 359f32, 0f32, WHITE);
-        if state.snapshot.timeout != TimeoutSnapshot::None {
-            if self.last_timeout == TimeoutSnapshot::None {
-                // if this is a new timeout period
-                self.secondary_animation_counter = 1f32;
-            }
-            if self.secondary_animation_counter > 0f32 {
-                self.secondary_animation_counter -= 1f32 / 60f32;
-            }
-            self.last_timeout = state.snapshot.timeout;
-        } else if self.last_timeout != TimeoutSnapshot::None {
-            // if a timeout period just finished
-            if self.secondary_animation_counter > 1f32 {
-                self.secondary_animation_counter = 0f32;
-                self.last_timeout = TimeoutSnapshot::None;
-            } else {
-                self.secondary_animation_counter += 1f32 / 60f32;
-            }
-        }
-
-        let timeout_offset = (0f32, -200f32).interpolate_linear(self.secondary_animation_counter);
-        let timeout_alpha_offset =
-            (0f32, 255f32).interpolate_exponential_end(1f32 - self.secondary_animation_counter);
         // No penalty shot, black or white timeouts in overtime
         if let TimeoutSnapshot::Ref(_) = self.last_timeout {
             draw_texture(

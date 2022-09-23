@@ -2,6 +2,7 @@ use super::center_text_offset;
 use super::Interpolate;
 use super::PageRenderer;
 use crate::State;
+use coarsetime::Instant;
 use macroquad::prelude::*;
 use uwh_common::game_snapshot::Color;
 
@@ -9,10 +10,13 @@ impl PageRenderer {
     /// Roster screen, displayed between 150 and 30 seconds before the next game.
     pub fn roster(&mut self, state: &State) {
         let offset = if state.snapshot.secs_in_period == 150 {
-            self.animation_counter += 1f32 / 60f32; // inverse of number of frames in transition period
-            (0f32, -650f32).interpolate_linear(self.animation_counter)
+            (0f32, -650f32).interpolate_linear(
+                Instant::now()
+                    .duration_since(self.animation_register1)
+                    .as_f64() as f32,
+            )
         } else {
-            self.animation_counter = 0f32;
+            self.animation_register1 = Instant::now();
             (0f32, -650f32).interpolate_linear(1f32)
         };
         draw_texture(self.textures.atlantis_logo_graphic, 823f32, 712f32, WHITE);

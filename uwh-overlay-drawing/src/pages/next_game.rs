@@ -1,5 +1,4 @@
 use super::center_text_offset;
-use super::get_input;
 use super::PageRenderer;
 use crate::State;
 use coarsetime::Instant;

@@ -1,5 +1,4 @@
 use super::center_text_offset;
-use super::get_input;
 use super::Interpolate;
 use super::PageRenderer;
 use crate::State;
@@ -15,6 +14,7 @@ impl PageRenderer {
         let (position_offset, alpha_offset) = if state.snapshot.secs_in_period < 1 {
             // reset animation counters if page is nearing termination
             self.animation_register1 = Instant::now();
+            self.animation_register2 = Instant::now();
             (
                 (0f32, -200f32).interpolate_linear(1f32),
                 (255f32, 0f32).interpolate_linear(1f32) as u8,
@@ -90,12 +90,13 @@ impl PageRenderer {
                     )
                 }
             } else if self.last_timeout != TimeoutSnapshot::None {
-                // if a timeout period just finished
+                // if a timeout period just finished, and fade out is just starting
                 if !self.animation_register3 {
                     self.animation_register3 = true;
                     self.animation_register2 = Instant::now();
                     time = 0.0f32;
                 }
+                // when fade out is done
                 if time > 1f32 {
                     self.animation_register3 = false;
                     self.animation_register2 = Instant::now();
@@ -106,8 +107,8 @@ impl PageRenderer {
                     )
                 } else {
                     (
-                        (0f32, -200f32).interpolate_linear(0f32),
-                        (0f32, 255f32).interpolate_exponential_end(1f32),
+                        (0f32, -200f32).interpolate_linear(time),
+                        (0f32, 255f32).interpolate_exponential_end(1f32 - time),
                     )
                 }
             } else {

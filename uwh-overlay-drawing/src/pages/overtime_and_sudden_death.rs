@@ -10,96 +10,140 @@ use uwh_common::game_snapshot::TimeoutSnapshot;
 impl PageRenderer {
     /// Display during overtime. Has no animations
     pub fn overtime_and_sudden_death_display(&mut self, state: &State) {
+        let mut time = Instant::now()
+            .duration_since(self.animation_register2)
+            .as_f64() as f32;
         // animate the state and time graphic to the left at 895 secs (5 seconds since period started)
-        let (timeout_offset, timeout_alpha_offset) = if state.snapshot.secs_in_period < 1 {
-            // reset animation counters if page is nearing termination
-            self.animation_register1 = Instant::now();
-            (
-                (0f32, -200f32).interpolate_linear(1f32),
-                (255f32, 0f32).interpolate_linear(1f32) as u8,
-            )
-        } else if state.snapshot.current_period == GamePeriod::FirstHalf {
-            let time = Instant::now()
-                .duration_since(self.animation_register1)
-                .as_f64();
-            match time {
-                x if (..=5f64).contains(&x) => (
+        let (timeout_offset, timeout_alpha_offset) =
+            if state.snapshot.timeout != TimeoutSnapshot::None {
+                if self.last_timeout == TimeoutSnapshot::None {
+                    // if this is a new timeout period
+                    self.animation_register2 = Instant::now();
+                    time = 0.0f32;
+                }
+                self.last_timeout = state.snapshot.timeout;
+                if time < 1f32 {
+                    (
+                        (0f32, -200f32).interpolate_linear(1f32 - time),
+                        (0f32, 255f32).interpolate_exponential_end(time),
+                    )
+                } else {
+                    (
+                        (0f32, -200f32).interpolate_linear(0f32),
+                        (0f32, 255f32).interpolate_exponential_end(1f32),
+                    )
+                }
+            } else if self.last_timeout != TimeoutSnapshot::None {
+                // if a timeout period just finished, and fade out is just starting
+                if !self.animation_register3 {
+                    self.animation_register3 = true;
+                    self.animation_register2 = Instant::now();
+                    time = 0.0f32;
+                }
+                // when fade out is done
+                if time > 1f32 {
+                    self.animation_register3 = false;
+                    self.animation_register2 = Instant::now();
+                    self.last_timeout = TimeoutSnapshot::None;
+                    (
+                        (0f32, -200f32).interpolate_linear(1f32),
+                        (0f32, 255f32).interpolate_exponential_end(0f32),
+                    )
+                } else {
+                    (
+                        (0f32, -200f32).interpolate_linear(time),
+                        (0f32, 255f32).interpolate_exponential_end(1f32 - time),
+                    )
+                }
+            } else {
+                // return any values when both are None, cause we won't be redering anyways
+                (
                     (0f32, -200f32).interpolate_linear(0f32),
-                    (255f32, 0f32).interpolate_linear(0f32) as u8,
-                ),
-                x if (5f64..=6f64).contains(&x) => (
-                    (0f32, -200f32).interpolate_linear(time as f32 - 5f32),
-                    (255f32, 0f32).interpolate_linear(time as f32 - 5f32) as u8,
-                ),
-                _ => (
-                    (0f32, -200f32).interpolate_linear(1f32),
-                    (255f32, 0f32).interpolate_linear(1f32) as u8,
-                ),
-            }
-        } else {
-            let time = Instant::now()
-                .duration_since(self.animation_register1)
-                .as_f64();
-            match time {
-                x if (..=1f64).contains(&x) => (
-                    (0f32, -200f32).interpolate_linear(1f32 - time as f32),
-                    (255f32, 0f32).interpolate_linear(1f32 - time as f32) as u8,
-                ),
-                x if (1f64..=5f64).contains(&x) => (
-                    (0f32, -200f32).interpolate_linear(0f32),
-                    (255f32, 0f32).interpolate_linear(0f32) as u8,
-                ),
-                x if (5f64..=6f64).contains(&x) => (
-                    (0f32, -200f32).interpolate_linear(time as f32 - 5f32),
-                    (255f32, 0f32).interpolate_linear(time as f32 - 5f32) as u8,
-                ),
-                _ => (
-                    (0f32, -200f32).interpolate_linear(1f32),
-                    (255f32, 0f32).interpolate_linear(1f32) as u8,
-                ),
-            }
-        };
+                    (0f32, 255f32).interpolate_exponential_end(1f32),
+                )
+            };
 
         draw_texture(self.textures.team_bar_graphic, 26f32, 37f32, WHITE);
         draw_texture(self.textures.in_game_mask, 359f32, 0f32, WHITE);
         // No penalty shot, black or white timeouts in overtime
-        if let TimeoutSnapshot::Ref(_) = self.last_timeout {
-            draw_texture(
-                self.textures.referee_timout_graphic,
-                timeout_offset + 380f32,
-                185f32,
-                Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
-            );
-            draw_text_ex(
-                "REFEREE",
-                475f32 + timeout_offset,
-                67f32,
-                TextParams {
-                    font: self.textures.font,
-                    font_size: 20,
-                    color: if self.is_alpha_mode {
-                        Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
-                    } else {
-                        Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8)
+        match self.last_timeout {
+            TimeoutSnapshot::Ref(_) => {
+                draw_texture(
+                    self.textures.referee_timout_graphic,
+                    timeout_offset + 380f32,
+                    35f32,
+                    Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
+                );
+                draw_text_ex(
+                    "REFEREE",
+                    475f32 + timeout_offset,
+                    67f32,
+                    TextParams {
+                        font: self.textures.font,
+                        font_size: 20,
+                        color: if self.is_alpha_mode {
+                            Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
+                        } else {
+                            Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8)
+                        },
+                        ..Default::default()
                     },
-                    ..Default::default()
-                },
-            );
-            draw_text_ex(
-                "TIMEOUT",
-                480f32 + timeout_offset,
-                95f32,
-                TextParams {
-                    font: self.textures.font,
-                    font_size: 20,
-                    color: if self.is_alpha_mode {
-                        Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
-                    } else {
-                        Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8)
+                );
+                draw_text_ex(
+                    "TIMEOUT",
+                    480f32 + timeout_offset,
+                    95f32,
+                    TextParams {
+                        font: self.textures.font,
+                        font_size: 20,
+                        color: if self.is_alpha_mode {
+                            Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
+                        } else {
+                            Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8)
+                        },
+                        ..Default::default()
                     },
-                    ..Default::default()
-                },
-            );
+                );
+            }
+            TimeoutSnapshot::PenaltyShot(_) => {
+                draw_texture(
+                    self.textures.penalty_graphic,
+                    timeout_offset + 380f32,
+                    35f32,
+                    Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
+                );
+                draw_text_ex(
+                    "PENALTY",
+                    475f32 + timeout_offset,
+                    67f32,
+                    TextParams {
+                        font: self.textures.font,
+                        font_size: 20,
+                        color: if self.is_alpha_mode {
+                            Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
+                        } else {
+                            Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8)
+                        },
+                        ..Default::default()
+                    },
+                );
+                draw_text_ex(
+                    "SHOT",
+                    490f32 + timeout_offset,
+                    95f32,
+                    TextParams {
+                        font: self.textures.font,
+                        font_size: 20,
+                        color: if self.is_alpha_mode {
+                            Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
+                        } else {
+                            Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8)
+                        },
+                        ..Default::default()
+                    },
+                );
+            }
+            _ => {}
         }
         if state.white_flag == None {
             draw_text_ex(

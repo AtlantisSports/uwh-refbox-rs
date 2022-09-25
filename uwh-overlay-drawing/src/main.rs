@@ -99,7 +99,24 @@ async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) 
         load_images::Textures::init_color()
     };
 
-    let mut local_state: Option<State> = None;
+    let mut local_state: State = State {
+        snapshot: Default::default(),
+        black: TeamInfo {
+            team_name: String::from("BLACK"),
+            flag: None,
+            players: Vec::new(),
+        },
+        white: TeamInfo {
+            team_name: String::from("WHITE"),
+            flag: None,
+            players: Vec::new(),
+        },
+        game_id: 0,
+        pool: String::from("0"),
+        start_time: String::new(),
+        white_flag: None,
+        black_flag: None,
+    };
 
     let mut renderer = pages::PageRenderer {
         animation_register1: Instant::now(),
@@ -115,72 +132,64 @@ async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) 
         clear_background(BLACK);
 
         if let Ok(recieved_state) = rx.try_recv() {
-            // Update state parameters like team names and flags if they are `Some`.
-            if let Some(local_state) = &mut local_state {
-                if let Some(team) = recieved_state.black {
-                    local_state.black = team;
+            if let Some(team) = recieved_state.black {
+                local_state.black = team;
+                if let Some(flag_bytes) = local_state.black.flag.clone() {
+                    local_state.black_flag =
+                        Some(Texture2D::from_file_with_format(&flag_bytes, None));
                 }
-                if let Some(team) = recieved_state.white {
-                    local_state.white = team;
-                }
-                local_state.snapshot = recieved_state.snapshot;
-            } else {
-                // If `game_state` hasn't been init'd, just copy all the values over. Unwrap because we expect the first snapshot to contain this info always.
-                local_state = Some(State {
-                    snapshot: recieved_state.snapshot,
-                    game_id: recieved_state.game_id.unwrap(),
-                    white_flag: recieved_state.white.as_ref().unwrap().flag_url.clone().map(
-                        |url| {
-                            Texture2D::from_file_with_format(&network::get_flag(url.as_str()), None)
-                        },
-                    ),
-                    black_flag: recieved_state.black.as_ref().unwrap().flag_url.clone().map(
-                        |url| {
-                            Texture2D::from_file_with_format(&network::get_flag(url.as_str()), None)
-                        },
-                    ),
-                    white: recieved_state.white.unwrap(),
-                    black: recieved_state.black.unwrap(),
-                    pool: recieved_state.pool.unwrap(),
-                    start_time: recieved_state.start_time.unwrap(),
-                });
             }
+            if let Some(team) = recieved_state.white {
+                local_state.white = team;
+                if let Some(flag_bytes) = local_state.white.flag.clone() {
+                    local_state.white_flag =
+                        Some(Texture2D::from_file_with_format(&flag_bytes, None));
+                }
+            }
+            if let Some(game_id) = recieved_state.game_id {
+                local_state.game_id = game_id;
+            }
+            if let Some(pool) = recieved_state.pool {
+                local_state.pool = pool;
+            }
+            if let Some(start_time) = recieved_state.start_time {
+                local_state.start_time = start_time;
+            }
+            local_state.snapshot = recieved_state.snapshot;
 
             // sync local penalty list
-            flag_renderer.synchronize_flags(local_state.as_ref().unwrap());
+            flag_renderer.synchronize_flags(&local_state);
         }
 
-        if let Some(state) = &local_state {
-            match state.snapshot.current_period {
-                GamePeriod::BetweenGames => match state.snapshot.secs_in_period {
-                    151..=u32::MAX => {
-                        // If an old game just finished, display its scores
-                        if state.snapshot.is_old_game {
-                            renderer.final_scores(state);
-                        } else {
-                            renderer.next_game(state);
-                        }
+        match local_state.snapshot.current_period {
+            GamePeriod::BetweenGames => match local_state.snapshot.secs_in_period {
+                151..=u32::MAX => {
+                    // If an old game just finished, display its scores
+                    if local_state.snapshot.is_old_game {
+                        renderer.final_scores(&local_state);
+                    } else {
+                        renderer.next_game(&local_state);
                     }
-                    30..=150 => {
-                        renderer.roster(state);
-                    }
-                    _ => {
-                        renderer.pre_game_display(state);
-                    }
-                },
-                GamePeriod::FirstHalf | GamePeriod::SecondHalf | GamePeriod::HalfTime => {
-                    renderer.in_game_display(state);
-                    flag_renderer.draw();
                 }
-                GamePeriod::OvertimeFirstHalf
-                | GamePeriod::OvertimeHalfTime
-                | GamePeriod::OvertimeSecondHalf
-                | GamePeriod::PreOvertime
-                | GamePeriod::PreSuddenDeath
-                | GamePeriod::SuddenDeath => {
-                    renderer.overtime_and_sudden_death_display(state);
-                    flag_renderer.draw();
+                30..=150 => {
+                    renderer.roster(&local_state);
                 }
+                _ => {
+                    renderer.pre_game_display(&local_state);
+                }
+            },
+            GamePeriod::FirstHalf | GamePeriod::SecondHalf | GamePeriod::HalfTime => {
+                renderer.in_game_display(&local_state);
+                flag_renderer.draw();
+            }
+            GamePeriod::OvertimeFirstHalf
+            | GamePeriod::OvertimeHalfTime
+            | GamePeriod::OvertimeSecondHalf
+            | GamePeriod::PreOvertime
+            | GamePeriod::PreSuddenDeath
+            | GamePeriod::SuddenDeath => {
+                renderer.overtime_and_sudden_death_display(&local_state);
+                flag_renderer.draw();
             }
         }
         next_frame().await;

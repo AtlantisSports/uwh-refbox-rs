@@ -62,11 +62,11 @@ pub struct StatePacket {
     pub start_time: Option<String>,
 }
 
-fn fetch_data(tr: std::sync::mpsc::Sender<Value>, url: String) {
+fn fetch_data(tr: std::sync::mpsc::Sender<Value>, url: String, tournament_id: u32, game_id: u32) {
     info!("Requesting game data from UWH API");
     let data = reqwest::blocking::get(format!(
         "https://{}/api/v1/tournaments/{}/games/{}",
-        url, 28, 2
+        url, tournament_id, game_id
     ))
     .unwrap();
     let t = data.text().unwrap();
@@ -82,29 +82,43 @@ pub async fn networking_thread(
         .expect("Is the refbox running? We error'd out on the connection");
     let (tr, rc) = std::sync::mpsc::channel::<Value>();
     let url = config.uwhscores_url.clone();
-    std::thread::spawn(move || fetch_data(tr, url));
     let mut team_id_black;
     let mut team_id_white;
     let mut buff = vec![0u8; 1024];
     let mut read_bytes;
+    let mut game_id = std::u32::MAX;
+    let mut tournament_id = std::u32::MAX;
     loop {
         read_bytes = stream.read(&mut buff).unwrap();
-        if let Ok(snapshot) = serde_json::de::from_slice(&buff[..read_bytes]) {
+        if let Ok(snapshot) = serde_json::de::from_slice::<GameSnapshot>(&buff[..read_bytes]) {
+            let tid = snapshot.tournament_id;
+            let gid = snapshot.game_number;
+            if tid != tournament_id || gid != game_id {
+                let url = url.clone();
+                let tr = tr.clone();
+                game_id = gid;
+                tournament_id = tid;
+                info!(
+                    "Refreshing game data for tid: {}, gid: {}",
+                    tournament_id, game_id
+                );
+                std::thread::spawn(move || fetch_data(tr, url, tournament_id, game_id));
+            }
             if let Ok(data) = rc.try_recv() {
                 team_id_black = Some(data["game"]["black_id"].as_u64().unwrap());
                 team_id_white = Some(data["game"]["white_id"].as_u64().unwrap());
                 if tx
                     .send(StatePacket {
                         snapshot,
-                        game_id: Some(2),
+                        game_id: Some(game_id),
                         black: Some(TeamInfo::new(
                             &config.uwhscores_url,
-                            28,
+                            tournament_id,
                             team_id_black.unwrap(),
                         )),
                         white: Some(TeamInfo::new(
                             &config.uwhscores_url,
-                            28,
+                            tournament_id,
                             team_id_white.unwrap(),
                         )),
                         pool: Some(data["game"]["pool"].as_str().unwrap().to_string()),

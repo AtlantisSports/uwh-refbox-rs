@@ -10,10 +10,7 @@ use iced::{
     alignment::{Horizontal, Vertical},
     pure::{
         button, column, container, horizontal_space, row, text, vertical_space,
-        widget::{
-            svg::{self, Svg},
-            Button, Container, Row, Text,
-        },
+        widget::{Button, Container, Row, Text},
         Element,
     },
     Alignment, Length,
@@ -542,31 +539,9 @@ fn make_scroll_list<'a, const LIST_LEN: usize>(
         other => Length::FillPortion(other),
     };
 
-    let mut up_btn = button(
-        container(Svg::new(svg::Handle::from_memory(
-            &include_bytes!("../../resources/arrow_drop_up_white_48dp.svg")[..],
-        )))
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .center_x()
-        .center_y(),
-    )
-    .width(Length::Units(MIN_BUTTON_SIZE))
-    .height(Length::Units(MIN_BUTTON_SIZE))
-    .style(style::Button::Blue);
+    let mut up_btn = make_small_button("\u{25b2}", MEDIUM_TEXT).style(style::Button::Blue);
 
-    let mut down_btn = button(
-        container(Svg::new(svg::Handle::from_memory(
-            &include_bytes!("../../resources/arrow_drop_down_white_48dp.svg")[..],
-        )))
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .center_x()
-        .center_y(),
-    )
-    .width(Length::Units(MIN_BUTTON_SIZE))
-    .height(Length::Units(MIN_BUTTON_SIZE))
-    .style(style::Button::Blue);
+    let mut down_btn = make_small_button("\u{25be}", MEDIUM_TEXT).style(style::Button::Blue);
 
     if can_scroll_up {
         up_btn = up_btn.on_press(Message::Scroll {
@@ -872,20 +847,12 @@ pub(super) fn build_keypad_page<'a>(
                                             )),
                                     )
                                     .push(
-                                        button(
-                                            container(Svg::new(svg::Handle::from_memory(
-                                                &include_bytes!(
-                                                    "../../resources/backspace_white_48dp.svg"
-                                                )[..],
-                                            )))
-                                            .width(Length::Fill)
-                                            .center_x(),
-                                        )
-                                        .padding((MIN_BUTTON_SIZE - MEDIUM_TEXT) / 2)
-                                        .width(Length::Units(2 * MIN_BUTTON_SIZE + SPACING))
-                                        .height(Length::Units(MIN_BUTTON_SIZE))
-                                        .style(style::Button::Blue)
-                                        .on_press(Message::KeypadButtonPress(KeypadButton::Delete)),
+                                        make_small_button("\u{232b}", LARGE_TEXT)
+                                            .width(Length::Units(2 * MIN_BUTTON_SIZE + SPACING))
+                                            .style(style::Button::Blue)
+                                            .on_press(Message::KeypadButtonPress(
+                                                KeypadButton::Delete,
+                                            )),
                                     ),
                             ),
                     )

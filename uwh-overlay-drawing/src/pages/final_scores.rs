@@ -69,7 +69,7 @@ impl PageRenderer {
                 738f32,
                 WHITE,
                 DrawTextureParams {
-                    dest_size: Some(vec2(flag.width() / (flag.height() / 100f32), 100f32)),
+                    dest_size: Some(vec2(180f32, 100f32)),
                     ..Default::default()
                 },
             );

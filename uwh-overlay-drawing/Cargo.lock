@@ -1121,6 +1121,7 @@ version = "0.1.0"
 dependencies = [
  "coarsetime",
  "confy",
+ "crossbeam-channel",
  "home",
  "log",
  "macroquad",

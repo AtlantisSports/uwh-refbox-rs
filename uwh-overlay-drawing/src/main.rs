@@ -1,9 +1,10 @@
 use coarsetime::Instant;
+use crossbeam_channel::bounded;
 use log::warn;
 use macroquad::prelude::*;
 use network::{StatePacket, TeamInfo};
 use std::net::IpAddr;
-use std::{str::FromStr, sync::mpsc::channel};
+use std::str::FromStr;
 use uwh_common::game_snapshot::{GamePeriod, GameSnapshot, TimeoutSnapshot};
 mod flag;
 mod load_images;
@@ -58,7 +59,7 @@ async fn main() {
         .with_level(log::LevelFilter::Debug)
         .init()
         .unwrap();
-    let (tx, rx) = channel::<StatePacket>();
+    let (tx, rx) = bounded::<StatePacket>(3);
 
     let config: AppConfig = match confy::load(APP_CONFIG_NAME, None) {
         Ok(c) => c,

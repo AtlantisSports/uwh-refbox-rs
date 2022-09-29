@@ -19,5 +19,6 @@ procspawn = "*"
 simple_logger = "*"
 log = "*"
 coarsetime = "*"
+crossbeam-channel = "*"
 
 [workspace]

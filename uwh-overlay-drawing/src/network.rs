@@ -13,18 +13,20 @@ pub struct TeamInfo {
 }
 
 impl TeamInfo {
-    pub fn new(url: &String, tournament_id: u32, team_id: u64, team_color: Color) -> Self {
+    pub async fn new(url: &String, tournament_id: u32, team_id: u64, team_color: Color) -> Self {
         debug!(
             "Requesting UWH API for team information for team {}",
             team_id
         );
         let data: Value = serde_json::from_str(
-            &reqwest::blocking::get(format!(
+            &reqwest::get(format!(
                 "https://{}/api/v1/tournaments/{}/teams/{}",
                 url, tournament_id, team_id
             ))
+            .await
             .unwrap()
             .text()
+            .await
             .unwrap(),
         )
         .unwrap();
@@ -66,36 +68,40 @@ pub struct StatePacket {
     pub start_time: Option<String>,
 }
 
-fn fetch_game_data(
-    tr: std::sync::mpsc::Sender<(Value, TeamInfo, TeamInfo)>,
+async fn fetch_game_data(
+    tr: crossbeam_channel::Sender<(Value, TeamInfo, TeamInfo)>,
     url: String,
     tournament_id: u32,
     game_id: u32,
 ) {
     debug!("Requesting game data from UWH API");
-    let data = reqwest::blocking::get(format!(
+    let data = reqwest::get(format!(
         "https://{}/api/v1/tournaments/{}/games/{}",
         url, tournament_id, game_id
     ))
+    .await
     .unwrap();
-    let text = data.text().unwrap();
+    let text = data.text().await.unwrap();
     let data: Value = serde_json::from_str(text.as_str()).unwrap();
     let team_id_black = Some(data["game"]["black_id"].as_u64().unwrap_or(0));
     let team_id_white = Some(data["game"]["white_id"].as_u64().unwrap_or(0));
     tr.send((
         data,
-        TeamInfo::new(&url, tournament_id, team_id_black.unwrap(), Color::Black),
-        TeamInfo::new(&url, tournament_id, team_id_white.unwrap(), Color::White),
+        TeamInfo::new(&url, tournament_id, team_id_black.unwrap(), Color::Black).await,
+        TeamInfo::new(&url, tournament_id, team_id_white.unwrap(), Color::White).await,
     ))
     .unwrap();
 }
 
 #[tokio::main]
-pub async fn networking_thread(tx: std::sync::mpsc::Sender<StatePacket>, config: crate::AppConfig) {
+pub async fn networking_thread(
+    tx: crossbeam_channel::Sender<StatePacket>,
+    config: crate::AppConfig,
+) {
     let mut stream = TcpStream::connect((config.refbox_ip, config.refbox_port as u16))
         .expect("Refbox should be running and accessible");
 
-    let (tr, rc) = std::sync::mpsc::channel::<(Value, TeamInfo, TeamInfo)>();
+    let (tr, rc) = crossbeam_channel::bounded::<(Value, TeamInfo, TeamInfo)>(3);
     let url = config.uwhscores_url.clone();
     let mut buff = vec![0u8; 1024];
     let mut read_bytes;
@@ -109,13 +115,13 @@ pub async fn networking_thread(tx: std::sync::mpsc::Sender<StatePacket>, config:
             return;
         }
         if let Ok(snapshot) = serde_json::de::from_slice::<GameSnapshot>(&buff[..read_bytes]) {
-            let tid = snapshot.tournament_id;
-            let gid =
-                if snapshot.current_period == GamePeriod::BetweenGames && !snapshot.is_old_game {
-                    snapshot.next_game_number
-                } else {
-                    snapshot.game_number
-                };
+            let tid = 28; //snapshot.tournament_id;
+            let gid = 2;
+            // if snapshot.current_period == GamePeriod::BetweenGames && !snapshot.is_old_game {
+            //     snapshot.next_game_number
+            // } else {
+            //     snapshot.game_number
+            // };
             if (tournament_id.is_some() && tournament_id.unwrap() != tid
                 || game_id.is_some() && game_id.unwrap() != gid)
                 || tournament_id.is_none() && game_id.is_none()
@@ -129,8 +135,8 @@ pub async fn networking_thread(tx: std::sync::mpsc::Sender<StatePacket>, config:
                     tournament_id.unwrap(),
                     game_id.unwrap()
                 );
-                std::thread::spawn(move || {
-                    fetch_game_data(tr, url, tournament_id.unwrap(), game_id.unwrap())
+                tokio::spawn(async move {
+                    fetch_game_data(tr, url, tournament_id.unwrap(), game_id.unwrap()).await
                 });
             }
             if let Ok((data, black, white)) = rc.try_recv() {

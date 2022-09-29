@@ -3,8 +3,10 @@ use crate::config::Game;
 use crate::drawing_support::*;
 use arrayref::array_ref;
 use arrayvec::ArrayVec;
+#[cfg(feature = "std")]
+use core::cmp::min;
 use core::{
-    cmp::{min, Ordering, PartialOrd},
+    cmp::{Ordering, PartialOrd},
     time::Duration,
 };
 #[cfg(not(target_os = "windows"))]

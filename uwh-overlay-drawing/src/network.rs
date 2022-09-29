@@ -1,10 +1,9 @@
-use log::error;
-use macroquad::prelude::info;
+use log::{debug, error, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::Read;
 use std::net::TcpStream;
-use uwh_common::game_snapshot::{Color, GameSnapshot};
+use uwh_common::game_snapshot::{Color, GamePeriod, GameSnapshot};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct TeamInfo {
@@ -15,7 +14,7 @@ pub struct TeamInfo {
 
 impl TeamInfo {
     pub fn new(url: &String, tournament_id: u32, team_id: u64, team_color: Color) -> Self {
-        info!(
+        debug!(
             "Requesting UWH API for team information for team {}",
             team_id
         );
@@ -29,7 +28,6 @@ impl TeamInfo {
             .unwrap(),
         )
         .unwrap();
-        info!("Recieved response");
         let players: Vec<Value> = data["team"]["roster"]
             .as_array()
             .map(|x| x.to_vec())
@@ -68,13 +66,13 @@ pub struct StatePacket {
     pub start_time: Option<String>,
 }
 
-fn fetch_data(
+fn fetch_game_data(
     tr: std::sync::mpsc::Sender<(Value, TeamInfo, TeamInfo)>,
     url: String,
     tournament_id: u32,
     game_id: u32,
 ) {
-    info!("Requesting game data from UWH API");
+    debug!("Requesting game data from UWH API");
     let data = reqwest::blocking::get(format!(
         "https://{}/api/v1/tournaments/{}/games/{}",
         url, tournament_id, game_id
@@ -93,73 +91,81 @@ fn fetch_data(
 }
 
 #[tokio::main]
-pub async fn networking_thread(
-    tx: std::sync::mpsc::Sender<StatePacket>,
-    config: crate::AppConfig,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn networking_thread(tx: std::sync::mpsc::Sender<StatePacket>, config: crate::AppConfig) {
     let mut stream = TcpStream::connect((config.refbox_ip, config.refbox_port as u16))
-        .expect("Is the refbox running? We error'd out on the connection");
+        .expect("Refbox should be running and accessible");
+
     let (tr, rc) = std::sync::mpsc::channel::<(Value, TeamInfo, TeamInfo)>();
     let url = config.uwhscores_url.clone();
     let mut buff = vec![0u8; 1024];
     let mut read_bytes;
-    let mut game_id = std::u32::MAX;
-    let mut tournament_id = std::u32::MAX;
+    let mut game_id = None;
+    let mut tournament_id = None;
+    debug!("Networking thread initialized!");
     loop {
         read_bytes = stream.read(&mut buff).unwrap();
+        if read_bytes == 0 {
+            error!("Connection to refbox lost!");
+            return;
+        }
         if let Ok(snapshot) = serde_json::de::from_slice::<GameSnapshot>(&buff[..read_bytes]) {
-            let tid = 28; //snapshot.tournament_id;
-            let gid = 2; //snapshot.game_number;
-            if tid != tournament_id || gid != game_id {
+            let tid = snapshot.tournament_id;
+            let gid =
+                if snapshot.current_period == GamePeriod::BetweenGames && !snapshot.is_old_game {
+                    snapshot.next_game_number
+                } else {
+                    snapshot.game_number
+                };
+            if (tournament_id.is_some() && tournament_id.unwrap() != tid
+                || game_id.is_some() && game_id.unwrap() != gid)
+                || tournament_id.is_none() && game_id.is_none()
+            {
                 let url = url.clone();
                 let tr = tr.clone();
-                game_id = gid;
-                tournament_id = tid;
-                info!(
-                    "Refreshing game data for tid: {}, gid: {}",
-                    tournament_id, game_id
+                game_id = Some(gid);
+                tournament_id = Some(tid);
+                debug!(
+                    "Fetching game data for tid: {}, gid: {}",
+                    tournament_id.unwrap(),
+                    game_id.unwrap()
                 );
-                std::thread::spawn(move || fetch_data(tr, url, tournament_id, game_id));
+                std::thread::spawn(move || {
+                    fetch_game_data(tr, url, tournament_id.unwrap(), game_id.unwrap())
+                });
             }
             if let Ok((data, black, white)) = rc.try_recv() {
-                if tx
-                    .send(StatePacket {
-                        snapshot,
-                        game_id: Some(game_id),
-                        black: Some(black),
-                        white: Some(white),
-                        pool: Some(
-                            data["game"]["pool"]
-                                .as_str()
-                                .map(|s| format!("POOL: {}", s))
-                                .unwrap_or_default(),
-                        ),
-                        start_time: Some(
-                            data["game"]["start_time"]
-                                .as_str()
-                                .unwrap_or("")
-                                .to_string(),
-                        ),
-                    })
-                    .is_err()
-                {
-                    error!("Frontend could not recieve snapshot!")
-                }
+                tx.send(StatePacket {
+                    snapshot,
+                    game_id,
+                    black: Some(black),
+                    white: Some(white),
+                    pool: Some(
+                        data["game"]["pool"]
+                            .as_str()
+                            .map(|s| format!("POOL: {}", s))
+                            .unwrap_or_default(),
+                    ),
+                    start_time: Some(
+                        data["game"]["start_time"]
+                            .as_str()
+                            .unwrap_or("")
+                            .to_string(),
+                    ),
+                })
+                .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"))
             } else {
-                if tx
-                    .send(StatePacket {
-                        snapshot,
-                        game_id: None,
-                        black: None,
-                        white: None,
-                        pool: None,
-                        start_time: None,
-                    })
-                    .is_err()
-                {
-                    error!("Frontend could not recieve snapshot!")
-                }
+                tx.send(StatePacket {
+                    snapshot,
+                    game_id,
+                    black: None,
+                    white: None,
+                    pool: None,
+                    start_time: None,
+                })
+                .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"))
             }
+        } else {
+            warn!("Corrupted snapshot discarded!")
         }
     }
 }

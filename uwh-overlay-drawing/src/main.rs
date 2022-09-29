@@ -1,11 +1,9 @@
-use std::{str::FromStr, sync::mpsc::channel};
-
 use coarsetime::Instant;
-//use uwh_common::game_snapshot::GamePeriod;
+use log::warn;
+use macroquad::prelude::*;
 use network::{StatePacket, TeamInfo};
 use std::net::IpAddr;
-
-use macroquad::prelude::*;
+use std::{str::FromStr, sync::mpsc::channel};
 use uwh_common::game_snapshot::{GamePeriod, GameSnapshot, TimeoutSnapshot};
 mod flag;
 mod load_images;
@@ -54,7 +52,12 @@ pub struct State {
 
 #[macroquad::main(window_conf())]
 async fn main() {
-    // simple_logger::SimpleLogger::new().init().unwrap();
+    simple_logger::SimpleLogger::new()
+        .with_utc_timestamps()
+        .with_colors(true)
+        .with_level(log::LevelFilter::Debug)
+        .init()
+        .unwrap();
     let (tx, rx) = channel::<StatePacket>();
 
     let config: AppConfig = match confy::load(APP_CONFIG_NAME, None) {
@@ -68,13 +71,17 @@ async fn main() {
     };
 
     let net_worker = std::thread::spawn(|| {
-        network::networking_thread(tx, config)
-            .expect("Networking error. Does the supplied URL exist and is it live?");
+        network::networking_thread(tx, config);
     });
 
     let textures = load_images::Textures::default();
     let mut local_state: State = State {
-        snapshot: Default::default(),
+        snapshot: GameSnapshot {
+            current_period: GamePeriod::BetweenGames,
+            secs_in_period: 600,
+            ..Default::default()
+        },
+
         black: TeamInfo {
             team_name: String::from("BLACK"),
             flag: None,

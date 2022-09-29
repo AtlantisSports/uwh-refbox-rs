@@ -18,7 +18,6 @@ confy = { git = "https://github.com/rust-cli/confy", rev = "642822413139ce38a96b
 procspawn = "*"
 simple_logger = "*"
 log = "*"
-ipc-channel = "*"
 coarsetime = "*"
 
 [workspace]

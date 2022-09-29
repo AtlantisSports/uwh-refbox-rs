@@ -2,7 +2,6 @@ use std::{str::FromStr, sync::mpsc::channel};
 
 use coarsetime::Instant;
 //use uwh_common::game_snapshot::GamePeriod;
-use ipc_channel::ipc;
 use network::{StatePacket, TeamInfo};
 use std::net::IpAddr;
 
@@ -15,10 +14,10 @@ mod pages;
 
 const APP_CONFIG_NAME: &str = "uwh-overlay-drawing";
 
-fn window_conf(title: &str) -> Conf {
+fn window_conf() -> Conf {
     Conf {
-        window_title: title.to_string(),
-        window_width: 1920,
+        window_title: String::from("Overlay Program"),
+        window_width: 3840,
         window_height: 1080,
         window_resizable: false,
         ..Default::default()
@@ -53,12 +52,10 @@ pub struct State {
     black_flag: Option<Texture2D>,
 }
 
-fn main() {
-    procspawn::init();
+#[macroquad::main(window_conf())]
+async fn main() {
     // simple_logger::SimpleLogger::new().init().unwrap();
     let (tx, rx) = channel::<StatePacket>();
-    let (tx_a, rx_a) = ipc::channel::<StatePacket>().unwrap();
-    let (tx_c, rx_c) = ipc::channel::<StatePacket>().unwrap();
 
     let config: AppConfig = match confy::load(APP_CONFIG_NAME, None) {
         Ok(c) => c,
@@ -74,31 +71,8 @@ fn main() {
         network::networking_thread(tx, config)
             .expect("Networking error. Does the supplied URL exist and is it live?");
     });
-    procspawn::spawn(rx_a, |rx_a| {
-        macroquad::Window::from_config(window_conf("Alpha Stream"), render_process(true, rx_a));
-    });
-    procspawn::spawn(rx_c, |rx_c| {
-        macroquad::Window::from_config(window_conf("Color Stream"), render_process(false, rx_c));
-    });
 
-    loop {
-        if let Ok(item) = rx.recv() {
-            assert!(
-                !(tx_a.send(item.clone()).is_err() & tx_c.send(item).is_err()),
-                "Exiting.. Both windows closed!"
-            );
-        }
-        assert!(!net_worker.is_finished(), "Error in Networking thread!");
-    }
-}
-
-async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) {
-    let textures = if is_alpha_mode {
-        load_images::Textures::init_alpha()
-    } else {
-        load_images::Textures::init_color()
-    };
-
+    let textures = load_images::Textures::default();
     let mut local_state: State = State {
         snapshot: Default::default(),
         black: TeamInfo {
@@ -123,12 +97,12 @@ async fn render_process(is_alpha_mode: bool, rx: ipc::IpcReceiver<StatePacket>) 
         animation_register2: Instant::now(),
         animation_register3: false,
         textures,
-        is_alpha_mode,
         last_timeout: TimeoutSnapshot::None,
     };
-    let mut flag_renderer = flag::FlagRenderer::new(is_alpha_mode);
+    let mut flag_renderer = flag::FlagRenderer::new();
 
     loop {
+        assert!(!net_worker.is_finished(), "Error in Networking thread!");
         clear_background(BLACK);
 
         if let Ok(recieved_state) = rx.try_recv() {

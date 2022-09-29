@@ -2,7 +2,9 @@
 //! and penalty flags. Create an instance of `FlagRenderer` and push Flags into it.
 //! Flags are discarded automatically after their 5 second show time as long as the draw function is called.
 
+use crate::load_images::Texture;
 use crate::pages::center_text_offset;
+use crate::pages::draw_texture_both;
 use crate::pages::Interpolate;
 use macroquad::prelude::*;
 use uwh_common::game_snapshot::Color as UWHColor;
@@ -24,10 +26,10 @@ pub enum FlagType {
 }
 
 struct Textures {
-    black_goal: Texture2D,
-    white_goal: Texture2D,
-    white_penalty: Texture2D,
-    black_penalty: Texture2D,
+    black_goal: Texture,
+    white_goal: Texture,
+    white_penalty: Texture,
+    black_penalty: Texture,
     font: Font,
 }
 
@@ -59,7 +61,6 @@ pub struct FlagRenderer {
     active_flags: Vec<Flag>,
     inactive_flags: Vec<Flag>,
     textures: Textures,
-    is_alpha_mode: bool,
 }
 
 impl FlagRenderer {
@@ -86,29 +87,29 @@ impl FlagRenderer {
         self.active_flags.push(flag);
     }
 
-    pub fn new(is_alpha_mode: bool) -> Self {
+    pub fn new() -> Self {
         Self {
             active_flags: Vec::new(),
             inactive_flags: Vec::new(),
-            is_alpha_mode,
-            textures: if is_alpha_mode {
-                Textures {
-                    black_goal: load!("../assets/alpha/1080/Team Black.png"),
-                    white_goal: load!("../assets/alpha/1080/Team White.png"),
-                    white_penalty: load!("../assets/alpha/1080/Penalty White.png"),
-                    black_penalty: load!("../assets/alpha/1080/Penalty Black.png"),
-                    font: load_ttf_font_from_bytes(include_bytes!("./../assets/BAHNSCHRIFT.TTF"))
-                        .unwrap(),
-                }
-            } else {
-                Textures {
-                    black_goal: load!("../assets/color/1080/Team Black.png"),
-                    white_goal: load!("../assets/color/1080/Team White.png"),
-                    white_penalty: load!("../assets/color/1080/Penalty White.png"),
-                    black_penalty: load!("../assets/color/1080/Penalty Black.png"),
-                    font: load_ttf_font_from_bytes(include_bytes!("./../assets/BAHNSCHRIFT.TTF"))
-                        .unwrap(),
-                }
+            textures: Textures {
+                black_goal: Texture {
+                    alpha: load!("../assets/alpha/1080/Team Black.png"),
+                    color: load!("../assets/color/1080/Team Black.png"),
+                },
+                white_goal: Texture {
+                    alpha: load!("../assets/alpha/1080/Team White.png"),
+                    color: load!("../assets/color/1080/Team White.png"),
+                },
+                white_penalty: Texture {
+                    alpha: load!("../assets/alpha/1080/Penalty White.png"),
+                    color: load!("../assets/color/1080/Penalty White.png"),
+                },
+                black_penalty: Texture {
+                    alpha: load!("../assets/alpha/1080/Penalty Black.png"),
+                    color: load!("../assets/color/1080/Penalty Black.png"),
+                },
+                font: load_ttf_font_from_bytes(include_bytes!("./../assets/BAHNSCHRIFT.TTF"))
+                    .unwrap(),
             },
         }
     }
@@ -336,26 +337,27 @@ impl FlagRenderer {
                 )
                     .interpolate_linear(flag.movement_animation_counter)
             };
-            draw_texture(
-                match flag.flag_type {
-                    FlagType::Goal(color, _) => {
-                        if color == UWHColor::White {
-                            self.textures.white_goal
-                        } else {
-                            self.textures.black_goal
-                        }
+            let tex = match flag.flag_type {
+                FlagType::Goal(color, _) => {
+                    if color == UWHColor::White {
+                        &self.textures.white_goal
+                    } else {
+                        &self.textures.black_goal
                     }
-                    FlagType::Penalty(color, _, _) => {
-                        if color == UWHColor::White {
-                            self.textures.white_penalty
-                        } else {
-                            self.textures.black_penalty
-                        }
+                }
+                FlagType::Penalty(color, _, _) => {
+                    if color == UWHColor::White {
+                        &self.textures.white_penalty
+                    } else {
+                        &self.textures.black_penalty
                     }
-                },
+                }
+            };
+            draw_texture_both!(
+                tex,
                 25f32,
                 BASE_HEIGHT + idx as f32 * FLAG_HEIGHT + movement_offset,
-                Color::from_rgba(255, 255, 255, alpha_offset as u8),
+                Color::from_rgba(255, 255, 255, alpha_offset as u8)
             );
             draw_text_ex(
                 format!("#{} {}", flag.player_number, flag.player_name).as_str(),
@@ -368,11 +370,44 @@ impl FlagRenderer {
                     ..Default::default()
                 },
             );
-            if !self.is_alpha_mode {
-                match flag.flag_type {
-                    FlagType::Goal(_, _) => draw_text_ex(
-                        "GOAL",
-                        45f32,
+            match flag.flag_type {
+                FlagType::Goal(_, _) => draw_text_ex(
+                    "GOAL",
+                    45f32,
+                    BASE_HEIGHT + idx as f32 * FLAG_HEIGHT + movement_offset + 33f32,
+                    TextParams {
+                        font: self.textures.font,
+                        font_size: 30,
+                        color: Color::from_rgba(255, 255, 255, alpha_offset as u8),
+                        ..Default::default()
+                    },
+                ),
+                FlagType::Penalty(_, timeout, _) => {
+                    let text = &match timeout {
+                        PenaltyTime::Seconds(s) => {
+                            let mins = s / 60;
+                            let secs = s % 60;
+
+                            format!(
+                                "{}:{}",
+                                if mins < 10 {
+                                    format!("0{}", mins)
+                                } else {
+                                    format!("{}", mins)
+                                },
+                                if secs < 10 {
+                                    format!("0{}", secs)
+                                } else {
+                                    format!("{}", secs)
+                                }
+                            )
+                        }
+                        PenaltyTime::TotalDismissal => String::from("TD"),
+                    };
+                    let x_off = center_text_offset!(47f32, text, 30, self.textures.font);
+                    draw_text_ex(
+                        text,
+                        35f32 + x_off,
                         BASE_HEIGHT + idx as f32 * FLAG_HEIGHT + movement_offset + 33f32,
                         TextParams {
                             font: self.textures.font,
@@ -380,68 +415,34 @@ impl FlagRenderer {
                             color: Color::from_rgba(255, 255, 255, alpha_offset as u8),
                             ..Default::default()
                         },
-                    ),
-                    FlagType::Penalty(_, timeout, _) => {
-                        let text = &match timeout {
-                            PenaltyTime::Seconds(s) => {
-                                let mins = s / 60;
-                                let secs = s % 60;
-
-                                format!(
-                                    "{}:{}",
-                                    if mins < 10 {
-                                        format!("0{}", mins)
-                                    } else {
-                                        format!("{}", mins)
-                                    },
-                                    if secs < 10 {
-                                        format!("0{}", secs)
-                                    } else {
-                                        format!("{}", secs)
-                                    }
-                                )
-                            }
-                            PenaltyTime::TotalDismissal => String::from("TD"),
-                        };
-                        let x_off = center_text_offset!(47f32, text, 30, self.textures.font);
-                        draw_text_ex(
-                            text,
-                            35f32 + x_off,
-                            BASE_HEIGHT + idx as f32 * FLAG_HEIGHT + movement_offset + 33f32,
-                            TextParams {
-                                font: self.textures.font,
-                                font_size: 30,
-                                color: Color::from_rgba(255, 255, 255, alpha_offset as u8),
-                                ..Default::default()
-                            },
-                        );
-                    }
+                    );
                 }
             }
         }
         for flag in self.inactive_flags.iter_mut() {
             flag.alpha_animation_counter -= 1f32 / 60f32;
             let alpha_offset = (0f32, 255f32).interpolate_linear(flag.alpha_animation_counter);
-            draw_texture(
-                match flag.flag_type {
-                    FlagType::Goal(color, _) => {
-                        if color == UWHColor::White {
-                            self.textures.white_goal
-                        } else {
-                            self.textures.black_goal
-                        }
+            let tex = match flag.flag_type {
+                FlagType::Goal(color, _) => {
+                    if color == UWHColor::White {
+                        &self.textures.white_goal
+                    } else {
+                        &self.textures.black_goal
                     }
-                    FlagType::Penalty(color, _, _) => {
-                        if color == UWHColor::White {
-                            self.textures.white_penalty
-                        } else {
-                            self.textures.black_penalty
-                        }
+                }
+                FlagType::Penalty(color, _, _) => {
+                    if color == UWHColor::White {
+                        &self.textures.white_penalty
+                    } else {
+                        &self.textures.black_penalty
                     }
-                },
+                }
+            };
+            draw_texture_both!(
+                tex,
                 25f32,
                 BASE_HEIGHT + flag.vertical_position as f32 * FLAG_HEIGHT,
-                Color::from_rgba(255, 255, 255, alpha_offset as u8),
+                Color::from_rgba(255, 255, 255, alpha_offset as u8)
             );
             draw_text_ex(
                 format!("#{} {}", flag.player_number, flag.player_name).as_str(),
@@ -454,11 +455,44 @@ impl FlagRenderer {
                     ..Default::default()
                 },
             );
-            if !self.is_alpha_mode {
-                match flag.flag_type {
-                    FlagType::Goal(_, _) => draw_text_ex(
-                        "GOAL",
-                        45f32,
+            match flag.flag_type {
+                FlagType::Goal(_, _) => draw_text_ex(
+                    "GOAL",
+                    45f32,
+                    BASE_HEIGHT + flag.vertical_position as f32 * FLAG_HEIGHT + 33f32,
+                    TextParams {
+                        font: self.textures.font,
+                        font_size: 30,
+                        color: Color::from_rgba(255, 255, 255, alpha_offset as u8),
+                        ..Default::default()
+                    },
+                ),
+                FlagType::Penalty(_, timeout, _) => {
+                    let text = &match timeout {
+                        PenaltyTime::Seconds(s) => {
+                            let mins = s / 60;
+                            let secs = s % 60;
+
+                            format!(
+                                "{}:{}",
+                                if mins < 10 {
+                                    format!("0{}", mins)
+                                } else {
+                                    format!("{}", mins)
+                                },
+                                if secs < 10 {
+                                    format!("0{}", secs)
+                                } else {
+                                    format!("{}", secs)
+                                }
+                            )
+                        }
+                        PenaltyTime::TotalDismissal => String::from("TD"),
+                    };
+                    let x_off = center_text_offset!(47f32, text, 30, self.textures.font);
+                    draw_text_ex(
+                        text,
+                        35f32 + x_off,
                         BASE_HEIGHT + flag.vertical_position as f32 * FLAG_HEIGHT + 33f32,
                         TextParams {
                             font: self.textures.font,
@@ -466,42 +500,7 @@ impl FlagRenderer {
                             color: Color::from_rgba(255, 255, 255, alpha_offset as u8),
                             ..Default::default()
                         },
-                    ),
-                    FlagType::Penalty(_, timeout, _) => {
-                        let text = &match timeout {
-                            PenaltyTime::Seconds(s) => {
-                                let mins = s / 60;
-                                let secs = s % 60;
-
-                                format!(
-                                    "{}:{}",
-                                    if mins < 10 {
-                                        format!("0{}", mins)
-                                    } else {
-                                        format!("{}", mins)
-                                    },
-                                    if secs < 10 {
-                                        format!("0{}", secs)
-                                    } else {
-                                        format!("{}", secs)
-                                    }
-                                )
-                            }
-                            PenaltyTime::TotalDismissal => String::from("TD"),
-                        };
-                        let x_off = center_text_offset!(47f32, text, 30, self.textures.font);
-                        draw_text_ex(
-                            text,
-                            35f32 + x_off,
-                            BASE_HEIGHT + flag.vertical_position as f32 * FLAG_HEIGHT + 33f32,
-                            TextParams {
-                                font: self.textures.font,
-                                font_size: 30,
-                                color: Color::from_rgba(255, 255, 255, alpha_offset as u8),
-                                ..Default::default()
-                            },
-                        );
-                    }
+                    );
                 }
             }
         }

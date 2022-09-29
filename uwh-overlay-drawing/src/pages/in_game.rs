@@ -1,6 +1,9 @@
 use super::center_text_offset;
+use super::draw_texture_both;
 use super::Interpolate;
 use super::PageRenderer;
+use crate::pages::draw_text_both;
+use crate::pages::draw_text_both_ex;
 use crate::State;
 use coarsetime::Instant;
 use macroquad::prelude::*;
@@ -60,12 +63,12 @@ impl PageRenderer {
                 ),
             }
         };
-        draw_texture(self.textures.team_bar_graphic, 26f32, 37f32, WHITE);
-        draw_texture(
+        draw_texture_both!(self.textures.team_bar_graphic, 26f32, 37f32, WHITE);
+        draw_texture_both!(
             self.textures.in_game_mask,
             585f32 + position_offset,
             37f32,
-            WHITE,
+            WHITE
         );
         let mut time = Instant::now()
             .duration_since(self.animation_register2)
@@ -121,104 +124,114 @@ impl PageRenderer {
         match self.last_timeout {
             // draw text for each type of penalty
             TimeoutSnapshot::Ref(_) => {
-                draw_texture(
+                draw_texture_both!(
                     self.textures.referee_timout_graphic,
                     position_offset + timeout_offset + 580f32,
                     35f32,
-                    Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
+                    Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
                 );
-                draw_text_ex(
+                draw_text_both_ex!(
                     "REFEREE",
                     675f32 + position_offset + timeout_offset,
                     67f32,
                     TextParams {
                         font: self.textures.font,
                         font_size: 20,
-                        color: if self.is_alpha_mode {
-                            Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
-                        } else {
-                            Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8)
-                        },
+                        color: Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8),
                         ..Default::default()
                     },
+                    TextParams {
+                        font: self.textures.font,
+                        font_size: 20,
+                        color: Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
+                        ..Default::default()
+                    }
                 );
-                draw_text_ex(
+                draw_text_both_ex!(
                     "TIMEOUT",
                     680f32 + position_offset + timeout_offset,
                     95f32,
                     TextParams {
                         font: self.textures.font,
                         font_size: 20,
-                        color: if self.is_alpha_mode {
-                            Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
-                        } else {
-                            Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8)
-                        },
+                        color: Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8),
                         ..Default::default()
                     },
+                    TextParams {
+                        font: self.textures.font,
+                        font_size: 20,
+                        color: Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
+                        ..Default::default()
+                    }
                 );
             }
             TimeoutSnapshot::White(time) => {
-                draw_texture(
+                draw_texture_both!(
                     self.textures.white_timout_graphic,
                     position_offset + timeout_offset + 580f32,
                     35f32,
-                    Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
+                    Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
                 );
-                draw_text_ex(
+                draw_text_both_ex!(
                     "WHITE",
                     675f32 + position_offset + timeout_offset,
                     67f32,
                     TextParams {
                         font: self.textures.font,
                         font_size: 20,
-                        color: if self.is_alpha_mode {
-                            Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
-                        } else {
-                            Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8)
-                        },
+                        color: Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8),
                         ..Default::default()
                     },
+                    TextParams {
+                        font: self.textures.font,
+                        font_size: 20,
+                        color: Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
+                        ..Default::default()
+                    }
                 );
-                draw_text_ex(
+                draw_text_both_ex!(
                     "TIMEOUT",
                     665f32 + position_offset + timeout_offset,
                     95f32,
                     TextParams {
                         font: self.textures.font,
                         font_size: 20,
-                        color: if self.is_alpha_mode {
-                            Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
-                        } else {
-                            Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8)
-                        },
+                        color: Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8),
                         ..Default::default()
                     },
+                    TextParams {
+                        font: self.textures.font,
+                        font_size: 20,
+                        color: Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
+                        ..Default::default()
+                    }
                 );
-                draw_text_ex(
+                draw_text_both_ex!(
                     format!("{time}").as_str(),
                     765f32 + position_offset + timeout_offset,
                     95f32,
                     TextParams {
                         font: self.textures.font,
-                        font_size: 50,
-                        color: if self.is_alpha_mode {
-                            Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
-                        } else {
-                            Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8)
-                        },
+                        font_size: 20,
+                        color: Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8),
                         ..Default::default()
                     },
+                    TextParams {
+                        font: self.textures.font,
+                        font_size: 20,
+                        color: Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
+                        ..Default::default()
+                    }
                 );
             }
             TimeoutSnapshot::Black(time) => {
-                draw_texture(
+                draw_texture_both!(
                     self.textures.black_timout_graphic,
                     position_offset + timeout_offset + 580f32,
                     35f32,
-                    Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
+                    Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
                 );
-                draw_text_ex(
+                draw_text_both!(
                     "BLACK",
                     675f32 + position_offset + timeout_offset,
                     67f32,
@@ -227,9 +240,9 @@ impl PageRenderer {
                         font_size: 20,
                         color: Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
                         ..Default::default()
-                    },
+                    }
                 );
-                draw_text_ex(
+                draw_text_both!(
                     "TIMEOUT",
                     665f32 + position_offset + timeout_offset,
                     95f32,
@@ -238,9 +251,9 @@ impl PageRenderer {
                         font_size: 20,
                         color: Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
                         ..Default::default()
-                    },
+                    }
                 );
-                draw_text_ex(
+                draw_text_both!(
                     format!("{time}").as_str(),
                     765f32 + position_offset + timeout_offset,
                     95f32,
@@ -249,51 +262,43 @@ impl PageRenderer {
                         font_size: 50,
                         color: Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
                         ..Default::default()
-                    },
+                    }
                 );
             }
             TimeoutSnapshot::PenaltyShot(_) => {
-                draw_texture(
+                draw_texture_both!(
                     self.textures.penalty_graphic,
                     position_offset + timeout_offset + 580f32,
                     35f32,
-                    Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
+                    Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
                 );
-                draw_text_ex(
+                draw_text_both!(
                     "PENALTY",
                     675f32 + position_offset + timeout_offset,
                     67f32,
                     TextParams {
                         font: self.textures.font,
                         font_size: 20,
-                        color: if self.is_alpha_mode {
-                            Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
-                        } else {
-                            Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8)
-                        },
+                        color: Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8),
                         ..Default::default()
-                    },
+                    }
                 );
-                draw_text_ex(
+                draw_text_both!(
                     "SHOT",
                     690f32 + position_offset + timeout_offset,
                     95f32,
                     TextParams {
                         font: self.textures.font,
                         font_size: 20,
-                        color: if self.is_alpha_mode {
-                            Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
-                        } else {
-                            Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8)
-                        },
+                        color: Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8),
                         ..Default::default()
-                    },
+                    }
                 );
             }
             TimeoutSnapshot::None => {} // this is ugly. `TimeoutSnapshot` must be made an `Option`
         }
 
-        draw_text_ex(
+        draw_text_both_ex!(
             state.white.team_name.to_uppercase().as_str(),
             if state.white_flag.is_some() {
                 160f32
@@ -305,9 +310,9 @@ impl PageRenderer {
                 font: self.textures.font,
                 font_size: 20,
                 color: Color::from_rgba(
-                    if self.is_alpha_mode { 255 } else { 0 },
-                    if self.is_alpha_mode { 255 } else { 0 },
-                    if self.is_alpha_mode { 255 } else { 0 },
+                    0,
+                    0,
+                    0,
                     if state.white_flag.is_some() {
                         alpha_offset
                     } else {
@@ -316,8 +321,23 @@ impl PageRenderer {
                 ), // don't fade out team name if flags aren't available
                 ..Default::default()
             },
+            TextParams {
+                font: self.textures.font,
+                font_size: 20,
+                color: Color::from_rgba(
+                    255,
+                    255,
+                    255,
+                    if state.white_flag.is_some() {
+                        alpha_offset
+                    } else {
+                        255
+                    },
+                ), // don't fade out team name if flags aren't available
+                ..Default::default()
+            }
         );
-        draw_text_ex(
+        draw_text_both!(
             state.black.team_name.to_uppercase().as_str(),
             if state.black_flag.is_some() {
                 160f32
@@ -339,94 +359,86 @@ impl PageRenderer {
                     },
                 ),
                 ..Default::default()
+            }
+        );
+        draw_texture_both!(
+            self.textures.time_and_game_state_graphic,
+            position_offset + 367f32,
+            18f32,
+            WHITE
+        );
+        if state.white_flag.is_some() {
+            draw_rectangle(1999f32, 39f32, 70f32, 33f32, WHITE);
+        }
+        if state.black_flag.is_some() {
+            draw_rectangle(1999f32, 75f32, 70f32, 33f32, WHITE);
+        }
+        let min = state.snapshot.secs_in_period / 60;
+        let secs = state.snapshot.secs_in_period % 60;
+        let text = format!(
+            "{}:{}",
+            if min < 10 {
+                format!("0{}", min)
+            } else {
+                format!("{}", min)
+            },
+            if secs < 10 {
+                format!("0{}", secs)
+            } else {
+                format!("{}", secs)
+            }
+        );
+        let x_off = center_text_offset!(90f32, text.as_str(), 50, self.textures.font);
+        draw_text_ex(
+            text.as_str(),
+            430f32 + position_offset + x_off,
+            67f32,
+            TextParams {
+                font: self.textures.font,
+                font_size: 50,
+                ..Default::default()
             },
         );
-        if self.is_alpha_mode {
-            draw_texture(
-                self.textures.time_and_game_state_graphic,
-                position_offset + 367f32,
-                18f32,
-                WHITE,
-            );
-            if state.white_flag.is_some() {
-                draw_rectangle(79f32, 39f32, 70f32, 33f32, WHITE);
-            }
-            if state.black_flag.is_some() {
-                draw_rectangle(79f32, 75f32, 70f32, 33f32, WHITE);
-            }
-        } else {
-            draw_texture(
-                self.textures.time_and_game_state_graphic,
-                position_offset + 367f32,
-                18f32,
-                WHITE,
-            );
-            let min = state.snapshot.secs_in_period / 60;
-            let secs = state.snapshot.secs_in_period % 60;
-            let text = format!(
-                "{}:{}",
-                if min < 10 {
-                    format!("0{}", min)
-                } else {
-                    format!("{}", min)
-                },
-                if secs < 10 {
-                    format!("0{}", secs)
-                } else {
-                    format!("{}", secs)
-                }
-            );
-            let x_off = center_text_offset!(90f32, text.as_str(), 50, self.textures.font);
-            draw_text_ex(
-                text.as_str(),
-                430f32 + position_offset + x_off,
-                67f32,
-                TextParams {
-                    font: self.textures.font,
-                    font_size: 50,
-                    ..Default::default()
-                },
-            );
-            draw_text_ex(
-                match state.snapshot.current_period {
-                    GamePeriod::FirstHalf => "1ST HALF",
-                    GamePeriod::SecondHalf => "2ND HALF",
-                    _ => "HALF TIME",
-                },
-                478f32 + position_offset,
-                100f32,
-                TextParams {
-                    font: self.textures.font,
-                    font_size: 20,
-                    ..Default::default()
-                },
-            );
-            if let Some(flag) = state.white_flag {
-                draw_texture_ex(
-                    flag,
-                    79f32,
-                    39f32,
-                    WHITE,
-                    DrawTextureParams {
-                        dest_size: Some(vec2(70f32, 33f32)),
-                        ..Default::default()
-                    },
-                );
-            }
-            if let Some(flag) = state.black_flag {
-                draw_texture_ex(
-                    flag,
-                    79f32,
-                    75f32,
-                    WHITE,
-                    DrawTextureParams {
-                        dest_size: Some(vec2(70f32, 33f32)),
-                        ..Default::default()
-                    },
-                );
-            }
-        }
         draw_text_ex(
+            match state.snapshot.current_period {
+                GamePeriod::FirstHalf => "1ST HALF",
+                GamePeriod::SecondHalf => "2ND HALF",
+                _ => "HALF TIME",
+            },
+            478f32 + position_offset,
+            100f32,
+            TextParams {
+                font: self.textures.font,
+                font_size: 20,
+                ..Default::default()
+            },
+        );
+        if let Some(flag) = state.white_flag {
+            draw_texture_ex(
+                flag,
+                79f32,
+                39f32,
+                WHITE,
+                DrawTextureParams {
+                    dest_size: Some(vec2(70f32, 33f32)),
+                    ..Default::default()
+                },
+            );
+        }
+        if let Some(flag) = state.black_flag {
+            draw_texture_ex(
+                flag,
+                79f32,
+                75f32,
+                WHITE,
+                DrawTextureParams {
+                    dest_size: Some(vec2(70f32, 33f32)),
+                    ..Default::default()
+                },
+            );
+        }
+
+        draw_text_both!(
             state.snapshot.b_score.to_string().as_str(),
             40f32,
             104f32,
@@ -434,18 +446,24 @@ impl PageRenderer {
                 font: self.textures.font,
                 font_size: 30,
                 ..Default::default()
-            },
+            }
         );
-        draw_text_ex(
+        draw_text_both_ex!(
             state.snapshot.w_score.to_string().as_str(),
             40f32,
             65f32,
             TextParams {
                 font: self.textures.font,
                 font_size: 30,
-                color: if self.is_alpha_mode { WHITE } else { BLACK },
+                color: BLACK,
                 ..Default::default()
             },
+            TextParams {
+                font: self.textures.font,
+                font_size: 30,
+                color: WHITE,
+                ..Default::default()
+            }
         );
     }
 }

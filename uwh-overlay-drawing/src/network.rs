@@ -105,8 +105,8 @@ pub async fn networking_thread(
     loop {
         read_bytes = stream.read(&mut buff).unwrap();
         if let Ok(snapshot) = serde_json::de::from_slice::<GameSnapshot>(&buff[..read_bytes]) {
-            let tid = snapshot.tournament_id;
-            let gid = snapshot.game_number;
+            let tid = 28; //snapshot.tournament_id;
+            let gid = 2; //snapshot.game_number;
             if tid != tournament_id || gid != game_id {
                 let url = url.clone();
                 let tr = tr.clone();

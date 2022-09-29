@@ -37,6 +37,31 @@ macro_rules! center_text_offset {
     };
 }
 pub(crate) use center_text_offset;
+
+macro_rules! draw_texture_both {
+    ($texture: expr, $x: expr, $y: expr, $color: expr) => {
+        draw_texture($texture.color, $x, $y, $color);
+        draw_texture($texture.alpha, $x + 1920f32, $y, $color);
+    };
+}
+pub(crate) use draw_texture_both;
+
+macro_rules! draw_text_both {
+    ($text: expr, $x: expr, $y: expr, $params: expr) => {
+        draw_text_ex($text, $x, $y, $params);
+        draw_text_ex($text, $x + 1920f32, $y, $params);
+    };
+}
+pub(crate) use draw_text_both;
+
+macro_rules! draw_text_both_ex {
+    ($text: expr, $x: expr, $y: expr, $params_color: expr, $params_alpha: expr) => {
+        draw_text_ex($text, $x, $y, $params_color);
+        draw_text_ex($text, $x + 1920f32, $y, $params_alpha);
+    };
+}
+pub(crate) use draw_text_both_ex;
+
 use uwh_common::game_snapshot::TimeoutSnapshot;
 
 #[allow(dead_code)]
@@ -56,8 +81,6 @@ pub struct PageRenderer {
     /// Use if there are more than one simultenous animations
     pub animation_register2: Instant,
     pub animation_register3: bool,
-    /// Should the alpha or color stream be rendered?
-    pub is_alpha_mode: bool,
     /// Contains textures, alpha in alpha mode, color in color mode
     pub textures: Textures,
     /// We need to keep track of the last timeout snapshot in order to display information during the fade out

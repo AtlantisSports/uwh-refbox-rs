@@ -1122,7 +1122,6 @@ dependencies = [
  "coarsetime",
  "confy",
  "home",
- "ipc-channel",
  "log",
  "macroquad",
  "pollster",

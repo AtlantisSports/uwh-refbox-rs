@@ -7,59 +7,84 @@ macro_rules! load {
 }
 pub(crate) use load;
 
+pub struct Texture {
+    pub alpha: Texture2D,
+    pub color: Texture2D,
+}
+
 pub struct Textures {
-    pub atlantis_logo_graphic: Texture2D,
-    pub bottom_graphic: Texture2D,
-    pub team_information_graphic: Texture2D,
-    pub team_black_graphic: Texture2D,
-    pub team_white_graphic: Texture2D,
-    pub team_bar_graphic: Texture2D,
-    pub time_and_game_state_graphic: Texture2D,
-    pub final_score_graphic: Texture2D,
-    pub in_game_mask: Texture2D,
-    pub penalty_graphic: Texture2D,
-    pub white_timout_graphic: Texture2D,
-    pub black_timout_graphic: Texture2D,
-    pub referee_timout_graphic: Texture2D,
+    pub atlantis_logo_graphic: Texture,
+    pub bottom_graphic: Texture,
+    pub team_information_graphic: Texture,
+    pub team_black_graphic: Texture,
+    pub team_white_graphic: Texture,
+    pub team_bar_graphic: Texture,
+    pub time_and_game_state_graphic: Texture,
+    pub final_score_graphic: Texture,
+    pub in_game_mask: Texture,
+    pub penalty_graphic: Texture,
+    pub white_timout_graphic: Texture,
+    pub black_timout_graphic: Texture,
+    pub referee_timout_graphic: Texture,
     pub font: Font,
 }
 
-impl Textures {
-    pub fn init_color() -> Self {
+impl Default for Textures {
+    fn default() -> Self {
         Self {
-            final_score_graphic: load!("../assets/color/1080/Final Score.png"),
-            time_and_game_state_graphic: load!("../assets/color/1080/Time and Game State.png"),
-            team_bar_graphic: load!("../assets/color/1080/Team Bars.png"),
-            team_black_graphic: load!("../assets/color/1080/Team Black.png"),
-            team_white_graphic: load!("../assets/color/1080/Team White.png"),
-            team_information_graphic: load!("../assets/color/1080/Team Information.png"),
-            bottom_graphic: load!("../assets/color/1080/Bottom.png"),
-            atlantis_logo_graphic: load!("../assets/color/1080/Atlantis Logo.png"),
-            in_game_mask: load!("../assets/alpha/1080/mask.png"),
             font: load_ttf_font_from_bytes(include_bytes!("./../assets/BAHNSCHRIFT.TTF")).unwrap(),
-            penalty_graphic: load!("../assets/color/1080/Penalty Shot Flag.png"),
-            white_timout_graphic: load!("../assets/color/1080/White Timeout Flag.png"),
-            black_timout_graphic: load!("../assets/color/1080/Black Timeout Flag.png"),
-            referee_timout_graphic: load!("../assets/color/1080/Referee Timeout Flag.png"),
-        }
-    }
-
-    pub fn init_alpha() -> Self {
-        Self {
-            final_score_graphic: load!("../assets/alpha/1080/Final Score.png"),
-            time_and_game_state_graphic: load!("../assets/alpha/1080/Time and Game State.png"),
-            team_bar_graphic: load!("../assets/alpha/1080/Team Bars.png"),
-            team_black_graphic: load!("../assets/alpha/1080/Team Black.png"),
-            team_white_graphic: load!("../assets/alpha/1080/Team White.png"),
-            team_information_graphic: load!("../assets/alpha/1080/Team Information.png"),
-            in_game_mask: load!("../assets/alpha/1080/mask.png"),
-            bottom_graphic: load!("../assets/alpha/1080/Bottom.png"),
-            atlantis_logo_graphic: load!("../assets/alpha/1080/Atlantis Logo.png"),
-            font: load_ttf_font_from_bytes(include_bytes!("./../assets/BAHNSCHRIFT.TTF")).unwrap(),
-            penalty_graphic: load!("../assets/alpha/1080/Penalty Shot Flag.png"),
-            white_timout_graphic: load!("../assets/alpha/1080/White Timeout Flag.png"),
-            black_timout_graphic: load!("../assets/alpha/1080/Black Timeout Flag.png"),
-            referee_timout_graphic: load!("../assets/alpha/1080/Referee Timeout Flag.png"),
+            final_score_graphic: Texture {
+                color: load!("../assets/color/1080/Final Score.png"),
+                alpha: load!("../assets/alpha/1080/Final Score.png"),
+            },
+            time_and_game_state_graphic: Texture {
+                color: load!("../assets/color/1080/Time and Game State.png"),
+                alpha: load!("../assets/alpha/1080/Time and Game State.png"),
+            },
+            team_bar_graphic: Texture {
+                color: load!("../assets/color/1080/Team Bars.png"),
+                alpha: load!("../assets/alpha/1080/Team Bars.png"),
+            },
+            team_black_graphic: Texture {
+                color: load!("../assets/color/1080/Team Black.png"),
+                alpha: load!("../assets/alpha/1080/Team Black.png"),
+            },
+            team_white_graphic: Texture {
+                color: load!("../assets/color/1080/Team White.png"),
+                alpha: load!("../assets/alpha/1080/Team White.png"),
+            },
+            team_information_graphic: Texture {
+                color: load!("../assets/color/1080/Team Information.png"),
+                alpha: load!("../assets/alpha/1080/Team Information.png"),
+            },
+            bottom_graphic: Texture {
+                color: load!("../assets/color/1080/Bottom.png"),
+                alpha: load!("../assets/alpha/1080/Bottom.png"),
+            },
+            atlantis_logo_graphic: Texture {
+                color: load!("../assets/color/1080/Atlantis Logo.png"),
+                alpha: load!("../assets/alpha/1080/Atlantis Logo.png"),
+            },
+            in_game_mask: Texture {
+                color: load!("../assets/alpha/1080/mask.png"),
+                alpha: load!("../assets/alpha/1080/mask.png"),
+            },
+            penalty_graphic: Texture {
+                color: load!("../assets/color/1080/Penalty Shot Flag.png"),
+                alpha: load!("../assets/alpha/1080/Penalty Shot Flag.png"),
+            },
+            white_timout_graphic: Texture {
+                color: load!("../assets/color/1080/White Timeout Flag.png"),
+                alpha: load!("../assets/alpha/1080/White Timeout Flag.png"),
+            },
+            black_timout_graphic: Texture {
+                color: load!("../assets/color/1080/Black Timeout Flag.png"),
+                alpha: load!("../assets/alpha/1080/Black Timeout Flag.png"),
+            },
+            referee_timout_graphic: Texture {
+                color: load!("../assets/color/1080/Referee Timeout Flag.png"),
+                alpha: load!("../assets/alpha/1080/Referee Timeout Flag.png"),
+            },
         }
     }
 }

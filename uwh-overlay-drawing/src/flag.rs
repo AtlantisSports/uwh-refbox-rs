@@ -240,8 +240,15 @@ impl FlagRenderer {
         self.active_flags
             .iter()
             .filter_map(|x| {
-                if let FlagType::Penalty(_, _, false) = x.flag_type {
-                    Some(x.clone())
+                if let FlagType::Penalty(color, _, false) = x.flag_type {
+                    let mut y = x.clone();
+                    if matches!(
+                        y.flag_type,
+                        FlagType::Penalty(_, PenaltyTime::Seconds(1), _)
+                    ) {
+                        y.flag_type = FlagType::Penalty(color, PenaltyTime::Seconds(0), false);
+                    }
+                    Some(y)
                 } else {
                     None
                 }

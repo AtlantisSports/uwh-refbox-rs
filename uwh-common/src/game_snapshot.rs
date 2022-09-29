@@ -1,5 +1,6 @@
 #[cfg(feature = "std")]
-use crate::{config::Game, drawing_support::*};
+use crate::config::Game;
+use crate::drawing_support::*;
 use arrayref::array_ref;
 use arrayvec::ArrayVec;
 use core::{

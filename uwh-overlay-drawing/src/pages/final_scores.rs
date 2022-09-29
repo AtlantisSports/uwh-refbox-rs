@@ -88,12 +88,12 @@ impl PageRenderer {
         }
         let x_off = center_text_offset!(
             135f32,
-            format!("GAME ID: {}", &state.game_id.to_string()).as_str(),
+            format!("GAME #{}", &state.game_id.to_string()).as_str(),
             25,
             self.textures.font
         );
         draw_text_ex(
-            format!("GAME ID: {}", &state.game_id.to_string()).as_str(),
+            format!("GAME #{}", &state.game_id.to_string()).as_str(),
             830f32 + x_off,
             745f32,
             TextParams {
@@ -113,14 +113,9 @@ impl PageRenderer {
                 ..Default::default()
             },
         );
-        let x_off = center_text_offset!(
-            110f32,
-            format!("POOL: {}", &state.pool.to_string()).as_str(),
-            25,
-            self.textures.font
-        );
+        let x_off = center_text_offset!(110f32, &state.pool, 25, self.textures.font);
         draw_text_ex(
-            format!("POOL: {}", &state.pool.to_string()).as_str(),
+            &state.pool,
             855f32 + x_off,
             815f32,
             TextParams {

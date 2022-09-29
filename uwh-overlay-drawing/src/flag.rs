@@ -203,7 +203,6 @@ impl FlagRenderer {
             &game_state.snapshot.w_penalties
         } {
             if !matches!(penalty.time, PenaltyTime::Seconds(0)) {
-                // let penalty: PenaltySnapshot = penalty;
                 // find the penalty in the local list, create a new penalty if it doesn't exist.
                 let flag_pos = self
                 .active_flags

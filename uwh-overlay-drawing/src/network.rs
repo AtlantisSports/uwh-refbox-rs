@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::Read;
 use std::net::TcpStream;
-use uwh_common::game_snapshot::GameSnapshot;
+use uwh_common::game_snapshot::{Color, GameSnapshot};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct TeamInfo {
@@ -14,7 +14,7 @@ pub struct TeamInfo {
 }
 
 impl TeamInfo {
-    pub fn new(url: &String, tournament_id: u32, team_id: u64) -> Self {
+    pub fn new(url: &String, tournament_id: u32, team_id: u64, team_color: Color) -> Self {
         info!(
             "Requesting UWH API for team information for team {}",
             team_id
@@ -45,7 +45,10 @@ impl TeamInfo {
         Self {
             team_name: data["team"]["name"]
                 .as_str()
-                .unwrap_or("Game not found")
+                .unwrap_or(match team_color {
+                    Color::Black => "Black",
+                    Color::White => "White",
+                })
                 .to_string(),
             players: player_list,
             flag: data["team"]["flag_url"]
@@ -83,8 +86,8 @@ fn fetch_data(
     let team_id_white = Some(data["game"]["white_id"].as_u64().unwrap_or(0));
     tr.send((
         data,
-        TeamInfo::new(&url, tournament_id, team_id_black.unwrap()),
-        TeamInfo::new(&url, tournament_id, team_id_white.unwrap()),
+        TeamInfo::new(&url, tournament_id, team_id_black.unwrap(), Color::Black),
+        TeamInfo::new(&url, tournament_id, team_id_white.unwrap(), Color::White),
     ))
     .unwrap();
 }
@@ -125,7 +128,12 @@ pub async fn networking_thread(
                         game_id: Some(game_id),
                         black: Some(black),
                         white: Some(white),
-                        pool: Some(data["game"]["pool"].as_str().unwrap_or("").to_string()),
+                        pool: Some(
+                            data["game"]["pool"]
+                                .as_str()
+                                .map(|s| format!("POOL: {}", s))
+                                .unwrap_or_default(),
+                        ),
                         start_time: Some(
                             data["game"]["start_time"]
                                 .as_str()

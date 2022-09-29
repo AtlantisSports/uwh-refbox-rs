@@ -86,7 +86,7 @@ async fn main() {
             players: Vec::new(),
         },
         game_id: 0,
-        pool: String::from("0"),
+        pool: String::new(),
         start_time: String::new(),
         white_flag: None,
         black_flag: None,

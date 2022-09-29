@@ -18,10 +18,17 @@ impl PageRenderer {
             // reset animation counters if page is nearing termination
             self.animation_register1 = Instant::now();
             self.animation_register2 = Instant::now();
-            (
-                (0f32, -200f32).interpolate_linear(1f32),
-                (255f32, 0f32).interpolate_linear(1f32) as u8,
-            )
+            if state.snapshot.current_period == GamePeriod::HalfTime {
+                (
+                    (0f32, -200f32).interpolate_linear(0f32),
+                    (255f32, 0f32).interpolate_linear(0f32) as u8,
+                )
+            } else {
+                (
+                    (0f32, -200f32).interpolate_linear(1f32),
+                    (255f32, 0f32).interpolate_linear(1f32) as u8,
+                )
+            }
         } else if state.snapshot.current_period == GamePeriod::FirstHalf {
             let time = Instant::now()
                 .duration_since(self.animation_register1)
@@ -45,22 +52,49 @@ impl PageRenderer {
                 .duration_since(self.animation_register1)
                 .as_f64();
             match time {
-                x if (..=1f64).contains(&x) => (
-                    (0f32, -200f32).interpolate_linear(1f32 - time as f32),
-                    (255f32, 0f32).interpolate_linear(1f32 - time as f32) as u8,
-                ),
+                x if (..=1f64).contains(&x) => {
+                    if state.snapshot.current_period == GamePeriod::SecondHalf {
+                        (
+                            (0f32, -200f32).interpolate_linear(0f32),
+                            (255f32, 0f32).interpolate_linear(0f32) as u8,
+                        )
+                    } else {
+                        (
+                            (0f32, -200f32).interpolate_linear(1f32 - time as f32),
+                            (255f32, 0f32).interpolate_linear(1f32 - time as f32) as u8,
+                        )
+                    }
+                }
                 x if (1f64..=5f64).contains(&x) => (
                     (0f32, -200f32).interpolate_linear(0f32),
                     (255f32, 0f32).interpolate_linear(0f32) as u8,
                 ),
-                x if (5f64..=6f64).contains(&x) => (
-                    (0f32, -200f32).interpolate_linear(time as f32 - 5f32),
-                    (255f32, 0f32).interpolate_linear(time as f32 - 5f32) as u8,
-                ),
-                _ => (
-                    (0f32, -200f32).interpolate_linear(1f32),
-                    (255f32, 0f32).interpolate_linear(1f32) as u8,
-                ),
+                x if (5f64..=6f64).contains(&x) => {
+                    if state.snapshot.current_period == GamePeriod::HalfTime {
+                        (
+                            (0f32, -200f32).interpolate_linear(0f32),
+                            (255f32, 0f32).interpolate_linear(0f32) as u8,
+                        )
+                    } else {
+                        (
+                            (0f32, -200f32).interpolate_linear(time as f32 - 5f32),
+                            (255f32, 0f32).interpolate_linear(time as f32 - 5f32) as u8,
+                        )
+                    }
+                }
+                _ => {
+                    if state.snapshot.current_period == GamePeriod::HalfTime {
+                        (
+                            (0f32, -200f32).interpolate_linear(0f32),
+                            (255f32, 0f32).interpolate_linear(0f32) as u8,
+                        )
+                    } else {
+                        (
+                            (0f32, -200f32).interpolate_linear(1f32),
+                            (255f32, 0f32).interpolate_linear(1f32) as u8,
+                        )
+                    }
+                }
             }
         };
         draw_texture_both!(self.textures.team_bar_graphic, 26f32, 37f32, WHITE);

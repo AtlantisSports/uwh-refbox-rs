@@ -1343,6 +1343,11 @@ impl TournamentManager {
             }
         }
 
+        let next_period_len_secs = self
+            .current_period
+            .next_period_dur(&self.config)
+            .map(|dur| dur.as_secs().try_into().unwrap_or(0));
+
         Some(GameSnapshot {
             current_period: self.current_period,
             secs_in_period,
@@ -1356,6 +1361,7 @@ impl TournamentManager {
             next_game_number: self.next_game_number(),
             tournament_id: 0,
             recent_goal: self.recent_goal.map(|(c, n, _, _)| (c, n)),
+            next_period_len_secs,
         })
     }
 

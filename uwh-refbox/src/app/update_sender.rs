@@ -408,6 +408,7 @@ mod test {
             next_game_number: 28,
             tournament_id: 1,
             recent_goal: None,
+            next_period_len_secs: Some(180),
         };
 
         let json_expected = serde_json::to_string(&snapshot).unwrap().into_bytes();

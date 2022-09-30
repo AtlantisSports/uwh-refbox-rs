@@ -1,9 +1,12 @@
 #[cfg(feature = "std")]
-use crate::{config::Game, drawing_support::*};
+use crate::config::Game;
+use crate::drawing_support::*;
 use arrayref::array_ref;
 use arrayvec::ArrayVec;
+#[cfg(feature = "std")]
+use core::cmp::min;
 use core::{
-    cmp::{min, Ordering, PartialOrd},
+    cmp::{Ordering, PartialOrd},
     time::Duration,
 };
 #[cfg(not(target_os = "windows"))]
@@ -46,6 +49,7 @@ pub struct GameSnapshot {
     pub next_game_number: u32,
     pub tournament_id: u32,
     pub recent_goal: Option<(Color, u8)>,
+    pub next_period_len_secs: Option<u32>,
 }
 
 #[cfg(feature = "std")]
@@ -176,6 +180,52 @@ impl GamePeriod {
             Self::OvertimeHalfTime => Some(Self::OvertimeSecondHalf),
             Self::OvertimeSecondHalf => Some(Self::PreSuddenDeath),
             Self::PreSuddenDeath => Some(Self::SuddenDeath),
+            Self::SuddenDeath => None,
+        }
+    }
+
+    #[cfg(feature = "std")]
+    pub fn next_period_dur(self, config: &Game) -> Option<Duration> {
+        match self.next_period()? {
+            Self::BetweenGames => None,
+            Self::FirstHalf => Some(config.half_play_duration),
+            Self::HalfTime => Some(config.half_time_duration),
+            Self::SecondHalf => Some(config.half_play_duration),
+            Self::PreOvertime => {
+                if config.overtime_allowed {
+                    Some(config.pre_overtime_break)
+                } else {
+                    None
+                }
+            }
+            Self::OvertimeFirstHalf => {
+                if config.overtime_allowed {
+                    Some(config.ot_half_play_duration)
+                } else {
+                    None
+                }
+            }
+            Self::OvertimeHalfTime => {
+                if config.overtime_allowed {
+                    Some(config.ot_half_time_duration)
+                } else {
+                    None
+                }
+            }
+            Self::OvertimeSecondHalf => {
+                if config.overtime_allowed {
+                    Some(config.ot_half_play_duration)
+                } else {
+                    None
+                }
+            }
+            Self::PreSuddenDeath => {
+                if config.sudden_death_allowed {
+                    Some(config.pre_sudden_death_duration)
+                } else {
+                    None
+                }
+            }
             Self::SuddenDeath => None,
         }
     }
@@ -655,6 +705,87 @@ mod test {
             Some(Duration::from_secs(15))
         );
         assert_eq!(GamePeriod::SuddenDeath.duration(&config), None);
+    }
+
+    #[test]
+    fn test_next_period_duration() {
+        let config = Game {
+            half_play_duration: Duration::from_secs(5),
+            half_time_duration: Duration::from_secs(7),
+            pre_overtime_break: Duration::from_secs(9),
+            ot_half_play_duration: Duration::from_secs(11),
+            ot_half_time_duration: Duration::from_secs(13),
+            pre_sudden_death_duration: Duration::from_secs(15),
+            overtime_allowed: true,
+            sudden_death_allowed: true,
+            ..Default::default()
+        };
+
+        // Test once with all th egame periods enabled
+        assert_eq!(
+            GamePeriod::BetweenGames.next_period_dur(&config),
+            Some(Duration::from_secs(5))
+        );
+        assert_eq!(
+            GamePeriod::FirstHalf.next_period_dur(&config),
+            Some(Duration::from_secs(7))
+        );
+        assert_eq!(
+            GamePeriod::HalfTime.next_period_dur(&config),
+            Some(Duration::from_secs(5))
+        );
+        assert_eq!(
+            GamePeriod::SecondHalf.next_period_dur(&config),
+            Some(Duration::from_secs(9))
+        );
+        assert_eq!(
+            GamePeriod::PreOvertime.next_period_dur(&config),
+            Some(Duration::from_secs(11))
+        );
+        assert_eq!(
+            GamePeriod::OvertimeFirstHalf.next_period_dur(&config),
+            Some(Duration::from_secs(13))
+        );
+        assert_eq!(
+            GamePeriod::OvertimeHalfTime.next_period_dur(&config),
+            Some(Duration::from_secs(11))
+        );
+        assert_eq!(
+            GamePeriod::OvertimeSecondHalf.next_period_dur(&config),
+            Some(Duration::from_secs(15))
+        );
+        assert_eq!(GamePeriod::PreSuddenDeath.next_period_dur(&config), None);
+        assert_eq!(GamePeriod::SuddenDeath.next_period_dur(&config), None);
+
+        let config = Game {
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..config
+        };
+
+        // Test again with only the minimal periods enabled
+        assert_eq!(
+            GamePeriod::BetweenGames.next_period_dur(&config),
+            Some(Duration::from_secs(5))
+        );
+        assert_eq!(
+            GamePeriod::FirstHalf.next_period_dur(&config),
+            Some(Duration::from_secs(7))
+        );
+        assert_eq!(
+            GamePeriod::HalfTime.next_period_dur(&config),
+            Some(Duration::from_secs(5))
+        );
+        assert_eq!(GamePeriod::SecondHalf.next_period_dur(&config), None);
+        assert_eq!(GamePeriod::PreOvertime.next_period_dur(&config), None);
+        assert_eq!(GamePeriod::OvertimeFirstHalf.next_period_dur(&config), None);
+        assert_eq!(GamePeriod::OvertimeHalfTime.next_period_dur(&config), None);
+        assert_eq!(
+            GamePeriod::OvertimeSecondHalf.next_period_dur(&config),
+            None
+        );
+        assert_eq!(GamePeriod::PreSuddenDeath.next_period_dur(&config), None);
+        assert_eq!(GamePeriod::SuddenDeath.next_period_dur(&config), None);
     }
 
     #[test]

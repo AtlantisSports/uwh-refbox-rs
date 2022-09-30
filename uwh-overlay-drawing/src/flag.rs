@@ -343,15 +343,19 @@ impl FlagRenderer {
                 )
                     .interpolate_linear(flag.movement_animation_counter)
             };
+            let color = match flag.flag_type {
+                FlagType::Goal(color, _) => color,
+                FlagType::Penalty(color, _, _) => color,
+            };
             let tex = match flag.flag_type {
-                FlagType::Goal(color, _) => {
+                FlagType::Goal(_, _) => {
                     if color == UWHColor::White {
                         &self.textures.white_goal
                     } else {
                         &self.textures.black_goal
                     }
                 }
-                FlagType::Penalty(color, _, _) => {
+                FlagType::Penalty(_, _, _) => {
                     if color == UWHColor::White {
                         &self.textures.white_penalty
                     } else {
@@ -372,23 +376,31 @@ impl FlagRenderer {
                 TextParams {
                     font: self.textures.font,
                     font_size: 30,
-                    color: Color::from_rgba(255, 255, 255, alpha_offset as u8),
+                    color: if color == uwh_common::game_snapshot::Color::Black {
+                        Color::from_rgba(255, 255, 255, alpha_offset as u8)
+                    } else {
+                        Color::from_rgba(0, 0, 0, alpha_offset as u8)
+                    },
                     ..Default::default()
                 },
             );
             match flag.flag_type {
-                FlagType::Goal(_, _) => draw_text_ex(
+                FlagType::Goal(color, _) => draw_text_ex(
                     "GOAL",
                     45f32,
                     BASE_HEIGHT + idx as f32 * FLAG_HEIGHT + movement_offset + 33f32,
                     TextParams {
                         font: self.textures.font,
                         font_size: 30,
-                        color: Color::from_rgba(255, 255, 255, alpha_offset as u8),
+                        color: if color == uwh_common::game_snapshot::Color::Black {
+                            Color::from_rgba(255, 255, 255, alpha_offset as u8)
+                        } else {
+                            Color::from_rgba(0, 0, 0, alpha_offset as u8)
+                        },
                         ..Default::default()
                     },
                 ),
-                FlagType::Penalty(_, timeout, _) => {
+                FlagType::Penalty(color, timeout, _) => {
                     let text = &match timeout {
                         PenaltyTime::Seconds(s) => {
                             let mins = s / 60;
@@ -418,7 +430,11 @@ impl FlagRenderer {
                         TextParams {
                             font: self.textures.font,
                             font_size: 30,
-                            color: Color::from_rgba(255, 255, 255, alpha_offset as u8),
+                            color: if color == uwh_common::game_snapshot::Color::Black {
+                                Color::from_rgba(255, 255, 255, alpha_offset as u8)
+                            } else {
+                                Color::from_rgba(0, 0, 0, alpha_offset as u8)
+                            },
                             ..Default::default()
                         },
                     );

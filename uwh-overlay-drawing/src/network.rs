@@ -98,8 +98,12 @@ pub async fn networking_thread(
     tx: crossbeam_channel::Sender<StatePacket>,
     config: crate::AppConfig,
 ) {
-    let mut stream = TcpStream::connect((config.refbox_ip, config.refbox_port as u16))
-        .expect("Refbox should be running and accessible");
+    debug!("Attempting refbox connection!");
+    let mut stream = loop {
+        if let Ok(stream) = TcpStream::connect((config.refbox_ip, config.refbox_port as u16)) {
+            break stream;
+        }
+    };
 
     let (tr, rc) = crossbeam_channel::bounded::<(Value, TeamInfo, TeamInfo)>(3);
     let url = config.uwhscores_url.clone();
@@ -111,17 +115,23 @@ pub async fn networking_thread(
     loop {
         read_bytes = stream.read(&mut buff).unwrap();
         if read_bytes == 0 {
-            error!("Connection to refbox lost!");
-            return;
+            error!("Connection to refbox lost! Attempting to reconnect!");
+            stream = loop {
+                if let Ok(stream) =
+                    TcpStream::connect((config.refbox_ip, config.refbox_port as u16))
+                {
+                    break stream;
+                }
+            };
         }
         if let Ok(snapshot) = serde_json::de::from_slice::<GameSnapshot>(&buff[..read_bytes]) {
-            let tid = 28; //snapshot.tournament_id;
-            let gid = 2;
-            // if snapshot.current_period == GamePeriod::BetweenGames && !snapshot.is_old_game {
-            //     snapshot.next_game_number
-            // } else {
-            //     snapshot.game_number
-            // };
+            let tid = snapshot.tournament_id;
+            let gid =
+                if snapshot.current_period == GamePeriod::BetweenGames && !snapshot.is_old_game {
+                    snapshot.next_game_number
+                } else {
+                    snapshot.game_number
+                };
             if (tournament_id.is_some() && tournament_id.unwrap() != tid
                 || game_id.is_some() && game_id.unwrap() != gid)
                 || tournament_id.is_none() && game_id.is_none()

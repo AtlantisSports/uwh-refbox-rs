@@ -1,6 +1,6 @@
 use coarsetime::Instant;
 use crossbeam_channel::bounded;
-use log::warn;
+use log::{debug, warn};
 use macroquad::prelude::*;
 use network::{StatePacket, TeamInfo};
 use std::net::IpAddr;
@@ -115,6 +115,7 @@ async fn main() {
 
         if let Ok(recieved_state) = rx.try_recv() {
             if let Some(team) = recieved_state.black {
+                debug!("Building Black's flag texture");
                 local_state.black = team;
                 if let Some(flag_bytes) = local_state.black.flag.clone() {
                     local_state.black_flag =
@@ -122,6 +123,7 @@ async fn main() {
                 }
             }
             if let Some(team) = recieved_state.white {
+                debug!("Building White's flag texture");
                 local_state.white = team;
                 if let Some(flag_bytes) = local_state.white.flag.clone() {
                     local_state.white_flag =

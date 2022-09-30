@@ -109,12 +109,12 @@ impl PageRenderer {
             .as_f64() as f32;
         let (timeout_offset, timeout_alpha_offset) =
             if state.snapshot.timeout != TimeoutSnapshot::None {
-                if self.last_timeout == TimeoutSnapshot::None {
+                if self.last_snapshot_timeout == TimeoutSnapshot::None {
                     // if this is a new timeout period
                     self.animation_register2 = Instant::now();
                     time = 0.0f32;
                 }
-                self.last_timeout = state.snapshot.timeout;
+                self.last_snapshot_timeout = state.snapshot.timeout;
                 if time < 1f32 {
                     (
                         (0f32, -200f32).interpolate_linear(1f32 - time),
@@ -126,7 +126,7 @@ impl PageRenderer {
                         (0f32, 255f32).interpolate_exponential_end(1f32),
                     )
                 }
-            } else if self.last_timeout != TimeoutSnapshot::None {
+            } else if self.last_snapshot_timeout != TimeoutSnapshot::None {
                 // if a timeout period just finished, and fade out is just starting
                 if !self.animation_register3 {
                     self.animation_register3 = true;
@@ -137,7 +137,7 @@ impl PageRenderer {
                 if time > 1f32 {
                     self.animation_register3 = false;
                     self.animation_register2 = Instant::now();
-                    self.last_timeout = TimeoutSnapshot::None;
+                    self.last_snapshot_timeout = TimeoutSnapshot::None;
                     (
                         (0f32, -200f32).interpolate_linear(1f32),
                         (0f32, 255f32).interpolate_exponential_end(0f32),
@@ -155,7 +155,7 @@ impl PageRenderer {
                     (0f32, 255f32).interpolate_exponential_end(1f32),
                 )
             };
-        match self.last_timeout {
+        match self.last_snapshot_timeout {
             // draw text for each type of penalty
             TimeoutSnapshot::Ref(_) => {
                 draw_texture_both!(
@@ -242,17 +242,17 @@ impl PageRenderer {
                 );
                 draw_text_both_ex!(
                     format!("{time}").as_str(),
-                    765f32 + position_offset + timeout_offset,
-                    95f32,
+                    773f32 + position_offset + timeout_offset,
+                    90f32,
                     TextParams {
                         font: self.textures.font,
-                        font_size: 20,
+                        font_size: 50,
                         color: Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8),
                         ..Default::default()
                     },
                     TextParams {
                         font: self.textures.font,
-                        font_size: 20,
+                        font_size: 50,
                         color: Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
                         ..Default::default()
                     }
@@ -289,8 +289,8 @@ impl PageRenderer {
                 );
                 draw_text_both!(
                     format!("{time}").as_str(),
-                    765f32 + position_offset + timeout_offset,
-                    95f32,
+                    773f32 + position_offset + timeout_offset,
+                    90f32,
                     TextParams {
                         font: self.textures.font,
                         font_size: 50,

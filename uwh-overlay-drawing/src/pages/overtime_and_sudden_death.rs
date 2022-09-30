@@ -19,12 +19,12 @@ impl PageRenderer {
         // animate the state and time graphic to the left at 895 secs (5 seconds since period started)
         let (timeout_offset, timeout_alpha_offset) =
             if state.snapshot.timeout != TimeoutSnapshot::None {
-                if self.last_timeout == TimeoutSnapshot::None {
+                if self.last_snapshot_timeout == TimeoutSnapshot::None {
                     // if this is a new timeout period
                     self.animation_register2 = Instant::now();
                     time = 0.0f32;
                 }
-                self.last_timeout = state.snapshot.timeout;
+                self.last_snapshot_timeout = state.snapshot.timeout;
                 if time < 1f32 {
                     (
                         (0f32, -200f32).interpolate_linear(1f32 - time),
@@ -36,7 +36,7 @@ impl PageRenderer {
                         (0f32, 255f32).interpolate_exponential_end(1f32),
                     )
                 }
-            } else if self.last_timeout != TimeoutSnapshot::None {
+            } else if self.last_snapshot_timeout != TimeoutSnapshot::None {
                 // if a timeout period just finished, and fade out is just starting
                 if !self.animation_register3 {
                     self.animation_register3 = true;
@@ -47,7 +47,7 @@ impl PageRenderer {
                 if time > 1f32 {
                     self.animation_register3 = false;
                     self.animation_register2 = Instant::now();
-                    self.last_timeout = TimeoutSnapshot::None;
+                    self.last_snapshot_timeout = TimeoutSnapshot::None;
                     (
                         (0f32, -200f32).interpolate_linear(1f32),
                         (0f32, 255f32).interpolate_exponential_end(0f32),
@@ -69,7 +69,7 @@ impl PageRenderer {
         draw_texture_both!(self.textures.team_bar_graphic, 26f32, 37f32, WHITE);
         draw_texture_both!(self.textures.in_game_mask, 359f32, 0f32, WHITE);
         // No penalty shot, black or white timeouts in overtime
-        match self.last_timeout {
+        match self.last_snapshot_timeout {
             TimeoutSnapshot::Ref(_) => {
                 draw_texture_both!(
                     self.textures.referee_timout_graphic,

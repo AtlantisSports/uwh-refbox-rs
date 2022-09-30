@@ -105,7 +105,7 @@ async fn main() {
         animation_register2: Instant::now(),
         animation_register3: false,
         textures,
-        last_timeout: TimeoutSnapshot::None,
+        last_snapshot_timeout: TimeoutSnapshot::None,
     };
     let mut flag_renderer = flag::FlagRenderer::new();
 

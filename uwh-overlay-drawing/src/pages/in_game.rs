@@ -306,7 +306,7 @@ impl PageRenderer {
                     35f32,
                     Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
                 );
-                draw_text_both!(
+                draw_text_both_ex!(
                     "PENALTY",
                     675f32 + position_offset + timeout_offset,
                     67f32,
@@ -315,9 +315,15 @@ impl PageRenderer {
                         font_size: 20,
                         color: Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8),
                         ..Default::default()
+                    },
+                    TextParams {
+                        font: self.textures.font,
+                        font_size: 20,
+                        color: Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
+                        ..Default::default()
                     }
                 );
-                draw_text_both!(
+                draw_text_both_ex!(
                     "SHOT",
                     690f32 + position_offset + timeout_offset,
                     95f32,
@@ -325,6 +331,12 @@ impl PageRenderer {
                         font: self.textures.font,
                         font_size: 20,
                         color: Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8),
+                        ..Default::default()
+                    },
+                    TextParams {
+                        font: self.textures.font,
+                        font_size: 20,
+                        color: Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
                         ..Default::default()
                     }
                 );

@@ -125,13 +125,13 @@ pub async fn networking_thread(
             };
         }
         if let Ok(snapshot) = serde_json::de::from_slice::<GameSnapshot>(&buff[..read_bytes]) {
-            let tid = snapshot.tournament_id;
-            let gid =
-                if snapshot.current_period == GamePeriod::BetweenGames && !snapshot.is_old_game {
-                    snapshot.next_game_number
-                } else {
-                    snapshot.game_number
-                };
+            let tid = 28; //snapshot.tournament_id;
+            let gid = 2;
+            // if snapshot.current_period == GamePeriod::BetweenGames && !snapshot.is_old_game {
+            //     snapshot.next_game_number
+            // } else {
+            //     snapshot.game_number
+            // };
             if (tournament_id.is_some() && tournament_id.unwrap() != tid
                 || game_id.is_some() && game_id.unwrap() != gid)
                 || tournament_id.is_none() && game_id.is_none()
@@ -164,8 +164,8 @@ pub async fn networking_thread(
                     start_time: Some(
                         data["game"]["start_time"]
                             .as_str()
-                            .unwrap_or("")
-                            .to_string(),
+                            .map(|s| String::from("START: ") + s.split_at(11).1.split_at(5).0)
+                            .unwrap_or(Default::default()),
                     ),
                 })
                 .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"))

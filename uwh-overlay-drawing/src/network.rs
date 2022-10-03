@@ -83,12 +83,12 @@ async fn fetch_game_data(
     .unwrap();
     let text = data.text().await.unwrap();
     let data: Value = serde_json::from_str(text.as_str()).unwrap();
-    let team_id_black = Some(data["game"]["black_id"].as_u64().unwrap_or(0));
-    let team_id_white = Some(data["game"]["white_id"].as_u64().unwrap_or(0));
+    let team_id_black = data["game"]["black_id"].as_u64().unwrap_or(0);
+    let team_id_white = data["game"]["white_id"].as_u64().unwrap_or(0);
     tr.send((
         data,
-        TeamInfo::new(&url, tournament_id, team_id_black.unwrap(), Color::Black).await,
-        TeamInfo::new(&url, tournament_id, team_id_white.unwrap(), Color::White).await,
+        TeamInfo::new(&url, tournament_id, team_id_black, Color::Black).await,
+        TeamInfo::new(&url, tournament_id, team_id_white, Color::White).await,
     ))
     .unwrap();
 }
@@ -125,13 +125,13 @@ pub async fn networking_thread(
             };
         }
         if let Ok(snapshot) = serde_json::de::from_slice::<GameSnapshot>(&buff[..read_bytes]) {
-            let tid = 28; //snapshot.tournament_id;
-            let gid = 2;
-            // if snapshot.current_period == GamePeriod::BetweenGames && !snapshot.is_old_game {
-            //     snapshot.next_game_number
-            // } else {
-            //     snapshot.game_number
-            // };
+            let tid = snapshot.tournament_id;
+            let gid =
+                if snapshot.current_period == GamePeriod::BetweenGames && !snapshot.is_old_game {
+                    snapshot.next_game_number
+                } else {
+                    snapshot.game_number
+                };
             if (tournament_id.is_some() && tournament_id.unwrap() != tid
                 || game_id.is_some() && game_id.unwrap() != gid)
                 || tournament_id.is_none() && game_id.is_none()

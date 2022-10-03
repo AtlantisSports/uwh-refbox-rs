@@ -4,7 +4,6 @@ use log::{debug, warn};
 use macroquad::prelude::*;
 use network::{StatePacket, TeamInfo};
 use std::net::IpAddr;
-use std::process::{Child, Command};
 use std::str::FromStr;
 use uwh_common::game_snapshot::{GamePeriod, GameSnapshot, TimeoutSnapshot};
 mod flag;

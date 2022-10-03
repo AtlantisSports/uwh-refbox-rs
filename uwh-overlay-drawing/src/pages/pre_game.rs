@@ -32,7 +32,8 @@ impl PageRenderer {
                         format!("{}", secs)
                     }
                 );
-                let x_off = center_text_offset!(90f32, text.as_str(), 50, self.textures.font);
+                let (x_off, text) =
+                    center_text_offset!(90f32, text.as_str(), 50, self.textures.font);
                 draw_text_ex(
                     text.as_str(),
                     870f32 + x_off,
@@ -85,7 +86,8 @@ impl PageRenderer {
                         format!("{}", secs)
                     }
                 );
-                let x_off = center_text_offset!(90f32, text.as_str(), 50, self.textures.font);
+                let (x_off, text) =
+                    center_text_offset!(90f32, text.as_str(), 50, self.textures.font);
                 draw_text_ex(
                     text.as_str(),
                     870f32 + x_off,
@@ -197,7 +199,7 @@ impl PageRenderer {
                 format!("{}", secs)
             }
         );
-        let x_off = center_text_offset!(90f32, text.as_str(), 50, self.textures.font);
+        let (x_off, text) = center_text_offset!(90f32, text.as_str(), 50, self.textures.font);
         draw_text_ex(
             text.as_str(),
             430f32 + x_off,

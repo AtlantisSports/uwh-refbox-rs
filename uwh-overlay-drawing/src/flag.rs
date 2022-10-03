@@ -422,9 +422,9 @@ impl FlagRenderer {
                         }
                         PenaltyTime::TotalDismissal => String::from("TD"),
                     };
-                    let x_off = center_text_offset!(47f32, text, 30, self.textures.font);
+                    let (x_off, text) = center_text_offset!(47f32, text, 30, self.textures.font);
                     draw_text_ex(
-                        text,
+                        text.as_str(),
                         35f32 + x_off,
                         BASE_HEIGHT + idx as f32 * FLAG_HEIGHT + movement_offset + 33f32,
                         TextParams {
@@ -511,9 +511,9 @@ impl FlagRenderer {
                         }
                         PenaltyTime::TotalDismissal => String::from("TD"),
                     };
-                    let x_off = center_text_offset!(47f32, text, 30, self.textures.font);
+                    let (x_off, text) = center_text_offset!(47f32, text, 30, self.textures.font);
                     draw_text_ex(
-                        text,
+                        text.as_str(),
                         35f32 + x_off,
                         BASE_HEIGHT + flag.vertical_position as f32 * FLAG_HEIGHT + 33f32,
                         TextParams {

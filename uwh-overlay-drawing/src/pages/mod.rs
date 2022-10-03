@@ -32,9 +32,21 @@ impl Interpolate for (f32, f32) {
 }
 
 macro_rules! center_text_offset {
-    ($field_width: expr, $string: expr, $font_size: literal, $font: expr) => {
-        $field_width - measure_text($string, Some($font), $font_size, 1.0).width / 2f32
-    };
+    ($field_width: expr, $string: expr, $font_size: literal, $font: expr) => {{
+        let mut text = $string.to_string();
+        let text = {
+            while 2f32 * $field_width
+                < measure_text(text.as_str(), Some($font), $font_size, 1.0).width
+            {
+                text.pop();
+            }
+            text
+        };
+        (
+            $field_width - measure_text(text.as_str(), Some($font), $font_size, 1.0).width / 2f32,
+            text,
+        )
+    }};
 }
 pub(crate) use center_text_offset;
 

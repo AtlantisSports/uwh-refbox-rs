@@ -223,7 +223,7 @@ impl PageRenderer {
                 format!("{}", secs)
             }
         );
-        let x_off = center_text_offset!(90f32, text.as_str(), 50, self.textures.font);
+        let (x_off, text) = center_text_offset!(90f32, text.as_str(), 50, self.textures.font);
         draw_text_ex(
             text.as_str(),
             230f32 + x_off,
@@ -249,9 +249,9 @@ impl PageRenderer {
             GamePeriod::PreSuddenDeath => "PRE SUDDEN DEATH",
             _ => "PRE OVERTIME",
         };
-        let x_off = center_text_offset!(100f32, ot_text, 20, self.textures.font);
+        let (x_off, text) = center_text_offset!(100f32, ot_text, 20, self.textures.font);
         draw_text_ex(
-            ot_text,
+            text.as_str(),
             220f32 + x_off,
             45f32,
             TextParams {

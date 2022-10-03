@@ -5,6 +5,10 @@ use super::PageRenderer;
 use crate::pages::draw_text_both;
 use crate::pages::draw_text_both_ex;
 use crate::State;
+use crate::ALPHA_MAX;
+use crate::ALPHA_MIN;
+use crate::TIME_AND_STATE_SHRINK_FROM;
+use crate::TIME_AND_STATE_SHRINK_TO;
 use coarsetime::Instant;
 use macroquad::prelude::*;
 use uwh_common::game_snapshot::GamePeriod;
@@ -13,20 +17,20 @@ use uwh_common::game_snapshot::TimeoutSnapshot;
 impl PageRenderer {
     /// Display info during game play
     pub fn in_game_display(&mut self, state: &State) {
-        // animate the state and time graphic to the left at 895 secs (5 seconds since period started)
+        // animate the state and time graphic 5 seconds since period started)
         let (position_offset, alpha_offset) = if state.snapshot.secs_in_period < 1 {
             // reset animation counters if page is nearing termination
             self.animation_register1 = Instant::now();
             self.animation_register2 = Instant::now();
             if state.snapshot.current_period == GamePeriod::HalfTime {
                 (
-                    (0f32, -200f32).interpolate_linear(0f32),
-                    (255f32, 0f32).interpolate_linear(0f32) as u8,
+                    (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO).interpolate_linear(0f32),
+                    (ALPHA_MAX, ALPHA_MIN).interpolate_linear(0f32) as u8,
                 )
             } else {
                 (
-                    (0f32, -200f32).interpolate_linear(1f32),
-                    (255f32, 0f32).interpolate_linear(1f32) as u8,
+                    (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO).interpolate_linear(1f32),
+                    (ALPHA_MAX, ALPHA_MIN).interpolate_linear(1f32) as u8,
                 )
             }
         } else if state.snapshot.current_period == GamePeriod::FirstHalf {
@@ -35,16 +39,17 @@ impl PageRenderer {
                 .as_f64();
             match time {
                 x if (..=5f64).contains(&x) => (
-                    (0f32, -200f32).interpolate_linear(0f32),
-                    (255f32, 0f32).interpolate_linear(0f32) as u8,
+                    (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO).interpolate_linear(0f32),
+                    (ALPHA_MAX, ALPHA_MIN).interpolate_linear(0f32) as u8,
                 ),
                 x if (5f64..=6f64).contains(&x) => (
-                    (0f32, -200f32).interpolate_linear(time as f32 - 5f32),
-                    (255f32, 0f32).interpolate_linear(time as f32 - 5f32) as u8,
+                    (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO)
+                        .interpolate_linear(time as f32 - 5f32),
+                    (ALPHA_MAX, ALPHA_MIN).interpolate_linear(time as f32 - 5f32) as u8,
                 ),
                 _ => (
-                    (0f32, -200f32).interpolate_linear(1f32),
-                    (255f32, 0f32).interpolate_linear(1f32) as u8,
+                    (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO).interpolate_linear(1f32),
+                    (ALPHA_MAX, ALPHA_MIN).interpolate_linear(1f32) as u8,
                 ),
             }
         } else {
@@ -55,43 +60,49 @@ impl PageRenderer {
                 x if (..=1f64).contains(&x) => {
                     if state.snapshot.current_period == GamePeriod::SecondHalf {
                         (
-                            (0f32, -200f32).interpolate_linear(0f32),
-                            (255f32, 0f32).interpolate_linear(0f32) as u8,
+                            (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO)
+                                .interpolate_linear(0f32),
+                            (ALPHA_MAX, ALPHA_MIN).interpolate_linear(0f32) as u8,
                         )
                     } else {
                         (
-                            (0f32, -200f32).interpolate_linear(1f32 - time as f32),
-                            (255f32, 0f32).interpolate_linear(1f32 - time as f32) as u8,
+                            (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO)
+                                .interpolate_linear(1f32 - time as f32),
+                            (ALPHA_MAX, ALPHA_MIN).interpolate_linear(1f32 - time as f32) as u8,
                         )
                     }
                 }
                 x if (1f64..=5f64).contains(&x) => (
-                    (0f32, -200f32).interpolate_linear(0f32),
-                    (255f32, 0f32).interpolate_linear(0f32) as u8,
+                    (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO).interpolate_linear(0f32),
+                    (ALPHA_MAX, ALPHA_MIN).interpolate_linear(0f32) as u8,
                 ),
                 x if (5f64..=6f64).contains(&x) => {
                     if state.snapshot.current_period == GamePeriod::HalfTime {
                         (
-                            (0f32, -200f32).interpolate_linear(0f32),
-                            (255f32, 0f32).interpolate_linear(0f32) as u8,
+                            (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO)
+                                .interpolate_linear(0f32),
+                            (ALPHA_MAX, ALPHA_MIN).interpolate_linear(0f32) as u8,
                         )
                     } else {
                         (
-                            (0f32, -200f32).interpolate_linear(time as f32 - 5f32),
-                            (255f32, 0f32).interpolate_linear(time as f32 - 5f32) as u8,
+                            (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO)
+                                .interpolate_linear(time as f32 - 5f32),
+                            (ALPHA_MAX, ALPHA_MIN).interpolate_linear(time as f32 - 5f32) as u8,
                         )
                     }
                 }
                 _ => {
                     if state.snapshot.current_period == GamePeriod::HalfTime {
                         (
-                            (0f32, -200f32).interpolate_linear(0f32),
-                            (255f32, 0f32).interpolate_linear(0f32) as u8,
+                            (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO)
+                                .interpolate_linear(0f32),
+                            (ALPHA_MAX, ALPHA_MIN).interpolate_linear(0f32) as u8,
                         )
                     } else {
                         (
-                            (0f32, -200f32).interpolate_linear(1f32),
-                            (255f32, 0f32).interpolate_linear(1f32) as u8,
+                            (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO)
+                                .interpolate_linear(1f32),
+                            (ALPHA_MAX, ALPHA_MIN).interpolate_linear(1f32) as u8,
                         )
                     }
                 }
@@ -100,7 +111,7 @@ impl PageRenderer {
         draw_texture_both!(self.textures.team_bar_graphic, 26f32, 37f32, WHITE);
         draw_texture_both!(
             self.textures.in_game_mask,
-            585f32 + position_offset,
+            580f32 + position_offset,
             37f32,
             WHITE
         );

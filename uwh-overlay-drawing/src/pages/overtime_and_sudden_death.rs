@@ -5,6 +5,8 @@ use super::PageRenderer;
 use crate::pages::draw_text_both;
 use crate::pages::draw_text_both_ex;
 use crate::State;
+use crate::ALPHA_MAX;
+use crate::ALPHA_MIN;
 use coarsetime::Instant;
 use macroquad::prelude::*;
 use uwh_common::game_snapshot::GamePeriod;
@@ -28,12 +30,12 @@ impl PageRenderer {
                 if time < 1f32 {
                     (
                         (0f32, -200f32).interpolate_linear(1f32 - time),
-                        (0f32, 255f32).interpolate_exponential_end(time),
+                        (ALPHA_MIN, ALPHA_MAX).interpolate_exponential_end(time),
                     )
                 } else {
                     (
                         (0f32, -200f32).interpolate_linear(0f32),
-                        (0f32, 255f32).interpolate_exponential_end(1f32),
+                        (ALPHA_MIN, ALPHA_MAX).interpolate_exponential_end(1f32),
                     )
                 }
             } else if self.last_snapshot_timeout != TimeoutSnapshot::None {
@@ -50,19 +52,19 @@ impl PageRenderer {
                     self.last_snapshot_timeout = TimeoutSnapshot::None;
                     (
                         (0f32, -200f32).interpolate_linear(1f32),
-                        (0f32, 255f32).interpolate_exponential_end(0f32),
+                        (ALPHA_MIN, ALPHA_MAX).interpolate_exponential_end(0f32),
                     )
                 } else {
                     (
                         (0f32, -200f32).interpolate_linear(time),
-                        (0f32, 255f32).interpolate_exponential_end(1f32 - time),
+                        (ALPHA_MIN, ALPHA_MAX).interpolate_exponential_end(1f32 - time),
                     )
                 }
             } else {
                 // return any values when both are None, cause we won't be redering anyways
                 (
                     (0f32, -200f32).interpolate_linear(0f32),
-                    (0f32, 255f32).interpolate_exponential_end(1f32),
+                    (ALPHA_MIN, ALPHA_MAX).interpolate_exponential_end(1f32),
                 )
             };
 

@@ -4,6 +4,7 @@ use log::{debug, warn};
 use macroquad::prelude::*;
 use network::{StatePacket, TeamInfo};
 use std::net::IpAddr;
+use std::process::{Child, Command};
 use std::str::FromStr;
 use uwh_common::game_snapshot::{GamePeriod, GameSnapshot, TimeoutSnapshot};
 mod flag;
@@ -12,6 +13,10 @@ mod network;
 mod pages;
 
 const APP_CONFIG_NAME: &str = "uwh-overlay-drawing";
+const TIME_AND_STATE_SHRINK_TO: f32 = -200f32;
+const TIME_AND_STATE_SHRINK_FROM: f32 = 0f32;
+const ALPHA_MAX: f32 = 255f32;
+const ALPHA_MIN: f32 = 0f32;
 
 fn window_conf() -> Conf {
     Conf {
@@ -108,6 +113,9 @@ async fn main() {
         last_snapshot_timeout: TimeoutSnapshot::None,
     };
     let mut flag_renderer = flag::FlagRenderer::new();
+    unsafe {
+        get_internal_gl().quad_context.show_mouse(false);
+    }
 
     loop {
         assert!(!net_worker.is_finished(), "Error in Networking thread!");

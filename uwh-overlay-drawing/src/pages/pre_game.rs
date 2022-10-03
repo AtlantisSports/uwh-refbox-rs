@@ -182,9 +182,25 @@ impl PageRenderer {
                 ..Default::default()
             }
         );
+        let min = state.half_play_duration.unwrap_or(900) / 60;
+        let secs = state.half_play_duration.unwrap_or(900) % 60;
+        let text = format!(
+            "{}:{}",
+            if min < 10 {
+                format!("0{}", min)
+            } else {
+                format!("{}", min)
+            },
+            if secs < 10 {
+                format!("0{}", secs)
+            } else {
+                format!("{}", secs)
+            }
+        );
+        let x_off = center_text_offset!(90f32, text.as_str(), 50, self.textures.font);
         draw_text_ex(
-            "15:00",
-            460f32,
+            text.as_str(),
+            430f32 + x_off,
             67f32,
             TextParams {
                 font: self.textures.font,

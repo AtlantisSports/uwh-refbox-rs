@@ -53,6 +53,7 @@ pub struct State {
     start_time: String,
     white_flag: Option<Texture2D>,
     black_flag: Option<Texture2D>,
+    half_play_duration: Option<u32>,
 }
 
 #[macroquad::main(window_conf())]
@@ -102,6 +103,7 @@ async fn main() {
         start_time: String::new(),
         white_flag: None,
         black_flag: None,
+        half_play_duration: None,
     };
 
     let mut renderer = pages::PageRenderer {
@@ -153,22 +155,27 @@ async fn main() {
         }
 
         match local_state.snapshot.current_period {
-            GamePeriod::BetweenGames => match local_state.snapshot.secs_in_period {
-                151..=u32::MAX => {
-                    // If an old game just finished, display its scores
-                    if local_state.snapshot.is_old_game {
-                        renderer.final_scores(&local_state);
-                    } else {
-                        renderer.next_game(&local_state);
+            GamePeriod::BetweenGames => {
+                if let Some(duration) = local_state.snapshot.next_period_len_secs {
+                    local_state.half_play_duration = Some(duration)
+                }
+                match local_state.snapshot.secs_in_period {
+                    151..=u32::MAX => {
+                        // If an old game just finished, display its scores
+                        if local_state.snapshot.is_old_game {
+                            renderer.final_scores(&local_state);
+                        } else {
+                            renderer.next_game(&local_state);
+                        }
+                    }
+                    30..=150 => {
+                        renderer.roster(&local_state);
+                    }
+                    _ => {
+                        renderer.pre_game_display(&local_state);
                     }
                 }
-                30..=150 => {
-                    renderer.roster(&local_state);
-                }
-                _ => {
-                    renderer.pre_game_display(&local_state);
-                }
-            },
+            }
             GamePeriod::FirstHalf | GamePeriod::SecondHalf | GamePeriod::HalfTime => {
                 renderer.in_game_display(&local_state);
                 flag_renderer.draw();

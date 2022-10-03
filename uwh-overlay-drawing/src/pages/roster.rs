@@ -22,7 +22,7 @@ impl PageRenderer {
             self.animation_register1 = Instant::now();
             (0f32, -650f32).interpolate_linear(1f32)
         };
-        draw_texture_both!(self.textures.atlantis_logo_graphic, 823f32, 712f32, WHITE);
+        draw_texture_both!(self.textures.atlantis_logo_graphic, 840f32, 725f32, WHITE);
         draw_texture_both!(self.textures.bottom_graphic, 822f32, 977f32, WHITE);
         for (i, player_identifier) in state
             .white

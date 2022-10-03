@@ -9,7 +9,7 @@ use macroquad::prelude::*;
 impl PageRenderer {
     /// Display final scores after game is done
     pub fn final_scores(&mut self, state: &State) {
-        draw_texture_both!(self.textures.atlantis_logo_graphic, 823f32, 712f32, WHITE);
+        draw_texture_both!(self.textures.atlantis_logo_graphic, 840f32, 725f32, WHITE);
         draw_texture_both!(self.textures.final_score_graphic, 314f32, 347f32, WHITE);
         draw_texture_both!(
             self.textures.team_information_graphic,

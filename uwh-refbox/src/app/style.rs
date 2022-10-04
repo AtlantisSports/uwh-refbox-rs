@@ -6,14 +6,14 @@ use paste::paste;
 
 pub const BORDER_RADIUS: f32 = 9.0;
 pub const BORDER_WIDTH: f32 = 6.0;
-pub const SPACING: u16 = 12; // Must be a multiple of 4
-pub const PADDING: u16 = 12;
-pub const MIN_BUTTON_SIZE: u16 = 96;
+pub const SPACING: u16 = 8; // Must be a multiple of 4
+pub const PADDING: u16 = 8;
+pub const MIN_BUTTON_SIZE: u16 = 89;
 
-pub const SMALL_TEXT: u16 = 24;
-pub const SMALL_PLUS_TEXT: u16 = 36;
-pub const MEDIUM_TEXT: u16 = 48;
-pub const LARGE_TEXT: u16 = 90;
+pub const SMALL_TEXT: u16 = 22;
+pub const SMALL_PLUS_TEXT: u16 = 34;
+pub const MEDIUM_TEXT: u16 = 44;
+pub const LARGE_TEXT: u16 = 80;
 
 // See https://stackoverflow.com/a/727339 for color mixing math. For darkening colors with pure
 // black, the math simplifies to new_r = orig_r * (1 - black_alpha), so we will multiply by the

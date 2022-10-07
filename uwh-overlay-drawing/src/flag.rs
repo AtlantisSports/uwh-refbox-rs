@@ -88,6 +88,11 @@ impl FlagRenderer {
         self.active_flags.push(flag);
     }
 
+    pub fn reset(&mut self) {
+        self.active_flags.clear();
+        self.inactive_flags.clear();
+    }
+
     pub fn new() -> Self {
         Self {
             active_flags: Vec::new(),

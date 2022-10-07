@@ -156,6 +156,7 @@ async fn main() {
 
         match local_state.snapshot.current_period {
             GamePeriod::BetweenGames => {
+                flag_renderer.reset();
                 if let Some(duration) = local_state.snapshot.next_period_len_secs {
                     local_state.half_play_duration = Some(duration)
                 }

@@ -64,7 +64,12 @@ impl PageRenderer {
                         .as_f64() as f32,
                 ) as u8;
 
-                draw_texture_both!(self.textures.atlantis_logo_graphic, 836f32, 725f32, WHITE);
+                draw_texture_both!(
+                    self.textures.atlantis_logo_graphic,
+                    836f32,
+                    725f32,
+                    Color::from_rgba(255, 255, 255, offset)
+                );
                 draw_texture_both!(
                     self.textures.bottom_graphic,
                     822f32,

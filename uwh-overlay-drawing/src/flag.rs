@@ -4,6 +4,7 @@
 
 use crate::load_images::Texture;
 use crate::pages::center_text_offset;
+use crate::pages::draw_text_both_ex;
 use crate::pages::draw_texture_both;
 use crate::pages::Interpolate;
 use macroquad::prelude::*;
@@ -369,7 +370,7 @@ impl FlagRenderer {
                 BASE_HEIGHT + idx as f32 * FLAG_HEIGHT + movement_offset,
                 Color::from_rgba(255, 255, 255, alpha_offset as u8)
             );
-            draw_text_ex(
+            draw_text_both_ex!(
                 format!("#{} {}", flag.player_number, flag.player_name).as_str(),
                 160f32,
                 BASE_HEIGHT + idx as f32 * FLAG_HEIGHT + movement_offset + 33f32,
@@ -383,6 +384,13 @@ impl FlagRenderer {
                     },
                     ..Default::default()
                 },
+                TextParams {
+                    font: self.textures.font,
+                    font_size: 30,
+                    color: Color::from_rgba(255, 255, 255, alpha_offset as u8),
+
+                    ..Default::default()
+                }
             );
             match flag.flag_type {
                 FlagType::Goal(color, _) => draw_text_ex(
@@ -470,7 +478,7 @@ impl FlagRenderer {
                 BASE_HEIGHT + flag.vertical_position as f32 * FLAG_HEIGHT,
                 Color::from_rgba(255, 255, 255, alpha_offset as u8)
             );
-            draw_text_ex(
+            draw_text_both_ex!(
                 format!("#{} {}", flag.player_number, flag.player_name).as_str(),
                 160f32,
                 BASE_HEIGHT + flag.vertical_position as f32 * FLAG_HEIGHT + 33f32,
@@ -484,6 +492,12 @@ impl FlagRenderer {
                     },
                     ..Default::default()
                 },
+                TextParams {
+                    font: self.textures.font,
+                    font_size: 30,
+                    color: Color::from_rgba(255, 255, 255, alpha_offset as u8),
+                    ..Default::default()
+                }
             );
             match flag.flag_type {
                 FlagType::Goal(_, _) => draw_text_ex(

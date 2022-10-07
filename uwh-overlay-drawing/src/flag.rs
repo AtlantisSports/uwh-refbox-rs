@@ -442,17 +442,21 @@ impl FlagRenderer {
             }
         }
         for flag in self.inactive_flags.iter_mut() {
+            let color = match flag.flag_type {
+                FlagType::Goal(color, _) => color,
+                FlagType::Penalty(color, _, _) => color,
+            };
             flag.alpha_animation_counter -= 1f32 / 60f32;
             let alpha_offset = (0f32, 255f32).interpolate_linear(flag.alpha_animation_counter);
             let tex = match flag.flag_type {
-                FlagType::Goal(color, _) => {
+                FlagType::Goal(_, _) => {
                     if color == UWHColor::White {
                         &self.textures.white_goal
                     } else {
                         &self.textures.black_goal
                     }
                 }
-                FlagType::Penalty(color, _, _) => {
+                FlagType::Penalty(_, _, _) => {
                     if color == UWHColor::White {
                         &self.textures.white_penalty
                     } else {
@@ -473,7 +477,11 @@ impl FlagRenderer {
                 TextParams {
                     font: self.textures.font,
                     font_size: 30,
-                    color: Color::from_rgba(255, 255, 255, alpha_offset as u8),
+                    color: if color == uwh_common::game_snapshot::Color::Black {
+                        Color::from_rgba(255, 255, 255, alpha_offset as u8)
+                    } else {
+                        Color::from_rgba(0, 0, 0, alpha_offset as u8)
+                    },
                     ..Default::default()
                 },
             );
@@ -485,7 +493,11 @@ impl FlagRenderer {
                     TextParams {
                         font: self.textures.font,
                         font_size: 30,
-                        color: Color::from_rgba(255, 255, 255, alpha_offset as u8),
+                        color: if color == uwh_common::game_snapshot::Color::Black {
+                            Color::from_rgba(255, 255, 255, alpha_offset as u8)
+                        } else {
+                            Color::from_rgba(0, 0, 0, alpha_offset as u8)
+                        },
                         ..Default::default()
                     },
                 ),
@@ -519,7 +531,11 @@ impl FlagRenderer {
                         TextParams {
                             font: self.textures.font,
                             font_size: 30,
-                            color: Color::from_rgba(255, 255, 255, alpha_offset as u8),
+                            color: if color == uwh_common::game_snapshot::Color::Black {
+                                Color::from_rgba(255, 255, 255, alpha_offset as u8)
+                            } else {
+                                Color::from_rgba(0, 0, 0, alpha_offset as u8)
+                            },
                             ..Default::default()
                         },
                     );

@@ -1,6 +1,5 @@
 use crate::config::Game as GameConfig;
-use serde::{Deserialize, Deserializer};
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::time::Duration;
 use time::PrimitiveDateTime;
 

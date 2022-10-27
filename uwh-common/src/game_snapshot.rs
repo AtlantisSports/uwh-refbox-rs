@@ -13,7 +13,7 @@ use core::{
 use defmt::Format;
 use derivative::Derivative;
 use displaydoc::Display;
-use serde_derive::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 const PANEL_PENALTY_COUNT: usize = 3;
 

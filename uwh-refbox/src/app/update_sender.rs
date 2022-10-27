@@ -289,7 +289,7 @@ impl Drop for Server {
 }
 
 async fn listener_loop(tx: mpsc::Sender<ServerMessage>, binary_port: u16, json_port: u16) {
-    info!("Strating Listeners for JSON (port {json_port}) and binary (port {binary_port})");
+    info!("Starting Listeners for JSON (port {json_port}) and binary (port {binary_port})");
     let binary_listener = TcpListener::bind(("::", binary_port)).await.unwrap();
     let json_listener = TcpListener::bind(("::", json_port)).await.unwrap();
     info!("Listeners started");

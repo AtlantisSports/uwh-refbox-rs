@@ -865,7 +865,7 @@ impl Application for RefBoxApp {
             }
             Message::ScoreEditComplete { canceled } => {
                 let mut tm = self.tm.lock().unwrap();
-                let now = Instant::now();
+                let mut now = Instant::now();
 
                 self.app_state = if let AppState::ScoreEdit {
                     scores,
@@ -883,7 +883,10 @@ impl Application for RefBoxApp {
 
                         tm.set_scores(scores.black, scores.white, now);
                         tm.start_clock(now);
-                        tm.update(now + Duration::from_millis(2)).unwrap(); // Need to update after game ends
+
+                        // Update `tm` after game ends to get into Between Games
+                        now += Duration::from_millis(2);
+                        tm.update(now).unwrap();
                         AppState::MainPage
                     } else if !canceled {
                         if tm.current_period() == GamePeriod::SuddenDeath
@@ -902,7 +905,7 @@ impl Application for RefBoxApp {
                     unreachable!()
                 };
 
-                let snapshot = tm.generate_snapshot(now).unwrap();
+                let snapshot = tm.generate_snapshot(now).unwrap(); // `now` is in the past!
                 std::mem::drop(tm);
                 self.apply_snapshot(snapshot);
 

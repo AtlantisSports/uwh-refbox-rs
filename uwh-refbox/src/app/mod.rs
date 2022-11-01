@@ -1428,7 +1428,7 @@ impl Application for RefBoxApp {
                         });
 
                         if edited_settings.using_uwhscores {
-                            tm.apply_next_game_start(Instant::now()).unwrap();
+                            tm.apply_next_game_start(now).unwrap();
                         } else {
                             tm.clear_scheduled_game_start();
                         }
@@ -1440,7 +1440,7 @@ impl Application for RefBoxApp {
                         self.games = edited_settings.games;
 
                         confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
-                        let snapshot = tm.generate_snapshot(now).unwrap();
+                        let snapshot = tm.generate_snapshot(now).unwrap(); // TODO: Remove this unwrap
                         std::mem::drop(tm);
                         self.apply_snapshot(snapshot);
                         AppState::MainPage

@@ -1305,6 +1305,10 @@ impl TournamentManager {
     /// Returns `None` if the clock time would be negative, or if `now` is before the start
     /// of the current period
     pub fn game_clock_time(&self, now: Instant) -> Option<Duration> {
+        trace!(
+            "Getting game clock time with clock state {:?} and now time {now:?}",
+            self.clock_state
+        );
         self.clock_state.clock_time(now)
     }
 
@@ -1321,19 +1325,24 @@ impl TournamentManager {
     }
 
     pub fn generate_snapshot(&mut self, now: Instant) -> Option<GameSnapshot> {
+        trace!("Generating snapshot");
         let cur_time = self.game_clock_time(now)?;
+        trace!("Got current time: {cur_time:?}");
         let secs_in_period = cur_time.as_secs().try_into().ok()?;
+        trace!("Got seconds remaining: {secs_in_period}");
 
         let b_penalties = self
             .b_penalties
             .iter()
             .map(|pen| pen.as_snapshot(self.current_period, cur_time, &self.config))
             .collect::<Option<Vec<_>>>()?;
+        trace!("Got black penalties");
         let w_penalties = self
             .w_penalties
             .iter()
             .map(|pen| pen.as_snapshot(self.current_period, cur_time, &self.config))
             .collect::<Option<Vec<_>>>()?;
+        trace!("Got white penalties");
 
         if let Some((_, _, goal_per, goal_time)) = self.recent_goal {
             if (goal_per != self.current_period)

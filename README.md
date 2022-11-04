@@ -1,6 +1,6 @@
 # Introduction
 
-The main software component here is the [`uwh-refbox`](uwh-refbox) crate. The other crates are support crates that are also used by other binaries, not included here.
+The main software component here is the [`refbox`](refbox) crate. The other crates are support crates that are also used by other binaries, not included here.
 
 # Running the Binary
 
@@ -23,7 +23,7 @@ If you want to change the size of the simulated panels, you will need to run via
    - OpenSSL (`libssl-dev` package in `apt`)
    - pkg-config (`pkg-config` package in `apt`)
    - Alsa (`libasound2-dev` package in `apt`)
-3. Go to the [`uwh-refbox`](uwh-refbox) folder and `cargo run`
+3. Go to the [`refbox`](refbox) folder and `cargo run`
 4. Call the binary with the `-h` or `--help` flags to get the usage
 
 # Packaging

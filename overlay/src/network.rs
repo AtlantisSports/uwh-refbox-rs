@@ -165,7 +165,7 @@ pub async fn networking_thread(
                         data["game"]["start_time"]
                             .as_str()
                             .map(|s| String::from("START: ") + s.split_at(11).1.split_at(5).0)
-                            .unwrap_or(Default::default()),
+                            .unwrap_or_default(),
                     ),
                 })
                 .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"))

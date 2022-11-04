@@ -14,7 +14,7 @@ else
     exit 1
 fi
 
-CONTAINER_CMD="cargo build --bin uwh-refbox --target $TARGET_TRIPLE --release"
+CONTAINER_CMD="cargo build --bin refbox --target $TARGET_TRIPLE --release"
 CONTAINER_WORKDIR="/workdir/uwh-refbox-rs"
 
 CONTAINER_NAME="$(docker create -t -w "$CONTAINER_WORKDIR/" $IMAGE_NAME /bin/bash -c "$CONTAINER_CMD")"
@@ -27,6 +27,6 @@ done
 
 docker start -a "$CONTAINER_NAME"
 
-docker cp "$CONTAINER_NAME:$CONTAINER_WORKDIR/target/$TARGET_TRIPLE/release/uwh-refbox" "$(dirname "$0")/output/$TARGET_TRIPLE/"
+docker cp "$CONTAINER_NAME:$CONTAINER_WORKDIR/target/$TARGET_TRIPLE/release/refbox" "$(dirname "$0")/output/$TARGET_TRIPLE/"
 
 docker rm "$CONTAINER_NAME"

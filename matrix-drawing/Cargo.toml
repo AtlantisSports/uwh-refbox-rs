@@ -1,5 +1,5 @@
 [package]
-name = "uwh-matrix-drawing"
+name = "matrix-drawing"
 version = "0.1.1"
 authors = ["Atlantis Sports <maintainers@atlantissports.org>"]
 edition = "2021"

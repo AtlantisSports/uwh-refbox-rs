@@ -6,12 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-macroquad = "0.3.24"
+macroquad = { version = "0.3.25", default-features = false }
 uwh-common = { path = "../uwh-common/" }
 serde_json = { version = "*" }
 serde = { version = "1.0.139", features = ["derive"] }
 reqwest = { version = "*", features = ["blocking"] }
-tokio = {version = "*", features = ["full"]}
+tokio = { version = "*", features = ["macros"] }
 pollster = "*"
 confy = { git = "https://github.com/rust-cli/confy", rev = "642822413139ce38a96b916190e8c7fd5b88e814" }
 simple_logger = "*"
@@ -20,7 +20,5 @@ coarsetime = "*"
 crossbeam-channel = "*"
 
 [dependencies.image]
-features = ["png","jpeg"]
+features = ["png", "jpeg"]
 version = "*"
-
-[workspace]

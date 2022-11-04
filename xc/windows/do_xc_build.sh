@@ -1,4 +1,4 @@
-CONTAINER_CMD="cargo build --bin uwh-refbox --target x86_64-pc-windows-msvc --release"
+CONTAINER_CMD="cargo build --bin refbox --target x86_64-pc-windows-msvc --release"
 CONTAINER_WORKDIR="/workdir/uwh-refbox-rs"
 
 CONTAINER_NAME="$(docker create -t -w "$CONTAINER_WORKDIR/" windows-rust-1.61-xc /bin/bash -c "$CONTAINER_CMD")"
@@ -11,6 +11,6 @@ done
 
 docker start -a "$CONTAINER_NAME"
 
-docker cp "$CONTAINER_NAME:$CONTAINER_WORKDIR/target/x86_64-pc-windows-msvc/release/uwh-refbox.exe" "$(dirname "$0")/output/"
+docker cp "$CONTAINER_NAME:$CONTAINER_WORKDIR/target/x86_64-pc-windows-msvc/release/refbox.exe" "$(dirname "$0")/output/"
 
 docker rm "$CONTAINER_NAME"

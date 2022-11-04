@@ -1,5 +1,5 @@
 use super::APP_CONFIG_NAME;
-use crate::{penalty_editor::*, tournament_manager::*};
+use crate::{config::Config, penalty_editor::*, tournament_manager::*};
 use iced::{
     executor,
     pure::{column, Application, Element},
@@ -29,7 +29,7 @@ use tokio::{
 };
 use tokio_serial::SerialPortBuilder;
 use uwh_common::{
-    config::{Config, Game as GameConfig},
+    config::Game as GameConfig,
     drawing_support::*,
     game_snapshot::{Color as GameColor, GamePeriod, GameSnapshot, TimeoutSnapshot},
     uwhscores::*,

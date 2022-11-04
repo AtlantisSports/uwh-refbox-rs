@@ -1,4 +1,5 @@
 use log::*;
+use matrix_drawing::transmitted_data::TransmittedData;
 use std::{collections::HashMap, fmt::Debug};
 use thiserror::Error;
 use tokio::{
@@ -11,7 +12,6 @@ use tokio::{
 };
 use tokio_serial::{SerialPortBuilder, SerialPortBuilderExt, SerialStream};
 use uwh_common::game_snapshot::GameSnapshot;
-use uwh_matrix_drawing::transmitted_data::TransmittedData;
 
 const TIMEOUT: Duration = Duration::from_millis(500);
 const SERIAL_SEND_SPACING: Duration = Duration::from_millis(100);

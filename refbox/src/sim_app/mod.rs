@@ -12,12 +12,12 @@ use iced_futures::{
     subscription::Recipe,
 };
 use log::*;
+use matrix_drawing::{draw_panels, transmitted_data::TransmittedData};
 use std::{hash::Hasher, rc::Rc, sync::Mutex};
 use tokio::{
     net::TcpStream,
     time::{self, Duration},
 };
-use uwh_matrix_drawing::{draw_panels, transmitted_data::TransmittedData};
 
 mod display_simulator;
 use display_simulator::*;

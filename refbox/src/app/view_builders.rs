@@ -15,6 +15,7 @@ use iced::{
     },
     Alignment, Length,
 };
+use matrix_drawing::{secs_to_long_time_string, secs_to_time_string};
 use std::{
     borrow::Cow,
     sync::{Arc, Mutex},
@@ -26,7 +27,6 @@ use uwh_common::{
         Color as GameColor, GamePeriod, GameSnapshot, PenaltySnapshot, PenaltyTime, TimeoutSnapshot,
     },
 };
-use uwh_matrix_drawing::{secs_to_long_time_string, secs_to_time_string};
 
 pub(super) fn build_main_view<'a>(
     snapshot: &GameSnapshot,

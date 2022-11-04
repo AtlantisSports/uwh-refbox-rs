@@ -177,13 +177,8 @@ impl FlagRenderer {
                 }
             })
             .for_each(|x| self.inactive_flags.push(x));
-        self.active_flags.retain(|x| {
-            if let FlagType::Goal(_, false) = x.flag_type {
-                false
-            } else {
-                true
-            }
-        });
+        self.active_flags
+            .retain(|x| !matches!(x.flag_type, FlagType::Goal(_, false)));
     }
 
     /// Used to synchronise penalty info from snapshot with the local penalty list.
@@ -260,13 +255,8 @@ impl FlagRenderer {
                 }
             })
             .for_each(|x| self.inactive_flags.push(x));
-        self.active_flags.retain(|x| {
-            if let FlagType::Penalty(_, _, false) = x.flag_type {
-                false
-            } else {
-                true
-            }
-        });
+        self.active_flags
+            .retain(|x| !matches!(x.flag_type, FlagType::Penalty(_, _, false)));
         // sort the flags based on: TD penalties on top, then time penalties sorted by longest time and lastly, goal callouts
         self.active_flags.sort_by(|a, b| {
             if let (

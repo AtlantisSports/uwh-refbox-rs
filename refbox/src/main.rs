@@ -5,16 +5,17 @@ use iced::{pure::Application, window::icon::Icon, Settings};
 use log::*;
 use std::process::{Command, Stdio};
 use tokio_serial::{DataBits, FlowControl, Parity, StopBits};
-use uwh_common::config::Config;
-
-mod penalty_editor;
-mod tournament_manager;
 
 mod app;
 mod app_icon;
+mod penalty_editor;
 mod sim_app;
+mod tournament_manager;
 
-const APP_CONFIG_NAME: &str = "uwh-refbox";
+mod config;
+use config::Config;
+
+const APP_CONFIG_NAME: &str = "refbox";
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]

@@ -1716,7 +1716,6 @@ pub type Result<T> = std::result::Result<T, TournamentManagerError>;
 mod test {
     use super::TournamentManagerError as TMErr;
     use super::*;
-    use env_logger;
     use std::convert::TryInto;
     use std::sync::Once;
 
@@ -2012,8 +2011,8 @@ mod test {
         tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(5));
         tm.b_score = 2;
         tm.w_score = 3;
-        tm.b_penalties.push(b_pen.clone());
-        tm.w_penalties.push(w_pen.clone());
+        tm.b_penalties.push(b_pen);
+        tm.w_penalties.push(w_pen);
         tm.has_reset = false;
         tm.start_clock(now);
 
@@ -2040,7 +2039,7 @@ mod test {
         };
         let other_config = GameConfig {
             half_play_duration: Duration::from_secs(40),
-            ..config.clone()
+            ..config
         };
         let mut tm = TournamentManager::new(config);
 
@@ -3247,12 +3246,12 @@ mod test {
         let sd_only_config = GameConfig {
             overtime_allowed: false,
             sudden_death_allowed: true,
-            ..all_periods_config.clone()
+            ..all_periods_config
         };
         let no_sd_no_ot_config = GameConfig {
             overtime_allowed: false,
             sudden_death_allowed: false,
-            ..all_periods_config.clone()
+            ..all_periods_config
         };
 
         // (start_period, start_time, end_period, end_time, config, result, msg)

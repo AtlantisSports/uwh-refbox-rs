@@ -1846,9 +1846,3 @@ impl<H: Hasher, I> Recipe<H, I> for MessageListener {
         }))
     }
 }
-
-// impl Clone for MessageListener {
-//     fn clone(&self) -> Self {
-//         Self { rx: None }
-//     }
-// }

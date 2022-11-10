@@ -1052,6 +1052,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "enum-derive-2018"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4c12aad72e0c5b4f1e0cc866187d8812deeaa1fccc892d3baf44c2b154d3e27b"
+
+[[package]]
 name = "env_logger"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2031,6 +2037,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "macro-attr-2018"
+version = "2.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "66fbbf2d3635c91b436074cf14a7c8948dc608e193c9d2b389bdc64aae2ca37b"
+
+[[package]]
 name = "macroquad"
 version = "0.3.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2980,11 +2992,13 @@ dependencies = [
  "conquer-once",
  "derivative",
  "embedded-graphics",
+ "enum-derive-2018",
  "env_logger",
  "iced",
  "iced_futures",
  "iced_native",
  "log",
+ "macro-attr-2018",
  "matrix-drawing",
  "more-asserts",
  "paste",

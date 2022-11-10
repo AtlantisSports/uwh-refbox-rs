@@ -29,7 +29,6 @@ use tokio::{
 };
 use tokio_serial::SerialPortBuilder;
 use uwh_common::{
-    config::Game as GameConfig,
     drawing_support::*,
     game_snapshot::{Color as GameColor, GamePeriod, GameSnapshot, TimeoutSnapshot},
     uwhscores::*,
@@ -37,6 +36,9 @@ use uwh_common::{
 
 mod view_builders;
 use view_builders::*;
+
+mod message;
+use message::*;
 
 pub mod style;
 use style::{PADDING, SPACING, WINDOW_BACKGROUND};
@@ -94,30 +96,11 @@ enum AppState {
     },
     PenaltyOverview(BlackWhiteBundle<usize>),
     KeypadPage(KeypadPage, u16),
-    EditGameConfig,
+    EditGameConfig(ConfigPage),
     ParameterEditor(LengthParameter, Duration),
     ParameterList(ListableParameter, usize),
     ConfirmationPage(ConfirmationKind),
     ConfirmScores(BlackWhiteBundle<u8>),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-struct EditableSettings {
-    config: GameConfig,
-    game_number: u32,
-    white_on_right: bool,
-    using_uwhscores: bool,
-    current_tid: Option<u32>,
-    current_pool: Option<String>,
-    games: Option<BTreeMap<u32, GameInfo>>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KeypadPage {
-    AddScore(GameColor),
-    Penalty(Option<(GameColor, usize)>, GameColor, PenaltyKind),
-    GameNumber,
-    TeamTimeouts(Duration),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -126,196 +109,6 @@ enum ConfirmationKind {
     GameConfigChanged,
     Error(String),
     UwhScoresIncomplete,
-}
-
-impl KeypadPage {
-    fn max_val(&self) -> u16 {
-        match self {
-            Self::AddScore(_) | Self::Penalty(_, _, _) => 99,
-            Self::GameNumber => 9999,
-            Self::TeamTimeouts(_) => 999,
-        }
-    }
-
-    fn text(&self) -> &'static str {
-        match self {
-            Self::AddScore(_) | Self::Penalty(_, _, _) => "PLAYER\nNUMBER:",
-            Self::GameNumber => "GAME\nNUMBER:",
-            Self::TeamTimeouts(_) => "NUM T/Os\nPER HALF:",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LengthParameter {
-    Half,
-    HalfTime,
-    NominalBetweenGame,
-    MinimumBetweenGame,
-    PreOvertime,
-    OvertimeHalf,
-    OvertimeHalfTime,
-    PreSuddenDeath,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ListableParameter {
-    Tournament,
-    Pool,
-    Game,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BoolGameParameter {
-    OvertimeAllowed,
-    SuddenDeathAllowed,
-    WhiteOnRight,
-    UsingUwhScores,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ScrollOption {
-    Black,
-    White,
-    GameParameter,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Message {
-    Init,
-    NewSnapshot(GameSnapshot),
-    EditTime,
-    ChangeTime {
-        increase: bool,
-        secs: u64,
-        timeout: bool,
-    },
-    TimeEditComplete {
-        canceled: bool,
-    },
-    StartPlayNow,
-    EditScores,
-    ChangeScore {
-        color: GameColor,
-        increase: bool,
-    },
-    ScoreEditComplete {
-        canceled: bool,
-    },
-    PenaltyOverview,
-    Scroll {
-        which: ScrollOption,
-        up: bool,
-    },
-    PenaltyOverviewComplete {
-        canceled: bool,
-    },
-    ChangeKind(PenaltyKind),
-    PenaltyEditComplete {
-        canceled: bool,
-        deleted: bool,
-    },
-    KeypadPage(KeypadPage),
-    KeypadButtonPress(KeypadButton),
-    ChangeColor(GameColor),
-    AddScoreComplete {
-        canceled: bool,
-    },
-    EditGameConfig,
-    ConfigEditComplete {
-        canceled: bool,
-    },
-    EditParameter(LengthParameter),
-    SelectParameter(ListableParameter),
-    ParameterEditComplete {
-        canceled: bool,
-    },
-    ParameterSelected(ListableParameter, usize),
-    ToggleBoolParameter(BoolGameParameter),
-    ConfirmationSelected(ConfirmationOption),
-    BlackTimeout(bool),
-    WhiteTimeout(bool),
-    RefTimeout(bool),
-    PenaltyShot(bool),
-    EndTimeout,
-    ConfirmScores(GameSnapshot),
-    ScoreConfirmation {
-        correct: bool,
-    },
-    RecvTournamentList(Vec<TournamentInfo>),
-    RecvTournament(TournamentInfo),
-    RecvGameList(Vec<GameInfo>),
-    RecvGame(GameInfo),
-    NoAction, // TODO: Remove once UI is functional
-}
-
-impl Message {
-    fn is_repeatable(&self) -> bool {
-        match self {
-            Self::NewSnapshot(_)
-            | Self::ChangeTime { .. }
-            | Self::ChangeScore { .. }
-            | Self::Scroll { .. }
-            | Self::KeypadButtonPress(_)
-            | Self::ToggleBoolParameter(_)
-            | Self::RecvTournamentList(_)
-            | Self::RecvTournament(_)
-            | Self::RecvGameList(_)
-            | Self::RecvGame(_)
-            | Self::NoAction => true,
-
-            Self::Init
-            | Self::EditTime
-            | Self::TimeEditComplete { .. }
-            | Self::StartPlayNow
-            | Self::EditScores
-            | Self::ScoreEditComplete { .. }
-            | Self::PenaltyOverview
-            | Self::PenaltyOverviewComplete { .. }
-            | Self::ChangeKind(_)
-            | Self::PenaltyEditComplete { .. }
-            | Self::KeypadPage(_)
-            | Self::ChangeColor(_)
-            | Self::AddScoreComplete { .. }
-            | Self::EditGameConfig
-            | Self::ConfigEditComplete { .. }
-            | Self::EditParameter(_)
-            | Self::SelectParameter(_)
-            | Self::ParameterEditComplete { .. }
-            | Self::ParameterSelected(_, _)
-            | Self::ConfirmationSelected(_)
-            | Self::BlackTimeout(_)
-            | Self::WhiteTimeout(_)
-            | Self::RefTimeout(_)
-            | Self::PenaltyShot(_)
-            | Self::EndTimeout
-            | Self::ConfirmScores(_)
-            | Self::ScoreConfirmation { .. } => false,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KeypadButton {
-    Zero,
-    One,
-    Two,
-    Three,
-    Four,
-    Five,
-    Six,
-    Seven,
-    Eight,
-    Nine,
-    Delete,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConfirmationOption {
-    DiscardChanges,
-    GoBack,
-    EndGameAndApply,
-    KeepGameAndApply,
 }
 
 impl RefBoxApp {
@@ -1108,38 +901,47 @@ impl Application for RefBoxApp {
                     current_tid: self.current_tid,
                     current_pool: self.current_pool.clone(),
                     games: self.games.clone(),
+                    sound: self.config.sound.clone(),
                 };
 
                 self.edited_settings = Some(edited_settings);
 
-                self.app_state = AppState::EditGameConfig;
+                self.app_state = AppState::EditGameConfig(ConfigPage::Main);
+                trace!("AppState changed to {:?}", self.app_state);
+            }
+            Message::ChangeConfigPage(new_page) => {
+                if let AppState::EditGameConfig(ref mut page) = self.app_state {
+                    *page = new_page;
+                } else {
+                    unreachable!();
+                }
                 trace!("AppState changed to {:?}", self.app_state);
             }
             Message::ConfigEditComplete { canceled } => {
-                let mut tm = self.tm.lock().unwrap();
-
-                let edited_settings = self.edited_settings.as_mut().unwrap();
-
-                let mut uwhscores_incomplete = edited_settings.using_uwhscores
-                    && (edited_settings.current_tid.is_none()
-                        || edited_settings.current_pool.is_none()
-                        || edited_settings.games.is_none());
-                if edited_settings.using_uwhscores && !uwhscores_incomplete {
-                    match edited_settings
-                        .games
-                        .as_ref()
-                        .unwrap()
-                        .get(&edited_settings.game_number)
-                    {
-                        Some(g) => {
-                            uwhscores_incomplete =
-                                g.pool != *edited_settings.current_pool.as_ref().unwrap()
-                        }
-                        None => uwhscores_incomplete = true,
-                    };
-                }
-
                 self.app_state = if !canceled {
+                    let mut tm = self.tm.lock().unwrap();
+
+                    let edited_settings = self.edited_settings.as_mut().unwrap();
+
+                    let mut uwhscores_incomplete = edited_settings.using_uwhscores
+                        && (edited_settings.current_tid.is_none()
+                            || edited_settings.current_pool.is_none()
+                            || edited_settings.games.is_none());
+                    if edited_settings.using_uwhscores && !uwhscores_incomplete {
+                        match edited_settings
+                            .games
+                            .as_ref()
+                            .unwrap()
+                            .get(&edited_settings.game_number)
+                        {
+                            Some(g) => {
+                                uwhscores_incomplete =
+                                    g.pool != *edited_settings.current_pool.as_ref().unwrap()
+                            }
+                            None => uwhscores_incomplete = true,
+                        };
+                    }
+
                     let new_config = if edited_settings.using_uwhscores && !uwhscores_incomplete {
                         match edited_settings
                             .games
@@ -1190,6 +992,7 @@ impl Application for RefBoxApp {
                             self.current_tid = edited_settings.current_tid;
                             self.current_pool = edited_settings.current_pool;
                             self.games = edited_settings.games;
+                            self.config.sound = edited_settings.sound;
 
                             confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
                             AppState::MainPage
@@ -1204,6 +1007,7 @@ impl Application for RefBoxApp {
                             self.current_tid = edited_settings.current_tid;
                             self.current_pool = edited_settings.current_pool;
                             self.games = edited_settings.games;
+                            self.config.sound = edited_settings.sound;
 
                             confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
 
@@ -1243,6 +1047,7 @@ impl Application for RefBoxApp {
                         self.current_tid = edited_settings.current_tid;
                         self.current_pool = edited_settings.current_pool;
                         self.games = edited_settings.games;
+                        self.config.sound = edited_settings.sound;
 
                         confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
                         AppState::MainPage
@@ -1352,7 +1157,14 @@ impl Application for RefBoxApp {
                     }
                 }
 
-                self.app_state = AppState::EditGameConfig;
+                let next_page = match self.app_state {
+                    AppState::ParameterEditor(_, _) => ConfigPage::Tournament,
+                    AppState::KeypadPage(KeypadPage::GameNumber, _) => ConfigPage::Main,
+                    AppState::KeypadPage(KeypadPage::TeamTimeouts(_), _) => ConfigPage::Tournament,
+                    _ => unreachable!(),
+                };
+
+                self.app_state = AppState::EditGameConfig(next_page);
                 trace!("AppState changed to {:?}", self.app_state);
             }
             Message::ParameterSelected(param, val) => {
@@ -1379,7 +1191,14 @@ impl Application for RefBoxApp {
                     ListableParameter::Game => edited_settings.game_number = val as u32,
                 };
 
-                self.app_state = AppState::EditGameConfig;
+                let next_page = match param {
+                    ListableParameter::Tournament | ListableParameter::Pool => {
+                        ConfigPage::Tournament
+                    }
+                    ListableParameter::Game => ConfigPage::Main,
+                };
+
+                self.app_state = AppState::EditGameConfig(next_page);
                 trace!("AppState changed to {:?}", self.app_state);
             }
             Message::ToggleBoolParameter(param) => {
@@ -1393,6 +1212,19 @@ impl Application for RefBoxApp {
                     }
                     BoolGameParameter::WhiteOnRight => edited_settings.white_on_right ^= true,
                     BoolGameParameter::UsingUwhScores => edited_settings.using_uwhscores ^= true,
+                    BoolGameParameter::SoundEnabled => edited_settings.sound.sound_enabled ^= true,
+                    BoolGameParameter::RefWarnEnabled => {
+                        edited_settings.sound.ref_warn_enabled ^= true
+                    }
+                }
+            }
+            Message::CycleParameter(param) => {
+                let sound = &mut self.edited_settings.as_mut().unwrap().sound;
+                match param {
+                    CyclingParameter::BuzzerSound => sound.buzzer_sound.cycle(),
+                    CyclingParameter::WarningVolume => sound.ref_warn_vol.cycle(),
+                    CyclingParameter::AboveWaterVol => sound.above_water_vol.cycle(),
+                    CyclingParameter::UnderWaterVol => sound.under_water_vol.cycle(),
                 }
             }
             Message::ConfirmationSelected(selection) => {
@@ -1404,7 +1236,7 @@ impl Application for RefBoxApp {
 
                 self.app_state = match selection {
                     ConfirmationOption::DiscardChanges => AppState::MainPage,
-                    ConfirmationOption::GoBack => AppState::EditGameConfig,
+                    ConfirmationOption::GoBack => AppState::EditGameConfig(ConfigPage::Main),
                     ConfirmationOption::EndGameAndApply => {
                         let edited_settings = self.edited_settings.take().unwrap();
                         let mut tm = self.tm.lock().unwrap();
@@ -1438,6 +1270,7 @@ impl Application for RefBoxApp {
                         self.current_tid = edited_settings.current_tid;
                         self.current_pool = edited_settings.current_pool;
                         self.games = edited_settings.games;
+                        self.config.sound = edited_settings.sound;
 
                         confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
                         let snapshot = tm.generate_snapshot(now).unwrap(); // TODO: Remove this unwrap
@@ -1457,6 +1290,7 @@ impl Application for RefBoxApp {
                         self.current_tid = edited_settings.current_tid;
                         self.current_pool = edited_settings.current_pool;
                         self.games = edited_settings.games;
+                        self.config.sound = edited_settings.sound;
 
                         confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
                         self.apply_snapshot(snapshot);
@@ -1682,10 +1516,11 @@ impl Application for RefBoxApp {
                 AppState::KeypadPage(page, player_num) => {
                     build_keypad_page(&self.snapshot, page, player_num)
                 }
-                AppState::EditGameConfig => build_game_config_edit_page(
+                AppState::EditGameConfig(page) => build_game_config_edit_page(
                     &self.snapshot,
                     self.edited_settings.as_ref().unwrap(),
                     &self.tournaments,
+                    page,
                 ),
                 AppState::ParameterEditor(param, dur) => {
                     build_game_parameter_editor(&self.snapshot, param, dur)

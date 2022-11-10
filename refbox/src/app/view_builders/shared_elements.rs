@@ -1,10 +1,12 @@
 use super::{
+    message::*,
     style::{
         self, BLACK, GREEN, LARGE_TEXT, MEDIUM_TEXT, MIN_BUTTON_SIZE, PADDING, RED, SMALL_TEXT,
         SPACING, WHITE, YELLOW,
     },
-    *,
 };
+use crate::tournament_manager::TournamentManager;
+use uwh_common::{drawing_support::*, uwhscores::GameInfo};
 
 use iced::{
     alignment::{Horizontal, Vertical},
@@ -17,6 +19,7 @@ use iced::{
 use matrix_drawing::{secs_to_long_time_string, secs_to_time_string};
 use std::{
     borrow::Cow,
+    collections::BTreeMap,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -129,7 +132,7 @@ pub(super) fn make_scroll_list<'a, const LIST_LEN: usize>(
     .style(cont_style)
 }
 
-pub fn build_timeout_ribbon<'a>(
+pub(in super::super) fn build_timeout_ribbon<'a>(
     snapshot: &GameSnapshot,
     tm: &Arc<Mutex<TournamentManager>>,
 ) -> Row<'a, Message> {
@@ -684,7 +687,7 @@ pub(super) fn make_small_button<'a, Message: Clone, T: Into<String>>(
 pub(super) fn make_value_button<'a, Message: 'a + Clone, T: Into<String>, U: Into<String>>(
     first_label: T,
     second_label: U,
-    second_is_large: bool,
+    large_text: (bool, bool),
     message: Option<Message>,
 ) -> Button<'a, Message> {
     let mut button = button(
@@ -693,13 +696,17 @@ pub(super) fn make_value_button<'a, Message: 'a + Clone, T: Into<String>, U: Int
             .align_items(Alignment::Center)
             .push(
                 text(first_label)
-                    .size(SMALL_TEXT)
+                    .size(if large_text.0 {
+                        MEDIUM_TEXT
+                    } else {
+                        SMALL_TEXT
+                    })
                     .vertical_alignment(Vertical::Center),
             )
             .push(horizontal_space(Length::Fill))
             .push(
                 text(second_label)
-                    .size(if second_is_large {
+                    .size(if large_text.1 {
                         MEDIUM_TEXT
                     } else {
                         SMALL_TEXT
@@ -708,7 +715,7 @@ pub(super) fn make_value_button<'a, Message: 'a + Clone, T: Into<String>, U: Int
             ),
     )
     .padding(PADDING)
-    .height(Length::Units(MIN_BUTTON_SIZE))
+    .height(Length::Fill)
     .width(Length::Fill)
     .style(style::Button::LightGray);
 

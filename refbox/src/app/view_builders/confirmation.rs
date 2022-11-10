@@ -123,7 +123,7 @@ pub(in super::super) fn build_confirmation_page<'a>(
         .into()
 }
 
-pub fn build_score_confirmation_page<'a>(
+pub(in super::super) fn build_score_confirmation_page<'a>(
     snapshot: &GameSnapshot,
     scores: BlackWhiteBundle<u8>,
 ) -> Element<'a, Message> {

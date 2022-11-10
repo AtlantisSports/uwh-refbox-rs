@@ -23,7 +23,7 @@ use game_number_edit::*;
 mod team_timeout_edit;
 use team_timeout_edit::*;
 
-pub fn build_keypad_page<'a>(
+pub(in super::super) fn build_keypad_page<'a>(
     snapshot: &GameSnapshot,
     page: KeypadPage,
     player_num: u16,

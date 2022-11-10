@@ -11,7 +11,7 @@ use iced::{
 use std::time::Duration;
 use uwh_common::game_snapshot::{GameSnapshot, TimeoutSnapshot};
 
-pub fn build_time_edit_view<'a>(
+pub(in super::super) fn build_time_edit_view<'a>(
     snapshot: &GameSnapshot,
     time: Duration,
     timeout_time: Option<Duration>,

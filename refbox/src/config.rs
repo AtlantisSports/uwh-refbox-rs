@@ -1,3 +1,4 @@
+use crate::sound::SoundSettings;
 use serde::{Deserialize, Serialize};
 use time::UtcOffset;
 pub use uwh_common::config::Game;
@@ -43,6 +44,7 @@ pub struct Config {
     pub game: Game,
     pub hardware: Hardware,
     pub uwhscores: UwhScores,
+    pub sound: SoundSettings,
 }
 
 #[cfg(test)]

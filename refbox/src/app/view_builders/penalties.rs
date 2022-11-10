@@ -11,7 +11,7 @@ use iced::{
 
 use uwh_common::game_snapshot::{Color as GameColor, GameSnapshot};
 
-pub fn build_penalty_overview_page<'a>(
+pub(in super::super) fn build_penalty_overview_page<'a>(
     snapshot: &GameSnapshot,
     penalties: BlackWhiteBundle<Vec<(String, FormatHint, PenaltyKind)>>,
     indices: BlackWhiteBundle<usize>,

@@ -11,7 +11,7 @@ use iced::{
 
 use uwh_common::game_snapshot::{Color as GameColor, GameSnapshot};
 
-pub fn build_score_edit_view<'a>(
+pub(in super::super) fn build_score_edit_view<'a>(
     snapshot: &GameSnapshot,
     scores: BlackWhiteBundle<u8>,
     is_confirmation: bool,

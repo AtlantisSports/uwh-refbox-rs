@@ -1,116 +1,191 @@
 use super::{
-    style::{self, BORDER_RADIUS, MIN_BUTTON_SIZE, SMALL_TEXT, SPACING},
-    *,
+    message::*,
+    shared_elements::*,
+    style::{self, MEDIUM_TEXT, PADDING, SMALL_TEXT, SPACING},
 };
-
+use crate::sound::*;
 use iced::{
-    alignment::Horizontal,
+    alignment::{Horizontal, Vertical},
     pure::{button, column, container, horizontal_space, row, text, vertical_space, Element},
     Alignment, Length,
 };
+use std::collections::BTreeMap;
+use tokio::time::Duration;
+use uwh_common::{config::Game as GameConfig, game_snapshot::GameSnapshot, uwhscores::*};
 
-use std::time::Duration;
-use uwh_common::game_snapshot::GameSnapshot;
+const NO_SELECTION_TXT: &str = "None Selected";
+const LOADING_TXT: &str = "Loading...";
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub(in super::super) struct EditableSettings {
+    pub config: GameConfig,
+    pub game_number: u32,
+    pub white_on_right: bool,
+    pub using_uwhscores: bool,
+    pub current_tid: Option<u32>,
+    pub current_pool: Option<String>,
+    pub games: Option<BTreeMap<u32, GameInfo>>,
+    pub sound: SoundSettings,
+}
+
+pub(in super::super) trait Cyclable
+where
+    Self: Sized,
+{
+    fn next(&self) -> Self;
+
+    fn cycle(&mut self) {
+        *self = self.next();
+    }
+}
+
+impl Cyclable for BuzzerSound {
+    fn next(&self) -> Self {
+        match self {
+            Self::Buzz => Self::Tweedle,
+            Self::Tweedle => Self::Buzz,
+        }
+    }
+}
+
+impl Cyclable for Volume {
+    fn next(&self) -> Self {
+        match self {
+            Self::Off => Self::Low,
+            Self::Low => Self::Medium,
+            Self::Medium => Self::High,
+            Self::High => Self::Max,
+            Self::Max => Self::Off,
+        }
+    }
+}
 
 pub(in super::super) fn build_game_config_edit_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
     tournaments: &Option<BTreeMap<u32, TournamentInfo>>,
+    page: ConfigPage,
 ) -> Element<'a, Message> {
-    const NO_SELECTION_TXT: &str = "None Selected";
-    const LOADING_TXT: &str = "Loading...";
+    match page {
+        ConfigPage::Main => make_main_config_page(snapshot, settings),
+        ConfigPage::Tournament => make_tournament_config_page(snapshot, settings, tournaments),
+        ConfigPage::Sound => make_sound_config_page(snapshot, settings),
+    }
+}
 
+fn make_main_config_page<'a>(
+    snapshot: &GameSnapshot,
+    settings: &EditableSettings,
+) -> Element<'a, Message> {
     let EditableSettings {
-        config,
         game_number,
-        white_on_right,
         using_uwhscores,
         current_tid,
         current_pool,
         games,
+        ..
     } = settings;
 
     let using_uwhscores = *using_uwhscores;
 
-    let white_inner = container("WHITE")
-        .center_x()
-        .center_y()
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(style::Container::White);
-    let black_inner = container("BLACK")
-        .center_x()
-        .center_y()
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(style::Container::Black);
-    let white_spacer = container("")
-        .width(Length::Units(BORDER_RADIUS.ceil() as u16))
-        .height(Length::Fill)
-        .style(style::Container::WhiteSharpCorner);
-    let black_spacer = container("")
-        .width(Length::Units(BORDER_RADIUS.ceil() as u16))
-        .height(Length::Fill)
-        .style(style::Container::BlackSharpCorner);
-
-    // `white_on_right` is based on the view from the front of the panels, so for the ref's point
-    // of view we need to reverse the direction
-    let sides = if !white_on_right {
-        // White to Ref's right
-        let white_outer = container(
-            row()
-                .push(white_spacer)
-                .push(white_inner)
-                .push(horizontal_space(Length::Units(BORDER_RADIUS.ceil() as u16))),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .padding(0)
-        .style(style::Container::White);
-        let black_outer = container(
-            row()
-                .push(horizontal_space(Length::Units(BORDER_RADIUS.ceil() as u16)))
-                .push(black_inner)
-                .push(black_spacer),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .padding(0)
-        .style(style::Container::Black);
-        row().push(black_outer).push(white_outer)
+    let game_btn_msg = if using_uwhscores {
+        if current_tid.is_some() && current_pool.is_some() {
+            Some(Message::SelectParameter(ListableParameter::Game))
+        } else {
+            None
+        }
     } else {
-        // White to Ref's left
-        let white_outer = container(
-            row()
-                .push(horizontal_space(Length::Units(BORDER_RADIUS.ceil() as u16)))
-                .push(white_inner)
-                .push(white_spacer),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .padding(0)
-        .style(style::Container::White);
-        let black_outer = container(
-            row()
-                .push(black_spacer)
-                .push(black_inner)
-                .push(horizontal_space(Length::Units(BORDER_RADIUS.ceil() as u16))),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .padding(0)
-        .style(style::Container::Black);
-        row().push(white_outer).push(black_outer)
+        Some(Message::KeypadPage(KeypadPage::GameNumber))
     };
 
-    let sides_btn = button(sides.width(Length::Fill).height(Length::Fill))
-        .height(Length::Units(MIN_BUTTON_SIZE))
-        .width(Length::Fill)
-        .padding(0)
-        .style(style::Button::Gray)
-        .on_press(Message::ToggleBoolParameter(
-            BoolGameParameter::WhiteOnRight,
-        ));
+    let mut game_large_text = true;
+    let game_label = if using_uwhscores {
+        if let (Some(_), Some(cur_pool)) = (current_tid, current_pool) {
+            if let Some(ref games) = games {
+                match games.get(game_number) {
+                    Some(game) => {
+                        if game.pool == *cur_pool {
+                            game_string_short(game)
+                        } else {
+                            game_large_text = false;
+                            NO_SELECTION_TXT.to_string()
+                        }
+                    }
+                    None => {
+                        game_large_text = false;
+                        NO_SELECTION_TXT.to_string()
+                    }
+                }
+            } else {
+                LOADING_TXT.to_string()
+            }
+        } else {
+            String::new()
+        }
+    } else {
+        game_number.to_string()
+    };
+
+    column()
+        .spacing(SPACING)
+        .height(Length::Fill)
+        .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
+        .push(make_value_button(
+            "GAME:",
+            game_label,
+            (true, game_large_text),
+            game_btn_msg,
+        ))
+        .push(
+            make_message_button(
+                "Tournament Options",
+                Some(Message::ChangeConfigPage(ConfigPage::Tournament)),
+            )
+            .style(style::Button::LightGray),
+        )
+        .push(
+            make_message_button(
+                "Pool and Sound Options",
+                Some(Message::ChangeConfigPage(ConfigPage::Sound)),
+            )
+            .style(style::Button::LightGray),
+        )
+        .push(vertical_space(Length::Fill))
+        .push(
+            row()
+                .spacing(SPACING)
+                .width(Length::Fill)
+                .push(
+                    make_button("CANCEL")
+                        .style(style::Button::Red)
+                        .width(Length::Fill)
+                        .on_press(Message::ConfigEditComplete { canceled: true }),
+                )
+                .push(horizontal_space(Length::Fill))
+                .push(
+                    make_button("DONE")
+                        .style(style::Button::Green)
+                        .width(Length::Fill)
+                        .on_press(Message::ConfigEditComplete { canceled: false }),
+                ),
+        )
+        .into()
+}
+
+fn make_tournament_config_page<'a>(
+    snapshot: &GameSnapshot,
+    settings: &EditableSettings,
+    tournaments: &Option<BTreeMap<u32, TournamentInfo>>,
+) -> Element<'a, Message> {
+    let EditableSettings {
+        config,
+        using_uwhscores,
+        current_tid,
+        current_pool,
+        ..
+    } = settings;
+
+    let using_uwhscores = *using_uwhscores;
 
     let rows: [Element<Message>; 4] = if using_uwhscores {
         let tournament_label = if let Some(ref tournaments) = tournaments {
@@ -155,29 +230,28 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
             .map(|_| Message::SelectParameter(ListableParameter::Pool));
 
         [
-            make_value_button("TOURNAMENT:", tournament_label, true, tournament_btn_msg).into(),
-            make_value_button("COURT:", pool_label, true, pool_btn_msg).into(),
-            vertical_space(Length::Units(MIN_BUTTON_SIZE)).into(),
+            make_value_button(
+                "TOURNAMENT:",
+                tournament_label,
+                (true, true),
+                tournament_btn_msg,
+            )
+            .height(Length::Fill)
+            .into(),
+            make_value_button("COURT:", pool_label, (true, true), pool_btn_msg)
+                .height(Length::Fill)
+                .into(),
+            vertical_space(Length::Fill).into(),
             row()
                 .spacing(SPACING)
+                .height(Length::Fill)
                 .push(horizontal_space(Length::Fill))
                 .push(horizontal_space(Length::Fill))
                 .push(
-                    row()
-                        .spacing(SPACING)
+                    make_button("DONE")
+                        .style(style::Button::Green)
                         .width(Length::Fill)
-                        .push(
-                            make_button("CANCEL")
-                                .style(style::Button::Red)
-                                .width(Length::Fill)
-                                .on_press(Message::ConfigEditComplete { canceled: true }),
-                        )
-                        .push(
-                            make_button("DONE")
-                                .style(style::Button::Green)
-                                .width(Length::Fill)
-                                .on_press(Message::ConfigEditComplete { canceled: false }),
-                        ),
+                        .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
                 )
                 .into(),
         ]
@@ -185,16 +259,17 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
         [
             row()
                 .spacing(SPACING)
+                .height(Length::Fill)
                 .push(make_value_button(
                     "HALF LENGTH:",
                     time_string(config.half_play_duration),
-                    true,
+                    (false, true),
                     Some(Message::EditParameter(LengthParameter::Half)),
                 ))
                 .push(make_value_button(
                     "OVERTIME\nALLOWED:",
                     bool_string(config.overtime_allowed),
-                    true,
+                    (false, true),
                     Some(Message::ToggleBoolParameter(
                         BoolGameParameter::OvertimeAllowed,
                     )),
@@ -202,7 +277,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
                 .push(make_value_button(
                     "SUDDEN DEATH\nALLOWED:",
                     bool_string(config.sudden_death_allowed),
-                    true,
+                    (false, true),
                     Some(Message::ToggleBoolParameter(
                         BoolGameParameter::SuddenDeathAllowed,
                     )),
@@ -210,16 +285,17 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
                 .into(),
             row()
                 .spacing(SPACING)
+                .height(Length::Fill)
                 .push(make_value_button(
                     "HALF TIME\nLENGTH:",
                     time_string(config.half_time_duration),
-                    true,
+                    (false, true),
                     Some(Message::EditParameter(LengthParameter::HalfTime)),
                 ))
                 .push(make_value_button(
                     "PRE OT\nBREAK LENGTH:",
                     time_string(config.pre_overtime_break),
-                    true,
+                    (false, true),
                     if config.overtime_allowed {
                         Some(Message::EditParameter(LengthParameter::PreOvertime))
                     } else {
@@ -229,7 +305,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
                 .push(make_value_button(
                     "PRE SD\nBREAK LENGTH:",
                     time_string(config.pre_sudden_death_duration),
-                    true,
+                    (false, true),
                     if config.sudden_death_allowed {
                         Some(Message::EditParameter(LengthParameter::PreSuddenDeath))
                     } else {
@@ -239,16 +315,17 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
                 .into(),
             row()
                 .spacing(SPACING)
+                .height(Length::Fill)
                 .push(make_value_button(
                     "NOMINAL BRK\nBTWN GAMES:",
                     time_string(config.nominal_break),
-                    true,
+                    (false, true),
                     Some(Message::EditParameter(LengthParameter::NominalBetweenGame)),
                 ))
                 .push(make_value_button(
                     "OT HALF\nLENGTH:",
                     time_string(config.ot_half_play_duration),
-                    true,
+                    (false, true),
                     if config.overtime_allowed {
                         Some(Message::EditParameter(LengthParameter::OvertimeHalf))
                     } else {
@@ -258,7 +335,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
                 .push(make_value_button(
                     "NUM TEAM T/Os\nALLWD PER HALF:",
                     config.team_timeouts_per_half.to_string(),
-                    true,
+                    (false, true),
                     Some(Message::KeypadPage(KeypadPage::TeamTimeouts(
                         config.team_timeout_duration,
                     ))),
@@ -266,16 +343,17 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
                 .into(),
             row()
                 .spacing(SPACING)
+                .height(Length::Fill)
                 .push(make_value_button(
                     "MINIMUM BRK\nBTWN GAMES:",
                     time_string(config.minimum_break),
-                    true,
+                    (false, true),
                     Some(Message::EditParameter(LengthParameter::MinimumBetweenGame)),
                 ))
                 .push(make_value_button(
                     "OT HALF\nTIME LENGTH:",
                     time_string(config.ot_half_time_duration),
-                    true,
+                    (false, true),
                     if config.overtime_allowed {
                         Some(Message::EditParameter(LengthParameter::OvertimeHalfTime))
                     } else {
@@ -283,85 +361,29 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
                     },
                 ))
                 .push(
-                    row()
-                        .spacing(SPACING)
+                    make_button("DONE")
+                        .style(style::Button::Green)
                         .width(Length::Fill)
-                        .push(
-                            make_button("CANCEL")
-                                .style(style::Button::Red)
-                                .width(Length::Fill)
-                                .on_press(Message::ConfigEditComplete { canceled: true }),
-                        )
-                        .push(
-                            make_button("DONE")
-                                .style(style::Button::Green)
-                                .width(Length::Fill)
-                                .on_press(Message::ConfigEditComplete { canceled: false }),
-                        ),
+                        .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
                 )
                 .into(),
         ]
     };
 
-    let game_btn_msg = if using_uwhscores {
-        if current_tid.is_some() && current_pool.is_some() {
-            Some(Message::SelectParameter(ListableParameter::Game))
-        } else {
-            None
-        }
-    } else {
-        Some(Message::KeypadPage(KeypadPage::GameNumber))
-    };
-
-    let mut game_large_text = true;
-    let game_label = if using_uwhscores {
-        if let (Some(_), Some(cur_pool)) = (current_tid, current_pool) {
-            if let Some(ref games) = games {
-                match games.get(game_number) {
-                    Some(game) => {
-                        if game.pool == *cur_pool {
-                            game_string_short(game)
-                        } else {
-                            game_large_text = false;
-                            NO_SELECTION_TXT.to_string()
-                        }
-                    }
-                    None => {
-                        game_large_text = false;
-                        NO_SELECTION_TXT.to_string()
-                    }
-                }
-            } else {
-                LOADING_TXT.to_string()
-            }
-        } else {
-            String::new()
-        }
-    } else {
-        game_number.to_string()
-    };
-
     let mut col = column()
         .spacing(SPACING)
+        .height(Length::Fill)
         .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
         .push(
-            row()
-                .spacing(SPACING)
-                .push(make_value_button(
-                    "USING UWHSCORES:",
-                    bool_string(using_uwhscores),
-                    true,
-                    Some(Message::ToggleBoolParameter(
-                        BoolGameParameter::UsingUwhScores,
-                    )),
-                ))
-                .push(sides_btn)
-                .push(make_value_button(
-                    "GAME:",
-                    game_label,
-                    game_large_text,
-                    game_btn_msg,
+            make_value_button(
+                "USING UWHSCORES:",
+                bool_string(using_uwhscores),
+                (true, true),
+                Some(Message::ToggleBoolParameter(
+                    BoolGameParameter::UsingUwhScores,
                 )),
+            )
+            .height(Length::Fill),
         );
 
     for row in rows {
@@ -371,7 +393,158 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
     col.into()
 }
 
-pub fn build_game_parameter_editor<'a>(
+fn make_sound_config_page<'a>(
+    snapshot: &GameSnapshot,
+    settings: &EditableSettings,
+) -> Element<'a, Message> {
+    let EditableSettings {
+        white_on_right,
+        sound,
+        ..
+    } = settings;
+
+    let white = container("WHITE")
+        .center_x()
+        .center_y()
+        .width(Length::FillPortion(2))
+        .height(Length::Fill)
+        .style(style::Container::White);
+    let black = container("BLACK")
+        .center_x()
+        .center_y()
+        .width(Length::FillPortion(2))
+        .height(Length::Fill)
+        .style(style::Container::Black);
+
+    let center = text("STARTING SDIES")
+        .size(MEDIUM_TEXT)
+        .vertical_alignment(Vertical::Center)
+        .horizontal_alignment(Horizontal::Center)
+        .width(Length::FillPortion(3));
+
+    // `white_on_right` is based on the view from the front of the panels, so for the ref's point
+    // of view we need to reverse the direction
+    let sides = if *white_on_right {
+        // White to Ref's right
+        row().padding(PADDING).push(black).push(center).push(white)
+    } else {
+        // White to Ref's left
+        row().padding(PADDING).push(white).push(center).push(black)
+    };
+
+    let sides_btn = button(sides.width(Length::Fill).height(Length::Fill))
+        .height(Length::Fill)
+        .width(Length::Fill)
+        .padding(0)
+        .style(style::Button::LightGray)
+        .on_press(Message::ToggleBoolParameter(
+            BoolGameParameter::WhiteOnRight,
+        ));
+
+    column()
+        .spacing(SPACING)
+        .height(Length::Fill)
+        .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
+        .push(sides_btn)
+        .push(
+            row()
+                .spacing(SPACING)
+                .height(Length::Fill)
+                .push(make_value_button(
+                    "SOUND\nENABLED:",
+                    bool_string(sound.sound_enabled),
+                    (false, true),
+                    Some(Message::ToggleBoolParameter(
+                        BoolGameParameter::SoundEnabled,
+                    )),
+                ))
+                .push(make_value_button(
+                    "REF WARN\nVOLUME:",
+                    sound.ref_warn_vol.to_string().to_uppercase(),
+                    (false, true),
+                    if sound.sound_enabled && sound.ref_warn_enabled {
+                        Some(Message::CycleParameter(CyclingParameter::WarningVolume))
+                    } else {
+                        None
+                    },
+                ))
+                .push(
+                    make_message_button("Manage Remotes", None)
+                        .style(style::Button::LightGray)
+                        .height(Length::Fill),
+                ),
+        )
+        .push(
+            row()
+                .spacing(SPACING)
+                .height(Length::Fill)
+                .push(make_value_button(
+                    "REF WARN\nENABLED:",
+                    bool_string(sound.ref_warn_enabled),
+                    (false, true),
+                    if sound.sound_enabled {
+                        Some(Message::ToggleBoolParameter(
+                            BoolGameParameter::RefWarnEnabled,
+                        ))
+                    } else {
+                        None
+                    },
+                ))
+                .push(make_value_button(
+                    "ABOVE WATER\nVOLUME:",
+                    sound.above_water_vol.to_string().to_uppercase(),
+                    (false, true),
+                    if sound.sound_enabled {
+                        Some(Message::CycleParameter(CyclingParameter::AboveWaterVol))
+                    } else {
+                        None
+                    },
+                ))
+                .push(horizontal_space(Length::Fill)),
+        )
+        .push(
+            row()
+                .spacing(SPACING)
+                .height(Length::Fill)
+                .push(make_value_button(
+                    "BUZZER\nSOUND:",
+                    sound.buzzer_sound.to_string().to_uppercase(),
+                    (false, true),
+                    if sound.sound_enabled {
+                        Some(Message::CycleParameter(CyclingParameter::BuzzerSound))
+                    } else {
+                        None
+                    },
+                ))
+                .push(make_value_button(
+                    "UNDER WATER\nVOLUME:",
+                    sound.under_water_vol.to_string().to_uppercase(),
+                    (false, true),
+                    if sound.sound_enabled {
+                        Some(Message::CycleParameter(CyclingParameter::UnderWaterVol))
+                    } else {
+                        None
+                    },
+                ))
+                .push(horizontal_space(Length::Fill)),
+        )
+        .push(
+            row()
+                .spacing(SPACING)
+                .height(Length::Fill)
+                .push(horizontal_space(Length::Fill))
+                .push(horizontal_space(Length::Fill))
+                .push(
+                    make_button("DONE")
+                        .style(style::Button::Green)
+                        .width(Length::Fill)
+                        .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
+                ),
+        )
+        .into()
+}
+
+pub(in super::super) fn build_game_parameter_editor<'a>(
     snapshot: &GameSnapshot,
     param: LengthParameter,
     length: Duration,
@@ -379,12 +552,29 @@ pub fn build_game_parameter_editor<'a>(
     let (title, hint) = match param {
         LengthParameter::Half => ("HALF LEN", "The length of a half during regular play"),
         LengthParameter::HalfTime => ("HALF TIME LEN", "The length of the Half Time period"),
-        LengthParameter::NominalBetweenGame => ("NOM BREAK", "If a game runs exactly as long as scheduled, this is the length of the break between games"),
-        LengthParameter::MinimumBetweenGame => ("MIN BREAK", "If a game runs longer than scheduled, this is the minimum time between games that the system will allot. If the games fall behind, the system will automatically try to catch up after subsequent games, always respecting this minimum time between games."),
-        LengthParameter::PreOvertime => ("PRE OT BREAK", "If overtime is enabled and needed, this is the length of the break between Second Half and Overtime First Half"),
+        LengthParameter::NominalBetweenGame => (
+            "NOM BREAK",
+            "If a game runs exactly as long as scheduled, this is the length of the \
+            break between games",
+        ),
+        LengthParameter::MinimumBetweenGame => (
+            "MIN BREAK",
+            "If a game runs longer than scheduled, this is the minimum time between \
+            games that the system will allot. If the games fall behind, the system will \
+            automatically try to catch up after subsequent games, always respecting \
+            this minimum time between games.",
+        ),
+        LengthParameter::PreOvertime => (
+            "PRE OT BREAK",
+            "If overtime is enabled and needed, this is the length of the break between \
+            Second Half and Overtime First Half",
+        ),
         LengthParameter::OvertimeHalf => ("OT HALF LEN", "The length of a half during overtime"),
         LengthParameter::OvertimeHalfTime => ("OT HLF TM LEN", "The length of Overtime Half Time"),
-        LengthParameter::PreSuddenDeath => ("PRE SD BREAK", "The length of the break between the preceeding play period and Sudden Death"),
+        LengthParameter::PreSuddenDeath => (
+            "PRE SD BREAK",
+            "The length of the break between the preceeding play period and Sudden Death",
+        ),
     };
 
     column()

@@ -16,7 +16,7 @@ use uwh_common::{
     },
 };
 
-pub fn build_main_view<'a>(
+pub(in super::super) fn build_main_view<'a>(
     snapshot: &GameSnapshot,
     config: &GameConfig,
     using_uwhscores: bool,

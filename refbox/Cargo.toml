@@ -19,7 +19,7 @@ derivative = "2.2.0"
 embedded-graphics = "0.7.1"
 enum-derive-2018 = "2"
 env_logger = "0.9.0"
-iced = { version = "0.4", features = ["canvas", "pure", "tokio"] }
+iced = { version = "0.4", default-features = false, features = ["canvas", "glow", "pure", "tokio"] }
 iced_futures = { version = "0.4", features = ["async-std"] }
 iced_native = "0.5"
 log = "0.4.16"
@@ -27,7 +27,7 @@ macro-attr-2018 = "2"
 more-asserts = "0.2"
 paste = "1.0.7"
 reqwest = { version = "0.11", features = ["json"] }
-rodio = { version = "0.16", default-features = false }
+rodio = { version = "0.16", default-features = false, features = ["wav"] }
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
@@ -39,6 +39,10 @@ tokio-serial = "5.4"
 toml = "0.5"
 uwh-common = { version = "0.1.1", path = "../uwh-common"}
 matrix-drawing = { version = "0.1.1", path = "../matrix-drawing"}
+
+[target.'cfg(target_os = "linux")'.dependencies]
+futures-lite = "1"
+rppal = "0.14"
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1"

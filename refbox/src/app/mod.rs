@@ -1,5 +1,5 @@
 use super::APP_CONFIG_NAME;
-use crate::{config::Config, penalty_editor::*, tournament_manager::*};
+use crate::{config::Config, penalty_editor::*, sound::*, tournament_manager::*};
 use iced::{
     executor,
     pure::{column, Application, Element},
@@ -11,10 +11,6 @@ use iced_futures::{
 };
 use log::*;
 use reqwest::{Client, Method, StatusCode};
-use rodio::{
-    source::{SineWave, Source, Zero},
-    OutputStream, OutputStreamHandle, Sink,
-};
 use std::{
     cmp::min,
     collections::BTreeMap,
@@ -68,7 +64,7 @@ pub struct RefBoxApp {
     games: Option<BTreeMap<u32, GameInfo>>,
     current_tid: Option<u32>,
     current_pool: Option<String>,
-    sound: Option<(OutputStream, OutputStreamHandle)>,
+    sound: SoundController,
     sim_child: Option<Child>,
     fullscreen: bool,
     list_all_tournaments: bool,
@@ -131,70 +127,47 @@ impl RefBoxApp {
     }
 
     fn maybe_play_sound(&self, new_snapshot: &GameSnapshot) {
-        const NUM_SHORT_SOUNDS: u16 = 10;
-        const SOUND_DUR: std::time::Duration = std::time::Duration::from_millis(250);
-        const LOW_FREQ: f32 = 660.0;
-        const MED_FREQ: f32 = 1000.0;
-        const HIGH_FREQ: f32 = 1500.0;
-
-        if let Some((_, ref handle)) = self.sound {
-            let (play_short_sound, play_long_sound) = match new_snapshot.timeout {
-                TimeoutSnapshot::Black(time) | TimeoutSnapshot::White(time) => {
-                    match self.snapshot.timeout {
-                        TimeoutSnapshot::Black(old_time) | TimeoutSnapshot::White(old_time) => (
-                            time != old_time && time <= NUM_SHORT_SOUNDS,
-                            time != old_time && time == 20,
-                        ),
-                        _ => (false, false),
-                    }
+        let (play_ref_warn, play_buzzer) = match new_snapshot.timeout {
+            TimeoutSnapshot::Black(time) | TimeoutSnapshot::White(time) => {
+                match self.snapshot.timeout {
+                    TimeoutSnapshot::Black(old_time) | TimeoutSnapshot::White(old_time) => (
+                        time != old_time && time == 20,
+                        time != old_time && time == 0,
+                    ),
+                    _ => (false, false),
                 }
-                TimeoutSnapshot::Ref(_) | TimeoutSnapshot::PenaltyShot(_) => (false, false),
-                TimeoutSnapshot::None => {
-                    let prereqs = new_snapshot.current_period != GamePeriod::SuddenDeath
-                        && new_snapshot.secs_in_period != self.snapshot.secs_in_period;
-
-                    let is_warn_period = match new_snapshot.current_period {
-                        GamePeriod::BetweenGames
-                        | GamePeriod::HalfTime
-                        | GamePeriod::PreOvertime
-                        | GamePeriod::OvertimeHalfTime
-                        | GamePeriod::PreSuddenDeath => true,
-                        GamePeriod::FirstHalf
-                        | GamePeriod::SecondHalf
-                        | GamePeriod::OvertimeFirstHalf
-                        | GamePeriod::OvertimeSecondHalf
-                        | GamePeriod::SuddenDeath => false,
-                    };
-
-                    (
-                        prereqs && new_snapshot.secs_in_period <= NUM_SHORT_SOUNDS as u32,
-                        prereqs && is_warn_period && new_snapshot.secs_in_period == 35,
-                    )
-                }
-            };
-
-            if play_long_sound {
-                let sink = match Sink::try_new(handle) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        error!("Failed to play long sound: {e}");
-                        return;
-                    }
-                };
-
-                sink.append(SineWave::new(LOW_FREQ).take_duration(SOUND_DUR));
-                sink.append(SineWave::new(MED_FREQ).take_duration(SOUND_DUR));
-                sink.append(SineWave::new(HIGH_FREQ).take_duration(SOUND_DUR));
-                sink.append(Zero::<f32>::new(1, 48_000).take_duration(SOUND_DUR));
-                sink.append(SineWave::new(LOW_FREQ).take_duration(SOUND_DUR));
-                sink.append(SineWave::new(MED_FREQ).take_duration(SOUND_DUR));
-                sink.append(SineWave::new(HIGH_FREQ).take_duration(SOUND_DUR));
-                sink.detach();
-            } else if play_short_sound {
-                if let Err(e) = handle.play_raw(SineWave::new(LOW_FREQ).take_duration(SOUND_DUR)) {
-                    error!("Failed to play short sound: {e}");
-                };
             }
+            TimeoutSnapshot::Ref(_) | TimeoutSnapshot::PenaltyShot(_) => (false, false),
+            TimeoutSnapshot::None => {
+                let prereqs = new_snapshot.current_period != GamePeriod::SuddenDeath
+                    && new_snapshot.secs_in_period != self.snapshot.secs_in_period;
+
+                let is_warn_period = match new_snapshot.current_period {
+                    GamePeriod::BetweenGames
+                    | GamePeriod::HalfTime
+                    | GamePeriod::PreOvertime
+                    | GamePeriod::OvertimeHalfTime
+                    | GamePeriod::PreSuddenDeath => true,
+                    GamePeriod::FirstHalf
+                    | GamePeriod::SecondHalf
+                    | GamePeriod::OvertimeFirstHalf
+                    | GamePeriod::OvertimeSecondHalf
+                    | GamePeriod::SuddenDeath => false,
+                };
+
+                (
+                    prereqs && is_warn_period && new_snapshot.secs_in_period == 35,
+                    prereqs && new_snapshot.secs_in_period == 0,
+                )
+            }
+        };
+
+        if play_ref_warn {
+            info!("Triggering ref warning");
+            self.sound.trigger_ref_warn();
+        } else if play_buzzer {
+            info!("Triggering buzzer");
+            self.sound.trigger_buzzer();
         }
     }
 
@@ -453,13 +426,7 @@ impl Application for RefBoxApp {
             list_all_tournaments,
         } = flags;
 
-        let sound = match OutputStream::try_default() {
-            Ok(res) => Some(res),
-            Err(e) => {
-                error!("Failed to connect to sound output: {e}");
-                None
-            }
-        };
+        let sound = SoundController::new(config.sound.clone());
 
         let (msg_tx, rx) = mpsc::unbounded_channel();
         let message_listener = MessageListener {
@@ -993,6 +960,7 @@ impl Application for RefBoxApp {
                             self.current_pool = edited_settings.current_pool;
                             self.games = edited_settings.games;
                             self.config.sound = edited_settings.sound;
+                            self.sound.update_settings(self.config.sound.clone());
 
                             confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
                             AppState::MainPage
@@ -1008,6 +976,7 @@ impl Application for RefBoxApp {
                             self.current_pool = edited_settings.current_pool;
                             self.games = edited_settings.games;
                             self.config.sound = edited_settings.sound;
+                            self.sound.update_settings(self.config.sound.clone());
 
                             confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
 
@@ -1048,6 +1017,7 @@ impl Application for RefBoxApp {
                         self.current_pool = edited_settings.current_pool;
                         self.games = edited_settings.games;
                         self.config.sound = edited_settings.sound;
+                        self.sound.update_settings(self.config.sound.clone());
 
                         confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
                         AppState::MainPage
@@ -1271,6 +1241,7 @@ impl Application for RefBoxApp {
                         self.current_pool = edited_settings.current_pool;
                         self.games = edited_settings.games;
                         self.config.sound = edited_settings.sound;
+                        self.sound.update_settings(self.config.sound.clone());
 
                         confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
                         let snapshot = tm.generate_snapshot(now).unwrap(); // TODO: Remove this unwrap
@@ -1291,6 +1262,7 @@ impl Application for RefBoxApp {
                         self.current_pool = edited_settings.current_pool;
                         self.games = edited_settings.games;
                         self.config.sound = edited_settings.sound;
+                        self.sound.update_settings(self.config.sound.clone());
 
                         confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
                         self.apply_snapshot(snapshot);

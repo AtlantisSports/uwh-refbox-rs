@@ -110,6 +110,7 @@ fn make_penalty_list<'a>(
                         color,
                         kind,
                     )))
+                    .into()
             } else {
                 button(horizontal_space(Length::Shrink))
                     .height(Length::Units(MIN_BUTTON_SIZE))
@@ -120,6 +121,7 @@ fn make_penalty_list<'a>(
                         color,
                         PenaltyKind::OneMinute,
                     )))
+                    .into()
             }
         })
         .collect();

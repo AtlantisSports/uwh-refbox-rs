@@ -151,6 +151,8 @@ pub enum Container {
     Gray,
     Black,
     White,
+    ScrollBar,
+    Disabled,
 }
 
 impl container::StyleSheet for Container {
@@ -160,6 +162,14 @@ impl container::StyleSheet for Container {
             Self::Gray => cont_style(GRAY, BLACK),
             Self::Black => cont_style(BLACK, WHITE),
             Self::White => cont_style(WHITE, BLACK),
+            Self::ScrollBar => cont_style(WINDOW_BACKGROUND, BLACK),
+            Self::Disabled => container::Style {
+                text_color: Some(DISABLED_COLOR),
+                background: None,
+                border_radius: BORDER_RADIUS,
+                border_width: BORDER_WIDTH,
+                border_color: DISABLED_COLOR,
+            },
         }
     }
 }

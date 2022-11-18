@@ -22,7 +22,10 @@ use rppal::gpio::{Gpio, InputPin, Level, Trigger};
 use serde::{Deserialize, Serialize};
 use std::{io::Cursor, ops::Index};
 #[cfg(target_os = "linux")]
-use tokio::time::{sleep_until, Duration, Instant};
+use tokio::{
+    sync::watch::Receiver,
+    time::{sleep_until, Duration, Instant},
+};
 use tokio::{
     sync::{
         mpsc::{unbounded_channel, UnboundedSender},
@@ -144,9 +147,21 @@ impl SoundLibrary {
     }
 
     fn set_volumes(&mut self, settings: &SoundSettings) {
-        let left_vol = settings.above_water_vol.to_f32();
-        let right_vol = settings.under_water_vol.to_f32();
-        let ref_warn_vol = settings.ref_warn_vol.to_f32();
+        let left_vol = if settings.sound_enabled {
+            settings.above_water_vol.to_f32()
+        } else {
+            0.0
+        };
+        let right_vol = if settings.sound_enabled {
+            settings.under_water_vol.to_f32()
+        } else {
+            0.0
+        };
+        let ref_warn_vol = if settings.sound_enabled && settings.ref_warn_enabled {
+            settings.ref_warn_vol.to_f32()
+        } else {
+            0.0
+        };
 
         self.buzz.set_volume(1, left_vol);
         self.buzz.set_volume(0, right_vol);
@@ -172,6 +187,8 @@ pub struct SoundController {
     settings_tx: Sender<SoundSettings>,
     stop_tx: Sender<bool>,
     tasks: Vec<JoinHandle<()>>,
+    #[cfg(target_os = "linux")]
+    remote_id_rx: Option<Receiver<u32>>,
     #[cfg(target_os = "linux")]
     _pins: Option<(InputPin, InputPin)>,
 }
@@ -251,7 +268,7 @@ impl SoundController {
         let mut tasks = vec![handler];
 
         #[cfg(target_os = "linux")]
-        let _pins = if let Ok(sys_info) = rppal::system::DeviceInfo::new() {
+        let (_pins, remote_id_rx) = if let Ok(sys_info) = rppal::system::DeviceInfo::new() {
             info!("Detected a Raspberry Pi system: {sys_info:?}, starting GPIO processes");
 
             let gpio = Gpio::new().unwrap();
@@ -264,7 +281,7 @@ impl SoundController {
                 })
                 .unwrap();
 
-            let mut wired_pin = gpio.get(12).unwrap().into_input();
+            let mut wired_pin = gpio.get(12).unwrap().into_input_pullup();
             let (wired_tx, mut wired_rx) = unbounded_channel();
             wired_pin
                 .set_async_interrupt(Trigger::Both, move |level| wired_tx.send(level).unwrap())
@@ -273,6 +290,8 @@ impl SoundController {
             let ant_start_state = ant_pin.read();
 
             let (wireless_tx, mut wireless_rx) = unbounded_channel();
+            let (remote_id_tx, mut remote_id_rx) = watch::channel(0);
+            remote_id_rx.borrow_and_update();
 
             let mut _stop_rx = stop_rx.clone();
 
@@ -339,6 +358,7 @@ impl SoundController {
 
                                                     debug!("Remote {remote_id} sent data {data:?}");
                                                     wireless_tx.send(remote_id).unwrap();
+                                                    remote_id_tx.send(remote_id).unwrap();
 
                                                     state.preamble_detected = false;
                                                     state.bits.clear();
@@ -452,9 +472,9 @@ impl SoundController {
 
             tasks.push(button_listener);
 
-            Some((wired_pin, ant_pin))
+            (Some((wired_pin, ant_pin)), Some(remote_id_rx))
         } else {
-            None
+            (None, None)
         };
 
         Self {
@@ -463,6 +483,8 @@ impl SoundController {
             settings_tx,
             stop_tx,
             tasks,
+            #[cfg(target_os = "linux")]
+            remote_id_rx,
             #[cfg(target_os = "linux")]
             _pins,
         }
@@ -478,6 +500,25 @@ impl SoundController {
 
     pub fn trigger_buzzer(&self) {
         self.msg_tx.send(SoundMessage::TriggerBuzzer).unwrap()
+    }
+
+    /// Waits for a remote to be detected, then passes the id value to `callback`.
+    /// If buttons are not available on the current system, `callback` will never
+    /// be called.
+    #[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
+    pub fn request_next_remote_id<F>(&self, callback: F)
+    where
+        F: FnOnce(u32) + Send + 'static,
+    {
+        #[cfg(target_os = "linux")]
+        if let Some(rx) = self.remote_id_rx.clone() {
+            let mut rx_ = rx.clone();
+            rx_.borrow_and_update();
+            task::spawn(async move {
+                rx_.changed().await.unwrap();
+                callback(*rx_.borrow());
+            });
+        }
     }
 }
 

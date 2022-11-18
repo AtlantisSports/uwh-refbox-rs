@@ -1,9 +1,10 @@
 use super::{
     message::*,
     shared_elements::*,
-    style::{self, MEDIUM_TEXT, PADDING, SMALL_TEXT, SPACING},
+    style::{self, MEDIUM_TEXT, MIN_BUTTON_SIZE, PADDING, SMALL_TEXT, SPACING},
 };
 use crate::sound::*;
+use collect_array::CollectArrayResult;
 use iced::{
     alignment::{Horizontal, Vertical},
     pure::{button, column, container, horizontal_space, row, text, vertical_space, Element},
@@ -48,6 +49,16 @@ impl Cyclable for BuzzerSound {
     }
 }
 
+impl Cyclable for Option<BuzzerSound> {
+    fn next(&self) -> Self {
+        match self {
+            Some(BuzzerSound::Buzz) => Some(BuzzerSound::Tweedle),
+            Some(BuzzerSound::Tweedle) => None,
+            None => Some(BuzzerSound::Buzz),
+        }
+    }
+}
+
 impl Cyclable for Volume {
     fn next(&self) -> Self {
         match self {
@@ -70,6 +81,9 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
         ConfigPage::Main => make_main_config_page(snapshot, settings),
         ConfigPage::Tournament => make_tournament_config_page(snapshot, settings, tournaments),
         ConfigPage::Sound => make_sound_config_page(snapshot, settings),
+        ConfigPage::Remotes(index, listening) => {
+            make_remote_config_page(snapshot, settings, index, listening)
+        }
     }
 }
 
@@ -138,14 +152,14 @@ fn make_main_config_page<'a>(
         ))
         .push(
             make_message_button(
-                "Tournament Options",
+                "TOURNAMENT OPTIONS",
                 Some(Message::ChangeConfigPage(ConfigPage::Tournament)),
             )
             .style(style::Button::LightGray),
         )
         .push(
             make_message_button(
-                "Pool and Sound Options",
+                "POOL AND SOUND OPTIONS",
                 Some(Message::ChangeConfigPage(ConfigPage::Sound)),
             )
             .style(style::Button::LightGray),
@@ -469,9 +483,12 @@ fn make_sound_config_page<'a>(
                     },
                 ))
                 .push(
-                    make_message_button("Manage Remotes", None)
-                        .style(style::Button::LightGray)
-                        .height(Length::Fill),
+                    make_message_button(
+                        "MANAGE REMOTES",
+                        Some(Message::ChangeConfigPage(ConfigPage::Remotes(0, false))),
+                    )
+                    .style(style::Button::LightGray)
+                    .height(Length::Fill),
                 ),
         )
         .push(
@@ -539,6 +556,129 @@ fn make_sound_config_page<'a>(
                         .style(style::Button::Green)
                         .width(Length::Fill)
                         .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
+                ),
+        )
+        .into()
+}
+
+fn make_remote_config_page<'a>(
+    snapshot: &GameSnapshot,
+    settings: &EditableSettings,
+    index: usize,
+    listening: bool,
+) -> Element<'a, Message> {
+    const REMOTES_LIST_LEN: usize = 4;
+
+    let title = text("REMOTES")
+        .height(Length::Fill)
+        .width(Length::Fill)
+        .horizontal_alignment(Horizontal::Center)
+        .vertical_alignment(Vertical::Center);
+
+    let buttons: CollectArrayResult<_, REMOTES_LIST_LEN> = settings
+        .sound
+        .remotes
+        .iter()
+        .enumerate()
+        .skip(index)
+        .map(Some)
+        .chain([None].into_iter().cycle())
+        .take(REMOTES_LIST_LEN)
+        .map(|rem| {
+            if let Some((idx, rem_info)) = rem {
+                let sound_text = if let Some(sound) = rem_info.sound {
+                    sound.to_string().to_uppercase()
+                } else {
+                    "DEFAULT".to_owned()
+                };
+                let sound_text = format!("SOUND: {}", sound_text);
+
+                container(
+                    row()
+                        .padding(PADDING)
+                        .spacing(SPACING)
+                        .push(
+                            text(format!("ID: {:05X}", rem_info.id))
+                                .size(MEDIUM_TEXT)
+                                .vertical_alignment(Vertical::Center)
+                                .horizontal_alignment(Horizontal::Center)
+                                .height(Length::Fill)
+                                .width(Length::Fill),
+                        )
+                        .push(
+                            make_message_button(
+                                sound_text,
+                                Some(Message::CycleParameter(
+                                    CyclingParameter::RemoteBuzzerSound(idx),
+                                )),
+                            )
+                            .width(Length::Units(275))
+                            .height(Length::Units(MIN_BUTTON_SIZE - (2 * PADDING)))
+                            .style(style::Button::Yellow),
+                        )
+                        .push(
+                            make_message_button("DELETE", Some(Message::DeleteRemote(idx)))
+                                .width(Length::Units(130))
+                                .height(Length::Units(MIN_BUTTON_SIZE - (2 * PADDING)))
+                                .style(style::Button::Red),
+                        ),
+                )
+                .width(Length::Fill)
+                .height(Length::Units(MIN_BUTTON_SIZE))
+                .style(style::Container::Gray)
+                .into()
+            } else {
+                container(horizontal_space(Length::Fill))
+                    .width(Length::Fill)
+                    .height(Length::Units(MIN_BUTTON_SIZE))
+                    .style(style::Container::Disabled)
+                    .into()
+            }
+        })
+        .collect();
+
+    let add_btn = if listening {
+        make_message_button("WAITING", None)
+    } else {
+        make_message_button("ADD", Some(Message::RequestRemoteId))
+    }
+    .style(style::Button::Orange);
+
+    column()
+        .spacing(SPACING)
+        .height(Length::Fill)
+        .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
+        .push(
+            row()
+                .spacing(SPACING)
+                .height(Length::Fill)
+                .width(Length::Fill)
+                .push(
+                    make_scroll_list(
+                        buttons.unwrap(),
+                        settings.sound.remotes.len(),
+                        index,
+                        title,
+                        ScrollOption::GameParameter,
+                        style::Container::LightGray,
+                    )
+                    .height(Length::Fill)
+                    .width(Length::FillPortion(5)),
+                )
+                .push(
+                    column()
+                        .spacing(SPACING)
+                        .height(Length::Fill)
+                        .width(Length::Fill)
+                        .push(vertical_space(Length::Fill))
+                        .push(add_btn)
+                        .push(
+                            make_message_button(
+                                "DONE",
+                                Some(Message::ChangeConfigPage(ConfigPage::Sound)),
+                            )
+                            .style(style::Button::Green),
+                        ),
                 ),
         )
         .into()

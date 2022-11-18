@@ -59,6 +59,9 @@ pub enum Message {
     ParameterSelected(ListableParameter, usize),
     ToggleBoolParameter(BoolGameParameter),
     CycleParameter(CyclingParameter),
+    RequestRemoteId,
+    GotRemoteId(u32),
+    DeleteRemote(usize),
     ConfirmationSelected(ConfirmationOption),
     BlackTimeout(bool),
     WhiteTimeout(bool),
@@ -112,6 +115,9 @@ impl Message {
             | Self::SelectParameter(_)
             | Self::ParameterEditComplete { .. }
             | Self::ParameterSelected(_, _)
+            | Self::RequestRemoteId
+            | Self::GotRemoteId(_)
+            | Self::DeleteRemote(_)
             | Self::ConfirmationSelected(_)
             | Self::BlackTimeout(_)
             | Self::WhiteTimeout(_)
@@ -129,6 +135,7 @@ pub enum ConfigPage {
     Main,
     Tournament,
     Sound,
+    Remotes(usize, bool),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -163,6 +170,7 @@ pub enum BoolGameParameter {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CyclingParameter {
     BuzzerSound,
+    RemoteBuzzerSound(usize),
     WarningVolume,
     AboveWaterVol,
     UnderWaterVol,

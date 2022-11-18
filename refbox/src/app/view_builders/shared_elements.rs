@@ -13,6 +13,7 @@ use iced::{
     pure::{
         button, column, container, horizontal_space, row, text, vertical_space,
         widget::{Button, Container, Row, Text},
+        Element,
     },
     Alignment, Length,
 };
@@ -29,7 +30,7 @@ use uwh_common::{
 };
 
 pub(super) fn make_scroll_list<'a, const LIST_LEN: usize>(
-    buttons: [Button<'a, Message>; LIST_LEN],
+    buttons: [Element<'a, Message>; LIST_LEN],
     num_items: usize,
     index: usize,
     title: Text,
@@ -106,7 +107,7 @@ pub(super) fn make_scroll_list<'a, const LIST_LEN: usize>(
             .padding(PADDING)
             .width(Length::FillPortion(2))
             .height(Length::Fill)
-            .style(style::Container::LightGray),
+            .style(style::Container::ScrollBar),
         )
         .push(horizontal_space(Length::Fill));
 

@@ -1192,9 +1192,47 @@ impl Application for RefBoxApp {
                 let sound = &mut self.edited_settings.as_mut().unwrap().sound;
                 match param {
                     CyclingParameter::BuzzerSound => sound.buzzer_sound.cycle(),
+                    CyclingParameter::RemoteBuzzerSound(idx) => sound.remotes[idx].sound.cycle(),
                     CyclingParameter::WarningVolume => sound.ref_warn_vol.cycle(),
                     CyclingParameter::AboveWaterVol => sound.above_water_vol.cycle(),
                     CyclingParameter::UnderWaterVol => sound.under_water_vol.cycle(),
+                }
+            }
+            Message::RequestRemoteId => {
+                if let AppState::EditGameConfig(ConfigPage::Remotes(_, ref mut listening)) =
+                    self.app_state
+                {
+                    let _msg_tx = self.msg_tx.clone();
+                    self.sound.request_next_remote_id(move |id| {
+                        _msg_tx.send(Message::GotRemoteId(id)).unwrap()
+                    });
+                    *listening = true;
+                } else {
+                    unreachable!()
+                }
+                trace!("AppState changed to {:?}", self.app_state);
+            }
+            Message::GotRemoteId(id) => {
+                if let AppState::EditGameConfig(ConfigPage::Remotes(_, ref mut listening)) =
+                    self.app_state
+                {
+                    self.edited_settings
+                        .as_mut()
+                        .unwrap()
+                        .sound
+                        .remotes
+                        .push(RemoteInfo { id, sound: None });
+                    *listening = false;
+                } else {
+                    unreachable!()
+                }
+                trace!("AppState changed to {:?}", self.app_state);
+            }
+            Message::DeleteRemote(index) => {
+                if let Some(ref mut settings) = self.edited_settings {
+                    settings.sound.remotes.remove(index);
+                } else {
+                    unreachable!()
                 }
             }
             Message::ConfirmationSelected(selection) => {

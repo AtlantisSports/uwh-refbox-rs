@@ -56,11 +56,13 @@ pub(in super::super) fn build_list_selector_page<'a>(
                             .width(Length::Fill)
                             .style(style::Button::Gray)
                             .on_press(Message::ParameterSelected(param, msg_val))
+                            .into()
                     } else {
                         button(horizontal_space(Length::Shrink))
                             .height(Length::Units(MIN_BUTTON_SIZE))
                             .width(Length::Fill)
                             .style(style::Button::Gray)
+                            .into()
                     }
                 })
                 .collect()

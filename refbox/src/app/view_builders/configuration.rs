@@ -43,8 +43,8 @@ where
 impl Cyclable for BuzzerSound {
     fn next(&self) -> Self {
         match self {
-            Self::Buzz => Self::Tweedle,
-            Self::Tweedle => Self::Buzz,
+            Self::Beep => Self::Whoop,
+            Self::Whoop => Self::Beep,
         }
     }
 }
@@ -52,9 +52,9 @@ impl Cyclable for BuzzerSound {
 impl Cyclable for Option<BuzzerSound> {
     fn next(&self) -> Self {
         match self {
-            Some(BuzzerSound::Buzz) => Some(BuzzerSound::Tweedle),
-            Some(BuzzerSound::Tweedle) => None,
-            None => Some(BuzzerSound::Buzz),
+            Some(BuzzerSound::Beep) => Some(BuzzerSound::Whoop),
+            Some(BuzzerSound::Whoop) => None,
+            None => Some(BuzzerSound::Beep),
         }
     }
 }

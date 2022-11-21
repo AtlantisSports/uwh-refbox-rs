@@ -64,8 +64,8 @@ macro_attr! {
     #[derivative(Default)]
     pub enum BuzzerSound {
         #[derivative(Default)]
-        Buzz,
-        Tweedle,
+        Beep,
+        Whoop,
     }
 }
 
@@ -83,7 +83,7 @@ macro_attr! {
 }
 
 impl Volume {
-    fn to_f32(&self) -> f32 {
+    fn as_f32(&self) -> f32 {
         match self {
             Self::Off => 0.0,
             Self::Low => 0.25,
@@ -103,8 +103,8 @@ pub struct RemoteInfo {
 type SoundType = ChannelVolume<Buffered<Decoder<Cursor<Vec<u8>>>>>;
 
 struct SoundLibrary {
-    buzz: SoundType,
-    tweedle: SoundType,
+    beep: SoundType,
+    whoop: SoundType,
     ref_warn: SoundType,
 }
 
@@ -113,8 +113,8 @@ impl Index<BuzzerSound> for SoundLibrary {
 
     fn index(&self, sound: BuzzerSound) -> &Self::Output {
         match sound {
-            BuzzerSound::Buzz => &self.buzz,
-            BuzzerSound::Tweedle => &self.tweedle,
+            BuzzerSound::Beep => &self.beep,
+            BuzzerSound::Whoop => &self.whoop,
         }
     }
 }
@@ -122,24 +122,24 @@ impl Index<BuzzerSound> for SoundLibrary {
 impl SoundLibrary {
     fn new() -> Result<Self, DecoderError> {
         Ok(Self {
-            buzz: ChannelVolume::new(
-                Decoder::new_wav(Cursor::new(Vec::from(
-                    include_bytes!("../resources/1000Hz-Both.wav").clone(),
-                )))?
+            beep: ChannelVolume::new(
+                Decoder::new_wav(Cursor::new(Vec::from(*include_bytes!(
+                    "../resources/1000Hz-1s.wav"
+                ))))?
                 .buffered(),
                 vec![0., 0.],
             ),
-            tweedle: ChannelVolume::new(
-                Decoder::new_wav(Cursor::new(Vec::from(
-                    include_bytes!("../resources/1000Hz-Both.wav").clone(),
-                )))?
+            whoop: ChannelVolume::new(
+                Decoder::new_wav(Cursor::new(Vec::from(*include_bytes!(
+                    "../resources/whoop.wav"
+                ))))?
                 .buffered(),
                 vec![0., 0.],
             ),
             ref_warn: ChannelVolume::new(
-                Decoder::new_wav(Cursor::new(Vec::from(
-                    include_bytes!("../resources/1000Hz-Both.wav").clone(),
-                )))?
+                Decoder::new_wav(Cursor::new(Vec::from(*include_bytes!(
+                    "../resources/ref-warn.wav"
+                ))))?
                 .buffered(),
                 vec![0., 0.],
             ),
@@ -148,25 +148,25 @@ impl SoundLibrary {
 
     fn set_volumes(&mut self, settings: &SoundSettings) {
         let left_vol = if settings.sound_enabled {
-            settings.above_water_vol.to_f32()
+            settings.above_water_vol.as_f32()
         } else {
             0.0
         };
         let right_vol = if settings.sound_enabled {
-            settings.under_water_vol.to_f32()
+            settings.under_water_vol.as_f32()
         } else {
             0.0
         };
         let ref_warn_vol = if settings.sound_enabled && settings.ref_warn_enabled {
-            settings.ref_warn_vol.to_f32()
+            settings.ref_warn_vol.as_f32()
         } else {
             0.0
         };
 
-        self.buzz.set_volume(1, left_vol);
-        self.buzz.set_volume(0, right_vol);
-        self.tweedle.set_volume(1, left_vol);
-        self.tweedle.set_volume(0, right_vol);
+        self.beep.set_volume(1, left_vol);
+        self.beep.set_volume(0, right_vol);
+        self.whoop.set_volume(1, left_vol);
+        self.whoop.set_volume(0, right_vol);
         self.ref_warn.set_volume(1, ref_warn_vol);
     }
 }

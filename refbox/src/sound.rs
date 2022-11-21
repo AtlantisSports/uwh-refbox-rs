@@ -176,7 +176,7 @@ enum SoundMessage {
     TriggerBuzzer,
     TriggerRefWarning,
     #[cfg(target_os = "linux")]
-    StartBuzzer,
+    StartBuzzer(Option<BuzzerSound>),
     #[cfg(target_os = "linux")]
     StopBuzzer,
 }
@@ -234,9 +234,10 @@ impl SoundController {
                                 sink.append(sound);
                             }
                             #[cfg(target_os = "linux")]
-                            Some(SoundMessage::StartBuzzer) => {
+                            Some(SoundMessage::StartBuzzer(sound_option)) => {
                                 info!("Starting buzzer");
-                                let sound = library[_settings.buzzer_sound].clone().repeat_infinite();
+                                let buzzer_sound = sound_option.unwrap_or(_settings.buzzer_sound);
+                                let sound = library[buzzer_sound].clone().repeat_infinite();
                                 sink = Sink::try_new(&handle).unwrap();
                                 sink.append(sound);
                             }
@@ -412,8 +413,10 @@ impl SoundController {
                 let mut wired_pressed = false;
                 let mut wireless_pressed = false;
                 let mut wireless_expires = None;
+                let mut sound = None;
 
                 let mut was_pressed = false;
+                let mut last_sound = None;
 
                 loop {
                     let wireless_expiration = if let Some(time) = wireless_expires {
@@ -428,15 +431,19 @@ impl SoundController {
                         level = wired_rx.recv() => {
                             match level {
                                 Some(Level::High) => wired_pressed = false,
-                                Some(Level::Low) => wired_pressed = true,
+                                Some(Level::Low) => {
+                                    wired_pressed = true;
+                                    sound = None;
+                                }
                                 None => break,
                             }
                         }
                         remote = wireless_rx.recv() => {
                             match remote {
-                                Some(id) => if settings.remotes.iter().find(|rem| rem.id == id).is_some() {
+                                Some(id) => if let Some(rem) = settings.remotes.iter().find(|rem| rem.id == id) {
                                     wireless_pressed = true;
                                     wireless_expires = Some(Instant::now() + BUTTON_TIMEOUT);
+                                    sound = rem.sound;
                                 }
                                 None => break,
                             }
@@ -457,15 +464,16 @@ impl SoundController {
                     }
 
                     let pressed = wired_pressed || wireless_pressed;
-                    if pressed != was_pressed {
+                    if pressed != was_pressed || sound != last_sound {
                         _msg_tx
                             .send(if pressed {
-                                SoundMessage::StartBuzzer
+                                SoundMessage::StartBuzzer(sound)
                             } else {
                                 SoundMessage::StopBuzzer
                             })
                             .unwrap();
                         was_pressed = pressed;
+                        last_sound = sound;
                     }
                 }
             });

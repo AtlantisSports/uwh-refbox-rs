@@ -13,7 +13,7 @@ debug = ["iced/debug"]
 arrayref = "0.3.6"
 collect_array = "0.1"
 clap = { version = "3.1", features = ["derive"] }
-confy = { git = "https://github.com/rust-cli/confy", rev = "642822413139ce38a96b916190e8c7fd5b88e814" }
+confy = "0.5"
 conquer-once = "0.3"
 derivative = "2.2.0"
 embedded-graphics = "0.7.1"

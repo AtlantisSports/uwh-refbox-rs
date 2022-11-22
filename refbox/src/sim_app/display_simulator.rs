@@ -29,7 +29,7 @@ impl<const WIDTH: usize, const HEIGHT: usize> DerefMut for DisplayBuffer<WIDTH, 
     }
 }
 
-impl<'a, const WIDTH: usize, const HEIGHT: usize> DisplayBuffer<WIDTH, HEIGHT> {
+impl<const WIDTH: usize, const HEIGHT: usize> DisplayBuffer<WIDTH, HEIGHT> {
     pub fn clear_buffer(&mut self) {
         for pix in self.iter_mut().flatten() {
             *pix = None;

@@ -519,12 +519,11 @@ impl SoundController {
         F: FnOnce(u32) + Send + 'static,
     {
         #[cfg(target_os = "linux")]
-        if let Some(rx) = self.remote_id_rx.clone() {
-            let mut rx_ = rx.clone();
-            rx_.borrow_and_update();
+        if let Some(mut rx) = self.remote_id_rx.clone() {
+            rx.borrow_and_update();
             task::spawn(async move {
-                rx_.changed().await.unwrap();
-                callback(*rx_.borrow());
+                rx.changed().await.unwrap();
+                callback(*rx.borrow());
             });
         }
     }

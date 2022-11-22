@@ -1672,7 +1672,7 @@ pub struct NextGameInfo {
     pub start_time: Option<PrimitiveDateTime>,
 }
 
-#[derive(Debug, PartialEq, Error)]
+#[derive(Debug, PartialEq, Eq, Error)]
 pub enum TournamentManagerError {
     #[error("Can't edit clock time while clock is running")]
     ClockIsRunning,

@@ -332,7 +332,7 @@ pub enum FormatHint {
     New,
 }
 
-#[derive(Debug, PartialEq, Error)]
+#[derive(Debug, PartialEq, Eq, Error)]
 pub enum PenaltyEditorError {
     #[error("The Mutex was poisoned")]
     MutexPoisoned,

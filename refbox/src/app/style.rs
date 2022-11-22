@@ -150,29 +150,35 @@ pub enum Container {
     LightGray,
     Gray,
     Black,
-    BlackSharpCorner,
     White,
-    WhiteSharpCorner,
+    ScrollBar,
+    Disabled,
 }
 
 impl container::StyleSheet for Container {
     fn style(&self) -> container::Style {
         match self {
-            Self::LightGray => cont_style(LIGHT_GRAY, BLACK, false),
-            Self::Gray => cont_style(GRAY, BLACK, false),
-            Self::Black => cont_style(BLACK, WHITE, false),
-            Self::BlackSharpCorner => cont_style(BLACK, WHITE, true),
-            Self::White => cont_style(WHITE, BLACK, false),
-            Self::WhiteSharpCorner => cont_style(WHITE, BLACK, true),
+            Self::LightGray => cont_style(LIGHT_GRAY, BLACK),
+            Self::Gray => cont_style(GRAY, BLACK),
+            Self::Black => cont_style(BLACK, WHITE),
+            Self::White => cont_style(WHITE, BLACK),
+            Self::ScrollBar => cont_style(WINDOW_BACKGROUND, BLACK),
+            Self::Disabled => container::Style {
+                text_color: Some(DISABLED_COLOR),
+                background: None,
+                border_radius: BORDER_RADIUS,
+                border_width: BORDER_WIDTH,
+                border_color: DISABLED_COLOR,
+            },
         }
     }
 }
 
-fn cont_style(bkgnd: Color, text: Color, sharp_corner: bool) -> container::Style {
+fn cont_style(bkgnd: Color, text: Color) -> container::Style {
     container::Style {
         text_color: Some(text),
         background: Some(Background::Color(bkgnd)),
-        border_radius: if sharp_corner { 0.0 } else { BORDER_RADIUS },
+        border_radius: BORDER_RADIUS,
         border_width: 0.0,
         border_color: BORDER_COLOR,
     }

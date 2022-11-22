@@ -332,7 +332,7 @@ pub enum FormatHint {
     New,
 }
 
-#[derive(Debug, PartialEq, Error)]
+#[derive(Debug, PartialEq, Eq, Error)]
 pub enum PenaltyEditorError {
     #[error("The Mutex was poisoned")]
     MutexPoisoned,
@@ -659,7 +659,7 @@ mod test {
 
         let b_pen_0_ed = Penalty {
             kind: PenaltyKind::TwoMinute,
-            ..b_pen_0.clone()
+            ..b_pen_0
         };
 
         let w_pen_0 = Penalty {
@@ -671,7 +671,7 @@ mod test {
 
         let w_pen_0_ed = Penalty {
             kind: PenaltyKind::TwoMinute,
-            ..w_pen_0.clone()
+            ..w_pen_0
         };
 
         let b_pen_1 = Penalty {
@@ -683,7 +683,7 @@ mod test {
 
         let b_pen_1_ed = Penalty {
             kind: PenaltyKind::FiveMinute,
-            ..b_pen_1.clone()
+            ..b_pen_1
         };
 
         let w_pen_1 = Penalty {
@@ -695,7 +695,7 @@ mod test {
 
         let w_pen_1_ed = Penalty {
             kind: PenaltyKind::FiveMinute,
-            ..w_pen_1.clone()
+            ..w_pen_1
         };
 
         let b_pen_2 = Penalty {
@@ -707,7 +707,7 @@ mod test {
 
         let b_pen_2_ed = Penalty {
             kind: PenaltyKind::TwoMinute,
-            ..b_pen_2.clone()
+            ..b_pen_2
         };
 
         let w_pen_2 = Penalty {
@@ -720,7 +720,7 @@ mod test {
         let w_pen_2_ed = Penalty {
             kind: PenaltyKind::OneMinute,
             player_number: 9,
-            ..w_pen_2.clone()
+            ..w_pen_2
         };
 
         tm.start_penalty(Color::Black, b_pen_0.player_number, b_pen_0.kind, now)

@@ -10,7 +10,8 @@ default = []
 debug = ["iced/debug"]
 
 [dependencies]
-arrayref = "0.3.6"
+array-concat = "0.5"
+arrayref = "0.3"
 collect_array = "0.1"
 clap = { version = "3.1", features = ["derive"] }
 confy = "0.5"
@@ -39,6 +40,7 @@ tokio-serial = "5.4"
 toml = "0.5"
 uwh-common = { version = "0.1.1", path = "../uwh-common"}
 matrix-drawing = { version = "0.1.1", path = "../matrix-drawing"}
+web-audio-api = "0.26"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 futures-lite = "1"

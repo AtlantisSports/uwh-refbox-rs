@@ -1,5 +1,5 @@
 use super::APP_CONFIG_NAME;
-use crate::{config::Config, penalty_editor::*, sound::*, tournament_manager::*};
+use crate::{config::Config, penalty_editor::*, sound_controller::*, tournament_manager::*};
 use iced::{
     executor,
     pure::{column, Application, Element},

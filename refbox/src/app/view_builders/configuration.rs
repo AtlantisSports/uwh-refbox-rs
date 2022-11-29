@@ -3,7 +3,7 @@ use super::{
     shared_elements::*,
     style::{self, MEDIUM_TEXT, MIN_BUTTON_SIZE, PADDING, SMALL_TEXT, SPACING},
 };
-use crate::sound::*;
+use crate::sound_controller::*;
 use collect_array::CollectArrayResult;
 use iced::{
     alignment::{Horizontal, Vertical},

@@ -700,8 +700,13 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
         LengthParameter::HalfTime => ("HALF TIME LEN", "The length of the Half Time period"),
         LengthParameter::NominalBetweenGame => (
             "NOM BREAK",
-            "If a game runs exactly as long as scheduled, this is the length of the \
-            break between games",
+            "The system will try to keep the game start times evenly spaced, with the \
+            total time from one start to the next being 2 * [Half Length] + [Half Time \
+            Length] + [Nominal Time Between Games] (example: if games have [Half \
+            Length] = 15m, [Half Time Length] = 3m, and [Nominal Time Between Games] = \
+            12m, the time from the start of one game to the next will be 45m. Any \
+            timeouts taken, or other clock stoppages, will reduce the 12m time down \
+            until the minimum time between game value is reached).",
         ),
         LengthParameter::MinimumBetweenGame => (
             "MIN BREAK",

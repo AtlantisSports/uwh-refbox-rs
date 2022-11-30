@@ -155,9 +155,22 @@ impl RefBoxApp {
                     | GamePeriod::SuddenDeath => false,
                 };
 
+                let is_buzz_period = match new_snapshot.current_period {
+                    GamePeriod::FirstHalf
+                    | GamePeriod::SecondHalf
+                    | GamePeriod::OvertimeFirstHalf
+                    | GamePeriod::OvertimeSecondHalf => true,
+                    GamePeriod::BetweenGames
+                    | GamePeriod::HalfTime
+                    | GamePeriod::PreOvertime
+                    | GamePeriod::OvertimeHalfTime
+                    | GamePeriod::PreSuddenDeath
+                    | GamePeriod::SuddenDeath => false,
+                };
+
                 (
                     prereqs && is_warn_period && new_snapshot.secs_in_period == 35,
-                    prereqs && new_snapshot.secs_in_period == 0,
+                    prereqs && is_buzz_period && new_snapshot.secs_in_period == 0,
                 )
             }
         };

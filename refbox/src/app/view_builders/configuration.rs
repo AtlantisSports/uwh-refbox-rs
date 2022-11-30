@@ -436,7 +436,7 @@ fn make_sound_config_page<'a>(
         .height(Length::Fill)
         .style(style::Container::Black);
 
-    let center = text("STARTING SDIES")
+    let center = text("STARTING SIDES")
         .size(MEDIUM_TEXT)
         .vertical_alignment(Vertical::Center)
         .horizontal_alignment(Horizontal::Center)

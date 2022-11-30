@@ -1,9 +1,7 @@
 use array_concat::*;
 use derivative::Derivative;
-use enum_derive_2018::EnumDisplay;
-use macro_attr_2018::macro_attr;
 use serde::{Deserialize, Serialize};
-use std::ops::Index;
+use std::{fmt::Display, ops::Index};
 use web_audio_api::{
     context::{AudioContext, BaseAudioContext},
     AudioBuffer,
@@ -37,29 +35,57 @@ const PT1: [f32; LEN1] = process_array(include_bytes!("../../resources/sounds/re
 const LEN2: usize = include_bytes!("../../resources/sounds/ref-warn-2.raw").len() / 4;
 const PT2: [f32; LEN2] = process_array(include_bytes!("../../resources/sounds/ref-warn-2.raw"));
 const CONCAT: [f32; concat_arrays_size!(PT1, PT2)] = concat_arrays!(PT1, PT2);
-static REF_WARN: [f32; concat_arrays_size!(CONCAT, PT1)] = concat_arrays!(CONCAT, PT1);
+const REF_WARN_LEN: usize = concat_arrays_size!(CONCAT, PT1);
+static REF_WARN: [f32; REF_WARN_LEN] = concat_arrays!(CONCAT, PT1);
 
-const BEEP_LEN: usize = include_bytes!("../../resources/sounds/beep.raw").len() / 4;
-static BEEP: [f32; BEEP_LEN] = process_array(include_bytes!("../../resources/sounds/beep.raw"));
+const BUZZ_LEN: usize = include_bytes!("../../resources/sounds/buzz.raw").len() / 4;
+static BUZZ: [f32; BUZZ_LEN] = process_array(include_bytes!("../../resources/sounds/buzz.raw"));
 
 const WHOOP_LEN: usize = include_bytes!("../../resources/sounds/whoop.raw").len() / 4;
 static WHOOP: [f32; WHOOP_LEN] = process_array(include_bytes!("../../resources/sounds/whoop.raw"));
 
+const CRAZY_LEN: usize = include_bytes!("../../resources/sounds/crazy.raw").len() / 4;
+static CRAZY: [f32; CRAZY_LEN] = process_array(include_bytes!("../../resources/sounds/crazy.raw"));
+
+const DE_DE_DU_LEN: usize = include_bytes!("../../resources/sounds/de-de-du.raw").len() / 4;
+static DE_DE_DU: [f32; DE_DE_DU_LEN] =
+    process_array(include_bytes!("../../resources/sounds/de-de-du.raw"));
+
+const TWO_TONE_LEN: usize = include_bytes!("../../resources/sounds/two-tone.raw").len() / 4;
+static TWO_TONE: [f32; TWO_TONE_LEN] =
+    process_array(include_bytes!("../../resources/sounds/two-tone.raw"));
+
 pub const SAMPLE_RATE: f32 = 44100.0;
 
-macro_attr! {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Derivative, EnumDisplay!)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Derivative)]
+#[derivative(Default)]
+pub enum BuzzerSound {
     #[derivative(Default)]
-    pub enum BuzzerSound {
-        #[derivative(Default)]
-        Beep,
-        Whoop,
+    Buzz,
+    Whoop,
+    Crazy,
+    DeDeDu,
+    TwoTone,
+}
+
+impl Display for BuzzerSound {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Buzz => write!(f, "Buzz"),
+            Self::Whoop => write!(f, "Whoop"),
+            Self::Crazy => write!(f, "Crazy"),
+            Self::DeDeDu => write!(f, "De De Du"),
+            Self::TwoTone => write!(f, "Two Tone"),
+        }
     }
 }
 
 pub(super) struct SoundLibrary {
-    beep: AudioBuffer,
+    buzz: AudioBuffer,
     whoop: AudioBuffer,
+    crazy: AudioBuffer,
+    de_de_du: AudioBuffer,
+    two_tone: AudioBuffer,
     ref_warn: AudioBuffer,
 }
 
@@ -68,26 +94,41 @@ impl Index<BuzzerSound> for SoundLibrary {
 
     fn index(&self, sound: BuzzerSound) -> &Self::Output {
         match sound {
-            BuzzerSound::Beep => &self.beep,
+            BuzzerSound::Buzz => &self.buzz,
             BuzzerSound::Whoop => &self.whoop,
+            BuzzerSound::Crazy => &self.crazy,
+            BuzzerSound::DeDeDu => &self.de_de_du,
+            BuzzerSound::TwoTone => &self.two_tone,
         }
     }
 }
 
 impl SoundLibrary {
     pub(super) fn new(context: &AudioContext) -> Self {
-        let mut beep = context.create_buffer(1, BEEP.len(), SAMPLE_RATE);
-        beep.copy_to_channel(&BEEP, 0);
+        let mut buzz = context.create_buffer(1, BUZZ_LEN, SAMPLE_RATE);
+        buzz.copy_to_channel(&BUZZ, 0);
 
-        let mut whoop = context.create_buffer(1, WHOOP.len(), SAMPLE_RATE);
+        let mut whoop = context.create_buffer(1, WHOOP_LEN, SAMPLE_RATE);
         whoop.copy_to_channel(&WHOOP, 0);
 
-        let mut ref_warn = context.create_buffer(1, REF_WARN.len(), SAMPLE_RATE);
+        let mut crazy = context.create_buffer(1, CRAZY_LEN, SAMPLE_RATE);
+        crazy.copy_to_channel(&CRAZY, 0);
+
+        let mut de_de_du = context.create_buffer(1, DE_DE_DU_LEN, SAMPLE_RATE);
+        de_de_du.copy_to_channel(&DE_DE_DU, 0);
+
+        let mut two_tone = context.create_buffer(1, TWO_TONE_LEN, SAMPLE_RATE);
+        two_tone.copy_to_channel(&TWO_TONE, 0);
+
+        let mut ref_warn = context.create_buffer(1, REF_WARN_LEN, SAMPLE_RATE);
         ref_warn.copy_to_channel(&REF_WARN, 0);
 
         Self {
-            beep,
+            buzz,
             whoop,
+            crazy,
+            de_de_du,
+            two_tone,
             ref_warn,
         }
     }

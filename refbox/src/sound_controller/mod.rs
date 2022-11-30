@@ -12,19 +12,14 @@ use enum_derive_2018::EnumDisplay;
 use futures_lite::future::FutureExt;
 use log::*;
 use macro_attr_2018::macro_attr;
-use rodio::{
-    decoder::DecoderError,
-    source::{Buffered, ChannelVolume},
-    Decoder, OutputStream, Sink, Source,
-};
 #[cfg(target_os = "linux")]
 use rppal::gpio::{Gpio, InputPin, Level, Trigger};
 use serde::{Deserialize, Serialize};
-use std::{io::Cursor, ops::Index};
+use std::sync::Arc;
 #[cfg(target_os = "linux")]
 use tokio::{
     sync::watch::Receiver,
-    time::{sleep_until, Duration, Instant},
+    time::{sleep_until, Instant},
 };
 use tokio::{
     sync::{
@@ -32,7 +27,19 @@ use tokio::{
         watch::{self, Sender},
     },
     task::{self, JoinHandle},
+    time::{sleep, Duration},
 };
+use web_audio_api::{
+    context::{AudioContext, AudioContextOptions, BaseAudioContext},
+    node::{
+        AudioBufferSourceNode, AudioNode, AudioScheduledSourceNode, ChannelInterpretation,
+        ChannelMergerNode, GainNode,
+    },
+    AudioBuffer,
+};
+
+const FADE_TIME: f64 = 0.05;
+const FADE_WAIT: Duration = Duration::from_millis(50); // TODO: base this on `FADE_TIME` (possible in rust 1.66)
 
 #[cfg(target_os = "linux")]
 const MESSAGE_LEN: usize = 24;
@@ -43,6 +50,9 @@ const DATA_LEN: usize = MESSAGE_LEN - ID_LEN;
 
 #[cfg(target_os = "linux")]
 const BUTTON_TIMEOUT: Duration = Duration::from_millis(500);
+
+mod sounds;
+pub use sounds::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Derivative)]
 #[derivative(Default)]
@@ -62,16 +72,6 @@ pub struct SoundSettings {
 macro_attr! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Derivative, EnumDisplay!)]
     #[derivative(Default)]
-    pub enum BuzzerSound {
-        #[derivative(Default)]
-        Beep,
-        Whoop,
-    }
-}
-
-macro_attr! {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Derivative, EnumDisplay!)]
-    #[derivative(Default)]
     pub enum Volume {
         Off,
         Low,
@@ -86,9 +86,9 @@ impl Volume {
     fn as_f32(&self) -> f32 {
         match self {
             Self::Off => 0.0,
-            Self::Low => 0.25,
-            Self::Medium => 0.5,
-            Self::High => 0.75,
+            Self::Low => 10f32.powf(-1.2),    // 12dB lower than max
+            Self::Medium => 10f32.powf(-0.8), // 8dB lower than max
+            Self::High => 10f32.powf(-0.4),   // 4dB lower than max
             Self::Max => 1.0,
         }
     }
@@ -98,77 +98,6 @@ impl Volume {
 pub struct RemoteInfo {
     pub id: u32,
     pub sound: Option<BuzzerSound>,
-}
-
-type SoundType = ChannelVolume<Buffered<Decoder<Cursor<Vec<u8>>>>>;
-
-struct SoundLibrary {
-    beep: SoundType,
-    whoop: SoundType,
-    ref_warn: SoundType,
-}
-
-impl Index<BuzzerSound> for SoundLibrary {
-    type Output = SoundType;
-
-    fn index(&self, sound: BuzzerSound) -> &Self::Output {
-        match sound {
-            BuzzerSound::Beep => &self.beep,
-            BuzzerSound::Whoop => &self.whoop,
-        }
-    }
-}
-
-impl SoundLibrary {
-    fn new() -> Result<Self, DecoderError> {
-        Ok(Self {
-            beep: ChannelVolume::new(
-                Decoder::new_wav(Cursor::new(Vec::from(*include_bytes!(
-                    "../resources/1000Hz-1s.wav"
-                ))))?
-                .buffered(),
-                vec![0., 0.],
-            ),
-            whoop: ChannelVolume::new(
-                Decoder::new_wav(Cursor::new(Vec::from(*include_bytes!(
-                    "../resources/whoop.wav"
-                ))))?
-                .buffered(),
-                vec![0., 0.],
-            ),
-            ref_warn: ChannelVolume::new(
-                Decoder::new_wav(Cursor::new(Vec::from(*include_bytes!(
-                    "../resources/ref-warn.wav"
-                ))))?
-                .buffered(),
-                vec![0., 0.],
-            ),
-        })
-    }
-
-    fn set_volumes(&mut self, settings: &SoundSettings) {
-        let left_vol = if settings.sound_enabled {
-            settings.above_water_vol.as_f32()
-        } else {
-            0.0
-        };
-        let right_vol = if settings.sound_enabled {
-            settings.under_water_vol.as_f32()
-        } else {
-            0.0
-        };
-        let ref_warn_vol = if settings.sound_enabled && settings.ref_warn_enabled {
-            settings.ref_warn_vol.as_f32()
-        } else {
-            0.0
-        };
-
-        self.beep.set_volume(1, left_vol);
-        self.beep.set_volume(0, right_vol);
-        self.whoop.set_volume(1, left_vol);
-        self.whoop.set_volume(0, right_vol);
-        self.ref_warn.set_volume(1, ref_warn_vol);
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -182,7 +111,7 @@ enum SoundMessage {
 }
 
 pub struct SoundController {
-    _out_stream: OutputStream,
+    _context: Arc<AudioContext>,
     msg_tx: UnboundedSender<SoundMessage>,
     settings_tx: Sender<SoundSettings>,
     stop_tx: Sender<bool>,
@@ -196,8 +125,14 @@ pub struct SoundController {
 impl SoundController {
     #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
     pub fn new(mut settings: SoundSettings) -> Self {
-        let mut library = SoundLibrary::new().unwrap();
-        library.set_volumes(&settings);
+        let opts = AudioContextOptions {
+            sample_rate: Some(SAMPLE_RATE),
+            ..AudioContextOptions::default()
+        };
+
+        let context = Arc::new(AudioContext::new(opts));
+
+        let library = SoundLibrary::new(&context);
 
         let (msg_tx, mut msg_rx) = unbounded_channel();
 
@@ -207,44 +142,50 @@ impl SoundController {
         let (stop_tx, mut stop_rx) = watch::channel(false);
         stop_rx.borrow_and_update();
 
-        let (_out_stream, handle) = OutputStream::try_default().unwrap();
-
         let mut _stop_rx = stop_rx.clone();
         let mut _settings_rx = settings_rx.clone();
         let mut _settings = settings.clone();
+        let _context = context.clone();
 
         let handler = task::spawn(async move {
             #[cfg_attr(not(target_os = "linux"), allow(unused_assignments))]
-            let mut sink = Sink::try_new(&handle).unwrap();
+            let mut last_sound: Option<Sound> = None;
 
             loop {
                 tokio::select! {
                     msg = msg_rx.recv() => {
                         match msg {
-                            Some(SoundMessage::TriggerBuzzer) => {
-                                info!("Playing buzzer once");
-                                let sound = library[_settings.buzzer_sound].clone();
-                                sink = Sink::try_new(&handle).unwrap();
-                                sink.append(sound);
-                            }
-                            Some(SoundMessage::TriggerRefWarning) => {
-                                info!("Playing ref warning once");
-                                let sound = library.ref_warn.clone();
-                                sink = Sink::try_new(&handle).unwrap();
-                                sink.append(sound);
-                            }
-                            #[cfg(target_os = "linux")]
-                            Some(SoundMessage::StartBuzzer(sound_option)) => {
-                                info!("Starting buzzer");
-                                let buzzer_sound = sound_option.unwrap_or(_settings.buzzer_sound);
-                                let sound = library[buzzer_sound].clone().repeat_infinite();
-                                sink = Sink::try_new(&handle).unwrap();
-                                sink.append(sound);
-                            }
-                            #[cfg(target_os = "linux")]
-                            Some(SoundMessage::StopBuzzer) => {
-                                info!("Stopping buzzer");
-                                sink.stop();
+                            Some(msg) => {
+                                if let Some(sound) = last_sound.take() {
+                                    sound.stop().await;
+                                }
+
+                                match msg {
+                                    SoundMessage::TriggerBuzzer => {
+                                        info!("Playing buzzer once");
+                                        let volumes = ChannelVolumes::new(&_settings, false);
+                                        let sound = Sound::new(_context.clone(), volumes, library[_settings.buzzer_sound].clone(), false);
+                                        last_sound = Some(sound);
+                                    }
+                                    SoundMessage::TriggerRefWarning => {
+                                        info!("Playing ref warning once");
+                                        let volumes = ChannelVolumes::new(&_settings, true);
+                                        let sound = Sound::new(_context.clone(), volumes, library.ref_warn().clone(), false);
+                                        last_sound = Some(sound);
+                                    }
+                                    #[cfg(target_os = "linux")]
+                                    SoundMessage::StartBuzzer(sound_option) => {
+                                        info!("Starting buzzer");
+                                        let buzzer_sound = sound_option.unwrap_or(_settings.buzzer_sound);
+                                        let volumes = ChannelVolumes::new(&_settings, false);
+                                        let sound = Sound::new(_context.clone(), volumes, library[buzzer_sound].clone(), true);
+                                        last_sound = Some(sound);
+                                    }
+                                    #[cfg(target_os = "linux")]
+                                    SoundMessage::StopBuzzer => {
+                                        info!("Stopping buzzer");
+                                    }
+                                }
                             },
                             None => break,
                         }
@@ -253,7 +194,6 @@ impl SoundController {
                         match maybe_err {
                             Ok(()) => {
                                 _settings = _settings_rx.borrow().clone();
-                                library.set_volumes(&_settings);
                             }
                             Err(_) => break,
                         }
@@ -486,7 +426,7 @@ impl SoundController {
         };
 
         Self {
-            _out_stream,
+            _context: context,
             msg_tx,
             settings_tx,
             stop_tx,
@@ -540,6 +480,96 @@ impl Drop for SoundController {
                 join_handle.await.unwrap();
             }
         });
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+struct ChannelVolumes {
+    left: f32,
+    right: f32,
+}
+
+impl ChannelVolumes {
+    fn new(settings: &SoundSettings, is_ref_warn: bool) -> Self {
+        Self {
+            left: if settings.sound_enabled && settings.ref_warn_enabled && is_ref_warn {
+                settings.ref_warn_vol.as_f32()
+            } else if settings.sound_enabled && !is_ref_warn {
+                settings.above_water_vol.as_f32()
+            } else {
+                0.0
+            },
+            right: if settings.sound_enabled && !is_ref_warn {
+                settings.under_water_vol.as_f32()
+            } else {
+                0.0
+            },
+        }
+    }
+}
+
+struct Sound {
+    _merger: ChannelMergerNode,
+    gain_l: GainNode,
+    gain_r: GainNode,
+    source: AudioBufferSourceNode,
+    context: Arc<AudioContext>,
+    volumes: ChannelVolumes,
+}
+
+impl Sound {
+    fn new(
+        context: Arc<AudioContext>,
+        volumes: ChannelVolumes,
+        buffer: AudioBuffer,
+        repeat: bool,
+    ) -> Self {
+        let _merger = context.create_channel_merger(2);
+        _merger.set_channel_interpretation(ChannelInterpretation::Speakers);
+        _merger.connect(&context.destination());
+
+        let gain_l = context.create_gain();
+        gain_l.connect_at(&_merger, 0, 0);
+        gain_l.gain().set_value(volumes.left);
+
+        let gain_r = context.create_gain();
+        gain_r.connect_at(&_merger, 0, 1);
+        gain_r.gain().set_value(volumes.right);
+
+        let source = context.create_buffer_source();
+        source.set_buffer(buffer);
+        source.connect(&gain_l);
+        source.connect(&gain_r);
+        source.set_loop(repeat);
+
+        source.start();
+
+        Self {
+            _merger,
+            gain_l,
+            gain_r,
+            source,
+            context,
+            volumes,
+        }
+    }
+
+    async fn stop(self) {
+        let end_time = self.context.current_time() + FADE_TIME;
+
+        // Set the gains so that the start of the fade is now, not when the sound started
+        self.gain_l.gain().set_value(self.volumes.left);
+        self.gain_r.gain().set_value(self.volumes.right);
+
+        self.gain_l
+            .gain()
+            .linear_ramp_to_value_at_time(0.0, end_time);
+        self.gain_r
+            .gain()
+            .linear_ramp_to_value_at_time(0.0, end_time);
+
+        sleep(FADE_WAIT).await;
+        self.source.stop();
     }
 }
 

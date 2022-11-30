@@ -1,4 +1,4 @@
-use crate::sound::SoundSettings;
+use crate::sound_controller::SoundSettings;
 use serde::{Deserialize, Serialize};
 use time::UtcOffset;
 pub use uwh_common::config::Game;

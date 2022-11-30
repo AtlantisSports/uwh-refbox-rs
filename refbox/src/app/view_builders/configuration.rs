@@ -3,7 +3,7 @@ use super::{
     shared_elements::*,
     style::{self, MEDIUM_TEXT, MIN_BUTTON_SIZE, PADDING, SMALL_TEXT, SPACING},
 };
-use crate::sound::*;
+use crate::sound_controller::*;
 use collect_array::CollectArrayResult;
 use iced::{
     alignment::{Horizontal, Vertical},
@@ -43,8 +43,11 @@ where
 impl Cyclable for BuzzerSound {
     fn next(&self) -> Self {
         match self {
-            Self::Beep => Self::Whoop,
-            Self::Whoop => Self::Beep,
+            Self::Buzz => Self::Whoop,
+            Self::Whoop => Self::Crazy,
+            Self::Crazy => Self::DeDeDu,
+            Self::DeDeDu => Self::TwoTone,
+            Self::TwoTone => Self::Buzz,
         }
     }
 }
@@ -52,9 +55,12 @@ impl Cyclable for BuzzerSound {
 impl Cyclable for Option<BuzzerSound> {
     fn next(&self) -> Self {
         match self {
-            Some(BuzzerSound::Beep) => Some(BuzzerSound::Whoop),
-            Some(BuzzerSound::Whoop) => None,
-            None => Some(BuzzerSound::Beep),
+            Some(BuzzerSound::Buzz) => Some(BuzzerSound::Whoop),
+            Some(BuzzerSound::Whoop) => Some(BuzzerSound::Crazy),
+            Some(BuzzerSound::Crazy) => Some(BuzzerSound::DeDeDu),
+            Some(BuzzerSound::DeDeDu) => Some(BuzzerSound::TwoTone),
+            Some(BuzzerSound::TwoTone) => None,
+            None => Some(BuzzerSound::Buzz),
         }
     }
 }
@@ -430,7 +436,7 @@ fn make_sound_config_page<'a>(
         .height(Length::Fill)
         .style(style::Container::Black);
 
-    let center = text("STARTING SDIES")
+    let center = text("STARTING SIDES")
         .size(MEDIUM_TEXT)
         .vertical_alignment(Vertical::Center)
         .horizontal_alignment(Horizontal::Center)

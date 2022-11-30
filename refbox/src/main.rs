@@ -10,7 +10,7 @@ mod app;
 mod app_icon;
 mod penalty_editor;
 mod sim_app;
-mod sound;
+mod sound_controller;
 mod tournament_manager;
 
 mod config;

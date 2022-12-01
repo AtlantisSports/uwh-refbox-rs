@@ -1,13 +1,12 @@
 use super::{
-    style::{self, SPACING},
+    style::{self, SMALL_TEXT, SPACING},
     *,
 };
-
 use iced::{
-    pure::{column, horizontal_space, row, vertical_space, Element},
+    alignment::Horizontal,
+    pure::{column, horizontal_space, row, text, vertical_space, Element},
     Alignment, Length,
 };
-
 use std::time::Duration;
 use uwh_common::game_snapshot::{GameSnapshot, TimeoutSnapshot};
 
@@ -34,6 +33,13 @@ pub(in super::super) fn build_time_edit_view<'a>(
         .spacing(SPACING)
         .height(Length::Fill)
         .push(make_game_time_button(snapshot, false, false).on_press(Message::NoAction))
+        .push(vertical_space(Length::Fill))
+        .push(
+            text("Note: Game time is paused while on this screen")
+                .size(SMALL_TEXT)
+                .width(Length::Fill)
+                .horizontal_alignment(Horizontal::Center),
+        )
         .push(vertical_space(Length::Fill))
         .push(edit_row)
         .push(vertical_space(Length::Fill))

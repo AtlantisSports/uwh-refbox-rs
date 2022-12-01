@@ -43,8 +43,6 @@ pub enum Message {
 #[derive(Debug)]
 pub struct SimRefBoxApp {
     buffer: Rc<Mutex<DisplayBuffer<WIDTH, HEIGHT>>>,
-    scale: f32,
-    spacing: f32,
     cache: Cache,
     listener: SnapshotListener,
     should_stop: bool,
@@ -53,8 +51,6 @@ pub struct SimRefBoxApp {
 #[derive(Clone, Debug)]
 pub struct SimRefBoxAppFlags {
     pub tcp_port: u16,
-    pub scale: f32,
-    pub spacing: f32,
 }
 
 impl Application for SimRefBoxApp {
@@ -63,17 +59,11 @@ impl Application for SimRefBoxApp {
     type Flags = SimRefBoxAppFlags;
 
     fn new(flags: Self::Flags) -> (Self, Command<Message>) {
-        let Self::Flags {
-            tcp_port,
-            scale,
-            spacing,
-        } = flags;
+        let Self::Flags { tcp_port } = flags;
 
         (
             Self {
                 buffer: Rc::new(Mutex::new(Default::default())),
-                scale,
-                spacing,
                 cache: Cache::new(),
                 listener: SnapshotListener { port: tcp_port },
                 should_stop: false,
@@ -129,15 +119,24 @@ impl<Message> Program<Message> for SimRefBoxApp {
             self.cache.draw(bounds.size(), |frame| {
                 let buffer = buffer_.lock().unwrap();
 
+                let horiz_spacing = frame.width() / ((WIDTH * 5 + 1) as f32);
+                let vert_spacing = frame.height() / ((HEIGHT * 5 + 1) as f32);
+                let spacing = if horiz_spacing > vert_spacing {
+                    vert_spacing
+                } else {
+                    horiz_spacing
+                };
+                let scale = spacing * 4.0;
+
                 for (x, y, maybe) in buffer.iter().enumerate().flat_map(|(y, row)| {
                     row.iter().enumerate().map(move |(x, maybe)| (x, y, maybe))
                 }) {
                     if let Some(color) = maybe {
-                        let x = self.spacing + x as f32 * (self.scale + self.spacing);
-                        let y = self.spacing + y as f32 * (self.scale + self.spacing);
+                        let x = spacing + x as f32 * (scale + spacing);
+                        let y = spacing + y as f32 * (scale + spacing);
                         frame.fill_rectangle(
                             Point::new(x, y),
-                            Size::new(self.scale, self.scale),
+                            Size::new(scale, scale),
                             Fill::from(*color),
                         );
                     }

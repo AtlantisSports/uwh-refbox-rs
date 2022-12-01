@@ -80,13 +80,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     if args.is_simulator {
         let flags = sim_app::SimRefBoxAppFlags {
             tcp_port: args.binary_port,
-            scale: args.scale,
-            spacing,
         };
 
         let mut settings = Settings::with_flags(flags);
         settings.window.size = sim_app::window_size(args.scale, spacing);
-        settings.window.resizable = false;
+        settings.window.resizable = true;
         settings.window.icon = Some(icon);
         info!("Starting Simulator UI");
         <sim_app::SimRefBoxApp as iced::Application>::run(settings)?;

@@ -21,7 +21,7 @@ use std::{
 use tokio::{
     sync::{mpsc, watch},
     task,
-    time::{timeout_at, Duration, Instant},
+    time::{sleep_until, timeout_at, Duration, Instant},
 };
 use tokio_serial::SerialPortBuilder;
 use uwh_common::{
@@ -194,9 +194,17 @@ impl RefBoxApp {
             let request = client.request(Method::GET, url).build().unwrap();
             let client_ = client.clone();
             let msg_tx_ = self.msg_tx.clone();
+
+            let mut delay_until = None;
+
             task::spawn(async move {
                 let mut msg = None;
                 for _ in 0..MAX_RETRIES {
+                    if let Some(time) = delay_until.take() {
+                        sleep_until(time).await;
+                    }
+
+                    let start = Instant::now();
                     msg = match client_.execute(request.try_clone().unwrap()).await {
                         Ok(resp) => {
                             if resp.status() != StatusCode::OK {
@@ -220,6 +228,7 @@ impl RefBoxApp {
                         Err(e) => {
                             error!("Request for {} failed: {e}", short_name);
                             info!("Maybe retrying");
+                            delay_until = Some(start + REQUEST_TIMEOUT);
                             continue;
                         }
                     };

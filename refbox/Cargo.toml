@@ -28,7 +28,6 @@ macro-attr-2018 = "2"
 more-asserts = "0.2"
 paste = "1.0.7"
 reqwest = { version = "0.11", features = ["json"] }
-rodio = { version = "0.16", default-features = false, features = ["wav"] }
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
@@ -40,7 +39,7 @@ tokio-serial = "5.4"
 toml = "0.5"
 uwh-common = { version = "0.1.1", path = "../uwh-common"}
 matrix-drawing = { version = "0.1.1", path = "../matrix-drawing"}
-web-audio-api = "0.26"
+web-audio-api = { version = "0.26", default-features = false, features = ["cpal"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 futures-lite = "1"

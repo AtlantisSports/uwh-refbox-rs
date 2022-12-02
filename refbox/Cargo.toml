@@ -1,6 +1,6 @@
 [package]
 name = "refbox"
-version = "0.1.1"
+version = "0.1.2"
 description = "UI for Atlantis Sports's Underwater Hockey Refbox"
 authors = ["Atlantis Sports <maintainers@atlantissports.org>"]
 edition = "2021"
@@ -37,8 +37,8 @@ time = { version = "0.3", features = ["local-offset", "macros", "serde", "serde-
 tokio = { version = "1.18", features = ["io-util", "macros", "net", "sync", "time"] }
 tokio-serial = "5.4"
 toml = "0.5"
-uwh-common = { version = "0.1.1", path = "../uwh-common"}
-matrix-drawing = { version = "0.1.1", path = "../matrix-drawing"}
+uwh-common = { version = "0.1.2", path = "../uwh-common"}
+matrix-drawing = { version = "0.1.2", path = "../matrix-drawing"}
 web-audio-api = { version = "0.26", default-features = false, features = ["cpal"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]

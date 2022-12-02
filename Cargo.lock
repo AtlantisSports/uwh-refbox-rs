@@ -1226,7 +1226,7 @@ dependencies = [
 
 [[package]]
 name = "fonts"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "embedded-graphics",
 ]
@@ -2140,7 +2140,7 @@ dependencies = [
 
 [[package]]
 name = "matrix-drawing"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "arrayref",
  "arrayvec 0.7.2",
@@ -3031,7 +3031,7 @@ dependencies = [
 
 [[package]]
 name = "refbox"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "array-concat",
  "arrayref",
@@ -3997,7 +3997,7 @@ dependencies = [
 
 [[package]]
 name = "uwh-common"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "arrayref",
  "arrayvec 0.7.2",

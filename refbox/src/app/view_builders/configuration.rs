@@ -480,10 +480,10 @@ fn make_sound_config_page<'a>(
                 ))
                 .push(make_value_button(
                     "REF WARN\nVOLUME:",
-                    sound.ref_warn_vol.to_string().to_uppercase(),
+                    sound.ref_alert_vol.to_string().to_uppercase(),
                     (false, true),
-                    if sound.sound_enabled && sound.ref_warn_enabled {
-                        Some(Message::CycleParameter(CyclingParameter::WarningVolume))
+                    if sound.sound_enabled && sound.ref_alert_enabled {
+                        Some(Message::CycleParameter(CyclingParameter::AlertVolume))
                     } else {
                         None
                     },
@@ -502,12 +502,12 @@ fn make_sound_config_page<'a>(
                 .spacing(SPACING)
                 .height(Length::Fill)
                 .push(make_value_button(
-                    "REF WARN\nENABLED:",
-                    bool_string(sound.ref_warn_enabled),
+                    "REF ALERT\nENABLED:",
+                    bool_string(sound.ref_alert_enabled),
                     (false, true),
                     if sound.sound_enabled {
                         Some(Message::ToggleBoolParameter(
-                            BoolGameParameter::RefWarnEnabled,
+                            BoolGameParameter::RefAlertEnabled,
                         ))
                     } else {
                         None

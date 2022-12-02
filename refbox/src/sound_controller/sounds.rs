@@ -30,13 +30,13 @@ const fn process_array<const N: usize, const M: usize>(input: &[u8; M]) -> [f32;
 // can't be run on sound samples more than about 0.8s long, so we need to work around it by
 // processing smaller samples then concatenating them. See https://github.com/rust-lang/rust/pull/103877
 // for a resolution that will potentially land soon
-const LEN1: usize = include_bytes!("../../resources/sounds/ref-warn-1.raw").len() / 4;
-const PT1: [f32; LEN1] = process_array(include_bytes!("../../resources/sounds/ref-warn-1.raw"));
-const LEN2: usize = include_bytes!("../../resources/sounds/ref-warn-2.raw").len() / 4;
-const PT2: [f32; LEN2] = process_array(include_bytes!("../../resources/sounds/ref-warn-2.raw"));
+const LEN1: usize = include_bytes!("../../resources/sounds/ref-alert-1.raw").len() / 4;
+const PT1: [f32; LEN1] = process_array(include_bytes!("../../resources/sounds/ref-alert-1.raw"));
+const LEN2: usize = include_bytes!("../../resources/sounds/ref-alert-2.raw").len() / 4;
+const PT2: [f32; LEN2] = process_array(include_bytes!("../../resources/sounds/ref-alert-2.raw"));
 const CONCAT: [f32; concat_arrays_size!(PT1, PT2)] = concat_arrays!(PT1, PT2);
-const REF_WARN_LEN: usize = concat_arrays_size!(CONCAT, PT1);
-static REF_WARN: [f32; REF_WARN_LEN] = concat_arrays!(CONCAT, PT1);
+const REF_ALERT_LEN: usize = concat_arrays_size!(CONCAT, PT1);
+static REF_ALERT: [f32; REF_ALERT_LEN] = concat_arrays!(CONCAT, PT1);
 
 const BUZZ_LEN: usize = include_bytes!("../../resources/sounds/buzz.raw").len() / 4;
 static BUZZ: [f32; BUZZ_LEN] = process_array(include_bytes!("../../resources/sounds/buzz.raw"));
@@ -86,7 +86,7 @@ pub(super) struct SoundLibrary {
     crazy: AudioBuffer,
     de_de_du: AudioBuffer,
     two_tone: AudioBuffer,
-    ref_warn: AudioBuffer,
+    ref_alert: AudioBuffer,
 }
 
 impl Index<BuzzerSound> for SoundLibrary {
@@ -120,8 +120,8 @@ impl SoundLibrary {
         let mut two_tone = context.create_buffer(1, TWO_TONE_LEN, SAMPLE_RATE);
         two_tone.copy_to_channel(&TWO_TONE, 0);
 
-        let mut ref_warn = context.create_buffer(1, REF_WARN_LEN, SAMPLE_RATE);
-        ref_warn.copy_to_channel(&REF_WARN, 0);
+        let mut ref_alert = context.create_buffer(1, REF_ALERT_LEN, SAMPLE_RATE);
+        ref_alert.copy_to_channel(&REF_ALERT, 0);
 
         Self {
             buzz,
@@ -129,11 +129,11 @@ impl SoundLibrary {
             crazy,
             de_de_du,
             two_tone,
-            ref_warn,
+            ref_alert,
         }
     }
 
-    pub(super) fn ref_warn(&self) -> &AudioBuffer {
-        &self.ref_warn
+    pub(super) fn ref_alert(&self) -> &AudioBuffer {
+        &self.ref_alert
     }
 }

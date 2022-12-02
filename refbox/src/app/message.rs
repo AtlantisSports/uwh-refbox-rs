@@ -164,14 +164,14 @@ pub enum BoolGameParameter {
     WhiteOnRight,
     UsingUwhScores,
     SoundEnabled,
-    RefWarnEnabled,
+    RefAlertEnabled,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CyclingParameter {
     BuzzerSound,
     RemoteBuzzerSound(usize),
-    WarningVolume,
+    AlertVolume,
     AboveWaterVol,
     UnderWaterVol,
 }

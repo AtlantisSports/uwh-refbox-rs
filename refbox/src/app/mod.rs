@@ -127,7 +127,7 @@ impl RefBoxApp {
     }
 
     fn maybe_play_sound(&self, new_snapshot: &GameSnapshot) {
-        let (play_ref_warn, play_buzzer) = match new_snapshot.timeout {
+        let (play_ref_alert, play_buzzer) = match new_snapshot.timeout {
             TimeoutSnapshot::Black(time) | TimeoutSnapshot::White(time) => {
                 match self.snapshot.timeout {
                     TimeoutSnapshot::Black(old_time) | TimeoutSnapshot::White(old_time) => (
@@ -142,7 +142,7 @@ impl RefBoxApp {
                 let prereqs = new_snapshot.current_period != GamePeriod::SuddenDeath
                     && new_snapshot.secs_in_period != self.snapshot.secs_in_period;
 
-                let is_warn_period = match new_snapshot.current_period {
+                let is_alert_period = match new_snapshot.current_period {
                     GamePeriod::BetweenGames
                     | GamePeriod::HalfTime
                     | GamePeriod::PreOvertime
@@ -169,15 +169,15 @@ impl RefBoxApp {
                 };
 
                 (
-                    prereqs && is_warn_period && new_snapshot.secs_in_period == 35,
+                    prereqs && is_alert_period && new_snapshot.secs_in_period == 35,
                     prereqs && is_buzz_period && new_snapshot.secs_in_period == 0,
                 )
             }
         };
 
-        if play_ref_warn {
-            info!("Triggering ref warning");
-            self.sound.trigger_ref_warn();
+        if play_ref_alert {
+            info!("Triggering ref alert");
+            self.sound.trigger_ref_alert();
         } else if play_buzzer {
             info!("Triggering buzzer");
             self.sound.trigger_buzzer();
@@ -1211,8 +1211,8 @@ impl Application for RefBoxApp {
                     BoolGameParameter::WhiteOnRight => edited_settings.white_on_right ^= true,
                     BoolGameParameter::UsingUwhScores => edited_settings.using_uwhscores ^= true,
                     BoolGameParameter::SoundEnabled => edited_settings.sound.sound_enabled ^= true,
-                    BoolGameParameter::RefWarnEnabled => {
-                        edited_settings.sound.ref_warn_enabled ^= true
+                    BoolGameParameter::RefAlertEnabled => {
+                        edited_settings.sound.ref_alert_enabled ^= true
                     }
                 }
             }
@@ -1221,7 +1221,7 @@ impl Application for RefBoxApp {
                 match param {
                     CyclingParameter::BuzzerSound => sound.buzzer_sound.cycle(),
                     CyclingParameter::RemoteBuzzerSound(idx) => sound.remotes[idx].sound.cycle(),
-                    CyclingParameter::WarningVolume => sound.ref_warn_vol.cycle(),
+                    CyclingParameter::AlertVolume => sound.ref_alert_vol.cycle(),
                     CyclingParameter::AboveWaterVol => sound.above_water_vol.cycle(),
                     CyclingParameter::UnderWaterVol => sound.under_water_vol.cycle(),
                 }

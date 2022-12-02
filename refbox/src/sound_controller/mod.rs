@@ -62,10 +62,10 @@ pub struct SoundSettings {
     #[derivative(Default(value = "true"))]
     pub sound_enabled: bool,
     #[derivative(Default(value = "true"))]
-    pub ref_warn_enabled: bool,
+    pub ref_alert_enabled: bool,
     pub buzzer_sound: BuzzerSound,
     #[derivative(Default(value = "Volume::Medium"))]
-    pub ref_warn_vol: Volume,
+    pub ref_alert_vol: Volume,
     pub above_water_vol: Volume,
     pub under_water_vol: Volume,
     pub remotes: Vec<RemoteInfo>,
@@ -105,7 +105,7 @@ pub struct RemoteInfo {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum SoundMessage {
     TriggerBuzzer,
-    TriggerRefWarning,
+    TriggerRefAlert,
     #[cfg(target_os = "linux")]
     StartBuzzer(Option<BuzzerSound>),
     #[cfg(target_os = "linux")]
@@ -146,6 +146,7 @@ impl SoundController {
 
         let mut _stop_rx = stop_rx.clone();
         let mut _settings_rx = settings_rx.clone();
+        #[cfg_attr(not(target_os = "linux"), allow(clippy::redundant_clone))]
         let mut _settings = settings.clone();
         let _context = context.clone();
 
@@ -169,10 +170,10 @@ impl SoundController {
                                         let sound = Sound::new(_context.clone(), volumes, library[_settings.buzzer_sound].clone(), true, true);
                                         last_sound = Some(sound);
                                     }
-                                    SoundMessage::TriggerRefWarning => {
-                                        info!("Playing ref warning once");
+                                    SoundMessage::TriggerRefAlert => {
+                                        info!("Playing ref alert once");
                                         let volumes = ChannelVolumes::new(&_settings, true);
-                                        let sound = Sound::new(_context.clone(), volumes, library.ref_warn().clone(), false, false);
+                                        let sound = Sound::new(_context.clone(), volumes, library.ref_alert().clone(), false, false);
                                         last_sound = Some(sound);
                                     }
                                     #[cfg(target_os = "linux")]
@@ -444,8 +445,8 @@ impl SoundController {
         self.settings_tx.send(settings).unwrap()
     }
 
-    pub fn trigger_ref_warn(&self) {
-        self.msg_tx.send(SoundMessage::TriggerRefWarning).unwrap()
+    pub fn trigger_ref_alert(&self) {
+        self.msg_tx.send(SoundMessage::TriggerRefAlert).unwrap()
     }
 
     pub fn trigger_buzzer(&self) {
@@ -492,16 +493,16 @@ struct ChannelVolumes {
 }
 
 impl ChannelVolumes {
-    fn new(settings: &SoundSettings, is_ref_warn: bool) -> Self {
+    fn new(settings: &SoundSettings, is_ref_alert: bool) -> Self {
         Self {
-            left: if settings.sound_enabled && settings.ref_warn_enabled && is_ref_warn {
-                settings.ref_warn_vol.as_f32()
-            } else if settings.sound_enabled && !is_ref_warn {
+            left: if settings.sound_enabled && settings.ref_alert_enabled && is_ref_alert {
+                settings.ref_alert_vol.as_f32()
+            } else if settings.sound_enabled && !is_ref_alert {
                 settings.above_water_vol.as_f32()
             } else {
                 0.0
             },
-            right: if settings.sound_enabled && !is_ref_warn {
+            right: if settings.sound_enabled && !is_ref_alert {
                 settings.under_water_vol.as_f32()
             } else {
                 0.0

@@ -249,7 +249,7 @@ pub(super) fn make_game_time_button<'a>(
             }
             TimeoutSnapshot::Ref(_) | TimeoutSnapshot::PenaltyShot(_) => false,
             TimeoutSnapshot::None => {
-                let is_warn_period = match snapshot.current_period {
+                let is_alert_period = match snapshot.current_period {
                     GamePeriod::BetweenGames
                     | GamePeriod::HalfTime
                     | GamePeriod::PreOvertime
@@ -266,7 +266,7 @@ pub(super) fn make_game_time_button<'a>(
                     && ((snapshot.secs_in_period <= 10
                         && (snapshot.secs_in_period % 2 == 0)
                         && (snapshot.secs_in_period != 0))
-                        || (is_warn_period && snapshot.secs_in_period == 30))
+                        || (is_alert_period && snapshot.secs_in_period == 30))
             }
         }
     };

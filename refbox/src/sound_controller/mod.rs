@@ -146,6 +146,7 @@ impl SoundController {
 
         let mut _stop_rx = stop_rx.clone();
         let mut _settings_rx = settings_rx.clone();
+        #[cfg_attr(not(target_os = "linux"), allow(clippy::redundant_clone))]
         let mut _settings = settings.clone();
         let _context = context.clone();
 

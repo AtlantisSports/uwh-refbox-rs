@@ -1153,6 +1153,12 @@ impl Application for RefBoxApp {
                     AppState::ParameterEditor(_, _) => ConfigPage::Tournament,
                     AppState::KeypadPage(KeypadPage::GameNumber, _) => ConfigPage::Main,
                     AppState::KeypadPage(KeypadPage::TeamTimeouts(_), _) => ConfigPage::Tournament,
+                    AppState::ParameterList(param, _) => match param {
+                        ListableParameter::Game => ConfigPage::Main,
+                        ListableParameter::Tournament | ListableParameter::Pool => {
+                            ConfigPage::Tournament
+                        }
+                    },
                     _ => unreachable!(),
                 };
 

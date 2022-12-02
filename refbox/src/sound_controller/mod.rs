@@ -38,8 +38,10 @@ use web_audio_api::{
     AudioBuffer,
 };
 
-const FADE_TIME: f64 = 0.05;
+const FADE_LEN: f64 = 0.05;
 const FADE_WAIT: Duration = Duration::from_millis(50); // TODO: base this on `FADE_TIME` (possible in rust 1.66)
+
+const SOUND_LEN: f64 = 2.0;
 
 #[cfg(target_os = "linux")]
 const MESSAGE_LEN: usize = 24;
@@ -162,15 +164,15 @@ impl SoundController {
 
                                 match msg {
                                     SoundMessage::TriggerBuzzer => {
-                                        info!("Playing buzzer once");
+                                        info!("Auto-triggering buzzer");
                                         let volumes = ChannelVolumes::new(&_settings, false);
-                                        let sound = Sound::new(_context.clone(), volumes, library[_settings.buzzer_sound].clone(), false);
+                                        let sound = Sound::new(_context.clone(), volumes, library[_settings.buzzer_sound].clone(), true, true);
                                         last_sound = Some(sound);
                                     }
                                     SoundMessage::TriggerRefWarning => {
                                         info!("Playing ref warning once");
                                         let volumes = ChannelVolumes::new(&_settings, true);
-                                        let sound = Sound::new(_context.clone(), volumes, library.ref_warn().clone(), false);
+                                        let sound = Sound::new(_context.clone(), volumes, library.ref_warn().clone(), false, false);
                                         last_sound = Some(sound);
                                     }
                                     #[cfg(target_os = "linux")]
@@ -178,12 +180,12 @@ impl SoundController {
                                         info!("Starting buzzer");
                                         let buzzer_sound = sound_option.unwrap_or(_settings.buzzer_sound);
                                         let volumes = ChannelVolumes::new(&_settings, false);
-                                        let sound = Sound::new(_context.clone(), volumes, library[buzzer_sound].clone(), true);
+                                        let sound = Sound::new(_context.clone(), volumes, library[buzzer_sound].clone(), true, false);
                                         last_sound = Some(sound);
                                     }
                                     #[cfg(target_os = "linux")]
                                     SoundMessage::StopBuzzer => {
-                                        info!("Stopping buzzer");
+                                        info!("Stopped buzzer");
                                     }
                                 }
                             },
@@ -523,6 +525,7 @@ impl Sound {
         volumes: ChannelVolumes,
         buffer: AudioBuffer,
         repeat: bool,
+        timed: bool,
     ) -> Self {
         let _merger = context.create_channel_merger(2);
         _merger.set_channel_interpretation(ChannelInterpretation::Speakers);
@@ -542,6 +545,34 @@ impl Sound {
         source.connect(&gain_r);
         source.set_loop(repeat);
 
+        let fade_end = context.current_time() + FADE_LEN;
+
+        // Set the gains so that the start of the fade is now
+        gain_l.gain().set_value(0.0);
+        gain_r.gain().set_value(0.0);
+
+        gain_l
+            .gain()
+            .linear_ramp_to_value_at_time(volumes.left, fade_end);
+        gain_r
+            .gain()
+            .linear_ramp_to_value_at_time(volumes.right, fade_end);
+
+        if timed {
+            let sound_end = fade_end + SOUND_LEN;
+            let fade_out_end = sound_end + FADE_LEN;
+
+            gain_l.gain().set_value_at_time(volumes.left, sound_end);
+            gain_l
+                .gain()
+                .linear_ramp_to_value_at_time(0.0, fade_out_end);
+
+            gain_r.gain().set_value_at_time(volumes.right, sound_end);
+            gain_r
+                .gain()
+                .linear_ramp_to_value_at_time(0.0, fade_out_end);
+        }
+
         source.start();
 
         Self {
@@ -555,7 +586,7 @@ impl Sound {
     }
 
     async fn stop(self) {
-        let end_time = self.context.current_time() + FADE_TIME;
+        let fade_end = self.context.current_time() + FADE_LEN;
 
         // Set the gains so that the start of the fade is now, not when the sound started
         self.gain_l.gain().set_value(self.volumes.left);
@@ -563,10 +594,10 @@ impl Sound {
 
         self.gain_l
             .gain()
-            .linear_ramp_to_value_at_time(0.0, end_time);
+            .linear_ramp_to_value_at_time(0.0, fade_end);
         self.gain_r
             .gain()
-            .linear_ramp_to_value_at_time(0.0, end_time);
+            .linear_ramp_to_value_at_time(0.0, fade_end);
 
         sleep(FADE_WAIT).await;
         self.source.stop();

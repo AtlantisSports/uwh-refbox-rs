@@ -2,9 +2,10 @@
 resolver = "2"
 
 members = [
+  "alphagen",
   "fonts",
-  "uwh-common",
   "matrix-drawing",
-  "refbox",
   "overlay",
+  "refbox",
+  "uwh-common",
 ]

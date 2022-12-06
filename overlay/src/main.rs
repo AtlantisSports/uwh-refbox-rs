@@ -3,15 +3,18 @@ use crossbeam_channel::bounded;
 use log::{debug, warn};
 use macroquad::prelude::*;
 use network::{StatePacket, TeamInfo};
-use std::net::IpAddr;
 use std::str::FromStr;
+use std::{net::IpAddr, path::PathBuf};
 use uwh_common::game_snapshot::{GamePeriod, GameSnapshot, TimeoutSnapshot};
+
 mod flag;
 mod load_images;
 mod network;
 mod pages;
 
-const APP_CONFIG_NAME: &str = "uwh-overlay-drawing";
+use load_images::{read_image_from_file, Texture};
+
+const APP_CONFIG_NAME: &str = "uwh-overlay";
 const TIME_AND_STATE_SHRINK_TO: f32 = -200f32;
 const TIME_AND_STATE_SHRINK_FROM: f32 = 0f32;
 const ALPHA_MAX: f32 = 255f32;
@@ -32,6 +35,7 @@ pub struct AppConfig {
     refbox_ip: IpAddr,
     refbox_port: u64,
     uwhscores_url: String,
+    tournament_logo_path: PathBuf,
 }
 
 impl Default for AppConfig {
@@ -40,6 +44,7 @@ impl Default for AppConfig {
             refbox_ip: IpAddr::from_str("127.0.0.1").unwrap(),
             refbox_port: 8000,
             uwhscores_url: String::from("uwhscores.com"),
+            tournament_logo_path: PathBuf::new(),
         }
     }
 }
@@ -76,11 +81,36 @@ async fn main() {
         }
     };
 
+    let mut tournament_logo_color_path = config.tournament_logo_path.clone();
+    tournament_logo_color_path.push("color.png");
+    let mut tournament_logo_alpha_path = config.tournament_logo_path.clone();
+    tournament_logo_alpha_path.push("alpha.png");
+
     let net_worker = std::thread::spawn(|| {
         network::networking_thread(tx, config);
     });
 
-    let textures = load_images::Textures::default();
+    let mut textures = load_images::Textures::default();
+
+    let tournament_logo_color = match read_image_from_file(tournament_logo_color_path.as_path()) {
+        Ok(texture) => Some(texture),
+        Err(e) => {
+            warn!("Failed to read tournament logo color file: {e}");
+            None
+        }
+    };
+
+    let tournament_logo_alpha = match read_image_from_file(tournament_logo_alpha_path.as_path()) {
+        Ok(texture) => Some(texture),
+        Err(e) => {
+            warn!("Failed to read tournament logo alpha file: {e}");
+            None
+        }
+    };
+
+    textures.tournament_logo = tournament_logo_color
+        .and_then(|color| tournament_logo_alpha.map(|alpha| Texture { color, alpha }));
+
     let mut local_state: State = State {
         snapshot: GameSnapshot {
             current_period: GamePeriod::BetweenGames,

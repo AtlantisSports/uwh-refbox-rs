@@ -22,6 +22,14 @@ impl PageRenderer {
             self.animation_register1 = Instant::now();
             (0f32, -650f32).interpolate_linear(1f32)
         };
+
+        if let Some(logo) = self.textures.tournament_logo.as_ref() {
+            if offset <= -210f32 {
+                let x = (1920f32 - logo.color.width()) / 2f32;
+                draw_texture_both!(logo, x, 500f32, WHITE);
+            }
+        }
+
         draw_texture_both!(self.textures.atlantis_logo_graphic, 836f32, 725f32, WHITE);
         draw_texture_both!(self.textures.bottom_graphic, 822f32, 977f32, WHITE);
         for (i, player_identifier) in state

@@ -1,3 +1,5 @@
+use std::{fs::File, io::Read, path::Path};
+
 use macroquad::prelude::*;
 
 macro_rules! load {
@@ -26,6 +28,7 @@ pub struct Textures {
     pub white_timout_graphic: Texture,
     pub black_timout_graphic: Texture,
     pub referee_timout_graphic: Texture,
+    pub tournament_logo: Option<Texture>,
     pub font: Font,
 }
 
@@ -81,10 +84,20 @@ impl Default for Textures {
                 color: load!("../assets/color/1080/Black Timeout Flag.png"),
                 alpha: load!("../assets/alpha/1080/Black Timeout Flag.png"),
             },
+            tournament_logo: None,
             referee_timout_graphic: Texture {
                 color: load!("../assets/color/1080/Referee Timeout Flag.png"),
                 alpha: load!("../assets/alpha/1080/Referee Timeout Flag.png"),
             },
         }
     }
+}
+
+pub fn read_image_from_file<P: AsRef<Path>>(
+    path: P,
+) -> Result<Texture2D, Box<dyn std::error::Error>> {
+    let mut file = File::open(path)?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)?;
+    Ok(Texture2D::from_file_with_format(&bytes[..], None))
 }

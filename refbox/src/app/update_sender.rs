@@ -1,6 +1,6 @@
 use log::*;
 use matrix_drawing::transmitted_data::TransmittedData;
-use std::{collections::HashMap, fmt::Debug};
+use std::{collections::HashMap, fmt::Debug, future::Future, net::SocketAddr, pin::Pin};
 use thiserror::Error;
 use tokio::{
     io::{self, AsyncWrite, AsyncWriteExt},
@@ -290,13 +290,33 @@ impl Drop for Server {
 
 async fn listener_loop(tx: mpsc::Sender<ServerMessage>, binary_port: u16, json_port: u16) {
     info!("Starting Listeners for JSON (port {json_port}) and binary (port {binary_port})");
-    let binary_listener = TcpListener::bind(("::", binary_port)).await.unwrap();
-    let json_listener = TcpListener::bind(("::", json_port)).await.unwrap();
+    let binary_listener_v6 = TcpListener::bind(("::", binary_port)).await.unwrap();
+    let json_listener_v6 = TcpListener::bind(("::", json_port)).await.unwrap();
+
+    // On some OSs, we must separately listen on IPv4, but on other OSs that
+    // that isn't allowed, so we just try to listen on IPv4
+    let binary_listener_v4 = TcpListener::bind(("0.0.0.0", binary_port)).await.ok();
+    let json_listener_v4 = TcpListener::bind(("0.0.0.0", json_port)).await.ok();
+
     info!("Listeners started");
 
     loop {
+        type ListenResult = std::io::Result<(TcpStream, SocketAddr)>;
+        let binary_v4_future: Pin<Box<dyn Future<Output = ListenResult> + Send>> =
+            if let Some(listener) = binary_listener_v4.as_ref() {
+                Box::pin(listener.accept())
+            } else {
+                Box::pin(iced::futures::future::pending())
+            };
+        let json_v4_future: Pin<Box<dyn Future<Output = ListenResult> + Send>> =
+            if let Some(listener) = json_listener_v4.as_ref() {
+                Box::pin(listener.accept())
+            } else {
+                Box::pin(iced::futures::future::pending())
+            };
+
         select! {
-            conn = binary_listener.accept() => {
+            conn = binary_v4_future => {
                 match conn {
                     Ok((stream, addr)) => {
                         info!("New Binary connection from {addr:?}");
@@ -307,7 +327,29 @@ async fn listener_loop(tx: mpsc::Sender<ServerMessage>, binary_port: u16, json_p
                     Err(addr) => error!("New binary connection to {addr:?} failed"),
                 }
             }
-            conn = json_listener.accept() => {
+            conn = json_v4_future => {
+                match conn {
+                    Ok((stream, addr)) => {
+                        info!("New JSON connection from {addr:?}");
+                        tx.send(ServerMessage::NewConnection(SendType::Json, stream))
+                            .await
+                            .unwrap();
+                    }
+                    Err(addr) => error!("New JSON connection to {addr:?} failed"),
+                }
+            }
+            conn = binary_listener_v6.accept() => {
+                match conn {
+                    Ok((stream, addr)) => {
+                        info!("New Binary connection from {addr:?}");
+                        tx.send(ServerMessage::NewConnection(SendType::Binary, stream))
+                            .await
+                            .unwrap();
+                    }
+                    Err(addr) => error!("New binary connection to {addr:?} failed"),
+                }
+            }
+            conn = json_listener_v6.accept() => {
                 match conn {
                     Ok((stream, addr)) => {
                         info!("New JSON connection from {addr:?}");

@@ -158,7 +158,7 @@ impl PageRenderer {
             }
             _ => {}
         }
-        if state.white_flag == None {
+        if state.white_flag.is_none() {
             draw_text_both_ex!(
                 state.white.team_name.to_uppercase().as_str(),
                 if state.white_flag.is_some() {

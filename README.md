@@ -11,7 +11,7 @@ On Windows and Mac the app can be run by downloading the latest relase from GitH
 The app will log all events to a folder called `uwh-refbox-logs`, which will be placed in the appropriate system folder, selected by the [`directories` crate](https://crates.io/crates/directories)'s definition of [`data_local_dir`](https://docs.rs/directories/4.0.1/directories/struct.BaseDirs.html#method.data_local_dir). The locations will be:
 
 | Platform | Value                                                | Example                                                  |
-+----------+------------------------------------------------------+----------------------------------------------------------|
+| -------- | ---------------------------------------------------- | -------------------------------------------------------- |
 | Linux    | $XDG_DATA_HOME or $HOME/.local/share/uwh-refbox-logs | /home/alice/.local/share/uwh-refbox-logs                 |
 | macOS    | $HOME/Library/Application Support/uwh-refbox-logs    | /Users/Alice/Library/Application Support/uwh-refbox-logs |
 | Windows  | {FOLDERID_LocalAppData}\uwh-refbox-logs              | C:\Users\Alice\AppData\Local\uwh-refbox-logs             |

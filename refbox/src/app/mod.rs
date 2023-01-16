@@ -1,4 +1,4 @@
-use super::APP_CONFIG_NAME;
+use super::APP_NAME;
 use crate::{config::Config, penalty_editor::*, sound_controller::*, tournament_manager::*};
 use iced::{
     executor,
@@ -984,7 +984,7 @@ impl Application for RefBoxApp {
                             self.config.sound = edited_settings.sound;
                             self.sound.update_settings(self.config.sound.clone());
 
-                            confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
+                            confy::store(APP_NAME, None, &self.config).unwrap();
                             AppState::MainPage
                         }
                     } else if edited_settings.game_number != self.snapshot.game_number {
@@ -1000,7 +1000,7 @@ impl Application for RefBoxApp {
                             self.config.sound = edited_settings.sound;
                             self.sound.update_settings(self.config.sound.clone());
 
-                            confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
+                            confy::store(APP_NAME, None, &self.config).unwrap();
 
                             let next_game_info = if edited_settings.using_uwhscores {
                                 NextGameInfo {
@@ -1041,7 +1041,7 @@ impl Application for RefBoxApp {
                         self.config.sound = edited_settings.sound;
                         self.sound.update_settings(self.config.sound.clone());
 
-                        confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
+                        confy::store(APP_NAME, None, &self.config).unwrap();
                         AppState::MainPage
                     }
                 } else {
@@ -1309,7 +1309,7 @@ impl Application for RefBoxApp {
                         self.config.sound = edited_settings.sound;
                         self.sound.update_settings(self.config.sound.clone());
 
-                        confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
+                        confy::store(APP_NAME, None, &self.config).unwrap();
                         let snapshot = tm.generate_snapshot(now).unwrap(); // TODO: Remove this unwrap
                         std::mem::drop(tm);
                         self.apply_snapshot(snapshot);
@@ -1330,7 +1330,7 @@ impl Application for RefBoxApp {
                         self.config.sound = edited_settings.sound;
                         self.sound.update_settings(self.config.sound.clone());
 
-                        confy::store(APP_CONFIG_NAME, None, &self.config).unwrap();
+                        confy::store(APP_NAME, None, &self.config).unwrap();
                         self.apply_snapshot(snapshot);
                         AppState::MainPage
                     }

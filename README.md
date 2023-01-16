@@ -6,15 +6,15 @@ The main software component here is the [`refbox`](refbox) crate. The other crat
 
 On Windows and Mac the app can be run by downloading the latest relase from GitHub and following the bundled instructions.
 
-If you want to change the size of the simulated panels, you will need to run via the command line:
+## Logging
 
-## Windows
+The app will log all events to a folder called `uwh-refbox-logs`, which will be placed in the appropriate system folder, selected by the [`directories` crate](https://crates.io/crates/directories)'s definition of [`data_local_dir`](https://docs.rs/directories/4.0.1/directories/struct.BaseDirs.html#method.data_local_dir). The locations will be:
 
-1. Open `PowerShell` (to open `PowerShell`, start by typing "PowerShell" into the search bar by the windows icon, then clicking the app)
-2. Drag the `.exe` from `File Explorer` into the `PowerShell` window (this will insert the location of the `.exe` into the command line)
-3. Add the following to the command line: `-s N` (with a space before `-s`) where `N` is any positive decimal number (`4` and `4.0` are both acceptable). `N` sets the size of the panels, the default value is `4`
-4. Confirm that the command line now looks something like this: `'<PATH TO EXE>' -s 5.5`
-5. Press `enter` to start the program
+| Platform | Value                                                | Example                                                  |
++----------+------------------------------------------------------+----------------------------------------------------------|
+| Linux    | $XDG_DATA_HOME or $HOME/.local/share/uwh-refbox-logs | /home/alice/.local/share/uwh-refbox-logs                 |
+| macOS    | $HOME/Library/Application Support/uwh-refbox-logs    | /Users/Alice/Library/Application Support/uwh-refbox-logs |
+| Windows  | {FOLDERID_LocalAppData}\uwh-refbox-logs              | C:\Users\Alice\AppData\Local\uwh-refbox-logs             |
 
 # Running From Source
 

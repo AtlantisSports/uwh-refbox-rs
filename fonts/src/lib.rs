@@ -5,7 +5,7 @@ pub mod fonts {
         ($name:ident, $file:literal, $w:literal, $h:literal, $spacing:literal, $base:literal) => {
             pub const $name: embedded_graphics::mono_font::MonoFont =
                 embedded_graphics::mono_font::MonoFont {
-                    image: embedded_graphics::image::ImageRaw::new_binary(
+                    image: embedded_graphics::image::ImageRaw::new(
                         core::include_bytes!(core::concat!(core::env!("OUT_DIR"), "/", $file)),
                         $w * 8,
                     ),

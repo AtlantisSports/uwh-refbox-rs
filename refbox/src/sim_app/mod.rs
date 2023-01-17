@@ -1,19 +1,21 @@
 use arrayref::array_ref;
 use iced::{
-    canvas::{Cache, Cursor, Fill, Geometry, Program},
-    executor, Application, Canvas, Color, Command, Element, Length, Point, Rectangle, Size,
-    Subscription,
+    application, executor,
+    mouse::Cursor,
+    widget::canvas::{Cache, Canvas, Fill, Geometry, Program},
+    Application, Color, Command, Length, Point, Rectangle, Size, Subscription,
 };
 use iced_futures::{
     futures::{
         future::{pending, Pending},
         stream::{self, BoxStream},
     },
-    subscription::Recipe,
+    subscription::{EventStream, Recipe},
 };
+use iced_runtime::{command, window};
 use log::*;
 use matrix_drawing::{draw_panels, transmitted_data::TransmittedData};
-use std::{hash::Hasher, rc::Rc, sync::Mutex};
+use std::{rc::Rc, sync::Mutex};
 use tokio::{
     net::TcpStream,
     time::{self, Duration},
@@ -22,7 +24,6 @@ use tokio::{
 mod display_simulator;
 use display_simulator::*;
 
-const WINDOW_BACKGROUND: Color = Color::BLACK;
 const WIDTH: usize = 256;
 const HEIGHT: usize = 64;
 
@@ -45,7 +46,6 @@ pub struct SimRefBoxApp {
     buffer: Rc<Mutex<DisplayBuffer<WIDTH, HEIGHT>>>,
     cache: Cache,
     listener: SnapshotListener,
-    should_stop: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -53,9 +53,33 @@ pub struct SimRefBoxAppFlags {
     pub tcp_port: u16,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub enum ApplicationTheme {
+    #[default]
+    Dark,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ApplicationStyle {}
+
+impl application::StyleSheet for ApplicationTheme {
+    type Style = ApplicationStyle;
+
+    fn appearance(&self, _style: &Self::Style) -> application::Appearance {
+        application::Appearance {
+            background_color: Color::BLACK,
+            text_color: Color::BLACK,
+        }
+    }
+}
+
+type Renderer = iced_renderer::Renderer<ApplicationTheme>;
+type Element<'a, Message> = iced::Element<'a, Message, Renderer>;
+
 impl Application for SimRefBoxApp {
     type Executor = executor::Default;
     type Message = Message;
+    type Theme = ApplicationTheme;
     type Flags = SimRefBoxAppFlags;
 
     fn new(flags: Self::Flags) -> (Self, Command<Message>) {
@@ -66,7 +90,6 @@ impl Application for SimRefBoxApp {
                 buffer: Rc::new(Mutex::new(Default::default())),
                 cache: Cache::new(),
                 listener: SnapshotListener { port: tcp_port },
-                should_stop: false,
             },
             Command::none(),
         )
@@ -80,14 +103,6 @@ impl Application for SimRefBoxApp {
         "Panel Simulator".into()
     }
 
-    fn background_color(&self) -> iced::Color {
-        WINDOW_BACKGROUND
-    }
-
-    fn should_exit(&self) -> bool {
-        self.should_stop
-    }
-
     fn update(&mut self, message: Message) -> Command<Message> {
         trace!("Handling message: {message:?}");
         match message {
@@ -96,15 +111,14 @@ impl Application for SimRefBoxApp {
                 buffer.clear_buffer();
                 draw_panels(&mut *buffer, data.snapshot, data.white_on_right, data.flash).unwrap();
                 self.cache.clear();
+                Command::none()
             }
-            Message::Stop => self.should_stop = true,
-            Message::NoAction => {}
+            Message::Stop => Command::single(command::Action::Window(window::Action::Close)),
+            Message::NoAction => Command::none(),
         }
-
-        Command::none()
     }
 
-    fn view(&mut self) -> Element<Message> {
+    fn view(&self) -> Element<Message> {
         Canvas::new(self)
             .width(Length::Fill)
             .height(Length::Fill)
@@ -112,11 +126,20 @@ impl Application for SimRefBoxApp {
     }
 }
 
-impl<Message> Program<Message> for SimRefBoxApp {
-    fn draw(&self, bounds: Rectangle, _cursor: Cursor) -> Vec<Geometry> {
+impl<Message> Program<Message, Renderer> for SimRefBoxApp {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &Self::State,
+        renderer: &Renderer,
+        _theme: &ApplicationTheme,
+        bounds: Rectangle,
+        _cursor: Cursor,
+    ) -> Vec<Geometry> {
         let buffer_ = self.buffer.clone();
         let panel =
-            self.cache.draw(bounds.size(), |frame| {
+            self.cache.draw(renderer, bounds.size(), |frame| {
                 let buffer = buffer_.lock().unwrap();
 
                 let horiz_spacing = frame.width() / ((WIDTH * 5 + 1) as f32);
@@ -152,16 +175,16 @@ struct SnapshotListener {
     port: u16,
 }
 
-impl<H: Hasher, I> Recipe<H, I> for SnapshotListener {
+impl Recipe for SnapshotListener {
     type Output = Message;
 
-    fn hash(&self, state: &mut H) {
+    fn hash(&self, state: &mut iced_core::Hasher) {
         use std::hash::Hash;
 
         "SnapshotListener".hash(state);
     }
 
-    fn stream(self: Box<Self>, _input: BoxStream<'static, I>) -> BoxStream<'static, Self::Output> {
+    fn stream(self: Box<Self>, _input: EventStream) -> BoxStream<'static, Self::Output> {
         info!("Sim: starting listener");
 
         #[derive(Debug)]

@@ -553,7 +553,7 @@ impl Sound {
         gain_r.connect_at(&_merger, 0, 1);
         gain_r.gain().set_value(volumes.right);
 
-        let source = context.create_buffer_source();
+        let mut source = context.create_buffer_source();
         source.set_buffer(buffer);
         source.connect(&gain_l);
         source.connect(&gain_r);
@@ -599,7 +599,7 @@ impl Sound {
         }
     }
 
-    async fn stop(self) {
+    async fn stop(mut self) {
         let fade_end = self.context.current_time() + FADE_LEN;
 
         // Set the gains so that the start of the fade is now, not when the sound started

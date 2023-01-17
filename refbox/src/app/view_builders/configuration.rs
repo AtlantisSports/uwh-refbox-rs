@@ -396,7 +396,7 @@ fn make_tournament_config_page<'a>(
         .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
         .push(
             make_value_button(
-                "USING UWHSCORES:",
+                "USING UWHPORTAL:",
                 bool_string(using_uwhscores),
                 (true, true),
                 Some(Message::ToggleBoolParameter(

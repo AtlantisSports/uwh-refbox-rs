@@ -1,11 +1,11 @@
 use super::{
-    style::{self, PADDING, SPACING},
+    style::{ButtonStyle, ContainerStyle, Element, LINE_HEIGHT, PADDING, SPACING},
     *,
 };
 
 use iced::{
     alignment::Horizontal,
-    pure::{column, container, horizontal_space, row, text, vertical_space, Element},
+    widget::{column, container, horizontal_space, row, text, vertical_space},
     Alignment, Length,
 };
 
@@ -28,58 +28,54 @@ pub(in super::super) fn build_confirmation_page<'a>(
         ConfirmationKind::GameConfigChanged(_) => vec![
             (
                 "GO BACK TO EDITOR",
-                style::Button::Green,
+                ButtonStyle::Green,
                 ConfirmationOption::GoBack,
             ),
             (
                 "DISCARD CHANGES",
-                style::Button::Yellow,
+                ButtonStyle::Yellow,
                 ConfirmationOption::DiscardChanges,
             ),
             (
                 "END CURRENT GAME AND APPLY CHANGES",
-                style::Button::Red,
+                ButtonStyle::Red,
                 ConfirmationOption::EndGameAndApply,
             ),
         ],
         ConfirmationKind::GameNumberChanged => vec![
             (
                 "GO BACK TO EDITOR",
-                style::Button::Green,
+                ButtonStyle::Green,
                 ConfirmationOption::GoBack,
             ),
             (
                 "DISCARD CHANGES",
-                style::Button::Yellow,
+                ButtonStyle::Yellow,
                 ConfirmationOption::DiscardChanges,
             ),
             (
                 "KEEP CURRENT GAME AND APPLY CHANGE",
-                style::Button::Orange,
+                ButtonStyle::Orange,
                 ConfirmationOption::KeepGameAndApply,
             ),
             (
                 "END CURRENT GAME AND APPLY CHANGE",
-                style::Button::Red,
+                ButtonStyle::Red,
                 ConfirmationOption::EndGameAndApply,
             ),
         ],
         ConfirmationKind::Error(_) => {
-            vec![(
-                "OK",
-                style::Button::Green,
-                ConfirmationOption::DiscardChanges,
-            )]
+            vec![("OK", ButtonStyle::Green, ConfirmationOption::DiscardChanges)]
         }
         ConfirmationKind::UwhScoresIncomplete => vec![
             (
                 "GO BACK TO EDITOR",
-                style::Button::Green,
+                ButtonStyle::Green,
                 ConfirmationOption::GoBack,
             ),
             (
                 "DISCARD CHANGES",
-                style::Button::Yellow,
+                ButtonStyle::Yellow,
                 ConfirmationOption::DiscardChanges,
             ),
         ],
@@ -91,44 +87,39 @@ pub(in super::super) fn build_confirmation_page<'a>(
             .on_press(Message::ConfirmationSelected(option))
     });
 
-    let mut button_col = column().spacing(SPACING).width(Length::Fill);
+    let mut button_col = column![].spacing(SPACING).width(Length::Fill);
 
     for button in buttons {
         button_col = button_col.push(button);
     }
 
-    column()
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .align_items(Alignment::Center)
-        .push(make_game_time_button(
-            snapshot,
-            false,
-            false,
-            mode,
-            clock_running,
-        ))
-        .push(vertical_space(Length::Fill))
-        .push(
-            row()
-                .push(horizontal_space(Length::Fill))
-                .push(
-                    container(
-                        column()
-                            .spacing(SPACING)
-                            .width(Length::Fill)
-                            .align_items(Alignment::Center)
-                            .push(text(header_text).horizontal_alignment(Horizontal::Center))
-                            .push(button_col),
-                    )
-                    .width(Length::FillPortion(3))
-                    .style(style::Container::LightGray)
-                    .padding(PADDING),
-                )
-                .push(horizontal_space(Length::Fill)),
-        )
-        .push(vertical_space(Length::Fill))
-        .into()
+    column![
+        make_game_time_button(snapshot, false, true, mode, clock_running),
+        vertical_space(Length::Fill),
+        row![
+            horizontal_space(Length::Fill),
+            container(
+                column![
+                    text(header_text)
+                        .line_height(LINE_HEIGHT)
+                        .horizontal_alignment(Horizontal::Center),
+                    button_col
+                ]
+                .spacing(SPACING)
+                .width(Length::Fill)
+                .align_items(Alignment::Center),
+            )
+            .width(Length::FillPortion(3))
+            .style(ContainerStyle::LightGray)
+            .padding(PADDING),
+            horizontal_space(Length::Fill)
+        ],
+        vertical_space(Length::Fill)
+    ]
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .align_items(Alignment::Center)
+    .into()
 }
 
 pub(in super::super) fn build_score_confirmation_page<'a>(
@@ -141,52 +132,40 @@ pub(in super::super) fn build_score_confirmation_page<'a>(
         "Is this score correct?\nConfirm with cheif referee.\n\nBlack: {}        White: {}\n",
         scores.black, scores.white
     ))
+    .line_height(LINE_HEIGHT)
     .horizontal_alignment(Horizontal::Center);
 
-    let options = row()
-        .spacing(SPACING)
-        .width(Length::Fill)
-        .push(
-            make_button("YES")
-                .style(style::Button::Green)
-                .on_press(Message::ScoreConfirmation { correct: true }),
-        )
-        .push(
-            make_button("NO")
-                .style(style::Button::Red)
-                .on_press(Message::ScoreConfirmation { correct: false }),
-        );
+    let options = row![
+        make_button("YES")
+            .style(ButtonStyle::Green)
+            .on_press(Message::ScoreConfirmation { correct: true }),
+        make_button("NO")
+            .style(ButtonStyle::Red)
+            .on_press(Message::ScoreConfirmation { correct: false }),
+    ]
+    .spacing(SPACING)
+    .width(Length::Fill);
 
-    column()
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .align_items(Alignment::Center)
-        .push(make_game_time_button(
-            snapshot,
-            false,
-            false,
-            mode,
-            clock_running,
-        ))
-        .push(vertical_space(Length::Fill))
-        .push(
-            row()
-                .push(horizontal_space(Length::Fill))
-                .push(
-                    container(
-                        column()
-                            .spacing(SPACING)
-                            .width(Length::Fill)
-                            .align_items(Alignment::Center)
-                            .push(header)
-                            .push(options),
-                    )
-                    .width(Length::FillPortion(3))
-                    .style(style::Container::LightGray)
-                    .padding(PADDING),
-                )
-                .push(horizontal_space(Length::Fill)),
-        )
-        .push(vertical_space(Length::Fill))
-        .into()
+    column![
+        make_game_time_button(snapshot, false, true, mode, clock_running),
+        vertical_space(Length::Fill),
+        row![
+            horizontal_space(Length::Fill),
+            container(
+                column![header, options]
+                    .spacing(SPACING)
+                    .width(Length::Fill)
+                    .align_items(Alignment::Center),
+            )
+            .width(Length::FillPortion(3))
+            .style(ContainerStyle::LightGray)
+            .padding(PADDING),
+            horizontal_space(Length::Fill)
+        ],
+        vertical_space(Length::Fill)
+    ]
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .align_items(Alignment::Center)
+    .into()
 }

@@ -1,10 +1,10 @@
 use super::{
-    style::{self, SMALL_TEXT, SPACING},
+    style::{ButtonStyle, LINE_HEIGHT, SMALL_TEXT, SPACING},
     *,
 };
 use iced::{
     alignment::Horizontal,
-    pure::{column, horizontal_space, row, text, vertical_space, Element},
+    widget::{column, horizontal_space, row, text, vertical_space},
     Alignment, Length,
 };
 use std::time::Duration;
@@ -17,12 +17,13 @@ pub(in super::super) fn build_time_edit_view<'a>(
     mode: Mode,
     clock_running: bool,
 ) -> Element<'a, Message> {
-    let mut edit_row = row()
-        .spacing(SPACING)
-        .align_items(Alignment::Center)
-        .push(horizontal_space(Length::Fill))
-        .push(make_time_editor("GAME TIME", time, false))
-        .push(horizontal_space(Length::Fill));
+    let mut edit_row = row![
+        horizontal_space(Length::Fill),
+        make_time_editor("GAME TIME", time, false),
+        horizontal_space(Length::Fill)
+    ]
+    .spacing(SPACING)
+    .align_items(Alignment::Center);
 
     if snapshot.timeout != TimeoutSnapshot::None {
         edit_row = edit_row
@@ -31,42 +32,31 @@ pub(in super::super) fn build_time_edit_view<'a>(
             .push(horizontal_space(Length::Fill));
     }
 
-    column()
-        .spacing(SPACING)
-        .height(Length::Fill)
-        .push(make_game_time_button(
-            snapshot,
-            false,
-            true,
-            mode,
-            clock_running,
-        ))
-        .push(vertical_space(Length::Fill))
-        .push(
-            text("Note: Game time is paused while on this screen")
-                .size(SMALL_TEXT)
+    column![
+        make_game_time_button(snapshot, false, false, mode, clock_running),
+        vertical_space(Length::Fill),
+        text("Note: Game time is paused while on this screen")
+            .size(SMALL_TEXT)
+            .line_height(LINE_HEIGHT)
+            .width(Length::Fill)
+            .horizontal_alignment(Horizontal::Center),
+        vertical_space(Length::Fill),
+        edit_row,
+        vertical_space(Length::Fill),
+        row![
+            make_button("CANCEL")
+                .style(ButtonStyle::Red)
                 .width(Length::Fill)
-                .horizontal_alignment(Horizontal::Center),
-        )
-        .push(vertical_space(Length::Fill))
-        .push(edit_row)
-        .push(vertical_space(Length::Fill))
-        .push(
-            row()
-                .spacing(SPACING)
-                .push(
-                    make_button("CANCEL")
-                        .style(style::Button::Red)
-                        .width(Length::Fill)
-                        .on_press(Message::TimeEditComplete { canceled: true }),
-                )
-                .push(horizontal_space(Length::Fill))
-                .push(
-                    make_button("DONE")
-                        .style(style::Button::Green)
-                        .width(Length::Fill)
-                        .on_press(Message::TimeEditComplete { canceled: false }),
-                ),
-        )
-        .into()
+                .on_press(Message::TimeEditComplete { canceled: true }),
+            horizontal_space(Length::Fill),
+            make_button("DONE")
+                .style(ButtonStyle::Green)
+                .width(Length::Fill)
+                .on_press(Message::TimeEditComplete { canceled: false }),
+        ]
+        .spacing(SPACING),
+    ]
+    .spacing(SPACING)
+    .height(Length::Fill)
+    .into()
 }

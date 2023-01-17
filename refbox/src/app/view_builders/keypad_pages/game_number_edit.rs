@@ -1,32 +1,24 @@
-use super::{
-    style::{self, SPACING},
-    *,
-};
-
+use super::{style::Element, *};
 use iced::{
-    pure::{column, row, vertical_space, Element},
+    widget::{column, row, vertical_space},
     Length,
 };
 
 pub(super) fn make_game_number_edit_page<'a>() -> Element<'a, Message> {
-    column()
-        .spacing(SPACING)
-        .push(vertical_space(Length::Fill))
-        .push(
-            row()
-                .spacing(SPACING)
-                .push(
-                    make_button("CANCEL")
-                        .style(style::Button::Red)
-                        .width(Length::Fill)
-                        .on_press(Message::ParameterEditComplete { canceled: true }),
-                )
-                .push(
-                    make_button("DONE")
-                        .style(style::Button::Green)
-                        .width(Length::Fill)
-                        .on_press(Message::ParameterEditComplete { canceled: false }),
-                ),
-        )
-        .into()
+    column![
+        vertical_space(Length::Fill),
+        row![
+            make_button("CANCEL")
+                .style(ButtonStyle::Red)
+                .width(Length::Fill)
+                .on_press(Message::ParameterEditComplete { canceled: true }),
+            make_button("DONE")
+                .style(ButtonStyle::Green)
+                .width(Length::Fill)
+                .on_press(Message::ParameterEditComplete { canceled: false }),
+        ]
+        .spacing(SPACING),
+    ]
+    .spacing(SPACING)
+    .into()
 }

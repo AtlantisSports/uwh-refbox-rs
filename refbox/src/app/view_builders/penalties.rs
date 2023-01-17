@@ -1,11 +1,15 @@
 use super::{
-    style::{self, GREEN, MIN_BUTTON_SIZE, ORANGE, PADDING, RED, SPACING},
+    style::{
+        ButtonStyle, Container, ContainerStyle, Element, LINE_HEIGHT, MIN_BUTTON_SIZE, PADDING,
+        SPACING,
+    },
     *,
 };
+use crate::app::style::TextStyle;
 use collect_array::CollectArrayResult;
 use iced::{
     alignment::{Horizontal, Vertical},
-    pure::{button, column, horizontal_space, row, text, widget::Container, Element},
+    widget::{button, column, horizontal_space, row, text},
     Length,
 };
 
@@ -18,68 +22,65 @@ pub(in super::super) fn build_penalty_overview_page<'a>(
     mode: Mode,
     clock_running: bool,
 ) -> Element<'a, Message> {
-    column()
+    let default_pen_len = match mode {
+        Mode::Hockey3V3 => PenaltyKind::ThirtySecond,
+        Mode::Hockey6V6 => PenaltyKind::OneMinute,
+        Mode::Rugby => PenaltyKind::TwoMinute,
+    };
+
+    column![
+        make_game_time_button(snapshot, false, true, mode, clock_running),
+        row![
+            make_penalty_list(
+                penalties.black,
+                indices.black,
+                GameColor::Black,
+                default_pen_len
+            ),
+            make_penalty_list(
+                penalties.white,
+                indices.white,
+                GameColor::White,
+                default_pen_len
+            )
+        ]
         .spacing(SPACING)
-        .height(Length::Fill)
-        .push(make_game_time_button(
-            snapshot,
-            false,
-            false,
-            mode,
-            clock_running,
-        ))
-        .push(
-            row()
-                .spacing(SPACING)
-                .height(Length::Fill)
-                .push(make_penalty_list(
-                    penalties.black,
-                    indices.black,
+        .height(Length::Fill),
+        row![
+            make_button("CANCEL")
+                .style(ButtonStyle::Red)
+                .width(Length::Fill)
+                .on_press(Message::PenaltyOverviewComplete { canceled: true }),
+            make_button("NEW")
+                .style(ButtonStyle::Blue)
+                .width(Length::Fill)
+                .on_press(Message::KeypadPage(KeypadPage::Penalty(
+                    None,
                     GameColor::Black,
-                ))
-                .push(make_penalty_list(
-                    penalties.white,
-                    indices.white,
-                    GameColor::White,
-                )),
-        )
-        .push(
-            row()
-                .spacing(SPACING)
-                .push(
-                    make_button("CANCEL")
-                        .style(style::Button::Red)
-                        .width(Length::Fill)
-                        .on_press(Message::PenaltyOverviewComplete { canceled: true }),
-                )
-                .push(
-                    make_button("NEW")
-                        .style(style::Button::Blue)
-                        .width(Length::Fill)
-                        .on_press(Message::KeypadPage(KeypadPage::Penalty(
-                            None,
-                            GameColor::Black,
-                            PenaltyKind::OneMinute,
-                        ))),
-                )
-                .push(
-                    make_button("DONE")
-                        .style(style::Button::Green)
-                        .width(Length::Fill)
-                        .on_press(Message::PenaltyOverviewComplete { canceled: false }),
-                ),
-        )
-        .into()
+                    default_pen_len,
+                ))),
+            make_button("DONE")
+                .style(ButtonStyle::Green)
+                .width(Length::Fill)
+                .on_press(Message::PenaltyOverviewComplete { canceled: false }),
+        ]
+        .spacing(SPACING),
+    ]
+    .spacing(SPACING)
+    .height(Length::Fill)
+    .into()
 }
 
 fn make_penalty_list<'a>(
     penalties: Vec<(String, FormatHint, PenaltyKind)>,
     index: usize,
     color: GameColor,
+    default_pen_len: PenaltyKind,
 ) -> Container<'a, Message> {
     const PENALTY_LIST_LEN: usize = 3;
 
     let title = text(format!("{} PENALTIES", color.to_string().to_uppercase()))
+        .line_height(LINE_HEIGHT)
         .height(Length::Fill)
         .width(Length::Fill)
         .horizontal_alignment(Horizontal::Center)
@@ -97,22 +98,23 @@ fn make_penalty_list<'a>(
         .map(|pen| {
             if let Some((i, (pen_text, format, kind))) = pen {
                 let mut text = text(pen_text)
+                    .line_height(LINE_HEIGHT)
                     .vertical_alignment(Vertical::Center)
                     .horizontal_alignment(Horizontal::Left)
                     .width(Length::Fill);
 
                 match format {
                     FormatHint::NoChange => {}
-                    FormatHint::Edited => text = text.color(ORANGE),
-                    FormatHint::Deleted => text = text.color(RED),
-                    FormatHint::New => text = text.color(GREEN),
+                    FormatHint::Edited => text = text.style(TextStyle::Orange),
+                    FormatHint::Deleted => text = text.style(TextStyle::Red),
+                    FormatHint::New => text = text.style(TextStyle::Green),
                 }
 
                 button(text)
                     .padding(PADDING)
-                    .height(Length::Units(MIN_BUTTON_SIZE))
+                    .height(Length::Fixed(MIN_BUTTON_SIZE))
                     .width(Length::Fill)
-                    .style(style::Button::Gray)
+                    .style(ButtonStyle::Gray)
                     .on_press(Message::KeypadPage(KeypadPage::Penalty(
                         Some((color, i)),
                         color,
@@ -121,13 +123,13 @@ fn make_penalty_list<'a>(
                     .into()
             } else {
                 button(horizontal_space(Length::Shrink))
-                    .height(Length::Units(MIN_BUTTON_SIZE))
+                    .height(Length::Fixed(MIN_BUTTON_SIZE))
                     .width(Length::Fill)
-                    .style(style::Button::Gray)
+                    .style(ButtonStyle::Gray)
                     .on_press(Message::KeypadPage(KeypadPage::Penalty(
                         None,
                         color,
-                        PenaltyKind::OneMinute,
+                        default_pen_len,
                     )))
                     .into()
             }
@@ -135,8 +137,8 @@ fn make_penalty_list<'a>(
         .collect();
 
     let cont_style = match color {
-        GameColor::Black => style::Container::Black,
-        GameColor::White => style::Container::White,
+        GameColor::Black => ContainerStyle::Black,
+        GameColor::White => ContainerStyle::White,
     };
 
     let scroll_option = match color {

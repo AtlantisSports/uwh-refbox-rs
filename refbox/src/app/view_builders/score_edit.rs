@@ -1,11 +1,11 @@
 use super::{
-    style::{self, LARGE_TEXT, PADDING, SPACING},
+    style::{ButtonStyle, ContainerStyle, Element, LARGE_TEXT, LINE_HEIGHT, PADDING, SPACING},
     *,
 };
 
 use iced::{
     alignment::Horizontal,
-    pure::{column, container, horizontal_space, row, text, vertical_space, Element},
+    widget::{column, container, horizontal_space, row, text, vertical_space},
     Alignment, Length,
 };
 
@@ -25,95 +25,85 @@ pub(in super::super) fn build_score_edit_view<'a>(
     };
 
     let black_edit = container(
-        row()
+        row![
+            column![
+                make_small_button("+", LARGE_TEXT)
+                    .style(ButtonStyle::Blue)
+                    .on_press(Message::ChangeScore {
+                        color: GameColor::Black,
+                        increase: true,
+                    }),
+                make_small_button("-", LARGE_TEXT)
+                    .style(ButtonStyle::Blue)
+                    .on_press(Message::ChangeScore {
+                        color: GameColor::Black,
+                        increase: false,
+                    }),
+            ]
+            .spacing(SPACING),
+            column![
+                "BLACK",
+                text(scores.black.to_string())
+                    .size(LARGE_TEXT)
+                    .line_height(LINE_HEIGHT)
+            ]
             .spacing(SPACING)
-            .align_items(Alignment::Center)
-            .push(
-                column()
-                    .spacing(SPACING)
-                    .push(
-                        make_small_button("+", LARGE_TEXT)
-                            .style(style::Button::Blue)
-                            .on_press(Message::ChangeScore {
-                                color: GameColor::Black,
-                                increase: true,
-                            }),
-                    )
-                    .push(
-                        make_small_button("-", LARGE_TEXT)
-                            .style(style::Button::Blue)
-                            .on_press(Message::ChangeScore {
-                                color: GameColor::Black,
-                                increase: false,
-                            }),
-                    ),
-            )
-            .push(
-                column()
-                    .spacing(SPACING)
-                    .width(Length::Fill)
-                    .align_items(Alignment::Center)
-                    .push("BLACK")
-                    .push(text(scores.black.to_string()).size(LARGE_TEXT)),
-            ),
+            .width(Length::Fill)
+            .align_items(Alignment::Center),
+        ]
+        .spacing(SPACING)
+        .align_items(Alignment::Center),
     )
     .padding(PADDING)
     .width(Length::FillPortion(2))
-    .style(style::Container::Black);
+    .style(ContainerStyle::Black);
 
     let white_edit = container(
-        row()
+        row![
+            column![
+                "WHITE",
+                text(scores.white.to_string())
+                    .size(LARGE_TEXT)
+                    .line_height(LINE_HEIGHT)
+            ]
             .spacing(SPACING)
-            .align_items(Alignment::Center)
-            .push(
-                column()
-                    .spacing(SPACING)
-                    .width(Length::Fill)
-                    .align_items(Alignment::Center)
-                    .push("WHITE")
-                    .push(text(scores.white.to_string()).size(LARGE_TEXT)),
-            )
-            .push(
-                column()
-                    .spacing(SPACING)
-                    .push(
-                        make_small_button("+", LARGE_TEXT)
-                            .style(style::Button::Blue)
-                            .on_press(Message::ChangeScore {
-                                color: GameColor::White,
-                                increase: true,
-                            }),
-                    )
-                    .push(
-                        make_small_button("-", LARGE_TEXT)
-                            .style(style::Button::Blue)
-                            .on_press(Message::ChangeScore {
-                                color: GameColor::White,
-                                increase: false,
-                            }),
-                    ),
-            ),
+            .width(Length::Fill)
+            .align_items(Alignment::Center),
+            column![
+                make_small_button("+", LARGE_TEXT)
+                    .style(ButtonStyle::Blue)
+                    .on_press(Message::ChangeScore {
+                        color: GameColor::White,
+                        increase: true,
+                    }),
+                make_small_button("-", LARGE_TEXT)
+                    .style(ButtonStyle::Blue)
+                    .on_press(Message::ChangeScore {
+                        color: GameColor::White,
+                        increase: false,
+                    }),
+            ]
+            .spacing(SPACING),
+        ]
+        .spacing(SPACING)
+        .align_items(Alignment::Center),
     )
     .padding(PADDING)
     .width(Length::FillPortion(2))
-    .style(style::Container::White);
+    .style(ContainerStyle::White);
 
-    let mut main_col = column()
-        .spacing(SPACING)
-        .height(Length::Fill)
-        .push(make_game_time_button(
-            snapshot,
-            false,
-            false,
-            mode,
-            clock_running,
-        ))
-        .push(vertical_space(Length::Fill));
+    let mut main_col = column![
+        make_game_time_button(snapshot, false, true, mode, clock_running),
+        vertical_space(Length::Fill)
+    ]
+    .spacing(SPACING)
+    .height(Length::Fill);
 
     if is_confirmation {
         main_col = main_col
             .push(
                 text("Please enter the final score")
+                    .line_height(LINE_HEIGHT)
                     .horizontal_alignment(Horizontal::Center)
                     .width(Length::Fill),
             )
@@ -122,25 +112,25 @@ pub(in super::super) fn build_score_edit_view<'a>(
 
     main_col
         .push(
-            row()
-                .spacing(SPACING)
-                .push(horizontal_space(Length::Fill))
-                .push(black_edit)
-                .push(horizontal_space(Length::Fill))
-                .push(white_edit)
-                .push(horizontal_space(Length::Fill)),
+            row![
+                horizontal_space(Length::Fill),
+                black_edit,
+                horizontal_space(Length::Fill),
+                white_edit,
+                horizontal_space(Length::Fill)
+            ]
+            .spacing(SPACING),
         )
         .push(vertical_space(Length::Fill))
         .push(
-            row()
-                .spacing(SPACING)
-                .push(make_message_button("CANCEL", cancel_btn_msg).style(style::Button::Red))
-                .push(horizontal_space(Length::Fill))
-                .push(
-                    make_button("DONE")
-                        .style(style::Button::Green)
-                        .on_press(Message::ScoreEditComplete { canceled: false }),
-                ),
+            row![
+                make_message_button("CANCEL", cancel_btn_msg).style(ButtonStyle::Red),
+                horizontal_space(Length::Fill),
+                make_button("DONE")
+                    .style(ButtonStyle::Green)
+                    .on_press(Message::ScoreEditComplete { canceled: false }),
+            ]
+            .spacing(SPACING),
         )
         .into()
 }

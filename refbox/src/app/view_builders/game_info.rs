@@ -1,10 +1,10 @@
 use super::{
-    style::{self, SMALL_TEXT, SPACING},
+    style::{ButtonStyle, Element, SMALL_TEXT, SPACING},
     *,
 };
 use iced::{
     alignment::{Horizontal, Vertical},
-    pure::{column, horizontal_space, row, text, Element},
+    widget::{column, horizontal_space, row, text},
     Length,
 };
 
@@ -21,55 +21,40 @@ pub(in super::super) fn build_game_info_page<'a>(
     clock_running: bool,
 ) -> Element<'a, Message> {
     let (left_details, right_details) = details_strings(snapshot, config, using_uwhscores, games);
-    column()
+    column![
+        make_game_time_button(snapshot, false, false, mode, clock_running,),
+        row![
+            text(left_details)
+                .size(SMALL_TEXT)
+                .vertical_alignment(Vertical::Top)
+                .horizontal_alignment(Horizontal::Left)
+                .width(Length::Fill),
+            text(right_details)
+                .size(SMALL_TEXT)
+                .vertical_alignment(Vertical::Top)
+                .horizontal_alignment(Horizontal::Left)
+                .width(Length::Fill),
+        ]
         .spacing(SPACING)
-        .height(Length::Fill)
-        .push(make_game_time_button(
-            snapshot,
-            false,
-            false,
-            mode,
-            clock_running,
-        ))
-        .push(
-            row()
-                .spacing(SPACING)
+        .width(Length::Fill)
+        .height(Length::Fill),
+        row![
+            make_button("BACK")
+                .style(ButtonStyle::Red)
                 .width(Length::Fill)
-                .height(Length::Fill)
-                .push(
-                    text(left_details)
-                        .size(SMALL_TEXT)
-                        .vertical_alignment(Vertical::Top)
-                        .horizontal_alignment(Horizontal::Left)
-                        .width(Length::Fill),
-                )
-                .push(
-                    text(right_details)
-                        .size(SMALL_TEXT)
-                        .vertical_alignment(Vertical::Top)
-                        .horizontal_alignment(Horizontal::Left)
-                        .width(Length::Fill),
-                ),
-        )
-        .push(
-            row()
-                .spacing(SPACING)
+                .on_press(Message::ConfigEditComplete { canceled: true }),
+            horizontal_space(Length::Fill),
+            make_button("SETTINGS")
+                .style(ButtonStyle::Gray)
                 .width(Length::Fill)
-                .push(
-                    make_button("BACK")
-                        .style(style::Button::Red)
-                        .width(Length::Fill)
-                        .on_press(Message::ConfigEditComplete { canceled: true }),
-                )
-                .push(horizontal_space(Length::Fill))
-                .push(
-                    make_button("SETTINGS")
-                        .style(style::Button::Gray)
-                        .width(Length::Fill)
-                        .on_press(Message::EditGameConfig),
-                ),
-        )
-        .into()
+                .on_press(Message::EditGameConfig),
+        ]
+        .spacing(SPACING)
+        .width(Length::Fill),
+    ]
+    .spacing(SPACING)
+    .height(Length::Fill)
+    .into()
 }
 
 fn details_strings(

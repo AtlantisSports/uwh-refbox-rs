@@ -268,7 +268,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         confy::get_configuration_file_path(APP_NAME, None).unwrap()
     );
 
-    let config: Config = match confy::load(APP_NAME, None) {
+    let mut config: Config = match confy::load(APP_NAME, None) {
         Ok(c) => c,
         Err(e) => {
             warn!("Failed to read config file, overwriting with default. Error: {e}");
@@ -282,10 +282,12 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         if offset != config.uwhscores.timezone {
             warn!(
                 "The timezone in the config file ({}) does not match the detected system \
-                 timezone ({offset}). The config timezone will be used.",
+                 timezone ({offset}). The system timezone will be used.",
                 config.uwhscores.timezone
             );
         }
+        config.uwhscores.timezone = offset;
+        confy::store(APP_NAME, None, &config).unwrap();
     }
 
     let window_size = (

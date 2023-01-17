@@ -165,6 +165,8 @@ pub enum BoolGameParameter {
     UsingUwhScores,
     SoundEnabled,
     RefAlertEnabled,
+    AutoSoundStartPlay,
+    AutoSoundStopPlay,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -155,18 +155,21 @@ impl RefBoxApp {
                     | GamePeriod::SuddenDeath => false,
                 };
 
-                let is_buzz_period = match new_snapshot.current_period {
+                let (end_starts_play, end_stops_play) = match new_snapshot.current_period {
                     GamePeriod::FirstHalf
                     | GamePeriod::SecondHalf
                     | GamePeriod::OvertimeFirstHalf
-                    | GamePeriod::OvertimeSecondHalf => true,
+                    | GamePeriod::OvertimeSecondHalf => (false, true),
                     GamePeriod::BetweenGames
                     | GamePeriod::HalfTime
                     | GamePeriod::PreOvertime
                     | GamePeriod::OvertimeHalfTime
-                    | GamePeriod::PreSuddenDeath
-                    | GamePeriod::SuddenDeath => false,
+                    | GamePeriod::PreSuddenDeath => (true, false),
+                    GamePeriod::SuddenDeath => (false, false),
                 };
+
+                let is_buzz_period = end_starts_play && self.config.sound.auto_sound_start_play
+                    || end_stops_play && self.config.sound.auto_sound_stop_play;
 
                 (
                     prereqs && is_alert_period && new_snapshot.secs_in_period == 35,
@@ -1213,6 +1216,12 @@ impl Application for RefBoxApp {
                     BoolGameParameter::SoundEnabled => edited_settings.sound.sound_enabled ^= true,
                     BoolGameParameter::RefAlertEnabled => {
                         edited_settings.sound.ref_alert_enabled ^= true
+                    }
+                    BoolGameParameter::AutoSoundStartPlay => {
+                        edited_settings.sound.auto_sound_start_play ^= true
+                    }
+                    BoolGameParameter::AutoSoundStopPlay => {
+                        edited_settings.sound.auto_sound_stop_play ^= true
                     }
                 }
             }

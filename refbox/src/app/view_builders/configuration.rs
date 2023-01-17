@@ -523,7 +523,18 @@ fn make_sound_config_page<'a>(
                         None
                     },
                 ))
-                .push(horizontal_space(Length::Fill)),
+                .push(make_value_button(
+                    "AUTO SOUND\nSTART PLAY:",
+                    bool_string(sound.auto_sound_start_play),
+                    (false, true),
+                    if sound.sound_enabled {
+                        Some(Message::ToggleBoolParameter(
+                            BoolGameParameter::AutoSoundStartPlay,
+                        ))
+                    } else {
+                        None
+                    },
+                )),
         )
         .push(
             row()
@@ -549,7 +560,18 @@ fn make_sound_config_page<'a>(
                         None
                     },
                 ))
-                .push(horizontal_space(Length::Fill)),
+                .push(make_value_button(
+                    "AUTO SOUND\nSTOP PLAY:",
+                    bool_string(sound.auto_sound_stop_play),
+                    (false, true),
+                    if sound.sound_enabled {
+                        Some(Message::ToggleBoolParameter(
+                            BoolGameParameter::AutoSoundStopPlay,
+                        ))
+                    } else {
+                        None
+                    },
+                )),
         )
         .push(
             row()

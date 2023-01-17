@@ -39,7 +39,7 @@ use web_audio_api::{
 };
 
 const FADE_LEN: f64 = 0.05;
-const FADE_WAIT: Duration = Duration::from_millis(50); // TODO: base this on `FADE_TIME` (possible in rust 1.66)
+const FADE_WAIT: Duration = Duration::from_millis(50); // TODO: base this on `FADE_TIME` (blocked on rust allowing floats in const fns)
 
 const SOUND_LEN: f64 = 2.0;
 
@@ -68,6 +68,10 @@ pub struct SoundSettings {
     pub ref_alert_vol: Volume,
     pub above_water_vol: Volume,
     pub under_water_vol: Volume,
+    #[derivative(Default(value = "true"))]
+    pub auto_sound_start_play: bool,
+    #[derivative(Default(value = "true"))]
+    pub auto_sound_stop_play: bool,
     pub remotes: Vec<RemoteInfo>,
 }
 

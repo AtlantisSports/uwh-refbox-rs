@@ -445,11 +445,11 @@ fn make_sound_config_page<'a>(
     // `white_on_right` is based on the view from the front of the panels, so for the ref's point
     // of view we need to reverse the direction
     let sides = if *white_on_right {
-        // White to Ref's right
-        row().padding(PADDING).push(black).push(center).push(white)
-    } else {
         // White to Ref's left
         row().padding(PADDING).push(white).push(center).push(black)
+    } else {
+        // White to Ref's right
+        row().padding(PADDING).push(black).push(center).push(white)
     };
 
     let sides_btn = button(sides.width(Length::Fill).height(Length::Fill))

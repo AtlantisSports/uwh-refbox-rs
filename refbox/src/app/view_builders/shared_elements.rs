@@ -638,10 +638,14 @@ pub(super) fn config_string(
     } else {
         String::new()
     };
+    if !using_uwhscores {
+        result += &format!(
+            "Nominal Time Between Games: {}\n",
+            time_string(config.nominal_break),
+        );
+    }
     result += &format!(
-        "Nominal Time Between Games: {}\n\
-         Minimum Time Between Games: {}\n",
-        time_string(config.nominal_break),
+        "Minimum Time Between Games: {}\n",
         time_string(config.minimum_break),
     );
     result

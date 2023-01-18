@@ -1206,10 +1206,25 @@ impl TournamentManager {
         if !self.clock_is_running() {
             let time = clock_time.as_secs_f64();
             info!(
-                "Setting Game clock to {:02.0}:{:06.3} ",
+                "Setting game clock to {:02.0}:{:06.3}",
                 (time / 60.0).floor(),
                 time % 60.0
             );
+
+            for pen in self
+                .b_penalties
+                .iter_mut()
+                .chain(self.w_penalties.iter_mut())
+            {
+                if (pen.kind != PenaltyKind::TotalDismissal)
+                    && (pen.time_remaining(self.current_period, clock_time, &self.config)?
+                        > pen.kind.as_duration().unwrap())
+                {
+                    pen.start_period = self.current_period;
+                    pen.start_time = clock_time;
+                }
+            }
+
             self.clock_state = ClockState::Stopped { clock_time };
             Ok(())
         } else {
@@ -4443,6 +4458,47 @@ mod test {
             vec![PenaltySnapshot {
                 player_number: 2,
                 time: PenaltyTime::Seconds(61)
+            }]
+        );
+        assert_eq!(snapshot.w_penalties, vec![]);
+    }
+
+    #[test]
+    fn test_time_edit_limits_penalty_duration() {
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(900),
+            half_time_duration: Duration::from_secs(180),
+            ..Default::default()
+        };
+
+        let tm_start = Instant::now();
+        let pen_start = tm_start + Duration::from_secs(20);
+        let clock_stop = tm_start + Duration::from_secs(30);
+        let clock_restart = tm_start + Duration::from_secs(40);
+        let check_time = tm_start + Duration::from_secs(50);
+
+        let start_clock_time = Duration::from_secs(180);
+        let edited_clock_time = Duration::from_secs(240);
+
+        let mut tm = TournamentManager::new(config);
+
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, start_clock_time);
+        tm.start_game_clock(tm_start);
+        tm.start_penalty(Color::Black, 2, PenaltyKind::OneMinute, pen_start)
+            .unwrap();
+
+        tm.stop_clock(clock_stop).unwrap(); // At this point the game clock reads 150s, the penalty has 50s left
+        tm.set_game_clock_time(edited_clock_time).unwrap();
+        tm.start_game_clock(clock_restart);
+
+        // The penalty should have 50s left, without the limiting it would have 130s left
+        let snapshot = tm.generate_snapshot(check_time).unwrap();
+        assert_eq!(
+            snapshot.b_penalties,
+            vec![PenaltySnapshot {
+                player_number: 2,
+                time: PenaltyTime::Seconds(50)
             }]
         );
         assert_eq!(snapshot.w_penalties, vec![]);

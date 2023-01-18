@@ -14,6 +14,8 @@ use defmt::Format;
 use derivative::Derivative;
 use displaydoc::Display;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "std")]
+use time::Duration as SignedDuration;
 
 const PANEL_PENALTY_COUNT: usize = 3;
 
@@ -139,7 +141,7 @@ impl GamePeriod {
     }
 
     #[cfg(feature = "std")]
-    pub fn time_elapsed_at(self, time: Duration, config: &Game) -> Option<Duration> {
+    pub fn time_elapsed_at(self, time: Duration, config: &Game) -> Option<SignedDuration> {
         match self {
             p @ Self::BetweenGames
             | p @ Self::FirstHalf
@@ -149,12 +151,14 @@ impl GamePeriod {
             | p @ Self::OvertimeFirstHalf
             | p @ Self::OvertimeHalfTime
             | p @ Self::OvertimeSecondHalf
-            | p @ Self::PreSuddenDeath => p.duration(config).and_then(|d| d.checked_sub(time)),
-            Self::SuddenDeath => Some(time),
+            | p @ Self::PreSuddenDeath => p
+                .duration(config)
+                .and_then(|d| d.try_into().ok().map(|sd: SignedDuration| sd - time)),
+            Self::SuddenDeath => time.try_into().ok(),
         }
     }
 
-    pub fn time_between(self, start: Duration, end: Duration) -> Option<Duration> {
+    pub fn time_between(self, start: SignedDuration, end: SignedDuration) -> SignedDuration {
         match self {
             Self::BetweenGames
             | Self::FirstHalf
@@ -164,8 +168,8 @@ impl GamePeriod {
             | Self::OvertimeFirstHalf
             | Self::OvertimeHalfTime
             | Self::OvertimeSecondHalf
-            | Self::PreSuddenDeath => start.checked_sub(end),
-            Self::SuddenDeath => end.checked_sub(start),
+            | Self::PreSuddenDeath => start - end,
+            Self::SuddenDeath => end - start,
         }
     }
 
@@ -806,72 +810,72 @@ mod test {
         );
         assert_eq!(
             GamePeriod::FirstHalf.time_elapsed_at(Duration::from_secs(3), &config),
-            Some(Duration::from_secs(2))
+            Some(SignedDuration::seconds(2))
         );
         assert_eq!(
             GamePeriod::HalfTime.time_elapsed_at(Duration::from_secs(4), &config),
-            Some(Duration::from_secs(3))
+            Some(SignedDuration::seconds(3))
         );
         assert_eq!(
             GamePeriod::SecondHalf.time_elapsed_at(Duration::from_secs(3), &config),
-            Some(Duration::from_secs(2))
+            Some(SignedDuration::seconds(2))
         );
         assert_eq!(
             GamePeriod::PreOvertime.time_elapsed_at(Duration::from_secs(4), &config),
-            Some(Duration::from_secs(5))
+            Some(SignedDuration::seconds(5))
         );
         assert_eq!(
             GamePeriod::OvertimeFirstHalf.time_elapsed_at(Duration::from_secs(7), &config),
-            Some(Duration::from_secs(4))
+            Some(SignedDuration::seconds(4))
         );
         assert_eq!(
             GamePeriod::OvertimeHalfTime.time_elapsed_at(Duration::from_secs(8), &config),
-            Some(Duration::from_secs(5))
+            Some(SignedDuration::seconds(5))
         );
         assert_eq!(
             GamePeriod::OvertimeSecondHalf.time_elapsed_at(Duration::from_secs(7), &config),
-            Some(Duration::from_secs(4))
+            Some(SignedDuration::seconds(4))
         );
         assert_eq!(
             GamePeriod::PreSuddenDeath.time_elapsed_at(Duration::from_secs(9), &config),
-            Some(Duration::from_secs(6))
+            Some(SignedDuration::seconds(6))
         );
         assert_eq!(
             GamePeriod::SuddenDeath.time_elapsed_at(Duration::from_secs(3), &config),
-            Some(Duration::from_secs(3))
+            Some(SignedDuration::seconds(3))
         );
 
         assert_eq!(
             GamePeriod::FirstHalf.time_elapsed_at(Duration::from_secs(9), &config),
-            None
+            Some(SignedDuration::seconds(-4))
         );
         assert_eq!(
             GamePeriod::HalfTime.time_elapsed_at(Duration::from_secs(9), &config),
-            None
+            Some(SignedDuration::seconds(-2))
         );
         assert_eq!(
             GamePeriod::SecondHalf.time_elapsed_at(Duration::from_secs(9), &config),
-            None
+            Some(SignedDuration::seconds(-4))
         );
         assert_eq!(
             GamePeriod::PreOvertime.time_elapsed_at(Duration::from_secs(25), &config),
-            None
+            Some(SignedDuration::seconds(-16))
         );
         assert_eq!(
             GamePeriod::OvertimeFirstHalf.time_elapsed_at(Duration::from_secs(25), &config),
-            None
+            Some(SignedDuration::seconds(-14))
         );
         assert_eq!(
             GamePeriod::OvertimeHalfTime.time_elapsed_at(Duration::from_secs(25), &config),
-            None
+            Some(SignedDuration::seconds(-12))
         );
         assert_eq!(
             GamePeriod::OvertimeSecondHalf.time_elapsed_at(Duration::from_secs(25), &config),
-            None
+            Some(SignedDuration::seconds(-14))
         );
         assert_eq!(
             GamePeriod::PreSuddenDeath.time_elapsed_at(Duration::from_secs(25), &config),
-            None
+            Some(SignedDuration::seconds(-10))
         );
     }
 
@@ -880,22 +884,24 @@ mod test {
         let mut period = GamePeriod::BetweenGames;
         while period != GamePeriod::SuddenDeath {
             assert_eq!(
-                period.time_between(Duration::from_secs(6), Duration::from_secs(2)),
-                Some(Duration::from_secs(4))
+                period.time_between(SignedDuration::seconds(6), SignedDuration::seconds(2)),
+                SignedDuration::seconds(4)
             );
             assert_eq!(
-                period.time_between(Duration::from_secs(6), Duration::from_secs(10)),
-                None
+                period.time_between(SignedDuration::seconds(6), SignedDuration::seconds(10)),
+                SignedDuration::seconds(-4)
             );
             period = period.next_period().unwrap();
         }
         assert_eq!(
-            GamePeriod::SuddenDeath.time_between(Duration::from_secs(6), Duration::from_secs(2)),
-            None
+            GamePeriod::SuddenDeath
+                .time_between(SignedDuration::seconds(6), SignedDuration::seconds(2)),
+            SignedDuration::seconds(-4)
         );
         assert_eq!(
-            GamePeriod::SuddenDeath.time_between(Duration::from_secs(6), Duration::from_secs(10)),
-            Some(Duration::from_secs(4))
+            GamePeriod::SuddenDeath
+                .time_between(SignedDuration::seconds(6), SignedDuration::seconds(10)),
+            SignedDuration::seconds(4)
         );
     }
 

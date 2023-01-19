@@ -4,16 +4,13 @@ use clap::Parser;
 use iced::{pure::Application, window::icon::Icon, Settings};
 use log::*;
 #[cfg(debug_assertions)]
-use log4rs::append::console::ConsoleAppender;
+use log4rs::append::console::{ConsoleAppender, Target};
 use log4rs::{
-    append::{
-        console::Target,
-        rolling_file::{
-            policy::compound::{
-                roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger, CompoundPolicy,
-            },
-            RollingFileAppender,
+    append::rolling_file::{
+        policy::compound::{
+            roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger, CompoundPolicy,
         },
+        RollingFileAppender,
     },
     config::{Appender, Config as LogConfig, Logger, Root},
     encode::pattern::PatternEncoder,

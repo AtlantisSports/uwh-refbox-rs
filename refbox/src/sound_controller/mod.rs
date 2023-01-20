@@ -62,10 +62,10 @@ pub struct SoundSettings {
     #[derivative(Default(value = "true"))]
     pub sound_enabled: bool,
     #[derivative(Default(value = "true"))]
-    pub ref_alert_enabled: bool,
+    pub whistle_enabled: bool,
     pub buzzer_sound: BuzzerSound,
     #[derivative(Default(value = "Volume::Medium"))]
-    pub ref_alert_vol: Volume,
+    pub whistle_vol: Volume,
     pub above_water_vol: Volume,
     pub under_water_vol: Volume,
     #[derivative(Default(value = "true"))]
@@ -109,7 +109,7 @@ pub struct RemoteInfo {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum SoundMessage {
     TriggerBuzzer,
-    TriggerRefAlert,
+    TriggerWhistle,
     #[cfg(target_os = "linux")]
     StartBuzzer(Option<BuzzerSound>),
     #[cfg(target_os = "linux")]
@@ -174,10 +174,10 @@ impl SoundController {
                                         let sound = Sound::new(_context.clone(), volumes, library[_settings.buzzer_sound].clone(), true, true);
                                         last_sound = Some(sound);
                                     }
-                                    SoundMessage::TriggerRefAlert => {
-                                        info!("Playing ref alert once");
+                                    SoundMessage::TriggerWhistle => {
+                                        info!("Playing whistle once");
                                         let volumes = ChannelVolumes::new(&_settings, true);
-                                        let sound = Sound::new(_context.clone(), volumes, library.ref_alert().clone(), false, false);
+                                        let sound = Sound::new(_context.clone(), volumes, library.whistle().clone(), false, false);
                                         last_sound = Some(sound);
                                     }
                                     #[cfg(target_os = "linux")]
@@ -449,8 +449,8 @@ impl SoundController {
         self.settings_tx.send(settings).unwrap()
     }
 
-    pub fn trigger_ref_alert(&self) {
-        self.msg_tx.send(SoundMessage::TriggerRefAlert).unwrap()
+    pub fn trigger_whistle(&self) {
+        self.msg_tx.send(SoundMessage::TriggerWhistle).unwrap()
     }
 
     pub fn trigger_buzzer(&self) {
@@ -497,16 +497,16 @@ struct ChannelVolumes {
 }
 
 impl ChannelVolumes {
-    fn new(settings: &SoundSettings, is_ref_alert: bool) -> Self {
+    fn new(settings: &SoundSettings, is_whistle: bool) -> Self {
         Self {
-            left: if settings.sound_enabled && settings.ref_alert_enabled && is_ref_alert {
-                settings.ref_alert_vol.as_f32()
-            } else if settings.sound_enabled && !is_ref_alert {
+            left: if settings.sound_enabled && settings.whistle_enabled && is_whistle {
+                settings.whistle_vol.as_f32()
+            } else if settings.sound_enabled && !is_whistle {
                 settings.above_water_vol.as_f32()
             } else {
                 0.0
             },
-            right: if settings.sound_enabled && !is_ref_alert {
+            right: if settings.sound_enabled && !is_whistle {
                 settings.under_water_vol.as_f32()
             } else {
                 0.0

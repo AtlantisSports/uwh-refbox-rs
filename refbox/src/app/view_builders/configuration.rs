@@ -479,10 +479,10 @@ fn make_sound_config_page<'a>(
                     )),
                 ))
                 .push(make_value_button(
-                    "REF WARN\nVOLUME:",
-                    sound.ref_alert_vol.to_string().to_uppercase(),
+                    "WHISTLE\nVOLUME:",
+                    sound.whistle_vol.to_string().to_uppercase(),
                     (false, true),
-                    if sound.sound_enabled && sound.ref_alert_enabled {
+                    if sound.sound_enabled && sound.whistle_enabled {
                         Some(Message::CycleParameter(CyclingParameter::AlertVolume))
                     } else {
                         None
@@ -502,8 +502,8 @@ fn make_sound_config_page<'a>(
                 .spacing(SPACING)
                 .height(Length::Fill)
                 .push(make_value_button(
-                    "REF ALERT\nENABLED:",
-                    bool_string(sound.ref_alert_enabled),
+                    "WHISTLE\nENABLED:",
+                    bool_string(sound.whistle_enabled),
                     (false, true),
                     if sound.sound_enabled {
                         Some(Message::ToggleBoolParameter(

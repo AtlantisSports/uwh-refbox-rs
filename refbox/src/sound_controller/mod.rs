@@ -56,6 +56,8 @@ const BUTTON_TIMEOUT: Duration = Duration::from_millis(500);
 mod sounds;
 pub use sounds::*;
 
+use crate::app::update_sender::ServerMessage;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Derivative)]
 #[derivative(Default)]
 pub struct SoundSettings {
@@ -130,7 +132,12 @@ pub struct SoundController {
 
 impl SoundController {
     #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
-    pub fn new(mut settings: SoundSettings) -> Self {
+    pub fn new<F>(mut settings: SoundSettings, trigger_flash: F) -> Self
+    where
+        F: Send
+            + Fn() -> Result<(), tokio::sync::mpsc::error::TrySendError<ServerMessage>>
+            + 'static,
+    {
         let opts = AudioContextOptions {
             sample_rate: Some(SAMPLE_RATE),
             ..AudioContextOptions::default()
@@ -172,6 +179,7 @@ impl SoundController {
                                         info!("Auto-triggering buzzer");
                                         let volumes = ChannelVolumes::new(&_settings, false);
                                         let sound = Sound::new(_context.clone(), volumes, library[_settings.buzzer_sound].clone(), true, true);
+                                        trigger_flash().unwrap();
                                         last_sound = Some(sound);
                                     }
                                     SoundMessage::TriggerWhistle => {
@@ -186,6 +194,7 @@ impl SoundController {
                                         let buzzer_sound = sound_option.unwrap_or(_settings.buzzer_sound);
                                         let volumes = ChannelVolumes::new(&_settings, false);
                                         let sound = Sound::new(_context.clone(), volumes, library[buzzer_sound].clone(), true, false);
+                                        trigger_flash().unwrap();
                                         last_sound = Some(sound);
                                     }
                                     #[cfg(target_os = "linux")]
@@ -377,8 +386,8 @@ impl SoundController {
                     tokio::select! {
                         level = wired_rx.recv() => {
                             match level {
-                                Some(Level::High) => wired_pressed = false,
-                                Some(Level::Low) => {
+                                Some(Level::Low) => wired_pressed = false,
+                                Some(Level::High) => {
                                     wired_pressed = true;
                                     sound = None;
                                 }

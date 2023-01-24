@@ -451,8 +451,6 @@ impl Application for RefBoxApp {
             list_all_tournaments,
         } = flags;
 
-        let sound = SoundController::new(config.sound.clone());
-
         let (msg_tx, rx) = mpsc::unbounded_channel();
         let message_listener = MessageListener {
             rx: Arc::new(Mutex::new(Some(rx))),
@@ -480,6 +478,9 @@ impl Application for RefBoxApp {
         let tm = Arc::new(Mutex::new(tm));
 
         let update_sender = UpdateSender::new(serial_ports, binary_port, json_port);
+
+        let sound =
+            SoundController::new(config.sound.clone(), update_sender.get_trigger_flash_fn());
 
         let snapshot = Default::default();
 

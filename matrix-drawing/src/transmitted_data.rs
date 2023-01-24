@@ -5,6 +5,7 @@ use uwh_common::game_snapshot::{DecodingError, EncodingError, GameSnapshotNoHeap
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct TransmittedData {
     pub white_on_right: bool,
+    pub flash: bool,
     pub snapshot: GameSnapshotNoHeap,
 }
 
@@ -13,14 +14,15 @@ impl TransmittedData {
 
     pub fn encode(&self) -> Result<[u8; Self::ENCODED_LEN], EncodingError> {
         let mut val = [0u8; Self::ENCODED_LEN];
-        val[0] = self.white_on_right as u8;
+        val[0] = ((self.flash as u8) << 1) | self.white_on_right as u8;
         val[1..].copy_from_slice(&self.snapshot.encode()?);
         Ok(val)
     }
 
     pub fn decode(bytes: &[u8; Self::ENCODED_LEN]) -> Result<Self, DecodingError> {
         Ok(Self {
-            white_on_right: bytes[0] != 0,
+            white_on_right: bytes[0] & 0x01 != 0,
+            flash: bytes[0] & 0x02 != 0,
             snapshot: GameSnapshotNoHeap::decode(array_ref![
                 bytes,
                 1,
@@ -51,6 +53,7 @@ mod test {
 
         let mut data = TransmittedData {
             white_on_right: true,
+            flash: true,
             snapshot: state,
         };
 
@@ -81,6 +84,14 @@ mod test {
             player_number: 12,
             time: PenaltyTime::Seconds(96),
         });
+
+        test_data(&mut data)?;
+
+        data.flash = false;
+
+        test_data(&mut data)?;
+
+        data.white_on_right = true;
 
         test_data(&mut data)?;
 

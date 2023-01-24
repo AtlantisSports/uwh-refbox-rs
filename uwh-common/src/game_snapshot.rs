@@ -3,12 +3,9 @@ use crate::config::Game;
 use crate::drawing_support::*;
 use arrayref::array_ref;
 use arrayvec::ArrayVec;
+use core::cmp::{Ordering, PartialOrd};
 #[cfg(feature = "std")]
-use core::cmp::min;
-use core::{
-    cmp::{Ordering, PartialOrd},
-    time::Duration,
-};
+use core::{cmp::min, time::Duration};
 #[cfg(not(target_os = "windows"))]
 use defmt::Format;
 use derivative::Derivative;
@@ -158,6 +155,7 @@ impl GamePeriod {
         }
     }
 
+    #[cfg(feature = "std")]
     pub fn time_between(self, start: SignedDuration, end: SignedDuration) -> SignedDuration {
         match self {
             Self::BetweenGames

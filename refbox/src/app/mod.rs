@@ -1455,6 +1455,10 @@ impl Application for RefBoxApp {
                 let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
                 std::mem::drop(tm);
                 self.apply_snapshot(snapshot);
+                if let AppState::TimeEdit(_, _, ref mut timeout) = self.app_state {
+                    *timeout = None;
+                }
+                trace!("AppState changed to {:?}", self.app_state);
             }
             Message::RecvTournamentList(t_list) => {
                 let active_filter = if self.list_all_tournaments {

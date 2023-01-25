@@ -50,7 +50,6 @@ pub fn draw_panels<D: DrawTarget<Color = Rgb888>>(
         .build();
 
     if flash {
-        //        display.clear(WHITE)?;
         Rectangle::new(Point::new(0, 0), Size::new(255, 64))
             .into_styled(PrimitiveStyle::with_fill(FLASH_COLOR))
             .draw(display)?;

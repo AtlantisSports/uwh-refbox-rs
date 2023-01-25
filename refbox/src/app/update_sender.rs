@@ -1,6 +1,14 @@
+use futures_lite::future::FutureExt;
 use log::*;
 use matrix_drawing::transmitted_data::TransmittedData;
-use std::{collections::HashMap, fmt::Debug, future::Future, net::SocketAddr, pin::Pin};
+use std::{
+    collections::HashMap,
+    fmt::Debug,
+    future::Future,
+    net::SocketAddr,
+    pin::Pin,
+    task::{Context, Poll},
+};
 use thiserror::Error;
 use tokio::{
     io::{self, AsyncWrite, AsyncWriteExt},
@@ -11,11 +19,13 @@ use tokio::{
     time::{sleep_until, timeout, Duration, Instant},
 };
 use tokio_serial::{SerialPortBuilder, SerialPortBuilderExt, SerialStream};
-use uwh_common::game_snapshot::GameSnapshot;
+use uwh_common::game_snapshot::{EncodingError, GameSnapshot, GameSnapshotNoHeap};
 
 const TIMEOUT: Duration = Duration::from_millis(500);
 const SERIAL_SEND_SPACING: Duration = Duration::from_millis(100);
 const WORKER_CHANNEL_LEN: usize = 4;
+const FLASH_DURATION: Duration = Duration::from_millis(300); // Used by the simulator
+const FLASH_LENGTH: u8 = 3; // Number of transmit cycles to flash for (each cycle is 100ms)
 
 #[derive(Debug)]
 pub struct UpdateSender {
@@ -61,6 +71,13 @@ impl UpdateSender {
                 _ => unreachable!(),
             })
     }
+
+    pub fn get_trigger_flash_fn(
+        &self,
+    ) -> impl Send + Fn() -> Result<(), TrySendError<ServerMessage>> {
+        let tx = self.tx.clone();
+        move || tx.try_send(ServerMessage::TriggerFlash)
+    }
 }
 
 impl Drop for UpdateSender {
@@ -76,6 +93,10 @@ impl Drop for UpdateSender {
 enum WorkerError {
     #[error("The sender closed the channel")]
     ChannelClosed,
+    #[error("The sender sent an illegal first message")]
+    IllegalMessage,
+    #[error(transparent)]
+    EncodingError(#[from] EncodingError),
     #[error(transparent)]
     IoError(#[from] io::Error),
 }
@@ -100,25 +121,66 @@ async fn worker_loop<T: AsyncWrite + Debug + Unpin + Send>(
     }
 }
 
+#[derive(Debug)]
+enum SerialWorkerMessage {
+    NewSnapshot(GameSnapshotNoHeap, bool),
+    TriggerFlash,
+}
+
 async fn serial_worker_loop(
-    mut rx: mpsc::Receiver<Vec<u8>>,
+    mut rx: mpsc::Receiver<SerialWorkerMessage>,
     mut write: SerialStream,
 ) -> Result<(), WorkerError> {
-    let mut data = rx.recv().await.ok_or(WorkerError::ChannelClosed)?;
+    let msg = rx.recv().await.ok_or(WorkerError::ChannelClosed)?;
+    let (snapshot, white_on_right) = match msg {
+        SerialWorkerMessage::NewSnapshot(snapshot, white_on_right) => (snapshot, white_on_right),
+        SerialWorkerMessage::TriggerFlash => {
+            return Err(WorkerError::IllegalMessage);
+        }
+    };
+
+    let mut data = TransmittedData {
+        snapshot,
+        flash: false,
+        white_on_right,
+    };
+    let mut bytes = data.encode()?;
+
     let mut next_send = Instant::now() + SERIAL_SEND_SPACING;
+    let mut counter = 0u8;
 
     loop {
         select! {
             _ = sleep_until(next_send) => {
-                match write.try_write(&data[..]) {
-                    Ok(bytes_written) if bytes_written == data.len() => {},
-                    Ok(bytes_written) => warn!("An incorrect number of bytes was writeen to the serial port: {bytes_written}"),
+                match write.try_write(&bytes[..]) {
+                    Ok(bytes_written) if bytes_written == bytes.len() => {},
+                    Ok(bytes_written) => warn!("An incorrect number of bytes was written to the serial port: {bytes_written}"),
                     Err(e) => error!("Error writing to serial port: {e:?}"),
                 }
                 next_send += SERIAL_SEND_SPACING;
+                if data.flash {
+                    counter += 1;
+                    if counter >= FLASH_LENGTH {
+                        data.flash = false;
+                        bytes = data.encode()?;
+                    }
+                } else {
+                    counter = 0;
+                }
             }
             recv = rx.recv() => {
-                data = recv.ok_or(WorkerError::ChannelClosed)?;
+                match recv {
+                    Some(SerialWorkerMessage::NewSnapshot(snapshot, white_on_right)) => {
+                        data.snapshot = snapshot;
+                        data.white_on_right = white_on_right;
+                        bytes = data.encode()?;
+                    }
+                    Some(SerialWorkerMessage::TriggerFlash) => {
+                        data.flash = true;
+                        bytes = data.encode()?;
+                    }
+                    None => return Err(WorkerError::ChannelClosed),
+                }
             }
         }
     }
@@ -131,16 +193,79 @@ pub enum SendType {
 }
 
 #[derive(Debug)]
+enum WorkerTx {
+    Binary(mpsc::Sender<Vec<u8>>),
+    Json(mpsc::Sender<Vec<u8>>),
+    Serial(mpsc::Sender<SerialWorkerMessage>),
+}
+
+#[derive(Debug)]
 struct WorkerHandle {
-    send_type: SendType,
-    tx: mpsc::Sender<Vec<u8>>,
+    tx: WorkerTx,
     join: JoinHandle<Result<(), WorkerError>>,
+}
+
+impl WorkerHandle {
+    fn new_binary(tx: mpsc::Sender<Vec<u8>>, join: JoinHandle<Result<(), WorkerError>>) -> Self {
+        WorkerHandle {
+            tx: WorkerTx::Binary(tx),
+            join,
+        }
+    }
+
+    fn new_json(tx: mpsc::Sender<Vec<u8>>, join: JoinHandle<Result<(), WorkerError>>) -> Self {
+        WorkerHandle {
+            tx: WorkerTx::Json(tx),
+            join,
+        }
+    }
+
+    fn new_serial(
+        tx: mpsc::Sender<SerialWorkerMessage>,
+        join: JoinHandle<Result<(), WorkerError>>,
+    ) -> Self {
+        WorkerHandle {
+            tx: WorkerTx::Serial(tx),
+            join,
+        }
+    }
+
+    fn is_binary(&self) -> bool {
+        matches!(self.tx, WorkerTx::Binary(_))
+    }
+
+    fn is_json(&self) -> bool {
+        matches!(self.tx, WorkerTx::Json(_))
+    }
+
+    fn is_serial(&self) -> bool {
+        matches!(self.tx, WorkerTx::Serial(_))
+    }
+
+    fn send(
+        &self,
+        binary: &[u8],
+        json: &[u8],
+        snapshot: &GameSnapshotNoHeap,
+        white_on_right: bool,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        match self.tx {
+            WorkerTx::Binary(ref tx) => tx.try_send(Vec::from(binary))?,
+            WorkerTx::Json(ref tx) => tx.try_send(Vec::from(json))?,
+            WorkerTx::Serial(ref tx) => tx.try_send(SerialWorkerMessage::NewSnapshot(
+                snapshot.clone(),
+                white_on_right,
+            ))?,
+        };
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
 pub enum ServerMessage {
     NewConnection(SendType, TcpStream),
     NewSnapshot(GameSnapshot, bool),
+    TriggerFlash,
     Stop,
 }
 
@@ -151,6 +276,11 @@ struct Server {
     rx: mpsc::Receiver<ServerMessage>,
     has_binary: bool,
     has_json: bool,
+    snapshot: GameSnapshotNoHeap,
+    white_on_right: bool,
+    flash: bool,
+    binary: Vec<u8>,
+    json: Vec<u8>,
 }
 
 impl Server {
@@ -161,6 +291,11 @@ impl Server {
             rx,
             has_binary: false,
             has_json: false,
+            snapshot: Default::default(),
+            white_on_right: false,
+            flash: false,
+            binary: Vec::new(),
+            json: Vec::new(),
         };
 
         for stream in initial {
@@ -180,10 +315,9 @@ impl Server {
 
         self.senders.insert(
             self.next_id,
-            WorkerHandle {
-                send_type,
-                tx,
-                join,
+            match send_type {
+                SendType::Binary => WorkerHandle::new_binary(tx, join),
+                SendType::Json => WorkerHandle::new_json(tx, join),
             },
         );
         self.next_id += 1;
@@ -198,82 +332,111 @@ impl Server {
         let (tx, rx) = mpsc::channel(WORKER_CHANNEL_LEN);
         let join = task::spawn(serial_worker_loop(rx, sender));
 
-        self.senders.insert(
-            self.next_id,
-            WorkerHandle {
-                send_type: SendType::Binary,
-                tx,
-                join,
-            },
-        );
+        self.senders
+            .insert(self.next_id, WorkerHandle::new_serial(tx, join));
         self.next_id += 1;
 
         self.has_binary = true;
     }
 
     fn check_types(&mut self) {
-        self.has_binary = self
-            .senders
-            .iter()
-            .any(|(_, handle)| handle.send_type == SendType::Binary);
-        self.has_json = self
-            .senders
-            .iter()
-            .any(|(_, handle)| handle.send_type == SendType::Json);
+        self.has_binary = self.senders.iter().any(|(_, handle)| handle.is_binary());
+        self.has_json = self.senders.iter().any(|(_, handle)| handle.is_json());
+    }
+
+    fn encode(&mut self, new_snapshot: GameSnapshot) {
+        self.json = if self.has_json {
+            (serde_json::to_string(&new_snapshot).unwrap() + "\n").into_bytes()
+        } else {
+            Vec::new()
+        };
+
+        self.snapshot = new_snapshot.into();
+        self.encode_flash();
+    }
+
+    fn encode_flash(&mut self) {
+        self.binary = if self.has_binary {
+            Vec::from(
+                TransmittedData {
+                    white_on_right: self.white_on_right,
+                    flash: self.flash,
+                    snapshot: self.snapshot.clone(),
+                }
+                .encode()
+                .unwrap(),
+            )
+        } else {
+            Vec::new()
+        };
+    }
+
+    fn send_to_workers(&mut self, only_binary: bool) {
+        let filter = |(_, handle): &(_, &WorkerHandle)| {
+            if only_binary {
+                handle.is_binary()
+            } else {
+                true
+            }
+        };
+
+        for (_, handle) in self.senders.iter().filter(filter) {
+            if let Err(e) = handle.send(
+                &self.binary,
+                &self.json,
+                &self.snapshot,
+                self.white_on_right,
+            ) {
+                error!("Error sending to worker: {e:?}");
+            }
+        }
     }
 
     pub async fn run_loop(mut self) {
+        let mut flash_ends = None;
+
         loop {
-            if let Some(msg) = self.rx.recv().await {
-                match msg {
-                    ServerMessage::NewConnection(send_type, stream) => {
-                        self.add_sender(send_type, stream)
-                    }
-                    ServerMessage::NewSnapshot(snapshot, white_on_right) => {
-                        //info!("Server received snapshot: {snapshot:?}");
-                        let json = if self.has_json {
-                            (serde_json::to_string(&snapshot).unwrap() + "\n").into_bytes()
-                        } else {
-                            vec![]
-                        };
-                        let binary = if self.has_binary {
-                            Vec::from(
-                                TransmittedData {
-                                    white_on_right,
-                                    snapshot: snapshot.into(),
-                                }
-                                .encode()
-                                .unwrap(),
-                            )
-                        } else {
-                            vec![]
-                        };
+            let flash_end = if let Some(time) = flash_ends {
+                FlashEnd::Time(Box::pin(sleep_until(time)))
+            } else {
+                FlashEnd::Never(core::future::pending())
+            };
 
-                        let mut remove = vec![];
-
-                        for (id, handle) in self.senders.iter_mut() {
-                            let to_send = match handle.send_type {
-                                SendType::Binary => binary.clone(),
-                                SendType::Json => json.clone(),
-                            };
-
-                            //info!("Sending to worker: {to_send:?}");
-                            match handle.tx.send(to_send).await {
-                                Ok(()) => {}
-                                Err(_) => remove.push(*id),
-                            };
-                        }
-
-                        let removing = !remove.is_empty();
-                        for id in remove {
-                            self.senders.remove(&id);
-                        }
-
-                        if removing {
+            select! {
+                _ = flash_end => {
+                    self.flash = false;
+                }
+                msg = self.rx.recv() => {
+                    match msg {
+                        Some(ServerMessage::NewConnection(send_type, stream)) => {
+                            self.add_sender(send_type, stream);
                             self.check_types();
                         }
+                        Some(ServerMessage::NewSnapshot(snapshot, white_on_right)) => {
+                            self.white_on_right = white_on_right;
+                            self.encode(snapshot);
+                            self.send_to_workers(false);
+                        }
+                        Some(ServerMessage::TriggerFlash) => {
+                            self.flash = true;
+                            flash_ends = Some(Instant::now() + FLASH_DURATION);
+                            self.encode_flash();
+                            self.send_to_workers(true);  // Send to the binary listeners
+                            for (_, handle) in self.senders.iter().filter(|(_, handle)| handle.is_serial()) {
+                                if let WorkerTx::Serial(tx) = &handle.tx {
+                                    if let Err(e) = tx.try_send(SerialWorkerMessage::TriggerFlash) {
+                                        error!("Error sending to worker: {e:?}");
+                                    }
+                                }
+                            }
+                        }
+                        Some(ServerMessage::Stop) => {
+                            break;
+                        }
+                        None => {
+                            break;
+                        }
                     }
-                    ServerMessage::Stop => break,
                 }
             }
         }
@@ -364,6 +527,22 @@ async fn listener_loop(tx: mpsc::Sender<ServerMessage>, binary_port: u16, json_p
     }
 }
 
+enum FlashEnd {
+    Never(core::future::Pending<()>),
+    Time(Pin<Box<tokio::time::Sleep>>),
+}
+
+impl Future for FlashEnd {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        match *self {
+            Self::Never(ref mut pend) => pend.poll(cx),
+            Self::Time(ref mut slp) => slp.poll(cx),
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -419,6 +598,7 @@ mod test {
         }
 
         let white_on_right = false;
+        let flash = false;
         let snapshot = GameSnapshot {
             current_period: GamePeriod::FirstHalf,
             secs_in_period: 897,
@@ -458,6 +638,7 @@ mod test {
         let binary_expected = Vec::from(
             TransmittedData {
                 white_on_right,
+                flash,
                 snapshot: snapshot.clone().into(),
             }
             .encode()

@@ -4,9 +4,11 @@ use core::{
     ops::{Div, Rem},
 };
 use embedded_graphics::{
+    geometry::{Point, Size},
     mono_font::MonoTextStyle,
     pixelcolor::Rgb888,
     prelude::*,
+    primitives::{rectangle::Rectangle, PrimitiveStyle},
     text::{Alignment, Baseline, LineHeight, Text, TextStyle, TextStyleBuilder},
 };
 use fonts::fonts::{FONT_10X25, FONT_14X31, FONT_20X46, FONT_28X64, FONT_5X8, FONT_7X15};
@@ -20,12 +22,14 @@ pub fn draw_panels<D: DrawTarget<Color = Rgb888>>(
     display: &mut D,
     state: GameSnapshotNoHeap,
     white_on_right: bool,
+    flash: bool,
 ) -> Result<(), D::Error> {
     const RED: Rgb888 = Rgb888::RED;
     const YELLOW: Rgb888 = Rgb888::YELLOW;
     const GREEN: Rgb888 = Rgb888::GREEN;
     const BLUE: Rgb888 = Rgb888::new(64, 128, 255); //purple (225, 0, 255)
     const WHITE: Rgb888 = Rgb888::WHITE;
+    const FLASH_COLOR: Rgb888 = Rgb888::new(0, 200, 200);
 
     const CENTERED: TextStyle = TextStyleBuilder::new()
         .alignment(Alignment::Center)
@@ -44,6 +48,14 @@ pub fn draw_panels<D: DrawTarget<Color = Rgb888>>(
         .baseline(Baseline::Top)
         .line_height(LineHeight::Percent(100))
         .build();
+
+    if flash {
+        //        display.clear(WHITE)?;
+        Rectangle::new(Point::new(0, 0), Size::new(255, 64))
+            .into_styled(PrimitiveStyle::with_fill(FLASH_COLOR))
+            .draw(display)?;
+        return Ok(());
+    }
 
     let game_color = match state.timeout {
         TimeoutSnapshot::PenaltyShot(_) => RED,

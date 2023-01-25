@@ -3,12 +3,9 @@ use crate::config::Game;
 use crate::drawing_support::*;
 use arrayref::array_ref;
 use arrayvec::ArrayVec;
+use core::cmp::{Ordering, PartialOrd};
 #[cfg(feature = "std")]
-use core::cmp::min;
-use core::{
-    cmp::{Ordering, PartialOrd},
-    time::Duration,
-};
+use core::{cmp::min, time::Duration};
 #[cfg(not(target_os = "windows"))]
 use defmt::Format;
 use derivative::Derivative;
@@ -22,7 +19,7 @@ const PANEL_PENALTY_COUNT: usize = 3;
 /// Game snapshot information that the LED matrices need. Excludes some fields, limits to three
 /// penalties (the three with the lowest remaining time), and places the penalties on a stack-based
 /// `ArrayVec`, instead of the heap-based `Vec`
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Default, Clone, Serialize, Deserialize)]
 pub struct GameSnapshotNoHeap {
     pub current_period: GamePeriod,
     pub secs_in_period: u16,
@@ -158,6 +155,7 @@ impl GamePeriod {
         }
     }
 
+    #[cfg(feature = "std")]
     pub fn time_between(self, start: SignedDuration, end: SignedDuration) -> SignedDuration {
         match self {
             Self::BetweenGames

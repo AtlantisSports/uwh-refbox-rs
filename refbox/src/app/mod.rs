@@ -127,11 +127,11 @@ impl RefBoxApp {
     }
 
     fn maybe_play_sound(&self, new_snapshot: &GameSnapshot) {
-        let (play_ref_alert, play_buzzer) = match new_snapshot.timeout {
+        let (play_whistle, play_buzzer) = match new_snapshot.timeout {
             TimeoutSnapshot::Black(time) | TimeoutSnapshot::White(time) => {
                 match self.snapshot.timeout {
                     TimeoutSnapshot::Black(old_time) | TimeoutSnapshot::White(old_time) => (
-                        time != old_time && time == 20,
+                        time != old_time && time == 15,
                         time != old_time && time == 0,
                     ),
                     _ => (false, false),
@@ -142,7 +142,7 @@ impl RefBoxApp {
                 let prereqs = new_snapshot.current_period != GamePeriod::SuddenDeath
                     && new_snapshot.secs_in_period != self.snapshot.secs_in_period;
 
-                let is_alert_period = match new_snapshot.current_period {
+                let is_whistle_period = match new_snapshot.current_period {
                     GamePeriod::BetweenGames
                     | GamePeriod::HalfTime
                     | GamePeriod::PreOvertime
@@ -172,15 +172,15 @@ impl RefBoxApp {
                     || end_stops_play && self.config.sound.auto_sound_stop_play;
 
                 (
-                    prereqs && is_alert_period && new_snapshot.secs_in_period == 35,
+                    prereqs && is_whistle_period && new_snapshot.secs_in_period == 30,
                     prereqs && is_buzz_period && new_snapshot.secs_in_period == 0,
                 )
             }
         };
 
-        if play_ref_alert {
-            info!("Triggering ref alert");
-            self.sound.trigger_ref_alert();
+        if play_whistle {
+            info!("Triggering whistle");
+            self.sound.trigger_whistle();
         } else if play_buzzer {
             info!("Triggering buzzer");
             self.sound.trigger_buzzer();
@@ -451,8 +451,6 @@ impl Application for RefBoxApp {
             list_all_tournaments,
         } = flags;
 
-        let sound = SoundController::new(config.sound.clone());
-
         let (msg_tx, rx) = mpsc::unbounded_channel();
         let message_listener = MessageListener {
             rx: Arc::new(Mutex::new(Some(rx))),
@@ -480,6 +478,9 @@ impl Application for RefBoxApp {
         let tm = Arc::new(Mutex::new(tm));
 
         let update_sender = UpdateSender::new(serial_ports, binary_port, json_port);
+
+        let sound =
+            SoundController::new(config.sound.clone(), update_sender.get_trigger_flash_fn());
 
         let snapshot = Default::default();
 
@@ -1215,7 +1216,7 @@ impl Application for RefBoxApp {
                     BoolGameParameter::UsingUwhScores => edited_settings.using_uwhscores ^= true,
                     BoolGameParameter::SoundEnabled => edited_settings.sound.sound_enabled ^= true,
                     BoolGameParameter::RefAlertEnabled => {
-                        edited_settings.sound.ref_alert_enabled ^= true
+                        edited_settings.sound.whistle_enabled ^= true
                     }
                     BoolGameParameter::AutoSoundStartPlay => {
                         edited_settings.sound.auto_sound_start_play ^= true
@@ -1230,7 +1231,7 @@ impl Application for RefBoxApp {
                 match param {
                     CyclingParameter::BuzzerSound => sound.buzzer_sound.cycle(),
                     CyclingParameter::RemoteBuzzerSound(idx) => sound.remotes[idx].sound.cycle(),
-                    CyclingParameter::AlertVolume => sound.ref_alert_vol.cycle(),
+                    CyclingParameter::AlertVolume => sound.whistle_vol.cycle(),
                     CyclingParameter::AboveWaterVol => sound.above_water_vol.cycle(),
                     CyclingParameter::UnderWaterVol => sound.under_water_vol.cycle(),
                 }

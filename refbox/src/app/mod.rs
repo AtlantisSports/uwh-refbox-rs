@@ -25,6 +25,7 @@ use tokio::{
 };
 use tokio_serial::SerialPortBuilder;
 use uwh_common::{
+    config::Game as GameConfig,
     drawing_support::*,
     game_snapshot::{Color as GameColor, GamePeriod, GameSnapshot, TimeoutSnapshot},
     uwhscores::*,
@@ -102,7 +103,7 @@ enum AppState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ConfirmationKind {
     GameNumberChanged,
-    GameConfigChanged,
+    GameConfigChanged(GameConfig),
     Error(String),
     UwhScoresIncomplete,
 }
@@ -955,7 +956,9 @@ impl Application for RefBoxApp {
                         AppState::ConfirmationPage(ConfirmationKind::UwhScoresIncomplete)
                     } else if new_config != *tm.config() {
                         if tm.current_period() != GamePeriod::BetweenGames {
-                            AppState::ConfirmationPage(ConfirmationKind::GameConfigChanged)
+                            AppState::ConfirmationPage(ConfirmationKind::GameConfigChanged(
+                                new_config,
+                            ))
                         } else {
                             tm.set_config(new_config.clone()).unwrap();
                             self.config.game = new_config;
@@ -1274,10 +1277,13 @@ impl Application for RefBoxApp {
                 }
             }
             Message::ConfirmationSelected(selection) => {
-                let config_changed = if let AppState::ConfirmationPage(ref kind) = self.app_state {
-                    kind == &ConfirmationKind::GameConfigChanged
+                let new_config = if let AppState::ConfirmationPage(
+                    ConfirmationKind::GameConfigChanged(ref config),
+                ) = self.app_state
+                {
+                    Some(config.clone())
                 } else {
-                    unreachable!()
+                    None
                 };
 
                 self.app_state = match selection {
@@ -1288,8 +1294,9 @@ impl Application for RefBoxApp {
                         let mut tm = self.tm.lock().unwrap();
                         let now = Instant::now();
                         tm.reset_game(now);
-                        if config_changed {
-                            tm.set_config(self.config.game.clone()).unwrap();
+                        if let Some(config) = new_config {
+                            tm.set_config(config.clone()).unwrap();
+                            self.config.game = config;
                         }
 
                         let game = edited_settings

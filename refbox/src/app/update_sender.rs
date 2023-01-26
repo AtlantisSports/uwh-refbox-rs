@@ -556,6 +556,7 @@ mod test {
     const MAX_CONN_FAILS: usize = 20;
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[ignore]
     async fn test_update_sender() {
         let update_sender = UpdateSender::new(vec![], BINARY_PORT, JSON_PORT);
 

@@ -16,14 +16,14 @@ pub(in super::super) fn build_confirmation_page<'a>(
     kind: &ConfirmationKind,
 ) -> Element<'a, Message> {
     let header_text = match kind {
-        ConfirmationKind::GameConfigChanged => "The game configuration can not be changed while a game is in progress.\n\nWhat would you like to do?",
+        ConfirmationKind::GameConfigChanged(_) => "The game configuration can not be changed while a game is in progress.\n\nWhat would you like to do?",
         ConfirmationKind::GameNumberChanged => "How would you like to apply this game number change?",
         ConfirmationKind::Error(string) => string,
         ConfirmationKind::UwhScoresIncomplete => "When UWHScores is enabled, all fields must be filled out."
             };
 
     let buttons = match kind {
-        ConfirmationKind::GameConfigChanged => vec![
+        ConfirmationKind::GameConfigChanged(_) => vec![
             (
                 "GO BACK TO EDITOR",
                 style::Button::Green,

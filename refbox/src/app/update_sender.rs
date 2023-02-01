@@ -555,8 +555,7 @@ mod test {
     const JSON_PORT: u16 = 12346;
     const MAX_CONN_FAILS: usize = 20;
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    #[ignore]
+    #[tokio::test]
     async fn test_update_sender() {
         let update_sender = UpdateSender::new(vec![], BINARY_PORT, JSON_PORT);
 
@@ -585,6 +584,25 @@ mod test {
             match TcpStream::connect(("localhost", JSON_PORT)).await {
                 Ok(stream) => {
                     json_conn = stream;
+                    break;
+                }
+                Err(e) => {
+                    if e.kind() == ErrorKind::ConnectionRefused {
+                        assert_le!(fail_count, MAX_CONN_FAILS);
+                        fail_count += 1;
+                    } else {
+                        panic!("Unexpected connection error: {e:?}");
+                    }
+                }
+            };
+        }
+
+        // Make a third connection to the binary port to ensure that the server has processed the first two
+        println!("Connecting to server on binary port");
+        let mut fail_count = 0;
+        loop {
+            match TcpStream::connect(("localhost", BINARY_PORT)).await {
+                Ok(_) => {
                     break;
                 }
                 Err(e) => {
@@ -650,24 +668,29 @@ mod test {
             .send_snapshot(snapshot, white_on_right)
             .unwrap();
 
-        let expected_json_bytes = json_expected.len();
-        let mut json_result = vec![0u8; expected_json_bytes];
-        let json_bytes = json_conn
-            .read_exact(&mut json_result[..expected_json_bytes])
-            .await
-            .unwrap();
-
         let expected_binary_bytes = binary_expected.len();
         let mut binary_result = vec![0u8; expected_binary_bytes];
-        let binary_bytes = binary_conn
-            .read_exact(&mut binary_result[..expected_binary_bytes])
-            .await
-            .unwrap();
+        let mut binary_read_so_far = 0;
 
-        assert_eq!(expected_json_bytes, json_bytes);
+        let expected_json_bytes = json_expected.len();
+        let mut json_result = vec![0u8; expected_json_bytes];
+        let mut json_read_so_far = 0;
+
+        while json_read_so_far < expected_json_bytes || binary_read_so_far < expected_binary_bytes {
+            select! {
+                bytes = binary_conn.read(&mut binary_result[binary_read_so_far..]) => {
+                    binary_read_so_far += bytes.unwrap();
+                }
+                bytes = json_conn.read(&mut json_result[json_read_so_far..]) => {
+                    json_read_so_far += bytes.unwrap();
+                }
+            }
+        }
+
+        assert_eq!(expected_json_bytes, json_read_so_far);
         assert_eq!(json_expected, json_result);
 
-        assert_eq!(expected_binary_bytes, binary_bytes);
+        assert_eq!(expected_binary_bytes, binary_read_so_far);
         assert_eq!(binary_expected, binary_result);
     }
 }

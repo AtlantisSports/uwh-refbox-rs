@@ -104,8 +104,7 @@ async fn fetch_game_data(
         url, tournament_id, game_id
     ))
     .await
-    .inspect_err(|e| error!("No internet! Give some Internet pls"))
-    .unwrap();
+    .expect("No internet! Give some Internet pls");
     let text = data.text().await.unwrap();
     let data: Value = serde_json::from_str(text.as_str()).unwrap();
     let team_id_black = data["game"]["black_id"].as_u64().unwrap_or(0);

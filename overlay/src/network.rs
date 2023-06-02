@@ -30,6 +30,8 @@ impl TeamInfo {
             .unwrap(),
         )
         .unwrap();
+
+        //TODO filter out players with empty name strings?
         let players: Vec<Value> = data["team"]["roster"]
             .as_array()
             .map(|x| x.to_vec())
@@ -37,12 +39,21 @@ impl TeamInfo {
         let mut player_list: Vec<(String, u8)> = Vec::new();
         for player in players {
             player_list.push((
-                player["name"].as_str().unwrap().to_string(),
-                player["number"].as_u64().unwrap() as u8,
+                player["name"]
+                    .as_str()
+                    .unwrap_or({
+                        debug!("Unwrap failed on player name. Using default value.");
+                        ""
+                    })
+                    .to_string(),
+                player["number"].as_u64().unwrap_or({
+                    debug!("Unwrap failed on player number. Using default value.");
+                    0
+                }) as u8,
             ));
         }
 
-        Self {
+        let x = Self {
             team_name: data["team"]["name"]
                 .as_str()
                 .unwrap_or(match team_color {
@@ -51,10 +62,23 @@ impl TeamInfo {
                 })
                 .to_string(),
             players: player_list,
-            flag: data["team"]["flag_url"]
-                .as_str()
-                .map(|s| reqwest::blocking::get(s).unwrap().bytes().unwrap().to_vec()),
-        }
+            flag: match data["team"]["flag_url"].as_str().map(|s| async move {
+                reqwest::get(s)
+                    .await
+                    .expect("flag_url invalid")
+                    .bytes()
+                    .await
+                    .unwrap_or({
+                        debug!("Unwrap failed on getting flag data");
+                        bytes::Bytes::new()
+                    })
+                    .to_vec()
+            }) {
+                Some(d) => Some(d.await),
+                None => None,
+            },
+        };
+        x
     }
 }
 
@@ -80,6 +104,7 @@ async fn fetch_game_data(
         url, tournament_id, game_id
     ))
     .await
+    .inspect_err(|e| error!("No internet! Give some Internet pls"))
     .unwrap();
     let text = data.text().await.unwrap();
     let data: Value = serde_json::from_str(text.as_str()).unwrap();
@@ -132,6 +157,7 @@ pub async fn networking_thread(
                 } else {
                     snapshot.game_number
                 };
+            let (tid, gid) = (35, 1);
             if (tournament_id.is_some() && tournament_id.unwrap() != tid
                 || game_id.is_some() && game_id.unwrap() != gid)
                 || tournament_id.is_none() && game_id.is_none()

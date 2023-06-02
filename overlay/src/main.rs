@@ -195,7 +195,10 @@ async fn main() {
     let tournament_logo_color = match read_image_from_file(tournament_logo_color_path.as_path()) {
         Ok(texture) => Some(texture),
         Err(e) => {
-            warn!("Failed to read tournament logo color file: {e}");
+            warn!(
+                "Failed to read tournament logo color file: {} : {e}",
+                tournament_logo_color_path.display()
+            );
             None
         }
     };
@@ -203,7 +206,10 @@ async fn main() {
     let tournament_logo_alpha = match read_image_from_file(tournament_logo_alpha_path.as_path()) {
         Ok(texture) => Some(texture),
         Err(e) => {
-            warn!("Failed to read tournament logo alpha file: {e}");
+            warn!(
+                "Failed to read tournament logo alpha file: {} : {e}",
+                tournament_logo_alpha_path.display()
+            );
             None
         }
     };
@@ -249,7 +255,7 @@ async fn main() {
     }
 
     loop {
-        assert!(!net_worker.is_finished(), "Error in Networking thread!");
+        assert!(!net_worker.is_finished(), "Networking thread panikd!");
         clear_background(BLACK);
 
         if let Ok(recieved_state) = rx.try_recv() {

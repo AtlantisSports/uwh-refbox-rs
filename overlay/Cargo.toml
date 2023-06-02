@@ -22,3 +22,4 @@ serde = { version = "1.0.139", features = ["derive"] }
 serde_json = { version = "*" }
 tokio = { version = "*", features = ["macros"] }
 uwh-common = { path = "../uwh-common/" }
+bytes = "*"

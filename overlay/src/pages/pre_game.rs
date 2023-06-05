@@ -15,8 +15,8 @@ impl PageRenderer {
     pub fn pre_game_display(&mut self, state: &State) {
         match state.snapshot.secs_in_period {
             16.. => {
-                draw_texture_both!(self.textures.atlantis_logo_graphic, 836f32, 725f32, WHITE);
-                draw_texture_both!(self.textures.bottom_graphic, 822f32, 977f32, WHITE);
+                draw_texture_both!(self.assets.atlantis_logo, 836f32, 725f32, WHITE);
+                draw_texture_both!(self.assets.bottom, 822f32, 977f32, WHITE);
                 let min = state.snapshot.secs_in_period / 60;
                 let secs = state.snapshot.secs_in_period % 60;
                 let text = format!(
@@ -32,14 +32,13 @@ impl PageRenderer {
                         format!("{}", secs)
                     }
                 );
-                let (x_off, text) =
-                    center_text_offset!(90f32, text.as_str(), 50, self.textures.font);
+                let (x_off, text) = center_text_offset!(90f32, text.as_str(), 50, self.assets.font);
                 draw_text_ex(
                     text.as_str(),
                     870f32 + x_off,
                     1020f32,
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 50,
                         ..Default::default()
                     },
@@ -49,7 +48,7 @@ impl PageRenderer {
                     905f32,
                     1044f32,
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 20,
                         ..Default::default()
                     },
@@ -65,13 +64,13 @@ impl PageRenderer {
                 ) as u8;
 
                 draw_texture_both!(
-                    self.textures.atlantis_logo_graphic,
+                    self.assets.atlantis_logo,
                     836f32,
                     725f32,
                     Color::from_rgba(255, 255, 255, offset)
                 );
                 draw_texture_both!(
-                    self.textures.bottom_graphic,
+                    self.assets.bottom,
                     822f32,
                     977f32,
                     Color::from_rgba(255, 255, 255, offset)
@@ -91,14 +90,13 @@ impl PageRenderer {
                         format!("{}", secs)
                     }
                 );
-                let (x_off, text) =
-                    center_text_offset!(90f32, text.as_str(), 50, self.textures.font);
+                let (x_off, text) = center_text_offset!(90f32, text.as_str(), 50, self.assets.font);
                 draw_text_ex(
                     text.as_str(),
                     870f32 + x_off,
                     1020f32,
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 50,
                         color: Color::from_rgba(255, 255, 255, offset),
                         ..Default::default()
@@ -109,7 +107,7 @@ impl PageRenderer {
                     905f32,
                     1044f32,
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 20,
                         color: Color::from_rgba(255, 255, 255, offset),
 
@@ -121,19 +119,14 @@ impl PageRenderer {
                 self.animation_register1 = Instant::now();
             }
         }
-        draw_texture_both!(self.textures.team_bar_graphic, 26f32, 37f32, WHITE);
-        draw_texture_both!(
-            self.textures.time_and_game_state_graphic,
-            367f32,
-            18f32,
-            WHITE
-        );
+        draw_texture_both!(self.assets.team_bar, 26f32, 37f32, WHITE);
+        draw_texture_both!(self.assets.time_and_game_state, 367f32, 18f32, WHITE);
         draw_text_both!(
             state.snapshot.b_score.to_string().as_str(),
             40f32,
             104f32,
             TextParams {
-                font: self.textures.font,
+                font: self.assets.font,
                 font_size: 30,
                 ..Default::default()
             }
@@ -143,13 +136,13 @@ impl PageRenderer {
             40f32,
             65f32,
             TextParams {
-                font: self.textures.font,
+                font: self.assets.font,
                 font_size: 30,
                 color: BLACK,
                 ..Default::default()
             },
             TextParams {
-                font: self.textures.font,
+                font: self.assets.font,
                 font_size: 30,
                 ..Default::default()
             }
@@ -164,13 +157,13 @@ impl PageRenderer {
             },
             64f32,
             TextParams {
-                font: self.textures.font,
+                font: self.assets.font,
                 font_size: 20,
                 color: BLACK,
                 ..Default::default()
             },
             TextParams {
-                font: self.textures.font,
+                font: self.assets.font,
                 font_size: 20,
                 ..Default::default()
             }
@@ -184,7 +177,7 @@ impl PageRenderer {
             },
             100f32,
             TextParams {
-                font: self.textures.font,
+                font: self.assets.font,
                 font_size: 20,
                 ..Default::default()
             }
@@ -204,13 +197,13 @@ impl PageRenderer {
                 format!("{}", secs)
             }
         );
-        let (x_off, text) = center_text_offset!(90f32, text.as_str(), 50, self.textures.font);
+        let (x_off, text) = center_text_offset!(90f32, text.as_str(), 50, self.assets.font);
         draw_text_ex(
             text.as_str(),
             430f32 + x_off,
             67f32,
             TextParams {
-                font: self.textures.font,
+                font: self.assets.font,
                 font_size: 50,
                 ..Default::default()
             },
@@ -220,7 +213,7 @@ impl PageRenderer {
             478f32,
             100f32,
             TextParams {
-                font: self.textures.font,
+                font: self.assets.font,
                 font_size: 20,
                 ..Default::default()
             },

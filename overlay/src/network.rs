@@ -24,10 +24,10 @@ impl TeamInfo {
                 url, tournament_id, team_id
             ))
             .await
-            .unwrap()
+            .expect("Coudn't request team data")
             .text()
             .await
-            .unwrap(),
+            .expect("Coudn't process team data"),
         )
         .unwrap();
 
@@ -62,20 +62,15 @@ impl TeamInfo {
                 })
                 .to_string(),
             players: player_list,
-            flag: match data["team"]["flag_url"].as_str().map(|s| async move {
-                reqwest::get(s)
-                    .await
-                    .expect("flag_url invalid")
-                    .bytes()
-                    .await
-                    .unwrap_or({
-                        debug!("Unwrap failed on getting flag data");
-                        bytes::Bytes::new()
-                    })
-                    .to_vec()
-            }) {
-                Some(d) => Some(d.await),
-                None => None,
+            flag: {
+                async fn flag_get(data: &Value) -> Option<Vec<u8>> {
+                    if let Some(url) = data["team"]["flag_url"].as_str() {
+                        Some(reqwest::get(url).await.ok()?.bytes().await.ok()?.to_vec())
+                    } else {
+                        None
+                    }
+                }
+                flag_get(&data).await
             },
         };
         x
@@ -104,7 +99,7 @@ async fn fetch_game_data(
         url, tournament_id, game_id
     ))
     .await
-    .expect("No internet! Give some Internet pls");
+    .expect("Coudn't request game data");
     let text = data.text().await.unwrap();
     let data: Value = serde_json::from_str(text.as_str()).unwrap();
     let team_id_black = data["game"]["black_id"].as_u64().unwrap_or(0);
@@ -141,9 +136,11 @@ pub async fn networking_thread(
         if read_bytes == 0 {
             error!("Connection to refbox lost! Attempting to reconnect!");
             stream = loop {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                 if let Ok(stream) =
                     TcpStream::connect((config.refbox_ip, config.refbox_port as u16))
                 {
+                    debug!("Found refbox!");
                     break stream;
                 }
             };

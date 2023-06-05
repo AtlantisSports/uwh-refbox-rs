@@ -1,7 +1,7 @@
 use clap::Parser;
 use coarsetime::Instant;
 use crossbeam_channel::bounded;
-use log::{debug, warn, LevelFilter};
+use log::{warn, LevelFilter};
 #[cfg(debug_assertions)]
 use log4rs::append::console::{ConsoleAppender, Target};
 use log4rs::{
@@ -190,7 +190,7 @@ async fn main() {
         network::networking_thread(tx, config);
     });
 
-    let mut textures = load_images::Textures::default();
+    let mut assets = load_images::Textures::default();
 
     let tournament_logo_color = match read_image_from_file(tournament_logo_color_path.as_path()) {
         Ok(texture) => Some(texture),
@@ -214,7 +214,7 @@ async fn main() {
         }
     };
 
-    textures.tournament_logo = tournament_logo_color
+    assets.tournament_logo = tournament_logo_color
         .and_then(|color| tournament_logo_alpha.map(|alpha| Texture { color, alpha }));
 
     let mut local_state: State = State {
@@ -246,7 +246,7 @@ async fn main() {
         animation_register1: Instant::now(),
         animation_register2: Instant::now(),
         animation_register3: false,
-        textures,
+        assets,
         last_snapshot_timeout: TimeoutSnapshot::None,
     };
     let mut flag_renderer = flag::FlagRenderer::new();
@@ -260,7 +260,6 @@ async fn main() {
 
         if let Ok(recieved_state) = rx.try_recv() {
             if let Some(team) = recieved_state.black {
-                debug!("Building Black's flag texture");
                 local_state.black = team;
                 if let Some(flag_bytes) = local_state.black.flag.clone() {
                     local_state.black_flag =
@@ -268,7 +267,6 @@ async fn main() {
                 }
             }
             if let Some(team) = recieved_state.white {
-                debug!("Building White's flag texture");
                 local_state.white = team;
                 if let Some(flag_bytes) = local_state.white.flag.clone() {
                     local_state.white_flag =

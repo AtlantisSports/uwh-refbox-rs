@@ -108,9 +108,9 @@ impl PageRenderer {
                 }
             }
         };
-        draw_texture_both!(self.textures.team_bar_graphic, 26f32, 37f32, WHITE);
+        draw_texture_both!(self.assets.team_bar, 26f32, 37f32, WHITE);
         draw_texture_both!(
-            self.textures.in_game_mask,
+            self.assets.in_game_mask,
             580f32 + position_offset,
             37f32,
             WHITE
@@ -170,7 +170,7 @@ impl PageRenderer {
             // draw text for each type of penalty
             TimeoutSnapshot::Ref(_) => {
                 draw_texture_both!(
-                    self.textures.referee_timout_graphic,
+                    self.assets.referee_timout,
                     position_offset + timeout_offset + 580f32,
                     35f32,
                     Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
@@ -180,13 +180,13 @@ impl PageRenderer {
                     675f32 + position_offset + timeout_offset,
                     67f32,
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 20,
                         color: Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8),
                         ..Default::default()
                     },
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 20,
                         color: Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
                         ..Default::default()
@@ -197,13 +197,13 @@ impl PageRenderer {
                     680f32 + position_offset + timeout_offset,
                     95f32,
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 20,
                         color: Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8),
                         ..Default::default()
                     },
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 20,
                         color: Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
                         ..Default::default()
@@ -212,7 +212,7 @@ impl PageRenderer {
             }
             TimeoutSnapshot::White(time) => {
                 draw_texture_both!(
-                    self.textures.white_timout_graphic,
+                    self.assets.white_timout,
                     position_offset + timeout_offset + 580f32,
                     35f32,
                     Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
@@ -222,13 +222,13 @@ impl PageRenderer {
                     675f32 + position_offset + timeout_offset,
                     67f32,
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 20,
                         color: Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8),
                         ..Default::default()
                     },
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 20,
                         color: Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
                         ..Default::default()
@@ -239,13 +239,13 @@ impl PageRenderer {
                     665f32 + position_offset + timeout_offset,
                     95f32,
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 20,
                         color: Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8),
                         ..Default::default()
                     },
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 20,
                         color: Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
                         ..Default::default()
@@ -256,13 +256,13 @@ impl PageRenderer {
                     773f32 + position_offset + timeout_offset,
                     90f32,
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 50,
                         color: Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8),
                         ..Default::default()
                     },
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 50,
                         color: Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
                         ..Default::default()
@@ -271,7 +271,7 @@ impl PageRenderer {
             }
             TimeoutSnapshot::Black(time) => {
                 draw_texture_both!(
-                    self.textures.black_timout_graphic,
+                    self.assets.black_timout,
                     position_offset + timeout_offset + 580f32,
                     35f32,
                     Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
@@ -281,7 +281,7 @@ impl PageRenderer {
                     675f32 + position_offset + timeout_offset,
                     67f32,
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 20,
                         color: Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
                         ..Default::default()
@@ -292,7 +292,7 @@ impl PageRenderer {
                     665f32 + position_offset + timeout_offset,
                     95f32,
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 20,
                         color: Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
                         ..Default::default()
@@ -303,7 +303,7 @@ impl PageRenderer {
                     773f32 + position_offset + timeout_offset,
                     90f32,
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 50,
                         color: Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
                         ..Default::default()
@@ -312,7 +312,7 @@ impl PageRenderer {
             }
             TimeoutSnapshot::PenaltyShot(_) => {
                 draw_texture_both!(
-                    self.textures.penalty_graphic,
+                    self.assets.penalty,
                     position_offset + timeout_offset + 580f32,
                     35f32,
                     Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
@@ -322,13 +322,13 @@ impl PageRenderer {
                     675f32 + position_offset + timeout_offset,
                     67f32,
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 20,
                         color: Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8),
                         ..Default::default()
                     },
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 20,
                         color: Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
                         ..Default::default()
@@ -339,13 +339,13 @@ impl PageRenderer {
                     690f32 + position_offset + timeout_offset,
                     95f32,
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 20,
                         color: Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8),
                         ..Default::default()
                     },
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 20,
                         color: Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
                         ..Default::default()
@@ -364,7 +364,7 @@ impl PageRenderer {
             },
             64f32,
             TextParams {
-                font: self.textures.font,
+                font: self.assets.font,
                 font_size: 20,
                 color: Color::from_rgba(
                     0,
@@ -379,7 +379,7 @@ impl PageRenderer {
                 ..Default::default()
             },
             TextParams {
-                font: self.textures.font,
+                font: self.assets.font,
                 font_size: 20,
                 color: Color::from_rgba(
                     255,
@@ -403,7 +403,7 @@ impl PageRenderer {
             },
             100f32,
             TextParams {
-                font: self.textures.font,
+                font: self.assets.font,
                 font_size: 20,
                 color: Color::from_rgba(
                     255,
@@ -419,7 +419,7 @@ impl PageRenderer {
             }
         );
         draw_texture_both!(
-            self.textures.time_and_game_state_graphic,
+            self.assets.time_and_game_state,
             position_offset + 367f32,
             18f32,
             WHITE
@@ -445,13 +445,13 @@ impl PageRenderer {
                 format!("{}", secs)
             }
         );
-        let (x_off, text) = center_text_offset!(90f32, text.as_str(), 50, self.textures.font);
+        let (x_off, text) = center_text_offset!(90f32, text.as_str(), 50, self.assets.font);
         draw_text_ex(
             text.as_str(),
             430f32 + position_offset + x_off,
             67f32,
             TextParams {
-                font: self.textures.font,
+                font: self.assets.font,
                 font_size: 50,
                 ..Default::default()
             },
@@ -465,7 +465,7 @@ impl PageRenderer {
             478f32 + position_offset,
             100f32,
             TextParams {
-                font: self.textures.font,
+                font: self.assets.font,
                 font_size: 20,
                 ..Default::default()
             },
@@ -500,7 +500,7 @@ impl PageRenderer {
             40f32,
             104f32,
             TextParams {
-                font: self.textures.font,
+                font: self.assets.font,
                 font_size: 30,
                 ..Default::default()
             }
@@ -510,20 +510,20 @@ impl PageRenderer {
             40f32,
             65f32,
             TextParams {
-                font: self.textures.font,
+                font: self.assets.font,
                 font_size: 30,
                 color: BLACK,
                 ..Default::default()
             },
             TextParams {
-                font: self.textures.font,
+                font: self.assets.font,
                 font_size: 30,
                 color: WHITE,
                 ..Default::default()
             }
         );
 
-        if let Some(logo) = self.textures.tournament_logo.as_ref() {
+        if let Some(logo) = self.assets.tournament_logo.as_ref() {
             let x = 1900f32 - logo.color.width();
             draw_texture_both!(logo, x, 20f32, WHITE);
         }

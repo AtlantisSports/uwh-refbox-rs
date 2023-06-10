@@ -90,33 +90,40 @@ async fn fetch_game_data(
     tournament_id: u32,
     game_id: u32,
 ) {
-    debug!("Requesting game data from UWH API");
-    let data = reqwest::get(format!(
-        "https://{}/api/v1/tournaments/{}/games/{}",
-        url, tournament_id, game_id
-    ))
-    .await
-    .expect("Coudn't request game data");
-    let text = data.text().await.unwrap();
-    let data: Value = serde_json::from_str(text.as_str()).unwrap();
-    let team_id_black = data["game"]["black_id"].as_u64().unwrap_or(0);
-    let team_id_white = data["game"]["white_id"].as_u64().unwrap_or(0);
+    // retry periodically if no connection
+    loop {
+        debug!("Trying to request game data from UWH API");
+        if let Ok(data) = reqwest::get(format!(
+            "https://{}/api/v1/tournaments/{}/games/{}",
+            url, tournament_id, game_id
+        ))
+        .await
+        {
+            let text = data.text().await.unwrap();
+            let data: Value = serde_json::from_str(text.as_str()).unwrap();
+            let team_id_black = data["game"]["black_id"].as_u64().unwrap_or(0);
+            let team_id_white = data["game"]["white_id"].as_u64().unwrap_or(0);
 
-    let pool = data["game"]["pool"]
-        .as_str()
-        .map(|s| format!("POOL: {}", s))
-        .unwrap_or_default();
-    let start_time = data["game"]["start_time"]
-        .as_str()
-        .map(|s| String::from("START: ") + s.split_at(11).1.split_at(5).0)
-        .unwrap_or_default();
-    tr.send((
-        pool,
-        start_time,
-        TeamInfo::new(&url, tournament_id, team_id_black, Color::Black).await,
-        TeamInfo::new(&url, tournament_id, team_id_white, Color::White).await,
-    ))
-    .unwrap();
+            let pool = data["game"]["pool"]
+                .as_str()
+                .map(|s| format!("POOL: {}", s))
+                .unwrap_or_default();
+            let start_time = data["game"]["start_time"]
+                .as_str()
+                .map(|s| String::from("START: ") + s.split_at(11).1.split_at(5).0)
+                .unwrap_or_default();
+            tr.send((
+                pool,
+                start_time,
+                TeamInfo::new(&url, tournament_id, team_id_black, Color::Black).await,
+                TeamInfo::new(&url, tournament_id, team_id_white, Color::White).await,
+            ))
+            .unwrap();
+            return;
+        } else {
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        }
+    }
 }
 
 #[tokio::main]

@@ -10,8 +10,9 @@ mod pre_game;
 mod roster;
 
 pub(crate) trait Interpolate {
-    /// `value` must be a floater varying from 0 to 1, denoting the lowest to highest limits of the range
+    /// `value` must be a `float` normally varying from `0f32` to `1f32`
     fn interpolate_linear(&self, value: f32) -> f32;
+    /// Performs exponential interpolation towards the end of the range.
     fn interpolate_exponential_end(&self, value: f32) -> f32;
 }
 
@@ -34,8 +35,8 @@ impl Interpolate for (f32, f32) {
 /// Wrap the given `text` into lines that fit within the specified `width`.
 ///
 /// Divides the `text` into multiple lines, breaking at whitespace such that new words go on a new
-/// line if they overflow the `width`. Lines may still overflow if there is no whitespace to break at.
-/// Use the `center_text_offset` macro to center lines and crop each one to fit the width.
+/// line if they overflow the `width`. Lines may still overflow if there is no whitespace to break
+/// at, so use the `center_text_offset` macro to center lines and crop each one to fit the width.
 pub fn multilinify(text: &str, width: f32, font: Option<Font>, font_size: u16) -> Vec<String> {
     let mut lines = Vec::new();
     let mut current_line = String::new();

@@ -4,7 +4,6 @@ use super::Interpolate;
 use super::PageRenderer;
 use crate::pages::draw_text_both;
 use crate::pages::draw_text_both_ex;
-use crate::pages::get_input;
 use crate::pages::multilinify;
 use crate::State;
 use crate::ALPHA_MAX;

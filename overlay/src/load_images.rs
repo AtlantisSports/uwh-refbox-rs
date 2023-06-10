@@ -14,6 +14,16 @@ pub struct Texture {
     pub color: Texture2D,
 }
 
+pub struct RpdTextures {
+    pub team_name_bg: Texture,
+    pub single_line_name_bg: Texture,
+    pub double_line_name_bg: Texture,
+    pub triple_line_name_bg: Texture,
+    pub frame_with_number: Texture,
+    pub frame_without_number: Texture,
+    pub team_member_role_bg: Texture,
+}
+
 pub struct Textures {
     pub atlantis_logo: Texture,
     pub bottom: Texture,
@@ -28,27 +38,9 @@ pub struct Textures {
     pub white_timout: Texture,
     pub black_timout: Texture,
     pub referee_timout: Texture,
-    pub black_team_name_bg_rpd: Texture,
-    pub black_single_line_name_bg_rpd: Texture,
-    pub black_double_line_name_bg_rpd: Texture,
-    pub black_triple_line_name_bg_rpd: Texture,
-    pub black_frame_with_number_rpd: Texture,
-    pub black_frame_without_number_rpd: Texture,
-    pub black_team_member_role_bg_rpd: Texture,
-    pub white_team_name_bg_rpd: Texture,
-    pub white_single_line_name_bg_rpd: Texture,
-    pub white_double_line_name_bg_rpd: Texture,
-    pub white_triple_line_name_bg_rpd: Texture,
-    pub white_frame_with_number_rpd: Texture,
-    pub white_frame_without_number_rpd: Texture,
-    pub white_team_member_role_bg_rpd: Texture,
-    pub red_team_name_bg_rpd: Texture,
-    pub red_single_line_name_bg_rpd: Texture,
-    pub red_double_line_name_bg_rpd: Texture,
-    pub red_triple_line_name_bg_rpd: Texture,
-    pub red_frame_with_number_rpd: Texture,
-    pub red_frame_without_number_rpd: Texture,
-    pub red_team_member_role_bg_rpd: Texture,
+    pub black_rpd: RpdTextures,
+    pub white_rpd: RpdTextures,
+    pub red_rpd: RpdTextures,
     pub tournament_logo: Option<Texture>,
     pub font: Font,
 }
@@ -109,89 +101,95 @@ impl Default for Textures {
                 color: load!("../assets/color/1080/Referee Timeout Flag.png"),
                 alpha: load!("../assets/alpha/1080/Referee Timeout Flag.png"),
             },
-            black_team_name_bg_rpd: Texture {
-                color: load!("../assets/color/1080/Black Team Name.png"),
-                alpha: load!("../assets/alpha/1080/Black Team Name.png"),
+            black_rpd: RpdTextures {
+                team_name_bg: Texture {
+                    color: load!("../assets/color/1080/Black Team Name.png"),
+                    alpha: load!("../assets/alpha/1080/Black Team Name.png"),
+                },
+                single_line_name_bg: Texture {
+                    color: load!("../assets/color/1080/Black Single Line Name Background.png"),
+                    alpha: load!("../assets/alpha/1080/Black Single Line Name Background.png"),
+                },
+                double_line_name_bg: Texture {
+                    color: load!("../assets/color/1080/Black Double Line Name Background.png"),
+                    alpha: load!("../assets/alpha/1080/Black Double Line Name Background.png"),
+                },
+                triple_line_name_bg: Texture {
+                    color: load!("../assets/color/1080/Black Triple Line Name Background.png"),
+                    alpha: load!("../assets/alpha/1080/Black Triple Line Name Background.png"),
+                },
+                frame_with_number: Texture {
+                    color: load!("../assets/color/1080/Black Frame with Number.png"),
+                    alpha: load!("../assets/alpha/1080/Black Frame with Number.png"),
+                },
+                frame_without_number: Texture {
+                    color: load!("../assets/color/1080/Black Frame without Number.png"),
+                    alpha: load!("../assets/alpha/1080/Black Frame without Number.png"),
+                },
+                team_member_role_bg: Texture {
+                    color: load!("../assets/color/1080/Black Team Member Role Background.png"),
+                    alpha: load!("../assets/alpha/1080/Black Team Member Role Background.png"),
+                },
             },
-            black_single_line_name_bg_rpd: Texture {
-                color: load!("../assets/color/1080/Black Single Line Name Background.png"),
-                alpha: load!("../assets/alpha/1080/Black Single Line Name Background.png"),
+            white_rpd: RpdTextures {
+                team_name_bg: Texture {
+                    color: load!("../assets/color/1080/White Team Name.png"),
+                    alpha: load!("../assets/alpha/1080/White Team Name.png"),
+                },
+                single_line_name_bg: Texture {
+                    color: load!("../assets/color/1080/White Single Line Name Background.png"),
+                    alpha: load!("../assets/alpha/1080/White Single Line Name Background.png"),
+                },
+                double_line_name_bg: Texture {
+                    color: load!("../assets/color/1080/White Double Line Name Background.png"),
+                    alpha: load!("../assets/alpha/1080/White Double Line Name Background.png"),
+                },
+                triple_line_name_bg: Texture {
+                    color: load!("../assets/color/1080/White Triple Line Name Background.png"),
+                    alpha: load!("../assets/alpha/1080/White Triple Line Name Background.png"),
+                },
+                frame_with_number: Texture {
+                    color: load!("../assets/color/1080/White Frame with Number.png"),
+                    alpha: load!("../assets/alpha/1080/White Frame with Number.png"),
+                },
+                frame_without_number: Texture {
+                    color: load!("../assets/color/1080/White Frame without Number.png"),
+                    alpha: load!("../assets/alpha/1080/White Frame without Number.png"),
+                },
+                team_member_role_bg: Texture {
+                    color: load!("../assets/color/1080/White Team Member Role Background.png"),
+                    alpha: load!("../assets/alpha/1080/White Team Member Role Background.png"),
+                },
             },
-            black_double_line_name_bg_rpd: Texture {
-                color: load!("../assets/color/1080/Black Double Line Name Background.png"),
-                alpha: load!("../assets/alpha/1080/Black Double Line Name Background.png"),
-            },
-            black_triple_line_name_bg_rpd: Texture {
-                color: load!("../assets/color/1080/Black Triple Line Name Background.png"),
-                alpha: load!("../assets/alpha/1080/Black Triple Line Name Background.png"),
-            },
-            black_frame_with_number_rpd: Texture {
-                color: load!("../assets/color/1080/Black Frame with Number.png"),
-                alpha: load!("../assets/alpha/1080/Black Frame with Number.png"),
-            },
-            black_frame_without_number_rpd: Texture {
-                color: load!("../assets/color/1080/Black Frame without Number.png"),
-                alpha: load!("../assets/alpha/1080/Black Frame without Number.png"),
-            },
-            black_team_member_role_bg_rpd: Texture {
-                color: load!("../assets/color/1080/Black Team Member Role Background.png"),
-                alpha: load!("../assets/alpha/1080/Black Team Member Role Background.png"),
-            },
-            white_team_name_bg_rpd: Texture {
-                color: load!("../assets/color/1080/White Team Name.png"),
-                alpha: load!("../assets/alpha/1080/White Team Name.png"),
-            },
-            white_single_line_name_bg_rpd: Texture {
-                color: load!("../assets/color/1080/White Single Line Name Background.png"),
-                alpha: load!("../assets/alpha/1080/White Single Line Name Background.png"),
-            },
-            white_double_line_name_bg_rpd: Texture {
-                color: load!("../assets/color/1080/White Double Line Name Background.png"),
-                alpha: load!("../assets/alpha/1080/White Double Line Name Background.png"),
-            },
-            white_triple_line_name_bg_rpd: Texture {
-                color: load!("../assets/color/1080/White Triple Line Name Background.png"),
-                alpha: load!("../assets/alpha/1080/White Triple Line Name Background.png"),
-            },
-            white_frame_with_number_rpd: Texture {
-                color: load!("../assets/color/1080/White Frame with Number.png"),
-                alpha: load!("../assets/alpha/1080/White Frame with Number.png"),
-            },
-            white_frame_without_number_rpd: Texture {
-                color: load!("../assets/color/1080/White Frame without Number.png"),
-                alpha: load!("../assets/alpha/1080/White Frame without Number.png"),
-            },
-            white_team_member_role_bg_rpd: Texture {
-                color: load!("../assets/color/1080/White Team Member Role Background.png"),
-                alpha: load!("../assets/alpha/1080/White Team Member Role Background.png"),
-            },
-            red_team_name_bg_rpd: Texture {
-                color: load!("../assets/color/1080/Red Team Name.png"),
-                alpha: load!("../assets/alpha/1080/Red Team Name.png"),
-            },
-            red_single_line_name_bg_rpd: Texture {
-                color: load!("../assets/color/1080/Red Single Line Name Background.png"),
-                alpha: load!("../assets/alpha/1080/Red Single Line Name Background.png"),
-            },
-            red_double_line_name_bg_rpd: Texture {
-                color: load!("../assets/color/1080/Red Double Line Name Background.png"),
-                alpha: load!("../assets/alpha/1080/Red Double Line Name Background.png"),
-            },
-            red_triple_line_name_bg_rpd: Texture {
-                color: load!("../assets/color/1080/Red Triple Line Name Background.png"),
-                alpha: load!("../assets/alpha/1080/Red Triple Line Name Background.png"),
-            },
-            red_frame_with_number_rpd: Texture {
-                color: load!("../assets/color/1080/Red Frame with Number.png"),
-                alpha: load!("../assets/alpha/1080/Red Frame with Number.png"),
-            },
-            red_frame_without_number_rpd: Texture {
-                color: load!("../assets/color/1080/Red Frame without Number.png"),
-                alpha: load!("../assets/alpha/1080/Red Frame without Number.png"),
-            },
-            red_team_member_role_bg_rpd: Texture {
-                color: load!("../assets/color/1080/Red Team Member Role Background.png"),
-                alpha: load!("../assets/alpha/1080/Red Team Member Role Background.png"),
+            red_rpd: RpdTextures {
+                team_name_bg: Texture {
+                    color: load!("../assets/color/1080/Red Team Name.png"),
+                    alpha: load!("../assets/alpha/1080/Red Team Name.png"),
+                },
+                single_line_name_bg: Texture {
+                    color: load!("../assets/color/1080/Red Single Line Name Background.png"),
+                    alpha: load!("../assets/alpha/1080/Red Single Line Name Background.png"),
+                },
+                double_line_name_bg: Texture {
+                    color: load!("../assets/color/1080/Red Double Line Name Background.png"),
+                    alpha: load!("../assets/alpha/1080/Red Double Line Name Background.png"),
+                },
+                triple_line_name_bg: Texture {
+                    color: load!("../assets/color/1080/Red Triple Line Name Background.png"),
+                    alpha: load!("../assets/alpha/1080/Red Triple Line Name Background.png"),
+                },
+                frame_with_number: Texture {
+                    color: load!("../assets/color/1080/Red Frame with Number.png"),
+                    alpha: load!("../assets/alpha/1080/Red Frame with Number.png"),
+                },
+                frame_without_number: Texture {
+                    color: load!("../assets/color/1080/Red Frame without Number.png"),
+                    alpha: load!("../assets/alpha/1080/Red Frame without Number.png"),
+                },
+                team_member_role_bg: Texture {
+                    color: load!("../assets/color/1080/Red Team Member Role Background.png"),
+                    alpha: load!("../assets/alpha/1080/Red Team Member Role Background.png"),
+                },
             },
             tournament_logo: None,
         }

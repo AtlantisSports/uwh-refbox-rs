@@ -8,7 +8,10 @@ use uwh_common::game_snapshot::{Color, GamePeriod, GameSnapshot};
 #[derive(Serialize, Deserialize, Clone)]
 pub struct TeamInfo {
     pub team_name: String,
+    /// `Vec` of (Name, Number)
     pub players: Vec<(String, u8)>,
+    /// `Vec` of (Name, Role)
+    pub support_members: Vec<(String, String)>,
     pub flag: Option<Vec<u8>>,
 }
 
@@ -31,27 +34,19 @@ impl TeamInfo {
         )
         .unwrap();
 
-        //TODO filter out players with empty name strings?
-        let players: Vec<Value> = data["team"]["roster"]
+        //TODO check filter out players with empty name strings?
+        let players: Vec<(String, u8)> = data["team"]["roster"]
             .as_array()
             .map(|x| x.to_vec())
-            .unwrap_or_default();
-        let mut player_list: Vec<(String, u8)> = Vec::new();
-        for player in players {
-            player_list.push((
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|player| {
                 player["name"]
                     .as_str()
-                    .unwrap_or({
-                        debug!("Unwrap failed on player name. Using default value.");
-                        ""
-                    })
-                    .to_string(),
-                player["number"].as_u64().unwrap_or({
-                    debug!("Unwrap failed on player number. Using default value.");
-                    0
-                }) as u8,
-            ));
-        }
+                    .map(String::from)
+                    .zip(player["number"].as_u64().map(|e| e as u8))
+            })
+            .collect();
 
         let x = Self {
             team_name: data["team"]["name"]
@@ -61,7 +56,9 @@ impl TeamInfo {
                     Color::White => "White",
                 })
                 .to_string(),
-            players: player_list,
+            players,
+            //TODO API stuff
+            support_members: Vec::new(),
             flag: {
                 async fn flag_get(data: &Value) -> Option<Vec<u8>> {
                     if let Some(url) = data["team"]["flag_url"].as_str() {
@@ -88,7 +85,7 @@ pub struct StatePacket {
 }
 
 async fn fetch_game_data(
-    tr: crossbeam_channel::Sender<(Value, TeamInfo, TeamInfo)>,
+    tr: crossbeam_channel::Sender<(String, String, TeamInfo, TeamInfo)>,
     url: String,
     tournament_id: u32,
     game_id: u32,
@@ -104,8 +101,18 @@ async fn fetch_game_data(
     let data: Value = serde_json::from_str(text.as_str()).unwrap();
     let team_id_black = data["game"]["black_id"].as_u64().unwrap_or(0);
     let team_id_white = data["game"]["white_id"].as_u64().unwrap_or(0);
+
+    let pool = data["game"]["pool"]
+        .as_str()
+        .map(|s| format!("POOL: {}", s))
+        .unwrap_or_default();
+    let start_time = data["game"]["start_time"]
+        .as_str()
+        .map(|s| String::from("START: ") + s.split_at(11).1.split_at(5).0)
+        .unwrap_or_default();
     tr.send((
-        data,
+        pool,
+        start_time,
         TeamInfo::new(&url, tournament_id, team_id_black, Color::Black).await,
         TeamInfo::new(&url, tournament_id, team_id_white, Color::White).await,
     ))
@@ -124,7 +131,7 @@ pub async fn networking_thread(
         }
     };
 
-    let (tr, rc) = crossbeam_channel::bounded::<(Value, TeamInfo, TeamInfo)>(3);
+    let (tr, rc) = crossbeam_channel::bounded::<(String, String, TeamInfo, TeamInfo)>(3);
     let url = config.uwhscores_url.clone();
     let mut buff = vec![0u8; 1024];
     let mut read_bytes;
@@ -171,24 +178,14 @@ pub async fn networking_thread(
                     fetch_game_data(tr, url, tournament_id.unwrap(), game_id.unwrap()).await
                 });
             }
-            if let Ok((data, black, white)) = rc.try_recv() {
+            if let Ok((pool, start_time, black, white)) = rc.try_recv() {
                 tx.send(StatePacket {
                     snapshot,
                     game_id,
                     black: Some(black),
                     white: Some(white),
-                    pool: Some(
-                        data["game"]["pool"]
-                            .as_str()
-                            .map(|s| format!("POOL: {}", s))
-                            .unwrap_or_default(),
-                    ),
-                    start_time: Some(
-                        data["game"]["start_time"]
-                            .as_str()
-                            .map(|s| String::from("START: ") + s.split_at(11).1.split_at(5).0)
-                            .unwrap_or_default(),
-                    ),
+                    pool: Some(pool),
+                    start_time: Some(start_time),
                 })
                 .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"))
             } else {

@@ -31,11 +31,55 @@ impl Interpolate for (f32, f32) {
     }
 }
 
+/// Wrap the given `text` into lines that fit within the specified `width`.
+///
+/// Divides the `text` into multiple lines, breaking at whitespace such that new words go on a new
+/// line if they overflow the `width`. Lines may still overflow if there is no whitespace to break at.
+/// Use the `center_text_offset` macro to center lines and crop each one to fit the width.
+pub fn multilinify(text: &str, width: f32, font: Option<Font>, font_size: u16) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut current_line = String::new();
+
+    for word in text.split_whitespace() {
+        let word_width = measure_text(word, font, font_size, 1.0).width;
+        let line_width = measure_text(&current_line, font, font_size, 1.0).width;
+
+        if line_width + word_width <= width {
+            // Word fits within the current line
+            if !current_line.is_empty() {
+                current_line.push(' ');
+            }
+            current_line.push_str(word);
+        } else {
+            // Word doesn't fit within the current line, start a new line
+            lines.push(current_line.clone());
+            current_line = word.to_string();
+        }
+    }
+
+    // Push the remaining text as the last line
+    if !current_line.is_empty() {
+        lines.push(current_line);
+    }
+
+    lines
+}
+
+/// Macro to calculate the offset for centering text within a text field.
+///
+/// The `center_text_offset` macro takes the following parameters:
+/// - `field_half_width`: Half the width of the text field.
+/// - `string`: The string to be fitted within the text field.
+/// - `font_size`: The font size.
+/// - `font`: The font used for rendering the text.
+///
+/// Returns a tuple containing the offset from the left side of the text field
+/// to render text from, and the modified string that fits within the field.
 macro_rules! center_text_offset {
-    ($field_width: expr, $string: expr, $font_size: literal, $font: expr) => {{
+    ($field_half_width: expr, $string: expr, $font_size: literal, $font: expr) => {{
         let mut text = $string.to_string();
         let text = {
-            while 2f32 * $field_width
+            while 2f32 * $field_half_width
                 < measure_text(text.as_str(), Some($font), $font_size, 1.0).width
             {
                 text.pop();
@@ -43,7 +87,8 @@ macro_rules! center_text_offset {
             text
         };
         (
-            $field_width - measure_text(text.as_str(), Some($font), $font_size, 1.0).width / 2f32,
+            $field_half_width
+                - measure_text(text.as_str(), Some($font), $font_size, 1.0).width / 2f32,
             text,
         )
     }};

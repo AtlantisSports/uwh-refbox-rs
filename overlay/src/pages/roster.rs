@@ -4,6 +4,8 @@ use super::Interpolate;
 use super::PageRenderer;
 use crate::pages::draw_text_both;
 use crate::pages::draw_text_both_ex;
+use crate::pages::get_input;
+use crate::pages::multilinify;
 use crate::State;
 use crate::ALPHA_MAX;
 use crate::ALPHA_MIN;
@@ -316,24 +318,110 @@ impl PageRenderer {
                 },
             );
         } else {
-            let white_to_black_point = (state.white.players.len() / 4 * 4) as f32 + 0.5;
+            let white_to_black_point = ((state.white.players.len() + 3) / 4 * 4) as f32 + 0.5;
             let black_to_red_point =
-                white_to_black_point + (state.black.players.len() / 4 * 4) as f32 + 0.5;
-            let red_fade_point = black_to_red_point; //(state.black.players.len() / 4 * 4) as f32 + 0.5;
-            match Instant::now()
-                .duration_since(self.animation_register1)
+                white_to_black_point + ((state.black.players.len() + 3) / 4 * 4) as f32 + 0.5;
+            let red_fade_point = black_to_red_point + 4f32; //(state.referees.len() / 4 * 4) as f32 + 0.5;
+
+            let rpd_selector = match Instant::now()
+                .duration_since(self.animation_register2)
                 .as_f64() as f32
             {
                 a if (0f32..=white_to_black_point).contains(&a) => {
-                    draw_texture_both!(self.assets.white_team_name_bg_rpd, 130f32, 710f32, WHITE);
+                    Some((&state.white, &self.assets.white_rpd, BLACK, 0f32))
                 }
-                a if (white_to_black_point..=black_to_red_point).contains(&a) => {
-                    draw_texture_both!(self.assets.black_team_name_bg_rpd, 130f32, 710f32, WHITE);
-                }
-                a if (black_to_red_point..=red_fade_point).contains(&a) => {
-                    draw_texture_both!(self.assets.red_team_name_bg_rpd, 130f32, 710f32, WHITE);
-                }
-                _ => {}
+                a if (white_to_black_point..=black_to_red_point).contains(&a) => Some((
+                    &state.black,
+                    &self.assets.black_rpd,
+                    WHITE,
+                    white_to_black_point,
+                )),
+                a if (black_to_red_point..=red_fade_point).contains(&a) => Some((
+                    &state.referees,
+                    &self.assets.red_rpd,
+                    WHITE,
+                    black_to_red_point,
+                )),
+                _ => None,
+            };
+            if let Some((team, team_textures, text_color, page_start)) = rpd_selector {
+                draw_texture_both!(team_textures.team_name_bg, 464f32, 80f32, WHITE);
+                let (x_off, text) = center_text_offset!(
+                    469f32,
+                    team.team_name.to_uppercase().as_str(),
+                    120,
+                    self.assets.font
+                );
+                draw_text_both_ex!(
+                    text.as_str(),
+                    470f32 + x_off,
+                    230f32,
+                    TextParams {
+                        font: self.assets.font,
+                        font_size: 120,
+                        color: text_color,
+                        ..Default::default()
+                    },
+                    TextParams {
+                        font: self.assets.font,
+                        font_size: 120,
+                        color: WHITE,
+                        ..Default::default()
+                    }
+                );
+
+                team.players
+                    .rchunks(4)
+                    .nth(
+                        (Instant::now()
+                            .duration_since(self.animation_register2)
+                            .as_f64() as f32
+                            - page_start) as usize
+                            / 4,
+                    )
+                    .map(|x| {
+                        x.iter().enumerate().for_each(|(i, player)| {
+                            draw_texture_both!(
+                                team_textures.frame_with_number,
+                                i as f32 * (473f32) + 28f32,
+                                355f32,
+                                WHITE
+                            );
+                            let lines = multilinify(&player.0, 214f32, Some(self.assets.font), 40);
+                            let text_box_texture = match lines.len() {
+                                1 => &team_textures.single_line_name_bg,
+                                2 => &team_textures.double_line_name_bg,
+                                _ => &team_textures.triple_line_name_bg,
+                            };
+                            draw_texture_both!(
+                                text_box_texture,
+                                i as f32 * (475f32) + 28f32,
+                                830f32,
+                                WHITE
+                            );
+                            for (j, line) in lines.iter().take(3).enumerate() {
+                                let (x_off, text) =
+                                    center_text_offset!(214f32, line, 45, self.assets.font);
+                                draw_text_both_ex!(
+                                    text.as_str(),
+                                    i as f32 * (473f32) + 32f32 + x_off,
+                                    885f32 + 50f32 * j as f32,
+                                    TextParams {
+                                        font: self.assets.font,
+                                        font_size: 45,
+                                        color: text_color,
+                                        ..Default::default()
+                                    },
+                                    TextParams {
+                                        font: self.assets.font,
+                                        font_size: 45,
+                                        color: WHITE,
+                                        ..Default::default()
+                                    }
+                                );
+                            }
+                        })
+                    });
             }
         }
     }

@@ -5,8 +5,8 @@ use super::PageRenderer;
 use crate::pages::draw_text_both;
 use crate::pages::draw_text_both_ex;
 use crate::State;
-use crate::ALPHA_MAX;
-use crate::ALPHA_MIN;
+use crate::BYTE_MAX;
+use crate::BYTE_MIN;
 use crate::TIME_AND_STATE_SHRINK_FROM;
 use crate::TIME_AND_STATE_SHRINK_TO;
 use coarsetime::Instant;
@@ -25,12 +25,12 @@ impl PageRenderer {
             if state.snapshot.current_period == GamePeriod::HalfTime {
                 (
                     (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO).interpolate_linear(0f32),
-                    (ALPHA_MAX, ALPHA_MIN).interpolate_linear(0f32) as u8,
+                    (BYTE_MAX, BYTE_MIN).interpolate_linear(0f32) as u8,
                 )
             } else {
                 (
                     (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO).interpolate_linear(1f32),
-                    (ALPHA_MAX, ALPHA_MIN).interpolate_linear(1f32) as u8,
+                    (BYTE_MAX, BYTE_MIN).interpolate_linear(1f32) as u8,
                 )
             }
         } else if state.snapshot.current_period == GamePeriod::FirstHalf {
@@ -40,16 +40,16 @@ impl PageRenderer {
             match time {
                 x if (..=5f64).contains(&x) => (
                     (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO).interpolate_linear(0f32),
-                    (ALPHA_MAX, ALPHA_MIN).interpolate_linear(0f32) as u8,
+                    (BYTE_MAX, BYTE_MIN).interpolate_linear(0f32) as u8,
                 ),
                 x if (5f64..=6f64).contains(&x) => (
                     (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO)
                         .interpolate_linear(time as f32 - 5f32),
-                    (ALPHA_MAX, ALPHA_MIN).interpolate_linear(time as f32 - 5f32) as u8,
+                    (BYTE_MAX, BYTE_MIN).interpolate_linear(time as f32 - 5f32) as u8,
                 ),
                 _ => (
                     (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO).interpolate_linear(1f32),
-                    (ALPHA_MAX, ALPHA_MIN).interpolate_linear(1f32) as u8,
+                    (BYTE_MAX, BYTE_MIN).interpolate_linear(1f32) as u8,
                 ),
             }
         } else {
@@ -62,32 +62,32 @@ impl PageRenderer {
                         (
                             (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO)
                                 .interpolate_linear(0f32),
-                            (ALPHA_MAX, ALPHA_MIN).interpolate_linear(0f32) as u8,
+                            (BYTE_MAX, BYTE_MIN).interpolate_linear(0f32) as u8,
                         )
                     } else {
                         (
                             (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO)
                                 .interpolate_linear(1f32 - time as f32),
-                            (ALPHA_MAX, ALPHA_MIN).interpolate_linear(1f32 - time as f32) as u8,
+                            (BYTE_MAX, BYTE_MIN).interpolate_linear(1f32 - time as f32) as u8,
                         )
                     }
                 }
                 x if (1f64..=5f64).contains(&x) => (
                     (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO).interpolate_linear(0f32),
-                    (ALPHA_MAX, ALPHA_MIN).interpolate_linear(0f32) as u8,
+                    (BYTE_MAX, BYTE_MIN).interpolate_linear(0f32) as u8,
                 ),
                 x if (5f64..=6f64).contains(&x) => {
                     if state.snapshot.current_period == GamePeriod::HalfTime {
                         (
                             (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO)
                                 .interpolate_linear(0f32),
-                            (ALPHA_MAX, ALPHA_MIN).interpolate_linear(0f32) as u8,
+                            (BYTE_MAX, BYTE_MIN).interpolate_linear(0f32) as u8,
                         )
                     } else {
                         (
                             (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO)
                                 .interpolate_linear(time as f32 - 5f32),
-                            (ALPHA_MAX, ALPHA_MIN).interpolate_linear(time as f32 - 5f32) as u8,
+                            (BYTE_MAX, BYTE_MIN).interpolate_linear(time as f32 - 5f32) as u8,
                         )
                     }
                 }
@@ -96,13 +96,13 @@ impl PageRenderer {
                         (
                             (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO)
                                 .interpolate_linear(0f32),
-                            (ALPHA_MAX, ALPHA_MIN).interpolate_linear(0f32) as u8,
+                            (BYTE_MAX, BYTE_MIN).interpolate_linear(0f32) as u8,
                         )
                     } else {
                         (
                             (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO)
                                 .interpolate_linear(1f32),
-                            (ALPHA_MAX, ALPHA_MIN).interpolate_linear(1f32) as u8,
+                            (BYTE_MAX, BYTE_MIN).interpolate_linear(1f32) as u8,
                         )
                     }
                 }

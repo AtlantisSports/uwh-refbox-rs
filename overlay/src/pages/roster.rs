@@ -6,8 +6,8 @@ use crate::pages::draw_text_both;
 use crate::pages::draw_text_both_ex;
 use crate::pages::multilinify;
 use crate::State;
-use crate::ALPHA_MAX;
-use crate::ALPHA_MIN;
+use crate::BYTE_MAX;
+use crate::BYTE_MIN;
 use coarsetime::Instant;
 use macroquad::prelude::*;
 use uwh_common::game_snapshot::Color as UwhColor;
@@ -30,7 +30,7 @@ impl PageRenderer {
             };
             let timeout_alpha_offset = if state.snapshot.secs_in_period == 145 {
                 self.animation_register2 = Instant::now();
-                (ALPHA_MAX, ALPHA_MIN).interpolate_linear(
+                (BYTE_MAX, BYTE_MIN).interpolate_linear(
                     Instant::now()
                         .duration_since(self.animation_register1)
                         .as_f64() as f32,
@@ -320,7 +320,7 @@ impl PageRenderer {
             let white_to_black_point = ((state.white.players.len() + 3) / 4 * 4) as f32 + 0.5;
             let black_to_red_point =
                 white_to_black_point + ((state.black.players.len() + 3) / 4 * 4) as f32 + 0.5;
-            let red_fade_point = black_to_red_point + 4f32; //(state.referees.len() / 4 * 4) as f32 + 0.5;
+            let red_fade_point = black_to_red_point + 4f32; //((state.referees.len() + 3)/ 4 * 4) as f32 + 0.5;
 
             let rpd_selector = match Instant::now()
                 .duration_since(self.animation_register2)

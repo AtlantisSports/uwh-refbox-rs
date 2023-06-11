@@ -5,8 +5,10 @@ use std::io::Read;
 use std::net::TcpStream;
 use uwh_common::game_snapshot::{Color, GamePeriod, GameSnapshot};
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct TeamInfo {
+/// Contains information about team. `flag` here is a byte array for `Serialize`, which is
+/// processed into `Texture2D` when struct is converted into `TeamInfo`
+#[derive(Serialize, Deserialize)]
+pub struct TeamInfoRaw {
     pub team_name: String,
     /// `Vec` of (Name, Number)
     pub players: Vec<(String, u8)>,
@@ -15,7 +17,7 @@ pub struct TeamInfo {
     pub flag: Option<Vec<u8>>,
 }
 
-impl TeamInfo {
+impl TeamInfoRaw {
     pub async fn new(url: &String, tournament_id: u32, team_id: u64, team_color: Color) -> Self {
         debug!(
             "Requesting UWH API for team information for team {}",
@@ -74,18 +76,18 @@ impl TeamInfo {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 pub struct StatePacket {
     pub snapshot: GameSnapshot,
-    pub black: Option<TeamInfo>,
-    pub white: Option<TeamInfo>,
+    pub black: Option<TeamInfoRaw>,
+    pub white: Option<TeamInfoRaw>,
     pub game_id: Option<u32>,
     pub pool: Option<String>,
     pub start_time: Option<String>,
 }
 
 async fn fetch_game_data(
-    tr: crossbeam_channel::Sender<(String, String, TeamInfo, TeamInfo)>,
+    tr: crossbeam_channel::Sender<(String, String, TeamInfoRaw, TeamInfoRaw)>,
     url: String,
     tournament_id: u32,
     game_id: u32,
@@ -115,12 +117,13 @@ async fn fetch_game_data(
             tr.send((
                 pool,
                 start_time,
-                TeamInfo::new(&url, tournament_id, team_id_black, Color::Black).await,
-                TeamInfo::new(&url, tournament_id, team_id_white, Color::White).await,
+                TeamInfoRaw::new(&url, tournament_id, team_id_black, Color::Black).await,
+                TeamInfoRaw::new(&url, tournament_id, team_id_white, Color::White).await,
             ))
             .unwrap();
             return;
         } else {
+            warn!("Game data request failed. Trying again in 5 seconds.");
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         }
     }
@@ -138,7 +141,7 @@ pub async fn networking_thread(
         }
     };
 
-    let (tr, rc) = crossbeam_channel::bounded::<(String, String, TeamInfo, TeamInfo)>(3);
+    let (tr, rc) = crossbeam_channel::bounded::<(String, String, TeamInfoRaw, TeamInfoRaw)>(3);
     let url = config.uwhscores_url.clone();
     let mut buff = vec![0u8; 1024];
     let mut read_bytes;
@@ -172,8 +175,8 @@ pub async fn networking_thread(
                 || game_id.is_some() && game_id.unwrap() != gid)
                 || tournament_id.is_none() && game_id.is_none()
             {
-                let url = url.clone();
                 let tr = tr.clone();
+                let url = url.clone();
                 game_id = Some(gid);
                 tournament_id = Some(tid);
                 debug!(

@@ -5,8 +5,8 @@ use super::PageRenderer;
 use crate::pages::draw_text_both;
 use crate::pages::draw_text_both_ex;
 use crate::State;
-use crate::ALPHA_MAX;
-use crate::ALPHA_MIN;
+use crate::BYTE_MAX;
+use crate::BYTE_MIN;
 use coarsetime::Instant;
 use macroquad::prelude::*;
 
@@ -57,7 +57,7 @@ impl PageRenderer {
             }
             15 => {
                 // animate a fade on the fifteenth second
-                let offset = (ALPHA_MAX, ALPHA_MIN).interpolate_linear(
+                let offset = (BYTE_MAX, BYTE_MIN).interpolate_linear(
                     Instant::now()
                         .duration_since(self.animation_register1)
                         .as_f64() as f32,

@@ -65,6 +65,8 @@ pub struct TimingRules {
     pub min_game_break: Duration,
     pub overtime_allowed: bool,
     pub sudden_death_allowed: bool,
+    #[serde(deserialize_with = "deser_secs_to_opt_dur")]
+    pub pre_sudden_death_break: Option<Duration>,
 }
 
 #[allow(clippy::from_over_into)]
@@ -78,6 +80,9 @@ impl Into<GameConfig> for TimingRules {
             minimum_break: self.min_game_break,
             overtime_allowed: self.overtime_allowed,
             sudden_death_allowed: self.sudden_death_allowed,
+            pre_sudden_death_duration: self
+                .pre_sudden_death_break
+                .unwrap_or(GameConfig::default().pre_sudden_death_duration),
             ..Default::default()
         }
     }
@@ -96,6 +101,13 @@ where
     D: Deserializer<'de>,
 {
     u64::deserialize(deserializer).map(Duration::from_secs)
+}
+
+fn deser_secs_to_opt_dur<'de, D>(deserializer: D) -> Result<Option<Duration>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    u64::deserialize(deserializer).map(|len| Some(Duration::from_secs(len)))
 }
 
 // Deserialize noramlly, but use the value's default if `null` is found

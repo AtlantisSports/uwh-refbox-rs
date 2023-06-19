@@ -3,6 +3,7 @@ use super::{
     shared_elements::*,
     style::{self, MEDIUM_TEXT, MIN_BUTTON_SIZE, PADDING, SMALL_TEXT, SPACING},
 };
+use crate::config::Mode;
 use crate::sound_controller::*;
 use collect_array::CollectArrayResult;
 use iced::{
@@ -27,6 +28,7 @@ pub(in super::super) struct EditableSettings {
     pub current_pool: Option<String>,
     pub games: Option<BTreeMap<u32, GameInfo>>,
     pub sound: SoundSettings,
+    pub mode: Mode,
 }
 
 pub(in super::super) trait Cyclable
@@ -73,6 +75,16 @@ impl Cyclable for Volume {
             Self::Medium => Self::High,
             Self::High => Self::Max,
             Self::Max => Self::Off,
+        }
+    }
+}
+
+impl Cyclable for Mode {
+    fn next(&self) -> Self {
+        match self {
+            Self::Hockey6V6 => Self::Hockey3V3,
+            Self::Hockey3V3 => Self::Rugby,
+            Self::Rugby => Self::Hockey6V6,
         }
     }
 }
@@ -170,7 +182,12 @@ fn make_main_config_page<'a>(
             )
             .style(style::Button::LightGray),
         )
-        .push(vertical_space(Length::Fill))
+        .push(make_value_button(
+            "MODE",
+            settings.mode.to_string().to_uppercase(),
+            (true, true),
+            Some(Message::CycleParameter(CyclingParameter::Mode)),
+        ))
         .push(
             row()
                 .spacing(SPACING)

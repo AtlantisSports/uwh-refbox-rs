@@ -896,6 +896,7 @@ impl Application for RefBoxApp {
                     current_pool: self.current_pool.clone(),
                     games: self.games.clone(),
                     sound: self.config.sound.clone(),
+                    mode: self.config.mode,
                 };
 
                 self.edited_settings = Some(edited_settings);
@@ -1230,13 +1231,16 @@ impl Application for RefBoxApp {
                 }
             }
             Message::CycleParameter(param) => {
-                let sound = &mut self.edited_settings.as_mut().unwrap().sound;
+                let settings = &mut self.edited_settings.as_mut().unwrap();
                 match param {
-                    CyclingParameter::BuzzerSound => sound.buzzer_sound.cycle(),
-                    CyclingParameter::RemoteBuzzerSound(idx) => sound.remotes[idx].sound.cycle(),
-                    CyclingParameter::AlertVolume => sound.whistle_vol.cycle(),
-                    CyclingParameter::AboveWaterVol => sound.above_water_vol.cycle(),
-                    CyclingParameter::UnderWaterVol => sound.under_water_vol.cycle(),
+                    CyclingParameter::BuzzerSound => settings.sound.buzzer_sound.cycle(),
+                    CyclingParameter::RemoteBuzzerSound(idx) => {
+                        settings.sound.remotes[idx].sound.cycle()
+                    }
+                    CyclingParameter::AlertVolume => settings.sound.whistle_vol.cycle(),
+                    CyclingParameter::AboveWaterVol => settings.sound.above_water_vol.cycle(),
+                    CyclingParameter::UnderWaterVol => settings.sound.under_water_vol.cycle(),
+                    CyclingParameter::Mode => settings.mode.cycle(),
                 }
             }
             Message::RequestRemoteId => {

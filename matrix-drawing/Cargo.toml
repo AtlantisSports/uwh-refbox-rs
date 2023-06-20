@@ -9,10 +9,10 @@ default = ["std"]
 std = ["arrayvec/std", "serde/std", "uwh-common/std"]
 
 [dependencies]
-arrayref = "0.3.6"
-arrayvec = { version = "0.7.2", default-features = false }
-embedded-graphics = "0.7.1"
-fonts = { version = "0.1.4", path = "../fonts" }
+arrayref = "0.3"
+arrayvec = { version = "0.7", default-features = false }
+embedded-graphics = "0.7"
+fonts = { version = "0.1", path = "../fonts" }
 more-asserts = "0.2"
 serde = { version = "1.0", default-features = false }
 serde_derive = "1.0"

@@ -1530,9 +1530,11 @@ impl TimeoutState {
 #[derive(Derivative)]
 #[derivative(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum PenaltyKind {
+    ThirtySecond,
     #[derivative(Default)]
     OneMinute,
     TwoMinute,
+    FourMinute,
     FiveMinute,
     TotalDismissal,
 }
@@ -1540,8 +1542,10 @@ pub enum PenaltyKind {
 impl PenaltyKind {
     pub(crate) fn as_duration(self) -> Option<Duration> {
         match self {
+            Self::ThirtySecond => Some(Duration::from_secs(30)),
             Self::OneMinute => Some(Duration::from_secs(60)),
             Self::TwoMinute => Some(Duration::from_secs(120)),
+            Self::FourMinute => Some(Duration::from_secs(240)),
             Self::FiveMinute => Some(Duration::from_secs(300)),
             Self::TotalDismissal => None,
         }
@@ -1640,7 +1644,11 @@ impl Penalty {
     ) -> PenaltyResult<bool> {
         match self.kind {
             PenaltyKind::TotalDismissal => Ok(false),
-            PenaltyKind::OneMinute | PenaltyKind::TwoMinute | PenaltyKind::FiveMinute => self
+            PenaltyKind::ThirtySecond
+            | PenaltyKind::OneMinute
+            | PenaltyKind::TwoMinute
+            | PenaltyKind::FourMinute
+            | PenaltyKind::FiveMinute => self
                 .time_remaining(cur_per, cur_time, config)
                 .map(|rem| rem <= SignedDuration::ZERO),
         }

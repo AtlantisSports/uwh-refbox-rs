@@ -44,12 +44,13 @@ impl Default for UwhScores {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Config {
+    pub mode: Mode,
     pub game: Game,
     pub hardware: Hardware,
     pub uwhscores: UwhScores,
     pub sound: SoundSettings,
-    pub mode: Mode,
 }
+
 macro_attr! {
     #[derive(Debug, Clone, Copy, Derivative, PartialEq, Eq, Serialize, Deserialize, EnumDisplay!)]
     #[derivative(Default)]

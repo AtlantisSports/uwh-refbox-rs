@@ -991,6 +991,7 @@ impl Application for RefBoxApp {
                             self.games = edited_settings.games;
                             self.config.sound = edited_settings.sound;
                             self.sound.update_settings(self.config.sound.clone());
+                            self.config.mode = edited_settings.mode;
 
                             confy::store(APP_NAME, None, &self.config).unwrap();
                             AppState::MainPage
@@ -1007,6 +1008,7 @@ impl Application for RefBoxApp {
                             self.games = edited_settings.games;
                             self.config.sound = edited_settings.sound;
                             self.sound.update_settings(self.config.sound.clone());
+                            self.config.mode = edited_settings.mode;
 
                             confy::store(APP_NAME, None, &self.config).unwrap();
 
@@ -1048,6 +1050,7 @@ impl Application for RefBoxApp {
                         self.games = edited_settings.games;
                         self.config.sound = edited_settings.sound;
                         self.sound.update_settings(self.config.sound.clone());
+                        self.config.mode = edited_settings.mode;
 
                         confy::store(APP_NAME, None, &self.config).unwrap();
                         AppState::MainPage
@@ -1329,6 +1332,7 @@ impl Application for RefBoxApp {
                         self.games = edited_settings.games;
                         self.config.sound = edited_settings.sound;
                         self.sound.update_settings(self.config.sound.clone());
+                        self.config.mode = edited_settings.mode;
 
                         confy::store(APP_NAME, None, &self.config).unwrap();
                         let snapshot = tm.generate_snapshot(now).unwrap(); // TODO: Remove this unwrap
@@ -1350,6 +1354,7 @@ impl Application for RefBoxApp {
                         self.games = edited_settings.games;
                         self.config.sound = edited_settings.sound;
                         self.sound.update_settings(self.config.sound.clone());
+                        self.config.mode = edited_settings.mode;
 
                         confy::store(APP_NAME, None, &self.config).unwrap();
                         self.apply_snapshot(snapshot);
@@ -1577,7 +1582,7 @@ impl Application for RefBoxApp {
                     indices,
                 ),
                 AppState::KeypadPage(page, player_num) => {
-                    build_keypad_page(&self.snapshot, page, player_num)
+                    build_keypad_page(&self.snapshot, page, player_num, self.config.mode)
                 }
                 AppState::EditGameConfig(page) => build_game_config_edit_page(
                     &self.snapshot,

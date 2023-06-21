@@ -307,8 +307,10 @@ fn generate_printable_list(
                 EditablePenalty::New(_, _) => FormatHint::New,
             };
             let kind_str = match kind {
+                PenaltyKind::ThirtySecond => "30s",
                 PenaltyKind::OneMinute => "1m",
                 PenaltyKind::TwoMinute => "2m",
+                PenaltyKind::FourMinute => "4m",
                 PenaltyKind::FiveMinute => "5m",
                 PenaltyKind::TotalDismissal => "DSMS",
             };

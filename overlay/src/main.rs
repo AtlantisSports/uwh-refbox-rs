@@ -33,7 +33,7 @@ const TIME_AND_STATE_SHRINK_FROM: f32 = 0f32;
 const BYTE_MAX: f32 = 255f32;
 const BYTE_MIN: f32 = 0f32;
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct AppConfig {
     refbox_ip: IpAddr,
     refbox_port: u64,
@@ -52,17 +52,21 @@ impl Default for AppConfig {
     }
 }
 
+//TODO change `Texture2D` here and in `Teaminfo` to `Texture`
 pub struct State {
     snapshot: GameSnapshot,
     black: TeamInfo,
     white: TeamInfo,
-    referees: TeamInfo,
+    /// `Vec` of (Name, Picture)
+    referees: Vec<(String, Option<Texture2D>)>,
     game_id: u32,
     pool: String,
     start_time: String,
-    white_flag: Option<Texture2D>,
-    black_flag: Option<Texture2D>,
     half_play_duration: Option<u32>,
+}
+
+pub fn texture_from_bytes(bytes: Vec<u8>) -> Texture2D {
+    Texture2D::from_file_with_format(&bytes, None)
 }
 
 impl State {
@@ -82,28 +86,47 @@ impl State {
         if let Some(start_time) = recieved_state.start_time {
             self.start_time = start_time;
         }
+        if let Some(referees) = recieved_state.referees {
+            self.referees = referees
+                .into_iter()
+                .map(|(name, picture)| (name, picture.map(texture_from_bytes)))
+                .collect()
+        }
         self.snapshot = recieved_state.snapshot;
     }
 }
 
 pub struct TeamInfo {
     pub team_name: String,
-    /// `Vec` of (Name, Number)
-    pub players: Vec<(String, u8)>,
-    /// `Vec` of (Name, Role)
-    pub support_members: Vec<(String, String)>,
+    /// `Vec` of (Name, Number, Picture, Geared Picture)
+    pub players: Vec<(String, u8, Option<Texture2D>, Option<Texture2D>)>,
+    /// `Vec` of (Name, Role, Picture)
+    pub support_members: Vec<(String, String, Option<Texture2D>)>,
     pub flag: Option<Texture2D>,
 }
 
 impl From<TeamInfoRaw> for TeamInfo {
     fn from(team_info_raw: TeamInfoRaw) -> Self {
         TeamInfo {
-            team_name: team_info_raw.team_name.clone(),
-            players: team_info_raw.players.clone(),
-            support_members: team_info_raw.support_members.clone(),
-            flag: team_info_raw
-                .flag
-                .map(|bytes| Texture2D::from_file_with_format(&bytes, None)),
+            team_name: team_info_raw.team_name,
+            players: team_info_raw
+                .players
+                .into_iter()
+                .map(|(name, number, picture, geared_picture)| {
+                    (
+                        name,
+                        number,
+                        picture.map(texture_from_bytes),
+                        geared_picture.map(texture_from_bytes),
+                    )
+                })
+                .collect(),
+            support_members: team_info_raw
+                .support_members
+                .into_iter()
+                .map(|(name, role, picture)| (name, role, picture.map(texture_from_bytes)))
+                .collect(),
+            flag: team_info_raw.flag.map(texture_from_bytes),
         }
     }
 }
@@ -144,7 +167,10 @@ async fn main() {
     init_logging();
 
     let config: AppConfig = match confy::load(APP_NAME, None) {
-        Ok(c) => c,
+        Ok(config) => {
+            info!("Loaded config {:?}", config);
+            config
+        }
         Err(e) => {
             warn!("Failed to read config file, overwriting with default. Error: {e}");
             let config = AppConfig::default();
@@ -198,13 +224,11 @@ async fn main() {
         },
 
         black: TeamInfo::with_name("BLACK"),
-        referees: TeamInfo::with_name("REFEREES"),
+        referees: Vec::new(),
         white: TeamInfo::with_name("WHITE"),
         game_id: 0,
         pool: String::new(),
         start_time: String::new(),
-        white_flag: None,
-        black_flag: None,
         half_play_duration: None,
     };
 
@@ -215,6 +239,7 @@ async fn main() {
         assets,
         last_snapshot_timeout: TimeoutSnapshot::None,
     };
+
     let mut flag_renderer = flag::FlagRenderer::new();
     unsafe {
         get_internal_gl().quad_context.show_mouse(false);

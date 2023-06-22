@@ -158,10 +158,10 @@ impl PageRenderer {
             }
             _ => {}
         }
-        if state.white_flag.is_none() {
+        if state.white.flag.is_none() {
             draw_text_both_ex!(
                 state.white.team_name.to_uppercase().as_str(),
-                if state.white_flag.is_some() {
+                if state.white.flag.is_some() {
                     160f32
                 } else {
                     79f32
@@ -182,7 +182,7 @@ impl PageRenderer {
             );
             draw_text_both!(
                 state.black.team_name.to_uppercase().as_str(),
-                if state.black_flag.is_some() {
+                if state.black.flag.is_some() {
                     160f32
                 } else {
                     79f32
@@ -197,10 +197,10 @@ impl PageRenderer {
             );
         }
         draw_texture_both!(self.assets.time_and_game_state, 167f32, 18f32, WHITE);
-        if state.white_flag.is_some() {
+        if state.white.flag.is_some() {
             draw_rectangle(1999f32, 39f32, 70f32, 33f32, WHITE);
         }
-        if state.black_flag.is_some() {
+        if state.black.flag.is_some() {
             draw_rectangle(1999f32, 75f32, 70f32, 33f32, WHITE);
         }
         let min = state.snapshot.secs_in_period / 60;
@@ -262,7 +262,7 @@ impl PageRenderer {
                 ..Default::default()
             },
         );
-        if let Some(flag) = state.white_flag {
+        if let Some(flag) = state.white.flag {
             draw_texture_ex(
                 flag,
                 79f32,
@@ -274,7 +274,7 @@ impl PageRenderer {
                 },
             );
         }
-        if let Some(flag) = state.black_flag {
+        if let Some(flag) = state.black.flag {
             draw_texture_ex(
                 flag,
                 79f32,

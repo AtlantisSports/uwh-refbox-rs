@@ -51,13 +51,13 @@ impl PageRenderer {
                 ..Default::default()
             }
         );
-        if state.white_flag.is_some() {
+        if state.white.flag.is_some() {
             draw_rectangle(2500f32, 738f32, 180f32, 100f32, WHITE);
         }
-        if state.black_flag.is_some() {
+        if state.black.flag.is_some() {
             draw_rectangle(3083f32, 738f32, 180f32, 100f32, WHITE);
         }
-        if let Some(flag) = state.white_flag {
+        if let Some(flag) = state.white.flag {
             draw_texture_ex(
                 flag,
                 580f32,
@@ -69,7 +69,7 @@ impl PageRenderer {
                 },
             );
         }
-        if let Some(flag) = state.black_flag {
+        if let Some(flag) = state.black.flag {
             draw_texture_ex(
                 flag,
                 1163f32,

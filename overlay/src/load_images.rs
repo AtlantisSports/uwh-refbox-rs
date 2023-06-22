@@ -19,7 +19,7 @@ pub struct RpdTextures {
     pub single_line_name_bg: Texture,
     pub double_line_name_bg: Texture,
     pub triple_line_name_bg: Texture,
-    pub frame_with_number: Texture,
+    pub frame_number: Texture,
     pub frame_without_number: Texture,
     pub team_member_role_bg: Texture,
 }
@@ -38,6 +38,7 @@ pub struct Textures {
     pub white_timout: Texture,
     pub black_timout: Texture,
     pub referee_timout: Texture,
+    pub potrait_default: Texture,
     pub black_rpd: RpdTextures,
     pub white_rpd: RpdTextures,
     pub red_rpd: RpdTextures,
@@ -118,7 +119,7 @@ impl Default for Textures {
                     color: load!("../assets/color/1080/Black Triple Line Name Background.png"),
                     alpha: load!("../assets/alpha/1080/Black Triple Line Name Background.png"),
                 },
-                frame_with_number: Texture {
+                frame_number: Texture {
                     color: load!("../assets/color/1080/Black Frame with Number.png"),
                     alpha: load!("../assets/alpha/1080/Black Frame with Number.png"),
                 },
@@ -148,7 +149,7 @@ impl Default for Textures {
                     color: load!("../assets/color/1080/White Triple Line Name Background.png"),
                     alpha: load!("../assets/alpha/1080/White Triple Line Name Background.png"),
                 },
-                frame_with_number: Texture {
+                frame_number: Texture {
                     color: load!("../assets/color/1080/White Frame with Number.png"),
                     alpha: load!("../assets/alpha/1080/White Frame with Number.png"),
                 },
@@ -178,7 +179,7 @@ impl Default for Textures {
                     color: load!("../assets/color/1080/Red Triple Line Name Background.png"),
                     alpha: load!("../assets/alpha/1080/Red Triple Line Name Background.png"),
                 },
-                frame_with_number: Texture {
+                frame_number: Texture {
                     color: load!("../assets/color/1080/Red Frame with Number.png"),
                     alpha: load!("../assets/alpha/1080/Red Frame with Number.png"),
                 },
@@ -192,6 +193,10 @@ impl Default for Textures {
                 },
             },
             tournament_logo: None,
+            potrait_default: Texture {
+                color: load!("../assets/color/1080/Potrait Default.png"),
+                alpha: load!("../assets/alpha/1080/Potrait Default.png"),
+            },
         }
     }
 }

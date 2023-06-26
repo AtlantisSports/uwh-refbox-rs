@@ -79,12 +79,26 @@ pub fn multilinify(text: &str, width: f32, font: Option<Font>, font_size: u16) -
 macro_rules! center_text_offset {
     ($field_half_width: expr, $string: expr, $font_size: literal, $font: expr) => {{
         let mut text = $string.to_string();
-        let text = {
+        let (mut text, popped) = {
+            let mut popped = false;
             while 2f32 * $field_half_width
                 < measure_text(text.as_str(), Some($font), $font_size, 1.0).width
             {
                 text.pop();
+                popped = true;
             }
+            (text, popped)
+        };
+        let text = if popped {
+            if 2f32 * $field_half_width
+                < measure_text(&(text.clone() + ".."), Some($font), $font_size, 1.0).width
+            {
+                text.pop();
+                String::from(text + "..")
+            } else {
+                String::from(text + "..")
+            }
+        } else {
             text
         };
         (

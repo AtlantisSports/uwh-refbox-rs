@@ -3,13 +3,13 @@ version: 2.1
 jobs:
   check-build-debug:
     docker:
-      - image: magycian/refbox-ci:1.66.1
+      - image: magycian/refbox-ci:1.70.0
         environment:
           CARGO_INCREMENTAL: 0
     steps:
       - checkout
       - restore_cache:
-          key: v2-uwh-refbox-rs-1.66.1-{{ checksum "Cargo.lock" }}
+          key: v2-uwh-refbox-rs-1.70.0-{{ checksum "Cargo.lock" }}
           paths:
             - /home/circleci/.cache/sccache
             - /home/circleci/.cargo/registry/cache
@@ -30,7 +30,7 @@ jobs:
       - run: cargo test --all
       - run: ./ci/clean-cache.sh
       - save_cache:
-          key: v2-uwh-refbox-rs-1.66.1-{{ checksum "Cargo.lock" }}
+          key: v2-uwh-refbox-rs-1.70.0-{{ checksum "Cargo.lock" }}
           paths:
             - /home/circleci/.cache/sccache
             - /home/circleci/.cargo/registry/cache
@@ -40,14 +40,14 @@ jobs:
             - target
   check-build-release:
     docker:
-      - image: magycian/refbox-ci:1.66.1
+      - image: magycian/refbox-ci:1.70.0
         environment:
           CARGO_INCREMENTAL: 0
           RUSTFLAGS: "-D warnings"
     steps:
       - checkout
       - restore_cache:
-          key: v2-uwh-refbox-rs-1.66.1-release-{{ checksum "Cargo.lock" }}
+          key: v2-uwh-refbox-rs-1.70.0-release-{{ checksum "Cargo.lock" }}
           paths:
             - /home/circleci/.cache/sccache
             - /home/circleci/.cargo/registry/cache
@@ -67,7 +67,7 @@ jobs:
       - run: cargo test --release --all
       - run: ./ci/clean-cache.sh
       - save_cache:
-          key: v2-uwh-refbox-rs-1.66.1-release-{{ checksum "Cargo.lock" }}
+          key: v2-uwh-refbox-rs-1.70.0-release-{{ checksum "Cargo.lock" }}
           paths:
             - /home/circleci/.cache/sccache
             - /home/circleci/.cargo/registry/cache

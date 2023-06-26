@@ -33,7 +33,6 @@ pub struct Textures {
     pub team_bar: Texture,
     pub time_and_game_state: Texture,
     pub final_score: Texture,
-    pub in_game_mask: Texture,
     pub penalty: Texture,
     pub white_timout: Texture,
     pub black_timout: Texture,
@@ -81,10 +80,6 @@ impl Default for Textures {
             atlantis_logo: Texture {
                 color: load!("../assets/color/1080/Atlantis Logo.png"),
                 alpha: load!("../assets/alpha/1080/Atlantis Logo.png"),
-            },
-            in_game_mask: Texture {
-                color: load!("../assets/alpha/1080/mask.png"),
-                alpha: load!("../assets/alpha/1080/mask.png"),
             },
             penalty: Texture {
                 color: load!("../assets/color/1080/Penalty Shot Flag.png"),

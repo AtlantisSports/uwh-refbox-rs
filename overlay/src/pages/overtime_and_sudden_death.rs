@@ -69,7 +69,6 @@ impl PageRenderer {
             };
 
         draw_texture_both!(self.assets.team_bar, 26f32, 37f32, WHITE);
-        draw_texture_both!(self.assets.in_game_mask, 359f32, 0f32, WHITE);
         // No penalty shot, black or white timeouts in overtime
         match self.last_snapshot_timeout {
             TimeoutSnapshot::Ref(_) => {
@@ -196,7 +195,7 @@ impl PageRenderer {
                 }
             );
         }
-        draw_texture_both!(self.assets.time_and_game_state, 167f32, 18f32, WHITE);
+        draw_texture_both!(self.assets.time_and_game_state, 367f32, 18f32, WHITE);
         if state.white.flag.is_some() {
             draw_rectangle(1999f32, 39f32, 70f32, 33f32, WHITE);
         }
@@ -221,7 +220,7 @@ impl PageRenderer {
         let (x_off, text) = center_text_offset!(90f32, text.as_str(), 50, self.assets.font);
         draw_text_ex(
             text.as_str(),
-            230f32 + x_off,
+            430f32 + x_off,
             95f32,
             TextParams {
                 font: self.assets.font,
@@ -247,7 +246,7 @@ impl PageRenderer {
         let (x_off, text) = center_text_offset!(100f32, ot_text, 20, self.assets.font);
         draw_text_ex(
             text.as_str(),
-            220f32 + x_off,
+            420f32 + x_off,
             45f32,
             TextParams {
                 font: self.assets.font,

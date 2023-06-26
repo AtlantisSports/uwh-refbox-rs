@@ -5,10 +5,6 @@ use super::PageRenderer;
 use crate::pages::draw_text_both;
 use crate::pages::draw_text_both_ex;
 use crate::State;
-use crate::BYTE_MAX;
-use crate::BYTE_MIN;
-use crate::TIME_AND_STATE_SHRINK_FROM;
-use crate::TIME_AND_STATE_SHRINK_TO;
 use coarsetime::Instant;
 use macroquad::prelude::*;
 use uwh_common::game_snapshot::GamePeriod;
@@ -18,103 +14,7 @@ impl PageRenderer {
     /// Display info during game play
     pub fn in_game_display(&mut self, state: &State) {
         // animate the state and time graphic 5 seconds since period started)
-        let (position_offset, alpha_offset) = if state.snapshot.secs_in_period < 1 {
-            // reset animation counters if page is nearing termination
-            self.animation_register1 = Instant::now();
-            self.animation_register2 = Instant::now();
-            if state.snapshot.current_period == GamePeriod::HalfTime {
-                (
-                    (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO).interpolate_linear(0f32),
-                    (BYTE_MAX, BYTE_MIN).interpolate_linear(0f32) as u8,
-                )
-            } else {
-                (
-                    (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO).interpolate_linear(1f32),
-                    (BYTE_MAX, BYTE_MIN).interpolate_linear(1f32) as u8,
-                )
-            }
-        } else if state.snapshot.current_period == GamePeriod::FirstHalf {
-            let time = Instant::now()
-                .duration_since(self.animation_register1)
-                .as_f64();
-            match time {
-                x if (..=5f64).contains(&x) => (
-                    (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO).interpolate_linear(0f32),
-                    (BYTE_MAX, BYTE_MIN).interpolate_linear(0f32) as u8,
-                ),
-                x if (5f64..=6f64).contains(&x) => (
-                    (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO)
-                        .interpolate_linear(time as f32 - 5f32),
-                    (BYTE_MAX, BYTE_MIN).interpolate_linear(time as f32 - 5f32) as u8,
-                ),
-                _ => (
-                    (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO).interpolate_linear(1f32),
-                    (BYTE_MAX, BYTE_MIN).interpolate_linear(1f32) as u8,
-                ),
-            }
-        } else {
-            let time = Instant::now()
-                .duration_since(self.animation_register1)
-                .as_f64();
-            match time {
-                x if (..=1f64).contains(&x) => {
-                    if state.snapshot.current_period == GamePeriod::SecondHalf {
-                        (
-                            (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO)
-                                .interpolate_linear(0f32),
-                            (BYTE_MAX, BYTE_MIN).interpolate_linear(0f32) as u8,
-                        )
-                    } else {
-                        (
-                            (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO)
-                                .interpolate_linear(1f32 - time as f32),
-                            (BYTE_MAX, BYTE_MIN).interpolate_linear(1f32 - time as f32) as u8,
-                        )
-                    }
-                }
-                x if (1f64..=5f64).contains(&x) => (
-                    (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO).interpolate_linear(0f32),
-                    (BYTE_MAX, BYTE_MIN).interpolate_linear(0f32) as u8,
-                ),
-                x if (5f64..=6f64).contains(&x) => {
-                    if state.snapshot.current_period == GamePeriod::HalfTime {
-                        (
-                            (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO)
-                                .interpolate_linear(0f32),
-                            (BYTE_MAX, BYTE_MIN).interpolate_linear(0f32) as u8,
-                        )
-                    } else {
-                        (
-                            (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO)
-                                .interpolate_linear(time as f32 - 5f32),
-                            (BYTE_MAX, BYTE_MIN).interpolate_linear(time as f32 - 5f32) as u8,
-                        )
-                    }
-                }
-                _ => {
-                    if state.snapshot.current_period == GamePeriod::HalfTime {
-                        (
-                            (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO)
-                                .interpolate_linear(0f32),
-                            (BYTE_MAX, BYTE_MIN).interpolate_linear(0f32) as u8,
-                        )
-                    } else {
-                        (
-                            (TIME_AND_STATE_SHRINK_FROM, TIME_AND_STATE_SHRINK_TO)
-                                .interpolate_linear(1f32),
-                            (BYTE_MAX, BYTE_MIN).interpolate_linear(1f32) as u8,
-                        )
-                    }
-                }
-            }
-        };
         draw_texture_both!(self.assets.team_bar, 26f32, 37f32, WHITE);
-        draw_texture_both!(
-            self.assets.in_game_mask,
-            580f32 + position_offset,
-            37f32,
-            WHITE
-        );
         let mut time = Instant::now()
             .duration_since(self.animation_register2)
             .as_f64() as f32;
@@ -171,13 +71,13 @@ impl PageRenderer {
             TimeoutSnapshot::Ref(_) => {
                 draw_texture_both!(
                     self.assets.referee_timout,
-                    position_offset + timeout_offset + 580f32,
+                    timeout_offset + 580f32,
                     35f32,
                     Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
                 );
                 draw_text_both_ex!(
                     "REFEREE",
-                    675f32 + position_offset + timeout_offset,
+                    675f32 + timeout_offset,
                     67f32,
                     TextParams {
                         font: self.assets.font,
@@ -194,7 +94,7 @@ impl PageRenderer {
                 );
                 draw_text_both_ex!(
                     "TIMEOUT",
-                    680f32 + position_offset + timeout_offset,
+                    680f32 + timeout_offset,
                     95f32,
                     TextParams {
                         font: self.assets.font,
@@ -213,13 +113,13 @@ impl PageRenderer {
             TimeoutSnapshot::White(time) => {
                 draw_texture_both!(
                     self.assets.white_timout,
-                    position_offset + timeout_offset + 580f32,
+                    timeout_offset + 580f32,
                     35f32,
                     Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
                 );
                 draw_text_both_ex!(
                     "WHITE",
-                    675f32 + position_offset + timeout_offset,
+                    675f32 + timeout_offset,
                     67f32,
                     TextParams {
                         font: self.assets.font,
@@ -236,7 +136,7 @@ impl PageRenderer {
                 );
                 draw_text_both_ex!(
                     "TIMEOUT",
-                    665f32 + position_offset + timeout_offset,
+                    665f32 + timeout_offset,
                     95f32,
                     TextParams {
                         font: self.assets.font,
@@ -253,7 +153,7 @@ impl PageRenderer {
                 );
                 draw_text_both_ex!(
                     format!("{time}").as_str(),
-                    773f32 + position_offset + timeout_offset,
+                    773f32 + timeout_offset,
                     90f32,
                     TextParams {
                         font: self.assets.font,
@@ -272,13 +172,13 @@ impl PageRenderer {
             TimeoutSnapshot::Black(time) => {
                 draw_texture_both!(
                     self.assets.black_timout,
-                    position_offset + timeout_offset + 580f32,
+                    timeout_offset + 580f32,
                     35f32,
                     Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
                 );
                 draw_text_both!(
                     "BLACK",
-                    675f32 + position_offset + timeout_offset,
+                    675f32 + timeout_offset,
                     67f32,
                     TextParams {
                         font: self.assets.font,
@@ -289,7 +189,7 @@ impl PageRenderer {
                 );
                 draw_text_both!(
                     "TIMEOUT",
-                    665f32 + position_offset + timeout_offset,
+                    665f32 + timeout_offset,
                     95f32,
                     TextParams {
                         font: self.assets.font,
@@ -300,7 +200,7 @@ impl PageRenderer {
                 );
                 draw_text_both!(
                     format!("{time}").as_str(),
-                    773f32 + position_offset + timeout_offset,
+                    773f32 + timeout_offset,
                     90f32,
                     TextParams {
                         font: self.assets.font,
@@ -313,13 +213,13 @@ impl PageRenderer {
             TimeoutSnapshot::PenaltyShot(_) => {
                 draw_texture_both!(
                     self.assets.penalty,
-                    position_offset + timeout_offset + 580f32,
+                    timeout_offset + 580f32,
                     35f32,
                     Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
                 );
                 draw_text_both_ex!(
                     "PENALTY",
-                    675f32 + position_offset + timeout_offset,
+                    675f32 + timeout_offset,
                     67f32,
                     TextParams {
                         font: self.assets.font,
@@ -336,7 +236,7 @@ impl PageRenderer {
                 );
                 draw_text_both_ex!(
                     "SHOT",
-                    690f32 + position_offset + timeout_offset,
+                    690f32 + timeout_offset,
                     95f32,
                     TextParams {
                         font: self.assets.font,
@@ -366,31 +266,13 @@ impl PageRenderer {
             TextParams {
                 font: self.assets.font,
                 font_size: 20,
-                color: Color::from_rgba(
-                    0,
-                    0,
-                    0,
-                    if state.white.flag.is_some() {
-                        alpha_offset
-                    } else {
-                        255
-                    },
-                ), // don't fade out team name if flags aren't available
+                color: Color::from_rgba(0, 0, 0, 255,), // don't fade out team name if flags aren't available
                 ..Default::default()
             },
             TextParams {
                 font: self.assets.font,
                 font_size: 20,
-                color: Color::from_rgba(
-                    255,
-                    255,
-                    255,
-                    if state.white.flag.is_some() {
-                        alpha_offset
-                    } else {
-                        255
-                    },
-                ), // don't fade out team name if flags aren't available
+                color: Color::from_rgba(255, 255, 255, 255,), // don't fade out team name if flags aren't available
                 ..Default::default()
             }
         );
@@ -405,25 +287,11 @@ impl PageRenderer {
             TextParams {
                 font: self.assets.font,
                 font_size: 20,
-                color: Color::from_rgba(
-                    255,
-                    255,
-                    255,
-                    if state.black.flag.is_some() {
-                        alpha_offset
-                    } else {
-                        255
-                    },
-                ),
+                color: Color::from_rgba(255, 255, 255, 255,),
                 ..Default::default()
             }
         );
-        draw_texture_both!(
-            self.assets.time_and_game_state,
-            position_offset + 367f32,
-            18f32,
-            WHITE
-        );
+        draw_texture_both!(self.assets.time_and_game_state, 367f32, 18f32, WHITE);
         if state.white.flag.is_some() {
             draw_rectangle(1999f32, 39f32, 70f32, 33f32, WHITE);
         }
@@ -448,7 +316,7 @@ impl PageRenderer {
         let (x_off, text) = center_text_offset!(90f32, text.as_str(), 50, self.assets.font);
         draw_text_ex(
             text.as_str(),
-            430f32 + position_offset + x_off,
+            430f32 + x_off,
             67f32,
             TextParams {
                 font: self.assets.font,
@@ -462,7 +330,7 @@ impl PageRenderer {
                 GamePeriod::SecondHalf => "2ND HALF",
                 _ => "HALF TIME",
             },
-            478f32 + position_offset,
+            478f32,
             100f32,
             TextParams {
                 font: self.assets.font,

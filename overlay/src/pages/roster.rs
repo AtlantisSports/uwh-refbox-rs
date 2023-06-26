@@ -549,6 +549,13 @@ impl PageRenderer {
                                     355f32,
                                     WHITE
                                 );
+                                draw_rectangle(
+                                    i as f32 * (card_width + margin) + margin + 15f32 + 1920f32,
+                                    372f32,
+                                    415f32,
+                                    415f32,
+                                    WHITE,
+                                );
                                 if let Some(number) = number {
                                     let card_picture = if (Instant::now()
                                         .duration_since(self.animation_register2)
@@ -563,13 +570,6 @@ impl PageRenderer {
                                     } else {
                                         geared_picture
                                     };
-                                    draw_rectangle(
-                                        i as f32 * (card_width + margin) + 43f32 + 1920f32,
-                                        372f32,
-                                        415f32,
-                                        415f32,
-                                        WHITE,
-                                    );
                                     draw_texture_ex(
                                         card_picture.unwrap_or(self.assets.potrait_default.color),
                                         i as f32 * (card_width + margin) + margin + 15f32,
@@ -610,13 +610,6 @@ impl PageRenderer {
                                         }
                                     );
                                 } else {
-                                    draw_rectangle(
-                                        i as f32 * (card_width + margin) + margin + 15f32 + 1920f32,
-                                        372f32,
-                                        415f32,
-                                        415f32,
-                                        WHITE,
-                                    );
                                     draw_texture_ex(
                                         picture.unwrap_or(self.assets.potrait_default.color),
                                         i as f32 * (card_width + margin) + margin + 15f32,

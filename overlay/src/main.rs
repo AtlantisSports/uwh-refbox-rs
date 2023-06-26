@@ -28,8 +28,6 @@ mod pages;
 use load_images::{read_image_from_file, Texture};
 
 const APP_NAME: &str = "overlay";
-const TIME_AND_STATE_SHRINK_TO: f32 = -200f32;
-const TIME_AND_STATE_SHRINK_FROM: f32 = 0f32;
 const BYTE_MAX: f32 = 255f32;
 const BYTE_MIN: f32 = 0f32;
 

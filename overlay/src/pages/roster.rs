@@ -4,7 +4,6 @@ use super::Interpolate;
 use super::PageRenderer;
 use crate::pages::draw_text_both;
 use crate::pages::draw_text_both_ex;
-use crate::pages::get_input;
 use crate::pages::multilinify;
 use crate::State;
 use crate::BYTE_MAX;
@@ -14,6 +13,61 @@ use macroquad::prelude::*;
 use uwh_common::game_snapshot::Color as UwhColor;
 
 const RPD_CARD_TIME: usize = 5;
+
+/// Used to represent each player's/support member's/referee's card and the information on it for the
+/// RPD display.
+/// only team support has `role`
+/// only players have `geared_picture` and `number`.
+/// players, team support and referees have `picture`
+#[derive(Clone)]
+struct CardRepr<'a> {
+    name: &'a str,
+    role: Option<&'a str>,
+    number: Option<u8>,
+    geared_picture: &'a Option<Texture2D>,
+    picture: &'a Option<Texture2D>,
+}
+
+trait RPDGroups {
+    fn rpd_groups(&self) -> std::vec::IntoIter<Vec<CardRepr>>;
+}
+
+impl<'a> RPDGroups for Vec<CardRepr<'a>> {
+    fn rpd_groups(&self) -> std::vec::IntoIter<Vec<CardRepr>> {
+        let mut n4 = self.len() / 4;
+        let mut n3 = 0;
+        // 1,2,5 are failing cases for this algorithm
+        if [1, 2].contains(&self.len()) {
+            return vec![self.clone()].into_iter();
+        } else if self.len() == 5 {
+            return vec![self[..3].to_vec(), self[3..].to_vec()].into_iter(); // partition 5 into 3, 2
+        }
+        match self.len() % 4 {
+            3 => {
+                n3 += 1;
+            }
+            2 => {
+                n3 += 2;
+                n4 -= 1;
+            }
+            0 => {}
+            _ => {
+                // 1
+                n3 += 3;
+                n4 -= 2;
+            }
+        }
+        let mut divd = Vec::new();
+        for i in 0..n4 {
+            divd.push(self[i * 4..i * 4 + 4].to_vec());
+        }
+        for i in 0..n3 {
+            divd.push(self[n4 * 4 + i * 3..n4 * 4 + i * 3 + 3].to_vec());
+        }
+        divd.into_iter()
+    }
+}
+
 impl PageRenderer {
     /// Roster screen, displayed between 150 and 30 seconds before the next game.
     pub fn roster(&mut self, state: &State) {
@@ -331,23 +385,13 @@ impl PageRenderer {
             let p4 = p3 + ((state.black.support_members.len() + 3) / 4 * RPD_CARD_TIME) as f32;
             let p5 = p4 + ((state.referees.len() + 3) / 4 * RPD_CARD_TIME) as f32;
 
-            /// only team support has `role`
-            /// only players have `geared_picture` and `number`.
-            /// players, team support and referees have `picture`
-            struct CardRepr<'a> {
-                name: &'a str,
-                role: Option<&'a str>,
-                number: Option<u8>,
-                geared_picture: &'a Option<Texture2D>,
-                picture: &'a Option<Texture2D>,
-            }
-
             let rpd_selector = match Instant::now()
                 .duration_since(self.animation_register2)
                 .as_f64() as f32
             {
                 a if (0f32..=p2).contains(&a) => Some((
                     state.white.team_name.as_str(),
+                    state.white.flag,
                     if (0f32..=p1).contains(&a) {
                         state
                             .white
@@ -381,6 +425,7 @@ impl PageRenderer {
                 )),
                 a if (p2..=p4).contains(&a) => Some((
                     state.black.team_name.as_str(),
+                    state.black.flag,
                     if (p2..=p3).contains(&a) {
                         state
                             .black
@@ -414,6 +459,7 @@ impl PageRenderer {
                 )),
                 a if (p4..=p5).contains(&a) => Some((
                     "REFEREES",
+                    None,
                     state
                         .referees
                         .iter()
@@ -429,39 +475,52 @@ impl PageRenderer {
                     WHITE,
                     if (p3..=p4).contains(&a) { p3 } else { p4 },
                 )),
-                _ => None,
+                _ => None, // time after rpd display
             };
 
-            if let Some((team_name, card_repr, team_textures, text_color, page_start)) =
+            if let Some((team_name, team_flag, card_repr, team_textures, text_color, page_start)) =
                 rpd_selector
             {
-                draw_texture_both!(team_textures.team_name_bg, 464f32, 80f32, WHITE);
+                draw_texture_both!(team_textures.team_name_bg, 288f32, 80f32, WHITE);
+                if let Some(flag) = team_flag {
+                    draw_texture_ex(
+                        flag,
+                        343f32,
+                        82f32,
+                        WHITE,
+                        DrawTextureParams {
+                            dest_size: Some(vec2(393f32, 218f32)),
+                            ..Default::default()
+                        },
+                    );
+                    draw_rectangle(343f32 + 1920f32, 82f32, 393f32, 218f32, WHITE);
+                }
                 let (x_off, text) = center_text_offset!(
-                    469f32,
+                    if team_flag.is_some() { 415f32 } else { 615f32 },
                     team_name.to_uppercase().as_str(),
-                    120,
+                    90,
                     self.assets.font
                 );
                 draw_text_both_ex!(
                     text.as_str(),
-                    470f32 + x_off,
-                    230f32,
+                    if team_flag.is_some() { 740f32 } else { 292f32 } + x_off,
+                    225f32,
                     TextParams {
                         font: self.assets.font,
-                        font_size: 120,
+                        font_size: 90,
                         color: text_color,
                         ..Default::default()
                     },
                     TextParams {
                         font: self.assets.font,
-                        font_size: 120,
+                        font_size: 90,
                         color: WHITE,
                         ..Default::default()
                     }
                 );
 
                 card_repr
-                    .rchunks(4)
+                    .rpd_groups()
                     .nth(
                         (Instant::now()
                             .duration_since(self.animation_register2)
@@ -470,6 +529,9 @@ impl PageRenderer {
                             / RPD_CARD_TIME,
                     )
                     .map(|x| {
+                        let no_cards = x.len() as f32;
+                        let card_width = 445f32;
+                        let margin = (1920f32 - card_width * no_cards) / (no_cards + 1f32);
                         x.iter().enumerate().for_each(
                             |(
                                 i,
@@ -483,7 +545,7 @@ impl PageRenderer {
                             )| {
                                 draw_texture_both!(
                                     team_textures.frame_without_number,
-                                    i as f32 * (473f32) + 28f32,
+                                    i as f32 * (card_width + margin) + margin,
                                     355f32,
                                     WHITE
                                 );
@@ -502,7 +564,7 @@ impl PageRenderer {
                                         geared_picture
                                     };
                                     draw_rectangle(
-                                        i as f32 * (473f32) + 43f32 + 1920f32,
+                                        i as f32 * (card_width + margin) + 43f32 + 1920f32,
                                         372f32,
                                         415f32,
                                         415f32,
@@ -510,7 +572,7 @@ impl PageRenderer {
                                     );
                                     draw_texture_ex(
                                         card_picture.unwrap_or(self.assets.potrait_default.color),
-                                        i as f32 * (473f32) + 43f32,
+                                        i as f32 * (card_width + margin) + margin + 15f32,
                                         372f32,
                                         WHITE,
                                         DrawTextureParams {
@@ -520,7 +582,7 @@ impl PageRenderer {
                                     );
                                     draw_texture_both!(
                                         team_textures.frame_number,
-                                        i as f32 * (473f32) + 43f32,
+                                        i as f32 * (card_width + margin) + margin + 15f32,
                                         355f32,
                                         WHITE
                                     );
@@ -532,7 +594,7 @@ impl PageRenderer {
                                     );
                                     draw_text_both_ex!(
                                         text.as_str(),
-                                        i as f32 * (473f32) + 43f32 + x_off,
+                                        i as f32 * (card_width + margin) + margin + 15f32 + x_off,
                                         440f32 as f32,
                                         TextParams {
                                             font: self.assets.font,
@@ -549,7 +611,7 @@ impl PageRenderer {
                                     );
                                 } else {
                                     draw_rectangle(
-                                        i as f32 * (473f32) + 43f32 + 1920f32,
+                                        i as f32 * (card_width + margin) + margin + 15f32 + 1920f32,
                                         372f32,
                                         415f32,
                                         415f32,
@@ -557,7 +619,7 @@ impl PageRenderer {
                                     );
                                     draw_texture_ex(
                                         picture.unwrap_or(self.assets.potrait_default.color),
-                                        i as f32 * (473f32) + 43f32,
+                                        i as f32 * (card_width + margin) + margin + 15f32,
                                         372f32,
                                         WHITE,
                                         DrawTextureParams {
@@ -569,7 +631,7 @@ impl PageRenderer {
                                 if let Some(role) = role {
                                     draw_texture_both!(
                                         team_textures.team_member_role_bg,
-                                        i as f32 * (473f32) + 68f32,
+                                        i as f32 * (card_width + margin) + margin + 40f32,
                                         355f32,
                                         WHITE
                                     );
@@ -577,7 +639,7 @@ impl PageRenderer {
                                         center_text_offset!(160f32, role, 45, self.assets.font);
                                     draw_text_both_ex!(
                                         &text,
-                                        i as f32 * (473f32) + 88f32 + x_off,
+                                        i as f32 * (card_width + margin) + margin + 60f32 + x_off,
                                         405f32,
                                         TextParams {
                                             font: self.assets.font,
@@ -602,7 +664,7 @@ impl PageRenderer {
                                 };
                                 draw_texture_both!(
                                     text_box_texture,
-                                    i as f32 * (475f32) + 28f32,
+                                    i as f32 * (card_width + margin) + margin,
                                     830f32,
                                     WHITE
                                 );
@@ -611,7 +673,7 @@ impl PageRenderer {
                                         center_text_offset!(214f32, line, 45, self.assets.font);
                                     draw_text_both_ex!(
                                         text.as_str(),
-                                        i as f32 * (473f32) + 32f32 + x_off,
+                                        i as f32 * (card_width + margin) + margin + 4f32 + x_off,
                                         885f32 + 50f32 * j as f32,
                                         TextParams {
                                             font: self.assets.font,

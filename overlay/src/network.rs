@@ -93,7 +93,13 @@ impl TeamInfoRaw {
         }
 
         let x = Self {
-            team_name: "kjdkjendkjenkdnekjndkejnde".to_string(),
+            team_name: data["team"]["name"]
+                .as_str()
+                .unwrap_or(match team_color {
+                    Color::Black => "Black",
+                    Color::White => "White",
+                })
+                .to_string(),
             players,
             support_members,
             flag: get_image_from_opt_url(data["team"]["flag_url"].as_str()).await,

@@ -2,12 +2,21 @@ use std::{fs::File, io::Read, path::Path};
 
 use macroquad::prelude::*;
 
-macro_rules! load {
+macro_rules! asset_load {
     ($file:literal) => {
-        Texture2D::from_file_with_format(include_bytes!($file), None)
+        Texture {
+            color: Texture2D::from_file_with_format(
+                include_bytes!(concat!("../assets/color/1080/", $file)),
+                None,
+            ),
+            alpha: Texture2D::from_file_with_format(
+                include_bytes!(concat!("../assets/alpha/1080/", $file)),
+                None,
+            ),
+        }
     };
 }
-pub(crate) use load;
+pub(crate) use asset_load;
 
 pub struct Texture {
     pub alpha: Texture2D,
@@ -19,9 +28,8 @@ pub struct RpdTextures {
     pub single_line_name_bg: Texture,
     pub double_line_name_bg: Texture,
     pub triple_line_name_bg: Texture,
-    pub frame_number: Texture,
-    pub frame_without_number: Texture,
     pub team_member_role_bg: Texture,
+    pub frame_bg: Texture,
 }
 
 pub struct Textures {
@@ -41,6 +49,8 @@ pub struct Textures {
     pub black_rpd: RpdTextures,
     pub white_rpd: RpdTextures,
     pub red_rpd: RpdTextures,
+    pub frame_rpd: Texture,
+    pub number_bg_rpd: Texture,
     pub tournament_logo: Option<Texture>,
     pub font: Font,
 }
@@ -49,149 +59,46 @@ impl Default for Textures {
     fn default() -> Self {
         Self {
             font: load_ttf_font_from_bytes(include_bytes!("./../assets/BAHNSCHRIFT.TTF")).unwrap(),
-            final_score: Texture {
-                color: load!("../assets/color/1080/Final Score.png"),
-                alpha: load!("../assets/alpha/1080/Final Score.png"),
-            },
-            time_and_game_state: Texture {
-                color: load!("../assets/color/1080/Time and Game State.png"),
-                alpha: load!("../assets/alpha/1080/Time and Game State.png"),
-            },
-            team_bar: Texture {
-                color: load!("../assets/color/1080/Team Bars.png"),
-                alpha: load!("../assets/alpha/1080/Team Bars.png"),
-            },
-            team_black_banner: Texture {
-                color: load!("../assets/color/1080/Team Black.png"),
-                alpha: load!("../assets/alpha/1080/Team Black.png"),
-            },
-            team_white_banner: Texture {
-                color: load!("../assets/color/1080/Team White.png"),
-                alpha: load!("../assets/alpha/1080/Team White.png"),
-            },
-            team_information: Texture {
-                color: load!("../assets/color/1080/Team Information.png"),
-                alpha: load!("../assets/alpha/1080/Team Information.png"),
-            },
-            bottom: Texture {
-                color: load!("../assets/color/1080/Bottom.png"),
-                alpha: load!("../assets/alpha/1080/Bottom.png"),
-            },
-            atlantis_logo: Texture {
-                color: load!("../assets/color/1080/Atlantis Logo.png"),
-                alpha: load!("../assets/alpha/1080/Atlantis Logo.png"),
-            },
-            penalty: Texture {
-                color: load!("../assets/color/1080/Penalty Shot Flag.png"),
-                alpha: load!("../assets/alpha/1080/Penalty Shot Flag.png"),
-            },
-            white_timout: Texture {
-                color: load!("../assets/color/1080/White Timeout Flag.png"),
-                alpha: load!("../assets/alpha/1080/White Timeout Flag.png"),
-            },
-            black_timout: Texture {
-                color: load!("../assets/color/1080/Black Timeout Flag.png"),
-                alpha: load!("../assets/alpha/1080/Black Timeout Flag.png"),
-            },
-            referee_timout: Texture {
-                color: load!("../assets/color/1080/Referee Timeout Flag.png"),
-                alpha: load!("../assets/alpha/1080/Referee Timeout Flag.png"),
-            },
+            final_score: asset_load!("Final Score.png"),
+            time_and_game_state: asset_load!("Time and Game State.png"),
+            team_bar: asset_load!("Team Bars.png"),
+            team_black_banner: asset_load!("Team Black.png"),
+            team_white_banner: asset_load!("Team White.png"),
+            team_information: asset_load!("Team Information.png"),
+            bottom: asset_load!("Bottom.png"),
+            atlantis_logo: asset_load!("Atlantis Logo.png"),
+            penalty: asset_load!("Penalty Shot Flag.png"),
+            white_timout: asset_load!("White Timeout Flag.png"),
+            black_timout: asset_load!("Black Timeout Flag.png"),
+            referee_timout: asset_load!("Referee Timeout Flag.png"),
+            number_bg_rpd: asset_load!("Number Background.png"),
+            frame_rpd: asset_load!("Frame without Number.png"),
             black_rpd: RpdTextures {
-                team_name_bg: Texture {
-                    color: load!("../assets/color/1080/Black Team Name.png"),
-                    alpha: load!("../assets/alpha/1080/Black Team Name.png"),
-                },
-                single_line_name_bg: Texture {
-                    color: load!("../assets/color/1080/Black Single Line Name Background.png"),
-                    alpha: load!("../assets/alpha/1080/Black Single Line Name Background.png"),
-                },
-                double_line_name_bg: Texture {
-                    color: load!("../assets/color/1080/Black Double Line Name Background.png"),
-                    alpha: load!("../assets/alpha/1080/Black Double Line Name Background.png"),
-                },
-                triple_line_name_bg: Texture {
-                    color: load!("../assets/color/1080/Black Triple Line Name Background.png"),
-                    alpha: load!("../assets/alpha/1080/Black Triple Line Name Background.png"),
-                },
-                frame_number: Texture {
-                    color: load!("../assets/color/1080/Black Frame with Number.png"),
-                    alpha: load!("../assets/alpha/1080/Black Frame with Number.png"),
-                },
-                frame_without_number: Texture {
-                    color: load!("../assets/color/1080/Black Frame without Number.png"),
-                    alpha: load!("../assets/alpha/1080/Black Frame without Number.png"),
-                },
-                team_member_role_bg: Texture {
-                    color: load!("../assets/color/1080/Black Team Member Role Background.png"),
-                    alpha: load!("../assets/alpha/1080/Black Team Member Role Background.png"),
-                },
+                team_name_bg: asset_load!("Black Team Name.png"),
+                single_line_name_bg: asset_load!("Black Single Line Name Background.png"),
+                double_line_name_bg: asset_load!("Black Double Line Name Background.png"),
+                triple_line_name_bg: asset_load!("Black Triple Line Name Background.png"),
+                team_member_role_bg: asset_load!("Black Team Member Role Background.png"),
+                frame_bg: asset_load!("Black Picture Background.png"),
             },
             white_rpd: RpdTextures {
-                team_name_bg: Texture {
-                    color: load!("../assets/color/1080/White Team Name.png"),
-                    alpha: load!("../assets/alpha/1080/White Team Name.png"),
-                },
-                single_line_name_bg: Texture {
-                    color: load!("../assets/color/1080/White Single Line Name Background.png"),
-                    alpha: load!("../assets/alpha/1080/White Single Line Name Background.png"),
-                },
-                double_line_name_bg: Texture {
-                    color: load!("../assets/color/1080/White Double Line Name Background.png"),
-                    alpha: load!("../assets/alpha/1080/White Double Line Name Background.png"),
-                },
-                triple_line_name_bg: Texture {
-                    color: load!("../assets/color/1080/White Triple Line Name Background.png"),
-                    alpha: load!("../assets/alpha/1080/White Triple Line Name Background.png"),
-                },
-                frame_number: Texture {
-                    color: load!("../assets/color/1080/White Frame with Number.png"),
-                    alpha: load!("../assets/alpha/1080/White Frame with Number.png"),
-                },
-                frame_without_number: Texture {
-                    color: load!("../assets/color/1080/White Frame without Number.png"),
-                    alpha: load!("../assets/alpha/1080/White Frame without Number.png"),
-                },
-                team_member_role_bg: Texture {
-                    color: load!("../assets/color/1080/White Team Member Role Background.png"),
-                    alpha: load!("../assets/alpha/1080/White Team Member Role Background.png"),
-                },
+                team_name_bg: asset_load!("White Team Name.png"),
+                single_line_name_bg: asset_load!("White Single Line Name Background.png"),
+                double_line_name_bg: asset_load!("White Double Line Name Background.png"),
+                triple_line_name_bg: asset_load!("White Triple Line Name Background.png"),
+                team_member_role_bg: asset_load!("White Team Member Role Background.png"),
+                frame_bg: asset_load!("White Picture Background.png"),
             },
             red_rpd: RpdTextures {
-                team_name_bg: Texture {
-                    color: load!("../assets/color/1080/Red Team Name.png"),
-                    alpha: load!("../assets/alpha/1080/Red Team Name.png"),
-                },
-                single_line_name_bg: Texture {
-                    color: load!("../assets/color/1080/Red Single Line Name Background.png"),
-                    alpha: load!("../assets/alpha/1080/Red Single Line Name Background.png"),
-                },
-                double_line_name_bg: Texture {
-                    color: load!("../assets/color/1080/Red Double Line Name Background.png"),
-                    alpha: load!("../assets/alpha/1080/Red Double Line Name Background.png"),
-                },
-                triple_line_name_bg: Texture {
-                    color: load!("../assets/color/1080/Red Triple Line Name Background.png"),
-                    alpha: load!("../assets/alpha/1080/Red Triple Line Name Background.png"),
-                },
-                frame_number: Texture {
-                    color: load!("../assets/color/1080/Red Frame with Number.png"),
-                    alpha: load!("../assets/alpha/1080/Red Frame with Number.png"),
-                },
-                frame_without_number: Texture {
-                    color: load!("../assets/color/1080/Red Frame without Number.png"),
-                    alpha: load!("../assets/alpha/1080/Red Frame without Number.png"),
-                },
-                team_member_role_bg: Texture {
-                    color: load!("../assets/color/1080/Red Team Member Role Background.png"),
-                    alpha: load!("../assets/alpha/1080/Red Team Member Role Background.png"),
-                },
+                team_name_bg: asset_load!("Red Team Name.png"),
+                single_line_name_bg: asset_load!("Red Single Line Name Background.png"),
+                double_line_name_bg: asset_load!("Red Double Line Name Background.png"),
+                triple_line_name_bg: asset_load!("Red Triple Line Name Background.png"),
+                team_member_role_bg: asset_load!("Red Team Member Role Background.png"),
+                frame_bg: asset_load!("Red Picture Background.png"),
             },
             tournament_logo: None,
-            potrait_default: Texture {
-                color: load!("../assets/color/1080/Potrait Default.png"),
-                alpha: load!("../assets/alpha/1080/Potrait Default.png"),
-            },
+            potrait_default: asset_load!("Potrait Default.png"),
         }
     }
 }

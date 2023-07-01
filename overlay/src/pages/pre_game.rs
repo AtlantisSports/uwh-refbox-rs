@@ -149,7 +149,7 @@ impl PageRenderer {
         );
 
         draw_text_both_ex!(
-            state.white.team_name.to_uppercase().as_str(),
+            &state.white.team_name,
             if state.white.flag.is_some() {
                 160f32
             } else {
@@ -169,7 +169,7 @@ impl PageRenderer {
             }
         );
         draw_text_both!(
-            state.black.team_name.to_uppercase().as_str(),
+            &state.black.team_name,
             if state.black.flag.is_some() {
                 160f32
             } else {

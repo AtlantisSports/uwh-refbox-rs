@@ -1,6 +1,7 @@
 from flask import Flask, jsonify
 
 # Test server for tournament ID 35, game ID 1.
+# Support members are part of the roster of each team.
 
 app = Flask(__name__)
 
@@ -13,74 +14,70 @@ def ten():
             "division": "B",
             "flag_url": "https://uwhscores.com/static/flags/acc2023/George Mason.jpg",
             "name": "George Mason",
-            "support": [
-                {
-                    "name": "Cares Cok",
-                    "role": "man who hypes",
-                    "picture_url": "",
-                },
-                {
-                    "name": "Jui Wes",
-                    "role": "man who dehypes",
-                    "picture_url": "",
-                },
-            ],
             "roster": [
                 {
                     "name": " ",
                     "number": "",
                     "player_id": "Zenc38gS",
-                    "picture_url": "",
+                    "picture_url": "https://underwaterrugby.blob.core.windows.net/images/6667b743-0413-4067-b418-526c896e3422_main.png",
                     "geared_picture_url": "",
+                    "role": None,
                 },
                 {
                     "name": "Abby Lloyd",
                     "number": 10,
                     "player_id": "s0wtkee8",
-                    "picture_url": "",
-                    "geared_picture_url": "",
+                    "picture_url": "https://underwaterrugby.blob.core.windows.net/images/76de9f9d-2dd5-434a-9e74-dee995c8fcd8_main.png",
+                    "geared_picture_url": "https://underwaterrugby.blob.core.windows.net/images/43226f46-5f89-4162-9b94-ecbadf6b4be0_main.png",
+                    "role": "man who dehypes",
                 },
                 {
                     "name": "Andres Toro",
                     "number": 17,
                     "player_id": "DuImekXY",
-                    "picture_url": "",
+                    "picture_url": "https://underwaterrugby.blob.core.windows.net/images/26caac52-ade4-42a8-9330-6d5ed9fe842a_main.png",
                     "geared_picture_url": "",
+                    "role": None,
                 },
                 {
                     "name": "Andrew Wright",
                     "number": 20,
                     "player_id": "AAdiRiQe",
-                    "picture_url": "",
+                    "picture_url": "https://underwaterrugby.blob.core.windows.net/images/d90ded9d-4d20-45c0-a90b-60246911a2fb_main.png",
                     "geared_picture_url": "",
+                    "role": "man who hypes",
                 },
                 {
                     "name": "Brennen Leresche",
                     "number": 16,
                     "player_id": "bXXgaPo6",
-                    "picture_url": "",
+                    "picture_url": "https://underwaterrugby.blob.core.windows.net/images/bac7f025-b931-4a8f-84a3-b2faf6dc5bb2_main.png",
                     "geared_picture_url": "",
+                    "role": None,
                 },
                 {
                     "name": "Eileen Toussaint",
                     "number": 9,
                     "player_id": "NwW9kgni",
-                    "picture_url": "",
+                    "picture_url": "https://underwaterrugby.blob.core.windows.net/images/913eaae9-bbaf-4fba-93d2-68175b336921_main.png",
                     "geared_picture_url": "",
+                    "role": None,
                 },
                 {
                     "name": "Jackson Miller",
                     "number": 12,
                     "player_id": "22VIMHgZ",
-                    "picture_url": "",
-                    "geared_picture_url": "",
+                    "picture_url": "https://underwaterrugby.blob.core.windows.net/images/43226f46-5f89-4162-9b94-ecbadf6b4be0_main.png",
+                    "geared_picture_url": "https://underwaterrugby.blob.core.windows.net/images/43226f46-5f89-4162-9b94-ecbadf6b4be0_main.png",
+                    "role": None,
                 },
                 {
                     "name": "Kaya Shibuya",
                     "number": 23,
                     "player_id": "QKCTTxwi",
                     "picture_url": "",
-                    "geared_picture_url": "",
+                    "geared_picture_url": "https://underwaterrugby.blob.core.windows.net/images/43226f46-5f89-4162-9b94-ecbadf6b4be0_main.png",
+                    "role": None,
                 },
                 {
                     "name": "Lucas Alm",
@@ -88,6 +85,7 @@ def ten():
                     "player_id": "LzCMibEh",
                     "picture_url": "",
                     "geared_picture_url": "",
+                    "role": None,
                 },
                 {
                     "name": "Matthew Sobelman",
@@ -95,6 +93,7 @@ def ten():
                     "player_id": "Oaow7LV3",
                     "picture_url": "",
                     "geared_picture_url": "",
+                    "role": None,
                 },
                 {
                     "name": "Noah Beck",
@@ -102,6 +101,7 @@ def ten():
                     "player_id": "weF99BsP",
                     "picture_url": "",
                     "geared_picture_url": "",
+                    "role": None,
                 },
                 {
                     "name": "Stephen Abernathy",
@@ -109,6 +109,7 @@ def ten():
                     "player_id": "hTWyRNtl",
                     "picture_url": "",
                     "geared_picture_url": "",
+                    "role": None,
                 },
             ],
             "short_name": "George Mason",
@@ -126,18 +127,6 @@ def thirteen():
             "division": "B",
             "flag_url": "https://uwhscores.com/static/flags/acc2023/Texas.jpg",
             "name": "Texas",
-            "support": [
-                {
-                    "name": "Cares Cok",
-                    "role": "donut in charge",
-                    "picture_url": "",
-                },
-                {
-                    "name": "Juice East",
-                    "role": "dude",
-                    "picture_url": "",
-                },
-            ],
             "roster": [
                 {
                     "name": " ",
@@ -145,6 +134,7 @@ def thirteen():
                     "player_id": "Zenc38gS",
                     "picture_url": "",
                     "geared_picture_url": "",
+                    "role": "dude",
                 },
                 {
                     "name": "Charles Cook",
@@ -152,6 +142,7 @@ def thirteen():
                     "player_id": "hrYkxqdl",
                     "picture_url": "",
                     "geared_picture_url": "",
+                    "role": None,
                 },
                 {
                     "name": "Jacqui West",
@@ -159,6 +150,7 @@ def thirteen():
                     "player_id": "4hbiJbeB",
                     "picture_url": "",
                     "geared_picture_url": "",
+                    "role": "donut in charge",
                 },
                 {
                     "name": "Jordan Jacobson",
@@ -166,6 +158,7 @@ def thirteen():
                     "player_id": "EIYznqau",
                     "picture_url": "",
                     "geared_picture_url": "",
+                    "role": None,
                 },
                 {
                     "name": "Keith Morgan",
@@ -173,6 +166,7 @@ def thirteen():
                     "player_id": "Xxlmp4Lw",
                     "picture_url": "",
                     "geared_picture_url": "",
+                    "role": None,
                 },
                 {
                     "name": "Levi Charles Cook",
@@ -180,6 +174,7 @@ def thirteen():
                     "player_id": "glYnlSyz",
                     "picture_url": "",
                     "geared_picture_url": "",
+                    "role": None,
                 },
                 {
                     "name": "Nicholas Grande",
@@ -187,6 +182,7 @@ def thirteen():
                     "player_id": "mwFJlxWb",
                     "picture_url": "",
                     "geared_picture_url": "",
+                    "role": None,
                 },
                 {
                     "name": "Omri Svisa",
@@ -194,6 +190,7 @@ def thirteen():
                     "player_id": "YzCmV7Xd",
                     "picture_url": "",
                     "geared_picture_url": "",
+                    "role": None,
                 },
                 {
                     "name": "Ozkul Ege Akin",
@@ -201,6 +198,7 @@ def thirteen():
                     "player_id": "nHcmoTi5",
                     "picture_url": "",
                     "geared_picture_url": "",
+                    "role": None,
                 },
                 {
                     "name": "Quentin Scapoli",
@@ -208,6 +206,7 @@ def thirteen():
                     "player_id": "KcnDEAhL",
                     "picture_url": "",
                     "geared_picture_url": "",
+                    "role": None,
                 },
                 {
                     "name": "Tristan Cook",
@@ -215,6 +214,7 @@ def thirteen():
                     "player_id": "fOgUK6aF",
                     "picture_url": "",
                     "geared_picture_url": "",
+                    "role": None,
                 },
                 {
                     "name": "kevin barnes",
@@ -222,6 +222,7 @@ def thirteen():
                     "player_id": "pJ65PNdo",
                     "picture_url": "",
                     "geared_picture_url": "",
+                    "role": None,
                 },
             ],
             "short_name": "Texas",
@@ -264,9 +265,27 @@ def hello():
                 "sudden_death_allowed": False,
             },
             "referees": [
-                {"name": "joe", "picture_url": ""},
-                {"name": "joke", "picture_url": ""},
-                {"name": "jock", "picture_url": ""},
+                {
+                    "name": "joe",
+                    "number": 0,
+                    "picture_url": "https://underwaterrugby.blob.core.windows.net/images/43226f46-5f89-4162-9b94-ecbadf6b4be0_main.png",
+                    "geared_picture_url": "",
+                    "role": "Chief ref",
+                },
+                {
+                    "name": "joke",
+                    "number": None,
+                    "picture_url": "https://underwaterrugby.blob.core.windows.net/images/43226f46-5f89-4162-9b94-ecbadf6b4be0_main.png",
+                    "geared_picture_url": "",
+                    "role": None,
+                },
+                {
+                    "name": "jock",
+                    "number": None,
+                    "picture_url": "",
+                    "geared_picture_url": "",
+                    "role": None,
+                },
             ],
             "white": "George Mason",
             "white_id": 10,

@@ -16,7 +16,7 @@ use log4rs::{
 };
 use macroquad::prelude::*;
 use network::{StatePacket, TeamInfoRaw};
-use std::str::FromStr;
+use std::{cmp::Ordering, str::FromStr};
 use std::{net::IpAddr, path::PathBuf};
 use uwh_common::game_snapshot::{GamePeriod, GameSnapshot, TimeoutSnapshot};
 
@@ -55,8 +55,7 @@ pub struct State {
     snapshot: GameSnapshot,
     black: TeamInfo,
     white: TeamInfo,
-    /// `Vec` of (Name, Picture)
-    referees: Vec<(String, Option<Texture2D>)>,
+    referees: Vec<Member>,
     game_id: u32,
     pool: String,
     start_time: String,
@@ -85,44 +84,58 @@ impl State {
             self.start_time = start_time;
         }
         if let Some(referees) = recieved_state.referees {
-            self.referees = referees
-                .into_iter()
-                .map(|(name, picture)| (name, picture.map(texture_from_bytes)))
-                .collect()
+            self.referees = referees.into_iter().map(Member::from).collect()
         }
         self.snapshot = recieved_state.snapshot;
     }
 }
 
+/// processed, non serialisable version of `network::MemberRaw`
+#[derive(Clone)]
+pub struct Member {
+    name: String,
+    role: Option<String>,
+    number: Option<u8>,
+    picture: Option<Texture2D>,
+    geared_picture: Option<Texture2D>,
+}
+
+impl From<network::MemberRaw> for Member {
+    fn from(member_raw: network::MemberRaw) -> Self {
+        Member {
+            name: member_raw.name,
+            role: member_raw.role,
+            number: member_raw.number,
+            picture: member_raw.picture.map(texture_from_bytes),
+            geared_picture: member_raw.geared_picture.map(texture_from_bytes),
+        }
+    }
+}
+
+/// processed, non serialisable version of `network::TeamInfoRaw`
 pub struct TeamInfo {
     pub team_name: String,
-    /// `Vec` of (Name, Number, Picture, Geared Picture)
-    pub players: Vec<(String, u8, Option<Texture2D>, Option<Texture2D>)>,
-    /// `Vec` of (Name, Role, Picture)
-    pub support_members: Vec<(String, String, Option<Texture2D>)>,
+    pub members: Vec<Member>,
     pub flag: Option<Texture2D>,
 }
 
 impl From<TeamInfoRaw> for TeamInfo {
-    fn from(team_info_raw: TeamInfoRaw) -> Self {
+    fn from(mut team_info_raw: TeamInfoRaw) -> Self {
+        // Players get sorted by number, support members by name.
+        team_info_raw
+            .members
+            .sort_unstable_by(|a, b| match (a.number, b.number) {
+                (Some(num_a), Some(num_b)) => num_a.cmp(&num_b),
+                (Some(_), None) => Ordering::Greater,
+                (None, Some(_)) => Ordering::Less,
+                (None, None) => a.name.cmp(&b.name),
+            });
         TeamInfo {
             team_name: team_info_raw.team_name,
-            players: team_info_raw
-                .players
+            members: team_info_raw
+                .members
                 .into_iter()
-                .map(|(name, number, picture, geared_picture)| {
-                    (
-                        name,
-                        number,
-                        picture.map(texture_from_bytes),
-                        geared_picture.map(texture_from_bytes),
-                    )
-                })
-                .collect(),
-            support_members: team_info_raw
-                .support_members
-                .into_iter()
-                .map(|(name, role, picture)| (name, role, picture.map(texture_from_bytes)))
+                .map(Member::from)
                 .collect(),
             flag: team_info_raw.flag.map(texture_from_bytes),
         }
@@ -133,10 +146,14 @@ impl TeamInfo {
     fn with_name(name: &str) -> Self {
         Self {
             team_name: name.to_string(),
-            players: Vec::new(),
-            support_members: Vec::new(),
+            members: Vec::new(),
             flag: None,
         }
+    }
+
+    /// `number` can always be unwrapped on elements returned from here
+    fn get_players<'a>(&'a self) -> impl Iterator<Item = &'a Member> + 'a {
+        self.members.iter().filter(|m| m.number.is_some())
     }
 }
 
@@ -236,6 +253,7 @@ async fn main() {
         animation_register3: false,
         assets,
         last_snapshot_timeout: TimeoutSnapshot::None,
+        bg: Texture2D::from_file_with_format(include_bytes!("../Blank Background.png"), None),
     };
 
     let mut flag_renderer = flag::FlagRenderer::new();

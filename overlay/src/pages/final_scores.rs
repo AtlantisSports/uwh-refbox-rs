@@ -12,12 +12,8 @@ impl PageRenderer {
         draw_texture_both!(self.assets.atlantis_logo, 836f32, 725f32, WHITE);
         draw_texture_both!(self.assets.final_score, 314f32, 347f32, WHITE);
         draw_texture_both!(self.assets.team_information, 130f32, 710f32, WHITE);
-        let (x_off, text) = center_text_offset!(
-            217f32,
-            state.black.team_name.to_uppercase().as_str(),
-            45,
-            self.assets.font
-        );
+        let (x_off, text) =
+            center_text_offset!(217f32, state.black.team_name, 45, self.assets.font);
         draw_text_both!(
             text.as_str(),
             1350f32 + x_off,
@@ -28,12 +24,8 @@ impl PageRenderer {
                 ..Default::default()
             }
         );
-        let (x_off, text) = center_text_offset!(
-            220f32,
-            state.white.team_name.to_uppercase().as_str(),
-            45,
-            self.assets.font
-        );
+        let (x_off, text) =
+            center_text_offset!(220f32, state.white.team_name, 45, self.assets.font);
         draw_text_both_ex!(
             text.as_str(),
             135f32 + x_off,

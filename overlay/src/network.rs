@@ -3,13 +3,19 @@ use reqwest::{Client, ClientBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::net::TcpStream;
+use std::sync::OnceLock;
 use std::{io::Read, time::Duration};
 use uwh_common::game_snapshot::{Color, GamePeriod, GameSnapshot};
 
+static CLIENT_CELL: OnceLock<Client> = OnceLock::new();
+
 async fn get_image_from_opt_url(url: Option<&str>) -> Option<Vec<u8>> {
+    let client = CLIENT_CELL.get().unwrap();
     match url {
         Some(url) => Some(
-            reqwest::get(url)
+            client
+                .get(url)
+                .send()
                 .await
                 .map_err(|e| {
                     error!("Couldn't get flag from network: {}", e);
@@ -29,79 +35,96 @@ async fn get_image_from_opt_url(url: Option<&str>) -> Option<Vec<u8>> {
     }
 }
 
+/// Contains data of each induvidual in the roster. pictures are raw unprocessed bytes that are
+/// serialisable
+#[derive(Serialize, Deserialize)]
+pub struct MemberRaw {
+    pub name: String,
+    pub role: Option<String>,
+    pub number: Option<u8>,
+    pub picture: Option<Vec<u8>>,
+    pub geared_picture: Option<Vec<u8>>,
+}
 /// Contains information about team. `flag` here is a byte array for `Serialize`, which is
 /// processed into `Texture2D` when struct is converted into `TeamInfo`
 #[derive(Serialize, Deserialize)]
 pub struct TeamInfoRaw {
     pub team_name: String,
-    /// `Vec` of (Name, Number, Picture, Geared Picture)
-    pub players: Vec<(String, u8, Option<Vec<u8>>, Option<Vec<u8>>)>,
-    /// `Vec` of (Name, Role, Picture)
-    pub support_members: Vec<(String, String, Option<Vec<u8>>)>,
+    pub members: Vec<MemberRaw>,
     pub flag: Option<Vec<u8>>,
 }
 
 impl TeamInfoRaw {
     pub async fn new(url: &String, tournament_id: u32, team_id: u64, team_color: Color) -> Self {
+        let client = CLIENT_CELL.get().unwrap();
         info!(
             "Requesting UWH API for team information for team {}",
             team_id
         );
         let data: Value = serde_json::from_str(
-            &reqwest::get(format!(
-                "http://{}/api/v1/tournaments/{}/teams/{}",
-                url, tournament_id, team_id
-            ))
-            .await
-            .expect("Coudn't request team data")
-            .text()
-            .await
-            .expect("Coudn't get team data body"),
+            &client
+                .get(format!(
+                    "http://{}/api/v1/tournaments/{}/teams/{}",
+                    url, tournament_id, team_id
+                ))
+                .send()
+                .await
+                .expect("Coudn't request team data")
+                .text()
+                .await
+                .expect("Coudn't get team data body"),
         )
         .unwrap();
 
-        //TODO check filter out players with empty name strings?
-        let mut players: Vec<(String, u8, Option<Vec<u8>>, Option<Vec<u8>>)> = Vec::new();
-        for player in data["team"]["roster"]
-            .as_array()
-            .map(|x| x.to_vec())
-            .unwrap_or_default()
-        {
-            if let (Some(name), Some(number), picture, geared_picture) = (
-                player["name"].as_str().map(String::from),
-                player["number"].as_u64().map(|e| e as u8),
-                get_image_from_opt_url(player["picture_url"].as_str()).await,
-                get_image_from_opt_url(player["geared_picture_url"].as_str()).await,
-            ) {
-                players.push((name, number, picture, geared_picture));
-            }
-        }
-
-        let mut support_members: Vec<(String, String, Option<Vec<u8>>)> = Vec::new();
-        for member in data["team"]["support"]
-            .as_array()
-            .map(|x| x.to_vec())
-            .unwrap_or_default()
-        {
-            if let (Some(name), Some(role), picture) = (
-                member["name"].as_str().map(String::from),
-                member["role"].as_str().map(String::from),
-                get_image_from_opt_url(member["picture_url"].as_str()).await,
-            ) {
-                support_members.push((name, role, picture));
-            }
-        }
+        let mut members = Vec::new();
+        futures::future::join_all(
+                data["team"]["roster"]
+                    .as_array()
+                    .map(|x| x.to_vec())
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|member| async {
+                        (
+                            member["name"].as_str().map(|s| s.trim().to_uppercase()),
+                            member["number"].as_u64().map(|e| e as u8),
+                            member["role"].as_str().map(|s| s.trim().to_uppercase()),
+                            get_image_from_opt_url(member["picture_url"].as_str()).await,
+                            get_image_from_opt_url(member["geared_picture_url"].as_str()).await,
+                        )
+                    }),
+            )
+            .await
+            .into_iter()
+            .filter_map(|data| {
+                if let (Some(name), number, role, picture, geared_picture) = data {
+                    Some(MemberRaw {
+                        name,
+                        number,
+                        role,
+                        picture,
+                        geared_picture,
+                    })
+                } else {
+                    None
+                }
+            })
+            .for_each(|member|
+                // don't push if name field is blank or if both number and role are missing
+                // (roster data point has to be in the player or support category or both)
+                if member.name != String::new() && (member.number.is_some() || member.role.is_some()) {
+                    members.push(member)
+                }
+            );
 
         let x = Self {
             team_name: data["team"]["name"]
                 .as_str()
+                .map(|s| s.trim().to_uppercase())
                 .unwrap_or(match team_color {
-                    Color::Black => "Black",
-                    Color::White => "White",
-                })
-                .to_string(),
-            players,
-            support_members,
+                    Color::Black => String::from("Black"),
+                    Color::White => String::from("White"),
+                }),
+            members,
             flag: get_image_from_opt_url(data["team"]["flag_url"].as_str()).await,
         };
         x
@@ -116,22 +139,16 @@ pub struct StatePacket {
     pub game_id: Option<u32>,
     pub pool: Option<String>,
     pub start_time: Option<String>,
-    pub referees: Option<Vec<(String, Option<Vec<u8>>)>>,
+    pub referees: Option<Vec<MemberRaw>>,
 }
 
 async fn fetch_game_data(
-    client: Client,
-    tr: crossbeam_channel::Sender<(
-        String,
-        String,
-        Vec<(String, Option<Vec<u8>>)>,
-        TeamInfoRaw,
-        TeamInfoRaw,
-    )>,
+    tr: crossbeam_channel::Sender<(String, String, Vec<MemberRaw>, TeamInfoRaw, TeamInfoRaw)>,
     url: String,
     tournament_id: u32,
     game_id: u32,
 ) {
+    let client = CLIENT_CELL.get().unwrap();
     // retry periodically if no connection
     loop {
         info!("Trying to request game data from UWH API");
@@ -156,19 +173,39 @@ async fn fetch_game_data(
                 .as_str()
                 .map(|s| String::from("START: ") + s.split_at(11).1.split_at(5).0)
                 .unwrap_or_default();
-            let mut referees: Vec<(String, Option<Vec<u8>>)> = Vec::new();
-            for referee in data["game"]["referees"]
-                .as_array()
-                .map(|x| x.to_vec())
-                .unwrap_or_default()
-            {
-                if let (Some(name), picture) = (
-                    referee["name"].as_str().map(String::from),
-                    get_image_from_opt_url(referee["picture_url"].as_str()).await,
-                ) {
-                    referees.push((name, picture));
+            let mut referees = Vec::new();
+            futures::future::join_all(
+                data["game"]["referees"]
+                    .as_array()
+                    .map(|x| x.to_vec())
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|referee| async {
+                        (
+                            referee["name"].as_str().map(|s| s.trim().to_uppercase()),
+                            referee["number"].as_u64().map(|e| e as u8),
+                            referee["role"].as_str().map(|s| s.trim().to_uppercase()),
+                            get_image_from_opt_url(referee["picture_url"].as_str()).await,
+                            get_image_from_opt_url(referee["geared_picture_url"].as_str()).await,
+                        )
+                    }),
+            )
+            .await
+            .into_iter()
+            .filter_map(|data| {
+                if let (Some(name), number, role, picture, geared_picture) = data {
+                    Some(MemberRaw {
+                        name,
+                        number,
+                        role,
+                        picture,
+                        geared_picture,
+                    })
+                } else {
+                    None
                 }
-            }
+            })
+            .for_each(|referee| referees.push(referee));
             tr.send((
                 pool,
                 start_time,
@@ -190,6 +227,15 @@ pub async fn networking_thread(
     tx: crossbeam_channel::Sender<StatePacket>,
     config: crate::AppConfig,
 ) {
+    CLIENT_CELL
+        .set(
+            ClientBuilder::new()
+                .connect_timeout(Duration::from_secs(20))
+                .build()
+                .expect("Couldn't create HTTP client!"),
+        )
+        .unwrap();
+
     info!("Attempting refbox connection!");
     let mut stream = loop {
         if let Ok(stream) = TcpStream::connect((config.refbox_ip, config.refbox_port as u16)) {
@@ -199,18 +245,8 @@ pub async fn networking_thread(
     };
     info!("Connected to refbox!");
 
-    let client = ClientBuilder::new()
-        .connect_timeout(Duration::from_secs(20))
-        .build()
-        .expect("Couldn't create HTTP client!");
-
-    let (tr, rc) = crossbeam_channel::bounded::<(
-        String,
-        String,
-        Vec<(String, Option<Vec<u8>>)>,
-        TeamInfoRaw,
-        TeamInfoRaw,
-    )>(3);
+    let (tr, rc) =
+        crossbeam_channel::bounded::<(String, String, Vec<MemberRaw>, TeamInfoRaw, TeamInfoRaw)>(3);
     let url = config.uwhscores_url.clone();
     let mut buff = vec![0u8; 1024];
     let mut read_bytes;
@@ -253,9 +289,8 @@ pub async fn networking_thread(
                     tournament_id.unwrap(),
                     game_id.unwrap()
                 );
-                let client = client.clone();
                 tokio::spawn(async move {
-                    fetch_game_data(client, tr, url, tournament_id.unwrap(), game_id.unwrap()).await
+                    fetch_game_data(tr, url, tournament_id.unwrap(), game_id.unwrap()).await
                 });
             }
             if let Ok((pool, start_time, referees, black, white)) = rc.try_recv() {

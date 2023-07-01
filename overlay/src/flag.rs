@@ -11,7 +11,7 @@ use macroquad::prelude::*;
 use uwh_common::game_snapshot::Color as UWHColor;
 use uwh_common::game_snapshot::PenaltyTime;
 
-use crate::load_images::load;
+use crate::load_images::asset_load;
 
 /// Distance from the top of the screen from where the flags are rendered
 const BASE_HEIGHT: f32 = 150f32;
@@ -71,18 +71,16 @@ impl FlagRenderer {
             FlagType::Penalty(UWHColor::Black, _, _) | FlagType::Goal(UWHColor::Black, _) => {
                 game_state
                     .black
-                    .players
-                    .iter()
-                    .find(|player| player.1 == flag.player_number)
-                    .map(|player| player.0.clone())
+                    .get_players()
+                    .find(|player| player.number.unwrap() == flag.player_number)
+                    .map(|player| player.name.clone())
                     .unwrap_or_default()
             }
             _ => game_state
                 .white
-                .players
-                .iter()
-                .find(|player| player.1 == flag.player_number)
-                .map(|player| player.0.clone())
+                .get_players()
+                .find(|player| player.number.unwrap() == flag.player_number)
+                .map(|player| player.name.clone())
                 .unwrap_or_default(),
         };
         self.active_flags.push(flag);
@@ -98,22 +96,10 @@ impl FlagRenderer {
             active_flags: Vec::new(),
             inactive_flags: Vec::new(),
             textures: Textures {
-                black_goal: Texture {
-                    alpha: load!("../assets/alpha/1080/Team Black.png"),
-                    color: load!("../assets/color/1080/Team Black.png"),
-                },
-                white_goal: Texture {
-                    alpha: load!("../assets/alpha/1080/Team White.png"),
-                    color: load!("../assets/color/1080/Team White.png"),
-                },
-                white_penalty: Texture {
-                    alpha: load!("../assets/alpha/1080/Penalty White.png"),
-                    color: load!("../assets/color/1080/Penalty White.png"),
-                },
-                black_penalty: Texture {
-                    alpha: load!("../assets/alpha/1080/Penalty Black.png"),
-                    color: load!("../assets/color/1080/Penalty Black.png"),
-                },
+                black_goal: asset_load!("Team Black.png"),
+                white_goal: asset_load!("Team White.png"),
+                white_penalty: asset_load!("Penalty White.png"),
+                black_penalty: asset_load!("Penalty Black.png"),
                 font: load_ttf_font_from_bytes(include_bytes!("./../assets/BAHNSCHRIFT.TTF"))
                     .unwrap(),
             },

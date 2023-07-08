@@ -8,8 +8,10 @@ description = "Used to generate greyscale mask images based on the alpha channel
 
 [dependencies]
 clap = { version = "4.3.0", features = ["derive"] }
-image = "*"
+image = "0.24.6"
 log = "0.4.18"
 pretty_env_logger = "0.5.0"
 rayon = "*"
 
+[lib]
+name = "alphagen"

@@ -41,7 +41,7 @@ def ten():
                 },
                 {
                     "name": "Andrew Wright",
-                    "number": 20,
+                    "number": None,
                     "player_id": "AAdiRiQe",
                     "picture_url": "https://underwaterrugby.blob.core.windows.net/images/d90ded9d-4d20-45c0-a90b-60246911a2fb_main.png",
                     "geared_picture_url": "",
@@ -137,7 +137,7 @@ def thirteen():
                     "role": "dude",
                 },
                 {
-                    "name": "Charles Cook",
+                    "name": "Charles Cook is not a long name",
                     "number": 20,
                     "player_id": "hrYkxqdl",
                     "picture_url": "",
@@ -289,6 +289,7 @@ def hello():
             ],
             "white": "George Mason",
             "white_id": 10,
+            "sponsor_logo": "https://w7.pngwing.com/pngs/381/29/png-transparent-logo-graphic-design-company-company-logo-angle-building-company.png",
         }
     }
     return jsonify(d)

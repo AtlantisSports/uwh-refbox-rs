@@ -28,8 +28,6 @@ mod pages;
 use load_images::{read_image_from_file, Texture};
 
 const APP_NAME: &str = "overlay";
-const BYTE_MAX: f32 = 255f32;
-const BYTE_MIN: f32 = 0f32;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct AppConfig {
@@ -50,7 +48,6 @@ impl Default for AppConfig {
     }
 }
 
-//TODO change `Texture2D` here and in `Teaminfo` to `Texture`
 pub struct State {
     snapshot: GameSnapshot,
     black: TeamInfo,
@@ -60,19 +57,27 @@ pub struct State {
     pool: String,
     start_time: String,
     half_play_duration: Option<u32>,
+    sponsor_logo: Option<Texture>,
 }
 
-pub fn texture_from_bytes(bytes: Vec<u8>) -> Texture2D {
-    Texture2D::from_file_with_format(&bytes, None)
+// TODO: Change this to return Result. We're not rn cause from_file_with_format
+// panics anyways if image bytes is invalid
+pub fn texture_from_bytes(bytes: Vec<u8>) -> Texture {
+    Texture {
+        color: Texture2D::from_file_with_format(&bytes, None),
+        alpha: alphagen::on_raw(&bytes)
+            .map(|bytes| Texture2D::from_file_with_format(&bytes, None))
+            .expect("Failed to decode image"),
+    }
 }
 
 impl State {
     fn update_state(&mut self, recieved_state: StatePacket) {
         if let Some(team) = recieved_state.black {
-            self.black = TeamInfo::from(team)
+            self.black = TeamInfo::from(team);
         }
         if let Some(team) = recieved_state.white {
-            self.white = TeamInfo::from(team)
+            self.white = TeamInfo::from(team);
         }
         if let Some(game_id) = recieved_state.game_id {
             self.game_id = game_id;
@@ -84,7 +89,10 @@ impl State {
             self.start_time = start_time;
         }
         if let Some(referees) = recieved_state.referees {
-            self.referees = referees.into_iter().map(Member::from).collect()
+            self.referees = referees.into_iter().map(Member::from).collect();
+        }
+        if let Some(sponsor_logo) = recieved_state.sponsor_logo {
+            self.sponsor_logo = Some(texture_from_bytes(sponsor_logo));
         }
         self.snapshot = recieved_state.snapshot;
     }
@@ -96,8 +104,8 @@ pub struct Member {
     name: String,
     role: Option<String>,
     number: Option<u8>,
-    picture: Option<Texture2D>,
-    geared_picture: Option<Texture2D>,
+    picture: Option<Texture>,
+    geared_picture: Option<Texture>,
 }
 
 impl From<network::MemberRaw> for Member {
@@ -116,7 +124,7 @@ impl From<network::MemberRaw> for Member {
 pub struct TeamInfo {
     pub team_name: String,
     pub members: Vec<Member>,
-    pub flag: Option<Texture2D>,
+    pub flag: Option<Texture>,
 }
 
 impl From<TeamInfoRaw> for TeamInfo {
@@ -152,7 +160,7 @@ impl TeamInfo {
     }
 
     /// `number` can always be unwrapped on elements returned from here
-    fn get_players<'a>(&'a self) -> impl Iterator<Item = &'a Member> + 'a {
+    fn get_players(&self) -> impl Iterator<Item = &Member> {
         self.members.iter().filter(|m| m.number.is_some())
     }
 }
@@ -182,10 +190,7 @@ async fn main() {
     init_logging();
 
     let config: AppConfig = match confy::load(APP_NAME, None) {
-        Ok(config) => {
-            info!("Loaded config {:?}", config);
-            config
-        }
+        Ok(config) => config,
         Err(e) => {
             warn!("Failed to read config file, overwriting with default. Error: {e}");
             let config = AppConfig::default();
@@ -245,9 +250,11 @@ async fn main() {
         pool: String::new(),
         start_time: String::new(),
         half_play_duration: None,
+        sponsor_logo: None,
     };
 
     let mut renderer = pages::PageRenderer {
+        animation_register0: Instant::now(),
         animation_register1: Instant::now(),
         animation_register2: Instant::now(),
         animation_register3: false,
@@ -256,7 +263,7 @@ async fn main() {
         bg: Texture2D::from_file_with_format(include_bytes!("../Blank Background.png"), None),
     };
 
-    let mut flag_renderer = flag::FlagRenderer::new();
+    let mut flag_renderer = flag::Renderer::new();
     unsafe {
         get_internal_gl().quad_context.show_mouse(false);
     }
@@ -275,10 +282,10 @@ async fn main() {
             GamePeriod::BetweenGames => {
                 flag_renderer.reset();
                 if let Some(duration) = local_state.snapshot.next_period_len_secs {
-                    local_state.half_play_duration = Some(duration)
+                    local_state.half_play_duration = Some(duration);
                 }
                 match local_state.snapshot.secs_in_period {
-                    151..=u32::MAX => {
+                    182..=u32::MAX => {
                         // If an old game just finished, display its scores
                         if local_state.snapshot.is_old_game {
                             renderer.final_scores(&local_state);
@@ -286,7 +293,7 @@ async fn main() {
                             renderer.next_game(&local_state);
                         }
                     }
-                    30..=150 => {
+                    30..=181 => {
                         renderer.roster(&local_state);
                     }
                     _ => {

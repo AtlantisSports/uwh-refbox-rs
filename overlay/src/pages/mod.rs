@@ -7,7 +7,7 @@ mod in_game;
 mod next_game;
 mod overtime_and_sudden_death;
 mod pre_game;
-mod roster;
+pub mod roster;
 
 pub(crate) trait Interpolate {
     /// `value` must be a `float` normally varying from `0f32` to `1f32`
@@ -66,49 +66,64 @@ pub fn multilinify(text: &str, width: f32, font: Option<Font>, font_size: u16) -
     lines
 }
 
-/// Macro to calculate the offset for centering text within a text field.
+pub enum Justify {
+    Left,
+    Center,
+    #[allow(dead_code)]
+    Right,
+}
+
+/// Calculates the offset for fitting text within a text field.
 ///
-/// The `center_text_offset` macro takes the following parameters:
-/// - `field_half_width`: Half the width of the text field.
-/// - `string`: The string to be fitted within the text field.
+/// The function takes the following parameters:
+/// - `field_width`: Width of the text field.
+/// - `text`: The string to be fitted within the text field.
 /// - `font_size`: The font size.
 /// - `font`: The font used for rendering the text.
 ///
 /// Returns a tuple containing the offset from the left side of the text field
 /// to render text from, and the modified string that fits within the field.
-macro_rules! center_text_offset {
-    ($field_half_width: expr, $string: expr, $font_size: literal, $font: expr) => {{
-        let mut text = $string.to_string();
-        let (mut text, popped) = {
-            let mut popped = false;
-            while 2f32 * $field_half_width
-                < measure_text(text.as_str(), Some($font), $font_size, 1.0).width
+pub fn fit_text(
+    field_width: f32,
+    text: &str,
+    font_size: u16,
+    font: Font,
+    justify: Justify,
+) -> (f32, String) {
+    let mut text = text.to_string();
+
+    let mut popped = false;
+    while field_width < measure_text(text.as_str(), Some(font), font_size, 1.0).width {
+        text.pop();
+        popped = true;
+    }
+
+    let text = if popped {
+        if field_width < measure_text(&(text.clone() + ".."), Some(font), font_size, 1.0).width {
+            while field_width
+                < measure_text(&(text.clone() + ".."), Some(font), font_size, 1.0).width
             {
                 text.pop();
-                popped = true;
             }
-            (text, popped)
-        };
-        let text = if popped {
-            if 2f32 * $field_half_width
-                < measure_text(&(text.clone() + ".."), Some($font), $font_size, 1.0).width
-            {
-                text.pop();
-                String::from(text + "..")
-            } else {
-                String::from(text + "..")
-            }
+            text + ".."
         } else {
-            text
-        };
-        (
-            $field_half_width
-                - measure_text(text.as_str(), Some($font), $font_size, 1.0).width / 2f32,
-            text,
-        )
-    }};
+            text + ".."
+        }
+    } else {
+        text
+    };
+    let x_off = match justify {
+        Justify::Left => 0f32,
+        Justify::Center => {
+            (field_width / 2f32)
+                - measure_text(text.as_str(), Some(font), font_size, 1.0).width / 2f32
+        }
+        Justify::Right => {
+            field_width - measure_text(text.as_str(), Some(font), font_size, 1.0).width / 2f32
+        }
+    };
+    (x_off, text)
 }
-pub(crate) use center_text_offset;
 
 macro_rules! draw_texture_both {
     ($texture: expr, $x: expr, $y: expr, $color: expr) => {
@@ -117,6 +132,14 @@ macro_rules! draw_texture_both {
     };
 }
 pub(crate) use draw_texture_both;
+
+macro_rules! draw_texture_both_ex {
+    ($texture: expr, $x: expr, $y: expr, $color: expr, $params: expr) => {
+        draw_texture_ex($texture.color, $x, $y, $color, $params);
+        draw_texture_ex($texture.alpha, $x + 1920f32, $y, $color, $params);
+    };
+}
+pub(crate) use draw_texture_both_ex;
 
 macro_rules! draw_text_both {
     ($text: expr, $x: expr, $y: expr, $params: expr) => {
@@ -140,7 +163,7 @@ use uwh_common::game_snapshot::TimeoutSnapshot;
 /// Utility function used to place overlay elements quickly through user input without recompiling
 pub fn get_input<T: std::str::FromStr + std::default::Default>(prompt: &str) -> T {
     let mut buffer = String::new();
-    println!(" Enter {}: ", prompt);
+    println!(" Enter {prompt}: ");
     std::io::stdin()
         .read_line(&mut buffer)
         .expect("Failed to init stdin");
@@ -152,6 +175,7 @@ pub struct PageRenderer {
     pub animation_register1: Instant,
     /// Use if there are more than one simultenous animations
     pub animation_register2: Instant,
+    pub animation_register0: Instant,
     pub animation_register3: bool,
     /// Contains textures, alpha in alpha mode, color in color mode
     pub assets: Textures,

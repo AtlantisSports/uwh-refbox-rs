@@ -64,8 +64,7 @@ impl TeamInfoRaw {
         let data: Value = serde_json::from_str(
             &client
                 .get(format!(
-                    "http://{}/api/v1/tournaments/{}/teams/{}",
-                    url, tournament_id, team_id
+                    "http://{url}/api/v1/tournaments/{tournament_id}/teams/{team_id}"
                 ))
                 .send()
                 .await
@@ -85,7 +84,7 @@ impl TeamInfoRaw {
                     .iter()
                     .map(|member| async {
                         (
-                            member["name"].as_str().map(|s| s.trim().to_uppercase()),
+                            member["name"].as_str().map(|s| s.trim().to_string()),
                             member["number"].as_u64().map(|e| e as u8),
                             member["role"].as_str().map(|s| s.trim().to_uppercase()),
                             get_image_from_opt_url(member["picture_url"].as_str()).await,
@@ -99,8 +98,8 @@ impl TeamInfoRaw {
                 if let (Some(name), number, role, picture, geared_picture) = data {
                     Some(MemberRaw {
                         name,
-                        number,
                         role,
+                        number,
                         picture,
                         geared_picture,
                     })
@@ -112,18 +111,18 @@ impl TeamInfoRaw {
                 // don't push if name field is blank or if both number and role are missing
                 // (roster data point has to be in the player or support category or both)
                 if member.name != String::new() && (member.number.is_some() || member.role.is_some()) {
-                    members.push(member)
+                    members.push(member);
                 }
             );
 
         let x = Self {
-            team_name: data["team"]["name"]
-                .as_str()
-                .map(|s| s.trim().to_uppercase())
-                .unwrap_or(match team_color {
+            team_name: data["team"]["name"].as_str().map_or(
+                match team_color {
                     Color::Black => String::from("Black"),
                     Color::White => String::from("White"),
-                }),
+                },
+                |s| s.trim().to_uppercase(),
+            ),
             members,
             flag: get_image_from_opt_url(data["team"]["flag_url"].as_str()).await,
         };
@@ -136,6 +135,7 @@ pub struct StatePacket {
     pub snapshot: GameSnapshot,
     pub black: Option<TeamInfoRaw>,
     pub white: Option<TeamInfoRaw>,
+    pub sponsor_logo: Option<Vec<u8>>,
     pub game_id: Option<u32>,
     pub pool: Option<String>,
     pub start_time: Option<String>,
@@ -143,7 +143,14 @@ pub struct StatePacket {
 }
 
 async fn fetch_game_data(
-    tr: crossbeam_channel::Sender<(String, String, Vec<MemberRaw>, TeamInfoRaw, TeamInfoRaw)>,
+    tr: crossbeam_channel::Sender<(
+        String,
+        String,
+        Vec<MemberRaw>,
+        TeamInfoRaw,
+        TeamInfoRaw,
+        Option<Vec<u8>>,
+    )>,
     url: String,
     tournament_id: u32,
     game_id: u32,
@@ -154,8 +161,7 @@ async fn fetch_game_data(
         info!("Trying to request game data from UWH API");
         if let Ok(data) = client
             .get(format!(
-                "http://{}/api/v1/tournaments/{}/games/{}",
-                url, tournament_id, game_id
+                "http://{url}/api/v1/tournaments/{tournament_id}/games/{game_id}"
             ))
             .send()
             .await
@@ -167,12 +173,13 @@ async fn fetch_game_data(
 
             let pool = data["game"]["pool"]
                 .as_str()
-                .map(|s| format!("POOL: {}", s))
+                .map(|s| format!("POOL: {s}"))
                 .unwrap_or_default();
             let start_time = data["game"]["start_time"]
                 .as_str()
                 .map(|s| String::from("START: ") + s.split_at(11).1.split_at(5).0)
                 .unwrap_or_default();
+            let sponsor_logo = get_image_from_opt_url(data["game"]["sponsor_logo"].as_str()).await;
             let mut referees = Vec::new();
             futures::future::join_all(
                 data["game"]["referees"]
@@ -196,8 +203,8 @@ async fn fetch_game_data(
                 if let (Some(name), number, role, picture, geared_picture) = data {
                     Some(MemberRaw {
                         name,
-                        number,
                         role,
+                        number,
                         picture,
                         geared_picture,
                     })
@@ -212,13 +219,13 @@ async fn fetch_game_data(
                 referees,
                 TeamInfoRaw::new(&url, tournament_id, team_id_black, Color::Black).await,
                 TeamInfoRaw::new(&url, tournament_id, team_id_white, Color::White).await,
+                sponsor_logo,
             ))
             .unwrap();
             return;
-        } else {
-            warn!("Game data request failed. Trying again in 5 seconds.");
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         }
+        warn!("Game data request failed. Trying again in 5 seconds.");
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     }
 }
 
@@ -245,8 +252,14 @@ pub async fn networking_thread(
     };
     info!("Connected to refbox!");
 
-    let (tr, rc) =
-        crossbeam_channel::bounded::<(String, String, Vec<MemberRaw>, TeamInfoRaw, TeamInfoRaw)>(3);
+    let (tr, rc) = crossbeam_channel::bounded::<(
+        String,
+        String,
+        Vec<MemberRaw>,
+        TeamInfoRaw,
+        TeamInfoRaw,
+        Option<Vec<u8>>,
+    )>(3);
     let url = config.uwhscores_url.clone();
     let mut buff = vec![0u8; 1024];
     let mut read_bytes;
@@ -290,10 +303,10 @@ pub async fn networking_thread(
                     game_id.unwrap()
                 );
                 tokio::spawn(async move {
-                    fetch_game_data(tr, url, tournament_id.unwrap(), game_id.unwrap()).await
+                    fetch_game_data(tr, url, tournament_id.unwrap(), game_id.unwrap()).await;
                 });
             }
-            if let Ok((pool, start_time, referees, black, white)) = rc.try_recv() {
+            if let Ok((pool, start_time, referees, black, white, sponsor_logo)) = rc.try_recv() {
                 info!("Got game state update from network!");
                 tx.send(StatePacket {
                     snapshot,
@@ -303,8 +316,9 @@ pub async fn networking_thread(
                     pool: Some(pool),
                     start_time: Some(start_time),
                     referees: Some(referees),
+                    sponsor_logo,
                 })
-                .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"))
+                .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
             } else {
                 tx.send(StatePacket {
                     snapshot,
@@ -314,8 +328,9 @@ pub async fn networking_thread(
                     pool: None,
                     start_time: None,
                     referees: None,
+                    sponsor_logo: None,
                 })
-                .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"))
+                .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
             }
         } else {
             warn!("Corrupted snapshot discarded!")

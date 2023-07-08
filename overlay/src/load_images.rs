@@ -18,6 +18,7 @@ macro_rules! asset_load {
 }
 pub(crate) use asset_load;
 
+#[derive(Clone)]
 pub struct Texture {
     pub alpha: Texture2D,
     pub color: Texture2D,
@@ -45,7 +46,6 @@ pub struct Textures {
     pub white_timout: Texture,
     pub black_timout: Texture,
     pub referee_timout: Texture,
-    pub potrait_default: Texture,
     pub black_rpd: RpdTextures,
     pub white_rpd: RpdTextures,
     pub red_rpd: RpdTextures,
@@ -98,7 +98,6 @@ impl Default for Textures {
                 frame_bg: asset_load!("Red Picture Background.png"),
             },
             tournament_logo: None,
-            potrait_default: asset_load!("Potrait Default.png"),
         }
     }
 }

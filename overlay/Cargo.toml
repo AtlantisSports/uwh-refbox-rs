@@ -22,4 +22,5 @@ serde_json = { version = "1.0.96" }
 tokio = { version = "1.28.2", features = ["full"] }
 uwh-common = { path = "../uwh-common/" }
 bytes = "1.4.0"
+alphagen = {path="../alphagen"}
 image = { version = "0.24", default-features = false, features = ["png", "jpeg_rayon"] }

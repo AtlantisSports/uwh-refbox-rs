@@ -1,5 +1,10 @@
 use super::APP_NAME;
-use crate::{config::Config, penalty_editor::*, sound_controller::*, tournament_manager::*};
+use crate::{
+    config::{Config, Mode},
+    penalty_editor::*,
+    sound_controller::*,
+    tournament_manager::*,
+};
 use iced::{
     executor,
     pure::{column, Application, Element},
@@ -1439,7 +1444,7 @@ impl Application for RefBoxApp {
                 let mut tm = self.tm.lock().unwrap();
                 let now = Instant::now();
                 if switch {
-                    tm.switch_to_ref_timeout().unwrap();
+                    tm.switch_to_ref_timeout(now).unwrap();
                 } else {
                     tm.start_ref_timeout(now).unwrap();
                 }
@@ -1454,7 +1459,13 @@ impl Application for RefBoxApp {
                 let mut tm = self.tm.lock().unwrap();
                 let now = Instant::now();
                 if switch {
-                    tm.switch_to_penalty_shot().unwrap();
+                    if self.config.mode == Mode::Rugby {
+                        tm.switch_to_rugby_penalty_shot(now).unwrap();
+                    } else {
+                        tm.switch_to_penalty_shot().unwrap();
+                    }
+                } else if self.config.mode == Mode::Rugby {
+                    tm.start_rugby_penalty_shot(now).unwrap();
                 } else {
                     tm.start_penalty_shot(now).unwrap();
                 }
@@ -1614,7 +1625,11 @@ impl Application for RefBoxApp {
             } if is_confirmation => {}
             AppState::ConfirmScores(_) => {}
             _ => {
-                main_view = main_view.push(build_timeout_ribbon(&self.snapshot, &self.tm));
+                main_view = main_view.push(build_timeout_ribbon(
+                    &self.snapshot,
+                    &self.tm,
+                    self.config.mode,
+                ));
             }
         }
 

@@ -5,7 +5,7 @@ use super::{
         SPACING, WHITE, YELLOW,
     },
 };
-use crate::tournament_manager::TournamentManager;
+use crate::{config::Mode, tournament_manager::TournamentManager};
 use uwh_common::{drawing_support::*, uwhscores::GameInfo};
 
 use iced::{
@@ -136,6 +136,7 @@ pub(super) fn make_scroll_list<'a, const LIST_LEN: usize>(
 pub(in super::super) fn build_timeout_ribbon<'a>(
     snapshot: &GameSnapshot,
     tm: &Arc<Mutex<TournamentManager>>,
+    mode: Mode,
 ) -> Row<'a, Message> {
     let tm = tm.lock().unwrap();
 
@@ -215,11 +216,14 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
                 .style(style::Button::Yellow)
         }
         TimeoutSnapshot::Black(_) | TimeoutSnapshot::White(_) | TimeoutSnapshot::Ref(_) => {
+            let can_switch = if mode == Mode::Rugby {
+                tm.can_switch_to_rugby_penalty_shot()
+            } else {
+                tm.can_switch_to_penalty_shot()
+            };
             make_message_button(
                 "SWITCH TO\nPEN SHOT",
-                tm.can_switch_to_penalty_shot()
-                    .ok()
-                    .map(|_| Message::PenaltyShot(true)),
+                can_switch.ok().map(|_| Message::PenaltyShot(true)),
             )
             .style(style::Button::Red)
         }

@@ -15,13 +15,13 @@ pub struct Game {
     #[serde(with = "secs_only_duration")]
     pub team_timeout_duration: Duration,
     #[serde(with = "secs_only_duration")]
+    pub penalty_shot_duration: Duration,
+    #[serde(with = "secs_only_duration")]
     pub ot_half_play_duration: Duration,
     #[serde(with = "secs_only_duration")]
     pub ot_half_time_duration: Duration,
     #[serde(with = "secs_only_duration")]
     pub pre_overtime_break: Duration,
-    #[serde(with = "secs_only_duration")]
-    pub overtime_break_duration: Duration,
     #[serde(with = "secs_only_duration")]
     pub pre_sudden_death_duration: Duration,
     #[serde(with = "secs_only_duration")]
@@ -41,10 +41,10 @@ impl Default for Game {
             half_play_duration: Duration::from_secs(900),
             half_time_duration: Duration::from_secs(180),
             team_timeout_duration: Duration::from_secs(60),
+            penalty_shot_duration: Duration::from_secs(45),
             ot_half_play_duration: Duration::from_secs(300),
             ot_half_time_duration: Duration::from_secs(180),
             pre_overtime_break: Duration::from_secs(180),
-            overtime_break_duration: Duration::from_secs(60),
             pre_sudden_death_duration: Duration::from_secs(60),
             post_game_duration: Duration::from_secs(120),
             nominal_break: Duration::from_secs(900),

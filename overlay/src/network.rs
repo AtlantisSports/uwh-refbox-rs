@@ -110,7 +110,7 @@ impl TeamInfoRaw {
             .for_each(|member|
                 // don't push if name field is blank or if both number and role are missing
                 // (roster data point has to be in the player or support category or both)
-                if member.name != String::new() && (member.number.is_some() || member.role.is_some()) {
+                if !member.name.is_empty() && (member.number.is_some() || member.role.is_some()) {
                     members.push(member);
                 }
             );
@@ -288,7 +288,6 @@ pub async fn networking_thread(
                 } else {
                     snapshot.game_number
                 };
-            let (tid, gid) = (35, 1);
             if (tournament_id.is_some() && tournament_id.unwrap() != tid
                 || game_id.is_some() && game_id.unwrap() != gid)
                 || tournament_id.is_none() && game_id.is_none()

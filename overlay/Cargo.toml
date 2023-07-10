@@ -15,9 +15,9 @@ directories = "5.0.1"
 log = "0.4.18"
 log-panics = { version = "2", features = ["with-backtrace"]}
 log4rs = { version = "1", default-features = false, features = ["background_rotation", "compound_policy", "console_appender", "fixed_window_roller", "gzip", "pattern_encoder", "rolling_file_appender", "size_trigger"]}
-macroquad = { version = "0.3.25", default-features = false }
+macroquad = { version = "0.3", default-features = false }
 reqwest = {version = "0.11", features = ["gzip"]}
-serde = { version = "1.0.139", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1.0.96" }
 tokio = { version = "1.28.2", features = ["full"] }
 uwh-common = { path = "../uwh-common/" }

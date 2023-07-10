@@ -260,7 +260,6 @@ async fn main() {
         animation_register3: false,
         assets,
         last_snapshot_timeout: TimeoutSnapshot::None,
-        bg: Texture2D::from_file_with_format(include_bytes!("../Blank Background.png"), None),
     };
 
     let mut flag_renderer = flag::Renderer::new();

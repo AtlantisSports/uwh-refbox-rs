@@ -179,7 +179,6 @@ pub struct PageRenderer {
     pub animation_register3: bool,
     /// Contains textures, alpha in alpha mode, color in color mode
     pub assets: Textures,
-    pub bg: Texture2D,
     /// We need to keep track of the last timeout snapshot in order to display information during the fade out
     pub last_snapshot_timeout: TimeoutSnapshot,
 }

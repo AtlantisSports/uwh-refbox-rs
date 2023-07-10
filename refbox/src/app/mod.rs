@@ -1488,10 +1488,28 @@ impl Application for RefBoxApp {
             }
             Message::EndTimeout => {
                 let mut tm = self.tm.lock().unwrap();
-                tm.end_timeout(Instant::now()).unwrap();
-                let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
+                let now = Instant::now();
+                let would_end = tm.timeout_end_would_end_game(now).unwrap();
+                if would_end {
+                    tm.halt_clock(now, true).unwrap();
+                } else {
+                    tm.end_timeout(now).unwrap();
+                    tm.update(now).unwrap();
+                }
+                let snapshot = tm.generate_snapshot(now).unwrap();
                 std::mem::drop(tm);
                 self.apply_snapshot(snapshot);
+
+                if would_end {
+                    let scores = BlackWhiteBundle {
+                        black: self.snapshot.b_score,
+                        white: self.snapshot.w_score,
+                    };
+
+                    self.app_state = AppState::ConfirmScores(scores);
+                    trace!("AppState changed to {:?}", self.app_state);
+                }
+
                 if let AppState::TimeEdit(_, _, ref mut timeout) = self.app_state {
                     *timeout = None;
                 }
@@ -1753,7 +1771,7 @@ impl<H: Hasher, I> Recipe<H, I> for TimeUpdater {
             let now = Instant::now();
 
             let msg_type = if tm.would_end_game(now).unwrap() {
-                tm.halt_clock(now).unwrap();
+                tm.halt_clock(now, false).unwrap();
                 clock_running = false;
                 Message::ConfirmScores
             } else {

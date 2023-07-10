@@ -1,6 +1,5 @@
 use super::{draw_texture_both, fit_text, Interpolate, Justify, PageRenderer};
 use crate::State;
-use macroquad::prelude::*;
 mod list;
 mod picture;
 

@@ -37,8 +37,8 @@ impl TeamInfo {
         let mut player_list: Vec<(String, u8)> = Vec::new();
         for player in players {
             player_list.push((
-                player["name"].as_str().unwrap().to_string(),
-                player["number"].as_u64().unwrap() as u8,
+                player["name"].as_str().unwrap_or("").to_string(),
+                player["number"].as_u64().unwrap_or(0) as u8,
             ));
         }
 

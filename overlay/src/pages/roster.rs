@@ -26,7 +26,8 @@ impl PageRenderer {
         if let Some(logo) = self.textures.tournament_logo.as_ref() {
             if offset <= -210f32 {
                 let x = (1920f32 - logo.color.width()) / 2f32;
-                draw_texture_both!(logo, x, 500f32, WHITE);
+                let y = 675f32 - logo.color.height();
+                draw_texture_both!(logo, x, y, WHITE);
             }
         }
 

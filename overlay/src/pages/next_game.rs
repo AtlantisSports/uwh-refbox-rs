@@ -20,6 +20,11 @@ impl PageRenderer {
             WHITE
         );
 
+        if let Some(logo) = self.textures.tournament_logo.as_ref() {
+            let x = 1900f32 - logo.color.width();
+            draw_texture_both!(logo, x, 20f32, WHITE);
+        }
+
         let (x_off, text) = center_text_offset!(
             217f32,
             state.black.team_name.to_uppercase().as_str(),

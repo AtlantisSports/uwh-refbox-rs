@@ -1,8 +1,8 @@
 use super::{
     message::*,
     style::{
-        self, BLACK, GREEN, LARGE_TEXT, MEDIUM_TEXT, MIN_BUTTON_SIZE, PADDING, RED, SMALL_TEXT,
-        SPACING, WHITE, YELLOW,
+        self, BLACK, GREEN, LARGE_TEXT, MEDIUM_TEXT, MIN_BUTTON_SIZE, PADDING, RED,
+        SMALL_PLUS_TEXT, SMALL_TEXT, SPACING, WHITE, YELLOW,
     },
 };
 use crate::{config::Mode, tournament_manager::TournamentManager};
@@ -242,9 +242,11 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
 pub(super) fn make_game_time_button<'a>(
     snapshot: &GameSnapshot,
     tall: bool,
-    allow_red: bool,
-) -> Button<'a, Message> {
-    let make_red = if !allow_red {
+    edit_mode: bool,
+    mode: Mode,
+    clock_running: bool,
+) -> Row<'a, Message> {
+    let make_red = if !edit_mode {
         false
     } else {
         match snapshot.timeout {
@@ -348,14 +350,12 @@ pub(super) fn make_game_time_button<'a>(
 
     let timeout_info = match snapshot.timeout {
         TimeoutSnapshot::White(_) => Some((
-            if tall { "WHT TIMEOUT" } else { "WHITE TIMEOUT" },
+            if tall { "WHT T/O" } else { "WHITE TIMEOUT" },
             if make_red { BLACK } else { WHITE },
         )),
-        TimeoutSnapshot::Black(_) => {
-            Some((if tall { "BLK TIMEOUT" } else { "BLACK TIMEOUT" }, BLACK))
-        }
-        TimeoutSnapshot::Ref(_) => Some(("REF TIMEOUT", YELLOW)),
-        TimeoutSnapshot::PenaltyShot(_) => Some(("PENALTY SHOT", RED)),
+        TimeoutSnapshot::Black(_) => Some((if tall { "BLK T/O" } else { "BLACK TIMEOUT" }, BLACK)),
+        TimeoutSnapshot::Ref(_) => Some(("REF TMOUT", YELLOW)),
+        TimeoutSnapshot::PenaltyShot(_) => Some(("PNLTY SHT", RED)),
         TimeoutSnapshot::None => None,
     };
 
@@ -383,7 +383,7 @@ pub(super) fn make_game_time_button<'a>(
     }
 
     let button_height = if tall {
-        Length::Shrink
+        Length::Units(MIN_BUTTON_SIZE + SMALL_PLUS_TEXT + PADDING)
     } else {
         Length::Units(MIN_BUTTON_SIZE)
     };
@@ -394,11 +394,48 @@ pub(super) fn make_game_time_button<'a>(
         style::Button::Gray
     };
 
-    button(content)
+    let time_button = button(content)
         .width(Length::Fill)
         .height(button_height)
-        .padding(PADDING)
         .style(button_style)
+        .padding(PADDING)
+        .on_press(if edit_mode {
+            Message::EditTime
+        } else {
+            Message::NoAction
+        });
+
+    let mut time_row = row()
+        .height(button_height)
+        .width(Length::Fill)
+        .spacing(SPACING)
+        .push(time_button);
+
+    if mode == Mode::Rugby {
+        let play_pause_text = if clock_running {
+            "\u{25AE} \u{25AE}"
+        } else {
+            "\u{25B6}"
+        };
+        let play_pause_text = text(play_pause_text)
+            .size(LARGE_TEXT)
+            .vertical_alignment(Vertical::Center)
+            .horizontal_alignment(Horizontal::Center)
+            .width(Length::Fill)
+            .height(Length::Fill);
+        let play_pause_button = button(play_pause_text)
+            .style(style::Button::Gray)
+            .height(button_height)
+            .width(Length::Units(MIN_BUTTON_SIZE))
+            .on_press(if clock_running {
+                Message::StopClock
+            } else {
+                Message::StartClock
+            });
+        time_row = time_row.push(play_pause_button);
+    };
+
+    time_row
 }
 
 pub(super) fn make_time_editor<'a, T: Into<String>>(

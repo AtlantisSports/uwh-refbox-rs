@@ -14,6 +14,8 @@ pub(in super::super) fn build_time_edit_view<'a>(
     snapshot: &GameSnapshot,
     time: Duration,
     timeout_time: Option<Duration>,
+    mode: Mode,
+    clock_running: bool,
 ) -> Element<'a, Message> {
     let mut edit_row = row()
         .spacing(SPACING)
@@ -32,7 +34,13 @@ pub(in super::super) fn build_time_edit_view<'a>(
     column()
         .spacing(SPACING)
         .height(Length::Fill)
-        .push(make_game_time_button(snapshot, false, false).on_press(Message::NoAction))
+        .push(make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+        ))
         .push(vertical_space(Length::Fill))
         .push(
             text("Note: Game time is paused while on this screen")

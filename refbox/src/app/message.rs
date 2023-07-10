@@ -76,6 +76,8 @@ pub enum Message {
     RecvTournament(TournamentInfo),
     RecvGameList(Vec<GameInfo>),
     RecvGame(GameInfo),
+    StopClock,
+    StartClock,
     NoAction, // TODO: Remove once UI is functional
 }
 
@@ -125,7 +127,9 @@ impl Message {
             | Self::PenaltyShot(_)
             | Self::EndTimeout
             | Self::ConfirmScores(_)
-            | Self::ScoreConfirmation { .. } => false,
+            | Self::ScoreConfirmation { .. }
+            | Self::StopClock
+            | Self::StartClock => false,
         }
     }
 }

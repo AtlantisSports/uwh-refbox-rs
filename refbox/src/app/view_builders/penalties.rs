@@ -15,11 +15,19 @@ pub(in super::super) fn build_penalty_overview_page<'a>(
     snapshot: &GameSnapshot,
     penalties: BlackWhiteBundle<Vec<(String, FormatHint, PenaltyKind)>>,
     indices: BlackWhiteBundle<usize>,
+    mode: Mode,
+    clock_running: bool,
 ) -> Element<'a, Message> {
     column()
         .spacing(SPACING)
         .height(Length::Fill)
-        .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
+        .push(make_game_time_button(
+            snapshot,
+            false,
+            true,
+            mode,
+            clock_running,
+        ))
         .push(
             row()
                 .spacing(SPACING)

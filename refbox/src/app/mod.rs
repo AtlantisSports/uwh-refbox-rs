@@ -607,6 +607,7 @@ impl Application for RefBoxApp {
             Message::TimeEditComplete { canceled } => {
                 if let AppState::TimeEdit(was_running, game_time, timeout_time) = self.app_state {
                     let mut tm = self.tm.lock().unwrap();
+                    let now = Instant::now();
                     if !canceled {
                         tm.set_game_clock_time(game_time).unwrap();
                         if let Some(time) = timeout_time {
@@ -614,10 +615,12 @@ impl Application for RefBoxApp {
                         }
                     }
                     if was_running {
-                        let now = Instant::now();
                         tm.start_clock(now);
                         tm.update(now).unwrap();
                     }
+                    let snapshot = tm.generate_snapshot(now).unwrap();
+                    drop(tm);
+                    self.apply_snapshot(snapshot);
                     self.app_state = self.last_app_state.clone();
                     trace!("AppState changed to {:?}", self.app_state);
                 } else {
@@ -751,6 +754,13 @@ impl Application for RefBoxApp {
                 } else {
                     self.app_state = AppState::MainPage;
                 }
+                let snapshot = self
+                    .tm
+                    .lock()
+                    .unwrap()
+                    .generate_snapshot(Instant::now())
+                    .unwrap();
+                self.apply_snapshot(snapshot);
                 trace!("AppState changed to {:?}", self.app_state);
             }
             Message::ChangeKind(new_kind) => {
@@ -1545,6 +1555,8 @@ impl Application for RefBoxApp {
                     self.games = Some(BTreeMap::from([(game.gid, game)]));
                 }
             }
+            Message::StartClock => self.tm.lock().unwrap().start_clock(Instant::now()),
+            Message::StopClock => self.tm.lock().unwrap().stop_clock(Instant::now()).unwrap(),
             Message::NoAction => {}
         };
 
@@ -1556,6 +1568,7 @@ impl Application for RefBoxApp {
     }
 
     fn view(&self) -> Element<Message> {
+        let clock_running = self.tm.lock().unwrap().clock_is_running();
         let mut main_view = column()
             .spacing(SPACING)
             .padding(PADDING)
@@ -1578,45 +1591,79 @@ impl Application for RefBoxApp {
                         &self.config.game
                     };
 
-                    build_main_view(&self.snapshot, config, self.using_uwhscores, &self.games)
+                    build_main_view(
+                        &self.snapshot,
+                        config,
+                        self.using_uwhscores,
+                        &self.games,
+                        self.config.mode,
+                        clock_running,
+                    )
                 }
-                AppState::TimeEdit(_, time, timeout_time) => {
-                    build_time_edit_view(&self.snapshot, time, timeout_time)
-                }
+                AppState::TimeEdit(_, time, timeout_time) => build_time_edit_view(
+                    &self.snapshot,
+                    time,
+                    timeout_time,
+                    self.config.mode,
+                    clock_running,
+                ),
                 AppState::ScoreEdit {
                     scores,
                     is_confirmation,
-                } => build_score_edit_view(&self.snapshot, scores, is_confirmation),
+                } => build_score_edit_view(
+                    &self.snapshot,
+                    scores,
+                    is_confirmation,
+                    self.config.mode,
+                    clock_running,
+                ),
                 AppState::PenaltyOverview(indices) => build_penalty_overview_page(
                     &self.snapshot,
                     self.pen_edit.get_printable_lists(Instant::now()).unwrap(),
                     indices,
+                    self.config.mode,
+                    clock_running,
                 ),
-                AppState::KeypadPage(page, player_num) => {
-                    build_keypad_page(&self.snapshot, page, player_num, self.config.mode)
-                }
+                AppState::KeypadPage(page, player_num) => build_keypad_page(
+                    &self.snapshot,
+                    page,
+                    player_num,
+                    self.config.mode,
+                    clock_running,
+                ),
                 AppState::EditGameConfig(page) => build_game_config_edit_page(
                     &self.snapshot,
                     self.edited_settings.as_ref().unwrap(),
                     &self.tournaments,
                     page,
+                    self.config.mode,
+                    clock_running,
                 ),
-                AppState::ParameterEditor(param, dur) => {
-                    build_game_parameter_editor(&self.snapshot, param, dur)
-                }
+                AppState::ParameterEditor(param, dur) => build_game_parameter_editor(
+                    &self.snapshot,
+                    param,
+                    dur,
+                    self.config.mode,
+                    clock_running,
+                ),
                 AppState::ParameterList(param, index) => build_list_selector_page(
                     &self.snapshot,
                     param,
                     index,
                     self.edited_settings.as_ref().unwrap(),
                     &self.tournaments,
+                    self.config.mode,
+                    clock_running,
                 ),
                 AppState::ConfirmationPage(ref kind) => {
-                    build_confirmation_page(&self.snapshot, kind)
+                    build_confirmation_page(&self.snapshot, kind, self.config.mode, clock_running)
                 }
-                AppState::ConfirmScores(scores) => {
-                    build_score_confirmation_page(&self.snapshot, scores)
-                }
+                AppState::ConfirmScores(scores) => build_score_confirmation_page(
+                    &self.snapshot,
+                    scores,
+                    self.config.mode,
+                    clock_running,
+                ),
             });
 
         match self.app_state {

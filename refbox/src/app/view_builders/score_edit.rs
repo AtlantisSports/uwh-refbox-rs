@@ -15,6 +15,8 @@ pub(in super::super) fn build_score_edit_view<'a>(
     snapshot: &GameSnapshot,
     scores: BlackWhiteBundle<u8>,
     is_confirmation: bool,
+    mode: Mode,
+    clock_running: bool,
 ) -> Element<'a, Message> {
     let cancel_btn_msg = if is_confirmation {
         None
@@ -99,7 +101,13 @@ pub(in super::super) fn build_score_edit_view<'a>(
     let mut main_col = column()
         .spacing(SPACING)
         .height(Length::Fill)
-        .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
+        .push(make_game_time_button(
+            snapshot,
+            false,
+            true,
+            mode,
+            clock_running,
+        ))
         .push(vertical_space(Length::Fill));
 
     if is_confirmation {

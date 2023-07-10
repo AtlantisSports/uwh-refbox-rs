@@ -1,5 +1,10 @@
 use super::APP_NAME;
-use crate::{config::Config, penalty_editor::*, sound_controller::*, tournament_manager::*};
+use crate::{
+    config::{Config, Mode},
+    penalty_editor::*,
+    sound_controller::*,
+    tournament_manager::*,
+};
 use iced::{
     executor,
     pure::{column, Application, Element},
@@ -896,6 +901,7 @@ impl Application for RefBoxApp {
                     current_pool: self.current_pool.clone(),
                     games: self.games.clone(),
                     sound: self.config.sound.clone(),
+                    mode: self.config.mode,
                 };
 
                 self.edited_settings = Some(edited_settings);
@@ -990,6 +996,7 @@ impl Application for RefBoxApp {
                             self.games = edited_settings.games;
                             self.config.sound = edited_settings.sound;
                             self.sound.update_settings(self.config.sound.clone());
+                            self.config.mode = edited_settings.mode;
 
                             confy::store(APP_NAME, None, &self.config).unwrap();
                             AppState::MainPage
@@ -1006,6 +1013,7 @@ impl Application for RefBoxApp {
                             self.games = edited_settings.games;
                             self.config.sound = edited_settings.sound;
                             self.sound.update_settings(self.config.sound.clone());
+                            self.config.mode = edited_settings.mode;
 
                             confy::store(APP_NAME, None, &self.config).unwrap();
 
@@ -1047,6 +1055,7 @@ impl Application for RefBoxApp {
                         self.games = edited_settings.games;
                         self.config.sound = edited_settings.sound;
                         self.sound.update_settings(self.config.sound.clone());
+                        self.config.mode = edited_settings.mode;
 
                         confy::store(APP_NAME, None, &self.config).unwrap();
                         AppState::MainPage
@@ -1230,13 +1239,16 @@ impl Application for RefBoxApp {
                 }
             }
             Message::CycleParameter(param) => {
-                let sound = &mut self.edited_settings.as_mut().unwrap().sound;
+                let settings = &mut self.edited_settings.as_mut().unwrap();
                 match param {
-                    CyclingParameter::BuzzerSound => sound.buzzer_sound.cycle(),
-                    CyclingParameter::RemoteBuzzerSound(idx) => sound.remotes[idx].sound.cycle(),
-                    CyclingParameter::AlertVolume => sound.whistle_vol.cycle(),
-                    CyclingParameter::AboveWaterVol => sound.above_water_vol.cycle(),
-                    CyclingParameter::UnderWaterVol => sound.under_water_vol.cycle(),
+                    CyclingParameter::BuzzerSound => settings.sound.buzzer_sound.cycle(),
+                    CyclingParameter::RemoteBuzzerSound(idx) => {
+                        settings.sound.remotes[idx].sound.cycle()
+                    }
+                    CyclingParameter::AlertVolume => settings.sound.whistle_vol.cycle(),
+                    CyclingParameter::AboveWaterVol => settings.sound.above_water_vol.cycle(),
+                    CyclingParameter::UnderWaterVol => settings.sound.under_water_vol.cycle(),
+                    CyclingParameter::Mode => settings.mode.cycle(),
                 }
             }
             Message::RequestRemoteId => {
@@ -1325,6 +1337,7 @@ impl Application for RefBoxApp {
                         self.games = edited_settings.games;
                         self.config.sound = edited_settings.sound;
                         self.sound.update_settings(self.config.sound.clone());
+                        self.config.mode = edited_settings.mode;
 
                         confy::store(APP_NAME, None, &self.config).unwrap();
                         let snapshot = tm.generate_snapshot(now).unwrap(); // TODO: Remove this unwrap
@@ -1346,6 +1359,7 @@ impl Application for RefBoxApp {
                         self.games = edited_settings.games;
                         self.config.sound = edited_settings.sound;
                         self.sound.update_settings(self.config.sound.clone());
+                        self.config.mode = edited_settings.mode;
 
                         confy::store(APP_NAME, None, &self.config).unwrap();
                         self.apply_snapshot(snapshot);
@@ -1430,7 +1444,7 @@ impl Application for RefBoxApp {
                 let mut tm = self.tm.lock().unwrap();
                 let now = Instant::now();
                 if switch {
-                    tm.switch_to_ref_timeout().unwrap();
+                    tm.switch_to_ref_timeout(now).unwrap();
                 } else {
                     tm.start_ref_timeout(now).unwrap();
                 }
@@ -1445,7 +1459,13 @@ impl Application for RefBoxApp {
                 let mut tm = self.tm.lock().unwrap();
                 let now = Instant::now();
                 if switch {
-                    tm.switch_to_penalty_shot().unwrap();
+                    if self.config.mode == Mode::Rugby {
+                        tm.switch_to_rugby_penalty_shot(now).unwrap();
+                    } else {
+                        tm.switch_to_penalty_shot().unwrap();
+                    }
+                } else if self.config.mode == Mode::Rugby {
+                    tm.start_rugby_penalty_shot(now).unwrap();
                 } else {
                     tm.start_penalty_shot(now).unwrap();
                 }
@@ -1573,7 +1593,7 @@ impl Application for RefBoxApp {
                     indices,
                 ),
                 AppState::KeypadPage(page, player_num) => {
-                    build_keypad_page(&self.snapshot, page, player_num)
+                    build_keypad_page(&self.snapshot, page, player_num, self.config.mode)
                 }
                 AppState::EditGameConfig(page) => build_game_config_edit_page(
                     &self.snapshot,
@@ -1605,7 +1625,11 @@ impl Application for RefBoxApp {
             } if is_confirmation => {}
             AppState::ConfirmScores(_) => {}
             _ => {
-                main_view = main_view.push(build_timeout_ribbon(&self.snapshot, &self.tm));
+                main_view = main_view.push(build_timeout_ribbon(
+                    &self.snapshot,
+                    &self.tm,
+                    self.config.mode,
+                ));
             }
         }
 

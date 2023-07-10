@@ -19,7 +19,7 @@ use tokio::{
     time::{sleep_until, timeout, Duration, Instant},
 };
 use tokio_serial::{SerialPortBuilder, SerialPortBuilderExt, SerialStream};
-use uwh_common::game_snapshot::{EncodingError, GameSnapshot, GameSnapshotNoHeap};
+use uwh_common::game_snapshot::{EncodingError, GamePeriod, GameSnapshot, GameSnapshotNoHeap};
 
 const TIMEOUT: Duration = Duration::from_millis(500);
 const SERIAL_SEND_SPACING: Duration = Duration::from_millis(100);
@@ -351,7 +351,31 @@ impl Server {
             Vec::new()
         };
 
+        let next_time = new_snapshot.next_period_len_secs.unwrap_or(0) as u16;
+
         self.snapshot = new_snapshot.into();
+
+        match self.snapshot.current_period {
+            GamePeriod::BetweenGames
+            | GamePeriod::HalfTime
+            | GamePeriod::OvertimeHalfTime
+            | GamePeriod::PreOvertime => {
+                if self.snapshot.secs_in_period < 15 {
+                    self.snapshot.secs_in_period = next_time;
+                };
+            }
+            GamePeriod::PreSuddenDeath => {
+                if self.snapshot.secs_in_period < 15 {
+                    self.snapshot.secs_in_period = 0;
+                }
+            }
+            GamePeriod::FirstHalf
+            | GamePeriod::OvertimeFirstHalf
+            | GamePeriod::OvertimeSecondHalf
+            | GamePeriod::SecondHalf
+            | GamePeriod::SuddenDeath => {}
+        }
+
         self.encode_flash();
     }
 

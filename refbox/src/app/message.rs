@@ -176,6 +176,7 @@ pub enum CyclingParameter {
     AlertVolume,
     AboveWaterVol,
     UnderWaterVol,
+    Mode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

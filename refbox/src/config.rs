@@ -1,4 +1,7 @@
 use crate::sound_controller::SoundSettings;
+use derivative::Derivative;
+use enum_derive_2018::EnumDisplay;
+use macro_attr_2018::macro_attr;
 use serde::{Deserialize, Serialize};
 use time::UtcOffset;
 pub use uwh_common::config::Game;
@@ -41,10 +44,22 @@ impl Default for UwhScores {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Config {
+    pub mode: Mode,
     pub game: Game,
     pub hardware: Hardware,
     pub uwhscores: UwhScores,
     pub sound: SoundSettings,
+}
+
+macro_attr! {
+    #[derive(Debug, Clone, Copy, Derivative, PartialEq, Eq, Serialize, Deserialize, EnumDisplay!)]
+    #[derivative(Default)]
+    pub enum Mode {
+        #[derivative(Default)]
+        Hockey6V6,
+        Hockey3V3,
+        Rugby,
+    }
 }
 
 #[cfg(test)]

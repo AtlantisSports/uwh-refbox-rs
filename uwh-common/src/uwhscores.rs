@@ -65,6 +65,7 @@ pub struct TimingRules {
     pub min_game_break: Duration,
     pub overtime_allowed: bool,
     pub sudden_death_allowed: bool,
+    pub pre_sudden_death_break: Option<u64>,
 }
 
 #[allow(clippy::from_over_into)]
@@ -78,6 +79,11 @@ impl Into<GameConfig> for TimingRules {
             minimum_break: self.min_game_break,
             overtime_allowed: self.overtime_allowed,
             sudden_death_allowed: self.sudden_death_allowed,
+            pre_sudden_death_duration: if let Some(len) = self.pre_sudden_death_break {
+                Duration::from_secs(len)
+            } else {
+                GameConfig::default().pre_sudden_death_duration
+            },
             ..Default::default()
         }
     }

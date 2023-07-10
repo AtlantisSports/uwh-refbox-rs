@@ -1,3 +1,5 @@
+use crate::config::Mode;
+
 use super::{
     style::{self, SPACING},
     *,
@@ -14,37 +16,68 @@ pub(super) fn make_penalty_edit_page<'a>(
     origin: Option<(GameColor, usize)>,
     color: GameColor,
     kind: PenaltyKind,
+    mode: Mode,
 ) -> Element<'a, Message> {
     let (black_style, white_style) = match color {
         GameColor::Black => (style::Button::BlackSelected, style::Button::White),
         GameColor::White => (style::Button::Black, style::Button::WhiteSelected),
     };
 
-    let (one_min_style, two_min_style, five_min_style, td_style) = match kind {
-        PenaltyKind::OneMinute => (
+    let (green, yellow, orange) = match mode {
+        Mode::Hockey6V6 => (
+            PenaltyKind::OneMinute,
+            PenaltyKind::TwoMinute,
+            PenaltyKind::FiveMinute,
+        ),
+
+        Mode::Hockey3V3 => (
+            PenaltyKind::ThirtySecond,
+            PenaltyKind::OneMinute,
+            PenaltyKind::TwoMinute,
+        ),
+
+        Mode::Rugby => (
+            PenaltyKind::TwoMinute,
+            PenaltyKind::FourMinute,
+            PenaltyKind::FiveMinute,
+        ),
+    };
+
+    let (green_style, yellow_style, orange_style, td_style) = if kind == green {
+        (
             style::Button::GreenSelected,
             style::Button::Yellow,
             style::Button::Orange,
             style::Button::Red,
-        ),
-        PenaltyKind::TwoMinute => (
+        )
+    } else if kind == yellow {
+        (
             style::Button::Green,
             style::Button::YellowSelected,
             style::Button::Orange,
             style::Button::Red,
-        ),
-        PenaltyKind::FiveMinute => (
+        )
+    } else if kind == orange {
+        (
             style::Button::Green,
             style::Button::Yellow,
             style::Button::OrangeSelected,
             style::Button::Red,
-        ),
-        PenaltyKind::TotalDismissal => (
+        )
+    } else if kind == PenaltyKind::TotalDismissal {
+        (
             style::Button::Green,
             style::Button::Yellow,
             style::Button::Orange,
             style::Button::RedSelected,
-        ),
+        )
+    } else {
+        (
+            style::Button::Green,
+            style::Button::Yellow,
+            style::Button::Orange,
+            style::Button::Red,
+        )
     };
 
     let mut exit_row = row().spacing(SPACING).push(
@@ -79,6 +112,22 @@ pub(super) fn make_penalty_edit_page<'a>(
             }),
     );
 
+    let labels: Vec<&str> = [green, yellow, orange]
+        .iter()
+        .map(|kind| match kind {
+            PenaltyKind::ThirtySecond => "30s",
+            PenaltyKind::OneMinute => "1m",
+            PenaltyKind::TwoMinute => "2m",
+            PenaltyKind::FourMinute => "4m",
+            PenaltyKind::FiveMinute => "5m",
+            PenaltyKind::TotalDismissal => "TD",
+        })
+        .collect();
+
+    let green_label = labels[0];
+    let yellow_label = labels[1];
+    let orange_label = labels[2];
+
     column()
         .spacing(SPACING)
         .push(vertical_space(Length::Fill))
@@ -101,19 +150,19 @@ pub(super) fn make_penalty_edit_page<'a>(
             row()
                 .spacing(SPACING)
                 .push(
-                    make_button("1m")
-                        .style(one_min_style)
-                        .on_press(Message::ChangeKind(PenaltyKind::OneMinute)),
+                    make_button(green_label)
+                        .style(green_style)
+                        .on_press(Message::ChangeKind(green)),
                 )
                 .push(
-                    make_button("2m")
-                        .style(two_min_style)
-                        .on_press(Message::ChangeKind(PenaltyKind::TwoMinute)),
+                    make_button(yellow_label)
+                        .style(yellow_style)
+                        .on_press(Message::ChangeKind(yellow)),
                 )
                 .push(
-                    make_button("5m")
-                        .style(five_min_style)
-                        .on_press(Message::ChangeKind(PenaltyKind::FiveMinute)),
+                    make_button(orange_label)
+                        .style(orange_style)
+                        .on_press(Message::ChangeKind(orange)),
                 )
                 .push(
                     make_button("TD")

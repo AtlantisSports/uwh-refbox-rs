@@ -1,3 +1,5 @@
+use crate::config::Mode;
+
 use super::{
     style::{self, LARGE_TEXT, MEDIUM_TEXT, MIN_BUTTON_SIZE, PADDING, SPACING},
     *,
@@ -27,6 +29,7 @@ pub(in super::super) fn build_keypad_page<'a>(
     snapshot: &GameSnapshot,
     page: KeypadPage,
     player_num: u16,
+    mode: Mode,
 ) -> Element<'a, Message> {
     column()
         .spacing(SPACING)
@@ -159,7 +162,7 @@ pub(in super::super) fn build_keypad_page<'a>(
                 .push(match page {
                     KeypadPage::AddScore(color) => make_score_add_page(color),
                     KeypadPage::Penalty(origin, color, kind) => {
-                        make_penalty_edit_page(origin, color, kind)
+                        make_penalty_edit_page(origin, color, kind, mode)
                     }
                     KeypadPage::GameNumber => make_game_number_edit_page(),
                     KeypadPage::TeamTimeouts(dur) => make_team_timeout_edit_page(dur),

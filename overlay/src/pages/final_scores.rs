@@ -11,6 +11,13 @@ impl PageRenderer {
     pub fn final_scores(&mut self, state: &State) {
         draw_texture_both!(self.textures.atlantis_logo_graphic, 836f32, 725f32, WHITE);
         draw_texture_both!(self.textures.final_score_graphic, 314f32, 347f32, WHITE);
+
+        if let Some(logo) = self.textures.tournament_logo.as_ref() {
+            let x = (1920f32 - logo.color.width()) / 2f32;
+            let y = 675f32 - logo.color.height();
+            draw_texture_both!(logo, x, y, WHITE);
+        }
+
         draw_texture_both!(
             self.textures.team_information_graphic,
             130f32,

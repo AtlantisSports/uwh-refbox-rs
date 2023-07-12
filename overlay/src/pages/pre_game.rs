@@ -75,15 +75,15 @@ impl PageRenderer {
         }
 
         if midfade_alpha > 0f32 {
-            draw_texture_both!(
-                self.assets.atlantis_logo,
-                836f32,
-                725f32,
-                Color {
-                    a: midfade_alpha,
-                    ..WHITE
-                }
-            );
+            // draw_texture_both!(
+            //     self.assets.atlantis_logo,
+            //     836f32,
+            //     725f32,
+            //     Color {
+            //         a: midfade_alpha,
+            //         ..WHITE
+            //     }
+            // );
             draw_texture_both!(
                 self.assets.bottom,
                 822f32,

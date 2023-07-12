@@ -36,10 +36,11 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
     if let Some(logo) = renderer.assets.tournament_logo.as_ref() {
         if offset <= -210f32 {
             let x = (1920f32 - logo.color.width()) / 2f32;
+            let y = 675f32 - logo.color.height();
             draw_texture_both!(
                 logo,
                 x,
-                500f32,
+                y,
                 Color {
                     a: timeout_alpha_offset,
                     ..WHITE

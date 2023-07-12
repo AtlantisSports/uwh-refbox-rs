@@ -37,7 +37,7 @@ pub(in super::super) fn build_time_edit_view<'a>(
         .push(make_game_time_button(
             snapshot,
             false,
-            false,
+            true,
             mode,
             clock_running,
         ))

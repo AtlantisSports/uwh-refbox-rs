@@ -242,11 +242,11 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
 pub(super) fn make_game_time_button<'a>(
     snapshot: &GameSnapshot,
     tall: bool,
-    edit_mode: bool,
+    editing_time: bool,
     mode: Mode,
     clock_running: bool,
 ) -> Row<'a, Message> {
-    let make_red = if !edit_mode {
+    let make_red = if editing_time {
         false
     } else {
         match snapshot.timeout {
@@ -399,10 +399,10 @@ pub(super) fn make_game_time_button<'a>(
         .height(button_height)
         .style(button_style)
         .padding(PADDING)
-        .on_press(if edit_mode {
-            Message::EditTime
-        } else {
+        .on_press(if editing_time {
             Message::NoAction
+        } else {
+            Message::EditTime
         });
 
     let mut time_row = row()
@@ -423,15 +423,17 @@ pub(super) fn make_game_time_button<'a>(
             .horizontal_alignment(Horizontal::Center)
             .width(Length::Fill)
             .height(Length::Fill);
-        let play_pause_button = button(play_pause_text)
+        let mut play_pause_button = button(play_pause_text)
             .style(style::Button::Gray)
             .height(button_height)
-            .width(Length::Units(MIN_BUTTON_SIZE))
-            .on_press(if clock_running {
+            .width(Length::Units(MIN_BUTTON_SIZE));
+        if !editing_time {
+            play_pause_button = play_pause_button.on_press(if clock_running {
                 Message::StopClock
             } else {
                 Message::StartClock
             });
+        };
         time_row = time_row.push(play_pause_button);
     };
 

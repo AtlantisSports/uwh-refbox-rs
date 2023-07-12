@@ -170,7 +170,7 @@ fn make_main_config_page<'a>(
         .push(make_game_time_button(
             snapshot,
             false,
-            true,
+            false,
             mode,
             clock_running,
         ))
@@ -427,7 +427,7 @@ fn make_tournament_config_page<'a>(
         .push(make_game_time_button(
             snapshot,
             false,
-            true,
+            false,
             mode,
             clock_running,
         ))
@@ -506,7 +506,7 @@ fn make_sound_config_page<'a>(
         .push(make_game_time_button(
             snapshot,
             false,
-            true,
+            false,
             mode,
             clock_running,
         ))
@@ -725,7 +725,7 @@ fn make_remote_config_page<'a>(
         .push(make_game_time_button(
             snapshot,
             false,
-            true,
+            false,
             mode,
             clock_running,
         ))
@@ -813,7 +813,7 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
         .push(make_game_time_button(
             snapshot,
             false,
-            true,
+            false,
             mode,
             clock_running,
         ))

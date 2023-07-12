@@ -119,7 +119,7 @@ pub(in super::super) fn build_list_selector_page<'a>(
         .push(make_game_time_button(
             snapshot,
             false,
-            true,
+            false,
             mode,
             clock_running,
         ))

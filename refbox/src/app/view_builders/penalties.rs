@@ -24,7 +24,7 @@ pub(in super::super) fn build_penalty_overview_page<'a>(
         .push(make_game_time_button(
             snapshot,
             false,
-            true,
+            false,
             mode,
             clock_running,
         ))

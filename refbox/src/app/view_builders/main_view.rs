@@ -24,7 +24,7 @@ pub(in super::super) fn build_main_view<'a>(
     mode: Mode,
     clock_running: bool,
 ) -> Element<'a, Message> {
-    let time_button = make_game_time_button(snapshot, true, true, mode, clock_running);
+    let time_button = make_game_time_button(snapshot, true, false, mode, clock_running);
 
     let mut center_col = column()
         .spacing(SPACING)

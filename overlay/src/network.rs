@@ -18,14 +18,14 @@ async fn get_image_from_opt_url(url: Option<&str>) -> Option<Vec<u8>> {
                 .send()
                 .await
                 .map_err(|e| {
-                    error!("Couldn't get image \"{}\" from network: {}", url, e);
+                    error!("Couldn't get image \"{url}\" from network: {e}");
                     e
                 })
                 .ok()?
                 .bytes()
                 .await
                 .map_err(|e| {
-                    error!("Couldn't get image body: {}", e);
+                    error!("Couldn't get image \"{url}\"  body: {e}");
                     e
                 })
                 .ok()?
@@ -64,7 +64,7 @@ impl TeamInfoRaw {
         let data: Value = serde_json::from_str(
             &client
                 .get(format!(
-                    "http://{url}/api/v1/tournaments/{tournament_id}/teams/{team_id}"
+                    "http://{url}/api/admin/get-event-team?legacyEventId={tournament_id}&legacyTeamId={team_id}"
                 ))
                 .send()
                 .await
@@ -77,46 +77,42 @@ impl TeamInfoRaw {
 
         let mut members = Vec::new();
         futures::future::join_all(
-                data["team"]["roster"]
-                    .as_array()
-                    .map(|x| x.to_vec())
-                    .unwrap_or_default()
-                    .iter()
-                    .map(|member| async {
-                        (
-                            member["name"].as_str().map(|s| s.trim().to_string()),
-                            member["number"].as_u64().map(|e| e as u8),
-                            member["role"].as_str().map(|s| s.trim().to_uppercase()),
-                            get_image_from_opt_url(member["picture_url"].as_str()).await,
-                            get_image_from_opt_url(member["geared_picture_url"].as_str()).await,
+            data["roster"]
+                .as_array()
+                .map(|x| x.to_vec())
+                .unwrap_or_default()
+                .iter()
+                .map(|member| async {
+                    MemberRaw {
+                        name: member["rosterName"].to_string().trim().to_string(),
+                        number: member["capNumber"].as_u64().map(|e| e as u8),
+                        role: member["roles"]
+                            .as_array()
+                            .map(|a| {
+                                a.iter()
+                                    .map(|v| v.to_string())
+                                    .filter(|v| *v == String::from("Player"))
+                                    .nth(0)
+                            })
+                            .flatten(),
+                        picture: get_image_from_opt_url(member["photos"]["uniform"].as_str()).await,
+                        geared_picture: get_image_from_opt_url(
+                            member["photos"][match team_color {
+                                Color::Black => "darkGear",
+                                Color::White => "lightGear",
+                            }]
+                            .as_str(),
                         )
-                    }),
-            )
-            .await
-            .into_iter()
-            .filter_map(|data| {
-                if let (Some(name), number, role, picture, geared_picture) = data {
-                    Some(MemberRaw {
-                        name,
-                        role,
-                        number,
-                        picture,
-                        geared_picture,
-                    })
-                } else {
-                    None
-                }
-            })
-            .for_each(|member|
-                // don't push if name field is blank or if both number and role are missing
-                // (roster data point has to be in the player or support category or both)
-                if !member.name.is_empty() && (member.number.is_some() || member.role.is_some()) {
-                    members.push(member);
-                }
-            );
+                        .await,
+                    }
+                }),
+        )
+        .await
+        .into_iter()
+        .for_each(|member| members.push(member));
 
         let x = Self {
-            team_name: data["team"]["name"].as_str().map_or(
+            team_name: data["name"].as_str().map_or(
                 match team_color {
                     Color::Black => String::from("Black"),
                     Color::White => String::from("White"),
@@ -124,7 +120,7 @@ impl TeamInfoRaw {
                 |s| s.trim().to_uppercase(),
             ),
             members,
-            flag: get_image_from_opt_url(data["team"]["flag_url"].as_str()).await,
+            flag: get_image_from_opt_url(data["logoUrl"].as_str()).await,
         };
         x
     }

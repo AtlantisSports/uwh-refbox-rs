@@ -149,15 +149,6 @@ impl PageRenderer {
                 ..WHITE
             }
         );
-        draw_texture_both!(
-            self.assets.time_and_game_state,
-            367f32,
-            18f32,
-            Color {
-                a: tandg_alpha,
-                ..WHITE
-            }
-        );
         draw_text_both!(
             state.snapshot.b_score.to_string().as_str(),
             40f32,
@@ -239,6 +230,15 @@ impl PageRenderer {
                     ..WHITE
                 },
                 ..Default::default()
+            }
+        );
+        draw_texture_both!(
+            self.assets.time_and_game_state,
+            367f32,
+            18f32,
+            Color {
+                a: tandg_alpha,
+                ..WHITE
             }
         );
         let min = state.half_play_duration.unwrap_or(900) / 60;

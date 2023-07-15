@@ -6,7 +6,7 @@ from flask import Flask, jsonify
 app = Flask(__name__)
 
 
-@app.route("/api/v1/tournaments/35/teams/10")
+@app.route("/api/v1/tournaments/0/teams/10")
 def ten():
     d = {
         "team": {
@@ -119,7 +119,7 @@ def ten():
     return jsonify(d)
 
 
-@app.route("/api/v1/tournaments/35/teams/13")
+@app.route("/api/v1/tournaments/0/teams/13")
 def thirteen():
     d = {
         "team": {
@@ -232,7 +232,7 @@ def thirteen():
     return jsonify(d)
 
 
-@app.route("/api/v1/tournaments/35/games/1")
+@app.route("/api/v1/tournaments/0/games/1")
 def hello():
     d = {
         "game": {

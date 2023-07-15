@@ -15,7 +15,7 @@ use log4rs::{
     encode::pattern::PatternEncoder,
 };
 use macroquad::prelude::*;
-use network::{StatePacket, TeamInfoRaw};
+use network::{GameData, StatePacket, TeamInfoRaw};
 use std::{cmp::Ordering, str::FromStr};
 use std::{net::IpAddr, path::PathBuf};
 use uwh_common::game_snapshot::{GamePeriod, GameSnapshot, TimeoutSnapshot};
@@ -73,26 +73,24 @@ pub fn texture_from_bytes(bytes: Vec<u8>) -> Texture {
 
 impl State {
     fn update_state(&mut self, recieved_state: StatePacket) {
-        if let Some(team) = recieved_state.black {
-            self.black = TeamInfo::from(team);
-        }
-        if let Some(team) = recieved_state.white {
-            self.white = TeamInfo::from(team);
+        if let Some(GameData {
+            black,
+            white,
+            pool,
+            start_time,
+            sponsor_logo,
+            referees,
+        }) = recieved_state.data
+        {
+            self.black = TeamInfo::from(black);
+            self.white = TeamInfo::from(white);
+            self.start_time = start_time;
+            self.sponsor_logo = sponsor_logo.map(texture_from_bytes);
+            self.referees = referees.into_iter().map(Member::from).collect();
+            self.pool = pool;
         }
         if let Some(game_id) = recieved_state.game_id {
             self.game_id = game_id;
-        }
-        if let Some(pool) = recieved_state.pool {
-            self.pool = pool;
-        }
-        if let Some(start_time) = recieved_state.start_time {
-            self.start_time = start_time;
-        }
-        if let Some(referees) = recieved_state.referees {
-            self.referees = referees.into_iter().map(Member::from).collect();
-        }
-        if let Some(sponsor_logo) = recieved_state.sponsor_logo {
-            self.sponsor_logo = Some(texture_from_bytes(sponsor_logo));
         }
         self.snapshot = recieved_state.snapshot;
     }

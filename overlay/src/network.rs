@@ -18,14 +18,14 @@ async fn get_image_from_opt_url(url: Option<&str>) -> Option<Vec<u8>> {
                 .send()
                 .await
                 .map_err(|e| {
-                    error!("Couldn't get flag from network: {}", e);
+                    error!("Couldn't get image \"{}\" from network: {}", url, e);
                     e
                 })
                 .ok()?
                 .bytes()
                 .await
                 .map_err(|e| {
-                    error!("Couldn't get flag body: {}", e);
+                    error!("Couldn't get image body: {}", e);
                     e
                 })
                 .ok()?
@@ -35,9 +35,9 @@ async fn get_image_from_opt_url(url: Option<&str>) -> Option<Vec<u8>> {
     }
 }
 
-/// Contains data of each induvidual in the roster. pictures are raw unprocessed bytes that are
+/// Contains data of each individual in the roster. pictures are raw unprocessed bytes that are
 /// serialisable
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct MemberRaw {
     pub name: String,
     pub role: Option<String>,
@@ -47,7 +47,7 @@ pub struct MemberRaw {
 }
 /// Contains information about team. `flag` here is a byte array for `Serialize`, which is
 /// processed into `Texture2D` when struct is converted into `TeamInfo`
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct TeamInfoRaw {
     pub team_name: String,
     pub members: Vec<MemberRaw>,
@@ -55,7 +55,7 @@ pub struct TeamInfoRaw {
 }
 
 impl TeamInfoRaw {
-    pub async fn new(url: &String, tournament_id: u32, team_id: u64, team_color: Color) -> Self {
+    pub async fn new(url: &str, tournament_id: u32, team_id: u64, team_color: Color) -> Self {
         let client = CLIENT_CELL.get().unwrap();
         info!(
             "Requesting UWH API for team information for team {}",
@@ -133,32 +133,34 @@ impl TeamInfoRaw {
 #[derive(Serialize, Deserialize)]
 pub struct StatePacket {
     pub snapshot: GameSnapshot,
-    pub black: Option<TeamInfoRaw>,
-    pub white: Option<TeamInfoRaw>,
-    pub sponsor_logo: Option<Vec<u8>>,
     pub game_id: Option<u32>,
-    pub pool: Option<String>,
-    pub start_time: Option<String>,
-    pub referees: Option<Vec<MemberRaw>>,
+    pub data: Option<GameData>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct GameData {
+    pub pool: String,
+    pub start_time: String,
+    pub referees: Vec<MemberRaw>,
+    pub black: TeamInfoRaw,
+    pub white: TeamInfoRaw,
+    pub sponsor_logo: Option<Vec<u8>>,
 }
 
 async fn fetch_game_data(
-    tr: crossbeam_channel::Sender<(
-        String,
-        String,
-        Vec<MemberRaw>,
-        TeamInfoRaw,
-        TeamInfoRaw,
-        Option<Vec<u8>>,
-    )>,
-    url: String,
+    tr: crossbeam_channel::Sender<(GameData, bool)>,
+    url: &str,
     tournament_id: u32,
     game_id: u32,
+    is_current_game: bool,
 ) {
     let client = CLIENT_CELL.get().unwrap();
     // retry periodically if no connection
     loop {
-        info!("Trying to request game data from UWH API");
+        info!(
+            "Trying to request game data for tid:{}, gid:{} from UWH API",
+            tournament_id, game_id
+        );
         if let Ok(data) = client
             .get(format!(
                 "http://{url}/api/v1/tournaments/{tournament_id}/games/{game_id}"
@@ -166,8 +168,12 @@ async fn fetch_game_data(
             .send()
             .await
         {
-            let text = data.text().await.unwrap();
-            let data: Value = serde_json::from_str(text.as_str()).unwrap();
+            let text = data
+                .text()
+                .await
+                .expect("Response body could not be recieved!");
+            let data: Value =
+                serde_json::from_str(text.as_str()).expect("Server did not return valid json!");
             let team_id_black = data["game"]["black_id"].as_u64().unwrap_or(0);
             let team_id_white = data["game"]["white_id"].as_u64().unwrap_or(0);
 
@@ -214,12 +220,15 @@ async fn fetch_game_data(
             })
             .for_each(|referee| referees.push(referee));
             tr.send((
-                pool,
-                start_time,
-                referees,
-                TeamInfoRaw::new(&url, tournament_id, team_id_black, Color::Black).await,
-                TeamInfoRaw::new(&url, tournament_id, team_id_white, Color::White).await,
-                sponsor_logo,
+                GameData {
+                    pool,
+                    start_time,
+                    referees,
+                    black: TeamInfoRaw::new(url, tournament_id, team_id_black, Color::Black).await,
+                    white: TeamInfoRaw::new(url, tournament_id, team_id_white, Color::White).await,
+                    sponsor_logo,
+                },
+                is_current_game,
             ))
             .unwrap();
             return;
@@ -252,19 +261,13 @@ pub async fn networking_thread(
     };
     info!("Connected to refbox!");
 
-    let (tr, rc) = crossbeam_channel::bounded::<(
-        String,
-        String,
-        Vec<MemberRaw>,
-        TeamInfoRaw,
-        TeamInfoRaw,
-        Option<Vec<u8>>,
-    )>(3);
+    let (tr, rc) = crossbeam_channel::bounded::<(GameData, bool)>(3);
     let url = config.uwhscores_url.clone();
     let mut buff = vec![0u8; 1024];
     let mut read_bytes;
     let mut game_id = None;
     let mut tournament_id = None;
+    let mut next_game_data: Option<GameData> = None;
     info!("Networking thread initialized!");
     loop {
         read_bytes = stream.read(&mut buff).unwrap();
@@ -288,51 +291,93 @@ pub async fn networking_thread(
                 } else {
                     snapshot.game_number
                 };
-            if (tournament_id.is_some() && tournament_id.unwrap() != tid
-                || game_id.is_some() && game_id.unwrap() != gid)
-                || tournament_id.is_none() && game_id.is_none()
-            {
-                let tr = tr.clone();
-                let url = url.clone();
+            let next_gid = snapshot.next_game_number;
+            // initial case when no parameter is initialised
+            // NOTE: we always expect next `gid` to be current `next_gid`.
+            if game_id.is_none() {
+                let tr_ = tr.clone();
+                let url_ = url.clone();
                 game_id = Some(gid);
                 tournament_id = Some(tid);
                 info!(
-                    "Fetching game data for tid: {}, gid: {}",
+                    "Fetching intial game data for tid: {}, gid: {}",
                     tournament_id.unwrap(),
                     game_id.unwrap()
                 );
                 tokio::spawn(async move {
-                    fetch_game_data(tr, url, tournament_id.unwrap(), game_id.unwrap()).await;
+                    fetch_game_data(tr_, &url_, tournament_id.unwrap(), gid, true).await;
+                });
+                let tr_ = tr.clone();
+                let url_ = url.clone();
+                info!(
+                    "Fetching intial game data to cache for tid: {}, gid: {}",
+                    tournament_id.unwrap(),
+                    next_gid
+                );
+                tokio::spawn(async move {
+                    fetch_game_data(tr_, &url_, tournament_id.unwrap(), next_gid, false).await;
                 });
             }
-            if let Ok((pool, start_time, referees, black, white, sponsor_logo)) = rc.try_recv() {
-                info!("Got game state update from network!");
-                tx.send(StatePacket {
-                    snapshot,
-                    game_id,
-                    black: Some(black),
-                    white: Some(white),
-                    pool: Some(pool),
-                    start_time: Some(start_time),
-                    referees: Some(referees),
-                    sponsor_logo,
-                })
-                .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
+            // when gid changes set current game_data to next_game_data and replace next_game_data with new
+            // next_game_data
+            if let Some(game_id_inner) = game_id.as_mut() {
+                if *game_id_inner != gid {
+                    let tr = tr.clone();
+                    let url = url.clone();
+                    *game_id_inner = gid;
+                    if let Some(next_game_data) = next_game_data.clone() {
+                        info!(
+                            "Fetching game data for tid: {}, gid: {}",
+                            tournament_id.unwrap(),
+                            next_gid,
+                        );
+                        tokio::spawn(async move {
+                            fetch_game_data(tr, &url, tournament_id.unwrap(), next_gid, false)
+                                .await;
+                        });
+                        info!("Sending cached game data for next game");
+                        tx.send(StatePacket {
+                            snapshot,
+                            game_id,
+                            data: Some(next_game_data),
+                        })
+                        .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
+                    } else {
+                        info!(
+                            "Fetching game data for tid: {}, gid: {}. Cache is empty!",
+                            tournament_id.unwrap(),
+                            gid,
+                        );
+                        tokio::spawn(async move {
+                            fetch_game_data(tr, &url, tournament_id.unwrap(), gid, false).await;
+                        });
+                    }
+                    continue;
+                }
+            }
+            if let Ok((game_data, is_current_game)) = rc.try_recv() {
+                if is_current_game {
+                    info!("Got game state update from network!");
+                    tx.send(StatePacket {
+                        snapshot,
+                        game_id,
+                        data: Some(game_data),
+                    })
+                    .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
+                } else {
+                    info!("Got game state update from network for next_game!");
+                    next_game_data = Some(game_data);
+                }
             } else {
                 tx.send(StatePacket {
                     snapshot,
                     game_id,
-                    black: None,
-                    white: None,
-                    pool: None,
-                    start_time: None,
-                    referees: None,
-                    sponsor_logo: None,
+                    data: None,
                 })
                 .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
             }
         } else {
-            warn!("Corrupted snapshot discarded!")
+            warn!("Corrupted snapshot discarded!");
         }
     }
 }

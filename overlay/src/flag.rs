@@ -20,7 +20,7 @@ const BASE_HEIGHT: f32 = 150f32;
 /// Vertical space allocated to each flag
 const FLAG_HEIGHT: f32 = 70f32;
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Type {
     Goal(UWHColor, bool),
     /// Third enum value is used to keep track of whether the flag was visited in last sync. Unvisited flags need to be deleted.
@@ -47,7 +47,7 @@ pub struct Flag {
 }
 
 impl Flag {
-    pub fn new(player_name: String, player_number: u8, flag_type: Type) -> Self {
+    pub const fn new(player_name: String, player_number: u8, flag_type: Type) -> Self {
         Self {
             player_name,
             player_number,
@@ -315,8 +315,8 @@ impl Renderer {
                     flag.movement_animation_counter += 1f32 / 60f32;
                 }
                 (
-                    (BASE_HEIGHT + flag.vertical_position as f32 * FLAG_HEIGHT)
-                        - (BASE_HEIGHT + idx as f32 * FLAG_HEIGHT),
+                    (flag.vertical_position as f32).mul_add(FLAG_HEIGHT, BASE_HEIGHT)
+                        - (idx as f32).mul_add(FLAG_HEIGHT, BASE_HEIGHT),
                     0f32,
                 )
                     .interpolate_linear(flag.movement_animation_counter)
@@ -343,7 +343,7 @@ impl Renderer {
             draw_texture_both!(
                 tex,
                 25f32,
-                BASE_HEIGHT + idx as f32 * FLAG_HEIGHT + movement_offset,
+                (idx as f32).mul_add(FLAG_HEIGHT, BASE_HEIGHT) + movement_offset,
                 Color {
                     a: alpha_offset,
                     ..WHITE
@@ -352,7 +352,7 @@ impl Renderer {
             draw_text_both_ex!(
                 format!("#{} {}", flag.player_number, flag.player_name).as_str(),
                 160f32,
-                BASE_HEIGHT + idx as f32 * FLAG_HEIGHT + movement_offset + 33f32,
+                (idx as f32).mul_add(FLAG_HEIGHT, BASE_HEIGHT) + movement_offset + 33f32,
                 TextParams {
                     font: self.textures.font,
                     font_size: 30,
@@ -384,7 +384,7 @@ impl Renderer {
                 Type::Goal(color, _) => draw_text_ex(
                     "GOAL",
                     45f32,
-                    BASE_HEIGHT + idx as f32 * FLAG_HEIGHT + movement_offset + 33f32,
+                    (idx as f32).mul_add(FLAG_HEIGHT, BASE_HEIGHT) + movement_offset + 33f32,
                     TextParams {
                         font: self.textures.font,
                         font_size: 30,
@@ -429,7 +429,7 @@ impl Renderer {
                     draw_text_ex(
                         text.as_str(),
                         35f32 + x_off,
-                        BASE_HEIGHT + idx as f32 * FLAG_HEIGHT + movement_offset + 33f32,
+                        (idx as f32).mul_add(FLAG_HEIGHT, BASE_HEIGHT) + movement_offset + 33f32,
                         TextParams {
                             font: self.textures.font,
                             font_size: 30,
@@ -475,7 +475,7 @@ impl Renderer {
             draw_texture_both!(
                 tex,
                 25f32,
-                BASE_HEIGHT + flag.vertical_position as f32 * FLAG_HEIGHT,
+                (flag.vertical_position as f32).mul_add(FLAG_HEIGHT, BASE_HEIGHT),
                 Color {
                     a: alpha_offset,
                     ..WHITE
@@ -484,7 +484,7 @@ impl Renderer {
             draw_text_both_ex!(
                 format!("#{} {}", flag.player_number, flag.player_name).as_str(),
                 160f32,
-                BASE_HEIGHT + flag.vertical_position as f32 * FLAG_HEIGHT + 33f32,
+                (flag.vertical_position as f32).mul_add(FLAG_HEIGHT, BASE_HEIGHT) + 33f32,
                 TextParams {
                     font: self.textures.font,
                     font_size: 30,
@@ -515,7 +515,7 @@ impl Renderer {
                 Type::Goal(_, _) => draw_text_ex(
                     "GOAL",
                     45f32,
-                    BASE_HEIGHT + flag.vertical_position as f32 * FLAG_HEIGHT + 33f32,
+                    (flag.vertical_position as f32).mul_add(FLAG_HEIGHT, BASE_HEIGHT) + 33f32,
                     TextParams {
                         font: self.textures.font,
                         font_size: 30,
@@ -560,7 +560,7 @@ impl Renderer {
                     draw_text_ex(
                         text.as_str(),
                         35f32 + x_off,
-                        BASE_HEIGHT + flag.vertical_position as f32 * FLAG_HEIGHT + 33f32,
+                        (flag.vertical_position as f32).mul_add(FLAG_HEIGHT, BASE_HEIGHT) + 33f32,
                         TextParams {
                             font: self.textures.font,
                             font_size: 30,

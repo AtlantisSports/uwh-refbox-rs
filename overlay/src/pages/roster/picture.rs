@@ -101,7 +101,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
             .duration_since(renderer.animation_register2)
             .as_f64() as f32;
     let top_banner_alpha = if to_page_end <= 1.5 {
-        2f32 * to_page_end - 2f32
+        2f32.mul_add(to_page_end, -2f32)
     } else {
         2f32 * (since_page_start - 1.5f32)
     };
@@ -163,8 +163,9 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
     if let Some(cards) =
         rpd_groups(card_repr).nth((since_page_start - 3f32).div_euclid(RPD_GROUP_TIME) as usize)
     {
-        let since_rpdgroup_start = since_page_start
-            - (since_page_start - 3f32).div_euclid(RPD_GROUP_TIME) * RPD_GROUP_TIME
+        let since_rpdgroup_start = (since_page_start - 3f32)
+            .div_euclid(RPD_GROUP_TIME)
+            .mul_add(-RPD_GROUP_TIME, since_page_start)
             - 3f32;
         let to_rpdgroup_end = RPD_GROUP_TIME - since_rpdgroup_start;
         let rpdgroup_alpha = if since_page_start <= 3f32 {
@@ -176,7 +177,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
         };
         let rpd_picture_alpha = (RPD_GROUP_TIME / 2f32 - since_rpdgroup_start) * 2f32;
         let no_cards = cards.len() as f32;
-        let margin = (1920f32 - CARD_WIDTH * no_cards) / (no_cards + 1f32);
+        let margin = CARD_WIDTH.mul_add(-no_cards, 1920f32) / (no_cards + 1f32);
         cards.iter().enumerate().for_each(
             |(
                 i,
@@ -190,7 +191,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
             )| {
                 draw_texture_both!(
                     team_textures.frame_bg,
-                    i as f32 * (CARD_WIDTH + margin) + margin + 12f32,
+                    (i as f32).mul_add(CARD_WIDTH + margin, margin) + 12f32,
                     407f32,
                     Color {
                         a: rpdgroup_alpha,
@@ -199,7 +200,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                 );
                 draw_texture_both!(
                     renderer.assets.frame_rpd,
-                    i as f32 * (CARD_WIDTH + margin) + margin,
+                    (i as f32).mul_add(CARD_WIDTH + margin, margin),
                     395f32,
                     Color {
                         a: rpdgroup_alpha,
@@ -209,7 +210,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                 if let (Some(picture), Some(geared_picture)) = (picture, geared_picture) {
                     draw_texture_both_ex!(
                         *picture,
-                        i as f32 * (CARD_WIDTH + margin) + margin + 12f32,
+                        (i as f32).mul_add(CARD_WIDTH + margin, margin) + 12f32,
                         407f32,
                         Color {
                             a: rpdgroup_alpha.min(rpd_picture_alpha),
@@ -222,7 +223,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                     );
                     draw_texture_both_ex!(
                         *geared_picture,
-                        i as f32 * (CARD_WIDTH + margin) + margin + 12f32,
+                        (i as f32).mul_add(CARD_WIDTH + margin, margin) + 12f32,
                         407f32,
                         Color {
                             a: rpdgroup_alpha.min(-rpd_picture_alpha),
@@ -236,7 +237,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                 } else if let Some(picture) = picture {
                     draw_texture_both_ex!(
                         *picture,
-                        i as f32 * (CARD_WIDTH + margin) + margin + 12f32,
+                        (i as f32).mul_add(CARD_WIDTH + margin, margin) + 12f32,
                         407f32,
                         Color {
                             a: rpdgroup_alpha,
@@ -250,7 +251,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                 } else if let Some(picture) = geared_picture {
                     draw_texture_both_ex!(
                         *picture,
-                        i as f32 * (CARD_WIDTH + margin) + margin + 12f32,
+                        (i as f32).mul_add(CARD_WIDTH + margin, margin) + 12f32,
                         407f32,
                         Color {
                             a: rpdgroup_alpha,
@@ -265,7 +266,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                 if let Some(number) = number {
                     draw_texture_both!(
                         renderer.assets.number_bg_rpd,
-                        i as f32 * (CARD_WIDTH + margin) + margin,
+                        (i as f32).mul_add(CARD_WIDTH + margin, margin),
                         395f32,
                         Color {
                             a: rpdgroup_alpha,
@@ -281,7 +282,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                     );
                     draw_text_ex(
                         text.as_str(),
-                        i as f32 * (CARD_WIDTH + margin) + margin + x_off + 15f32,
+                        (i as f32).mul_add(CARD_WIDTH + margin, margin) + x_off + 15f32,
                         445f32,
                         TextParams {
                             font: renderer.assets.font,
@@ -297,7 +298,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                 if let Some(role) = role {
                     draw_texture_both!(
                         team_textures.team_member_role_bg,
-                        i as f32 * (CARD_WIDTH + margin) + margin,
+                        (i as f32).mul_add(CARD_WIDTH + margin, margin),
                         340f32,
                         Color {
                             a: rpdgroup_alpha,
@@ -308,7 +309,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                         fit_text(400f32, role, 40, renderer.assets.font, Justify::Center);
                     draw_text_both_ex!(
                         &text,
-                        i as f32 * (CARD_WIDTH + margin) + margin + 22f32 + x_off,
+                        (i as f32).mul_add(CARD_WIDTH + margin, margin) + 22f32 + x_off,
                         377f32,
                         TextParams {
                             font: renderer.assets.font,
@@ -339,7 +340,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                 };
                 draw_texture_both!(
                     text_box_texture,
-                    i as f32 * (CARD_WIDTH + margin) + margin,
+                    (i as f32).mul_add(CARD_WIDTH + margin, margin),
                     847f32,
                     Color {
                         a: rpdgroup_alpha,
@@ -347,9 +348,10 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                     }
                 );
                 let text_height = measure_text("Q", Some(renderer.assets.font), 33, 1.0).height;
-                let v_margin = (text_box_texture.color.height()
-                    - text_height * lines.len().min(3) as f32)
-                    / (lines.len().min(3) as f32 + 1f32);
+                let v_margin = text_height.mul_add(
+                    -(lines.len().min(3) as f32),
+                    text_box_texture.color.height(),
+                ) / (lines.len().min(3) as f32 + 1f32);
                 for (j, line) in lines.iter().take(3).enumerate() {
                     let (x_off, text) =
                         fit_text(400f32, line, 33, renderer.assets.font, Justify::Center);

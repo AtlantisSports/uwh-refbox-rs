@@ -80,7 +80,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                 .enumerate(),
         )
     {
-        if 60f32 * i as f32 + 220f32 > 650f32 + offset + 100f32 {
+        if 60f32.mul_add(i as f32, 220f32) > 650f32 + offset + 100f32 {
             if player_identifier.1 == UwhColor::White {
                 draw_texture_both!(
                     renderer.assets.team_white_banner,
@@ -89,7 +89,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                     } else {
                         1108f32
                     },
-                    60f32 * i as f32 + 220f32,
+                    60f32.mul_add(i as f32, 220f32),
                     Color {
                         a: timeout_alpha_offset,
                         ..WHITE
@@ -103,7 +103,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                     } else {
                         1108f32
                     },
-                    60f32 * i as f32 + 220f32,
+                    60f32.mul_add(i as f32, 220f32),
                     Color {
                         a: timeout_alpha_offset,
                         ..WHITE
@@ -124,7 +124,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                 } else {
                     1118f32
                 },
-                255f32 + 60f32 * i as f32,
+                60f32.mul_add(i as f32, 255f32),
                 TextParams {
                     font: renderer.assets.font,
                     font_size: 35,
@@ -149,7 +149,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                 } else {
                     1238f32
                 },
-                255f32 + 60f32 * i as f32,
+                60f32.mul_add(i as f32, 255f32),
                 TextParams {
                     font: renderer.assets.font,
                     font_size: 35,

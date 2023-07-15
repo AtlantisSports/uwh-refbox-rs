@@ -88,13 +88,7 @@ impl TeamInfoRaw {
                         number: member["capNumber"].as_u64().map(|e| e as u8),
                         role: member["roles"]
                             .as_array()
-                            .map(|a| {
-                                a.iter()
-                                    .map(|v| v.to_string())
-                                    .filter(|v| *v == String::from("Player"))
-                                    .nth(0)
-                            })
-                            .flatten(),
+                            .and_then(|a| a.iter().map(|v| v.to_string()).find(|v| *v == "Player")),
                         picture: get_image_from_opt_url(member["photos"]["uniform"].as_str()).await,
                         geared_picture: get_image_from_opt_url(
                             member["photos"][match team_color {

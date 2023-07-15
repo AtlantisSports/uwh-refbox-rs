@@ -26,7 +26,7 @@ def team():
                 {
                     "capNumber": 22,
                     "photos": {"darkGear": None, "lightGear": None, "uniform": None},
-                    "roles": ["Player"],
+                    "roles": ["Player", "goo"],
                     "rosterName": "Trisha Filar",
                 },
                 {
@@ -118,7 +118,7 @@ def team():
                 {
                     "capNumber": 8,
                     "photos": {"darkGear": None, "lightGear": None, "uniform": None},
-                    "roles": ["Player"],
+                    "roles": ["Player", "Alpha"],
                     "rosterName": None,
                 },
                 {

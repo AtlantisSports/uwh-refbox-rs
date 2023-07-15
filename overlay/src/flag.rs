@@ -48,7 +48,7 @@ pub struct Flag {
 
 impl Flag {
     pub fn new(player_name: String, player_number: u8, flag_type: Type) -> Self {
-        Flag {
+        Self {
             player_name,
             player_number,
             flag_type,
@@ -304,7 +304,7 @@ impl Renderer {
             if flag.alpha_animation_counter < 1f32 {
                 flag.alpha_animation_counter += 1f32 / 60f32;
             }
-            let alpha_offset = (0f32, 255f32).interpolate_linear(flag.alpha_animation_counter);
+            let alpha_offset = (0f32, 1f32).interpolate_linear(flag.alpha_animation_counter);
             let movement_offset = if flag.vertical_position == idx as u32 {
                 0f32
             } else {
@@ -455,7 +455,7 @@ impl Renderer {
                 Type::Goal(color, _) | Type::Penalty(color, _, _) => color,
             };
             flag.alpha_animation_counter -= 1f32 / 60f32;
-            let alpha_offset = (0f32, 255f32).interpolate_linear(flag.alpha_animation_counter);
+            let alpha_offset = (0f32, 1f32).interpolate_linear(flag.alpha_animation_counter);
             let tex = match flag.flag_type {
                 Type::Goal(_, _) => {
                     if color == UWHColor::White {

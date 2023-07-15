@@ -9,7 +9,7 @@ mod overtime_and_sudden_death;
 mod pre_game;
 pub mod roster;
 
-pub(crate) trait Interpolate {
+pub trait Interpolate {
     /// `value` must be a `float` normally varying from `0f32` to `1f32`
     fn interpolate_linear(&self, value: f32) -> f32;
     /// Performs exponential interpolation towards the end of the range.

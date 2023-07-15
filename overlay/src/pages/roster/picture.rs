@@ -355,8 +355,8 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                         fit_text(400f32, line, 33, renderer.assets.font, Justify::Center);
                     draw_text_both_ex!(
                         text.as_str(),
-                        i as f32 * (CARD_WIDTH + margin) + margin + 12f32 + x_off,
-                        847f32 + (v_margin + text_height) * (j as f32 + 1f32),
+                        (CARD_WIDTH + margin).mul_add(i as f32, margin + 12f32 + x_off),
+                        (v_margin + text_height).mul_add(j as f32 + 1f32, 847f32),
                         TextParams {
                             font: renderer.assets.font,
                             font_size: 33,

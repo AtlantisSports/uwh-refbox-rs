@@ -39,7 +39,7 @@ pub struct AppConfig {
 
 impl Default for AppConfig {
     fn default() -> Self {
-        AppConfig {
+        Self {
             refbox_ip: IpAddr::from_str("127.0.0.1").unwrap(),
             refbox_port: 8000,
             uwhscores_url: String::from("uwhscores.com"),
@@ -108,7 +108,7 @@ pub struct Member {
 
 impl From<network::MemberRaw> for Member {
     fn from(member_raw: network::MemberRaw) -> Self {
-        Member {
+        Self {
             name: member_raw.name,
             role: member_raw.role,
             number: member_raw.number,
@@ -136,7 +136,7 @@ impl From<TeamInfoRaw> for TeamInfo {
                 (None, Some(_)) => Ordering::Less,
                 (None, None) => a.name.cmp(&b.name),
             });
-        TeamInfo {
+        Self {
             team_name: team_info_raw.team_name,
             members: team_info_raw
                 .members
@@ -232,7 +232,7 @@ async fn main() {
     };
 
     assets.tournament_logo = tournament_logo_color
-        .and_then(|color| tournament_logo_alpha.map(|alpha| Texture { color, alpha }));
+        .and_then(|color| tournament_logo_alpha.map(|alpha| Texture { alpha, color }));
 
     let mut local_state: State = State {
         snapshot: GameSnapshot {

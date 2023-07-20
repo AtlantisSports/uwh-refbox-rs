@@ -30,11 +30,18 @@ pub(in super::super) fn build_keypad_page<'a>(
     page: KeypadPage,
     player_num: u16,
     mode: Mode,
+    clock_running: bool,
 ) -> Element<'a, Message> {
     column()
         .spacing(SPACING)
         .height(Length::Fill)
-        .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
+        .push(make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+        ))
         .push(
             row()
                 .spacing(SPACING)

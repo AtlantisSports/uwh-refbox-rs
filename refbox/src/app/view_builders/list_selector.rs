@@ -17,6 +17,8 @@ pub(in super::super) fn build_list_selector_page<'a>(
     index: usize,
     settings: &EditableSettings,
     tournaments: &Option<BTreeMap<u32, TournamentInfo>>,
+    mode: Mode,
+    clock_running: bool,
 ) -> Element<'a, Message> {
     const LIST_LEN: usize = 4;
     const TEAM_NAME_LEN_LIMIT: usize = 15;
@@ -114,7 +116,13 @@ pub(in super::super) fn build_list_selector_page<'a>(
     column()
         .spacing(SPACING)
         .height(Length::Fill)
-        .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
+        .push(make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+        ))
         .push(
             row()
                 .spacing(SPACING)

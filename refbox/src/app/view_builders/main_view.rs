@@ -1,5 +1,5 @@
 use super::{
-    style::{self, LARGE_TEXT, PADDING, SMALL_TEXT, SPACING},
+    style::{self, LARGE_TEXT, MIN_BUTTON_SIZE, PADDING, SMALL_PLUS_TEXT, SMALL_TEXT, SPACING},
     *,
 };
 
@@ -21,8 +21,10 @@ pub(in super::super) fn build_main_view<'a>(
     config: &GameConfig,
     using_uwhscores: bool,
     games: &Option<BTreeMap<u32, GameInfo>>,
+    mode: Mode,
+    clock_running: bool,
 ) -> Element<'a, Message> {
-    let time_button = make_game_time_button(snapshot, true, true).on_press(Message::EditTime);
+    let time_button = make_game_time_button(snapshot, true, false, mode, clock_running);
 
     let mut center_col = column()
         .spacing(SPACING)
@@ -111,6 +113,7 @@ pub(in super::super) fn build_main_view<'a>(
     )
     .padding(PADDING)
     .width(Length::Fill)
+    .height(Length::Units(MIN_BUTTON_SIZE + SMALL_PLUS_TEXT + PADDING))
     .style(style::Button::Black);
 
     let mut black_new_score_btn = make_button("SCORE\nBLACK").style(style::Button::Black);
@@ -124,6 +127,7 @@ pub(in super::super) fn build_main_view<'a>(
     )
     .padding(PADDING)
     .width(Length::Fill)
+    .height(Length::Units(MIN_BUTTON_SIZE + SMALL_PLUS_TEXT + PADDING))
     .style(style::Button::White);
 
     let mut white_new_score_btn = make_button("SCORE\nWHITE").style(style::Button::White);

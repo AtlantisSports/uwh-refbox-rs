@@ -14,6 +14,8 @@ use uwh_common::game_snapshot::GameSnapshot;
 pub(in super::super) fn build_confirmation_page<'a>(
     snapshot: &GameSnapshot,
     kind: &ConfirmationKind,
+    mode: Mode,
+    clock_running: bool,
 ) -> Element<'a, Message> {
     let header_text = match kind {
         ConfirmationKind::GameConfigChanged(_) => "The game configuration can not be changed while a game is in progress.\n\nWhat would you like to do?",
@@ -99,7 +101,13 @@ pub(in super::super) fn build_confirmation_page<'a>(
         .width(Length::Fill)
         .height(Length::Fill)
         .align_items(Alignment::Center)
-        .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
+        .push(make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+        ))
         .push(vertical_space(Length::Fill))
         .push(
             row()
@@ -126,6 +134,8 @@ pub(in super::super) fn build_confirmation_page<'a>(
 pub(in super::super) fn build_score_confirmation_page<'a>(
     snapshot: &GameSnapshot,
     scores: BlackWhiteBundle<u8>,
+    mode: Mode,
+    clock_running: bool,
 ) -> Element<'a, Message> {
     let header = text(format!(
         "Is this score correct?\n\nBlack: {}        White: {}\n",
@@ -151,7 +161,13 @@ pub(in super::super) fn build_score_confirmation_page<'a>(
         .width(Length::Fill)
         .height(Length::Fill)
         .align_items(Alignment::Center)
-        .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
+        .push(make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+        ))
         .push(vertical_space(Length::Fill))
         .push(
             row()

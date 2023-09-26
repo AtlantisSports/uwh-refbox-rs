@@ -138,7 +138,7 @@ pub(in super::super) fn build_score_confirmation_page<'a>(
     clock_running: bool,
 ) -> Element<'a, Message> {
     let header = text(format!(
-        "Is this score correct?\n\nBlack: {}        White: {}\n",
+        "Is this score correct?\nConfirm with cheif referee.\n\nBlack: {}        White: {}\n",
         scores.black, scores.white
     ))
     .horizontal_alignment(Horizontal::Center);

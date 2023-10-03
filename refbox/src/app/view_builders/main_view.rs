@@ -101,7 +101,7 @@ pub(in super::super) fn build_main_view<'a>(
             false
         };
 
-        let button_style = if make_penalties_red == true {
+        let button_style = if make_penalties_red {
             style::Button::Red
         } else {
             match color {
@@ -120,7 +120,7 @@ pub(in super::super) fn build_main_view<'a>(
                         .width(Length::Fill),
                 )
                 .push(
-                    text(penalty_string(&penalties))
+                    text(penalty_string(penalties))
                         .vertical_alignment(Vertical::Top)
                         .horizontal_alignment(Horizontal::Left)
                         .width(Length::Fill)

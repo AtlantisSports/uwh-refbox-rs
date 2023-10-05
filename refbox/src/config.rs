@@ -45,6 +45,7 @@ impl Default for UwhScores {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Config {
     pub mode: Mode,
+    pub hide_time: bool,
     pub game: Game,
     pub hardware: Hardware,
     pub uwhscores: UwhScores,

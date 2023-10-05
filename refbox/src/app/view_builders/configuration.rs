@@ -29,6 +29,7 @@ pub(in super::super) struct EditableSettings {
     pub games: Option<BTreeMap<u32, GameInfo>>,
     pub sound: SoundSettings,
     pub mode: Mode,
+    pub hide_time: bool,
 }
 
 pub(in super::super) trait Cyclable
@@ -194,12 +195,24 @@ fn make_main_config_page<'a>(
             )
             .style(style::Button::LightGray),
         )
-        .push(make_value_button(
-            "MODE",
-            settings.mode.to_string().to_uppercase(),
-            (true, true),
-            Some(Message::CycleParameter(CyclingParameter::Mode)),
-        ))
+        .push(
+            row()
+                .spacing(SPACING)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .push(make_value_button(
+                    "MODE",
+                    settings.mode.to_string().to_uppercase(),
+                    (true, true),
+                    Some(Message::CycleParameter(CyclingParameter::Mode)),
+                ))
+                .push(make_value_button(
+                    "HIDE TIME FOR\nLAST 15 SECONDS",
+                    bool_string(settings.hide_time),
+                    (false, true),
+                    Some(Message::ToggleBoolParameter(BoolGameParameter::HideTime)),
+                )),
+        )
         .push(
             row()
                 .spacing(SPACING)

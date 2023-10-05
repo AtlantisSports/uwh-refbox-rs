@@ -171,6 +171,7 @@ pub enum BoolGameParameter {
     RefAlertEnabled,
     AutoSoundStartPlay,
     AutoSoundStopPlay,
+    HideTime,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

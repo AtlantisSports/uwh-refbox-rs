@@ -21,6 +21,7 @@ use matrix_drawing::{secs_to_long_time_string, secs_to_time_string};
 use std::{
     borrow::Cow,
     collections::BTreeMap,
+    fmt::Write,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -534,8 +535,6 @@ pub(super) fn bool_string(val: bool) -> String {
 }
 
 pub(super) fn penalty_string(penalties: &[PenaltySnapshot]) -> String {
-    use std::fmt::Write;
-
     let mut string = String::new();
 
     for pen in penalties.iter() {
@@ -561,24 +560,20 @@ pub(super) fn game_string_short(game: &GameInfo) -> String {
 }
 
 pub(super) fn game_string_long(game: &GameInfo, len_limit: usize) -> String {
-    const ELIPSIS: [char; 3] = ['.', '.', '.'];
-
-    macro_rules! limit {
-        ($orig:ident) => {
-            if $orig.len() > len_limit {
-                Cow::Owned($orig.chars().take(len_limit - 1).chain(ELIPSIS).collect())
-            } else {
-                Cow::Borrowed($orig)
-            }
-        };
-    }
-
-    let black = &game.black;
-    let black = limit!(black);
-    let white = &game.white;
-    let white = limit!(white);
+    let black = limit_team_name_len(&game.black, len_limit);
+    let white = limit_team_name_len(&game.white, len_limit);
 
     format!("{}{} - {} vs {}", game.game_type, game.gid, black, white)
+}
+
+pub(super) fn limit_team_name_len(name: &String, len_limit: usize) -> Cow<'_, String> {
+    const ELIPSIS: [char; 3] = ['.', '.', '.'];
+
+    if name.len() > len_limit {
+        Cow::Owned(name.chars().take(len_limit - 1).chain(ELIPSIS).collect())
+    } else {
+        Cow::Borrowed(name)
+    }
 }
 
 pub(super) fn config_string(
@@ -587,20 +582,20 @@ pub(super) fn config_string(
     using_uwhscores: bool,
     games: &Option<BTreeMap<u32, GameInfo>>,
 ) -> String {
-    const TEAM_NAME_LEN_LIMIT: usize = 12;
-
-    let mut result = if snapshot.current_period == GamePeriod::BetweenGames {
+    const TEAM_NAME_LEN_LIMIT: usize = 40;
+    let mut result = String::new();
+    let game_number = if snapshot.current_period == GamePeriod::BetweenGames {
         let prev_game;
         let next_game;
         if using_uwhscores {
             if let Some(games) = games {
                 prev_game = match games.get(&snapshot.game_number) {
-                    Some(game) => game_string_long(game, TEAM_NAME_LEN_LIMIT),
+                    Some(game) => game_string_short(game),
                     None if snapshot.game_number == 0 => "None".to_string(),
                     None => format!("Error ({})", snapshot.game_number),
                 };
                 next_game = match games.get(&snapshot.next_game_number) {
-                    Some(game) => game_string_long(game, TEAM_NAME_LEN_LIMIT),
+                    Some(game) => game_string_short(game),
                     None => format!("Error ({})", snapshot.next_game_number),
                 };
             } else {
@@ -620,13 +615,19 @@ pub(super) fn config_string(
             next_game = snapshot.next_game_number.to_string();
         }
 
-        format!("Last Game: {}\nNext Game: {}\n", prev_game, next_game)
+        write!(
+            &mut result,
+            "Last Game: {},  Next Game: {}\n\n",
+            prev_game, next_game
+        )
+        .unwrap();
+        snapshot.next_game_number
     } else {
         let game;
         if using_uwhscores {
             if let Some(games) = games {
                 game = match games.get(&snapshot.game_number) {
-                    Some(game) => game_string_long(game, TEAM_NAME_LEN_LIMIT),
+                    Some(game) => game_string_short(game),
                     None => format!("Error ({})", snapshot.game_number),
                 };
             } else {
@@ -635,62 +636,62 @@ pub(super) fn config_string(
         } else {
             game = snapshot.game_number.to_string();
         }
-        format!("Game: {}\n\n", game)
+        write!(&mut result, "Game: {}\n\n", game).unwrap();
+        snapshot.game_number
     };
-    result += &format!(
-        "Half Length: {}\n\
-         Half Time Length: {}\n\
-         Overtime Allowed: {}\n",
+
+    if using_uwhscores {
+        if let Some(games) = games {
+            match games.get(&game_number) {
+                Some(game) => write!(
+                    &mut result,
+                    "Black Team: {}\nWhite Team: {}\n",
+                    limit_team_name_len(&game.black, TEAM_NAME_LEN_LIMIT),
+                    limit_team_name_len(&game.white, TEAM_NAME_LEN_LIMIT)
+                )
+                .unwrap(),
+                None => {}
+            }
+        }
+    }
+
+    write!(
+        &mut result,
+        "Half Length: {},  \
+         Half Time Length: {}\n",
         time_string(config.half_play_duration),
         time_string(config.half_time_duration),
+    )
+    .unwrap();
+
+    write!(
+        &mut result,
+        "Sudden Death Allowed: {},  \
+         Overtime Allowed: {}\n",
+        bool_string(config.sudden_death_allowed),
         bool_string(config.overtime_allowed),
-    );
-    result += &if config.overtime_allowed {
-        format!(
-            "Pre-Overtime Break Length: {}\n\
-             Overtime Half Length: {}\n\
-             Overtime Half Time Length: {}\n",
-            time_string(config.pre_overtime_break),
-            time_string(config.ot_half_play_duration),
-            time_string(config.ot_half_time_duration),
-        )
-    } else {
-        String::new()
-    };
-    result += &format!(
-        "Sudden Death Allowed: {}\n",
-        bool_string(config.sudden_death_allowed)
-    );
-    result += &if config.sudden_death_allowed {
-        format!(
-            "Pre-Sudden-Death Break Length: {}\n",
-            time_string(config.pre_sudden_death_duration)
-        )
-    } else {
-        String::new()
-    };
-    result += &format!(
+    )
+    .unwrap();
+
+    write!(
+        &mut result,
         "Team Timeouts Allowed Per Half: {}\n",
         config.team_timeouts_per_half
-    );
-    result += &if config.team_timeouts_per_half != 0 {
-        format!(
-            "Team Timeout Duration: {}\n",
-            time_string(config.team_timeout_duration)
-        )
-    } else {
-        String::new()
-    };
-    if !using_uwhscores {
-        result += &format!(
-            "Nominal Time Between Games: {}\n",
-            time_string(config.nominal_break),
-        );
-    }
-    result += &format!(
-        "Minimum Time Between Games: {}\n",
-        time_string(config.minimum_break),
-    );
+    )
+    .unwrap();
+
+    write!(&mut result, "Stop clock in last 2 minutes: \n").unwrap();
+
+    write!(
+        &mut result,
+        "Cheif ref: \n\
+        Timer: \n\
+        Water ref 1: \n\
+        Water ref 2: \n\
+        Water ref 3: ",
+    )
+    .unwrap();
+
     result
 }
 

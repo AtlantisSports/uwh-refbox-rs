@@ -47,6 +47,7 @@ pub enum Message {
     AddScoreComplete {
         canceled: bool,
     },
+    ShowGameDetails,
     EditGameConfig,
     ChangeConfigPage(ConfigPage),
     ConfigEditComplete {
@@ -112,6 +113,7 @@ impl Message {
             | Self::KeypadPage(_)
             | Self::ChangeColor(_)
             | Self::AddScoreComplete { .. }
+            | Self::ShowGameDetails
             | Self::EditGameConfig
             | Self::ChangeConfigPage(_)
             | Self::ConfigEditComplete { .. }

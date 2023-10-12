@@ -98,6 +98,7 @@ enum AppState {
     },
     PenaltyOverview(BlackWhiteBundle<usize>),
     KeypadPage(KeypadPage, u16),
+    GameDetailsPage,
     EditGameConfig(ConfigPage),
     ParameterEditor(LengthParameter, Duration),
     ParameterList(ListableParameter, usize),
@@ -898,6 +899,10 @@ impl Application for RefBoxApp {
                 };
                 trace!("AppState changed to {:?}", self.app_state);
             }
+            Message::ShowGameDetails => {
+                self.app_state = AppState::GameDetailsPage;
+                trace!("AppState changed to {:?}", self.app_state);
+            }
             Message::EditGameConfig => {
                 let edited_settings = EditableSettings {
                     config: self.tm.lock().unwrap().config().clone(),
@@ -1670,6 +1675,14 @@ impl Application for RefBoxApp {
                     &self.snapshot,
                     page,
                     player_num,
+                    self.config.mode,
+                    clock_running,
+                ),
+                AppState::GameDetailsPage => build_game_info_page(
+                    &self.snapshot,
+                    &self.config.game,
+                    self.using_uwhscores,
+                    &self.games,
                     self.config.mode,
                     clock_running,
                 ),

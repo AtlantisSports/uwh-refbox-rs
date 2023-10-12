@@ -73,7 +73,7 @@ pub(in super::super) fn build_main_view<'a>(
         .style(style::Button::LightGray)
         .width(Length::Fill)
         .height(Length::Fill)
-        .on_press(Message::EditGameConfig),
+        .on_press(Message::ShowGameDetails),
     );
 
     let make_penalty_button = |snapshot: &GameSnapshot, color: GameColor| {

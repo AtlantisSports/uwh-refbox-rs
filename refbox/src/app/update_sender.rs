@@ -267,16 +267,24 @@ impl WorkerHandle {
         json: &[u8],
         snapshot: &GameSnapshotNoHeap,
         white_on_right: bool,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), TrySendError<String>> {
         match self.tx {
-            WorkerTx::Binary(ref tx) => tx.try_send(Vec::from(binary))?,
-            WorkerTx::Json(ref tx) => tx.try_send(Vec::from(json))?,
-            WorkerTx::Serial(ref tx) => tx.try_send(SerialWorkerMessage::NewSnapshot(
-                snapshot.clone(),
-                white_on_right,
-            ))?,
-        };
-        Ok(())
+            WorkerTx::Binary(ref tx) => tx.try_send(Vec::from(binary)).map_err(error_formatter),
+            WorkerTx::Json(ref tx) => tx.try_send(Vec::from(json)).map_err(error_formatter),
+            WorkerTx::Serial(ref tx) => tx
+                .try_send(SerialWorkerMessage::NewSnapshot(
+                    snapshot.clone(),
+                    white_on_right,
+                ))
+                .map_err(error_formatter),
+        }
+    }
+}
+
+fn error_formatter<T: Debug>(old: TrySendError<T>) -> TrySendError<String> {
+    match old {
+        TrySendError::Closed(o) => TrySendError::Closed(format!("{o:?}")),
+        TrySendError::Full(o) => TrySendError::Closed(format!("{o:?}")),
     }
 }
 
@@ -432,15 +440,24 @@ impl Server {
             }
         };
 
-        for (_, handle) in self.senders.iter().filter(filter) {
+        let mut to_drop = vec![];
+        for (id, handle) in self.senders.iter().filter(filter) {
             if let Err(e) = handle.send(
                 &self.binary,
                 &self.json,
                 &self.snapshot,
                 self.white_on_right,
             ) {
-                error!("Error sending to worker: {e:?}");
+                if matches!(e, TrySendError::Closed(_)) {
+                    info!("Worker channel closed");
+                    to_drop.push(*id);
+                } else {
+                    error!("Error sending to worker: {e:?}");
+                }
             }
+        }
+        for id in to_drop {
+            self.senders.remove(&id);
         }
     }
 
@@ -477,7 +494,7 @@ impl Server {
                             for (_, handle) in self.senders.iter().filter(|(_, handle)| handle.is_serial()) {
                                 if let WorkerTx::Serial(tx) = &handle.tx {
                                     if let Err(e) = tx.try_send(SerialWorkerMessage::TriggerFlash) {
-                                        error!("Error sending to worker: {e:?}");
+                                        error!("Error sending to serial worker: {e:?}");
                                     }
                                 }
                             }

@@ -483,7 +483,8 @@ impl Application for RefBoxApp {
 
         let tm = Arc::new(Mutex::new(tm));
 
-        let update_sender = UpdateSender::new(serial_ports, binary_port, json_port);
+        let update_sender =
+            UpdateSender::new(serial_ports, binary_port, json_port, config.hide_time);
 
         let sound =
             SoundController::new(config.sound.clone(), update_sender.get_trigger_flash_fn());
@@ -912,6 +913,7 @@ impl Application for RefBoxApp {
                     games: self.games.clone(),
                     sound: self.config.sound.clone(),
                     mode: self.config.mode,
+                    hide_time: self.config.hide_time,
                 };
 
                 self.edited_settings = Some(edited_settings);
@@ -1008,6 +1010,13 @@ impl Application for RefBoxApp {
                             self.sound.update_settings(self.config.sound.clone());
                             self.config.mode = edited_settings.mode;
 
+                            if self.config.hide_time != edited_settings.hide_time {
+                                self.config.hide_time = edited_settings.hide_time;
+                                self.update_sender
+                                    .set_hide_time(self.config.hide_time)
+                                    .unwrap();
+                            }
+
                             confy::store(APP_NAME, None, &self.config).unwrap();
                             AppState::MainPage
                         }
@@ -1024,6 +1033,13 @@ impl Application for RefBoxApp {
                             self.config.sound = edited_settings.sound;
                             self.sound.update_settings(self.config.sound.clone());
                             self.config.mode = edited_settings.mode;
+
+                            if self.config.hide_time != edited_settings.hide_time {
+                                self.config.hide_time = edited_settings.hide_time;
+                                self.update_sender
+                                    .set_hide_time(self.config.hide_time)
+                                    .unwrap();
+                            }
 
                             confy::store(APP_NAME, None, &self.config).unwrap();
 
@@ -1066,6 +1082,13 @@ impl Application for RefBoxApp {
                         self.config.sound = edited_settings.sound;
                         self.sound.update_settings(self.config.sound.clone());
                         self.config.mode = edited_settings.mode;
+
+                        if self.config.hide_time != edited_settings.hide_time {
+                            self.config.hide_time = edited_settings.hide_time;
+                            self.update_sender
+                                .set_hide_time(self.config.hide_time)
+                                .unwrap();
+                        }
 
                         confy::store(APP_NAME, None, &self.config).unwrap();
                         AppState::MainPage
@@ -1246,6 +1269,7 @@ impl Application for RefBoxApp {
                     BoolGameParameter::AutoSoundStopPlay => {
                         edited_settings.sound.auto_sound_stop_play ^= true
                     }
+                    BoolGameParameter::HideTime => edited_settings.hide_time ^= true,
                 }
             }
             Message::CycleParameter(param) => {

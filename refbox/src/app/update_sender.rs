@@ -35,7 +35,12 @@ pub struct UpdateSender {
 }
 
 impl UpdateSender {
-    pub fn new(initial: Vec<SerialPortBuilder>, binary_port: u16, json_port: u16) -> Self {
+    pub fn new(
+        initial: Vec<SerialPortBuilder>,
+        binary_port: u16,
+        json_port: u16,
+        hide_time: bool,
+    ) -> Self {
         let (tx, rx) = mpsc::channel(8);
 
         let initial = initial
@@ -43,7 +48,7 @@ impl UpdateSender {
             .map(|builder| builder.open_native_async().unwrap())
             .collect();
 
-        let server_join = task::spawn(Server::new(rx, initial).run_loop());
+        let server_join = task::spawn(Server::new(rx, initial, hide_time).run_loop());
 
         let listener_join = task::spawn(listener_loop(tx.clone(), binary_port, json_port));
 
@@ -77,6 +82,20 @@ impl UpdateSender {
     ) -> impl Send + Fn() -> Result<(), TrySendError<ServerMessage>> {
         let tx = self.tx.clone();
         move || tx.try_send(ServerMessage::TriggerFlash)
+    }
+
+    pub fn set_hide_time(&self, hide_time: bool) -> Result<(), TrySendError<bool>> {
+        self.tx
+            .try_send(ServerMessage::SetHideTime(hide_time))
+            .map_err(|e| match e {
+                TrySendError::Full(ServerMessage::SetHideTime(hide_time)) => {
+                    TrySendError::Full(hide_time)
+                }
+                TrySendError::Closed(ServerMessage::SetHideTime(hide_time)) => {
+                    TrySendError::Closed(hide_time)
+                }
+                _ => unreachable!(),
+            })
     }
 }
 
@@ -267,6 +286,7 @@ pub enum ServerMessage {
     NewSnapshot(GameSnapshot, bool),
     TriggerFlash,
     Stop,
+    SetHideTime(bool),
 }
 
 #[derive(Debug)]
@@ -281,10 +301,15 @@ struct Server {
     flash: bool,
     binary: Vec<u8>,
     json: Vec<u8>,
+    hide_time: bool,
 }
 
 impl Server {
-    pub fn new(rx: mpsc::Receiver<ServerMessage>, initial: Vec<SerialStream>) -> Self {
+    pub fn new(
+        rx: mpsc::Receiver<ServerMessage>,
+        initial: Vec<SerialStream>,
+        hide_time: bool,
+    ) -> Self {
         let mut server = Server {
             next_id: 0,
             senders: HashMap::new(),
@@ -296,6 +321,7 @@ impl Server {
             flash: false,
             binary: Vec::new(),
             json: Vec::new(),
+            hide_time,
         };
 
         for stream in initial {
@@ -355,25 +381,27 @@ impl Server {
 
         self.snapshot = new_snapshot.into();
 
-        match self.snapshot.current_period {
-            GamePeriod::BetweenGames
-            | GamePeriod::HalfTime
-            | GamePeriod::OvertimeHalfTime
-            | GamePeriod::PreOvertime => {
-                if self.snapshot.secs_in_period < 15 {
-                    self.snapshot.secs_in_period = next_time;
-                };
-            }
-            GamePeriod::PreSuddenDeath => {
-                if self.snapshot.secs_in_period < 15 {
-                    self.snapshot.secs_in_period = 0;
+        if self.hide_time {
+            match self.snapshot.current_period {
+                GamePeriod::BetweenGames
+                | GamePeriod::HalfTime
+                | GamePeriod::OvertimeHalfTime
+                | GamePeriod::PreOvertime => {
+                    if self.snapshot.secs_in_period < 15 {
+                        self.snapshot.secs_in_period = next_time;
+                    };
                 }
+                GamePeriod::PreSuddenDeath => {
+                    if self.snapshot.secs_in_period < 15 {
+                        self.snapshot.secs_in_period = 0;
+                    }
+                }
+                GamePeriod::FirstHalf
+                | GamePeriod::OvertimeFirstHalf
+                | GamePeriod::OvertimeSecondHalf
+                | GamePeriod::SecondHalf
+                | GamePeriod::SuddenDeath => {}
             }
-            GamePeriod::FirstHalf
-            | GamePeriod::OvertimeFirstHalf
-            | GamePeriod::OvertimeSecondHalf
-            | GamePeriod::SecondHalf
-            | GamePeriod::SuddenDeath => {}
         }
 
         self.encode_flash();
@@ -456,6 +484,9 @@ impl Server {
                         }
                         Some(ServerMessage::Stop) => {
                             break;
+                        }
+                        Some(ServerMessage::SetHideTime(hide_time)) => {
+                            self.hide_time = hide_time
                         }
                         None => {
                             break;
@@ -581,7 +612,7 @@ mod test {
 
     #[tokio::test]
     async fn test_update_sender() {
-        let update_sender = UpdateSender::new(vec![], BINARY_PORT, JSON_PORT);
+        let update_sender = UpdateSender::new(vec![], BINARY_PORT, JSON_PORT, false);
 
         let mut binary_conn;
         let mut fail_count = 0;

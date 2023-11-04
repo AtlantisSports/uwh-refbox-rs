@@ -30,6 +30,7 @@ pub(in super::super) struct EditableSettings {
     pub sound: SoundSettings,
     pub mode: Mode,
     pub hide_time: bool,
+    pub collect_scorer_cap_num: bool,
 }
 
 pub(in super::super) trait Cyclable
@@ -201,9 +202,9 @@ fn make_main_config_page<'a>(
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .push(make_value_button(
-                    "MODE",
+                    "APP\nMODE",
                     settings.mode.to_string().to_uppercase(),
-                    (true, true),
+                    (false, true),
                     Some(Message::CycleParameter(CyclingParameter::Mode)),
                 ))
                 .push(make_value_button(
@@ -211,6 +212,14 @@ fn make_main_config_page<'a>(
                     bool_string(settings.hide_time),
                     (false, true),
                     Some(Message::ToggleBoolParameter(BoolGameParameter::HideTime)),
+                ))
+                .push(make_value_button(
+                    "TRACK CAP NUMBER\nOF SCORER",
+                    bool_string(settings.collect_scorer_cap_num),
+                    (false, true),
+                    Some(Message::ToggleBoolParameter(
+                        BoolGameParameter::ScorerCapNum,
+                    )),
                 )),
         )
         .push(

@@ -20,6 +20,7 @@ pub enum Message {
     },
     StartPlayNow,
     EditScores,
+    AddNewScore(GameColor),
     ChangeScore {
         color: GameColor,
         increase: bool,
@@ -102,6 +103,7 @@ impl Message {
             | Self::TimeEditComplete { .. }
             | Self::StartPlayNow
             | Self::EditScores
+            | Self::AddNewScore(_)
             | Self::ScoreEditComplete { .. }
             | Self::PenaltyOverview
             | Self::PenaltyOverviewComplete { .. }
@@ -172,6 +174,7 @@ pub enum BoolGameParameter {
     AutoSoundStartPlay,
     AutoSoundStopPlay,
     HideTime,
+    ScorerCapNum,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -166,11 +166,9 @@ pub(in super::super) fn build_main_view<'a>(
 
     if snapshot.current_period != GamePeriod::BetweenGames {
         black_score_btn = black_score_btn.on_press(Message::EditScores);
-        black_new_score_btn = black_new_score_btn
-            .on_press(Message::KeypadPage(KeypadPage::AddScore(GameColor::Black)));
+        black_new_score_btn = black_new_score_btn.on_press(Message::AddNewScore(GameColor::Black));
         white_score_btn = white_score_btn.on_press(Message::EditScores);
-        white_new_score_btn = white_new_score_btn
-            .on_press(Message::KeypadPage(KeypadPage::AddScore(GameColor::White)));
+        white_new_score_btn = white_new_score_btn.on_press(Message::AddNewScore(GameColor::White));
     }
 
     let black_col = column()

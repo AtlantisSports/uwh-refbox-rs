@@ -647,6 +647,23 @@ impl Application for RefBoxApp {
                 };
                 trace!("AppState changed to {:?}", self.app_state);
             }
+            Message::AddNewScore(color) => {
+                if self.config.collect_scorer_cap_num {
+                    self.app_state = AppState::KeypadPage(KeypadPage::AddScore(color), 0);
+                    trace!("AppState changed to {:?}", self.app_state);
+                } else {
+                    let mut tm = self.tm.lock().unwrap();
+                    let now = Instant::now();
+                    match color {
+                        GameColor::Black => tm.add_b_score(0, now),
+                        GameColor::White => tm.add_w_score(0, now),
+                    }
+                    let snapshot = tm.generate_snapshot(now).unwrap(); // TODO: Remove this unwrap
+                    std::mem::drop(tm);
+                    self.apply_snapshot(snapshot);
+                }
+            }
+
             Message::ChangeScore { color, increase } => {
                 if let AppState::ScoreEdit { ref mut scores, .. } = self.app_state {
                     if increase {
@@ -914,6 +931,7 @@ impl Application for RefBoxApp {
                     sound: self.config.sound.clone(),
                     mode: self.config.mode,
                     hide_time: self.config.hide_time,
+                    collect_scorer_cap_num: self.config.collect_scorer_cap_num,
                 };
 
                 self.edited_settings = Some(edited_settings);
@@ -1009,6 +1027,8 @@ impl Application for RefBoxApp {
                             self.config.sound = edited_settings.sound;
                             self.sound.update_settings(self.config.sound.clone());
                             self.config.mode = edited_settings.mode;
+                            self.config.collect_scorer_cap_num =
+                                edited_settings.collect_scorer_cap_num;
 
                             if self.config.hide_time != edited_settings.hide_time {
                                 self.config.hide_time = edited_settings.hide_time;
@@ -1033,6 +1053,8 @@ impl Application for RefBoxApp {
                             self.config.sound = edited_settings.sound;
                             self.sound.update_settings(self.config.sound.clone());
                             self.config.mode = edited_settings.mode;
+                            self.config.collect_scorer_cap_num =
+                                edited_settings.collect_scorer_cap_num;
 
                             if self.config.hide_time != edited_settings.hide_time {
                                 self.config.hide_time = edited_settings.hide_time;
@@ -1082,6 +1104,7 @@ impl Application for RefBoxApp {
                         self.config.sound = edited_settings.sound;
                         self.sound.update_settings(self.config.sound.clone());
                         self.config.mode = edited_settings.mode;
+                        self.config.collect_scorer_cap_num = edited_settings.collect_scorer_cap_num;
 
                         if self.config.hide_time != edited_settings.hide_time {
                             self.config.hide_time = edited_settings.hide_time;
@@ -1270,6 +1293,9 @@ impl Application for RefBoxApp {
                         edited_settings.sound.auto_sound_stop_play ^= true
                     }
                     BoolGameParameter::HideTime => edited_settings.hide_time ^= true,
+                    BoolGameParameter::ScorerCapNum => {
+                        edited_settings.collect_scorer_cap_num ^= true
+                    }
                 }
             }
             Message::CycleParameter(param) => {

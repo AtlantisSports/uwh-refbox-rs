@@ -221,15 +221,15 @@ fn details_strings(
     )
     .unwrap();
 
-    write!(&mut left_string, "Stop clock in last 2 minutes: \n").unwrap();
+    write!(&mut left_string, "Stop clock in last 2 minutes: UNKNOWN\n").unwrap();
 
     write!(
         &mut right_string,
-        "Cheif ref: \n\
-        Timer: \n\
-        Water ref 1: \n\
-        Water ref 2: \n\
-        Water ref 3: ",
+        "Cheif ref: UNKNOWN\n\
+        Timer: UNKNOWN\n\
+        Water ref 1: UNKNOWN\n\
+        Water ref 2: UNKNOWN\n\
+        Water ref 3: UNKNOWN",
     )
     .unwrap();
 

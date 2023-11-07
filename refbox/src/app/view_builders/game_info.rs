@@ -1,10 +1,10 @@
 use super::{
-    style::{self, PADDING, SMALL_TEXT, SPACING},
+    style::{self, SMALL_TEXT, SPACING},
     *,
 };
 use iced::{
     alignment::{Horizontal, Vertical},
-    pure::{button, column, horizontal_space, row, text, Element},
+    pure::{column, horizontal_space, row, text, Element},
     Length,
 };
 
@@ -20,7 +20,7 @@ pub(in super::super) fn build_game_info_page<'a>(
     mode: Mode,
     clock_running: bool,
 ) -> Element<'a, Message> {
-    let details = details_string(snapshot, config, using_uwhscores, games);
+    let (left_details, right_details) = details_strings(snapshot, config, using_uwhscores, games);
     column()
         .spacing(SPACING)
         .height(Length::Fill)
@@ -32,16 +32,24 @@ pub(in super::super) fn build_game_info_page<'a>(
             clock_running,
         ))
         .push(
-            button(
-                text(details)
-                    .size(SMALL_TEXT)
-                    .vertical_alignment(Vertical::Center)
-                    .horizontal_alignment(Horizontal::Left),
-            )
-            .padding(PADDING)
-            .style(style::Button::LightGray)
-            .width(Length::Fill)
-            .height(Length::Fill),
+            row()
+                .spacing(SPACING)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .push(
+                    text(left_details)
+                        .size(SMALL_TEXT)
+                        .vertical_alignment(Vertical::Top)
+                        .horizontal_alignment(Horizontal::Left)
+                        .width(Length::Fill),
+                )
+                .push(
+                    text(right_details)
+                        .size(SMALL_TEXT)
+                        .vertical_alignment(Vertical::Top)
+                        .horizontal_alignment(Horizontal::Left)
+                        .width(Length::Fill),
+                ),
         )
         .push(
             row()
@@ -64,14 +72,15 @@ pub(in super::super) fn build_game_info_page<'a>(
         .into()
 }
 
-fn details_string(
+fn details_strings(
     snapshot: &GameSnapshot,
     config: &GameConfig,
     using_uwhscores: bool,
     games: &Option<BTreeMap<u32, GameInfo>>,
-) -> String {
+) -> (String, String) {
     const TEAM_NAME_LEN_LIMIT: usize = 40;
-    let mut result = String::new();
+    let mut left_string = String::new();
+    let mut right_string = String::new();
     let game_number = if snapshot.current_period == GamePeriod::BetweenGames {
         let prev_game;
         let next_game;
@@ -104,7 +113,7 @@ fn details_string(
         }
 
         write!(
-            &mut result,
+            &mut left_string,
             "Last Game: {}, \nNext Game: {}\n",
             prev_game, next_game
         )
@@ -124,7 +133,7 @@ fn details_string(
         } else {
             game = snapshot.game_number.to_string();
         }
-        write!(&mut result, "Game: {}\n", game).unwrap();
+        write!(&mut left_string, "Game: {}\n", game).unwrap();
         snapshot.game_number
     };
 
@@ -132,7 +141,7 @@ fn details_string(
         if let Some(games) = games {
             match games.get(&game_number) {
                 Some(game) => write!(
-                    &mut result,
+                    &mut left_string,
                     "Black Team: {}\nWhite Team: {}\n",
                     limit_team_name_len(&game.black, TEAM_NAME_LEN_LIMIT),
                     limit_team_name_len(&game.white, TEAM_NAME_LEN_LIMIT)
@@ -144,7 +153,7 @@ fn details_string(
     }
 
     write!(
-        &mut result,
+        &mut left_string,
         "Half Length: {}\n\
          Half Time Length: {}\n\
          Overtime Allowed: {}\n",
@@ -155,7 +164,7 @@ fn details_string(
     .unwrap();
     if config.overtime_allowed {
         write!(
-            &mut result,
+            &mut left_string,
             "Pre-Overtime Break Length: {}\n\
              Overtime Half Length: {}\n\
              Overtime Half Time Length: {}\n",
@@ -167,7 +176,7 @@ fn details_string(
     } else {
     };
     write!(
-        &mut result,
+        &mut left_string,
         "Sudden Death Allowed: {}\n",
         bool_string(config.sudden_death_allowed)
     )
@@ -175,7 +184,7 @@ fn details_string(
 
     if config.sudden_death_allowed {
         write!(
-            &mut result,
+            &mut left_string,
             "Pre-Sudden-Death Break Length: {}\n",
             time_string(config.pre_sudden_death_duration)
         )
@@ -183,14 +192,14 @@ fn details_string(
     } else {
     };
     write!(
-        &mut result,
+        &mut left_string,
         "Team Timeouts Allowed Per Half: {}\n",
         config.team_timeouts_per_half
     )
     .unwrap();
     if config.team_timeouts_per_half != 0 {
         write!(
-            &mut result,
+            &mut left_string,
             "Team Timeout Duration: {}\n",
             time_string(config.team_timeout_duration)
         )
@@ -199,23 +208,23 @@ fn details_string(
     };
     if !using_uwhscores {
         write!(
-            &mut result,
+            &mut left_string,
             "Nominal Time Between Games: {}\n",
             time_string(config.nominal_break),
         )
         .unwrap();
     }
     write!(
-        &mut result,
+        &mut left_string,
         "Minimum Time Between Games: {}\n",
         time_string(config.minimum_break),
     )
     .unwrap();
 
-    write!(&mut result, "Stop clock in last 2 minutes: \n").unwrap();
+    write!(&mut left_string, "Stop clock in last 2 minutes: \n").unwrap();
 
     write!(
-        &mut result,
+        &mut right_string,
         "Cheif ref: \n\
         Timer: \n\
         Water ref 1: \n\
@@ -224,5 +233,5 @@ fn details_string(
     )
     .unwrap();
 
-    result
+    (left_string, right_string)
 }

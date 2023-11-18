@@ -1,5 +1,5 @@
 use super::{
-    style::{self, LARGE_TEXT, PADDING, SMALL_TEXT, SPACING},
+    style::{self, LARGE_TEXT, MIN_BUTTON_SIZE, PADDING, SMALL_PLUS_TEXT, SMALL_TEXT, SPACING},
     *,
 };
 
@@ -11,9 +11,7 @@ use iced::{
 
 use uwh_common::{
     config::Game as GameConfig,
-    game_snapshot::{
-        Color as GameColor, GamePeriod, GameSnapshot, PenaltySnapshot, TimeoutSnapshot,
-    },
+    game_snapshot::{Color as GameColor, GamePeriod, GameSnapshot, PenaltyTime, TimeoutSnapshot},
 };
 
 pub(in super::super) fn build_main_view<'a>(
@@ -21,8 +19,10 @@ pub(in super::super) fn build_main_view<'a>(
     config: &GameConfig,
     using_uwhscores: bool,
     games: &Option<BTreeMap<u32, GameInfo>>,
+    mode: Mode,
+    clock_running: bool,
 ) -> Element<'a, Message> {
-    let time_button = make_game_time_button(snapshot, true, true).on_press(Message::EditTime);
+    let time_button = make_game_time_button(snapshot, true, false, mode, clock_running);
 
     let mut center_col = column()
         .spacing(SPACING)
@@ -76,7 +76,40 @@ pub(in super::super) fn build_main_view<'a>(
         .on_press(Message::EditGameConfig),
     );
 
-    let make_penalty_button = |penalties: &[PenaltySnapshot]| {
+    let make_penalty_button = |snapshot: &GameSnapshot, color: GameColor| {
+        let penalties = match color {
+            GameColor::Black => &snapshot.b_penalties,
+            GameColor::White => &snapshot.w_penalties,
+        };
+
+        let time = penalties
+            .iter()
+            .filter_map(|penalty| match penalty.time {
+                PenaltyTime::Seconds(s) if s != 0 => Some(s),
+                PenaltyTime::Seconds(_) => None,
+                PenaltyTime::TotalDismissal => None,
+            })
+            .min();
+
+        let make_penalties_red = if snapshot.timeout == TimeoutSnapshot::None {
+            if let Some(t) = time {
+                t <= 10 && (t % 2 == 0) && (t != 0)
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        let button_style = if make_penalties_red {
+            style::Button::Red
+        } else {
+            match color {
+                GameColor::Black => style::Button::Black,
+                GameColor::White => style::Button::White,
+            }
+        };
+
         button(
             column()
                 .spacing(SPACING)
@@ -100,6 +133,7 @@ pub(in super::super) fn build_main_view<'a>(
         .width(Length::Fill)
         .height(Length::Fill)
         .on_press(Message::PenaltyOverview)
+        .style(button_style)
     };
 
     let mut black_score_btn = button(
@@ -111,6 +145,7 @@ pub(in super::super) fn build_main_view<'a>(
     )
     .padding(PADDING)
     .width(Length::Fill)
+    .height(Length::Units(MIN_BUTTON_SIZE + SMALL_PLUS_TEXT + PADDING))
     .style(style::Button::Black);
 
     let mut black_new_score_btn = make_button("SCORE\nBLACK").style(style::Button::Black);
@@ -124,6 +159,7 @@ pub(in super::super) fn build_main_view<'a>(
     )
     .padding(PADDING)
     .width(Length::Fill)
+    .height(Length::Units(MIN_BUTTON_SIZE + SMALL_PLUS_TEXT + PADDING))
     .style(style::Button::White);
 
     let mut white_new_score_btn = make_button("SCORE\nWHITE").style(style::Button::White);
@@ -143,7 +179,7 @@ pub(in super::super) fn build_main_view<'a>(
         .width(Length::Fill)
         .push(black_score_btn)
         .push(black_new_score_btn)
-        .push(make_penalty_button(&snapshot.b_penalties).style(style::Button::Black));
+        .push(make_penalty_button(snapshot, GameColor::Black));
 
     let white_col = column()
         .spacing(SPACING)
@@ -151,7 +187,7 @@ pub(in super::super) fn build_main_view<'a>(
         .width(Length::Fill)
         .push(white_score_btn)
         .push(white_new_score_btn)
-        .push(make_penalty_button(&snapshot.w_penalties).style(style::Button::White));
+        .push(make_penalty_button(snapshot, GameColor::White));
 
     row()
         .spacing(0)

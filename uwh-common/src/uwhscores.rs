@@ -64,6 +64,9 @@ pub struct TimingRules {
     #[serde(deserialize_with = "deser_secs_to_dur")]
     pub min_game_break: Duration,
     pub overtime_allowed: bool,
+    pub pre_overtime_break: Option<u64>,
+    pub overtime_break_duration: Option<u64>,
+    pub overtime_duration: Option<u64>,
     pub sudden_death_allowed: bool,
     pub pre_sudden_death_break: Option<u64>,
 }
@@ -78,6 +81,21 @@ impl Into<GameConfig> for TimingRules {
             half_time_duration: self.half_time_duration,
             minimum_break: self.min_game_break,
             overtime_allowed: self.overtime_allowed,
+            pre_overtime_break: if let Some(len) = self.pre_overtime_break {
+                Duration::from_secs(len)
+            } else {
+                GameConfig::default().pre_overtime_break
+            },
+            ot_half_time_duration: if let Some(len) = self.overtime_break_duration {
+                Duration::from_secs(len)
+            } else {
+                GameConfig::default().ot_half_time_duration
+            },
+            ot_half_play_duration: if let Some(len) = self.overtime_duration {
+                Duration::from_secs(len)
+            } else {
+                GameConfig::default().ot_half_play_duration
+            },
             sudden_death_allowed: self.sudden_death_allowed,
             pre_sudden_death_duration: if let Some(len) = self.pre_sudden_death_break {
                 Duration::from_secs(len)

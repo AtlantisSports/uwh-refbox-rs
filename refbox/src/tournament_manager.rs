@@ -540,6 +540,32 @@ impl TournamentManager {
         Ok(())
     }
 
+    pub fn timeout_end_would_end_game(&self, now: Instant) -> Result<bool> {
+        if self.would_end_game(now)? {
+            return Ok(true);
+        } else if let TimeoutState::RugbyPenaltyShot(ClockState::CountingDown { .. }) =
+            self.timeout_state
+        {
+            if let ClockState::Stopped { clock_time } = self.clock_state {
+                return Ok(clock_time.is_zero()
+                    && ((self.current_period == GamePeriod::SecondHalf
+                        && (self.b_score != self.w_score
+                            || (!self.config.overtime_allowed
+                                && !self.config.sudden_death_allowed)))
+                        || (self.current_period == GamePeriod::OvertimeSecondHalf
+                            && (self.b_score != self.w_score
+                                || !self.config.sudden_death_allowed))));
+            } else if let ClockState::CountingDown {
+                start_time,
+                time_remaining_at_start,
+            } = self.clock_state
+            {
+                return self.check_time_remaining(now, start_time, time_remaining_at_start);
+            }
+        };
+        Ok(false)
+    }
+
     pub fn end_timeout(&mut self, now: Instant) -> Result<()> {
         match &self.timeout_state {
             TimeoutState::None => Err(TournamentManagerError::NotInTimeout),
@@ -886,24 +912,47 @@ impl TournamentManager {
     }
 
     pub fn would_end_game(&self, now: Instant) -> Result<bool> {
+        if let TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
+            start_time,
+            time_remaining_at_start,
+        }) = self.timeout_state
+        {
+            if !self.check_time_remaining(now, start_time, time_remaining_at_start)? {
+                return Ok(false);
+            } else if let ClockState::Stopped { clock_time } = self.clock_state {
+                if clock_time.is_zero() {
+                    return Ok(true);
+                }
+            }
+        };
+
         if let ClockState::CountingDown {
             start_time,
             time_remaining_at_start,
         } = self.clock_state
         {
-            let time = now
-                .checked_duration_since(start_time)
-                .ok_or(TournamentManagerError::InvalidNowValue)?;
-
-            Ok(time >= time_remaining_at_start
-                && ((self.current_period == GamePeriod::SecondHalf
-                    && (self.b_score != self.w_score
-                        || (!self.config.overtime_allowed && !self.config.sudden_death_allowed)))
-                    || (self.current_period == GamePeriod::OvertimeSecondHalf
-                        && (self.b_score != self.w_score || !self.config.sudden_death_allowed))))
+            self.check_time_remaining(now, start_time, time_remaining_at_start)
         } else {
             Ok(false)
         }
+    }
+
+    fn check_time_remaining(
+        &self,
+        now: Instant,
+        start_time: Instant,
+        time_remaining_at_start: Duration,
+    ) -> Result<bool> {
+        let time = now
+            .checked_duration_since(start_time)
+            .ok_or(TournamentManagerError::InvalidNowValue)?;
+
+        Ok(time >= time_remaining_at_start
+            && ((self.current_period == GamePeriod::SecondHalf
+                && (self.b_score != self.w_score
+                    || (!self.config.overtime_allowed && !self.config.sudden_death_allowed)))
+                || (self.current_period == GamePeriod::OvertimeSecondHalf
+                    && (self.b_score != self.w_score || !self.config.sudden_death_allowed))))
     }
 
     pub(super) fn update(&mut self, now: Instant) -> Result<()> {
@@ -1187,7 +1236,7 @@ impl TournamentManager {
                 }
             }
             self.clock_state = ClockState::CountingDown {
-                start_time: start_time + time_remaining_at_start,
+                start_time: min(now, start_time + time_remaining_at_start),
                 time_remaining_at_start: self.current_period.duration(&self.config).unwrap(),
             }
         }
@@ -1338,11 +1387,25 @@ impl TournamentManager {
         Ok(())
     }
 
-    pub fn halt_clock(&mut self, now: Instant) -> Result<()> {
-        if self.timeout_state != TimeoutState::None {
-            return Err(TournamentManagerError::AlreadyInTimeout(
-                self.timeout_state.as_snapshot(now),
-            ));
+    pub fn halt_clock(&mut self, now: Instant, mut end_timeout: bool) -> Result<()> {
+        if end_timeout {
+            self.timeout_state = TimeoutState::None;
+        }
+
+        match self.timeout_state {
+            TimeoutState::None => {}
+            TimeoutState::RugbyPenaltyShot(_) => {
+                end_timeout = true;
+                self.timeout_state = TimeoutState::None;
+            }
+            TimeoutState::Black(_)
+            | TimeoutState::White(_)
+            | TimeoutState::Ref(_)
+            | TimeoutState::PenaltyShot(_) => {
+                return Err(TournamentManagerError::AlreadyInTimeout(
+                    self.timeout_state.as_snapshot(now),
+                ));
+            }
         }
 
         if let ClockState::CountingDown {
@@ -1371,6 +1434,14 @@ impl TournamentManager {
             self.send_clock_running(false);
 
             Ok(())
+        } else if end_timeout {
+            if let ClockState::Stopped { ref mut clock_time } = self.clock_state {
+                *clock_time = Duration::from_nanos(1);
+                self.send_clock_running(false);
+                Ok(())
+            } else {
+                Err(TournamentManagerError::InvalidState)
+            }
         } else {
             Err(TournamentManagerError::InvalidState)
         }
@@ -5360,6 +5431,59 @@ mod test {
         tm.config.sudden_death_allowed = true;
         assert_eq!(Ok(true), tm.would_end_game(next_time));
 
+        tm.stop_clock(start_time).unwrap();
+        tm.config.overtime_allowed = false;
+        tm.config.sudden_death_allowed = false;
+        tm.current_period = GamePeriod::SecondHalf;
+        tm.set_timeout_state(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
+            start_time,
+            time_remaining_at_start: Duration::from_secs(20),
+        }));
+        tm.clock_state = ClockState::CountingDown {
+            start_time,
+            time_remaining_at_start: Duration::from_nanos(10),
+        };
+        assert_eq!(Ok(false), tm.would_end_game(next_time));
+        tm.clock_state = ClockState::Stopped {
+            clock_time: Duration::ZERO,
+        };
+        assert_eq!(Ok(false), tm.would_end_game(next_time));
+
+        tm.current_period = GamePeriod::FirstHalf;
+        tm.set_timeout_state(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
+            start_time,
+            time_remaining_at_start: Duration::from_secs(20),
+        }));
+        tm.clock_state = ClockState::CountingDown {
+            start_time,
+            time_remaining_at_start: Duration::from_nanos(10),
+        };
+        assert_eq!(Ok(false), tm.would_end_game(next_time));
+        tm.clock_state = ClockState::Stopped {
+            clock_time: Duration::ZERO,
+        };
+        assert_eq!(Ok(false), tm.would_end_game(next_time));
+
+        tm.stop_clock(start_time).unwrap();
+        tm.current_period = GamePeriod::SecondHalf;
+        tm.set_timeout_state(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
+            start_time,
+            time_remaining_at_start: Duration::from_nanos(10),
+        }));
+        tm.clock_state = ClockState::CountingDown {
+            start_time,
+            time_remaining_at_start: Duration::from_secs(20),
+        };
+        assert_eq!(Ok(false), tm.would_end_game(next_time));
+
+        tm.stop_clock(start_time).unwrap();
+        tm.set_game_clock_time(Duration::ZERO).unwrap();
+        tm.set_timeout_state(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
+            start_time,
+            time_remaining_at_start: Duration::from_nanos(10),
+        }));
+        assert_eq!(Ok(true), tm.would_end_game(next_time));
+
         tm.clock_state = ClockState::CountingUp {
             start_time,
             time_at_start: Duration::ZERO,
@@ -5369,7 +5493,72 @@ mod test {
     }
 
     #[test]
-    fn test_halt_game() {
+    fn test_timeout_end_would_end_game() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start_time = Instant::now();
+        let next_time = start_time + Duration::from_secs(1);
+
+        tm.stop_clock(start_time).unwrap();
+        tm.current_period = GamePeriod::SecondHalf;
+        tm.set_timeout_state(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
+            start_time,
+            time_remaining_at_start: Duration::from_secs(20),
+        }));
+        tm.clock_state = ClockState::CountingDown {
+            start_time,
+            time_remaining_at_start: Duration::from_nanos(10),
+        };
+        assert_eq!(Ok(true), tm.timeout_end_would_end_game(next_time));
+        tm.clock_state = ClockState::Stopped {
+            clock_time: Duration::ZERO,
+        };
+        assert_eq!(Ok(true), tm.timeout_end_would_end_game(next_time));
+
+        tm.current_period = GamePeriod::FirstHalf;
+        tm.set_timeout_state(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
+            start_time,
+            time_remaining_at_start: Duration::from_secs(20),
+        }));
+        tm.clock_state = ClockState::CountingDown {
+            start_time,
+            time_remaining_at_start: Duration::from_nanos(10),
+        };
+        assert_eq!(Ok(false), tm.timeout_end_would_end_game(next_time));
+        tm.clock_state = ClockState::Stopped {
+            clock_time: Duration::ZERO,
+        };
+        assert_eq!(Ok(false), tm.timeout_end_would_end_game(next_time));
+
+        tm.stop_clock(start_time).unwrap();
+        tm.set_timeout_state(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
+            start_time,
+            time_remaining_at_start: Duration::from_nanos(10),
+        }));
+        tm.clock_state = ClockState::CountingDown {
+            start_time,
+            time_remaining_at_start: Duration::from_secs(20),
+        };
+        assert_eq!(Ok(false), tm.would_end_game(next_time));
+
+        tm.stop_clock(start_time).unwrap();
+        tm.current_period = GamePeriod::SecondHalf;
+        tm.set_game_clock_time(Duration::ZERO).unwrap();
+        tm.set_timeout_state(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
+            start_time,
+            time_remaining_at_start: Duration::from_nanos(10),
+        }));
+        assert_eq!(Ok(true), tm.would_end_game(next_time));
+    }
+
+    #[test]
+    fn test_halt_clock() {
         initialize();
         let config = GameConfig {
             overtime_allowed: false,
@@ -5383,7 +5572,7 @@ mod test {
 
         tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_millis(500));
         tm.start_clock(start_time);
-        tm.halt_clock(next_time).unwrap();
+        tm.halt_clock(next_time, false).unwrap();
         assert_eq!(
             ClockState::Stopped {
                 clock_time: Duration::from_nanos(1)
@@ -5398,10 +5587,36 @@ mod test {
         });
         assert_eq!(
             Err(TMErr::AlreadyInTimeout(TimeoutSnapshot::Ref(1))),
-            tm.halt_clock(next_time)
+            tm.halt_clock(next_time, false)
+        );
+
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_millis(500));
+        tm.timeout_state = TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
+            start_time,
+            time_remaining_at_start: Duration::from_secs(20),
+        });
+        tm.halt_clock(next_time, false).unwrap();
+        assert_eq!(
+            ClockState::Stopped {
+                clock_time: Duration::from_nanos(1)
+            },
+            tm.clock_state
+        );
+
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::ZERO);
+        tm.timeout_state = TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
+            start_time,
+            time_remaining_at_start: Duration::from_secs(20),
+        });
+        tm.halt_clock(next_time, true).unwrap();
+        assert_eq!(
+            ClockState::Stopped {
+                clock_time: Duration::from_nanos(1)
+            },
+            tm.clock_state
         );
 
         tm.timeout_state = TimeoutState::None;
-        assert_eq!(Err(TMErr::InvalidState), tm.halt_clock(next_time));
+        assert_eq!(Err(TMErr::InvalidState), tm.halt_clock(next_time, false));
     }
 }

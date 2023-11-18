@@ -29,6 +29,7 @@ pub(in super::super) struct EditableSettings {
     pub games: Option<BTreeMap<u32, GameInfo>>,
     pub sound: SoundSettings,
     pub mode: Mode,
+    pub hide_time: bool,
 }
 
 pub(in super::super) trait Cyclable
@@ -94,13 +95,17 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
     settings: &EditableSettings,
     tournaments: &Option<BTreeMap<u32, TournamentInfo>>,
     page: ConfigPage,
+    mode: Mode,
+    clock_running: bool,
 ) -> Element<'a, Message> {
     match page {
-        ConfigPage::Main => make_main_config_page(snapshot, settings),
-        ConfigPage::Tournament => make_tournament_config_page(snapshot, settings, tournaments),
-        ConfigPage::Sound => make_sound_config_page(snapshot, settings),
+        ConfigPage::Main => make_main_config_page(snapshot, settings, mode, clock_running),
+        ConfigPage::Tournament => {
+            make_tournament_config_page(snapshot, settings, tournaments, mode, clock_running)
+        }
+        ConfigPage::Sound => make_sound_config_page(snapshot, settings, mode, clock_running),
         ConfigPage::Remotes(index, listening) => {
-            make_remote_config_page(snapshot, settings, index, listening)
+            make_remote_config_page(snapshot, settings, index, listening, mode, clock_running)
         }
     }
 }
@@ -108,6 +113,8 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
 fn make_main_config_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
+    mode: Mode,
+    clock_running: bool,
 ) -> Element<'a, Message> {
     let EditableSettings {
         game_number,
@@ -161,7 +168,13 @@ fn make_main_config_page<'a>(
     column()
         .spacing(SPACING)
         .height(Length::Fill)
-        .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
+        .push(make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+        ))
         .push(make_value_button(
             "GAME:",
             game_label,
@@ -182,12 +195,24 @@ fn make_main_config_page<'a>(
             )
             .style(style::Button::LightGray),
         )
-        .push(make_value_button(
-            "MODE",
-            settings.mode.to_string().to_uppercase(),
-            (true, true),
-            Some(Message::CycleParameter(CyclingParameter::Mode)),
-        ))
+        .push(
+            row()
+                .spacing(SPACING)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .push(make_value_button(
+                    "MODE",
+                    settings.mode.to_string().to_uppercase(),
+                    (true, true),
+                    Some(Message::CycleParameter(CyclingParameter::Mode)),
+                ))
+                .push(make_value_button(
+                    "HIDE TIME FOR\nLAST 15 SECONDS",
+                    bool_string(settings.hide_time),
+                    (false, true),
+                    Some(Message::ToggleBoolParameter(BoolGameParameter::HideTime)),
+                )),
+        )
         .push(
             row()
                 .spacing(SPACING)
@@ -213,6 +238,8 @@ fn make_tournament_config_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
     tournaments: &Option<BTreeMap<u32, TournamentInfo>>,
+    mode: Mode,
+    clock_running: bool,
 ) -> Element<'a, Message> {
     let EditableSettings {
         config,
@@ -410,7 +437,13 @@ fn make_tournament_config_page<'a>(
     let mut col = column()
         .spacing(SPACING)
         .height(Length::Fill)
-        .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
+        .push(make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+        ))
         .push(
             make_value_button(
                 "USING UWHPORTAL:",
@@ -433,6 +466,8 @@ fn make_tournament_config_page<'a>(
 fn make_sound_config_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
+    mode: Mode,
+    clock_running: bool,
 ) -> Element<'a, Message> {
     let EditableSettings {
         white_on_right,
@@ -481,7 +516,13 @@ fn make_sound_config_page<'a>(
     column()
         .spacing(SPACING)
         .height(Length::Fill)
-        .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
+        .push(make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+        ))
         .push(sides_btn)
         .push(
             row()
@@ -611,6 +652,8 @@ fn make_remote_config_page<'a>(
     settings: &EditableSettings,
     index: usize,
     listening: bool,
+    mode: Mode,
+    clock_running: bool,
 ) -> Element<'a, Message> {
     const REMOTES_LIST_LEN: usize = 4;
 
@@ -692,7 +735,13 @@ fn make_remote_config_page<'a>(
     column()
         .spacing(SPACING)
         .height(Length::Fill)
-        .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
+        .push(make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+        ))
         .push(
             row()
                 .spacing(SPACING)
@@ -733,6 +782,8 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
     snapshot: &GameSnapshot,
     param: LengthParameter,
     length: Duration,
+    mode: Mode,
+    clock_running: bool,
 ) -> Element<'a, Message> {
     let (title, hint) = match param {
         LengthParameter::Half => ("HALF LEN", "The length of a half during regular play"),
@@ -772,7 +823,13 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
         .align_items(Alignment::Center)
         .width(Length::Fill)
         .height(Length::Fill)
-        .push(make_game_time_button(snapshot, false, true).on_press(Message::EditTime))
+        .push(make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+        ))
         .push(vertical_space(Length::Fill))
         .push(make_time_editor(title, length, false))
         .push(vertical_space(Length::Fill))

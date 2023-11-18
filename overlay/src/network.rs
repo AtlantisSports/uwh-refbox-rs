@@ -55,7 +55,12 @@ pub struct TeamInfoRaw {
 }
 
 impl TeamInfoRaw {
-    pub async fn new(url: &str, tournament_id: u32, team_id: u64, team_color: Color) -> Self {
+    pub async fn new(
+        uwhportal_url: &str,
+        tournament_id: u32,
+        team_id: u64,
+        team_color: Color,
+    ) -> Self {
         let client = CLIENT_CELL.get().unwrap();
         info!(
             "Requesting UWH API for team information for team {}",
@@ -64,7 +69,7 @@ impl TeamInfoRaw {
         let data: Value = serde_json::from_str(
             &client
                 .get(format!(
-                    "http://{url}/api/admin/get-event-team?legacyEventId={tournament_id}&legacyTeamId={team_id}"
+                    "{uwhportal_url}/api/admin/get-event-team?legacyEventId={tournament_id}&legacyTeamId={team_id}"
                 ))
                 .send()
                 .await
@@ -139,7 +144,8 @@ pub struct GameData {
 
 async fn fetch_game_data(
     tr: crossbeam_channel::Sender<(GameData, bool)>,
-    url: &str,
+    uwhscores_url: &str,
+    uwhportal_url: &str,
     tournament_id: u32,
     game_id: u32,
     is_current_game: bool,
@@ -153,7 +159,7 @@ async fn fetch_game_data(
         );
         if let Ok(data) = client
             .get(format!(
-                "http://{url}/api/v1/tournaments/{tournament_id}/games/{game_id}"
+                "{uwhscores_url}/api/v1/tournaments/{tournament_id}/games/{game_id}"
             ))
             .send()
             .await
@@ -214,8 +220,20 @@ async fn fetch_game_data(
                     pool,
                     start_time,
                     referees,
-                    black: TeamInfoRaw::new(url, tournament_id, team_id_black, Color::Black).await,
-                    white: TeamInfoRaw::new(url, tournament_id, team_id_white, Color::White).await,
+                    black: TeamInfoRaw::new(
+                        uwhportal_url,
+                        tournament_id,
+                        team_id_black,
+                        Color::Black,
+                    )
+                    .await,
+                    white: TeamInfoRaw::new(
+                        uwhportal_url,
+                        tournament_id,
+                        team_id_white,
+                        Color::White,
+                    )
+                    .await,
                     sponsor_logo,
                 },
                 is_current_game,
@@ -252,7 +270,6 @@ pub async fn networking_thread(
     info!("Connected to refbox!");
 
     let (tr, rc) = crossbeam_channel::bounded::<(GameData, bool)>(3);
-    let url = config.uwhscores_url.clone();
     let mut buff = vec![0u8; 1024];
     let mut read_bytes;
     let mut game_id = None;
@@ -286,7 +303,8 @@ pub async fn networking_thread(
             // NOTE: we always expect next `gid` to be current `next_gid`.
             if game_id.is_none() {
                 let tr_ = tr.clone();
-                let url_ = url.clone();
+                let uwhscores_url = config.uwhscores_url.clone();
+                let uwhportal_url = config.uwhportal_url.clone();
                 game_id = Some(gid);
                 tournament_id = Some(tid);
                 info!(
@@ -295,17 +313,34 @@ pub async fn networking_thread(
                     game_id.unwrap()
                 );
                 tokio::spawn(async move {
-                    fetch_game_data(tr_, &url_, tournament_id.unwrap(), gid, true).await;
+                    fetch_game_data(
+                        tr_,
+                        &uwhscores_url,
+                        &uwhportal_url,
+                        tournament_id.unwrap(),
+                        gid,
+                        true,
+                    )
+                    .await;
                 });
                 let tr_ = tr.clone();
-                let url_ = url.clone();
+                let uwhscores_url = config.uwhscores_url.clone();
+                let uwhportal_url = config.uwhportal_url.clone();
                 info!(
                     "Fetching intial game data to cache for tid: {}, gid: {}",
                     tournament_id.unwrap(),
                     next_gid
                 );
                 tokio::spawn(async move {
-                    fetch_game_data(tr_, &url_, tournament_id.unwrap(), next_gid, false).await;
+                    fetch_game_data(
+                        tr_,
+                        &uwhscores_url,
+                        &uwhportal_url,
+                        tournament_id.unwrap(),
+                        next_gid,
+                        false,
+                    )
+                    .await;
                 });
             }
             // when gid changes set current game_data to next_game_data and replace next_game_data with new
@@ -313,7 +348,8 @@ pub async fn networking_thread(
             if let Some(game_id_inner) = game_id.as_mut() {
                 if *game_id_inner != gid {
                     let tr = tr.clone();
-                    let url = url.clone();
+                    let uwhscores_url = config.uwhscores_url.clone();
+                    let uwhportal_url = config.uwhportal_url.clone();
                     *game_id_inner = gid;
                     if let Some(next_game_data) = next_game_data.clone() {
                         info!(
@@ -322,8 +358,15 @@ pub async fn networking_thread(
                             next_gid,
                         );
                         tokio::spawn(async move {
-                            fetch_game_data(tr, &url, tournament_id.unwrap(), next_gid, false)
-                                .await;
+                            fetch_game_data(
+                                tr,
+                                &uwhscores_url,
+                                &uwhportal_url,
+                                tournament_id.unwrap(),
+                                next_gid,
+                                false,
+                            )
+                            .await;
                         });
                         info!("Sending cached game data for next game");
                         tx.send(StatePacket {
@@ -339,7 +382,15 @@ pub async fn networking_thread(
                             gid,
                         );
                         tokio::spawn(async move {
-                            fetch_game_data(tr, &url, tournament_id.unwrap(), gid, false).await;
+                            fetch_game_data(
+                                tr,
+                                &uwhscores_url,
+                                &uwhportal_url,
+                                tournament_id.unwrap(),
+                                gid,
+                                false,
+                            )
+                            .await;
                         });
                     }
                     continue;

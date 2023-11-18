@@ -34,6 +34,7 @@ pub struct AppConfig {
     refbox_ip: IpAddr,
     refbox_port: u64,
     uwhscores_url: String,
+    uwhportal_url: String,
     tournament_logo_path: PathBuf,
 }
 
@@ -42,7 +43,8 @@ impl Default for AppConfig {
         Self {
             refbox_ip: IpAddr::from_str("127.0.0.1").unwrap(),
             refbox_port: 8000,
-            uwhscores_url: String::from("uwhscores.com"),
+            uwhscores_url: String::from("https://uwhscores.com"),
+            uwhportal_url: String::from("https://api.uwhscores.prod.zmvp.host"),
             tournament_logo_path: PathBuf::new(),
         }
     }

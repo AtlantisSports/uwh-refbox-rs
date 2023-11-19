@@ -210,7 +210,7 @@ impl<H: Hasher, I> Recipe<H, I> for SnapshotListener {
 
             match state.stream.as_mut().unwrap().read(&mut buffer).await {
                 Ok(val) if val == TransmittedData::ENCODED_LEN => {}
-                Ok(val) if val == 0 => {
+                Ok(0) => {
                     error!("Sim: TCP connection closed, stopping");
                     state.stop = true;
                     return Some((Message::Stop, state));

@@ -1,8 +1,0 @@
-status = [
-  "ci/circleci: check-build-debug",
-  "ci/circleci: check-build-release",
-]
-# Uncomment this to use a two hour timeout.
-# The default is one hour.
-#timeout_sec = 7200
-

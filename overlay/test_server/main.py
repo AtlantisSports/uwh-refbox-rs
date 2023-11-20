@@ -254,5 +254,65 @@ def hello():
     }
     return jsonify(d)
 
-
+@app.route("/api/v1/tournaments/42/games/1")
+def hellos():
+    d = {
+        "game": {
+            "black": "Team",
+            "black_id": 13,
+            "day": "Sat-8th",
+            "description": None,
+            "division": "B",
+            "forfeit": None,
+            "game_type": "RR-B",
+            "gid": 1,
+            "note_b": None,
+            "note_w": None,
+            "pod": "B",
+            "pool": "FART",
+            "score_b": 7,
+            "score_w": 1,
+            "start_time": "2023-04-08T09:00:00",
+            "tid": 35,
+            "timing_rules": {
+                "game_timeouts": {"allowed": 0, "duration": 30, "per_half": True},
+                "half_duration": 540,
+                "half_time_duration": 120,
+                "max_sudden_death_duration": None,
+                "min_game_break": 240,
+                "overtime_allowed": False,
+                "overtime_duration": 300,
+                "pre_overtime_break": 120,
+                "pre_sudden_death_break": 30,
+                "sudden_death_allowed": False,
+            },
+            "referees": [
+                {
+                    "name": "joe",
+                    "number": 0,
+                    "picture_url": "https://underwaterrugby.blob.core.windows.net/images/43226f46-5f89-4162-9b94-ecbadf6b4be0_main.png",
+                    "geared_picture_url": "",
+                    "role": "Chief ref",
+                },
+                {
+                    "name": "joke",
+                    "number": None,
+                    "picture_url": "https://underwaterrugby.blob.core.windows.net/images/43226f46-5f89-4162-9b94-ecbadf6b4be0_main.png",
+                    "geared_picture_url": "",
+                    "role": None,
+                },
+                {
+                    "name": "jock",
+                    "number": None,
+                    "picture_url": "",
+                    "geared_picture_url": "",
+                    "role": None,
+                },
+            ],
+            "white": "FAZZZ",
+            "white_id": 10,
+            "sponsor_logo": "https://w7.pngwing.com/pngs/381/29/png-transparent-logo-graphic-design-company-company-logo-angle-building-company.png",
+        }
+    }
+    return jsonify(d)
 app.run()

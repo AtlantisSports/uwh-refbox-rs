@@ -12,20 +12,24 @@ static CLIENT_CELL: OnceLock<Client> = OnceLock::new();
 async fn get_image_from_opt_url(url: Option<&str>) -> Option<Vec<u8>> {
     let client = CLIENT_CELL.get().unwrap();
     match url {
+        Some("") => {
+            warn!("Image URL is empty. Skipping.");
+            None
+        }
         Some(url) => Some(
             client
                 .get(url)
                 .send()
                 .await
                 .map_err(|e| {
-                    error!("Couldn't get image \"{url}\" from network: {e}");
+                    warn!("Couldn't get image \"{url}\" from network: {e}");
                     e
                 })
                 .ok()?
                 .bytes()
                 .await
                 .map_err(|e| {
-                    error!("Couldn't get image \"{url}\"  body: {e}");
+                    warn!("Couldn't get image \"{url}\"  body: {e}");
                     e
                 })
                 .ok()?
@@ -153,10 +157,6 @@ async fn fetch_game_data(
     let client = CLIENT_CELL.get().unwrap();
     // retry periodically if no connection
     loop {
-        info!(
-            "Trying to request game data for tid:{}, gid:{} from UWH API",
-            tournament_id, game_id
-        );
         if let Ok(data) = client
             .get(format!(
                 "{uwhscores_url}/api/v1/tournaments/{tournament_id}/games/{game_id}"
@@ -164,12 +164,16 @@ async fn fetch_game_data(
             .send()
             .await
         {
+            info!(
+                "Got game data for tid:{}, gid:{} from UWH API",
+                tournament_id, game_id
+            );
             let text = data
                 .text()
                 .await
                 .expect("Response body could not be recieved!");
-            let data: Value =
-                serde_json::from_str(text.as_str()).expect("Server did not return valid json!");
+            let data: Value = serde_json::from_str(text.as_str())
+                .expect(format!("Server did not return valid json!: {}", text).as_str());
             let team_id_black = data["game"]["black_id"].as_u64().unwrap_or(0);
             let team_id_white = data["game"]["white_id"].as_u64().unwrap_or(0);
 
@@ -238,6 +242,7 @@ async fn fetch_game_data(
                 },
                 is_current_game,
             ))
+            .map_err(|e| error!("Couldn't send data: {e}"))
             .unwrap();
             return;
         }
@@ -307,62 +312,46 @@ pub async fn networking_thread(
                 let uwhportal_url = config.uwhportal_url.clone();
                 game_id = Some(gid);
                 tournament_id = Some(tid);
-                info!(
-                    "Fetching intial game data for tid: {}, gid: {}",
-                    tournament_id.unwrap(),
-                    game_id.unwrap()
-                );
+                info!("Fetching intial game data for tid: {}, gid: {}", tid, gid);
                 tokio::spawn(async move {
-                    fetch_game_data(
-                        tr_,
-                        &uwhscores_url,
-                        &uwhportal_url,
-                        tournament_id.unwrap(),
-                        gid,
-                        true,
-                    )
-                    .await;
+                    fetch_game_data(tr_, &uwhscores_url, &uwhportal_url, tid, gid, true).await;
                 });
                 let tr_ = tr.clone();
                 let uwhscores_url = config.uwhscores_url.clone();
                 let uwhportal_url = config.uwhportal_url.clone();
                 info!(
                     "Fetching intial game data to cache for tid: {}, gid: {}",
-                    tournament_id.unwrap(),
-                    next_gid
+                    tid, next_gid
                 );
                 tokio::spawn(async move {
-                    fetch_game_data(
-                        tr_,
-                        &uwhscores_url,
-                        &uwhportal_url,
-                        tournament_id.unwrap(),
-                        next_gid,
-                        false,
-                    )
-                    .await;
+                    fetch_game_data(tr_, &uwhscores_url, &uwhportal_url, tid, next_gid, false)
+                        .await;
                 });
             }
             // when gid changes set current game_data to next_game_data and replace next_game_data with new
-            // next_game_data
-            if let Some(game_id_inner) = game_id.as_mut() {
+            // data. if tournament_id changes without a change in game_id, it is assumed that the change is
+            // for the current game.
+            if let (Some(game_id_inner), Some(tournament_id_inner)) =
+                (game_id.as_mut(), tournament_id.as_mut())
+            {
+                let tr_ = tr.clone();
+                let uwhscores_url = config.uwhscores_url.clone();
+                let uwhportal_url = config.uwhportal_url.clone();
                 if *game_id_inner != gid {
-                    let tr = tr.clone();
-                    let uwhscores_url = config.uwhscores_url.clone();
-                    let uwhportal_url = config.uwhportal_url.clone();
                     *game_id_inner = gid;
+                    *tournament_id_inner = tid;
+                    info!("Got new game id");
                     if let Some(next_game_data) = next_game_data.clone() {
                         info!(
-                            "Fetching game data for tid: {}, gid: {}",
-                            tournament_id.unwrap(),
-                            next_gid,
+                            "Fetching game data to cache for tid: {}, gid: {}",
+                            tid, next_gid,
                         );
                         tokio::spawn(async move {
                             fetch_game_data(
-                                tr,
+                                tr_,
                                 &uwhscores_url,
                                 &uwhportal_url,
-                                tournament_id.unwrap(),
+                                tid,
                                 next_gid,
                                 false,
                             )
@@ -377,23 +366,26 @@ pub async fn networking_thread(
                         .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
                     } else {
                         info!(
-                            "Fetching game data for tid: {}, gid: {}. Cache is empty!",
-                            tournament_id.unwrap(),
-                            gid,
+                            "Fetching game data for tid: {}, gid: {}. Cache is empty or invalid!",
+                            tid, gid,
                         );
                         tokio::spawn(async move {
-                            fetch_game_data(
-                                tr,
-                                &uwhscores_url,
-                                &uwhportal_url,
-                                tournament_id.unwrap(),
-                                gid,
-                                false,
-                            )
-                            .await;
+                            fetch_game_data(tr_, &uwhscores_url, &uwhportal_url, tid, gid, true)
+                                .await;
                         });
                     }
                     continue;
+                } else if *tournament_id_inner != tid {
+                    *tournament_id_inner = tid;
+                    info!("Tournament id changed without a change in gid");
+                    *tournament_id_inner = tid;
+                    info!(
+                        "Fetching game data for tid: {}, gid: {} on tournament ID change!",
+                        tid, gid,
+                    );
+                    tokio::spawn(async move {
+                        fetch_game_data(tr_, &uwhscores_url, &uwhportal_url, tid, gid, true).await;
+                    });
                 }
             }
             if let Ok((game_data, is_current_game)) = rc.try_recv() {

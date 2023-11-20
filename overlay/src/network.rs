@@ -84,37 +84,40 @@ impl TeamInfoRaw {
         )
         .unwrap();
 
-        let mut members = Vec::new();
-        futures::future::join_all(
-            data["roster"]
-                .as_array()
-                .map(|x| x.to_vec())
-                .unwrap_or_default()
-                .iter()
-                .map(|member| async {
-                    MemberRaw {
-                        name: member["rosterName"].to_string().trim().to_string(),
-                        number: member["capNumber"].as_u64().map(|e| e as u8),
-                        role: member["roles"]
-                            .as_array()
-                            .and_then(|a| a.iter().map(|v| v.to_string()).find(|v| *v == "Player")),
-                        picture: get_image_from_opt_url(member["photos"]["uniform"].as_str()).await,
-                        geared_picture: get_image_from_opt_url(
-                            member["photos"][match team_color {
-                                Color::Black => "darkGear",
-                                Color::White => "lightGear",
-                            }]
-                            .as_str(),
-                        )
-                        .await,
-                    }
-                }),
-        )
-        .await
-        .into_iter()
-        .for_each(|member| members.push(member));
+        let (members, flag) = tokio::join!(
+            futures::future::join_all(
+                data["roster"]
+                    .as_array()
+                    .map(|x| x.to_vec())
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|member| async move {
+                        let (picture, geared_picture) = tokio::join!(
+                            get_image_from_opt_url(member["photos"]["uniform"].as_str()),
+                            get_image_from_opt_url(
+                                member["photos"][match team_color {
+                                    Color::Black => "darkGear",
+                                    Color::White => "lightGear",
+                                }]
+                                .as_str(),
+                            )
+                        );
+                        MemberRaw {
+                            name: member["rosterName"].to_string().trim().to_string(),
+                            number: member["capNumber"].as_u64().map(|e| e as u8),
+                            role: member["roles"].as_array().and_then(|a| {
+                                a.iter().map(|v| v.to_string()).find(|v| *v == "Player")
+                            }),
+                            picture,
+                            geared_picture,
+                        }
+                    })
+            ),
+            get_image_from_opt_url(data["logoUrl"].as_str())
+        );
+        let members = members.into_iter().collect();
 
-        let x = Self {
+        Self {
             team_name: data["name"].as_str().map_or(
                 match team_color {
                     Color::Black => String::from("Black"),
@@ -123,9 +126,8 @@ impl TeamInfoRaw {
                 |s| s.trim().to_uppercase(),
             ),
             members,
-            flag: get_image_from_opt_url(data["logoUrl"].as_str()).await,
-        };
-        x
+            flag,
+        }
     }
 }
 
@@ -194,12 +196,16 @@ async fn fetch_game_data(
                     .unwrap_or_default()
                     .iter()
                     .map(|referee| async {
+                        let (picture, geared_picture) = tokio::join!(
+                            get_image_from_opt_url(referee["picture_url"].as_str()),
+                            get_image_from_opt_url(referee["geared_picture_url"].as_str())
+                        );
                         (
                             referee["name"].as_str().map(|s| s.trim().to_uppercase()),
                             referee["number"].as_u64().map(|e| e as u8),
                             referee["role"].as_str().map(|s| s.trim().to_uppercase()),
-                            get_image_from_opt_url(referee["picture_url"].as_str()).await,
-                            get_image_from_opt_url(referee["geared_picture_url"].as_str()).await,
+                            picture,
+                            geared_picture,
                         )
                     }),
             )
@@ -219,25 +225,17 @@ async fn fetch_game_data(
                 }
             })
             .for_each(|referee| referees.push(referee));
+            let (black, white) = tokio::join!(
+                TeamInfoRaw::new(uwhportal_url, tournament_id, team_id_black, Color::Black,),
+                TeamInfoRaw::new(uwhportal_url, tournament_id, team_id_white, Color::White,)
+            );
             tr.send((
                 GameData {
                     pool,
                     start_time,
                     referees,
-                    black: TeamInfoRaw::new(
-                        uwhportal_url,
-                        tournament_id,
-                        team_id_black,
-                        Color::Black,
-                    )
-                    .await,
-                    white: TeamInfoRaw::new(
-                        uwhportal_url,
-                        tournament_id,
-                        team_id_white,
-                        Color::White,
-                    )
-                    .await,
+                    black,
+                    white,
                     sponsor_logo,
                 },
                 is_current_game,

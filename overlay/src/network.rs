@@ -103,10 +103,16 @@ impl TeamInfoRaw {
                             )
                         );
                         MemberRaw {
-                            name: member["rosterName"].to_string().trim().to_string(),
+                            name: member["rosterName"]
+                                .as_str()
+                                .unwrap_or("Player")
+                                .trim()
+                                .to_string(),
                             number: member["capNumber"].as_u64().map(|e| e as u8),
                             role: member["roles"].as_array().and_then(|a| {
-                                a.iter().map(|v| v.to_string()).find(|v| *v == "Player")
+                                a.iter()
+                                    .map(|v| v.as_str().unwrap_or("").to_owned())
+                                    .find(|v| *v != "Player")
                             }),
                             picture,
                             geared_picture,

@@ -50,9 +50,23 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
     // p1: Team White -> Team Black
     // p3: Team Black -> Referees
     // p5: Referees -> Fade out
-    let p1 = 4.5 + ((state.white.members.len() + 3) / 4 * RPD_GROUP_TIME as usize) as f32;
-    let p2 = p1 + 4.5 + ((state.black.members.len() + 3) / 4 * RPD_GROUP_TIME as usize) as f32;
-    let p3 = p2 + 4.5 + ((state.referees.len() + 3) / 4 * RPD_GROUP_TIME as usize) as f32;
+    let p1 = if !state.white.members.is_empty() {
+        4.5 + ((state.white.members.len() + 3) / 4 * RPD_GROUP_TIME as usize) as f32
+    } else {
+        0f32
+    };
+    let p2 = p1
+        + if !state.black.members.is_empty() {
+            4.5 + ((state.black.members.len() + 3) / 4 * RPD_GROUP_TIME as usize) as f32
+        } else {
+            0f32
+        };
+    let p3 = p2
+        + if !state.referees.is_empty() {
+            4.5 + ((state.referees.len() + 3) / 4 * RPD_GROUP_TIME as usize) as f32
+        } else {
+            0f32
+        };
 
     let (team_name, team_flag, card_repr, team_textures, text_color, (page_start, page_end)) =
         match Instant::now()

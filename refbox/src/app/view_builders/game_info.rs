@@ -133,21 +133,20 @@ fn details_strings(
         } else {
             game = snapshot.game_number.to_string();
         }
-        write!(&mut left_string, "Game: {}\n", game).unwrap();
+        writeln!(&mut left_string, "Game: {}", game).unwrap();
         snapshot.game_number
     };
 
     if using_uwhscores {
         if let Some(games) = games {
-            match games.get(&game_number) {
-                Some(game) => write!(
+            if let Some(game) = games.get(&game_number) {
+                write!(
                     &mut left_string,
                     "Black Team: {}\nWhite Team: {}\n",
                     limit_team_name_len(&game.black, TEAM_NAME_LEN_LIMIT),
                     limit_team_name_len(&game.white, TEAM_NAME_LEN_LIMIT)
                 )
-                .unwrap(),
-                None => {}
+                .unwrap()
             }
         }
     }
@@ -173,55 +172,52 @@ fn details_strings(
             time_string(config.ot_half_time_duration),
         )
         .unwrap()
-    } else {
     };
-    write!(
+    writeln!(
         &mut left_string,
-        "Sudden Death Allowed: {}\n",
+        "Sudden Death Allowed: {}",
         bool_string(config.sudden_death_allowed)
     )
     .unwrap();
 
     if config.sudden_death_allowed {
-        write!(
+        writeln!(
             &mut left_string,
-            "Pre-Sudden-Death Break Length: {}\n",
+            "Pre-Sudden-Death Break Length: {}",
             time_string(config.pre_sudden_death_duration)
         )
         .unwrap()
-    } else {
     };
-    write!(
+    writeln!(
         &mut left_string,
-        "Team Timeouts Allowed Per Half: {}\n",
+        "Team Timeouts Allowed Per Half: {}",
         config.team_timeouts_per_half
     )
     .unwrap();
     if config.team_timeouts_per_half != 0 {
-        write!(
+        writeln!(
             &mut left_string,
-            "Team Timeout Duration: {}\n",
+            "Team Timeout Duration: {}",
             time_string(config.team_timeout_duration)
         )
         .unwrap()
-    } else {
     };
     if !using_uwhscores {
-        write!(
+        writeln!(
             &mut left_string,
-            "Nominal Time Between Games: {}\n",
+            "Nominal Time Between Games: {}",
             time_string(config.nominal_break),
         )
         .unwrap();
     }
-    write!(
+    writeln!(
         &mut left_string,
-        "Minimum Time Between Games: {}\n",
+        "Minimum Time Between Games: {}",
         time_string(config.minimum_break),
     )
     .unwrap();
 
-    write!(&mut left_string, "Stop clock in last 2 minutes: UNKNOWN\n").unwrap();
+    writeln!(&mut left_string, "Stop clock in last 2 minutes: UNKNOWN").unwrap();
 
     write!(
         &mut right_string,

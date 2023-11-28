@@ -23,11 +23,13 @@ pub fn on_paths(paths: Vec<&PathBuf>, dir_output: PathBuf) {
         }
         output_image_buff
             .write_to(&mut file_out, image::ImageFormat::Png)
-            .expect(&format!(
-                "Couldn't write to output directory {}/{:?}",
-                dir_output.display(),
-                path.file_name().unwrap_or_default()
-            ));
+            .unwrap_or_else(|_| {
+                panic!(
+                    "Couldn't write to output directory {}/{:?}",
+                    dir_output.display(),
+                    path.file_name().unwrap_or_default()
+                )
+            });
     });
 }
 

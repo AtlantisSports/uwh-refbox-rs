@@ -181,7 +181,7 @@ async fn fetch_game_data(
                 .await
                 .expect("Response body could not be recieved!");
             let data: Value = serde_json::from_str(text.as_str())
-                .expect(format!("Server did not return valid json!: {}", text).as_str());
+                .unwrap_or_else(|_| panic!("Server did not return valid json!: {}", text));
             let team_id_black = data["game"]["black_id"].as_u64().unwrap_or(0);
             let team_id_white = data["game"]["white_id"].as_u64().unwrap_or(0);
 

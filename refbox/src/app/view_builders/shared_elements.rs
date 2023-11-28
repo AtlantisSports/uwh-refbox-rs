@@ -642,45 +642,44 @@ pub(super) fn config_string(
 
     if using_uwhscores {
         if let Some(games) = games {
-            match games.get(&game_number) {
-                Some(game) => write!(
+            if let Some(game) = games.get(&game_number) {
+                write!(
                     &mut result,
                     "Black Team: {}\nWhite Team: {}\n",
                     limit_team_name_len(&game.black, TEAM_NAME_LEN_LIMIT),
                     limit_team_name_len(&game.white, TEAM_NAME_LEN_LIMIT)
                 )
-                .unwrap(),
-                None => {}
+                .unwrap()
             }
         }
     }
 
-    write!(
+    writeln!(
         &mut result,
         "Half Length: {},  \
-         Half Time Length: {}\n",
+         Half Time Length: {}",
         time_string(config.half_play_duration),
         time_string(config.half_time_duration),
     )
     .unwrap();
 
-    write!(
+    writeln!(
         &mut result,
         "Sudden Death Allowed: {},  \
-         Overtime Allowed: {}\n",
+         Overtime Allowed: {}",
         bool_string(config.sudden_death_allowed),
         bool_string(config.overtime_allowed),
     )
     .unwrap();
 
-    write!(
+    writeln!(
         &mut result,
-        "Team Timeouts Allowed Per Half: {}\n",
+        "Team Timeouts Allowed Per Half: {}",
         config.team_timeouts_per_half
     )
     .unwrap();
 
-    write!(&mut result, "Stop clock in last 2 minutes: \n").unwrap();
+    writeln!(&mut result, "Stop clock in last 2 minutes: ").unwrap();
 
     write!(
         &mut result,

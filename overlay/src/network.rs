@@ -388,7 +388,8 @@ pub async fn networking_thread(
                         tid, gid,
                     );
                     tokio::spawn(async move {
-                        fetch_game_data(tr_, &uwhscores_url, &uwhportal_url, tid, gid, false).await;
+                        fetch_game_data(tr_, &uwhscores_url, &uwhportal_url, tid, next_gid, false)
+                            .await;
                     });
                 }
             }

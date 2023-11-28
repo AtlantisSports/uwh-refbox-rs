@@ -50,19 +50,36 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
     // p1: Team White -> Team Black
     // p3: Team Black -> Referees
     // p5: Referees -> Fade out
-    let p1 = if !state.white.members.is_empty() {
+    let p1 = if !state.white.members.is_empty()
+        && state
+            .white
+            .members
+            .iter()
+            .any(|member| member.geared_picture.is_some() || member.picture.is_some())
+    {
         4.5 + ((state.white.members.len() + 3) / 4 * RPD_GROUP_TIME as usize) as f32
     } else {
         0f32
     };
     let p2 = p1
-        + if !state.black.members.is_empty() {
+        + if !state.black.members.is_empty()
+            && state
+                .black
+                .members
+                .iter()
+                .any(|member| member.geared_picture.is_some() || member.picture.is_some())
+        {
             4.5 + ((state.black.members.len() + 3) / 4 * RPD_GROUP_TIME as usize) as f32
         } else {
             0f32
         };
     let p3 = p2
-        + if !state.referees.is_empty() {
+        + if !state.referees.is_empty()
+            && state
+                .referees
+                .iter()
+                .any(|referee| referee.geared_picture.is_some() || referee.picture.is_some())
+        {
             4.5 + ((state.referees.len() + 3) / 4 * RPD_GROUP_TIME as usize) as f32
         } else {
             0f32

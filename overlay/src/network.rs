@@ -370,7 +370,7 @@ pub async fn networking_thread(
                         .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
                     } else {
                         info!(
-                            "Fetching game data for tid: {}, gid: {}. Cache is empty or invalid!",
+                            "Fetching game data for tid: {}, gid: {}. Cache is empty!",
                             tid, gid,
                         );
                         tokio::spawn(async move {
@@ -384,11 +384,11 @@ pub async fn networking_thread(
                     info!("Tournament id changed without a change in gid");
                     *tournament_id_inner = tid;
                     info!(
-                        "Fetching game data for tid: {}, gid: {} on tournament ID change!",
+                        "Fetching game data to cache for tid: {}, gid: {} on tournament ID change!",
                         tid, gid,
                     );
                     tokio::spawn(async move {
-                        fetch_game_data(tr_, &uwhscores_url, &uwhportal_url, tid, gid, true).await;
+                        fetch_game_data(tr_, &uwhscores_url, &uwhportal_url, tid, gid, false).await;
                     });
                 }
             }

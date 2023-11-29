@@ -10,7 +10,7 @@ clap = { version = "4", features = ["derive"] }
 coarsetime = "*"
 confy = "0.5"
 crossbeam-channel = "*"
-directories = "4"
+directories = "5"
 image = { version = "*", features = ["png", "jpeg"] }
 log = "*"
 log-panics = { version = "2", features = ["with-backtrace"]}

@@ -3270,7 +3270,7 @@ dependencies = [
  "coarsetime",
  "confy",
  "crossbeam-channel",
- "directories 4.0.1",
+ "directories 5.0.1",
  "image",
  "log",
  "log-panics",

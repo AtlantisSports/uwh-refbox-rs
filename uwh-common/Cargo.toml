@@ -26,5 +26,5 @@ time = { version = "0.3", features = [
 toml = { version = "0.8", optional = true }
 
 [dev-dependencies]
-env_logger = "0.9"
+env_logger = "0.10"
 reqwest = { version = "0.11", features = ["blocking", "json"] }

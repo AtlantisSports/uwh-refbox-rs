@@ -3779,7 +3779,7 @@ dependencies = [
  "embedded-graphics",
  "enum-derive-2018",
  "env_logger",
- "futures-lite 1.13.0",
+ "futures-lite 2.0.1",
  "iced",
  "iced_core",
  "iced_futures",

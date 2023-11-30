@@ -2925,6 +2925,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "no_denormals"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc8d4edce03a3be51d7736ddd5cf811f1852c2bb4d03637b82e2d1340e6f0bf9"
+
+[[package]]
 name = "nom"
 version = "7.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5321,9 +5327,9 @@ dependencies = [
 
 [[package]]
 name = "web-audio-api"
-version = "0.34.0"
+version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20211522d5ba0d302025c8fde30553fc9295d416d478d686bb0e987acd51420e"
+checksum = "9ccd24cdcbe908619397d214c26944c27efbe44006c6e70445294de9399a2c5d"
 dependencies = [
  "arc-swap",
  "arrayvec",
@@ -5336,10 +5342,10 @@ dependencies = [
  "hrtf",
  "llq",
  "log",
+ "no_denormals",
  "num-complex",
  "realfft",
  "rubato",
- "rustc-hash",
  "smallvec",
  "symphonia",
  "vecmath",

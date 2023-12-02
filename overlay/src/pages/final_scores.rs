@@ -6,11 +6,13 @@ use crate::pages::draw_text_both_ex;
 use crate::pages::draw_texture_both_ex;
 use crate::pages::Justify;
 use crate::State;
+use coarsetime::Instant;
 use macroquad::prelude::*;
 
 impl PageRenderer {
     /// Display final scores after game is done
     pub fn final_scores(&mut self, state: &State) {
+        self.animation_register1 = Instant::now();
         draw_texture_both!(self.assets.atlantis_logo, 836f32, 725f32, WHITE);
         draw_texture_both!(self.assets.final_score, 314f32, 347f32, WHITE);
 

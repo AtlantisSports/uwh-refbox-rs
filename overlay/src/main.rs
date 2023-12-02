@@ -293,10 +293,20 @@ async fn main() {
                         }
                     }
                     30..=181 => {
-                        renderer.roster(&local_state);
+                        if local_state.snapshot.is_old_game {
+                            renderer.final_scores(&local_state);
+                        } else {
+                            renderer.roster(&local_state);
+                        }
                     }
                     _ => {
-                        renderer.pre_game_display(&local_state);
+                        if local_state.snapshot.is_old_game
+                            && local_state.snapshot.secs_in_period > 5
+                        {
+                            renderer.final_scores(&local_state);
+                        } else {
+                            renderer.pre_game_display(&local_state);
+                        }
                     }
                 }
             }

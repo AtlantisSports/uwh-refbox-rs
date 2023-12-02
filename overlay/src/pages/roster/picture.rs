@@ -45,11 +45,11 @@ fn rpd_groups(members: &Vec<Member>) -> impl Iterator<Item = Vec<Member>> {
     divd.into_iter()
 }
 
-pub fn draw(renderer: &mut PageRenderer, state: &State) {
+pub fn get_cycle_times(state: &State) -> (f32, f32, f32) {
     // Page Transition Points:
     // p1: Team White -> Team Black
-    // p3: Team Black -> Referees
-    // p5: Referees -> Fade out
+    // p2: Team Black -> Referees
+    // p3: Referees -> Fade out
     let p1 = if !state.white.members.is_empty()
         && state
             .white
@@ -84,7 +84,11 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
         } else {
             0f32
         };
+    (p1, p2, p3)
+}
 
+pub fn draw(renderer: &mut PageRenderer, state: &State) {
+    let (p1, p2, p3) = get_cycle_times(state);
     let (team_name, team_flag, card_repr, team_textures, text_color, (page_start, page_end)) =
         match Instant::now()
             .duration_since(renderer.animation_register2)

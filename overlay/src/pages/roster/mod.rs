@@ -7,7 +7,7 @@ impl PageRenderer {
     pub fn roster(&mut self, state: &State) {
         if state.snapshot.secs_in_period >= 169 {
             list::draw(self, state);
-        } else if state.snapshot.secs_in_period <= 168 {
+        } else if state.snapshot.secs_in_period < 169 {
             picture::draw(self, state);
         }
     }

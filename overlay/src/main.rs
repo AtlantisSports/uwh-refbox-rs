@@ -82,6 +82,7 @@ impl State {
             start_time,
             sponsor_logo,
             referees,
+            ..
         }) = recieved_state.data
         {
             self.black = TeamInfo::from(black);

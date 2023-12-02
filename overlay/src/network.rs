@@ -152,6 +152,8 @@ pub struct GameData {
     pub black: TeamInfoRaw,
     pub white: TeamInfoRaw,
     pub sponsor_logo: Option<Vec<u8>>,
+    pub game_id: u32,
+    pub tournament_id: u32,
 }
 
 async fn fetch_game_data(
@@ -243,6 +245,8 @@ async fn fetch_game_data(
                     black,
                     white,
                     sponsor_logo,
+                    tournament_id,
+                    game_id,
                 },
                 is_current_game,
             ))
@@ -309,7 +313,6 @@ pub async fn networking_thread(
                 };
             let next_gid = snapshot.next_game_number;
             // initial case when no parameter is initialised
-            // NOTE: we always expect next `gid` to be current `next_gid`.
             if game_id.is_none() {
                 let tr_ = tr.clone();
                 let uwhscores_url = config.uwhscores_url.clone();
@@ -341,11 +344,15 @@ pub async fn networking_thread(
                 let tr_ = tr.clone();
                 let uwhscores_url = config.uwhscores_url.clone();
                 let uwhportal_url = config.uwhportal_url.clone();
-                if *game_id_inner != gid {
+                if *game_id_inner != gid || *tournament_id_inner != tid {
                     *game_id_inner = gid;
                     *tournament_id_inner = tid;
-                    info!("Got new game id");
-                    if let Some(next_game_data) = next_game_data.clone() {
+                    info!("Got new game ID {} / tournament ID {}", gid, tid);
+                    if next_game_data.is_some()
+                        && next_game_data.as_ref().unwrap().game_id == gid
+                        && next_game_data.as_ref().unwrap().tournament_id == tid
+                    {
+                        let next_game_data = next_game_data.clone().unwrap();
                         info!(
                             "Fetching game data to cache for tid: {}, gid: {}",
                             tid, next_gid,
@@ -370,27 +377,32 @@ pub async fn networking_thread(
                         .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
                     } else {
                         info!(
-                            "Fetching game data for tid: {}, gid: {}. Cache is empty!",
+                            "Fetching game data for tid: {}, gid: {}. Cache is empty or invalid!",
                             tid, gid,
                         );
+                        let (uwhscores_url_, uwhportal_url_, tr__) =
+                            (uwhscores_url.clone(), uwhportal_url.clone(), tr_.clone());
                         tokio::spawn(async move {
-                            fetch_game_data(tr_, &uwhscores_url, &uwhportal_url, tid, gid, true)
+                            fetch_game_data(tr__, &uwhscores_url_, &uwhportal_url_, tid, gid, true)
                                 .await;
+                        });
+                        info!(
+                            "Fetching game data to cache for tid: {}, gid: {}",
+                            tid, next_gid,
+                        );
+                        tokio::spawn(async move {
+                            fetch_game_data(
+                                tr_,
+                                &uwhscores_url,
+                                &uwhportal_url,
+                                tid,
+                                next_gid,
+                                false,
+                            )
+                            .await;
                         });
                     }
                     continue;
-                } else if *tournament_id_inner != tid {
-                    *tournament_id_inner = tid;
-                    info!("Tournament id changed without a change in gid");
-                    *tournament_id_inner = tid;
-                    info!(
-                        "Fetching game data to cache for tid: {}, gid: {} on tournament ID change!",
-                        tid, gid,
-                    );
-                    tokio::spawn(async move {
-                        fetch_game_data(tr_, &uwhscores_url, &uwhportal_url, tid, next_gid, false)
-                            .await;
-                    });
                 }
             }
             if let Ok((game_data, is_current_game)) = rc.try_recv() {

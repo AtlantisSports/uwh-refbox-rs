@@ -8,6 +8,7 @@ use macroquad::prelude::*;
 use uwh_common::game_snapshot::Color as UwhColor;
 
 const LIST_NUMBER_BG_WIDTH: f32 = 85f32;
+const PLAYER_ROW_HEIGHT: f32 = 58f32;
 const TEAM_BANNER_ROSTER_OFFSET: f32 = -650f32;
 
 pub fn draw(renderer: &mut PageRenderer, state: &State) {
@@ -80,7 +81,10 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                 .enumerate(),
         )
     {
-        if 60f32.mul_add(i as f32, 220f32) > 650f32 + offset + 100f32 {
+        if PLAYER_ROW_HEIGHT.mul_add(i as f32, 220f32)
+            > -1f32 * TEAM_BANNER_ROSTER_OFFSET + offset + 100f32
+        {
+            // display only cards revealed by the bottom bar sliding up
             if player_identifier.1 == UwhColor::White {
                 draw_texture_both!(
                     renderer.assets.team_white_banner,
@@ -89,7 +93,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                     } else {
                         1108f32
                     },
-                    60f32.mul_add(i as f32, 220f32),
+                    PLAYER_ROW_HEIGHT.mul_add(i as f32, 220f32),
                     Color {
                         a: timeout_alpha_offset,
                         ..WHITE
@@ -103,7 +107,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                     } else {
                         1108f32
                     },
-                    60f32.mul_add(i as f32, 220f32),
+                    PLAYER_ROW_HEIGHT.mul_add(i as f32, 220f32),
                     Color {
                         a: timeout_alpha_offset,
                         ..WHITE
@@ -124,7 +128,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                 } else {
                     1118f32
                 },
-                60f32.mul_add(i as f32, 255f32),
+                PLAYER_ROW_HEIGHT.mul_add(i as f32, 255f32),
                 TextParams {
                     font: renderer.assets.font,
                     font_size: 35,
@@ -149,7 +153,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                 } else {
                     1238f32
                 },
-                60f32.mul_add(i as f32, 255f32),
+                PLAYER_ROW_HEIGHT.mul_add(i as f32, 255f32),
                 TextParams {
                     font: renderer.assets.font,
                     font_size: 35,

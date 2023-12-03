@@ -1,12 +1,6 @@
-use crate::config::Mode;
-
-use super::{
-    style::{self, SPACING},
-    *,
-};
-
+use super::{style::Element, *};
 use iced::{
-    pure::{column, row, vertical_space, Element},
+    widget::{column, row, vertical_space},
     Length,
 };
 
@@ -19,8 +13,8 @@ pub(super) fn make_penalty_edit_page<'a>(
     mode: Mode,
 ) -> Element<'a, Message> {
     let (black_style, white_style) = match color {
-        GameColor::Black => (style::Button::BlackSelected, style::Button::White),
-        GameColor::White => (style::Button::Black, style::Button::WhiteSelected),
+        GameColor::Black => (ButtonStyle::BlackSelected, ButtonStyle::White),
+        GameColor::White => (ButtonStyle::Black, ButtonStyle::WhiteSelected),
     };
 
     let (green, yellow, orange) = match mode {
@@ -45,55 +39,54 @@ pub(super) fn make_penalty_edit_page<'a>(
 
     let (green_style, yellow_style, orange_style, td_style) = if kind == green {
         (
-            style::Button::GreenSelected,
-            style::Button::Yellow,
-            style::Button::Orange,
-            style::Button::Red,
+            ButtonStyle::GreenSelected,
+            ButtonStyle::Yellow,
+            ButtonStyle::Orange,
+            ButtonStyle::Red,
         )
     } else if kind == yellow {
         (
-            style::Button::Green,
-            style::Button::YellowSelected,
-            style::Button::Orange,
-            style::Button::Red,
+            ButtonStyle::Green,
+            ButtonStyle::YellowSelected,
+            ButtonStyle::Orange,
+            ButtonStyle::Red,
         )
     } else if kind == orange {
         (
-            style::Button::Green,
-            style::Button::Yellow,
-            style::Button::OrangeSelected,
-            style::Button::Red,
+            ButtonStyle::Green,
+            ButtonStyle::Yellow,
+            ButtonStyle::OrangeSelected,
+            ButtonStyle::Red,
         )
     } else if kind == PenaltyKind::TotalDismissal {
         (
-            style::Button::Green,
-            style::Button::Yellow,
-            style::Button::Orange,
-            style::Button::RedSelected,
+            ButtonStyle::Green,
+            ButtonStyle::Yellow,
+            ButtonStyle::Orange,
+            ButtonStyle::RedSelected,
         )
     } else {
         (
-            style::Button::Green,
-            style::Button::Yellow,
-            style::Button::Orange,
-            style::Button::Red,
+            ButtonStyle::Green,
+            ButtonStyle::Yellow,
+            ButtonStyle::Orange,
+            ButtonStyle::Red,
         )
     };
 
-    let mut exit_row = row().spacing(SPACING).push(
-        make_button("CANCEL")
-            .style(style::Button::Red)
-            .width(Length::Fill)
-            .on_press(Message::PenaltyEditComplete {
-                canceled: true,
-                deleted: false,
-            }),
-    );
+    let mut exit_row = row![make_button("CANCEL")
+        .style(ButtonStyle::Red)
+        .width(Length::Fill)
+        .on_press(Message::PenaltyEditComplete {
+            canceled: true,
+            deleted: false,
+        }),]
+    .spacing(SPACING);
 
     if origin.is_some() {
         exit_row = exit_row.push(
             make_button("DELETE")
-                .style(style::Button::Orange)
+                .style(ButtonStyle::Orange)
                 .width(Length::Fill)
                 .on_press(Message::PenaltyEditComplete {
                     canceled: false,
@@ -104,7 +97,7 @@ pub(super) fn make_penalty_edit_page<'a>(
 
     exit_row = exit_row.push(
         make_button("DONE")
-            .style(style::Button::Green)
+            .style(ButtonStyle::Green)
             .width(Length::Fill)
             .on_press(Message::PenaltyEditComplete {
                 canceled: false,
@@ -128,49 +121,36 @@ pub(super) fn make_penalty_edit_page<'a>(
     let yellow_label = labels[1];
     let orange_label = labels[2];
 
-    column()
-        .spacing(SPACING)
-        .push(vertical_space(Length::Fill))
-        .push(
-            row()
-                .spacing(SPACING)
-                .push(
-                    make_button("BLACK")
-                        .style(black_style)
-                        .on_press(Message::ChangeColor(GameColor::Black)),
-                )
-                .push(
-                    make_button("WHITE")
-                        .style(white_style)
-                        .on_press(Message::ChangeColor(GameColor::White)),
-                ),
-        )
-        .push(vertical_space(Length::Fill))
-        .push(
-            row()
-                .spacing(SPACING)
-                .push(
-                    make_button(green_label)
-                        .style(green_style)
-                        .on_press(Message::ChangeKind(green)),
-                )
-                .push(
-                    make_button(yellow_label)
-                        .style(yellow_style)
-                        .on_press(Message::ChangeKind(yellow)),
-                )
-                .push(
-                    make_button(orange_label)
-                        .style(orange_style)
-                        .on_press(Message::ChangeKind(orange)),
-                )
-                .push(
-                    make_button("TD")
-                        .style(td_style)
-                        .on_press(Message::ChangeKind(PenaltyKind::TotalDismissal)),
-                ),
-        )
-        .push(vertical_space(Length::Fill))
-        .push(exit_row)
-        .into()
+    column![
+        vertical_space(Length::Fill),
+        row![
+            make_button("BLACK")
+                .style(black_style)
+                .on_press(Message::ChangeColor(GameColor::Black)),
+            make_button("WHITE")
+                .style(white_style)
+                .on_press(Message::ChangeColor(GameColor::White)),
+        ]
+        .spacing(SPACING),
+        vertical_space(Length::Fill),
+        row![
+            make_button(green_label)
+                .style(green_style)
+                .on_press(Message::ChangeKind(green)),
+            make_button(yellow_label)
+                .style(yellow_style)
+                .on_press(Message::ChangeKind(yellow)),
+            make_button(orange_label)
+                .style(orange_style)
+                .on_press(Message::ChangeKind(orange)),
+            make_button("TD")
+                .style(td_style)
+                .on_press(Message::ChangeKind(PenaltyKind::TotalDismissal)),
+        ]
+        .spacing(SPACING),
+        vertical_space(Length::Fill),
+        exit_row,
+    ]
+    .spacing(SPACING)
+    .into()
 }

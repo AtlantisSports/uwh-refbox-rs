@@ -20,6 +20,7 @@ pub enum Message {
     },
     StartPlayNow,
     EditScores,
+    AddNewScore(GameColor),
     ChangeScore {
         color: GameColor,
         increase: bool,
@@ -46,6 +47,7 @@ pub enum Message {
     AddScoreComplete {
         canceled: bool,
     },
+    ShowGameDetails,
     EditGameConfig,
     ChangeConfigPage(ConfigPage),
     ConfigEditComplete {
@@ -102,6 +104,7 @@ impl Message {
             | Self::TimeEditComplete { .. }
             | Self::StartPlayNow
             | Self::EditScores
+            | Self::AddNewScore(_)
             | Self::ScoreEditComplete { .. }
             | Self::PenaltyOverview
             | Self::PenaltyOverviewComplete { .. }
@@ -110,6 +113,7 @@ impl Message {
             | Self::KeypadPage(_)
             | Self::ChangeColor(_)
             | Self::AddScoreComplete { .. }
+            | Self::ShowGameDetails
             | Self::EditGameConfig
             | Self::ChangeConfigPage(_)
             | Self::ConfigEditComplete { .. }
@@ -172,6 +176,7 @@ pub enum BoolGameParameter {
     AutoSoundStartPlay,
     AutoSoundStopPlay,
     HideTime,
+    ScorerCapNum,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

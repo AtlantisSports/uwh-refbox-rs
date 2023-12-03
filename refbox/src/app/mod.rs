@@ -5,21 +5,18 @@ use crate::{
     sound_controller::*,
     tournament_manager::*,
 };
-use iced::{
-    executor,
-    pure::{column, Application, Element},
-    Command, Subscription,
-};
+use iced::{executor, widget::column, Application, Command, Subscription};
 use iced_futures::{
     futures::stream::{self, BoxStream},
-    subscription::Recipe,
+    subscription::{EventStream, Recipe},
 };
+use iced_runtime::{command, window};
 use log::*;
 use reqwest::{Client, Method, StatusCode};
 use std::{
+    borrow::Cow,
     cmp::min,
     collections::BTreeMap,
-    hash::Hasher,
     process::Child,
     sync::{Arc, Mutex},
 };
@@ -43,13 +40,15 @@ mod message;
 use message::*;
 
 pub mod style;
-use style::{PADDING, SPACING, WINDOW_BACKGROUND};
+use style::{PADDING, SPACING};
 
 pub mod update_sender;
 use update_sender::*;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_RETRIES: usize = 6;
+
+pub type Element<'a, Message> = iced::Element<'a, Message, iced::Renderer<style::ApplicationTheme>>;
 
 pub struct RefBoxApp {
     tm: Arc<Mutex<TournamentManager>>,
@@ -98,6 +97,7 @@ enum AppState {
     },
     PenaltyOverview(BlackWhiteBundle<usize>),
     KeypadPage(KeypadPage, u16),
+    GameDetailsPage,
     EditGameConfig(ConfigPage),
     ParameterEditor(LengthParameter, Duration),
     ParameterList(ListableParameter, usize),
@@ -443,6 +443,7 @@ impl Drop for RefBoxApp {
 impl Application for RefBoxApp {
     type Executor = executor::Default;
     type Message = Message;
+    type Theme = style::ApplicationTheme;
     type Flags = RefBoxAppFlags;
 
     fn new(flags: Self::Flags) -> (Self, Command<Message>) {
@@ -519,7 +520,16 @@ impl Application for RefBoxApp {
                 fullscreen,
                 list_all_tournaments,
             },
-            Command::none(),
+            Command::single(command::Action::LoadFont {
+                bytes: Cow::from(&include_bytes!("../../resources/Roboto-Medium.ttf")[..]),
+                tagger: Box::new(|res| match res {
+                    Ok(()) => {
+                        info!("Loaded font");
+                        Message::NoAction
+                    }
+                    Err(e) => panic!("Failed to load font: {e:?}"),
+                }),
+            }),
         )
     }
 
@@ -534,14 +544,6 @@ impl Application for RefBoxApp {
         "UWH Ref Box".into()
     }
 
-    fn mode(&self) -> iced::window::Mode {
-        if self.fullscreen {
-            iced::window::Mode::Fullscreen
-        } else {
-            iced::window::Mode::Windowed
-        }
-    }
-
     fn update(&mut self, message: Message) -> Command<Message> {
         trace!("Handling message: {message:?}");
 
@@ -552,6 +554,14 @@ impl Application for RefBoxApp {
         } else {
             self.last_message = message.clone();
         }
+
+        let command = if matches!(message, Message::Init) && self.fullscreen {
+            Command::single(command::Action::Window(window::Action::ChangeMode(
+                iced_core::window::Mode::Fullscreen,
+            )))
+        } else {
+            Command::none()
+        };
 
         match message {
             Message::Init => self.request_tournament_list(),
@@ -647,6 +657,23 @@ impl Application for RefBoxApp {
                 };
                 trace!("AppState changed to {:?}", self.app_state);
             }
+            Message::AddNewScore(color) => {
+                if self.config.collect_scorer_cap_num {
+                    self.app_state = AppState::KeypadPage(KeypadPage::AddScore(color), 0);
+                    trace!("AppState changed to {:?}", self.app_state);
+                } else {
+                    let mut tm = self.tm.lock().unwrap();
+                    let now = Instant::now();
+                    match color {
+                        GameColor::Black => tm.add_b_score(0, now),
+                        GameColor::White => tm.add_w_score(0, now),
+                    }
+                    let snapshot = tm.generate_snapshot(now).unwrap(); // TODO: Remove this unwrap
+                    std::mem::drop(tm);
+                    self.apply_snapshot(snapshot);
+                }
+            }
+
             Message::ChangeScore { color, increase } => {
                 if let AppState::ScoreEdit { ref mut scores, .. } = self.app_state {
                     if increase {
@@ -898,6 +925,10 @@ impl Application for RefBoxApp {
                 };
                 trace!("AppState changed to {:?}", self.app_state);
             }
+            Message::ShowGameDetails => {
+                self.app_state = AppState::GameDetailsPage;
+                trace!("AppState changed to {:?}", self.app_state);
+            }
             Message::EditGameConfig => {
                 let edited_settings = EditableSettings {
                     config: self.tm.lock().unwrap().config().clone(),
@@ -914,6 +945,7 @@ impl Application for RefBoxApp {
                     sound: self.config.sound.clone(),
                     mode: self.config.mode,
                     hide_time: self.config.hide_time,
+                    collect_scorer_cap_num: self.config.collect_scorer_cap_num,
                 };
 
                 self.edited_settings = Some(edited_settings);
@@ -1009,6 +1041,8 @@ impl Application for RefBoxApp {
                             self.config.sound = edited_settings.sound;
                             self.sound.update_settings(self.config.sound.clone());
                             self.config.mode = edited_settings.mode;
+                            self.config.collect_scorer_cap_num =
+                                edited_settings.collect_scorer_cap_num;
 
                             if self.config.hide_time != edited_settings.hide_time {
                                 self.config.hide_time = edited_settings.hide_time;
@@ -1033,6 +1067,8 @@ impl Application for RefBoxApp {
                             self.config.sound = edited_settings.sound;
                             self.sound.update_settings(self.config.sound.clone());
                             self.config.mode = edited_settings.mode;
+                            self.config.collect_scorer_cap_num =
+                                edited_settings.collect_scorer_cap_num;
 
                             if self.config.hide_time != edited_settings.hide_time {
                                 self.config.hide_time = edited_settings.hide_time;
@@ -1082,6 +1118,7 @@ impl Application for RefBoxApp {
                         self.config.sound = edited_settings.sound;
                         self.sound.update_settings(self.config.sound.clone());
                         self.config.mode = edited_settings.mode;
+                        self.config.collect_scorer_cap_num = edited_settings.collect_scorer_cap_num;
 
                         if self.config.hide_time != edited_settings.hide_time {
                             self.config.hide_time = edited_settings.hide_time;
@@ -1270,6 +1307,9 @@ impl Application for RefBoxApp {
                         edited_settings.sound.auto_sound_stop_play ^= true
                     }
                     BoolGameParameter::HideTime => edited_settings.hide_time ^= true,
+                    BoolGameParameter::ScorerCapNum => {
+                        edited_settings.collect_scorer_cap_num ^= true
+                    }
                 }
             }
             Message::CycleParameter(param) => {
@@ -1602,111 +1642,113 @@ impl Application for RefBoxApp {
             Message::NoAction => {}
         };
 
-        Command::none()
-    }
-
-    fn background_color(&self) -> iced::Color {
-        WINDOW_BACKGROUND
+        command
     }
 
     fn view(&self) -> Element<Message> {
         let clock_running = self.tm.lock().unwrap().clock_is_running();
-        let mut main_view = column()
-            .spacing(SPACING)
-            .padding(PADDING)
-            .push(match self.app_state {
-                AppState::MainPage => {
-                    let new_config = if self.snapshot.current_period == GamePeriod::BetweenGames {
-                        self.tm
-                            .lock()
-                            .unwrap()
-                            .next_game_info()
-                            .as_ref()
-                            .and_then(|info| Some(info.timing.as_ref()?.clone().into()))
-                    } else {
-                        None
-                    };
+        let mut main_view = column![match self.app_state {
+            AppState::MainPage => {
+                let new_config = if self.snapshot.current_period == GamePeriod::BetweenGames {
+                    self.tm
+                        .lock()
+                        .unwrap()
+                        .next_game_info()
+                        .as_ref()
+                        .and_then(|info| Some(info.timing.as_ref()?.clone().into()))
+                } else {
+                    None
+                };
 
-                    let config = if let Some(ref c) = new_config {
-                        c
-                    } else {
-                        &self.config.game
-                    };
-
-                    build_main_view(
-                        &self.snapshot,
-                        config,
-                        self.using_uwhscores,
-                        &self.games,
-                        self.config.mode,
-                        clock_running,
-                    )
-                }
-                AppState::TimeEdit(_, time, timeout_time) => build_time_edit_view(
+                let config = if let Some(ref c) = new_config {
+                    c
+                } else {
+                    &self.config.game
+                };
+                build_main_view(
                     &self.snapshot,
-                    time,
-                    timeout_time,
+                    config,
+                    self.using_uwhscores,
+                    &self.games,
                     self.config.mode,
                     clock_running,
-                ),
-                AppState::ScoreEdit {
-                    scores,
-                    is_confirmation,
-                } => build_score_edit_view(
-                    &self.snapshot,
-                    scores,
-                    is_confirmation,
-                    self.config.mode,
-                    clock_running,
-                ),
-                AppState::PenaltyOverview(indices) => build_penalty_overview_page(
-                    &self.snapshot,
-                    self.pen_edit.get_printable_lists(Instant::now()).unwrap(),
-                    indices,
-                    self.config.mode,
-                    clock_running,
-                ),
-                AppState::KeypadPage(page, player_num) => build_keypad_page(
-                    &self.snapshot,
-                    page,
-                    player_num,
-                    self.config.mode,
-                    clock_running,
-                ),
-                AppState::EditGameConfig(page) => build_game_config_edit_page(
-                    &self.snapshot,
-                    self.edited_settings.as_ref().unwrap(),
-                    &self.tournaments,
-                    page,
-                    self.config.mode,
-                    clock_running,
-                ),
-                AppState::ParameterEditor(param, dur) => build_game_parameter_editor(
-                    &self.snapshot,
-                    param,
-                    dur,
-                    self.config.mode,
-                    clock_running,
-                ),
-                AppState::ParameterList(param, index) => build_list_selector_page(
-                    &self.snapshot,
-                    param,
-                    index,
-                    self.edited_settings.as_ref().unwrap(),
-                    &self.tournaments,
-                    self.config.mode,
-                    clock_running,
-                ),
-                AppState::ConfirmationPage(ref kind) => {
-                    build_confirmation_page(&self.snapshot, kind, self.config.mode, clock_running)
-                }
-                AppState::ConfirmScores(scores) => build_score_confirmation_page(
-                    &self.snapshot,
-                    scores,
-                    self.config.mode,
-                    clock_running,
-                ),
-            });
+                )
+            }
+            AppState::TimeEdit(_, time, timeout_time) => build_time_edit_view(
+                &self.snapshot,
+                time,
+                timeout_time,
+                self.config.mode,
+                clock_running,
+            ),
+            AppState::ScoreEdit {
+                scores,
+                is_confirmation,
+            } => build_score_edit_view(
+                &self.snapshot,
+                scores,
+                is_confirmation,
+                self.config.mode,
+                clock_running,
+            ),
+            AppState::PenaltyOverview(indices) => build_penalty_overview_page(
+                &self.snapshot,
+                self.pen_edit.get_printable_lists(Instant::now()).unwrap(),
+                indices,
+                self.config.mode,
+                clock_running,
+            ),
+            AppState::KeypadPage(page, player_num) => build_keypad_page(
+                &self.snapshot,
+                page,
+                player_num,
+                self.config.mode,
+                clock_running,
+            ),
+            AppState::GameDetailsPage => build_game_info_page(
+                &self.snapshot,
+                &self.config.game,
+                self.using_uwhscores,
+                &self.games,
+                self.config.mode,
+                clock_running,
+            ),
+            AppState::EditGameConfig(page) => build_game_config_edit_page(
+                &self.snapshot,
+                self.edited_settings.as_ref().unwrap(),
+                &self.tournaments,
+                page,
+                self.config.mode,
+                clock_running,
+            ),
+            AppState::ParameterEditor(param, dur) => build_game_parameter_editor(
+                &self.snapshot,
+                param,
+                dur,
+                self.config.mode,
+                clock_running,
+            ),
+            AppState::ParameterList(param, index) => build_list_selector_page(
+                &self.snapshot,
+                param,
+                index,
+                self.edited_settings.as_ref().unwrap(),
+                &self.tournaments,
+                self.config.mode,
+                clock_running,
+            ),
+            AppState::ConfirmationPage(ref kind) => {
+                build_confirmation_page(&self.snapshot, kind, self.config.mode, clock_running)
+            }
+            AppState::ConfirmScores(scores) => build_score_confirmation_page(
+                &self.snapshot,
+                scores,
+                self.config.mode,
+                clock_running,
+            ),
+        }]
+        .spacing(SPACING)
+        .padding(PADDING);
 
         match self.app_state {
             AppState::ScoreEdit {
@@ -1732,16 +1774,16 @@ struct TimeUpdater {
     clock_running_receiver: watch::Receiver<bool>,
 }
 
-impl<H: Hasher, I> Recipe<H, I> for TimeUpdater {
+impl Recipe for TimeUpdater {
     type Output = Message;
 
-    fn hash(&self, state: &mut H) {
+    fn hash(&self, state: &mut iced_core::Hasher) {
         use std::hash::Hash;
 
         "TimeUpdater".hash(state);
     }
 
-    fn stream(self: Box<Self>, _input: BoxStream<'static, I>) -> BoxStream<'static, Self::Output> {
+    fn stream(self: Box<Self>, _input: EventStream) -> BoxStream<'static, Self::Output> {
         debug!("Updater started");
 
         struct State {
@@ -1829,16 +1871,16 @@ struct MessageListener {
     rx: Arc<Mutex<Option<mpsc::UnboundedReceiver<Message>>>>,
 }
 
-impl<H: Hasher, I> Recipe<H, I> for MessageListener {
+impl Recipe for MessageListener {
     type Output = Message;
 
-    fn hash(&self, state: &mut H) {
+    fn hash(&self, state: &mut iced_core::Hasher) {
         use std::hash::Hash;
 
         "MessageListener".hash(state);
     }
 
-    fn stream(self: Box<Self>, _input: BoxStream<'static, I>) -> BoxStream<'static, Self::Output> {
+    fn stream(self: Box<Self>, _input: EventStream) -> BoxStream<'static, Self::Output> {
         info!("Message Listener started");
 
         let rx = self

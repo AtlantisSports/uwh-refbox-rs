@@ -15,21 +15,24 @@ arrayref = "0.3"
 collect_array = "0.1"
 clap = { version = "4", features = ["derive"] }
 confy = "0.5"
-conquer-once = "0.3"
-derivative = "2.2"
-directories = "4"
-embedded-graphics = "0.7"
-enum-derive-2018 = "2"
-env_logger = "0.9"
-futures-lite = "1"
-iced = { version = "0.4", default-features = false, features = ["canvas", "glow", "pure", "tokio"] }
-iced_futures = { version = "0.4", features = ["async-std"] }
-iced_native = "0.5"
+conquer-once = "0.4"
+derivative = "2"
+directories = "5"
+embedded-graphics = "0.8"
+enum-derive-2018 = "3"
+env_logger = "0.10"
+futures-lite = "2"
+iced = { version = "0.10", default-features = false, features = ["canvas", "svg", "tokio", "wgpu"] }
+iced_core = "0.10"
+iced_futures = { version = "0.7", features = ["async-std"] }
+# iced_native = "0.10"
+iced_renderer = "0.1"
+iced_runtime = "0.1"
 log = "0.4"
 log4rs = { version = "1", default-features = false, features = ["background_rotation", "compound_policy", "console_appender", "fixed_window_roller", "gzip", "pattern_encoder", "rolling_file_appender", "size_trigger"]}
 log-panics = { version = "2", features = ["with-backtrace"]}
-macro-attr-2018 = "2"
-more-asserts = "0.2"
+macro-attr-2018 = "3"
+more-asserts = "0.3"
 paste = "1"
 reqwest = { version = "0.11", features = ["json"] }
 serde = "1"
@@ -40,13 +43,13 @@ thiserror = "1"
 time = { version = "0.3", features = ["local-offset", "macros", "serde", "serde-human-readable"] }
 tokio = { version = "1", features = ["io-util", "macros", "net", "sync", "time"] }
 tokio-serial = "5"
-toml = "0.5"
-uwh-common = { version = "0.1", path = "../uwh-common"}
-matrix-drawing = { version = "0.1", path = "../matrix-drawing"}
-web-audio-api = { version = "0.26", default-features = false, features = ["cpal"] }
+toml = "0.8"
+uwh-common = { version = "0.1.3", path = "../uwh-common"}
+matrix-drawing = { version = "0.1.3", path = "../matrix-drawing"}
+web-audio-api = { version = "0.37", default-features = false, features = ["cpal"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-rppal = "0.14"
+rppal = "0.15"
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1"

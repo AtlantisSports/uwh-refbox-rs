@@ -1,19 +1,24 @@
 use iced::{
-    pure::widget::{button, container},
-    Background, Color, Vector,
+    application,
+    widget::{self, button, container, svg, text},
+    Background, BorderRadius, Color, Vector,
 };
+use iced_core::text::LineHeight;
+use iced_renderer::Renderer;
 use paste::paste;
 
 pub const BORDER_RADIUS: f32 = 9.0;
 pub const BORDER_WIDTH: f32 = 6.0;
-pub const SPACING: u16 = 8; // Must be a multiple of 4
-pub const PADDING: u16 = 8;
-pub const MIN_BUTTON_SIZE: u16 = 89;
+pub const SPACING: f32 = 8.0;
+pub const PADDING: f32 = 8.0;
+pub const MIN_BUTTON_SIZE: f32 = 89.0;
 
-pub const SMALL_TEXT: u16 = 22;
-pub const SMALL_PLUS_TEXT: u16 = 34;
-pub const MEDIUM_TEXT: u16 = 44;
-pub const LARGE_TEXT: u16 = 80;
+pub const SMALL_TEXT: f32 = 19.0;
+pub const SMALL_PLUS_TEXT: f32 = 29.0;
+pub const MEDIUM_TEXT: f32 = 38.0;
+pub const LARGE_TEXT: f32 = 66.0;
+
+pub const LINE_HEIGHT: LineHeight = LineHeight::Relative(1.15);
 
 // See https://stackoverflow.com/a/727339 for color mixing math. For darkening colors with pure
 // black, the math simplifies to new_r = orig_r * (1 - black_alpha), so we will multiply by the
@@ -48,8 +53,20 @@ pub const DISABLED_COLOR: Color = GRAY;
 
 pub const WINDOW_BACKGROUND: Color = Color::from_rgb(0.82, 0.82, 0.82);
 
-#[derive(Clone, Copy, Debug)]
-pub enum Button {
+#[derive(Clone, Copy, Debug, Default)]
+pub enum ApplicationTheme {
+    #[default]
+    Light,
+}
+
+pub type Element<'a, Message> = iced::Element<'a, Message, Renderer<ApplicationTheme>>;
+pub type Button<'a, Message> = widget::Button<'a, Message, Renderer<ApplicationTheme>>;
+pub type Container<'a, Message> = widget::Container<'a, Message, Renderer<ApplicationTheme>>;
+pub type Row<'a, Message> = widget::Row<'a, Message, Renderer<ApplicationTheme>>;
+pub type Text<'a> = widget::Text<'a, Renderer<ApplicationTheme>>;
+
+#[derive(Clone, Copy, Debug, Default)]
+pub enum ButtonStyle {
     White,
     WhiteSelected,
     Black,
@@ -63,123 +80,200 @@ pub enum Button {
     Green,
     GreenSelected,
     Blue,
+    #[default]
     Gray,
     LightGray,
 }
 
-impl button::StyleSheet for Button {
-    fn active(&self) -> button::Style {
-        let (background_color, text_color) = match self {
-            Self::White | Self::WhiteSelected => (WHITE, BLACK),
-            Self::Black | Self::BlackSelected => (BLACK, WHITE),
-            Self::Red | Self::RedSelected => (RED, BLACK),
-            Self::Orange | Self::OrangeSelected => (ORANGE, BLACK),
-            Self::Yellow | Self::YellowSelected => (YELLOW, BLACK),
-            Self::Green | Self::GreenSelected => (GREEN, BLACK),
-            Self::Blue => (BLUE, WHITE),
-            Self::Gray => (GRAY, BLACK),
-            Self::LightGray => (LIGHT_GRAY, BLACK),
+impl button::StyleSheet for ApplicationTheme {
+    type Style = ButtonStyle;
+
+    fn active(&self, style: &Self::Style) -> button::Appearance {
+        let (background_color, text_color) = match style {
+            ButtonStyle::White | ButtonStyle::WhiteSelected => (WHITE, BLACK),
+            ButtonStyle::Black | ButtonStyle::BlackSelected => (BLACK, WHITE),
+            ButtonStyle::Red | ButtonStyle::RedSelected => (RED, BLACK),
+            ButtonStyle::Orange | ButtonStyle::OrangeSelected => (ORANGE, BLACK),
+            ButtonStyle::Yellow | ButtonStyle::YellowSelected => (YELLOW, BLACK),
+            ButtonStyle::Green | ButtonStyle::GreenSelected => (GREEN, BLACK),
+            ButtonStyle::Blue => (BLUE, WHITE),
+            ButtonStyle::Gray => (GRAY, BLACK),
+            ButtonStyle::LightGray => (LIGHT_GRAY, BLACK),
         };
 
-        let border_width = match self {
-            Self::White
-            | Self::Black
-            | Self::Red
-            | Self::Orange
-            | Self::Yellow
-            | Self::Green
-            | Self::Blue
-            | Self::Gray
-            | Self::LightGray => 0.0,
-            Self::WhiteSelected
-            | Self::BlackSelected
-            | Self::RedSelected
-            | Self::OrangeSelected
-            | Self::YellowSelected
-            | Self::GreenSelected => BORDER_WIDTH,
+        let border_width = match style {
+            ButtonStyle::White
+            | ButtonStyle::Black
+            | ButtonStyle::Red
+            | ButtonStyle::Orange
+            | ButtonStyle::Yellow
+            | ButtonStyle::Green
+            | ButtonStyle::Blue
+            | ButtonStyle::Gray
+            | ButtonStyle::LightGray => 0.0,
+            ButtonStyle::WhiteSelected
+            | ButtonStyle::BlackSelected
+            | ButtonStyle::RedSelected
+            | ButtonStyle::OrangeSelected
+            | ButtonStyle::YellowSelected
+            | ButtonStyle::GreenSelected => BORDER_WIDTH,
         };
 
         let background = Some(Background::Color(background_color));
 
-        button::Style {
+        button::Appearance {
             shadow_offset: Vector::default(),
             background,
-            border_radius: BORDER_RADIUS,
+            border_radius: BorderRadius::from(BORDER_RADIUS),
             border_width,
             border_color: BORDER_COLOR,
             text_color,
         }
     }
 
-    fn hovered(&self) -> button::Style {
-        self.active()
+    fn hovered(&self, style: &Self::Style) -> button::Appearance {
+        self.active(style)
     }
 
-    fn pressed(&self) -> button::Style {
-        let background_color = match self {
-            Self::White | Self::WhiteSelected => WHITE_PRESSED,
-            Self::Black | Self::BlackSelected => BLACK_PRESSED,
-            Self::Red | Self::RedSelected => RED_PRESSED,
-            Self::Orange | Self::OrangeSelected => ORANGE_PRESSED,
-            Self::Yellow | Self::YellowSelected => YELLOW_PRESSED,
-            Self::Green | Self::GreenSelected => GREEN_PRESSED,
-            Self::Blue => BLUE_PRESSED,
-            Self::Gray => GRAY_PRESSED,
-            Self::LightGray => LIGHT_GRAY_PRESSED,
+    fn pressed(&self, style: &Self::Style) -> button::Appearance {
+        let background_color = match style {
+            ButtonStyle::White | ButtonStyle::WhiteSelected => WHITE_PRESSED,
+            ButtonStyle::Black | ButtonStyle::BlackSelected => BLACK_PRESSED,
+            ButtonStyle::Red | ButtonStyle::RedSelected => RED_PRESSED,
+            ButtonStyle::Orange | ButtonStyle::OrangeSelected => ORANGE_PRESSED,
+            ButtonStyle::Yellow | ButtonStyle::YellowSelected => YELLOW_PRESSED,
+            ButtonStyle::Green | ButtonStyle::GreenSelected => GREEN_PRESSED,
+            ButtonStyle::Blue => BLUE_PRESSED,
+            ButtonStyle::Gray => GRAY_PRESSED,
+            ButtonStyle::LightGray => LIGHT_GRAY_PRESSED,
         };
 
-        button::Style {
+        button::Appearance {
             background: Some(Background::Color(background_color)),
-            ..self.active()
+            ..self.active(style)
         }
     }
 
-    fn disabled(&self) -> button::Style {
-        button::Style {
+    fn disabled(&self, style: &Self::Style) -> button::Appearance {
+        button::Appearance {
             background: Some(Background::Color(WINDOW_BACKGROUND)),
             border_color: DISABLED_COLOR,
             border_width: BORDER_WIDTH,
             text_color: DISABLED_COLOR,
-            ..self.active()
+            ..self.active(style)
         }
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum Container {
+#[derive(Clone, Copy, Debug, Default)]
+pub enum ContainerStyle {
     LightGray,
+    #[default]
     Gray,
     Black,
     White,
     ScrollBar,
     Disabled,
+    Transparent,
 }
 
-impl container::StyleSheet for Container {
-    fn style(&self) -> container::Style {
-        match self {
-            Self::LightGray => cont_style(LIGHT_GRAY, BLACK),
-            Self::Gray => cont_style(GRAY, BLACK),
-            Self::Black => cont_style(BLACK, WHITE),
-            Self::White => cont_style(WHITE, BLACK),
-            Self::ScrollBar => cont_style(WINDOW_BACKGROUND, BLACK),
-            Self::Disabled => container::Style {
+impl container::StyleSheet for ApplicationTheme {
+    type Style = ContainerStyle;
+
+    fn appearance(&self, style: &Self::Style) -> container::Appearance {
+        match style {
+            ContainerStyle::LightGray => cont_style(LIGHT_GRAY, BLACK),
+            ContainerStyle::Gray => cont_style(GRAY, BLACK),
+            ContainerStyle::Black => cont_style(BLACK, WHITE),
+            ContainerStyle::White => cont_style(WHITE, BLACK),
+            ContainerStyle::ScrollBar => cont_style(WINDOW_BACKGROUND, BLACK),
+            ContainerStyle::Disabled => container::Appearance {
                 text_color: Some(DISABLED_COLOR),
                 background: None,
-                border_radius: BORDER_RADIUS,
+                border_radius: BorderRadius::from(BORDER_RADIUS),
                 border_width: BORDER_WIDTH,
                 border_color: DISABLED_COLOR,
+            },
+            ContainerStyle::Transparent => container::Appearance {
+                text_color: None,
+                background: None,
+                border_radius: BorderRadius::from(BORDER_RADIUS),
+                border_width: 0.0,
+                border_color: BORDER_COLOR,
             },
         }
     }
 }
 
-fn cont_style(bkgnd: Color, text: Color) -> container::Style {
-    container::Style {
+fn cont_style(bkgnd: Color, text: Color) -> container::Appearance {
+    container::Appearance {
         text_color: Some(text),
         background: Some(Background::Color(bkgnd)),
-        border_radius: BORDER_RADIUS,
+        border_radius: BorderRadius::from(BORDER_RADIUS),
         border_width: 0.0,
         border_color: BORDER_COLOR,
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub enum TextStyle {
+    #[default]
+    Defualt,
+    Black,
+    White,
+    Green,
+    Yellow,
+    Orange,
+    Red,
+}
+
+impl text::StyleSheet for ApplicationTheme {
+    type Style = TextStyle;
+
+    fn appearance(&self, style: Self::Style) -> text::Appearance {
+        text::Appearance {
+            color: match style {
+                TextStyle::Defualt => None,
+                TextStyle::Black => Some(BLACK),
+                TextStyle::White => Some(WHITE),
+                TextStyle::Green => Some(GREEN),
+                TextStyle::Yellow => Some(YELLOW),
+                TextStyle::Orange => Some(ORANGE),
+                TextStyle::Red => Some(RED),
+            },
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub enum SvgStyle {
+    #[default]
+    White,
+    Black,
+}
+
+impl svg::StyleSheet for ApplicationTheme {
+    type Style = SvgStyle;
+
+    fn appearance(&self, style: &Self::Style) -> svg::Appearance {
+        let color = match style {
+            SvgStyle::White => Some(WHITE),
+            SvgStyle::Black => Some(BLACK),
+        };
+        svg::Appearance { color }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ApplicationStyle {}
+
+impl application::StyleSheet for ApplicationTheme {
+    type Style = ApplicationStyle;
+
+    fn appearance(&self, _style: &Self::Style) -> application::Appearance {
+        application::Appearance {
+            background_color: WINDOW_BACKGROUND,
+            text_color: BLACK,
+        }
     }
 }

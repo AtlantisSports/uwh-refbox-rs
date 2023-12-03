@@ -1,7 +1,8 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 use clap::Parser;
-use iced::{pure::Application, window::icon::Icon, Settings};
+use iced::{window::icon, Application, Settings};
+use iced_core::Font;
 use log::*;
 #[cfg(debug_assertions)]
 use log4rs::append::console::{ConsoleAppender, Target};
@@ -181,7 +182,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let spacing = args.spacing.unwrap_or(args.scale / 4.0);
 
     let icon =
-        Icon::from_rgba(Vec::from(app_icon::DATA), app_icon::WIDTH, app_icon::HEIGHT).unwrap();
+        icon::from_rgba(Vec::from(app_icon::DATA), app_icon::WIDTH, app_icon::HEIGHT).unwrap();
 
     if args.is_simulator {
         let flags = sim_app::SimRefBoxAppFlags {
@@ -308,7 +309,12 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     settings.window.resizable = false;
     settings.window.icon = Some(icon);
     settings.default_text_size = app::style::SMALL_PLUS_TEXT;
-    settings.default_font = Some(include_bytes!("../resources/Roboto-Medium.ttf"));
+    settings.default_font = Font {
+        family: iced_core::font::Family::Name("Roboto"),
+        weight: iced_core::font::Weight::Medium,
+        stretch: iced_core::font::Stretch::Normal,
+        monospaced: false,
+    };
     info!("Starting UI");
     app::RefBoxApp::run(settings)?;
 

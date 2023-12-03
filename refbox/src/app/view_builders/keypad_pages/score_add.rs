@@ -1,10 +1,6 @@
-use super::{
-    style::{self, SPACING},
-    *,
-};
-
+use super::{style::Element, *};
 use iced::{
-    pure::{column, row, vertical_space, Element},
+    widget::{column, row, vertical_space},
     Length,
 };
 
@@ -12,43 +8,34 @@ use uwh_common::game_snapshot::Color as GameColor;
 
 pub(super) fn make_score_add_page<'a>(color: GameColor) -> Element<'a, Message> {
     let (black_style, white_style) = match color {
-        GameColor::Black => (style::Button::BlackSelected, style::Button::White),
-        GameColor::White => (style::Button::Black, style::Button::WhiteSelected),
+        GameColor::Black => (ButtonStyle::BlackSelected, ButtonStyle::White),
+        GameColor::White => (ButtonStyle::Black, ButtonStyle::WhiteSelected),
     };
 
-    column()
-        .spacing(SPACING)
-        .push(vertical_space(Length::Fill))
-        .push(
-            row()
-                .spacing(SPACING)
-                .push(
-                    make_button("BLACK")
-                        .style(black_style)
-                        .on_press(Message::ChangeColor(GameColor::Black)),
-                )
-                .push(
-                    make_button("WHITE")
-                        .style(white_style)
-                        .on_press(Message::ChangeColor(GameColor::White)),
-                ),
-        )
-        .push(vertical_space(Length::Fill))
-        .push(
-            row()
-                .spacing(SPACING)
-                .push(
-                    make_button("CANCEL")
-                        .style(style::Button::Red)
-                        .width(Length::Fill)
-                        .on_press(Message::AddScoreComplete { canceled: true }),
-                )
-                .push(
-                    make_button("DONE")
-                        .style(style::Button::Green)
-                        .width(Length::Fill)
-                        .on_press(Message::AddScoreComplete { canceled: false }),
-                ),
-        )
-        .into()
+    column![
+        vertical_space(Length::Fill),
+        row![
+            make_button("BLACK")
+                .style(black_style)
+                .on_press(Message::ChangeColor(GameColor::Black)),
+            make_button("WHITE")
+                .style(white_style)
+                .on_press(Message::ChangeColor(GameColor::White)),
+        ]
+        .spacing(SPACING),
+        vertical_space(Length::Fill),
+        row![
+            make_button("CANCEL")
+                .style(ButtonStyle::Red)
+                .width(Length::Fill)
+                .on_press(Message::AddScoreComplete { canceled: true }),
+            make_button("DONE")
+                .style(ButtonStyle::Green)
+                .width(Length::Fill)
+                .on_press(Message::AddScoreComplete { canceled: false }),
+        ]
+        .spacing(SPACING),
+    ]
+    .spacing(SPACING)
+    .into()
 }

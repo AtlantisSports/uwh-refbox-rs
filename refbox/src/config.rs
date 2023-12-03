@@ -46,6 +46,7 @@ impl Default for UwhScores {
 pub struct Config {
     pub mode: Mode,
     pub hide_time: bool,
+    pub collect_scorer_cap_num: bool,
     pub game: Game,
     pub hardware: Hardware,
     pub uwhscores: UwhScores,

@@ -9,6 +9,9 @@ pub(super) use configuration::*;
 pub mod confirmation;
 pub(super) use confirmation::*;
 
+pub mod game_info;
+pub(super) use game_info::*;
+
 pub mod list_selector;
 pub(super) use list_selector::*;
 

@@ -1,5 +1,6 @@
 use crate::tournament_manager::{
-    BlackWhiteBundle, Penalty, PenaltyKind, TournamentManager, TournamentManagerError,
+    penalty::{Penalty, PenaltyKind},
+    BlackWhiteBundle, TournamentManager, TournamentManagerError,
 };
 use derivative::Derivative;
 use std::{
@@ -123,7 +124,7 @@ impl PenaltyEditor {
         | EditablePenalty::Edited(o, p)
         | EditablePenalty::Deleted(o, p) = pen
         {
-            EditablePenalty::Deleted(*o, mem::take(p))
+            EditablePenalty::Deleted(*o, p.clone())
         } else {
             remove = true;
             mem::take(pen)
@@ -161,7 +162,7 @@ impl PenaltyEditor {
         {
             p.kind = new_kind;
             p.player_number = new_player_number;
-            EditablePenalty::Edited(*o, mem::take(p))
+            EditablePenalty::Edited(*o, p.clone())
         } else {
             EditablePenalty::New(new_kind, new_player_number)
         };
@@ -363,7 +364,7 @@ pub type Result<T> = std::result::Result<T, PenaltyEditorError>;
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::tournament_manager::Penalty;
+    use crate::tournament_manager::penalty::Penalty;
     use std::time::Duration;
     use uwh_common::{config::Game as GameConfig, game_snapshot::GamePeriod};
 
@@ -388,7 +389,8 @@ mod test {
             ..Default::default()
         };
 
-        let mut now = Instant::now();
+        let now = Instant::now();
+        let appy_time = now + Duration::from_secs(20);
         let mut tm = TournamentManager::new(config);
         tm.start_play_now(now).unwrap();
 
@@ -400,6 +402,7 @@ mod test {
             player_number: 3,
             start_period: GamePeriod::FirstHalf,
             start_time: Duration::from_secs(880),
+            start_instant: appy_time,
         };
 
         let w_pen = Penalty {
@@ -407,6 +410,7 @@ mod test {
             player_number: 13,
             start_period: GamePeriod::FirstHalf,
             start_time: Duration::from_secs(880),
+            start_instant: appy_time,
         };
 
         assert_eq!(
@@ -441,8 +445,7 @@ mod test {
             })
         );
 
-        now += Duration::from_secs(20);
-        pen_edit.apply_changes(now).unwrap();
+        pen_edit.apply_changes(appy_time).unwrap();
         assert_eq!(
             tm.lock().unwrap().get_penalties(),
             BlackWhiteBundle {
@@ -470,6 +473,7 @@ mod test {
             player_number: 7,
             start_period: GamePeriod::FirstHalf,
             start_time: Duration::from_secs(895),
+            start_instant: now,
         };
 
         let w_pen_0 = Penalty {
@@ -477,6 +481,7 @@ mod test {
             player_number: 4,
             start_period: GamePeriod::FirstHalf,
             start_time: Duration::from_secs(895),
+            start_instant: now,
         };
 
         let b_pen_1 = Penalty {
@@ -484,6 +489,7 @@ mod test {
             player_number: 13,
             start_period: GamePeriod::FirstHalf,
             start_time: Duration::from_secs(895),
+            start_instant: now,
         };
 
         let w_pen_1 = Penalty {
@@ -491,6 +497,7 @@ mod test {
             player_number: 6,
             start_period: GamePeriod::FirstHalf,
             start_time: Duration::from_secs(895),
+            start_instant: now,
         };
 
         tm.start_penalty(Color::Black, b_pen_0.player_number, b_pen_0.kind, now)
@@ -657,6 +664,7 @@ mod test {
             player_number: 7,
             start_period: GamePeriod::FirstHalf,
             start_time: Duration::from_secs(895),
+            start_instant: now,
         };
 
         let b_pen_0_ed = Penalty {
@@ -669,6 +677,7 @@ mod test {
             player_number: 4,
             start_period: GamePeriod::FirstHalf,
             start_time: Duration::from_secs(895),
+            start_instant: now,
         };
 
         let w_pen_0_ed = Penalty {
@@ -681,6 +690,7 @@ mod test {
             player_number: 13,
             start_period: GamePeriod::FirstHalf,
             start_time: Duration::from_secs(895),
+            start_instant: now,
         };
 
         let b_pen_1_ed = Penalty {
@@ -693,6 +703,7 @@ mod test {
             player_number: 6,
             start_period: GamePeriod::FirstHalf,
             start_time: Duration::from_secs(895),
+            start_instant: now,
         };
 
         let w_pen_1_ed = Penalty {
@@ -705,6 +716,7 @@ mod test {
             player_number: 1,
             start_period: GamePeriod::FirstHalf,
             start_time: Duration::from_secs(895),
+            start_instant: now,
         };
 
         let b_pen_2_ed = Penalty {
@@ -717,6 +729,7 @@ mod test {
             player_number: 8,
             start_period: GamePeriod::FirstHalf,
             start_time: Duration::from_secs(895),
+            start_instant: now,
         };
 
         let w_pen_2_ed = Penalty {

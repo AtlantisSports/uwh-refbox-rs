@@ -1,4 +1,4 @@
-use crate::tournament_manager::PenaltyKind;
+use crate::tournament_manager::penalty::PenaltyKind;
 use tokio::time::Duration;
 use uwh_common::{
     game_snapshot::{Color as GameColor, GameSnapshot},

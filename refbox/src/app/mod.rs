@@ -3,7 +3,7 @@ use crate::{
     config::{Config, Mode},
     penalty_editor::*,
     sound_controller::*,
-    tournament_manager::*,
+    tournament_manager::{penalty::*, *},
 };
 use iced::{executor, widget::column, Application, Command, Subscription};
 use iced_futures::{
@@ -426,6 +426,11 @@ impl RefBoxApp {
                 self.request_game_details(tid, next_game_num);
             } else {
                 error!("Missing current tid to request game info");
+            }
+            if let Some(stats) = self.tm.lock().unwrap().last_game_stats() {
+                info!("Game ended, stats were: {:?}", stats.as_json());
+            } else {
+                warn!("Game ended, but no stats were available");
             }
         }
     }

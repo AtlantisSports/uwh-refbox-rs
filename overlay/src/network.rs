@@ -380,7 +380,7 @@ pub async fn networking_thread(
                         && next_game_data.as_ref().unwrap().game_id == game_id_new
                         && next_game_data.as_ref().unwrap().tournament_id == tournament_id_new
                     {
-                        let next_game_data = next_game_data.take().unwrap();
+                        let next_game_data = next_game_data.clone().unwrap();
                         info!("Sending cached game data for next game");
                         tx.send(StatePacket {
                             snapshot,
@@ -406,8 +406,6 @@ pub async fn networking_thread(
                             )
                             .await;
                         });
-                        // Unset `next_game_data` to trigger caching next game
-                        next_game_data = None;
                     }
                     continue;
                 }

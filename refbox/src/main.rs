@@ -173,6 +173,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     let log_config = log_config
         .logger(Logger::builder().build(APP_NAME, log_level)) // Setup the logging from the refbox app to use `log_level`
+        .logger(Logger::builder().build("uwh_common", log_level)) // Setup the logging from mio to use `LevelFilter::Warn`
         .build(root)
         .unwrap();
 

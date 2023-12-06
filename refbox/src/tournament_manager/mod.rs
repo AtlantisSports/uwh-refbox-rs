@@ -774,6 +774,12 @@ impl TournamentManager {
             self.scores,
         );
 
+        for color in [Color::Black, Color::White] {
+            for penalty in self.penalties[color].iter() {
+                self.current_game_stats.add_penalty(penalty, color);
+            }
+        }
+
         self.current_game_stats.add_end_time(now);
         self.last_game_stats = Some(self.current_game_stats.clone());
 

@@ -30,6 +30,7 @@ use uwh_common::{
     config::Game as GameConfig,
     drawing_support::*,
     game_snapshot::{GamePeriod, GameSnapshot, TimeoutSnapshot},
+    uwhportal::UwhPortalClient,
     uwhscores::*,
 };
 
@@ -64,6 +65,7 @@ pub struct RefBoxApp {
     message_listener: MessageListener,
     msg_tx: mpsc::UnboundedSender<Message>,
     client: Option<Client>,
+    uwhportal_client: Option<UwhPortalClient>,
     using_uwhscores: bool,
     tournaments: Option<BTreeMap<u32, TournamentInfo>>,
     games: Option<BTreeMap<u32, GameInfo>>,
@@ -117,7 +119,7 @@ impl RefBoxApp {
     fn apply_snapshot(&mut self, mut new_snapshot: GameSnapshot) {
         if new_snapshot.current_period != self.snapshot.current_period {
             if new_snapshot.current_period == GamePeriod::BetweenGames {
-                self.handle_game_end(new_snapshot.next_game_number);
+                self.handle_game_end(new_snapshot.game_number, new_snapshot.next_game_number);
             } else if self.snapshot.current_period == GamePeriod::BetweenGames {
                 self.handle_game_start(new_snapshot.game_number);
             }
@@ -387,6 +389,18 @@ impl RefBoxApp {
         }
     }
 
+    fn post_game_stats(&self, tid: u32, gid: u32, stats: String) {
+        if let Some(ref uwhportal_client) = self.uwhportal_client {
+            let request = uwhportal_client.post_game_stats(tid, gid, stats);
+            tokio::spawn(async move {
+                match request.await {
+                    Ok(()) => info!("Successfully posted game stats"),
+                    Err(e) => error!("Failed to post game stats: {e}"),
+                }
+            });
+        }
+    }
+
     fn handle_game_start(&mut self, new_game_num: u32) {
         if self.using_uwhscores {
             if let (Some(ref games), Some(ref pool)) = (&self.games, &self.current_pool) {
@@ -420,17 +434,28 @@ impl RefBoxApp {
         }
     }
 
-    fn handle_game_end(&self, next_game_num: u32) {
+    fn handle_game_end(&self, game_number: u32, next_game_num: u32) {
         if self.using_uwhscores {
-            if let Some(tid) = self.current_tid {
-                self.request_game_details(tid, next_game_num);
-            } else {
-                error!("Missing current tid to request game info");
-            }
-            if let Some(stats) = self.tm.lock().unwrap().last_game_stats() {
-                info!("Game ended, stats were: {:?}", stats.as_json());
+            let mut stats = self
+                .tm
+                .lock()
+                .unwrap()
+                .last_game_stats()
+                .map(|s| s.as_json());
+
+            if let Some(ref stats) = stats {
+                info!("Game ended, stats were: {:?}", stats);
             } else {
                 warn!("Game ended, but no stats were available");
+            }
+
+            if let Some(tid) = self.current_tid {
+                self.request_game_details(tid, next_game_num);
+                if let Some(stats) = stats.take() {
+                    self.post_game_stats(tid, game_number, stats);
+                }
+            } else {
+                error!("Missing current tid to handle game end");
             }
         }
     }
@@ -485,6 +510,20 @@ impl Application for RefBoxApp {
             }
         };
 
+        let uwhportal_client = match UwhPortalClient::new(
+            &config.uwhportal.url,
+            Some(&config.uwhportal.email),
+            Some(&config.uwhportal.password),
+            require_https,
+            REQUEST_TIMEOUT,
+        ) {
+            Ok(c) => Some(c),
+            Err(e) => {
+                error!("Failed to start UWH Portal Client: {e}");
+                None
+            }
+        };
+
         let clock_running_receiver = tm.get_start_stop_rx();
 
         let tm = Arc::new(Mutex::new(tm));
@@ -515,6 +554,7 @@ impl Application for RefBoxApp {
                 message_listener,
                 msg_tx,
                 client,
+                uwhportal_client,
                 using_uwhscores: false,
                 tournaments: None,
                 games: None,

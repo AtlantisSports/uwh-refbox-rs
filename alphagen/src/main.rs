@@ -1,63 +1,43 @@
+use alphagen::on_paths;
 use clap::Parser;
-use image::GenericImageView;
+use log::warn;
 use rayon::iter::ParallelBridge;
 use rayon::iter::ParallelIterator;
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
-struct Cli {
-    #[clap(long, short, required = true)]
-    /// Directory within which to find the color images
-    path: PathBuf,
+#[command(author, version, about)]
+struct Args {
+    #[clap(help = "Input files", required = true)]
+    input_location: Vec<PathBuf>,
 
-    #[clap(long, short)]
-    /// Output directory for the alpha images
-    out: Option<PathBuf>,
+    #[clap(help = "Output directory", required = true)]
+    output_location: PathBuf,
 }
 
 fn main() {
-    let args = Cli::parse();
+    pretty_env_logger::init();
+    let args = Args::parse();
 
-    if let Some(ref out) = args.out {
-        if out == &args.path {
-            println!("Error: if the <out> arg is specified, it cannot match the <path> arg");
-            return;
-        }
-        assert!(out.is_dir());
+    let dir_output = args.output_location;
+    if !dir_output.is_dir() {
+        std::fs::create_dir_all(&dir_output).expect("Could not create output directory!");
     }
 
-    assert!(args.path.is_dir());
-
-    let append_alpha = args.out.is_none();
-    let out_dir = args.out.as_ref().unwrap_or(&args.path).to_path_buf();
-
-    let input_paths = fs::read_dir(args.path).unwrap();
-
-    input_paths.par_bridge().for_each(|path| {
-        if let Ok(path) = path {
-            let file_name: String = path.path().file_stem().unwrap().to_str().unwrap().into();
-            let file = image::open(path.path()).unwrap();
-
-            let mut imgbuf = image::GrayAlphaImage::new(file.width(), file.height());
-            let mut pixs = imgbuf.pixels_mut();
-
-            let mut out_path = out_dir.clone();
-            out_path.push(if append_alpha {
-                format!("{file_name}_alpha.png")
+    let paths = args
+        .input_location
+        .iter()
+        .par_bridge()
+        .filter(|p| {
+            if p.is_file() {
+                true
             } else {
-                format!("{file_name}.png")
-            });
-            let fout = &mut fs::File::create(out_path).unwrap();
-
-            for pixel in file.pixels() {
-                let p = pixs.next().unwrap();
-                p.0[0] = pixel.2[3];
-                p.0[1] = pixel.2[3];
+                warn!("{} is not a valid file path. Skipping.", p.display());
+                false
             }
+        })
+        .collect::<Vec<_>>();
 
-            imgbuf.write_to(fout, image::ImageFormat::Png).unwrap();
-            println!("Completed: {}", path.path().to_str().unwrap());
-        }
-    });
+    assert!(paths.is_empty(), "No valid input file paths!");
+    on_paths(paths, dir_output);
 }

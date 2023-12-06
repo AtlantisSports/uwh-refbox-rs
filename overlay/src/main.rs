@@ -1,7 +1,7 @@
 use clap::Parser;
 use coarsetime::Instant;
 use crossbeam_channel::bounded;
-use log::{debug, warn, LevelFilter};
+use log::{warn, LevelFilter};
 #[cfg(debug_assertions)]
 use log4rs::append::console::{ConsoleAppender, Target};
 use log4rs::{
@@ -15,8 +15,8 @@ use log4rs::{
     encode::pattern::PatternEncoder,
 };
 use macroquad::prelude::*;
-use network::{StatePacket, TeamInfo};
-use std::str::FromStr;
+use network::{GameData, StatePacket, TeamInfoRaw};
+use std::{cmp::Ordering, str::FromStr};
 use std::{net::IpAddr, path::PathBuf};
 use uwh_common::game_snapshot::{GamePeriod, GameSnapshot, TimeoutSnapshot};
 
@@ -28,35 +28,23 @@ mod pages;
 use load_images::{read_image_from_file, Texture};
 
 const APP_NAME: &str = "overlay";
-const TIME_AND_STATE_SHRINK_TO: f32 = -200f32;
-const TIME_AND_STATE_SHRINK_FROM: f32 = 0f32;
-const ALPHA_MAX: f32 = 255f32;
-const ALPHA_MIN: f32 = 0f32;
 
-fn window_conf() -> Conf {
-    Conf {
-        window_title: String::from("Overlay Program"),
-        window_width: 3840,
-        window_height: 1080,
-        window_resizable: false,
-        ..Default::default()
-    }
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct AppConfig {
     refbox_ip: IpAddr,
     refbox_port: u64,
     uwhscores_url: String,
+    uwhportal_url: String,
     tournament_logo_path: PathBuf,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
-        AppConfig {
+        Self {
             refbox_ip: IpAddr::from_str("127.0.0.1").unwrap(),
             refbox_port: 8000,
-            uwhscores_url: String::from("uwhscores.com"),
+            uwhscores_url: String::from("https://uwhscores.com"),
+            uwhportal_url: String::from("https://api.uwhscores.prod.zmvp.host"),
             tournament_logo_path: PathBuf::new(),
         }
     }
@@ -66,12 +54,116 @@ pub struct State {
     snapshot: GameSnapshot,
     black: TeamInfo,
     white: TeamInfo,
+    referees: Vec<Member>,
     game_id: u32,
     pool: String,
     start_time: String,
-    white_flag: Option<Texture2D>,
-    black_flag: Option<Texture2D>,
     half_play_duration: Option<u32>,
+    sponsor_logo: Option<Texture>,
+}
+
+// TODO: Change this to return Result. We're not rn cause from_file_with_format
+// panics anyways if image bytes is invalid
+pub fn texture_from_bytes(bytes: Vec<u8>) -> Texture {
+    Texture {
+        color: Texture2D::from_file_with_format(&bytes, None),
+        alpha: alphagen::on_raw(&bytes)
+            .map(|bytes| Texture2D::from_file_with_format(&bytes, None))
+            .expect("Failed to decode image"),
+    }
+}
+
+impl State {
+    fn update_state(&mut self, recieved_state: StatePacket) {
+        if let Some(GameData {
+            black,
+            white,
+            pool,
+            start_time,
+            sponsor_logo,
+            referees,
+            ..
+        }) = recieved_state.data
+        {
+            self.black = TeamInfo::from(black);
+            self.white = TeamInfo::from(white);
+            self.start_time = start_time;
+            self.sponsor_logo = sponsor_logo.map(texture_from_bytes);
+            self.referees = referees.into_iter().map(Member::from).collect();
+            self.pool = pool;
+        }
+        if let Some(game_id) = recieved_state.game_id {
+            self.game_id = game_id;
+        }
+        self.snapshot = recieved_state.snapshot;
+    }
+}
+
+/// processed, non serialisable version of `network::MemberRaw`
+#[derive(Clone)]
+pub struct Member {
+    name: String,
+    role: Option<String>,
+    number: Option<u8>,
+    picture: Option<Texture>,
+    geared_picture: Option<Texture>,
+}
+
+impl From<network::MemberRaw> for Member {
+    fn from(member_raw: network::MemberRaw) -> Self {
+        Self {
+            name: member_raw.name,
+            role: member_raw.role,
+            number: member_raw.number,
+            picture: member_raw.picture.map(texture_from_bytes),
+            geared_picture: member_raw.geared_picture.map(texture_from_bytes),
+        }
+    }
+}
+
+/// processed, non serialisable version of `network::TeamInfoRaw`
+pub struct TeamInfo {
+    pub team_name: String,
+    pub members: Vec<Member>,
+    pub flag: Option<Texture>,
+}
+
+impl From<TeamInfoRaw> for TeamInfo {
+    fn from(mut team_info_raw: TeamInfoRaw) -> Self {
+        // Players get sorted by number, support members by name.
+        team_info_raw
+            .members
+            .sort_unstable_by(|a, b| match (a.number, b.number) {
+                (Some(num_a), Some(num_b)) => num_a.cmp(&num_b),
+                (Some(_), None) => Ordering::Greater,
+                (None, Some(_)) => Ordering::Less,
+                (None, None) => a.name.cmp(&b.name),
+            });
+        Self {
+            team_name: team_info_raw.team_name,
+            members: team_info_raw
+                .members
+                .into_iter()
+                .map(Member::from)
+                .collect(),
+            flag: team_info_raw.flag.map(texture_from_bytes),
+        }
+    }
+}
+
+impl TeamInfo {
+    fn with_name(name: &str) -> Self {
+        Self {
+            team_name: name.to_string(),
+            members: Vec::new(),
+            flag: None,
+        }
+    }
+
+    /// `number` can always be unwrapped on elements returned from here
+    fn get_players(&self) -> impl Iterator<Item = &Member> {
+        self.members.iter().filter(|m| m.number.is_some())
+    }
 }
 
 #[derive(Parser, Debug)]
@@ -96,6 +188,148 @@ struct Cli {
 
 #[macroquad::main(window_conf())]
 async fn main() {
+    init_logging();
+
+    let config: AppConfig = match confy::load(APP_NAME, None) {
+        Ok(config) => config,
+        Err(e) => {
+            warn!("Failed to read config file, overwriting with default. Error: {e}");
+            let config = AppConfig::default();
+            confy::store(APP_NAME, None, &config).unwrap();
+            config
+        }
+    };
+
+    let (tx, rx) = bounded::<StatePacket>(3);
+    let mut tournament_logo_color_path = config.tournament_logo_path.clone();
+    tournament_logo_color_path.push("color.png");
+    let mut tournament_logo_alpha_path = config.tournament_logo_path.clone();
+    tournament_logo_alpha_path.push("alpha.png");
+
+    let net_worker = std::thread::spawn(|| {
+        network::networking_thread(tx, config);
+    });
+
+    let mut assets = load_images::Textures::default();
+
+    let tournament_logo_color = match read_image_from_file(tournament_logo_color_path.as_path()) {
+        Ok(texture) => Some(texture),
+        Err(e) => {
+            warn!(
+                "Failed to read tournament logo color file: {} : {e}",
+                tournament_logo_color_path.display()
+            );
+            None
+        }
+    };
+
+    let tournament_logo_alpha = match read_image_from_file(tournament_logo_alpha_path.as_path()) {
+        Ok(texture) => Some(texture),
+        Err(e) => {
+            warn!(
+                "Failed to read tournament logo alpha file: {} : {e}",
+                tournament_logo_alpha_path.display()
+            );
+            None
+        }
+    };
+
+    assets.tournament_logo = tournament_logo_color
+        .and_then(|color| tournament_logo_alpha.map(|alpha| Texture { alpha, color }));
+
+    let mut local_state: State = State {
+        snapshot: GameSnapshot {
+            current_period: GamePeriod::BetweenGames,
+            secs_in_period: 600,
+            ..Default::default()
+        },
+
+        black: TeamInfo::with_name("BLACK"),
+        referees: Vec::new(),
+        white: TeamInfo::with_name("WHITE"),
+        game_id: 0,
+        pool: String::new(),
+        start_time: String::new(),
+        half_play_duration: None,
+        sponsor_logo: None,
+    };
+
+    let mut renderer = pages::PageRenderer {
+        animation_register0: Instant::now(),
+        animation_register1: Instant::now(),
+        animation_register2: Instant::now(),
+        animation_register3: false,
+        assets,
+        last_snapshot_timeout: TimeoutSnapshot::None,
+    };
+
+    let mut flag_renderer = flag::Renderer::new();
+    unsafe {
+        get_internal_gl().quad_context.show_mouse(false);
+    }
+
+    loop {
+        assert!(!net_worker.is_finished(), "Networking thread panikd!");
+        clear_background(BLACK);
+
+        if let Ok(recieved_state) = rx.try_recv() {
+            local_state.update_state(recieved_state);
+            // sync local penalty list
+            flag_renderer.synchronize_flags(&local_state);
+        }
+
+        match local_state.snapshot.current_period {
+            GamePeriod::BetweenGames => {
+                flag_renderer.reset();
+                if let Some(duration) = local_state.snapshot.next_period_len_secs {
+                    local_state.half_play_duration = Some(duration);
+                }
+                match local_state.snapshot.secs_in_period {
+                    182..=u32::MAX => {
+                        // If an old game just finished, display its scores
+                        if local_state.snapshot.is_old_game {
+                            renderer.final_scores(&local_state);
+                        } else {
+                            renderer.next_game(&local_state);
+                        }
+                    }
+                    30..=181 => {
+                        if local_state.snapshot.is_old_game {
+                            renderer.final_scores(&local_state);
+                        } else {
+                            renderer.roster(&local_state);
+                        }
+                    }
+                    _ => {
+                        if local_state.snapshot.is_old_game
+                            && local_state.snapshot.secs_in_period > 5
+                        {
+                            renderer.final_scores(&local_state);
+                        } else {
+                            renderer.pre_game_display(&local_state);
+                        }
+                    }
+                }
+            }
+            GamePeriod::FirstHalf | GamePeriod::SecondHalf | GamePeriod::HalfTime => {
+                renderer.in_game_display(&local_state);
+                flag_renderer.draw();
+            }
+            GamePeriod::OvertimeFirstHalf
+            | GamePeriod::OvertimeHalfTime
+            | GamePeriod::OvertimeSecondHalf
+            | GamePeriod::PreOvertime
+            | GamePeriod::PreSuddenDeath
+            | GamePeriod::SuddenDeath => {
+                renderer.overtime_and_sudden_death_display(&local_state);
+                flag_renderer.draw();
+            }
+        }
+        next_frame().await;
+    }
+}
+
+fn init_logging() {
     let args = Cli::parse();
 
     let log_level = match args.verbose {
@@ -168,159 +402,14 @@ async fn main() {
 
     log4rs::init_config(log_config).unwrap();
     log_panics::init();
+}
 
-    let (tx, rx) = bounded::<StatePacket>(3);
-
-    let config: AppConfig = match confy::load(APP_NAME, None) {
-        Ok(c) => c,
-        Err(e) => {
-            warn!("Failed to read config file, overwriting with default. Error: {e}");
-            let config = AppConfig::default();
-            confy::store(APP_NAME, None, &config).unwrap();
-            config
-        }
-    };
-
-    let mut tournament_logo_color_path = config.tournament_logo_path.clone();
-    tournament_logo_color_path.push("color.png");
-    let mut tournament_logo_alpha_path = config.tournament_logo_path.clone();
-    tournament_logo_alpha_path.push("alpha.png");
-
-    let net_worker = std::thread::spawn(|| {
-        network::networking_thread(tx, config);
-    });
-
-    let mut textures = load_images::Textures::default();
-
-    let tournament_logo_color = match read_image_from_file(tournament_logo_color_path.as_path()) {
-        Ok(texture) => Some(texture),
-        Err(e) => {
-            warn!("Failed to read tournament logo color file: {e}");
-            None
-        }
-    };
-
-    let tournament_logo_alpha = match read_image_from_file(tournament_logo_alpha_path.as_path()) {
-        Ok(texture) => Some(texture),
-        Err(e) => {
-            warn!("Failed to read tournament logo alpha file: {e}");
-            None
-        }
-    };
-
-    textures.tournament_logo = tournament_logo_color
-        .and_then(|color| tournament_logo_alpha.map(|alpha| Texture { color, alpha }));
-
-    let mut local_state: State = State {
-        snapshot: GameSnapshot {
-            current_period: GamePeriod::BetweenGames,
-            secs_in_period: 600,
-            ..Default::default()
-        },
-
-        black: TeamInfo {
-            team_name: String::from("BLACK"),
-            flag: None,
-            players: Vec::new(),
-        },
-        white: TeamInfo {
-            team_name: String::from("WHITE"),
-            flag: None,
-            players: Vec::new(),
-        },
-        game_id: 0,
-        pool: String::new(),
-        start_time: String::new(),
-        white_flag: None,
-        black_flag: None,
-        half_play_duration: None,
-    };
-
-    let mut renderer = pages::PageRenderer {
-        animation_register1: Instant::now(),
-        animation_register2: Instant::now(),
-        animation_register3: false,
-        textures,
-        last_snapshot_timeout: TimeoutSnapshot::None,
-    };
-    let mut flag_renderer = flag::FlagRenderer::new();
-    unsafe {
-        get_internal_gl().quad_context.show_mouse(false);
-    }
-
-    loop {
-        assert!(!net_worker.is_finished(), "Error in Networking thread!");
-        clear_background(BLACK);
-
-        if let Ok(recieved_state) = rx.try_recv() {
-            if let Some(team) = recieved_state.black {
-                debug!("Building Black's flag texture");
-                local_state.black = team;
-                if let Some(flag_bytes) = local_state.black.flag.clone() {
-                    local_state.black_flag =
-                        Some(Texture2D::from_file_with_format(&flag_bytes, None));
-                }
-            }
-            if let Some(team) = recieved_state.white {
-                debug!("Building White's flag texture");
-                local_state.white = team;
-                if let Some(flag_bytes) = local_state.white.flag.clone() {
-                    local_state.white_flag =
-                        Some(Texture2D::from_file_with_format(&flag_bytes, None));
-                }
-            }
-            if let Some(game_id) = recieved_state.game_id {
-                local_state.game_id = game_id;
-            }
-            if let Some(pool) = recieved_state.pool {
-                local_state.pool = pool;
-            }
-            if let Some(start_time) = recieved_state.start_time {
-                local_state.start_time = start_time;
-            }
-            local_state.snapshot = recieved_state.snapshot;
-
-            // sync local penalty list
-            flag_renderer.synchronize_flags(&local_state);
-        }
-
-        match local_state.snapshot.current_period {
-            GamePeriod::BetweenGames => {
-                flag_renderer.reset();
-                if let Some(duration) = local_state.snapshot.next_period_len_secs {
-                    local_state.half_play_duration = Some(duration)
-                }
-                match local_state.snapshot.secs_in_period {
-                    151..=u32::MAX => {
-                        // If an old game just finished, display its scores
-                        if local_state.snapshot.is_old_game {
-                            renderer.final_scores(&local_state);
-                        } else {
-                            renderer.next_game(&local_state);
-                        }
-                    }
-                    30..=150 => {
-                        renderer.roster(&local_state);
-                    }
-                    _ => {
-                        renderer.pre_game_display(&local_state);
-                    }
-                }
-            }
-            GamePeriod::FirstHalf | GamePeriod::SecondHalf | GamePeriod::HalfTime => {
-                renderer.in_game_display(&local_state);
-                flag_renderer.draw();
-            }
-            GamePeriod::OvertimeFirstHalf
-            | GamePeriod::OvertimeHalfTime
-            | GamePeriod::OvertimeSecondHalf
-            | GamePeriod::PreOvertime
-            | GamePeriod::PreSuddenDeath
-            | GamePeriod::SuddenDeath => {
-                renderer.overtime_and_sudden_death_display(&local_state);
-                flag_renderer.draw();
-            }
-        }
-        next_frame().await;
+fn window_conf() -> Conf {
+    Conf {
+        window_title: String::from("Overlay Program"),
+        window_width: 3840,
+        window_height: 1080,
+        window_resizable: false,
+        ..Default::default()
     }
 }

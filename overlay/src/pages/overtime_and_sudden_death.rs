@@ -1,12 +1,12 @@
-use super::center_text_offset;
 use super::draw_texture_both;
+use super::fit_text;
 use super::Interpolate;
 use super::PageRenderer;
 use crate::pages::draw_text_both;
 use crate::pages::draw_text_both_ex;
+use crate::pages::draw_texture_both_ex;
+use crate::pages::Justify;
 use crate::State;
-use crate::ALPHA_MAX;
-use crate::ALPHA_MIN;
 use coarsetime::Instant;
 use macroquad::prelude::*;
 use uwh_common::game_snapshot::GamePeriod;
@@ -30,12 +30,12 @@ impl PageRenderer {
                 if time < 1f32 {
                     (
                         (0f32, -200f32).interpolate_linear(1f32 - time),
-                        (ALPHA_MIN, ALPHA_MAX).interpolate_exponential_end(time),
+                        (0f32, 1f32).interpolate_exponential_end(time),
                     )
                 } else {
                     (
                         (0f32, -200f32).interpolate_linear(0f32),
-                        (ALPHA_MIN, ALPHA_MAX).interpolate_exponential_end(1f32),
+                        (0f32, 1f32).interpolate_exponential_end(1f32),
                     )
                 }
             } else if self.last_snapshot_timeout != TimeoutSnapshot::None {
@@ -52,47 +52,55 @@ impl PageRenderer {
                     self.last_snapshot_timeout = TimeoutSnapshot::None;
                     (
                         (0f32, -200f32).interpolate_linear(1f32),
-                        (ALPHA_MIN, ALPHA_MAX).interpolate_exponential_end(0f32),
+                        (0f32, 1f32).interpolate_exponential_end(0f32),
                     )
                 } else {
                     (
                         (0f32, -200f32).interpolate_linear(time),
-                        (ALPHA_MIN, ALPHA_MAX).interpolate_exponential_end(1f32 - time),
+                        (0f32, 1f32).interpolate_exponential_end(1f32 - time),
                     )
                 }
             } else {
                 // return any values when both are None, cause we won't be redering anyways
                 (
                     (0f32, -200f32).interpolate_linear(0f32),
-                    (ALPHA_MIN, ALPHA_MAX).interpolate_exponential_end(1f32),
+                    (0f32, 1f32).interpolate_exponential_end(1f32),
                 )
             };
 
-        draw_texture_both!(self.textures.team_bar_graphic, 26f32, 37f32, WHITE);
-        draw_texture_both!(self.textures.in_game_mask, 359f32, 0f32, WHITE);
+        draw_texture_both!(self.assets.team_bar, 26f32, 37f32, WHITE);
         // No penalty shot, black or white timeouts in overtime
         match self.last_snapshot_timeout {
             TimeoutSnapshot::Ref(_) => {
                 draw_texture_both!(
-                    self.textures.referee_timout_graphic,
+                    self.assets.referee_timout,
                     timeout_offset + 380f32,
                     35f32,
-                    Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
+                    Color {
+                        a: timeout_alpha_offset,
+                        ..WHITE
+                    }
                 );
                 draw_text_both_ex!(
                     "REFEREE",
                     475f32 + timeout_offset,
                     67f32,
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 20,
-                        color: Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8),
+                        color: Color {
+                            a: timeout_alpha_offset,
+                            ..BLACK
+                        },
                         ..Default::default()
                     },
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 20,
-                        color: Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
+                        color: Color {
+                            a: timeout_alpha_offset,
+                            ..WHITE
+                        },
                         ..Default::default()
                     }
                 );
@@ -101,40 +109,55 @@ impl PageRenderer {
                     480f32 + timeout_offset,
                     95f32,
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 20,
-                        color: Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8),
+                        color: Color {
+                            a: timeout_alpha_offset,
+                            ..BLACK
+                        },
                         ..Default::default()
                     },
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 20,
-                        color: Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
+                        color: Color {
+                            a: timeout_alpha_offset,
+                            ..WHITE
+                        },
                         ..Default::default()
                     }
                 );
             }
             TimeoutSnapshot::PenaltyShot(_) => {
                 draw_texture_both!(
-                    self.textures.penalty_graphic,
+                    self.assets.penalty,
                     timeout_offset + 380f32,
                     35f32,
-                    Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8)
+                    Color {
+                        a: timeout_alpha_offset,
+                        ..WHITE
+                    }
                 );
                 draw_text_both_ex!(
                     "PENALTY",
                     475f32 + timeout_offset,
                     67f32,
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 20,
-                        color: Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8),
+                        color: Color {
+                            a: timeout_alpha_offset,
+                            ..BLACK
+                        },
                         ..Default::default()
                     },
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 20,
-                        color: Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
+                        color: Color {
+                            a: timeout_alpha_offset,
+                            ..WHITE
+                        },
                         ..Default::default()
                     }
                 );
@@ -143,100 +166,95 @@ impl PageRenderer {
                     490f32 + timeout_offset,
                     95f32,
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 20,
-                        color: Color::from_rgba(0, 0, 0, timeout_alpha_offset as u8),
+                        color: Color {
+                            a: timeout_alpha_offset,
+                            ..BLACK
+                        },
                         ..Default::default()
                     },
                     TextParams {
-                        font: self.textures.font,
+                        font: self.assets.font,
                         font_size: 20,
-                        color: Color::from_rgba(255, 255, 255, timeout_alpha_offset as u8),
+                        color: Color {
+                            a: timeout_alpha_offset,
+                            ..WHITE
+                        },
                         ..Default::default()
                     }
                 );
             }
             _ => {}
         }
-        if state.white_flag.is_none() {
+        if state.white.flag.is_none() {
             draw_text_both_ex!(
-                state.white.team_name.to_uppercase().as_str(),
-                if state.white_flag.is_some() {
+                &state.white.team_name,
+                if state.white.flag.is_some() {
                     160f32
                 } else {
                     79f32
                 },
                 64f32,
                 TextParams {
-                    font: self.textures.font,
+                    font: self.assets.font,
                     font_size: 20,
-                    color: Color::from_rgba(0, 0, 0, 255,), // don't fade out team name if flags aren't available
+                    color: BLACK, // don't fade out team name if flags aren't available
                     ..Default::default()
                 },
                 TextParams {
-                    font: self.textures.font,
+                    font: self.assets.font,
                     font_size: 20,
-                    color: Color::from_rgba(255, 255, 255, 255,), // don't fade out team name if flags aren't available
+                    color: WHITE, // don't fade out team name if flags aren't available
                     ..Default::default()
                 }
             );
             draw_text_both!(
-                state.black.team_name.to_uppercase().as_str(),
-                if state.black_flag.is_some() {
+                &state.black.team_name,
+                if state.black.flag.is_some() {
                     160f32
                 } else {
                     79f32
                 },
                 100f32,
                 TextParams {
-                    font: self.textures.font,
+                    font: self.assets.font,
                     font_size: 20,
-                    color: Color::from_rgba(255, 255, 255, 255),
+                    color: WHITE,
                     ..Default::default()
                 }
             );
         }
-        draw_texture_both!(
-            self.textures.time_and_game_state_graphic,
-            167f32,
-            18f32,
-            WHITE
-        );
-        if state.white_flag.is_some() {
-            draw_rectangle(1999f32, 39f32, 70f32, 33f32, WHITE);
-        }
-        if state.black_flag.is_some() {
-            draw_rectangle(1999f32, 75f32, 70f32, 33f32, WHITE);
-        }
+        draw_texture_both!(self.assets.time_and_game_state, 367f32, 18f32, WHITE);
         let min = state.snapshot.secs_in_period / 60;
         let secs = state.snapshot.secs_in_period % 60;
         let text = format!(
             "{}:{}",
             if min < 10 {
-                format!("0{}", min)
+                format!("0{min}")
             } else {
-                format!("{}", min)
+                format!("{min}")
             },
             if secs < 10 {
-                format!("0{}", secs)
+                format!("0{secs}")
             } else {
-                format!("{}", secs)
+                format!("{secs}")
             }
         );
-        let (x_off, text) = center_text_offset!(90f32, text.as_str(), 50, self.textures.font);
+        let (x_off, text) = fit_text(180f32, &text, 50, self.assets.font, Justify::Center);
         draw_text_ex(
             text.as_str(),
-            230f32 + x_off,
+            430f32 + x_off,
             95f32,
             TextParams {
-                font: self.textures.font,
+                font: self.assets.font,
                 font_size: 50,
                 color: if [GamePeriod::SuddenDeath, GamePeriod::PreSuddenDeath]
                     .contains(&state.snapshot.current_period)
                 {
-                    Color::from_rgba(255, 150, 0, 255)
+                    GOLD
                 } else {
-                    Color::from_rgba(255, 0, 0, 255)
+                    RED
                 },
                 ..Default::default()
             },
@@ -249,26 +267,26 @@ impl PageRenderer {
             GamePeriod::PreSuddenDeath => "PRE SUDDEN DEATH",
             _ => "PRE OVERTIME",
         };
-        let (x_off, text) = center_text_offset!(100f32, ot_text, 20, self.textures.font);
+        let (x_off, text) = fit_text(200f32, ot_text, 20, self.assets.font, Justify::Center);
         draw_text_ex(
             text.as_str(),
-            220f32 + x_off,
+            420f32 + x_off,
             45f32,
             TextParams {
-                font: self.textures.font,
+                font: self.assets.font,
                 font_size: 20,
                 color: if [GamePeriod::SuddenDeath, GamePeriod::PreSuddenDeath]
                     .contains(&state.snapshot.current_period)
                 {
-                    Color::from_rgba(255, 150, 0, 255)
+                    GOLD
                 } else {
-                    Color::from_rgba(255, 0, 0, 255)
+                    RED
                 },
                 ..Default::default()
             },
         );
-        if let Some(flag) = state.white_flag {
-            draw_texture_ex(
+        if let Some(flag) = &state.white.flag {
+            draw_texture_both_ex!(
                 flag,
                 79f32,
                 39f32,
@@ -276,11 +294,11 @@ impl PageRenderer {
                 DrawTextureParams {
                     dest_size: Some(vec2(70f32, 33f32)),
                     ..Default::default()
-                },
+                }
             );
         }
-        if let Some(flag) = state.black_flag {
-            draw_texture_ex(
+        if let Some(flag) = &state.black.flag {
+            draw_texture_both_ex!(
                 flag,
                 79f32,
                 75f32,
@@ -288,7 +306,7 @@ impl PageRenderer {
                 DrawTextureParams {
                     dest_size: Some(vec2(70f32, 33f32)),
                     ..Default::default()
-                },
+                }
             );
         }
 
@@ -297,7 +315,7 @@ impl PageRenderer {
             40f32,
             104f32,
             TextParams {
-                font: self.textures.font,
+                font: self.assets.font,
                 font_size: 30,
                 ..Default::default()
             }
@@ -307,13 +325,13 @@ impl PageRenderer {
             40f32,
             65f32,
             TextParams {
-                font: self.textures.font,
+                font: self.assets.font,
                 font_size: 30,
                 color: BLACK,
                 ..Default::default()
             },
             TextParams {
-                font: self.textures.font,
+                font: self.assets.font,
                 font_size: 30,
                 color: WHITE,
                 ..Default::default()

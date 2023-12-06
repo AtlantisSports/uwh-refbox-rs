@@ -312,7 +312,34 @@ pub async fn networking_thread(
                     snapshot.game_number
                 };
             let next_gid = snapshot.next_game_number;
-            // initial case when no parameter is initialised
+
+            let tr_ = tr.clone();
+            let uwhscores_url = config.uwhscores_url.clone();
+            let uwhportal_url = config.uwhportal_url.clone();
+
+            // Request new game cache if empty or invalid
+            if next_game_data.is_none()
+                || next_game_data.as_ref().unwrap().game_id != next_gid
+                || next_game_data.as_ref().unwrap().tournament_id != tournament_id_new
+            {
+                info!(
+                    "Fetching game data to cache for tid: {}, gid: {}",
+                    tournament_id_new, next_gid,
+                );
+                tokio::spawn(async move {
+                    fetch_game_data(
+                        tr_,
+                        &uwhscores_url,
+                        &uwhportal_url,
+                        tournament_id_new,
+                        next_gid,
+                        false,
+                    )
+                    .await;
+                });
+            }
+
+            // initial case when no data is initialised
             if game_id.is_none() {
                 let tr_ = tr.clone();
                 let uwhscores_url = config.uwhscores_url.clone();
@@ -334,28 +361,8 @@ pub async fn networking_thread(
                     )
                     .await;
                 });
-                let tr_ = tr.clone();
-                let uwhscores_url = config.uwhscores_url.clone();
-                let uwhportal_url = config.uwhportal_url.clone();
-                info!(
-                    "Fetching intial game data to cache for tid: {}, gid: {}",
-                    tournament_id_new, next_gid
-                );
-                tokio::spawn(async move {
-                    fetch_game_data(
-                        tr_,
-                        &uwhscores_url,
-                        &uwhportal_url,
-                        tournament_id_new,
-                        next_gid,
-                        false,
-                    )
-                    .await;
-                });
             }
-            // when gid changes set current game_data to next_game_data and replace next_game_data with new
-            // data. if tournament_id changes without a change in game_id, it is assumed that the change is
-            // for the current game.
+
             if let (Some(game_id_old), Some(tournament_id_old)) =
                 (game_id.as_mut(), tournament_id.as_mut())
             {
@@ -373,22 +380,7 @@ pub async fn networking_thread(
                         && next_game_data.as_ref().unwrap().game_id == game_id_new
                         && next_game_data.as_ref().unwrap().tournament_id == tournament_id_new
                     {
-                        let next_game_data = next_game_data.clone().unwrap();
-                        info!(
-                            "Fetching game data to cache for tid: {}, gid: {}",
-                            tournament_id_new, next_gid,
-                        );
-                        tokio::spawn(async move {
-                            fetch_game_data(
-                                tr_,
-                                &uwhscores_url,
-                                &uwhportal_url,
-                                tournament_id_new,
-                                next_gid,
-                                false,
-                            )
-                            .await;
-                        });
+                        let next_game_data = next_game_data.take().unwrap();
                         info!("Sending cached game data for next game");
                         tx.send(StatePacket {
                             snapshot,
@@ -414,21 +406,8 @@ pub async fn networking_thread(
                             )
                             .await;
                         });
-                        info!(
-                            "Fetching game data to cache for tid: {}, gid: {}",
-                            tournament_id_new, next_gid,
-                        );
-                        tokio::spawn(async move {
-                            fetch_game_data(
-                                tr_,
-                                &uwhscores_url,
-                                &uwhportal_url,
-                                tournament_id_new,
-                                next_gid,
-                                false,
-                            )
-                            .await;
-                        });
+                        // Unset `next_game_data` to trigger caching next game
+                        next_game_data = None;
                     }
                     continue;
                 }

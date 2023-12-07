@@ -1,4 +1,4 @@
-use crate::tournament_manager::PenaltyKind;
+use crate::tournament_manager::penalty::PenaltyKind;
 use tokio::time::Duration;
 use uwh_common::{
     game_snapshot::{Color as GameColor, GameSnapshot},
@@ -65,8 +65,7 @@ pub enum Message {
     GotRemoteId(u32),
     DeleteRemote(usize),
     ConfirmationSelected(ConfirmationOption),
-    BlackTimeout(bool),
-    WhiteTimeout(bool),
+    TeamTimeout(GameColor, bool),
     RefTimeout(bool),
     PenaltyShot(bool),
     EndTimeout,
@@ -125,8 +124,7 @@ impl Message {
             | Self::GotRemoteId(_)
             | Self::DeleteRemote(_)
             | Self::ConfirmationSelected(_)
-            | Self::BlackTimeout(_)
-            | Self::WhiteTimeout(_)
+            | Self::TeamTimeout(_, _)
             | Self::RefTimeout(_)
             | Self::PenaltyShot(_)
             | Self::EndTimeout

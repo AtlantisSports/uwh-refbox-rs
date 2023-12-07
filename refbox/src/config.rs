@@ -42,6 +42,23 @@ impl Default for UwhScores {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UwhPortal {
+    pub url: String,
+    pub email: String,
+    pub password: String,
+}
+
+impl Default for UwhPortal {
+    fn default() -> Self {
+        Self {
+            url: "https://api.uwhscores.prod.zmvp.host".to_string(),
+            email: String::new(),
+            password: String::new(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Config {
     pub mode: Mode,
@@ -50,6 +67,7 @@ pub struct Config {
     pub game: Game,
     pub hardware: Hardware,
     pub uwhscores: UwhScores,
+    pub uwhportal: UwhPortal,
     pub sound: SoundSettings,
 }
 
@@ -79,6 +97,14 @@ mod test {
     #[test]
     fn test_ser_uwhscores() {
         let u: UwhScores = Default::default();
+        let serialized = toml::to_string(&u).unwrap();
+        let deser = toml::from_str(&serialized);
+        assert_eq!(deser, Ok(u));
+    }
+
+    #[test]
+    fn test_ser_uwhportal() {
+        let u: UwhPortal = Default::default();
         let serialized = toml::to_string(&u).unwrap();
         let deser = toml::from_str(&serialized);
         assert_eq!(deser, Ok(u));

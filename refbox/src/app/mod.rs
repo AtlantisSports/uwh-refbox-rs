@@ -3,7 +3,7 @@ use crate::{
     config::{Config, Mode},
     penalty_editor::*,
     sound_controller::*,
-    tournament_manager::*,
+    tournament_manager::{penalty::*, *},
 };
 use iced::{executor, widget::column, Application, Command, Subscription};
 use iced_futures::{
@@ -29,7 +29,8 @@ use tokio_serial::SerialPortBuilder;
 use uwh_common::{
     config::Game as GameConfig,
     drawing_support::*,
-    game_snapshot::{Color as GameColor, GamePeriod, GameSnapshot, TimeoutSnapshot},
+    game_snapshot::{GamePeriod, GameSnapshot, TimeoutSnapshot},
+    uwhportal::UwhPortalClient,
     uwhscores::*,
 };
 
@@ -64,6 +65,7 @@ pub struct RefBoxApp {
     message_listener: MessageListener,
     msg_tx: mpsc::UnboundedSender<Message>,
     client: Option<Client>,
+    uwhportal_client: Option<UwhPortalClient>,
     using_uwhscores: bool,
     tournaments: Option<BTreeMap<u32, TournamentInfo>>,
     games: Option<BTreeMap<u32, GameInfo>>,
@@ -117,7 +119,7 @@ impl RefBoxApp {
     fn apply_snapshot(&mut self, mut new_snapshot: GameSnapshot) {
         if new_snapshot.current_period != self.snapshot.current_period {
             if new_snapshot.current_period == GamePeriod::BetweenGames {
-                self.handle_game_end(new_snapshot.next_game_number);
+                self.handle_game_end(new_snapshot.game_number, new_snapshot.next_game_number);
             } else if self.snapshot.current_period == GamePeriod::BetweenGames {
                 self.handle_game_start(new_snapshot.game_number);
             }
@@ -387,6 +389,18 @@ impl RefBoxApp {
         }
     }
 
+    fn post_game_stats(&self, tid: u32, gid: u32, stats: String) {
+        if let Some(ref uwhportal_client) = self.uwhportal_client {
+            let request = uwhportal_client.post_game_stats(tid, gid, stats);
+            tokio::spawn(async move {
+                match request.await {
+                    Ok(()) => info!("Successfully posted game stats"),
+                    Err(e) => error!("Failed to post game stats: {e}"),
+                }
+            });
+        }
+    }
+
     fn handle_game_start(&mut self, new_game_num: u32) {
         if self.using_uwhscores {
             if let (Some(ref games), Some(ref pool)) = (&self.games, &self.current_pool) {
@@ -420,12 +434,28 @@ impl RefBoxApp {
         }
     }
 
-    fn handle_game_end(&self, next_game_num: u32) {
+    fn handle_game_end(&self, game_number: u32, next_game_num: u32) {
         if self.using_uwhscores {
+            let mut stats = self
+                .tm
+                .lock()
+                .unwrap()
+                .last_game_stats()
+                .map(|s| s.as_json());
+
+            if let Some(ref stats) = stats {
+                info!("Game ended, stats were: {:?}", stats);
+            } else {
+                warn!("Game ended, but no stats were available");
+            }
+
             if let Some(tid) = self.current_tid {
                 self.request_game_details(tid, next_game_num);
+                if let Some(stats) = stats.take() {
+                    self.post_game_stats(tid, game_number, stats);
+                }
             } else {
-                error!("Missing current tid to request game info");
+                error!("Missing current tid to handle game end");
             }
         }
     }
@@ -480,6 +510,20 @@ impl Application for RefBoxApp {
             }
         };
 
+        let uwhportal_client = match UwhPortalClient::new(
+            &config.uwhportal.url,
+            Some(&config.uwhportal.email),
+            Some(&config.uwhportal.password),
+            require_https,
+            REQUEST_TIMEOUT,
+        ) {
+            Ok(c) => Some(c),
+            Err(e) => {
+                error!("Failed to start UWH Portal Client: {e}");
+                None
+            }
+        };
+
         let clock_running_receiver = tm.get_start_stop_rx();
 
         let tm = Arc::new(Mutex::new(tm));
@@ -510,6 +554,7 @@ impl Application for RefBoxApp {
                 message_listener,
                 msg_tx,
                 client,
+                uwhportal_client,
                 using_uwhscores: false,
                 tournaments: None,
                 games: None,
@@ -649,10 +694,7 @@ impl Application for RefBoxApp {
             Message::EditScores => {
                 let tm = self.tm.lock().unwrap();
                 self.app_state = AppState::ScoreEdit {
-                    scores: BlackWhiteBundle {
-                        black: tm.get_b_score(),
-                        white: tm.get_w_score(),
-                    },
+                    scores: tm.get_scores(),
                     is_confirmation: false,
                 };
                 trace!("AppState changed to {:?}", self.app_state);
@@ -664,10 +706,7 @@ impl Application for RefBoxApp {
                 } else {
                     let mut tm = self.tm.lock().unwrap();
                     let now = Instant::now();
-                    match color {
-                        GameColor::Black => tm.add_b_score(0, now),
-                        GameColor::White => tm.add_w_score(0, now),
-                    }
+                    tm.add_score(color, 0, now);
                     let snapshot = tm.generate_snapshot(now).unwrap(); // TODO: Remove this unwrap
                     std::mem::drop(tm);
                     self.apply_snapshot(snapshot);
@@ -704,7 +743,7 @@ impl Application for RefBoxApp {
                             self.post_game_score(game, scores);
                         }
 
-                        tm.set_scores(scores.black, scores.white, now);
+                        tm.set_scores(scores, now);
                         tm.start_clock(now);
 
                         // Update `tm` after game ends to get into Between Games
@@ -718,7 +757,7 @@ impl Application for RefBoxApp {
                             tm.stop_clock(now).unwrap();
                             AppState::ConfirmScores(scores)
                         } else {
-                            tm.set_scores(scores.black, scores.white, now);
+                            tm.set_scores(scores, now);
                             AppState::MainPage
                         }
                     } else {
@@ -897,18 +936,12 @@ impl Application for RefBoxApp {
 
                         let app_state = if tm.current_period() == GamePeriod::SuddenDeath {
                             tm.stop_clock(now).unwrap();
-                            let mut scores = BlackWhiteBundle {
-                                black: tm.get_b_score(),
-                                white: tm.get_w_score(),
-                            };
+                            let mut scores = tm.get_scores();
                             scores[color] = scores[color].saturating_add(1);
 
                             AppState::ConfirmScores(scores)
                         } else {
-                            match color {
-                                GameColor::Black => tm.add_b_score(player.try_into().unwrap(), now),
-                                GameColor::White => tm.add_w_score(player.try_into().unwrap(), now),
-                            };
+                            tm.add_score(color, player.try_into().unwrap(), now);
                             AppState::MainPage
                         };
                         let snapshot = tm.generate_snapshot(now).unwrap();
@@ -1467,7 +1500,7 @@ impl Application for RefBoxApp {
                             self.post_game_score(game, scores);
                         }
 
-                        tm.set_scores(scores.black, scores.white, now);
+                        tm.set_scores(scores, now);
                         tm.start_clock(now);
                         tm.update(now + Duration::from_millis(2)).unwrap(); // Need to update after game ends
 
@@ -1484,28 +1517,13 @@ impl Application for RefBoxApp {
 
                 trace!("AppState changed to {:?}", self.app_state);
             }
-            Message::BlackTimeout(switch) => {
+            Message::TeamTimeout(color, switch) => {
                 let mut tm = self.tm.lock().unwrap();
                 let now = Instant::now();
                 if switch {
-                    tm.switch_to_b_timeout().unwrap();
+                    tm.switch_to_team_timeout(color).unwrap();
                 } else {
-                    tm.start_b_timeout(now).unwrap();
-                }
-                if let AppState::TimeEdit(_, _, ref mut time) = self.app_state {
-                    *time = Some(tm.timeout_clock_time(now).unwrap());
-                }
-                let snapshot = tm.generate_snapshot(now).unwrap();
-                std::mem::drop(tm);
-                self.apply_snapshot(snapshot);
-            }
-            Message::WhiteTimeout(switch) => {
-                let mut tm = self.tm.lock().unwrap();
-                let now = Instant::now();
-                if switch {
-                    tm.switch_to_w_timeout().unwrap();
-                } else {
-                    tm.start_w_timeout(now).unwrap();
+                    tm.start_team_timeout(color, now).unwrap();
                 }
                 if let AppState::TimeEdit(_, _, ref mut time) = self.app_state {
                     *time = Some(tm.timeout_clock_time(now).unwrap());

@@ -27,7 +27,9 @@ use std::{
 use uwh_common::{
     config::Game as GameConfig,
     drawing_support::*,
-    game_snapshot::{GamePeriod, GameSnapshot, PenaltySnapshot, PenaltyTime, TimeoutSnapshot},
+    game_snapshot::{
+        Color as GameColor, GamePeriod, GameSnapshot, PenaltySnapshot, PenaltyTime, TimeoutSnapshot,
+    },
     uwhscores::GameInfo,
 };
 
@@ -186,9 +188,9 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
     let black = match snapshot.timeout {
         TimeoutSnapshot::None => make_multi_label_message_button(
             ("BLACK", "TIMEOUT"),
-            tm.can_start_b_timeout()
+            tm.can_start_team_timeout(GameColor::Black)
                 .ok()
-                .map(|_| Message::BlackTimeout(false)),
+                .map(|_| Message::TeamTimeout(GameColor::Black, false)),
         )
         .style(ButtonStyle::Black),
         TimeoutSnapshot::Black(_) => {
@@ -198,9 +200,9 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
         TimeoutSnapshot::White(_) | TimeoutSnapshot::Ref(_) | TimeoutSnapshot::PenaltyShot(_) => {
             make_multi_label_message_button(
                 ("SWITCH TO", "BLACK"),
-                tm.can_switch_to_b_timeout()
+                tm.can_switch_to_team_timeout(GameColor::Black)
                     .ok()
-                    .map(|_| Message::BlackTimeout(true)),
+                    .map(|_| Message::TeamTimeout(GameColor::Black, true)),
             )
             .style(ButtonStyle::Black)
         }
@@ -209,9 +211,9 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
     let white = match snapshot.timeout {
         TimeoutSnapshot::None => make_multi_label_message_button(
             ("WHITE", "TIMEOUT"),
-            tm.can_start_w_timeout()
+            tm.can_start_team_timeout(GameColor::White)
                 .ok()
-                .map(|_| Message::WhiteTimeout(false)),
+                .map(|_| Message::TeamTimeout(GameColor::White, false)),
         )
         .style(ButtonStyle::White),
         TimeoutSnapshot::White(_) => {
@@ -221,9 +223,9 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
         TimeoutSnapshot::Black(_) | TimeoutSnapshot::Ref(_) | TimeoutSnapshot::PenaltyShot(_) => {
             make_multi_label_message_button(
                 ("SWITCH TO", "WHITE"),
-                tm.can_switch_to_w_timeout()
+                tm.can_start_team_timeout(GameColor::White)
                     .ok()
-                    .map(|_| Message::WhiteTimeout(true)),
+                    .map(|_| Message::TeamTimeout(GameColor::White, true)),
             )
             .style(ButtonStyle::White)
         }

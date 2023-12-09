@@ -293,7 +293,7 @@ pub async fn networking_thread(
     };
     info!("Connected to refbox!");
 
-    let (tr, rc) = crossbeam_channel::bounded::<(GameData, bool)>(3);
+    let (tr, rc) = crossbeam_channel::unbounded::<(GameData, bool)>();
     let mut buff = vec![0u8; 1024];
     let mut read_bytes;
     let mut game_id = None;

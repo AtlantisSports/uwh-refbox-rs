@@ -37,8 +37,7 @@ async fn get_image_from_opt_url(url: Option<&str>) -> Option<Image> {
     };
 
     img_bytes
-        .map(|bytes| image::load_from_memory(&bytes).ok())
-        .flatten()
+        .and_then(|bytes| image::load_from_memory(&bytes).ok())
         .map(|img| {
             (
                 img.width() as u16,

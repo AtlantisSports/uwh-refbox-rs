@@ -84,11 +84,6 @@ impl TeamInfoRaw {
         )
         .unwrap();
 
-        info!(
-            "Got team information for team {}, requesting member details",
-            team_id
-        );
-
         let (members, flag) = tokio::join!(
             futures::future::join_all(
                 data["roster"]
@@ -127,8 +122,6 @@ impl TeamInfoRaw {
             get_image_from_opt_url(data["logoUrl"].as_str())
         );
         let members = members.into_iter().collect();
-
-        info!("Got member details for team {}", team_id);
 
         Self {
             team_name: data["name"].as_str().map_or(
@@ -181,7 +174,10 @@ async fn fetch_game_data(
             .send()
             .await
         {
-            info!("Got game data for tid:{tournament_id}, gid:{game_id} from UWH API");
+            info!(
+                "Got game data for tid:{}, gid:{} from UWH API",
+                tournament_id, game_id
+            );
             let text = data
                 .text()
                 .await
@@ -241,7 +237,6 @@ async fn fetch_game_data(
                 TeamInfoRaw::new(uwhportal_url, tournament_id, team_id_black, Color::Black,),
                 TeamInfoRaw::new(uwhportal_url, tournament_id, team_id_white, Color::White,)
             );
-            info!("Got all data for tid:{tournament_id}, gid:{game_id}. Sending to network thread");
             tr.send((
                 GameData {
                     pool,
@@ -259,7 +254,7 @@ async fn fetch_game_data(
             .unwrap();
             return;
         }
-        warn!("Game data request for tid:{tournament_id}, gid:{game_id} failed. Trying again in 5 seconds.");
+        warn!("Game data request failed. Trying again in 5 seconds.");
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     }
 }
@@ -286,15 +281,6 @@ pub async fn networking_thread(
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     };
     info!("Connected to refbox!");
-
-    #[derive(PartialEq, Eq)]
-    struct RequestedInfo {
-        tournament_id: u32,
-        game_id: u32,
-        is_current_game: bool,
-    }
-
-    let mut requested_infos = Vec::new();
 
     let (tr, rc) = crossbeam_channel::bounded::<(GameData, bool)>(3);
     let mut buff = vec![0u8; 1024];
@@ -336,29 +322,21 @@ pub async fn networking_thread(
                 || next_game_data.as_ref().unwrap().game_id != next_gid
                 || next_game_data.as_ref().unwrap().tournament_id != tournament_id_new
             {
-                let requested_info = RequestedInfo {
-                    tournament_id: tournament_id_new,
-                    game_id: next_gid,
-                    is_current_game: false,
-                };
-                if !requested_infos.contains(&requested_info) {
-                    info!(
-                        "Fetching game data to cache for tid: {}, gid: {}",
-                        tournament_id_new, next_gid,
-                    );
-                    requested_infos.push(requested_info);
-                    tokio::spawn(async move {
-                        fetch_game_data(
-                            tr_,
-                            &uwhscores_url,
-                            &uwhportal_url,
-                            tournament_id_new,
-                            next_gid,
-                            false,
-                        )
-                        .await;
-                    });
-                }
+                info!(
+                    "Fetching game data to cache for tid: {}, gid: {}",
+                    tournament_id_new, next_gid,
+                );
+                tokio::spawn(async move {
+                    fetch_game_data(
+                        tr_,
+                        &uwhscores_url,
+                        &uwhportal_url,
+                        tournament_id_new,
+                        next_gid,
+                        false,
+                    )
+                    .await;
+                });
             }
 
             // initial case when no data is initialised
@@ -368,29 +346,21 @@ pub async fn networking_thread(
                 let uwhportal_url = config.uwhportal_url.clone();
                 game_id = Some(game_id_new);
                 tournament_id = Some(tournament_id_new);
-                let requested_info = RequestedInfo {
-                    tournament_id: tournament_id_new,
-                    game_id: game_id_new,
-                    is_current_game: true,
-                };
-                if !requested_infos.contains(&requested_info) {
-                    info!(
-                        "Fetching intial game data for tid: {}, gid: {}",
-                        tournament_id_new, game_id_new
-                    );
-                    requested_infos.push(requested_info);
-                    tokio::spawn(async move {
-                        fetch_game_data(
-                            tr_,
-                            &uwhscores_url,
-                            &uwhportal_url,
-                            tournament_id_new,
-                            game_id_new,
-                            true,
-                        )
-                        .await;
-                    });
-                }
+                info!(
+                    "Fetching intial game data for tid: {}, gid: {}",
+                    tournament_id_new, game_id_new
+                );
+                tokio::spawn(async move {
+                    fetch_game_data(
+                        tr_,
+                        &uwhscores_url,
+                        &uwhportal_url,
+                        tournament_id_new,
+                        game_id_new,
+                        true,
+                    )
+                    .await;
+                });
             }
 
             if let (Some(game_id_old), Some(tournament_id_old)) =
@@ -419,39 +389,28 @@ pub async fn networking_thread(
                         })
                         .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
                     } else {
-                        let requested_info = RequestedInfo {
-                            tournament_id: tournament_id_new,
-                            game_id: game_id_new,
-                            is_current_game: true,
-                        };
-                        if !requested_infos.contains(&requested_info) {
-                            info!("Fetching game data for tid: {tournament_id_new}, gid: {game_id_new}. Cache is empty or invalid!");
-                            requested_infos.push(requested_info);
-                            let (uwhscores_url_, uwhportal_url_, tr__) =
-                                (uwhscores_url.clone(), uwhportal_url.clone(), tr_.clone());
-                            tokio::spawn(async move {
-                                fetch_game_data(
-                                    tr__,
-                                    &uwhscores_url_,
-                                    &uwhportal_url_,
-                                    tournament_id_new,
-                                    game_id_new,
-                                    true,
-                                )
-                                .await;
-                            });
-                        }
+                        info!(
+                            "Fetching game data for tid: {}, gid: {}. Cache is empty or invalid!",
+                            tournament_id_new, game_id_new,
+                        );
+                        let (uwhscores_url_, uwhportal_url_, tr__) =
+                            (uwhscores_url.clone(), uwhportal_url.clone(), tr_.clone());
+                        tokio::spawn(async move {
+                            fetch_game_data(
+                                tr__,
+                                &uwhscores_url_,
+                                &uwhportal_url_,
+                                tournament_id_new,
+                                game_id_new,
+                                true,
+                            )
+                            .await;
+                        });
                     }
                     continue;
                 }
             }
             if let Ok((game_data, is_current_game)) = rc.try_recv() {
-                let requested_info = RequestedInfo {
-                    tournament_id: game_data.tournament_id,
-                    game_id: game_data.game_id,
-                    is_current_game,
-                };
-                requested_infos.retain(|info| *info != requested_info);
                 if is_current_game {
                     info!("Got game state update from network!");
                     tx.send(StatePacket {

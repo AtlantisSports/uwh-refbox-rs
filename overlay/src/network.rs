@@ -9,10 +9,12 @@ use uwh_common::game_snapshot::{Color, GamePeriod, GameSnapshot};
 
 static CLIENT_CELL: OnceLock<Client> = OnceLock::new();
 
-async fn get_image_from_opt_url(url: Option<&str>) -> Option<Vec<u8>> {
+pub type Image = (u16, u16, Vec<u8>);
+
+async fn get_image_from_opt_url(url: Option<&str>) -> Option<Image> {
     let client = CLIENT_CELL.get().unwrap();
-    match url {
-        Some("") => None,
+    let img_bytes = match url {
+        Some("") | None => None,
         Some(url) => Some(
             client
                 .get(url)
@@ -32,8 +34,18 @@ async fn get_image_from_opt_url(url: Option<&str>) -> Option<Vec<u8>> {
                 .ok()?
                 .to_vec(),
         ),
-        None => None,
-    }
+    };
+
+    img_bytes
+        .map(|bytes| image::load_from_memory(&bytes).ok())
+        .flatten()
+        .map(|img| {
+            (
+                img.width() as u16,
+                img.height() as u16,
+                img.into_rgba8().into_raw(),
+            )
+        })
 }
 
 /// Contains data of each individual in the roster. pictures are raw unprocessed bytes that are
@@ -43,8 +55,8 @@ pub struct MemberRaw {
     pub name: String,
     pub role: Option<String>,
     pub number: Option<u8>,
-    pub picture: Option<Vec<u8>>,
-    pub geared_picture: Option<Vec<u8>>,
+    pub picture: Option<Image>,
+    pub geared_picture: Option<Image>,
 }
 /// Contains information about team. `flag` here is a byte array for `Serialize`, which is
 /// processed into `Texture2D` when struct is converted into `TeamInfo`
@@ -52,7 +64,7 @@ pub struct MemberRaw {
 pub struct TeamInfoRaw {
     pub team_name: String,
     pub members: Vec<MemberRaw>,
-    pub flag: Option<Vec<u8>>,
+    pub flag: Option<Image>,
 }
 
 impl TeamInfoRaw {
@@ -145,7 +157,7 @@ pub struct GameData {
     pub referees: Vec<MemberRaw>,
     pub black: TeamInfoRaw,
     pub white: TeamInfoRaw,
-    pub sponsor_logo: Option<Vec<u8>>,
+    pub sponsor_logo: Option<Image>,
     pub game_id: u32,
     pub tournament_id: u32,
 }

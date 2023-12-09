@@ -66,10 +66,7 @@ impl TeamInfoRaw {
         team_color: Color,
     ) -> Self {
         let client = CLIENT_CELL.get().unwrap();
-        info!(
-            "Requesting UWH API for team information for team {}",
-            team_id
-        );
+        info!("Requesting UWH API for team information for team {team_id}");
         let data: Value = serde_json::from_str(
             &client
                 .get(format!(
@@ -174,10 +171,7 @@ async fn fetch_game_data(
             .send()
             .await
         {
-            info!(
-                "Got game data for tid:{}, gid:{} from UWH API",
-                tournament_id, game_id
-            );
+            info!("Got game data for tid:{tournament_id}, gid:{game_id} from UWH API");
             let text = data
                 .text()
                 .await
@@ -322,10 +316,7 @@ pub async fn networking_thread(
                 || next_game_data.as_ref().unwrap().game_id != next_gid
                 || next_game_data.as_ref().unwrap().tournament_id != tournament_id_new
             {
-                info!(
-                    "Fetching game data to cache for tid: {}, gid: {}",
-                    tournament_id_new, next_gid,
-                );
+                info!("Fetching game data to cache for tid: {tournament_id_new}, gid: {next_gid}");
                 tokio::spawn(async move {
                     fetch_game_data(
                         tr_,
@@ -346,10 +337,7 @@ pub async fn networking_thread(
                 let uwhportal_url = config.uwhportal_url.clone();
                 game_id = Some(game_id_new);
                 tournament_id = Some(tournament_id_new);
-                info!(
-                    "Fetching intial game data for tid: {}, gid: {}",
-                    tournament_id_new, game_id_new
-                );
+                info!("Fetching intial game data for tid: {tournament_id_new}, gid: {game_id_new}");
                 tokio::spawn(async move {
                     fetch_game_data(
                         tr_,
@@ -372,10 +360,7 @@ pub async fn networking_thread(
                 if *game_id_old != game_id_new || *tournament_id_old != tournament_id_new {
                     *game_id_old = game_id_new;
                     *tournament_id_old = tournament_id_new;
-                    info!(
-                        "Got new game ID {} / tournament ID {}",
-                        game_id_new, tournament_id_new
-                    );
+                    info!("Got new game ID {game_id_new} / tournament ID {tournament_id_new}");
                     if next_game_data.is_some()
                         && next_game_data.as_ref().unwrap().game_id == game_id_new
                         && next_game_data.as_ref().unwrap().tournament_id == tournament_id_new
@@ -390,8 +375,7 @@ pub async fn networking_thread(
                         .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
                     } else {
                         info!(
-                            "Fetching game data for tid: {}, gid: {}. Cache is empty or invalid!",
-                            tournament_id_new, game_id_new,
+                            "Fetching game data for tid: {tournament_id_new}, gid: {game_id_new}. Cache is empty or invalid!"
                         );
                         let (uwhscores_url_, uwhportal_url_, tr__) =
                             (uwhscores_url.clone(), uwhportal_url.clone(), tr_.clone());

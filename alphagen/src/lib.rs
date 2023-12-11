@@ -1,6 +1,8 @@
 use image::io::Reader;
 use image::GenericImageView;
+use image::ImageBuffer;
 use image::ImageFormat;
+use image::Rgba;
 use rayon::iter::ParallelBridge;
 use rayon::iter::ParallelIterator;
 use std::fs;
@@ -44,6 +46,26 @@ pub fn on_raw(input: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let p = pixs.next().unwrap();
         p.0[0] = alpha_channel[3];
         p.0[1] = alpha_channel[3];
+    }
+    let mut writer = BufWriter::new(Cursor::new(Vec::new()));
+    img_out.write_to(&mut writer, ImageFormat::Png)?;
+    Ok(writer.into_inner()?.into_inner())
+}
+
+/// Process raw rgba8 image data
+pub fn on_raw_rgba8(
+    width: u32,
+    height: u32,
+    buff: Vec<u8>,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let img_in: ImageBuffer<Rgba<u8>, Vec<u8>> =
+        ImageBuffer::from_raw(width, height, buff).unwrap();
+    let mut img_out = image::GrayAlphaImage::new(img_in.width(), img_in.height());
+    let mut pixs = img_out.pixels_mut();
+    for Rgba([_, _, _, alpha_channel]) in img_in.pixels() {
+        let p = pixs.next().unwrap();
+        p.0[0] = *alpha_channel;
+        p.0[1] = *alpha_channel;
     }
     let mut writer = BufWriter::new(Cursor::new(Vec::new()));
     img_out.write_to(&mut writer, ImageFormat::Png)?;

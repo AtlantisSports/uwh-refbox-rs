@@ -15,8 +15,6 @@ use uwh_common::game_snapshot::TimeoutSnapshot;
 impl PageRenderer {
     /// Display info during game play
     pub fn in_game_display(&mut self, state: &State) {
-        // animate the state and time graphic 5 seconds since period started)
-        draw_texture_both!(self.assets.team_bar, 26f32, 37f32, WHITE);
         let mut time = Instant::now()
             .duration_since(self.animation_register2)
             .as_f64() as f32;
@@ -320,6 +318,7 @@ impl PageRenderer {
             TimeoutSnapshot::None => {} // this is ugly. `TimeoutSnapshot` must be made an `Option`
         }
 
+        draw_texture_both!(self.assets.team_bar, 26f32, 37f32, WHITE);
         draw_text_both_ex!(
             &state.white.team_name,
             if state.white.flag.is_some() {

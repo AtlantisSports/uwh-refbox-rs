@@ -3902,9 +3902,9 @@ dependencies = [
 
 [[package]]
 name = "rppal"
-version = "0.15.0"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "815253b59e1b9c89918977155f7a4f39007cfe2b0cc5cf50615f9df275b9453c"
+checksum = "23aff72e177b0e0b0e0801bbe9f41de2abafd396dfb69af9c602ffba8c2091b3"
 dependencies = [
  "libc",
 ]

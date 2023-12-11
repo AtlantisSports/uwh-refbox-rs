@@ -1,4 +1,4 @@
-use alphagen::on_paths;
+use alphagen::{on_paths, remove_alpha_on_paths};
 use clap::Parser;
 use log::warn;
 use rayon::iter::ParallelBridge;
@@ -8,6 +8,12 @@ use std::path::PathBuf;
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
 struct Args {
+    #[clap(
+        short,
+        help = "Toggle mode that removes alpha channel",
+        default_value_t = false
+    )]
+    remove_alpha_mode: bool,
     #[clap(help = "Input files", required = true)]
     input_location: Vec<PathBuf>,
 
@@ -38,6 +44,10 @@ fn main() {
         })
         .collect::<Vec<_>>();
 
-    assert!(paths.is_empty(), "No valid input file paths!");
-    on_paths(paths, dir_output);
+    assert!(!paths.is_empty(), "No valid input file paths!");
+    if args.remove_alpha_mode {
+        remove_alpha_on_paths(paths, dir_output)
+    } else {
+        on_paths(paths, dir_output);
+    }
 }

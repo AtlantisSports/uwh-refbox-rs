@@ -187,44 +187,43 @@ impl PageRenderer {
             _ => {}
         }
         draw_texture_both!(self.assets.team_bar, 26f32, 37f32, WHITE);
-        if state.white.flag.is_none() {
-            draw_text_both_ex!(
-                &state.white.team_name,
-                if state.white.flag.is_some() {
-                    160f32
-                } else {
-                    79f32
-                },
-                64f32,
-                TextParams {
-                    font: self.assets.font,
-                    font_size: 20,
-                    color: BLACK, // don't fade out team name if flags aren't available
-                    ..Default::default()
-                },
-                TextParams {
-                    font: self.assets.font,
-                    font_size: 20,
-                    color: WHITE, // don't fade out team name if flags aren't available
-                    ..Default::default()
-                }
-            );
-            draw_text_both!(
-                &state.black.team_name,
-                if state.black.flag.is_some() {
-                    160f32
-                } else {
-                    79f32
-                },
-                100f32,
-                TextParams {
-                    font: self.assets.font,
-                    font_size: 20,
-                    color: WHITE,
-                    ..Default::default()
-                }
-            );
-        }
+        draw_text_both_ex!(
+            &state.white.team_name,
+            if state.white.flag.is_some() {
+                160f32
+            } else {
+                79f32
+            },
+            64f32,
+            TextParams {
+                font: self.assets.font,
+                font_size: 20,
+                color: BLACK, // don't fade out team name if flags aren't available
+                ..Default::default()
+            },
+            TextParams {
+                font: self.assets.font,
+                font_size: 20,
+                color: WHITE, // don't fade out team name if flags aren't available
+                ..Default::default()
+            }
+        );
+        draw_text_both!(
+            &state.black.team_name,
+            if state.black.flag.is_some() {
+                160f32
+            } else {
+                79f32
+            },
+            100f32,
+            TextParams {
+                font: self.assets.font,
+                font_size: 20,
+                color: WHITE,
+                ..Default::default()
+            }
+        );
+
         draw_texture_both!(self.assets.time_and_game_state, 367f32, 18f32, WHITE);
         let min = state.snapshot.secs_in_period / 60;
         let secs = state.snapshot.secs_in_period % 60;

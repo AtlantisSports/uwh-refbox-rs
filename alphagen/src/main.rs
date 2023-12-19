@@ -1,4 +1,4 @@
-use alphagen::{on_paths, remove_alpha_on_paths};
+use alphagen::{on_paths, pre_multiply_on_paths, remove_alpha_on_paths};
 use clap::Parser;
 use log::warn;
 use rayon::iter::ParallelBridge;
@@ -10,10 +10,20 @@ use std::path::PathBuf;
 struct Args {
     #[clap(
         short,
-        help = "Toggle mode that removes alpha channel",
+        help = "Remove alpha channel from images",
+        conflicts_with = "pre_multiply",
         default_value_t = false
     )]
     remove_alpha_mode: bool,
+
+    #[clap(
+        short,
+        help = "Pre-multiply the color image",
+        conflicts_with = "remove_alpha_mode",
+        default_value_t = false
+    )]
+    pre_multiply: bool,
+
     #[clap(help = "Input files", required = true)]
     input_location: Vec<PathBuf>,
 
@@ -47,6 +57,8 @@ fn main() {
     assert!(!paths.is_empty(), "No valid input file paths!");
     if args.remove_alpha_mode {
         remove_alpha_on_paths(paths, dir_output)
+    } else if args.pre_multiply {
+        pre_multiply_on_paths(paths, dir_output)
     } else {
         on_paths(paths, dir_output);
     }

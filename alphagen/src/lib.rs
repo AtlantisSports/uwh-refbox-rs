@@ -1,61 +1,70 @@
-use image::io::Reader;
-use image::GenericImageView;
-use image::ImageBuffer;
-use image::ImageFormat;
-use image::Rgba;
-use rayon::iter::ParallelBridge;
-use rayon::iter::ParallelIterator;
-use std::fs;
-use std::io::BufWriter;
-use std::io::Cursor;
-use std::path::PathBuf;
+use image::{io::Reader, GenericImageView, ImageBuffer, ImageFormat, LumaA, Rgba};
+use rayon::iter::{ParallelBridge, ParallelIterator};
+use std::{
+    fs,
+    io::{BufWriter, Cursor},
+    path::PathBuf,
+};
 
 /// Processes all files in `paths` and writes output images to `dir_output`
 pub fn on_paths(paths: Vec<&PathBuf>, dir_output: PathBuf) {
-    paths.iter().par_bridge().for_each(|path| {
-        let file =
-            image::open(path).unwrap_or_else(|_| panic!("Couldn't open image at {:?}", path));
-        let mut output_image_buff = image::GrayAlphaImage::new(file.width(), file.height());
-        let mut pixs = output_image_buff.pixels_mut();
-        let mut file_out = fs::File::create(dir_output.join(path.file_name().unwrap()))
-            .expect("Couldn't create output file");
-        for (_, _, pixel) in file.pixels() {
-            let p = pixs.next().unwrap();
-            p.0[0] = pixel[3];
-            p.0[1] = pixel[3];
-        }
-        output_image_buff
-            .write_to(&mut file_out, image::ImageFormat::Png)
-            .unwrap_or_else(|_| {
-                panic!(
-                    "Couldn't write to output directory {}/{:?}",
-                    dir_output.display(),
-                    path.file_name().unwrap_or_default()
-                )
-            });
-    });
+    let process = |in_pix: &Rgba<u8>, out_pix: &mut LumaA<u8>| {
+        out_pix.0[0] = in_pix[3];
+        out_pix.0[1] = in_pix[3];
+    };
+
+    process_images_on_paths(paths, dir_output, process);
 }
 
 /// Processes all files in `paths` and writes output images to `dir_output`.
 /// Removes alpha channel from images.
 pub fn remove_alpha_on_paths(paths: Vec<&PathBuf>, dir_output: PathBuf) {
+    let process = |in_pix: &Rgba<u8>, out_pix: &mut Rgba<u8>| {
+        out_pix.0[0] = in_pix[0];
+        out_pix.0[1] = in_pix[1];
+        out_pix.0[2] = in_pix[2];
+        if in_pix[3] == 0 {
+            out_pix.0[3] = 0;
+        } else {
+            out_pix.0[3] = 255;
+        }
+    };
+
+    process_images_on_paths(paths, dir_output, process);
+}
+
+/// Processes all files in `paths` and writes output images to `dir_output`.
+/// Pre-multiplies the colors with the alpha channel for use with the ATEM.
+pub fn pre_multiply_on_paths(paths: Vec<&PathBuf>, dir_output: PathBuf) {
+    let process = |in_pix: &Rgba<u8>, out_pix: &mut Rgba<u8>| {
+        out_pix.0[0] = ((in_pix[0] as u16 * in_pix[3] as u16) / 255) as u8;
+        out_pix.0[1] = ((in_pix[1] as u16 * in_pix[3] as u16) / 255) as u8;
+        out_pix.0[2] = ((in_pix[2] as u16 * in_pix[3] as u16) / 255) as u8;
+        out_pix.0[3] = in_pix[3];
+    };
+
+    process_images_on_paths(paths, dir_output, process);
+}
+
+fn process_images_on_paths<O>(
+    paths: Vec<&PathBuf>,
+    dir_output: PathBuf,
+    process: fn(&Rgba<u8>, &mut O),
+) where
+    O: image::Pixel + image::PixelWithColorType,
+    [O::Subpixel]: image::EncodableLayout,
+{
     paths.iter().par_bridge().for_each(|path| {
         let file =
             image::open(path).unwrap_or_else(|_| panic!("Couldn't open image at {:?}", path));
-        let mut output_image_buff = image::RgbaImage::new(file.width(), file.height());
+        let mut output_image_buff =
+            image::ImageBuffer::<O, Vec<O::Subpixel>>::new(file.width(), file.height());
         let mut pixs = output_image_buff.pixels_mut();
         let mut file_out = fs::File::create(dir_output.join(path.file_name().unwrap()))
             .expect("Couldn't create output file");
         for (_, _, pixel) in file.pixels() {
             let p = pixs.next().unwrap();
-            p.0[0] = pixel[0];
-            p.0[1] = pixel[1];
-            p.0[2] = pixel[2];
-            if pixel[3] == 0 {
-                p.0[3] = 0;
-            } else {
-                p.0[3] = 255;
-            }
+            process(&pixel, p);
         }
         output_image_buff
             .write_to(&mut file_out, image::ImageFormat::Png)

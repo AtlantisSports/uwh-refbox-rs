@@ -3,7 +3,7 @@ set -x
 TARGET_TRIPLE="aarch64-unknown-linux-gnu"
 IMAGE_NAME="rpi-xc-bullseye-aarch64"
 
-CARGO_ARGS="build --bin refbox --target $TARGET_TRIPLE --release"
+CARGO_ARGS="build --bin refbox --bin overlay --target $TARGET_TRIPLE --release"
 CONTAINER_WORKDIR="/workdir/uwh-refbox-rs"
 
 CONTAINER_NAME="$(docker create -t -w "$CONTAINER_WORKDIR/" $IMAGE_NAME /root/.cargo/bin/cargo $CARGO_ARGS)"
@@ -18,5 +18,6 @@ docker start -a "$CONTAINER_NAME"
 
 docker cp "$CONTAINER_NAME:$CONTAINER_WORKDIR/target/release/refbox" "$(dirname "$0")/output/$TARGET_TRIPLE/"
 docker cp "$CONTAINER_NAME:$CONTAINER_WORKDIR/target/$TARGET_TRIPLE/release/refbox" "$(dirname "$0")/output/"
+docker cp "$CONTAINER_NAME:$CONTAINER_WORKDIR/target/$TARGET_TRIPLE/release/overlay" "$(dirname "$0")/output/"
 
 docker rm "$CONTAINER_NAME"

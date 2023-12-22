@@ -512,8 +512,7 @@ impl Application for RefBoxApp {
 
         let uwhportal_client = match UwhPortalClient::new(
             &config.uwhportal.url,
-            Some(&config.uwhportal.email),
-            Some(&config.uwhportal.password),
+            Some(&config.uwhportal.token),
             require_https,
             REQUEST_TIMEOUT,
         ) {

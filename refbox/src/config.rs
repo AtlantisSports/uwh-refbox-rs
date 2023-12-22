@@ -45,16 +45,14 @@ impl Default for UwhScores {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UwhPortal {
     pub url: String,
-    pub email: String,
-    pub password: String,
+    pub token: String,
 }
 
 impl Default for UwhPortal {
     fn default() -> Self {
         Self {
-            url: "https://api.uwhscores.prod.zmvp.host".to_string(),
-            email: String::new(),
-            password: String::new(),
+            url: "https://api.uwhportal.com".to_string(),
+            token: String::new(),
         }
     }
 }

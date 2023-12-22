@@ -262,16 +262,31 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         vec![]
     };
 
-    info!(
-        "Reading config file from {:?}",
-        confy::get_configuration_file_path(APP_NAME, None).unwrap()
-    );
+    let config_path = confy::get_configuration_file_path(APP_NAME, None).unwrap();
+    info!("Reading config file from {config_path:?}",);
 
     let mut config: Config = match confy::load(APP_NAME, None) {
         Ok(c) => c,
         Err(e) => {
-            warn!("Failed to read config file, overwriting with default. Error: {e}");
-            let config = Config::default();
+            warn!("Failed to use config file. Error: {e}");
+            let config = match std::fs::read_to_string(config_path) {
+                Ok(file) => {
+                    warn!("Found old config file, attempting migration");
+                    match toml::from_str(&file) {
+                        Ok(old_config) => Config::migrate(&old_config),
+                        Err(e) => {
+                            warn!("Failed to parse old config file. Error: {e}");
+                            warn!("Using default config");
+                            Config::default()
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to read old config file. Error: {e}");
+                    warn!("Using default config");
+                    Config::default()
+                }
+            };
             confy::store(APP_NAME, None, &config).unwrap();
             config
         }

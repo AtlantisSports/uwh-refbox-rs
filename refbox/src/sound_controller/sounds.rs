@@ -1,5 +1,7 @@
 use array_concat::*;
 use derivative::Derivative;
+use enum_derive_2018::EnumFromStr;
+use macro_attr_2018::macro_attr;
 use serde::{Deserialize, Serialize};
 use std::{fmt::Display, ops::Index};
 use web_audio_api::{
@@ -56,15 +58,17 @@ static TWO_TONE: [f32; TWO_TONE_LEN] =
 
 pub const SAMPLE_RATE: f32 = 44100.0;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Derivative)]
-#[derivative(Default)]
-pub enum BuzzerSound {
+macro_attr! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Derivative, EnumFromStr!)]
     #[derivative(Default)]
-    Buzz,
-    Whoop,
-    Crazy,
-    DeDeDu,
-    TwoTone,
+    pub enum BuzzerSound {
+        #[derivative(Default)]
+        Buzz,
+        Whoop,
+        Crazy,
+        DeDeDu,
+        TwoTone,
+    }
 }
 
 impl Display for BuzzerSound {

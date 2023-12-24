@@ -64,10 +64,10 @@ pub struct State {
 
 // TODO: Change this to return Result. We're not rn cause from_file_with_format
 // panics anyways if image bytes is invalid
-pub fn texture_from_bytes(bytes: Vec<u8>) -> Texture {
+pub fn texture_from_image(image: network::Image) -> Texture {
     Texture {
-        color: Texture2D::from_file_with_format(&bytes, None),
-        alpha: alphagen::on_raw(&bytes)
+        color: Texture2D::from_rgba8(image.0, image.1, &image.2),
+        alpha: alphagen::on_raw_rgba8(image.0 as u32, image.1 as u32, image.2)
             .map(|bytes| Texture2D::from_file_with_format(&bytes, None))
             .expect("Failed to decode image"),
     }
@@ -88,7 +88,7 @@ impl State {
             self.black = TeamInfo::from(black);
             self.white = TeamInfo::from(white);
             self.start_time = start_time;
-            self.sponsor_logo = sponsor_logo.map(texture_from_bytes);
+            self.sponsor_logo = sponsor_logo.map(texture_from_image);
             self.referees = referees.into_iter().map(Member::from).collect();
             self.pool = pool;
         }
@@ -115,8 +115,8 @@ impl From<network::MemberRaw> for Member {
             name: member_raw.name,
             role: member_raw.role,
             number: member_raw.number,
-            picture: member_raw.picture.map(texture_from_bytes),
-            geared_picture: member_raw.geared_picture.map(texture_from_bytes),
+            picture: member_raw.picture.map(texture_from_image),
+            geared_picture: member_raw.geared_picture.map(texture_from_image),
         }
     }
 }
@@ -146,7 +146,7 @@ impl From<TeamInfoRaw> for TeamInfo {
                 .into_iter()
                 .map(Member::from)
                 .collect(),
-            flag: team_info_raw.flag.map(texture_from_bytes),
+            flag: team_info_raw.flag.map(texture_from_image),
         }
     }
 }

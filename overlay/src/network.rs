@@ -9,34 +9,42 @@ use uwh_common::game_snapshot::{Color, GamePeriod, GameSnapshot};
 
 static CLIENT_CELL: OnceLock<Client> = OnceLock::new();
 
-async fn get_image_from_opt_url(url: Option<&str>) -> Option<Vec<u8>> {
+pub type Image = (u16, u16, Vec<u8>);
+
+async fn get_image_from_opt_url(url: Option<&str>) -> Option<Image> {
     let client = CLIENT_CELL.get().unwrap();
-    match url {
-        Some("") => {
-            warn!("Image URL is empty. Skipping.");
-            None
-        }
+    let img_bytes = match url {
+        Some("") | None => None,
         Some(url) => Some(
             client
                 .get(url)
                 .send()
                 .await
                 .map_err(|e| {
-                    warn!("Couldn't get image \"{url}\" from network: {e}");
+                    warn!("Couldn't get image from network: {e}");
                     e
                 })
                 .ok()?
                 .bytes()
                 .await
                 .map_err(|e| {
-                    warn!("Couldn't get image \"{url}\"  body: {e}");
+                    warn!("Couldn't get image body: {e}");
                     e
                 })
                 .ok()?
                 .to_vec(),
         ),
-        None => None,
-    }
+    };
+
+    img_bytes
+        .and_then(|bytes| image::load_from_memory(&bytes).ok())
+        .map(|img| {
+            (
+                img.width() as u16,
+                img.height() as u16,
+                img.into_rgba8().into_raw(),
+            )
+        })
 }
 
 /// Contains data of each individual in the roster. pictures are raw unprocessed bytes that are
@@ -46,16 +54,16 @@ pub struct MemberRaw {
     pub name: String,
     pub role: Option<String>,
     pub number: Option<u8>,
-    pub picture: Option<Vec<u8>>,
-    pub geared_picture: Option<Vec<u8>>,
+    pub picture: Option<Image>,
+    pub geared_picture: Option<Image>,
 }
 /// Contains information about team. `flag` here is a byte array for `Serialize`, which is
 /// processed into `Texture2D` when struct is converted into `TeamInfo`
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct TeamInfoRaw {
     pub team_name: String,
     pub members: Vec<MemberRaw>,
-    pub flag: Option<Vec<u8>>,
+    pub flag: Option<Image>,
 }
 
 impl TeamInfoRaw {
@@ -66,10 +74,7 @@ impl TeamInfoRaw {
         team_color: Color,
     ) -> Self {
         let client = CLIENT_CELL.get().unwrap();
-        info!(
-            "Requesting UWH API for team information for team {}",
-            team_id
-        );
+        info!("Requesting UWH API for team information for team: {team_id} of tournament: {tournament_id}");
         let data: Value = serde_json::from_str(
             &client
                 .get(format!(
@@ -84,14 +89,9 @@ impl TeamInfoRaw {
         )
         .unwrap();
 
-        info!(
-            "Got team information for team {}, requesting member details",
-            team_id
-        );
-
         let (members, flag) = tokio::join!(
             futures::future::join_all(
-                data["roster"]
+                data["roster"] // json array of players
                     .as_array()
                     .map(|x| x.to_vec())
                     .unwrap_or_default()
@@ -128,8 +128,6 @@ impl TeamInfoRaw {
         );
         let members = members.into_iter().collect();
 
-        info!("Got member details for team {}", team_id);
-
         Self {
             team_name: data["name"].as_str().map_or(
                 match team_color {
@@ -158,9 +156,24 @@ pub struct GameData {
     pub referees: Vec<MemberRaw>,
     pub black: TeamInfoRaw,
     pub white: TeamInfoRaw,
-    pub sponsor_logo: Option<Vec<u8>>,
+    pub sponsor_logo: Option<Image>,
     pub game_id: u32,
     pub tournament_id: u32,
+}
+
+impl GameData {
+    pub fn default(game_id: u32, tournament_id: u32) -> Self {
+        Self {
+            pool: String::new(),
+            start_time: String::new(),
+            referees: Vec::new(),
+            black: TeamInfoRaw::default(),
+            white: TeamInfoRaw::default(),
+            sponsor_logo: None,
+            game_id,
+            tournament_id,
+        }
+    }
 }
 
 async fn fetch_game_data(
@@ -181,13 +194,18 @@ async fn fetch_game_data(
             .send()
             .await
         {
-            info!("Got game data for tid:{tournament_id}, gid:{game_id} from UWH API");
             let text = data
                 .text()
                 .await
                 .expect("Response body could not be recieved!");
-            let data: Value = serde_json::from_str(text.as_str())
-                .unwrap_or_else(|_| panic!("Server did not return valid json!: {}", text));
+            let data: Value = match serde_json::from_str(text.as_str()) {
+                Ok(d) => d,
+                _ => {
+                    error!("Aborting game data fetch! Server did not return valid JSON for tournament ID: {tournament_id}, game ID: {game_id}!: {text}");
+                    return;
+                }
+            };
+            info!("Got game data for tid:{tournament_id}, gid:{game_id} from UWH API");
             let team_id_black = data["game"]["black_id"].as_u64().unwrap_or(0);
             let team_id_white = data["game"]["white_id"].as_u64().unwrap_or(0);
 
@@ -241,7 +259,6 @@ async fn fetch_game_data(
                 TeamInfoRaw::new(uwhportal_url, tournament_id, team_id_black, Color::Black,),
                 TeamInfoRaw::new(uwhportal_url, tournament_id, team_id_white, Color::White,)
             );
-            info!("Got all data for tid:{tournament_id}, gid:{game_id}. Sending to network thread");
             tr.send((
                 GameData {
                     pool,
@@ -287,16 +304,7 @@ pub async fn networking_thread(
     };
     info!("Connected to refbox!");
 
-    #[derive(PartialEq, Eq)]
-    struct RequestedInfo {
-        tournament_id: u32,
-        game_id: u32,
-        is_current_game: bool,
-    }
-
-    let mut requested_infos = Vec::new();
-
-    let (tr, rc) = crossbeam_channel::bounded::<(GameData, bool)>(3);
+    let (tr, rc) = crossbeam_channel::unbounded::<(GameData, bool)>();
     let mut buff = vec![0u8; 1024];
     let mut read_bytes;
     let mut game_id = None;
@@ -331,36 +339,6 @@ pub async fn networking_thread(
             let uwhscores_url = config.uwhscores_url.clone();
             let uwhportal_url = config.uwhportal_url.clone();
 
-            // Request new game cache if empty or invalid
-            if next_game_data.is_none()
-                || next_game_data.as_ref().unwrap().game_id != next_gid
-                || next_game_data.as_ref().unwrap().tournament_id != tournament_id_new
-            {
-                let requested_info = RequestedInfo {
-                    tournament_id: tournament_id_new,
-                    game_id: next_gid,
-                    is_current_game: false,
-                };
-                if !requested_infos.contains(&requested_info) {
-                    info!(
-                        "Fetching game data to cache for tid: {}, gid: {}",
-                        tournament_id_new, next_gid,
-                    );
-                    requested_infos.push(requested_info);
-                    tokio::spawn(async move {
-                        fetch_game_data(
-                            tr_,
-                            &uwhscores_url,
-                            &uwhportal_url,
-                            tournament_id_new,
-                            next_gid,
-                            false,
-                        )
-                        .await;
-                    });
-                }
-            }
-
             // initial case when no data is initialised
             if game_id.is_none() {
                 let tr_ = tr.clone();
@@ -368,31 +346,21 @@ pub async fn networking_thread(
                 let uwhportal_url = config.uwhportal_url.clone();
                 game_id = Some(game_id_new);
                 tournament_id = Some(tournament_id_new);
-                let requested_info = RequestedInfo {
-                    tournament_id: tournament_id_new,
-                    game_id: game_id_new,
-                    is_current_game: true,
-                };
-                if !requested_infos.contains(&requested_info) {
-                    info!(
-                        "Fetching intial game data for tid: {}, gid: {}",
-                        tournament_id_new, game_id_new
-                    );
-                    requested_infos.push(requested_info);
-                    tokio::spawn(async move {
-                        fetch_game_data(
-                            tr_,
-                            &uwhscores_url,
-                            &uwhportal_url,
-                            tournament_id_new,
-                            game_id_new,
-                            true,
-                        )
-                        .await;
-                    });
-                }
+                info!("Fetching intial game data for tid: {tournament_id_new}, gid: {game_id_new}");
+                tokio::spawn(async move {
+                    fetch_game_data(
+                        tr_,
+                        &uwhscores_url,
+                        &uwhportal_url,
+                        tournament_id_new,
+                        game_id_new,
+                        true,
+                    )
+                    .await;
+                });
             }
 
+            // every other case, when atleast one game has been requested
             if let (Some(game_id_old), Some(tournament_id_old)) =
                 (game_id.as_mut(), tournament_id.as_mut())
             {
@@ -402,10 +370,7 @@ pub async fn networking_thread(
                 if *game_id_old != game_id_new || *tournament_id_old != tournament_id_new {
                     *game_id_old = game_id_new;
                     *tournament_id_old = tournament_id_new;
-                    info!(
-                        "Got new game ID {} / tournament ID {}",
-                        game_id_new, tournament_id_new
-                    );
+                    info!("Got new game ID {game_id_new} / tournament ID {tournament_id_new}");
                     if next_game_data.is_some()
                         && next_game_data.as_ref().unwrap().game_id == game_id_new
                         && next_game_data.as_ref().unwrap().tournament_id == tournament_id_new
@@ -419,39 +384,49 @@ pub async fn networking_thread(
                         })
                         .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
                     } else {
-                        let requested_info = RequestedInfo {
-                            tournament_id: tournament_id_new,
-                            game_id: game_id_new,
-                            is_current_game: true,
-                        };
-                        if !requested_infos.contains(&requested_info) {
-                            info!("Fetching game data for tid: {tournament_id_new}, gid: {game_id_new}. Cache is empty or invalid!");
-                            requested_infos.push(requested_info);
-                            let (uwhscores_url_, uwhportal_url_, tr__) =
-                                (uwhscores_url.clone(), uwhportal_url.clone(), tr_.clone());
-                            tokio::spawn(async move {
-                                fetch_game_data(
-                                    tr__,
-                                    &uwhscores_url_,
-                                    &uwhportal_url_,
-                                    tournament_id_new,
-                                    game_id_new,
-                                    true,
-                                )
-                                .await;
-                            });
-                        }
+                        info!(
+                            "Fetching game data for tid: {tournament_id_new}, gid: {game_id_new}. Cache is empty or invalid!"
+                        );
+                        let (uwhscores_url_, uwhportal_url_, tr__) =
+                            (uwhscores_url.clone(), uwhportal_url.clone(), tr_.clone());
+                        tokio::spawn(async move {
+                            fetch_game_data(
+                                tr__,
+                                &uwhscores_url_,
+                                &uwhportal_url_,
+                                tournament_id_new,
+                                game_id_new,
+                                true,
+                            )
+                            .await;
+                        });
                     }
                     continue;
                 }
             }
+
+            // request new game cache if empty or invalid
+            if next_game_data.is_none()
+                || next_game_data.as_ref().unwrap().game_id != next_gid
+                || next_game_data.as_ref().unwrap().tournament_id != tournament_id_new
+            {
+                info!("Fetching game data to cache for tid: {tournament_id_new}, gid: {next_gid}");
+                tokio::spawn(async move {
+                    fetch_game_data(
+                        tr_,
+                        &uwhscores_url,
+                        &uwhportal_url,
+                        tournament_id_new,
+                        next_gid,
+                        false,
+                    )
+                    .await;
+                });
+                next_game_data = Some(GameData::default(next_gid, tournament_id_new));
+            }
+
+            // recieve data for requested games
             if let Ok((game_data, is_current_game)) = rc.try_recv() {
-                let requested_info = RequestedInfo {
-                    tournament_id: game_data.tournament_id,
-                    game_id: game_data.game_id,
-                    is_current_game,
-                };
-                requested_infos.retain(|info| *info != requested_info);
                 if is_current_game {
                     info!("Got game state update from network!");
                     tx.send(StatePacket {

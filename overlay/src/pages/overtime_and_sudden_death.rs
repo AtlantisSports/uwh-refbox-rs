@@ -68,13 +68,12 @@ impl PageRenderer {
                 )
             };
 
-        draw_texture_both!(self.assets.team_bar, 26f32, 37f32, WHITE);
         // No penalty shot, black or white timeouts in overtime
         match self.last_snapshot_timeout {
             TimeoutSnapshot::Ref(_) => {
                 draw_texture_both!(
                     self.assets.referee_timout,
-                    timeout_offset + 380f32,
+                    timeout_offset + 580f32,
                     35f32,
                     Color {
                         a: timeout_alpha_offset,
@@ -83,7 +82,7 @@ impl PageRenderer {
                 );
                 draw_text_both_ex!(
                     "REFEREE",
-                    475f32 + timeout_offset,
+                    675f32 + timeout_offset,
                     67f32,
                     TextParams {
                         font: self.assets.font,
@@ -106,7 +105,7 @@ impl PageRenderer {
                 );
                 draw_text_both_ex!(
                     "TIMEOUT",
-                    480f32 + timeout_offset,
+                    680f32 + timeout_offset,
                     95f32,
                     TextParams {
                         font: self.assets.font,
@@ -131,7 +130,7 @@ impl PageRenderer {
             TimeoutSnapshot::PenaltyShot(_) => {
                 draw_texture_both!(
                     self.assets.penalty,
-                    timeout_offset + 380f32,
+                    timeout_offset + 580f32,
                     35f32,
                     Color {
                         a: timeout_alpha_offset,
@@ -140,7 +139,7 @@ impl PageRenderer {
                 );
                 draw_text_both_ex!(
                     "PENALTY",
-                    475f32 + timeout_offset,
+                    675f32 + timeout_offset,
                     67f32,
                     TextParams {
                         font: self.assets.font,
@@ -163,7 +162,7 @@ impl PageRenderer {
                 );
                 draw_text_both_ex!(
                     "SHOT",
-                    490f32 + timeout_offset,
+                    690f32 + timeout_offset,
                     95f32,
                     TextParams {
                         font: self.assets.font,
@@ -187,44 +186,44 @@ impl PageRenderer {
             }
             _ => {}
         }
-        if state.white.flag.is_none() {
-            draw_text_both_ex!(
-                &state.white.team_name,
-                if state.white.flag.is_some() {
-                    160f32
-                } else {
-                    79f32
-                },
-                64f32,
-                TextParams {
-                    font: self.assets.font,
-                    font_size: 20,
-                    color: BLACK, // don't fade out team name if flags aren't available
-                    ..Default::default()
-                },
-                TextParams {
-                    font: self.assets.font,
-                    font_size: 20,
-                    color: WHITE, // don't fade out team name if flags aren't available
-                    ..Default::default()
-                }
-            );
-            draw_text_both!(
-                &state.black.team_name,
-                if state.black.flag.is_some() {
-                    160f32
-                } else {
-                    79f32
-                },
-                100f32,
-                TextParams {
-                    font: self.assets.font,
-                    font_size: 20,
-                    color: WHITE,
-                    ..Default::default()
-                }
-            );
-        }
+        draw_texture_both!(self.assets.team_bar, 26f32, 37f32, WHITE);
+        draw_text_both_ex!(
+            &state.white.team_name,
+            if state.white.flag.is_some() {
+                160f32
+            } else {
+                79f32
+            },
+            64f32,
+            TextParams {
+                font: self.assets.font,
+                font_size: 20,
+                color: BLACK, // don't fade out team name if flags aren't available
+                ..Default::default()
+            },
+            TextParams {
+                font: self.assets.font,
+                font_size: 20,
+                color: WHITE, // don't fade out team name if flags aren't available
+                ..Default::default()
+            }
+        );
+        draw_text_both!(
+            &state.black.team_name,
+            if state.black.flag.is_some() {
+                160f32
+            } else {
+                79f32
+            },
+            100f32,
+            TextParams {
+                font: self.assets.font,
+                font_size: 20,
+                color: WHITE,
+                ..Default::default()
+            }
+        );
+
         draw_texture_both!(self.assets.time_and_game_state, 367f32, 18f32, WHITE);
         let min = state.snapshot.secs_in_period / 60;
         let secs = state.snapshot.secs_in_period % 60;

@@ -5362,9 +5362,9 @@ dependencies = [
 
 [[package]]
 name = "web-audio-api"
-version = "0.38.0"
+version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ae9b33d47c67a52eb63e581b22fbf2766c0e6048e31999ed68877aff7498055"
+checksum = "4c7d59cae81c71acd34ccf97fa7e310c42a1362a864a05d0b2604e704ee1a4dd"
 dependencies = [
  "arc-swap",
  "arrayvec",
@@ -5373,6 +5373,7 @@ dependencies = [
  "crossbeam-channel",
  "dasp_sample",
  "float_eq",
+ "futures",
  "hound",
  "hrtf",
  "llq",

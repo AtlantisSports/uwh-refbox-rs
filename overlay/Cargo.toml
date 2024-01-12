@@ -9,7 +9,7 @@ edition = "2021"
 clap = { version = "4.4.14", features = ["derive"] }
 futures = "0.3"
 coarsetime = "0.1.23"
-confy = "0.5"
+confy = "0.6"
 crossbeam-channel = "0.5.11"
 directories = "5.0.1"
 log = "0.4.18"

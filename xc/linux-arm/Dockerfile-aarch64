@@ -1,5 +1,5 @@
 # We'll just use the official Rust image rather than build our own from scratch
-FROM arm64v8/rust:1.66.1-slim-bullseye
+FROM arm64v8/rust:1.75.0-slim-bullseye
 
 ENV KEYRINGS /usr/local/share/keyrings
 

@@ -1,7 +1,7 @@
 CONTAINER_CMD="cargo build --bin refbox --target x86_64-pc-windows-msvc --release"
 CONTAINER_WORKDIR="/workdir/uwh-refbox-rs"
 
-CONTAINER_NAME="$(docker create -t -w "$CONTAINER_WORKDIR/" windows-rust-1.74-xc /bin/bash -c "$CONTAINER_CMD")"
+CONTAINER_NAME="$(docker create -t -w "$CONTAINER_WORKDIR/" windows-rust-1.75-xc /bin/bash -c "$CONTAINER_CMD")"
 
 BASE_DIR="$(dirname "$0")/../.."
 

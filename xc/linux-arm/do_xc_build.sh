@@ -1,4 +1,4 @@
-RUST_VERSION="1.66"
+RUST_VERSION="1.75"
 
 if [ -z $1 ]; then
     TARGET_TRIPLE="aarch64-unknown-linux-gnu"

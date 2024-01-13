@@ -1,4 +1,5 @@
 use super::{
+    super::Config,
     style::{
         ButtonStyle, Element, LARGE_TEXT, LINE_HEIGHT, MIN_BUTTON_SIZE, PADDING, SMALL_PLUS_TEXT,
         SMALL_TEXT, SPACING,
@@ -18,13 +19,13 @@ use uwh_common::{
 
 pub(in super::super) fn build_main_view<'a>(
     snapshot: &GameSnapshot,
-    config: &GameConfig,
+    game_config: &GameConfig,
     using_uwhscores: bool,
     games: &Option<BTreeMap<u32, GameInfo>>,
-    mode: Mode,
+    config: &Config,
     clock_running: bool,
 ) -> Element<'a, Message> {
-    let time_button = make_game_time_button(snapshot, true, false, mode, clock_running);
+    let time_button = make_game_time_button(snapshot, true, false, config.mode, clock_running);
 
     let mut center_col = column![time_button].spacing(SPACING).width(Length::Fill);
 
@@ -46,35 +47,139 @@ pub(in super::super) fn build_main_view<'a>(
                 | GamePeriod::PreOvertime
                 | GamePeriod::OvertimeHalfTime
                 | GamePeriod::PreSuddenDeath => {
-                    center_col = center_col.push(
-                        make_button("START NOW")
-                            .style(ButtonStyle::Green)
-                            .on_press(Message::StartPlayNow),
-                    )
+                    let mut start_warning_row = row![make_button("START NOW")
+                        .style(ButtonStyle::Green)
+                        .width(Length::Fill)
+                        .on_press(Message::StartPlayNow),]
+                    .spacing(SPACING);
+
+                    if config.track_fouls_and_warnings {
+                        start_warning_row = start_warning_row.push(
+                            make_button("ADD WARNING")
+                                .style(ButtonStyle::Blue)
+                                .width(Length::Fill)
+                                .on_press(Message::KeypadPage(KeypadPage::WarningAdd {
+                                    color: GameColor::Black,
+                                    infraction: Infraction::Unknown,
+                                    expanded: false,
+                                    team_warning: false,
+                                })),
+                        )
+                    }
+
+                    center_col = center_col.push(start_warning_row)
                 }
                 GamePeriod::FirstHalf
                 | GamePeriod::SecondHalf
                 | GamePeriod::OvertimeFirstHalf
                 | GamePeriod::OvertimeSecondHalf
-                | GamePeriod::SuddenDeath => {}
+                | GamePeriod::SuddenDeath => {
+                    if config.track_fouls_and_warnings {
+                        center_col = center_col.push(
+                            row![
+                                make_button("ADD FOUL")
+                                    .style(ButtonStyle::Orange)
+                                    .width(Length::Fill)
+                                    .on_press(Message::KeypadPage(KeypadPage::FoulAdd {
+                                        color: Some(GameColor::Black),
+                                        infraction: Infraction::Unknown,
+                                        expanded: false,
+                                    })),
+                                make_button("ADD WARNING")
+                                    .style(ButtonStyle::Blue)
+                                    .width(Length::Fill)
+                                    .on_press(Message::KeypadPage(KeypadPage::WarningAdd {
+                                        color: GameColor::Black,
+                                        infraction: Infraction::Unknown,
+                                        expanded: false,
+                                        team_warning: false,
+                                    })),
+                            ]
+                            .spacing(SPACING),
+                        )
+                    }
+                }
             };
         }
     };
 
     center_col = center_col.push(
         button(
-            text(config_string(snapshot, config, using_uwhscores, games))
-                .size(SMALL_TEXT)
-                .line_height(LINE_HEIGHT)
-                .vertical_alignment(Vertical::Center)
-                .horizontal_alignment(Horizontal::Left),
+            text(config_string(
+                snapshot,
+                game_config,
+                using_uwhscores,
+                games,
+                config.track_fouls_and_warnings,
+            ))
+            .size(SMALL_TEXT)
+            .line_height(LINE_HEIGHT)
+            .vertical_alignment(Vertical::Center)
+            .horizontal_alignment(Horizontal::Left),
         )
         .padding(PADDING)
         .style(ButtonStyle::LightGray)
         .width(Length::Fill)
-        .height(Length::Fill)
+        .height(Length::FillPortion(2))
         .on_press(Message::ShowGameDetails),
     );
+
+    if config.track_fouls_and_warnings {
+        center_col = center_col.push(
+            button(
+                column![
+                    text("WARNINGS")
+                        .line_height(LINE_HEIGHT)
+                        .vertical_alignment(Vertical::Top)
+                        .horizontal_alignment(Horizontal::Center)
+                        .width(Length::Fill),
+                    row![
+                        column(
+                            snapshot
+                                .b_warnings
+                                .iter()
+                                .rev()
+                                .take(3)
+                                .map(|warning| make_warning_container(
+                                    warning,
+                                    Some(GameColor::Black)
+                                )
+                                .into())
+                                .collect()
+                        )
+                        .spacing(1)
+                        .width(Length::Fill)
+                        .height(Length::Fill),
+                        column(
+                            snapshot
+                                .w_warnings
+                                .iter()
+                                .rev()
+                                .take(3)
+                                .map(|warning| make_warning_container(
+                                    warning,
+                                    Some(GameColor::White)
+                                )
+                                .into())
+                                .collect()
+                        )
+                        .spacing(1)
+                        .width(Length::Fill)
+                        .height(Length::Fill),
+                    ]
+                    .spacing(SPACING),
+                ]
+                .spacing(0)
+                .width(Length::Fill)
+                .height(Length::Fill),
+            )
+            .width(Length::Fill)
+            .height(Length::FillPortion(1))
+            .on_press(Message::NoAction)
+            .style(ButtonStyle::LightGray)
+            .on_press(Message::ShowWarnings),
+        )
+    }
 
     let make_penalty_button = |snapshot: &GameSnapshot, color: GameColor| {
         let penalties = match color {

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="210mm"
+   height="210mm"
+   viewBox="0 0 210 210"
+   version="1.1"
+   id="svg5"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs2" />
+  <g
+     id="layer1"
+     style="display:none"
+     transform="matrix(8,0,0,8,4.1111625,-6.0690973)">
+    <text
+       xml:space="preserve"
+       style="font-size:8.46667px;text-align:center;text-anchor:middle;fill:#ffffff;stroke-width:0.264583"
+       x="12.433337"
+       y="11.669818"
+       id="text186"><tspan
+         id="tspan184"
+         style="font-size:8.46667px;text-align:center;text-anchor:middle;stroke-width:0.264583"
+         x="12.433337"
+         y="11.669818">FREE</tspan><tspan
+         style="font-size:8.46667px;text-align:center;text-anchor:middle;stroke-width:0.264583"
+         x="12.433337"
+         y="22.253155"
+         id="tspan188">ARM</tspan></text>
+  </g>
+  <g
+     id="g732"
+     style="display:inline"
+     transform="matrix(8,0,0,8,5,4.9999996)">
+    <g
+       aria-label="?"
+       id="text730"
+       style="font-size:22.5778px;text-align:center;text-anchor:middle;fill:#ffffff;stroke-width:0.264583"
+       transform="translate(-0.19792063,9.2031507)">
+      <path
+         d="m 17.355695,-0.88687888 q 0,1.08038304 -0.385851,1.92925548 -0.385852,0.837848 -1.014238,1.4882827 Q 15.338245,3.1590454 14.53347,3.7102612 13.728694,4.2614771 12.8247,4.7796199 V 7.2600912 H 10.851348 V 3.8976746 q 0.71658,-0.4078997 1.543404,-0.8929697 0.837848,-0.4850699 1.367015,-0.9811642 0.639411,-0.5732644 0.992189,-1.17960185 0.352778,-0.61736174 0.352778,-1.56545298 0,-1.24574777 -0.848872,-1.85208517 -0.837848,-0.6173618 -2.171791,-0.6173618 -1.190626,0 -2.2599847,0.3748268 -1.0583344,0.3748268 -1.6756962,0.7606778 H 8.040147 v -2.2489606 q 0.7717022,-0.2976565 1.951304,-0.5291672 1.190626,-0.242535 2.248961,-0.242535 2.370228,0 3.737243,1.1575533 1.37804,1.146529 1.37804,3.03168712 z M 13.00109,11.669818 H 10.752129 V 9.3436871 h 2.248961 z"
+         id="path740" />
+    </g>
+  </g>
+</svg>

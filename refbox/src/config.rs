@@ -115,6 +115,7 @@ pub struct Config {
     pub mode: Mode,
     pub hide_time: bool,
     pub collect_scorer_cap_num: bool,
+    pub track_fouls_and_warnings: bool,
     pub game: Game,
     pub hardware: Hardware,
     pub uwhscores: UwhScores,
@@ -128,6 +129,7 @@ impl Config {
             mut mode,
             mut hide_time,
             mut collect_scorer_cap_num,
+            mut track_fouls_and_warnings,
             mut game,
             mut hardware,
             mut uwhscores,
@@ -144,6 +146,11 @@ impl Config {
         }
         get_boolean_value(old, "hide_time", &mut hide_time);
         get_boolean_value(old, "collect_scorer_cap_num", &mut collect_scorer_cap_num);
+        get_boolean_value(
+            old,
+            "track_fouls_and_warnings",
+            &mut track_fouls_and_warnings,
+        );
         if let Some(old_game) = old.get("game") {
             if let Some(old_game) = old_game.as_table() {
                 game = Game::migrate(old_game);
@@ -174,6 +181,7 @@ impl Config {
             mode,
             hide_time,
             collect_scorer_cap_num,
+            track_fouls_and_warnings,
             game,
             hardware,
             uwhscores,

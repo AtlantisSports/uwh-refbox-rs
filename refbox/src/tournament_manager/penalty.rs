@@ -6,7 +6,7 @@ use time::Duration as SignedDuration;
 use tokio::time::{Duration, Instant};
 use uwh_common::{
     config::Game as GameConfig,
-    game_snapshot::{GamePeriod, PenaltySnapshot, PenaltyTime},
+    game_snapshot::{GamePeriod, Infraction, PenaltySnapshot, PenaltyTime},
 };
 
 #[derive(Derivative)]
@@ -41,6 +41,7 @@ pub(crate) struct Penalty {
     pub(crate) start_period: GamePeriod,
     pub(crate) start_time: Duration,
     pub(crate) start_instant: Instant,
+    pub(crate) infraction: Infraction,
 }
 
 impl Penalty {
@@ -158,6 +159,7 @@ impl Penalty {
         Ok(PenaltySnapshot {
             player_number: self.player_number,
             time,
+            infraction: self.infraction,
         })
     }
 }
@@ -325,6 +327,7 @@ mod test {
                 start_time,
                 start_period,
                 start_instant: Instant::now(),
+                infraction: Infraction::Unknown,
             };
             assert_eq!(
                 penalty.time_elapsed(end_period, end_time, config),
@@ -424,6 +427,7 @@ mod test {
                 start_time,
                 start_period,
                 start_instant: Instant::now(),
+                infraction: Infraction::Unknown,
             };
             assert_eq!(
                 penalty.time_remaining(end_period, end_time, &config),
@@ -455,6 +459,7 @@ mod test {
             start_time: Duration::from_secs(5),
             start_period: GamePeriod::SuddenDeath,
             start_instant: Instant::now(),
+            infraction: Infraction::Unknown,
         };
         assert_eq!(
             penalty.is_complete(GamePeriod::SuddenDeath, Duration::from_secs(60), &config),
@@ -475,6 +480,7 @@ mod test {
             start_time: Duration::from_secs(5),
             start_period: GamePeriod::SuddenDeath,
             start_instant: Instant::now(),
+            infraction: Infraction::Unknown,
         };
         assert_eq!(
             penalty.is_complete(GamePeriod::SuddenDeath, Duration::from_secs(120), &config),
@@ -495,6 +501,7 @@ mod test {
             start_time: Duration::from_secs(5),
             start_period: GamePeriod::SuddenDeath,
             start_instant: Instant::now(),
+            infraction: Infraction::Unknown,
         };
         assert_eq!(
             penalty.is_complete(GamePeriod::SuddenDeath, Duration::from_secs(300), &config),
@@ -515,6 +522,7 @@ mod test {
             start_time: Duration::from_secs(5),
             start_period: GamePeriod::SuddenDeath,
             start_instant: Instant::now(),
+            infraction: Infraction::Unknown,
         };
         assert_eq!(
             penalty.is_complete(GamePeriod::SuddenDeath, Duration::from_secs(300), &config),

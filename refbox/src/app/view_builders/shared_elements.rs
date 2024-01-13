@@ -7,6 +7,7 @@ use super::{
     Element,
 };
 use crate::{config::Mode, tournament_manager::TournamentManager};
+use enum_iterator::all;
 use iced::{
     alignment::{Horizontal, Vertical},
     widget::{
@@ -28,7 +29,8 @@ use uwh_common::{
     config::Game as GameConfig,
     drawing_support::*,
     game_snapshot::{
-        Color as GameColor, GamePeriod, GameSnapshot, PenaltySnapshot, PenaltyTime, TimeoutSnapshot,
+        Color as GameColor, GamePeriod, GameSnapshot, Infraction, InfractionSnapshot,
+        PenaltySnapshot, PenaltyTime, TimeoutSnapshot,
     },
     uwhscores::GameInfo,
 };
@@ -635,6 +637,7 @@ pub(super) fn config_string(
     config: &GameConfig,
     using_uwhscores: bool,
     games: &Option<BTreeMap<u32, GameInfo>>,
+    fouls_and_warnings: bool,
 ) -> String {
     const TEAM_NAME_LEN_LIMIT: usize = 40;
     let mut result = String::new();
@@ -735,15 +738,17 @@ pub(super) fn config_string(
 
     writeln!(&mut result, "Stop clock in last 2 minutes: ").unwrap();
 
-    write!(
-        &mut result,
-        "Cheif ref: \n\
-        Timer: \n\
-        Water ref 1: \n\
-        Water ref 2: \n\
-        Water ref 3: ",
-    )
-    .unwrap();
+    if !fouls_and_warnings {
+        write!(
+            &mut result,
+            "Cheif ref: \n\
+            Timer: \n\
+            Water ref 1: \n\
+            Water ref 2: \n\
+            Water ref 3: ",
+        )
+        .unwrap();
+    }
 
     result
 }
@@ -768,7 +773,7 @@ pub(super) fn make_multi_label_button<'a, Message: 'a + Clone, T: ToString>(
     .width(Length::Fill)
 }
 
-fn centered_text<'a, T: ToString>(label: T) -> Text<'a> {
+pub fn centered_text<'a, T: ToString>(label: T) -> Text<'a> {
     text(label)
         .line_height(LINE_HEIGHT)
         .vertical_alignment(Vertical::Center)
@@ -846,4 +851,138 @@ pub(super) fn make_value_button<'a, Message: 'a + Clone, T: ToString, U: ToStrin
         button = button.on_press(message);
     }
     button
+}
+
+pub(super) fn make_penalty_dropdown<'a>(
+    infraction: Infraction,
+    expanded: bool,
+) -> Element<'a, Message> {
+    const ROW_LEN: usize = 6;
+
+    let svg_file = if expanded {
+        &include_bytes!("../../../resources/expand_more.svg")[..]
+    } else {
+        &include_bytes!("../../../resources/expand_less.svg")[..]
+    };
+    let closed_button_content = row![
+        text("INFRACTION")
+            .size(MEDIUM_TEXT)
+            .vertical_alignment(Vertical::Center)
+            .horizontal_alignment(Horizontal::Left)
+            .height(Length::Fill)
+            .line_height(LINE_HEIGHT),
+        horizontal_space(Length::Fill),
+        container(
+            Svg::new(svg::Handle::from_memory(infraction.svg_fouls())).style(SvgStyle::Black)
+        )
+        .padding(PADDING)
+        .style(ContainerStyle::LightGray)
+        .height(Length::Fixed(MIN_BUTTON_SIZE))
+        .width(80),
+        horizontal_space(Length::Fixed(SPACING)),
+        container(
+            Svg::new(svg::Handle::from_memory(svg_file,))
+                .style(SvgStyle::White)
+                .height(Length::Fixed(MEDIUM_TEXT * 1.3)),
+        )
+        .width(60)
+        .height(Length::Fill)
+        .style(ContainerStyle::Transparent)
+        .center_y()
+    ];
+
+    let foul_dropdown = button(closed_button_content)
+        .width(Length::Fill)
+        .style(ButtonStyle::Blue);
+
+    if expanded {
+        let foul_buttons = all::<Infraction>().map(|button_infraction| {
+            button(
+                container(
+                    Svg::new(svg::Handle::from_memory(button_infraction.svg_fouls()))
+                        .style(SvgStyle::Black),
+                )
+                .style(ContainerStyle::LightGray),
+            )
+            .padding(0)
+            .height(Length::Fixed(MIN_BUTTON_SIZE))
+            .width(Length::Fill)
+            .style(if infraction == button_infraction {
+                ButtonStyle::LightGraySelected
+            } else {
+                ButtonStyle::LightGray
+            })
+            .on_press(Message::ChangeInfraction(button_infraction))
+        });
+
+        let mut first_row = row![].spacing(SPACING);
+        for button in foul_buttons.clone().take(ROW_LEN) {
+            first_row = first_row.push(button);
+        }
+        let mut second_row = row![].spacing(SPACING);
+        for button in foul_buttons.skip(ROW_LEN).take(ROW_LEN) {
+            second_row = second_row.push(button);
+        }
+
+        let open_button_content = column![
+            foul_dropdown
+                .padding(0)
+                .height(Length::Fixed(MIN_BUTTON_SIZE - (2.0 * PADDING)))
+                .on_press(Message::FoulSelectExpanded(false)),
+            first_row,
+            vertical_space(Length::Fixed(SPACING)),
+            second_row,
+        ]
+        .padding(0);
+
+        container(open_button_content)
+            .padding(PADDING)
+            .width(Length::Fill)
+            .style(ContainerStyle::Blue)
+            .into()
+    } else {
+        foul_dropdown
+            .padding(PADDING)
+            .height(Length::Fixed(MIN_BUTTON_SIZE))
+            .on_press(Message::FoulSelectExpanded(true))
+            .into()
+    }
+}
+
+pub fn make_warning_container<'a>(
+    warning: &InfractionSnapshot,
+    color: Option<GameColor>,
+) -> Container<'a, Message> {
+    const WIDTH: u16 = 220;
+    const HEIGHT: u16 = 23;
+
+    let who = if let Some(num) = warning.player_number {
+        format!("#{num}")
+    } else {
+        "T".to_string()
+    };
+
+    container(if color.is_some() {
+        row![
+            horizontal_space(PADDING),
+            text(warning.infraction.short_name()).size(SMALL_TEXT),
+            horizontal_space(Length::Fill),
+            text(who).size(SMALL_TEXT),
+            horizontal_space(PADDING),
+        ]
+    } else {
+        row![
+            horizontal_space(Length::Fill),
+            text(warning.infraction.short_name()).size(SMALL_TEXT),
+            horizontal_space(Length::Fill),
+        ]
+    })
+    .width(WIDTH)
+    .height(HEIGHT)
+    .style(match color {
+        Some(GameColor::Black) => ContainerStyle::Black,
+        Some(GameColor::White) => ContainerStyle::White,
+        None => ContainerStyle::Blue,
+    })
+    .padding(0)
 }

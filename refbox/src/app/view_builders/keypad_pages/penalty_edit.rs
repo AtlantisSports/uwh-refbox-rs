@@ -10,14 +10,16 @@ pub(super) fn make_penalty_edit_page<'a>(
     origin: Option<(GameColor, usize)>,
     color: GameColor,
     kind: PenaltyKind,
-    mode: Mode,
+    config: &Config,
+    infraction: Infraction,
+    expanded: bool,
 ) -> Element<'a, Message> {
     let (black_style, white_style) = match color {
         GameColor::Black => (ButtonStyle::BlackSelected, ButtonStyle::White),
         GameColor::White => (ButtonStyle::Black, ButtonStyle::WhiteSelected),
     };
 
-    let (green, yellow, orange) = match mode {
+    let (green, yellow, orange) = match config.mode {
         Mode::Hockey6V6 => (
             PenaltyKind::OneMinute,
             PenaltyKind::TwoMinute,
@@ -121,36 +123,40 @@ pub(super) fn make_penalty_edit_page<'a>(
     let yellow_label = labels[1];
     let orange_label = labels[2];
 
-    column![
-        vertical_space(Length::Fill),
-        row![
-            make_button("BLACK")
-                .style(black_style)
-                .on_press(Message::ChangeColor(GameColor::Black)),
-            make_button("WHITE")
-                .style(white_style)
-                .on_press(Message::ChangeColor(GameColor::White)),
-        ]
-        .spacing(SPACING),
-        vertical_space(Length::Fill),
-        row![
-            make_button(green_label)
-                .style(green_style)
-                .on_press(Message::ChangeKind(green)),
-            make_button(yellow_label)
-                .style(yellow_style)
-                .on_press(Message::ChangeKind(yellow)),
-            make_button(orange_label)
-                .style(orange_style)
-                .on_press(Message::ChangeKind(orange)),
-            make_button("TD")
-                .style(td_style)
-                .on_press(Message::ChangeKind(PenaltyKind::TotalDismissal)),
-        ]
-        .spacing(SPACING),
-        vertical_space(Length::Fill),
-        exit_row,
+    let mut content = column![row![
+        make_button("BLACK")
+            .style(black_style)
+            .on_press(Message::ChangeColor(Some(GameColor::Black))),
+        make_button("WHITE")
+            .style(white_style)
+            .on_press(Message::ChangeColor(Some(GameColor::White))),
     ]
-    .spacing(SPACING)
-    .into()
+    .spacing(SPACING),]
+    .spacing(SPACING);
+
+    if config.track_fouls_and_warnings {
+        content = content.push(make_penalty_dropdown(infraction, expanded))
+    }
+
+    if !expanded {
+        content = content.push(vertical_space(Length::Fill)).push(
+            row![
+                make_button(green_label)
+                    .style(green_style)
+                    .on_press(Message::ChangeKind(green)),
+                make_button(yellow_label)
+                    .style(yellow_style)
+                    .on_press(Message::ChangeKind(yellow)),
+                make_button(orange_label)
+                    .style(orange_style)
+                    .on_press(Message::ChangeKind(orange)),
+                make_button("TD")
+                    .style(td_style)
+                    .on_press(Message::ChangeKind(PenaltyKind::TotalDismissal)),
+            ]
+            .spacing(SPACING),
+        );
+    }
+    content = content.push(vertical_space(Length::Fill)).push(exit_row);
+    content.into()
 }

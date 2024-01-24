@@ -223,7 +223,7 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
         TimeoutSnapshot::Black(_) | TimeoutSnapshot::Ref(_) | TimeoutSnapshot::PenaltyShot(_) => {
             make_multi_label_message_button(
                 ("SWITCH TO", "WHITE"),
-                tm.can_start_team_timeout(GameColor::White)
+                tm.can_switch_to_team_timeout(GameColor::White)
                     .ok()
                     .map(|_| Message::TeamTimeout(GameColor::White, true)),
             )

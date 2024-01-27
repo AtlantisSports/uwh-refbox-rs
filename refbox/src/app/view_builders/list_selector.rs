@@ -116,7 +116,7 @@ pub(in super::super) fn build_list_selector_page<'a>(
     .width(Length::FillPortion(4));
 
     column![
-        make_game_time_button(snapshot, false, true, mode, clock_running),
+        make_game_time_button(snapshot, false, false, mode, clock_running),
         row![
             scroll_list,
             column![

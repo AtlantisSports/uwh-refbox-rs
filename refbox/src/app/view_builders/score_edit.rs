@@ -93,7 +93,7 @@ pub(in super::super) fn build_score_edit_view<'a>(
     .style(ContainerStyle::White);
 
     let mut main_col = column![
-        make_game_time_button(snapshot, false, true, mode, clock_running),
+        make_game_time_button(snapshot, false, is_confirmation, mode, clock_running),
         vertical_space(Length::Fill)
     ]
     .spacing(SPACING)

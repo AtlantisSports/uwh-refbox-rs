@@ -40,7 +40,7 @@ pub(in super::super) fn build_keypad_page<'a>(
     clock_running: bool,
 ) -> Element<'a, Message> {
     column![
-        make_game_time_button(snapshot, false, true, mode, clock_running),
+        make_game_time_button(snapshot, false, false, mode, clock_running),
         row![
             container(
                 column![

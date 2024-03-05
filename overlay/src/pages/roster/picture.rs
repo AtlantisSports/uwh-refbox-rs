@@ -10,12 +10,12 @@ const RPD_GROUP_TIME: f32 = 10f32;
 const RPD_NUMBER_BG_WIDTH: f32 = 100f32;
 const CARD_WIDTH: f32 = 440f32;
 
-fn rpd_groups(members: &Vec<Member>) -> impl Iterator<Item = Vec<Member>> {
+fn rpd_groups(members: &[Member]) -> impl Iterator<Item = Vec<Member>> {
     let mut n4 = members.len() / 4;
     let mut n3 = 0;
     // 1,2,5 are failing cases for this algorithm
     if [1, 2].contains(&members.len()) {
-        return vec![members.clone()].into_iter(); // 1,2 get returned as is
+        return vec![members.to_vec()].into_iter(); // 1,2 get returned as is
     } else if members.len() == 5 {
         return vec![members[..3].to_vec(), members[3..].to_vec()].into_iter(); // partition 5 into 3, 2
     }

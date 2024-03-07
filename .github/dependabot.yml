@@ -14,7 +14,12 @@ updates:
       non-major:
         patterns:
         - "*"
+        exclude-patterns:
+        - "iced*"
         update-types:
         - "minor"
         - "patch"
+      iced:
+        patterns:
+        - "iced*"
         

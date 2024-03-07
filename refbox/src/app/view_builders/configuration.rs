@@ -428,7 +428,7 @@ fn make_tournament_config_page<'a>(
     };
 
     let mut col = column![
-        make_game_time_button(snapshot, false, true, mode, clock_running),
+        make_game_time_button(snapshot, false, false, mode, clock_running),
         make_value_button(
             "USING UWHPORTAL:",
             bool_string(using_uwhscores),
@@ -501,7 +501,7 @@ fn make_sound_config_page<'a>(
         ));
 
     column![
-        make_game_time_button(snapshot, false, true, mode, clock_running),
+        make_game_time_button(snapshot, false, false, mode, clock_running),
         sides_btn,
         row![
             make_value_button(
@@ -704,7 +704,7 @@ fn make_remote_config_page<'a>(
     .style(ButtonStyle::Orange);
 
     column![
-        make_game_time_button(snapshot, false, true, mode, clock_running),
+        make_game_time_button(snapshot, false, false, mode, clock_running),
         row![
             make_scroll_list(
                 buttons.unwrap(),
@@ -776,7 +776,7 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
     };
 
     column![
-        make_game_time_button(snapshot, false, true, mode, clock_running),
+        make_game_time_button(snapshot, false, false, mode, clock_running),
         vertical_space(Length::Fill),
         make_time_editor(title, length, false),
         vertical_space(Length::Fill),

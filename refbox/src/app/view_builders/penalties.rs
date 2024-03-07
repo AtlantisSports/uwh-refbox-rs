@@ -29,7 +29,7 @@ pub(in super::super) fn build_penalty_overview_page<'a>(
     };
 
     column![
-        make_game_time_button(snapshot, false, true, mode, clock_running),
+        make_game_time_button(snapshot, false, false, mode, clock_running),
         row![
             make_penalty_list(
                 penalties.black,

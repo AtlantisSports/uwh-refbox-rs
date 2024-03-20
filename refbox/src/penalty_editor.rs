@@ -9,7 +9,7 @@ use std::{
 };
 use thiserror::Error;
 use tokio::time::Instant;
-use uwh_common::game_snapshot::Color;
+use uwh_common::game_snapshot::{Color, Infraction};
 
 const MAX_LIST_LEN: usize = 8;
 
@@ -26,7 +26,7 @@ enum EditablePenalty {
     Edited(Origin, Penalty),
     Deleted(Origin, Penalty),
     #[derivative(Default)]
-    New(PenaltyKind, u8),
+    New(PenaltyKind, u8, Infraction),
 }
 
 #[derive(Debug)]
@@ -72,11 +72,12 @@ impl PenaltyEditor {
         color: Color,
         player_number: u8,
         kind: PenaltyKind,
+        infraction: Infraction,
     ) -> Result<()> {
         if !self.session_started {
             return Err(PenaltyEditorError::NotInSession);
         }
-        let pen = EditablePenalty::New(kind, player_number);
+        let pen = EditablePenalty::New(kind, player_number, infraction);
         match color {
             Color::Black => self.penalties.black.push(pen),
             Color::White => self.penalties.white.push(pen),
@@ -101,7 +102,7 @@ impl PenaltyEditor {
                 player_number: p.player_number,
                 color,
             },
-            EditablePenalty::New(kind, player_number) => PenaltyDetails {
+            EditablePenalty::New(kind, player_number, _) => PenaltyDetails {
                 kind: *kind,
                 player_number: *player_number,
                 color,
@@ -146,6 +147,7 @@ impl PenaltyEditor {
         new_color: Color,
         new_player_number: u8,
         new_kind: PenaltyKind,
+        new_infraction: Infraction,
     ) -> Result<()> {
         if !self.session_started {
             return Err(PenaltyEditorError::NotInSession);
@@ -162,9 +164,10 @@ impl PenaltyEditor {
         {
             p.kind = new_kind;
             p.player_number = new_player_number;
+            p.infraction = new_infraction;
             EditablePenalty::Edited(*o, p.clone())
         } else {
-            EditablePenalty::New(new_kind, new_player_number)
+            EditablePenalty::New(new_kind, new_player_number, new_infraction)
         };
 
         if new_color != old_color {
@@ -185,7 +188,7 @@ impl PenaltyEditor {
     pub fn get_printable_lists(
         &self,
         now: Instant,
-    ) -> Result<BlackWhiteBundle<Vec<(String, FormatHint, PenaltyKind)>>> {
+    ) -> Result<BlackWhiteBundle<Vec<PrintablePenaltyDetails>>> {
         if !self.session_started {
             return Err(PenaltyEditorError::NotInSession);
         }
@@ -208,7 +211,7 @@ impl PenaltyEditor {
             Delete,
         }
 
-        let mut new_pens: Vec<(Color, PenaltyKind, u8)> = vec![];
+        let mut new_pens: Vec<(Color, PenaltyKind, u8, Infraction)> = vec![];
         let mut modified_pens: Vec<(Origin, Penalty, Color, Action)> = vec![];
 
         for (pen, color) in self
@@ -227,7 +230,9 @@ impl PenaltyEditor {
                 EditablePenalty::Original(_, _) => {}
                 EditablePenalty::Edited(o, p) => modified_pens.push((o, p, color, Action::Edit)),
                 EditablePenalty::Deleted(o, p) => modified_pens.push((o, p, color, Action::Delete)),
-                EditablePenalty::New(kind, num) => new_pens.push((color, kind, num)),
+                EditablePenalty::New(kind, num, infraction) => {
+                    new_pens.push((color, kind, num, infraction))
+                }
             }
         }
 
@@ -243,13 +248,14 @@ impl PenaltyEditor {
                     new_color,
                     pen.player_number,
                     pen.kind,
+                    pen.infraction,
                 )?,
                 Action::Delete => tm.delete_penalty(origin.color, origin.index)?,
             }
         }
 
-        for (color, kind, player_number) in new_pens.into_iter() {
-            tm.start_penalty(color, player_number, kind, now)?;
+        for (color, kind, player_number, infraction) in new_pens.into_iter() {
+            tm.start_penalty(color, player_number, kind, now, infraction)?;
         }
 
         let b_too_long = match tm.limit_pen_list_len(Color::Black, MAX_LIST_LEN, now) {
@@ -289,23 +295,28 @@ fn generate_printable_list(
     tm: &TournamentManager,
     penalties: &[EditablePenalty],
     now: Instant,
-) -> Option<Vec<(String, FormatHint, PenaltyKind)>> {
+) -> Option<Vec<PrintablePenaltyDetails>> {
     penalties
         .iter()
         .map(|pen| {
-            let (p_num, time, kind) = match pen {
+            let (p_num, time, kind, infraction) = match pen {
                 EditablePenalty::Original(_, p)
                 | EditablePenalty::Edited(_, p)
-                | EditablePenalty::Deleted(_, p) => {
-                    Some((p.player_number, tm.printable_penalty_time(p, now)?, p.kind))
+                | EditablePenalty::Deleted(_, p) => (
+                    p.player_number,
+                    tm.printable_penalty_time(p, now)?,
+                    p.kind,
+                    p.infraction,
+                ),
+                EditablePenalty::New(kind, num, infraction) => {
+                    (*num, String::from("Pending"), *kind, *infraction)
                 }
-                EditablePenalty::New(kind, num) => Some((*num, String::from("Pending"), *kind)),
-            }?;
+            };
             let hint = match pen {
                 EditablePenalty::Original(_, _) => FormatHint::NoChange,
                 EditablePenalty::Edited(_, _) => FormatHint::Edited,
                 EditablePenalty::Deleted(_, _) => FormatHint::Deleted,
-                EditablePenalty::New(_, _) => FormatHint::New,
+                EditablePenalty::New(_, _, _) => FormatHint::New,
             };
             let kind_str = match kind {
                 PenaltyKind::ThirtySecond => "30s",
@@ -315,9 +326,22 @@ fn generate_printable_list(
                 PenaltyKind::FiveMinute => "5m",
                 PenaltyKind::TotalDismissal => "DSMS",
             };
-            Some((format!("Player {p_num} - {time} ({kind_str})"), hint, kind))
+            Some(PrintablePenaltyDetails {
+                text: format!("Player {p_num} - {time} ({kind_str})"),
+                hint,
+                kind,
+                infraction,
+            })
         })
         .collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrintablePenaltyDetails {
+    pub text: String,
+    pub hint: FormatHint,
+    pub kind: PenaltyKind,
+    pub infraction: Infraction,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -403,6 +427,7 @@ mod test {
             start_period: GamePeriod::FirstHalf,
             start_time: Duration::from_secs(880),
             start_instant: appy_time,
+            infraction: Infraction::Unknown,
         };
 
         let w_pen = Penalty {
@@ -411,16 +436,22 @@ mod test {
             start_period: GamePeriod::FirstHalf,
             start_time: Duration::from_secs(880),
             start_instant: appy_time,
+            infraction: Infraction::DelayOfGame,
         };
 
         assert_eq!(
-            pen_edit.add_penalty(Color::Black, 4, PenaltyKind::OneMinute),
+            pen_edit.add_penalty(Color::Black, 4, PenaltyKind::OneMinute, Infraction::Unknown),
             Err(PenaltyEditorError::NotInSession)
         );
 
         pen_edit.start_session().unwrap();
         pen_edit
-            .add_penalty(Color::Black, b_pen.player_number, b_pen.kind)
+            .add_penalty(
+                Color::Black,
+                b_pen.player_number,
+                b_pen.kind,
+                b_pen.infraction,
+            )
             .unwrap();
 
         assert_eq!(
@@ -433,7 +464,12 @@ mod test {
         );
 
         pen_edit
-            .add_penalty(Color::White, w_pen.player_number, w_pen.kind)
+            .add_penalty(
+                Color::White,
+                w_pen.player_number,
+                w_pen.kind,
+                w_pen.infraction,
+            )
             .unwrap();
 
         assert_eq!(
@@ -474,6 +510,7 @@ mod test {
             start_period: GamePeriod::FirstHalf,
             start_time: Duration::from_secs(895),
             start_instant: now,
+            infraction: Infraction::Unknown,
         };
 
         let w_pen_0 = Penalty {
@@ -482,6 +519,7 @@ mod test {
             start_period: GamePeriod::FirstHalf,
             start_time: Duration::from_secs(895),
             start_instant: now,
+            infraction: Infraction::DelayOfGame,
         };
 
         let b_pen_1 = Penalty {
@@ -490,6 +528,7 @@ mod test {
             start_period: GamePeriod::FirstHalf,
             start_time: Duration::from_secs(895),
             start_instant: now,
+            infraction: Infraction::FalseStart,
         };
 
         let w_pen_1 = Penalty {
@@ -498,12 +537,25 @@ mod test {
             start_period: GamePeriod::FirstHalf,
             start_time: Duration::from_secs(895),
             start_instant: now,
+            infraction: Infraction::FreeArm,
         };
 
-        tm.start_penalty(Color::Black, b_pen_0.player_number, b_pen_0.kind, now)
-            .unwrap();
-        tm.start_penalty(Color::White, w_pen_0.player_number, w_pen_0.kind, now)
-            .unwrap();
+        tm.start_penalty(
+            Color::Black,
+            b_pen_0.player_number,
+            b_pen_0.kind,
+            now,
+            b_pen_0.infraction,
+        )
+        .unwrap();
+        tm.start_penalty(
+            Color::White,
+            w_pen_0.player_number,
+            w_pen_0.kind,
+            now,
+            w_pen_0.infraction,
+        )
+        .unwrap();
 
         let tm = Arc::new(Mutex::new(tm));
         let mut pen_edit = PenaltyEditor::new(tm.clone());
@@ -589,19 +641,21 @@ mod test {
             .penalties
             .black
             .push(EditablePenalty::Edited(b_origin(1), b_pen_1.clone()));
-        pen_edit
-            .penalties
-            .black
-            .push(EditablePenalty::New(PenaltyKind::TwoMinute, 9));
+        pen_edit.penalties.black.push(EditablePenalty::New(
+            PenaltyKind::TwoMinute,
+            9,
+            Infraction::Unknown,
+        ));
 
         pen_edit
             .penalties
             .white
             .push(EditablePenalty::Edited(w_origin(1), w_pen_1.clone()));
-        pen_edit
-            .penalties
-            .white
-            .push(EditablePenalty::New(PenaltyKind::TwoMinute, 3));
+        pen_edit.penalties.white.push(EditablePenalty::New(
+            PenaltyKind::TwoMinute,
+            3,
+            Infraction::Unknown,
+        ));
 
         pen_edit.delete_penalty(Color::Black, 1).unwrap();
         pen_edit.delete_penalty(Color::Black, 2).unwrap();
@@ -665,6 +719,7 @@ mod test {
             start_period: GamePeriod::FirstHalf,
             start_time: Duration::from_secs(895),
             start_instant: now,
+            infraction: Infraction::Unknown,
         };
 
         let b_pen_0_ed = Penalty {
@@ -678,6 +733,7 @@ mod test {
             start_period: GamePeriod::FirstHalf,
             start_time: Duration::from_secs(895),
             start_instant: now,
+            infraction: Infraction::DelayOfGame,
         };
 
         let w_pen_0_ed = Penalty {
@@ -691,6 +747,7 @@ mod test {
             start_period: GamePeriod::FirstHalf,
             start_time: Duration::from_secs(895),
             start_instant: now,
+            infraction: Infraction::FalseStart,
         };
 
         let b_pen_1_ed = Penalty {
@@ -704,6 +761,7 @@ mod test {
             start_period: GamePeriod::FirstHalf,
             start_time: Duration::from_secs(895),
             start_instant: now,
+            infraction: Infraction::FreeArm,
         };
 
         let w_pen_1_ed = Penalty {
@@ -717,6 +775,7 @@ mod test {
             start_period: GamePeriod::FirstHalf,
             start_time: Duration::from_secs(895),
             start_instant: now,
+            infraction: Infraction::GrabbingTheBarrier,
         };
 
         let b_pen_2_ed = Penalty {
@@ -730,6 +789,7 @@ mod test {
             start_period: GamePeriod::FirstHalf,
             start_time: Duration::from_secs(895),
             start_instant: now,
+            infraction: Infraction::IllegalAdvancement,
         };
 
         let w_pen_2_ed = Penalty {
@@ -738,20 +798,51 @@ mod test {
             ..w_pen_2
         };
 
-        tm.start_penalty(Color::Black, b_pen_0.player_number, b_pen_0.kind, now)
-            .unwrap();
-        tm.start_penalty(Color::White, w_pen_0.player_number, w_pen_0.kind, now)
-            .unwrap();
-        tm.start_penalty(Color::Black, b_pen_1.player_number, b_pen_1.kind, now)
-            .unwrap();
-        tm.start_penalty(Color::White, w_pen_1.player_number, w_pen_1.kind, now)
-            .unwrap();
+        tm.start_penalty(
+            Color::Black,
+            b_pen_0.player_number,
+            b_pen_0.kind,
+            now,
+            b_pen_0.infraction,
+        )
+        .unwrap();
+        tm.start_penalty(
+            Color::White,
+            w_pen_0.player_number,
+            w_pen_0.kind,
+            now,
+            w_pen_0.infraction,
+        )
+        .unwrap();
+        tm.start_penalty(
+            Color::Black,
+            b_pen_1.player_number,
+            b_pen_1.kind,
+            now,
+            b_pen_1.infraction,
+        )
+        .unwrap();
+        tm.start_penalty(
+            Color::White,
+            w_pen_1.player_number,
+            w_pen_1.kind,
+            now,
+            w_pen_1.infraction,
+        )
+        .unwrap();
 
         let tm = Arc::new(Mutex::new(tm));
         let mut pen_edit = PenaltyEditor::new(tm.clone());
 
         assert_eq!(
-            pen_edit.edit_penalty(Color::Black, 0, Color::Black, 2, PenaltyKind::OneMinute),
+            pen_edit.edit_penalty(
+                Color::Black,
+                0,
+                Color::Black,
+                2,
+                PenaltyKind::OneMinute,
+                Infraction::Unknown
+            ),
             Err(PenaltyEditorError::NotInSession)
         );
 
@@ -765,6 +856,7 @@ mod test {
                 Color::Black,
                 b_pen_0_ed.player_number,
                 b_pen_0_ed.kind,
+                b_pen_0_ed.infraction,
             )
             .unwrap();
         pen_edit
@@ -774,6 +866,7 @@ mod test {
                 Color::White,
                 w_pen_0_ed.player_number,
                 w_pen_0_ed.kind,
+                w_pen_0_ed.infraction,
             )
             .unwrap();
 
@@ -785,6 +878,7 @@ mod test {
                 Color::White,
                 b_pen_1.player_number,
                 b_pen_1.kind,
+                b_pen_1.infraction,
             )
             .unwrap();
         pen_edit
@@ -794,6 +888,7 @@ mod test {
                 Color::Black,
                 w_pen_1.player_number,
                 w_pen_1.kind,
+                w_pen_1.infraction,
             )
             .unwrap();
 
@@ -820,6 +915,7 @@ mod test {
                 Color::Black,
                 w_pen_1_ed.player_number,
                 w_pen_1_ed.kind,
+                w_pen_1_ed.infraction,
             )
             .unwrap();
         pen_edit
@@ -829,6 +925,7 @@ mod test {
                 Color::White,
                 b_pen_1_ed.player_number,
                 b_pen_1_ed.kind,
+                b_pen_1_ed.infraction,
             )
             .unwrap();
 
@@ -857,14 +954,16 @@ mod test {
             .white
             .push(EditablePenalty::Deleted(w_origin(2), w_pen_2));
 
-        pen_edit
-            .penalties
-            .black
-            .push(EditablePenalty::New(PenaltyKind::TotalDismissal, 15));
-        pen_edit
-            .penalties
-            .white
-            .push(EditablePenalty::New(PenaltyKind::TwoMinute, 2));
+        pen_edit.penalties.black.push(EditablePenalty::New(
+            PenaltyKind::TotalDismissal,
+            15,
+            Infraction::IllegalSubstitution,
+        ));
+        pen_edit.penalties.white.push(EditablePenalty::New(
+            PenaltyKind::TwoMinute,
+            2,
+            Infraction::IllegallyStoppingThePuck,
+        ));
 
         pen_edit
             .edit_penalty(
@@ -873,6 +972,7 @@ mod test {
                 Color::Black,
                 b_pen_2_ed.player_number,
                 b_pen_2_ed.kind,
+                b_pen_2_ed.infraction,
             )
             .unwrap();
         pen_edit
@@ -882,6 +982,7 @@ mod test {
                 Color::White,
                 w_pen_2_ed.player_number,
                 w_pen_2_ed.kind,
+                w_pen_2_ed.infraction,
             )
             .unwrap();
 
@@ -892,10 +993,18 @@ mod test {
                 Color::Black,
                 14,
                 PenaltyKind::TotalDismissal,
+                Infraction::IllegalSubstitution,
             )
             .unwrap();
         pen_edit
-            .edit_penalty(Color::White, 3, Color::White, 3, PenaltyKind::FiveMinute)
+            .edit_penalty(
+                Color::White,
+                3,
+                Color::White,
+                3,
+                PenaltyKind::FiveMinute,
+                Infraction::IllegallyStoppingThePuck,
+            )
             .unwrap();
 
         assert_eq!(
@@ -904,7 +1013,11 @@ mod test {
                 EditablePenalty::Edited(b_origin(0), b_pen_0_ed.clone()),
                 EditablePenalty::Edited(w_origin(1), w_pen_1_ed.clone()),
                 EditablePenalty::Edited(b_origin(2), b_pen_2_ed),
-                EditablePenalty::New(PenaltyKind::TotalDismissal, 14)
+                EditablePenalty::New(
+                    PenaltyKind::TotalDismissal,
+                    14,
+                    Infraction::IllegalSubstitution
+                )
             ]
         );
         assert_eq!(
@@ -913,7 +1026,11 @@ mod test {
                 EditablePenalty::Edited(w_origin(0), w_pen_0_ed.clone()),
                 EditablePenalty::Edited(b_origin(1), b_pen_1_ed.clone()),
                 EditablePenalty::Edited(w_origin(2), w_pen_2_ed),
-                EditablePenalty::New(PenaltyKind::FiveMinute, 3)
+                EditablePenalty::New(
+                    PenaltyKind::FiveMinute,
+                    3,
+                    Infraction::IllegallyStoppingThePuck
+                )
             ]
         );
 

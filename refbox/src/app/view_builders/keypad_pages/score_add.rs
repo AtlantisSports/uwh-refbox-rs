@@ -17,10 +17,10 @@ pub(super) fn make_score_add_page<'a>(color: GameColor) -> Element<'a, Message> 
         row![
             make_button("BLACK")
                 .style(black_style)
-                .on_press(Message::ChangeColor(GameColor::Black)),
+                .on_press(Message::ChangeColor(Some(GameColor::Black))),
             make_button("WHITE")
                 .style(white_style)
-                .on_press(Message::ChangeColor(GameColor::White)),
+                .on_press(Message::ChangeColor(Some(GameColor::White))),
         ]
         .spacing(SPACING),
         vertical_space(Length::Fill),

@@ -1,7 +1,7 @@
 use crate::tournament_manager::penalty::PenaltyKind;
 use tokio::time::Duration;
 use uwh_common::{
-    game_snapshot::{Color as GameColor, GameSnapshot},
+    game_snapshot::{Color as GameColor, GameSnapshot, Infraction},
     uwhscores::{GameInfo, TournamentInfo},
 };
 
@@ -37,17 +37,28 @@ pub enum Message {
         canceled: bool,
     },
     ChangeKind(PenaltyKind),
+    ChangeInfraction(Infraction),
+    FoulSelectExpanded(bool),
     PenaltyEditComplete {
+        canceled: bool,
+        deleted: bool,
+    },
+    WarningEditComplete {
+        canceled: bool,
+        deleted: bool,
+    },
+    FoulEditComplete {
         canceled: bool,
         deleted: bool,
     },
     KeypadPage(KeypadPage),
     KeypadButtonPress(KeypadButton),
-    ChangeColor(GameColor),
+    ChangeColor(Option<GameColor>),
     AddScoreComplete {
         canceled: bool,
     },
     ShowGameDetails,
+    ShowWarnings,
     EditGameConfig,
     ChangeConfigPage(ConfigPage),
     ConfigEditComplete {
@@ -87,6 +98,7 @@ impl Message {
         match self {
             Self::NewSnapshot(_)
             | Self::ChangeTime { .. }
+            | Self::FoulSelectExpanded(_)
             | Self::ChangeScore { .. }
             | Self::Scroll { .. }
             | Self::KeypadButtonPress(_)
@@ -108,11 +120,15 @@ impl Message {
             | Self::PenaltyOverview
             | Self::PenaltyOverviewComplete { .. }
             | Self::ChangeKind(_)
+            | Self::ChangeInfraction(_)
             | Self::PenaltyEditComplete { .. }
+            | Self::WarningEditComplete { .. }
+            | Self::FoulEditComplete { .. }
             | Self::KeypadPage(_)
             | Self::ChangeColor(_)
             | Self::AddScoreComplete { .. }
             | Self::ShowGameDetails
+            | Self::ShowWarnings
             | Self::EditGameConfig
             | Self::ChangeConfigPage(_)
             | Self::ConfigEditComplete { .. }
@@ -141,6 +157,8 @@ pub enum ConfigPage {
     Main,
     Tournament,
     Sound,
+    Display,
+    App,
     Remotes(usize, bool),
 }
 
@@ -175,6 +193,8 @@ pub enum BoolGameParameter {
     AutoSoundStopPlay,
     HideTime,
     ScorerCapNum,
+    FoulsAndWarnings,
+    TeamWarning,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -197,15 +217,35 @@ pub enum ScrollOption {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeypadPage {
     AddScore(GameColor),
-    Penalty(Option<(GameColor, usize)>, GameColor, PenaltyKind),
+    Penalty(
+        Option<(GameColor, usize)>,
+        GameColor,
+        PenaltyKind,
+        Infraction,
+        bool,
+    ),
     GameNumber,
     TeamTimeouts(Duration),
+    FoulAdd {
+        color: Option<GameColor>,
+        infraction: Infraction,
+        expanded: bool,
+    },
+    WarningAdd {
+        color: GameColor,
+        infraction: Infraction,
+        expanded: bool,
+        team_warning: bool,
+    },
 }
 
 impl KeypadPage {
     pub fn max_val(&self) -> u16 {
         match self {
-            Self::AddScore(_) | Self::Penalty(_, _, _) => 99,
+            Self::AddScore(_)
+            | Self::Penalty(_, _, _, _, _)
+            | Self::FoulAdd { .. }
+            | Self::WarningAdd { .. } => 99,
             Self::GameNumber => 9999,
             Self::TeamTimeouts(_) => 999,
         }
@@ -213,7 +253,10 @@ impl KeypadPage {
 
     pub fn text(&self) -> &'static str {
         match self {
-            Self::AddScore(_) | Self::Penalty(_, _, _) => "PLAYER\nNUMBER:",
+            Self::AddScore(_)
+            | Self::Penalty(_, _, _, _, _)
+            | Self::FoulAdd { .. }
+            | Self::WarningAdd { .. } => "PLAYER\nNUMBER:",
             Self::GameNumber => "GAME\nNUMBER:",
             Self::TeamTimeouts(_) => "NUM T/Os\nPER HALF:",
         }

@@ -34,6 +34,7 @@ pub(in super::super) struct EditableSettings {
     pub mode: Mode,
     pub hide_time: bool,
     pub collect_scorer_cap_num: bool,
+    pub track_fouls_and_warnings: bool,
 }
 
 pub(in super::super) trait Cyclable
@@ -108,6 +109,8 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
             make_tournament_config_page(snapshot, settings, tournaments, mode, clock_running)
         }
         ConfigPage::Sound => make_sound_config_page(snapshot, settings, mode, clock_running),
+        ConfigPage::Display => make_display_config_page(snapshot, settings, mode, clock_running),
+        ConfigPage::App => make_app_config_page(mode, snapshot, settings, clock_running),
         ConfigPage::Remotes(index, listening) => {
             make_remote_config_page(snapshot, settings, index, listening, mode, clock_running)
         }
@@ -172,37 +175,32 @@ fn make_main_config_page<'a>(
     column![
         make_game_time_button(snapshot, false, false, mode, clock_running,),
         make_value_button("GAME:", game_label, (true, game_large_text), game_btn_msg,),
-        make_message_button(
-            "TOURNAMENT OPTIONS",
-            Some(Message::ChangeConfigPage(ConfigPage::Tournament)),
-        )
-        .style(ButtonStyle::LightGray),
-        make_message_button(
-            "POOL AND SOUND OPTIONS",
-            Some(Message::ChangeConfigPage(ConfigPage::Sound)),
-        )
-        .style(ButtonStyle::LightGray),
         row![
-            make_value_button(
-                "APP\nMODE",
-                settings.mode.to_string().to_uppercase(),
-                (false, true),
-                Some(Message::CycleParameter(CyclingParameter::Mode)),
-            ),
-            make_value_button(
-                "HIDE TIME FOR\nLAST 15 SECONDS",
-                bool_string(settings.hide_time),
-                (false, true),
-                Some(Message::ToggleBoolParameter(BoolGameParameter::HideTime)),
-            ),
-            make_value_button(
-                "TRACK CAP NUMBER\nOF SCORER",
-                bool_string(settings.collect_scorer_cap_num),
-                (false, true),
-                Some(Message::ToggleBoolParameter(
-                    BoolGameParameter::ScorerCapNum,
-                )),
-            ),
+            make_message_button(
+                "TOURNAMENT OPTIONS",
+                Some(Message::ChangeConfigPage(ConfigPage::Tournament)),
+            )
+            .style(ButtonStyle::LightGray),
+            make_message_button(
+                "APP OPTIONS",
+                Some(Message::ChangeConfigPage(ConfigPage::App)),
+            )
+            .style(ButtonStyle::LightGray),
+        ]
+        .spacing(SPACING)
+        .width(Length::Fill)
+        .height(Length::Fill),
+        row![
+            make_message_button(
+                "DISPLAY OPTIONS",
+                Some(Message::ChangeConfigPage(ConfigPage::Display)),
+            )
+            .style(ButtonStyle::LightGray),
+            make_message_button(
+                "SOUND OPTIONS",
+                Some(Message::ChangeConfigPage(ConfigPage::Sound)),
+            )
+            .style(ButtonStyle::LightGray),
         ]
         .spacing(SPACING)
         .width(Length::Fill)
@@ -449,7 +447,70 @@ fn make_tournament_config_page<'a>(
     col.into()
 }
 
-fn make_sound_config_page<'a>(
+fn make_app_config_page<'a>(
+    mode: Mode,
+    snapshot: &GameSnapshot,
+    settings: &EditableSettings,
+    clock_running: bool,
+) -> Element<'a, Message> {
+    let EditableSettings {
+        collect_scorer_cap_num,
+        track_fouls_and_warnings,
+        ..
+    } = settings;
+
+    column![
+        make_game_time_button(snapshot, false, true, mode, clock_running),
+        row![
+            make_value_button(
+                "APP\nMODE",
+                settings.mode.to_string().to_uppercase(),
+                (false, true),
+                Some(Message::CycleParameter(CyclingParameter::Mode)),
+            ),
+            make_value_button(
+                "TRACK CAP NUMBER\nOF SCORER",
+                bool_string(*collect_scorer_cap_num),
+                (false, true),
+                Some(Message::ToggleBoolParameter(
+                    BoolGameParameter::ScorerCapNum,
+                )),
+            ),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill),
+        row![
+            make_value_button(
+                "TRACK FOULS\nAND WARNINGS",
+                bool_string(*track_fouls_and_warnings),
+                (false, true),
+                Some(Message::ToggleBoolParameter(
+                    BoolGameParameter::FoulsAndWarnings,
+                )),
+            ),
+            horizontal_space(Length::Fill),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill),
+        vertical_space(Length::Fill),
+        vertical_space(Length::Fill),
+        row![
+            horizontal_space(Length::Fill),
+            horizontal_space(Length::Fill),
+            make_button("DONE")
+                .style(ButtonStyle::Green)
+                .width(Length::Fill)
+                .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill)
+    ]
+    .spacing(SPACING)
+    .height(Length::Fill)
+    .into()
+}
+
+fn make_display_config_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
     mode: Mode,
@@ -457,7 +518,7 @@ fn make_sound_config_page<'a>(
 ) -> Element<'a, Message> {
     let EditableSettings {
         white_on_right,
-        sound,
+        hide_time,
         ..
     } = settings;
 
@@ -502,7 +563,42 @@ fn make_sound_config_page<'a>(
 
     column![
         make_game_time_button(snapshot, false, false, mode, clock_running),
-        sides_btn,
+        row![sides_btn].spacing(SPACING).height(Length::Fill),
+        row![make_value_button(
+            "HIDE TIME FOR\nLAST 15 SECONDS",
+            bool_string(*hide_time),
+            (false, true),
+            Some(Message::ToggleBoolParameter(BoolGameParameter::HideTime))
+        )]
+        .spacing(SPACING)
+        .height(Length::Fill),
+        vertical_space(Length::Fill),
+        row![
+            horizontal_space(Length::Fill),
+            horizontal_space(Length::Fill),
+            make_button("DONE")
+                .style(ButtonStyle::Green)
+                .width(Length::Fill)
+                .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill)
+    ]
+    .spacing(SPACING)
+    .height(Length::Fill)
+    .into()
+}
+
+fn make_sound_config_page<'a>(
+    snapshot: &GameSnapshot,
+    settings: &EditableSettings,
+    mode: Mode,
+    clock_running: bool,
+) -> Element<'a, Message> {
+    let EditableSettings { sound, .. } = settings;
+
+    column![
+        make_game_time_button(snapshot, false, true, mode, clock_running),
         row![
             make_value_button(
                 "SOUND\nENABLED:",

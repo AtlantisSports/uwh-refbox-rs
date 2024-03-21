@@ -16,7 +16,7 @@ log = "0.4.21"
 log-panics = { version = "2", features = ["with-backtrace"]}
 log4rs = { version = "1", default-features = false, features = ["background_rotation", "compound_policy", "console_appender", "fixed_window_roller", "gzip", "pattern_encoder", "rolling_file_appender", "size_trigger"]}
 macroquad = { version = "0.3", default-features = false }
-reqwest = {version = "0.11", features = ["gzip"]}
+reqwest = {version = "0.12", features = ["gzip"]}
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1" }
 tokio = { version = "1.36", features = ["full"] }

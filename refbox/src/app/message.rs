@@ -29,11 +29,19 @@ pub enum Message {
         canceled: bool,
     },
     PenaltyOverview,
+    WarningOverview,
+    FoulOverview,
     Scroll {
         which: ScrollOption,
         up: bool,
     },
     PenaltyOverviewComplete {
+        canceled: bool,
+    },
+    WarningOverviewComplete {
+        canceled: bool,
+    },
+    FoulOverviewComplete {
         canceled: bool,
     },
     ChangeKind(PenaltyKind),
@@ -46,10 +54,12 @@ pub enum Message {
     WarningEditComplete {
         canceled: bool,
         deleted: bool,
+        ret_to_overview: bool,
     },
     FoulEditComplete {
         canceled: bool,
         deleted: bool,
+        ret_to_overview: bool,
     },
     KeypadPage(KeypadPage),
     KeypadButtonPress(KeypadButton),
@@ -118,7 +128,11 @@ impl Message {
             | Self::AddNewScore(_)
             | Self::ScoreEditComplete { .. }
             | Self::PenaltyOverview
+            | Self::WarningOverview
+            | Self::FoulOverview
             | Self::PenaltyOverviewComplete { .. }
+            | Self::WarningOverviewComplete { .. }
+            | Self::FoulOverviewComplete { .. }
             | Self::ChangeKind(_)
             | Self::ChangeInfraction(_)
             | Self::PenaltyEditComplete { .. }
@@ -211,6 +225,7 @@ pub enum CyclingParameter {
 pub enum ScrollOption {
     Black,
     White,
+    Equal,
     GameParameter,
 }
 
@@ -227,15 +242,19 @@ pub enum KeypadPage {
     GameNumber,
     TeamTimeouts(Duration),
     FoulAdd {
+        origin: Option<(Option<GameColor>, usize)>,
         color: Option<GameColor>,
         infraction: Infraction,
         expanded: bool,
+        ret_to_overview: bool,
     },
     WarningAdd {
+        origin: Option<(GameColor, usize)>,
         color: GameColor,
         infraction: Infraction,
         expanded: bool,
         team_warning: bool,
+        ret_to_overview: bool,
     },
 }
 

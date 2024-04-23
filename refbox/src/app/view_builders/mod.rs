@@ -24,6 +24,12 @@ pub(super) use main_view::*;
 pub mod penalties;
 pub(super) use penalties::*;
 
+pub mod warnings;
+pub(super) use warnings::*;
+
+pub mod fouls;
+pub(super) use fouls::*;
+
 pub mod score_edit;
 pub(super) use score_edit::*;
 

@@ -134,11 +134,11 @@ pub(in super::super) fn build_warnings_summary_page<'a>(
             make_button("EDIT WARNINGS")
                 .style(ButtonStyle::Blue)
                 .width(Length::Fill)
-                .on_press(Message::NoAction),
+                .on_press(Message::WarningOverview),
             make_button("EDIT FOULS")
                 .style(ButtonStyle::Orange)
                 .width(Length::Fill)
-                .on_press(Message::NoAction),
+                .on_press(Message::FoulOverview),
         ]
         .spacing(SPACING)
         .width(Length::Fill),

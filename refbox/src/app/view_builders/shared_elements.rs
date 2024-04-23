@@ -94,6 +94,12 @@ pub(super) fn make_scroll_list<'a, const LIST_LEN: usize>(
         other => Length::FillPortion(other),
     };
 
+    let scroll_btn_style = if cont_style == ContainerStyle::Blue {
+        ButtonStyle::BlueWithBorder
+    } else {
+        ButtonStyle::Blue
+    };
+
     let mut up_btn = button(
         container(
             Svg::new(svg::Handle::from_memory(
@@ -109,7 +115,7 @@ pub(super) fn make_scroll_list<'a, const LIST_LEN: usize>(
     )
     .width(Length::Fixed(MIN_BUTTON_SIZE))
     .height(Length::Fixed(MIN_BUTTON_SIZE))
-    .style(ButtonStyle::Blue);
+    .style(scroll_btn_style);
 
     let mut down_btn = button(
         container(
@@ -126,7 +132,7 @@ pub(super) fn make_scroll_list<'a, const LIST_LEN: usize>(
     )
     .width(Length::Fixed(MIN_BUTTON_SIZE))
     .height(Length::Fixed(MIN_BUTTON_SIZE))
-    .style(ButtonStyle::Blue);
+    .style(scroll_btn_style);
 
     if can_scroll_up {
         up_btn = up_btn.on_press(Message::Scroll {
@@ -929,6 +935,7 @@ pub(super) fn make_penalty_dropdown<'a>(
                 .padding(0)
                 .height(Length::Fixed(MIN_BUTTON_SIZE - (2.0 * PADDING)))
                 .on_press(Message::FoulSelectExpanded(false)),
+            vertical_space(Length::Fixed(SPACING)),
             first_row,
             vertical_space(Length::Fixed(SPACING)),
             second_row,

@@ -15,34 +15,19 @@ use iced::{
 
 use uwh_common::game_snapshot::{Color as GameColor, GameSnapshot};
 
-pub(in super::super) fn build_penalty_overview_page<'a>(
+pub(in super::super) fn build_foul_overview_page<'a>(
     snapshot: &GameSnapshot,
-    penalties: BlackWhiteBundle<Vec<PrintablePenaltySummary>>,
-    indices: BlackWhiteBundle<usize>,
+    warnings: OptColorBundle<Vec<PrintableInfractionSummary>>,
+    indices: OptColorBundle<usize>,
     mode: Mode,
     clock_running: bool,
 ) -> Element<'a, Message> {
-    let default_pen_len = match mode {
-        Mode::Hockey3V3 => PenaltyKind::ThirtySecond,
-        Mode::Hockey6V6 => PenaltyKind::OneMinute,
-        Mode::Rugby => PenaltyKind::TwoMinute,
-    };
-
     column![
         make_game_time_button(snapshot, false, false, mode, clock_running),
         row![
-            make_penalty_list(
-                penalties.black,
-                indices.black,
-                GameColor::Black,
-                default_pen_len
-            ),
-            make_penalty_list(
-                penalties.white,
-                indices.white,
-                GameColor::White,
-                default_pen_len
-            )
+            make_foul_list(warnings.black, indices.black, Some(GameColor::Black)),
+            make_foul_list(warnings.equal, indices.equal, None),
+            make_foul_list(warnings.white, indices.white, Some(GameColor::White))
         ]
         .spacing(SPACING)
         .height(Length::Fill),
@@ -50,21 +35,21 @@ pub(in super::super) fn build_penalty_overview_page<'a>(
             make_button("CANCEL")
                 .style(ButtonStyle::Red)
                 .width(Length::Fill)
-                .on_press(Message::PenaltyOverviewComplete { canceled: true }),
+                .on_press(Message::FoulOverviewComplete { canceled: true }),
             make_button("NEW")
                 .style(ButtonStyle::Blue)
                 .width(Length::Fill)
-                .on_press(Message::KeypadPage(KeypadPage::Penalty(
-                    None,
-                    GameColor::Black,
-                    default_pen_len,
-                    Infraction::Unknown,
-                    false,
-                ))),
+                .on_press(Message::KeypadPage(KeypadPage::FoulAdd {
+                    origin: None,
+                    color: None,
+                    infraction: Infraction::Unknown,
+                    expanded: false,
+                    ret_to_overview: true,
+                })),
             make_button("DONE")
                 .style(ButtonStyle::Green)
                 .width(Length::Fill)
-                .on_press(Message::PenaltyOverviewComplete { canceled: false }),
+                .on_press(Message::FoulOverviewComplete { canceled: false }),
         ]
         .spacing(SPACING),
     ]
@@ -73,32 +58,36 @@ pub(in super::super) fn build_penalty_overview_page<'a>(
     .into()
 }
 
-fn make_penalty_list<'a>(
-    penalties: Vec<PrintablePenaltySummary>,
+fn make_foul_list<'a>(
+    fouls: Vec<PrintableInfractionSummary>,
     index: usize,
-    color: GameColor,
-    default_pen_len: PenaltyKind,
+    color: Option<GameColor>,
 ) -> Container<'a, Message> {
-    const PENALTY_LIST_LEN: usize = 3;
+    const FOUL_LIST_LEN: usize = 3;
 
-    let title = text(format!("{} PENALTIES", color.to_string().to_uppercase()))
+    let title = match color {
+        Some(color) => color.to_string().to_uppercase(),
+        None => "EQUAL".to_string(),
+    };
+
+    let title = text(title)
         .line_height(LINE_HEIGHT)
         .height(Length::Fill)
         .width(Length::Fill)
         .horizontal_alignment(Horizontal::Center)
         .vertical_alignment(Vertical::Center);
 
-    let num_pens = penalties.len();
+    let num_pens = fouls.len();
 
-    let buttons: CollectArrayResult<_, PENALTY_LIST_LEN> = penalties
+    let buttons: CollectArrayResult<_, FOUL_LIST_LEN> = fouls
         .into_iter()
         .enumerate()
         .skip(index)
         .map(Some)
         .chain([None].into_iter().cycle())
-        .take(PENALTY_LIST_LEN)
-        .map(|pen| {
-            if let Some((i, details)) = pen {
+        .take(FOUL_LIST_LEN)
+        .map(|foul| {
+            if let Some((i, details)) = foul {
                 let mut text = text(details.text)
                     .line_height(LINE_HEIGHT)
                     .vertical_alignment(Vertical::Center)
@@ -117,39 +106,41 @@ fn make_penalty_list<'a>(
                     .height(Length::Fixed(MIN_BUTTON_SIZE))
                     .width(Length::Fill)
                     .style(ButtonStyle::Gray)
-                    .on_press(Message::KeypadPage(KeypadPage::Penalty(
-                        Some((color, i)),
+                    .on_press(Message::KeypadPage(KeypadPage::FoulAdd {
+                        origin: Some((color, i)),
                         color,
-                        details.kind,
-                        details.infraction,
-                        false,
-                    )))
+                        infraction: details.infraction,
+                        expanded: false,
+                        ret_to_overview: true,
+                    }))
                     .into()
             } else {
                 button(horizontal_space(Length::Shrink))
                     .height(Length::Fixed(MIN_BUTTON_SIZE))
                     .width(Length::Fill)
                     .style(ButtonStyle::Gray)
-                    .on_press(Message::KeypadPage(KeypadPage::Penalty(
-                        None,
+                    .on_press(Message::KeypadPage(KeypadPage::FoulAdd {
+                        origin: None,
                         color,
-                        default_pen_len,
-                        Infraction::Unknown,
-                        false,
-                    )))
+                        infraction: Infraction::Unknown,
+                        expanded: false,
+                        ret_to_overview: true,
+                    }))
                     .into()
             }
         })
         .collect();
 
     let cont_style = match color {
-        GameColor::Black => ContainerStyle::Black,
-        GameColor::White => ContainerStyle::White,
+        Some(GameColor::Black) => ContainerStyle::Black,
+        Some(GameColor::White) => ContainerStyle::White,
+        None => ContainerStyle::Blue,
     };
 
     let scroll_option = match color {
-        GameColor::Black => ScrollOption::Black,
-        GameColor::White => ScrollOption::White,
+        Some(GameColor::Black) => ScrollOption::Black,
+        Some(GameColor::White) => ScrollOption::White,
+        None => ScrollOption::Equal,
     };
 
     make_scroll_list(

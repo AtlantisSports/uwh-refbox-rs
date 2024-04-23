@@ -1,3 +1,5 @@
+use self::infraction::InfractionDetails;
+
 use super::APP_NAME;
 use crate::{
     config::{Config, Mode},
@@ -29,7 +31,7 @@ use tokio_serial::SerialPortBuilder;
 use uwh_common::{
     config::Game as GameConfig,
     drawing_support::*,
-    game_snapshot::{GamePeriod, GameSnapshot, Infraction, TimeoutSnapshot},
+    game_snapshot::{Color, GamePeriod, GameSnapshot, Infraction, TimeoutSnapshot},
     uwhportal::UwhPortalClient,
     uwhscores::*,
 };
@@ -57,7 +59,9 @@ pub struct RefBoxApp {
     edited_settings: Option<EditableSettings>,
     snapshot: GameSnapshot,
     time_updater: TimeUpdater,
-    pen_edit: PenaltyEditor,
+    pen_edit: ListEditor<Penalty, Color>,
+    warn_edit: ListEditor<InfractionDetails, Color>,
+    foul_edit: ListEditor<InfractionDetails, Option<Color>>,
     app_state: AppState,
     last_app_state: AppState,
     last_message: Message,
@@ -98,6 +102,8 @@ enum AppState {
         is_confirmation: bool,
     },
     PenaltyOverview(BlackWhiteBundle<usize>),
+    WarningOverview(BlackWhiteBundle<usize>),
+    FoulOverview(OptColorBundle<usize>),
     KeypadPage(KeypadPage, u16),
     GameDetailsPage,
     WarningsSummaryPage,
@@ -575,7 +581,9 @@ impl Application for RefBoxApp {
 
         (
             Self {
-                pen_edit: PenaltyEditor::new(tm.clone()),
+                pen_edit: ListEditor::new(tm.clone()),
+                warn_edit: ListEditor::new(tm.clone()),
+                foul_edit: ListEditor::new(tm.clone()),
                 time_updater: TimeUpdater {
                     tm: tm.clone(),
                     clock_running_receiver,
@@ -815,28 +823,60 @@ impl Application for RefBoxApp {
                 self.app_state = AppState::PenaltyOverview(BlackWhiteBundle { black: 0, white: 0 });
                 trace!("AppState changed to {:?}", self.app_state);
             }
+            Message::WarningOverview => {
+                self.warn_edit.start_session().unwrap();
+                self.app_state = AppState::WarningOverview(BlackWhiteBundle { black: 0, white: 0 });
+                trace!("AppState changed to {:?}", self.app_state);
+            }
+            Message::FoulOverview => {
+                self.foul_edit.start_session().unwrap();
+                self.app_state = AppState::FoulOverview(OptColorBundle {
+                    black: 0,
+                    equal: 0,
+                    white: 0,
+                });
+                trace!("AppState changed to {:?}", self.app_state);
+            }
             Message::Scroll { which, up } => {
-                if let AppState::PenaltyOverview(ref mut indices) = self.app_state {
-                    let idx = match which {
-                        ScrollOption::Black => &mut indices.black,
-                        ScrollOption::White => &mut indices.white,
-                        ScrollOption::GameParameter => unreachable!(),
-                    };
-                    if up {
-                        *idx = idx.saturating_sub(1);
-                    } else {
-                        *idx = idx.saturating_add(1);
+                match self.app_state {
+                    AppState::PenaltyOverview(ref mut indices)
+                    | AppState::WarningOverview(ref mut indices) => {
+                        let idx = match which {
+                            ScrollOption::Black => &mut indices.black,
+                            ScrollOption::White => &mut indices.white,
+                            ScrollOption::GameParameter | ScrollOption::Equal => unreachable!(),
+                        };
+                        if up {
+                            *idx = idx.saturating_sub(1);
+                        } else {
+                            *idx = idx.saturating_add(1);
+                        }
                     }
-                } else if let AppState::ParameterList(_, ref mut idx) = self.app_state {
-                    debug_assert_eq!(which, ScrollOption::GameParameter);
-                    if up {
-                        *idx = idx.saturating_sub(1);
-                    } else {
-                        *idx = idx.saturating_add(1);
+                    AppState::FoulOverview(ref mut indices) => {
+                        let idx = match which {
+                            ScrollOption::Black => &mut indices.black,
+                            ScrollOption::Equal => &mut indices.equal,
+                            ScrollOption::White => &mut indices.white,
+                            ScrollOption::GameParameter => unreachable!(),
+                        };
+                        if up {
+                            *idx = idx.saturating_sub(1);
+                        } else {
+                            *idx = idx.saturating_add(1);
+                        }
                     }
-                } else {
-                    unreachable!();
-                }
+                    AppState::ParameterList(_, ref mut idx) => {
+                        debug_assert_eq!(which, ScrollOption::GameParameter);
+                        if up {
+                            *idx = idx.saturating_sub(1);
+                        } else {
+                            *idx = idx.saturating_add(1);
+                        }
+                    }
+                    _ => {
+                        unreachable!();
+                    }
+                };
                 trace!("AppState changed to {:?}", self.app_state);
             }
             Message::PenaltyOverviewComplete { canceled } => {
@@ -857,6 +897,54 @@ impl Application for RefBoxApp {
                         AppState::ConfirmationPage(ConfirmationKind::Error(err_string));
                 } else {
                     self.app_state = AppState::MainPage;
+                }
+                let snapshot = self
+                    .tm
+                    .lock()
+                    .unwrap()
+                    .generate_snapshot(Instant::now())
+                    .unwrap();
+                self.apply_snapshot(snapshot);
+                trace!("AppState changed to {:?}", self.app_state);
+            }
+            Message::WarningOverviewComplete { canceled } => {
+                if canceled {
+                    self.pen_edit.abort_session();
+                    self.app_state = AppState::WarningsSummaryPage;
+                } else if let Err(e) = self.warn_edit.apply_changes(Instant::now()) {
+                    let err_string = format!("An error occurred while applying the changes to the warnings. \
+                    Some of the changes may have been applied. Please retry any remaining changes.\n\n\
+                    Error Message:\n{e}");
+                    error!("{err_string}");
+                    self.pen_edit.abort_session();
+                    self.app_state =
+                        AppState::ConfirmationPage(ConfirmationKind::Error(err_string));
+                } else {
+                    self.app_state = AppState::WarningsSummaryPage;
+                }
+                let snapshot = self
+                    .tm
+                    .lock()
+                    .unwrap()
+                    .generate_snapshot(Instant::now())
+                    .unwrap();
+                self.apply_snapshot(snapshot);
+                trace!("AppState changed to {:?}", self.app_state);
+            }
+            Message::FoulOverviewComplete { canceled } => {
+                if canceled {
+                    self.pen_edit.abort_session();
+                    self.app_state = AppState::WarningsSummaryPage;
+                } else if let Err(e) = self.foul_edit.apply_changes(Instant::now()) {
+                    let err_string = format!("An error occurred while applying the changes to the fouls. \
+                    Some of the changes may have been applied. Please retry any remaining changes.\n\n\
+                    Error Message:\n{e}");
+                    error!("{err_string}");
+                    self.pen_edit.abort_session();
+                    self.app_state =
+                        AppState::ConfirmationPage(ConfirmationKind::Error(err_string));
+                } else {
+                    self.app_state = AppState::WarningsSummaryPage;
                 }
                 let snapshot = self
                     .tm
@@ -934,7 +1022,7 @@ impl Application for RefBoxApp {
                     {
                         if deleted {
                             if let Some((old_color, index)) = origin {
-                                self.pen_edit.delete_penalty(old_color, index).unwrap();
+                                self.pen_edit.delete_item(old_color, index).unwrap();
                             } else {
                                 unreachable!();
                             }
@@ -942,13 +1030,13 @@ impl Application for RefBoxApp {
                             let player_num = player_num.try_into().unwrap();
                             if let Some((old_color, index)) = origin {
                                 self.pen_edit
-                                    .edit_penalty(
+                                    .edit_item(
                                         old_color, index, color, player_num, kind, infraction,
                                     )
                                     .unwrap();
                             } else {
                                 self.pen_edit
-                                    .add_penalty(color, player_num, kind, infraction)
+                                    .add_item(color, player_num, kind, infraction)
                                     .unwrap();
                             }
                         }
@@ -961,11 +1049,13 @@ impl Application for RefBoxApp {
             }
             Message::WarningEditComplete {
                 canceled,
-                deleted: _,
+                deleted,
+                ret_to_overview,
             } => {
                 if !canceled {
                     if let AppState::KeypadPage(
                         KeypadPage::WarningAdd {
+                            origin,
                             color,
                             infraction,
                             team_warning,
@@ -980,26 +1070,52 @@ impl Application for RefBoxApp {
                             Some(player_num.try_into().unwrap())
                         };
 
-                        self.tm
-                            .lock()
-                            .unwrap()
-                            .add_warning(color, player_num, infraction, Instant::now())
-                            .unwrap();
+                        if deleted {
+                            if let Some((old_color, index)) = origin {
+                                self.warn_edit.delete_item(old_color, index).unwrap();
+                            } else {
+                                unreachable!();
+                            }
+                        } else if !ret_to_overview {
+                            self.tm
+                                .lock()
+                                .unwrap()
+                                .add_warning(color, player_num, infraction, Instant::now())
+                                .unwrap();
+                        } else {
+                            if let Some((old_color, index)) = origin {
+                                self.warn_edit
+                                    .edit_item(old_color, index, color, player_num, (), infraction)
+                                    .unwrap();
+                            } else {
+                                self.warn_edit
+                                    .add_item(color, player_num, (), infraction)
+                                    .unwrap();
+                            }
+                        }
                     } else {
                         unreachable!();
                     }
                 }
-                self.app_state = AppState::MainPage;
+                self.app_state = if !ret_to_overview {
+                    AppState::MainPage
+                } else {
+                    AppState::WarningOverview(BlackWhiteBundle { black: 0, white: 0 })
+                };
                 trace!("AppState changed to {:?}", self.app_state);
             }
             Message::FoulEditComplete {
                 canceled,
-                deleted: _,
+                deleted,
+                ret_to_overview,
             } => {
                 if !canceled {
                     if let AppState::KeypadPage(
                         KeypadPage::FoulAdd {
-                            color, infraction, ..
+                            origin,
+                            color,
+                            infraction,
+                            ..
                         },
                         player_num,
                     ) = self.app_state
@@ -1010,30 +1126,73 @@ impl Application for RefBoxApp {
                             Some(player_num.try_into().unwrap())
                         };
 
-                        self.tm
-                            .lock()
-                            .unwrap()
-                            .add_foul(color, player_num, infraction, Instant::now())
-                            .unwrap();
+                        if deleted {
+                            if let Some((old_color, index)) = origin {
+                                self.foul_edit.delete_item(old_color, index).unwrap();
+                            } else {
+                                unreachable!();
+                            }
+                        } else if !ret_to_overview {
+                            self.tm
+                                .lock()
+                                .unwrap()
+                                .add_foul(color, player_num, infraction, Instant::now())
+                                .unwrap();
+                        } else {
+                            if let Some((old_color, index)) = origin {
+                                self.foul_edit
+                                    .edit_item(old_color, index, color, player_num, (), infraction)
+                                    .unwrap();
+                            } else {
+                                self.foul_edit
+                                    .add_item(color, player_num, (), infraction)
+                                    .unwrap();
+                            }
+                        }
                     } else {
                         unreachable!();
                     }
                 }
-                self.app_state = AppState::MainPage;
+                self.app_state = if !ret_to_overview {
+                    AppState::MainPage
+                } else {
+                    AppState::FoulOverview(OptColorBundle {
+                        black: 0,
+                        equal: 0,
+                        white: 0,
+                    })
+                };
                 trace!("AppState changed to {:?}", self.app_state);
             }
             Message::KeypadPage(page) => {
                 let init_val = match page {
                     KeypadPage::AddScore(_)
                     | KeypadPage::Penalty(None, _, _, _, _)
-                    | KeypadPage::FoulAdd { .. }
-                    | KeypadPage::WarningAdd { .. } => 0,
+                    | KeypadPage::FoulAdd { origin: None, .. }
+                    | KeypadPage::WarningAdd { origin: None, .. } => 0,
                     KeypadPage::Penalty(Some((color, index)), _, _, _, _) => {
-                        self.pen_edit
-                            .get_penalty(color, index)
-                            .unwrap()
-                            .player_number as u16
+                        self.pen_edit.get_item(color, index).unwrap().player_number as u16
                     }
+                    KeypadPage::WarningAdd {
+                        origin: Some((color, index)),
+                        ..
+                    } => self
+                        .warn_edit
+                        .get_item(color, index)
+                        .unwrap()
+                        .player_number
+                        .map(|n| n.into())
+                        .unwrap_or(0),
+                    KeypadPage::FoulAdd {
+                        origin: Some((color, index)),
+                        ..
+                    } => self
+                        .foul_edit
+                        .get_item(color, index)
+                        .unwrap()
+                        .player_number
+                        .map(|n| n.into())
+                        .unwrap_or(0),
                     KeypadPage::TeamTimeouts(_) => self.config.game.team_timeouts_per_half,
                     KeypadPage::GameNumber => self
                         .edited_settings
@@ -1857,6 +2016,20 @@ impl Application for RefBoxApp {
             AppState::PenaltyOverview(indices) => build_penalty_overview_page(
                 &self.snapshot,
                 self.pen_edit.get_printable_lists(Instant::now()).unwrap(),
+                indices,
+                self.config.mode,
+                clock_running,
+            ),
+            AppState::WarningOverview(indices) => build_warning_overview_page(
+                &self.snapshot,
+                self.warn_edit.get_printable_lists(Instant::now()).unwrap(),
+                indices,
+                self.config.mode,
+                clock_running,
+            ),
+            AppState::FoulOverview(indices) => build_foul_overview_page(
+                &self.snapshot,
+                self.foul_edit.get_printable_lists(Instant::now()).unwrap(),
                 indices,
                 self.config.mode,
                 clock_running,

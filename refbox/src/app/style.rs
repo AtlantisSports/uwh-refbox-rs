@@ -81,6 +81,7 @@ pub enum ButtonStyle {
     GreenSelected,
     Blue,
     BlueSelected,
+    BlueWithBorder,
     #[default]
     Gray,
     LightGraySelected,
@@ -98,7 +99,9 @@ impl button::StyleSheet for ApplicationTheme {
             ButtonStyle::Orange | ButtonStyle::OrangeSelected => (ORANGE, BLACK),
             ButtonStyle::Yellow | ButtonStyle::YellowSelected => (YELLOW, BLACK),
             ButtonStyle::Green | ButtonStyle::GreenSelected => (GREEN, BLACK),
-            ButtonStyle::Blue | ButtonStyle::BlueSelected => (BLUE, WHITE),
+            ButtonStyle::Blue | ButtonStyle::BlueSelected | ButtonStyle::BlueWithBorder => {
+                (BLUE, WHITE)
+            }
             ButtonStyle::Gray => (GRAY, BLACK),
             ButtonStyle::LightGray | ButtonStyle::LightGraySelected => (LIGHT_GRAY, BLACK),
         };
@@ -120,17 +123,39 @@ impl button::StyleSheet for ApplicationTheme {
             | ButtonStyle::YellowSelected
             | ButtonStyle::GreenSelected
             | ButtonStyle::BlueSelected
+            | ButtonStyle::BlueWithBorder
             | ButtonStyle::LightGraySelected => BORDER_WIDTH,
         };
 
         let background = Some(Background::Color(background_color));
+
+        let border_color = match style {
+            ButtonStyle::White
+            | ButtonStyle::WhiteSelected
+            | ButtonStyle::Black
+            | ButtonStyle::BlackSelected
+            | ButtonStyle::Red
+            | ButtonStyle::RedSelected
+            | ButtonStyle::Orange
+            | ButtonStyle::OrangeSelected
+            | ButtonStyle::Yellow
+            | ButtonStyle::YellowSelected
+            | ButtonStyle::Green
+            | ButtonStyle::GreenSelected
+            | ButtonStyle::Blue
+            | ButtonStyle::BlueSelected
+            | ButtonStyle::Gray
+            | ButtonStyle::LightGray
+            | ButtonStyle::LightGraySelected => BORDER_COLOR,
+            ButtonStyle::BlueWithBorder => GRAY,
+        };
 
         button::Appearance {
             shadow_offset: Vector::default(),
             background,
             border_radius: BorderRadius::from(BORDER_RADIUS),
             border_width,
-            border_color: BORDER_COLOR,
+            border_color,
             text_color,
         }
     }
@@ -147,7 +172,9 @@ impl button::StyleSheet for ApplicationTheme {
             ButtonStyle::Orange | ButtonStyle::OrangeSelected => ORANGE_PRESSED,
             ButtonStyle::Yellow | ButtonStyle::YellowSelected => YELLOW_PRESSED,
             ButtonStyle::Green | ButtonStyle::GreenSelected => GREEN_PRESSED,
-            ButtonStyle::Blue | ButtonStyle::BlueSelected => BLUE_PRESSED,
+            ButtonStyle::Blue | ButtonStyle::BlueSelected | ButtonStyle::BlueWithBorder => {
+                BLUE_PRESSED
+            }
             ButtonStyle::Gray => GRAY_PRESSED,
             ButtonStyle::LightGray | ButtonStyle::LightGraySelected => LIGHT_GRAY_PRESSED,
         };
@@ -169,7 +196,7 @@ impl button::StyleSheet for ApplicationTheme {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ContainerStyle {
     LightGray,
     #[default]

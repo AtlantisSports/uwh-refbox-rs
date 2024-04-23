@@ -59,10 +59,12 @@ pub(in super::super) fn build_main_view<'a>(
                                 .style(ButtonStyle::Blue)
                                 .width(Length::Fill)
                                 .on_press(Message::KeypadPage(KeypadPage::WarningAdd {
+                                    origin: None,
                                     color: GameColor::Black,
                                     infraction: Infraction::Unknown,
                                     expanded: false,
                                     team_warning: false,
+                                    ret_to_overview: false,
                                 })),
                         )
                     }
@@ -81,18 +83,22 @@ pub(in super::super) fn build_main_view<'a>(
                                     .style(ButtonStyle::Orange)
                                     .width(Length::Fill)
                                     .on_press(Message::KeypadPage(KeypadPage::FoulAdd {
-                                        color: Some(GameColor::Black),
+                                        origin: None,
+                                        color: None,
                                         infraction: Infraction::Unknown,
                                         expanded: false,
+                                        ret_to_overview: false,
                                     })),
                                 make_button("ADD WARNING")
                                     .style(ButtonStyle::Blue)
                                     .width(Length::Fill)
                                     .on_press(Message::KeypadPage(KeypadPage::WarningAdd {
+                                        origin: None,
                                         color: GameColor::Black,
                                         infraction: Infraction::Unknown,
                                         expanded: false,
                                         team_warning: false,
+                                        ret_to_overview: false,
                                     })),
                             ]
                             .spacing(SPACING),

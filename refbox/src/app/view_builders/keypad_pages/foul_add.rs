@@ -7,9 +7,11 @@ use iced::{
 use uwh_common::game_snapshot::Color as GameColor;
 
 pub(super) fn make_foul_add_page<'a>(
+    origin: Option<(Option<GameColor>, usize)>,
     color: Option<GameColor>,
     foul: Infraction,
     expanded: bool,
+    ret_to_overview: bool,
 ) -> Element<'a, Message> {
     let (black_style, white_style, equal_style) = match color {
         Some(GameColor::Black) => (
@@ -32,8 +34,25 @@ pub(super) fn make_foul_add_page<'a>(
     let mut exit_row = row![make_button("CANCEL")
         .style(ButtonStyle::Red)
         .width(Length::Fill)
-        .on_press(Message::AddScoreComplete { canceled: true }),]
+        .on_press(Message::FoulEditComplete {
+            canceled: true,
+            deleted: false,
+            ret_to_overview
+        }),]
     .spacing(SPACING);
+
+    if origin.is_some() {
+        exit_row = exit_row.push(
+            make_button("DELETE")
+                .style(ButtonStyle::Orange)
+                .width(Length::Fill)
+                .on_press(Message::FoulEditComplete {
+                    canceled: false,
+                    deleted: true,
+                    ret_to_overview,
+                }),
+        );
+    }
 
     exit_row = exit_row.push(
         make_button("DONE")
@@ -42,6 +61,7 @@ pub(super) fn make_foul_add_page<'a>(
             .on_press(Message::FoulEditComplete {
                 canceled: false,
                 deleted: false,
+                ret_to_overview,
             }),
     );
     column![

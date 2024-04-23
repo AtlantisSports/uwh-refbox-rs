@@ -172,16 +172,27 @@ pub(in super::super) fn build_keypad_page<'a>(
                 KeypadPage::GameNumber => make_game_number_edit_page(),
                 KeypadPage::TeamTimeouts(dur) => make_team_timeout_edit_page(dur),
                 KeypadPage::FoulAdd {
+                    origin,
                     color,
                     infraction,
                     expanded,
-                } => make_foul_add_page(color, infraction, expanded),
+                    ret_to_overview,
+                } => make_foul_add_page(origin, color, infraction, expanded, ret_to_overview),
                 KeypadPage::WarningAdd {
+                    origin,
                     color,
                     infraction,
                     expanded,
                     team_warning,
-                } => make_warning_add_page(color, infraction, expanded, team_warning),
+                    ret_to_overview,
+                } => make_warning_add_page(
+                    origin,
+                    color,
+                    infraction,
+                    expanded,
+                    team_warning,
+                    ret_to_overview
+                ),
             }
         ]
         .spacing(SPACING)

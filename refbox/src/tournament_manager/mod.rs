@@ -4,6 +4,7 @@ use std::{
     cmp::{max, min},
     convert::TryInto,
     fmt::{Display, Formatter},
+    iter::FromIterator,
     ops::{Index, IndexMut},
 };
 use thiserror::Error;
@@ -27,6 +28,8 @@ use infraction::*;
 
 mod game_stats;
 use game_stats::*;
+
+use crate::penalty_editor::IterHelp;
 
 const MAX_TIME_VAL: Duration = Duration::from_secs(MAX_LONG_STRINGABLE_SECS as u64);
 const RECENT_GOAL_TIME: Duration = Duration::from_secs(10);
@@ -202,8 +205,9 @@ impl TournamentManager {
 
     fn reset(&mut self) {
         self.scores = Default::default();
-        self.penalties.black.clear();
-        self.penalties.white.clear();
+        self.penalties.iter_mut().for_each(|(_, p)| p.clear());
+        self.warnings.iter_mut().for_each(|(_, w)| w.clear());
+        self.fouls.iter_mut().for_each(|(_, f)| f.clear());
         self.current_game_stats = GameStats::new(self.next_game_number());
         self.has_reset = true;
     }
@@ -613,7 +617,7 @@ impl TournamentManager {
 
     pub fn delete_penalty(&mut self, color: Color, index: usize) -> Result<()> {
         if self.penalties[color].len() < index + 1 {
-            return Err(TournamentManagerError::InvalidIndex(color, index));
+            return Err(TournamentManagerError::InvalidPenIndex(color, index));
         }
         let pen = self.penalties[color].remove(index);
         info!(
@@ -638,7 +642,7 @@ impl TournamentManager {
         let status_str = self.status_string(Instant::now());
         let penalty = self.penalties[old_color]
             .get_mut(index)
-            .ok_or(TournamentManagerError::InvalidIndex(old_color, index))?;
+            .ok_or(TournamentManagerError::InvalidPenIndex(old_color, index))?;
         info!(
             "{status_str} Editing {old_color} player #{}'s {:?} penalty: \
             it is now {new_color} player #{new_player_number}'s {new_kind:?} penalty",
@@ -707,6 +711,10 @@ impl TournamentManager {
         Ok(())
     }
 
+    pub(crate) fn get_penalties(&self) -> &BlackWhiteBundle<Vec<Penalty>> {
+        &self.penalties
+    }
+
     pub fn add_warning(
         &mut self,
         color: Color,
@@ -715,11 +723,9 @@ impl TournamentManager {
         now: Instant,
     ) -> Result<()> {
         info!(
-            "{} Adding a warning for {color} player #{}",
+            "{} Adding {color} {} warning for {infraction}",
             self.status_string(now),
-            player_number
-                .map(|n| n.to_string())
-                .unwrap_or("Team".to_string())
+            print_p_num_warn(player_number)
         );
         let start_time = self
             .game_clock_time(now)
@@ -744,11 +750,10 @@ impl TournamentManager {
         now: Instant,
     ) -> Result<()> {
         info!(
-            "{} Adding a foul for {color:?} player #{}",
+            "{} Adding {}{} foul for {infraction}",
             self.status_string(now),
-            player_number
-                .map(|n| n.to_string())
-                .unwrap_or("Team".to_string())
+            print_color(color),
+            print_p_num_foul(player_number)
         );
         let start_time = self
             .game_clock_time(now)
@@ -762,6 +767,109 @@ impl TournamentManager {
             infraction,
         };
         self.fouls[color].push(foul);
+        Ok(())
+    }
+
+    pub fn get_warnings(&self) -> &BlackWhiteBundle<Vec<InfractionDetails>> {
+        &self.warnings
+    }
+
+    pub fn get_fouls(&self) -> &OptColorBundle<Vec<InfractionDetails>> {
+        &self.fouls
+    }
+
+    pub fn edit_warning(
+        &mut self,
+        old_color: Color,
+        index: usize,
+        new_color: Color,
+        new_player_number: Option<u8>,
+        new_infraction: Infraction,
+    ) -> Result<()> {
+        let status_str = self.status_string(Instant::now());
+        let warning = self.warnings[old_color]
+            .get_mut(index)
+            .ok_or(TournamentManagerError::InvalidWarnIndex(old_color, index))?;
+        info!(
+            "{status_str} Editing {old_color} {} warning for {}: \
+            it is now {new_color} {} warning for {new_infraction}",
+            print_p_num_warn(warning.player_number),
+            warning.infraction,
+            print_p_num_warn(new_player_number)
+        );
+
+        warning.player_number = new_player_number;
+        warning.infraction = new_infraction;
+
+        if old_color != new_color {
+            let warning = self.warnings[old_color].remove(index);
+            self.warnings[new_color].push(warning);
+        }
+
+        Ok(())
+    }
+
+    pub fn edit_foul(
+        &mut self,
+        old_color: Option<Color>,
+        index: usize,
+        new_color: Option<Color>,
+        new_player_number: Option<u8>,
+        new_infraction: Infraction,
+    ) -> Result<()> {
+        let status_str = self.status_string(Instant::now());
+        let foul = self.fouls[old_color]
+            .get_mut(index)
+            .ok_or(TournamentManagerError::InvalidFoulIndex(old_color, index))?;
+        info!(
+            "{status_str} Editing {}{} foul for {}: \
+            it is now {}{} foul for {new_infraction}",
+            print_color(old_color),
+            print_p_num_foul(foul.player_number),
+            foul.infraction,
+            print_color(new_color),
+            print_p_num_foul(new_player_number),
+        );
+
+        foul.player_number = new_player_number;
+        foul.infraction = new_infraction;
+
+        if old_color != new_color {
+            let foul = self.fouls[old_color].remove(index);
+            self.fouls[new_color].push(foul);
+        }
+
+        Ok(())
+    }
+
+    pub fn delete_warning(&mut self, color: Color, index: usize) -> Result<()> {
+        if self.warnings[color].len() < index + 1 {
+            return Err(TournamentManagerError::InvalidWarnIndex(color, index));
+        }
+        let warning = self.warnings[color].remove(index);
+        info!(
+            "{} Deleting {color} {} warning for {}",
+            self.status_string(Instant::now()),
+            print_p_num_warn(warning.player_number),
+            warning.infraction
+        );
+
+        Ok(())
+    }
+
+    pub fn delete_foul(&mut self, color: Option<Color>, index: usize) -> Result<()> {
+        if self.fouls[color].len() < index + 1 {
+            return Err(TournamentManagerError::InvalidFoulIndex(color, index));
+        }
+        let foul = self.fouls[color].remove(index);
+        info!(
+            "{} Deleting {}{} foul for {}",
+            self.status_string(Instant::now()),
+            print_color(color),
+            print_p_num_foul(foul.player_number),
+            foul.infraction
+        );
+
         Ok(())
     }
 
@@ -1613,10 +1721,6 @@ impl TournamentManager {
         }
     }
 
-    pub(crate) fn get_penalties(&self) -> BlackWhiteBundle<Vec<Penalty>> {
-        self.penalties.clone()
-    }
-
     pub(crate) fn printable_penalty_time(&self, pen: &Penalty, now: Instant) -> Option<String> {
         let cur_time = self.game_clock_time(now)?;
         if pen
@@ -1914,6 +2018,12 @@ pub struct BlackWhiteBundle<T> {
     pub white: T,
 }
 
+impl<T> BlackWhiteBundle<T> {
+    pub fn iter(&self) -> impl Iterator<Item = (Color, &T)> {
+        self.into_iter()
+    }
+}
+
 #[cfg(test)]
 impl BlackWhiteBundle<u8> {
     pub fn new(black: u8, white: u8) -> Self {
@@ -1953,12 +2063,72 @@ impl<T: Display> Display for BlackWhiteBundle<T> {
     }
 }
 
+pub struct BlackWhiteBundleIterator<'a, T> {
+    bundle: &'a BlackWhiteBundle<T>,
+    index: usize,
+}
+
+impl<'a, T> Iterator for BlackWhiteBundleIterator<'a, T> {
+    type Item = (Color, &'a T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let value = match self.index {
+            0 => (Color::Black, &self.bundle.black),
+            1 => (Color::White, &self.bundle.white),
+            _ => return None,
+        };
+
+        self.index += 1;
+        Some(value)
+    }
+}
+
+impl<'a, T> IntoIterator for &'a BlackWhiteBundle<T> {
+    type Item = (Color, &'a T);
+    type IntoIter = BlackWhiteBundleIterator<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        BlackWhiteBundleIterator {
+            bundle: self,
+            index: 0,
+        }
+    }
+}
+
+impl<T> IntoIterator for BlackWhiteBundle<T> {
+    type Item = (Color, T);
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        vec![(Color::Black, self.black), (Color::White, self.white)].into_iter()
+    }
+}
+
+impl<T: Default> FromIterator<(Color, T)> for BlackWhiteBundle<T> {
+    fn from_iter<I: IntoIterator<Item = (Color, T)>>(iter: I) -> Self {
+        let mut bundle = BlackWhiteBundle::default();
+        for (color, value) in iter {
+            match color {
+                Color::Black => bundle.black = value,
+                Color::White => bundle.white = value,
+            }
+        }
+        bundle
+    }
+}
+
 #[derive(Derivative)]
 #[derivative(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OptColorBundle<T> {
     pub black: T,
     pub equal: T,
     pub white: T,
+}
+
+impl<T> OptColorBundle<T> {
+    pub fn iter(&self) -> impl Iterator<Item = (Option<Color>, &T)> {
+        self.into_iter()
+    }
 }
 
 impl<T> Index<Option<Color>> for OptColorBundle<T> {
@@ -1993,7 +2163,68 @@ impl<T: Display> Display for OptColorBundle<T> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct OptColorBundleIterator<'a, T> {
+    bundle: &'a OptColorBundle<T>,
+    index: usize,
+}
+
+impl<'a, T> Iterator for OptColorBundleIterator<'a, T> {
+    type Item = (Option<Color>, &'a T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let value = match self.index {
+            0 => (Some(Color::Black), &self.bundle.black),
+            1 => (None, &self.bundle.equal),
+            2 => (Some(Color::White), &self.bundle.white),
+            _ => return None,
+        };
+
+        self.index += 1;
+        Some(value)
+    }
+}
+
+impl<'a, T> IntoIterator for &'a OptColorBundle<T> {
+    type Item = (Option<Color>, &'a T);
+    type IntoIter = OptColorBundleIterator<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        OptColorBundleIterator {
+            bundle: self,
+            index: 0,
+        }
+    }
+}
+
+impl<T> IntoIterator for OptColorBundle<T> {
+    type Item = (Option<Color>, T);
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        vec![
+            (Some(Color::Black), self.black),
+            (None, self.equal),
+            (Some(Color::White), self.white),
+        ]
+        .into_iter()
+    }
+}
+
+impl<T: Default> FromIterator<(Option<Color>, T)> for OptColorBundle<T> {
+    fn from_iter<I: IntoIterator<Item = (Option<Color>, T)>>(iter: I) -> Self {
+        let mut bundle = OptColorBundle::default();
+        for (color, value) in iter {
+            match color {
+                Some(Color::Black) => bundle.black = value,
+                None => bundle.equal = value,
+                Some(Color::White) => bundle.white = value,
+            }
+        }
+        bundle
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NextGameInfo {
     pub number: u32,
     pub timing: Option<TimingRules>,
@@ -2029,7 +2260,11 @@ pub enum TournamentManagerError {
     #[error("Too many active penalties, can't limit list to {0} values")]
     TooManyPenalties(usize),
     #[error("No {0} penalty exists at the index {1}")]
-    InvalidIndex(Color, usize),
+    InvalidPenIndex(Color, usize),
+    #[error("No {0} warning exists at the index {1}")]
+    InvalidWarnIndex(Color, usize),
+    #[error("No {0:?} penalty exists at the index {1}")]
+    InvalidFoulIndex(Option<Color>, usize),
     #[error("Can't halt game from the current state")]
     InvalidState,
     #[error("Next Game Info is needed to perform this action")]
@@ -2039,6 +2274,30 @@ pub enum TournamentManagerError {
 }
 
 pub type Result<T> = std::result::Result<T, TournamentManagerError>;
+
+fn print_color(color: Option<Color>) -> &'static str {
+    match color {
+        Some(Color::Black) => "Black",
+        Some(Color::White) => "White",
+        None => "Equal",
+    }
+}
+
+fn print_p_num_warn(num: Option<u8>) -> String {
+    if let Some(n) = num {
+        format!("player #{n}'s")
+    } else {
+        format!("team's")
+    }
+}
+
+fn print_p_num_foul(num: Option<u8>) -> String {
+    if let Some(n) = num {
+        format!(" player #{n}'s")
+    } else {
+        String::new()
+    }
+}
 
 #[cfg(test)]
 mod test {
@@ -4214,15 +4473,15 @@ mod test {
         let next_time = time + Duration::from_secs(1);
         assert_eq!(
             tm.delete_penalty(Color::Black, 1,),
-            Err(TournamentManagerError::InvalidIndex(Color::Black, 1))
+            Err(TournamentManagerError::InvalidPenIndex(Color::Black, 1))
         );
         assert_eq!(
             tm.delete_penalty(Color::White, 0,),
-            Err(TournamentManagerError::InvalidIndex(Color::White, 0))
+            Err(TournamentManagerError::InvalidPenIndex(Color::White, 0))
         );
         assert_eq!(
             tm.delete_penalty(Color::White, 1,),
-            Err(TournamentManagerError::InvalidIndex(Color::White, 1))
+            Err(TournamentManagerError::InvalidPenIndex(Color::White, 1))
         );
         tm.delete_penalty(Color::Black, 0).unwrap();
         assert_eq!(tm.penalties.black, vec![]);
@@ -4255,15 +4514,15 @@ mod test {
 
         assert_eq!(
             tm.delete_penalty(Color::White, 1,),
-            Err(TournamentManagerError::InvalidIndex(Color::White, 1))
+            Err(TournamentManagerError::InvalidPenIndex(Color::White, 1))
         );
         assert_eq!(
             tm.delete_penalty(Color::Black, 0),
-            Err(TournamentManagerError::InvalidIndex(Color::Black, 0))
+            Err(TournamentManagerError::InvalidPenIndex(Color::Black, 0))
         );
         assert_eq!(
             tm.delete_penalty(Color::Black, 1),
-            Err(TournamentManagerError::InvalidIndex(Color::Black, 1))
+            Err(TournamentManagerError::InvalidPenIndex(Color::Black, 1))
         );
         tm.delete_penalty(Color::White, 0).unwrap();
         assert_eq!(tm.penalties.black, vec![]);
@@ -4314,7 +4573,7 @@ mod test {
                 PenaltyKind::TwoMinute,
                 Infraction::IllegalAdvancement
             ),
-            Err(TournamentManagerError::InvalidIndex(Color::Black, 1))
+            Err(TournamentManagerError::InvalidPenIndex(Color::Black, 1))
         );
         assert_eq!(
             tm.edit_penalty(
@@ -4325,7 +4584,7 @@ mod test {
                 PenaltyKind::TwoMinute,
                 Infraction::IllegalAdvancement
             ),
-            Err(TournamentManagerError::InvalidIndex(Color::White, 0))
+            Err(TournamentManagerError::InvalidPenIndex(Color::White, 0))
         );
         assert_eq!(
             tm.edit_penalty(
@@ -4336,7 +4595,7 @@ mod test {
                 PenaltyKind::TwoMinute,
                 Infraction::IllegalAdvancement
             ),
-            Err(TournamentManagerError::InvalidIndex(Color::White, 1))
+            Err(TournamentManagerError::InvalidPenIndex(Color::White, 1))
         );
         tm.edit_penalty(
             Color::Black,
@@ -4443,7 +4702,7 @@ mod test {
                 PenaltyKind::TwoMinute,
                 Infraction::Unknown
             ),
-            Err(TournamentManagerError::InvalidIndex(Color::White, 1))
+            Err(TournamentManagerError::InvalidPenIndex(Color::White, 1))
         );
         assert_eq!(
             tm.edit_penalty(
@@ -4454,7 +4713,7 @@ mod test {
                 PenaltyKind::TwoMinute,
                 Infraction::Unknown
             ),
-            Err(TournamentManagerError::InvalidIndex(Color::Black, 0))
+            Err(TournamentManagerError::InvalidPenIndex(Color::Black, 0))
         );
         assert_eq!(
             tm.edit_penalty(
@@ -4465,7 +4724,7 @@ mod test {
                 PenaltyKind::TwoMinute,
                 Infraction::Unknown
             ),
-            Err(TournamentManagerError::InvalidIndex(Color::Black, 1))
+            Err(TournamentManagerError::InvalidPenIndex(Color::Black, 1))
         );
         tm.edit_penalty(
             Color::White,

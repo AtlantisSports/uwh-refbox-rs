@@ -12,6 +12,43 @@ env:
   RUSTFLAGS: "-D warnings"
 
 jobs:
+  fmt:
+    name: Format check
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - uses: Swatinem/rust-cache@v2.7.0
+    - name: Versions
+      run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version
+    - run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy check
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: libssl-dev pkg-config libasound2-dev
+        version: latest
+    - uses: Swatinem/rust-cache@v2.7.0
+    - name: Versions
+      run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version
+    - run: cargo clippy --all -- --deny=warnings
+    - run: cargo clippy --all --no-default-features -- --deny=warnings
+
+  audit:
+    name: Cargo audit
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions-rust-lang/audit@v1
+      with:
+        file: Cargo.lock
+
   build:
     name: Test debug on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -22,10 +59,6 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - if: ${{ matrix.os == 'ubuntu-latest' }}
-      uses: actions-rust-lang/audit@v1
-      with:
-        file: Cargo.lock
-    - if: ${{ matrix.os == 'ubuntu-latest' }}
       uses: awalsh128/cache-apt-pkgs-action@latest
       with:
         packages: libssl-dev pkg-config libasound2-dev
@@ -33,12 +66,24 @@ jobs:
     - uses: Swatinem/rust-cache@v2.7.0
     - name: Versions
       run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version
-    - run: cargo fmt --all -- --check
-    - run: cargo clippy --all -- --deny=warnings
-    - run: cargo clippy --all --no-default-features -- --deny=warnings
     - run: cargo build --all
-    - run: cargo build --all --no-default-features
     - run: cargo test --all
+
+  build-ndf:
+    name: Test debug without default features
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: libssl-dev pkg-config libasound2-dev
+        version: latest
+    - uses: Swatinem/rust-cache@v2.7.0
+    - name: Versions
+      run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version
+    - run: cargo build --all --no-default-features
+    - run: cargo test --all --no-default-features
 
   build-release:
     name: Test release on ${{ matrix.os }}
@@ -57,10 +102,22 @@ jobs:
     - uses: Swatinem/rust-cache@v2.7.0
     - name: Versions
       run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version
-    - run: cargo fmt --all -- --check
-    - run: cargo clippy --release --all -- --deny=warnings
-    - run: cargo clippy --release --all --no-default-features -- --deny=warnings
     - run: cargo build --release --all
-    - run: cargo build --release --all --no-default-features
     - run: cargo test --release --all
+
+  build-release-ndf:
+    name: Test release without default features
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: libssl-dev pkg-config libasound2-dev
+        version: latest
+    - uses: Swatinem/rust-cache@v2.7.0
+    - name: Versions
+      run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version
+    - run: cargo build --release --all --no-default-features
+    - run: cargo test --release --all --no-default-features
             

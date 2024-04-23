@@ -640,11 +640,11 @@ impl Sound {
         _merger.connect(&context.destination());
 
         let gain_l = context.create_gain();
-        gain_l.connect_at(&_merger, 0, 0);
+        gain_l.connect_from_output_to_input(&_merger, 0, 0);
         gain_l.gain().set_value(volumes.left);
 
         let gain_r = context.create_gain();
-        gain_r.connect_at(&_merger, 0, 1);
+        gain_r.connect_from_output_to_input(&_merger, 0, 1);
         gain_r.gain().set_value(volumes.right);
 
         let mut source = context.create_buffer_source();

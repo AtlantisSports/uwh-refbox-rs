@@ -46,7 +46,7 @@ tokio-serial = "5"
 toml = "0.8"
 uwh-common = { version = "0.1.3", path = "../uwh-common"}
 matrix-drawing = { version = "0.1.3", path = "../matrix-drawing"}
-web-audio-api = { version = "0.42", default-features = false, features = ["cpal"] }
+web-audio-api = { version = "0.44", default-features = false, features = ["cpal"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 rppal = "0.17"

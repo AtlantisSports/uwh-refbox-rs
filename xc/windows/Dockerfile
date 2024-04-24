@@ -1,5 +1,4 @@
-# We'll just use the official Rust image rather than build our own from scratch
-FROM docker.io/library/rust:1.75.0-slim-bullseye
+FROM lukemathwalker/cargo-chef:latest-rust-1.77.2-slim-bullseye AS builder
 
 ENV KEYRINGS /usr/local/share/keyrings
 
@@ -22,9 +21,11 @@ RUN set -eux; \
     llvm-13 \
     lld-13 \
     # get a recent wine so we can run tests
-    winehq-staging \
+    winehq-stable \
     # Unpack xwin
-    tar; \
+    tar \
+    # Needed for wine to work
+    libfreetype6; \
     # ensure that clang/clang++ are callable directly
     ln -s clang-13 /usr/bin/clang && ln -s clang /usr/bin/clang++ && ln -s lld-13 /usr/bin/ld.lld; \
     # We also need to setup symlinks ourselves for the MSVC shims because they aren't in the debian packages
@@ -83,3 +84,14 @@ ENV CFLAGS_x86_64_pc_windows_msvc="$CL_FLAGS" \
 # Run wineboot just to setup the default WINEPREFIX so we don't do it every
 # container run
 RUN wine wineboot --init
+
+FROM lukemathwalker/cargo-chef:latest-rust-1.77.2-slim-bullseye AS planner
+WORKDIR /workdir
+COPY . .
+RUN find . -type d -name "target" -exec rm -rf {} +
+RUN find . -type d -name "xc" -exec rm -rf {} +
+RUN ls -la && cargo chef prepare --recipe-path recipe.json
+
+FROM builder AS development
+COPY --from=planner /workdir/recipe.json recipe.json
+RUN cargo chef cook --recipe-path recipe.json --target x86_64-pc-windows-msvc --release

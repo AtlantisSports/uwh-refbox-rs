@@ -1,14 +1,17 @@
+#!/bin/bash
+
 set -x
 
 TARGET_TRIPLE="aarch64-unknown-linux-gnu"
 IMAGE_NAME="rpi-xc-bullseye-aarch64"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CARGO_ARGS="build --bin refbox --bin overlay --target $TARGET_TRIPLE --release"
-CONTAINER_WORKDIR="/workdir/uwh-refbox-rs"
+CONTAINER_WORKDIR="/workdir"
 
 CONTAINER_NAME="$(docker create -t -w "$CONTAINER_WORKDIR/" $IMAGE_NAME /root/.cargo/bin/cargo $CARGO_ARGS)"
 
-BASE_DIR="$(dirname "$0")/../.."
+BASE_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 for file in $(ls "$BASE_DIR" | grep -v target | grep -v xc); do
     docker cp "$BASE_DIR/$file" "$CONTAINER_NAME:$CONTAINER_WORKDIR/"

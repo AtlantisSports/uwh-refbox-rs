@@ -25,9 +25,21 @@ pub(in super::super) fn build_foul_overview_page<'a>(
     column![
         make_game_time_button(snapshot, false, false, mode, clock_running),
         row![
-            make_foul_list(warnings.black, indices.black, Some(GameColor::Black)),
-            make_foul_list(warnings.equal, indices.equal, None),
-            make_foul_list(warnings.white, indices.white, Some(GameColor::White))
+            make_foul_list(
+                warnings.black.into_iter().rev().collect(),
+                indices.black,
+                Some(GameColor::Black)
+            ),
+            make_foul_list(
+                warnings.equal.into_iter().rev().collect(),
+                indices.equal,
+                None
+            ),
+            make_foul_list(
+                warnings.white.into_iter().rev().collect(),
+                indices.white,
+                Some(GameColor::White)
+            )
         ]
         .spacing(SPACING)
         .height(Length::Fill),

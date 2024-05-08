@@ -25,8 +25,16 @@ pub(in super::super) fn build_warning_overview_page<'a>(
     column![
         make_game_time_button(snapshot, false, false, mode, clock_running),
         row![
-            make_warning_list(warnings.black, indices.black, GameColor::Black),
-            make_warning_list(warnings.white, indices.white, GameColor::White)
+            make_warning_list(
+                warnings.black.into_iter().rev().collect(),
+                indices.black,
+                GameColor::Black
+            ),
+            make_warning_list(
+                warnings.white.into_iter().rev().collect(),
+                indices.white,
+                GameColor::White
+            )
         ]
         .spacing(SPACING)
         .height(Length::Fill),

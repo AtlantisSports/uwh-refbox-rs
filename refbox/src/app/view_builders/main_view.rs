@@ -29,16 +29,48 @@ pub(in super::super) fn build_main_view<'a>(
 
     let mut center_col = column![time_button].spacing(SPACING).width(Length::Fill);
 
+    let make_warn_button = || {
+        make_button("ADD WARNING")
+            .style(ButtonStyle::Blue)
+            .width(Length::Fill)
+            .on_press(Message::KeypadPage(KeypadPage::WarningAdd {
+                origin: None,
+                color: GameColor::Black,
+                infraction: Infraction::Unknown,
+                expanded: false,
+                team_warning: false,
+                ret_to_overview: false,
+            }))
+    };
+
+    let make_foul_button = || {
+        make_button("ADD FOUL")
+            .style(ButtonStyle::Orange)
+            .width(Length::Fill)
+            .on_press(Message::KeypadPage(KeypadPage::FoulAdd {
+                origin: None,
+                color: None,
+                infraction: Infraction::Unknown,
+                expanded: false,
+                ret_to_overview: false,
+            }))
+    };
+
     match snapshot.timeout {
         TimeoutSnapshot::White(_)
         | TimeoutSnapshot::Black(_)
         | TimeoutSnapshot::Ref(_)
         | TimeoutSnapshot::PenaltyShot(_) => {
-            center_col = center_col.push(
-                make_button("END TIMEOUT")
-                    .style(ButtonStyle::Yellow)
-                    .on_press(Message::EndTimeout),
-            )
+            if config.track_fouls_and_warnings {
+                center_col =
+                    center_col.push(row![make_foul_button(), make_warn_button()].spacing(SPACING))
+            } else {
+                center_col = center_col.push(
+                    make_button("END TIMEOUT")
+                        .style(ButtonStyle::Yellow)
+                        .on_press(Message::EndTimeout),
+                )
+            }
         }
         TimeoutSnapshot::None => {
             match snapshot.current_period {
@@ -50,23 +82,11 @@ pub(in super::super) fn build_main_view<'a>(
                     let mut start_warning_row = row![make_button("START NOW")
                         .style(ButtonStyle::Green)
                         .width(Length::Fill)
-                        .on_press(Message::StartPlayNow),]
+                        .on_press(Message::StartPlayNow)]
                     .spacing(SPACING);
 
                     if config.track_fouls_and_warnings {
-                        start_warning_row = start_warning_row.push(
-                            make_button("ADD WARNING")
-                                .style(ButtonStyle::Blue)
-                                .width(Length::Fill)
-                                .on_press(Message::KeypadPage(KeypadPage::WarningAdd {
-                                    origin: None,
-                                    color: GameColor::Black,
-                                    infraction: Infraction::Unknown,
-                                    expanded: false,
-                                    team_warning: false,
-                                    ret_to_overview: false,
-                                })),
-                        )
+                        start_warning_row = start_warning_row.push(make_warn_button())
                     }
 
                     center_col = center_col.push(start_warning_row)
@@ -77,32 +97,8 @@ pub(in super::super) fn build_main_view<'a>(
                 | GamePeriod::OvertimeSecondHalf
                 | GamePeriod::SuddenDeath => {
                     if config.track_fouls_and_warnings {
-                        center_col = center_col.push(
-                            row![
-                                make_button("ADD FOUL")
-                                    .style(ButtonStyle::Orange)
-                                    .width(Length::Fill)
-                                    .on_press(Message::KeypadPage(KeypadPage::FoulAdd {
-                                        origin: None,
-                                        color: None,
-                                        infraction: Infraction::Unknown,
-                                        expanded: false,
-                                        ret_to_overview: false,
-                                    })),
-                                make_button("ADD WARNING")
-                                    .style(ButtonStyle::Blue)
-                                    .width(Length::Fill)
-                                    .on_press(Message::KeypadPage(KeypadPage::WarningAdd {
-                                        origin: None,
-                                        color: GameColor::Black,
-                                        infraction: Infraction::Unknown,
-                                        expanded: false,
-                                        team_warning: false,
-                                        ret_to_overview: false,
-                                    })),
-                            ]
-                            .spacing(SPACING),
-                        )
+                        center_col = center_col
+                            .push(row![make_foul_button(), make_warn_button()].spacing(SPACING))
                     }
                 }
             };

@@ -34,7 +34,7 @@ pub(in super::super) fn build_main_view<'a>(
         | TimeoutSnapshot::Ref(_)
         | TimeoutSnapshot::PenaltyShot(_) => {
             center_col = center_col.push(
-                make_button("END TIMEOUT")
+                make_button(fl!("end-timeout"))
                     .style(ButtonStyle::Yellow)
                     .on_press(Message::EndTimeout),
             )
@@ -47,7 +47,7 @@ pub(in super::super) fn build_main_view<'a>(
                 | GamePeriod::OvertimeHalfTime
                 | GamePeriod::PreSuddenDeath => {
                     center_col = center_col.push(
-                        make_button("START NOW")
+                        make_button(fl!("start-now"))
                             .style(ButtonStyle::Green)
                             .on_press(Message::StartPlayNow),
                     )

@@ -1,4 +1,4 @@
-use super::APP_NAME;
+use super::{fl, APP_NAME};
 use crate::{
     config::{Config, Mode},
     penalty_editor::*,

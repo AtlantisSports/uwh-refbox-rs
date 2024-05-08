@@ -47,6 +47,10 @@ toml = "0.8"
 uwh-common = { version = "0.1.3", path = "../uwh-common"}
 matrix-drawing = { version = "0.1.3", path = "../matrix-drawing"}
 web-audio-api = { version = "0.45", default-features = false, features = ["cpal"] }
+i18n-embed = { version = "0.14.1", features = ["fluent-system", "desktop-requester"] }
+rust-embed = "8.3.0"
+i18n-embed-fl = "0.8.0"
+once_cell = "1.19.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 rppal = "0.17"

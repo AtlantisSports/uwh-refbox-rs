@@ -66,7 +66,7 @@ pub(in super::super) fn build_main_view<'a>(
                 center_col.push(row![make_foul_button(), make_warn_button()].spacing(SPACING));
         } else {
             center_col = center_col.push(
-                make_button("END TIMEOUT")
+                make_button(fl!("end-timeout"))
                     .style(ButtonStyle::Yellow)
                     .on_press(Message::EndTimeout),
             );
@@ -79,7 +79,7 @@ pub(in super::super) fn build_main_view<'a>(
             | GamePeriod::OvertimeHalfTime
             | GamePeriod::PreSuddenDeath => {
                 let mut start_warning_row = row![
-                    make_button("START NOW")
+                    make_button(fl!("start-now"))
                         .style(ButtonStyle::Green)
                         .width(Length::Fill)
                         .on_press(Message::StartPlayNow)

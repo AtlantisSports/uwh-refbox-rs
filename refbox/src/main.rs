@@ -1,6 +1,10 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 use clap::Parser;
+use i18n_embed::{
+    DesktopLanguageRequester,
+    fluent::{FluentLanguageLoader, fluent_language_loader},
+};
 use iced::{Application, Settings, window::icon};
 use iced_core::Font;
 use log::*;
@@ -16,6 +20,8 @@ use log4rs::{
     config::{Appender, Config as LogConfig, Logger, Root},
     encode::pattern::PatternEncoder,
 };
+use once_cell::sync::Lazy;
+use rust_embed::RustEmbed;
 use std::{
     path::PathBuf,
     process::{Command, Stdio},
@@ -33,6 +39,32 @@ mod config;
 use config::Config;
 
 const APP_NAME: &str = "refbox";
+
+#[derive(RustEmbed)]
+#[folder = "translations/"]
+struct Localizations;
+
+static LANGUAGE_LOADER: Lazy<FluentLanguageLoader> = Lazy::new(|| {
+    let loader: FluentLanguageLoader = fluent_language_loader!();
+
+    let requested_languages = DesktopLanguageRequester::requested_languages();
+    let _result = i18n_embed::select(&loader, &Localizations, &requested_languages);
+
+    loader.set_use_isolating(false); // Required until iced supports RTL text (https://github.com/iced-rs/iced/issues/250)
+
+    loader
+});
+
+#[macro_export]
+macro_rules! fl {
+    ($message_id:literal) => {{
+        i18n_embed_fl::fl!($crate::LANGUAGE_LOADER, $message_id)
+    }};
+
+    ($message_id:literal, $($args:expr),*) => {{
+        i18n_embed_fl::fl!($crate::LANGUAGE_LOADER, $message_id, $($args), *)
+    }};
+}
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]

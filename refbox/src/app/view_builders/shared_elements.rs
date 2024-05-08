@@ -1,5 +1,5 @@
 use super::{
-    Element,
+    Element, fl,
     message::*,
     style::{
         Button, ButtonStyle, Container, ContainerStyle, LARGE_TEXT, LINE_HEIGHT, MEDIUM_TEXT,
@@ -20,7 +20,6 @@ use iced::{
 };
 use matrix_drawing::{secs_to_long_time_string, secs_to_time_string};
 use std::{
-    borrow::Cow,
     fmt::Write,
     sync::{Arc, Mutex},
     time::Duration,
@@ -202,10 +201,11 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
                 .map(|_| Message::TeamTimeout(GameColor::Black, false)),
         )
         .style(ButtonStyle::Black),
-        Some(TimeoutSnapshot::Black(_)) => {
-            make_multi_label_message_button(("END", "TIMEOUT"), Some(Message::EndTimeout))
-                .style(ButtonStyle::Yellow)
-        }
+        Some(TimeoutSnapshot::Black(_)) => make_multi_label_message_button(
+            (fl!("end-timeout-line-1"), fl!("end-timeout-line-2")),
+            Some(Message::EndTimeout),
+        )
+        .style(ButtonStyle::Yellow),
         Some(TimeoutSnapshot::White(_))
         | Some(TimeoutSnapshot::Ref(_))
         | Some(TimeoutSnapshot::PenaltyShot(_)) => make_multi_label_message_button(
@@ -225,10 +225,11 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
                 .map(|_| Message::TeamTimeout(GameColor::White, false)),
         )
         .style(ButtonStyle::White),
-        Some(TimeoutSnapshot::White(_)) => {
-            make_multi_label_message_button(("END", "TIMEOUT"), Some(Message::EndTimeout))
-                .style(ButtonStyle::Yellow)
-        }
+        Some(TimeoutSnapshot::White(_)) => make_multi_label_message_button(
+            (fl!("end-timeout-line-1"), fl!("end-timeout-line-2")),
+            Some(Message::EndTimeout),
+        )
+        .style(ButtonStyle::Yellow),
         Some(TimeoutSnapshot::Black(_))
         | Some(TimeoutSnapshot::Ref(_))
         | Some(TimeoutSnapshot::PenaltyShot(_)) => make_multi_label_message_button(
@@ -248,10 +249,11 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
                 .map(|_| Message::RefTimeout(false)),
         )
         .style(ButtonStyle::Yellow),
-        Some(TimeoutSnapshot::Ref(_)) => {
-            make_multi_label_message_button(("END", "TIMEOUT"), Some(Message::EndTimeout))
-                .style(ButtonStyle::Yellow)
-        }
+        Some(TimeoutSnapshot::Ref(_)) => make_multi_label_message_button(
+            (fl!("end-timeout-line-1"), fl!("end-timeout-line-2")),
+            Some(Message::EndTimeout),
+        )
+        .style(ButtonStyle::Yellow),
         Some(TimeoutSnapshot::Black(_))
         | Some(TimeoutSnapshot::White(_))
         | Some(TimeoutSnapshot::PenaltyShot(_)) => make_multi_label_message_button(
@@ -271,10 +273,11 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
                 .map(|_| Message::PenaltyShot(false)),
         )
         .style(ButtonStyle::Red),
-        Some(TimeoutSnapshot::PenaltyShot(_)) => {
-            make_multi_label_message_button(("END", "TIMEOUT"), Some(Message::EndTimeout))
-                .style(ButtonStyle::Yellow)
-        }
+        Some(TimeoutSnapshot::PenaltyShot(_)) => make_multi_label_message_button(
+            (fl!("end-timeout-line-1"), fl!("end-timeout-line-2")),
+            Some(Message::EndTimeout),
+        )
+        .style(ButtonStyle::Yellow),
         Some(TimeoutSnapshot::Black(_))
         | Some(TimeoutSnapshot::White(_))
         | Some(TimeoutSnapshot::Ref(_)) => {
@@ -662,13 +665,13 @@ pub(super) fn get_team_name(team: &ScheduledTeam, teams: &TeamList) -> String {
     }
 }
 
-pub(super) fn limit_team_name_len(name: &String, len_limit: usize) -> Cow<'_, String> {
+pub(super) fn limit_team_name_len(name: &str, len_limit: usize) -> String {
     const ELIPSIS: [char; 3] = ['.', '.', '.'];
 
     if name.len() > len_limit {
-        Cow::Owned(name.chars().take(len_limit - 1).chain(ELIPSIS).collect())
+        name.chars().take(len_limit - 1).chain(ELIPSIS).collect()
     } else {
-        Cow::Borrowed(name)
+        name.to_owned()
     }
 }
 
@@ -685,24 +688,24 @@ pub(super) fn config_string_game_num(
             if let Some(games) = games {
                 prev_game = match games.get(&snapshot.game_number) {
                     Some(game) => game_string_short(game),
-                    None if snapshot.game_number == 0 => "None".to_string(),
-                    None => format!("Error ({})", snapshot.game_number),
+                    None if snapshot.game_number == 0 => fl!("none"),
+                    None => fl!("error", number = snapshot.game_number),
                 };
                 next_game = match games.get(&snapshot.next_game_number) {
                     Some(game) => game_string_short(game),
-                    None => format!("Error ({})", snapshot.next_game_number),
+                    None => fl!("error", number = snapshot.next_game_number),
                 };
             } else {
                 prev_game = if snapshot.game_number == 0 {
-                    "None".to_string()
+                    fl!("none")
                 } else {
-                    format!("Error ({})", snapshot.game_number)
+                    fl!("error", number = snapshot.game_number)
                 };
-                next_game = format!("Error ({})", snapshot.next_game_number);
+                next_game = fl!("error", number = snapshot.next_game_number);
             }
         } else {
             prev_game = if snapshot.game_number == 0 {
-                "None".to_string()
+                fl!("none")
             } else {
                 snapshot.game_number.to_string()
             };
@@ -711,8 +714,8 @@ pub(super) fn config_string_game_num(
 
         write!(
             &mut result,
-            "Last Game: {},  Next Game: {}\n\n",
-            prev_game, next_game
+            "{}\n\n",
+            fl!("two-games", prev_game = prev_game, next_game = next_game)
         )
         .unwrap();
         snapshot.next_game_number
@@ -722,15 +725,15 @@ pub(super) fn config_string_game_num(
             if let Some(games) = games {
                 game = match games.get(&snapshot.game_number) {
                     Some(game) => game_string_short(game),
-                    None => format!("Error ({})", snapshot.game_number),
+                    None => fl!("error", number = snapshot.game_number),
                 };
             } else {
-                game = format!("Error ({})", snapshot.game_number);
+                game = fl!("error", number = snapshot.game_number);
             }
         } else {
             game = snapshot.game_number.to_string();
         }
-        write!(&mut result, "Game: {}\n\n", game).unwrap();
+        write!(&mut result, "{}\n\n", fl!("one-game", game = game)).unwrap();
         snapshot.game_number
     };
 
@@ -756,63 +759,52 @@ pub(super) fn config_string(
             if let Some(game) = games.get(&game_number) {
                 let black = get_team_name(&game.dark, teams);
                 let white = get_team_name(&game.light, teams);
-                write!(
+                writeln!(
                     &mut result,
-                    "Black Team: {}\nWhite Team: {}\n",
-                    limit_team_name_len(&black, TEAM_NAME_LEN_LIMIT),
-                    limit_team_name_len(&white, TEAM_NAME_LEN_LIMIT)
+                    "{}",
+                    fl!(
+                        "teams",
+                        dark_team = limit_team_name_len(&black, TEAM_NAME_LEN_LIMIT),
+                        light_team = limit_team_name_len(&white, TEAM_NAME_LEN_LIMIT)
+                    )
                 )
                 .unwrap()
             }
         }
     }
 
-    writeln!(
-        &mut result,
-        "Half Length: {},  \
-         Half Time Length: {}",
-        time_string(config.half_play_duration),
-        time_string(config.half_time_duration),
-    )
-    .unwrap();
-
-    writeln!(
-        &mut result,
-        "Sudden Death Allowed: {},  \
-         Overtime Allowed: {}",
-        bool_string(config.sudden_death_allowed),
-        bool_string(config.overtime_allowed),
-    )
-    .unwrap();
+    result += &fl!(
+        "game-config",
+        half_len = time_string(config.half_play_duration),
+        half_time_len = time_string(config.half_time_duration),
+        sd_allowed = bool_string(config.sudden_death_allowed),
+        ot_allowed = bool_string(config.overtime_allowed)
+    );
 
     if config.timeouts_counted_per_half {
-        writeln!(
-            &mut result,
-            "Team Timeouts Allowed Per Half: {}",
-            config.num_team_timeouts_allowed
-        )
-        .unwrap();
+        result += &fl!(
+            "team-timeouts-per-half",
+            team_timeouts = config.num_team_timeouts_allowed
+        );
     } else {
-        writeln!(
-            &mut result,
-            "Team Timeouts Allowed Per Game: {}",
-            config.num_team_timeouts_allowed
-        )
-        .unwrap();
+        result += &fl!(
+            "team-timeouts-per-game",
+            team_timeouts = config.num_team_timeouts_allowed
+        );
     }
 
-    writeln!(&mut result, "Stop clock in last 2 minutes: ").unwrap();
+    result += &fl!("stop-clock-last-2", stop_clock_last_2 = "Unknown");
+    result += "\n";
 
     if !fouls_and_warnings {
-        write!(
-            &mut result,
-            "Chief ref: \n\
-            Timer: \n\
-            Water ref 1: \n\
-            Water ref 2: \n\
-            Water ref 3: ",
-        )
-        .unwrap();
+        result += &fl!(
+            "ref-list",
+            chief_ref = "Unknown",
+            timer = "Unknown",
+            water_ref_1 = "Unknown",
+            water_ref_2 = "Unknown",
+            water_ref_3 = "Unknown"
+        );
     }
 
     result

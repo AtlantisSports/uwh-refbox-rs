@@ -595,8 +595,8 @@ pub(super) fn timeout_time_string(snapshot: &GameSnapshot) -> String {
 
 pub(super) fn bool_string(val: bool) -> String {
     match val {
-        true => "YES".to_string(),
-        false => "NO".to_string(),
+        true => fl!("yes"),
+        false => fl!("no"),
     }
 }
 
@@ -610,7 +610,8 @@ pub(super) fn penalty_string(penalties: &[PenaltySnapshot]) -> String {
                 if secs != 0 {
                     writeln!(&mut string, "{}:{:02}", secs / 60, secs % 60).unwrap();
                 } else {
-                    string.push_str("Served\n");
+                    string += &fl!("served");
+                    string += "\n";
                 }
             }
             PenaltyTime::TotalDismissal => string.push_str("DSMS\n"),
@@ -682,12 +683,8 @@ pub(super) fn config_string(
             next_game = snapshot.next_game_number.to_string();
         }
 
-        write!(
-            &mut result,
-            "{}\n\n",
-            fl!("two-games", prev_game = prev_game, next_game = next_game)
-        )
-        .unwrap();
+        result += &fl!("two-games", prev_game = prev_game, next_game = next_game);
+        result += "\n\n";
         snapshot.next_game_number
     } else {
         let game;
@@ -703,23 +700,20 @@ pub(super) fn config_string(
         } else {
             game = snapshot.game_number.to_string();
         }
-        write!(&mut result, "{}\n\n", fl!("one-game", game = game)).unwrap();
+        result += &fl!("one-game", game = game);
+        result += "\n\n";
         snapshot.game_number
     };
 
     if using_uwhscores {
         if let Some(games) = games {
             if let Some(game) = games.get(&game_number) {
-                write!(
-                    &mut result,
-                    "{}\n",
-                    fl!(
-                        "teams",
-                        dark_team = limit_team_name_len(&game.black, TEAM_NAME_LEN_LIMIT),
-                        light_team = limit_team_name_len(&game.white, TEAM_NAME_LEN_LIMIT)
-                    )
-                )
-                .unwrap()
+                result += &fl!(
+                    "teams",
+                    dark_team = limit_team_name_len(&game.black, TEAM_NAME_LEN_LIMIT),
+                    light_team = limit_team_name_len(&game.white, TEAM_NAME_LEN_LIMIT)
+                );
+                result += "\n";
             }
         }
     }

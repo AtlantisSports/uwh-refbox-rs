@@ -1,50 +1,51 @@
 # Definitions for the translation file to use
--dark-team-name = Black
-dark-team-name-caps = BLACK
--light-team-name = White
-light-team-name-caps = WHITE
+-dark-team-name = Schwarz
+dark-team-name-caps = SCHWARZ
+-light-team-name = Weiß
+light-team-name-caps = WEIß
 
 # Multipage 
-done = DONE
-cancel = CANCEL
-delete = DELETE
-back = BACK
-new = NEW
+done = FERTIG
+cancel = ABBRECHEN
+delete = LÖSCHEN
+back = ZURÜCK
+new = NEU
 
 # Penalty Edit
-total-dismissial = TD
+total-dismissial = TE (totale Entlassung)
 
 # Team Timeout Edit
-timeout-length = TIMEOUT LENGTH
+timeout-length = TIMEOUT LÄNGE
 
 # Configuration
-none-selected = None Selected
-loading = Loading...
-game = Game:
-tournament-options = TOURNAMENT OPTIONS
+none-selected = Nichts ausgewählt
+loading = Wird Geladen…
+game = Speil:
+tournament-options = TURNIEROPTIONEN
+pool-and-sound-options = POOL UND SOUND OPTIONEN
 app-mode = APP
     MODE
-hide-time-for-last-15-seconds = HIDE TIME FOR
-    LAST 15 SECONDS
-track-cap-number-of-scorer = TRACK CAP NUMBER
-    OF SCORER
-tournament = TOURNAMENT:
+hide-time-for-last-15-seconds = ZEIT FÜR DIE LETZTEN
+    15 SEKUNDEN VERBERGEN
+track-cap-number-of-scorer = KAPPE NUMMER VON
+    TORSCHÜTZE VERFOLGEN
+tournament = TURNIER:
 court = COURT:
-half-length-full = HALF LENGTH:
-overtime-allowed = OVERTIME 
-    ALLOWED:
+half-length = HALBE LÄNGE:
+overtime-allowed = VERLÄNGERUNG 
+    ERLAUBT:
 sudden-death-allowed = SUDDEN DEATH 
     ALLOWED:
-half-time-length = HALF TIME
-    LENGTH:
-pre-ot-break-length = PRE OT
-    BREAK LENGTH:
+half-time-length = HALBZEIT-
+    LÄNGE:
+pre-ot-break-length = PAUSE LÄNGE 
+    VOR VERLÄNGERUNG:
 pre-sd-break-length = PRE SD
     BREAK LENGTH:
 nominal-break-between-games = NOMINAL BRK
     BTWN GAMES:
-ot-half-length = OT HALF
-    LENGTH:
+ot-half-length = VERLÄNGERUNG 
+    HALBE LÄNGE:
 num-team-tos-allowed-per-half = NUM TEAM T/Os
     ALLOWED PER HALF:
 minimum-brk-btwn-games = MINIMUM BRK
@@ -100,7 +101,7 @@ ot-half-len = OT HALF LEN
 time-during-ot = The length of a half during overtime
 ot-half-tm-len = OT HLF TM LEN
 len-of-overtime-halftime = The length of Overtime Half Time
-pre-sd-break = PRE SD BREAK
+pre-sd = PRE SD BREAK
 pre-sd-len = The length of the break between the preceeding play period and Sudden Death
 
 help = HELP: 
@@ -111,26 +112,26 @@ game-configuration-can-not-be-changed = The game configuration can not be change
     What would you like to do?
 apply-this-game-number-change = How would you like to apply this game number change?
 UWHScores-enabled = When UWHScores is enabled, all fields must be filled out.
-go-back-to-editor = GO BACK TO EDITOR
-discard-changes = DISCARD CHANGES
-end-current-game-and-apply-changes = END CURRENT GAME AND APPLY CHANGES
-end-current-game-and-apply-change = END CURRENT GAME AND APPLY CHANGE
-keep-current-game-and-apply-change = KEEP CURRENT GAME AND APPLY CHANGE
+go-back-to-editor = ZURÜCK ZUM EDITOR
+discard-changes = ÄNDERUNGEN VERWERFEN
+end-current-game-and-apply-changes = AKTUELLES SPEIL BEENDEN UND ÄNDERUNGEN ÜBERNEHMEN
+end-current-game-and-apply-change = AKTUELLES SPEIL BEENDEN UND ÄNDERUNG ANWENDEN
+keep-current-game-and-apply-change = AKTUELLES SPEIL BEHALTEN UND ÄNDERUNGEN ÜBERNEHMEN
 ok = OK
-confirm-score = Is this score correct?
+confirm-score = Ist diese Punktzahl richtig?
     Confirm with chief referee.
     
-    Black: { $score_black }        White: { $score_white }
-yes = YES
-no = NO
+    Schwarz: { $score_black }        Weiß: { $score_white }
+yes = JA
+no = NEIN
 
 # Game Info
-settings = SETTINGS 
+settings = EINSTELLUNGEN 
 none = None
-game-number-error = Error ({ $game_number })
-next-game-number-error = Error ({ $next_game_number })
-last-game-next-game = Last Game: { $prev_game },
-    Next Game: { $next_game }
+game-number-error = Fehler ({ $game_number })
+next-game-number-error = Fehler ({ $next_game_number })
+last-game-next-game = Letzte Speil: { $prev_game },
+    Nächste Speil: { $next_game }
 black-team-white-team = Black Team: { $black_team }
     White Team: { $white_team }
 game-length-ot-allowed = Half Length: { $half_length }
@@ -152,57 +153,56 @@ refs = Cheif ref: Unknown
         Water ref 2: Unknown
         Water ref 3: Unknown
 
-
 # List Selecters
-select-tournament = SELECT TOURNAMENT
-select-court = SELECT COURT
-select-game = SELECT GAME
+select-tournament = TURNIER WÄHLEN
+select-court = PLATZ WÄHLEN
+select-game = SPEIL WÄHLEN
 
 
 
 # Main View
-start-now = START NOW
-end-timeout = END TIMEOUT
-penalties = PENALTIES
-score = SCORE
+start-now = JETZT ANFANGEN
+end-timeout = TIMEOUT BEENDEN
+penalties = STRAFEN
+score = ERGEBNIS
 
 # Penalties
 penalty_color = { $color } PENALTIES
 
 # Score edit
-final-score = Please enter the final score
+final-score = Bitte das Endergebnis eingeben
 
 # Shared Elements
 ## Timeout ribbon
-end-timeout-line-1 = END
-end-timeout-line-2 = TIMEOUT
+end-timeout-line-1 = TIMEOUT
+end-timeout-line-2 = ENDEN
 ## Penalty string
 served = Served
 ## Config String
-error = Error ({ $number })
-none = None
-two-games = Last Game: { $prev_game },  Next Game: { $next_game }
-one-game = Game: { $game }
+error = Fehler ({ $number })
+none = Nichts
+two-games = Letzte Speil: { $prev_game },  Nächste Speil: { $next_game }
+one-game = Speil: { $game }
 teams = { -dark-team-name } Team: { $dark_team }
     { -light-team-name } Team: { $light_team }
 game-config = Half Length: { $half_len },  Half Time Length: { $half_time_len }
     Sudden Death Allowed: { $sd_allowed },  Overtime Allowed: { $ot_allowed }
     Team Timeouts Allowed Per Half: { $team_timeouts }
     Stop Clock in Last 2 Minutes: { $stop_clock_last_2 }
-ref-list = Chief Ref: { $chief_ref }
+    Chief Ref: { $chief_ref }
     Timer: { $timer }
     Water Ref 1: { $water_ref_1 }
     Water Ref 2: { $water_ref_2 }
     Water Ref 3: { $water_ref_3 }
 
 # Time edit
-game-time = GAME TIME
-timeout = TIMEOUT
-Note-Game-time-is-paused = Note: Game time is paused while on this screen
+game-time = SPEILZEIT
+timeout = AUSZEIT
+Note-Game-time-is-paused = Hinweis: Die Speilzeit wird angehalten während dieser Bildschirm angezeigt wird
 
 # Message
-player-number = PLAYER
-    NUMBER:
+player-number = SPIELER(IN)
+    NUMMER:
 game-number = GAME
     NUMBER:
 num-tos-per-half = NUM T/Os

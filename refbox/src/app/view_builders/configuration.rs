@@ -1,4 +1,5 @@
 use super::{
+    fl,
     message::*,
     shared_elements::*,
     style::{
@@ -17,9 +18,6 @@ use iced::{
 use std::collections::BTreeMap;
 use tokio::time::Duration;
 use uwh_common::{config::Game as GameConfig, game_snapshot::GameSnapshot, uwhscores::*};
-
-const NO_SELECTION_TXT: &str = "None Selected";
-const LOADING_TXT: &str = "Loading...";
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(in super::super) struct EditableSettings {
@@ -154,16 +152,16 @@ fn make_main_config_page<'a>(
                             game_string_short(game)
                         } else {
                             game_large_text = false;
-                            NO_SELECTION_TXT.to_string()
+                            fl!("none-selected")
                         }
                     }
                     None => {
                         game_large_text = false;
-                        NO_SELECTION_TXT.to_string()
+                        fl!("none-selected")
                     }
                 }
             } else {
-                LOADING_TXT.to_string()
+                fl!("loading")
             }
         } else {
             String::new()
@@ -174,10 +172,15 @@ fn make_main_config_page<'a>(
 
     column![
         make_game_time_button(snapshot, false, false, mode, clock_running,),
-        make_value_button("GAME:", game_label, (true, game_large_text), game_btn_msg,),
+        make_value_button(
+            fl!("game"),
+            game_label,
+            (true, game_large_text),
+            game_btn_msg,
+        ),
         row![
             make_message_button(
-                "TOURNAMENT OPTIONS",
+                fl!("tournament-options"),
                 Some(Message::ChangeConfigPage(ConfigPage::Tournament)),
             )
             .style(ButtonStyle::LightGray),
@@ -206,12 +209,12 @@ fn make_main_config_page<'a>(
         .width(Length::Fill)
         .height(Length::Fill),
         row![
-            make_button("CANCEL")
+            make_button(fl!("cancel"))
                 .style(ButtonStyle::Red)
                 .width(Length::Fill)
                 .on_press(Message::ConfigEditComplete { canceled: true }),
             horizontal_space(Length::Fill),
-            make_button("DONE")
+            make_button(fl!("done"))
                 .style(ButtonStyle::Green)
                 .width(Length::Fill)
                 .on_press(Message::ConfigEditComplete { canceled: false }),
@@ -246,13 +249,13 @@ fn make_tournament_config_page<'a>(
             if let Some(tid) = current_tid {
                 match tournaments.get(tid) {
                     Some(t) => t.name.clone(),
-                    None => NO_SELECTION_TXT.to_string(),
+                    None => fl!("none-selected"),
                 }
             } else {
-                NO_SELECTION_TXT.to_string()
+                fl!("none-selected")
             }
         } else {
-            LOADING_TXT.to_string()
+            fl!("loading")
         };
 
         let tournament_btn_msg = if tournaments.is_some() {
@@ -269,10 +272,10 @@ fn make_tournament_config_page<'a>(
                 if let Some(ref pool) = current_pool {
                     pool.clone()
                 } else {
-                    NO_SELECTION_TXT.to_string()
+                    fl!("none-selected")
                 }
             } else {
-                LOADING_TXT.to_string()
+                fl!("loading")
             }
         } else {
             String::new()
@@ -285,21 +288,21 @@ fn make_tournament_config_page<'a>(
 
         [
             make_value_button(
-                "TOURNAMENT:",
+                fl!("tournament"),
                 tournament_label,
                 (true, true),
                 tournament_btn_msg,
             )
             .height(Length::Fill)
             .into(),
-            make_value_button("COURT:", pool_label, (true, true), pool_btn_msg)
+            make_value_button(fl!("court"), pool_label, (true, true), pool_btn_msg)
                 .height(Length::Fill)
                 .into(),
             vertical_space(Length::Fill).into(),
             row![
                 horizontal_space(Length::Fill),
                 horizontal_space(Length::Fill),
-                make_button("DONE")
+                make_button(fl!("done"))
                     .style(ButtonStyle::Green)
                     .width(Length::Fill)
                     .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
@@ -312,13 +315,13 @@ fn make_tournament_config_page<'a>(
         [
             row![
                 make_value_button(
-                    "HALF LENGTH:",
+                    fl!("half-length"),
                     time_string(config.half_play_duration),
                     (false, true),
                     Some(Message::EditParameter(LengthParameter::Half)),
                 ),
                 make_value_button(
-                    "OVERTIME\nALLOWED:",
+                    fl!("overtime-allowed"),
                     bool_string(config.overtime_allowed),
                     (false, true),
                     Some(Message::ToggleBoolParameter(
@@ -326,7 +329,7 @@ fn make_tournament_config_page<'a>(
                     )),
                 ),
                 make_value_button(
-                    "SUDDEN DEATH\nALLOWED:",
+                    fl!("sudden-death-allowed"),
                     bool_string(config.sudden_death_allowed),
                     (false, true),
                     Some(Message::ToggleBoolParameter(
@@ -339,13 +342,13 @@ fn make_tournament_config_page<'a>(
             .into(),
             row![
                 make_value_button(
-                    "HALF TIME\nLENGTH:",
+                    fl!("half-time-length"),
                     time_string(config.half_time_duration),
                     (false, true),
                     Some(Message::EditParameter(LengthParameter::HalfTime)),
                 ),
                 make_value_button(
-                    "PRE OT\nBREAK LENGTH:",
+                    fl!("pre-ot-break-length"),
                     time_string(config.pre_overtime_break),
                     (false, true),
                     if config.overtime_allowed {
@@ -355,7 +358,7 @@ fn make_tournament_config_page<'a>(
                     },
                 ),
                 make_value_button(
-                    "PRE SD\nBREAK LENGTH:",
+                    fl!("pre-sd-break-length"),
                     time_string(config.pre_sudden_death_duration),
                     (false, true),
                     if config.sudden_death_allowed {
@@ -370,13 +373,13 @@ fn make_tournament_config_page<'a>(
             .into(),
             row![
                 make_value_button(
-                    "NOMINAL BRK\nBTWN GAMES:",
+                    fl!("nominal-break-between-games"),
                     time_string(config.nominal_break),
                     (false, true),
                     Some(Message::EditParameter(LengthParameter::NominalBetweenGame)),
                 ),
                 make_value_button(
-                    "OT HALF\nLENGTH:",
+                    fl!("ot-half-length"),
                     time_string(config.ot_half_play_duration),
                     (false, true),
                     if config.overtime_allowed {
@@ -386,7 +389,7 @@ fn make_tournament_config_page<'a>(
                     },
                 ),
                 make_value_button(
-                    "NUM TEAM T/Os\nALLWD PER HALF:",
+                    fl!("num-team-tos-allowed-per-half"),
                     config.team_timeouts_per_half.to_string(),
                     (false, true),
                     Some(Message::KeypadPage(KeypadPage::TeamTimeouts(
@@ -399,13 +402,13 @@ fn make_tournament_config_page<'a>(
             .into(),
             row![
                 make_value_button(
-                    "MINIMUM BRK\nBTWN GAMES:",
+                    fl!("minimum-brk-btwn-games"),
                     time_string(config.minimum_break),
                     (false, true),
                     Some(Message::EditParameter(LengthParameter::MinimumBetweenGame)),
                 ),
                 make_value_button(
-                    "OT HALF\nTIME LENGTH:",
+                    fl!("ot-half-time-length"),
                     time_string(config.ot_half_time_duration),
                     (false, true),
                     if config.overtime_allowed {
@@ -414,7 +417,7 @@ fn make_tournament_config_page<'a>(
                         None
                     },
                 ),
-                make_button("DONE")
+                make_button(fl!("done"))
                     .style(ButtonStyle::Green)
                     .width(Length::Fill)
                     .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
@@ -428,7 +431,7 @@ fn make_tournament_config_page<'a>(
     let mut col = column![
         make_game_time_button(snapshot, false, false, mode, clock_running),
         make_value_button(
-            "USING UWHPORTAL:",
+            fl!("using-uwh-portal"),
             bool_string(using_uwhscores),
             (true, true),
             Some(Message::ToggleBoolParameter(
@@ -463,13 +466,13 @@ fn make_app_config_page<'a>(
         make_game_time_button(snapshot, false, true, mode, clock_running),
         row![
             make_value_button(
-                "APP\nMODE",
+                fl!("app-mode"),
                 settings.mode.to_string().to_uppercase(),
                 (false, true),
                 Some(Message::CycleParameter(CyclingParameter::Mode)),
             ),
             make_value_button(
-                "TRACK CAP NUMBER\nOF SCORER",
+                fl!("track-cap-number-of-scorer"),
                 bool_string(*collect_scorer_cap_num),
                 (false, true),
                 Some(Message::ToggleBoolParameter(
@@ -522,20 +525,20 @@ fn make_display_config_page<'a>(
         ..
     } = settings;
 
-    let white = container("WHITE")
+    let white = container(text(fl!("dark-team-name-caps")))
         .center_x()
         .center_y()
         .width(Length::FillPortion(2))
         .height(Length::Fill)
         .style(ContainerStyle::White);
-    let black = container("BLACK")
+    let black = container(text(fl!("light-team-name-caps")))
         .center_x()
         .center_y()
         .width(Length::FillPortion(2))
         .height(Length::Fill)
         .style(ContainerStyle::Black);
 
-    let center = text("STARTING SIDES")
+    let center = text(fl!("starting-sides"))
         .size(MEDIUM_TEXT)
         .line_height(LINE_HEIGHT)
         .vertical_alignment(Vertical::Center)
@@ -565,7 +568,7 @@ fn make_display_config_page<'a>(
         make_game_time_button(snapshot, false, false, mode, clock_running),
         row![sides_btn].spacing(SPACING).height(Length::Fill),
         row![make_value_button(
-            "HIDE TIME FOR\nLAST 15 SECONDS",
+            fl!("hide-time-for-last-15-seconds"),
             bool_string(*hide_time),
             (false, true),
             Some(Message::ToggleBoolParameter(BoolGameParameter::HideTime))
@@ -601,7 +604,7 @@ fn make_sound_config_page<'a>(
         make_game_time_button(snapshot, false, true, mode, clock_running),
         row![
             make_value_button(
-                "SOUND\nENABLED:",
+                fl!("sound-enabled"),
                 bool_string(sound.sound_enabled),
                 (false, true),
                 Some(Message::ToggleBoolParameter(
@@ -609,7 +612,7 @@ fn make_sound_config_page<'a>(
                 )),
             ),
             make_value_button(
-                "WHISTLE\nVOLUME:",
+                fl!("whistle-volume"),
                 sound.whistle_vol.to_string().to_uppercase(),
                 (false, true),
                 if sound.sound_enabled && sound.whistle_enabled {
@@ -619,7 +622,7 @@ fn make_sound_config_page<'a>(
                 },
             ),
             make_message_button(
-                "MANAGE REMOTES",
+                fl!("manage-remotes"),
                 Some(Message::ChangeConfigPage(ConfigPage::Remotes(0, false))),
             )
             .style(ButtonStyle::LightGray)
@@ -629,7 +632,7 @@ fn make_sound_config_page<'a>(
         .height(Length::Fill),
         row![
             make_value_button(
-                "WHISTLE\nENABLED:",
+                fl!("whistle-enabled"),
                 bool_string(sound.whistle_enabled),
                 (false, true),
                 if sound.sound_enabled {
@@ -641,7 +644,7 @@ fn make_sound_config_page<'a>(
                 },
             ),
             make_value_button(
-                "ABOVE WATER\nVOLUME:",
+                fl!("above-water-volume"),
                 sound.above_water_vol.to_string().to_uppercase(),
                 (false, true),
                 if sound.sound_enabled {
@@ -651,7 +654,7 @@ fn make_sound_config_page<'a>(
                 },
             ),
             make_value_button(
-                "AUTO SOUND\nSTART PLAY:",
+                fl!("auto-sound-start-play"),
                 bool_string(sound.auto_sound_start_play),
                 (false, true),
                 if sound.sound_enabled {
@@ -667,7 +670,7 @@ fn make_sound_config_page<'a>(
         .height(Length::Fill),
         row![
             make_value_button(
-                "BUZZER\nSOUND:",
+                fl!("buzzer-sound"),
                 sound.buzzer_sound.to_string().to_uppercase(),
                 (false, true),
                 if sound.sound_enabled {
@@ -677,7 +680,7 @@ fn make_sound_config_page<'a>(
                 },
             ),
             make_value_button(
-                "UNDER WATER\nVOLUME:",
+                fl!("underwater-volume"),
                 sound.under_water_vol.to_string().to_uppercase(),
                 (false, true),
                 if sound.sound_enabled {
@@ -687,7 +690,7 @@ fn make_sound_config_page<'a>(
                 },
             ),
             make_value_button(
-                "AUTO SOUND\nSTOP PLAY:",
+                fl!("auto-sound-stop-play"),
                 bool_string(sound.auto_sound_stop_play),
                 (false, true),
                 if sound.sound_enabled {
@@ -704,7 +707,7 @@ fn make_sound_config_page<'a>(
         row![
             horizontal_space(Length::Fill),
             horizontal_space(Length::Fill),
-            make_button("DONE")
+            make_button(fl!("done"))
                 .style(ButtonStyle::Green)
                 .width(Length::Fill)
                 .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
@@ -727,7 +730,7 @@ fn make_remote_config_page<'a>(
 ) -> Element<'a, Message> {
     const REMOTES_LIST_LEN: usize = 4;
 
-    let title = text("REMOTES")
+    let title = text(fl!("remotes"))
         .line_height(LINE_HEIGHT)
         .height(Length::Fill)
         .width(Length::Fill)
@@ -748,9 +751,9 @@ fn make_remote_config_page<'a>(
                 let sound_text = if let Some(sound) = rem_info.sound {
                     sound.to_string().to_uppercase()
                 } else {
-                    "DEFAULT".to_owned()
+                    fl!("default").to_owned()
                 };
-                let sound_text = format!("SOUND: {}", sound_text);
+                let sound_text = fl!("sound", sound_text = sound_text);
 
                 container(
                     row![
@@ -770,7 +773,7 @@ fn make_remote_config_page<'a>(
                         .width(Length::Fixed(275.0))
                         .height(Length::Fixed(MIN_BUTTON_SIZE - (2.0 * PADDING)))
                         .style(ButtonStyle::Yellow),
-                        make_message_button("DELETE", Some(Message::DeleteRemote(idx)))
+                        make_message_button(fl!("delete"), Some(Message::DeleteRemote(idx)))
                             .width(Length::Fixed(130.0))
                             .height(Length::Fixed(MIN_BUTTON_SIZE - (2.0 * PADDING)))
                             .style(ButtonStyle::Red),
@@ -793,9 +796,9 @@ fn make_remote_config_page<'a>(
         .collect();
 
     let add_btn = if listening {
-        make_message_button("WAITING", None)
+        make_message_button(fl!("waiting"), None)
     } else {
-        make_message_button("ADD", Some(Message::RequestRemoteId))
+        make_message_button(fl!("add"), Some(Message::RequestRemoteId))
     }
     .style(ButtonStyle::Orange);
 
@@ -815,8 +818,11 @@ fn make_remote_config_page<'a>(
             column![
                 vertical_space(Length::Fill),
                 add_btn,
-                make_message_button("DONE", Some(Message::ChangeConfigPage(ConfigPage::Sound)),)
-                    .style(ButtonStyle::Green),
+                make_message_button(
+                    fl!("done"),
+                    Some(Message::ChangeConfigPage(ConfigPage::Sound)),
+                )
+                .style(ButtonStyle::Green),
             ]
             .spacing(SPACING)
             .height(Length::Fill)
@@ -839,36 +845,21 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
     clock_running: bool,
 ) -> Element<'a, Message> {
     let (title, hint) = match param {
-        LengthParameter::Half => ("HALF LEN", "The length of a half during regular play"),
-        LengthParameter::HalfTime => ("HALF TIME LEN", "The length of the Half Time period"),
-        LengthParameter::NominalBetweenGame => (
-            "NOM BREAK",
-            "The system will try to keep the game start times evenly spaced, with the \
-            total time from one start to the next being 2 * [Half Length] + [Half Time \
-            Length] + [Nominal Time Between Games] (example: if games have [Half \
-            Length] = 15m, [Half Time Length] = 3m, and [Nominal Time Between Games] = \
-            12m, the time from the start of one game to the next will be 45m. Any \
-            timeouts taken, or other clock stoppages, will reduce the 12m time down \
-            until the minimum time between game value is reached).",
+        LengthParameter::Half => (
+            fl!("half-length"),
+            fl!("length-of-half-during-regular-play"),
         ),
-        LengthParameter::MinimumBetweenGame => (
-            "MIN BREAK",
-            "If a game runs longer than scheduled, this is the minimum time between \
-            games that the system will allot. If the games fall behind, the system will \
-            automatically try to catch up after subsequent games, always respecting \
-            this minimum time between games.",
-        ),
-        LengthParameter::PreOvertime => (
-            "PRE OT BREAK",
-            "If overtime is enabled and needed, this is the length of the break between \
-            Second Half and Overtime First Half",
-        ),
-        LengthParameter::OvertimeHalf => ("OT HALF LEN", "The length of a half during overtime"),
-        LengthParameter::OvertimeHalfTime => ("OT HLF TM LEN", "The length of Overtime Half Time"),
-        LengthParameter::PreSuddenDeath => (
-            "PRE SD BREAK",
-            "The length of the break between the preceeding play period and Sudden Death",
-        ),
+        LengthParameter::HalfTime => (fl!("half-time-lenght"), fl!("length-of-half-time-period")),
+        LengthParameter::NominalBetweenGame => {
+            (fl!("nom-break"), fl!("system-will-keep-game-times-spaced"))
+        }
+        LengthParameter::MinimumBetweenGame => (fl!("min-break"), fl!("min-time-btwn-games")),
+        LengthParameter::PreOvertime => (fl!("pre-ot-break"), fl!("pre-sd-brk")),
+        LengthParameter::OvertimeHalf => (fl!("ot-half-len"), fl!("time-during-ot")),
+        LengthParameter::OvertimeHalfTime => {
+            (fl!("ot-half-tm-len"), fl!("len-of-overtime-halftime"))
+        }
+        LengthParameter::PreSuddenDeath => (fl!("pre-sd-break"), fl!("pre-sd-len")),
     };
 
     column![
@@ -876,18 +867,18 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
         vertical_space(Length::Fill),
         make_time_editor(title, length, false),
         vertical_space(Length::Fill),
-        text(String::from("Help: ") + hint)
+        text(String::from(fl!("help")) + &hint)
             .size(SMALL_TEXT)
             .line_height(LINE_HEIGHT)
             .horizontal_alignment(Horizontal::Center),
         vertical_space(Length::Fill),
         row![
-            make_button("CANCEL")
+            make_button(fl!("cancel"))
                 .style(ButtonStyle::Red)
                 .width(Length::Fill)
                 .on_press(Message::ParameterEditComplete { canceled: true }),
             horizontal_space(Length::Fill),
-            make_button("DONE")
+            make_button(fl!("done"))
                 .style(ButtonStyle::Green)
                 .width(Length::Fill)
                 .on_press(Message::ParameterEditComplete { canceled: false }),

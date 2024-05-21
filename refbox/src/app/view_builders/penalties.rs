@@ -47,11 +47,11 @@ pub(in super::super) fn build_penalty_overview_page<'a>(
         .spacing(SPACING)
         .height(Length::Fill),
         row![
-            make_button("CANCEL")
+            make_button(fl!("cancel"))
                 .style(ButtonStyle::Red)
                 .width(Length::Fill)
                 .on_press(Message::PenaltyOverviewComplete { canceled: true }),
-            make_button("NEW")
+            make_button(fl!("new"))
                 .style(ButtonStyle::Blue)
                 .width(Length::Fill)
                 .on_press(Message::KeypadPage(KeypadPage::Penalty(
@@ -61,7 +61,7 @@ pub(in super::super) fn build_penalty_overview_page<'a>(
                     Infraction::Unknown,
                     false,
                 ))),
-            make_button("DONE")
+            make_button(fl!("done"))
                 .style(ButtonStyle::Green)
                 .width(Length::Fill)
                 .on_press(Message::PenaltyOverviewComplete { canceled: false }),
@@ -81,7 +81,11 @@ fn make_penalty_list<'a>(
 ) -> Container<'a, Message> {
     const PENALTY_LIST_LEN: usize = 3;
 
-    let title = text(format!("{} PENALTIES", color.to_string().to_uppercase()))
+    let color_text = match color {
+        GameColor::Black => fl!("dark-team-name-caps"),
+        GameColor::White => fl!("light-team-name-caps"),
+    };
+    let title = text(fl!("penalty_color", color = color_text))
         .line_height(LINE_HEIGHT)
         .height(Length::Fill)
         .width(Length::Fill)

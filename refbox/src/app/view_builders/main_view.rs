@@ -30,7 +30,7 @@ pub(in super::super) fn build_main_view<'a>(
     let mut center_col = column![time_button].spacing(SPACING).width(Length::Fill);
 
     let make_warn_button = || {
-        make_button("ADD WARNING")
+        make_button(fl!("add-warning"))
             .style(ButtonStyle::Blue)
             .width(Length::Fill)
             .on_press(Message::KeypadPage(KeypadPage::WarningAdd {
@@ -44,7 +44,7 @@ pub(in super::super) fn build_main_view<'a>(
     };
 
     let make_foul_button = || {
-        make_button("ADD FOUL")
+        make_button(fl!("add-foul"))
             .style(ButtonStyle::Orange)
             .width(Length::Fill)
             .on_press(Message::KeypadPage(KeypadPage::FoulAdd {
@@ -130,7 +130,7 @@ pub(in super::super) fn build_main_view<'a>(
         center_col = center_col.push(
             button(
                 column![
-                    text("WARNINGS")
+                    text(fl!("warnings"))
                         .line_height(LINE_HEIGHT)
                         .vertical_alignment(Vertical::Top)
                         .horizontal_alignment(Horizontal::Center)
@@ -219,7 +219,7 @@ pub(in super::super) fn build_main_view<'a>(
 
         button(
             column![
-                text("PENALTIES")
+                text(fl!("penalties"))
                     .line_height(LINE_HEIGHT)
                     .vertical_alignment(Vertical::Center)
                     .horizontal_alignment(Horizontal::Center)
@@ -244,7 +244,7 @@ pub(in super::super) fn build_main_view<'a>(
 
     let mut black_score_btn = button(
         column![
-            text("BLACK").line_height(LINE_HEIGHT),
+            text(fl!("dark-team-name-caps")).line_height(LINE_HEIGHT),
             text(snapshot.b_score.to_string())
                 .size(LARGE_TEXT)
                 .line_height(LINE_HEIGHT),
@@ -258,11 +258,12 @@ pub(in super::super) fn build_main_view<'a>(
     .style(ButtonStyle::Black);
 
     let mut black_new_score_btn =
-        make_multi_label_button(("SCORE", "BLACK")).style(ButtonStyle::Black);
+        make_multi_label_button((fl!("score"), fl!("dark-team-name-caps")))
+            .style(ButtonStyle::Black);
 
     let mut white_score_btn = button(
         column![
-            text("WHITE").line_height(LINE_HEIGHT),
+            text(fl!("light-team-name-caps")).line_height(LINE_HEIGHT),
             text(snapshot.w_score.to_string())
                 .size(LARGE_TEXT)
                 .line_height(LINE_HEIGHT),
@@ -276,7 +277,8 @@ pub(in super::super) fn build_main_view<'a>(
     .style(ButtonStyle::White);
 
     let mut white_new_score_btn =
-        make_multi_label_button(("SCORE", "WHITE")).style(ButtonStyle::White);
+        make_multi_label_button((fl!("score"), fl!("light-team-name-caps")))
+            .style(ButtonStyle::White);
 
     if snapshot.current_period != GamePeriod::BetweenGames {
         black_score_btn = black_score_btn.on_press(Message::EditScores);

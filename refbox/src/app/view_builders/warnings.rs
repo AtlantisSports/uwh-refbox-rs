@@ -39,11 +39,11 @@ pub(in super::super) fn build_warning_overview_page<'a>(
         .spacing(SPACING)
         .height(Length::Fill),
         row![
-            make_button("CANCEL")
+            make_button(fl!("cancel"))
                 .style(ButtonStyle::Red)
                 .width(Length::Fill)
                 .on_press(Message::WarningOverviewComplete { canceled: true }),
-            make_button("NEW")
+            make_button(fl!("new"))
                 .style(ButtonStyle::Blue)
                 .width(Length::Fill)
                 .on_press(Message::KeypadPage(KeypadPage::WarningAdd {
@@ -54,7 +54,7 @@ pub(in super::super) fn build_warning_overview_page<'a>(
                     team_warning: false,
                     ret_to_overview: true,
                 })),
-            make_button("DONE")
+            make_button(fl!("done"))
                 .style(ButtonStyle::Green)
                 .width(Length::Fill)
                 .on_press(Message::WarningOverviewComplete { canceled: false }),
@@ -73,12 +73,15 @@ fn make_warning_list<'a>(
 ) -> Container<'a, Message> {
     const WARNING_LIST_LEN: usize = 3;
 
-    let title = text(format!("{} WARNINGS", color.to_string().to_uppercase()))
-        .line_height(LINE_HEIGHT)
-        .height(Length::Fill)
-        .width(Length::Fill)
-        .horizontal_alignment(Horizontal::Center)
-        .vertical_alignment(Vertical::Center);
+    let title = text(&fl!(
+        "color-warnings",
+        color = color.to_string().to_uppercase()
+    ))
+    .line_height(LINE_HEIGHT)
+    .height(Length::Fill)
+    .width(Length::Fill)
+    .horizontal_alignment(Horizontal::Center)
+    .vertical_alignment(Vertical::Center);
 
     let num_pens = warnings.len();
 

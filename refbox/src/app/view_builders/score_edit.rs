@@ -42,7 +42,7 @@ pub(in super::super) fn build_score_edit_view<'a>(
             ]
             .spacing(SPACING),
             column![
-                "BLACK",
+                text(fl!("dark-team-name-caps")),
                 text(scores.black.to_string())
                     .size(LARGE_TEXT)
                     .line_height(LINE_HEIGHT)
@@ -61,7 +61,7 @@ pub(in super::super) fn build_score_edit_view<'a>(
     let white_edit = container(
         row![
             column![
-                "WHITE",
+                text(fl!("light-team-name-caps")),
                 text(scores.white.to_string())
                     .size(LARGE_TEXT)
                     .line_height(LINE_HEIGHT)
@@ -102,7 +102,7 @@ pub(in super::super) fn build_score_edit_view<'a>(
     if is_confirmation {
         main_col = main_col
             .push(
-                text("Please enter the final score")
+                text(fl!("final-score"))
                     .line_height(LINE_HEIGHT)
                     .horizontal_alignment(Horizontal::Center)
                     .width(Length::Fill),
@@ -124,9 +124,9 @@ pub(in super::super) fn build_score_edit_view<'a>(
         .push(vertical_space(Length::Fill))
         .push(
             row![
-                make_message_button("CANCEL", cancel_btn_msg).style(ButtonStyle::Red),
+                make_message_button(fl!("cancel"), cancel_btn_msg).style(ButtonStyle::Red),
                 horizontal_space(Length::Fill),
-                make_button("DONE")
+                make_button(fl!("done"))
                     .style(ButtonStyle::Green)
                     .on_press(Message::ScoreEditComplete { canceled: false }),
             ]

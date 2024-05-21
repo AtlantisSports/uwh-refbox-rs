@@ -24,9 +24,9 @@ pub(in super::super) fn build_list_selector_page<'a>(
     const TEAM_NAME_LEN_LIMIT: usize = 15;
 
     let title = match param {
-        ListableParameter::Tournament => "SELECT TOURNAMENT",
-        ListableParameter::Pool => "SELECT COURT",
-        ListableParameter::Game => "SELECT GAME",
+        ListableParameter::Tournament => fl!("select-tournament"),
+        ListableParameter::Pool => fl!("select-court"),
+        ListableParameter::Game => fl!("select-game"),
     };
 
     let title = text(title)
@@ -121,7 +121,7 @@ pub(in super::super) fn build_list_selector_page<'a>(
             scroll_list,
             column![
                 vertical_space(Length::Fill),
-                make_button("CANCEL")
+                make_button(fl!("cancel"))
                     .style(ButtonStyle::Red)
                     .width(Length::Fill)
                     .height(Length::Fixed(MIN_BUTTON_SIZE))

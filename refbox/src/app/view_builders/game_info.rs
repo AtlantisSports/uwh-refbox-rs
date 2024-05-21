@@ -1,4 +1,5 @@
 use super::{
+    fl,
     style::{ButtonStyle, Element, SMALL_TEXT, SPACING},
     *,
 };
@@ -7,8 +8,6 @@ use iced::{
     widget::{column, horizontal_space, row, text},
     Length,
 };
-
-use std::fmt::Write;
 
 use uwh_common::game_snapshot::GameSnapshot;
 
@@ -39,12 +38,12 @@ pub(in super::super) fn build_game_info_page<'a>(
         .width(Length::Fill)
         .height(Length::Fill),
         row![
-            make_button("BACK")
+            make_button(fl!("back"))
                 .style(ButtonStyle::Red)
                 .width(Length::Fill)
                 .on_press(Message::ConfigEditComplete { canceled: true }),
             horizontal_space(Length::Fill),
-            make_button("SETTINGS")
+            make_button(fl!("settings"))
                 .style(ButtonStyle::Gray)
                 .width(Length::Fill)
                 .on_press(Message::EditGameConfig),
@@ -73,36 +72,42 @@ fn details_strings(
             if let Some(games) = games {
                 prev_game = match games.get(&snapshot.game_number) {
                     Some(game) => game_string_short(game),
-                    None if snapshot.game_number == 0 => "None".to_string(),
-                    None => format!("Error ({})", snapshot.game_number),
+                    None if snapshot.game_number == 0 => fl!("none").to_string(),
+                    None => fl!("game-number-error", game_number = snapshot.game_number),
                 };
                 next_game = match games.get(&snapshot.next_game_number) {
                     Some(game) => game_string_short(game),
-                    None => format!("Error ({})", snapshot.next_game_number),
+                    None => fl!(
+                        "next-game-number-error",
+                        next_game_number = snapshot.next_game_number
+                    ),
                 };
             } else {
                 prev_game = if snapshot.game_number == 0 {
-                    "None".to_string()
+                    fl!("none").to_string()
                 } else {
-                    format!("Error ({})", snapshot.game_number)
+                    fl!("game-number-error", game_number = snapshot.game_number)
                 };
-                next_game = format!("Error ({})", snapshot.next_game_number);
+                next_game = fl!(
+                    "next-game-number-error",
+                    next_game_number = snapshot.next_game_number
+                );
             }
         } else {
             prev_game = if snapshot.game_number == 0 {
-                "None".to_string()
+                fl!("none").to_string()
             } else {
                 snapshot.game_number.to_string()
             };
             next_game = snapshot.next_game_number.to_string();
         }
 
-        write!(
-            &mut left_string,
-            "Last Game: {}, \nNext Game: {}\n",
-            prev_game, next_game
-        )
-        .unwrap();
+        left_string += &fl!(
+            "last-game-next-game",
+            prev_game = prev_game,
+            next_game = next_game
+        );
+
         snapshot.next_game_number
     } else {
         let game;
@@ -110,109 +115,88 @@ fn details_strings(
             if let Some(games) = games {
                 game = match games.get(&snapshot.game_number) {
                     Some(game) => game_string_short(game),
-                    None => format!("Error ({})", snapshot.game_number),
+                    None => fl!("game-number-error", game_number = snapshot.game_number),
                 };
             } else {
-                game = format!("Error ({})", snapshot.game_number);
+                game = fl!("game-number-error", game_number = snapshot.game_number);
             }
         } else {
             game = snapshot.game_number.to_string();
         }
-        writeln!(&mut left_string, "Game: {}", game).unwrap();
+        left_string += &fl!("one-game", game = game);
+        left_string += "\n";
         snapshot.game_number
     };
 
     if using_uwhscores {
         if let Some(games) = games {
             if let Some(game) = games.get(&game_number) {
-                write!(
-                    &mut left_string,
-                    "Black Team: {}\nWhite Team: {}\n",
-                    limit_team_name_len(&game.black, TEAM_NAME_LEN_LIMIT),
-                    limit_team_name_len(&game.white, TEAM_NAME_LEN_LIMIT)
-                )
-                .unwrap()
+                left_string += &fl!(
+                    "black-team-white-team",
+                    black_team = limit_team_name_len(&game.black, TEAM_NAME_LEN_LIMIT),
+                    white_team = limit_team_name_len(&game.white, TEAM_NAME_LEN_LIMIT)
+                );
+                left_string += "\n";
             }
         }
     }
 
-    write!(
-        &mut left_string,
-        "Half Length: {}\n\
-         Half Time Length: {}\n\
-         Overtime Allowed: {}\n",
-        time_string(config.half_play_duration),
-        time_string(config.half_time_duration),
-        bool_string(config.overtime_allowed),
-    )
-    .unwrap();
+    left_string += &fl!(
+        "game-length-ot-allowed",
+        half_length = time_string(config.half_play_duration),
+        half_time_length = time_string(config.half_time_duration),
+        overtime = bool_string(config.overtime_allowed)
+    );
+    left_string += "\n";
+
     if config.overtime_allowed {
-        write!(
-            &mut left_string,
-            "Pre-Overtime Break Length: {}\n\
-             Overtime Half Length: {}\n\
-             Overtime Half Time Length: {}\n",
-            time_string(config.pre_overtime_break),
-            time_string(config.ot_half_play_duration),
-            time_string(config.ot_half_time_duration),
-        )
-        .unwrap()
+        left_string += &fl!(
+            "overtime-details",
+            pre_overtime = time_string(config.pre_overtime_break),
+            overtime_len = time_string(config.ot_half_play_duration),
+            overtime_half_time_len = time_string(config.ot_half_time_duration)
+        );
+        left_string += "\n";
     };
-    writeln!(
-        &mut left_string,
-        "Sudden Death Allowed: {}",
-        bool_string(config.sudden_death_allowed)
-    )
-    .unwrap();
+
+    left_string += &fl!("sd-allowed", sd = bool_string(config.sudden_death_allowed));
+    left_string += "\n";
 
     if config.sudden_death_allowed {
-        writeln!(
-            &mut left_string,
-            "Pre-Sudden-Death Break Length: {}",
-            time_string(config.pre_sudden_death_duration)
-        )
-        .unwrap()
+        left_string += &fl!(
+            "pre-sd",
+            pre_sd_len = time_string(config.pre_sudden_death_duration)
+        );
+        left_string += "\n";
     };
-    writeln!(
-        &mut left_string,
-        "Team Timeouts Allowed Per Half: {}",
-        config.team_timeouts_per_half
-    )
-    .unwrap();
+
+    left_string += &fl!("team-tos-per-half", to_num = config.team_timeouts_per_half);
+    left_string += "\n";
+
     if config.team_timeouts_per_half != 0 {
-        writeln!(
-            &mut left_string,
-            "Team Timeout Duration: {}",
-            time_string(config.team_timeout_duration)
-        )
-        .unwrap()
+        left_string += &fl!(
+            "team-to-len",
+            to_len = time_string(config.team_timeout_duration)
+        );
+        left_string += "\n";
     };
     if !using_uwhscores {
-        writeln!(
-            &mut left_string,
-            "Nominal Time Between Games: {}",
-            time_string(config.nominal_break),
-        )
-        .unwrap();
+        left_string += &fl!(
+            "time-btwn-games",
+            time_btwn = time_string(config.nominal_break)
+        );
+        left_string += "\n";
     }
-    writeln!(
-        &mut left_string,
-        "Minimum Time Between Games: {}",
-        time_string(config.minimum_break),
-    )
-    .unwrap();
+    left_string += &fl!(
+        "min-brk-btwn-games",
+        min_brk_time = time_string(config.minimum_break)
+    );
+    left_string += "\n";
 
-    writeln!(&mut left_string, "Stop clock in last 2 minutes: UNKNOWN").unwrap();
+    left_string += &fl!("stop-clock-last-2-min");
+    left_string += "\n";
 
-    write!(
-        &mut right_string,
-        "Cheif ref: UNKNOWN\n\
-        Timer: UNKNOWN\n\
-        Water ref 1: UNKNOWN\n\
-        Water ref 2: UNKNOWN\n\
-        Water ref 3: UNKNOWN",
-    )
-    .unwrap();
+    right_string += &fl!("refs");
 
     (left_string, right_string)
 }

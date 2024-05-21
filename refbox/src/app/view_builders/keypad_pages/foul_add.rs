@@ -31,7 +31,7 @@ pub(super) fn make_foul_add_page<'a>(
         ),
     };
 
-    let mut exit_row = row![make_button("CANCEL")
+    let mut exit_row = row![make_button(fl!("cancel"))
         .style(ButtonStyle::Red)
         .width(Length::Fill)
         .on_press(Message::FoulEditComplete {
@@ -43,7 +43,7 @@ pub(super) fn make_foul_add_page<'a>(
 
     if origin.is_some() {
         exit_row = exit_row.push(
-            make_button("DELETE")
+            make_button(fl!("delete"))
                 .style(ButtonStyle::Orange)
                 .width(Length::Fill)
                 .on_press(Message::FoulEditComplete {
@@ -55,7 +55,7 @@ pub(super) fn make_foul_add_page<'a>(
     }
 
     exit_row = exit_row.push(
-        make_button("DONE")
+        make_button(fl!("done"))
             .style(ButtonStyle::Green)
             .width(Length::Fill)
             .on_press(Message::FoulEditComplete {
@@ -66,7 +66,7 @@ pub(super) fn make_foul_add_page<'a>(
     );
     column![
         row![
-            make_button("BLACK")
+            make_button(fl!("dark-team-name-caps"))
                 .style(black_style)
                 .on_press(Message::ChangeColor(Some(GameColor::Black))),
             button(centered_text("=").size(LARGE_TEXT))
@@ -75,7 +75,7 @@ pub(super) fn make_foul_add_page<'a>(
                 .width(Length::Fill)
                 .on_press(Message::ChangeColor(None))
                 .style(equal_style),
-            make_button("WHITE")
+            make_button(fl!("light-team-name-caps"))
                 .style(white_style)
                 .on_press(Message::ChangeColor(Some(GameColor::White))),
         ]

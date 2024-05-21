@@ -195,7 +195,7 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
 
     let black = match snapshot.timeout {
         None => make_multi_label_message_button(
-            ("BLACK", "TIMEOUT"),
+            (fl!("dark-team-name-caps"), fl!("timeout")),
             tm.can_start_team_timeout(GameColor::Black)
                 .ok()
                 .map(|_| Message::TeamTimeout(GameColor::Black, false)),
@@ -209,7 +209,7 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
         Some(TimeoutSnapshot::White(_))
         | Some(TimeoutSnapshot::Ref(_))
         | Some(TimeoutSnapshot::PenaltyShot(_)) => make_multi_label_message_button(
-            ("SWITCH TO", "BLACK"),
+            (fl!("switch-to"), fl!("dark-team-name-caps")),
             tm.can_switch_to_team_timeout(GameColor::Black)
                 .ok()
                 .map(|_| Message::TeamTimeout(GameColor::Black, true)),
@@ -219,7 +219,7 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
 
     let white = match snapshot.timeout {
         None => make_multi_label_message_button(
-            ("WHITE", "TIMEOUT"),
+            (fl!("light-team-name-caps"), fl!("timeout")),
             tm.can_start_team_timeout(GameColor::White)
                 .ok()
                 .map(|_| Message::TeamTimeout(GameColor::White, false)),
@@ -233,7 +233,7 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
         Some(TimeoutSnapshot::Black(_))
         | Some(TimeoutSnapshot::Ref(_))
         | Some(TimeoutSnapshot::PenaltyShot(_)) => make_multi_label_message_button(
-            ("SWITCH TO", "WHITE"),
+            (fl!("switch-to"), fl!("light-team-name-caps")),
             tm.can_switch_to_team_timeout(GameColor::White)
                 .ok()
                 .map(|_| Message::TeamTimeout(GameColor::White, true)),
@@ -243,7 +243,7 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
 
     let referee = match snapshot.timeout {
         None => make_multi_label_message_button(
-            ("REF", "TIMEOUT"),
+            (fl!("ref"), fl!("timeout")),
             tm.can_start_ref_timeout()
                 .ok()
                 .map(|_| Message::RefTimeout(false)),
@@ -257,7 +257,7 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
         Some(TimeoutSnapshot::Black(_))
         | Some(TimeoutSnapshot::White(_))
         | Some(TimeoutSnapshot::PenaltyShot(_)) => make_multi_label_message_button(
-            ("SWITCH TO", "REF"),
+            (fl!("switch-to"), fl!("ref")),
             tm.can_switch_to_ref_timeout()
                 .ok()
                 .map(|_| Message::RefTimeout(true)),
@@ -267,7 +267,7 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
 
     let penalty = match snapshot.timeout {
         None => make_multi_label_message_button(
-            ("PENALTY", "SHOT"),
+            (fl!("penalty"), fl!("shot")),
             tm.can_start_penalty_shot()
                 .ok()
                 .map(|_| Message::PenaltyShot(false)),
@@ -287,7 +287,7 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
                 tm.can_switch_to_penalty_shot()
             };
             make_multi_label_message_button(
-                ("SWITCH TO", "PEN SHOT"),
+                (fl!("switch-to"), fl!("pen-shot")),
                 can_switch.ok().map(|_| Message::PenaltyShot(true)),
             )
             .style(ButtonStyle::Red)
@@ -339,16 +339,16 @@ pub(super) fn make_game_time_button<'a>(
 
     let (mut period_text, period_color) = {
         let (text, color) = match snapshot.current_period {
-            GamePeriod::BetweenGames => ("NEXT GAME", TextStyle::Yellow),
-            GamePeriod::FirstHalf => ("FIRST HALF", TextStyle::Green),
-            GamePeriod::HalfTime => ("HALF TIME", TextStyle::Yellow),
-            GamePeriod::SecondHalf => ("SECOND HALF", TextStyle::Green),
-            GamePeriod::PreOvertime => ("PRE OVERTIME BREAK", TextStyle::Yellow),
-            GamePeriod::OvertimeFirstHalf => ("OVERTIME FIRST HALF", TextStyle::Green),
-            GamePeriod::OvertimeHalfTime => ("OVERTIME HALF TIME", TextStyle::Yellow),
-            GamePeriod::OvertimeSecondHalf => ("OVERTIME SECOND HALF", TextStyle::Green),
-            GamePeriod::PreSuddenDeath => ("PRE SUDDEN DEATH BREAK", TextStyle::Yellow),
-            GamePeriod::SuddenDeath => ("SUDDEN DEATH", TextStyle::Green),
+            GamePeriod::BetweenGames => (fl!("next-game"), TextStyle::Yellow),
+            GamePeriod::FirstHalf => (fl!("first-half"), TextStyle::Green),
+            GamePeriod::HalfTime => (fl!("half-time"), TextStyle::Yellow),
+            GamePeriod::SecondHalf => (fl!("second-half"), TextStyle::Green),
+            GamePeriod::PreOvertime => (fl!("pre-ot-break-full"), TextStyle::Yellow),
+            GamePeriod::OvertimeFirstHalf => (fl!("overtime-first-half"), TextStyle::Green),
+            GamePeriod::OvertimeHalfTime => (fl!("overtime-half-time"), TextStyle::Yellow),
+            GamePeriod::OvertimeSecondHalf => (fl!("overtime-second-half"), TextStyle::Green),
+            GamePeriod::PreSuddenDeath => (fl!("pre-sudden-death-break"), TextStyle::Yellow),
+            GamePeriod::SuddenDeath => (fl!("sudden-death"), TextStyle::Green),
         };
 
         if make_red {
@@ -360,11 +360,11 @@ pub(super) fn make_game_time_button<'a>(
 
     if tall && (snapshot.timeout.is_some()) {
         match snapshot.current_period {
-            GamePeriod::PreOvertime => period_text = "PRE OT BREAK",
-            GamePeriod::OvertimeFirstHalf => period_text = "OT FIRST HALF",
-            GamePeriod::OvertimeHalfTime => period_text = "OT HALF TIME",
-            GamePeriod::OvertimeSecondHalf => period_text = "OT 2ND HALF",
-            GamePeriod::PreSuddenDeath => period_text = "PRE SD BREAK",
+            GamePeriod::PreOvertime => period_text = fl!("pre-ot-break-abreviated"),
+            GamePeriod::OvertimeFirstHalf => period_text = fl!("ot-first-half"),
+            GamePeriod::OvertimeHalfTime => period_text = fl!("ot-half-time"),
+            GamePeriod::OvertimeSecondHalf => period_text = fl!("ot-2nd-half"),
+            GamePeriod::PreSuddenDeath => period_text = fl!("pre-sd-break"),
             _ => {}
         };
     }
@@ -415,7 +415,11 @@ pub(super) fn make_game_time_button<'a>(
 
     let timeout_info = snapshot.timeout.map(|t| match t {
         TimeoutSnapshot::White(_) => (
-            if tall { "WHT T/O" } else { "WHITE TIMEOUT" },
+            if tall {
+                fl!("white-timeout-short")
+            } else {
+                fl!("white-timeout-full")
+            },
             if make_red {
                 TextStyle::Black
             } else {
@@ -423,11 +427,15 @@ pub(super) fn make_game_time_button<'a>(
             },
         ),
         TimeoutSnapshot::Black(_) => (
-            if tall { "BLK T/O" } else { "BLACK TIMEOUT" },
+            if tall {
+                fl!("black-timeout-short")
+            } else {
+                fl!("black-timeout-full")
+            },
             TextStyle::Black,
         ),
-        TimeoutSnapshot::Ref(_) => ("REF TMOUT", TextStyle::Yellow),
-        TimeoutSnapshot::PenaltyShot(_) => ("PNLTY SHT", TextStyle::Red),
+        TimeoutSnapshot::Ref(_) => (fl!("ref-timeout-short"), TextStyle::Yellow),
+        TimeoutSnapshot::PenaltyShot(_) => (fl!("penalty-shot-short"), TextStyle::Red),
     });
 
     let time_text = secs_to_long_time_string(snapshot.secs_in_period);
@@ -596,8 +604,8 @@ pub(super) fn timeout_time_string(snapshot: &GameSnapshot) -> String {
 
 pub(super) fn bool_string(val: bool) -> String {
     match val {
-        true => "YES".to_string(),
-        false => "NO".to_string(),
+        true => fl!("yes"),
+        false => fl!("no"),
     }
 }
 
@@ -611,10 +619,14 @@ pub(super) fn penalty_string(penalties: &[PenaltySnapshot]) -> String {
                 if secs != 0 {
                     writeln!(&mut string, "{}:{:02}", secs / 60, secs % 60).unwrap();
                 } else {
-                    string.push_str("Served\n");
+                    string += &fl!("served");
+                    string += "\n";
                 }
             }
-            PenaltyTime::TotalDismissal => string.push_str("DSMS\n"),
+            PenaltyTime::TotalDismissal => {
+                string += &fl!("dismissed");
+                string += "\n"
+            }
         }
     }
     // if the string is not empty, the last char is a '\n' that we don't want
@@ -712,12 +724,8 @@ pub(super) fn config_string_game_num(
             next_game = snapshot.next_game_number.to_string();
         }
 
-        write!(
-            &mut result,
-            "{}\n\n",
-            fl!("two-games", prev_game = prev_game, next_game = next_game)
-        )
-        .unwrap();
+        result += &fl!("two-games", prev_game = prev_game, next_game = next_game);
+        result += "\n\n";
         snapshot.next_game_number
     } else {
         let game;
@@ -733,7 +741,8 @@ pub(super) fn config_string_game_num(
         } else {
             game = snapshot.game_number.to_string();
         }
-        write!(&mut result, "{}\n\n", fl!("one-game", game = game)).unwrap();
+        result += &fl!("one-game", game = game);
+        result += "\n\n";
         snapshot.game_number
     };
 
@@ -759,16 +768,12 @@ pub(super) fn config_string(
             if let Some(game) = games.get(&game_number) {
                 let black = get_team_name(&game.dark, teams);
                 let white = get_team_name(&game.light, teams);
-                writeln!(
-                    &mut result,
-                    "{}",
-                    fl!(
-                        "teams",
-                        dark_team = limit_team_name_len(&black, TEAM_NAME_LEN_LIMIT),
-                        light_team = limit_team_name_len(&white, TEAM_NAME_LEN_LIMIT)
-                    )
-                )
-                .unwrap()
+                result += &fl!(
+                    "teams",
+                    dark_team = limit_team_name_len(&black, TEAM_NAME_LEN_LIMIT),
+                    light_team = limit_team_name_len(&white, TEAM_NAME_LEN_LIMIT)
+                );
+                result += "\n";
             }
         }
     }
@@ -996,7 +1001,7 @@ pub fn make_warning_container<'a>(
     let who = if let Some(num) = warning.player_number {
         format!("#{num}")
     } else {
-        "T".to_string()
+        fl!("team-warning-abreviation")
     };
 
     container(if color.is_some() {

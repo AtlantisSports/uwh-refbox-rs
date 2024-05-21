@@ -76,19 +76,19 @@ pub(super) fn make_penalty_edit_page<'a>(
     };
 
     let mut exit_row = row![
-        make_smaller_button("CANCEL")
+        make_smaller_button(fl!("cancel"))
             .style(ButtonStyle::Red)
             .width(Length::Fill)
             .on_press(Message::PenaltyEditComplete {
                 canceled: true,
                 deleted: false,
-            }),
+            })
     ]
     .spacing(SPACING);
 
     if origin.is_some() {
         exit_row = exit_row.push(
-            make_smaller_button("DELETE")
+            make_smaller_button(fl!("delete"))
                 .style(ButtonStyle::Orange)
                 .width(Length::Fill)
                 .on_press(Message::PenaltyEditComplete {
@@ -99,7 +99,7 @@ pub(super) fn make_penalty_edit_page<'a>(
     }
 
     exit_row = exit_row.push(
-        make_smaller_button("DONE")
+        make_smaller_button(fl!("done"))
             .style(ButtonStyle::Green)
             .width(Length::Fill)
             .on_press(Message::PenaltyEditComplete {
@@ -126,16 +126,15 @@ pub(super) fn make_penalty_edit_page<'a>(
 
     let mut content = column![
         row![
-            make_smaller_button("BLACK")
+            make_smaller_button(fl!("dark-team-name-caps"))
                 .style(black_style)
                 .on_press(Message::ChangeColor(Some(GameColor::Black))),
-            make_smaller_button("WHITE")
+            make_smaller_button(fl!("light-team-name-caps"))
                 .style(white_style)
                 .on_press(Message::ChangeColor(Some(GameColor::White))),
         ]
         .spacing(SPACING)
-    ]
-    .spacing(SPACING);
+    ];
 
     if track_fouls_and_warnings {
         content = content.push(make_penalty_dropdown(infraction, false));
@@ -154,7 +153,7 @@ pub(super) fn make_penalty_edit_page<'a>(
             make_smaller_button(orange_label)
                 .style(orange_style)
                 .on_press(Message::ChangeKind(orange)),
-            make_smaller_button("TD")
+            make_smaller_button(fl!("total-dismissial"))
                 .style(td_style)
                 .on_press(Message::ChangeKind(PenaltyKind::TotalDismissal)),
         ]

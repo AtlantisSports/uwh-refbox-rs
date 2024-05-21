@@ -27,9 +27,9 @@ pub(in super::super) fn build_list_selector_page<'a>(
     } = data;
 
     let title = match param {
-        ListableParameter::Event => "SELECT EVENT",
-        ListableParameter::Court => "SELECT COURT",
-        ListableParameter::Game => "SELECT GAME",
+        ListableParameter::Event => fl!("select-event"),
+        ListableParameter::Court => fl!("select-court"),
+        ListableParameter::Game => fl!("select-game"),
     };
 
     let title = text(title)
@@ -130,7 +130,7 @@ pub(in super::super) fn build_list_selector_page<'a>(
             scroll_list,
             column![
                 vertical_space(Length::Fill),
-                make_button("CANCEL")
+                make_button(fl!("cancel"))
                     .style(ButtonStyle::Red)
                     .width(Length::Fill)
                     .height(Length::Fixed(MIN_BUTTON_SIZE))

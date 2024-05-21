@@ -23,7 +23,7 @@ pub(in super::super) fn build_time_edit_view<'a>(
 
     let mut edit_row = row![
         horizontal_space(Length::Fill),
-        make_time_editor("GAME TIME", time, false),
+        make_time_editor(fl!("game-time"), time, false),
         horizontal_space(Length::Fill)
     ]
     .spacing(SPACING)
@@ -32,14 +32,18 @@ pub(in super::super) fn build_time_edit_view<'a>(
     if snapshot.timeout.is_some() {
         edit_row = edit_row
             .push(horizontal_space(Length::Fill))
-            .push(make_time_editor("TIMEOUT", timeout_time.unwrap(), true))
+            .push(make_time_editor(
+                fl!("timeout"),
+                timeout_time.unwrap(),
+                true,
+            ))
             .push(horizontal_space(Length::Fill));
     }
 
     column![
         make_game_time_button(snapshot, false, true, mode, clock_running),
         vertical_space(Length::Fill),
-        text("Note: Game time is paused while on this screen")
+        text(fl!("Note-Game-time-is-paused"))
             .size(SMALL_TEXT)
             .line_height(LINE_HEIGHT)
             .width(Length::Fill)
@@ -48,12 +52,12 @@ pub(in super::super) fn build_time_edit_view<'a>(
         edit_row,
         vertical_space(Length::Fill),
         row![
-            make_button("CANCEL")
+            make_button(fl!("cancel"))
                 .style(ButtonStyle::Red)
                 .width(Length::Fill)
                 .on_press(Message::TimeEditComplete { canceled: true }),
             horizontal_space(Length::Fill),
-            make_button("DONE")
+            make_button(fl!("done"))
                 .style(ButtonStyle::Green)
                 .width(Length::Fill)
                 .on_press(Message::TimeEditComplete { canceled: false }),

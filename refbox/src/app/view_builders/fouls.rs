@@ -49,11 +49,11 @@ pub(in super::super) fn build_foul_overview_page<'a>(
         .spacing(SPACING)
         .height(Length::Fill),
         row![
-            make_button("CANCEL")
+            make_button(fl!("cancel"))
                 .style(ButtonStyle::Red)
                 .width(Length::Fill)
                 .on_press(Message::FoulOverviewComplete { canceled: true }),
-            make_button("NEW")
+            make_button(fl!("new"))
                 .style(ButtonStyle::Blue)
                 .width(Length::Fill)
                 .on_press(Message::KeypadPage(KeypadPage::FoulAdd {
@@ -62,7 +62,7 @@ pub(in super::super) fn build_foul_overview_page<'a>(
                     infraction: Infraction::Unknown,
                     ret_to_overview: true,
                 })),
-            make_button("DONE")
+            make_button(fl!("done"))
                 .style(ButtonStyle::Green)
                 .width(Length::Fill)
                 .on_press(Message::FoulOverviewComplete { canceled: false }),
@@ -83,7 +83,7 @@ fn make_foul_list<'a>(
 
     let title = match color {
         Some(color) => color.to_string().to_uppercase(),
-        None => "EQUAL".to_string(),
+        None => fl!("equal"),
     };
 
     let title = text(title)

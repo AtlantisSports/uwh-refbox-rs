@@ -10,7 +10,7 @@ clap = { version = "4.5.4", features = ["derive"] }
 futures = "0.3"
 coarsetime = "0.1.34"
 confy = "0.6"
-crossbeam-channel = "0.5.12"
+crossbeam-channel = "0.5.13"
 directories = "5.0.1"
 log = "0.4.21"
 log-panics = { version = "2", features = ["with-backtrace"]}

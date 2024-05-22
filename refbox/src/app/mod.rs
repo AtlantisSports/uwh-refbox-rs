@@ -1082,16 +1082,14 @@ impl Application for RefBoxApp {
                                 .unwrap()
                                 .add_warning(color, player_num, infraction, Instant::now())
                                 .unwrap();
+                        } else if let Some((old_color, index)) = origin {
+                            self.warn_edit
+                                .edit_item(old_color, index, color, player_num, (), infraction)
+                                .unwrap();
                         } else {
-                            if let Some((old_color, index)) = origin {
-                                self.warn_edit
-                                    .edit_item(old_color, index, color, player_num, (), infraction)
-                                    .unwrap();
-                            } else {
-                                self.warn_edit
-                                    .add_item(color, player_num, (), infraction)
-                                    .unwrap();
-                            }
+                            self.warn_edit
+                                .add_item(color, player_num, (), infraction)
+                                .unwrap();
                         }
                     } else {
                         unreachable!();
@@ -1138,16 +1136,14 @@ impl Application for RefBoxApp {
                                 .unwrap()
                                 .add_foul(color, player_num, infraction, Instant::now())
                                 .unwrap();
+                        } else if let Some((old_color, index)) = origin {
+                            self.foul_edit
+                                .edit_item(old_color, index, color, player_num, (), infraction)
+                                .unwrap();
                         } else {
-                            if let Some((old_color, index)) = origin {
-                                self.foul_edit
-                                    .edit_item(old_color, index, color, player_num, (), infraction)
-                                    .unwrap();
-                            } else {
-                                self.foul_edit
-                                    .add_item(color, player_num, (), infraction)
-                                    .unwrap();
-                            }
+                            self.foul_edit
+                                .add_item(color, player_num, (), infraction)
+                                .unwrap();
                         }
                     } else {
                         unreachable!();

@@ -63,9 +63,12 @@ impl UpdateSender {
         &self,
         snapshot: GameSnapshot,
         white_on_right: bool,
-    ) -> Result<(), TrySendError<GameSnapshot>> {
+    ) -> Result<(), TrySendError<Box<GameSnapshot>>> {
         self.tx
-            .try_send(ServerMessage::NewSnapshot(snapshot, white_on_right))
+            .try_send(ServerMessage::NewSnapshot(
+                Box::new(snapshot),
+                white_on_right,
+            ))
             .map_err(|e| match e {
                 TrySendError::Full(ServerMessage::NewSnapshot(snapshot, _)) => {
                     TrySendError::Full(snapshot)
@@ -291,7 +294,7 @@ fn error_formatter<T: Debug>(old: TrySendError<T>) -> TrySendError<String> {
 #[derive(Debug)]
 pub enum ServerMessage {
     NewConnection(SendType, TcpStream),
-    NewSnapshot(GameSnapshot, bool),
+    NewSnapshot(Box<GameSnapshot>, bool),
     TriggerFlash,
     Stop,
     SetHideTime(bool),
@@ -483,7 +486,7 @@ impl Server {
                         }
                         Some(ServerMessage::NewSnapshot(snapshot, white_on_right)) => {
                             self.white_on_right = white_on_right;
-                            self.encode(snapshot);
+                            self.encode(*snapshot);
                             self.send_to_workers(false);
                         }
                         Some(ServerMessage::TriggerFlash) => {

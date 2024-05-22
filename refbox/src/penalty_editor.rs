@@ -87,7 +87,7 @@ pub(super) trait Editable<C: ColorIndex>: Debug + PartialEq + Eq + Clone {
 
     fn get_items_from_tm<'a>(tm: &'a TmGuard) -> &'a C::Structure<Vec<Self>>;
 
-    fn into_summary(&self, color: C) -> Self::Summary;
+    fn as_summary(&self, color: C) -> Self::Summary;
 
     fn new_summary(kind: Self::Kind, player_number: Self::Number, color: C) -> Self::Summary;
 
@@ -234,7 +234,7 @@ where
         Ok(match item {
             EditableItem::Original(_, p)
             | EditableItem::Edited(_, p)
-            | EditableItem::Deleted(_, p) => p.into_summary(color),
+            | EditableItem::Deleted(_, p) => p.as_summary(color),
             EditableItem::New(kind, player_number, _) => {
                 T::new_summary(*kind, *player_number, color)
             }
@@ -375,7 +375,7 @@ where
                 |(c, _)| match T::limit_list_len(&mut tm, c, T::MAX_LIST_LEN, now) {
                     Ok(()) => Ok((c, false)),
                     Err(TournamentManagerError::TooManyPenalties(_)) => Ok((c, true)),
-                    Err(e) => return Err(e.into()),
+                    Err(e) => Err(e.into()),
                 },
             )
             .collect::<Result<C::Structure<bool>>>()?;
@@ -424,7 +424,7 @@ impl Editable<Color> for Penalty {
         tm.get_penalties()
     }
 
-    fn into_summary(&self, color: Color) -> Self::Summary {
+    fn as_summary(&self, color: Color) -> Self::Summary {
         Self::Summary {
             kind: self.kind,
             player_number: self.player_number,
@@ -563,7 +563,7 @@ impl Editable<Color> for InfractionDetails {
         tm.get_warnings()
     }
 
-    fn into_summary(&self, color: Color) -> Self::Summary {
+    fn as_summary(&self, color: Color) -> Self::Summary {
         Self::Summary {
             player_number: self.player_number,
             color,
@@ -654,7 +654,7 @@ impl Editable<Option<Color>> for InfractionDetails {
         tm.get_fouls()
     }
 
-    fn into_summary(&self, color: Option<Color>) -> Self::Summary {
+    fn as_summary(&self, color: Option<Color>) -> Self::Summary {
         Self::Summary {
             player_number: self.player_number,
             color,

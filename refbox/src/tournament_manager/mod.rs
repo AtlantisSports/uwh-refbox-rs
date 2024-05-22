@@ -2287,7 +2287,7 @@ fn print_p_num_warn(num: Option<u8>) -> String {
     if let Some(n) = num {
         format!("player #{n}'s")
     } else {
-        format!("team's")
+        "team's".to_string()
     }
 }
 

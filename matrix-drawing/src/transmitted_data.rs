@@ -81,12 +81,12 @@ mod test {
         data.snapshot.b_penalties.push(PenaltySnapshot {
             player_number: 1,
             time: PenaltyTime::Seconds(48),
-            infraction: Infraction::Unknown,
+            infraction: Infraction::Unknown, // infraction is not encoded, so the test will fail with any other value
         });
         data.snapshot.w_penalties.push(PenaltySnapshot {
             player_number: 12,
             time: PenaltyTime::Seconds(96),
-            infraction: Infraction::DelayOfGame,
+            infraction: Infraction::Unknown, // infraction is not encoded, so the test will fail with any other value
         });
 
         test_data(&mut data)?;

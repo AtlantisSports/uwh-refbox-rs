@@ -909,14 +909,14 @@ impl Application for RefBoxApp {
             }
             Message::WarningOverviewComplete { canceled } => {
                 if canceled {
-                    self.pen_edit.abort_session();
+                    self.warn_edit.abort_session();
                     self.app_state = AppState::WarningsSummaryPage;
                 } else if let Err(e) = self.warn_edit.apply_changes(Instant::now()) {
                     let err_string = format!("An error occurred while applying the changes to the warnings. \
                     Some of the changes may have been applied. Please retry any remaining changes.\n\n\
                     Error Message:\n{e}");
                     error!("{err_string}");
-                    self.pen_edit.abort_session();
+                    self.warn_edit.abort_session();
                     self.app_state =
                         AppState::ConfirmationPage(ConfirmationKind::Error(err_string));
                 } else {
@@ -933,14 +933,14 @@ impl Application for RefBoxApp {
             }
             Message::FoulOverviewComplete { canceled } => {
                 if canceled {
-                    self.pen_edit.abort_session();
+                    self.foul_edit.abort_session();
                     self.app_state = AppState::WarningsSummaryPage;
                 } else if let Err(e) = self.foul_edit.apply_changes(Instant::now()) {
                     let err_string = format!("An error occurred while applying the changes to the fouls. \
                     Some of the changes may have been applied. Please retry any remaining changes.\n\n\
                     Error Message:\n{e}");
                     error!("{err_string}");
-                    self.pen_edit.abort_session();
+                    self.foul_edit.abort_session();
                     self.app_state =
                         AppState::ConfirmationPage(ConfirmationKind::Error(err_string));
                 } else {

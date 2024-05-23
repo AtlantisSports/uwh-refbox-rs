@@ -1,3 +1,5 @@
+use self::infraction::InfractionDetails;
+
 use super::APP_NAME;
 use crate::{
     config::{Config, Mode},
@@ -29,7 +31,7 @@ use tokio_serial::SerialPortBuilder;
 use uwh_common::{
     config::Game as GameConfig,
     drawing_support::*,
-    game_snapshot::{GamePeriod, GameSnapshot, TimeoutSnapshot},
+    game_snapshot::{Color, GamePeriod, GameSnapshot, Infraction, TimeoutSnapshot},
     uwhportal::UwhPortalClient,
     uwhscores::*,
 };
@@ -57,7 +59,9 @@ pub struct RefBoxApp {
     edited_settings: Option<EditableSettings>,
     snapshot: GameSnapshot,
     time_updater: TimeUpdater,
-    pen_edit: PenaltyEditor,
+    pen_edit: ListEditor<Penalty, Color>,
+    warn_edit: ListEditor<InfractionDetails, Color>,
+    foul_edit: ListEditor<InfractionDetails, Option<Color>>,
     app_state: AppState,
     last_app_state: AppState,
     last_message: Message,
@@ -98,8 +102,11 @@ enum AppState {
         is_confirmation: bool,
     },
     PenaltyOverview(BlackWhiteBundle<usize>),
+    WarningOverview(BlackWhiteBundle<usize>),
+    FoulOverview(OptColorBundle<usize>),
     KeypadPage(KeypadPage, u16),
     GameDetailsPage,
+    WarningsSummaryPage,
     EditGameConfig(ConfigPage),
     ParameterEditor(LengthParameter, Duration),
     ParameterList(ListableParameter, usize),
@@ -459,6 +466,43 @@ impl RefBoxApp {
             }
         }
     }
+
+    fn apply_settings_change(&mut self) {
+        let edited_settings = self.edited_settings.take().unwrap();
+
+        let EditableSettings {
+            white_on_right,
+            using_uwhscores,
+            current_tid,
+            current_pool,
+            games,
+            sound,
+            mode,
+            collect_scorer_cap_num,
+            hide_time,
+            config: _config,
+            game_number: _game_number,
+            track_fouls_and_warnings,
+        } = edited_settings;
+
+        self.config.hardware.white_on_right = white_on_right;
+        self.using_uwhscores = using_uwhscores;
+        self.current_tid = current_tid;
+        self.current_pool = current_pool;
+        self.games = games;
+        self.config.sound = sound;
+        self.sound.update_settings(self.config.sound.clone());
+        self.config.mode = mode;
+        self.config.collect_scorer_cap_num = collect_scorer_cap_num;
+        self.config.track_fouls_and_warnings = track_fouls_and_warnings;
+
+        if self.config.hide_time != hide_time {
+            self.config.hide_time = hide_time;
+            self.update_sender
+                .set_hide_time(self.config.hide_time)
+                .unwrap();
+        }
+    }
 }
 
 impl Drop for RefBoxApp {
@@ -537,7 +581,9 @@ impl Application for RefBoxApp {
 
         (
             Self {
-                pen_edit: PenaltyEditor::new(tm.clone()),
+                pen_edit: ListEditor::new(tm.clone()),
+                warn_edit: ListEditor::new(tm.clone()),
+                foul_edit: ListEditor::new(tm.clone()),
                 time_updater: TimeUpdater {
                     tm: tm.clone(),
                     clock_running_receiver,
@@ -777,28 +823,60 @@ impl Application for RefBoxApp {
                 self.app_state = AppState::PenaltyOverview(BlackWhiteBundle { black: 0, white: 0 });
                 trace!("AppState changed to {:?}", self.app_state);
             }
+            Message::WarningOverview => {
+                self.warn_edit.start_session().unwrap();
+                self.app_state = AppState::WarningOverview(BlackWhiteBundle { black: 0, white: 0 });
+                trace!("AppState changed to {:?}", self.app_state);
+            }
+            Message::FoulOverview => {
+                self.foul_edit.start_session().unwrap();
+                self.app_state = AppState::FoulOverview(OptColorBundle {
+                    black: 0,
+                    equal: 0,
+                    white: 0,
+                });
+                trace!("AppState changed to {:?}", self.app_state);
+            }
             Message::Scroll { which, up } => {
-                if let AppState::PenaltyOverview(ref mut indices) = self.app_state {
-                    let idx = match which {
-                        ScrollOption::Black => &mut indices.black,
-                        ScrollOption::White => &mut indices.white,
-                        ScrollOption::GameParameter => unreachable!(),
-                    };
-                    if up {
-                        *idx = idx.saturating_sub(1);
-                    } else {
-                        *idx = idx.saturating_add(1);
+                match self.app_state {
+                    AppState::PenaltyOverview(ref mut indices)
+                    | AppState::WarningOverview(ref mut indices) => {
+                        let idx = match which {
+                            ScrollOption::Black => &mut indices.black,
+                            ScrollOption::White => &mut indices.white,
+                            ScrollOption::GameParameter | ScrollOption::Equal => unreachable!(),
+                        };
+                        if up {
+                            *idx = idx.saturating_sub(1);
+                        } else {
+                            *idx = idx.saturating_add(1);
+                        }
                     }
-                } else if let AppState::ParameterList(_, ref mut idx) = self.app_state {
-                    debug_assert_eq!(which, ScrollOption::GameParameter);
-                    if up {
-                        *idx = idx.saturating_sub(1);
-                    } else {
-                        *idx = idx.saturating_add(1);
+                    AppState::FoulOverview(ref mut indices) => {
+                        let idx = match which {
+                            ScrollOption::Black => &mut indices.black,
+                            ScrollOption::Equal => &mut indices.equal,
+                            ScrollOption::White => &mut indices.white,
+                            ScrollOption::GameParameter => unreachable!(),
+                        };
+                        if up {
+                            *idx = idx.saturating_sub(1);
+                        } else {
+                            *idx = idx.saturating_add(1);
+                        }
                     }
-                } else {
-                    unreachable!();
-                }
+                    AppState::ParameterList(_, ref mut idx) => {
+                        debug_assert_eq!(which, ScrollOption::GameParameter);
+                        if up {
+                            *idx = idx.saturating_sub(1);
+                        } else {
+                            *idx = idx.saturating_add(1);
+                        }
+                    }
+                    _ => {
+                        unreachable!();
+                    }
+                };
                 trace!("AppState changed to {:?}", self.app_state);
             }
             Message::PenaltyOverviewComplete { canceled } => {
@@ -829,8 +907,56 @@ impl Application for RefBoxApp {
                 self.apply_snapshot(snapshot);
                 trace!("AppState changed to {:?}", self.app_state);
             }
+            Message::WarningOverviewComplete { canceled } => {
+                if canceled {
+                    self.warn_edit.abort_session();
+                    self.app_state = AppState::WarningsSummaryPage;
+                } else if let Err(e) = self.warn_edit.apply_changes(Instant::now()) {
+                    let err_string = format!("An error occurred while applying the changes to the warnings. \
+                    Some of the changes may have been applied. Please retry any remaining changes.\n\n\
+                    Error Message:\n{e}");
+                    error!("{err_string}");
+                    self.warn_edit.abort_session();
+                    self.app_state =
+                        AppState::ConfirmationPage(ConfirmationKind::Error(err_string));
+                } else {
+                    self.app_state = AppState::WarningsSummaryPage;
+                }
+                let snapshot = self
+                    .tm
+                    .lock()
+                    .unwrap()
+                    .generate_snapshot(Instant::now())
+                    .unwrap();
+                self.apply_snapshot(snapshot);
+                trace!("AppState changed to {:?}", self.app_state);
+            }
+            Message::FoulOverviewComplete { canceled } => {
+                if canceled {
+                    self.foul_edit.abort_session();
+                    self.app_state = AppState::WarningsSummaryPage;
+                } else if let Err(e) = self.foul_edit.apply_changes(Instant::now()) {
+                    let err_string = format!("An error occurred while applying the changes to the fouls. \
+                    Some of the changes may have been applied. Please retry any remaining changes.\n\n\
+                    Error Message:\n{e}");
+                    error!("{err_string}");
+                    self.foul_edit.abort_session();
+                    self.app_state =
+                        AppState::ConfirmationPage(ConfirmationKind::Error(err_string));
+                } else {
+                    self.app_state = AppState::WarningsSummaryPage;
+                }
+                let snapshot = self
+                    .tm
+                    .lock()
+                    .unwrap()
+                    .generate_snapshot(Instant::now())
+                    .unwrap();
+                self.apply_snapshot(snapshot);
+                trace!("AppState changed to {:?}", self.app_state);
+            }
             Message::ChangeKind(new_kind) => {
-                if let AppState::KeypadPage(KeypadPage::Penalty(_, _, ref mut kind), _) =
+                if let AppState::KeypadPage(KeypadPage::Penalty(_, _, ref mut kind, _, _), _) =
                     self.app_state
                 {
                     *kind = new_kind;
@@ -839,16 +965,64 @@ impl Application for RefBoxApp {
                 }
                 trace!("AppState changed to {:?}", self.app_state);
             }
+            Message::ChangeInfraction(new_infraction) => {
+                match self.app_state {
+                    AppState::KeypadPage(
+                        KeypadPage::Penalty(_, _, _, ref mut infraction, _),
+                        _,
+                    )
+                    | AppState::KeypadPage(
+                        KeypadPage::FoulAdd {
+                            ref mut infraction, ..
+                        },
+                        _,
+                    )
+                    | AppState::KeypadPage(
+                        KeypadPage::WarningAdd {
+                            ref mut infraction, ..
+                        },
+                        _,
+                    ) => {
+                        *infraction = new_infraction;
+                    }
+                    _ => unreachable!(),
+                }
+                trace!("AppState changed to {:?}", self.app_state);
+            }
+            Message::FoulSelectExpanded(expanded) => {
+                match self.app_state {
+                    AppState::KeypadPage(
+                        KeypadPage::FoulAdd {
+                            expanded: ref mut old,
+                            ..
+                        },
+                        _,
+                    )
+                    | AppState::KeypadPage(KeypadPage::Penalty(_, _, _, _, ref mut old), _)
+                    | AppState::KeypadPage(
+                        KeypadPage::WarningAdd {
+                            expanded: ref mut old,
+                            ..
+                        },
+                        _,
+                    ) => {
+                        info!("Foul select expanded set to: {expanded}");
+                        *old = expanded;
+                    }
+                    _ => unreachable!(),
+                }
+                trace!("AppState changed to {:?}", self.app_state);
+            }
             Message::PenaltyEditComplete { canceled, deleted } => {
                 if !canceled {
                     if let AppState::KeypadPage(
-                        KeypadPage::Penalty(origin, color, kind),
+                        KeypadPage::Penalty(origin, color, kind, infraction, _),
                         player_num,
                     ) = self.app_state
                     {
                         if deleted {
                             if let Some((old_color, index)) = origin {
-                                self.pen_edit.delete_penalty(old_color, index).unwrap();
+                                self.pen_edit.delete_item(old_color, index).unwrap();
                             } else {
                                 unreachable!();
                             }
@@ -856,10 +1030,14 @@ impl Application for RefBoxApp {
                             let player_num = player_num.try_into().unwrap();
                             if let Some((old_color, index)) = origin {
                                 self.pen_edit
-                                    .edit_penalty(old_color, index, color, player_num, kind)
+                                    .edit_item(
+                                        old_color, index, color, player_num, kind, infraction,
+                                    )
                                     .unwrap();
                             } else {
-                                self.pen_edit.add_penalty(color, player_num, kind).unwrap();
+                                self.pen_edit
+                                    .add_item(color, player_num, kind, infraction)
+                                    .unwrap();
                             }
                         }
                     } else {
@@ -869,15 +1047,148 @@ impl Application for RefBoxApp {
                 self.app_state = AppState::PenaltyOverview(BlackWhiteBundle { black: 0, white: 0 });
                 trace!("AppState changed to {:?}", self.app_state);
             }
+            Message::WarningEditComplete {
+                canceled,
+                deleted,
+                ret_to_overview,
+            } => {
+                if !canceled {
+                    if let AppState::KeypadPage(
+                        KeypadPage::WarningAdd {
+                            origin,
+                            color,
+                            infraction,
+                            team_warning,
+                            ..
+                        },
+                        player_num,
+                    ) = self.app_state
+                    {
+                        let player_num = if team_warning {
+                            None
+                        } else {
+                            Some(player_num.try_into().unwrap())
+                        };
+
+                        if deleted {
+                            if let Some((old_color, index)) = origin {
+                                self.warn_edit.delete_item(old_color, index).unwrap();
+                            } else {
+                                unreachable!();
+                            }
+                        } else if !ret_to_overview {
+                            self.tm
+                                .lock()
+                                .unwrap()
+                                .add_warning(color, player_num, infraction, Instant::now())
+                                .unwrap();
+                        } else if let Some((old_color, index)) = origin {
+                            self.warn_edit
+                                .edit_item(old_color, index, color, player_num, (), infraction)
+                                .unwrap();
+                        } else {
+                            self.warn_edit
+                                .add_item(color, player_num, (), infraction)
+                                .unwrap();
+                        }
+                    } else {
+                        unreachable!();
+                    }
+                }
+                self.app_state = if !ret_to_overview {
+                    AppState::MainPage
+                } else {
+                    AppState::WarningOverview(BlackWhiteBundle { black: 0, white: 0 })
+                };
+                trace!("AppState changed to {:?}", self.app_state);
+            }
+            Message::FoulEditComplete {
+                canceled,
+                deleted,
+                ret_to_overview,
+            } => {
+                if !canceled {
+                    if let AppState::KeypadPage(
+                        KeypadPage::FoulAdd {
+                            origin,
+                            color,
+                            infraction,
+                            ..
+                        },
+                        player_num,
+                    ) = self.app_state
+                    {
+                        let player_num = if color.is_none() {
+                            None
+                        } else {
+                            Some(player_num.try_into().unwrap())
+                        };
+
+                        if deleted {
+                            if let Some((old_color, index)) = origin {
+                                self.foul_edit.delete_item(old_color, index).unwrap();
+                            } else {
+                                unreachable!();
+                            }
+                        } else if !ret_to_overview {
+                            self.tm
+                                .lock()
+                                .unwrap()
+                                .add_foul(color, player_num, infraction, Instant::now())
+                                .unwrap();
+                        } else if let Some((old_color, index)) = origin {
+                            self.foul_edit
+                                .edit_item(old_color, index, color, player_num, (), infraction)
+                                .unwrap();
+                        } else {
+                            self.foul_edit
+                                .add_item(color, player_num, (), infraction)
+                                .unwrap();
+                        }
+                    } else {
+                        unreachable!();
+                    }
+                }
+                self.app_state = if !ret_to_overview {
+                    AppState::MainPage
+                } else {
+                    AppState::FoulOverview(OptColorBundle {
+                        black: 0,
+                        equal: 0,
+                        white: 0,
+                    })
+                };
+                trace!("AppState changed to {:?}", self.app_state);
+            }
             Message::KeypadPage(page) => {
                 let init_val = match page {
-                    KeypadPage::AddScore(_) | KeypadPage::Penalty(None, _, _) => 0,
-                    KeypadPage::Penalty(Some((color, index)), _, _) => {
-                        self.pen_edit
-                            .get_penalty(color, index)
-                            .unwrap()
-                            .player_number as u16
+                    KeypadPage::AddScore(_)
+                    | KeypadPage::Penalty(None, _, _, _, _)
+                    | KeypadPage::FoulAdd { origin: None, .. }
+                    | KeypadPage::WarningAdd { origin: None, .. } => 0,
+                    KeypadPage::Penalty(Some((color, index)), _, _, _, _) => {
+                        self.pen_edit.get_item(color, index).unwrap().player_number as u16
                     }
+                    KeypadPage::WarningAdd {
+                        origin: Some((color, index)),
+                        ..
+                    } => self
+                        .warn_edit
+                        .get_item(color, index)
+                        .unwrap()
+                        .player_number
+                        .map(|n| n.into())
+                        .unwrap_or(0),
+                    KeypadPage::FoulAdd {
+                        origin: Some((color, index)),
+                        ..
+                    } => self
+                        .foul_edit
+                        .get_item(color, index)
+                        .unwrap()
+                        .player_number
+                        .map(|n| n.into())
+                        .unwrap_or(0),
                     KeypadPage::TeamTimeouts(_) => self.config.game.team_timeouts_per_half,
                     KeypadPage::GameNumber => self
                         .edited_settings
@@ -916,7 +1227,11 @@ impl Application for RefBoxApp {
             Message::ChangeColor(new_color) => {
                 match self.app_state {
                     AppState::KeypadPage(KeypadPage::AddScore(ref mut color), _)
-                    | AppState::KeypadPage(KeypadPage::Penalty(_, ref mut color, _), _) => {
+                    | AppState::KeypadPage(KeypadPage::Penalty(_, ref mut color, _, _, _), _)
+                    | AppState::KeypadPage(KeypadPage::WarningAdd { ref mut color, .. }, _) => {
+                        *color = new_color.expect("Invalid color value");
+                    }
+                    AppState::KeypadPage(KeypadPage::FoulAdd { ref mut color, .. }, _) => {
                         *color = new_color;
                     }
                     _ => {
@@ -961,6 +1276,10 @@ impl Application for RefBoxApp {
                 self.app_state = AppState::GameDetailsPage;
                 trace!("AppState changed to {:?}", self.app_state);
             }
+            Message::ShowWarnings => {
+                self.app_state = AppState::WarningsSummaryPage;
+                trace!("AppState changed to {:?}", self.app_state);
+            }
             Message::EditGameConfig => {
                 let edited_settings = EditableSettings {
                     config: self.tm.lock().unwrap().config().clone(),
@@ -978,6 +1297,7 @@ impl Application for RefBoxApp {
                     mode: self.config.mode,
                     hide_time: self.config.hide_time,
                     collect_scorer_cap_num: self.config.collect_scorer_cap_num,
+                    track_fouls_and_warnings: self.config.track_fouls_and_warnings,
                 };
 
                 self.edited_settings = Some(edited_settings);
@@ -1064,24 +1384,8 @@ impl Application for RefBoxApp {
                                 tm.clear_scheduled_game_start();
                             }
 
-                            let edited_settings = self.edited_settings.take().unwrap();
-                            self.config.hardware.white_on_right = edited_settings.white_on_right;
-                            self.using_uwhscores = edited_settings.using_uwhscores;
-                            self.current_tid = edited_settings.current_tid;
-                            self.current_pool = edited_settings.current_pool;
-                            self.games = edited_settings.games;
-                            self.config.sound = edited_settings.sound;
-                            self.sound.update_settings(self.config.sound.clone());
-                            self.config.mode = edited_settings.mode;
-                            self.config.collect_scorer_cap_num =
-                                edited_settings.collect_scorer_cap_num;
-
-                            if self.config.hide_time != edited_settings.hide_time {
-                                self.config.hide_time = edited_settings.hide_time;
-                                self.update_sender
-                                    .set_hide_time(self.config.hide_time)
-                                    .unwrap();
-                            }
+                            drop(tm);
+                            self.apply_settings_change();
 
                             confy::store(APP_NAME, None, &self.config).unwrap();
                             AppState::MainPage
@@ -1090,27 +1394,6 @@ impl Application for RefBoxApp {
                         if tm.current_period() != GamePeriod::BetweenGames {
                             AppState::ConfirmationPage(ConfirmationKind::GameNumberChanged)
                         } else {
-                            let edited_settings = self.edited_settings.take().unwrap();
-                            self.config.hardware.white_on_right = edited_settings.white_on_right;
-                            self.using_uwhscores = edited_settings.using_uwhscores;
-                            self.current_tid = edited_settings.current_tid;
-                            self.current_pool = edited_settings.current_pool;
-                            self.games = edited_settings.games;
-                            self.config.sound = edited_settings.sound;
-                            self.sound.update_settings(self.config.sound.clone());
-                            self.config.mode = edited_settings.mode;
-                            self.config.collect_scorer_cap_num =
-                                edited_settings.collect_scorer_cap_num;
-
-                            if self.config.hide_time != edited_settings.hide_time {
-                                self.config.hide_time = edited_settings.hide_time;
-                                self.update_sender
-                                    .set_hide_time(self.config.hide_time)
-                                    .unwrap();
-                            }
-
-                            confy::store(APP_NAME, None, &self.config).unwrap();
-
                             let next_game_info = if edited_settings.using_uwhscores {
                                 NextGameInfo {
                                     number: edited_settings.game_number,
@@ -1138,26 +1421,16 @@ impl Application for RefBoxApp {
                                 tm.apply_next_game_start(Instant::now()).unwrap();
                             }
 
+                            drop(tm);
+                            self.apply_settings_change();
+
+                            confy::store(APP_NAME, None, &self.config).unwrap();
+
                             AppState::MainPage
                         }
                     } else {
-                        let edited_settings = self.edited_settings.take().unwrap();
-                        self.config.hardware.white_on_right = edited_settings.white_on_right;
-                        self.using_uwhscores = edited_settings.using_uwhscores;
-                        self.current_tid = edited_settings.current_tid;
-                        self.current_pool = edited_settings.current_pool;
-                        self.games = edited_settings.games;
-                        self.config.sound = edited_settings.sound;
-                        self.sound.update_settings(self.config.sound.clone());
-                        self.config.mode = edited_settings.mode;
-                        self.config.collect_scorer_cap_num = edited_settings.collect_scorer_cap_num;
-
-                        if self.config.hide_time != edited_settings.hide_time {
-                            self.config.hide_time = edited_settings.hide_time;
-                            self.update_sender
-                                .set_hide_time(self.config.hide_time)
-                                .unwrap();
-                        }
+                        drop(tm);
+                        self.apply_settings_change();
 
                         confy::store(APP_NAME, None, &self.config).unwrap();
                         AppState::MainPage
@@ -1317,33 +1590,61 @@ impl Application for RefBoxApp {
                 self.app_state = AppState::EditGameConfig(next_page);
                 trace!("AppState changed to {:?}", self.app_state);
             }
-            Message::ToggleBoolParameter(param) => {
-                let edited_settings = self.edited_settings.as_mut().unwrap();
-                match param {
-                    BoolGameParameter::OvertimeAllowed => {
-                        edited_settings.config.overtime_allowed ^= true
+            Message::ToggleBoolParameter(param) => match param {
+                BoolGameParameter::TeamWarning => {
+                    if let AppState::KeypadPage(
+                        KeypadPage::WarningAdd {
+                            ref mut team_warning,
+                            ..
+                        },
+                        _,
+                    ) = self.app_state
+                    {
+                        *team_warning ^= true
+                    } else {
+                        unreachable!()
                     }
-                    BoolGameParameter::SuddenDeathAllowed => {
-                        edited_settings.config.sudden_death_allowed ^= true
-                    }
-                    BoolGameParameter::WhiteOnRight => edited_settings.white_on_right ^= true,
-                    BoolGameParameter::UsingUwhScores => edited_settings.using_uwhscores ^= true,
-                    BoolGameParameter::SoundEnabled => edited_settings.sound.sound_enabled ^= true,
-                    BoolGameParameter::RefAlertEnabled => {
-                        edited_settings.sound.whistle_enabled ^= true
-                    }
-                    BoolGameParameter::AutoSoundStartPlay => {
-                        edited_settings.sound.auto_sound_start_play ^= true
-                    }
-                    BoolGameParameter::AutoSoundStopPlay => {
-                        edited_settings.sound.auto_sound_stop_play ^= true
-                    }
-                    BoolGameParameter::HideTime => edited_settings.hide_time ^= true,
-                    BoolGameParameter::ScorerCapNum => {
-                        edited_settings.collect_scorer_cap_num ^= true
+                    trace!("AppState changed to {:?}", self.app_state)
+                }
+
+                _ => {
+                    let edited_settings = self.edited_settings.as_mut().unwrap();
+                    match param {
+                        BoolGameParameter::OvertimeAllowed => {
+                            edited_settings.config.overtime_allowed ^= true
+                        }
+                        BoolGameParameter::SuddenDeathAllowed => {
+                            edited_settings.config.sudden_death_allowed ^= true
+                        }
+                        BoolGameParameter::WhiteOnRight => edited_settings.white_on_right ^= true,
+                        BoolGameParameter::UsingUwhScores => {
+                            edited_settings.using_uwhscores ^= true
+                        }
+                        BoolGameParameter::SoundEnabled => {
+                            edited_settings.sound.sound_enabled ^= true
+                        }
+                        BoolGameParameter::RefAlertEnabled => {
+                            edited_settings.sound.whistle_enabled ^= true
+                        }
+                        BoolGameParameter::AutoSoundStartPlay => {
+                            edited_settings.sound.auto_sound_start_play ^= true
+                        }
+                        BoolGameParameter::AutoSoundStopPlay => {
+                            edited_settings.sound.auto_sound_stop_play ^= true
+                        }
+                        BoolGameParameter::HideTime => edited_settings.hide_time ^= true,
+                        BoolGameParameter::ScorerCapNum => {
+                            edited_settings.collect_scorer_cap_num ^= true
+                        }
+                        BoolGameParameter::FoulsAndWarnings => {
+                            edited_settings.track_fouls_and_warnings ^= true
+                        }
+                        BoolGameParameter::TeamWarning => {
+                            unreachable!()
+                        }
                     }
                 }
-            }
+            },
             Message::CycleParameter(param) => {
                 let settings = &mut self.edited_settings.as_mut().unwrap();
                 match param {
@@ -1677,17 +1978,17 @@ impl Application for RefBoxApp {
                     None
                 };
 
-                let config = if let Some(ref c) = new_config {
+                let game_config = if let Some(ref c) = new_config {
                     c
                 } else {
                     &self.config.game
                 };
                 build_main_view(
                     &self.snapshot,
-                    config,
+                    game_config,
                     self.using_uwhscores,
                     &self.games,
-                    self.config.mode,
+                    &self.config,
                     clock_running,
                 )
             }
@@ -1715,11 +2016,25 @@ impl Application for RefBoxApp {
                 self.config.mode,
                 clock_running,
             ),
+            AppState::WarningOverview(indices) => build_warning_overview_page(
+                &self.snapshot,
+                self.warn_edit.get_printable_lists(Instant::now()).unwrap(),
+                indices,
+                self.config.mode,
+                clock_running,
+            ),
+            AppState::FoulOverview(indices) => build_foul_overview_page(
+                &self.snapshot,
+                self.foul_edit.get_printable_lists(Instant::now()).unwrap(),
+                indices,
+                self.config.mode,
+                clock_running,
+            ),
             AppState::KeypadPage(page, player_num) => build_keypad_page(
                 &self.snapshot,
                 page,
                 player_num,
-                self.config.mode,
+                &self.config,
                 clock_running,
             ),
             AppState::GameDetailsPage => build_game_info_page(
@@ -1730,6 +2045,8 @@ impl Application for RefBoxApp {
                 self.config.mode,
                 clock_running,
             ),
+            AppState::WarningsSummaryPage =>
+                build_warnings_summary_page(&self.snapshot, self.config.mode, clock_running,),
             AppState::EditGameConfig(page) => build_game_config_edit_page(
                 &self.snapshot,
                 self.edited_settings.as_ref().unwrap(),

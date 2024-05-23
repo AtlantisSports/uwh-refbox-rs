@@ -1,6 +1,6 @@
 use iced::{
     application,
-    widget::{self, button, container, svg, text},
+    widget::{self, button, container, scrollable, svg, text},
     Background, BorderRadius, Color, Vector,
 };
 use iced_core::text::LineHeight;
@@ -80,8 +80,11 @@ pub enum ButtonStyle {
     Green,
     GreenSelected,
     Blue,
+    BlueSelected,
+    BlueWithBorder,
     #[default]
     Gray,
+    LightGraySelected,
     LightGray,
 }
 
@@ -96,9 +99,11 @@ impl button::StyleSheet for ApplicationTheme {
             ButtonStyle::Orange | ButtonStyle::OrangeSelected => (ORANGE, BLACK),
             ButtonStyle::Yellow | ButtonStyle::YellowSelected => (YELLOW, BLACK),
             ButtonStyle::Green | ButtonStyle::GreenSelected => (GREEN, BLACK),
-            ButtonStyle::Blue => (BLUE, WHITE),
+            ButtonStyle::Blue | ButtonStyle::BlueSelected | ButtonStyle::BlueWithBorder => {
+                (BLUE, WHITE)
+            }
             ButtonStyle::Gray => (GRAY, BLACK),
-            ButtonStyle::LightGray => (LIGHT_GRAY, BLACK),
+            ButtonStyle::LightGray | ButtonStyle::LightGraySelected => (LIGHT_GRAY, BLACK),
         };
 
         let border_width = match style {
@@ -116,17 +121,41 @@ impl button::StyleSheet for ApplicationTheme {
             | ButtonStyle::RedSelected
             | ButtonStyle::OrangeSelected
             | ButtonStyle::YellowSelected
-            | ButtonStyle::GreenSelected => BORDER_WIDTH,
+            | ButtonStyle::GreenSelected
+            | ButtonStyle::BlueSelected
+            | ButtonStyle::BlueWithBorder
+            | ButtonStyle::LightGraySelected => BORDER_WIDTH,
         };
 
         let background = Some(Background::Color(background_color));
+
+        let border_color = match style {
+            ButtonStyle::White
+            | ButtonStyle::WhiteSelected
+            | ButtonStyle::Black
+            | ButtonStyle::BlackSelected
+            | ButtonStyle::Red
+            | ButtonStyle::RedSelected
+            | ButtonStyle::Orange
+            | ButtonStyle::OrangeSelected
+            | ButtonStyle::Yellow
+            | ButtonStyle::YellowSelected
+            | ButtonStyle::Green
+            | ButtonStyle::GreenSelected
+            | ButtonStyle::Blue
+            | ButtonStyle::BlueSelected
+            | ButtonStyle::Gray
+            | ButtonStyle::LightGray
+            | ButtonStyle::LightGraySelected => BORDER_COLOR,
+            ButtonStyle::BlueWithBorder => GRAY,
+        };
 
         button::Appearance {
             shadow_offset: Vector::default(),
             background,
             border_radius: BorderRadius::from(BORDER_RADIUS),
             border_width,
-            border_color: BORDER_COLOR,
+            border_color,
             text_color,
         }
     }
@@ -143,9 +172,11 @@ impl button::StyleSheet for ApplicationTheme {
             ButtonStyle::Orange | ButtonStyle::OrangeSelected => ORANGE_PRESSED,
             ButtonStyle::Yellow | ButtonStyle::YellowSelected => YELLOW_PRESSED,
             ButtonStyle::Green | ButtonStyle::GreenSelected => GREEN_PRESSED,
-            ButtonStyle::Blue => BLUE_PRESSED,
+            ButtonStyle::Blue | ButtonStyle::BlueSelected | ButtonStyle::BlueWithBorder => {
+                BLUE_PRESSED
+            }
             ButtonStyle::Gray => GRAY_PRESSED,
-            ButtonStyle::LightGray => LIGHT_GRAY_PRESSED,
+            ButtonStyle::LightGray | ButtonStyle::LightGraySelected => LIGHT_GRAY_PRESSED,
         };
 
         button::Appearance {
@@ -165,13 +196,14 @@ impl button::StyleSheet for ApplicationTheme {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ContainerStyle {
     LightGray,
     #[default]
     Gray,
     Black,
     White,
+    Blue,
     ScrollBar,
     Disabled,
     Transparent,
@@ -186,6 +218,7 @@ impl container::StyleSheet for ApplicationTheme {
             ContainerStyle::Gray => cont_style(GRAY, BLACK),
             ContainerStyle::Black => cont_style(BLACK, WHITE),
             ContainerStyle::White => cont_style(WHITE, BLACK),
+            ContainerStyle::Blue => cont_style(BLUE, WHITE),
             ContainerStyle::ScrollBar => cont_style(WINDOW_BACKGROUND, BLACK),
             ContainerStyle::Disabled => container::Appearance {
                 text_color: Some(DISABLED_COLOR),
@@ -250,6 +283,7 @@ pub enum SvgStyle {
     #[default]
     White,
     Black,
+    Disabled,
 }
 
 impl svg::StyleSheet for ApplicationTheme {
@@ -259,8 +293,36 @@ impl svg::StyleSheet for ApplicationTheme {
         let color = match style {
             SvgStyle::White => Some(WHITE),
             SvgStyle::Black => Some(BLACK),
+            SvgStyle::Disabled => Some(DISABLED_COLOR),
         };
         svg::Appearance { color }
+    }
+}
+
+impl scrollable::StyleSheet for ApplicationTheme {
+    type Style = ();
+
+    fn active(&self, _style: &Self::Style) -> scrollable::Scrollbar {
+        scrollable::Scrollbar {
+            background: None,
+            border_radius: 2.0.into(),
+            border_width: 0.0,
+            border_color: Color::TRANSPARENT,
+            scroller: scrollable::Scroller {
+                color: GRAY,
+                border_radius: 2.0.into(),
+                border_width: 0.0,
+                border_color: Color::TRANSPARENT,
+            },
+        }
+    }
+
+    fn hovered(
+        &self,
+        style: &Self::Style,
+        _is_mouse_over_scrollbar: bool,
+    ) -> scrollable::Scrollbar {
+        self.active(style)
     }
 }
 

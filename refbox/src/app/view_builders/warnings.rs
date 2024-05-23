@@ -15,33 +15,25 @@ use iced::{
 
 use uwh_common::game_snapshot::{Color as GameColor, GameSnapshot};
 
-pub(in super::super) fn build_penalty_overview_page<'a>(
+pub(in super::super) fn build_warning_overview_page<'a>(
     snapshot: &GameSnapshot,
-    penalties: BlackWhiteBundle<Vec<PrintablePenaltySummary>>,
+    warnings: BlackWhiteBundle<Vec<PrintableInfractionSummary>>,
     indices: BlackWhiteBundle<usize>,
     mode: Mode,
     clock_running: bool,
 ) -> Element<'a, Message> {
-    let default_pen_len = match mode {
-        Mode::Hockey3V3 => PenaltyKind::ThirtySecond,
-        Mode::Hockey6V6 => PenaltyKind::OneMinute,
-        Mode::Rugby => PenaltyKind::TwoMinute,
-    };
-
     column![
         make_game_time_button(snapshot, false, false, mode, clock_running),
         row![
-            make_penalty_list(
-                penalties.black,
+            make_warning_list(
+                warnings.black.into_iter().rev().collect(),
                 indices.black,
-                GameColor::Black,
-                default_pen_len
+                GameColor::Black
             ),
-            make_penalty_list(
-                penalties.white,
+            make_warning_list(
+                warnings.white.into_iter().rev().collect(),
                 indices.white,
-                GameColor::White,
-                default_pen_len
+                GameColor::White
             )
         ]
         .spacing(SPACING)
@@ -50,21 +42,22 @@ pub(in super::super) fn build_penalty_overview_page<'a>(
             make_button("CANCEL")
                 .style(ButtonStyle::Red)
                 .width(Length::Fill)
-                .on_press(Message::PenaltyOverviewComplete { canceled: true }),
+                .on_press(Message::WarningOverviewComplete { canceled: true }),
             make_button("NEW")
                 .style(ButtonStyle::Blue)
                 .width(Length::Fill)
-                .on_press(Message::KeypadPage(KeypadPage::Penalty(
-                    None,
-                    GameColor::Black,
-                    default_pen_len,
-                    Infraction::Unknown,
-                    false,
-                ))),
+                .on_press(Message::KeypadPage(KeypadPage::WarningAdd {
+                    origin: None,
+                    color: GameColor::Black,
+                    infraction: Infraction::Unknown,
+                    expanded: false,
+                    team_warning: false,
+                    ret_to_overview: true,
+                })),
             make_button("DONE")
                 .style(ButtonStyle::Green)
                 .width(Length::Fill)
-                .on_press(Message::PenaltyOverviewComplete { canceled: false }),
+                .on_press(Message::WarningOverviewComplete { canceled: false }),
         ]
         .spacing(SPACING),
     ]
@@ -73,32 +66,31 @@ pub(in super::super) fn build_penalty_overview_page<'a>(
     .into()
 }
 
-fn make_penalty_list<'a>(
-    penalties: Vec<PrintablePenaltySummary>,
+fn make_warning_list<'a>(
+    warnings: Vec<PrintableInfractionSummary>,
     index: usize,
     color: GameColor,
-    default_pen_len: PenaltyKind,
 ) -> Container<'a, Message> {
-    const PENALTY_LIST_LEN: usize = 3;
+    const WARNING_LIST_LEN: usize = 3;
 
-    let title = text(format!("{} PENALTIES", color.to_string().to_uppercase()))
+    let title = text(format!("{} WARNINGS", color.to_string().to_uppercase()))
         .line_height(LINE_HEIGHT)
         .height(Length::Fill)
         .width(Length::Fill)
         .horizontal_alignment(Horizontal::Center)
         .vertical_alignment(Vertical::Center);
 
-    let num_pens = penalties.len();
+    let num_pens = warnings.len();
 
-    let buttons: CollectArrayResult<_, PENALTY_LIST_LEN> = penalties
+    let buttons: CollectArrayResult<_, WARNING_LIST_LEN> = warnings
         .into_iter()
         .enumerate()
         .skip(index)
         .map(Some)
         .chain([None].into_iter().cycle())
-        .take(PENALTY_LIST_LEN)
-        .map(|pen| {
-            if let Some((i, details)) = pen {
+        .take(WARNING_LIST_LEN)
+        .map(|foul| {
+            if let Some((i, details)) = foul {
                 let mut text = text(details.text)
                     .line_height(LINE_HEIGHT)
                     .vertical_alignment(Vertical::Center)
@@ -117,26 +109,28 @@ fn make_penalty_list<'a>(
                     .height(Length::Fixed(MIN_BUTTON_SIZE))
                     .width(Length::Fill)
                     .style(ButtonStyle::Gray)
-                    .on_press(Message::KeypadPage(KeypadPage::Penalty(
-                        Some((color, i)),
+                    .on_press(Message::KeypadPage(KeypadPage::WarningAdd {
+                        origin: Some((color, i)),
                         color,
-                        details.kind,
-                        details.infraction,
-                        false,
-                    )))
+                        infraction: details.infraction,
+                        expanded: false,
+                        team_warning: details.team,
+                        ret_to_overview: true,
+                    }))
                     .into()
             } else {
                 button(horizontal_space(Length::Shrink))
                     .height(Length::Fixed(MIN_BUTTON_SIZE))
                     .width(Length::Fill)
                     .style(ButtonStyle::Gray)
-                    .on_press(Message::KeypadPage(KeypadPage::Penalty(
-                        None,
+                    .on_press(Message::KeypadPage(KeypadPage::WarningAdd {
+                        origin: None,
                         color,
-                        default_pen_len,
-                        Infraction::Unknown,
-                        false,
-                    )))
+                        infraction: Infraction::Unknown,
+                        expanded: false,
+                        team_warning: false,
+                        ret_to_overview: true,
+                    }))
                     .into()
             }
         })

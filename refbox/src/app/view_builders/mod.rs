@@ -12,6 +12,9 @@ pub(super) use confirmation::*;
 pub mod game_info;
 pub(super) use game_info::*;
 
+pub mod warnings_fouls_summary;
+pub(super) use warnings_fouls_summary::*;
+
 pub mod list_selector;
 pub(super) use list_selector::*;
 
@@ -20,6 +23,12 @@ pub(super) use main_view::*;
 
 pub mod penalties;
 pub(super) use penalties::*;
+
+pub mod warnings;
+pub(super) use warnings::*;
+
+pub mod fouls;
+pub(super) use fouls::*;
 
 pub mod score_edit;
 pub(super) use score_edit::*;

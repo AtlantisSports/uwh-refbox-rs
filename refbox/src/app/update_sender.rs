@@ -63,9 +63,12 @@ impl UpdateSender {
         &self,
         snapshot: GameSnapshot,
         white_on_right: bool,
-    ) -> Result<(), TrySendError<GameSnapshot>> {
+    ) -> Result<(), TrySendError<Box<GameSnapshot>>> {
         self.tx
-            .try_send(ServerMessage::NewSnapshot(snapshot, white_on_right))
+            .try_send(ServerMessage::NewSnapshot(
+                Box::new(snapshot),
+                white_on_right,
+            ))
             .map_err(|e| match e {
                 TrySendError::Full(ServerMessage::NewSnapshot(snapshot, _)) => {
                     TrySendError::Full(snapshot)
@@ -291,7 +294,7 @@ fn error_formatter<T: Debug>(old: TrySendError<T>) -> TrySendError<String> {
 #[derive(Debug)]
 pub enum ServerMessage {
     NewConnection(SendType, TcpStream),
-    NewSnapshot(GameSnapshot, bool),
+    NewSnapshot(Box<GameSnapshot>, bool),
     TriggerFlash,
     Stop,
     SetHideTime(bool),
@@ -483,7 +486,7 @@ impl Server {
                         }
                         Some(ServerMessage::NewSnapshot(snapshot, white_on_right)) => {
                             self.white_on_right = white_on_right;
-                            self.encode(snapshot);
+                            self.encode(*snapshot);
                             self.send_to_workers(false);
                         }
                         Some(ServerMessage::TriggerFlash) => {
@@ -621,7 +624,9 @@ mod test {
     use more_asserts::*;
     use std::io::ErrorKind;
     use tokio::io::AsyncReadExt;
-    use uwh_common::game_snapshot::{GamePeriod, PenaltySnapshot, PenaltyTime, TimeoutSnapshot};
+    use uwh_common::game_snapshot::{
+        GamePeriod, Infraction, InfractionSnapshot, PenaltySnapshot, PenaltyTime, TimeoutSnapshot,
+    };
 
     const BINARY_PORT: u16 = 12345;
     const JSON_PORT: u16 = 12346;
@@ -700,20 +705,74 @@ mod test {
                 PenaltySnapshot {
                     time: PenaltyTime::Seconds(57),
                     player_number: 3,
+                    infraction: Infraction::Unknown,
                 },
                 PenaltySnapshot {
                     time: PenaltyTime::Seconds(117),
                     player_number: 6,
+                    infraction: Infraction::DelayOfGame,
                 },
             ],
             w_penalties: vec![
                 PenaltySnapshot {
                     time: PenaltyTime::Seconds(297),
                     player_number: 12,
+                    infraction: Infraction::FalseStart,
                 },
                 PenaltySnapshot {
                     time: PenaltyTime::TotalDismissal,
                     player_number: 15,
+                    infraction: Infraction::FreeArm,
+                },
+            ],
+            b_warnings: vec![
+                InfractionSnapshot {
+                    infraction: Infraction::Obstruction,
+                    player_number: Some(3),
+                },
+                InfractionSnapshot {
+                    infraction: Infraction::OutOfBounds,
+                    player_number: Some(6),
+                },
+            ],
+            w_warnings: vec![
+                InfractionSnapshot {
+                    infraction: Infraction::DelayOfGame,
+                    player_number: Some(12),
+                },
+                InfractionSnapshot {
+                    infraction: Infraction::StickInfringement,
+                    player_number: None,
+                },
+            ],
+            b_fouls: vec![
+                InfractionSnapshot {
+                    infraction: Infraction::Obstruction,
+                    player_number: Some(3),
+                },
+                InfractionSnapshot {
+                    infraction: Infraction::OutOfBounds,
+                    player_number: Some(6),
+                },
+            ],
+            w_fouls: vec![
+                InfractionSnapshot {
+                    infraction: Infraction::DelayOfGame,
+                    player_number: Some(12),
+                },
+                InfractionSnapshot {
+                    infraction: Infraction::StickInfringement,
+                    player_number: None,
+                },
+            ],
+            equal_fouls: vec![
+                InfractionSnapshot {
+                    infraction: Infraction::DelayOfGame,
+                    player_number: None,
+                },
+                InfractionSnapshot {
+                    infraction: Infraction::StickInfringement,
+                    player_number: None,
                 },
             ],
             is_old_game: true,

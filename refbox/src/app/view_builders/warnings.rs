@@ -50,7 +50,6 @@ pub(in super::super) fn build_warning_overview_page<'a>(
                     origin: None,
                     color: GameColor::Black,
                     infraction: Infraction::Unknown,
-                    expanded: false,
                     team_warning: false,
                     ret_to_overview: true,
                 })),
@@ -113,7 +112,6 @@ fn make_warning_list<'a>(
                         origin: Some((color, i)),
                         color,
                         infraction: details.infraction,
-                        expanded: false,
                         team_warning: details.team,
                         ret_to_overview: true,
                     }))
@@ -127,7 +125,6 @@ fn make_warning_list<'a>(
                         origin: None,
                         color,
                         infraction: Infraction::Unknown,
-                        expanded: false,
                         team_warning: false,
                         ret_to_overview: true,
                     }))

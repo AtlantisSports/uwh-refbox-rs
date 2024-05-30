@@ -3,6 +3,7 @@ use super::{
     style::{
         Button, ButtonStyle, Container, ContainerStyle, Row, SvgStyle, Text, TextStyle, LARGE_TEXT,
         LINE_HEIGHT, MEDIUM_TEXT, MIN_BUTTON_SIZE, PADDING, SMALL_PLUS_TEXT, SMALL_TEXT, SPACING,
+        XS_BUTTON_SIZE,
     },
     Element,
 };
@@ -766,6 +767,15 @@ pub(super) fn make_button<'a, Message: Clone, T: ToString>(label: T) -> Button<'
         .width(Length::Fill)
 }
 
+pub(super) fn make_smaller_button<'a, Message: Clone, T: ToString>(
+    label: T,
+) -> Button<'a, Message> {
+    button(centered_text(label))
+        .padding(PADDING)
+        .height(Length::Fixed(XS_BUTTON_SIZE))
+        .width(Length::Fill)
+}
+
 pub(super) fn make_multi_label_button<'a, Message: 'a + Clone, T: ToString>(
     labels: (T, T),
 ) -> Button<'a, Message> {
@@ -859,101 +869,49 @@ pub(super) fn make_value_button<'a, Message: 'a + Clone, T: ToString, U: ToStrin
     button
 }
 
-pub(super) fn make_penalty_dropdown<'a>(
-    infraction: Infraction,
-    expanded: bool,
-) -> Element<'a, Message> {
+pub(super) fn make_penalty_dropdown<'a>(infraction: Infraction) -> Element<'a, Message> {
     const ROW_LEN: usize = 6;
 
-    let svg_file = if expanded {
-        &include_bytes!("../../../resources/expand_more.svg")[..]
-    } else {
-        &include_bytes!("../../../resources/expand_less.svg")[..]
-    };
-    let closed_button_content = row![
-        text("INFRACTION")
-            .size(MEDIUM_TEXT)
-            .vertical_alignment(Vertical::Center)
-            .horizontal_alignment(Horizontal::Left)
-            .height(Length::Fill)
-            .line_height(LINE_HEIGHT),
-        horizontal_space(Length::Fill),
-        container(
-            Svg::new(svg::Handle::from_memory(infraction.svg_fouls())).style(SvgStyle::Black)
-        )
-        .padding(PADDING)
-        .style(ContainerStyle::LightGray)
-        .height(Length::Fixed(MIN_BUTTON_SIZE))
-        .width(80),
-        horizontal_space(Length::Fixed(SPACING)),
-        container(
-            Svg::new(svg::Handle::from_memory(svg_file,))
-                .style(SvgStyle::White)
-                .height(Length::Fixed(MEDIUM_TEXT * 1.3)),
-        )
-        .width(60)
-        .height(Length::Fill)
-        .style(ContainerStyle::Transparent)
-        .center_y()
-    ];
-
-    let foul_dropdown = button(closed_button_content)
-        .width(Length::Fill)
-        .style(ButtonStyle::Blue);
-
-    if expanded {
-        let foul_buttons = all::<Infraction>().map(|button_infraction| {
-            button(
-                container(
-                    Svg::new(svg::Handle::from_memory(button_infraction.svg_fouls()))
-                        .style(SvgStyle::Black),
-                )
-                .style(ContainerStyle::LightGray),
+    let foul_buttons = all::<Infraction>().map(|button_infraction| {
+        button(
+            container(
+                Svg::new(svg::Handle::from_memory(button_infraction.svg_fouls()))
+                    .style(SvgStyle::Black),
             )
-            .padding(0)
-            .height(Length::Fixed(MIN_BUTTON_SIZE))
-            .width(Length::Fill)
-            .style(if infraction == button_infraction {
-                ButtonStyle::LightGraySelected
-            } else {
-                ButtonStyle::LightGray
-            })
-            .on_press(Message::ChangeInfraction(button_infraction))
-        });
+            .style(ContainerStyle::Transparent),
+        )
+        .padding(0)
+        .height(Length::Fixed(MIN_BUTTON_SIZE))
+        .width(Length::Fill)
+        .style(if infraction == button_infraction {
+            ButtonStyle::LightGraySelected
+        } else {
+            ButtonStyle::LightGray
+        })
+        .on_press(Message::ChangeInfraction(button_infraction))
+    });
 
-        let mut first_row = row![].spacing(SPACING);
-        for button in foul_buttons.clone().take(ROW_LEN) {
-            first_row = first_row.push(button);
-        }
-        let mut second_row = row![].spacing(SPACING);
-        for button in foul_buttons.skip(ROW_LEN).take(ROW_LEN) {
-            second_row = second_row.push(button);
-        }
-
-        let open_button_content = column![
-            foul_dropdown
-                .padding(0)
-                .height(Length::Fixed(MIN_BUTTON_SIZE - (2.0 * PADDING)))
-                .on_press(Message::FoulSelectExpanded(false)),
-            vertical_space(Length::Fixed(SPACING)),
-            first_row,
-            vertical_space(Length::Fixed(SPACING)),
-            second_row,
-        ]
-        .padding(0);
-
-        container(open_button_content)
-            .padding(PADDING)
-            .width(Length::Fill)
-            .style(ContainerStyle::Blue)
-            .into()
-    } else {
-        foul_dropdown
-            .padding(PADDING)
-            .height(Length::Fixed(MIN_BUTTON_SIZE))
-            .on_press(Message::FoulSelectExpanded(true))
-            .into()
+    let mut first_row = row![].spacing(SPACING);
+    for button in foul_buttons.clone().take(ROW_LEN) {
+        first_row = first_row.push(button);
     }
+    let mut second_row = row![].spacing(SPACING);
+    for button in foul_buttons.skip(ROW_LEN).take(ROW_LEN) {
+        second_row = second_row.push(button);
+    }
+
+    let open_button_content = column![
+        first_row,
+        vertical_space(Length::Fixed(SPACING)),
+        second_row,
+    ]
+    .padding(0);
+
+    container(open_button_content)
+        .padding(PADDING)
+        .width(Length::Fill)
+        .style(ContainerStyle::Blue)
+        .into()
 }
 
 pub fn make_warning_container<'a>(

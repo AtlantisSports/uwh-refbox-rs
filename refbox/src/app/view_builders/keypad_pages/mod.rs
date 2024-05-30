@@ -166,8 +166,8 @@ pub(in super::super) fn build_keypad_page<'a>(
             .padding(PADDING),
             match page {
                 KeypadPage::AddScore(color) => make_score_add_page(color),
-                KeypadPage::Penalty(origin, color, kind, foul, expanded) => {
-                    make_penalty_edit_page(origin, color, kind, config, foul, expanded)
+                KeypadPage::Penalty(origin, color, kind, foul) => {
+                    make_penalty_edit_page(origin, color, kind, config, foul)
                 }
                 KeypadPage::GameNumber => make_game_number_edit_page(),
                 KeypadPage::TeamTimeouts(dur) => make_team_timeout_edit_page(dur),
@@ -175,24 +175,16 @@ pub(in super::super) fn build_keypad_page<'a>(
                     origin,
                     color,
                     infraction,
-                    expanded,
                     ret_to_overview,
-                } => make_foul_add_page(origin, color, infraction, expanded, ret_to_overview),
+                } => make_foul_add_page(origin, color, infraction, ret_to_overview),
                 KeypadPage::WarningAdd {
                     origin,
                     color,
                     infraction,
-                    expanded,
                     team_warning,
                     ret_to_overview,
-                } => make_warning_add_page(
-                    origin,
-                    color,
-                    infraction,
-                    expanded,
-                    team_warning,
-                    ret_to_overview
-                ),
+                } =>
+                    make_warning_add_page(origin, color, infraction, team_warning, ret_to_overview),
             }
         ]
         .spacing(SPACING)

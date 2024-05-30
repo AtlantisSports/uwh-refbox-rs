@@ -37,7 +37,6 @@ pub(in super::super) fn build_main_view<'a>(
                 origin: None,
                 color: GameColor::Black,
                 infraction: Infraction::Unknown,
-                expanded: false,
                 team_warning: false,
                 ret_to_overview: false,
             }))
@@ -51,7 +50,6 @@ pub(in super::super) fn build_main_view<'a>(
                 origin: None,
                 color: None,
                 infraction: Infraction::Unknown,
-                expanded: false,
                 ret_to_overview: false,
             }))
     };

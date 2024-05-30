@@ -12,6 +12,7 @@ pub const BORDER_WIDTH: f32 = 6.0;
 pub const SPACING: f32 = 8.0;
 pub const PADDING: f32 = 8.0;
 pub const MIN_BUTTON_SIZE: f32 = 89.0;
+pub const XS_BUTTON_SIZE: f32 = 86.0;
 
 pub const SMALL_TEXT: f32 = 19.0;
 pub const SMALL_PLUS_TEXT: f32 = 29.0;

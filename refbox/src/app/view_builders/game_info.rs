@@ -117,6 +117,8 @@ fn details_strings(
             next_game = next_game
         );
 
+        left_string += "\n";
+
         snapshot.next_game_number
     } else {
         let game;

@@ -86,10 +86,11 @@ fn make_penalty_list<'a>(
     const PENALTY_LIST_LEN: usize = 3;
 
     let color_text = match color {
-        GameColor::Black => fl!("dark-team-name-caps"),
-        GameColor::White => fl!("light-team-name-caps"),
+        GameColor::Black => fl!("black-penalties"),
+        GameColor::White => fl!("white-penalties"),
     };
-    let title = text(fl!("penalty_color", color = color_text))
+
+    let title = text(color_text.to_string().to_uppercase())
         .line_height(LINE_HEIGHT)
         .height(Length::Fill)
         .width(Length::Fill)

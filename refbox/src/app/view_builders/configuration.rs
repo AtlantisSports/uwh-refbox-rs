@@ -223,7 +223,7 @@ fn make_main_config_page<'a>(
             )
             .style(ButtonStyle::LightGray),
             make_message_button(
-                "APP OPTIONS",
+                fl!("app-options"),
                 Some(Message::ChangeConfigPage(ConfigPage::App)),
             )
             .style(ButtonStyle::LightGray),
@@ -233,12 +233,12 @@ fn make_main_config_page<'a>(
         .height(Length::Fill),
         row![
             make_message_button(
-                "DISPLAY OPTIONS",
+                fl!("display-options"),
                 Some(Message::ChangeConfigPage(ConfigPage::Display)),
             )
             .style(ButtonStyle::LightGray),
             make_message_button(
-                "SOUND OPTIONS",
+                fl!("sound-options"),
                 Some(Message::ChangeConfigPage(ConfigPage::Sound)),
             )
             .style(ButtonStyle::LightGray),
@@ -407,7 +407,7 @@ fn make_event_config_page<'a>(
                     if config.single_half {
                         fl!("game-length")
                     } else {
-                        fl!("half-length")
+                        fl!("half-length-full")
                     },
                     time_string(config.half_play_duration),
                     (false, true),
@@ -578,7 +578,7 @@ fn make_app_config_page<'a>(
         row![
             make_value_button(
                 fl!("app-mode"),
-                settings.mode.to_string().to_uppercase(),
+                settings.mode.to_string(),
                 (false, true),
                 Some(Message::CycleParameter(CyclingParameter::Mode)),
             ),
@@ -595,7 +595,7 @@ fn make_app_config_page<'a>(
         .height(Length::Fill),
         row![
             make_value_button(
-                "TRACK FOULS\nAND WARNINGS",
+                fl!("track-fouls-and-warnings"),
                 bool_string(*track_fouls_and_warnings),
                 (false, true),
                 Some(Message::ToggleBoolParameter(
@@ -618,7 +618,7 @@ fn make_app_config_page<'a>(
         row![
             horizontal_space(Length::Fill),
             horizontal_space(Length::Fill),
-            make_button("DONE")
+            make_button(fl!("done"))
                 .style(ButtonStyle::Green)
                 .width(Length::Fill)
                 .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
@@ -705,7 +705,7 @@ fn make_display_config_page<'a>(
         row![
             horizontal_space(Length::Fill),
             horizontal_space(Length::Fill),
-            make_button("DONE")
+            make_button(fl!("done"))
                 .style(ButtonStyle::Green)
                 .width(Length::Fill)
                 .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
@@ -738,7 +738,7 @@ fn make_sound_config_page<'a>(
             ),
             make_value_button(
                 fl!("whistle-volume"),
-                sound.whistle_vol.to_string().to_uppercase(),
+                sound.whistle_vol.to_string(),
                 (false, true),
                 if sound.sound_enabled && sound.whistle_enabled {
                     Some(Message::CycleParameter(CyclingParameter::AlertVolume))
@@ -768,7 +768,7 @@ fn make_sound_config_page<'a>(
             ),
             make_value_button(
                 fl!("above-water-volume"),
-                sound.above_water_vol.to_string().to_uppercase(),
+                sound.above_water_vol.to_string(),
                 (false, true),
                 if sound.sound_enabled {
                     Some(Message::CycleParameter(CyclingParameter::AboveWaterVol))
@@ -803,7 +803,7 @@ fn make_sound_config_page<'a>(
             ),
             make_value_button(
                 fl!("underwater-volume"),
-                sound.under_water_vol.to_string().to_uppercase(),
+                sound.under_water_vol.to_string(),
                 (false, true),
                 if sound.sound_enabled {
                     Some(Message::CycleParameter(CyclingParameter::UnderWaterVol))

@@ -82,7 +82,8 @@ fn make_foul_list<'a>(
     const FOUL_LIST_LEN: usize = 3;
 
     let title = match color {
-        Some(color) => color.to_string().to_uppercase(),
+        Some(GameColor::Black) => fl!("dark-team-name-caps"),
+        Some(GameColor::White) => fl!("light-team-name-caps"),
         None => fl!("equal"),
     };
 

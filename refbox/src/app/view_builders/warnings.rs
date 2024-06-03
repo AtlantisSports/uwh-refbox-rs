@@ -77,15 +77,17 @@ fn make_warning_list<'a>(
 ) -> Container<'a, Message> {
     const WARNING_LIST_LEN: usize = 3;
 
-    let title = text(&fl!(
-        "color-warnings",
-        color = color.to_string().to_uppercase()
-    ))
-    .line_height(LINE_HEIGHT)
-    .height(Length::Fill)
-    .width(Length::Fill)
-    .horizontal_alignment(Horizontal::Center)
-    .vertical_alignment(Vertical::Center);
+    let color_text = match color {
+        GameColor::Black => fl!("black-warnings"),
+        GameColor::White => fl!("white-warnings"),
+    };
+
+    let title = text(color_text.to_string().to_uppercase())
+        .line_height(LINE_HEIGHT)
+        .height(Length::Fill)
+        .width(Length::Fill)
+        .horizontal_alignment(Horizontal::Center)
+        .vertical_alignment(Vertical::Center);
 
     let num_pens = warnings.len();
 

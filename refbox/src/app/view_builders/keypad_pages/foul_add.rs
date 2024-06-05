@@ -10,7 +10,6 @@ pub(super) fn make_foul_add_page<'a>(
     origin: Option<(Option<GameColor>, usize)>,
     color: Option<GameColor>,
     foul: Infraction,
-    expanded: bool,
     ret_to_overview: bool,
 ) -> Element<'a, Message> {
     let (black_style, white_style, equal_style) = match color {
@@ -81,7 +80,7 @@ pub(super) fn make_foul_add_page<'a>(
         ]
         .spacing(SPACING),
         vertical_space(Length::Fixed(SPACING)),
-        make_penalty_dropdown(foul, expanded),
+        make_penalty_dropdown(foul),
         vertical_space(Length::Fill),
         exit_row,
     ]

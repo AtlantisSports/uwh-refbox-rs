@@ -46,7 +46,6 @@ pub enum Message {
     },
     ChangeKind(PenaltyKind),
     ChangeInfraction(Infraction),
-    FoulSelectExpanded(bool),
     PenaltyEditComplete {
         canceled: bool,
         deleted: bool,
@@ -108,7 +107,6 @@ impl Message {
         match self {
             Self::NewSnapshot(_)
             | Self::ChangeTime { .. }
-            | Self::FoulSelectExpanded(_)
             | Self::ChangeScore { .. }
             | Self::Scroll { .. }
             | Self::KeypadButtonPress(_)
@@ -237,7 +235,6 @@ pub enum KeypadPage {
         GameColor,
         PenaltyKind,
         Infraction,
-        bool,
     ),
     GameNumber,
     TeamTimeouts(Duration),
@@ -245,14 +242,12 @@ pub enum KeypadPage {
         origin: Option<(Option<GameColor>, usize)>,
         color: Option<GameColor>,
         infraction: Infraction,
-        expanded: bool,
         ret_to_overview: bool,
     },
     WarningAdd {
         origin: Option<(GameColor, usize)>,
         color: GameColor,
         infraction: Infraction,
-        expanded: bool,
         team_warning: bool,
         ret_to_overview: bool,
     },
@@ -262,7 +257,7 @@ impl KeypadPage {
     pub fn max_val(&self) -> u16 {
         match self {
             Self::AddScore(_)
-            | Self::Penalty(_, _, _, _, _)
+            | Self::Penalty(_, _, _, _)
             | Self::FoulAdd { .. }
             | Self::WarningAdd { .. } => 99,
             Self::GameNumber => 9999,
@@ -273,7 +268,7 @@ impl KeypadPage {
     pub fn text(&self) -> &'static str {
         match self {
             Self::AddScore(_)
-            | Self::Penalty(_, _, _, _, _)
+            | Self::Penalty(_, _, _, _)
             | Self::FoulAdd { .. }
             | Self::WarningAdd { .. } => "PLAYER\nNUMBER:",
             Self::GameNumber => "GAME\nNUMBER:",

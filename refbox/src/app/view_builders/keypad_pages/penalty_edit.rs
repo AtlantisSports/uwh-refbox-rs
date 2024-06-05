@@ -1,9 +1,8 @@
 use super::{style::Element, *};
 use iced::{
-    widget::{column, row, vertical_space},
+    widget::{column, row},
     Length,
 };
-
 use uwh_common::game_snapshot::Color as GameColor;
 
 pub(super) fn make_penalty_edit_page<'a>(
@@ -12,7 +11,6 @@ pub(super) fn make_penalty_edit_page<'a>(
     kind: PenaltyKind,
     config: &Config,
     infraction: Infraction,
-    expanded: bool,
 ) -> Element<'a, Message> {
     let (black_style, white_style) = match color {
         GameColor::Black => (ButtonStyle::BlackSelected, ButtonStyle::White),
@@ -76,7 +74,7 @@ pub(super) fn make_penalty_edit_page<'a>(
         )
     };
 
-    let mut exit_row = row![make_button("CANCEL")
+    let mut exit_row = row![make_smaller_button("CANCEL")
         .style(ButtonStyle::Red)
         .width(Length::Fill)
         .on_press(Message::PenaltyEditComplete {
@@ -87,7 +85,7 @@ pub(super) fn make_penalty_edit_page<'a>(
 
     if origin.is_some() {
         exit_row = exit_row.push(
-            make_button("DELETE")
+            make_smaller_button("DELETE")
                 .style(ButtonStyle::Orange)
                 .width(Length::Fill)
                 .on_press(Message::PenaltyEditComplete {
@@ -98,7 +96,7 @@ pub(super) fn make_penalty_edit_page<'a>(
     }
 
     exit_row = exit_row.push(
-        make_button("DONE")
+        make_smaller_button("DONE")
             .style(ButtonStyle::Green)
             .width(Length::Fill)
             .on_press(Message::PenaltyEditComplete {
@@ -124,39 +122,36 @@ pub(super) fn make_penalty_edit_page<'a>(
     let orange_label = labels[2];
 
     let mut content = column![row![
-        make_button("BLACK")
+        make_smaller_button("BLACK")
             .style(black_style)
             .on_press(Message::ChangeColor(Some(GameColor::Black))),
-        make_button("WHITE")
+        make_smaller_button("WHITE")
             .style(white_style)
             .on_press(Message::ChangeColor(Some(GameColor::White))),
     ]
-    .spacing(SPACING),]
+    .spacing(SPACING)]
     .spacing(SPACING);
 
-    if config.track_fouls_and_warnings {
-        content = content.push(make_penalty_dropdown(infraction, expanded))
-    }
+    content = content.push(make_penalty_dropdown(infraction));
 
-    if !expanded {
-        content = content.push(vertical_space(Length::Fill)).push(
-            row![
-                make_button(green_label)
-                    .style(green_style)
-                    .on_press(Message::ChangeKind(green)),
-                make_button(yellow_label)
-                    .style(yellow_style)
-                    .on_press(Message::ChangeKind(yellow)),
-                make_button(orange_label)
-                    .style(orange_style)
-                    .on_press(Message::ChangeKind(orange)),
-                make_button("TD")
-                    .style(td_style)
-                    .on_press(Message::ChangeKind(PenaltyKind::TotalDismissal)),
-            ]
-            .spacing(SPACING),
-        );
-    }
-    content = content.push(vertical_space(Length::Fill)).push(exit_row);
+    content = content.push(
+        row![
+            make_smaller_button(green_label)
+                .style(green_style)
+                .on_press(Message::ChangeKind(green)),
+            make_smaller_button(yellow_label)
+                .style(yellow_style)
+                .on_press(Message::ChangeKind(yellow)),
+            make_smaller_button(orange_label)
+                .style(orange_style)
+                .on_press(Message::ChangeKind(orange)),
+            make_smaller_button("TD")
+                .style(td_style)
+                .on_press(Message::ChangeKind(PenaltyKind::TotalDismissal)),
+        ]
+        .spacing(SPACING),
+    );
+
+    content = content.push(exit_row);
     content.into()
 }

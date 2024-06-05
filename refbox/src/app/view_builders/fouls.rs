@@ -55,7 +55,6 @@ pub(in super::super) fn build_foul_overview_page<'a>(
                     origin: None,
                     color: None,
                     infraction: Infraction::Unknown,
-                    expanded: false,
                     ret_to_overview: true,
                 })),
             make_button("DONE")
@@ -122,7 +121,6 @@ fn make_foul_list<'a>(
                         origin: Some((color, i)),
                         color,
                         infraction: details.infraction,
-                        expanded: false,
                         ret_to_overview: true,
                     }))
                     .into()
@@ -135,7 +133,6 @@ fn make_foul_list<'a>(
                         origin: None,
                         color,
                         infraction: Infraction::Unknown,
-                        expanded: false,
                         ret_to_overview: true,
                     }))
                     .into()

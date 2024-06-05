@@ -956,7 +956,7 @@ impl Application for RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
             }
             Message::ChangeKind(new_kind) => {
-                if let AppState::KeypadPage(KeypadPage::Penalty(_, _, ref mut kind, _, _), _) =
+                if let AppState::KeypadPage(KeypadPage::Penalty(_, _, ref mut kind, _), _) =
                     self.app_state
                 {
                     *kind = new_kind;
@@ -967,10 +967,7 @@ impl Application for RefBoxApp {
             }
             Message::ChangeInfraction(new_infraction) => {
                 match self.app_state {
-                    AppState::KeypadPage(
-                        KeypadPage::Penalty(_, _, _, ref mut infraction, _),
-                        _,
-                    )
+                    AppState::KeypadPage(KeypadPage::Penalty(_, _, _, ref mut infraction), _)
                     | AppState::KeypadPage(
                         KeypadPage::FoulAdd {
                             ref mut infraction, ..
@@ -989,34 +986,11 @@ impl Application for RefBoxApp {
                 }
                 trace!("AppState changed to {:?}", self.app_state);
             }
-            Message::FoulSelectExpanded(expanded) => {
-                match self.app_state {
-                    AppState::KeypadPage(
-                        KeypadPage::FoulAdd {
-                            expanded: ref mut old,
-                            ..
-                        },
-                        _,
-                    )
-                    | AppState::KeypadPage(KeypadPage::Penalty(_, _, _, _, ref mut old), _)
-                    | AppState::KeypadPage(
-                        KeypadPage::WarningAdd {
-                            expanded: ref mut old,
-                            ..
-                        },
-                        _,
-                    ) => {
-                        info!("Foul select expanded set to: {expanded}");
-                        *old = expanded;
-                    }
-                    _ => unreachable!(),
-                }
-                trace!("AppState changed to {:?}", self.app_state);
-            }
+
             Message::PenaltyEditComplete { canceled, deleted } => {
                 if !canceled {
                     if let AppState::KeypadPage(
-                        KeypadPage::Penalty(origin, color, kind, infraction, _),
+                        KeypadPage::Penalty(origin, color, kind, infraction),
                         player_num,
                     ) = self.app_state
                     {
@@ -1163,10 +1137,10 @@ impl Application for RefBoxApp {
             Message::KeypadPage(page) => {
                 let init_val = match page {
                     KeypadPage::AddScore(_)
-                    | KeypadPage::Penalty(None, _, _, _, _)
+                    | KeypadPage::Penalty(None, _, _, _)
                     | KeypadPage::FoulAdd { origin: None, .. }
                     | KeypadPage::WarningAdd { origin: None, .. } => 0,
-                    KeypadPage::Penalty(Some((color, index)), _, _, _, _) => {
+                    KeypadPage::Penalty(Some((color, index)), _, _, _) => {
                         self.pen_edit.get_item(color, index).unwrap().player_number as u16
                     }
                     KeypadPage::WarningAdd {
@@ -1227,7 +1201,7 @@ impl Application for RefBoxApp {
             Message::ChangeColor(new_color) => {
                 match self.app_state {
                     AppState::KeypadPage(KeypadPage::AddScore(ref mut color), _)
-                    | AppState::KeypadPage(KeypadPage::Penalty(_, ref mut color, _, _, _), _)
+                    | AppState::KeypadPage(KeypadPage::Penalty(_, ref mut color, _, _), _)
                     | AppState::KeypadPage(KeypadPage::WarningAdd { ref mut color, .. }, _) => {
                         *color = new_color.expect("Invalid color value");
                     }

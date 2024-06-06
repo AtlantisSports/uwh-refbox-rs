@@ -28,35 +28,41 @@ none-selected = Ninguno seleccionado
 loading = Cargando...
 game = Juego:
 tournament-options = OPCIONES DE TORNEO
+app-options = OPCIONES DE APP
+display-options = OPCIONES DE PANTALLA
+sound-options = OPCIONES DE SONIDO
 app-mode = MODO DE
     LA APLICACIÓN
 hide-time-for-last-15-seconds = OCULTAR TIEMPO PARA
     LOS ÚLTIMOS 15 SEGUNDOS
-track-cap-number-of-scorer = SEGUIR NÚMERO DE
-    GORRO DEL ANOTADOR
+track-cap-number-of-scorer = REGISTRAR NÚMERO
+    DEL ANOTADOR
+track-fouls-and-warnings = REGISTRAR FALTAS
+    Y ADVERTENCIAS
 tournament = TORNEO:
 court = CANCHA:
-half-length-full = DURACIÓN DE LA MITAD:
-overtime-allowed = TIEMPO EXTRA
+half-length-full = DURACIÓN DE
+    UNA MITAD:
+overtime-allowed = TIEMPO EXTRA (T/E)
     PERMITIDO:
-sudden-death-allowed = MUERTE SÚBITA
+sudden-death-allowed = MUERTE SÚBITA (M/S)
     PERMITIDA:
-half-time-length = DURACIÓN DEL MEDIO
-    TIEMPO:
-pre-ot-break-length = DURACIÓN DEL DESCANSO
-    PREVIO AL TIEMPO EXTRA:
-pre-sd-break-length = DURACIÓN DEL DESCANSO
-    PREVIO A MUERTE SÚBITA:
+half-time-length = DURACIÓN DEL
+    MEDIO TIEMPO:
+pre-ot-break-length = DURACIÓN
+    PREVIA AL T/E:
+pre-sd-break-length = DURACIÓN PREVIA
+    A LA M/S:
 nominal-break-between-games = DESCANSO
     ENTRE JUEGOS:
 ot-half-length = DURACIÓN DE LA
-    MITAD DEL T/O:
-num-team-tos-allowed-per-half = NÚMERO DE T/O
-    PERMITIDOS POR MITAD:
+    MITAD DEL T/M:
+num-team-tos-allowed-per-half = NÚMERO DE T/M
+    POR MITAD:
 minimum-brk-btwn-games = DESCANSO MÍNIMO
     ENTRE JUEGOS:
 ot-half-time-length = DURACIÓN DEL MEDIO
-    TIEMPO DE PRORROGA
+    TIEMPO DEL T/E
 using-uwh-portal = USANDO UWHPORTAL:
 starting-sides = LADOS INICIALES
 sound-enabled = SONIDO
@@ -160,13 +166,14 @@ select-game = SELECCIONAR PARTIDO
 add-warning = AÑADIR AVISO
 add-foul = AÑADIR FALTA
 start-now = EMPEZAR AHORA
-end-timeout = TERMINAR TIEMPO DE ESPERA
+end-timeout = TERMINAR TIEMPO MUERTO
 warnings = AVISOS
-penalties = PENALIZACIONES
+penalties = EXPULSIONES
 score = PUNTUACIÓN
 
 # Penalties
-penalty_color = { $color } PENALIZACIONES
+black-penalties = EXPULSIONES E. NEGRO
+white-penalties = EXPULSIONES E. BLANCO
 
 # Score edit
 final-score = Por favor ingrese la puntuación final
@@ -177,7 +184,7 @@ end-timeout-line-1 = TERMINAR
 end-timeout-line-2 = TIEMPO MUERTO
 switch-to = CAMBIAR A
 ref = ÁRBITRO
-penalty = PENALIZACIÓN
+penalty = EXPULSIÓN
 shot = TIRO
 pen-shot = TIRO PENAL
 ## Penalty string
@@ -201,7 +208,7 @@ ref-list = Árbitro principal: { $chief_ref }
     Árbitro de agua 3: { $water_ref_3 }
 ## Game time button
 next-game = PRÓXIMO JUEGO
-first-half = PRIMERA MITAD
+first-half = 1a MITAD
 half-time = MEDIO TIEMPO
 second-half = SEGUNDA MITAD
 pre-ot-break-full = DESCANSO PREVIO AL TIEMPO EXTRA
@@ -235,7 +242,8 @@ edit-warnings = EDITAR AVISO
 edit-fouls = EDITAR FALTAS
 
 # Warnings
-color-warnings = { $color } AVISOS
+black-warnings = AVISOS E. NEGRO
+white-warnings = AVISOS E. BLANCO
 
 # Message
 player-number = NÚMERO
@@ -244,3 +252,14 @@ game-number = NÚMERO
     DE JUEGO:
 num-tos-per-half = NÚMERO DE T/Ms
     POR MITAD:
+
+# Sound Controller - mod
+off = APAGADO
+low = BAJO
+medium = MEDIO
+high = ALTO
+max = MÁXIMO
+# Config
+hockey6v6 = HOCKEY 6vs6
+hockey3v3 = HOCKEY 3vs3
+rugby = RUGBY

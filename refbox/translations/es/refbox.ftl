@@ -15,7 +15,8 @@ new = NUEVO
 total-dismissial = T
 
 # Team Timeout Edit
-timeout-length = DURACIÓN DEL TIEMPO DE ESPERA
+timeout-length = DURACIÓN DEL
+    TIEMPO DE ESPERA
 
 # Warning Add
 team-warning = AVISO
@@ -61,7 +62,7 @@ num-team-tos-allowed-per-half = NÚMERO DE T/M
     POR MITAD:
 minimum-brk-btwn-games = DESCANSO MÍNIMO
     ENTRE JUEGOS:
-ot-half-time-length = DURACIÓN DEL MEDIO
+ot-half-time-length = DUR. MEDIO
     TIEMPO DEL T/E
 using-uwh-portal = USANDO UWHPORTAL:
 starting-sides = LADOS INICIALES
@@ -88,21 +89,27 @@ sound = SONIDO: { $sound_text }
 
 waiting = EN ESPERA
 add = AÑADIR
-half-length = DURACIÓN DE LA MITAD
+half-length = DURACIÓN DE
+    UNA MITAD
 length-of-half-during-regular-play = La duración de una mitad durante el juego regular
-half-time-lenght = DURACIÓN DEL MEDIO TIEMPO
+half-time-lenght = DURACIÓN DEL
+    MEDIO TIEMPO
 length-of-half-time-period = La duración del período de medio tiempo
 nom-break = DESCANSO NOMINAL
-system-will-keep-game-times-spaced = El sistema intentará mantener los tiempos de inicio de los juegos espaciados uniformemente, con el tiempo total de uno al siguiente siendo 2 * [Duración de la Mitad] + [Duración del Medio Tiempo] + [Tiempo Nominal Entre Juegos] (ejemplo: si los juegos tienen [Duración de la Mitad] = 15m, [Duración del Medio Tiempo] = 3m, y [Tiempo Nominal Entre Juegos] = 12m, el tiempo desde el inicio de un juego al siguiente será de 45m. Cualquier tiempo de espera tomado, u otras paradas de reloj, reducirán el tiempo de 12m hasta alcanzar el tiempo mínimo entre juegos).
+system-will-keep-game-times-spaced = El sistema intentará mantener los tiempos de inicio de los juegos espaciados uniformemente, con el tiempo total de un juego al siguiente siendo 2 * [Duración de la Mitad] + [Duración del Medio Tiempo] + [Tiempo Nominal Entre Juegos] (ejemplo: si los juegos tienen [Duración de la Mitad] = 15m, [Duración del Medio Tiempo] = 3m, y [Tiempo Nominal Entre Juegos] = 12m, el tiempo desde el inicio de un juego al siguiente será de 45m. Cualquier tiempo de espera tomado, u otras paradas de reloj, reducirán el tiempo de 12m hasta alcanzar el tiempo mínimo entre juegos).
 min-break = DESCANSO MÍNIMO
-min-time-btwn-games = Si un juego dura más de lo programado, este es el tiempo mínimo entre juegos que el sistema asignará. Si los juegos se retrasan, el sistema intentará automáticamente ponerse al día después de los juegos subsecuentes, siempre respetando este tiempo mínimo entre juegos.
-pre-ot-break-abreviated = DESCANSO PREVIO A LA PRORROGA
+min-time-btwn-games = Si un juego dura más de lo programado, este es el tiempo mínimo entre juegos que el sistema asignará. Si los juegos se retrasan, el sistema intentará automáticamente reajustarse después de los juegos subsecuentes, siempre respetando este tiempo mínimo entre juegos.
+pre-ot-break-abreviated = DESCANSO PREVIO
+    A LA PRORROGA
 pre-sd-brk = Si se habilita el tiempo extra y es necesario, esta es la duración del descanso entre la segunda y la primera mitad del tiempo extra
-ot-half-len = DURACIÓN DE LA MITAD DEL TIEMPO EXTRA
+ot-half-len = DURACIÓN DE LA
+    MITAD DEL T/E
 time-during-ot = La duración de una mitad durante el tiempo extra
-ot-half-tm-len = DURACIÓN DEL MEDIO TIEMPO DEL TIEMPO EXTRA
+ot-half-tm-len = DURACIÓN DEL MEDIO
+    TIEMPO DEL T/E
 len-of-overtime-halftime = La duración del medio tiempo durante el tiempo extra
-pre-sd-break = DESCANSO PREVIO A MUERTE SÚBITA
+pre-sd-break = DESCANSO PREVIO
+    A MUERTE SÚBITA
 pre-sd-len = La duración del descanso entre el período de juego precedente y la muerte súbita
 help = AYUDA:
 
@@ -165,7 +172,7 @@ select-game = SELECCIONAR PARTIDO
 # Main View
 add-warning = AÑADIR AVISO
 add-foul = AÑADIR FALTA
-start-now = EMPEZAR AHORA
+start-now = EMPEZAR
 end-timeout = TERMINAR TIEMPO MUERTO
 warnings = AVISOS
 penalties = EXPULSIONES
@@ -254,11 +261,11 @@ num-tos-per-half = NÚMERO DE T/Ms
     POR MITAD:
 
 # Sound Controller - mod
-off = APAGADO
+off = NO
 low = BAJO
 medium = MEDIO
 high = ALTO
-max = MÁXIMO
+max = MÁX
 # Config
 hockey6v6 = HOCKEY 6vs6
 hockey3v3 = HOCKEY 3vs3

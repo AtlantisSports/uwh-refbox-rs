@@ -28,12 +28,17 @@ none-selected = None Selected
 loading = Loading...
 game = Game:
 tournament-options = TOURNAMENT OPTIONS
+app-options = APP OPTIONS
+display-options = DISPLAY OPTIONS
+sound-options = SOUND OPTIONS
 app-mode = APP
     MODE
 hide-time-for-last-15-seconds = HIDE TIME FOR
     LAST 15 SECONDS
 track-cap-number-of-scorer = TRACK CAP NUMBER
     OF SCORER
+track-fouls-and-warnings = TRACK FOULS
+    AND WARNINGS
 tournament = TOURNAMENT:
 court = COURT:
 half-length-full = HALF LENGTH:
@@ -177,7 +182,8 @@ penalties = PENALTIES
 score = SCORE
 
 # Penalties
-penalty_color = { $color } PENALTIES
+black-penalties = BLACK PENALTIES
+white-penalties = WHITE PENALTIES
 
 # Score edit
 final-score = Please enter the final score
@@ -246,7 +252,8 @@ edit-warnings = EDIT WARNINGS
 edit-fouls = EDIT FOULS
 
 # Warnings
-color-warnings = { $color } WARNINGS
+black-warnings = BLACK WARNINGS
+white-warnings = WHITE WARNINGS
 
 # Message
 player-number = PLAYER
@@ -255,3 +262,15 @@ game-number = GAME
     NUMBER:
 num-tos-per-half = NUM T/Os
     PER HALF:
+
+# Sound Controller - mod
+off = OFF
+low = LOW
+medium = MEDIUM
+high = HIGH
+max = MAX
+
+# Config
+hockey6v6 = HOCKEY6V6
+hockey3v3 = HOCKEY3V3
+rugby = RUGBY

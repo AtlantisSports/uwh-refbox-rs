@@ -1,3 +1,4 @@
+use super::fl;
 #[cfg(target_os = "linux")]
 use arrayref::array_ref;
 #[cfg(target_os = "linux")]
@@ -7,7 +8,7 @@ use core::{
     task::{Context, Poll},
 };
 use derivative::Derivative;
-use enum_derive_2018::{EnumDisplay, EnumFromStr};
+use enum_derive_2018::EnumFromStr;
 #[cfg(target_os = "linux")]
 use futures_lite::future::FutureExt;
 use log::*;
@@ -15,7 +16,7 @@ use macro_attr_2018::macro_attr;
 #[cfg(target_os = "linux")]
 use rppal::gpio::{Gpio, InputPin, Level, Trigger};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::{fmt::Display, sync::Arc};
 #[cfg(target_os = "linux")]
 use tokio::{
     sync::watch::Receiver,
@@ -172,7 +173,7 @@ impl SoundSettings {
 }
 
 macro_attr! {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Derivative, EnumDisplay!, EnumFromStr!)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Derivative, EnumFromStr!)]
     #[derivative(Default)]
     pub enum Volume {
         Off,
@@ -192,6 +193,18 @@ impl Volume {
             Self::Medium => 10f32.powf(-0.8), // 8dB lower than max
             Self::High => 10f32.powf(-0.4),   // 4dB lower than max
             Self::Max => 1.0,
+        }
+    }
+}
+
+impl Display for Volume {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Off => f.write_str(&fl!("off")),
+            Self::Low => f.write_str(&fl!("low")),
+            Self::Medium => f.write_str(&fl!("medium")),
+            Self::High => f.write_str(&fl!("high")),
+            Self::Max => f.write_str(&fl!("max")),
         }
     }
 }

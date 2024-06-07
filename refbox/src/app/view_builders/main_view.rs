@@ -257,7 +257,7 @@ pub(in super::super) fn build_main_view<'a>(
     .style(ButtonStyle::Black);
 
     let mut black_new_score_btn =
-        make_multi_label_button((fl!("score"), fl!("dark-team-name-caps")))
+        make_multi_label_button((fl!("dark-score-line-1"), fl!("dark-score-line-2")))
             .style(ButtonStyle::Black);
 
     let mut white_score_btn = button(
@@ -276,7 +276,7 @@ pub(in super::super) fn build_main_view<'a>(
     .style(ButtonStyle::White);
 
     let mut white_new_score_btn =
-        make_multi_label_button((fl!("score"), fl!("light-team-name-caps")))
+        make_multi_label_button((fl!("light-score-line-1"), fl!("light-score-line-2")))
             .style(ButtonStyle::White);
 
     if snapshot.current_period != GamePeriod::BetweenGames {

@@ -21,8 +21,8 @@ timeout-length = TEAM TIMEOUT
 # Warning Add
 team-warning = TEAM
     WARNING
-team = TEAM
-warning = WARNING
+team-warning-line-1 = TEAM
+team-warning-line-2 = WARNING
 
 # Configuration
 none-selected = None Selected
@@ -185,7 +185,10 @@ start-now = START NOW
 end-timeout = END TIMEOUT
 warnings = WARNINGS
 penalties = PENALTIES
-score = SCORE
+dark-score-line-1 = SCORE
+dark-score-line-2 = { dark-team-name-caps }
+light-score-line-1 = SCORE
+light-score-line-2 = { light-team-name-caps }
 
 # Penalties
 black-penalties = BLACK PENALTIES
@@ -197,11 +200,17 @@ final-score = Please enter the final score
 # Shared Elements
 ## Timeout ribbon
 end-timeout-line-1 = END
-end-timeout-line-2 = TIMEOUT
+end-timeout-line-2 = { timeout }
 switch-to = SWITCH TO
 ref = REF
-penalty = PENALTY
-shot = SHOT
+ref-timeout-line-1 = { ref }
+ref-timeout-line-2 = { timeout }
+dark-timeout-line-1 = { dark-team-name-caps }
+dark-timeout-line-2 = { timeout }
+light-timeout-line-1 = { light-team-name-caps }
+light-timeout-line-2 = { timeout }
+penalty-shot-line-1 = PENALTY
+penalty-shot-line-2 = SHOT
 pen-shot = PEN SHOT
 ## Penalty string
 served = Served

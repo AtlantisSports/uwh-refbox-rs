@@ -20,8 +20,8 @@ timeout-length = AUSZEITDAUER
 # Warning Add
 team-warning = TEAM
     WARNUNG
-team = TEAM
-warning = WARNUNG
+team-warning-line-1 = TEAM
+team-warning-line-2 = WARNUNG
 
 # Configuration
 none-selected = Keine Auswahl
@@ -174,11 +174,14 @@ select-game = SPIEL AUSWÄHLEN
 # Main View
 add-warning = WARNUNG HINZUFÜGEN
 add-foul = FOUL HINZUFÜGEN
-start-now = JETZT STARTEN
+start-now = STARTEN
 end-timeout = AUSZEIT BEENDEN
 warnings = WARNUNGEN
 penalties = STRAFEN
-score = PUNKTESTAND
+dark-score-line-1 = WEISSES
+dark-score-line-2 = TOR
+light-score-line-1 = SCHWARZES
+light-score-line-2 = TOR
 
 # Penalties
 black-penalties = SCHWARZE STRAFEN
@@ -193,8 +196,14 @@ end-timeout-line-1 = ENDE
 end-timeout-line-2 = AUSZEIT
 switch-to = WECHSELN ZU
 ref = SCHIRI
-penalty = STRAFE
-shot = SCHUSS
+ref-timeout-line-1 = { ref }
+ref-timeout-line-2 = { timeout }
+dark-timeout-line-1 = { dark-team-name-caps }
+dark-timeout-line-2 = { timeout }
+light-timeout-line-1 = { light-team-name-caps }
+light-timeout-line-2 = { timeout }
+penalty-shot-line-1 = STRAFE
+penalty-shot-line-2 = SCHUSS
 pen-shot = STRAFSCHUSS
 ## Penalty string
 served = Abgesessen

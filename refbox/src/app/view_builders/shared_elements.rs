@@ -195,7 +195,7 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
 
     let black = match snapshot.timeout {
         None => make_multi_label_message_button(
-            (fl!("dark-team-name-caps"), fl!("timeout")),
+            (fl!("dark-timeout-line-1"), fl!("dark-timeout-line-2")),
             tm.can_start_team_timeout(GameColor::Black)
                 .ok()
                 .map(|_| Message::TeamTimeout(GameColor::Black, false)),
@@ -219,7 +219,7 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
 
     let white = match snapshot.timeout {
         None => make_multi_label_message_button(
-            (fl!("light-team-name-caps"), fl!("timeout")),
+            (fl!("light-timeout-line-1"), fl!("light-timeout-line-2")),
             tm.can_start_team_timeout(GameColor::White)
                 .ok()
                 .map(|_| Message::TeamTimeout(GameColor::White, false)),
@@ -243,7 +243,7 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
 
     let referee = match snapshot.timeout {
         None => make_multi_label_message_button(
-            (fl!("ref"), fl!("timeout")),
+            (fl!("ref-timeout-line-1"), fl!("ref-timeout-line-2")),
             tm.can_start_ref_timeout()
                 .ok()
                 .map(|_| Message::RefTimeout(false)),
@@ -267,7 +267,7 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
 
     let penalty = match snapshot.timeout {
         None => make_multi_label_message_button(
-            (fl!("penalty"), fl!("shot")),
+            (fl!("penalty-shot-line-1"), fl!("penalty-shot-line-2")),
             tm.can_start_penalty_shot()
                 .ok()
                 .map(|_| Message::PenaltyShot(false)),

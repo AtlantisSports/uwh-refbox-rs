@@ -21,8 +21,8 @@ timeout-length = DURACIÓN DEL
 # Warning Add
 team-warning = AVISO
     DE EQUIPO
-team = EQUIPO
-warning = AVISO
+team-warning-line-1 = AVISO
+team-warning-line-2 = DE EQUIPO
 
 # Configuration
 none-selected = Ninguno seleccionado
@@ -176,7 +176,10 @@ start-now = EMPEZAR
 end-timeout = TERMINAR TIEMPO MUERTO
 warnings = AVISOS
 penalties = EXPULSIONES
-score = PUNTUACIÓN
+dark-score-line-1 = PUNTUACIÓN
+dark-score-line-2 = { dark-team-name-caps }
+light-score-line-1 = PUNTUACIÓN
+light-score-line-2 = { light-team-name-caps }
 
 # Penalties
 black-penalties = EXPULSIONES E. NEGRO
@@ -191,8 +194,14 @@ end-timeout-line-1 = TERMINAR
 end-timeout-line-2 = TIEMPO MUERTO
 switch-to = CAMBIAR A
 ref = ÁRBITRO
-penalty = EXPULSIÓN
-shot = TIRO
+ref-timeout-line-1 = { timeout }
+ref-timeout-line-2 = { ref }
+dark-timeout-line-1 = { timeout }
+dark-timeout-line-2 = E. { dark-team-name-caps }
+light-timeout-line-1 = { timeout }
+light-timeout-line-2 = E. { light-team-name-caps }
+penalty-shot-line-1 = TIRO
+penalty-shot-line-2 = PENAL
 pen-shot = TIRO PENAL
 ## Penalty string
 served = Servido

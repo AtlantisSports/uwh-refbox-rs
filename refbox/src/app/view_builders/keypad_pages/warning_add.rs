@@ -62,7 +62,7 @@ pub(super) fn make_warning_add_page<'a>(
     column![
         row![
             make_multi_label_message_button(
-                (fl!("team"), fl!("warning")),
+                (fl!("team-warning-line-1"), fl!("team-warning-line-2")),
                 Some(Message::ToggleBoolParameter(BoolGameParameter::TeamWarning))
             )
             .style(team_warning_style),

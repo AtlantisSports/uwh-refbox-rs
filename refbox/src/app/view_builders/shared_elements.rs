@@ -748,7 +748,7 @@ pub(super) fn config_string(
     if !fouls_and_warnings {
         write!(
             &mut result,
-            "Cheif ref: \n\
+            "Chief ref: \n\
             Timer: \n\
             Water ref 1: \n\
             Water ref 2: \n\

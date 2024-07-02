@@ -206,7 +206,7 @@ fn details_strings(
 
     write!(
         &mut right_string,
-        "Cheif ref: UNKNOWN\n\
+        "Chief ref: UNKNOWN\n\
         Timer: UNKNOWN\n\
         Water ref 1: UNKNOWN\n\
         Water ref 2: UNKNOWN\n\

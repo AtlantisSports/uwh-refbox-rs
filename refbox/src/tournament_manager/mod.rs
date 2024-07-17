@@ -1981,7 +1981,7 @@ impl ClockState {
 
     fn as_secs_u16(&self, now: Instant) -> u16 {
         self.clock_time(now)
-            .unwrap_or_else(|| Duration::from_secs(std::u16::MAX.into()))
+            .unwrap_or_else(|| Duration::from_secs(u16::MAX.into()))
             .as_secs()
             .try_into()
             .unwrap()

@@ -1,16 +1,12 @@
-use super::draw_texture_both;
-use super::fit_text;
-use super::Interpolate;
-use super::PageRenderer;
-use crate::pages::draw_text_both;
-use crate::pages::draw_text_both_ex;
-use crate::pages::draw_texture_both_ex;
-use crate::pages::Justify;
-use crate::State;
+use super::{draw_texture_both, fit_text, Interpolate, PageRenderer};
+use crate::{
+    draw_timeout_flag,
+    pages::{draw_text_both, draw_text_both_ex, draw_texture_both_ex, Justify},
+    State,
+};
 use coarsetime::Instant;
 use macroquad::prelude::*;
-use uwh_common::game_snapshot::GamePeriod;
-use uwh_common::game_snapshot::TimeoutSnapshot;
+use uwh_common::game_snapshot::{GamePeriod, TimeoutSnapshot};
 
 impl PageRenderer {
     /// Display during overtime. Has no animations
@@ -29,12 +25,12 @@ impl PageRenderer {
                 self.last_snapshot_timeout = state.snapshot.timeout;
                 if time < 1f32 {
                     (
-                        (0f32, -200f32).interpolate_linear(1f32 - time),
+                        (0f32, -270f32).interpolate_linear(1f32 - time),
                         (0f32, 1f32).interpolate_exponential_end(time),
                     )
                 } else {
                     (
-                        (0f32, -200f32).interpolate_linear(0f32),
+                        (0f32, -270f32).interpolate_linear(0f32),
                         (0f32, 1f32).interpolate_exponential_end(1f32),
                     )
                 }
@@ -51,39 +47,35 @@ impl PageRenderer {
                     self.animation_register2 = Instant::now();
                     self.last_snapshot_timeout = TimeoutSnapshot::None;
                     (
-                        (0f32, -200f32).interpolate_linear(1f32),
+                        (0f32, -270f32).interpolate_linear(1f32),
                         (0f32, 1f32).interpolate_exponential_end(0f32),
                     )
                 } else {
                     (
-                        (0f32, -200f32).interpolate_linear(time),
+                        (0f32, -270f32).interpolate_linear(time),
                         (0f32, 1f32).interpolate_exponential_end(1f32 - time),
                     )
                 }
             } else {
                 // return any values when both are None, cause we won't be redering anyways
                 (
-                    (0f32, -200f32).interpolate_linear(0f32),
+                    (0f32, -270f32).interpolate_linear(0f32),
                     (0f32, 1f32).interpolate_exponential_end(1f32),
                 )
             };
 
-        draw_texture_both!(self.assets.team_bar, 26f32, 37f32, WHITE);
         // No penalty shot, black or white timeouts in overtime
         match self.last_snapshot_timeout {
             TimeoutSnapshot::Ref(_) => {
-                draw_texture_both!(
+                draw_timeout_flag!(
                     self.assets.referee_timout,
-                    timeout_offset + 380f32,
-                    35f32,
-                    Color {
-                        a: timeout_alpha_offset,
-                        ..WHITE
-                    }
+                    timeout_offset,
+                    timeout_alpha_offset,
+                    205f32
                 );
                 draw_text_both_ex!(
                     "REFEREE",
-                    475f32 + timeout_offset,
+                    675f32 + timeout_offset,
                     67f32,
                     TextParams {
                         font: self.assets.font,
@@ -106,7 +98,7 @@ impl PageRenderer {
                 );
                 draw_text_both_ex!(
                     "TIMEOUT",
-                    480f32 + timeout_offset,
+                    680f32 + timeout_offset,
                     95f32,
                     TextParams {
                         font: self.assets.font,
@@ -129,18 +121,15 @@ impl PageRenderer {
                 );
             }
             TimeoutSnapshot::PenaltyShot(_) => {
-                draw_texture_both!(
+                draw_timeout_flag!(
                     self.assets.penalty,
-                    timeout_offset + 380f32,
-                    35f32,
-                    Color {
-                        a: timeout_alpha_offset,
-                        ..WHITE
-                    }
+                    timeout_offset,
+                    timeout_alpha_offset,
+                    205f32
                 );
                 draw_text_both_ex!(
                     "PENALTY",
-                    475f32 + timeout_offset,
+                    675f32 + timeout_offset,
                     67f32,
                     TextParams {
                         font: self.assets.font,
@@ -163,7 +152,7 @@ impl PageRenderer {
                 );
                 draw_text_both_ex!(
                     "SHOT",
-                    490f32 + timeout_offset,
+                    690f32 + timeout_offset,
                     95f32,
                     TextParams {
                         font: self.assets.font,
@@ -187,44 +176,44 @@ impl PageRenderer {
             }
             _ => {}
         }
-        if state.white.flag.is_none() {
-            draw_text_both_ex!(
-                &state.white.team_name,
-                if state.white.flag.is_some() {
-                    160f32
-                } else {
-                    79f32
-                },
-                64f32,
-                TextParams {
-                    font: self.assets.font,
-                    font_size: 20,
-                    color: BLACK, // don't fade out team name if flags aren't available
-                    ..Default::default()
-                },
-                TextParams {
-                    font: self.assets.font,
-                    font_size: 20,
-                    color: WHITE, // don't fade out team name if flags aren't available
-                    ..Default::default()
-                }
-            );
-            draw_text_both!(
-                &state.black.team_name,
-                if state.black.flag.is_some() {
-                    160f32
-                } else {
-                    79f32
-                },
-                100f32,
-                TextParams {
-                    font: self.assets.font,
-                    font_size: 20,
-                    color: WHITE,
-                    ..Default::default()
-                }
-            );
-        }
+        draw_texture_both!(self.assets.team_bar, 26f32, 37f32, WHITE);
+        draw_text_both_ex!(
+            &state.white.team_name,
+            if state.white.flag.is_some() {
+                160f32
+            } else {
+                79f32
+            },
+            64f32,
+            TextParams {
+                font: self.assets.font,
+                font_size: 20,
+                color: BLACK, // don't fade out team name if flags aren't available
+                ..Default::default()
+            },
+            TextParams {
+                font: self.assets.font,
+                font_size: 20,
+                color: WHITE, // don't fade out team name if flags aren't available
+                ..Default::default()
+            }
+        );
+        draw_text_both!(
+            &state.black.team_name,
+            if state.black.flag.is_some() {
+                160f32
+            } else {
+                79f32
+            },
+            100f32,
+            TextParams {
+                font: self.assets.font,
+                font_size: 20,
+                color: WHITE,
+                ..Default::default()
+            }
+        );
+
         draw_texture_both!(self.assets.time_and_game_state, 367f32, 18f32, WHITE);
         let min = state.snapshot.secs_in_period / 60;
         let secs = state.snapshot.secs_in_period % 60;

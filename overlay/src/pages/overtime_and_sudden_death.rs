@@ -1,16 +1,12 @@
-use super::draw_texture_both;
-use super::fit_text;
-use super::Interpolate;
-use super::PageRenderer;
-use crate::pages::draw_text_both;
-use crate::pages::draw_text_both_ex;
-use crate::pages::draw_texture_both_ex;
-use crate::pages::Justify;
-use crate::State;
+use super::{draw_texture_both, fit_text, Interpolate, PageRenderer};
+use crate::{
+    draw_timeout_flag,
+    pages::{draw_text_both, draw_text_both_ex, draw_texture_both_ex, Justify},
+    State,
+};
 use coarsetime::Instant;
 use macroquad::prelude::*;
-use uwh_common::game_snapshot::GamePeriod;
-use uwh_common::game_snapshot::TimeoutSnapshot;
+use uwh_common::game_snapshot::{GamePeriod, TimeoutSnapshot};
 
 impl PageRenderer {
     /// Display during overtime. Has no animations
@@ -29,12 +25,12 @@ impl PageRenderer {
                 self.last_snapshot_timeout = state.snapshot.timeout;
                 if time < 1f32 {
                     (
-                        (0f32, -200f32).interpolate_linear(1f32 - time),
+                        (0f32, -270f32).interpolate_linear(1f32 - time),
                         (0f32, 1f32).interpolate_exponential_end(time),
                     )
                 } else {
                     (
-                        (0f32, -200f32).interpolate_linear(0f32),
+                        (0f32, -270f32).interpolate_linear(0f32),
                         (0f32, 1f32).interpolate_exponential_end(1f32),
                     )
                 }
@@ -51,19 +47,19 @@ impl PageRenderer {
                     self.animation_register2 = Instant::now();
                     self.last_snapshot_timeout = TimeoutSnapshot::None;
                     (
-                        (0f32, -200f32).interpolate_linear(1f32),
+                        (0f32, -270f32).interpolate_linear(1f32),
                         (0f32, 1f32).interpolate_exponential_end(0f32),
                     )
                 } else {
                     (
-                        (0f32, -200f32).interpolate_linear(time),
+                        (0f32, -270f32).interpolate_linear(time),
                         (0f32, 1f32).interpolate_exponential_end(1f32 - time),
                     )
                 }
             } else {
                 // return any values when both are None, cause we won't be redering anyways
                 (
-                    (0f32, -200f32).interpolate_linear(0f32),
+                    (0f32, -270f32).interpolate_linear(0f32),
                     (0f32, 1f32).interpolate_exponential_end(1f32),
                 )
             };
@@ -71,14 +67,11 @@ impl PageRenderer {
         // No penalty shot, black or white timeouts in overtime
         match self.last_snapshot_timeout {
             TimeoutSnapshot::Ref(_) => {
-                draw_texture_both!(
+                draw_timeout_flag!(
                     self.assets.referee_timout,
-                    timeout_offset + 580f32,
-                    35f32,
-                    Color {
-                        a: timeout_alpha_offset,
-                        ..WHITE
-                    }
+                    timeout_offset,
+                    timeout_alpha_offset,
+                    205f32
                 );
                 draw_text_both_ex!(
                     "REFEREE",
@@ -128,14 +121,11 @@ impl PageRenderer {
                 );
             }
             TimeoutSnapshot::PenaltyShot(_) => {
-                draw_texture_both!(
+                draw_timeout_flag!(
                     self.assets.penalty,
-                    timeout_offset + 580f32,
-                    35f32,
-                    Color {
-                        a: timeout_alpha_offset,
-                        ..WHITE
-                    }
+                    timeout_offset,
+                    timeout_alpha_offset,
+                    205f32
                 );
                 draw_text_both_ex!(
                     "PENALTY",

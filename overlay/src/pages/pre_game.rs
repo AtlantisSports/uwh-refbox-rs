@@ -15,20 +15,7 @@ impl PageRenderer {
         let (sponsor_alpha, midfade_alpha, tandg_alpha) = match state.snapshot.secs_in_period {
             31.. => {
                 self.animation_register1 = Instant::now();
-                (
-                    Instant::now()
-                        .duration_since(self.animation_register0)
-                        .as_f64() as f32
-                        * 2f32,
-                    Instant::now()
-                        .duration_since(self.animation_register0)
-                        .as_f64() as f32
-                        * 2f32,
-                    Instant::now()
-                        .duration_since(self.animation_register0)
-                        .as_f64() as f32
-                        * 2f32,
-                )
+                (1f32, 1f32, 0f32)
             }
             30 => (
                 (1f32, 0f32).interpolate_linear(
@@ -60,19 +47,19 @@ impl PageRenderer {
             }
         };
 
-        if let Some(sponsor_logo) = &state.sponsor_logo {
-            if sponsor_alpha > 0f32 {
-                draw_texture_both!(
-                    sponsor_logo,
-                    300f32,
-                    100f32,
-                    Color {
-                        a: sponsor_alpha,
-                        ..WHITE
-                    }
-                );
-            }
-        }
+        // if let Some(sponsor_logo) = &state.sponsor_logo {
+        //     if sponsor_alpha > 0f32 {
+        //         draw_texture_both!(
+        //             sponsor_logo,
+        //             300f32,
+        //             100f32,
+        //             Color {
+        //                 a: sponsor_alpha,
+        //                 ..WHITE
+        //             }
+        //         );
+        //     }
+        // }
 
         if midfade_alpha > 0f32 {
             // draw_texture_both!(
@@ -314,6 +301,11 @@ impl PageRenderer {
                     ..Default::default()
                 }
             );
+        }
+
+        if let Some(logo) = state.tournament_logo.as_ref() {
+            let x = 1900f32 - logo.color.width();
+            draw_texture_both!(logo, x, 20f32, WHITE);
         }
     }
 }

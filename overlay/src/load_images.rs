@@ -1,5 +1,3 @@
-use std::{fs::File, io::Read, path::Path};
-
 use macroquad::prelude::*;
 
 macro_rules! asset_load {
@@ -51,7 +49,6 @@ pub struct Textures {
     pub red_rpd: RpdTextures,
     pub frame_rpd: Texture,
     pub number_bg_rpd: Texture,
-    pub tournament_logo: Option<Texture>,
     pub font: Font,
 }
 
@@ -97,16 +94,6 @@ impl Default for Textures {
                 team_member_role_bg: asset_load!("Red Team Member Role Background.png"),
                 frame_bg: asset_load!("Red Picture Background.png"),
             },
-            tournament_logo: None,
         }
     }
-}
-
-pub fn read_image_from_file<P: AsRef<Path>>(
-    path: P,
-) -> Result<Texture2D, Box<dyn std::error::Error>> {
-    let mut file = File::open(path)?;
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes)?;
-    Ok(Texture2D::from_file_with_format(&bytes[..], None))
 }

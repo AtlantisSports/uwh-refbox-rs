@@ -95,22 +95,43 @@ pub fn on_raw(input: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     Ok(writer.into_inner()?.into_inner())
 }
 
-/// Process raw rgba8 image data
-pub fn on_raw_rgba8(
-    width: u32,
-    height: u32,
+pub fn pre_multiply_raw_rgba8(
+    width: u16,
+    height: u16,
     buff: Vec<u8>,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let img_in: ImageBuffer<Rgba<u8>, Vec<u8>> =
-        ImageBuffer::from_raw(width, height, buff).unwrap();
-    let mut img_out = image::GrayAlphaImage::new(img_in.width(), img_in.height());
+        ImageBuffer::from_raw(width as u32, height as u32, buff).ok_or("Image buffer too small")?;
+    let mut img_out = image::RgbaImage::new(img_in.width(), img_in.height());
+    let mut pixs = img_out.pixels_mut();
+    for Rgba([r, g, b, a]) in img_in.pixels() {
+        let p = pixs.next().unwrap();
+        p.0[0] = ((*r as u16 * *a as u16) / 255) as u8;
+        p.0[1] = ((*g as u16 * *a as u16) / 255) as u8;
+        p.0[2] = ((*b as u16 * *a as u16) / 255) as u8;
+        p.0[3] = *a;
+    }
+
+    Ok(img_out.into_raw())
+}
+
+/// Process raw rgba8 image data
+pub fn make_alpha_raw_rgba8(
+    width: u16,
+    height: u16,
+    buff: Vec<u8>,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let img_in: ImageBuffer<Rgba<u8>, Vec<u8>> =
+        ImageBuffer::from_raw(width as u32, height as u32, buff).ok_or("Image buffer too small")?;
+    let mut img_out = image::RgbaImage::new(img_in.width(), img_in.height());
     let mut pixs = img_out.pixels_mut();
     for Rgba([_, _, _, alpha_channel]) in img_in.pixels() {
         let p = pixs.next().unwrap();
         p.0[0] = *alpha_channel;
         p.0[1] = *alpha_channel;
+        p.0[2] = *alpha_channel;
+        p.0[3] = *alpha_channel;
     }
-    let mut writer = BufWriter::new(Cursor::new(Vec::new()));
-    img_out.write_to(&mut writer, ImageFormat::Png)?;
-    Ok(writer.into_inner()?.into_inner())
+
+    Ok(img_out.into_raw())
 }

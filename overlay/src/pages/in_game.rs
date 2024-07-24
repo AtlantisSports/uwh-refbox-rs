@@ -470,5 +470,44 @@ impl PageRenderer {
             let x = 1900f32 - logo.color.width();
             draw_texture_both!(logo, x, 20f32, WHITE);
         }
+
+        let sponsor_alpha = if state.snapshot.current_period == GamePeriod::HalfTime {
+            match state.snapshot.secs_in_period {
+                32.. => (0f32, 1f32).interpolate_linear(
+                    Instant::now()
+                        .duration_since(self.animation_register4)
+                        .as_f64() as f32,
+                ),
+                31 => {
+                    self.animation_register4 = Instant::now();
+                    1f32
+                }
+                0..=30 => (1f32, 0f32).interpolate_linear(
+                    Instant::now()
+                        .duration_since(self.animation_register4)
+                        .as_f64() as f32,
+                ),
+            }
+        } else {
+            self.animation_register4 = Instant::now();
+            0f32
+        };
+
+        if state.snapshot.current_period == GamePeriod::HalfTime {
+            if let Some(sponsor_logo) = &state.sponsor_logo {
+                let x = (1920f32 - sponsor_logo.color.width()) / 2f32;
+                if sponsor_alpha > 0f32 {
+                    draw_texture_both!(
+                        sponsor_logo,
+                        x,
+                        200f32,
+                        Color {
+                            a: sponsor_alpha,
+                            ..WHITE
+                        }
+                    );
+                }
+            }
+        }
     }
 }

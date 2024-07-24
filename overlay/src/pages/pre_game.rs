@@ -15,7 +15,7 @@ impl PageRenderer {
         let (sponsor_alpha, midfade_alpha, tandg_alpha) = match state.snapshot.secs_in_period {
             31.. => {
                 self.animation_register1 = Instant::now();
-                (1f32, 1f32, 0f32)
+                (1f32, 1f32, 1f32)
             }
             30 => (
                 (1f32, 0f32).interpolate_linear(
@@ -23,7 +23,11 @@ impl PageRenderer {
                         .duration_since(self.animation_register1)
                         .as_f64() as f32,
                 ),
-                1f32,
+                (0f32, 1f32).interpolate_linear(
+                    Instant::now()
+                        .duration_since(self.animation_register1)
+                        .as_f64() as f32,
+                ),
                 1f32,
             ),
             16.. => {
@@ -47,19 +51,20 @@ impl PageRenderer {
             }
         };
 
-        // if let Some(sponsor_logo) = &state.sponsor_logo {
-        //     if sponsor_alpha > 0f32 {
-        //         draw_texture_both!(
-        //             sponsor_logo,
-        //             300f32,
-        //             100f32,
-        //             Color {
-        //                 a: sponsor_alpha,
-        //                 ..WHITE
-        //             }
-        //         );
-        //     }
-        // }
+        if let Some(sponsor_logo) = &state.sponsor_logo {
+            let x = (1920f32 - sponsor_logo.color.width()) / 2f32;
+            if sponsor_alpha > 0f32 {
+                draw_texture_both!(
+                    sponsor_logo,
+                    x,
+                    200f32,
+                    Color {
+                        a: sponsor_alpha,
+                        ..WHITE
+                    }
+                );
+            }
+        }
 
         if midfade_alpha > 0f32 {
             // draw_texture_both!(

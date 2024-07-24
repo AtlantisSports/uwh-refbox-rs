@@ -88,7 +88,6 @@ impl State {
             white,
             pool,
             start_time,
-            sponsor_logo,
             referees,
             ..
         }) = recieved_state.data
@@ -96,7 +95,6 @@ impl State {
             self.black = TeamInfo::from(black);
             self.white = TeamInfo::from(white);
             self.start_time = start_time;
-            self.sponsor_logo = sponsor_logo.and_then(texture_from_image);
             self.referees = referees.into_iter().map(Member::from).collect();
             self.pool = pool;
         }
@@ -248,6 +246,7 @@ async fn main() {
         animation_register1: Instant::now(),
         animation_register2: Instant::now(),
         animation_register3: false,
+        animation_register4: Instant::now(),
         assets,
         last_snapshot_timeout: TimeoutSnapshot::None,
     };

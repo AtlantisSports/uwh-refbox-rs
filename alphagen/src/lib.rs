@@ -7,9 +7,21 @@ use std::{
 };
 
 /// Processes all files in `paths` and writes output images to `dir_output`
-pub fn on_paths(paths: Vec<&PathBuf>, dir_output: PathBuf) {
+/// Puts alpha value into the gray channel, and alpha of the output.
+pub fn gray_alpha(paths: Vec<&PathBuf>, dir_output: PathBuf) {
     let process = |in_pix: &Rgba<u8>, out_pix: &mut LumaA<u8>| {
         out_pix.0[0] = in_pix[3];
+        out_pix.0[1] = in_pix[3];
+    };
+
+    process_images_on_paths(paths, dir_output, process);
+}
+
+/// Processes all files in `paths` and writes output images to `dir_output`
+/// Puts white into the gray channel, and copies alpha to the output.
+pub fn white_alpha(paths: Vec<&PathBuf>, dir_output: PathBuf) {
+    let process = |in_pix: &Rgba<u8>, out_pix: &mut LumaA<u8>| {
+        out_pix.0[0] = u8::MAX;
         out_pix.0[1] = in_pix[3];
     };
 
@@ -130,6 +142,27 @@ pub fn make_alpha_raw_rgba8(
         p.0[0] = *alpha_channel;
         p.0[1] = *alpha_channel;
         p.0[2] = *alpha_channel;
+        p.0[3] = *alpha_channel;
+    }
+
+    Ok(img_out.into_raw())
+}
+
+/// Process raw rgba8 image data
+pub fn make_white_alpha_raw_rgba8(
+    width: u16,
+    height: u16,
+    buff: Vec<u8>,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let img_in: ImageBuffer<Rgba<u8>, Vec<u8>> =
+        ImageBuffer::from_raw(width as u32, height as u32, buff).ok_or("Image buffer too small")?;
+    let mut img_out = image::RgbaImage::new(img_in.width(), img_in.height());
+    let mut pixs = img_out.pixels_mut();
+    for Rgba([_, _, _, alpha_channel]) in img_in.pixels() {
+        let p = pixs.next().unwrap();
+        p.0[0] = u8::MAX;
+        p.0[1] = u8::MAX;
+        p.0[2] = u8::MAX;
         p.0[3] = *alpha_channel;
     }
 

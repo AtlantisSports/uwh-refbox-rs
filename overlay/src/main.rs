@@ -74,10 +74,9 @@ pub fn texture_from_image(image: network::Image) -> Option<Texture> {
 }
 
 fn texture_from_image_result(image: network::Image) -> Result<Texture, Box<dyn std::error::Error>> {
-    let pmk_image = alphagen::pre_multiply_raw_rgba8(image.0, image.1, image.2)?;
-    let alpha_image = alphagen::make_alpha_raw_rgba8(image.0, image.1, pmk_image.clone())?;
+    let alpha_image = alphagen::make_white_alpha_raw_rgba8(image.0, image.1, image.2.clone())?;
     Ok(Texture {
-        color: Texture2D::from_rgba8(image.0, image.1, &pmk_image),
+        color: Texture2D::from_rgba8(image.0, image.1, &image.2),
         alpha: Texture2D::from_rgba8(image.0, image.1, &alpha_image),
     })
 }

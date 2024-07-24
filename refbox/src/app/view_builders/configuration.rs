@@ -205,6 +205,7 @@ fn make_main_config_page<'a>(
         .spacing(SPACING)
         .width(Length::Fill)
         .height(Length::Fill),
+        vertical_space(Length::Fill),
         row![
             make_button("CANCEL")
                 .style(ButtonStyle::Red)
@@ -553,7 +554,7 @@ fn make_display_config_page<'a>(
     };
 
     let sides_btn = button(sides.width(Length::Fill).height(Length::Fill))
-        .height(Length::Fill)
+        .height(Length::Fixed(MIN_BUTTON_SIZE))
         .width(Length::Fill)
         .padding(0)
         .style(ButtonStyle::LightGray)
@@ -563,15 +564,14 @@ fn make_display_config_page<'a>(
 
     column![
         make_game_time_button(snapshot, false, false, mode, clock_running),
-        row![sides_btn].spacing(SPACING).height(Length::Fill),
+        row![sides_btn].spacing(SPACING),
         row![make_value_button(
             "HIDE TIME FOR\nLAST 15 SECONDS",
             bool_string(*hide_time),
             (false, true),
             Some(Message::ToggleBoolParameter(BoolGameParameter::HideTime))
         )]
-        .spacing(SPACING)
-        .height(Length::Fill),
+        .spacing(SPACING),
         vertical_space(Length::Fill),
         row![
             horizontal_space(Length::Fill),
@@ -582,7 +582,6 @@ fn make_display_config_page<'a>(
                 .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
         ]
         .spacing(SPACING)
-        .height(Length::Fill)
     ]
     .spacing(SPACING)
     .height(Length::Fill)
@@ -622,11 +621,9 @@ fn make_sound_config_page<'a>(
                 "MANAGE REMOTES",
                 Some(Message::ChangeConfigPage(ConfigPage::Remotes(0, false))),
             )
-            .style(ButtonStyle::LightGray)
-            .height(Length::Fill),
+            .style(ButtonStyle::LightGray),
         ]
-        .spacing(SPACING)
-        .height(Length::Fill),
+        .spacing(SPACING),
         row![
             make_value_button(
                 "WHISTLE\nENABLED:",
@@ -663,8 +660,7 @@ fn make_sound_config_page<'a>(
                 },
             )
         ]
-        .spacing(SPACING)
-        .height(Length::Fill),
+        .spacing(SPACING),
         row![
             make_value_button(
                 "BUZZER\nSOUND:",
@@ -699,8 +695,8 @@ fn make_sound_config_page<'a>(
                 },
             )
         ]
-        .spacing(SPACING)
-        .height(Length::Fill),
+        .spacing(SPACING),
+        vertical_space(Length::Fill),
         row![
             horizontal_space(Length::Fill),
             horizontal_space(Length::Fill),
@@ -709,8 +705,7 @@ fn make_sound_config_page<'a>(
                 .width(Length::Fill)
                 .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
         ]
-        .spacing(SPACING)
-        .height(Length::Fill),
+        .spacing(SPACING),
     ]
     .spacing(SPACING)
     .height(Length::Fill)

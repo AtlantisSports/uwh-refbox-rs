@@ -32,7 +32,7 @@ use game_stats::*;
 use crate::penalty_editor::IterHelp;
 
 const MAX_TIME_VAL: Duration = Duration::from_secs(MAX_LONG_STRINGABLE_SECS as u64);
-const RECENT_GOAL_TIME: Duration = Duration::from_secs(10);
+const RECENT_GOAL_TIME: Duration = Duration::from_secs(15);
 
 #[derive(Debug)]
 pub struct TournamentManager {

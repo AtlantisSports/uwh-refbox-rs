@@ -859,7 +859,7 @@ pub(super) fn make_value_button<'a, Message: 'a + Clone, T: ToString, U: ToStrin
         .align_items(Alignment::Center)
         .padding(PADDING),
     )
-    .height(Length::Fill)
+    .height(Length::Fixed(MIN_BUTTON_SIZE))
     .width(Length::Fill)
     .style(ButtonStyle::LightGray);
 

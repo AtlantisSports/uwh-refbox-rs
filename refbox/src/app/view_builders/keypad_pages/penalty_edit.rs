@@ -1,6 +1,6 @@
 use super::{style::Element, *};
 use iced::{
-    widget::{column, row},
+    widget::{column, row, vertical_space},
     Length,
 };
 use uwh_common::game_snapshot::Color as GameColor;
@@ -132,7 +132,11 @@ pub(super) fn make_penalty_edit_page<'a>(
     .spacing(SPACING)]
     .spacing(SPACING);
 
-    content = content.push(make_penalty_dropdown(infraction));
+    if config.track_fouls_and_warnings {
+        content = content.push(make_penalty_dropdown(infraction));
+    } else {
+        content = content.push(vertical_space(Length::Fill));
+    }
 
     content = content.push(
         row![
@@ -151,6 +155,10 @@ pub(super) fn make_penalty_edit_page<'a>(
         ]
         .spacing(SPACING),
     );
+
+    if !config.track_fouls_and_warnings {
+        content = content.push(vertical_space(Length::Fill));
+    }
 
     content = content.push(exit_row);
     content.into()

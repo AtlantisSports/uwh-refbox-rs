@@ -819,17 +819,29 @@ impl Application for RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
             }
             Message::PenaltyOverview => {
-                self.pen_edit.start_session().unwrap();
+                if let Err(e) = self.pen_edit.start_session() {
+                    warn!("Failed to start penalty edit session: {e}");
+                    self.pen_edit.abort_session();
+                    self.pen_edit.start_session().unwrap();
+                }
                 self.app_state = AppState::PenaltyOverview(BlackWhiteBundle { black: 0, white: 0 });
                 trace!("AppState changed to {:?}", self.app_state);
             }
             Message::WarningOverview => {
-                self.warn_edit.start_session().unwrap();
+                if let Err(e) = self.warn_edit.start_session() {
+                    warn!("Failed to start warning edit session: {e}");
+                    self.warn_edit.abort_session();
+                    self.warn_edit.start_session().unwrap();
+                }
                 self.app_state = AppState::WarningOverview(BlackWhiteBundle { black: 0, white: 0 });
                 trace!("AppState changed to {:?}", self.app_state);
             }
             Message::FoulOverview => {
-                self.foul_edit.start_session().unwrap();
+                if let Err(e) = self.foul_edit.start_session() {
+                    warn!("Failed to start foul edit session: {e}");
+                    self.foul_edit.abort_session();
+                    self.foul_edit.start_session().unwrap();
+                }
                 self.app_state = AppState::FoulOverview(OptColorBundle {
                     black: 0,
                     equal: 0,

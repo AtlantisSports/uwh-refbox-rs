@@ -1,28 +1,24 @@
-use alphagen::{on_paths, pre_multiply_on_paths, remove_alpha_on_paths};
+use alphagen::{gray_alpha, pre_multiply_on_paths, remove_alpha_on_paths, white_alpha};
 use clap::Parser;
 use log::warn;
 use rayon::iter::ParallelBridge;
 use rayon::iter::ParallelIterator;
 use std::path::PathBuf;
 
+#[derive(clap::ValueEnum, Default, Debug, Clone, Copy)]
+enum Mode {
+    GreyAlpha,
+    #[default]
+    WhiteAlpha,
+    RemoveAlpha,
+    PreMultiply,
+}
+
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
 struct Args {
-    #[clap(
-        short,
-        help = "Remove alpha channel from images",
-        conflicts_with = "pre_multiply",
-        default_value_t = false
-    )]
-    remove_alpha_mode: bool,
-
-    #[clap(
-        short,
-        help = "Pre-multiply the color image",
-        conflicts_with = "remove_alpha_mode",
-        default_value_t = false
-    )]
-    pre_multiply: bool,
+    #[clap(short, long, default_value = "white-alpha")]
+    mode: Mode,
 
     #[clap(help = "Input files", required = true)]
     input_location: Vec<PathBuf>,
@@ -55,11 +51,10 @@ fn main() {
         .collect::<Vec<_>>();
 
     assert!(!paths.is_empty(), "No valid input file paths!");
-    if args.remove_alpha_mode {
-        remove_alpha_on_paths(paths, dir_output)
-    } else if args.pre_multiply {
-        pre_multiply_on_paths(paths, dir_output)
-    } else {
-        on_paths(paths, dir_output);
+    match args.mode {
+        Mode::GreyAlpha => gray_alpha(paths, dir_output),
+        Mode::WhiteAlpha => white_alpha(paths, dir_output),
+        Mode::RemoveAlpha => remove_alpha_on_paths(paths, dir_output),
+        Mode::PreMultiply => pre_multiply_on_paths(paths, dir_output),
     }
 }

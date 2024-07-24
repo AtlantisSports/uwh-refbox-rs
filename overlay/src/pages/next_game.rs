@@ -17,9 +17,14 @@ impl PageRenderer {
         draw_texture_both!(self.assets.bottom, 822f32, 977f32, WHITE);
         draw_texture_both!(self.assets.team_information, 130f32, 710f32, WHITE);
 
-        if let Some(logo) = self.assets.tournament_logo.as_ref() {
+        if let Some(logo) = &state.tournament_logo {
             let x = 1900f32 - logo.color.width();
             draw_texture_both!(logo, x, 20f32, WHITE);
+        }
+
+        if let Some(sponsor_logo) = &state.sponsor_logo {
+            let x = (1920f32 - sponsor_logo.color.width()) / 2f32;
+            draw_texture_both!(sponsor_logo, x, 200f32, WHITE);
         }
 
         let (x_off, text) = fit_text(

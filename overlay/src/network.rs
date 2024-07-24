@@ -1,5 +1,5 @@
 use log::{error, info, warn};
-use reqwest::{Client, ClientBuilder};
+use reqwest::{Client, ClientBuilder, IntoUrl};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::net::TcpStream;
@@ -11,10 +11,10 @@ static CLIENT_CELL: OnceLock<Client> = OnceLock::new();
 
 pub type Image = (u16, u16, Vec<u8>);
 
-async fn get_image_from_opt_url(url: Option<&str>) -> Option<Image> {
+async fn get_image_from_opt_url<T: IntoUrl>(url: Option<T>) -> Option<Image> {
     let client = CLIENT_CELL.get().unwrap();
     let img_bytes = match url {
-        Some("") | None => None,
+        None => None,
         Some(url) => Some(
             client
                 .get(url)
@@ -143,10 +143,62 @@ impl TeamInfoRaw {
 }
 
 #[derive(Serialize, Deserialize)]
+pub struct TournamentLogos {
+    pub tournament_logo: Option<Image>,
+    pub sponsors: Option<Image>,
+}
+
+impl TournamentLogos {
+    pub async fn new(uwhportal_url: &str, tournament_id: u32) -> Self {
+        let client = CLIENT_CELL.get().unwrap();
+        info!("Requesting Portal API for overlay images for tournament: {tournament_id}");
+        let data: Value = serde_json::from_str(
+            &client
+                .get(format!(
+                    "{uwhportal_url}/api/admin/events/overlay-attachments?legacyEventId={tournament_id}"
+                ))
+                .send()
+                .await
+                .expect("Coudn't request tournament images")
+                .text()
+                .await
+                .expect("Coudn't get tournament images body"),
+        )
+        .unwrap();
+
+        let mut tournament_logo_url = None;
+        let mut sponsors_url = None;
+
+        for attachment in data["overlayAttachments"]
+            .as_array()
+            .map(|x| x.to_vec())
+            .unwrap_or_default()
+        {
+            if attachment["type"].as_str() == Some("Overlay") {
+                tournament_logo_url = attachment["url"].as_str().map(|s| s.to_owned());
+            } else if attachment["type"].as_str() == Some("Sponsor") {
+                sponsors_url = attachment["url"].as_str().to_owned().map(|s| s.to_owned());
+            }
+        }
+
+        let (tournament_logo, sponsors) = tokio::join!(
+            get_image_from_opt_url(tournament_logo_url),
+            get_image_from_opt_url(sponsors_url)
+        );
+
+        Self {
+            tournament_logo,
+            sponsors,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct StatePacket {
     pub snapshot: GameSnapshot,
     pub game_id: Option<u32>,
     pub data: Option<GameData>,
+    pub tournament_logos: Option<TournamentLogos>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -174,6 +226,89 @@ impl GameData {
             tournament_id,
         }
     }
+}
+
+async fn fetch_game_referees(
+    uwhportal_url: &str,
+    tournament_id: u32,
+    game_id: u32,
+) -> Result<Vec<MemberRaw>, reqwest::Error> {
+    let client = CLIENT_CELL.get().unwrap();
+    info!(
+        "Requesting Portal API for referees for (tournament, game): ({tournament_id}, {game_id})"
+    );
+    let data: Value =
+        client
+            .get(format!(
+                "{uwhportal_url}/api/admin/events/game-referees?legacyEventId={tournament_id}&gameNumber={game_id}"
+            ))
+            .send()
+            .await
+            ?
+            .json()
+            .await
+            ?;
+
+    Ok(futures::future::join_all(
+        data.get("referees")
+            .and_then(|r| r.as_array())
+            .map(|x| x.to_vec())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|referee| async move {
+                let (uniform_pic, gear_pic) = if let Some(Value::Object(photos)) =
+                    &referee.get("user").and_then(|u| u.get("photos"))
+                {
+                    tokio::join!(
+                        get_image_from_opt_url(photos.get("uniform").and_then(|u| u.as_str())),
+                        get_image_from_opt_url(photos.get("inGear").and_then(|u| u.as_str()))
+                    )
+                } else {
+                    (None, None)
+                };
+
+                let role = referee["role"].as_str().map(|s| s.trim());
+                let role = match role {
+                    Some("Water1") | Some("Water2") | Some("Water3") => Some("Water"),
+                    Some("Chief") => Some("Chief"),
+                    Some("TimeOrScoreKeeper") => Some("Timekeeper"),
+                    Some(other) => {
+                        warn!("Referee has unexpected role: {other:?}");
+                        None
+                    }
+                    None => {
+                        warn!("Referee has no role");
+                        None
+                    }
+                }
+                .map(|r| r.to_string());
+
+                (
+                    referee["user"]["name"]
+                        .as_str()
+                        .map(|s| s.trim().to_string()),
+                    role,
+                    uniform_pic,
+                    gear_pic,
+                )
+            }),
+    )
+    .await
+    .into_iter()
+    .filter_map(|data| {
+        if let (Some(name), role, picture, geared_picture) = data {
+            Some(MemberRaw {
+                name,
+                role,
+                number: None,
+                picture,
+                geared_picture,
+            })
+        } else {
+            None
+        }
+    })
+    .collect())
 }
 
 async fn fetch_game_data(
@@ -217,48 +352,23 @@ async fn fetch_game_data(
                 .as_str()
                 .map(|s| String::from("START: ") + s.split_at(11).1.split_at(5).0)
                 .unwrap_or_default();
-            let sponsor_logo = get_image_from_opt_url(data["game"]["sponsor_logo"].as_str()).await;
-            let mut referees = Vec::new();
-            futures::future::join_all(
-                data["game"]["referees"]
-                    .as_array()
-                    .map(|x| x.to_vec())
-                    .unwrap_or_default()
-                    .iter()
-                    .map(|referee| async {
-                        let (picture, geared_picture) = tokio::join!(
-                            get_image_from_opt_url(referee["picture_url"].as_str()),
-                            get_image_from_opt_url(referee["geared_picture_url"].as_str())
-                        );
-                        (
-                            referee["name"].as_str().map(|s| s.trim().to_uppercase()),
-                            referee["number"].as_u64().map(|e| e as u8),
-                            referee["role"].as_str().map(|s| s.trim().to_uppercase()),
-                            picture,
-                            geared_picture,
-                        )
-                    }),
-            )
-            .await
-            .into_iter()
-            .filter_map(|data| {
-                if let (Some(name), number, role, picture, geared_picture) = data {
-                    Some(MemberRaw {
-                        name,
-                        role,
-                        number,
-                        picture,
-                        geared_picture,
-                    })
-                } else {
-                    None
-                }
-            })
-            .for_each(|referee| referees.push(referee));
-            let (black, white) = tokio::join!(
+            let (referees, black, white) = tokio::join!(
+                fetch_game_referees(uwhportal_url, tournament_id, game_id),
                 TeamInfoRaw::new(uwhportal_url, tournament_id, team_id_black, Color::Black,),
                 TeamInfoRaw::new(uwhportal_url, tournament_id, team_id_white, Color::White,)
             );
+
+            let referees = match referees {
+                Ok(r) => {
+                    info!("Fetched referees for game {game_id}, there are {}", r.len());
+                    r
+                }
+                Err(e) => {
+                    warn!("Couldn't fetch referees for tid:{tournament_id}, gid:{game_id}!: {e}");
+                    Vec::new()
+                }
+            };
+
             tr.send((
                 GameData {
                     pool,
@@ -266,7 +376,7 @@ async fn fetch_game_data(
                     referees,
                     black,
                     white,
-                    sponsor_logo,
+                    sponsor_logo: None,
                     tournament_id,
                     game_id,
                 },
@@ -305,6 +415,7 @@ pub async fn networking_thread(
     info!("Connected to refbox!");
 
     let (tr, rc) = crossbeam_channel::unbounded::<(GameData, bool)>();
+    let (tt, rt) = crossbeam_channel::unbounded::<TournamentLogos>();
     let mut buff = vec![0u8; 1024];
     let mut read_bytes;
     let mut game_id = None;
@@ -358,6 +469,14 @@ pub async fn networking_thread(
                     )
                     .await;
                 });
+
+                let tt_ = tt.clone();
+                let uwhportal_url = config.uwhportal_url.clone();
+                tokio::spawn(async move {
+                    tt_.send(TournamentLogos::new(&uwhportal_url, tournament_id_new).await)
+                        .map_err(|e| error!("Couldn't send tournament logos: {e}"))
+                        .unwrap();
+                });
             }
 
             // every other case, when atleast one game has been requested
@@ -368,9 +487,20 @@ pub async fn networking_thread(
                 let uwhscores_url = config.uwhscores_url.clone();
                 let uwhportal_url = config.uwhportal_url.clone();
                 if *game_id_old != game_id_new || *tournament_id_old != tournament_id_new {
+                    if *tournament_id_old != tournament_id_new {
+                        let tt_ = tt.clone();
+                        let uwhportal_url = config.uwhportal_url.clone();
+                        tokio::spawn(async move {
+                            tt_.send(TournamentLogos::new(&uwhportal_url, tournament_id_new).await)
+                                .map_err(|e| error!("Couldn't send tournament logos: {e}"))
+                                .unwrap();
+                        });
+                    }
+
                     *game_id_old = game_id_new;
                     *tournament_id_old = tournament_id_new;
                     info!("Got new game ID {game_id_new} / tournament ID {tournament_id_new}");
+
                     if next_game_data.is_some()
                         && next_game_data.as_ref().unwrap().game_id == game_id_new
                         && next_game_data.as_ref().unwrap().tournament_id == tournament_id_new
@@ -381,6 +511,7 @@ pub async fn networking_thread(
                             snapshot,
                             game_id,
                             data: Some(next_game_data),
+                            tournament_logos: None,
                         })
                         .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
                     } else {
@@ -425,28 +556,33 @@ pub async fn networking_thread(
                 next_game_data = Some(GameData::default(next_gid, tournament_id_new));
             }
 
+            let tournament_logos = if let Ok(tournament_logos) = rt.try_recv() {
+                info!("Got tournament logos!");
+                Some(tournament_logos)
+            } else {
+                None
+            };
+
             // recieve data for requested games
-            if let Ok((game_data, is_current_game)) = rc.try_recv() {
+            let this_game_data = if let Ok((game_data, is_current_game)) = rc.try_recv() {
                 if is_current_game {
                     info!("Got game state update from network!");
-                    tx.send(StatePacket {
-                        snapshot,
-                        game_id,
-                        data: Some(game_data),
-                    })
-                    .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
+                    Some(game_data)
                 } else {
                     info!("Got game state update from network for next_game!");
                     next_game_data = Some(game_data);
+                    None
                 }
             } else {
-                tx.send(StatePacket {
-                    snapshot,
-                    game_id,
-                    data: None,
-                })
-                .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
-            }
+                None
+            };
+            tx.send(StatePacket {
+                snapshot,
+                game_id,
+                data: this_game_data,
+                tournament_logos,
+            })
+            .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
         } else {
             warn!("Corrupted snapshot discarded!");
         }

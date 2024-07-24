@@ -16,7 +16,7 @@ impl PageRenderer {
         draw_texture_both!(self.assets.atlantis_logo, 836f32, 725f32, WHITE);
         draw_texture_both!(self.assets.final_score, 314f32, 347f32, WHITE);
 
-        if let Some(logo) = self.assets.tournament_logo.as_ref() {
+        if let Some(logo) = state.tournament_logo.as_ref() {
             let x = (1920f32 - logo.color.width()) / 2f32;
             let y = 675f32 - logo.color.height();
             draw_texture_both!(logo, x, y, WHITE);

@@ -1,7 +1,7 @@
 use clap::Parser;
 use coarsetime::Instant;
 use crossbeam_channel::bounded;
-use log::{warn, LevelFilter};
+use log::{info, warn, LevelFilter};
 #[cfg(debug_assertions)]
 use log4rs::append::console::{ConsoleAppender, Target};
 use log4rs::{
@@ -25,7 +25,7 @@ mod load_images;
 mod network;
 mod pages;
 
-use load_images::{read_image_from_file, Texture};
+use load_images::Texture;
 
 const APP_NAME: &str = "overlay";
 
@@ -35,7 +35,6 @@ pub struct AppConfig {
     refbox_port: u64,
     uwhscores_url: String,
     uwhportal_url: String,
-    tournament_logo_path: PathBuf,
 }
 
 impl Default for AppConfig {
@@ -45,7 +44,6 @@ impl Default for AppConfig {
             refbox_port: 8000,
             uwhscores_url: String::from("https://uwhscores.com"),
             uwhportal_url: String::from("https://api.uwhscores.prod.zmvp.host"),
-            tournament_logo_path: PathBuf::new(),
         }
     }
 }
@@ -59,18 +57,28 @@ pub struct State {
     pool: String,
     start_time: String,
     half_play_duration: Option<u32>,
+    tournament_logo: Option<Texture>,
     sponsor_logo: Option<Texture>,
 }
 
 // TODO: Change this to return Result. We're not rn cause from_file_with_format
 // panics anyways if image bytes is invalid
-pub fn texture_from_image(image: network::Image) -> Texture {
-    Texture {
-        color: Texture2D::from_rgba8(image.0, image.1, &image.2),
-        alpha: alphagen::on_raw_rgba8(image.0 as u32, image.1 as u32, image.2)
-            .map(|bytes| Texture2D::from_file_with_format(&bytes, None))
-            .expect("Failed to decode image"),
+pub fn texture_from_image(image: network::Image) -> Option<Texture> {
+    match texture_from_image_result(image) {
+        Ok(texture) => Some(texture),
+        Err(e) => {
+            warn!("Failed to create texture from image: {e}");
+            None
+        }
     }
+}
+
+fn texture_from_image_result(image: network::Image) -> Result<Texture, Box<dyn std::error::Error>> {
+    let alpha_image = alphagen::make_white_alpha_raw_rgba8(image.0, image.1, image.2.clone())?;
+    Ok(Texture {
+        color: Texture2D::from_rgba8(image.0, image.1, &image.2),
+        alpha: Texture2D::from_rgba8(image.0, image.1, &alpha_image),
+    })
 }
 
 impl State {
@@ -80,7 +88,6 @@ impl State {
             white,
             pool,
             start_time,
-            sponsor_logo,
             referees,
             ..
         }) = recieved_state.data
@@ -88,7 +95,6 @@ impl State {
             self.black = TeamInfo::from(black);
             self.white = TeamInfo::from(white);
             self.start_time = start_time;
-            self.sponsor_logo = sponsor_logo.map(texture_from_image);
             self.referees = referees.into_iter().map(Member::from).collect();
             self.pool = pool;
         }
@@ -96,6 +102,15 @@ impl State {
             self.game_id = game_id;
         }
         self.snapshot = recieved_state.snapshot;
+        if let Some(logos) = recieved_state.tournament_logos {
+            self.tournament_logo = logos.tournament_logo.and_then(texture_from_image);
+            self.sponsor_logo = logos.sponsors.and_then(texture_from_image);
+            info!(
+                "Updated tournament logos: Tournament: {}, Sponsor: {}",
+                self.tournament_logo.is_some(),
+                self.sponsor_logo.is_some()
+            );
+        }
     }
 }
 
@@ -115,8 +130,8 @@ impl From<network::MemberRaw> for Member {
             name: member_raw.name,
             role: member_raw.role,
             number: member_raw.number,
-            picture: member_raw.picture.map(texture_from_image),
-            geared_picture: member_raw.geared_picture.map(texture_from_image),
+            picture: member_raw.picture.and_then(texture_from_image),
+            geared_picture: member_raw.geared_picture.and_then(texture_from_image),
         }
     }
 }
@@ -146,7 +161,7 @@ impl From<TeamInfoRaw> for TeamInfo {
                 .into_iter()
                 .map(Member::from)
                 .collect(),
-            flag: team_info_raw.flag.map(texture_from_image),
+            flag: team_info_raw.flag.and_then(texture_from_image),
         }
     }
 }
@@ -201,41 +216,12 @@ async fn main() {
     };
 
     let (tx, rx) = bounded::<StatePacket>(3);
-    let mut tournament_logo_color_path = config.tournament_logo_path.clone();
-    tournament_logo_color_path.push("color.png");
-    let mut tournament_logo_alpha_path = config.tournament_logo_path.clone();
-    tournament_logo_alpha_path.push("alpha.png");
 
     let net_worker = std::thread::spawn(|| {
         network::networking_thread(tx, config);
     });
 
-    let mut assets = load_images::Textures::default();
-
-    let tournament_logo_color = match read_image_from_file(tournament_logo_color_path.as_path()) {
-        Ok(texture) => Some(texture),
-        Err(e) => {
-            warn!(
-                "Failed to read tournament logo color file: {} : {e}",
-                tournament_logo_color_path.display()
-            );
-            None
-        }
-    };
-
-    let tournament_logo_alpha = match read_image_from_file(tournament_logo_alpha_path.as_path()) {
-        Ok(texture) => Some(texture),
-        Err(e) => {
-            warn!(
-                "Failed to read tournament logo alpha file: {} : {e}",
-                tournament_logo_alpha_path.display()
-            );
-            None
-        }
-    };
-
-    assets.tournament_logo = tournament_logo_color
-        .and_then(|color| tournament_logo_alpha.map(|alpha| Texture { alpha, color }));
+    let assets = load_images::Textures::default();
 
     let mut local_state: State = State {
         snapshot: GameSnapshot {
@@ -251,6 +237,7 @@ async fn main() {
         pool: String::new(),
         start_time: String::new(),
         half_play_duration: None,
+        tournament_logo: None,
         sponsor_logo: None,
     };
 
@@ -259,6 +246,7 @@ async fn main() {
         animation_register1: Instant::now(),
         animation_register2: Instant::now(),
         animation_register3: false,
+        animation_register4: Instant::now(),
         assets,
         last_snapshot_timeout: TimeoutSnapshot::None,
     };

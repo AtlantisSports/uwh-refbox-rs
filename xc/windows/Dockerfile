@@ -1,4 +1,4 @@
-FROM lukemathwalker/cargo-chef:latest-rust-1.77.2-slim-bullseye AS builder
+FROM lukemathwalker/cargo-chef:latest-rust-1.79-slim-bullseye AS builder
 
 ENV KEYRINGS /usr/local/share/keyrings
 
@@ -47,7 +47,7 @@ RUN set -eux; \
 RUN rustup target add x86_64-pc-windows-msvc
 
 RUN set -eux; \
-    xwin_version="0.2.0"; \
+    xwin_version="0.6.2"; \
     xwin_prefix="xwin-$xwin_version-x86_64-unknown-linux-musl"; \
     # Install xwin to cargo/bin via github release. Note you could also just use `cargo install xwin`.
     curl --fail -L https://github.com/Jake-Shadle/xwin/releases/download/$xwin_version/$xwin_prefix.tar.gz | tar -xzv -C /usr/local/cargo/bin --strip-components=1 $xwin_prefix/xwin; \

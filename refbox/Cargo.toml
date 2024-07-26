@@ -22,12 +22,12 @@ embedded-graphics = "0.8"
 enum-derive-2018 = "3"
 env_logger = "0.10"
 futures-lite = "2"
-iced = { version = "0.10", default-features = false, features = ["canvas", "svg", "tokio", "wgpu"] }
-iced_core = "0.10"
-iced_futures = { version = "0.7", features = ["async-std"] }
+iced = { version = "0.12", default-features = false, features = ["canvas", "svg", "tokio", "wgpu"] }
+iced_core = "0.12"
+iced_futures = { version = "0.12", features = ["async-std"] }
 # iced_native = "0.10"
-iced_renderer = "0.1"
-iced_runtime = "0.1"
+iced_renderer = "0.12"
+iced_runtime = "0.12"
 log = "0.4"
 log4rs = { version = "1", default-features = false, features = ["background_rotation", "compound_policy", "console_appender", "fixed_window_roller", "gzip", "pattern_encoder", "rolling_file_appender", "size_trigger"]}
 log-panics = { version = "2", features = ["with-backtrace"]}

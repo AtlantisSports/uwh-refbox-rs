@@ -327,18 +327,23 @@ impl SoundController {
             let mut ant_pin = gpio.get(16).unwrap().into_input_pullup();
             let (ant_tx, mut ant_rx) = unbounded_channel();
             ant_pin
-                .set_async_interrupt(Trigger::Both, move |level| {
-                    ant_tx.send((level, Instant::now())).unwrap()
+                .set_async_interrupt(Trigger::Both, None, move |event| {
+                    ant_tx.send((event.trigger, Instant::now())).unwrap()
                 })
                 .unwrap();
 
             let mut wired_pin = gpio.get(12).unwrap().into_input_pullup();
             let (wired_tx, mut wired_rx) = unbounded_channel();
             wired_pin
-                .set_async_interrupt(Trigger::Both, move |level| wired_tx.send(level).unwrap())
+                .set_async_interrupt(Trigger::Both, None, move |event| {
+                    wired_tx.send(event.trigger).unwrap()
+                })
                 .unwrap();
 
-            let ant_start_state = ant_pin.read();
+            let ant_start_state = match ant_pin.read() {
+                Level::Low => Trigger::FallingEdge,
+                Level::High => Trigger::RisingEdge,
+            };
 
             let (wireless_tx, mut wireless_rx) = unbounded_channel();
             let (remote_id_tx, mut remote_id_rx) = watch::channel(0);
@@ -350,7 +355,7 @@ impl SoundController {
                 let mut state = RemoteDetectorState {
                     preamble_detected: false,
                     bits: vec![],
-                    last_pin_state: ant_start_state,
+                    last_pin_edge: ant_start_state,
                     last_edge_time: Instant::now(),
                     last_pulse: None,
                 };
@@ -359,11 +364,11 @@ impl SoundController {
                     tokio::select! {
                         pin_update = ant_rx.recv() => {
                             match pin_update {
-                                Some((l @ Level::High, now)) => {
-                                    if state.last_pin_state != l {
+                                Some((l @ Trigger::RisingEdge, now)) => {
+                                    if state.last_pin_edge != l {
                                         let pulse = now.duration_since(state.last_edge_time).as_micros();
                                         trace!("Detected LOW  pulse {pulse:>5}us long");
-                                        state.last_pin_state = l;
+                                        state.last_pin_edge = l;
                                         state.last_edge_time = now;
 
                                         let maybe_pulse_type = identify_pulse(pulse);
@@ -424,11 +429,11 @@ impl SoundController {
                                         state.last_pulse = maybe_pulse_type;
                                     }
                                 }
-                                Some((l @ Level::Low, now)) => {
-                                    if state.last_pin_state != l {
+                                Some((l @ Trigger::FallingEdge, now)) => {
+                                    if state.last_pin_edge != l {
                                         let pulse = now.duration_since(state.last_edge_time).as_micros();
                                         trace!("Detected HIGH pulse {pulse:>5}us long");
-                                        state.last_pin_state = l;
+                                        state.last_pin_edge = l;
                                         state.last_edge_time = now;
 
                                         let maybe_pulse_type = identify_pulse(pulse);
@@ -443,6 +448,8 @@ impl SoundController {
                                         state.last_pulse = maybe_pulse_type;
                                     }
                                 }
+                                Some((Trigger::Disabled, _))
+                                | Some((Trigger::Both, _)) => panic!("Imposible pin state"),
                                 None => panic!("The Pin has been dropped"),
                             }
                         }
@@ -478,13 +485,15 @@ impl SoundController {
                     tokio::pin!(wireless_expiration);
 
                     tokio::select! {
-                        level = wired_rx.recv() => {
-                            match level {
-                                Some(Level::Low) => wired_pressed = false,
-                                Some(Level::High) => {
+                        event = wired_rx.recv() => {
+                            match event {
+                                Some(Trigger::FallingEdge) => wired_pressed = false,
+                                Some(Trigger::RisingEdge) => {
                                     wired_pressed = true;
                                     sound = None;
                                 }
+                                Some(Trigger::Disabled)
+                                | Some(Trigger::Both) => panic!("Imposible pin state"),
                                 None => break,
                             }
                         }
@@ -734,7 +743,7 @@ const fn identify_pulse(len: u128) -> Option<PulseType> {
 struct RemoteDetectorState {
     preamble_detected: bool,
     bits: Vec<bool>,
-    last_pin_state: Level,
+    last_pin_edge: Trigger,
     last_edge_time: Instant,
     last_pulse: Option<PulseType>,
 }

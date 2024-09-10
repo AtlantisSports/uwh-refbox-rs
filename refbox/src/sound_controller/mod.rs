@@ -32,6 +32,7 @@ use tokio::{
 use toml::Table;
 use web_audio_api::{
     context::{AudioContext, AudioContextOptions, BaseAudioContext},
+    media_devices,
     node::{
         AudioBufferSourceNode, AudioNode, AudioScheduledSourceNode, ChannelInterpretation,
         ChannelMergerNode, GainNode,
@@ -232,12 +233,19 @@ impl SoundController {
             + Fn() -> Result<(), tokio::sync::mpsc::error::TrySendError<ServerMessage>>
             + 'static,
     {
+        let available_devices = media_devices::enumerate_devices_sync();
+
+        info!("Available audio devices:\n{:#?}", available_devices);
+
         let opts = AudioContextOptions {
             sample_rate: Some(SAMPLE_RATE),
             ..AudioContextOptions::default()
         };
 
-        let context = Arc::new(AudioContext::new(opts));
+        let context = AudioContext::new(opts);
+        info!("Audio context created with sink {:?}", context.sink_id());
+
+        let context = Arc::new(context);
 
         let library = SoundLibrary::new(&context);
 

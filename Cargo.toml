@@ -6,6 +6,7 @@ members = [
   "fonts",
   "matrix-drawing",
   "overlay",
+  "ref-beep-test",
   "refbox",
   "uwh-common",
 ]

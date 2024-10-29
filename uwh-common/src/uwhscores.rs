@@ -75,7 +75,8 @@ pub struct TimingRules {
 impl Into<GameConfig> for TimingRules {
     fn into(self) -> GameConfig {
         GameConfig {
-            team_timeouts_per_half: self.game_timeouts.allowed,
+            num_team_timeouts_allowed: self.game_timeouts.allowed,
+            timeouts_counted_per_half: self.game_timeouts.per_half,
             team_timeout_duration: self.game_timeouts.duration,
             half_play_duration: self.half_duration,
             half_time_duration: self.half_time_duration,

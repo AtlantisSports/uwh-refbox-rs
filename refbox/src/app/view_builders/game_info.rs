@@ -176,10 +176,10 @@ fn details_strings(
     writeln!(
         &mut left_string,
         "Team Timeouts Allowed Per Half: {}",
-        config.team_timeouts_per_half
+        config.num_team_timeouts_allowed
     )
     .unwrap();
-    if config.team_timeouts_per_half != 0 {
+    if config.num_team_timeouts_allowed != 0 {
         writeln!(
             &mut left_string,
             "Team Timeout Duration: {}",

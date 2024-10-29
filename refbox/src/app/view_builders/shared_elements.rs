@@ -736,12 +736,21 @@ pub(super) fn config_string(
     )
     .unwrap();
 
-    writeln!(
-        &mut result,
-        "Team Timeouts Allowed Per Half: {}",
-        config.team_timeouts_per_half
-    )
-    .unwrap();
+    if config.timeouts_counted_per_half {
+        writeln!(
+            &mut result,
+            "Team Timeouts Allowed Per Half: {}",
+            config.num_team_timeouts_allowed
+        )
+        .unwrap();
+    } else {
+        writeln!(
+            &mut result,
+            "Team Timeouts Allowed Per Game: {}",
+            config.num_team_timeouts_allowed
+        )
+        .unwrap();
+    }
 
     writeln!(&mut result, "Stop clock in last 2 minutes: ").unwrap();
 

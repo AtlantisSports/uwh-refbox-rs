@@ -387,11 +387,12 @@ fn make_tournament_config_page<'a>(
                     },
                 ),
                 make_value_button(
-                    "NUM TEAM T/Os\nALLWD PER HALF:",
-                    config.team_timeouts_per_half.to_string(),
+                    "NUM TEAM T/Os\nALLOWED:",
+                    config.num_team_timeouts_allowed.to_string(),
                     (false, true),
                     Some(Message::KeypadPage(KeypadPage::TeamTimeouts(
                         config.team_timeout_duration,
+                        config.timeouts_counted_per_half,
                     ))),
                 )
             ]

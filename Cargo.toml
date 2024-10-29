@@ -4,6 +4,7 @@ resolver = "2"
 members = [
   "alphagen",
   "fonts",
+  "led-panel-sim",
   "matrix-drawing",
   "overlay",
   "ref-beep-test",

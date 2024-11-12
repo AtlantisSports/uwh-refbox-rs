@@ -170,7 +170,8 @@ pub(in super::super) fn build_keypad_page<'a>(
                     make_penalty_edit_page(origin, color, kind, config, foul)
                 }
                 KeypadPage::GameNumber => make_game_number_edit_page(),
-                KeypadPage::TeamTimeouts(dur) => make_team_timeout_edit_page(dur),
+                KeypadPage::TeamTimeouts(dur, per_half) =>
+                    make_team_timeout_edit_page(dur, per_half),
                 KeypadPage::FoulAdd {
                     origin,
                     color,

@@ -5267,7 +5267,6 @@ dependencies = [
  "macro-attr-2018",
  "reqwest",
  "serde",
- "serde_json",
  "time",
  "toml 0.8.19",
 ]

@@ -6,7 +6,9 @@ use toml::Table;
 // to be after items that are not stored as tables (`u16`, `u32`, `bool`, `String`)
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Game {
-    pub team_timeouts_per_half: u16,
+    pub num_team_timeouts_allowed: u16,
+    /// Whether team timeouts are counted per half or per game
+    pub timeouts_counted_per_half: bool,
     pub overtime_allowed: bool,
     pub sudden_death_allowed: bool,
     #[serde(with = "secs_only_duration")]
@@ -36,7 +38,8 @@ pub struct Game {
 impl Default for Game {
     fn default() -> Self {
         Self {
-            team_timeouts_per_half: 1,
+            num_team_timeouts_allowed: 1,
+            timeouts_counted_per_half: true,
             overtime_allowed: true,
             sudden_death_allowed: true,
             half_play_duration: Duration::from_secs(900),
@@ -57,7 +60,8 @@ impl Default for Game {
 impl Game {
     pub fn migrate(old: &Table) -> Self {
         let Self {
-            mut team_timeouts_per_half,
+            mut num_team_timeouts_allowed,
+            mut timeouts_counted_per_half,
             mut overtime_allowed,
             mut sudden_death_allowed,
             mut half_play_duration,
@@ -83,11 +87,27 @@ impl Game {
             }
         };
 
-        if let Some(old_team_timeouts_per_half) = old.get("team_timeouts_per_half") {
-            if let Some(old_team_timeouts_per_half) = old_team_timeouts_per_half.as_integer() {
-                if let Ok(old_team_timeouts_per_half) = old_team_timeouts_per_half.try_into() {
-                    team_timeouts_per_half = old_team_timeouts_per_half;
+        if let Some(old_num_team_timeouts_allowed) = old.get("num_team_timeouts_allowed") {
+            if let Some(old_num_team_timeouts_allowed) = old_num_team_timeouts_allowed.as_integer()
+            {
+                if let Ok(old_num_team_timeouts_allowed) = old_num_team_timeouts_allowed.try_into()
+                {
+                    num_team_timeouts_allowed = old_num_team_timeouts_allowed;
                 }
+            }
+        } else if let Some(old_num_team_timeouts_allowed) = old.get("team_timeouts_per_half") {
+            if let Some(old_num_team_timeouts_allowed) = old_num_team_timeouts_allowed.as_integer()
+            {
+                if let Ok(old_num_team_timeouts_allowed) = old_num_team_timeouts_allowed.try_into()
+                {
+                    num_team_timeouts_allowed = old_num_team_timeouts_allowed;
+                    timeouts_counted_per_half = true;
+                }
+            }
+        }
+        if let Some(old_timeouts_counted_per_half) = old.get("timeouts_counted_per_half") {
+            if let Some(old_timeouts_counted_per_half) = old_timeouts_counted_per_half.as_bool() {
+                timeouts_counted_per_half = old_timeouts_counted_per_half;
             }
         }
         if let Some(old_overtime_allowed) = old.get("overtime_allowed") {
@@ -117,7 +137,8 @@ impl Game {
         process_duration(old, "minimum_break", &mut minimum_break);
 
         Self {
-            team_timeouts_per_half,
+            num_team_timeouts_allowed,
+            timeouts_counted_per_half,
             overtime_allowed,
             sudden_death_allowed,
             half_play_duration,
@@ -206,7 +227,7 @@ pub mod test {
         old.insert("minimum_break".to_string(), toml::Value::Integer(111));
 
         let gm = Game::migrate(&old);
-        assert_eq!(gm.team_timeouts_per_half, 2);
+        assert_eq!(gm.num_team_timeouts_allowed, 2);
         assert_eq!(gm.overtime_allowed, false);
         assert_eq!(gm.sudden_death_allowed, false);
         assert_eq!(gm.half_play_duration, Duration::from_secs(123));

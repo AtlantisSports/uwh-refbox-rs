@@ -207,6 +207,7 @@ pub enum BoolGameParameter {
     ScorerCapNum,
     FoulsAndWarnings,
     TeamWarning,
+    TimeoutsCountedPerHalf,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -237,7 +238,7 @@ pub enum KeypadPage {
         Infraction,
     ),
     GameNumber,
-    TeamTimeouts(Duration),
+    TeamTimeouts(Duration, bool),
     FoulAdd {
         origin: Option<(Option<GameColor>, usize)>,
         color: Option<GameColor>,
@@ -261,7 +262,7 @@ impl KeypadPage {
             | Self::FoulAdd { .. }
             | Self::WarningAdd { .. } => 99,
             Self::GameNumber => 9999,
-            Self::TeamTimeouts(_) => 999,
+            Self::TeamTimeouts(_, _) => 999,
         }
     }
 
@@ -272,7 +273,8 @@ impl KeypadPage {
             | Self::FoulAdd { .. }
             | Self::WarningAdd { .. } => "PLAYER\nNUMBER:",
             Self::GameNumber => "GAME\nNUMBER:",
-            Self::TeamTimeouts(_) => "NUM T/Os\nPER HALF:",
+            Self::TeamTimeouts(_, true) => "NUM T/Os\nPER HALF:",
+            Self::TeamTimeouts(_, false) => "NUM T/Os\nPER GAME:",
         }
     }
 }

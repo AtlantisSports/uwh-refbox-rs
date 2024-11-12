@@ -685,7 +685,9 @@ impl Application for RefBoxApp {
                         }
                     }
                     AppState::ParameterEditor(_, ref mut dur) => (dur, false),
-                    AppState::KeypadPage(KeypadPage::TeamTimeouts(ref mut dur), _) => (dur, false),
+                    AppState::KeypadPage(KeypadPage::TeamTimeouts(ref mut dur, _), _) => {
+                        (dur, false)
+                    }
                     _ => unreachable!(),
                 };
                 if increase {
@@ -1175,7 +1177,7 @@ impl Application for RefBoxApp {
                         .player_number
                         .map(|n| n.into())
                         .unwrap_or(0),
-                    KeypadPage::TeamTimeouts(_) => self.config.game.team_timeouts_per_half,
+                    KeypadPage::TeamTimeouts(_, _) => self.config.game.num_team_timeouts_allowed,
                     KeypadPage::GameNumber => self
                         .edited_settings
                         .as_ref()
@@ -1518,9 +1520,10 @@ impl Application for RefBoxApp {
                         AppState::KeypadPage(KeypadPage::GameNumber, num) => {
                             edited_settings.game_number = num.into();
                         }
-                        AppState::KeypadPage(KeypadPage::TeamTimeouts(len), num) => {
+                        AppState::KeypadPage(KeypadPage::TeamTimeouts(len, per_half), num) => {
                             edited_settings.config.team_timeout_duration = len;
-                            edited_settings.config.team_timeouts_per_half = num;
+                            edited_settings.config.num_team_timeouts_allowed = num;
+                            edited_settings.config.timeouts_counted_per_half = per_half;
                         }
                         _ => unreachable!(),
                     }
@@ -1529,7 +1532,9 @@ impl Application for RefBoxApp {
                 let next_page = match self.app_state {
                     AppState::ParameterEditor(_, _) => ConfigPage::Tournament,
                     AppState::KeypadPage(KeypadPage::GameNumber, _) => ConfigPage::Main,
-                    AppState::KeypadPage(KeypadPage::TeamTimeouts(_), _) => ConfigPage::Tournament,
+                    AppState::KeypadPage(KeypadPage::TeamTimeouts(_, _), _) => {
+                        ConfigPage::Tournament
+                    }
                     AppState::ParameterList(param, _) => match param {
                         ListableParameter::Game => ConfigPage::Main,
                         ListableParameter::Tournament | ListableParameter::Pool => {
@@ -1593,6 +1598,17 @@ impl Application for RefBoxApp {
                     trace!("AppState changed to {:?}", self.app_state)
                 }
 
+                BoolGameParameter::TimeoutsCountedPerHalf => {
+                    if let AppState::KeypadPage(KeypadPage::TeamTimeouts(_, ref mut per_half), _) =
+                        self.app_state
+                    {
+                        *per_half ^= true
+                    } else {
+                        unreachable!()
+                    }
+                    trace!("AppState changed to {:?}", self.app_state)
+                }
+
                 _ => {
                     let edited_settings = self.edited_settings.as_mut().unwrap();
                     match param {
@@ -1625,7 +1641,8 @@ impl Application for RefBoxApp {
                         BoolGameParameter::FoulsAndWarnings => {
                             edited_settings.track_fouls_and_warnings ^= true
                         }
-                        BoolGameParameter::TeamWarning => {
+                        BoolGameParameter::TeamWarning
+                        | BoolGameParameter::TimeoutsCountedPerHalf => {
                             unreachable!()
                         }
                     }

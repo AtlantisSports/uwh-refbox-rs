@@ -223,7 +223,7 @@ impl TournamentManager {
         };
         match self.current_period {
             GamePeriod::FirstHalf | GamePeriod::SecondHalf => {
-                if self.timeouts_used[color] < self.config.team_timeouts_per_half {
+                if self.timeouts_used[color] < self.config.num_team_timeouts_allowed {
                     Ok(())
                 } else {
                     Err(TournamentManagerError::TooManyTeamTimeouts(color))
@@ -302,7 +302,7 @@ impl TournamentManager {
     pub fn can_switch_to_team_timeout(&self, color: Color) -> Result<()> {
         if let TimeoutState::Team(timeout_color, _) = &self.timeout_state {
             if color != *timeout_color {
-                if self.timeouts_used[color] < self.config.team_timeouts_per_half {
+                if self.timeouts_used[color] < self.config.num_team_timeouts_allowed {
                     Ok(())
                 } else {
                     Err(TournamentManagerError::TooManyTeamTimeouts(color))
@@ -1129,8 +1129,10 @@ impl TournamentManager {
                     (GamePeriod::HalfTime, _) => {
                         info!("{} Entering second half", self.status_string(now));
                         self.current_period = GamePeriod::SecondHalf;
-                        self.timeouts_used.white = 0;
-                        self.timeouts_used.black = 0;
+                        if self.config.timeouts_counted_per_half {
+                            self.timeouts_used.white = 0;
+                            self.timeouts_used.black = 0;
+                        }
                         need_cull = true;
                     }
                     (GamePeriod::SecondHalf, false) => {
@@ -1578,8 +1580,10 @@ impl TournamentManager {
             GamePeriod::HalfTime => {
                 info!("{} Entering second half", self.status_string(now));
                 self.current_period = GamePeriod::SecondHalf;
-                self.timeouts_used.white = 0;
-                self.timeouts_used.black = 0;
+                if self.config.timeouts_counted_per_half {
+                    self.timeouts_used.white = 0;
+                    self.timeouts_used.black = 0;
+                }
                 need_cull = true;
             }
             GamePeriod::PreOvertime => {
@@ -2655,7 +2659,7 @@ mod test {
     fn test_can_start_timeouts() {
         initialize();
         let config = GameConfig {
-            team_timeouts_per_half: 1,
+            num_team_timeouts_allowed: 1,
             penalty_shot_duration: Duration::from_secs(45),
             ..Default::default()
         };
@@ -2821,7 +2825,7 @@ mod test {
     fn test_start_timeouts() {
         initialize();
         let config = GameConfig {
-            team_timeouts_per_half: 1,
+            num_team_timeouts_allowed: 1,
             team_timeout_duration: Duration::from_secs(10),
             penalty_shot_duration: Duration::from_secs(25),
             ..Default::default()
@@ -3210,7 +3214,7 @@ mod test {
     fn test_can_switch_timeouts() {
         initialize();
         let config = GameConfig {
-            team_timeouts_per_half: 1,
+            num_team_timeouts_allowed: 1,
             penalty_shot_duration: Duration::from_secs(45),
             ..Default::default()
         };
@@ -3365,7 +3369,7 @@ mod test {
     fn test_switch_timeouts() {
         initialize();
         let config = GameConfig {
-            team_timeouts_per_half: 1,
+            num_team_timeouts_allowed: 1,
             penalty_shot_duration: Duration::from_secs(25),
             ..Default::default()
         };

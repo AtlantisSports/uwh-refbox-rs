@@ -165,12 +165,7 @@ team-tos-per-half = Team Timeouts Allowed Per Half: { $to_num }
 team-to-len = Team Timeout Duration: { $to_len }
 time-btwn-games = Nominal Time Between Games: { $time_btwn }
 min-brk-btwn-games = Minimum Time Between Games: { $min_brk_time }
-stop-clock-last-2-min = Stop clock in last 2 minutes: Unknown
-refs = Chief ref: Unknown
-        Timer: Unknown
-        Water ref 1: Unknown
-        Water ref 2: Unknown
-        Water ref 3: Unknown
+stop-clock-last-2-min = Stop clock in last 2 minutes:  { $stop_clock }
 
 
 # List Selecters
@@ -232,6 +227,7 @@ ref-list = Chief Ref: { $chief_ref }
     Water Ref 1: { $water_ref_1 }
     Water Ref 2: { $water_ref_2 }
     Water Ref 3: { $water_ref_3 }
+unknown = Unknown
 ## Game time button
 next-game = NEXT GAME
 first-half = FIRST HALF

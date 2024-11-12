@@ -219,10 +219,18 @@ fn details_strings(
     left_string += "\n";
 
     if using_uwhportal {
-        left_string += &fl!("stop-clock-last-2-min");
+        let unknown = &fl!("unknown");
+        left_string += &fl!("stop-clock-last-2-min", stop_clock = unknown);
         left_string += "\n";
 
-        right_string += &fl!("refs");
+        right_string += &fl!(
+            "ref-list",
+            chief_ref = unknown,
+            timer = unknown,
+            water_ref_1 = unknown,
+            water_ref_2 = unknown,
+            water_ref_3 = unknown
+        );
     }
 
     (left_string, right_string)

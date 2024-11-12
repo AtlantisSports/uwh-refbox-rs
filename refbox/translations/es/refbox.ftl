@@ -156,12 +156,7 @@ team-tos-per-half = Tiempos muertos permitidos por mitad: { $to_num }
 team-to-len = Duración del tiempo muerto de equipo: { $to_len }
 time-btwn-games = Tiempo nominal entre partidos: { $time_btwn }
 min-brk-btwn-games = Tiempo mínimo entre partidos: { $min_brk_time }
-stop-clock-last-2-min = Detener reloj en los últimos 2 minutos: Desconocido
-refs = Árbitro principal: Desconocido
-        Timer: Desconocido
-        Árbitro de agua 1: Desconocido
-        Árbitro de agua 2: Desconocido
-        Árbitro de agua 3: Desconocido
+stop-clock-last-2-min = Detener reloj en los últimos 2 minutos: { $stop_clock }
 
 
 # List Selecters
@@ -222,6 +217,7 @@ ref-list = Árbitro principal: { $chief_ref }
     Árbitro de agua 1: { $water_ref_1 }
     Árbitro de agua 2: { $water_ref_2 }
     Árbitro de agua 3: { $water_ref_3 }
+unknown = Desconocido
 ## Game time button
 next-game = PRÓXIMO JUEGO
 first-half = 1a MITAD

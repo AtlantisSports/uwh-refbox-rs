@@ -778,6 +778,8 @@ pub(super) fn config_string(
         }
     }
 
+    let unknown = &fl!("unknown");
+
     result += &fl!(
         "game-config",
         half_len = time_string(config.half_play_duration),
@@ -798,17 +800,17 @@ pub(super) fn config_string(
         );
     }
 
-    result += &fl!("stop-clock-last-2", stop_clock_last_2 = "Unknown");
+    result += &fl!("stop-clock-last-2", stop_clock_last_2 = unknown);
     result += "\n";
 
     if !fouls_and_warnings {
         result += &fl!(
             "ref-list",
-            chief_ref = "Unknown",
-            timer = "Unknown",
-            water_ref_1 = "Unknown",
-            water_ref_2 = "Unknown",
-            water_ref_3 = "Unknown"
+            chief_ref = unknown,
+            timer = unknown,
+            water_ref_1 = unknown,
+            water_ref_2 = unknown,
+            water_ref_3 = unknown
         );
     }
 

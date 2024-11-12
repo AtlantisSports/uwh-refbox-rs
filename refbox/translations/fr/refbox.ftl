@@ -155,13 +155,8 @@ team-tos-per-half = Temps Morts d'Équipe Autorisés par Mi-temps : { $to_num }
 team-to-len = Durée du Temps Mort d'Équipe : { $to_len }
 time-btwn-games = Temps Nominal Entre les Matchs : { $time_btwn }
 min-brk-btwn-games = Temps Minimum Entre les Matchs : { $min_brk_time }
-## Shorten if it is easy
-stop-clock-last-2-min = Arrêter l'horloge dans les 2 dernières minutes : Inconnu
-refs = Arbitre en Chef : Inconnu
-        Chronométreur : Inconnu
-        Arbitre Aquatique 1 : Inconnu
-        Arbitre Aquatique 2 : Inconnu
-        Arbitre Aquatique 3 : Inconnu
+### Shorten
+stop-clock-last-2-min = Arrêter le temps dans les 2 dernières minutes: { $stop_clock }
 
 
 # List Selecters

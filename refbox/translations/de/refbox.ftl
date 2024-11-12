@@ -159,12 +159,7 @@ team-tos-per-half = Team Auszeiten Erlaubt Pro Halbzeit: { $to_num }
 team-to-len = Team Auszeitdauer: { $to_len }
 time-btwn-games = Nominale Zeit Zwischen Spielen: { $time_btwn }
 min-brk-btwn-games = Minimale Zeit Zwischen Spielen: { $min_brk_time }
-stop-clock-last-2-min = Uhr in den letzten 2 Minuten stoppen: Unbekannt
-refs = Hauptschiedsrichter: Unbekannt
-        Zeitnehmer: Unbekannt
-        Wasser Schiri 1: Unbekannt
-        Wasser Schiri 2: Unbekannt
-        Wasser Schiri 3: Unbekannt
+stop-clock-last-2-min = Uhr in den letzten 2 Minuten stoppen: { $stop_clock }
 
 # List Selecters
 select-tournament = TURNIER AUSWÄHLEN
@@ -226,6 +221,7 @@ ref-list = Hauptschiedsrichter: { $chief_ref }
     Wasser Schiri 1: { $water_ref_1 }
     Wasser Schiri 2: { $water_ref_2 }
     Wasser Schiri 3: { $water_ref_3 }
+unknown = Unbekannt
 ## Game time button
 next-game = NÄCHSTES SPIEL
 first-half = ERSTE HALBZEIT

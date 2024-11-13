@@ -27,7 +27,7 @@ team-warning-line-2 = WARNUNG
 none-selected = Keine Auswahl
 loading = Laden...
 game = Spiel:
-tournament-options = TURNIEROPTIONEN
+game-options = SPEILOPTIONEN
 app-options = APP-OPTIONEN
 display-options = ANZEIGEOPTIONEN
 sound-options = SOUNDOPTIONEN
@@ -35,13 +35,16 @@ app-mode = APP
     MODUS
 hide-time-for-last-15-seconds = ZEIT VERBERGEN FÜR
     DIE LETZTEN 15 SEKUNDEN
+player-display-brightness = SPIELER-ANZEIGEHELLIGKEIT
 track-cap-number-of-scorer = KAPAZITÄTSNUMMER
     DER TORSCHÜTZEN VERFOLGEN
 track-fouls-and-warnings = FOULS UND
     WARNUNGEN VERFOLGEN
-tournament = TURNIER:
+event = VERANSTALTUNG:
 court = FELD:
+single-half = EINZELNE HALBZEIT:
 half-length-full = HALBZEITDAUER:
+game-length = SPIELDAUER:
 overtime-allowed = VERLÄNGERUNG 
     ERLAUBT:
 sudden-death-allowed = SUDDEN DEATH 
@@ -121,7 +124,7 @@ game-configuration-can-not-be-changed = Die Spielkonfiguration kann während ein
     
     Was möchten Sie tun?
 apply-this-game-number-change = Wie möchten Sie diese Spielnummeränderung anwenden?
-UWHScores-enabled = Wenn UWHScores aktiviert ist, müssen alle Felder ausgefüllt werden.
+UWHPortal-enabled = Wenn UWHPortal aktiviert ist, müssen alle Felder ausgefüllt werden.
 go-back-to-editor = ZURÜCK ZUM EDITOR
 discard-changes = ÄNDERUNGEN VERWERFEN
 end-current-game-and-apply-changes = AKTUELLES SPIEL BEENDEN UND ÄNDERUNGEN ÜBERNEHMEN
@@ -160,7 +163,7 @@ time-btwn-games = Nominale Zeit Zwischen Spielen: { $time_btwn }
 min-brk-btwn-games = Minimale Zeit Zwischen Spielen: { $min_brk_time }
 
 # List Selecters
-select-tournament = TURNIER AUSWÄHLEN
+select-event = VERANSTALTUNG AUSWÄHLEN
 select-court = FELD AUSWÄHLEN
 select-game = SPIEL AUSWÄHLEN
 

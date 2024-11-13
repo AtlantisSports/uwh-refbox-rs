@@ -28,21 +28,26 @@ none-selected = Aucun Sélectionné
 loading = Chargement...
 ### Check
 game = JEU:
-tournament-options = OPTIONS DU TOURNOI
+game-options = OPTIONS DU MATCH
 app-options = OPTIONS DE L'APPLICATION
 display-options = OPTIONS D'AFFICHAGE
 sound-options = OPTIONS SONORES
 app-mode = MODE
 hide-time-for-last-15-seconds = CACHER LE TEMPS POUR
     LES 15 DERNIÈRES SECONDES
+player-display-brightness = LUMINOSITÉ DE
+    L'AFFICHAGE DES JOUEURS
 track-cap-number-of-scorer = SUIVRE LE NUMÉRO DU
     BUTEUR
 track-fouls-and-warnings = SUIVRE LES FAUTES 
     ET LES AVERTISSEMENTS
-tournament = TOURNOI:
+event = EVÉNEMENT:
 court = TERRAIN:
+single-half = UNE SEULE PÉRIODE:
 half-length-full = DURÉE DE LA
     PÉRIODE:
+game-length = DURÉE DU
+    MATCH:
 overtime-allowed = PROLONGATIONS
     AUTORISÉES:
 sudden-death-allowed = MORT SUBITE
@@ -119,7 +124,7 @@ game-configuration-can-not-be-changed = La configuration du jeu ne peut pas êtr
     
     Que souhaitez-vous faire ?
 apply-this-game-number-change = Comment souhaitez-vous appliquer ce changement de numéro ?
-UWHScores-enabled = Lorsque UWHScores est activé, tous les champs doivent être remplis.
+UWHPortal-enabled = Lorsque UWHPortal est activé, tous les champs doivent être remplis.
 go-back-to-editor = RETOURNER À L'ÉDITEUR
 discard-changes = ANNULER LES MODIFICATIONS
 end-current-game-and-apply-changes = TERMINER LE JEU EN COURS ET APPLIQUER LES MODIFICATIONS
@@ -158,7 +163,7 @@ time-btwn-games = Temps Entre les Matchs: { $time_btwn }
 min-brk-btwn-games = Temps Minimum Entre les Matchs: { $min_brk_time }
 
 # List Selecters
-select-tournament = SÉLECTIONNER LE TOURNOI
+select-event = SÉLECTIONNER LE EVÉNEMENT
 select-court = SÉLECTIONNER LE TERRAIN
 select-game = SÉLECTIONNER LE MATCH
 

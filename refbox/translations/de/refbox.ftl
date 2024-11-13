@@ -155,11 +155,9 @@ overtime-details = Vor-Verlängerung Pause Dauer: { $pre_overtime }
              Verlängerung Halbzeitpausen Dauer: { $overtime_half_time_len }
 sd-allowed = Sudden Death Erlaubt: { $sd }
 pre-sd = Vor-Sudden-Death Pause Dauer: { $pre_sd_len }
-team-tos-per-half = Team Auszeiten Erlaubt Pro Halbzeit: { $to_num }
 team-to-len = Team Auszeitdauer: { $to_len }
 time-btwn-games = Nominale Zeit Zwischen Spielen: { $time_btwn }
 min-brk-btwn-games = Minimale Zeit Zwischen Spielen: { $min_brk_time }
-stop-clock-last-2-min = Uhr in den letzten 2 Minuten stoppen: { $stop_clock }
 
 # List Selecters
 select-tournament = TURNIER AUSWÄHLEN
@@ -214,8 +212,9 @@ teams = { -dark-team-name } Team: { $dark_team }
  $light_team }
 game-config = Halbzeitdauer: { $half_len },  Halbzeitpausendauer: { $half_time_len }
     Sudden Death Erlaubt: { $sd_allowed },  Verlängerung Erlaubt: { $ot_allowed }
-    Team Auszeiten Erlaubt Pro Halbzeit: { $team_timeouts }
-    Uhr in den letzten 2 Minuten stoppen: { $stop_clock_last_2 }
+team-timeouts-per-half = Team Auszeiten Erlaubt Pro Halbzeit: { $team_timeouts }
+team-timeouts-per-game = Team Auszeiten Erlaubt Pro Spiel: { $team_timeouts }
+stop-clock-last-2 = Uhr in den letzten 2 Minuten stoppen: { $stop_clock }
 ref-list = Hauptschiedsrichter: { $chief_ref }
     Zeitnehmer: { $timer }
     Wasser Schiri 1: { $water_ref_1 }
@@ -268,6 +267,8 @@ game-number = SPIEL
     NUMMER:
 num-tos-per-half = ANZAHL AUSZEITEN
     PRO HALBZEIT:
+num-tos-per-game = ANZAHL AUSZEITEN
+    PRO SPIEL:
 
 # Sound Controller - mod
 off = AUS

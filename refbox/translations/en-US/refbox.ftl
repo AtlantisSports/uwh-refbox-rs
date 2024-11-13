@@ -161,11 +161,9 @@ overtime-details = Pre-Overtime Break Length: { $pre_overtime }
              Overtime Half Time Length: { $overtime_half_time_len }
 sd-allowed = Sudden Death Allowed: { $sd }
 pre-sd = Pre-Sudden-Death Break Length: { $pre_sd_len }
-team-tos-per-half = Team Timeouts Allowed Per Half: { $to_num }
 team-to-len = Team Timeout Duration: { $to_len }
 time-btwn-games = Nominal Time Between Games: { $time_btwn }
 min-brk-btwn-games = Minimum Time Between Games: { $min_brk_time }
-stop-clock-last-2-min = Stop clock in last 2 minutes:  { $stop_clock }
 
 
 # List Selecters
@@ -221,7 +219,7 @@ game-config = Half Length: { $half_len },  Half Time Length: { $half_time_len }
     Sudden Death Allowed: { $sd_allowed },  Overtime Allowed: { $ot_allowed }
 team-timeouts-per-half = Team Timeouts Allowed Per Half: { $team_timeouts }
 team-timeouts-per-game = Team Timeouts Allowed Per Game: { $team_timeouts }
-stop-clock-last-2 = Stop Clock in Last 2 Minutes: { $stop_clock_last_2 }
+stop-clock-last-2 = Stop Clock in Last 2 Minutes: { $stop_clock }
 ref-list = Chief Ref: { $chief_ref }
     Timer: { $timer }
     Water Ref 1: { $water_ref_1 }

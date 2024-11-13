@@ -800,7 +800,7 @@ pub(super) fn config_string(
         );
     }
 
-    result += &fl!("stop-clock-last-2", stop_clock_last_2 = unknown);
+    result += &fl!("stop-clock-last-2", stop_clock = unknown);
     result += "\n";
 
     if !fouls_and_warnings {

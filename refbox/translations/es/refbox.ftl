@@ -152,11 +152,9 @@ overtime-details = Duración del descanso previo al tiempo extra: { $pre_overtim
              Duración del medio tiempo extra: { $overtime_half_time_len }
 sd-allowed = Muerte súbita habilitada: { $sd }
 pre-sd = Duración del descanso previo a la muerte súbita: { $pre_sd_len }
-team-tos-per-half = Tiempos muertos permitidos por mitad: { $to_num }
 team-to-len = Duración del tiempo muerto de equipo: { $to_len }
 time-btwn-games = Tiempo nominal entre partidos: { $time_btwn }
 min-brk-btwn-games = Tiempo mínimo entre partidos: { $min_brk_time }
-stop-clock-last-2-min = Detener reloj en los últimos 2 minutos: { $stop_clock }
 
 
 # List Selecters
@@ -210,8 +208,9 @@ teams = { -dark-team-name } Equipo: { $dark_team }
     { -light-team-name } Equipo: { $light_team }
 game-config = Duración de la mitad: { $half_len },  Duración del medio tiempo: { $half_time_len }
     Muerte súbita permitida: { $sd_allowed },  Tiempo Extra Permitido: { $ot_allowed }
-    Tiempos muertos de equipo permitidos por mitad: { $team_timeouts }
-    Detener reloj en los Últimos 2 minutos: { $stop_clock_last_2 }
+team-timeouts-per-half = Tiempos muertos de equipo permitidos por mitad: { $team_timeouts }
+team-timeouts-per-game = Tiempos muertos de equipo permitidos por juego: { $team_timeouts }
+stop-clock-last-2 = Detener reloj en los Últimos 2 minutos: { $stop_clock }
 ref-list = Árbitro principal: { $chief_ref }
     Timer: { $timer }
     Árbitro de agua 1: { $water_ref_1 }
@@ -264,6 +263,8 @@ game-number = NÚMERO
     DE JUEGO:
 num-tos-per-half = NÚMERO DE T/Ms
     POR MITAD:
+num-tos-per-game = NÚMERO DE T/Ms
+    POR JUEGO:
 
 # Sound Controller - mod
 off = NO

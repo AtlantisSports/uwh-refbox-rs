@@ -220,7 +220,7 @@ fn details_strings(
 
     if using_uwhportal {
         let unknown = &fl!("unknown");
-        left_string += &fl!("stop-clock-last-2-min", stop_clock = unknown);
+        left_string += &fl!("stop-clock-last-2", stop_clock = unknown);
         left_string += "\n";
 
         right_string += &fl!(

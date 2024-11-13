@@ -153,13 +153,9 @@ overtime-details = Durée de la pause avant les prolongations: { $pre_overtime }
              Durée de la mi-temps des prolongations: { $overtime_half_time_len }
 sd-allowed = Mort Subite Autorisée: { $sd }
 pre-sd = Durée de la pause avant la mort subite: { $pre_sd_len }
-team-tos-per-half = Temps Morts d'Équipe Autorisés par Mi-temps: { $to_num }
 team-to-len = Durée du Temps Mort d'Équipe: { $to_len }
 time-btwn-games = Temps Entre les Matchs: { $time_btwn }
 min-brk-btwn-games = Temps Minimum Entre les Matchs: { $min_brk_time }
-### Shorten
-stop-clock-last-2-min = Arrêter le temps dans les 2 dernières minutes: { $stop_clock }
-
 
 # List Selecters
 select-tournament = SÉLECTIONNER LE TOURNOI
@@ -215,8 +211,10 @@ teams = Équipe { -dark-team-name }: { $dark_team }
 ### Shorten lines 1,2,4
 game-config = Durée de la Période: { $half_len },  Durée de la Mi-temps: { $half_time_len }
     Mort Subite Autorisée: { $sd_allowed },  Prolongations Autorisées: { $ot_allowed }
-    Temps Morts d'Équipe Autorisés par Période: { $team_timeouts }
-    Arrêter le temps dans les 2 dernières minutes: { $stop_clock_last_2 }
+team-timeouts-per-half = Temps Morts d'Équipe Autorisés par Période: { $team_timeouts }
+team-timeouts-per-game = Temps Morts d'Équipe Autorisés par Match: { $team_timeouts }
+### Shorten
+stop-clock-last-2 = Arrêter le temps dans les 2 dernières minutes: { $stop_clock }
 ref-list = Arbitre en Chef: { $chief_ref }
     Chronométreur: { $timer }
     Arbitre Aquatique 1: { $water_ref_1 }
@@ -282,6 +280,8 @@ game-number = NUMÉRO DU
     MATCH:
 num-tos-per-half = NOMBRE DE TEMPS MORTS
     PAR MI-TEMPS:
+num-tos-per-game = NOMBRE DE TEMPS MORTS
+    PAR MATCH:
 
 # Sound Controller - mod
 off = ÉTEINT

@@ -11,7 +11,7 @@ use crate::sound_controller::*;
 use collect_array::CollectArrayResult;
 use iced::{
     alignment::{Horizontal, Vertical},
-    widget::{button, column, container, horizontal_space, row, text, vertical_space},
+    widget::{button, column, container, horizontal_space, row, text, vertical_space, TextInput},
     Alignment, Length,
 };
 use std::collections::BTreeMap;
@@ -29,6 +29,9 @@ pub(in super::super) struct EditableSettings {
     pub game_number: u32,
     pub white_on_right: bool,
     pub using_uwhscores: bool,
+    pub uwhscores_email: String,
+    pub uwhscores_password: String,
+    pub uwhportal_token: String,
     pub current_tid: Option<u32>,
     pub current_pool: Option<String>,
     pub games: Option<BTreeMap<u32, GameInfo>>,
@@ -106,6 +109,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
     clock_running: bool,
     uwhscores_auth: &Option<Vec<u32>>,
     uwhportal_token_valid: Option<(TokenValidity, Option<String>)>,
+    touchscreen: bool,
 ) -> Element<'a, Message> {
     match page {
         ConfigPage::Main => make_main_config_page(snapshot, settings, mode, clock_running),
@@ -117,10 +121,14 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
             clock_running,
             uwhscores_auth,
             uwhportal_token_valid,
+            touchscreen,
         ),
         ConfigPage::Sound => make_sound_config_page(snapshot, settings, mode, clock_running),
         ConfigPage::Display => make_display_config_page(snapshot, settings, mode, clock_running),
         ConfigPage::App => make_app_config_page(mode, snapshot, settings, clock_running),
+        ConfigPage::Credentials => {
+            make_credential_config_page(snapshot, settings, mode, clock_running)
+        }
         ConfigPage::Remotes(index, listening) => {
             make_remote_config_page(snapshot, settings, index, listening, mode, clock_running)
         }
@@ -243,6 +251,7 @@ fn make_tournament_config_page<'a>(
     clock_running: bool,
     uwhscores_auth: &Option<Vec<u32>>,
     uwhportal_token_valid: Option<(TokenValidity, Option<String>)>,
+    touchscreen: bool,
 ) -> Element<'a, Message> {
     let EditableSettings {
         config,
@@ -363,6 +372,12 @@ fn make_tournament_config_page<'a>(
             None
         };
 
+        let auth_btn_msg = if touchscreen {
+            Message::NoAction
+        } else {
+            Message::ChangeConfigPage(ConfigPage::Credentials)
+        };
+
         let auth_state_button = button(
             row![
                 uwhscores_auth_text,
@@ -379,7 +394,7 @@ fn make_tournament_config_page<'a>(
         .width(Length::Fill)
         .padding(0)
         .style(ButtonStyle::LightGray)
-        .on_press(Message::NoAction);
+        .on_press(auth_btn_msg);
 
         [
             make_value_button(
@@ -918,6 +933,79 @@ fn make_remote_config_page<'a>(
         .spacing(SPACING)
         .height(Length::Fill)
         .width(Length::Fill),
+    ]
+    .spacing(SPACING)
+    .height(Length::Fill)
+    .into()
+}
+
+fn make_credential_config_page<'a>(
+    snapshot: &GameSnapshot,
+    settings: &EditableSettings,
+    mode: Mode,
+    clock_running: bool,
+) -> Element<'a, Message> {
+    let EditableSettings {
+        uwhscores_email,
+        uwhscores_password,
+        uwhportal_token,
+        ..
+    } = settings;
+
+    column![
+        make_game_time_button(snapshot, false, false, mode, clock_running),
+        row![
+            text("UWHSCORES EMAIL:")
+                .size(MEDIUM_TEXT)
+                .line_height(LINE_HEIGHT)
+                .vertical_alignment(Vertical::Center)
+                .height(Length::Fill),
+            TextInput::new("", &uwhscores_email,)
+                .on_input(|s| Message::TextParameterChanged(TextParameter::UwhscoresEmail, s))
+                .width(Length::Fill)
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill),
+        row![
+            text("UWHSCORES PASSWORD:")
+                .size(MEDIUM_TEXT)
+                .line_height(LINE_HEIGHT)
+                .vertical_alignment(Vertical::Center)
+                .height(Length::Fill),
+            TextInput::new("", &uwhscores_password,)
+                .on_input(|s| Message::TextParameterChanged(TextParameter::UwhscoresPassword, s))
+                .password()
+                .width(Length::Fill)
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill),
+        row![
+            text("UWHPORTAL TOKEN:")
+                .size(MEDIUM_TEXT)
+                .line_height(LINE_HEIGHT)
+                .vertical_alignment(Vertical::Center)
+                .height(Length::Fill),
+            TextInput::new("", &uwhportal_token,)
+                .on_input(|s| Message::TextParameterChanged(TextParameter::UwhportalToken, s))
+                .password()
+                .width(Length::Fill)
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill),
+        vertical_space(Length::Fill),
+        row![
+            make_button("CANCEL")
+                .style(ButtonStyle::Red)
+                .width(Length::Fill)
+                .on_press(Message::ChangeConfigPage(ConfigPage::Tournament)),
+            horizontal_space(Length::Fill),
+            make_button("DONE")
+                .style(ButtonStyle::Green)
+                .width(Length::Fill)
+                .on_press(Message::ApplyAuthChanges),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill),
     ]
     .spacing(SPACING)
     .height(Length::Fill)

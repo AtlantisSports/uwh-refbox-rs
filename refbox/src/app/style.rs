@@ -1,6 +1,6 @@
 use iced::{
     application,
-    widget::{self, button, container, scrollable, svg, text},
+    widget::{self, button, container, scrollable, svg, text, text_input},
     Background, BorderRadius, Color, Vector,
 };
 use iced_core::text::LineHeight;
@@ -328,6 +328,56 @@ impl scrollable::StyleSheet for ApplicationTheme {
         _is_mouse_over_scrollbar: bool,
     ) -> scrollable::Scrollbar {
         self.active(style)
+    }
+}
+
+impl text_input::StyleSheet for ApplicationTheme {
+    type Style = ();
+
+    fn active(&self, _style: &Self::Style) -> text_input::Appearance {
+        text_input::Appearance {
+            background: Background::Color(WINDOW_BACKGROUND),
+            border_radius: BorderRadius::from(BORDER_RADIUS),
+            border_width: 0.5,
+            border_color: GRAY,
+            icon_color: BLACK,
+        }
+    }
+
+    fn focused(&self, _style: &Self::Style) -> text_input::Appearance {
+        text_input::Appearance {
+            background: Background::Color(WINDOW_BACKGROUND),
+            border_radius: BorderRadius::from(BORDER_RADIUS),
+            border_width: 0.5,
+            border_color: BLACK,
+            icon_color: BLACK,
+        }
+    }
+
+    fn disabled(&self, _style: &Self::Style) -> text_input::Appearance {
+        text_input::Appearance {
+            background: Background::Color(WINDOW_BACKGROUND),
+            border_radius: BorderRadius::from(BORDER_RADIUS),
+            border_width: 1.0,
+            border_color: DISABLED_COLOR,
+            icon_color: BLACK,
+        }
+    }
+
+    fn placeholder_color(&self, _style: &Self::Style) -> Color {
+        GRAY
+    }
+
+    fn value_color(&self, _style: &Self::Style) -> Color {
+        BLACK
+    }
+
+    fn selection_color(&self, _style: &Self::Style) -> Color {
+        BLUE
+    }
+
+    fn disabled_color(&self, _style: &Self::Style) -> Color {
+        BLACK
     }
 }
 

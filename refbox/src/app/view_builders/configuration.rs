@@ -3,7 +3,7 @@ use super::{
     shared_elements::*,
     style::{
         ButtonStyle, ContainerStyle, Element, LINE_HEIGHT, MEDIUM_TEXT, MIN_BUTTON_SIZE, PADDING,
-        SMALL_TEXT, SPACING,
+        SMALL_PLUS_TEXT, SMALL_TEXT, SPACING,
     },
 };
 use crate::config::Mode;
@@ -16,7 +16,9 @@ use iced::{
 };
 use std::collections::BTreeMap;
 use tokio::time::Duration;
-use uwh_common::{config::Game as GameConfig, game_snapshot::GameSnapshot, uwhscores::*};
+use uwh_common::{
+    config::Game as GameConfig, game_snapshot::GameSnapshot, uwhportal::TokenValidity, uwhscores::*,
+};
 
 const NO_SELECTION_TXT: &str = "None Selected";
 const LOADING_TXT: &str = "Loading...";
@@ -102,12 +104,20 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
     page: ConfigPage,
     mode: Mode,
     clock_running: bool,
+    uwhscores_auth: &Option<Vec<u32>>,
+    uwhportal_token_valid: Option<(TokenValidity, Option<String>)>,
 ) -> Element<'a, Message> {
     match page {
         ConfigPage::Main => make_main_config_page(snapshot, settings, mode, clock_running),
-        ConfigPage::Tournament => {
-            make_tournament_config_page(snapshot, settings, tournaments, mode, clock_running)
-        }
+        ConfigPage::Tournament => make_tournament_config_page(
+            snapshot,
+            settings,
+            tournaments,
+            mode,
+            clock_running,
+            uwhscores_auth,
+            uwhportal_token_valid,
+        ),
         ConfigPage::Sound => make_sound_config_page(snapshot, settings, mode, clock_running),
         ConfigPage::Display => make_display_config_page(snapshot, settings, mode, clock_running),
         ConfigPage::App => make_app_config_page(mode, snapshot, settings, clock_running),
@@ -231,6 +241,8 @@ fn make_tournament_config_page<'a>(
     tournaments: &Option<BTreeMap<u32, TournamentInfo>>,
     mode: Mode,
     clock_running: bool,
+    uwhscores_auth: &Option<Vec<u32>>,
+    uwhportal_token_valid: Option<(TokenValidity, Option<String>)>,
 ) -> Element<'a, Message> {
     let EditableSettings {
         config,
@@ -284,6 +296,91 @@ fn make_tournament_config_page<'a>(
             .and_then(|tourns| tourns.get(&(*current_tid)?)?.pools.as_ref())
             .map(|_| Message::SelectParameter(ListableParameter::Pool));
 
+        let auth_container = |auth| {
+            let txt = match auth {
+                Some(true) => "OK",
+                Some(false) => "FAILED",
+                None => "CHECKING...",
+            };
+            let style = match auth {
+                Some(true) => ContainerStyle::Green,
+                Some(false) => ContainerStyle::Red,
+                None => ContainerStyle::Gray,
+            };
+            container(txt)
+                .center_x()
+                .center_y()
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .style(style)
+        };
+
+        let uwhscores_auth_text = column![
+            text("UWHSCORES")
+                .size(SMALL_PLUS_TEXT)
+                .line_height(LINE_HEIGHT)
+                .vertical_alignment(Vertical::Center)
+                .horizontal_alignment(Horizontal::Right)
+                .width(Length::Fill),
+            text("LOGIN")
+                .size(SMALL_PLUS_TEXT)
+                .line_height(LINE_HEIGHT)
+                .vertical_alignment(Vertical::Center)
+                .horizontal_alignment(Horizontal::Right)
+                .width(Length::Fill),
+        ]
+        .width(Length::Fill)
+        .height(Length::Fill);
+
+        let uwhportal_auth_text = column![
+            text("UWHPORTAL")
+                .size(SMALL_PLUS_TEXT)
+                .line_height(LINE_HEIGHT)
+                .vertical_alignment(Vertical::Center)
+                .horizontal_alignment(Horizontal::Right)
+                .width(Length::Fill),
+            text("TOKEN")
+                .size(SMALL_PLUS_TEXT)
+                .line_height(LINE_HEIGHT)
+                .vertical_alignment(Vertical::Center)
+                .horizontal_alignment(Horizontal::Right)
+                .width(Length::Fill),
+        ]
+        .width(Length::Fill)
+        .height(Length::Fill);
+
+        let uwhscores_auth = uwhscores_auth.as_ref().and_then(|auth| {
+            if auth.is_empty() {
+                Some(false)
+            } else {
+                Some(auth.contains(current_tid.as_ref()?))
+            }
+        });
+
+        let uwhportal_auth = if matches!(uwhportal_token_valid, Some((TokenValidity::Invalid, _))) {
+            Some(false)
+        } else {
+            None
+        };
+
+        let auth_state_button = button(
+            row![
+                uwhscores_auth_text,
+                auth_container(uwhscores_auth),
+                uwhportal_auth_text,
+                auth_container(uwhportal_auth),
+            ]
+            .padding(PADDING)
+            .spacing(SPACING)
+            .width(Length::Fill)
+            .height(Length::Fill),
+        )
+        .height(Length::Fixed(MIN_BUTTON_SIZE))
+        .width(Length::Fill)
+        .padding(0)
+        .style(ButtonStyle::LightGray)
+        .on_press(Message::NoAction);
+
         [
             make_value_button(
                 "TOURNAMENT:",
@@ -296,7 +393,7 @@ fn make_tournament_config_page<'a>(
             make_value_button("COURT:", pool_label, (true, true), pool_btn_msg)
                 .height(Length::Fill)
                 .into(),
-            vertical_space(Length::Fill).into(),
+            auth_state_button.into(),
             row![
                 horizontal_space(Length::Fill),
                 horizontal_space(Length::Fill),

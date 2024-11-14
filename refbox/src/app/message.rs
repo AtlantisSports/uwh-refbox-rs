@@ -99,6 +99,7 @@ pub enum Message {
     RecvGame(GameInfo),
     StopClock,
     StartClock,
+    UwhScoresAuthChecked(Vec<u32>),
     NoAction, // TODO: Remove once UI is functional
 }
 
@@ -159,7 +160,8 @@ impl Message {
             | Self::ConfirmScores(_)
             | Self::ScoreConfirmation { .. }
             | Self::StopClock
-            | Self::StartClock => false,
+            | Self::StartClock
+            | Self::UwhScoresAuthChecked(_) => false,
         }
     }
 }

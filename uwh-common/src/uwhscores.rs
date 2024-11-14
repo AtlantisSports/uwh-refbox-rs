@@ -179,6 +179,26 @@ impl GameScorePostData {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+pub struct UserInfo {
+    pub active: bool,
+    pub admin: bool,
+    #[serde(with = "rfc3339_no_subsec_no_offest")]
+    pub date_created: PrimitiveDateTime,
+    pub email: String,
+    #[serde(with = "rfc3339_no_subsec_no_offest")]
+    pub last_login: PrimitiveDateTime,
+    pub short_name: String,
+    pub site_admin: bool,
+    pub tournaments: Vec<u32>,
+    pub user_id: String,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+pub struct UserResponse {
+    pub user: UserInfo,
+}
+
 #[cfg(test)]
 mod test {
     use super::*;

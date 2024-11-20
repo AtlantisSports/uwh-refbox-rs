@@ -1,6 +1,6 @@
 [package]
 name = "uwh-common"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Atlantis Sports <maintainers@atlantissports.org>"]
 edition = "2021"
 
@@ -15,7 +15,7 @@ defmt = "0.3"
 derivative = { version = "2", features = ["use_core"] }
 displaydoc = { version = "0.2", default-features = false }
 enum-derive-2018 = { version = "3", optional = true }
-fonts = { version = "0.2.0", path = "../fonts" }
+fonts = { version = "0.2.1", path = "../fonts" }
 log = "0.4"
 reqwest = { version = "0.12", optional = true, features = ["json"] }
 macro-attr-2018 = "3"

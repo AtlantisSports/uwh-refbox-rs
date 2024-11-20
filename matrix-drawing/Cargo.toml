@@ -1,6 +1,6 @@
 [package]
 name = "matrix-drawing"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Atlantis Sports <maintainers@atlantissports.org>"]
 edition = "2021"
 
@@ -12,8 +12,8 @@ std = ["arrayvec/std", "serde/std", "uwh-common/std"]
 arrayref = "0.3"
 arrayvec = { version = "0.7", default-features = false }
 embedded-graphics = "0.8"
-fonts = { version = "0.2.0", path = "../fonts" }
+fonts = { version = "0.2.1", path = "../fonts" }
 more-asserts = "0.3"
 serde = { version = "1", default-features = false }
 serde_derive = "1"
-uwh-common = { version = "0.2.0", path = "../uwh-common", default-features = false }
+uwh-common = { version = "0.2.1", path = "../uwh-common", default-features = false }

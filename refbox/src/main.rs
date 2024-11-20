@@ -82,6 +82,10 @@ struct Cli {
     all_tournaments: bool,
 
     #[clap(long)]
+    /// Don't allow views that require a keyboard
+    touchscreen: bool,
+
+    #[clap(long)]
     /// Directory within which log files will be placed, default is platform dependent
     log_location: Option<PathBuf>,
 
@@ -318,6 +322,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         require_https: !args.allow_http,
         fullscreen: args.fullscreen,
         list_all_tournaments: args.all_tournaments,
+        touchscreen: args.touchscreen,
     };
 
     let mut settings = Settings::with_flags(flags);

@@ -81,6 +81,8 @@ pub enum Message {
     ParameterSelected(ListableParameter, usize),
     ToggleBoolParameter(BoolGameParameter),
     CycleParameter(CyclingParameter),
+    TextParameterChanged(TextParameter, String),
+    ApplyAuthChanges,
     RequestRemoteId,
     GotRemoteId(u32),
     DeleteRemote(usize),
@@ -99,6 +101,7 @@ pub enum Message {
     RecvGame(GameInfo),
     StopClock,
     StartClock,
+    UwhScoresAuthChecked(Vec<u32>),
     NoAction, // TODO: Remove once UI is functional
 }
 
@@ -148,6 +151,8 @@ impl Message {
             | Self::SelectParameter(_)
             | Self::ParameterEditComplete { .. }
             | Self::ParameterSelected(_, _)
+            | Self::TextParameterChanged(_, _)
+            | Self::ApplyAuthChanges
             | Self::RequestRemoteId
             | Self::GotRemoteId(_)
             | Self::DeleteRemote(_)
@@ -159,7 +164,8 @@ impl Message {
             | Self::ConfirmScores(_)
             | Self::ScoreConfirmation { .. }
             | Self::StopClock
-            | Self::StartClock => false,
+            | Self::StartClock
+            | Self::UwhScoresAuthChecked(_) => false,
         }
     }
 }
@@ -171,6 +177,7 @@ pub enum ConfigPage {
     Sound,
     Display,
     App,
+    Credentials,
     Remotes(usize, bool),
 }
 
@@ -218,6 +225,13 @@ pub enum CyclingParameter {
     AboveWaterVol,
     UnderWaterVol,
     Mode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextParameter {
+    UwhscoresEmail,
+    UwhscoresPassword,
+    UwhportalToken,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

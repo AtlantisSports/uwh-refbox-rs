@@ -19,6 +19,7 @@ use std::{
     borrow::Cow,
     cmp::min,
     collections::BTreeMap,
+    pin::Pin,
     process::Child,
     sync::{Arc, Mutex},
 };
@@ -69,6 +70,8 @@ pub struct RefBoxApp {
     message_listener: MessageListener,
     msg_tx: mpsc::UnboundedSender<Message>,
     client: Option<Client>,
+    uwhscores_token: Arc<Mutex<Option<String>>>,
+    uwhscores_auth_valid_for: Option<Vec<u32>>,
     uwhportal_client: Option<UwhPortalClient>,
     using_uwhscores: bool,
     tournaments: Option<BTreeMap<u32, TournamentInfo>>,
@@ -79,6 +82,7 @@ pub struct RefBoxApp {
     sim_child: Option<Child>,
     fullscreen: bool,
     list_all_tournaments: bool,
+    touchscreen: bool,
 }
 
 #[derive(Debug)]
@@ -91,6 +95,7 @@ pub struct RefBoxAppFlags {
     pub require_https: bool,
     pub fullscreen: bool,
     pub list_all_tournaments: bool,
+    pub touchscreen: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -202,14 +207,25 @@ impl RefBoxApp {
         }
     }
 
-    fn do_get_request<T, F>(&self, url: String, short_name: String, on_success: F)
-    where
+    fn do_get_request<T, F>(
+        &self,
+        url: String,
+        short_name: String,
+        on_success: F,
+        on_error: Option<Message>,
+    ) where
         T: serde::de::DeserializeOwned,
         F: Fn(T) -> Message + Send + Sync + 'static,
     {
         if let Some(client) = &self.client {
             info!("Starting request for {short_name}");
-            let request = client.request(Method::GET, url).build().unwrap();
+            let mut request = client.request(Method::GET, url);
+            if let Some(token) = self.uwhscores_token.lock().unwrap().as_deref() {
+                if !token.is_empty() {
+                    request = request.basic_auth::<_, String>(token.to_string(), None);
+                }
+            }
+            let request = request.build().unwrap();
             let client_ = client.clone();
             let msg_tx_ = self.msg_tx.clone();
 
@@ -257,6 +273,9 @@ impl RefBoxApp {
                     msg_tx_.send(msg).unwrap();
                 } else {
                     error!("Too many failures when requesting {short_name}, stopping");
+                    if let Some(on_error) = on_error {
+                        msg_tx_.send(on_error).unwrap();
+                    }
                 }
             });
         }
@@ -268,6 +287,7 @@ impl RefBoxApp {
             url,
             "tournament list".to_string(),
             |parsed: TournamentListResponse| Message::RecvTournamentList(parsed.tournaments),
+            None,
         );
     }
 
@@ -277,6 +297,7 @@ impl RefBoxApp {
             url,
             format!("tournament details for tid {tid}"),
             |parsed: TournamentSingleResponse| Message::RecvTournament(parsed.tournament),
+            None,
         );
     }
 
@@ -286,6 +307,7 @@ impl RefBoxApp {
             url,
             format!("game list for tid {tid}"),
             |parsed: GameListResponse| Message::RecvGameList(parsed.games),
+            None,
         );
     }
 
@@ -295,7 +317,64 @@ impl RefBoxApp {
             url,
             format!("game deatils for tid {tid} and gid {gid}"),
             |parsed: GameSingleResponse| Message::RecvGame(parsed.game),
+            None,
         );
+    }
+
+    fn uwhscores_login(&self) -> Option<Pin<Box<impl std::future::Future<Output = ()>>>> {
+        if let Some(client) = &self.client {
+            let client_ = client.clone();
+            let login_request = client_
+                .request(Method::GET, format!("{}login", self.config.uwhscores.url))
+                .basic_auth(
+                    self.config.uwhscores.email.clone(),
+                    Some(self.config.uwhscores.password.clone()),
+                )
+                .build()
+                .unwrap();
+
+            let uwhscores_token = self.uwhscores_token.clone();
+            Some(Box::pin(async move {
+                info!("Starting login request");
+
+                for _ in 0..MAX_RETRIES {
+                    match client_.execute(login_request.try_clone().unwrap()).await {
+                        Ok(resp) => {
+                            if resp.status() != StatusCode::OK {
+                                error!(
+                                    "Got bad status code from uwhscores when logging in: {}",
+                                    resp.status()
+                                );
+                                info!("Maybe retrying");
+                                *uwhscores_token.lock().unwrap() = Some(String::new());
+                                continue;
+                            } else {
+                                match resp.json::<LoginResponse>().await {
+                                    Ok(parsed) => {
+                                        info!("Successfully logged in to uwhscores");
+                                        *uwhscores_token.lock().unwrap() = Some(parsed.token);
+                                        return;
+                                    }
+                                    Err(e) => {
+                                        error!("Couldn't deserialize login: {e}");
+                                        *uwhscores_token.lock().unwrap() = Some(String::new());
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!("Login request failed: {e}");
+                            info!("Maybe retrying");
+                            *uwhscores_token.lock().unwrap() = Some(String::new());
+                            continue;
+                        }
+                    };
+                }
+            }))
+        } else {
+            None
+        }
     }
 
     fn post_game_score(&self, game: &GameInfo, scores: BlackWhiteBundle<u8>) {
@@ -304,16 +383,8 @@ impl RefBoxApp {
             let gid = game.gid;
             let post_url = format!("{}tournaments/{tid}/games/{gid}", self.config.uwhscores.url);
 
-            info!("Starting login request");
-
-            let login_request = client
-                .request(Method::GET, format!("{}login", self.config.uwhscores.url))
-                .basic_auth(
-                    self.config.uwhscores.email.clone(),
-                    Some(self.config.uwhscores.password.clone()),
-                )
-                .build()
-                .unwrap();
+            let login_request = self.uwhscores_login().unwrap();
+            let mut login_request_2 = Some(self.uwhscores_login().unwrap());
 
             let post_data = GameScorePostData::new(GameScoreInfo {
                 tid,
@@ -324,58 +395,64 @@ impl RefBoxApp {
                 white_id: game.white_id,
             });
 
-            let client_ = client.clone();
-            task::spawn(async move {
-                let mut login = None;
-                for _ in 0..MAX_RETRIES {
-                    login = match client_.execute(login_request.try_clone().unwrap()).await {
-                        Ok(resp) => {
-                            if resp.status() != StatusCode::OK {
-                                error!(
-                                    "Got bad status code from uwhscores when logging in: {}",
-                                    resp.status()
-                                );
-                                info!("Maybe retrying");
-                                continue;
-                            } else {
-                                match resp.json::<LoginResponse>().await {
-                                    Ok(parsed) => Some(parsed),
-                                    Err(e) => {
-                                        error!("Couldn't desesrialize login: {e}");
-                                        return;
-                                    }
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            error!("Login request failed: {e}");
-                            info!("Maybe retrying");
-                            continue;
-                        }
-                    };
-                    break;
-                }
+            let post_request = client
+                .request(Method::POST, post_url.clone())
+                .json(&post_data);
 
-                let login = if let Some(l) = login {
-                    l
-                } else {
-                    error!("Too many failures when logging in to uwhscores, stopping");
-                    return;
+            let client_ = client.clone();
+            let uwhscores_token = self.uwhscores_token.clone();
+            task::spawn(async move {
+                let token = uwhscores_token.lock().unwrap().clone();
+
+                let mut token = match token {
+                    Some(t) if !t.is_empty() => t,
+                    _ => {
+                        login_request.await;
+                        if let Some(t) = uwhscores_token.lock().unwrap().as_deref() {
+                            t.to_string()
+                        } else {
+                            error!(
+                                "Failed to get uwhscores token. Aborting post score: {post_data:?}"
+                            );
+                            return;
+                        }
+                    }
                 };
 
                 info!("Posting score: {post_data:?}");
 
-                let post_request = client_
-                    .request(Method::POST, post_url)
-                    .basic_auth::<_, String>(login.token, None)
-                    .json(&post_data)
-                    .build()
-                    .unwrap();
-
                 for _ in 0..MAX_RETRIES {
-                    match client_.execute(post_request.try_clone().unwrap()).await {
-                        Ok(resp) => {
-                            if resp.status() != StatusCode::OK {
+                    let request = post_request
+                        .try_clone()
+                        .unwrap()
+                        .basic_auth::<_, String>(token.clone(), None)
+                        .build()
+                        .unwrap();
+
+                    match client_.execute(request).await {
+                        Ok(resp) => match resp.status() {
+                            StatusCode::OK => {
+                                info!("Successfully posted score");
+                                return;
+                            }
+                            StatusCode::UNAUTHORIZED => {
+                                error!("Got unauthorized status code from uwhscores when posting score: {}",
+                                    resp.status());
+                                info!("Maybe retrying");
+                                if let Some(f) = login_request_2.take() {
+                                    f.await;
+                                }
+                                token = if let Some(token) =
+                                    uwhscores_token.lock().unwrap().as_deref()
+                                {
+                                    token.to_string()
+                                } else {
+                                    error!("Failed to get uwhscores token. Aborting post score: {post_data:?}");
+                                    return;
+                                };
+                                continue;
+                            }
+                            _ => {
                                 error!(
                                     "Got bad status code from uwhscores when posting score: {}",
                                     resp.status()
@@ -383,14 +460,129 @@ impl RefBoxApp {
                                 info!("Maybe retrying");
                                 continue;
                             }
-                        }
+                        },
                         Err(e) => {
                             error!("Post score request failed: {e}");
                             info!("Maybe retrying");
                             continue;
                         }
                     };
+                }
+            });
+        }
+    }
+
+    fn check_uwhscores_auth(&self) {
+        if let Some(client) = &self.client {
+            info!("Starting request for uwhscores auth");
+
+            let login_request = self.uwhscores_login().unwrap();
+            let mut login_request_2 = Some(self.uwhscores_login().unwrap());
+
+            let user_request = client.request(
+                Method::GET,
+                format!("{}users/me", self.config.uwhscores.url),
+            );
+            let client_ = client.clone();
+            let uwhscores_token = self.uwhscores_token.clone();
+            let msg_tx_ = self.msg_tx.clone();
+
+            let mut delay_until = None;
+
+            task::spawn(async move {
+                let token = uwhscores_token.lock().unwrap().clone();
+
+                let mut token = match token {
+                    Some(t) if !t.is_empty() => t,
+                    _ => {
+                        login_request.await;
+                        if let Some(t) = uwhscores_token.lock().unwrap().as_deref() {
+                            t.to_string()
+                        } else {
+                            error!("Failed to get uwhscores token. Aborting uwhscores auth check");
+                            return;
+                        }
+                    }
+                };
+
+                for _ in 0..MAX_RETRIES {
+                    if let Some(time) = delay_until.take() {
+                        sleep_until(time).await;
+                    }
+
+                    let request = user_request
+                        .try_clone()
+                        .unwrap()
+                        .basic_auth::<_, String>(token.clone(), None)
+                        .build()
+                        .unwrap();
+
+                    let start = Instant::now();
+                    match client_.execute(request).await {
+                        Ok(resp) => match resp.status() {
+                            StatusCode::OK => match resp.json::<UserResponse>().await {
+                                Ok(parsed) => {
+                                    msg_tx_
+                                        .send(Message::UwhScoresAuthChecked(
+                                            parsed.user.tournaments,
+                                        ))
+                                        .unwrap();
+                                    return;
+                                }
+                                Err(e) => {
+                                    error!("Couldn't desesrialize uwhscores auth: {e}");
+                                }
+                            },
+                            StatusCode::UNAUTHORIZED => {
+                                error!("Got unauthorized status code from uwhscores when requesting uwhscores auth: {}",
+                                    resp.status());
+                                info!("Maybe retrying");
+                                if let Some(f) = login_request_2.take() {
+                                    f.await;
+                                }
+                                token = if let Some(token) =
+                                    uwhscores_token.lock().unwrap().as_deref()
+                                {
+                                    token.to_string()
+                                } else {
+                                    error!("Failed to get uwhscores token. Aborting uwhscores auth check");
+                                    msg_tx_.send(Message::UwhScoresAuthChecked(vec![])).unwrap();
+                                    return;
+                                };
+                                continue;
+                            }
+                            _ => {
+                                error!(
+                                    "Got bad status code from uwhscores when requesting uwhscores auth: {}",
+                                    resp.status()
+                                );
+                                info!("Maybe retrying");
+                                continue;
+                            }
+                        },
+                        Err(e) => {
+                            error!("Request for uwhscores auth failed: {e}");
+                            info!("Maybe retrying");
+                            delay_until = Some(start + REQUEST_TIMEOUT);
+                            continue;
+                        }
+                    };
                     break;
+                }
+
+                error!("Too many failures when requesting uwhscores auth, stopping");
+                msg_tx_.send(Message::UwhScoresAuthChecked(vec![])).unwrap();
+            });
+        }
+    }
+
+    fn check_uwhportal_auth(&self) {
+        if let Some(ref uwhportal_client) = self.uwhportal_client {
+            let request = uwhportal_client.verify_token();
+            tokio::spawn(async move {
+                match request.await {
+                    Ok(()) => info!("Successfully checked uwhportal token validity"),
+                    Err(e) => error!("Failed to check uwhportal token validity: {e}"),
                 }
             });
         }
@@ -483,6 +675,9 @@ impl RefBoxApp {
             config: _config,
             game_number: _game_number,
             track_fouls_and_warnings,
+            uwhscores_email: _,
+            uwhscores_password: _,
+            uwhportal_token: _,
         } = edited_settings;
 
         self.config.hardware.white_on_right = white_on_right;
@@ -530,6 +725,7 @@ impl Application for RefBoxApp {
             require_https,
             fullscreen,
             list_all_tournaments,
+            touchscreen,
         } = flags;
 
         let (msg_tx, rx) = mpsc::unbounded_channel();
@@ -554,9 +750,14 @@ impl Application for RefBoxApp {
             }
         };
 
+        let portal_token = if !config.uwhportal.token.is_empty() {
+            Some(config.uwhportal.token.as_str())
+        } else {
+            None
+        };
         let uwhportal_client = match UwhPortalClient::new(
             &config.uwhportal.url,
-            Some(&config.uwhportal.token),
+            portal_token,
             require_https,
             REQUEST_TIMEOUT,
         ) {
@@ -599,6 +800,8 @@ impl Application for RefBoxApp {
                 message_listener,
                 msg_tx,
                 client,
+                uwhscores_token: Arc::new(Mutex::new(None)),
+                uwhscores_auth_valid_for: None,
                 uwhportal_client,
                 using_uwhscores: false,
                 tournaments: None,
@@ -609,6 +812,7 @@ impl Application for RefBoxApp {
                 sim_child,
                 fullscreen,
                 list_all_tournaments,
+                touchscreen,
             },
             Command::single(command::Action::LoadFont {
                 bytes: Cow::from(&include_bytes!("../../resources/Roboto-Medium.ttf")[..]),
@@ -654,7 +858,11 @@ impl Application for RefBoxApp {
         };
 
         match message {
-            Message::Init => self.request_tournament_list(),
+            Message::Init => {
+                self.request_tournament_list();
+                self.check_uwhscores_auth();
+                self.check_uwhportal_auth();
+            }
             Message::NewSnapshot(snapshot) => {
                 self.apply_snapshot(snapshot);
             }
@@ -1278,6 +1486,9 @@ impl Application for RefBoxApp {
                     },
                     white_on_right: self.config.hardware.white_on_right,
                     using_uwhscores: self.using_uwhscores,
+                    uwhscores_email: self.config.uwhscores.email.clone(),
+                    uwhscores_password: self.config.uwhscores.password.clone(),
+                    uwhportal_token: self.config.uwhportal.token.clone(),
                     current_tid: self.current_tid,
                     current_pool: self.current_pool.clone(),
                     games: self.games.clone(),
@@ -1661,6 +1872,27 @@ impl Application for RefBoxApp {
                     CyclingParameter::Mode => settings.mode.cycle(),
                 }
             }
+            Message::TextParameterChanged(param, val) => {
+                let settings = self.edited_settings.as_mut().unwrap();
+                match param {
+                    TextParameter::UwhscoresEmail => settings.uwhscores_email = val,
+                    TextParameter::UwhscoresPassword => settings.uwhscores_password = val,
+                    TextParameter::UwhportalToken => settings.uwhportal_token = val,
+                }
+            }
+            Message::ApplyAuthChanges => {
+                let settings = self.edited_settings.as_mut().unwrap();
+                self.config.uwhscores.email = settings.uwhscores_email.clone();
+                self.config.uwhscores.password = settings.uwhscores_password.clone();
+                self.config.uwhportal.token = settings.uwhportal_token.clone();
+
+                self.uwhscores_token.lock().unwrap().take();
+                self.uwhscores_auth_valid_for = None;
+                self.check_uwhscores_auth();
+
+                self.app_state = AppState::EditGameConfig(ConfigPage::Tournament);
+                trace!("AppState changed to {:?}", self.app_state);
+            }
             Message::RequestRemoteId => {
                 if let AppState::EditGameConfig(ConfigPage::Remotes(_, ref mut listening)) =
                     self.app_state
@@ -1712,7 +1944,7 @@ impl Application for RefBoxApp {
                     ConfirmationOption::DiscardChanges => AppState::MainPage,
                     ConfirmationOption::GoBack => AppState::EditGameConfig(ConfigPage::Main),
                     ConfirmationOption::EndGameAndApply => {
-                        let edited_settings = self.edited_settings.take().unwrap();
+                        let edited_settings = self.edited_settings.as_ref().unwrap();
                         let mut tm = self.tm.lock().unwrap();
                         let now = Instant::now();
                         tm.reset_game(now);
@@ -1740,36 +1972,22 @@ impl Application for RefBoxApp {
                             tm.clear_scheduled_game_start();
                         }
 
-                        self.config.hardware.white_on_right = edited_settings.white_on_right;
-                        self.using_uwhscores = edited_settings.using_uwhscores;
-                        self.current_tid = edited_settings.current_tid;
-                        self.current_pool = edited_settings.current_pool;
-                        self.games = edited_settings.games;
-                        self.config.sound = edited_settings.sound;
-                        self.sound.update_settings(self.config.sound.clone());
-                        self.config.mode = edited_settings.mode;
+                        std::mem::drop(tm);
+                        self.apply_settings_change();
 
                         confy::store(APP_NAME, None, &self.config).unwrap();
-                        let snapshot = tm.generate_snapshot(now).unwrap(); // TODO: Remove this unwrap
-                        std::mem::drop(tm);
+                        let snapshot = self.tm.lock().unwrap().generate_snapshot(now).unwrap(); // TODO: Remove this unwrap
                         self.apply_snapshot(snapshot);
                         AppState::MainPage
                     }
                     ConfirmationOption::KeepGameAndApply => {
-                        let edited_settings = self.edited_settings.take().unwrap();
+                        let edited_settings = self.edited_settings.as_ref().unwrap();
                         let mut tm = self.tm.lock().unwrap();
                         tm.set_game_number(edited_settings.game_number);
                         let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
                         std::mem::drop(tm);
 
-                        self.config.hardware.white_on_right = edited_settings.white_on_right;
-                        self.using_uwhscores = edited_settings.using_uwhscores;
-                        self.current_tid = edited_settings.current_tid;
-                        self.current_pool = edited_settings.current_pool;
-                        self.games = edited_settings.games;
-                        self.config.sound = edited_settings.sound;
-                        self.sound.update_settings(self.config.sound.clone());
-                        self.config.mode = edited_settings.mode;
+                        self.apply_settings_change();
 
                         confy::store(APP_NAME, None, &self.config).unwrap();
                         self.apply_snapshot(snapshot);
@@ -1960,6 +2178,7 @@ impl Application for RefBoxApp {
             }
             Message::StartClock => self.tm.lock().unwrap().start_clock(Instant::now()),
             Message::StopClock => self.tm.lock().unwrap().stop_clock(Instant::now()).unwrap(),
+            Message::UwhScoresAuthChecked(valid) => self.uwhscores_auth_valid_for = Some(valid),
             Message::NoAction => {}
         };
 
@@ -2057,6 +2276,9 @@ impl Application for RefBoxApp {
                 page,
                 self.config.mode,
                 clock_running,
+                &self.uwhscores_auth_valid_for,
+                self.uwhportal_client.as_ref().map(|c| c.token_validity()),
+                self.touchscreen,
             ),
             AppState::ParameterEditor(param, dur) => build_game_parameter_editor(
                 &self.snapshot,

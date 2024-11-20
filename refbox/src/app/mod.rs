@@ -404,16 +404,19 @@ impl RefBoxApp {
             task::spawn(async move {
                 let token = uwhscores_token.lock().unwrap().clone();
 
-                let mut token = if token.is_none() || token.as_ref().unwrap().is_empty() {
-                    login_request.await;
-                    if let Some(t) = uwhscores_token.lock().unwrap().as_deref() {
-                        t.to_string()
-                    } else {
-                        error!("Failed to get uwhscores token. Aborting post score: {post_data:?}");
-                        return;
+                let mut token = match token {
+                    Some(t) if !t.is_empty() => t,
+                    _ => {
+                        login_request.await;
+                        if let Some(t) = uwhscores_token.lock().unwrap().as_deref() {
+                            t.to_string()
+                        } else {
+                            error!(
+                                "Failed to get uwhscores token. Aborting post score: {post_data:?}"
+                            );
+                            return;
+                        }
                     }
-                } else {
-                    token.unwrap()
                 };
 
                 info!("Posting score: {post_data:?}");
@@ -489,16 +492,17 @@ impl RefBoxApp {
             task::spawn(async move {
                 let token = uwhscores_token.lock().unwrap().clone();
 
-                let mut token = if token.is_none() || token.as_ref().unwrap().is_empty() {
-                    login_request.await;
-                    if let Some(t) = uwhscores_token.lock().unwrap().as_deref() {
-                        t.to_string()
-                    } else {
-                        error!("Failed to get uwhscores token. Aborting uwhscores auth check");
-                        return;
+                let mut token = match token {
+                    Some(t) if !t.is_empty() => t,
+                    _ => {
+                        login_request.await;
+                        if let Some(t) = uwhscores_token.lock().unwrap().as_deref() {
+                            t.to_string()
+                        } else {
+                            error!("Failed to get uwhscores token. Aborting uwhscores auth check");
+                            return;
+                        }
                     }
-                } else {
-                    token.unwrap()
                 };
 
                 for _ in 0..MAX_RETRIES {

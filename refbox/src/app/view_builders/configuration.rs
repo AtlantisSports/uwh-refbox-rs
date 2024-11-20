@@ -100,6 +100,7 @@ impl Cyclable for Mode {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(in super::super) fn build_game_config_edit_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
@@ -243,6 +244,7 @@ fn make_main_config_page<'a>(
     .into()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn make_tournament_config_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
@@ -960,7 +962,7 @@ fn make_credential_config_page<'a>(
                 .line_height(LINE_HEIGHT)
                 .vertical_alignment(Vertical::Center)
                 .height(Length::Fill),
-            TextInput::new("", &uwhscores_email,)
+            TextInput::new("", uwhscores_email,)
                 .on_input(|s| Message::TextParameterChanged(TextParameter::UwhscoresEmail, s))
                 .width(Length::Fill)
         ]
@@ -972,7 +974,7 @@ fn make_credential_config_page<'a>(
                 .line_height(LINE_HEIGHT)
                 .vertical_alignment(Vertical::Center)
                 .height(Length::Fill),
-            TextInput::new("", &uwhscores_password,)
+            TextInput::new("", uwhscores_password,)
                 .on_input(|s| Message::TextParameterChanged(TextParameter::UwhscoresPassword, s))
                 .password()
                 .width(Length::Fill)
@@ -985,7 +987,7 @@ fn make_credential_config_page<'a>(
                 .line_height(LINE_HEIGHT)
                 .vertical_alignment(Vertical::Center)
                 .height(Length::Fill),
-            TextInput::new("", &uwhportal_token,)
+            TextInput::new("", uwhportal_token,)
                 .on_input(|s| Message::TextParameterChanged(TextParameter::UwhportalToken, s))
                 .password()
                 .width(Length::Fill)

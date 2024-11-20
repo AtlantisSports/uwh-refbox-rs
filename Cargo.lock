@@ -1516,7 +1516,7 @@ dependencies = [
 
 [[package]]
 name = "fonts"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "embedded-graphics",
 ]
@@ -2720,7 +2720,7 @@ dependencies = [
 
 [[package]]
 name = "matrix-drawing"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "arrayref",
  "arrayvec",
@@ -3302,7 +3302,7 @@ dependencies = [
 
 [[package]]
 name = "overlay"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "alphagen",
  "bytes",
@@ -3820,7 +3820,7 @@ dependencies = [
 
 [[package]]
 name = "refbox"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "array-concat",
  "arrayref",
@@ -5300,7 +5300,7 @@ checksum = "711b9620af191e0cdc7468a8d14e709c3dcdb115b36f838e601583af800a370a"
 
 [[package]]
 name = "uwh-common"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "arrayref",
  "arrayvec",

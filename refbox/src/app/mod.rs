@@ -2148,6 +2148,15 @@ impl Application for RefBoxApp {
                 }
 
                 if let Some(ref mut tournaments) = self.tournaments {
+                    if let Some(pools) = tournament.pools.as_ref() {
+                        if pools.len() == 1 {
+                            if let Some(ref mut edits) = self.edited_settings {
+                                if edits.current_pool.is_none() {
+                                    edits.current_pool = Some(pools[0].clone());
+                                }
+                            }
+                        }
+                    }
                     tournaments.insert(tournament.tid, tournament);
                 } else {
                     warn!(

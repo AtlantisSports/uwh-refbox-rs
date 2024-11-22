@@ -1,4 +1,4 @@
-FROM lukemathwalker/cargo-chef:latest-rust-1.79-slim-bullseye AS builder
+FROM lukemathwalker/cargo-chef:latest-rust-1.82-slim-bullseye AS builder
 
 ENV KEYRINGS /usr/local/share/keyrings
 
@@ -25,7 +25,9 @@ RUN set -eux; \
     # Unpack xwin
     tar \
     # Needed for wine to work
-    libfreetype6; \
+    libfreetype6 \
+    # Needed to build the ring crate
+    libssl-dev; \
     # ensure that clang/clang++ are callable directly
     ln -s clang-13 /usr/bin/clang && ln -s clang /usr/bin/clang++ && ln -s lld-13 /usr/bin/ld.lld; \
     # We also need to setup symlinks ourselves for the MSVC shims because they aren't in the debian packages
@@ -47,7 +49,7 @@ RUN set -eux; \
 RUN rustup target add x86_64-pc-windows-msvc
 
 RUN set -eux; \
-    xwin_version="0.6.2"; \
+    xwin_version="0.6.5"; \
     xwin_prefix="xwin-$xwin_version-x86_64-unknown-linux-musl"; \
     # Install xwin to cargo/bin via github release. Note you could also just use `cargo install xwin`.
     curl --fail -L https://github.com/Jake-Shadle/xwin/releases/download/$xwin_version/$xwin_prefix.tar.gz | tar -xzv -C /usr/local/cargo/bin --strip-components=1 $xwin_prefix/xwin; \
@@ -85,7 +87,7 @@ ENV CFLAGS_x86_64_pc_windows_msvc="$CL_FLAGS" \
 # container run
 RUN wine wineboot --init
 
-FROM lukemathwalker/cargo-chef:latest-rust-1.77.2-slim-bullseye AS planner
+FROM lukemathwalker/cargo-chef:latest-rust-1.82-slim-bullseye AS planner
 WORKDIR /workdir
 COPY . .
 RUN find . -type d -name "target" -exec rm -rf {} +

@@ -142,6 +142,7 @@ async fn serial_worker_loop(
     let mut data = TransmittedData {
         snapshot,
         flash: false,
+        beep_test: true,
         white_on_right,
     };
     let mut bytes = data.encode()?;
@@ -370,6 +371,7 @@ impl Server {
                 TransmittedData {
                     white_on_right: self.white_on_right,
                     flash: self.flash,
+                    beep_test: true,
                     snapshot: self.snapshot.clone(),
                 }
                 .encode()
@@ -634,10 +636,14 @@ mod test {
 
         let white_on_right = false;
         let flash = false;
+        let beep_test = true;
         let snapshot = BeepTestSnapshot {
-            current_period: BeepTestPeriod::Level0,
+            current_period: BeepTestPeriod::Level(0),
             secs_in_period: 897,
             next_period_len_secs: 180,
+            lap_count: 12,
+            total_time_in_period: 20,
+            time_in_next_period: 18,
         };
 
         let json_expected = serde_json::to_string(&snapshot).unwrap().into_bytes();
@@ -646,6 +652,7 @@ mod test {
             TransmittedData {
                 white_on_right,
                 flash,
+                beep_test,
                 snapshot: snapshot.clone().into(),
             }
             .encode()

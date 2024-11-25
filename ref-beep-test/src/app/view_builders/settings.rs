@@ -139,18 +139,6 @@ pub fn make_sound_config_page<'a>(
                     None
                 },
             ),
-            make_value_button(
-                "AUTO SOUND\nSTOP PLAY:",
-                bool_string(sound.auto_sound_stop_play),
-                (false, true),
-                if sound.sound_enabled {
-                    Some(Message::ToggleBoolParameter(
-                        BoolGameParameter::AutoSoundStopPlay,
-                    ))
-                } else {
-                    None
-                },
-            )
         ]
         .spacing(SPACING)
         .height(Length::Fill),

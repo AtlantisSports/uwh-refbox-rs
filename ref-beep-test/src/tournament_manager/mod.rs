@@ -1,6 +1,5 @@
 use log::*;
 use thiserror::Error;
-use time::UtcOffset;
 use tokio::{
     sync::watch,
     time::{Duration, Instant},
@@ -39,36 +38,35 @@ pub struct TournamentManager {
     clock_state: ClockState,
     config: BeepTestConfig,
     current_period: BeepTestPeriod,
-    timezone: UtcOffset,
     time_state: TimeState,
     start_stop_tx: watch::Sender<bool>,
     start_stop_rx: watch::Receiver<bool>,
     count: u8,
+    lap_count: u8,
+    time_in_next_lap: Duration,
 }
 
 impl TournamentManager {
     pub fn new(config: BeepTestConfig) -> Self {
         let (start_stop_tx, start_stop_rx) = watch::channel(false);
+        assert!(config.levels.len() > 0);
         Self {
+            time_in_next_lap: config.levels[0].duration,
             current_period: BeepTestPeriod::Pre,
             clock_state: ClockState::Stopped {
-                clock_time: Duration::from_nanos(1),
+                clock_time: Duration::from_secs(10),
             },
             config,
-            timezone: UtcOffset::UTC,
             time_state: TimeState::None,
             start_stop_tx,
             start_stop_rx,
             count: 1,
+            lap_count: 0,
         }
     }
 
     pub fn current_period(&self) -> BeepTestPeriod {
         self.current_period
-    }
-
-    pub fn set_timezone(&mut self, timezone: UtcOffset) {
-        self.timezone = timezone;
     }
 
     pub fn send_clock_running(&self, running: bool) {
@@ -148,33 +146,14 @@ impl TournamentManager {
         }
 
         match self.current_period {
-            BeepTestPeriod::Level1
-            | BeepTestPeriod::Level2
-            | BeepTestPeriod::Level3
-            | BeepTestPeriod::Level4
-            | BeepTestPeriod::Level5
-            | BeepTestPeriod::Level6
-            | BeepTestPeriod::Level7
-            | BeepTestPeriod::Level8
-            | BeepTestPeriod::Level9
-            | BeepTestPeriod::Level10 => return Err(TournamentManagerError::AlreadyInPlayPeriod),
-            BeepTestPeriod::Pre | BeepTestPeriod::Level0 => {
+            BeepTestPeriod::Pre | BeepTestPeriod::Level(0) => {
                 self.start_game(now);
             }
+            BeepTestPeriod::Level(_) => return Err(TournamentManagerError::AlreadyInPlayPeriod),
         }
 
         self.clock_state = match self.current_period {
-            p @ BeepTestPeriod::Level0
-            | p @ BeepTestPeriod::Level1
-            | p @ BeepTestPeriod::Level2
-            | p @ BeepTestPeriod::Level3
-            | p @ BeepTestPeriod::Level4
-            | p @ BeepTestPeriod::Level5
-            | p @ BeepTestPeriod::Level6
-            | p @ BeepTestPeriod::Level7
-            | p @ BeepTestPeriod::Level8
-            | p @ BeepTestPeriod::Level9
-            | p @ BeepTestPeriod::Level10 => ClockState::CountingDown {
+            p @ BeepTestPeriod::Level(_) => ClockState::CountingDown {
                 start_time: now,
                 time_remaining_at_start: p.duration(&self.config).unwrap(),
             },
@@ -198,9 +177,11 @@ impl TournamentManager {
 
         self.current_period = BeepTestPeriod::Pre;
         self.clock_state = ClockState::Stopped {
-            clock_time: Duration::from_nanos(1),
+            clock_time: Duration::from_secs(10),
         };
         self.count = 1;
+        self.lap_count = 0;
+        self.time_in_next_lap = self.config.pre;
 
         self.send_clock_running(false);
     }
@@ -240,16 +221,28 @@ impl TournamentManager {
             .next_test_period_dur(&self.config)
             .map_or(0, |dur| dur.as_secs_f32().round() as u32);
 
+        let lap_count = self.lap_count;
+        let total_time_in_period = self
+            .current_period
+            .duration(&self.config)
+            .unwrap()
+            .as_secs() as u32;
+        let time_in_next_period = self.time_in_next_lap.as_secs() as u32;
+
         Some(BeepTestSnapshot {
             current_period: self.current_period,
             secs_in_period,
             next_period_len_secs,
+            lap_count,
+            total_time_in_period,
+            time_in_next_period,
         })
     }
 
     fn start_game(&mut self, start_time: Instant) {
         info!("{} Entering beep test", self.status_string(start_time),);
-        self.current_period = BeepTestPeriod::Level0;
+        self.current_period = BeepTestPeriod::Level(0);
+        self.lap_count = 0;
     }
 
     pub(super) fn update(&mut self, now: Instant) -> Result<()> {
@@ -268,18 +261,8 @@ impl TournamentManager {
                     BeepTestPeriod::Pre => {
                         self.start_game(start_time + time_remaining_at_start);
                     }
-                    BeepTestPeriod::Level0
-                    | BeepTestPeriod::Level1
-                    | BeepTestPeriod::Level2
-                    | BeepTestPeriod::Level3
-                    | BeepTestPeriod::Level4
-                    | BeepTestPeriod::Level5
-                    | BeepTestPeriod::Level6
-                    | BeepTestPeriod::Level7
-                    | BeepTestPeriod::Level8
-                    | BeepTestPeriod::Level9
-                    | BeepTestPeriod::Level10 => {
-                        self.start_next_period(now);
+                    BeepTestPeriod::Level(_) => {
+                        self.start_next_lap(now);
                     }
                 }
             }
@@ -287,126 +270,52 @@ impl TournamentManager {
         Ok(())
     }
 
-    fn start_next_period(&mut self, now: Instant) {
+    fn start_next_lap(&mut self, now: Instant) {
         match self.current_period {
             BeepTestPeriod::Pre => {
-                info!("{} Entering next period", self.status_string(now));
-                self.current_period = BeepTestPeriod::Level0;
+                self.lap_count = 0;
+                let next_period = self.current_period.next_period(&self.config);
+                self.time_in_next_lap = next_period.next_test_period_dur(&self.config).unwrap();
+                self.current_period = next_period;
+                info!(
+                    "{} Entering next period: {next_period:?}",
+                    self.status_string(now)
+                );
             }
-            BeepTestPeriod::Level0 => {
-                info!("{} Entering next period", self.status_string(now));
-                self.current_period = BeepTestPeriod::Level1;
-            }
-            BeepTestPeriod::Level1 => {
-                if self.count == self.config.count_3 {
+
+            p @ BeepTestPeriod::Level(_) => {
+                self.lap_count += 1;
+
+                if self.count >= p.count(&self.config).unwrap() {
                     self.count = 1;
-                    info!("{} Entering next period", self.status_string(now));
-                    self.current_period = BeepTestPeriod::Level2;
+                    self.current_period = self.current_period.next_period(&self.config);
+                    info!(
+                        "{} Entering next period: {}",
+                        self.status_string(now),
+                        self.current_period
+                    );
+                    if self.current_period.count(&self.config) == Some(1) {
+                        self.time_in_next_lap = self
+                            .current_period
+                            .next_test_period_dur(&self.config)
+                            .unwrap();
+                    }
+                    if self.current_period == BeepTestPeriod::Pre {
+                        self.lap_count = 0
+                    }
                 } else {
+                    if self.count == p.count(&self.config).unwrap() - 1 {
+                        self.time_in_next_lap = self
+                            .current_period
+                            .next_test_period_dur(&self.config)
+                            .unwrap();
+                    }
                     self.count += 1;
-                    info!("{} Repeating period", self.status_string(now));
-                    self.current_period = BeepTestPeriod::Level1;
-                }
-            }
-            BeepTestPeriod::Level2 => {
-                if self.count == self.config.count_3 {
-                    self.count = 1;
-                    info!("{} Entering next period", self.status_string(now));
-                    self.current_period = BeepTestPeriod::Level3;
-                } else {
-                    self.count += 1;
-                    info!("{} Repeating period", self.status_string(now));
-                    self.current_period = BeepTestPeriod::Level2;
-                }
-            }
-            BeepTestPeriod::Level3 => {
-                if self.count == self.config.count_3 {
-                    self.count = 1;
-                    info!("{} Entering next period", self.status_string(now));
-                    self.current_period = BeepTestPeriod::Level4;
-                } else {
-                    self.count += 1;
-                    info!("{} Repeating period", self.status_string(now));
-                    self.current_period = BeepTestPeriod::Level3;
-                }
-            }
-            BeepTestPeriod::Level4 => {
-                if self.count == self.config.count_4 {
-                    self.count = 1;
-                    info!("{} Entering next period", self.status_string(now));
-                    self.current_period = BeepTestPeriod::Level5;
-                } else {
-                    self.count += 1;
-                    info!("{} Repeating period", self.status_string(now));
-                    self.current_period = BeepTestPeriod::Level4;
-                }
-            }
-            BeepTestPeriod::Level5 => {
-                if self.count == self.config.count_4 {
-                    self.count = 1;
-                    info!("{} Entering next period", self.status_string(now));
-                    self.current_period = BeepTestPeriod::Level6;
-                } else {
-                    self.count += 1;
-                    info!("{} Repeating period", self.status_string(now));
-                    self.current_period = BeepTestPeriod::Level5;
-                }
-            }
-            BeepTestPeriod::Level6 => {
-                if self.count == self.config.count_4 {
-                    self.count = 1;
-                    info!("{} Entering next period", self.status_string(now));
-                    self.current_period = BeepTestPeriod::Level7;
-                } else {
-                    self.count += 1;
-                    info!("{} Repeating period", self.status_string(now));
-                    self.current_period = BeepTestPeriod::Level6;
-                }
-            }
-            BeepTestPeriod::Level7 => {
-                if self.count == self.config.count_4 {
-                    self.count = 1;
-                    info!("{} Entering next period", self.status_string(now));
-                    self.current_period = BeepTestPeriod::Level8;
-                } else {
-                    self.count += 1;
-                    info!("{} Repeating period", self.status_string(now));
-                    self.current_period = BeepTestPeriod::Level7;
-                }
-            }
-            BeepTestPeriod::Level8 => {
-                if self.count == self.config.count_4 {
-                    self.count = 1;
-                    info!("{} Entering next period", self.status_string(now));
-                    self.current_period = BeepTestPeriod::Level9;
-                } else {
-                    self.count += 1;
-                    info!("{} Repeating period", self.status_string(now));
-                    self.current_period = BeepTestPeriod::Level8;
-                }
-            }
-            BeepTestPeriod::Level9 => {
-                if self.count == self.config.count_5 {
-                    self.count = 1;
-                    info!("{} Entering next period", self.status_string(now));
-                    self.current_period = BeepTestPeriod::Level10;
-                } else {
-                    self.count += 1;
-                    info!("{} Repeating period", self.status_string(now));
-                    self.current_period = BeepTestPeriod::Level9;
-                }
-            }
-            BeepTestPeriod::Level10 => {
-                if self.count == self.config.count_3 {
-                    self.count = 1;
-                    info!("{} Ended and resetting", self.status_string(now));
-                    self.current_period = BeepTestPeriod::Pre;
-                    info!("{:?} Period", self.current_period);
-                } else {
-                    self.count += 1;
-                    info!("{} Repeating period", self.status_string(now));
-                    self.current_period = BeepTestPeriod::Level10;
-                    info!("{:?} Period", self.current_period);
+                    info!(
+                        "{} Repeating period: {}",
+                        self.status_string(now),
+                        self.current_period
+                    );
                 }
             }
         }

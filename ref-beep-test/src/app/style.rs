@@ -1,8 +1,13 @@
 use iced::{
     application,
-    widget::{self, button, container, scrollable, svg, text},
+    widget::{
+        self, button,
+        container::{self},
+        scrollable, svg, text,
+    },
     Background, BorderRadius, Color, Vector,
 };
+
 use iced_core::text::LineHeight;
 use iced_renderer::Renderer;
 use paste::paste;
@@ -13,8 +18,10 @@ pub const SPACING: f32 = 8.0;
 pub const PADDING: f32 = 8.0;
 pub const MIN_BUTTON_SIZE: f32 = 89.0;
 
+pub const SMALL_TEXT: f32 = 19.0;
 pub const SMALL_PLUS_TEXT: f32 = 29.0;
 pub const LARGE_TEXT: f32 = 66.0;
+pub const MEDIUM_TEXT: f32 = 38.0;
 
 pub const LINE_HEIGHT: LineHeight = LineHeight::Relative(1.15);
 
@@ -37,6 +44,7 @@ make_color!(RED, 1.0, 0.0, 0.0);
 make_color!(ORANGE, 1.0, 0.5, 0.0);
 make_color!(GREEN, 0.0, 1.0, 0.0);
 make_color!(GRAY, 0.5, 0.5, 0.5);
+make_color!(LIGHT_GRAY, 0.7, 0.7, 0.7);
 
 pub const BLACK: Color = Color::from_rgb(0.0, 0.0, 0.0);
 pub const WHITE: Color = Color::from_rgb(1.0, 1.0, 1.0);
@@ -56,6 +64,7 @@ pub enum ApplicationTheme {
 
 pub type Element<'a, Message> = iced::Element<'a, Message, Renderer<ApplicationTheme>>;
 pub type Button<'a, Message> = widget::Button<'a, Message, Renderer<ApplicationTheme>>;
+pub type Container<'a, Message> = widget::Container<'a, Message, Renderer<ApplicationTheme>>;
 pub type Row<'a, Message> = widget::Row<'a, Message, Renderer<ApplicationTheme>>;
 pub type Text<'a> = widget::Text<'a, Renderer<ApplicationTheme>>;
 
@@ -66,6 +75,7 @@ pub enum ButtonStyle {
     Green,
     #[default]
     Gray,
+    LightGray,
 }
 
 impl button::StyleSheet for ApplicationTheme {
@@ -78,18 +88,25 @@ impl button::StyleSheet for ApplicationTheme {
             ButtonStyle::Green => (GREEN, BLACK),
 
             ButtonStyle::Gray => (GRAY, BLACK),
+            ButtonStyle::LightGray => (LIGHT_GRAY, BLACK),
         };
 
         let border_width = match style {
-            ButtonStyle::Red | ButtonStyle::Orange | ButtonStyle::Green | ButtonStyle::Gray => 0.0,
+            ButtonStyle::Red
+            | ButtonStyle::Orange
+            | ButtonStyle::Green
+            | ButtonStyle::Gray
+            | ButtonStyle::LightGray => 0.0,
         };
 
         let background = Some(Background::Color(background_color));
 
         let border_color = match style {
-            ButtonStyle::Red | ButtonStyle::Orange | ButtonStyle::Green | ButtonStyle::Gray => {
-                BORDER_COLOR
-            }
+            ButtonStyle::Red
+            | ButtonStyle::Orange
+            | ButtonStyle::Green
+            | ButtonStyle::Gray
+            | ButtonStyle::LightGray => BORDER_COLOR,
         };
 
         button::Appearance {
@@ -112,6 +129,7 @@ impl button::StyleSheet for ApplicationTheme {
             ButtonStyle::Orange => ORANGE_PRESSED,
             ButtonStyle::Green => GREEN_PRESSED,
             ButtonStyle::Gray => GRAY_PRESSED,
+            ButtonStyle::LightGray => LIGHT_GRAY_PRESSED,
         };
 
         button::Appearance {
@@ -135,6 +153,10 @@ impl button::StyleSheet for ApplicationTheme {
 pub enum ContainerStyle {
     #[default]
     Gray,
+    LightGray,
+    Black,
+    SquareLightGray,
+    SquareBlack,
 }
 
 impl container::StyleSheet for ApplicationTheme {
@@ -143,6 +165,10 @@ impl container::StyleSheet for ApplicationTheme {
     fn appearance(&self, style: &Self::Style) -> container::Appearance {
         match style {
             ContainerStyle::Gray => cont_style(GRAY, BLACK),
+            ContainerStyle::LightGray => cont_style(LIGHT_GRAY, BLACK),
+            ContainerStyle::Black => cont_style(BLACK, WHITE),
+            ContainerStyle::SquareLightGray => cont_style_square(LIGHT_GRAY, BLACK),
+            ContainerStyle::SquareBlack => cont_style_square(BLACK, WHITE),
         }
     }
 }
@@ -152,6 +178,17 @@ fn cont_style(bkgnd: Color, text: Color) -> container::Appearance {
         text_color: Some(text),
         background: Some(Background::Color(bkgnd)),
         border_radius: BorderRadius::from(BORDER_RADIUS),
+        border_width: 0.0,
+        border_color: BORDER_COLOR,
+    }
+}
+
+//makes a container with square corners
+fn cont_style_square(bkgnd: Color, text: Color) -> container::Appearance {
+    container::Appearance {
+        text_color: Some(text),
+        background: Some(Background::Color(bkgnd)),
+        border_radius: BorderRadius::from(0.0),
         border_width: 0.0,
         border_color: BORDER_COLOR,
     }

@@ -556,24 +556,6 @@ impl SoundController {
     pub fn trigger_buzzer(&self) {
         self.msg_tx.send(SoundMessage::TriggerBuzzer).unwrap()
     }
-
-    /// Waits for a remote to be detected, then passes the id value to `callback`.
-    /// If buttons are not available on the current system, `callback` will never
-    /// be called.
-    #[cfg_attr(not(target_os = "linux"), allow(unused_variables))]
-    pub fn request_next_remote_id<F>(&self, callback: F)
-    where
-        F: FnOnce(u32) + Send + 'static,
-    {
-        #[cfg(target_os = "linux")]
-        if let Some(mut rx) = self.remote_id_rx.clone() {
-            rx.borrow_and_update();
-            task::spawn(async move {
-                rx.changed().await.unwrap();
-                callback(*rx.borrow());
-            });
-        }
-    }
 }
 
 impl Drop for SoundController {

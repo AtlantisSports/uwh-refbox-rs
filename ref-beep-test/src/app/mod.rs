@@ -1,5 +1,5 @@
 use super::snapshot::{BeepTestPeriod, BeepTestSnapshot};
-use crate::{config::Config, sound_controller::*, tournament_manager::*};
+use crate::{config::Config, sound_controller::*, tournament_manager::*, APP_NAME};
 use iced::{executor, widget::column, Application, Command, Subscription};
 use iced_futures::{
     futures::stream::{self, BoxStream},
@@ -7,7 +7,7 @@ use iced_futures::{
 };
 use iced_runtime::command;
 use log::*;
-use message::Message;
+use message::{BoolGameParameter, CyclingParameter, Message};
 use std::{
     borrow::Cow,
     process::Child,
@@ -44,8 +44,15 @@ pub struct RefBeepTestAppFlags {
     pub sim_child: Option<Child>,
 }
 
-pub struct RefBeepTestApp {
+#[derive(Debug, Clone)]
+enum AppState {
+    MainPage,
+    Settings,
+}
+
+pub struct BeepTestApp {
     config: Config,
+    edited_settings: Option<EditableSettings>,
     tm: Arc<Mutex<TournamentManager>>,
     time_updater: TimeUpdater,
     snapshot: BeepTestSnapshot,
@@ -53,11 +60,12 @@ pub struct RefBeepTestApp {
     sim_child: Option<Child>,
     last_message: Message,
     update_sender: UpdateSender,
+    app_state: AppState,
 }
 
 pub type Element<'a, Message> = iced::Element<'a, Message, iced::Renderer<style::ApplicationTheme>>;
 
-impl RefBeepTestApp {
+impl BeepTestApp {
     fn apply_snapshot(&mut self, new_snapshot: BeepTestSnapshot) {
         self.maybe_play_sound(&new_snapshot);
         self.update_sender
@@ -72,34 +80,11 @@ impl RefBeepTestApp {
                 && new_snapshot.secs_in_period != self.snapshot.secs_in_period;
 
             let is_whistle_period = match new_snapshot.current_period {
-                BeepTestPeriod::Level0
-                | BeepTestPeriod::Level1
-                | BeepTestPeriod::Level2
-                | BeepTestPeriod::Level3
-                | BeepTestPeriod::Level4
-                | BeepTestPeriod::Level5
-                | BeepTestPeriod::Level6
-                | BeepTestPeriod::Level7
-                | BeepTestPeriod::Level8
-                | BeepTestPeriod::Level9
-                | BeepTestPeriod::Level10 => true,
+                BeepTestPeriod::Level(_) => true,
                 BeepTestPeriod::Pre => false,
             };
 
-            let (end_starts_play, end_stops_play) = match new_snapshot.current_period {
-                BeepTestPeriod::Pre
-                | BeepTestPeriod::Level0
-                | BeepTestPeriod::Level1
-                | BeepTestPeriod::Level2
-                | BeepTestPeriod::Level3
-                | BeepTestPeriod::Level4
-                | BeepTestPeriod::Level5
-                | BeepTestPeriod::Level6
-                | BeepTestPeriod::Level7
-                | BeepTestPeriod::Level8
-                | BeepTestPeriod::Level9
-                | BeepTestPeriod::Level10 => (true, false),
-            };
+            let (end_starts_play, end_stops_play) = (true, false);
 
             let is_buzz_period = end_starts_play && self.config.sound.auto_sound_start_play
                 || end_stops_play && self.config.sound.auto_sound_stop_play;
@@ -118,9 +103,17 @@ impl RefBeepTestApp {
             self.sound.trigger_buzzer();
         }
     }
+
+    fn apply_settings_change(&mut self) {
+        let edited_settings = self.edited_settings.take().unwrap();
+
+        let EditableSettings { sound } = edited_settings;
+        self.config.sound = sound;
+        self.sound.update_settings(self.config.sound.clone());
+    }
 }
 
-impl Drop for RefBeepTestApp {
+impl Drop for BeepTestApp {
     fn drop(&mut self) {
         if let Some(mut child) = self.sim_child.take() {
             info!("Waiting for child");
@@ -129,7 +122,7 @@ impl Drop for RefBeepTestApp {
     }
 }
 
-impl Application for RefBeepTestApp {
+impl Application for BeepTestApp {
     type Executor = executor::Default;
     type Message = Message;
     type Theme = style::ApplicationTheme;
@@ -151,6 +144,25 @@ impl Application for RefBeepTestApp {
         }
 
         match message {
+            Message::CycleParameter(param) => {
+                let settings = &mut self.edited_settings.as_mut().unwrap();
+                match param {
+                    CyclingParameter::BuzzerSound => settings.sound.buzzer_sound.cycle(),
+                    CyclingParameter::AlertVolume => settings.sound.whistle_vol.cycle(),
+                    CyclingParameter::AboveWaterVol => settings.sound.above_water_vol.cycle(),
+                    CyclingParameter::UnderWaterVol => settings.sound.under_water_vol.cycle(),
+                }
+            }
+            Message::ToggleBoolParameter(param) => {
+                dbg!(&self.edited_settings);
+                let edited_settings = self.edited_settings.as_mut().unwrap();
+                match param {
+                    BoolGameParameter::SoundEnabled => edited_settings.sound.sound_enabled ^= true,
+                    BoolGameParameter::RefAlertEnabled => {
+                        edited_settings.sound.whistle_enabled ^= true
+                    }
+                }
+            }
             Message::Reset => {
                 let mut tm = self.tm.lock().unwrap();
                 let now = Instant::now();
@@ -164,25 +176,32 @@ impl Application for RefBeepTestApp {
                 let now = Instant::now();
                 match tm.current_period() {
                     BeepTestPeriod::Pre => tm.start_beep_test_now(now).unwrap(),
-                    BeepTestPeriod::Level0
-                    | BeepTestPeriod::Level1
-                    | BeepTestPeriod::Level2
-                    | BeepTestPeriod::Level3
-                    | BeepTestPeriod::Level4
-                    | BeepTestPeriod::Level5
-                    | BeepTestPeriod::Level6
-                    | BeepTestPeriod::Level7
-                    | BeepTestPeriod::Level8
-                    | BeepTestPeriod::Level9
-                    | BeepTestPeriod::Level10 => tm.start_clock(now),
+                    BeepTestPeriod::Level(_) => tm.start_clock(now),
                 }
                 let snapshot = tm.generate_snapshot(now).unwrap();
                 std::mem::drop(tm);
                 self.apply_snapshot(snapshot);
             }
             Message::Stop => self.tm.lock().unwrap().stop_clock(Instant::now()).unwrap(),
+
+            Message::ShowSettings => {
+                self.edited_settings = Some(EditableSettings {
+                    sound: self.config.sound.clone(),
+                });
+                self.app_state = AppState::Settings;
+                trace!("AppState changed to {:?}", self.app_state);
+            }
+
             Message::NewSnapshot(snapshot) => {
                 self.apply_snapshot(snapshot);
+            }
+            Message::EditComplete => {
+                self.app_state = {
+                    self.apply_settings_change();
+
+                    confy::store(APP_NAME, None, &self.config).unwrap();
+                    AppState::MainPage
+                }
             }
             Message::NoAction => {}
         }
@@ -191,9 +210,14 @@ impl Application for RefBeepTestApp {
 
     fn view(&self) -> iced::Element<'_, Self::Message, iced::Renderer<Self::Theme>> {
         let clock_running = self.tm.lock().unwrap().clock_is_running();
-        let main_view = column![build_main_view(&self.snapshot, clock_running,)]
-            .spacing(SPACING)
-            .padding(PADDING);
+        let main_view = column![match self.app_state {
+            AppState::MainPage =>
+                build_main_view(&self.snapshot, clock_running, &self.config.beep_test),
+            AppState::Settings =>
+                make_sound_config_page(&self.snapshot, &self.edited_settings.as_ref().unwrap(),),
+        }]
+        .spacing(SPACING)
+        .padding(PADDING);
         main_view.into()
     }
 
@@ -206,8 +230,7 @@ impl Application for RefBeepTestApp {
             sim_child,
         } = flags;
 
-        let mut tm = TournamentManager::new(config.levels.clone());
-        tm.set_timezone(config.uwhscores.timezone);
+        let tm = TournamentManager::new(config.beep_test.clone());
         tm.send_clock_running(false);
 
         let clock_running_receiver = tm.get_start_stop_rx();
@@ -224,6 +247,7 @@ impl Application for RefBeepTestApp {
         (
             Self {
                 config,
+                edited_settings: None,
                 tm: tm.clone(),
                 time_updater: TimeUpdater {
                     tm: tm.clone(),
@@ -234,6 +258,7 @@ impl Application for RefBeepTestApp {
                 sound,
                 update_sender,
                 sim_child,
+                app_state: AppState::MainPage,
             },
             Command::single(command::Action::LoadFont {
                 bytes: Cow::from(&include_bytes!("../../resources/Roboto-Medium.ttf")[..]),

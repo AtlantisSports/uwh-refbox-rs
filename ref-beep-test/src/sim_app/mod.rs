@@ -109,7 +109,14 @@ impl Application for SimRefBoxApp {
             Message::NewSnapshot(data) => {
                 let mut buffer = self.buffer.lock().unwrap();
                 buffer.clear_buffer();
-                draw_panels(&mut *buffer, data.snapshot, data.white_on_right, data.flash).unwrap();
+                draw_panels(
+                    &mut *buffer,
+                    data.snapshot,
+                    data.white_on_right,
+                    data.flash,
+                    data.beep_test,
+                )
+                .unwrap();
                 self.cache.clear();
                 Command::none()
             }

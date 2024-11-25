@@ -164,6 +164,7 @@ async fn serial_worker_loop(
     let mut data = TransmittedData {
         snapshot,
         flash: false,
+        beep_test: false,
         white_on_right,
     };
     let mut bytes = data.encode()?;
@@ -424,6 +425,7 @@ impl Server {
                 TransmittedData {
                     white_on_right: self.white_on_right,
                     flash: self.flash,
+                    beep_test: false,
                     snapshot: self.snapshot.clone(),
                 }
                 .encode()
@@ -695,6 +697,7 @@ mod test {
 
         let white_on_right = false;
         let flash = false;
+        let beep_test = false;
         let snapshot = GameSnapshot {
             current_period: GamePeriod::FirstHalf,
             secs_in_period: 897,
@@ -789,6 +792,7 @@ mod test {
             TransmittedData {
                 white_on_right,
                 flash,
+                beep_test,
                 snapshot: snapshot.clone().into(),
             }
             .encode()

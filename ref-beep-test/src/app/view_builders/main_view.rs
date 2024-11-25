@@ -1,7 +1,10 @@
-use super::super::super::snapshot::BeepTestSnapshot;
+use super::{super::super::snapshot::BeepTestSnapshot, shared_elements::make_info_container};
 use iced::widget::{column, row};
 
-use crate::app::message::Message;
+use crate::{
+    app::{message::Message, view_builders::shared_elements::build_levels_table},
+    config::BeepTest,
+};
 
 use super::{
     super::style::{ButtonStyle, Element, SPACING},
@@ -11,6 +14,7 @@ use super::{
 pub(in super::super) fn build_main_view<'a>(
     snapshot: &BeepTestSnapshot,
     clock_running: bool,
+    beep_test: &'a BeepTest,
 ) -> Element<'a, Message> {
     let time = make_time_button(snapshot);
 
@@ -31,6 +35,24 @@ pub(in super::super) fn build_main_view<'a>(
         .style(ButtonStyle::Red);
 
     content = content.push(row![start_pause, reset].spacing(SPACING));
+
+    let lap_info = make_info_container(snapshot);
+
+    let chart = build_levels_table(&beep_test.levels, false);
+
+    let settings = make_button("SETTINGS")
+        .on_press(Message::ShowSettings)
+        .style(ButtonStyle::Gray);
+
+    if beep_test.levels.len() > 13 {
+        let chart_first_col = build_levels_table(&beep_test.levels[..13], false);
+        let chart_second_col = build_levels_table(&beep_test.levels[13..], true);
+        content = content.push(row![lap_info, chart_first_col, chart_second_col].spacing(SPACING));
+    } else {
+        content = content.push(row![lap_info, chart].spacing(SPACING));
+    }
+
+    content = content.push(row![settings].spacing(SPACING));
 
     content.into()
 }

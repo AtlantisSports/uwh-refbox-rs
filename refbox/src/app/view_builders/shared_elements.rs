@@ -789,17 +789,20 @@ pub(super) fn config_string(
     );
 
     if config.timeouts_counted_per_half {
+        result += "\n";
         result += &fl!(
             "team-timeouts-per-half",
             team_timeouts = config.num_team_timeouts_allowed
         );
     } else {
+        result += "\n";
         result += &fl!(
             "team-timeouts-per-game",
             team_timeouts = config.num_team_timeouts_allowed
         );
     }
 
+    result += "\n";
     result += &fl!("stop-clock-last-2", stop_clock = unknown);
     result += "\n";
 

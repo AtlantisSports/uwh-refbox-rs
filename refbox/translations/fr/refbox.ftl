@@ -18,16 +18,14 @@ total-dismissial = TD
 timeout-length = DURÉE DU TEMPS MORT
 
 # Warning Add
-### Shorten
-team-warning = AVERTISSEMENT D'ÉQUIPE
-team-warning-line-1 = AVERTISSEMENT
+team-warning = AVERT. D'ÉQUIPE
+team-warning-line-1 = AVERT.
 team-warning-line-2 = D'ÉQUIPE
 
 # Configuration
 none-selected = Aucun Sélectionné
 loading = Chargement...
-### Check
-game = JEU:
+game = MATCH:
 game-options = OPTIONS DU MATCH
 app-options = OPTIONS DE L'APPLICATION
 display-options = OPTIONS D'AFFICHAGE
@@ -54,24 +52,18 @@ sudden-death-allowed = MORT SUBITE
     AUTORISÉE:
 half-time-length = DURÉE DE LA
     MI-TEMPS:
-### Shorten
-pre-ot-break-length = DURÉE DE LA PAUSE
-    AVANT PROLONGATIONS:
-### Shorten
-pre-sd-break-length = DURÉE DE LA PAUSE
-    AVANT MORT SUBITE:
-### Shorten & check
+pre-ot-break-length = PAUSE AVANT
+    PROLONGATIONS:
+pre-sd-break-length = PAUSE AVANT
+    MORT SUBITE:
 nominal-break-between-games = PAUSE ENTRE
     LES MATCHS:
-### Shorten
-ot-half-length = DURÉE DE LA PÉRIODE
-    DE PROLONGATION:
-### Shorten
+ot-half-length = PÉRIODE DE
+    PROLONGATION:
 num-team-tos-allowed-per-half = NOMBRE DE TEMPS
     MORTS PAR MI-TEMPS:
-### Shorten
-minimum-brk-btwn-games = PAUSE MINIMUM
-    ENTRE LES MATCHS:
+minimum-brk-btwn-games = PAUSE MIN. ENTRE
+    LES MATCHS:
 ot-half-time-length = DURÉE DE LA PAUSE
     A LA PROLONGATION
 using-uwh-portal = UTILISATION DU UWHPORTAL:
@@ -83,17 +75,16 @@ whistle-volume = VOLUME DU
 manage-remotes = GÉRER LES TÉLÉCOMMANDES
 whistle-enabled = SIFFLET
     ACTIVÉ:
-### Shorten 
-above-water-volume = VOLUME AU-DESSUS
-    DE L'EAU:
+above-water-volume = VOLUME
+    SURFACE:
 auto-sound-start-play = SON AUTOMATIQUE
-    DÉBUT JEU:
+    DÉBUT MATCH:
 buzzer-sound = SON DU
     BUZZER:
 underwater-volume = VOLUME
     SOUS L'EAU:
 auto-sound-stop-play = SON AUTOMATIQUE
-    ARRÊT JEU:
+    ARRÊT MATCH:
 remotes = TÉLÉCOMMANDES
 default = DÉFAUT
 sound = SON: { $sound_text }
@@ -101,35 +92,35 @@ sound = SON: { $sound_text }
 waiting = EN ATTENTE
 add = AJOUTER
 half-length = DURÉE PÉRIODE
-length-of-half-during-regular-play = La durée d'une période pendant le jeu régulier
+length-of-half-during-regular-play = La durée d'une période pendant le match régulier
 half-time-lenght = DURÉE MI-TEMPS
 length-of-half-time-period = La durée de la mi-temps
 nom-break = PAUSE NOMINALE
 system-will-keep-game-times-spaced = Le système essaiera de maintenir les heures de début des matchs régulièrement espacées, avec un temps total de 2 * [Durée de la mi-temps] + [Durée de la mi-temps] + [Pause nominale entre les matchs] (exemple: si les matchs ont [Durée de la mi-temps] = 15m, [Durée de la mi-temps] = 3m, et [Pause nominale entre les matchs] = 12m, le temps entre le début d'un match et le suivant sera de 45m. Tout temps mort pris, ou autre arrêt de l'horloge, réduira le temps de 12m jusqu'à ce que la valeur de la pause minimale entre les matchs soit atteinte).
 min-break = PAUSE MINIMUM
 min-time-btwn-games = Si un match dure plus longtemps que prévu, ceci est le temps minimum entre les matchs que le système allouera. Si les matchs prennent du retard, le système essaiera automatiquement de rattraper après les matchs suivants, en respectant toujours ce temps minimum entre les matchs.
-pre-ot-break-abreviated = PAUSE PRÉ PROLONGATIONS
+pre-ot-break-abreviated = P. PRÉ PROL.
 pre-sd-brk = Si les prolongations sont autorisées et nécessaires, ceci est la durée de la pause entre la deuxième mi-temps et la première mi-temps des prolongations
 ot-half-len = PÉRIODE PROLONGATION
 time-during-ot = La durée d'une période pendant les prolongations
 ot-half-tm-len = DURÉE DE LA PAUSE A LA PROLONGATION
 len-of-overtime-halftime = La durée de la mi-temps des prolongations
-pre-sd-break = PAUSE PRÉ MORT SUBITE
-pre-sd-len = La durée de la pause entre la période de jeu précédente et la mort subite
+pre-sd-break = PAUSE PRÉ M/S
+pre-sd-len = La durée de la pause entre la période de match précédente et la mort subite
 
 help = AIDE: 
 
 # Confirmation
-game-configuration-can-not-be-changed = La configuration du jeu ne peut pas être modifiée pendant qu'un jeu est en cours.
+game-configuration-can-not-be-changed = La configuration du match ne peut pas être modifiée pendant qu'un match est en cours.
     
     Que souhaitez-vous faire ?
 apply-this-game-number-change = Comment souhaitez-vous appliquer ce changement de numéro ?
 UWHPortal-enabled = Lorsque UWHPortal est activé, tous les champs doivent être remplis.
 go-back-to-editor = RETOURNER À L'ÉDITEUR
 discard-changes = ANNULER LES MODIFICATIONS
-end-current-game-and-apply-changes = TERMINER LE JEU EN COURS ET APPLIQUER LES MODIFICATIONS
-end-current-game-and-apply-change = TERMINER LE JEU EN COURS ET APPLIQUER LE CHANGEMENT
-keep-current-game-and-apply-change = GARDER LE JEU EN COURS ET APPLIQUER LE CHANGEMENT
+end-current-game-and-apply-changes = TERMINER LE MATCH EN COURS ET APPLIQUER LES MODIFICATIONS
+end-current-game-and-apply-change = TERMINER LE MATCH EN COURS ET APPLIQUER LE CHANGEMENT
+keep-current-game-and-apply-change = GARDER LE MATCH EN COURS ET APPLIQUER LE CHANGEMENT
 ok = OK
 confirm-score = Ce score est-il correct ?
     Confirmer avec l'arbitre en chef.
@@ -168,12 +159,11 @@ select-court = SÉLECTIONNER LE TERRAIN
 select-game = SÉLECTIONNER LE MATCH
 
 # Main View
-### Shorten
-add-warning = AJOUTER UN AVERTISSEMENT 
+add-warning = AJOUTER UN AVERT.
 add-foul = AJOUTER UNE FAUTE
 start-now = COMMENCER MAINTENANT
 end-timeout = FIN DU TEMPS MORT
-warnings = AVERTISSEMENTS
+warnings = AVERTISSEMENTS (AVERT.)
 penalties = PÉNALITÉS
 dark-score-line-1 = SCORE
 dark-score-line-2 = { dark-team-name-caps }
@@ -204,8 +194,7 @@ penalty-shot-line-2 = PÉNALITÉ
 pen-shot = TIR DE PÉNALITÉ
 ## Penalty string
 served = Servi
-### Check
-dismissed = Annulé
+dismissed = Expulsion
 ## Config String
 error = Erreur ({ $number })
 none = Aucun
@@ -213,12 +202,10 @@ two-games = Dernier Match: { $prev_game },  Prochain Match: { $next_game }
 one-game = Match: { $game }
 teams = Équipe { -dark-team-name }: { $dark_team }
     Équipe { -light-team-name }: { $light_team }
-### Shorten lines 1,2,4
-game-config = Durée de la Période: { $half_len },  Durée de la Mi-temps: { $half_time_len }
-    Mort Subite Autorisée: { $sd_allowed },  Prolongations Autorisées: { $ot_allowed }
+game-config = Durée de la Pér.: { $half_len },  Mi-temps: { $half_time_len }
+    Mort Subite: { $sd_allowed },  Prolongations: { $ot_allowed }
 team-timeouts-per-half = Temps Morts d'Équipe Autorisés par Période: { $team_timeouts }
 team-timeouts-per-game = Temps Morts d'Équipe Autorisés par Match: { $team_timeouts }
-### Shorten
 stop-clock-last-2 = Arrêter le temps dans les 2 dernières minutes: { $stop_clock }
 ref-list = Arbitre en Chef: { $chief_ref }
     Chronométreur: { $timer }
@@ -228,46 +215,33 @@ ref-list = Arbitre en Chef: { $chief_ref }
 unknown = Inconnu
 ## Game time button
 next-game = MATCH SUIVANT
-### Shorten & Check
-first-half = PREMIÈRE MI-TEMPS
+first-half = 1ere PÉRIODE
 half-time = MI-TEMPS
-### Shorten & Check
-second-half = DEUXIÈME MI-TEMPS
+second-half = 2eme PÉRIODE
 pre-ot-break-full = PAUSE PRÉ PROLONGATIONS
-### Shorten & Check
-overtime-first-half = PREMIÈRE MI-TEMPS PROLONGATIONS
-overtime-half-time = MI-TEMPS PROLONGATIONS
-### Shorten & Check
-overtime-second-half = DEUXIÈME MI-TEMPS PROLONGATIONS
+overtime-first-half = 1ere PROLONGATION
+overtime-half-time = MI-TEMPS PROLONGATION
+overtime-second-half = 2eme PROLONGATION
 pre-sudden-death-break = PAUSE PRÉ MORT SUBITE
 sudden-death = MORT SUBITE
-### Shorten & Check
-ot-first-half = PREMIÈRE MI-TEMPS PROLONGATIONS
-### Shorten & Check
-ot-half-time = MI-TEMPS PROLONGATIONS
-### Shorten & Check
-ot-2nd-half = DEUXIÈME MI-TEMPS PROLONGATIONS
-### Shorten
-white-timeout-short = TEMPS MORT BLANC
-### Shorten
-white-timeout-full = TEMPS MORT BLANC
-### Shorten
-black-timeout-short = TEMPS MORT NOIR
-### Shorten
-black-timeout-full = TEMPS MORT NOIR
-### Shorten
-ref-timeout-short = TEMPS MORT D'ARBITRE
-### Shorten
-penalty-shot-short = TIR DE PÉNALITÉ
+ot-first-half = 1ere PROL.
+ot-half-time = M-T PROL.
+ot-2nd-half = 2eme PROL.
+white-timeout-short = T/M BLANC
+white-timeout-full = T/M BLANC
+black-timeout-short = T/M NOIR
+black-timeout-full = T/M NOIR
+ref-timeout-short = T/M D'ARB.
+penalty-shot-short = TIR DE PÉN.
 ## Make penalty dropdown
 infraction = INFRACTION
 ## Make warning container
 team-warning-abreviation = É
 
 # Time edit
-game-time = TEMPS DE JEU
-timeout = TEMPS MORT
-Note-Game-time-is-paused = Note: Le temps de jeu est en pause sur cet écran
+game-time = TEMPS DE MATCH
+timeout = TEMPS MORT (T/M)
+Note-Game-time-is-paused = Note: Le temps de match est en pause sur cet écran
 
 # Warning Fouls Summary
 fouls = FAUTES

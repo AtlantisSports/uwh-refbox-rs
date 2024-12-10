@@ -2,7 +2,7 @@ use std::fmt::Write;
 
 use crate::{
     app::style::{ApplicationTheme, ContainerStyle},
-    config::{BeepTest, Level},
+    config::Level,
     snapshot::BeepTestSnapshot,
 };
 
@@ -13,15 +13,10 @@ use super::super::{
         MIN_BUTTON_SIZE, PADDING, SMALL_TEXT, SPACING,
     },
 };
-use embedded_graphics::prelude::Size as SizeGraphics;
-use embedded_graphics::primitives::CornerRadii;
 use iced::{
     alignment::{Horizontal, Vertical},
-    widget::{
-        button, canvas::path::lyon_path::geom::Size, column, container, horizontal_space, row,
-        text, Column,
-    },
-    Alignment, BorderRadius, Length,
+    widget::{button, column, container, horizontal_space, row, text, Column},
+    Alignment, Length,
 };
 use matrix_drawing::secs_to_long_time_string;
 

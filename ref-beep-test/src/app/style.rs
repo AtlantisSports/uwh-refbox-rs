@@ -154,7 +154,6 @@ pub enum ContainerStyle {
     #[default]
     Gray,
     LightGray,
-    Black,
     SquareLightGray,
     SquareBlack,
 }
@@ -166,7 +165,6 @@ impl container::StyleSheet for ApplicationTheme {
         match style {
             ContainerStyle::Gray => cont_style(GRAY, BLACK),
             ContainerStyle::LightGray => cont_style(LIGHT_GRAY, BLACK),
-            ContainerStyle::Black => cont_style(BLACK, WHITE),
             ContainerStyle::SquareLightGray => cont_style_square(LIGHT_GRAY, BLACK),
             ContainerStyle::SquareBlack => cont_style_square(BLACK, WHITE),
         }

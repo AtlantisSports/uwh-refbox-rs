@@ -476,6 +476,50 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9475866fec1451be56a3c2400fd081ff546538961565ccb5b7142cbd22bc7a51"
 
 [[package]]
+name = "beep-test"
+version = "0.2.0"
+dependencies = [
+ "array-concat",
+ "arrayref",
+ "clap",
+ "collect_array",
+ "confy",
+ "conquer-once",
+ "derivative",
+ "directories",
+ "embedded-graphics",
+ "enum-derive-2018",
+ "enum-iterator",
+ "env_logger",
+ "futures-lite 2.5.0",
+ "iced",
+ "iced_core",
+ "iced_futures",
+ "iced_renderer",
+ "iced_runtime",
+ "log",
+ "log-panics",
+ "log4rs",
+ "macro-attr-2018",
+ "matrix-drawing",
+ "more-asserts",
+ "paste",
+ "reqwest",
+ "rppal 0.18.0",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "skip_error",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-serial",
+ "toml 0.8.19",
+ "uwh-common",
+ "web-audio-api 0.45.2",
+ "winres",
+]
+
+[[package]]
 name = "bindgen"
 version = "0.69.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3848,7 +3892,7 @@ dependencies = [
  "more-asserts",
  "paste",
  "reqwest",
- "rppal",
+ "rppal 0.19.0",
  "serde",
  "serde_derive",
  "serde_json",
@@ -3859,7 +3903,7 @@ dependencies = [
  "tokio-serial",
  "toml 0.8.19",
  "uwh-common",
- "web-audio-api",
+ "web-audio-api 1.0.1",
  "winres",
 ]
 
@@ -3992,6 +4036,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "862340e351ce1b271a378ec53f304a5558f7db87f3769dc655a8f6ecbb68b302"
 dependencies = [
  "xmlparser",
+]
+
+[[package]]
+name = "rppal"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae44db779bd0898047804d22b662a9dc533b142c077b3f7e36003f658835c5b9"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
@@ -5615,6 +5668,35 @@ dependencies = [
  "lazy_static",
  "log",
  "pkg-config",
+]
+
+[[package]]
+name = "web-audio-api"
+version = "0.45.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72c120a553d7d1a012b5c2a417868209035e4e9bd9442742532b7889500d5c12"
+dependencies = [
+ "arc-swap",
+ "arrayvec",
+ "cpal",
+ "creek",
+ "crossbeam-channel",
+ "dasp_sample",
+ "float_eq",
+ "futures-channel",
+ "futures-core",
+ "futures-util",
+ "hound",
+ "hrtf",
+ "llq",
+ "log",
+ "no_denormals",
+ "num-complex",
+ "realfft",
+ "rubato 0.15.0",
+ "smallvec",
+ "symphonia",
+ "vecmath",
 ]
 
 [[package]]

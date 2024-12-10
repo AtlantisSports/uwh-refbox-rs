@@ -639,6 +639,71 @@ pub(super) fn limit_team_name_len(name: &String, len_limit: usize) -> Cow<'_, St
     }
 }
 
+pub(super) fn config_string_game_num(
+    snapshot: &GameSnapshot,
+    using_uwhscores: bool,
+    games: &Option<BTreeMap<u32, GameInfo>>,
+) -> String {
+    let mut result = String::new();
+    if snapshot.current_period == GamePeriod::BetweenGames {
+        let prev_game;
+        let next_game;
+        if using_uwhscores {
+            if let Some(games) = games {
+                prev_game = match games.get(&snapshot.game_number) {
+                    Some(game) => game_string_short(game),
+                    None if snapshot.game_number == 0 => "None".to_string(),
+                    None => format!("Error ({})", snapshot.game_number),
+                };
+                next_game = match games.get(&snapshot.next_game_number) {
+                    Some(game) => game_string_short(game),
+                    None => format!("Error ({})", snapshot.next_game_number),
+                };
+            } else {
+                prev_game = if snapshot.game_number == 0 {
+                    "None".to_string()
+                } else {
+                    format!("Error ({})", snapshot.game_number)
+                };
+                next_game = format!("Error ({})", snapshot.next_game_number);
+            }
+        } else {
+            prev_game = if snapshot.game_number == 0 {
+                "None".to_string()
+            } else {
+                snapshot.game_number.to_string()
+            };
+            next_game = snapshot.next_game_number.to_string();
+        }
+
+        write!(
+            &mut result,
+            "Last Game: {},  Next Game: {}\n\n",
+            prev_game, next_game
+        )
+        .unwrap();
+        snapshot.next_game_number
+    } else {
+        let game;
+        if using_uwhscores {
+            if let Some(games) = games {
+                game = match games.get(&snapshot.game_number) {
+                    Some(game) => game_string_short(game),
+                    None => format!("Error ({})", snapshot.game_number),
+                };
+            } else {
+                game = format!("Error ({})", snapshot.game_number);
+            }
+        } else {
+            game = snapshot.game_number.to_string();
+        }
+        write!(&mut result, "Game: {}\n\n", game).unwrap();
+        snapshot.game_number
+    };
+
+    result
+}
+
 pub(super) fn config_string(
     snapshot: &GameSnapshot,
     config: &GameConfig,

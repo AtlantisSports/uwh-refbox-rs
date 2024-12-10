@@ -49,7 +49,7 @@ pub struct TournamentManager {
 impl TournamentManager {
     pub fn new(config: BeepTestConfig) -> Self {
         let (start_stop_tx, start_stop_rx) = watch::channel(false);
-        assert!(config.levels.len() > 0);
+        assert!(config.levels.is_empty());
         Self {
             time_in_next_lap: config.levels[0].duration,
             current_period: BeepTestPeriod::Pre,

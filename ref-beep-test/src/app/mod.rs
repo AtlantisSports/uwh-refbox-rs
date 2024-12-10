@@ -214,7 +214,7 @@ impl Application for BeepTestApp {
             AppState::MainPage =>
                 build_main_view(&self.snapshot, clock_running, &self.config.beep_test),
             AppState::Settings =>
-                make_sound_config_page(&self.snapshot, &self.edited_settings.as_ref().unwrap(),),
+                make_sound_config_page(&self.snapshot, self.edited_settings.as_ref().unwrap(),),
         }]
         .spacing(SPACING)
         .padding(PADDING);

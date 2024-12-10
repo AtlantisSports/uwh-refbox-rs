@@ -1,5 +1,8 @@
 use super::{super::super::snapshot::BeepTestSnapshot, shared_elements::make_info_container};
-use iced::widget::{column, row};
+use iced::{
+    widget::{column, row, Space},
+    Length,
+};
 
 use crate::{
     app::{message::Message, view_builders::shared_elements::build_levels_table},
@@ -47,9 +50,13 @@ pub(in super::super) fn build_main_view<'a>(
     if beep_test.levels.len() > 13 {
         let chart_first_col = build_levels_table(&beep_test.levels[..13], false);
         let chart_second_col = build_levels_table(&beep_test.levels[13..], true);
-        content = content.push(row![lap_info, chart_first_col, chart_second_col].spacing(SPACING));
+        let chart_row = row![chart_first_col, chart_second_col].spacing(SPACING);
+        content = content.push(row![lap_info, chart_row].spacing(SPACING));
     } else {
-        content = content.push(row![lap_info, chart].spacing(SPACING));
+        let gap1 = Space::with_width(Length::Fixed(115.0));
+        let gap2 = Space::with_width(Length::Fixed(115.0));
+        let chart_row = row![gap1, chart, gap2];
+        content = content.push(row![lap_info, chart_row].spacing(SPACING));
     }
 
     content = content.push(row![settings].spacing(SPACING));

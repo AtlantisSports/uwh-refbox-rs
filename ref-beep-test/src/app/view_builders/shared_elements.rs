@@ -2,7 +2,7 @@ use std::fmt::Write;
 
 use crate::{
     app::style::{ApplicationTheme, ContainerStyle},
-    config::{BeepTest, Level},
+    config::Level,
     snapshot::BeepTestSnapshot,
 };
 
@@ -13,15 +13,10 @@ use super::super::{
         MIN_BUTTON_SIZE, PADDING, SMALL_TEXT, SPACING,
     },
 };
-use embedded_graphics::prelude::Size as SizeGraphics;
-use embedded_graphics::primitives::CornerRadii;
 use iced::{
     alignment::{Horizontal, Vertical},
-    widget::{
-        button, canvas::path::lyon_path::geom::Size, column, container, horizontal_space, row,
-        text, Column,
-    },
-    Alignment, BorderRadius, Length,
+    widget::{button, column, container, horizontal_space, row, text, Column},
+    Alignment, Length,
 };
 use matrix_drawing::secs_to_long_time_string;
 
@@ -211,7 +206,7 @@ pub fn build_levels_table(levels: &[Level], second_chart: bool) -> Container<Mes
         .spacing(CHART_PADDING)
         .push(
             Container::new(
-                Text::new(format!("Level"))
+                Text::new("Level")
                     .width(Length::Fixed(69.0))
                     .size(16)
                     .horizontal_alignment(Horizontal::Center),
@@ -222,7 +217,7 @@ pub fn build_levels_table(levels: &[Level], second_chart: bool) -> Container<Mes
         .spacing(CHART_PADDING)
         .push(
             Container::new(
-                Text::new(format!("Count"))
+                Text::new("Count")
                     .width(Length::Fixed(69.0))
                     .size(16)
                     .horizontal_alignment(Horizontal::Center),
@@ -233,7 +228,7 @@ pub fn build_levels_table(levels: &[Level], second_chart: bool) -> Container<Mes
         .spacing(CHART_PADDING)
         .push(
             Container::new(
-                Text::new(format!("Duration"))
+                Text::new("Duration")
                     .width(Length::Fixed(69.0))
                     .size(16)
                     .horizontal_alignment(Horizontal::Center),

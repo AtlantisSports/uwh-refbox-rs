@@ -14,14 +14,12 @@ const fn process_array<const N: usize, const M: usize>(input: &[u8; M]) -> [f32;
 
     let mut i = 0;
     while i < N {
-        output[i] = unsafe {
-            std::mem::transmute(u32::from_le_bytes([
-                input[i * 4],
-                input[(i * 4) + 1],
-                input[(i * 4) + 2],
-                input[(i * 4) + 3],
-            ]))
-        };
+        output[i] = f32::from_bits(u32::from_le_bytes([
+            input[i * 4],
+            input[(i * 4) + 1],
+            input[(i * 4) + 2],
+            input[(i * 4) + 3],
+        ]));
         i += 1;
     }
 

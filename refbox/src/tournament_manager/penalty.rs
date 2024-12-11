@@ -32,6 +32,17 @@ impl PenaltyKind {
             Self::TotalDismissal => None,
         }
     }
+
+    pub fn fluent(&self) -> &'static str {
+        match self {
+            Self::ThirtySecond => "thirty-seconds",
+            Self::OneMinute => "one-minute",
+            Self::TwoMinute => "two-minutes",
+            Self::FourMinute => "four-minutes",
+            Self::FiveMinute => "five-minutes",
+            Self::TotalDismissal => "total-dismissal",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -177,6 +188,27 @@ pub enum PenaltyError {
 }
 
 pub type PenaltyResult<T> = std::result::Result<T, PenaltyError>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PenaltyTimePrintable {
+    Pending,
+    Served,
+    TotalDismissal,
+    Remaining(i64),
+}
+
+impl PenaltyTimePrintable {
+    pub fn fluent(&self) -> String {
+        match self {
+            Self::Pending => "pending".to_string(),
+            Self::Served => "served".to_string(),
+            Self::TotalDismissal => "total-dismissal".to_string(),
+            Self::Remaining(secs) => {
+                format!("{}:{:02}", secs / 60, secs % 60)
+            }
+        }
+    }
+}
 
 #[cfg(test)]
 mod test {

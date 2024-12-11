@@ -108,13 +108,19 @@ fn make_penalty_list<'a>(
         .take(PENALTY_LIST_LEN)
         .map(|pen| {
             if let Some((i, details)) = pen {
-                let mut text = text(details.text)
+                let printable = fl!(
+                    "penalty",
+                    player_number = details.player_number,
+                    time = details.time.fluent(),
+                    kind = details.kind.fluent()
+                );
+                let mut text = text(printable)
                     .line_height(LINE_HEIGHT)
                     .vertical_alignment(Vertical::Center)
                     .horizontal_alignment(Horizontal::Left)
                     .width(Length::Fill);
 
-                match details.hint {
+                match details.format_hint {
                     FormatHint::NoChange => {}
                     FormatHint::Edited => text = text.style(TextStyle::Orange),
                     FormatHint::Deleted => text = text.style(TextStyle::Red),

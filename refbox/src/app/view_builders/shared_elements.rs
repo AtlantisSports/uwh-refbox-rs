@@ -624,7 +624,7 @@ pub(super) fn penalty_string(penalties: &[PenaltySnapshot]) -> String {
                 }
             }
             PenaltyTime::TotalDismissal => {
-                string += &fl!("dismissed");
+                string += &fl!("total-dismissial");
                 string += "\n"
             }
         }
@@ -955,9 +955,12 @@ pub(super) fn make_penalty_dropdown<'a>(
     });
 
     let name: Container<'_, Message> = container(
-        row![text(format!("Infraction: {}", infraction))]
-            .spacing(0)
-            .align_items(Alignment::Center),
+        row![text(fl!(
+            "infraction",
+            infraction = inf_short_name(infraction)
+        ))]
+        .spacing(0)
+        .align_items(Alignment::Center),
     )
     .style(ContainerStyle::Blue)
     .width(Length::Fill);
@@ -1012,7 +1015,7 @@ pub fn make_warning_container<'a>(
     container(if color.is_some() {
         row![
             horizontal_space(PADDING),
-            text(warning.infraction.short_name()).size(SMALL_TEXT),
+            text(inf_short_name(warning.infraction)).size(SMALL_TEXT),
             horizontal_space(Length::Fill),
             text(who).size(SMALL_TEXT),
             horizontal_space(PADDING),
@@ -1020,7 +1023,7 @@ pub fn make_warning_container<'a>(
     } else {
         row![
             horizontal_space(Length::Fill),
-            text(warning.infraction.short_name()).size(SMALL_TEXT),
+            text(inf_short_name(warning.infraction)).size(SMALL_TEXT),
             horizontal_space(Length::Fill),
         ]
     })
@@ -1032,4 +1035,21 @@ pub fn make_warning_container<'a>(
         None => ContainerStyle::Blue,
     })
     .padding(0)
+}
+
+pub fn inf_short_name(inf: Infraction) -> String {
+    match inf {
+        Infraction::Unknown => fl!("unknown"),
+        Infraction::StickInfringement => fl!("stick-foul"),
+        Infraction::IllegalAdvancement => fl!("illegal-advance"),
+        Infraction::IllegalSubstitution => fl!("sub-foul"),
+        Infraction::IllegallyStoppingThePuck => fl!("illegal-stoppage"),
+        Infraction::OutOfBounds => fl!("out-of-bounds"),
+        Infraction::GrabbingTheBarrier => fl!("grabbing-the-wall"),
+        Infraction::Obstruction => fl!("obstruction"),
+        Infraction::DelayOfGame => fl!("delay-of-game"),
+        Infraction::UnsportsmanlikeConduct => fl!("unsportsmanlike"),
+        Infraction::FreeArm => fl!("free-arm"),
+        Infraction::FalseStart => fl!("false-start"),
+    }
 }

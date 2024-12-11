@@ -211,7 +211,7 @@ fn make_main_config_page<'a>(
     column![
         make_game_time_button(snapshot, false, false, mode, clock_running,),
         make_value_button(
-            fl!("game"),
+            fl!("game-select"),
             game_label,
             (true, game_large_text),
             game_btn_msg,
@@ -486,7 +486,11 @@ fn make_event_config_page<'a>(
                     },
                 ),
                 make_value_button(
-                    fl!("num-team-tos-allowed-per-half"),
+                    if config.timeouts_counted_per_half {
+                        fl!("num-tos-per-half")
+                    } else {
+                        fl!("num-tos-per-game")
+                    },
                     config.num_team_timeouts_allowed.to_string(),
                     (false, true),
                     Some(Message::KeypadPage(KeypadPage::TeamTimeouts(
@@ -603,7 +607,7 @@ fn make_app_config_page<'a>(
                 )),
             ),
             make_value_button(
-                "CONFIRM SCORE\nAT GAME END",
+                fl!("confirm-score-at-game-end"),
                 bool_string(*confirm_score),
                 (false, true),
                 Some(Message::ToggleBoolParameter(
@@ -695,7 +699,7 @@ fn make_display_config_page<'a>(
             ),
             make_value_button(
                 fl!("player-display-brightness"),
-                brightness.to_string().to_uppercase(),
+                fl!("brightness", brightness = brightness.to_string()),
                 (false, true),
                 Some(Message::CycleParameter(CyclingParameter::Brightness))
             )

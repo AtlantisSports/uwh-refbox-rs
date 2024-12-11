@@ -100,13 +100,22 @@ fn make_warning_list<'a>(
         .take(WARNING_LIST_LEN)
         .map(|foul| {
             if let Some((i, details)) = foul {
-                let mut text = text(details.text)
+                let printable = fl!(
+                    "warning",
+                    player_number = details
+                        .player_number
+                        .map(|n| n.to_string())
+                        .unwrap_or_else(|| String::from("none")),
+                    infraction = inf_short_name(details.infraction)
+                );
+
+                let mut text = text(printable)
                     .line_height(LINE_HEIGHT)
                     .vertical_alignment(Vertical::Center)
                     .horizontal_alignment(Horizontal::Left)
                     .width(Length::Fill);
 
-                match details.hint {
+                match details.format_hint {
                     FormatHint::NoChange => {}
                     FormatHint::Edited => text = text.style(TextStyle::Orange),
                     FormatHint::Deleted => text = text.style(TextStyle::Red),
@@ -122,7 +131,7 @@ fn make_warning_list<'a>(
                         origin: Some((color, i)),
                         color,
                         infraction: details.infraction,
-                        team_warning: details.team,
+                        team_warning: details.player_number.is_none(),
                         ret_to_overview: true,
                     }))
                     .into()

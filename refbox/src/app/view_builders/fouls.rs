@@ -105,13 +105,22 @@ fn make_foul_list<'a>(
         .take(FOUL_LIST_LEN)
         .map(|foul| {
             if let Some((i, details)) = foul {
-                let mut text = text(details.text)
+                let printable = fl!(
+                    "foul",
+                    player_number = details
+                        .player_number
+                        .map(|n| n.to_string())
+                        .unwrap_or_else(|| String::from("none")),
+                    infraction = inf_short_name(details.infraction)
+                );
+
+                let mut text = text(printable)
                     .line_height(LINE_HEIGHT)
                     .vertical_alignment(Vertical::Center)
                     .horizontal_alignment(Horizontal::Left)
                     .width(Length::Fill);
 
-                match details.hint {
+                match details.format_hint {
                     FormatHint::NoChange => {}
                     FormatHint::Edited => text = text.style(TextStyle::Orange),
                     FormatHint::Deleted => text = text.style(TextStyle::Red),

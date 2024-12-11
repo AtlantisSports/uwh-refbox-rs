@@ -25,7 +25,7 @@ team-warning-line-2 = D'ÉQUIPE
 # Configuration
 none-selected = Aucun Sélectionné
 loading = Chargement...
-game = MATCH:
+game-select = MATCH:
 game-options = OPTIONS DU MATCH
 app-options = OPTIONS DE L'APPLICATION
 display-options = OPTIONS D'AFFICHAGE
@@ -33,8 +33,11 @@ sound-options = OPTIONS SONORES
 app-mode = MODE
 hide-time-for-last-15-seconds = CACHER LE TEMPS POUR
     LES 15 DERNIÈRES SECONDES
+### Shorten
 player-display-brightness = LUMINOSITÉ DE
     L'AFFICHAGE DES JOUEURS
+confirm-score-at-game-end = CONFIRMER LE SCORE
+    À LA FIN DU MATCH
 track-cap-number-of-scorer = SUIVRE LE NUMÉRO DU
     BUTEUR
 track-fouls-and-warnings = SUIVRE LES FAUTES 
@@ -60,8 +63,10 @@ nominal-break-between-games = PAUSE ENTRE
     LES MATCHS:
 ot-half-length = PÉRIODE DE
     PROLONGATION:
-num-team-tos-allowed-per-half = NOMBRE DE TEMPS
-    MORTS PAR MI-TEMPS:
+timeouts-counted-per = TEMPS MORTS
+    COMPTÉS PAR:
+game = MATCH
+half = PÉRIODE
 minimum-brk-btwn-games = PAUSE MIN. ENTRE
     LES MATCHS:
 ot-half-time-length = DURÉE DE LA PAUSE
@@ -88,6 +93,12 @@ auto-sound-stop-play = SON AUTOMATIQUE
 remotes = TÉLÉCOMMANDES
 default = DÉFAUT
 sound = SON: { $sound_text }
+brightness = { $brightness ->
+        *[Low] FAIBLE
+        [Medium] MOYEN
+        [High] HAUT
+        [Outdoor] EXTÉRIEUR
+    }
 
 waiting = EN ATTENTE
 add = AJOUTER
@@ -194,7 +205,32 @@ penalty-shot-line-2 = PÉNALITÉ
 pen-shot = TIR DE PÉNALITÉ
 ## Penalty string
 served = Servi
-dismissed = Expulsion
+total-dismissal = Expulsion
+penalty = #{$player_number} - {$time ->
+        [pending] En Attente
+        [served] Servi
+        [total-dismissal] Expulsé
+       *[number] {$time}
+    } {$time ->
+        [total-dismissal] {""}
+       *[other] ({$kind ->
+            [thirty-seconds] 30s
+            [one-minute] 1m
+            [two-minutes] 2m
+            [four-minutes] 4m
+            [five-minutes] 5m
+           *[other] {$kind}
+        })
+    }
+foul = {$player_number ->
+        [none] {$infraction}
+        *[number] #{$player_number} - {$infraction}
+    }
+warning = {$player_number ->
+        [none] { team-warning-abreviation } - {$infraction}
+        *[number] #{$player_number} - {$infraction}
+    }
+infraction = Faute: {$infraction}
 ## Config String
 error = Erreur ({ $number })
 none = Aucun
@@ -257,10 +293,10 @@ player-number = NUMÉRO DU
     JOUEUR:
 game-number = NUMÉRO DU
     MATCH:
-num-tos-per-half = NOMBRE DE TEMPS MORTS
-    PAR MI-TEMPS:
-num-tos-per-game = NOMBRE DE TEMPS MORTS
-    PAR MATCH:
+num-tos-per-half = NOMBRE DE TEMPS
+    MORTS PAR MI-TEMPS:
+num-tos-per-game = NOMBRE DE TEMPS
+    MORTS PAR MATCH:
 
 # Sound Controller - mod
 off = ÉTEINT
@@ -273,3 +309,16 @@ max = MAX
 hockey6v6 = Hockey6V6
 hockey3v3 = Hockey3V3
 rugby = Rugby
+
+# Infractions
+stick-foul = Faute de crosse
+illegal-advance = Faire avancer le palet
+sub-foul = Changement incorrect
+illegal-stoppage = Arrêt irrégulier
+out-of-bounds = Palet sorti
+grabbing-the-wall = Agripper avec les barrières
+obstruction = Obstruction
+delay-of-game = Faute pour ralentir le jeu
+unsportsmanlike = Conduite anti sportive
+free-arm = Usage irrégulier du bras libre
+false-start = Faux départs

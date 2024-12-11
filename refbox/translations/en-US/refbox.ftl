@@ -27,7 +27,7 @@ team-warning-line-2 = WARNING
 # Configuration
 none-selected = None Selected
 loading = Loading...
-game = Game:
+game-select = Game:
 game-options = GAME OPTIONS
 app-options = APP OPTIONS
 display-options = DISPLAY OPTIONS
@@ -38,6 +38,8 @@ hide-time-for-last-15-seconds = HIDE TIME FOR
     LAST 15 SECONDS
 player-display-brightness = PLAYER DISPLAY
     BRIGHTNESS
+confirm-score-at-game-end = CONFIRM SCORE
+    AT GAME END
 track-cap-number-of-scorer = TRACK CAP NUMBER
     OF SCORER
 event = EVENT:
@@ -62,8 +64,10 @@ nominal-break-between-games = NOMINAL BRK
     BTWN GAMES:
 ot-half-length = OT HALF
     LENGTH:
-num-team-tos-allowed-per-half = NUM TEAM T/Os
-    ALLOWED:
+timeouts-counted-per = TIMEOUTS
+    COUNTED PER:
+game = GAME
+half = HALF
 minimum-brk-btwn-games = MINIMUM BRK
     BTWN GAMES:
 ot-half-time-length = OT HALF
@@ -90,6 +94,12 @@ auto-sound-stop-play = AUTO SOUND
 remotes = REMOTES
 default = DEFAULT
 sound = SOUND: { $sound_text }
+brightness = { $brightness ->
+        *[Low] LOW
+        [Medium] MEDIUM
+        [High] HIGH
+        [Outdoor] OUTDOOR
+    }
 
 waiting = WAITING
 add = ADD
@@ -207,7 +217,32 @@ penalty-shot-line-2 = SHOT
 pen-shot = PEN SHOT
 ## Penalty string
 served = Served
-dismissed = DSMS
+total-dismissal = TD
+penalty = #{$player_number} - {$time ->
+        [pending] Pending
+        [served] Served
+        [total-dismissal] Dismissed
+       *[number] {$time}
+    } {$time ->
+        [total-dismissal] {""}
+       *[other] ({$kind ->
+            [thirty-seconds] 30s
+            [one-minute] 1m
+            [two-minutes] 2m
+            [four-minutes] 4m
+            [five-minutes] 5m
+           *[other] {$kind}
+        })
+    }
+foul = {$player_number ->
+        [none] {$infraction}
+        *[number] #{$player_number} - {$infraction}
+    }
+warning = {$player_number ->
+        [none] { team-warning-abreviation } - {$infraction}
+        *[number] #{$player_number} - {$infraction}
+    }
+infraction = Infraction: {$infraction}
 ## Config String
 error = Error ({ $number })
 none = None
@@ -286,3 +321,16 @@ max = MAX
 hockey6v6 = HOCKEY6V6
 hockey3v3 = HOCKEY3V3
 rugby = RUGBY
+
+# Infractions
+stick-foul = Stick Foul
+illegal-advance = Illegal Advance
+sub-foul = Sub Foul
+illegal-stoppage = Illegal Stoppage
+out-of-bounds = Out Of Bounds
+grabbing-the-wall = Grabbing The Wall
+obstruction = Obstruction
+delay-of-game = Delay Of Game
+unsportsmanlike = Unsportsmanlike
+free-arm = Free Arm
+false-start = False Start

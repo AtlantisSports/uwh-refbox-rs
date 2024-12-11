@@ -27,7 +27,7 @@ team-warning-line-2 = DE EQUIPO
 # Configuration
 none-selected = Ninguno seleccionado
 loading = Cargando...
-game = Juego:
+game-select = Juego:
 game-options = OPCIONES DE JUEGO
 app-options = OPCIONES DE APP
 display-options = OPCIONES DE PANTALLA
@@ -38,6 +38,8 @@ hide-time-for-last-15-seconds = OCULTAR TIEMPO PARA
     LOS ÚLTIMOS 15 SEGUNDOS
 player-display-brightness = BRILLO DE LA
     PANTALLA DEL JUGADOR
+confirm-score-at-game-end = CONFIRMAR PUNTUACIÓN
+    AL FINAL DEL JUEGO
 track-cap-number-of-scorer = REGISTRAR NÚMERO
     DEL ANOTADOR
 track-fouls-and-warnings = REGISTRAR FALTAS
@@ -63,8 +65,10 @@ nominal-break-between-games = DESCANSO
     ENTRE JUEGOS:
 ot-half-length = DURACIÓN DE LA
     MITAD DEL T/M:
-num-team-tos-allowed-per-half = NÚMERO DE T/M
-    POR MITAD:
+timeouts-counted-per = TIEMPOS MUERTOS
+    CONTADOS POR:
+game = JUEGO
+half = MITAD
 minimum-brk-btwn-games = DESCANSO MÍNIMO
     ENTRE JUEGOS:
 ot-half-time-length = DUR. MEDIO
@@ -91,6 +95,12 @@ auto-sound-stop-play = SONIDO AUTOMÁTICO
 remotes = REMOTOS
 default = POR DEFECTO
 sound = SONIDO: { $sound_text }
+brightness = { $brightness ->
+        *[Low] BAJO
+        [Medium] MEDIO
+        [High] ALTO
+        [Outdoor] EXTERIOR
+    }
 
 waiting = EN ESPERA
 add = AÑADIR
@@ -203,7 +213,32 @@ penalty-shot-line-2 = PENAL
 pen-shot = TIRO PENAL
 ## Penalty string
 served = Servido
-dismissed = DESCARTADO
+total-dismissal = DESCARTADO
+penalty = #{$player_number} - {$time ->
+        [pending] Pendiente
+        [served] Servido
+        [total-dismissal] Descartado
+       *[number] {$time}
+    } {$time ->
+        [total-dismissal] {""}
+       *[other] ({$kind ->
+            [thirty-seconds] 30s
+            [one-minute] 1m
+            [two-minutes] 2m
+            [four-minutes] 4m
+            [five-minutes] 5m
+           *[other] {$kind}
+        })
+    }
+foul = {$player_number ->
+        [none] {$infraction}
+        *[number] #{$player_number} - {$infraction}
+    }
+warning = {$player_number ->
+        [none] { team-warning-abreviation } - {$infraction}
+        *[number] #{$player_number} - {$infraction}
+    }
+infraction = Infracción: {$infraction}
 ## Config String
 error = Error ({ $number })
 none = Ninguno
@@ -277,7 +312,22 @@ low = BAJO
 medium = MEDIO
 high = ALTO
 max = MÁX
+
 # Config
 hockey6v6 = HOCKEY 6vs6
 hockey3v3 = HOCKEY 3vs3
 rugby = RUGBY
+
+# Infractions
+stick-foul = Infracción con el palo
+illegal-advance = Uso de la mano libre
+sub-foul = Substitución ilegal
+illegal-stoppage = Parada ilegal
+out-of-bounds = Pastilla fuera
+grabbing-the-wall = agarrarse con barreras
+obstruction = Obstruir
+delay-of-game = Quemar tiempo
+unsportsmanlike = Conducta antideportiva
+free-arm = Uso ilegal del brazo libre
+false-start = Saque nulo
+

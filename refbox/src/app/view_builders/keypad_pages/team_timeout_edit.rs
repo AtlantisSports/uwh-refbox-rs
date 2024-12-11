@@ -29,15 +29,15 @@ pub(super) fn make_team_timeout_edit_page<'a>(
 
     column![
         row![
-            text("TIMEOUTS\nCOUNTED PER:")
+            text(fl!("timeouts-counted-per"))
                 .size(SMALL_PLUS_TEXT)
                 .height(Length::Fixed(MIN_BUTTON_SIZE))
                 .vertical_alignment(Vertical::Center),
-            make_button("HALF")
+            make_button(fl!("half"))
                 .style(half_style)
                 .width(Length::Fill)
                 .on_press(half_message),
-            make_button("GAME")
+            make_button(fl!("game"))
                 .style(game_style)
                 .width(Length::Fill)
                 .on_press(game_message),

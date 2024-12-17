@@ -17,6 +17,7 @@ use iced::{
     Alignment, Length,
 };
 
+use style::SMALL_PLUS_TEXT;
 use uwh_common::game_snapshot::GameSnapshot;
 
 mod score_add;
@@ -126,10 +127,17 @@ pub(in super::super) fn build_keypad_page<'a>(
                     ]
                     .spacing(SPACING),
                     row![
-                        setup_keypad_button(
-                            make_small_button("0", MEDIUM_TEXT),
-                            Message::KeypadButtonPress(KeypadButton::Zero,)
-                        ),
+                        if player_num == 0 {
+                            setup_keypad_button(
+                                make_small_button("TEAM", SMALL_PLUS_TEXT),
+                                Message::ToggleBoolParameter(BoolGameParameter::TeamWarning),
+                            )
+                        } else {
+                            setup_keypad_button(
+                                make_small_button("0", MEDIUM_TEXT),
+                                Message::KeypadButtonPress(KeypadButton::Zero),
+                            )
+                        },
                         setup_keypad_button(
                             button(
                                 container(

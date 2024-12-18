@@ -202,17 +202,21 @@ fn details_strings(
     )
     .unwrap();
 
-    writeln!(&mut left_string, "Stop clock in last 2 minutes: UNKNOWN").unwrap();
+    if using_uwhscores {
+        writeln!(&mut left_string, "Stop clock in last 2 minutes: UNKNOWN").unwrap();
+    }
 
-    write!(
-        &mut right_string,
-        "Chief ref: UNKNOWN\n\
+    if using_uwhscores {
+        write!(
+            &mut right_string,
+            "Chief ref: UNKNOWN\n\
         Timer: UNKNOWN\n\
         Water ref 1: UNKNOWN\n\
         Water ref 2: UNKNOWN\n\
         Water ref 3: UNKNOWN",
-    )
-    .unwrap();
+        )
+        .unwrap();
+    }
 
     (left_string, right_string)
 }

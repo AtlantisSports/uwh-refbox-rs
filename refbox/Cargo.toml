@@ -18,6 +18,7 @@ confy = "0.6"
 conquer-once = "0.4"
 derivative = "2"
 directories = "6"
+dyn-clone = "1.0.19"
 embedded-graphics = "0.8"
 enum-derive-2018 = "3"
 enum-iterator = "2.1.0"
@@ -28,9 +29,9 @@ i18n-embed-fl = "0.8.0"
 iced_core = "0.13"
 iced_futures = { version = "0.13", features = ["async-std"] }
 iced_graphics = "0.13"
-# iced_native = "0.10"
 iced_renderer = "0.13"
 iced_runtime = "0.13"
+iced_winit = "0.13"
 led-panel-sim = { version = "0.3.0", path = "../led-panel-sim" }
 log = "0.4"
 log-panics = { version = "2", features = ["with-backtrace"]}

@@ -1,20 +1,15 @@
 use super::snapshot::{BeepTestPeriod, BeepTestSnapshot};
 use crate::{APP_NAME, config::Config, sound_controller::*, tournament_manager::*};
-use iced::{Application, Command, Subscription, executor, widget::column};
-use iced_futures::{
-    futures::stream::{self, BoxStream},
-    subscription::{EventStream, Recipe},
-};
-use iced_runtime::command;
+use futures_lite::Stream;
+use iced::{Element, Subscription, Task, Theme, application::Appearance, widget::column};
 use log::*;
 use message::{BoolGameParameter, CyclingParameter, Message};
 use std::{
-    borrow::Cow,
     process::Child,
     sync::{Arc, Mutex},
 };
 use tokio::{
-    sync::{mpsc, watch},
+    sync::mpsc,
     time::{Instant, timeout_at},
 };
 use tokio_serial::SerialPortBuilder;
@@ -26,14 +21,8 @@ pub(crate) mod update_sender;
 mod view_builders;
 use view_builders::*;
 
-pub mod style;
-use style::{PADDING, SPACING};
-
-#[derive(Clone, Debug)]
-struct TimeUpdater {
-    tm: Arc<Mutex<TournamentManager>>,
-    clock_running_receiver: watch::Receiver<bool>,
-}
+pub mod theme;
+use theme::*;
 
 #[derive(Debug)]
 pub struct RefBeepTestAppFlags {
@@ -54,7 +43,6 @@ pub struct BeepTestApp {
     config: Config,
     edited_settings: Option<EditableSettings>,
     tm: Arc<Mutex<TournamentManager>>,
-    time_updater: TimeUpdater,
     snapshot: BeepTestSnapshot,
     sound: SoundController,
     sim_child: Option<Child>,
@@ -62,8 +50,6 @@ pub struct BeepTestApp {
     update_sender: UpdateSender,
     app_state: AppState,
 }
-
-pub type Element<'a, Message> = iced::Element<'a, Message, iced::Renderer<style::ApplicationTheme>>;
 
 impl BeepTestApp {
     fn apply_snapshot(&mut self, new_snapshot: BeepTestSnapshot) {
@@ -111,34 +97,14 @@ impl BeepTestApp {
         self.config.sound = sound;
         self.sound.update_settings(self.config.sound.clone());
     }
-}
 
-impl Drop for BeepTestApp {
-    fn drop(&mut self) {
-        if let Some(mut child) = self.sim_child.take() {
-            info!("Waiting for child");
-            child.wait().unwrap();
-        }
-    }
-}
-
-impl Application for BeepTestApp {
-    type Executor = executor::Default;
-    type Message = Message;
-    type Theme = style::ApplicationTheme;
-    type Flags = RefBeepTestAppFlags;
-
-    fn title(&self) -> String {
-        "UWH Ref Beep Test".into()
-    }
-
-    fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
+    pub(super) fn update(&mut self, message: Message) -> Task<Message> {
         trace!("Handling message: {message:?}");
 
         if !message.is_repeatable() && (message == self.last_message) {
             warn!("Ignoring a repeated message: {message:?}");
             self.last_message = message.clone();
-            return Command::none();
+            return Task::none();
         } else {
             self.last_message = message.clone();
         }
@@ -203,12 +169,15 @@ impl Application for BeepTestApp {
                     AppState::MainPage
                 }
             }
+            Message::TimeUpdaterStarted(tx) => {
+                tx.blocking_send(self.tm.clone()).unwrap();
+            }
             Message::NoAction => {}
         }
-        Command::none()
+        Task::none()
     }
 
-    fn view(&self) -> iced::Element<'_, Self::Message, iced::Renderer<Self::Theme>> {
+    pub(super) fn view(&self) -> Element<Message> {
         let clock_running = self.tm.lock().unwrap().clock_is_running();
         let main_view = column![match self.app_state {
             AppState::MainPage =>
@@ -221,8 +190,8 @@ impl Application for BeepTestApp {
         main_view.into()
     }
 
-    fn new(flags: Self::Flags) -> (Self, Command<Self::Message>) {
-        let Self::Flags {
+    pub(super) fn new(flags: RefBeepTestAppFlags) -> (Self, Task<Message>) {
+        let RefBeepTestAppFlags {
             config,
             serial_ports,
             binary_port,
@@ -232,8 +201,6 @@ impl Application for BeepTestApp {
 
         let tm = TournamentManager::new(config.beep_test.clone());
         tm.send_clock_running(false);
-
-        let clock_running_receiver = tm.get_start_stop_rx();
 
         let tm = Arc::new(Mutex::new(tm));
 
@@ -248,11 +215,7 @@ impl Application for BeepTestApp {
             Self {
                 config,
                 edited_settings: None,
-                tm: tm.clone(),
-                time_updater: TimeUpdater {
-                    tm: tm.clone(),
-                    clock_running_receiver,
-                },
+                tm,
                 last_message: Message::NoAction,
                 snapshot,
                 sound,
@@ -260,135 +223,105 @@ impl Application for BeepTestApp {
                 sim_child,
                 app_state: AppState::MainPage,
             },
-            Command::single(command::Action::LoadFont {
-                bytes: Cow::from(&include_bytes!("../../resources/Roboto-Medium.ttf")[..]),
-                tagger: Box::new(|res| match res {
-                    Ok(()) => {
-                        info!("Loaded font");
-                        Message::NoAction
-                    }
-                    Err(e) => panic!("Failed to load font: {e:?}"),
-                }),
-            }),
+            Task::none(),
         )
     }
 
-    fn subscription(&self) -> Subscription<Message> {
-        Subscription::batch([Subscription::from_recipe(self.time_updater.clone())])
+    pub(super) fn subscription(&self) -> Subscription<Message> {
+        Subscription::run(time_updater)
+    }
+
+    pub fn application_style(&self, _theme: &Theme) -> Appearance {
+        Appearance {
+            background_color: WINDOW_BACKGROUND,
+            text_color: BLACK,
+        }
     }
 }
 
-impl Recipe for TimeUpdater {
-    type Output = Message;
-
-    fn hash(&self, state: &mut iced_core::Hasher) {
-        use std::hash::Hash;
-
-        "TimeUpdater".hash(state);
-    }
-
-    fn stream(self: Box<Self>, _input: EventStream) -> BoxStream<'static, Self::Output> {
-        debug!("Updater started");
-
-        struct State {
-            tm: Arc<Mutex<TournamentManager>>,
-            clock_running_receiver: watch::Receiver<bool>,
-            next_time: Option<Instant>,
+impl Drop for BeepTestApp {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.sim_child.take() {
+            info!("Waiting for child");
+            child.wait().unwrap();
         }
+    }
+}
 
-        let state = State {
-            tm: self.tm.clone(),
-            clock_running_receiver: self.clock_running_receiver.clone(),
-            next_time: Some(Instant::now()),
-        };
+fn time_updater() -> impl Stream<Item = Message> {
+    use iced::futures::SinkExt;
+    debug!("Updater started");
 
-        Box::pin(stream::unfold(state, |mut state| async move {
+    iced::stream::channel(100, async |mut msg_tx| {
+        let (tx, mut rx) = mpsc::channel(1);
+
+        msg_tx.send(Message::TimeUpdaterStarted(tx)).await.unwrap();
+
+        let tm = rx.recv().await.unwrap();
+        let mut clock_running_receiver = tm.lock().unwrap().get_start_stop_rx();
+        let mut next_time = Some(Instant::now());
+
+        loop {
             let mut clock_running = true;
-            if let Some(next_time) = state.next_time {
+            if let Some(next_time) = next_time {
                 if next_time > Instant::now() {
-                    match timeout_at(next_time, state.clock_running_receiver.changed()).await {
+                    match timeout_at(next_time, clock_running_receiver.changed()).await {
                         Err(_) => {}
-                        Ok(Err(_)) => return None,
+                        Ok(Err(_)) => continue,
                         Ok(Ok(())) => {
-                            clock_running = *state.clock_running_receiver.borrow();
+                            clock_running = *clock_running_receiver.borrow();
                             debug!("Received clock running message: {clock_running}");
                         }
                     };
                 } else {
-                    match state.clock_running_receiver.has_changed() {
+                    match clock_running_receiver.has_changed() {
                         Ok(true) => {
-                            clock_running = *state.clock_running_receiver.borrow();
+                            clock_running = *clock_running_receiver.borrow();
                             debug!("Received clock running message: {clock_running}");
                         }
                         Ok(false) => {}
                         Err(_) => {
-                            return None;
+                            continue;
                         }
                     };
                 }
             } else {
                 debug!("Awaiting a new clock running message");
-                match state.clock_running_receiver.changed().await {
-                    Err(_) => return None,
+                match clock_running_receiver.changed().await {
+                    Err(_) => continue,
                     Ok(()) => {
-                        clock_running = *state.clock_running_receiver.borrow();
+                        clock_running = *clock_running_receiver.borrow();
                         debug!("Received clock running message: {clock_running}");
                     }
                 };
             };
 
-            let mut tm = state.tm.lock().unwrap();
-            let now = Instant::now();
+            let snapshot = {
+                let mut tm = tm.lock().unwrap();
+                let now = Instant::now();
 
-            tm.update(now).unwrap();
+                tm.update(now).unwrap();
 
-            let snapshot = match tm.generate_snapshot(now) {
-                Some(val) => val,
-                None => {
-                    error!("Failed to generate snapshot. State:\n{tm:#?}");
-                    panic!("No snapshot");
-                }
+                let snapshot = match tm.generate_snapshot(now) {
+                    Some(val) => val,
+                    None => {
+                        error!("Failed to generate snapshot. State:\n{tm:#?}");
+                        panic!("No snapshot");
+                    }
+                };
+
+                next_time = if clock_running {
+                    Some(tm.next_update_time(now).unwrap())
+                } else {
+                    None
+                };
+
+                drop(tm);
+
+                snapshot
             };
 
-            state.next_time = if clock_running {
-                Some(tm.next_update_time(now).unwrap())
-            } else {
-                None
-            };
-
-            drop(tm);
-
-            Some((Message::NewSnapshot(snapshot), state))
-        }))
-    }
-}
-
-#[derive(Debug, Clone)]
-struct MessageListener {
-    rx: Arc<Mutex<Option<mpsc::UnboundedReceiver<Message>>>>,
-}
-
-impl Recipe for MessageListener {
-    type Output = Message;
-
-    fn hash(&self, state: &mut iced_core::Hasher) {
-        use std::hash::Hash;
-
-        "MessageListener".hash(state);
-    }
-
-    fn stream(self: Box<Self>, _input: EventStream) -> BoxStream<'static, Self::Output> {
-        info!("Message Listener started");
-
-        let rx = self
-            .rx
-            .lock()
-            .unwrap()
-            .take()
-            .expect("Listener has already been started");
-
-        Box::pin(stream::unfold(rx, |mut rx| async move {
-            rx.recv().await.map(|msg| (msg, rx))
-        }))
-    }
+            msg_tx.send(Message::NewSnapshot(snapshot)).await.unwrap();
+        }
+    })
 }

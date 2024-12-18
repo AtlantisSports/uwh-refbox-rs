@@ -1,15 +1,15 @@
 use super::fl;
-use crate::tournament_manager::penalty::PenaltyKind;
-use tokio::time::Duration;
+use crate::tournament_manager::{TournamentManager, penalty::PenaltyKind};
+use std::sync::{Arc, Mutex};
+use tokio::{sync::mpsc::Sender, time::Duration};
 use uwh_common::{
     color::Color as GameColor,
     game_snapshot::{GameSnapshot, Infraction},
     uwhportal::schedule::{Event, EventId, Schedule, TeamList},
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum Message {
-    Init,
     NewSnapshot(GameSnapshot),
     EditTime,
     ChangeTime {
@@ -102,7 +102,8 @@ pub enum Message {
     RecvSchedule(EventId, Schedule),
     StopClock,
     StartClock,
-    NoAction, // TODO: Remove once UI is functional
+    TimeUpdaterStarted(Sender<Arc<Mutex<TournamentManager>>>),
+    NoAction,
 }
 
 impl Message {
@@ -118,10 +119,10 @@ impl Message {
             | Self::RecvEventList(_)
             | Self::RecvTeamsList(_, _)
             | Self::RecvSchedule(_, _)
+            | Self::TimeUpdaterStarted(_)
             | Self::NoAction => true,
 
-            Self::Init
-            | Self::EditTime
+            Self::EditTime
             | Self::TimeEditComplete { .. }
             | Self::StartPlayNow
             | Self::EditScores
@@ -164,6 +165,197 @@ impl Message {
             | Self::ScoreConfirmation { .. }
             | Self::StopClock
             | Self::StartClock => false,
+        }
+    }
+}
+
+impl PartialEq for Message {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::EditTime, Self::EditTime)
+            | (Self::StartPlayNow, Self::StartPlayNow)
+            | (Self::EditScores, Self::EditScores)
+            | (Self::PenaltyOverview, Self::PenaltyOverview)
+            | (Self::WarningOverview, Self::WarningOverview)
+            | (Self::FoulOverview, Self::FoulOverview)
+            | (Self::ShowGameDetails, Self::ShowGameDetails)
+            | (Self::ShowWarnings, Self::ShowWarnings)
+            | (Self::EditGameConfig, Self::EditGameConfig)
+            | (Self::ApplyAuthChanges, Self::ApplyAuthChanges)
+            | (Self::RequestRemoteId, Self::RequestRemoteId)
+            | (Self::EndTimeout, Self::EndTimeout)
+            | (Self::StopClock, Self::StopClock)
+            | (Self::StartClock, Self::StartClock)
+            | (Self::NoAction, Self::NoAction) => true,
+
+            (Self::NewSnapshot(a), Self::NewSnapshot(b)) => a == b,
+            (
+                Self::ChangeTime {
+                    increase: a,
+                    secs: b,
+                    timeout: c,
+                },
+                Self::ChangeTime {
+                    increase: d,
+                    secs: e,
+                    timeout: f,
+                },
+            ) => a == d && b == e && c == f,
+            (Self::TimeEditComplete { canceled: a }, Self::TimeEditComplete { canceled: b }) => {
+                a == b
+            }
+            (
+                Self::ChangeScore {
+                    color: a,
+                    increase: b,
+                },
+                Self::ChangeScore {
+                    color: c,
+                    increase: d,
+                },
+            ) => a == c && b == d,
+            (Self::ScoreEditComplete { canceled: a }, Self::ScoreEditComplete { canceled: b }) => {
+                a == b
+            }
+            (Self::Scroll { which: a, up: b }, Self::Scroll { which: c, up: d }) => {
+                a == c && b == d
+            }
+            (
+                Self::PenaltyOverviewComplete { canceled: a },
+                Self::PenaltyOverviewComplete { canceled: b },
+            ) => a == b,
+            (
+                Self::WarningOverviewComplete { canceled: a },
+                Self::WarningOverviewComplete { canceled: b },
+            ) => a == b,
+            (
+                Self::FoulOverviewComplete { canceled: a },
+                Self::FoulOverviewComplete { canceled: b },
+            ) => a == b,
+            (Self::ChangeKind(a), Self::ChangeKind(b)) => a == b,
+            (Self::ChangeInfraction(a), Self::ChangeInfraction(b)) => a == b,
+            (
+                Self::PenaltyEditComplete {
+                    canceled: a,
+                    deleted: b,
+                },
+                Self::PenaltyEditComplete {
+                    canceled: c,
+                    deleted: d,
+                },
+            ) => a == c && b == d,
+            (
+                Self::WarningEditComplete {
+                    canceled: a,
+                    deleted: b,
+                    ret_to_overview: c,
+                },
+                Self::WarningEditComplete {
+                    canceled: d,
+                    deleted: e,
+                    ret_to_overview: f,
+                },
+            ) => a == d && b == e && c == f,
+            (
+                Self::FoulEditComplete {
+                    canceled: a,
+                    deleted: b,
+                    ret_to_overview: c,
+                },
+                Self::FoulEditComplete {
+                    canceled: d,
+                    deleted: e,
+                    ret_to_overview: f,
+                },
+            ) => a == d && b == e && c == f,
+            (Self::KeypadPage(a), Self::KeypadPage(b)) => a == b,
+            (Self::KeypadButtonPress(a), Self::KeypadButtonPress(b)) => a == b,
+            (Self::ChangeColor(a), Self::ChangeColor(b)) => a == b,
+            (Self::AddScoreComplete { canceled: a }, Self::AddScoreComplete { canceled: b }) => {
+                a == b
+            }
+            (Self::ConfirmScores(a), Self::ConfirmScores(b)) => a == b,
+            (Self::ScoreConfirmation { correct: a }, Self::ScoreConfirmation { correct: b }) => {
+                a == b
+            }
+            (Self::EditParameter(a), Self::EditParameter(b)) => a == b,
+            (Self::SelectParameter(a), Self::SelectParameter(b)) => a == b,
+            (
+                Self::ParameterEditComplete { canceled: a },
+                Self::ParameterEditComplete { canceled: b },
+            ) => a == b,
+            (Self::ParameterSelected(a, b), Self::ParameterSelected(c, d)) => a == c && b == d,
+            (Self::ToggleBoolParameter(a), Self::ToggleBoolParameter(b)) => a == b,
+            (Self::CycleParameter(a), Self::CycleParameter(b)) => a == b,
+            (Self::TextParameterChanged(a, b), Self::TextParameterChanged(c, d)) => {
+                a == c && b == d
+            }
+            (Self::GotRemoteId(a), Self::GotRemoteId(b)) => a == b,
+            (Self::DeleteRemote(a), Self::DeleteRemote(b)) => a == b,
+            (Self::ConfirmationSelected(a), Self::ConfirmationSelected(b)) => a == b,
+            (Self::TeamTimeout(a, b), Self::TeamTimeout(c, d)) => a == c && b == d,
+            (Self::RefTimeout(a), Self::RefTimeout(b)) => a == b,
+            (Self::PenaltyShot(a), Self::PenaltyShot(b)) => a == b,
+            (Self::TimeUpdaterStarted(a), Self::TimeUpdaterStarted(b)) => a.same_channel(b),
+            (Self::RecvEventList(a), Self::RecvEventList(b)) => a == b,
+            (Self::RecvTeamsList(a, b), Self::RecvTeamsList(c, d)) => a == c && b == d,
+            (Self::RecvSchedule(a, b), Self::RecvSchedule(c, d)) => a == c && b == d,
+
+            (Self::NewSnapshot(_), _)
+            | (Self::EditTime, _)
+            | (Self::ChangeTime { .. }, _)
+            | (Self::TimeEditComplete { .. }, _)
+            | (Self::StartPlayNow, _)
+            | (Self::EditScores, _)
+            | (Self::AddNewScore(_), _)
+            | (Self::ChangeScore { .. }, _)
+            | (Self::ScoreEditComplete { .. }, _)
+            | (Self::PenaltyOverview, _)
+            | (Self::WarningOverview, _)
+            | (Self::FoulOverview, _)
+            | (Self::Scroll { .. }, _)
+            | (Self::PenaltyOverviewComplete { .. }, _)
+            | (Self::WarningOverviewComplete { .. }, _)
+            | (Self::FoulOverviewComplete { .. }, _)
+            | (Self::ChangeKind(_), _)
+            | (Self::ChangeInfraction(_), _)
+            | (Self::PenaltyEditComplete { .. }, _)
+            | (Self::WarningEditComplete { .. }, _)
+            | (Self::FoulEditComplete { .. }, _)
+            | (Self::KeypadPage(_), _)
+            | (Self::KeypadButtonPress(_), _)
+            | (Self::ChangeColor(_), _)
+            | (Self::AddScoreComplete { .. }, _)
+            | (Self::ShowGameDetails, _)
+            | (Self::ShowWarnings, _)
+            | (Self::EditGameConfig, _)
+            | (Self::ChangeConfigPage(_), _)
+            | (Self::ConfigEditComplete { .. }, _)
+            | (Self::EditParameter(_), _)
+            | (Self::SelectParameter(_), _)
+            | (Self::ParameterEditComplete { .. }, _)
+            | (Self::ParameterSelected(_, _), _)
+            | (Self::ToggleBoolParameter(_), _)
+            | (Self::CycleParameter(_), _)
+            | (Self::TextParameterChanged(_, _), _)
+            | (Self::ApplyAuthChanges, _)
+            | (Self::RequestRemoteId, _)
+            | (Self::GotRemoteId(_), _)
+            | (Self::DeleteRemote(_), _)
+            | (Self::ConfirmationSelected(_), _)
+            | (Self::TeamTimeout(_, _), _)
+            | (Self::RefTimeout(_), _)
+            | (Self::PenaltyShot(_), _)
+            | (Self::EndTimeout, _)
+            | (Self::ConfirmScores(_), _)
+            | (Self::ScoreConfirmation { .. }, _)
+            | (Self::RecvEventList(_), _)
+            | (Self::RecvTeamsList(_, _), _)
+            | (Self::RecvSchedule(_, _), _)
+            | (Self::StopClock, _)
+            | (Self::StartClock, _)
+            | (Self::TimeUpdaterStarted(_), _)
+            | (Self::NoAction, _) => false,
         }
     }
 }

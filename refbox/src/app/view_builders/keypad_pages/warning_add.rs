@@ -1,10 +1,15 @@
-use super::{style::Element, *};
+use super::*;
 use iced::{
-    Length,
-    widget::{column, row, vertical_space},
+    Length, Theme,
+    widget::{
+        Space,
+        button::{Status, Style},
+        column, row, vertical_space,
+    },
 };
-
 use uwh_common::color::Color as GameColor;
+
+type StyleFn = fn(&Theme, Status) -> Style;
 
 pub(super) fn make_warning_add_page<'a>(
     origin: Option<(GameColor, usize)>,
@@ -13,20 +18,20 @@ pub(super) fn make_warning_add_page<'a>(
     team_warning: bool,
     ret_to_overview: bool,
 ) -> Element<'a, Message> {
-    let (black_style, white_style) = match color {
-        GameColor::Black => (ButtonStyle::BlackSelected, ButtonStyle::White),
-        GameColor::White => (ButtonStyle::Black, ButtonStyle::WhiteSelected),
+    let (black_style, white_style): (StyleFn, StyleFn) = match color {
+        GameColor::Black => (black_selected_button, white_button),
+        GameColor::White => (black_button, white_selected_button),
     };
 
     let team_warning_style = if team_warning {
-        ButtonStyle::BlueSelected
+        blue_selected_button
     } else {
-        ButtonStyle::Blue
+        blue_button
     };
 
     let mut exit_row = row![
         make_button(fl!("cancel"))
-            .style(ButtonStyle::Red)
+            .style(red_button)
             .width(Length::Fill)
             .on_press(Message::WarningEditComplete {
                 canceled: true,
@@ -39,7 +44,7 @@ pub(super) fn make_warning_add_page<'a>(
     if origin.is_some() {
         exit_row = exit_row.push(
             make_button(fl!("delete"))
-                .style(ButtonStyle::Orange)
+                .style(orange_button)
                 .width(Length::Fill)
                 .on_press(Message::WarningEditComplete {
                     canceled: false,
@@ -51,7 +56,7 @@ pub(super) fn make_warning_add_page<'a>(
 
     exit_row = exit_row.push(
         make_button(fl!("done"))
-            .style(ButtonStyle::Green)
+            .style(green_button)
             .width(Length::Fill)
             .on_press(Message::WarningEditComplete {
                 canceled: false,
@@ -74,9 +79,9 @@ pub(super) fn make_warning_add_page<'a>(
                 .on_press(Message::ChangeColor(Some(GameColor::White))),
         ]
         .spacing(SPACING),
-        vertical_space(Length::Fixed(SPACING)),
+        Space::with_height(SPACING),
         make_penalty_dropdown(foul, true),
-        vertical_space(Length::Fill),
+        vertical_space(),
         exit_row,
     ]
     .into()

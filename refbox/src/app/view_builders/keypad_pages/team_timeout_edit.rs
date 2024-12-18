@@ -1,38 +1,42 @@
-use super::{style::Element, *};
+use super::*;
 use iced::{
-    Length,
-    widget::{column, horizontal_space, row, vertical_space},
+    Length, Theme,
+    widget::{
+        button::{Status, Style},
+        column, horizontal_space, row, vertical_space,
+    },
 };
-use style::SMALL_PLUS_TEXT;
-
 use std::time::Duration;
+
+type StyleFn = fn(&Theme, Status) -> Style;
 
 pub(super) fn make_team_timeout_edit_page<'a>(
     duration: Duration,
     timeouts_counted_per_half: bool,
 ) -> Element<'a, Message> {
-    let (half_style, half_message, game_style, game_message) = if timeouts_counted_per_half {
-        (
-            ButtonStyle::BlueSelected,
-            Message::NoAction,
-            ButtonStyle::Blue,
-            Message::ToggleBoolParameter(BoolGameParameter::TimeoutsCountedPerHalf),
-        )
-    } else {
-        (
-            ButtonStyle::Blue,
-            Message::ToggleBoolParameter(BoolGameParameter::TimeoutsCountedPerHalf),
-            ButtonStyle::BlueSelected,
-            Message::NoAction,
-        )
-    };
+    let (half_style, half_message, game_style, game_message): (StyleFn, _, StyleFn, _) =
+        if timeouts_counted_per_half {
+            (
+                blue_selected_button,
+                Message::NoAction,
+                blue_button,
+                Message::ToggleBoolParameter(BoolGameParameter::TimeoutsCountedPerHalf),
+            )
+        } else {
+            (
+                blue_button,
+                Message::ToggleBoolParameter(BoolGameParameter::TimeoutsCountedPerHalf),
+                blue_selected_button,
+                Message::NoAction,
+            )
+        };
 
     column![
         row![
             text(fl!("timeouts-counted-per"))
                 .size(SMALL_PLUS_TEXT)
                 .height(Length::Fixed(MIN_BUTTON_SIZE))
-                .vertical_alignment(Vertical::Center),
+                .align_y(Vertical::Center),
             make_button(fl!("half"))
                 .style(half_style)
                 .width(Length::Fill)
@@ -43,20 +47,20 @@ pub(super) fn make_team_timeout_edit_page<'a>(
                 .on_press(game_message),
         ]
         .spacing(SPACING),
-        vertical_space(Length::Fill),
+        vertical_space(),
         row![
-            horizontal_space(Length::Fill),
+            horizontal_space(),
             make_time_editor(fl!("timeout-length"), duration, false),
-            horizontal_space(Length::Fill)
+            horizontal_space()
         ],
-        vertical_space(Length::Fill),
+        vertical_space(),
         row![
             make_button(fl!("cancel"))
-                .style(ButtonStyle::Red)
+                .style(red_button)
                 .width(Length::Fill)
                 .on_press(Message::ParameterEditComplete { canceled: true }),
             make_button(fl!("done"))
-                .style(ButtonStyle::Green)
+                .style(green_button)
                 .width(Length::Fill)
                 .on_press(Message::ParameterEditComplete { canceled: false }),
         ]

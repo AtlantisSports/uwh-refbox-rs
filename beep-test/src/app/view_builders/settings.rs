@@ -1,11 +1,13 @@
-use super::super::{
-    message::*,
-    style::{ButtonStyle, Element, SPACING},
+use super::{
+    super::{
+        super::{snapshot::BeepTestSnapshot, sound_controller::*},
+        message::*,
+    },
+    shared_elements::*,
+    *,
 };
-use super::shared_elements::*;
-use crate::{snapshot::BeepTestSnapshot, sound_controller::*};
 use iced::{
-    Length,
+    Element, Length,
     widget::{column, horizontal_space, row},
 };
 
@@ -143,10 +145,10 @@ pub fn make_sound_config_page<'a>(
         .spacing(SPACING)
         .height(Length::Fill),
         row![
-            horizontal_space(Length::Fill),
-            horizontal_space(Length::Fill),
+            horizontal_space(),
+            horizontal_space(),
             make_button("DONE")
-                .style(ButtonStyle::Green)
+                .style(green_button)
                 .width(Length::Fill)
                 .on_press(Message::EditComplete),
         ]

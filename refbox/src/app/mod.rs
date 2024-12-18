@@ -6,23 +6,21 @@ use crate::{
     sound_controller::*,
     tournament_manager::{penalty::*, *},
 };
-use iced::{Application, Command, Subscription, executor, widget::column};
+use futures_lite::Stream;
+use iced::{Element, Subscription, Task, Theme, application::Appearance, widget::column, window};
 use iced_futures::{
     futures::stream::{self, BoxStream},
     subscription::{EventStream, Recipe},
 };
-use iced_runtime::{command, window};
 use log::*;
 use std::{
-    borrow::Cow,
     cmp::min,
     collections::{BTreeMap, BTreeSet},
     process::Child,
     sync::{Arc, Mutex},
 };
 use tokio::{
-    sync::{mpsc, watch},
-    task,
+    sync::mpsc,
     time::{Duration, Instant, timeout_at},
 };
 use tokio_serial::SerialPortBuilder;
@@ -47,22 +45,19 @@ use view_builders::*;
 mod message;
 use message::*;
 
-pub mod style;
-use style::{PADDING, SPACING};
+pub mod theme;
+use theme::*;
 
 pub mod update_sender;
 use update_sender::*;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
-pub type Element<'a, Message> = iced::Element<'a, Message, iced::Renderer<style::ApplicationTheme>>;
-
 pub struct RefBoxApp {
     tm: Arc<Mutex<TournamentManager>>,
     config: Config,
     edited_settings: Option<EditableSettings>,
     snapshot: GameSnapshot,
-    time_updater: TimeUpdater,
     pen_edit: ListEditor<Penalty, Color>,
     warn_edit: ListEditor<InfractionDetails, Color>,
     foul_edit: ListEditor<InfractionDetails, Option<Color>>,
@@ -70,8 +65,6 @@ pub struct RefBoxApp {
     last_app_state: AppState,
     last_message: Message,
     update_sender: UpdateSender,
-    message_listener: MessageListener,
-    msg_tx: mpsc::UnboundedSender<Message>,
     uwhportal_client: Option<UwhPortalClient>,
     using_uwhportal: bool,
     events: Option<BTreeMap<EventId, Event>>,
@@ -80,7 +73,6 @@ pub struct RefBoxApp {
     current_court: Option<String>,
     sound: SoundController,
     sim_child: Option<Child>,
-    fullscreen: bool,
     list_all_events: bool,
     touchscreen: bool,
 }
@@ -128,10 +120,11 @@ enum ConfirmationKind {
 }
 
 impl RefBoxApp {
-    fn apply_snapshot(&mut self, mut new_snapshot: GameSnapshot) {
+    fn apply_snapshot(&mut self, mut new_snapshot: GameSnapshot) -> Task<Message> {
+        let mut task = Task::none();
         if new_snapshot.current_period != self.snapshot.current_period {
             if new_snapshot.current_period == GamePeriod::BetweenGames {
-                self.handle_game_end(new_snapshot.game_number);
+                task = self.handle_game_end(new_snapshot.game_number);
             } else if self.snapshot.current_period == GamePeriod::BetweenGames {
                 self.handle_game_start(new_snapshot.game_number);
             }
@@ -148,6 +141,7 @@ impl RefBoxApp {
             )
             .unwrap();
         self.snapshot = new_snapshot;
+        task
     }
 
     fn maybe_play_sound(&self, new_snapshot: &GameSnapshot) {
@@ -212,68 +206,75 @@ impl RefBoxApp {
         }
     }
 
-    fn request_event_list(&self) {
+    fn request_event_list(&self) -> Task<Message> {
         if let Some(ref client) = self.uwhportal_client {
             let request = client.get_event_list(self.list_all_events);
-            let msg_tx = self.msg_tx.clone();
-            task::spawn(async move {
+            Task::future(async move {
                 match request.await {
                     Ok(events) => {
                         info!("Got event list");
-                        msg_tx.send(Message::RecvEventList(events)).unwrap();
+                        Message::RecvEventList(events)
                     }
                     Err(e) => {
                         error!("Failed to get event list: {e}");
+                        Message::NoAction
                     }
                 }
-            });
+            })
+        } else {
+            Task::none()
         }
     }
 
-    fn request_teams_list(&self, event_id: EventId, event_slug: &str) {
+    fn request_teams_list(&self, event_id: EventId, event_slug: &str) -> Task<Message> {
         if let Some(ref client) = self.uwhportal_client {
             let request = client.get_event_schedule(event_slug);
-            let msg_tx = self.msg_tx.clone();
-            task::spawn(async move {
+            Task::future(async move {
                 match request.await {
                     Ok(teams) => {
                         info!("Got teams list");
-                        msg_tx
-                            .send(Message::RecvTeamsList(event_id, teams))
-                            .unwrap();
+                        Message::RecvTeamsList(event_id, teams)
                     }
                     Err(e) => {
                         error!("Failed to get teams list: {e}");
+                        Message::NoAction
                     }
                 }
-            });
+            })
+        } else {
+            Task::none()
         }
     }
 
-    fn request_schedule(&self, event_id: EventId) {
+    fn request_schedule(&self, event_id: EventId) -> Task<Message> {
         if let Some(ref client) = self.uwhportal_client {
             let request = client.get_event_schedule_privileged(&event_id);
-            let msg_tx = self.msg_tx.clone();
-            task::spawn(async move {
+            Task::future(async move {
                 match request.await {
                     Ok(schedule) => {
                         info!("Got schedule");
-                        msg_tx
-                            .send(Message::RecvSchedule(event_id, schedule))
-                            .unwrap();
+                        Message::RecvSchedule(event_id, schedule)
                     }
                     Err(e) => {
                         error!("Failed to get schedule: {e}");
+                        Message::NoAction
                     }
                 }
-            });
+            })
+        } else {
+            Task::none()
         }
     }
 
-    fn post_game_score(&self, event_id: &EventId, game_number: u32, scores: BlackWhiteBundle<u8>) {
+    fn post_game_score(
+        &self,
+        event_id: &EventId,
+        game_number: u32,
+        scores: BlackWhiteBundle<u8>,
+    ) -> Task<Message> {
         if let Some(ref client) = self.uwhportal_client {
             let request = client.post_game_scores(event_id, game_number, scores, false);
-            task::spawn(async move {
+            Task::future(async move {
                 match request.await {
                     Ok(()) => {
                         info!("Successfully posted game score");
@@ -282,31 +283,45 @@ impl RefBoxApp {
                         error!("Failed to post game score: {e}");
                     }
                 }
-            });
+                Message::NoAction
+            })
+        } else {
+            Task::none()
         }
     }
 
-    fn check_uwhportal_auth(&self) {
+    fn check_uwhportal_auth(&self) -> Task<Message> {
         if let Some(ref uwhportal_client) = self.uwhportal_client {
             let request = uwhportal_client.verify_token();
-            tokio::spawn(async move {
+            Task::future(async move {
                 match request.await {
                     Ok(()) => info!("Successfully checked uwhportal token validity"),
                     Err(e) => error!("Failed to check uwhportal token validity: {e}"),
                 }
-            });
+                Message::NoAction
+            })
+        } else {
+            Task::none()
         }
     }
 
-    fn post_game_stats(&self, event_id: &EventId, game_number: u32, stats: String) {
+    fn post_game_stats(
+        &self,
+        event_id: &EventId,
+        game_number: u32,
+        stats: String,
+    ) -> Task<Message> {
         if let Some(ref uwhportal_client) = self.uwhportal_client {
             let request = uwhportal_client.post_game_stats(event_id, game_number, stats);
-            tokio::spawn(async move {
+            Task::future(async move {
                 match request.await {
                     Ok(()) => info!("Successfully posted game stats"),
                     Err(e) => error!("Failed to post game stats: {e}"),
                 }
-            });
+                Message::NoAction
+            })
+        } else {
+            Task::none()
         }
     }
 
@@ -345,7 +360,8 @@ impl RefBoxApp {
         }
     }
 
-    fn handle_game_end(&self, game_number: u32) {
+    fn handle_game_end(&self, game_number: u32) -> Task<Message> {
+        let mut tasks = vec![];
         if self.using_uwhportal {
             let mut stats = self
                 .tm
@@ -361,14 +377,15 @@ impl RefBoxApp {
             }
 
             if let Some(ref event_id) = self.current_event_id {
-                self.request_schedule(event_id.clone());
+                tasks.push(self.request_schedule(event_id.clone()));
                 if let Some(stats) = stats.take() {
-                    self.post_game_stats(event_id, game_number, stats);
+                    tasks.push(self.post_game_stats(event_id, game_number, stats));
                 }
             } else {
                 error!("Missing current event id to handle game end");
             }
         }
+        Task::batch(tasks)
     }
 
     fn apply_settings_change(&mut self) {
@@ -423,14 +440,9 @@ impl Drop for RefBoxApp {
     }
 }
 
-impl Application for RefBoxApp {
-    type Executor = executor::Default;
-    type Message = Message;
-    type Theme = style::ApplicationTheme;
-    type Flags = RefBoxAppFlags;
-
-    fn new(flags: Self::Flags) -> (Self, Command<Message>) {
-        let Self::Flags {
+impl RefBoxApp {
+    pub(super) fn new(flags: RefBoxAppFlags) -> (Self, Task<Message>) {
+        let RefBoxAppFlags {
             config,
             serial_ports,
             binary_port,
@@ -441,12 +453,6 @@ impl Application for RefBoxApp {
             list_all_events,
             touchscreen,
         } = flags;
-
-        let (msg_tx, rx) = mpsc::unbounded_channel();
-        let message_listener = MessageListener {
-            rx: Arc::new(Mutex::new(Some(rx))),
-        };
-        msg_tx.send(Message::Init).unwrap();
 
         let mut tm = TournamentManager::new(config.game.clone());
         tm.start_clock(Instant::now());
@@ -469,8 +475,6 @@ impl Application for RefBoxApp {
             }
         };
 
-        let clock_running_receiver = tm.get_start_stop_rx();
-
         let tm = Arc::new(Mutex::new(tm));
 
         let update_sender =
@@ -481,88 +485,56 @@ impl Application for RefBoxApp {
 
         let snapshot = Default::default();
 
-        (
-            Self {
-                pen_edit: ListEditor::new(tm.clone()),
-                warn_edit: ListEditor::new(tm.clone()),
-                foul_edit: ListEditor::new(tm.clone()),
-                time_updater: TimeUpdater {
-                    tm: tm.clone(),
-                    clock_running_receiver,
-                },
-                tm,
-                config,
-                edited_settings: Default::default(),
-                snapshot,
-                app_state: AppState::MainPage,
-                last_app_state: AppState::MainPage,
-                last_message: Message::NoAction,
-                update_sender,
-                message_listener,
-                msg_tx,
-                uwhportal_client,
-                using_uwhportal: false,
-                events: None,
-                schedule: None,
-                current_event_id: None,
-                current_court: None,
-                sound,
-                sim_child,
-                fullscreen,
-                list_all_events,
-                touchscreen,
+        let new = Self {
+            pen_edit: ListEditor::new(tm.clone()),
+            warn_edit: ListEditor::new(tm.clone()),
+            foul_edit: ListEditor::new(tm.clone()),
+            tm,
+            config,
+            edited_settings: Default::default(),
+            snapshot,
+            app_state: AppState::MainPage,
+            last_app_state: AppState::MainPage,
+            last_message: Message::NoAction,
+            update_sender,
+            uwhportal_client,
+            using_uwhportal: false,
+            events: None,
+            schedule: None,
+            current_event_id: None,
+            current_court: None,
+            sound,
+            sim_child,
+            list_all_events,
+            touchscreen,
+        };
+
+        let task = Task::batch(vec![
+            new.request_event_list(),
+            new.check_uwhportal_auth(),
+            if fullscreen {
+                window::get_latest().and_then(|w| window::change_mode(w, window::Mode::Fullscreen))
+            } else {
+                Task::none()
             },
-            Command::single(command::Action::LoadFont {
-                bytes: Cow::from(&include_bytes!("../../resources/Roboto-Medium.ttf")[..]),
-                tagger: Box::new(|res| match res {
-                    Ok(()) => {
-                        info!("Loaded font");
-                        Message::NoAction
-                    }
-                    Err(e) => panic!("Failed to load font: {e:?}"),
-                }),
-            }),
-        )
+        ]);
+
+        (new, task)
     }
 
-    fn subscription(&self) -> Subscription<Message> {
-        Subscription::batch([
-            Subscription::from_recipe(self.time_updater.clone()),
-            Subscription::from_recipe(self.message_listener.clone()),
-        ])
-    }
-
-    fn title(&self) -> String {
-        "UWH Ref Box".into()
-    }
-
-    fn update(&mut self, message: Message) -> Command<Message> {
+    pub(super) fn update(&mut self, message: Message) -> Task<Message> {
         trace!("Handling message: {message:?}");
 
         if !message.is_repeatable() && (message == self.last_message) {
             warn!("Ignoring a repeated message: {message:?}");
             self.last_message = message.clone();
-            return Command::none();
+            return Task::none();
         } else {
             self.last_message = message.clone();
         }
 
-        let command = if matches!(message, Message::Init) && self.fullscreen {
-            Command::single(command::Action::Window(window::Action::ChangeMode(
-                iced_core::window::Mode::Fullscreen,
-            )))
-        } else {
-            Command::none()
-        };
-
         match message {
-            Message::Init => {
-                self.request_event_list();
-                self.check_uwhportal_auth();
-            }
-            Message::NewSnapshot(snapshot) => {
-                self.apply_snapshot(snapshot);
-            }
+            Message::NewSnapshot(snapshot) => self.apply_snapshot(snapshot),
             Message::EditTime => {
                 let now = Instant::now();
                 let mut tm = self.tm.lock().unwrap();
@@ -575,6 +547,7 @@ impl Application for RefBoxApp {
                     tm.timeout_clock_time(now),
                 );
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
             }
             Message::ChangeTime {
                 increase,
@@ -611,9 +584,12 @@ impl Application for RefBoxApp {
                     );
                 }
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
             }
             Message::TimeEditComplete { canceled } => {
-                if let AppState::TimeEdit(was_running, game_time, timeout_time) = self.app_state {
+                let task = if let AppState::TimeEdit(was_running, game_time, timeout_time) =
+                    self.app_state
+                {
                     let mut tm = self.tm.lock().unwrap();
                     let now = Instant::now();
                     if !canceled {
@@ -628,12 +604,14 @@ impl Application for RefBoxApp {
                     }
                     let snapshot = tm.generate_snapshot(now).unwrap();
                     drop(tm);
-                    self.apply_snapshot(snapshot);
+                    let task = self.apply_snapshot(snapshot);
                     self.app_state = self.last_app_state.clone();
                     trace!("AppState changed to {:?}", self.app_state);
+                    task
                 } else {
                     unreachable!();
-                }
+                };
+                task
             }
             Message::StartPlayNow => {
                 let mut tm = self.tm.lock().unwrap();
@@ -641,7 +619,7 @@ impl Application for RefBoxApp {
                 tm.start_play_now(now).unwrap();
                 let snapshot = tm.generate_snapshot(now).unwrap();
                 std::mem::drop(tm);
-                self.apply_snapshot(snapshot);
+                self.apply_snapshot(snapshot)
             }
             Message::EditScores => {
                 let tm = self.tm.lock().unwrap();
@@ -650,10 +628,12 @@ impl Application for RefBoxApp {
                     is_confirmation: false,
                 };
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
             }
             Message::AddNewScore(color) => {
-                if self.config.collect_scorer_cap_num {
+                let task = if self.config.collect_scorer_cap_num {
                     self.app_state = AppState::KeypadPage(KeypadPage::AddScore(color), 0);
+                    Task::none()
                 } else {
                     let mut tm = self.tm.lock().unwrap();
                     let now = Instant::now();
@@ -663,17 +643,19 @@ impl Application for RefBoxApp {
                         scores[color] = scores[color].saturating_add(1);
 
                         self.app_state = AppState::ConfirmScores(scores);
+                        Task::none()
                     } else {
                         tm.add_score(color, 0, now);
                         let snapshot = tm.generate_snapshot(now).unwrap(); // TODO: Remove this unwrap
                         std::mem::drop(tm);
-                        self.apply_snapshot(snapshot);
+                        let task = self.apply_snapshot(snapshot);
                         self.app_state = AppState::MainPage;
+                        task
                     }
-                }
+                };
                 trace!("AppState changed to {:?}", self.app_state);
+                task
             }
-
             Message::ChangeScore { color, increase } => {
                 if let AppState::ScoreEdit { ref mut scores, .. } = self.app_state {
                     if increase {
@@ -685,8 +667,10 @@ impl Application for RefBoxApp {
                     unreachable!()
                 }
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
             }
             Message::ScoreEditComplete { canceled } => {
+                let mut tasks = vec![];
                 let mut tm = self.tm.lock().unwrap();
                 let mut now = Instant::now();
 
@@ -702,7 +686,7 @@ impl Application for RefBoxApp {
                                 .get(&tm.game_number())
                                 .map(|n| (&schedule.event_id, n))
                         }) {
-                            self.post_game_score(id, game.number, scores);
+                            tasks.push(self.post_game_score(id, game.number, scores));
                         }
 
                         tm.set_scores(scores, now);
@@ -731,9 +715,10 @@ impl Application for RefBoxApp {
 
                 let snapshot = tm.generate_snapshot(now).unwrap(); // `now` is in the past!
                 std::mem::drop(tm);
-                self.apply_snapshot(snapshot);
+                tasks.push(self.apply_snapshot(snapshot));
 
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::batch(tasks)
             }
             Message::PenaltyOverview => {
                 if let Err(e) = self.pen_edit.start_session() {
@@ -743,6 +728,7 @@ impl Application for RefBoxApp {
                 }
                 self.app_state = AppState::PenaltyOverview(BlackWhiteBundle { black: 0, white: 0 });
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
             }
             Message::WarningOverview => {
                 if let Err(e) = self.warn_edit.start_session() {
@@ -752,6 +738,7 @@ impl Application for RefBoxApp {
                 }
                 self.app_state = AppState::WarningOverview(BlackWhiteBundle { black: 0, white: 0 });
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
             }
             Message::FoulOverview => {
                 if let Err(e) = self.foul_edit.start_session() {
@@ -765,6 +752,7 @@ impl Application for RefBoxApp {
                     white: 0,
                 });
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
             }
             Message::Scroll { which, up } => {
                 match self.app_state {
@@ -807,6 +795,7 @@ impl Application for RefBoxApp {
                     }
                 };
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
             }
             Message::PenaltyOverviewComplete { canceled } => {
                 if canceled {
@@ -837,8 +826,9 @@ impl Application for RefBoxApp {
                     .unwrap()
                     .generate_snapshot(Instant::now())
                     .unwrap();
-                self.apply_snapshot(snapshot);
+                let task = self.apply_snapshot(snapshot);
                 trace!("AppState changed to {:?}", self.app_state);
+                task
             }
             Message::WarningOverviewComplete { canceled } => {
                 if canceled {
@@ -863,8 +853,9 @@ impl Application for RefBoxApp {
                     .unwrap()
                     .generate_snapshot(Instant::now())
                     .unwrap();
-                self.apply_snapshot(snapshot);
+                let task = self.apply_snapshot(snapshot);
                 trace!("AppState changed to {:?}", self.app_state);
+                task
             }
             Message::FoulOverviewComplete { canceled } => {
                 if canceled {
@@ -889,8 +880,9 @@ impl Application for RefBoxApp {
                     .unwrap()
                     .generate_snapshot(Instant::now())
                     .unwrap();
-                self.apply_snapshot(snapshot);
+                let task = self.apply_snapshot(snapshot);
                 trace!("AppState changed to {:?}", self.app_state);
+                task
             }
             Message::ChangeKind(new_kind) => {
                 if let AppState::KeypadPage(KeypadPage::Penalty(_, _, ref mut kind, _), _) =
@@ -901,6 +893,7 @@ impl Application for RefBoxApp {
                     unreachable!()
                 }
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
             }
             Message::ChangeInfraction(new_infraction) => {
                 match self.app_state {
@@ -922,8 +915,8 @@ impl Application for RefBoxApp {
                     _ => unreachable!(),
                 }
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
             }
-
             Message::PenaltyEditComplete { canceled, deleted } => {
                 if !canceled {
                     if let AppState::KeypadPage(
@@ -957,6 +950,7 @@ impl Application for RefBoxApp {
                 }
                 self.app_state = AppState::PenaltyOverview(BlackWhiteBundle { black: 0, white: 0 });
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
             }
             Message::WarningEditComplete {
                 canceled,
@@ -1012,6 +1006,7 @@ impl Application for RefBoxApp {
                     AppState::WarningOverview(BlackWhiteBundle { black: 0, white: 0 })
                 };
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
             }
             Message::FoulEditComplete {
                 canceled,
@@ -1070,6 +1065,7 @@ impl Application for RefBoxApp {
                     })
                 };
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
             }
             Message::KeypadPage(page) => {
                 let init_val = match page {
@@ -1111,6 +1107,7 @@ impl Application for RefBoxApp {
                 };
                 self.app_state = AppState::KeypadPage(page, init_val);
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
             }
             Message::KeypadButtonPress(key) => {
                 if let AppState::KeypadPage(ref page, ref mut val) = self.app_state {
@@ -1134,6 +1131,7 @@ impl Application for RefBoxApp {
                     unreachable!()
                 }
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
             }
             Message::ChangeColor(new_color) => {
                 match self.app_state {
@@ -1150,8 +1148,10 @@ impl Application for RefBoxApp {
                     }
                 }
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
             }
             Message::AddScoreComplete { canceled } => {
+                let mut task = Task::none();
                 self.app_state = if !canceled {
                     if let AppState::KeypadPage(KeypadPage::AddScore(color), player) =
                         self.app_state
@@ -1172,7 +1172,7 @@ impl Application for RefBoxApp {
                         let snapshot = tm.generate_snapshot(now).unwrap();
 
                         std::mem::drop(tm);
-                        self.apply_snapshot(snapshot);
+                        task = self.apply_snapshot(snapshot);
 
                         app_state
                     } else {
@@ -1182,14 +1182,17 @@ impl Application for RefBoxApp {
                     AppState::MainPage
                 };
                 trace!("AppState changed to {:?}", self.app_state);
+                task
             }
             Message::ShowGameDetails => {
                 self.app_state = AppState::GameDetailsPage;
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
             }
             Message::ShowWarnings => {
                 self.app_state = AppState::WarningsSummaryPage;
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
             }
             Message::EditGameConfig => {
                 let edited_settings = EditableSettings {
@@ -1218,6 +1221,7 @@ impl Application for RefBoxApp {
 
                 self.app_state = AppState::EditGameConfig(ConfigPage::Main);
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
             }
             Message::ChangeConfigPage(new_page) => {
                 if let AppState::EditGameConfig(ref mut page) = self.app_state {
@@ -1226,6 +1230,7 @@ impl Application for RefBoxApp {
                     unreachable!();
                 }
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
             }
             Message::ConfigEditComplete { canceled } => {
                 self.app_state = if !canceled {
@@ -1354,6 +1359,7 @@ impl Application for RefBoxApp {
                     AppState::MainPage
                 };
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
             }
             Message::EditParameter(param) => {
                 self.app_state = AppState::ParameterEditor(
@@ -1372,6 +1378,7 @@ impl Application for RefBoxApp {
                     },
                 );
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
             }
             Message::SelectParameter(param) => {
                 let index = match param {
@@ -1416,6 +1423,7 @@ impl Application for RefBoxApp {
                 .unwrap_or(0);
                 self.app_state = AppState::ParameterList(param, index);
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
             }
             Message::ParameterEditComplete { canceled } => {
                 if !canceled {
@@ -1472,10 +1480,11 @@ impl Application for RefBoxApp {
 
                 self.app_state = AppState::EditGameConfig(next_page);
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
             }
             Message::ParameterSelected(param, val) => {
                 let edited_settings = self.edited_settings.as_mut().unwrap();
-                match param {
+                let task = match param {
                     ListableParameter::Event => {
                         let id = EventId::from_full(val).unwrap();
                         edited_settings.current_event_id = Some(id.clone());
@@ -1492,10 +1501,16 @@ impl Application for RefBoxApp {
                                 }
                             }
                         }
-                        self.request_schedule(id);
+                        self.request_schedule(id)
                     }
-                    ListableParameter::Court => edited_settings.current_court = Some(val),
-                    ListableParameter::Game => edited_settings.game_number = val.parse().unwrap(),
+                    ListableParameter::Court => {
+                        edited_settings.current_court = Some(val);
+                        Task::none()
+                    }
+                    ListableParameter::Game => {
+                        edited_settings.game_number = val.parse().unwrap();
+                        Task::none()
+                    }
                 };
 
                 let next_page = match param {
@@ -1505,76 +1520,88 @@ impl Application for RefBoxApp {
 
                 self.app_state = AppState::EditGameConfig(next_page);
                 trace!("AppState changed to {:?}", self.app_state);
+                task
             }
-            Message::ToggleBoolParameter(param) => match param {
-                BoolGameParameter::TeamWarning => {
-                    if let AppState::KeypadPage(
-                        KeypadPage::WarningAdd {
-                            ref mut team_warning,
-                            ..
-                        },
-                        _,
-                    ) = self.app_state
-                    {
-                        *team_warning ^= true
-                    } else {
-                        unreachable!()
-                    }
-                    trace!("AppState changed to {:?}", self.app_state)
-                }
-
-                BoolGameParameter::TimeoutsCountedPerHalf => {
-                    if let AppState::KeypadPage(KeypadPage::TeamTimeouts(_, ref mut per_half), _) =
-                        self.app_state
-                    {
-                        *per_half ^= true
-                    } else {
-                        unreachable!()
-                    }
-                    trace!("AppState changed to {:?}", self.app_state)
-                }
-
-                _ => {
-                    let edited_settings = self.edited_settings.as_mut().unwrap();
-                    match param {
-                        BoolGameParameter::OvertimeAllowed => {
-                            edited_settings.config.overtime_allowed ^= true
-                        }
-                        BoolGameParameter::SuddenDeathAllowed => {
-                            edited_settings.config.sudden_death_allowed ^= true
-                        }
-                        BoolGameParameter::SingleHalf => edited_settings.config.single_half ^= true,
-                        BoolGameParameter::WhiteOnRight => edited_settings.white_on_right ^= true,
-                        BoolGameParameter::UsingUwhPortal => {
-                            edited_settings.using_uwhportal ^= true
-                        }
-                        BoolGameParameter::SoundEnabled => {
-                            edited_settings.sound.sound_enabled ^= true
-                        }
-                        BoolGameParameter::RefAlertEnabled => {
-                            edited_settings.sound.whistle_enabled ^= true
-                        }
-                        BoolGameParameter::AutoSoundStartPlay => {
-                            edited_settings.sound.auto_sound_start_play ^= true
-                        }
-                        BoolGameParameter::AutoSoundStopPlay => {
-                            edited_settings.sound.auto_sound_stop_play ^= true
-                        }
-                        BoolGameParameter::HideTime => edited_settings.hide_time ^= true,
-                        BoolGameParameter::ScorerCapNum => {
-                            edited_settings.collect_scorer_cap_num ^= true
-                        }
-                        BoolGameParameter::FoulsAndWarnings => {
-                            edited_settings.track_fouls_and_warnings ^= true
-                        }
-                        BoolGameParameter::TeamWarning
-                        | BoolGameParameter::TimeoutsCountedPerHalf => {
+            Message::ToggleBoolParameter(param) => {
+                match param {
+                    BoolGameParameter::TeamWarning => {
+                        if let AppState::KeypadPage(
+                            KeypadPage::WarningAdd {
+                                ref mut team_warning,
+                                ..
+                            },
+                            _,
+                        ) = self.app_state
+                        {
+                            *team_warning ^= true
+                        } else {
                             unreachable!()
                         }
-                        BoolGameParameter::ConfirmScore => edited_settings.confirm_score ^= true,
+                        trace!("AppState changed to {:?}", self.app_state)
                     }
-                }
-            },
+
+                    BoolGameParameter::TimeoutsCountedPerHalf => {
+                        if let AppState::KeypadPage(
+                            KeypadPage::TeamTimeouts(_, ref mut per_half),
+                            _,
+                        ) = self.app_state
+                        {
+                            *per_half ^= true
+                        } else {
+                            unreachable!()
+                        }
+                        trace!("AppState changed to {:?}", self.app_state)
+                    }
+
+                    _ => {
+                        let edited_settings = self.edited_settings.as_mut().unwrap();
+                        match param {
+                            BoolGameParameter::OvertimeAllowed => {
+                                edited_settings.config.overtime_allowed ^= true
+                            }
+                            BoolGameParameter::SuddenDeathAllowed => {
+                                edited_settings.config.sudden_death_allowed ^= true
+                            }
+                            BoolGameParameter::SingleHalf => {
+                                edited_settings.config.single_half ^= true
+                            }
+                            BoolGameParameter::WhiteOnRight => {
+                                edited_settings.white_on_right ^= true
+                            }
+                            BoolGameParameter::UsingUwhPortal => {
+                                edited_settings.using_uwhportal ^= true
+                            }
+                            BoolGameParameter::SoundEnabled => {
+                                edited_settings.sound.sound_enabled ^= true
+                            }
+                            BoolGameParameter::RefAlertEnabled => {
+                                edited_settings.sound.whistle_enabled ^= true
+                            }
+                            BoolGameParameter::AutoSoundStartPlay => {
+                                edited_settings.sound.auto_sound_start_play ^= true
+                            }
+                            BoolGameParameter::AutoSoundStopPlay => {
+                                edited_settings.sound.auto_sound_stop_play ^= true
+                            }
+                            BoolGameParameter::HideTime => edited_settings.hide_time ^= true,
+                            BoolGameParameter::ScorerCapNum => {
+                                edited_settings.collect_scorer_cap_num ^= true
+                            }
+                            BoolGameParameter::FoulsAndWarnings => {
+                                edited_settings.track_fouls_and_warnings ^= true
+                            }
+                            BoolGameParameter::TeamWarning
+                            | BoolGameParameter::TimeoutsCountedPerHalf => {
+                                unreachable!()
+                            }
+                            BoolGameParameter::ConfirmScore => {
+                                edited_settings.confirm_score ^= true
+                            }
+                        }
+                    }
+                };
+                Task::none()
+            }
             Message::CycleParameter(param) => {
                 let settings = &mut self.edited_settings.as_mut().unwrap();
                 match param {
@@ -1588,35 +1615,43 @@ impl Application for RefBoxApp {
                     CyclingParameter::Mode => settings.mode.cycle(),
                     CyclingParameter::Brightness => settings.brightness.cycle(),
                 }
+                Task::none()
             }
             Message::TextParameterChanged(param, val) => {
                 let settings = self.edited_settings.as_mut().unwrap();
                 match param {
                     TextParameter::UwhportalToken => settings.uwhportal_token = val,
                 }
+                Task::none()
             }
             Message::ApplyAuthChanges => {
                 let settings = self.edited_settings.as_mut().unwrap();
                 self.config.uwhportal.token = settings.uwhportal_token.clone();
 
-                self.check_uwhportal_auth();
+                let task = self.check_uwhportal_auth();
 
                 self.app_state = AppState::EditGameConfig(ConfigPage::Game);
                 trace!("AppState changed to {:?}", self.app_state);
+                task
             }
             Message::RequestRemoteId => {
-                if let AppState::EditGameConfig(ConfigPage::Remotes(_, ref mut listening)) =
-                    self.app_state
-                {
-                    let _msg_tx = self.msg_tx.clone();
-                    self.sound.request_next_remote_id(move |id| {
-                        _msg_tx.send(Message::GotRemoteId(id)).unwrap()
-                    });
-                    *listening = true;
-                } else {
-                    unreachable!()
-                }
+                let task =
+                    if let AppState::EditGameConfig(ConfigPage::Remotes(_, ref mut listening)) =
+                        self.app_state
+                    {
+                        *listening = true;
+                        Task::future(self.sound.request_next_remote_id()).map(|maybe_id| {
+                            if let Some(id) = maybe_id {
+                                Message::GotRemoteId(id)
+                            } else {
+                                Message::NoAction
+                            }
+                        })
+                    } else {
+                        unreachable!()
+                    };
                 trace!("AppState changed to {:?}", self.app_state);
+                task
             }
             Message::GotRemoteId(id) => {
                 if let AppState::EditGameConfig(ConfigPage::Remotes(_, ref mut listening)) =
@@ -1633,6 +1668,7 @@ impl Application for RefBoxApp {
                     unreachable!()
                 }
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
             }
             Message::DeleteRemote(index) => {
                 if let Some(ref mut settings) = self.edited_settings {
@@ -1640,6 +1676,7 @@ impl Application for RefBoxApp {
                 } else {
                     unreachable!()
                 }
+                Task::none()
             }
             Message::ConfirmationSelected(selection) => {
                 let new_config = if let AppState::ConfirmationPage(
@@ -1651,9 +1688,11 @@ impl Application for RefBoxApp {
                     None
                 };
 
-                self.app_state = match selection {
-                    ConfirmationOption::DiscardChanges => AppState::MainPage,
-                    ConfirmationOption::GoBack => AppState::EditGameConfig(ConfigPage::Main),
+                let (app_state, task) = match selection {
+                    ConfirmationOption::DiscardChanges => (AppState::MainPage, Task::none()),
+                    ConfirmationOption::GoBack => {
+                        (AppState::EditGameConfig(ConfigPage::Main), Task::none())
+                    }
                     ConfirmationOption::EndGameAndApply => {
                         let edited_settings = self.edited_settings.as_ref().unwrap();
                         let mut tm = self.tm.lock().unwrap();
@@ -1690,8 +1729,7 @@ impl Application for RefBoxApp {
 
                         confy::store(APP_NAME, None, &self.config).unwrap();
                         let snapshot = self.tm.lock().unwrap().generate_snapshot(now).unwrap(); // TODO: Remove this unwrap
-                        self.apply_snapshot(snapshot);
-                        AppState::MainPage
+                        (AppState::MainPage, self.apply_snapshot(snapshot))
                     }
                     ConfirmationOption::KeepGameAndApply => {
                         let edited_settings = self.edited_settings.as_ref().unwrap();
@@ -1703,15 +1741,17 @@ impl Application for RefBoxApp {
                         self.apply_settings_change();
 
                         confy::store(APP_NAME, None, &self.config).unwrap();
-                        self.apply_snapshot(snapshot);
-                        AppState::MainPage
+                        (AppState::MainPage, self.apply_snapshot(snapshot))
                     }
                 };
+                self.app_state = app_state;
                 trace!("AppState changed to {:?}", self.app_state);
+                task
             }
             Message::ConfirmScores(snapshot) => {
+                let mut task = Task::none();
                 if self.config.confirm_score {
-                    self.apply_snapshot(snapshot);
+                    task = self.apply_snapshot(snapshot);
                     self.app_state = AppState::ConfirmScores(self.snapshot.scores);
                     trace!("AppState changed to {:?}", self.app_state);
                 } else {
@@ -1724,8 +1764,10 @@ impl Application for RefBoxApp {
                     self.app_state = AppState::MainPage;
                     trace!("AppState changed to {:?}", self.app_state);
                 }
+                task
             }
             Message::ScoreConfirmation { correct } => {
+                let mut task = Task::none();
                 self.app_state = if let AppState::ConfirmScores(scores) = self.app_state {
                     if correct {
                         let mut tm = self.tm.lock().unwrap();
@@ -1733,7 +1775,7 @@ impl Application for RefBoxApp {
 
                         if let Some(id) = self.schedule.as_ref().map(|schedule| &schedule.event_id)
                         {
-                            self.post_game_score(id, tm.game_number(), scores);
+                            task = self.post_game_score(id, tm.game_number(), scores);
                         }
 
                         tm.set_scores(scores, now);
@@ -1752,6 +1794,7 @@ impl Application for RefBoxApp {
                 };
 
                 trace!("AppState changed to {:?}", self.app_state);
+                task
             }
             Message::TeamTimeout(color, switch) => {
                 let mut tm = self.tm.lock().unwrap();
@@ -1766,7 +1809,7 @@ impl Application for RefBoxApp {
                 }
                 let snapshot = tm.generate_snapshot(now).unwrap();
                 std::mem::drop(tm);
-                self.apply_snapshot(snapshot);
+                self.apply_snapshot(snapshot)
             }
             Message::RefTimeout(switch) => {
                 let mut tm = self.tm.lock().unwrap();
@@ -1781,7 +1824,7 @@ impl Application for RefBoxApp {
                 }
                 let snapshot = tm.generate_snapshot(now).unwrap();
                 std::mem::drop(tm);
-                self.apply_snapshot(snapshot);
+                self.apply_snapshot(snapshot)
             }
             Message::PenaltyShot(switch) => {
                 let mut tm = self.tm.lock().unwrap();
@@ -1802,7 +1845,7 @@ impl Application for RefBoxApp {
                 }
                 let snapshot = tm.generate_snapshot(now).unwrap();
                 std::mem::drop(tm);
-                self.apply_snapshot(snapshot);
+                self.apply_snapshot(snapshot)
             }
             Message::EndTimeout => {
                 let mut tm = self.tm.lock().unwrap();
@@ -1816,7 +1859,7 @@ impl Application for RefBoxApp {
                 }
                 let snapshot = tm.generate_snapshot(now).unwrap();
                 std::mem::drop(tm);
-                self.apply_snapshot(snapshot);
+                let task = self.apply_snapshot(snapshot);
 
                 if would_end {
                     self.app_state = AppState::ConfirmScores(self.snapshot.scores);
@@ -1827,13 +1870,16 @@ impl Application for RefBoxApp {
                     *timeout = None;
                 }
                 trace!("AppState changed to {:?}", self.app_state);
+                task
             }
             Message::RecvEventList(e_list) => {
+                let mut tasks = vec![];
                 let e_map: BTreeMap<_, _> = e_list.into_iter().map(|e| (e.id.clone(), e)).collect();
                 for event in e_map.values() {
-                    self.request_teams_list(event.id.clone(), &event.slug);
+                    tasks.push(self.request_teams_list(event.id.clone(), &event.slug));
                 }
                 self.events = Some(e_map);
+                Task::batch(tasks)
             }
             Message::RecvTeamsList(event_id, teams) => {
                 if let Some(ref mut events) = self.events {
@@ -1851,6 +1897,7 @@ impl Application for RefBoxApp {
                         event_id.full()
                     );
                 }
+                Task::none()
             }
             Message::RecvSchedule(event_id, schedule) => {
                 if let Some(id) = self.current_event_id.as_ref().or_else(|| {
@@ -1912,16 +1959,26 @@ impl Application for RefBoxApp {
                         event_id.full()
                     );
                 }
+                Task::none()
             }
-            Message::StartClock => self.tm.lock().unwrap().start_clock(Instant::now()),
-            Message::StopClock => self.tm.lock().unwrap().stop_clock(Instant::now()).unwrap(),
-            Message::NoAction => {}
-        };
-
-        command
+            Message::StartClock => {
+                self.tm.lock().unwrap().start_clock(Instant::now());
+                Task::none()
+            }
+            Message::StopClock => {
+                self.tm.lock().unwrap().stop_clock(Instant::now()).unwrap();
+                Task::none()
+            }
+            Message::TimeUpdaterStarted(tx) => {
+                let tm = self.tm.clone();
+                tx.blocking_send(tm).unwrap();
+                Task::none()
+            }
+            Message::NoAction => Task::none(),
+        }
     }
 
-    fn view(&self) -> Element<Message> {
+    pub(super) fn view(&self) -> Element<Message> {
         let data = ViewData {
             snapshot: &self.snapshot,
             mode: self.config.mode,
@@ -2029,104 +2086,100 @@ impl Application for RefBoxApp {
 
         main_view.into()
     }
-}
 
-#[derive(Clone, Debug)]
-struct TimeUpdater {
-    tm: Arc<Mutex<TournamentManager>>,
-    clock_running_receiver: watch::Receiver<bool>,
-}
-
-impl Recipe for TimeUpdater {
-    type Output = Message;
-
-    fn hash(&self, state: &mut iced_core::Hasher) {
-        use std::hash::Hash;
-
-        "TimeUpdater".hash(state);
+    pub(super) fn subscription(&self) -> Subscription<Message> {
+        Subscription::run(time_updater)
     }
 
-    fn stream(self: Box<Self>, _input: EventStream) -> BoxStream<'static, Self::Output> {
-        debug!("Updater started");
-
-        struct State {
-            tm: Arc<Mutex<TournamentManager>>,
-            clock_running_receiver: watch::Receiver<bool>,
-            next_time: Option<Instant>,
+    pub fn application_style(&self, _theme: &Theme) -> Appearance {
+        Appearance {
+            background_color: WINDOW_BACKGROUND,
+            text_color: BLACK,
         }
+    }
+}
 
-        let state = State {
-            tm: self.tm.clone(),
-            clock_running_receiver: self.clock_running_receiver.clone(),
-            next_time: Some(Instant::now()),
-        };
+fn time_updater() -> impl Stream<Item = Message> {
+    use iced::futures::SinkExt;
+    debug!("Updater starting");
 
-        Box::pin(stream::unfold(state, |mut state| async move {
+    iced::stream::channel(100, async |mut msg_tx| {
+        let (tx, mut rx) = mpsc::channel(1);
+
+        msg_tx.try_send(Message::TimeUpdaterStarted(tx)).unwrap();
+
+        let tm = rx.recv().await.unwrap();
+        let mut clock_running_receiver = tm.lock().unwrap().get_start_stop_rx();
+        let mut next_time = Some(Instant::now());
+
+        loop {
             let mut clock_running = true;
-            if let Some(next_time) = state.next_time {
+            if let Some(next_time) = next_time {
                 if next_time > Instant::now() {
-                    match timeout_at(next_time, state.clock_running_receiver.changed()).await {
+                    match timeout_at(next_time, clock_running_receiver.changed()).await {
                         Err(_) => {}
-                        Ok(Err(_)) => return None,
+                        Ok(Err(_)) => continue,
                         Ok(Ok(())) => {
-                            clock_running = *state.clock_running_receiver.borrow();
+                            clock_running = *clock_running_receiver.borrow();
                             debug!("Received clock running message: {clock_running}");
                         }
                     };
                 } else {
-                    match state.clock_running_receiver.has_changed() {
+                    match clock_running_receiver.has_changed() {
                         Ok(true) => {
-                            clock_running = *state.clock_running_receiver.borrow();
+                            clock_running = *clock_running_receiver.borrow();
                             debug!("Received clock running message: {clock_running}");
                         }
                         Ok(false) => {}
                         Err(_) => {
-                            return None;
+                            continue;
                         }
                     };
                 }
             } else {
                 debug!("Awaiting a new clock running message");
-                match state.clock_running_receiver.changed().await {
-                    Err(_) => return None,
+                match clock_running_receiver.changed().await {
+                    Err(_) => continue,
                     Ok(()) => {
-                        clock_running = *state.clock_running_receiver.borrow();
+                        clock_running = *clock_running_receiver.borrow();
                         debug!("Received clock running message: {clock_running}");
                     }
                 };
             };
 
-            let mut tm = state.tm.lock().unwrap();
-            let now = Instant::now();
+            let (msg_type, snapshot) = {
+                let mut tm_ = tm.lock().unwrap();
+                let now = Instant::now();
 
-            let msg_type = if tm.would_end_game(now).unwrap() {
-                tm.halt_clock(now, false).unwrap();
-                clock_running = false;
-                Message::ConfirmScores
-            } else {
-                tm.update(now).unwrap();
-                Message::NewSnapshot
+                let msg_type = if tm_.would_end_game(now).unwrap() {
+                    tm_.halt_clock(now, false).unwrap();
+                    clock_running = false;
+                    Message::ConfirmScores
+                } else {
+                    tm_.update(now).unwrap();
+                    Message::NewSnapshot
+                };
+
+                let snapshot = match tm_.generate_snapshot(now) {
+                    Some(val) => val,
+                    None => {
+                        error!("Failed to generate snapshot. State:\n{tm_:#?}");
+                        panic!("No snapshot");
+                    }
+                };
+
+                next_time = if clock_running {
+                    Some(tm_.next_update_time(now).unwrap())
+                } else {
+                    None
+                };
+
+                (msg_type, snapshot)
             };
 
-            let snapshot = match tm.generate_snapshot(now) {
-                Some(val) => val,
-                None => {
-                    error!("Failed to generate snapshot. State:\n{tm:#?}");
-                    panic!("No snapshot");
-                }
-            };
-
-            state.next_time = if clock_running {
-                Some(tm.next_update_time(now).unwrap())
-            } else {
-                None
-            };
-
-            drop(tm);
-
-            Some((msg_type(snapshot), state))
-        }))
-    }
+            msg_tx.send(msg_type(snapshot)).await.unwrap();
+        }
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -2137,7 +2190,7 @@ struct MessageListener {
 impl Recipe for MessageListener {
     type Output = Message;
 
-    fn hash(&self, state: &mut iced_core::Hasher) {
+    fn hash(&self, state: &mut iced_futures::subscription::Hasher) {
         use std::hash::Hash;
 
         "MessageListener".hash(state);

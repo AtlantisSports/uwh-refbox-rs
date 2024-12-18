@@ -19,8 +19,6 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "std")]
 use time::Duration as SignedDuration;
 
-use std::borrow::Cow;
-
 const PANEL_PENALTY_COUNT: usize = 3;
 
 /// Game snapshot information that the LED matrices need. Excludes some fields, limits to three
@@ -351,44 +349,44 @@ impl Infraction {
         }
     }
 
-    pub fn get_image(&self) -> Cow<'static, [u8]> {
+    pub fn get_image(&self) -> &'static [u8] {
         match self {
-            Self::Unknown => Cow::Borrowed(include_bytes!(
+            Self::Unknown => include_bytes!(
                 "../../refbox/resources/Atlantis_infractions/Black_question_mark.png"
-            )),
-            Self::StickInfringement => Cow::Borrowed(include_bytes!(
+            ),
+            Self::StickInfringement => include_bytes!(
                 "../../refbox/resources/Atlantis_infractions/Stick_Infringement_smaller.png"
-            )),
-            Self::IllegalAdvancement => Cow::Borrowed(include_bytes!(
+            ),
+            Self::IllegalAdvancement => include_bytes!(
                 "../../refbox/resources/Atlantis_infractions/Illegal_Advancement_smaller.png"
-            )),
-            Self::IllegalSubstitution => Cow::Borrowed(include_bytes!(
+            ),
+            Self::IllegalSubstitution => include_bytes!(
                 "../../refbox/resources/Atlantis_infractions/Illegal_Substitution_smaller.png"
-            )),
-            Self::IllegallyStoppingThePuck => Cow::Borrowed(include_bytes!(
+            ),
+            Self::IllegallyStoppingThePuck => include_bytes!(
                 "../../refbox/resources/Atlantis_infractions/Illegal_Knockdown_smaller.png"
-            )),
-            Self::OutOfBounds => Cow::Borrowed(include_bytes!(
+            ),
+            Self::OutOfBounds => include_bytes!(
                 "../../refbox/resources/Atlantis_infractions/Out_of_Bounds_smaller.png"
-            )),
-            Self::GrabbingTheBarrier => Cow::Borrowed(include_bytes!(
+            ),
+            Self::GrabbingTheBarrier => include_bytes!(
                 "../../refbox/resources/Atlantis_infractions/Grabbing_Barrier_smaller.png"
-            )),
-            Self::Obstruction => Cow::Borrowed(include_bytes!(
+            ),
+            Self::Obstruction => include_bytes!(
                 "../../refbox/resources/Atlantis_infractions/Obstruction_smaller.png"
-            )),
-            Self::DelayOfGame => Cow::Borrowed(include_bytes!(
+            ),
+            Self::DelayOfGame => include_bytes!(
                 "../../refbox/resources/Atlantis_infractions/Delay_of_Game_smaller.png"
-            )),
-            Self::UnsportsmanlikeConduct => Cow::Borrowed(include_bytes!(
-                "../../refbox/resources/Atlantis_infractions/Unsporting_smaller.png"
-            )),
-            Self::FreeArm => Cow::Borrowed(include_bytes!(
-                "../../refbox/resources/Atlantis_infractions/Free_Arm_smaller.png"
-            )),
-            Self::FalseStart => Cow::Borrowed(include_bytes!(
+            ),
+            Self::UnsportsmanlikeConduct => {
+                include_bytes!("../../refbox/resources/Atlantis_infractions/Unsporting_smaller.png")
+            }
+            Self::FreeArm => {
+                include_bytes!("../../refbox/resources/Atlantis_infractions/Free_Arm_smaller.png")
+            }
+            Self::FalseStart => include_bytes!(
                 "../../refbox/resources/Atlantis_infractions/False_Start_smaller.png"
-            )),
+            ),
         }
     }
 }

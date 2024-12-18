@@ -1,24 +1,20 @@
-use std::fmt::Write;
-
-use crate::{
-    app::style::{ApplicationTheme, ContainerStyle},
-    config::Level,
-    snapshot::BeepTestSnapshot,
-};
-
-use super::super::{
-    message::*,
-    style::{
-        Button, ButtonStyle, Container, LARGE_TEXT, LINE_HEIGHT, MEDIUM_TEXT, MIN_BUTTON_SIZE,
-        PADDING, Row, SMALL_TEXT, SPACING, Text, TextStyle,
+use super::{
+    super::{
+        super::{config::Level, snapshot::BeepTestSnapshot},
+        message::*,
     },
+    *,
 };
 use iced::{
     Alignment, Length,
     alignment::{Horizontal, Vertical},
-    widget::{Column, button, column, container, horizontal_space, row, text},
+    widget::{
+        Button, Column, Container, Row, Text, button, column, container, horizontal_space, row,
+        text,
+    },
 };
 use matrix_drawing::secs_to_long_time_string;
+use std::fmt::Write;
 
 macro_rules! column {
     () => (
@@ -34,7 +30,7 @@ macro_rules! row {
         iced::widget::Row::new()
     );
     ($($x:expr),+ $(,)?) => (
-        iced::widget::Row::with_children(vec![$($crate::app::Element::from($x)),+])
+        iced::widget::Row::with_children(vec![$(iced::Element::from($x)),+])
     );
 }
 
@@ -43,13 +39,12 @@ pub(super) fn make_time_button<'a>(snapshot: &BeepTestSnapshot) -> Row<'a, Messa
         ($base:ident, $time_text:ident) => {
             $base
                 .width(Length::Fill)
-                .align_items(Alignment::Center)
+                .align_x(Alignment::Center)
                 .push($time_text)
         };
     }
 
     let button_height = Length::Fixed(MIN_BUTTON_SIZE);
-    let button_style = ButtonStyle::Gray;
 
     let make_time_view_col = |time, style| {
         let time = text(time)
@@ -60,23 +55,21 @@ pub(super) fn make_time_button<'a>(snapshot: &BeepTestSnapshot) -> Row<'a, Messa
         make_time_view!(r, time)
     };
 
-    let color = TextStyle::Yellow;
-
     let time_text = secs_to_long_time_string(snapshot.secs_in_period);
-    let time_text = time_text.trim();
+    let time_text = time_text.trim().to_owned();
 
     let mut content = row![]
         .spacing(SPACING)
         .height(Length::Fill)
         .width(Length::Fill)
-        .align_items(Alignment::Center);
+        .align_y(Alignment::Center);
 
-    content = content.push(make_time_view_col(time_text, color));
+    content = content.push(make_time_view_col(time_text, yellow_text));
 
     let time_button = button(content)
         .width(Length::Fill)
         .height(button_height)
-        .style(button_style)
+        .style(gray_button)
         .padding(PADDING);
 
     let time_row = row![time_button]
@@ -93,36 +86,38 @@ pub(super) fn make_info_container<'a>(snapshot: &BeepTestSnapshot) -> Container<
         text(config_string(snapshot))
             .size(SMALL_TEXT)
             .line_height(LINE_HEIGHT)
-            .vertical_alignment(Vertical::Top)
-            .horizontal_alignment(Horizontal::Left),
+            .align_y(Vertical::Top)
+            .align_x(Horizontal::Left),
     )
     .padding(PADDING)
     .width(Length::Fill)
     .height(Length::Fixed(boxheight))
-    .style(ContainerStyle::LightGray);
+    .style(light_gray_container);
 
     info
 }
 
-pub(super) fn make_button<'a, Message: Clone, T: ToString>(label: T) -> Button<'a, Message> {
+pub(super) fn make_button<'a, Message: Clone>(
+    label: impl text::IntoFragment<'a>,
+) -> Button<'a, Message> {
     button(centered_text(label))
         .padding(PADDING)
         .height(Length::Fixed(MIN_BUTTON_SIZE))
         .width(Length::Fill)
 }
 
-pub fn centered_text<'a, T: ToString>(label: T) -> Text<'a> {
+pub fn centered_text<'a>(label: impl text::IntoFragment<'a>) -> Text<'a> {
     text(label)
         .line_height(LINE_HEIGHT)
-        .vertical_alignment(Vertical::Center)
-        .horizontal_alignment(Horizontal::Center)
+        .align_y(Vertical::Center)
+        .align_x(Horizontal::Center)
         .width(Length::Fill)
         .height(Length::Fill)
 }
 
-pub(super) fn make_value_button<'a, Message: 'a + Clone, T: ToString, U: ToString>(
-    first_label: T,
-    second_label: U,
+pub(super) fn make_value_button<'a, Message: 'a + Clone>(
+    first_label: impl text::IntoFragment<'a>,
+    second_label: impl text::IntoFragment<'a>,
     large_text: (bool, bool),
     message: Option<Message>,
 ) -> Button<'a, Message> {
@@ -134,25 +129,27 @@ pub(super) fn make_value_button<'a, Message: 'a + Clone, T: ToString, U: ToStrin
                 } else {
                     SMALL_TEXT
                 })
+                .height(Length::Fill)
                 .line_height(LINE_HEIGHT)
-                .vertical_alignment(Vertical::Center),
-            horizontal_space(Length::Fill),
+                .align_y(Vertical::Center),
+            horizontal_space(),
             text(second_label)
                 .size(if large_text.1 {
                     MEDIUM_TEXT
                 } else {
                     SMALL_TEXT
                 })
+                .height(Length::Fill)
                 .line_height(LINE_HEIGHT)
-                .vertical_alignment(Vertical::Center),
+                .align_y(Vertical::Center),
         ]
         .spacing(SPACING)
-        .align_items(Alignment::Center)
+        .align_y(Alignment::Center)
         .padding(PADDING),
     )
     .height(Length::Fill)
     .width(Length::Fill)
-    .style(ButtonStyle::LightGray);
+    .style(light_gray_button);
 
     if let Some(message) = message {
         button = button.on_press(message);
@@ -199,8 +196,7 @@ pub(super) fn config_string(snapshot: &BeepTestSnapshot) -> String {
 pub fn build_levels_table(levels: &[Level], second_chart: bool) -> Container<Message> {
     pub const CHART_PADDING: f32 = 2.0;
 
-    let mut table: Column<Message, iced::Renderer<ApplicationTheme>> =
-        Column::new().spacing(CHART_PADDING).padding(0);
+    let mut table = Column::new().spacing(CHART_PADDING).padding(0);
 
     let headers: Row<Message> = Row::new()
         .spacing(CHART_PADDING)
@@ -209,9 +205,9 @@ pub fn build_levels_table(levels: &[Level], second_chart: bool) -> Container<Mes
                 Text::new("Level")
                     .width(Length::Fixed(69.0))
                     .size(16)
-                    .horizontal_alignment(Horizontal::Center),
+                    .align_x(Horizontal::Center),
             )
-            .style(ContainerStyle::SquareLightGray)
+            .style(square_light_gray_container)
             .padding(CHART_PADDING),
         )
         .spacing(CHART_PADDING)
@@ -220,9 +216,9 @@ pub fn build_levels_table(levels: &[Level], second_chart: bool) -> Container<Mes
                 Text::new("Count")
                     .width(Length::Fixed(69.0))
                     .size(16)
-                    .horizontal_alignment(Horizontal::Center),
+                    .align_x(Horizontal::Center),
             )
-            .style(ContainerStyle::SquareLightGray)
+            .style(square_light_gray_container)
             .padding(CHART_PADDING),
         )
         .spacing(CHART_PADDING)
@@ -231,9 +227,9 @@ pub fn build_levels_table(levels: &[Level], second_chart: bool) -> Container<Mes
                 Text::new("Duration")
                     .width(Length::Fixed(69.0))
                     .size(16)
-                    .horizontal_alignment(Horizontal::Center),
+                    .align_x(Horizontal::Center),
             )
-            .style(ContainerStyle::SquareLightGray)
+            .style(square_light_gray_container)
             .padding(CHART_PADDING),
         )
         .spacing(CHART_PADDING);
@@ -252,9 +248,9 @@ pub fn build_levels_table(levels: &[Level], second_chart: bool) -> Container<Mes
                     })
                     .width(Length::Fixed(69.0))
                     .size(16)
-                    .horizontal_alignment(Horizontal::Center),
+                    .align_x(Horizontal::Center),
                 )
-                .style(ContainerStyle::SquareLightGray)
+                .style(square_light_gray_container)
                 .padding(CHART_PADDING),
             )
             .spacing(CHART_PADDING)
@@ -263,9 +259,9 @@ pub fn build_levels_table(levels: &[Level], second_chart: bool) -> Container<Mes
                     Text::new(format!("{}", level.count))
                         .width(Length::Fixed(69.0))
                         .size(16)
-                        .horizontal_alignment(Horizontal::Center),
+                        .align_x(Horizontal::Center),
                 )
-                .style(ContainerStyle::SquareLightGray)
+                .style(square_light_gray_container)
                 .padding(CHART_PADDING),
             )
             .spacing(CHART_PADDING)
@@ -274,9 +270,9 @@ pub fn build_levels_table(levels: &[Level], second_chart: bool) -> Container<Mes
                     Text::new(format!("{:?}", level.duration))
                         .width(Length::Fixed(69.0))
                         .size(16)
-                        .horizontal_alignment(Horizontal::Center),
+                        .align_x(Horizontal::Center),
                 )
-                .style(ContainerStyle::SquareLightGray)
+                .style(square_light_gray_container)
                 .padding(CHART_PADDING),
             )
             .spacing(CHART_PADDING);
@@ -285,7 +281,7 @@ pub fn build_levels_table(levels: &[Level], second_chart: bool) -> Container<Mes
     }
 
     let chart: Container<Message> = Container::new(table)
-        .style(ContainerStyle::SquareBlack)
+        .style(square_black_container)
         .padding(CHART_PADDING);
 
     chart

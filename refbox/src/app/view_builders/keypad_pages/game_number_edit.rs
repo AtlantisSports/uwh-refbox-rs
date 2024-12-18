@@ -1,4 +1,4 @@
-use super::{style::Element, *};
+use super::*;
 use iced::{
     Length,
     widget::{column, row, vertical_space},
@@ -6,14 +6,14 @@ use iced::{
 
 pub(super) fn make_game_number_edit_page<'a>() -> Element<'a, Message> {
     column![
-        vertical_space(Length::Fill),
+        vertical_space(),
         row![
             make_button(fl!("cancel"))
-                .style(ButtonStyle::Red)
+                .style(red_button)
                 .width(Length::Fill)
                 .on_press(Message::ParameterEditComplete { canceled: true }),
             make_button(fl!("done"))
-                .style(ButtonStyle::Green)
+                .style(green_button)
                 .width(Length::Fill)
                 .on_press(Message::ParameterEditComplete { canceled: false }),
         ]

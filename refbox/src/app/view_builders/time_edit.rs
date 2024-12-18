@@ -1,7 +1,4 @@
-use super::{
-    style::{ButtonStyle, LINE_HEIGHT, SMALL_TEXT, SPACING},
-    *,
-};
+use super::*;
 use iced::{
     Alignment, Length,
     alignment::Horizontal,
@@ -22,43 +19,43 @@ pub(in super::super) fn build_time_edit_view<'a>(
     } = data;
 
     let mut edit_row = row![
-        horizontal_space(Length::Fill),
+        horizontal_space(),
         make_time_editor(fl!("game-time"), time, false),
-        horizontal_space(Length::Fill)
+        horizontal_space()
     ]
     .spacing(SPACING)
-    .align_items(Alignment::Center);
+    .align_y(Alignment::Center);
 
     if snapshot.timeout.is_some() {
         edit_row = edit_row
-            .push(horizontal_space(Length::Fill))
+            .push(horizontal_space())
             .push(make_time_editor(
                 fl!("timeout"),
                 timeout_time.unwrap(),
                 true,
             ))
-            .push(horizontal_space(Length::Fill));
+            .push(horizontal_space());
     }
 
     column![
         make_game_time_button(snapshot, false, true, mode, clock_running),
-        vertical_space(Length::Fill),
+        vertical_space(),
         text(fl!("Note-Game-time-is-paused"))
             .size(SMALL_TEXT)
             .line_height(LINE_HEIGHT)
             .width(Length::Fill)
-            .horizontal_alignment(Horizontal::Center),
-        vertical_space(Length::Fill),
+            .align_x(Horizontal::Center),
+        vertical_space(),
         edit_row,
-        vertical_space(Length::Fill),
+        vertical_space(),
         row![
             make_button(fl!("cancel"))
-                .style(ButtonStyle::Red)
+                .style(red_button)
                 .width(Length::Fill)
                 .on_press(Message::TimeEditComplete { canceled: true }),
-            horizontal_space(Length::Fill),
+            horizontal_space(),
             make_button(fl!("done"))
-                .style(ButtonStyle::Green)
+                .style(green_button)
                 .width(Length::Fill)
                 .on_press(Message::TimeEditComplete { canceled: false }),
         ]

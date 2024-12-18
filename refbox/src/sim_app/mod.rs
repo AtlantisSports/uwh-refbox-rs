@@ -1,21 +1,15 @@
 use arrayref::array_ref;
 use iced::{
-    Application, Color, Command, Length, Point, Rectangle, Size, Subscription, application,
-    executor,
+    Element, Length, Point, Rectangle, Renderer, Size, Subscription, Task, Theme,
+    application::Appearance,
+    exit,
     mouse::Cursor,
     widget::canvas::{Cache, Canvas, Fill, Geometry, Program},
 };
-use iced_futures::{
-    futures::{
-        future::{Pending, pending},
-        stream::{self, BoxStream},
-    },
-    subscription::{EventStream, Recipe},
-};
-use iced_runtime::{command, window};
 use led_panel_sim::DisplayState;
 use log::*;
 use matrix_drawing::{draw_panels, transmitted_data::TransmittedData};
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::{rc::Rc, sync::Mutex};
 use tokio::{
     net::TcpStream,
@@ -28,30 +22,30 @@ use display_simulator::*;
 mod sunlight_display;
 use sunlight_display::*;
 
+use crate::app::theme::{BLACK, WHITE};
+
 const WIDTH: usize = 256;
 const HEIGHT: usize = 64;
 
-pub fn matrix_window_size(scale: f32, spacing: f32) -> (u32, u32) {
-    (
-        (WIDTH as f32 * scale + ((WIDTH as f32 + 1.0) * spacing)).ceil() as u32,
-        (HEIGHT as f32 * scale + ((HEIGHT as f32 + 1.0) * spacing)).ceil() as u32,
+static TCP_PORT: AtomicU16 = AtomicU16::new(0);
+
+pub fn matrix_window_size(scale: f32, spacing: f32) -> Size {
+    Size::new(
+        WIDTH as f32 * scale + ((WIDTH as f32 + 1.0) * spacing),
+        HEIGHT as f32 * scale + ((HEIGHT as f32 + 1.0) * spacing),
     )
 }
 
-pub fn sunlight_window_size(matrix_scale: f32) -> (u32, u32) {
+pub fn sunlight_window_size(matrix_scale: f32) -> Size {
     let matrix_height = HEIGHT as f32 * matrix_scale + ((HEIGHT as f32 + 1.0) * matrix_scale / 4.0);
     let scale = matrix_height / PANEL_HEIGHT;
-    (
-        (PANEL_WIDTH * scale).ceil() as u32,
-        (PANEL_HEIGHT * scale).ceil() as u32,
-    )
+    Size::new(PANEL_WIDTH * scale, PANEL_HEIGHT * scale)
 }
 
 #[derive(Clone, Debug)]
 pub enum Message {
     NewSnapshot(TransmittedData),
     Stop,
-    NoAction,
 }
 
 #[derive(Debug)]
@@ -64,7 +58,6 @@ enum DisplaySim {
 pub struct SimRefBoxApp {
     buffer: Rc<Mutex<DisplaySim>>,
     cache: Cache,
-    listener: SnapshotListener,
 }
 
 #[derive(Clone, Debug)]
@@ -79,31 +72,9 @@ pub enum ApplicationTheme {
     Dark,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
-pub struct ApplicationStyle {}
-
-impl application::StyleSheet for ApplicationTheme {
-    type Style = ApplicationStyle;
-
-    fn appearance(&self, _style: &Self::Style) -> application::Appearance {
-        application::Appearance {
-            background_color: Color::BLACK,
-            text_color: Color::BLACK,
-        }
-    }
-}
-
-type Renderer = iced_renderer::Renderer<ApplicationTheme>;
-type Element<'a, Message> = iced::Element<'a, Message, Renderer>;
-
-impl Application for SimRefBoxApp {
-    type Executor = executor::Default;
-    type Message = Message;
-    type Theme = ApplicationTheme;
-    type Flags = SimRefBoxAppFlags;
-
-    fn new(flags: Self::Flags) -> (Self, Command<Message>) {
-        let Self::Flags {
+impl SimRefBoxApp {
+    pub(super) fn new(flags: SimRefBoxAppFlags) -> (Self, Task<Message>) {
+        let SimRefBoxAppFlags {
             tcp_port,
             sunlight_mode,
         } = flags;
@@ -114,25 +85,22 @@ impl Application for SimRefBoxApp {
             DisplaySim::Matrix(Default::default())
         };
 
+        TCP_PORT.store(tcp_port, Ordering::SeqCst);
+
         (
             Self {
                 buffer: Rc::new(Mutex::new(buffer)),
                 cache: Cache::new(),
-                listener: SnapshotListener { port: tcp_port },
             },
-            Command::none(),
+            Task::none(),
         )
     }
 
-    fn subscription(&self) -> Subscription<Message> {
-        Subscription::from_recipe(self.listener.clone())
+    pub(super) fn subscription(&self) -> Subscription<Message> {
+        Subscription::run(snapshot_listener)
     }
 
-    fn title(&self) -> String {
-        "Panel Simulator".into()
-    }
-
-    fn update(&mut self, message: Message) -> Command<Message> {
+    pub(super) fn update(&mut self, message: Message) -> Task<Message> {
         trace!("Handling message: {message:?}");
         match message {
             Message::NewSnapshot(data) => {
@@ -154,29 +122,35 @@ impl Application for SimRefBoxApp {
                     }
                 }
                 self.cache.clear();
-                Command::none()
+                Task::none()
             }
-            Message::Stop => Command::single(command::Action::Window(window::Action::Close)),
-            Message::NoAction => Command::none(),
+            Message::Stop => exit(),
         }
     }
 
-    fn view(&self) -> Element<Message> {
+    pub(super) fn view(&self) -> Element<Message> {
         Canvas::new(self)
             .width(Length::Fill)
             .height(Length::Fill)
             .into()
     }
+
+    pub fn application_style(&self, _theme: &Theme) -> Appearance {
+        Appearance {
+            background_color: BLACK,
+            text_color: WHITE,
+        }
+    }
 }
 
-impl<Message> Program<Message, Renderer> for SimRefBoxApp {
+impl<Message> Program<Message> for SimRefBoxApp {
     type State = ();
 
     fn draw(
         &self,
         _state: &Self::State,
         renderer: &Renderer,
-        _theme: &ApplicationTheme,
+        _theme: &Theme,
         bounds: Rectangle,
         _cursor: Cursor,
     ) -> Vec<Geometry> {
@@ -228,99 +202,71 @@ impl<Message> Program<Message, Renderer> for SimRefBoxApp {
     }
 }
 
-#[derive(Clone, Debug)]
-struct SnapshotListener {
-    port: u16,
-}
+fn snapshot_listener() -> impl futures_lite::Stream<Item = Message> {
+    use iced::futures::SinkExt;
+    info!("Sim: starting listener");
 
-impl Recipe for SnapshotListener {
-    type Output = Message;
+    iced::stream::channel(100, async move |mut msg_tx| {
+        use tokio::io::AsyncReadExt;
 
-    fn hash(&self, state: &mut iced_core::Hasher) {
-        use std::hash::Hash;
+        let mut fail_count = 0;
+        let port = TCP_PORT.load(Ordering::SeqCst);
 
-        "SnapshotListener".hash(state);
-    }
-
-    fn stream(self: Box<Self>, _input: EventStream) -> BoxStream<'static, Self::Output> {
-        info!("Sim: starting listener");
-
-        #[derive(Debug)]
-        struct State {
-            stream: Option<TcpStream>,
-            stop: bool,
-            fail_count: u8,
-        }
-
-        let state = State {
-            stream: None,
-            stop: false,
-            fail_count: 0,
-        };
-
-        let port = self.port;
-
-        Box::pin(stream::unfold(state, move |mut state| async move {
-            use tokio::io::AsyncReadExt;
-
-            if state.stop {
-                let pend: Pending<()> = pending();
-                // Won't ever return
-                pend.await;
-            }
-
-            if state.stream.is_none() {
-                match TcpStream::connect(("localhost", port)).await {
-                    Ok(conn) => state.stream = Some(conn),
-                    Err(e) => {
-                        warn!("Sim: Failed to connect to refbox: {e:?}");
-                        state.fail_count += 1;
-                        time::sleep(Duration::from_millis(500)).await;
-                        if state.fail_count > 20 {
-                            state.stop = true;
-                            error!("Failed to connect to refbox too many times. Quitting");
-                            return Some((Message::Stop, state));
-                        }
-                        return Some((Message::NoAction, state));
+        let stream = loop {
+            match TcpStream::connect(("localhost", port)).await {
+                Ok(conn) => break Some(conn),
+                Err(e) => {
+                    warn!("Sim: Failed to connect to refbox: {e:?}");
+                    fail_count += 1;
+                    time::sleep(Duration::from_millis(500)).await;
+                    if fail_count > 20 {
+                        error!("Failed to connect to refbox too many times. Quitting");
+                        msg_tx.send(Message::Stop).await.unwrap();
+                        break None;
                     }
-                };
-            }
-
-            // Make the buffer longer than needed so that we can detect messages that are too long
-            let mut buffer = [0u8; TransmittedData::ENCODED_LEN + 1];
-
-            match state.stream.as_mut().unwrap().read(&mut buffer).await {
-                Ok(val) if val == TransmittedData::ENCODED_LEN => {}
-                Ok(0) => {
-                    error!("Sim: TCP connection closed, stopping");
-                    state.stop = true;
-                    return Some((Message::Stop, state));
-                }
-                Ok(val) => {
-                    warn!("Sim: Received message of wrong length: {val}");
-                    return Some((Message::NoAction, state));
-                }
-                Err(e) => {
-                    error!("Sim: TCP error: {e:?}");
-                    error!("Sim: Stopping");
-                    state.stop = true;
-                    return Some((Message::Stop, state));
-                }
-            }
-
-            let data = match TransmittedData::decode(array_ref![
-                buffer,
-                0,
-                TransmittedData::ENCODED_LEN
-            ]) {
-                Ok(val) => val,
-                Err(e) => {
-                    warn!("Sim: Decoding error: {e:?}");
-                    return Some((Message::NoAction, state));
+                    continue;
                 }
             };
+        };
 
-            Some((Message::NewSnapshot(data), state))
-        }))
-    }
+        if let Some(mut stream) = stream {
+            loop {
+                // Make the buffer longer than needed so that we can detect messages that are too long
+                let mut buffer = [0u8; TransmittedData::ENCODED_LEN + 1];
+
+                match stream.read(&mut buffer).await {
+                    Ok(val) if val == TransmittedData::ENCODED_LEN => {}
+                    Ok(0) => {
+                        error!("Sim: TCP connection closed, stopping");
+                        msg_tx.send(Message::Stop).await.unwrap();
+                        break;
+                    }
+                    Ok(val) => {
+                        warn!("Sim: Received message of wrong length: {val}");
+                        continue;
+                    }
+                    Err(e) => {
+                        error!("Sim: TCP error: {e:?}");
+                        error!("Sim: Stopping");
+                        msg_tx.send(Message::Stop).await.unwrap();
+                        break;
+                    }
+                }
+
+                let data = match TransmittedData::decode(array_ref![
+                    buffer,
+                    0,
+                    TransmittedData::ENCODED_LEN
+                ]) {
+                    Ok(val) => val,
+                    Err(e) => {
+                        warn!("Sim: Decoding error: {e:?}");
+                        continue;
+                    }
+                };
+
+                msg_tx.send(Message::NewSnapshot(data)).await.unwrap();
+            }
+        }
+    })
 }

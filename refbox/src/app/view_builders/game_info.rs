@@ -1,8 +1,4 @@
-use super::{
-    fl,
-    style::{ButtonStyle, Element, SMALL_TEXT, SPACING},
-    *,
-};
+use super::*;
 use iced::{
     Length,
     alignment::{Horizontal, Vertical},
@@ -33,13 +29,13 @@ pub(in super::super) fn build_game_info_page<'a>(
         row![
             text(left_details)
                 .size(SMALL_TEXT)
-                .vertical_alignment(Vertical::Top)
-                .horizontal_alignment(Horizontal::Left)
+                .align_y(Vertical::Top)
+                .align_x(Horizontal::Left)
                 .width(Length::Fill),
             text(right_details)
                 .size(SMALL_TEXT)
-                .vertical_alignment(Vertical::Top)
-                .horizontal_alignment(Horizontal::Left)
+                .align_y(Vertical::Top)
+                .align_x(Horizontal::Left)
                 .width(Length::Fill),
         ]
         .spacing(SPACING)
@@ -47,12 +43,12 @@ pub(in super::super) fn build_game_info_page<'a>(
         .height(Length::Fill),
         row![
             make_button(fl!("back"))
-                .style(ButtonStyle::Red)
+                .style(red_button)
                 .width(Length::Fill)
                 .on_press(Message::ConfigEditComplete { canceled: true }),
-            horizontal_space(Length::Fill),
+            horizontal_space(),
             make_button(fl!("settings"))
-                .style(ButtonStyle::Gray)
+                .style(gray_button)
                 .width(Length::Fill)
                 .on_press(Message::EditGameConfig),
         ]

@@ -1,7 +1,10 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 use clap::Parser;
-use iced::{Application, Settings, window::icon};
+use iced::{
+    Settings, Size,
+    window::{self, icon},
+};
 use iced_core::Font;
 use log::*;
 #[cfg(debug_assertions)]
@@ -17,6 +20,7 @@ use log4rs::{
     encode::pattern::PatternEncoder,
 };
 use std::{
+    borrow::Cow,
     path::PathBuf,
     process::{Command, Stdio},
 };
@@ -96,6 +100,9 @@ struct Cli {
 
     #[clap(long, hide = true)]
     is_simulator: bool,
+
+    #[clap(long, hide = true)]
+    simulate_sunlight_display: bool,
 }
 
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
@@ -189,16 +196,31 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     if args.is_simulator {
         let flags = sim_app::SimRefBoxAppFlags {
             tcp_port: args.binary_port,
+            sunlight_mode: args.simulate_sunlight_display,
         };
 
-        let mut settings = Settings::with_flags(flags);
-        settings.window.size = sim_app::window_size(args.scale, spacing);
-        settings.window.resizable = true;
-        settings.window.icon = Some(icon);
-        info!("Starting Simulator UI");
-        <sim_app::SimRefBoxApp as iced::Application>::run(settings)?;
+        let window_settings = window::Settings {
+            size: if args.simulate_sunlight_display {
+                sim_app::sunlight_window_size(args.scale)
+            } else {
+                sim_app::matrix_window_size(args.scale, spacing)
+            },
+            resizable: true,
+            icon: Some(icon),
+            ..Default::default()
+        };
 
-        return Ok(());
+        info!("Starting Simulator UI");
+        return iced::application(
+            "Panel Simulator",
+            sim_app::SimRefBoxApp::update,
+            sim_app::SimRefBoxApp::view,
+        )
+        .subscription(sim_app::SimRefBoxApp::subscription)
+        .window(window_settings)
+        .style(sim_app::SimRefBoxApp::application_style)
+        .run_with(|| sim_app::SimRefBoxApp::new(flags))
+        .map_err(|e| e.into());
     } else {
         info!("Starting RefBox App");
     }
@@ -293,9 +315,9 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let window_size = (
-        config.hardware.screen_x as u32,
-        config.hardware.screen_y as u32,
+    let window_size = Size::new(
+        config.hardware.screen_x as f32,
+        config.hardware.screen_y as f32,
     );
 
     let flags = app::RefBeepTestAppFlags {
@@ -306,19 +328,38 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         sim_child: child,
     };
 
-    let mut settings = Settings::with_flags(flags);
-    settings.window.size = window_size;
-    settings.window.resizable = false;
-    settings.window.icon = Some(icon);
-    settings.default_text_size = app::style::SMALL_PLUS_TEXT;
-    settings.default_font = Font {
-        family: iced_core::font::Family::Name("Roboto"),
-        weight: iced_core::font::Weight::Medium,
-        stretch: iced_core::font::Stretch::Normal,
-        monospaced: false,
+    let settings = Settings {
+        id: Some(APP_NAME.into()),
+        fonts: vec![Cow::from(
+            &include_bytes!("../resources/Roboto-Medium.ttf")[..],
+        )],
+        default_font: Font {
+            family: iced_core::font::Family::Name("Roboto"),
+            weight: iced_core::font::Weight::Medium,
+            stretch: iced_core::font::Stretch::Normal,
+            style: iced_core::font::Style::Normal,
+        },
+        default_text_size: app::theme::SMALL_PLUS_TEXT.into(),
+        antialiasing: false,
     };
-    info!("Starting UI");
-    app::BeepTestApp::run(settings)?;
 
-    Ok(())
+    let window_settings = window::Settings {
+        size: window_size,
+        resizable: false,
+        icon: Some(icon),
+        ..Default::default()
+    };
+
+    info!("Starting UI");
+    iced::application(
+        "Beep Test",
+        app::BeepTestApp::update,
+        app::BeepTestApp::view,
+    )
+    .subscription(app::BeepTestApp::subscription)
+    .settings(settings)
+    .window(window_settings)
+    .style(app::BeepTestApp::application_style)
+    .run_with(|| app::BeepTestApp::new(flags))
+    .map_err(|e| e.into())
 }

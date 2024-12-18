@@ -1,23 +1,15 @@
-use super::{
-    Element, fl,
-    message::*,
-    style::{
-        Button, ButtonStyle, Container, ContainerStyle, LARGE_TEXT, LINE_HEIGHT, MEDIUM_TEXT,
-        MIN_BUTTON_SIZE, PADDING, Row, SMALL_PLUS_TEXT, SMALL_TEXT, SPACING, SvgStyle, Text,
-        TextStyle, XS_BUTTON_SIZE,
-    },
-};
-use crate::{config::Mode, tournament_manager::TournamentManager};
+use super::*;
 use enum_iterator::all;
 use iced::{
-    Alignment, Length,
+    Alignment, Background, Length, Theme,
     alignment::{Horizontal, Vertical},
     widget::{
-        Image, button, column, container, horizontal_space, image, row,
-        svg::{self, Svg},
-        text, vertical_space,
+        Button, Container, Image, Row, Space, Text, button, column, container,
+        container::Style as ContainerStyle, horizontal_space, image, row, svg, svg::Svg, text,
+        text::Style as TextStyle, vertical_space,
     },
 };
+use iced_core::text::IntoFragment;
 use matrix_drawing::{secs_to_long_time_string, secs_to_time_string};
 use std::{
     fmt::Write,
@@ -27,7 +19,6 @@ use std::{
 use uwh_common::{
     color::Color as GameColor,
     config::Game as GameConfig,
-    drawing_support::*,
     game_snapshot::{
         GamePeriod, GameSnapshot, Infraction, InfractionSnapshot, PenaltySnapshot, PenaltyTime,
         TimeoutSnapshot,
@@ -59,7 +50,7 @@ pub(super) fn make_scroll_list<'a, const LIST_LEN: usize>(
     index: usize,
     title: Text<'a>,
     scroll_option: ScrollOption,
-    cont_style: ContainerStyle,
+    cont_style: fn(&Theme) -> ContainerStyle,
 ) -> Container<'a, Message> {
     let mut main_col = column![title].spacing(SPACING).width(Length::Fill);
 
@@ -94,24 +85,23 @@ pub(super) fn make_scroll_list<'a, const LIST_LEN: usize>(
         other => Length::FillPortion(other),
     };
 
-    let scroll_btn_style = if cont_style == ContainerStyle::Blue {
-        ButtonStyle::BlueWithBorder
-    } else {
-        ButtonStyle::Blue
-    };
+    let scroll_btn_style =
+        if cont_style(&Theme::default()).background == Some(Background::Color(BLUE)) {
+            blue_with_border_button
+        } else {
+            blue_button
+        };
 
     let mut up_btn = button(
         container(
             Svg::new(svg::Handle::from_memory(
                 &include_bytes!("../../../resources/arrow_drop_up.svg")[..],
             ))
-            .style(SvgStyle::White),
+            .style(white_svg),
         )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(ContainerStyle::Transparent)
-        .center_x()
-        .center_y(),
+        .center_x(Length::Fill)
+        .center_y(Length::Fill)
+        .style(transparent_container),
     )
     .width(Length::Fixed(MIN_BUTTON_SIZE))
     .height(Length::Fixed(MIN_BUTTON_SIZE))
@@ -122,13 +112,11 @@ pub(super) fn make_scroll_list<'a, const LIST_LEN: usize>(
             Svg::new(svg::Handle::from_memory(
                 &include_bytes!("../../../resources/arrow_drop_down.svg")[..],
             ))
-            .style(SvgStyle::White),
+            .style(white_svg),
         )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(ContainerStyle::Transparent)
-        .center_x()
-        .center_y(),
+        .center_x(Length::Fill)
+        .center_y(Length::Fill)
+        .style(transparent_container),
     )
     .width(Length::Fixed(MIN_BUTTON_SIZE))
     .height(Length::Fixed(MIN_BUTTON_SIZE))
@@ -151,22 +139,22 @@ pub(super) fn make_scroll_list<'a, const LIST_LEN: usize>(
     let scroll_bar = row![]
         .width(Length::Fill)
         .height(Length::Fill)
-        .push(horizontal_space(Length::Fill))
+        .push(horizontal_space())
         .push(
             container(column![
-                vertical_space(top_len),
-                container(vertical_space(Length::Fill))
+                Space::with_height(top_len),
+                container(vertical_space())
                     .width(Length::Fill)
                     .height(Length::FillPortion(LIST_LEN as u16))
-                    .style(ContainerStyle::Gray),
-                vertical_space(bottom_len),
+                    .style(gray_container),
+                Space::with_height(bottom_len),
             ])
             .padding(PADDING)
             .width(Length::FillPortion(2))
             .height(Length::Fill)
-            .style(ContainerStyle::ScrollBar),
+            .style(scroll_bar_container),
         )
-        .push(horizontal_space(Length::Fill));
+        .push(horizontal_space());
 
     container(
         row![
@@ -200,12 +188,12 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
                 .ok()
                 .map(|_| Message::TeamTimeout(GameColor::Black, false)),
         )
-        .style(ButtonStyle::Black),
+        .style(black_button),
         Some(TimeoutSnapshot::Black(_)) => make_multi_label_message_button(
             (fl!("end-timeout-line-1"), fl!("end-timeout-line-2")),
             Some(Message::EndTimeout),
         )
-        .style(ButtonStyle::Yellow),
+        .style(yellow_button),
         Some(TimeoutSnapshot::White(_))
         | Some(TimeoutSnapshot::Ref(_))
         | Some(TimeoutSnapshot::PenaltyShot(_)) => make_multi_label_message_button(
@@ -214,7 +202,7 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
                 .ok()
                 .map(|_| Message::TeamTimeout(GameColor::Black, true)),
         )
-        .style(ButtonStyle::Black),
+        .style(black_button),
     };
 
     let white = match snapshot.timeout {
@@ -224,12 +212,12 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
                 .ok()
                 .map(|_| Message::TeamTimeout(GameColor::White, false)),
         )
-        .style(ButtonStyle::White),
+        .style(white_button),
         Some(TimeoutSnapshot::White(_)) => make_multi_label_message_button(
             (fl!("end-timeout-line-1"), fl!("end-timeout-line-2")),
             Some(Message::EndTimeout),
         )
-        .style(ButtonStyle::Yellow),
+        .style(yellow_button),
         Some(TimeoutSnapshot::Black(_))
         | Some(TimeoutSnapshot::Ref(_))
         | Some(TimeoutSnapshot::PenaltyShot(_)) => make_multi_label_message_button(
@@ -238,7 +226,7 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
                 .ok()
                 .map(|_| Message::TeamTimeout(GameColor::White, true)),
         )
-        .style(ButtonStyle::White),
+        .style(white_button),
     };
 
     let referee = match snapshot.timeout {
@@ -248,12 +236,12 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
                 .ok()
                 .map(|_| Message::RefTimeout(false)),
         )
-        .style(ButtonStyle::Yellow),
+        .style(yellow_button),
         Some(TimeoutSnapshot::Ref(_)) => make_multi_label_message_button(
             (fl!("end-timeout-line-1"), fl!("end-timeout-line-2")),
             Some(Message::EndTimeout),
         )
-        .style(ButtonStyle::Yellow),
+        .style(yellow_button),
         Some(TimeoutSnapshot::Black(_))
         | Some(TimeoutSnapshot::White(_))
         | Some(TimeoutSnapshot::PenaltyShot(_)) => make_multi_label_message_button(
@@ -262,7 +250,7 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
                 .ok()
                 .map(|_| Message::RefTimeout(true)),
         )
-        .style(ButtonStyle::Yellow),
+        .style(yellow_button),
     };
 
     let penalty = match snapshot.timeout {
@@ -272,12 +260,12 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
                 .ok()
                 .map(|_| Message::PenaltyShot(false)),
         )
-        .style(ButtonStyle::Red),
+        .style(red_button),
         Some(TimeoutSnapshot::PenaltyShot(_)) => make_multi_label_message_button(
             (fl!("end-timeout-line-1"), fl!("end-timeout-line-2")),
             Some(Message::EndTimeout),
         )
-        .style(ButtonStyle::Yellow),
+        .style(yellow_button),
         Some(TimeoutSnapshot::Black(_))
         | Some(TimeoutSnapshot::White(_))
         | Some(TimeoutSnapshot::Ref(_)) => {
@@ -290,7 +278,7 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
                 (fl!("switch-to"), fl!("pen-shot")),
                 can_switch.ok().map(|_| Message::PenaltyShot(true)),
             )
-            .style(ButtonStyle::Red)
+            .style(red_button)
         }
     };
 
@@ -337,22 +325,22 @@ pub(super) fn make_game_time_button<'a>(
         }
     };
 
-    let (mut period_text, period_color) = {
-        let (text, color) = match snapshot.current_period {
-            GamePeriod::BetweenGames => (fl!("next-game"), TextStyle::Yellow),
-            GamePeriod::FirstHalf => (fl!("first-half"), TextStyle::Green),
-            GamePeriod::HalfTime => (fl!("half-time"), TextStyle::Yellow),
-            GamePeriod::SecondHalf => (fl!("second-half"), TextStyle::Green),
-            GamePeriod::PreOvertime => (fl!("pre-ot-break-full"), TextStyle::Yellow),
-            GamePeriod::OvertimeFirstHalf => (fl!("overtime-first-half"), TextStyle::Green),
-            GamePeriod::OvertimeHalfTime => (fl!("overtime-half-time"), TextStyle::Yellow),
-            GamePeriod::OvertimeSecondHalf => (fl!("overtime-second-half"), TextStyle::Green),
-            GamePeriod::PreSuddenDeath => (fl!("pre-sudden-death-break"), TextStyle::Yellow),
-            GamePeriod::SuddenDeath => (fl!("sudden-death"), TextStyle::Green),
+    let (mut period_text, period_color): (_, fn(&Theme) -> TextStyle) = {
+        let (text, color): (_, fn(&Theme) -> TextStyle) = match snapshot.current_period {
+            GamePeriod::BetweenGames => (fl!("next-game"), yellow_text),
+            GamePeriod::FirstHalf => (fl!("first-half"), green_text),
+            GamePeriod::HalfTime => (fl!("half-time"), yellow_text),
+            GamePeriod::SecondHalf => (fl!("second-half"), green_text),
+            GamePeriod::PreOvertime => (fl!("pre-ot-break-full"), yellow_text),
+            GamePeriod::OvertimeFirstHalf => (fl!("overtime-first-half"), green_text),
+            GamePeriod::OvertimeHalfTime => (fl!("overtime-half-time"), yellow_text),
+            GamePeriod::OvertimeSecondHalf => (fl!("overtime-second-half"), green_text),
+            GamePeriod::PreSuddenDeath => (fl!("pre-sudden-death-break"), yellow_text),
+            GamePeriod::SuddenDeath => (fl!("sudden-death"), green_text),
         };
 
         if make_red {
-            (text, TextStyle::Black)
+            (text, black_text)
         } else {
             (text, color)
         }
@@ -371,30 +359,26 @@ pub(super) fn make_game_time_button<'a>(
 
     macro_rules! make_time_view {
         ($base:ident, $per_text:ident, $time_text:ident) => {
-            $base
-                .width(Length::Fill)
-                .align_items(Alignment::Center)
-                .push($per_text)
-                .push($time_text)
+            $base.width(Length::Fill).push($per_text).push($time_text)
         };
     }
 
-    let make_time_view_row = |period_text, time_text, style| {
+    let make_time_view_row = |period_text, time_text, style: fn(&Theme) -> TextStyle| {
         let per = text(period_text)
             .line_height(LINE_HEIGHT)
             .style(style)
             .width(Length::Fill)
-            .vertical_alignment(Vertical::Center)
-            .horizontal_alignment(Horizontal::Right);
+            .align_y(Vertical::Center)
+            .align_x(Horizontal::Right);
         let time = text(time_text)
             .line_height(LINE_HEIGHT)
             .style(style)
             .size(LARGE_TEXT)
             .width(Length::Fill)
-            .vertical_alignment(Vertical::Center)
-            .horizontal_alignment(Horizontal::Left);
+            .align_y(Vertical::Center)
+            .align_x(Horizontal::Left);
         let r = row![].spacing(SPACING);
-        make_time_view!(r, per, time)
+        make_time_view!(r, per, time).align_y(Alignment::Center)
     };
 
     let make_time_view_col = |period_text, time_text, style| {
@@ -404,49 +388,47 @@ pub(super) fn make_game_time_button<'a>(
             .style(style)
             .size(LARGE_TEXT);
         let c = column![];
-        make_time_view!(c, per, time)
+        make_time_view!(c, per, time).align_x(Alignment::Center)
     };
 
     let mut content = row![]
         .spacing(SPACING)
         .height(Length::Fill)
         .width(Length::Fill)
-        .align_items(Alignment::Center);
+        .align_y(Alignment::Center);
 
-    let timeout_info = snapshot.timeout.map(|t| match t {
-        TimeoutSnapshot::White(_) => (
-            if tall {
-                fl!("white-timeout-short")
-            } else {
-                fl!("white-timeout-full")
-            },
-            if make_red {
-                TextStyle::Black
-            } else {
-                TextStyle::White
-            },
-        ),
-        TimeoutSnapshot::Black(_) => (
-            if tall {
-                fl!("black-timeout-short")
-            } else {
-                fl!("black-timeout-full")
-            },
-            TextStyle::Black,
-        ),
-        TimeoutSnapshot::Ref(_) => (fl!("ref-timeout-short"), TextStyle::Yellow),
-        TimeoutSnapshot::PenaltyShot(_) => (fl!("penalty-shot-short"), TextStyle::Red),
+    let timeout_info = snapshot.timeout.map(|t| -> (_, fn(&Theme) -> TextStyle) {
+        match t {
+            TimeoutSnapshot::White(_) => (
+                if tall {
+                    fl!("white-timeout-short")
+                } else {
+                    fl!("white-timeout-full")
+                },
+                if make_red { black_text } else { white_text },
+            ),
+            TimeoutSnapshot::Black(_) => (
+                if tall {
+                    fl!("black-timeout-short")
+                } else {
+                    fl!("black-timeout-full")
+                },
+                black_text,
+            ),
+            TimeoutSnapshot::Ref(_) => (fl!("ref-timeout-short"), yellow_text),
+            TimeoutSnapshot::PenaltyShot(_) => (fl!("penalty-shot-short"), red_text),
+        }
     });
 
     let time_text = secs_to_long_time_string(snapshot.secs_in_period);
-    let time_text = time_text.trim();
+    let time_text = time_text.trim().to_owned();
 
     if tall {
         content = content.push(make_time_view_col(period_text, time_text, period_color));
         if let Some((timeout_text, timeout_color)) = timeout_info {
             content = content.push(make_time_view_col(
                 timeout_text,
-                &timeout_time_string(snapshot),
+                timeout_time_string(snapshot),
                 timeout_color,
             ));
         }
@@ -455,7 +437,7 @@ pub(super) fn make_game_time_button<'a>(
         if let Some((timeout_text, timeout_color)) = timeout_info {
             content = content.push(make_time_view_row(
                 timeout_text,
-                &timeout_time_string(snapshot),
+                timeout_time_string(snapshot),
                 timeout_color,
             ));
         }
@@ -467,11 +449,7 @@ pub(super) fn make_game_time_button<'a>(
         Length::Fixed(MIN_BUTTON_SIZE)
     };
 
-    let button_style = if make_red {
-        ButtonStyle::Red
-    } else {
-        ButtonStyle::Gray
-    };
+    let button_style = if make_red { red_button } else { gray_button };
 
     let time_button = button(content)
         .width(Length::Fill)
@@ -496,16 +474,14 @@ pub(super) fn make_game_time_button<'a>(
             } else {
                 &include_bytes!("../../../resources/play_arrow.svg")[..]
             }))
-            .style(SvgStyle::Black)
+            .style(black_svg)
             .height(Length::Fixed(LARGE_TEXT * 1.2)),
         )
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(ContainerStyle::Transparent)
-        .center_x()
-        .center_y();
+        .center_x(Length::Fill)
+        .center_y(Length::Fill)
+        .style(transparent_container);
         let mut play_pause_button = button(play_pause_icon)
-            .style(ButtonStyle::Gray)
+            .style(gray_button)
             .height(button_height)
             .width(Length::Fixed(MIN_BUTTON_SIZE));
         if !editing_time {
@@ -521,7 +497,7 @@ pub(super) fn make_game_time_button<'a>(
     time_row
 }
 
-pub(super) fn make_time_editor<'a, T: ToString>(
+pub(super) fn make_time_editor<'a, T: IntoFragment<'a>>(
     title: T,
     time: Duration,
     timeout: bool,
@@ -530,14 +506,14 @@ pub(super) fn make_time_editor<'a, T: ToString>(
 
     let min_edits = column![
         make_small_button("+", LARGE_TEXT)
-            .style(ButtonStyle::Blue)
+            .style(blue_button)
             .on_press(Message::ChangeTime {
                 increase: true,
                 secs: 60,
                 timeout,
             }),
         make_small_button("-", LARGE_TEXT)
-            .style(ButtonStyle::Blue)
+            .style(blue_button)
             .on_press(Message::ChangeTime {
                 increase: false,
                 secs: 60,
@@ -548,14 +524,14 @@ pub(super) fn make_time_editor<'a, T: ToString>(
 
     let sec_edits = column![
         make_small_button("+", LARGE_TEXT)
-            .style(ButtonStyle::Blue)
+            .style(blue_button)
             .on_press(Message::ChangeTime {
                 increase: true,
                 secs: 1,
                 timeout,
             }),
         make_small_button("-", LARGE_TEXT)
-            .style(ButtonStyle::Blue)
+            .style(blue_button)
             .on_press(Message::ChangeTime {
                 increase: false,
                 secs: 1,
@@ -569,12 +545,12 @@ pub(super) fn make_time_editor<'a, T: ToString>(
         text(time_string(time))
             .size(LARGE_TEXT)
             .line_height(LINE_HEIGHT)
-            .horizontal_alignment(Horizontal::Center)
+            .align_x(Horizontal::Center)
             .width(Length::Fixed(if wide { 300.0 } else { 200.0 })),
         sec_edits,
     ]
     .spacing(SPACING)
-    .align_items(Alignment::Center);
+    .align_y(Alignment::Center);
 
     container(
         column![
@@ -582,9 +558,9 @@ pub(super) fn make_time_editor<'a, T: ToString>(
             time_edit
         ]
         .spacing(SPACING)
-        .align_items(Alignment::Center),
+        .align_x(Alignment::Center),
     )
-    .style(ContainerStyle::LightGray)
+    .style(light_gray_container)
     .padding(PADDING)
 }
 
@@ -820,14 +796,16 @@ pub(super) fn config_string(
     result
 }
 
-pub(super) fn make_button<'a, Message: Clone, T: ToString>(label: T) -> Button<'a, Message> {
+pub(super) fn make_button<'a, Message: Clone, T: IntoFragment<'a>>(
+    label: T,
+) -> Button<'a, Message> {
     button(centered_text(label))
         .padding(PADDING)
         .height(Length::Fixed(MIN_BUTTON_SIZE))
         .width(Length::Fill)
 }
 
-pub(super) fn make_smaller_button<'a, Message: Clone, T: ToString>(
+pub(super) fn make_smaller_button<'a, Message: Clone, T: IntoFragment<'a>>(
     label: T,
 ) -> Button<'a, Message> {
     button(centered_text(label))
@@ -836,7 +814,7 @@ pub(super) fn make_smaller_button<'a, Message: Clone, T: ToString>(
         .width(Length::Fill)
 }
 
-pub(super) fn make_multi_label_button<'a, Message: 'a + Clone, T: ToString>(
+pub(super) fn make_multi_label_button<'a, Message: 'a + Clone, T: IntoFragment<'a>>(
     labels: (T, T),
 ) -> Button<'a, Message> {
     button(
@@ -849,16 +827,16 @@ pub(super) fn make_multi_label_button<'a, Message: 'a + Clone, T: ToString>(
     .width(Length::Fill)
 }
 
-pub fn centered_text<'a, T: ToString>(label: T) -> Text<'a> {
+pub fn centered_text<'a, T: IntoFragment<'a>>(label: T) -> Text<'a> {
     text(label)
         .line_height(LINE_HEIGHT)
-        .vertical_alignment(Vertical::Center)
-        .horizontal_alignment(Horizontal::Center)
+        .align_y(Vertical::Center)
+        .align_x(Horizontal::Center)
         .width(Length::Fill)
         .height(Length::Fill)
 }
 
-pub(super) fn make_message_button<'a, Message: Clone, T: ToString>(
+pub(super) fn make_message_button<'a, Message: Clone, T: IntoFragment<'a>>(
     label: T,
     message: Option<Message>,
 ) -> Button<'a, Message> {
@@ -869,7 +847,7 @@ pub(super) fn make_message_button<'a, Message: Clone, T: ToString>(
     }
 }
 
-pub(super) fn make_multi_label_message_button<'a, Message: 'a + Clone, T: ToString>(
+pub(super) fn make_multi_label_message_button<'a, Message: 'a + Clone, T: IntoFragment<'a>>(
     labels: (T, T),
     message: Option<Message>,
 ) -> Button<'a, Message> {
@@ -880,7 +858,7 @@ pub(super) fn make_multi_label_message_button<'a, Message: 'a + Clone, T: ToStri
     }
 }
 
-pub(super) fn make_small_button<'a, Message: Clone, T: ToString>(
+pub(super) fn make_small_button<'a, Message: Clone, T: IntoFragment<'a>>(
     label: T,
     size: f32,
 ) -> Button<'a, Message> {
@@ -889,12 +867,17 @@ pub(super) fn make_small_button<'a, Message: Clone, T: ToString>(
         .height(Length::Fixed(MIN_BUTTON_SIZE))
 }
 
-pub(super) fn make_value_button<'a, Message: 'a + Clone, T: ToString, U: ToString>(
+pub(super) fn make_value_button<'a, T, U>(
     first_label: T,
     second_label: U,
     large_text: (bool, bool),
     message: Option<Message>,
-) -> Button<'a, Message> {
+) -> Button<'a, Message>
+where
+    Message: 'a + Clone,
+    T: IntoFragment<'a>,
+    U: IntoFragment<'a>,
+{
     let mut button = button(
         row![
             text(first_label)
@@ -904,8 +887,9 @@ pub(super) fn make_value_button<'a, Message: 'a + Clone, T: ToString, U: ToStrin
                     SMALL_TEXT
                 })
                 .line_height(LINE_HEIGHT)
-                .vertical_alignment(Vertical::Center),
-            horizontal_space(Length::Fill),
+                .height(Length::Fill)
+                .align_y(Vertical::Center),
+            horizontal_space(),
             text(second_label)
                 .size(if large_text.1 {
                     MEDIUM_TEXT
@@ -913,15 +897,16 @@ pub(super) fn make_value_button<'a, Message: 'a + Clone, T: ToString, U: ToStrin
                     SMALL_TEXT
                 })
                 .line_height(LINE_HEIGHT)
-                .vertical_alignment(Vertical::Center),
+                .height(Length::Fill)
+                .align_y(Vertical::Center),
         ]
         .spacing(SPACING)
-        .align_items(Alignment::Center)
+        .align_y(Alignment::Center)
         .padding(PADDING),
     )
     .height(Length::Fixed(MIN_BUTTON_SIZE))
     .width(Length::Fill)
-    .style(ButtonStyle::LightGray);
+    .style(light_gray_button);
 
     if let Some(message) = message {
         button = button.on_press(message);
@@ -937,19 +922,19 @@ pub(super) fn make_penalty_dropdown<'a>(
     let foul_buttons = all::<Infraction>().map(|button_infraction| {
         button(
             container(
-                Image::new(image::Handle::from_memory(button_infraction.get_image()))
+                Image::new(image::Handle::from_bytes(button_infraction.get_image()))
                     .width(Length::Fill)
                     .height(Length::Fixed(MIN_BUTTON_SIZE)),
             )
-            .style(ContainerStyle::Transparent),
+            .style(transparent_container),
         )
         .padding(0)
         .height(Length::Fixed(MIN_BUTTON_SIZE))
         .width(Length::Fill)
         .style(if infraction == button_infraction {
-            ButtonStyle::LightGraySelected
+            light_gray_selected_button
         } else {
-            ButtonStyle::LightGray
+            light_gray_button
         })
         .on_press(Message::ChangeInfraction(button_infraction))
     });
@@ -960,9 +945,9 @@ pub(super) fn make_penalty_dropdown<'a>(
             infraction = inf_short_name(infraction)
         ))]
         .spacing(0)
-        .align_items(Alignment::Center),
+        .align_y(Alignment::Center),
     )
-    .style(ContainerStyle::Blue)
+    .style(blue_container)
     .width(Length::Fill);
 
     let mut first_row = row![].spacing(SPACING);
@@ -977,25 +962,20 @@ pub(super) fn make_penalty_dropdown<'a>(
     let open_button_content = if display_infraction_name {
         column![
             name,
-            vertical_space(Length::Fixed(SPACING)),
+            Space::with_height(SPACING),
             first_row,
-            vertical_space(Length::Fixed(SPACING)),
+            Space::with_height(SPACING),
             second_row,
         ]
         .padding(0)
     } else {
-        column![
-            first_row,
-            vertical_space(Length::Fixed(SPACING)),
-            second_row,
-        ]
-        .padding(0)
+        column![first_row, Space::with_height(SPACING), second_row,].padding(0)
     };
 
     container(open_button_content)
         .padding(PADDING)
         .width(Length::Fill)
-        .style(ContainerStyle::Blue)
+        .style(blue_container)
         .into()
 }
 
@@ -1014,25 +994,25 @@ pub fn make_warning_container<'a>(
 
     container(if color.is_some() {
         row![
-            horizontal_space(PADDING),
+            Space::with_width(PADDING),
             text(inf_short_name(warning.infraction)).size(SMALL_TEXT),
-            horizontal_space(Length::Fill),
+            horizontal_space(),
             text(who).size(SMALL_TEXT),
-            horizontal_space(PADDING),
+            Space::with_width(PADDING),
         ]
     } else {
         row![
-            horizontal_space(Length::Fill),
+            horizontal_space(),
             text(inf_short_name(warning.infraction)).size(SMALL_TEXT),
-            horizontal_space(Length::Fill),
+            horizontal_space(),
         ]
     })
     .width(WIDTH)
     .height(HEIGHT)
     .style(match color {
-        Some(GameColor::Black) => ContainerStyle::Black,
-        Some(GameColor::White) => ContainerStyle::White,
-        None => ContainerStyle::Blue,
+        Some(GameColor::Black) => black_container,
+        Some(GameColor::White) => white_container,
+        None => blue_container,
     })
     .padding(0)
 }

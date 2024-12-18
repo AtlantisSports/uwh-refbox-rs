@@ -1,13 +1,11 @@
-use super::{
-    fl,
-    style::{ButtonStyle, ContainerStyle, Element, LINE_HEIGHT, PADDING, SPACING},
-    *,
-};
-
+use super::*;
 use iced::{
-    Alignment, Length,
+    Alignment, Element, Length, Theme,
     alignment::Horizontal,
-    widget::{column, container, horizontal_space, row, text, vertical_space},
+    widget::{
+        button::{Status, Style},
+        column, container, horizontal_space, row, text, vertical_space,
+    },
 };
 
 pub(in super::super) fn build_confirmation_page<'a>(
@@ -28,62 +26,60 @@ pub(in super::super) fn build_confirmation_page<'a>(
         ConfirmationKind::UwhPortalIncomplete => fl!("UWHPortal-enabled"),
     };
 
-    let buttons = match kind {
+    type ButtonStyleFn = fn(&Theme, Status) -> Style;
+
+    let buttons: Vec<(_, ButtonStyleFn, _)> = match kind {
         ConfirmationKind::GameConfigChanged(_) => vec![
             (
                 fl!("go-back-to-editor"),
-                ButtonStyle::Green,
+                green_button,
                 ConfirmationOption::GoBack,
             ),
             (
                 fl!("discard-changes"),
-                ButtonStyle::Yellow,
+                yellow_button,
                 ConfirmationOption::DiscardChanges,
             ),
             (
                 fl!("end-current-game-and-apply-changes"),
-                ButtonStyle::Red,
+                red_button,
                 ConfirmationOption::EndGameAndApply,
             ),
         ],
         ConfirmationKind::GameNumberChanged => vec![
             (
                 fl!("go-back-to-editor"),
-                ButtonStyle::Green,
+                green_button,
                 ConfirmationOption::GoBack,
             ),
             (
                 fl!("discard-changes"),
-                ButtonStyle::Yellow,
+                yellow_button,
                 ConfirmationOption::DiscardChanges,
             ),
             (
                 fl!("keep-current-game-and-apply-change"),
-                ButtonStyle::Orange,
+                orange_button,
                 ConfirmationOption::KeepGameAndApply,
             ),
             (
                 fl!("end-current-game-and-apply-change"),
-                ButtonStyle::Red,
+                red_button,
                 ConfirmationOption::EndGameAndApply,
             ),
         ],
         ConfirmationKind::Error(_) => {
-            vec![(
-                fl!("ok"),
-                ButtonStyle::Green,
-                ConfirmationOption::DiscardChanges,
-            )]
+            vec![(fl!("ok"), green_button, ConfirmationOption::DiscardChanges)]
         }
         ConfirmationKind::UwhPortalIncomplete => vec![
             (
                 fl!("go-back-to-editor"),
-                ButtonStyle::Green,
+                green_button,
                 ConfirmationOption::GoBack,
             ),
             (
                 fl!("discard-changes"),
-                ButtonStyle::Yellow,
+                yellow_button,
                 ConfirmationOption::DiscardChanges,
             ),
         ],
@@ -103,30 +99,30 @@ pub(in super::super) fn build_confirmation_page<'a>(
 
     column![
         make_game_time_button(snapshot, false, true, mode, clock_running),
-        vertical_space(Length::Fill),
+        vertical_space(),
         row![
-            horizontal_space(Length::Fill),
+            horizontal_space(),
             container(
                 column![
                     text(header_text)
                         .line_height(LINE_HEIGHT)
-                        .horizontal_alignment(Horizontal::Center),
+                        .align_x(Horizontal::Center),
                     button_col
                 ]
                 .spacing(SPACING)
                 .width(Length::Fill)
-                .align_items(Alignment::Center),
+                .align_x(Alignment::Center),
             )
             .width(Length::FillPortion(3))
-            .style(ContainerStyle::LightGray)
+            .style(light_gray_container)
             .padding(PADDING),
-            horizontal_space(Length::Fill)
+            horizontal_space()
         ],
-        vertical_space(Length::Fill)
+        vertical_space()
     ]
     .width(Length::Fill)
     .height(Length::Fill)
-    .align_items(Alignment::Center)
+    .align_x(Alignment::Center)
     .into()
 }
 
@@ -147,14 +143,14 @@ pub(in super::super) fn build_score_confirmation_page<'a>(
         score_white = scores.white
     ))
     .line_height(LINE_HEIGHT)
-    .horizontal_alignment(Horizontal::Center);
+    .align_x(Horizontal::Center);
 
     let options = row![
         make_button(fl!("yes"))
-            .style(ButtonStyle::Green)
+            .style(green_button)
             .on_press(Message::ScoreConfirmation { correct: true }),
         make_button(fl!("no"))
-            .style(ButtonStyle::Red)
+            .style(red_button)
             .on_press(Message::ScoreConfirmation { correct: false }),
     ]
     .spacing(SPACING)
@@ -162,24 +158,24 @@ pub(in super::super) fn build_score_confirmation_page<'a>(
 
     column![
         make_game_time_button(snapshot, false, true, mode, clock_running),
-        vertical_space(Length::Fill),
+        vertical_space(),
         row![
-            horizontal_space(Length::Fill),
+            horizontal_space(),
             container(
                 column![header, options]
                     .spacing(SPACING)
                     .width(Length::Fill)
-                    .align_items(Alignment::Center),
+                    .align_x(Alignment::Center),
             )
             .width(Length::FillPortion(3))
-            .style(ContainerStyle::LightGray)
+            .style(light_gray_container)
             .padding(PADDING),
-            horizontal_space(Length::Fill)
+            horizontal_space()
         ],
-        vertical_space(Length::Fill)
+        vertical_space()
     ]
     .width(Length::Fill)
     .height(Length::Fill)
-    .align_items(Alignment::Center)
+    .align_x(Alignment::Center)
     .into()
 }

@@ -1,12 +1,9 @@
-use super::{
-    style::{ButtonStyle, ContainerStyle, Element, LINE_HEIGHT, MIN_BUTTON_SIZE, PADDING, SPACING},
-    *,
-};
+use super::*;
 use collect_array::CollectArrayResult;
 use iced::{
-    Length,
+    Element, Length,
     alignment::{Horizontal, Vertical},
-    widget::{button, column, horizontal_space, row, text, vertical_space},
+    widget::{Space, button, column, row, text, vertical_space},
 };
 
 pub(in super::super) fn build_list_selector_page<'a>(
@@ -36,8 +33,8 @@ pub(in super::super) fn build_list_selector_page<'a>(
         .line_height(LINE_HEIGHT)
         .height(Length::Fill)
         .width(Length::Fill)
-        .horizontal_alignment(Horizontal::Center)
-        .vertical_alignment(Vertical::Center);
+        .align_x(Horizontal::Center)
+        .align_y(Vertical::Center);
 
     // (btn_text, msg_val)
 
@@ -53,22 +50,22 @@ pub(in super::super) fn build_list_selector_page<'a>(
                     if let Some((btn_text, msg_val)) = pen {
                         let text = text(btn_text)
                             .line_height(LINE_HEIGHT)
-                            .vertical_alignment(Vertical::Center)
-                            .horizontal_alignment(Horizontal::Left)
+                            .align_y(Vertical::Center)
+                            .align_x(Horizontal::Left)
                             .width(Length::Fill);
 
                         button(text)
                             .padding(PADDING)
                             .height(Length::Fixed(MIN_BUTTON_SIZE))
                             .width(Length::Fill)
-                            .style(ButtonStyle::Gray)
+                            .style(gray_button)
                             .on_press(Message::ParameterSelected(param, msg_val))
                             .into()
                     } else {
-                        button(horizontal_space(Length::Shrink))
+                        button(Space::with_width(Length::Shrink))
                             .height(Length::Fixed(MIN_BUTTON_SIZE))
                             .width(Length::Fill)
-                            .style(ButtonStyle::Gray)
+                            .style(gray_button)
                             .into()
                     }
                 })
@@ -120,7 +117,7 @@ pub(in super::super) fn build_list_selector_page<'a>(
         index,
         title,
         ScrollOption::GameParameter,
-        ContainerStyle::LightGray,
+        light_gray_container,
     )
     .width(Length::FillPortion(4));
 
@@ -129,9 +126,9 @@ pub(in super::super) fn build_list_selector_page<'a>(
         row![
             scroll_list,
             column![
-                vertical_space(Length::Fill),
+                vertical_space(),
                 make_button(fl!("cancel"))
-                    .style(ButtonStyle::Red)
+                    .style(red_button)
                     .width(Length::Fill)
                     .height(Length::Fixed(MIN_BUTTON_SIZE))
                     .on_press(Message::ParameterEditComplete { canceled: true }),

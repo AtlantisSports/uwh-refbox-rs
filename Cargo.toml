@@ -3,11 +3,11 @@ resolver = "2"
 
 members = [
   "alphagen",
+  "beep-test",
   "fonts",
   "led-panel-sim",
   "matrix-drawing",
   "overlay",
-  "ref-beep-test",
   "refbox",
   "uwh-common",
 ]

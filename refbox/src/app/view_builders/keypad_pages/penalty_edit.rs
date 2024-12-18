@@ -1,9 +1,14 @@
-use super::{style::Element, *};
+use super::*;
 use iced::{
-    Length,
-    widget::{column, row, vertical_space},
+    Length, Theme,
+    widget::{
+        button::{Status, Style},
+        column, row, vertical_space,
+    },
 };
 use uwh_common::color::Color as GameColor;
+
+type StyleFn = fn(&Theme, Status) -> Style;
 
 pub(super) fn make_penalty_edit_page<'a>(
     origin: Option<(GameColor, usize)>,
@@ -13,9 +18,9 @@ pub(super) fn make_penalty_edit_page<'a>(
     track_fouls_and_warnings: bool,
     infraction: Infraction,
 ) -> Element<'a, Message> {
-    let (black_style, white_style) = match color {
-        GameColor::Black => (ButtonStyle::BlackSelected, ButtonStyle::White),
-        GameColor::White => (ButtonStyle::Black, ButtonStyle::WhiteSelected),
+    let (black_style, white_style): (StyleFn, StyleFn) = match color {
+        GameColor::Black => (black_selected_button, white_button),
+        GameColor::White => (black_button, white_selected_button),
     };
 
     let (green, yellow, orange) = match mode {
@@ -38,46 +43,42 @@ pub(super) fn make_penalty_edit_page<'a>(
         ),
     };
 
-    let (green_style, yellow_style, orange_style, td_style) = if kind == green {
-        (
-            ButtonStyle::GreenSelected,
-            ButtonStyle::Yellow,
-            ButtonStyle::Orange,
-            ButtonStyle::Red,
-        )
-    } else if kind == yellow {
-        (
-            ButtonStyle::Green,
-            ButtonStyle::YellowSelected,
-            ButtonStyle::Orange,
-            ButtonStyle::Red,
-        )
-    } else if kind == orange {
-        (
-            ButtonStyle::Green,
-            ButtonStyle::Yellow,
-            ButtonStyle::OrangeSelected,
-            ButtonStyle::Red,
-        )
-    } else if kind == PenaltyKind::TotalDismissal {
-        (
-            ButtonStyle::Green,
-            ButtonStyle::Yellow,
-            ButtonStyle::Orange,
-            ButtonStyle::RedSelected,
-        )
-    } else {
-        (
-            ButtonStyle::Green,
-            ButtonStyle::Yellow,
-            ButtonStyle::Orange,
-            ButtonStyle::Red,
-        )
-    };
+    let (green_style, yellow_style, orange_style, td_style): (StyleFn, StyleFn, StyleFn, StyleFn) =
+        if kind == green {
+            (
+                green_selected_button,
+                yellow_button,
+                orange_button,
+                red_button,
+            )
+        } else if kind == yellow {
+            (
+                green_button,
+                yellow_selected_button,
+                orange_button,
+                red_button,
+            )
+        } else if kind == orange {
+            (
+                green_button,
+                yellow_button,
+                orange_selected_button,
+                red_button,
+            )
+        } else if kind == PenaltyKind::TotalDismissal {
+            (
+                green_button,
+                yellow_button,
+                orange_button,
+                red_selected_button,
+            )
+        } else {
+            (green_button, yellow_button, orange_button, red_button)
+        };
 
     let mut exit_row = row![
         make_smaller_button(fl!("cancel"))
-            .style(ButtonStyle::Red)
+            .style(red_button)
             .width(Length::Fill)
             .on_press(Message::PenaltyEditComplete {
                 canceled: true,
@@ -89,7 +90,7 @@ pub(super) fn make_penalty_edit_page<'a>(
     if origin.is_some() {
         exit_row = exit_row.push(
             make_smaller_button(fl!("delete"))
-                .style(ButtonStyle::Orange)
+                .style(orange_button)
                 .width(Length::Fill)
                 .on_press(Message::PenaltyEditComplete {
                     canceled: false,
@@ -100,7 +101,7 @@ pub(super) fn make_penalty_edit_page<'a>(
 
     exit_row = exit_row.push(
         make_smaller_button(fl!("done"))
-            .style(ButtonStyle::Green)
+            .style(green_button)
             .width(Length::Fill)
             .on_press(Message::PenaltyEditComplete {
                 canceled: false,
@@ -136,13 +137,13 @@ pub(super) fn make_penalty_edit_page<'a>(
         .spacing(SPACING)
     ];
 
-    content = content.push(vertical_space(Length::Fill));
+    content = content.push(vertical_space());
 
     if track_fouls_and_warnings {
         content = content.push(make_penalty_dropdown(infraction, false));
     }
 
-    content = content.push(vertical_space(Length::Fill));
+    content = content.push(vertical_space());
 
     content = content.push(
         row![
@@ -162,7 +163,7 @@ pub(super) fn make_penalty_edit_page<'a>(
         .spacing(SPACING),
     );
 
-    content = content.push(vertical_space(Length::Fill));
+    content = content.push(vertical_space());
 
     content = content.push(exit_row);
     content.into()

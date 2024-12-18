@@ -5,7 +5,10 @@ use i18n_embed::{
     DesktopLanguageRequester,
     fluent::{FluentLanguageLoader, fluent_language_loader},
 };
-use iced::{Application, Settings, window::icon};
+use iced::{
+    Settings, Size,
+    window::{self, icon},
+};
 use iced_core::Font;
 use log::*;
 #[cfg(debug_assertions)]
@@ -23,6 +26,7 @@ use log4rs::{
 use once_cell::sync::Lazy;
 use rust_embed::RustEmbed;
 use std::{
+    borrow::Cow,
     path::PathBuf,
     process::{Command, Stdio},
     sync::Arc,
@@ -255,18 +259,28 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             sunlight_mode: args.simulate_sunlight_display,
         };
 
-        let mut settings = Settings::with_flags(flags);
-        settings.window.size = if args.simulate_sunlight_display {
-            sim_app::sunlight_window_size(args.scale)
-        } else {
-            sim_app::matrix_window_size(args.scale, spacing)
+        let window_settings = window::Settings {
+            size: if args.simulate_sunlight_display {
+                sim_app::sunlight_window_size(args.scale)
+            } else {
+                sim_app::matrix_window_size(args.scale, spacing)
+            },
+            resizable: true,
+            icon: Some(icon),
+            ..Default::default()
         };
-        settings.window.resizable = true;
-        settings.window.icon = Some(icon);
-        info!("Starting Simulator UI");
-        <sim_app::SimRefBoxApp as iced::Application>::run(settings)?;
 
-        return Ok(());
+        info!("Starting Simulator UI");
+        return iced::application(
+            "Panel Simulator",
+            sim_app::SimRefBoxApp::update,
+            sim_app::SimRefBoxApp::view,
+        )
+        .subscription(sim_app::SimRefBoxApp::subscription)
+        .window(window_settings)
+        .style(sim_app::SimRefBoxApp::application_style)
+        .run_with(|| sim_app::SimRefBoxApp::new(flags))
+        .map_err(|e| e.into());
     } else {
         info!("Starting RefBox App");
     }
@@ -365,9 +379,9 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let window_size = (
-        config.hardware.screen_x as u32,
-        config.hardware.screen_y as u32,
+    let window_size = Size::new(
+        config.hardware.screen_x as f32,
+        config.hardware.screen_y as f32,
     );
 
     let flags = app::RefBoxAppFlags {
@@ -382,19 +396,34 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         touchscreen: args.touchscreen,
     };
 
-    let mut settings = Settings::with_flags(flags);
-    settings.window.size = window_size;
-    settings.window.resizable = false;
-    settings.window.icon = Some(icon);
-    settings.default_text_size = app::style::SMALL_PLUS_TEXT;
-    settings.default_font = Font {
-        family: iced_core::font::Family::Name("Roboto"),
-        weight: iced_core::font::Weight::Medium,
-        stretch: iced_core::font::Stretch::Normal,
-        monospaced: false,
+    let settings = Settings {
+        id: Some(APP_NAME.into()),
+        fonts: vec![Cow::from(
+            &include_bytes!("../resources/Roboto-Medium.ttf")[..],
+        )],
+        default_font: Font {
+            family: iced_core::font::Family::Name("Roboto"),
+            weight: iced_core::font::Weight::Medium,
+            stretch: iced_core::font::Stretch::Normal,
+            style: iced_core::font::Style::Normal,
+        },
+        default_text_size: app::theme::SMALL_PLUS_TEXT.into(),
+        antialiasing: false,
     };
-    info!("Starting UI");
-    app::RefBoxApp::run(settings)?;
 
-    Ok(())
+    let window_settings = window::Settings {
+        size: window_size,
+        resizable: false,
+        icon: Some(icon),
+        ..Default::default()
+    };
+
+    info!("Starting UI");
+    iced::application("UWH Ref Box", app::RefBoxApp::update, app::RefBoxApp::view)
+        .subscription(app::RefBoxApp::subscription)
+        .settings(settings)
+        .window(window_settings)
+        .style(app::RefBoxApp::application_style)
+        .run_with(|| app::RefBoxApp::new(flags))
+        .map_err(|e| e.into())
 }

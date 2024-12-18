@@ -1,14 +1,8 @@
-use super::{
-    style::{
-        ButtonStyle, Element, LARGE_TEXT, LINE_HEIGHT, MIN_BUTTON_SIZE, PADDING, SMALL_PLUS_TEXT,
-        SMALL_TEXT, SPACING,
-    },
-    *,
-};
+use super::*;
 use iced::{
-    Alignment, Length,
+    Alignment, Element, Length,
     alignment::{Horizontal, Vertical},
-    widget::{button, column, horizontal_space, row, text},
+    widget::{Space, button, column, row, text},
 };
 use uwh_common::{
     color::Color as GameColor,
@@ -37,7 +31,7 @@ pub(in super::super) fn build_main_view<'a>(
 
     let make_warn_button = || {
         make_button(fl!("add-warning"))
-            .style(ButtonStyle::Blue)
+            .style(blue_button)
             .width(Length::Fill)
             .on_press(Message::KeypadPage(KeypadPage::WarningAdd {
                 origin: None,
@@ -50,7 +44,7 @@ pub(in super::super) fn build_main_view<'a>(
 
     let make_foul_button = || {
         make_button(fl!("add-foul"))
-            .style(ButtonStyle::Orange)
+            .style(orange_button)
             .width(Length::Fill)
             .on_press(Message::KeypadPage(KeypadPage::FoulAdd {
                 origin: None,
@@ -67,7 +61,7 @@ pub(in super::super) fn build_main_view<'a>(
         } else {
             center_col = center_col.push(
                 make_button(fl!("end-timeout"))
-                    .style(ButtonStyle::Yellow)
+                    .style(yellow_button)
                     .on_press(Message::EndTimeout),
             );
         }
@@ -80,7 +74,7 @@ pub(in super::super) fn build_main_view<'a>(
             | GamePeriod::PreSuddenDeath => {
                 let mut start_warning_row = row![
                     make_button(fl!("start-now"))
-                        .style(ButtonStyle::Green)
+                        .style(green_button)
                         .width(Length::Fill)
                         .on_press(Message::StartPlayNow)
                 ]
@@ -124,11 +118,11 @@ pub(in super::super) fn build_main_view<'a>(
             ))
             .size(SMALL_TEXT)
             .line_height(LINE_HEIGHT)
-            .vertical_alignment(Vertical::Center)
-            .horizontal_alignment(Horizontal::Left),
+            .align_y(Vertical::Center)
+            .align_x(Horizontal::Left),
         )
         .padding(PADDING)
-        .style(ButtonStyle::LightGray)
+        .style(light_gray_button)
         .height(Length::FillPortion(2))
         .width(Length::Fill)
         .on_press(Message::ShowGameDetails)
@@ -137,11 +131,11 @@ pub(in super::super) fn build_main_view<'a>(
             text(config_string_game_num(snapshot, using_uwhportal, games).0)
                 .size(SMALL_TEXT)
                 .line_height(LINE_HEIGHT)
-                .vertical_alignment(Vertical::Center)
-                .horizontal_alignment(Horizontal::Left),
+                .align_y(Vertical::Center)
+                .align_x(Horizontal::Left),
         )
         .padding(PADDING)
-        .style(ButtonStyle::LightGray)
+        .style(light_gray_button)
         .width(Length::Fill)
         .on_press(Message::ShowGameDetails)
     });
@@ -152,25 +146,20 @@ pub(in super::super) fn build_main_view<'a>(
                 column![
                     text(fl!("warnings"))
                         .line_height(LINE_HEIGHT)
-                        .vertical_alignment(Vertical::Top)
-                        .horizontal_alignment(Horizontal::Center)
+                        .align_y(Vertical::Top)
+                        .align_x(Horizontal::Center)
                         .width(Length::Fill),
-                    row(snapshot
-                        .warnings
-                        .iter()
-                        .map(|(color, warns)| column(
-                            warns
-                                .iter()
-                                .rev()
-                                .take(10)
-                                .map(|warning| make_warning_container(warning, Some(color)).into())
-                                .collect()
-                        )
-                        .spacing(1)
-                        .width(Length::Fill)
-                        .height(Length::Fill)
-                        .into())
-                        .collect())
+                    row(snapshot.warnings.iter().map(|(color, warns)| column(
+                        warns
+                            .iter()
+                            .rev()
+                            .take(10)
+                            .map(|warning| make_warning_container(warning, Some(color)).into())
+                    )
+                    .spacing(1)
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .into()))
                     .spacing(SPACING),
                 ]
                 .spacing(0)
@@ -180,7 +169,7 @@ pub(in super::super) fn build_main_view<'a>(
             .width(Length::Fill)
             .height(Length::Fill)
             .on_press(Message::NoAction)
-            .style(ButtonStyle::LightGray)
+            .style(light_gray_button)
             .on_press(Message::ShowWarnings),
         )
     }
@@ -208,11 +197,11 @@ pub(in super::super) fn build_main_view<'a>(
         };
 
         let button_style = if make_penalties_red {
-            ButtonStyle::Red
+            red_button
         } else {
             match color {
-                GameColor::Black => ButtonStyle::Black,
-                GameColor::White => ButtonStyle::White,
+                GameColor::Black => black_button,
+                GameColor::White => white_button,
             }
         };
 
@@ -220,13 +209,13 @@ pub(in super::super) fn build_main_view<'a>(
             column![
                 text(fl!("penalties"))
                     .line_height(LINE_HEIGHT)
-                    .vertical_alignment(Vertical::Center)
-                    .horizontal_alignment(Horizontal::Center)
+                    .align_y(Vertical::Center)
+                    .align_x(Horizontal::Center)
                     .width(Length::Fill),
                 text(penalty_string(penalties))
                     .line_height(LINE_HEIGHT)
-                    .vertical_alignment(Vertical::Top)
-                    .horizontal_alignment(Horizontal::Left)
+                    .align_y(Vertical::Top)
+                    .align_x(Horizontal::Left)
                     .width(Length::Fill)
                     .height(Length::Fill),
             ]
@@ -248,17 +237,17 @@ pub(in super::super) fn build_main_view<'a>(
                 .size(LARGE_TEXT)
                 .line_height(LINE_HEIGHT),
         ]
-        .align_items(Alignment::Center)
+        .align_x(Alignment::Center)
         .width(Length::Fill),
     )
     .padding(PADDING)
     .width(Length::Fill)
     .height(Length::Fixed(MIN_BUTTON_SIZE + SMALL_PLUS_TEXT + PADDING))
-    .style(ButtonStyle::Black);
+    .style(black_button);
 
     let mut black_new_score_btn =
         make_multi_label_button((fl!("dark-score-line-1"), fl!("dark-score-line-2")))
-            .style(ButtonStyle::Black);
+            .style(black_button);
 
     let mut white_score_btn = button(
         column![
@@ -267,17 +256,17 @@ pub(in super::super) fn build_main_view<'a>(
                 .size(LARGE_TEXT)
                 .line_height(LINE_HEIGHT),
         ]
-        .align_items(Alignment::Center)
+        .align_x(Alignment::Center)
         .width(Length::Fill),
     )
     .padding(PADDING)
     .width(Length::Fill)
     .height(Length::Fixed(MIN_BUTTON_SIZE + SMALL_PLUS_TEXT + PADDING))
-    .style(ButtonStyle::White);
+    .style(white_button);
 
     let mut white_new_score_btn =
         make_multi_label_button((fl!("light-score-line-1"), fl!("light-score-line-2")))
-            .style(ButtonStyle::White);
+            .style(white_button);
 
     if snapshot.current_period != GamePeriod::BetweenGames {
         black_score_btn = black_score_btn.on_press(Message::EditScores);
@@ -292,7 +281,7 @@ pub(in super::super) fn build_main_view<'a>(
         make_penalty_button(snapshot, GameColor::Black),
     ]
     .spacing(SPACING)
-    .align_items(Alignment::Center)
+    .align_x(Alignment::Center)
     .width(Length::Fill);
 
     let white_col = column![
@@ -301,25 +290,25 @@ pub(in super::super) fn build_main_view<'a>(
         make_penalty_button(snapshot, GameColor::White),
     ]
     .spacing(SPACING)
-    .align_items(Alignment::Center)
+    .align_x(Alignment::Center)
     .width(Length::Fill);
 
     row![
         row![
             black_col,
-            horizontal_space(Length::Fixed(3.0 * SPACING / 4.0)),
+            Space::with_width(Length::Fixed(3.0 * SPACING / 4.0)),
         ]
         .width(Length::Fill)
         .spacing(0),
         row![
-            horizontal_space(Length::Fixed(SPACING / 4.0)),
+            Space::with_width(Length::Fixed(SPACING / 4.0)),
             center_col,
-            horizontal_space(Length::Fixed(SPACING / 4.0)),
+            Space::with_width(Length::Fixed(SPACING / 4.0)),
         ]
         .width(Length::FillPortion(2))
         .spacing(0),
         row![
-            horizontal_space(Length::Fixed(3.0 * SPACING / 4.0)),
+            Space::with_width(Length::Fixed(3.0 * SPACING / 4.0)),
             white_col,
         ]
         .width(Length::Fill)

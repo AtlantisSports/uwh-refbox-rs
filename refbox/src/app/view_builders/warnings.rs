@@ -1,16 +1,9 @@
-use super::{
-    style::{
-        ButtonStyle, Container, ContainerStyle, Element, LINE_HEIGHT, MIN_BUTTON_SIZE, PADDING,
-        SPACING,
-    },
-    *,
-};
-use crate::app::style::TextStyle;
+use super::*;
 use collect_array::CollectArrayResult;
 use iced::{
-    Length,
+    Element, Length,
     alignment::{Horizontal, Vertical},
-    widget::{button, column, horizontal_space, row, text},
+    widget::{Container, Space, button, column, row, text},
 };
 
 use uwh_common::color::Color as GameColor;
@@ -45,11 +38,11 @@ pub(in super::super) fn build_warning_overview_page<'a>(
         .height(Length::Fill),
         row![
             make_button(fl!("cancel"))
-                .style(ButtonStyle::Red)
+                .style(red_button)
                 .width(Length::Fill)
                 .on_press(Message::WarningOverviewComplete { canceled: true }),
             make_button(fl!("new"))
-                .style(ButtonStyle::Blue)
+                .style(blue_button)
                 .width(Length::Fill)
                 .on_press(Message::KeypadPage(KeypadPage::WarningAdd {
                     origin: None,
@@ -59,7 +52,7 @@ pub(in super::super) fn build_warning_overview_page<'a>(
                     ret_to_overview: true,
                 })),
             make_button(fl!("done"))
-                .style(ButtonStyle::Green)
+                .style(green_button)
                 .width(Length::Fill)
                 .on_press(Message::WarningOverviewComplete { canceled: false }),
         ]
@@ -86,8 +79,8 @@ fn make_warning_list<'a>(
         .line_height(LINE_HEIGHT)
         .height(Length::Fill)
         .width(Length::Fill)
-        .horizontal_alignment(Horizontal::Center)
-        .vertical_alignment(Vertical::Center);
+        .align_x(Horizontal::Center)
+        .align_y(Vertical::Center);
 
     let num_pens = warnings.len();
 
@@ -111,22 +104,22 @@ fn make_warning_list<'a>(
 
                 let mut text = text(printable)
                     .line_height(LINE_HEIGHT)
-                    .vertical_alignment(Vertical::Center)
-                    .horizontal_alignment(Horizontal::Left)
+                    .align_y(Vertical::Center)
+                    .align_x(Horizontal::Left)
                     .width(Length::Fill);
 
                 match details.format_hint {
                     FormatHint::NoChange => {}
-                    FormatHint::Edited => text = text.style(TextStyle::Orange),
-                    FormatHint::Deleted => text = text.style(TextStyle::Red),
-                    FormatHint::New => text = text.style(TextStyle::Green),
+                    FormatHint::Edited => text = text.style(orange_text),
+                    FormatHint::Deleted => text = text.style(red_text),
+                    FormatHint::New => text = text.style(green_text),
                 }
 
                 button(text)
                     .padding(PADDING)
                     .height(Length::Fixed(MIN_BUTTON_SIZE))
                     .width(Length::Fill)
-                    .style(ButtonStyle::Gray)
+                    .style(gray_button)
                     .on_press(Message::KeypadPage(KeypadPage::WarningAdd {
                         origin: Some((color, i)),
                         color,
@@ -136,10 +129,10 @@ fn make_warning_list<'a>(
                     }))
                     .into()
             } else {
-                button(horizontal_space(Length::Shrink))
+                button(Space::with_width(Length::Shrink))
                     .height(Length::Fixed(MIN_BUTTON_SIZE))
                     .width(Length::Fill)
-                    .style(ButtonStyle::Gray)
+                    .style(gray_button)
                     .on_press(Message::KeypadPage(KeypadPage::WarningAdd {
                         origin: None,
                         color,
@@ -153,8 +146,8 @@ fn make_warning_list<'a>(
         .collect();
 
     let cont_style = match color {
-        GameColor::Black => ContainerStyle::Black,
-        GameColor::White => ContainerStyle::White,
+        GameColor::Black => black_container,
+        GameColor::White => white_container,
     };
 
     let scroll_option = match color {

@@ -1,8 +1,14 @@
-use super::{style::Element, *};
+use super::*;
 use iced::{
-    Length,
-    widget::{column, row, vertical_space},
+    Length, Theme,
+    widget::{
+        Space,
+        button::{Status, Style},
+        column, row, vertical_space,
+    },
 };
+
+type StyleFn = fn(&Theme, Status) -> Style;
 
 use uwh_common::color::Color as GameColor;
 
@@ -12,27 +18,15 @@ pub(super) fn make_foul_add_page<'a>(
     foul: Infraction,
     ret_to_overview: bool,
 ) -> Element<'a, Message> {
-    let (black_style, white_style, equal_style) = match color {
-        Some(GameColor::Black) => (
-            ButtonStyle::BlackSelected,
-            ButtonStyle::White,
-            ButtonStyle::Blue,
-        ),
-        Some(GameColor::White) => (
-            ButtonStyle::Black,
-            ButtonStyle::WhiteSelected,
-            ButtonStyle::Blue,
-        ),
-        None => (
-            ButtonStyle::Black,
-            ButtonStyle::White,
-            ButtonStyle::BlueSelected,
-        ),
+    let (black_style, white_style, equal_style): (StyleFn, StyleFn, StyleFn) = match color {
+        Some(GameColor::Black) => (black_selected_button, white_button, blue_button),
+        Some(GameColor::White) => (black_button, white_selected_button, blue_button),
+        None => (black_button, white_button, blue_selected_button),
     };
 
     let mut exit_row = row![
         make_button(fl!("cancel"))
-            .style(ButtonStyle::Red)
+            .style(red_button)
             .width(Length::Fill)
             .on_press(Message::FoulEditComplete {
                 canceled: true,
@@ -45,7 +39,7 @@ pub(super) fn make_foul_add_page<'a>(
     if origin.is_some() {
         exit_row = exit_row.push(
             make_button(fl!("delete"))
-                .style(ButtonStyle::Orange)
+                .style(orange_button)
                 .width(Length::Fill)
                 .on_press(Message::FoulEditComplete {
                     canceled: false,
@@ -57,7 +51,7 @@ pub(super) fn make_foul_add_page<'a>(
 
     exit_row = exit_row.push(
         make_button(fl!("done"))
-            .style(ButtonStyle::Green)
+            .style(green_button)
             .width(Length::Fill)
             .on_press(Message::FoulEditComplete {
                 canceled: false,
@@ -81,9 +75,9 @@ pub(super) fn make_foul_add_page<'a>(
                 .on_press(Message::ChangeColor(Some(GameColor::White))),
         ]
         .spacing(SPACING),
-        vertical_space(Length::Fixed(SPACING)),
+        Space::with_height(SPACING),
         make_penalty_dropdown(foul, true),
-        vertical_space(Length::Fill),
+        vertical_space(),
         exit_row,
     ]
     .into()

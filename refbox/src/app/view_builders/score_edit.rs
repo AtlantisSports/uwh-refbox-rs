@@ -1,14 +1,9 @@
-use super::{
-    style::{ButtonStyle, ContainerStyle, Element, LARGE_TEXT, LINE_HEIGHT, PADDING, SPACING},
-    *,
-};
-
+use super::*;
 use iced::{
-    Alignment, Length,
+    Alignment, Element, Length,
     alignment::Horizontal,
     widget::{column, container, horizontal_space, row, text, vertical_space},
 };
-
 use uwh_common::color::Color as GameColor;
 
 pub(in super::super) fn build_score_edit_view<'a>(
@@ -33,13 +28,13 @@ pub(in super::super) fn build_score_edit_view<'a>(
         row![
             column![
                 make_small_button("+", LARGE_TEXT)
-                    .style(ButtonStyle::Blue)
+                    .style(blue_button)
                     .on_press(Message::ChangeScore {
                         color: GameColor::Black,
                         increase: true,
                     }),
                 make_small_button("-", LARGE_TEXT)
-                    .style(ButtonStyle::Blue)
+                    .style(blue_button)
                     .on_press(Message::ChangeScore {
                         color: GameColor::Black,
                         increase: false,
@@ -54,14 +49,14 @@ pub(in super::super) fn build_score_edit_view<'a>(
             ]
             .spacing(SPACING)
             .width(Length::Fill)
-            .align_items(Alignment::Center),
+            .align_x(Alignment::Center),
         ]
         .spacing(SPACING)
-        .align_items(Alignment::Center),
+        .align_y(Alignment::Center),
     )
     .padding(PADDING)
     .width(Length::FillPortion(2))
-    .style(ContainerStyle::Black);
+    .style(black_container);
 
     let white_edit = container(
         row![
@@ -73,16 +68,16 @@ pub(in super::super) fn build_score_edit_view<'a>(
             ]
             .spacing(SPACING)
             .width(Length::Fill)
-            .align_items(Alignment::Center),
+            .align_x(Alignment::Center),
             column![
                 make_small_button("+", LARGE_TEXT)
-                    .style(ButtonStyle::Blue)
+                    .style(blue_button)
                     .on_press(Message::ChangeScore {
                         color: GameColor::White,
                         increase: true,
                     }),
                 make_small_button("-", LARGE_TEXT)
-                    .style(ButtonStyle::Blue)
+                    .style(blue_button)
                     .on_press(Message::ChangeScore {
                         color: GameColor::White,
                         increase: false,
@@ -91,15 +86,15 @@ pub(in super::super) fn build_score_edit_view<'a>(
             .spacing(SPACING),
         ]
         .spacing(SPACING)
-        .align_items(Alignment::Center),
+        .align_y(Alignment::Center),
     )
     .padding(PADDING)
     .width(Length::FillPortion(2))
-    .style(ContainerStyle::White);
+    .style(white_container);
 
     let mut main_col = column![
         make_game_time_button(snapshot, false, is_confirmation, mode, clock_running),
-        vertical_space(Length::Fill)
+        vertical_space()
     ]
     .spacing(SPACING)
     .height(Length::Fill);
@@ -109,30 +104,30 @@ pub(in super::super) fn build_score_edit_view<'a>(
             .push(
                 text(fl!("final-score"))
                     .line_height(LINE_HEIGHT)
-                    .horizontal_alignment(Horizontal::Center)
+                    .align_x(Horizontal::Center)
                     .width(Length::Fill),
             )
-            .push(vertical_space(Length::Fill));
+            .push(vertical_space());
     }
 
     main_col
         .push(
             row![
-                horizontal_space(Length::Fill),
+                horizontal_space(),
                 black_edit,
-                horizontal_space(Length::Fill),
+                horizontal_space(),
                 white_edit,
-                horizontal_space(Length::Fill)
+                horizontal_space()
             ]
             .spacing(SPACING),
         )
-        .push(vertical_space(Length::Fill))
+        .push(vertical_space())
         .push(
             row![
-                make_message_button(fl!("cancel"), cancel_btn_msg).style(ButtonStyle::Red),
-                horizontal_space(Length::Fill),
+                make_message_button(fl!("cancel"), cancel_btn_msg).style(red_button),
+                horizontal_space(),
                 make_button(fl!("done"))
-                    .style(ButtonStyle::Green)
+                    .style(green_button)
                     .on_press(Message::ScoreEditComplete { canceled: false }),
             ]
             .spacing(SPACING),

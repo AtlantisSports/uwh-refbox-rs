@@ -1,15 +1,14 @@
 use super::{
-    style::{
-        Button, ButtonStyle, ContainerStyle, Element, LARGE_TEXT, LINE_HEIGHT, MEDIUM_TEXT,
-        MIN_BUTTON_SIZE, PADDING, SPACING, SvgStyle,
-    },
+    theme::{LARGE_TEXT, LINE_HEIGHT, MEDIUM_TEXT, MIN_BUTTON_SIZE, PADDING, SPACING},
     *,
 };
 use iced::{
     Alignment, Length,
     alignment::{Horizontal, Vertical},
     widget::{
-        button, column, container, row,
+        button,
+        button::Button,
+        column, container, row,
         svg::{self, Svg},
         text,
     },
@@ -59,7 +58,7 @@ pub(in super::super) fn build_keypad_page<'a>(
             } else {
                 button
             };
-            button.style(ButtonStyle::Blue)
+            button.style(blue_button)
         };
 
     let text_displayed = match page {
@@ -89,6 +88,12 @@ pub(in super::super) fn build_keypad_page<'a>(
         | KeypadPage::TeamTimeouts(_, _) => player_num.to_string(),
     };
 
+    let text_size = if text_displayed == "TEAM" {
+        MEDIUM_TEXT
+    } else {
+        LARGE_TEXT
+    };
+
     column![
         make_game_time_button(snapshot, false, false, mode, clock_running),
         row![
@@ -97,20 +102,16 @@ pub(in super::super) fn build_keypad_page<'a>(
                     row![
                         text(page.text())
                             .line_height(LINE_HEIGHT)
-                            .horizontal_alignment(Horizontal::Left)
-                            .vertical_alignment(Vertical::Center),
-                        text(&text_displayed)
-                            .size(if text_displayed == "TEAM" {
-                                MEDIUM_TEXT
-                            } else {
-                                LARGE_TEXT
-                            })
+                            .align_x(Horizontal::Left)
+                            .align_y(Vertical::Center),
+                        text(text_displayed)
+                            .size(text_size)
                             .line_height(LINE_HEIGHT)
                             .width(Length::Fill)
-                            .horizontal_alignment(Horizontal::Right)
-                            .vertical_alignment(Vertical::Center),
+                            .align_x(Horizontal::Right)
+                            .align_y(Vertical::Center),
                     ]
-                    .align_items(Alignment::Center)
+                    .align_y(Alignment::Center)
                     .height(Length::Fill)
                     .width(Length::Fixed(3.0 * MIN_BUTTON_SIZE + 2.0 * SPACING)),
                     row![
@@ -169,18 +170,11 @@ pub(in super::super) fn build_keypad_page<'a>(
                                     Svg::new(svg::Handle::from_memory(
                                         &include_bytes!("../../../../resources/backspace.svg")[..],
                                     ))
-                                    .style(if enabled {
-                                        SvgStyle::White
-                                    } else {
-                                        SvgStyle::Disabled
-                                    })
+                                    .style(if enabled { white_svg } else { disabled_svg })
                                     .height(Length::Fixed(MEDIUM_TEXT * 1.2)),
                                 )
-                                .width(Length::Fill)
-                                .height(Length::Fill)
-                                .style(ContainerStyle::Transparent)
-                                .center_x()
-                                .center_y(),
+                                .style(transparent_container)
+                                .center(Length::Fill),
                             )
                             .width(Length::Fixed(2.0 * MIN_BUTTON_SIZE + SPACING))
                             .height(Length::Fixed(MIN_BUTTON_SIZE)),
@@ -192,9 +186,9 @@ pub(in super::super) fn build_keypad_page<'a>(
                 .spacing(SPACING),
             )
             .style(if enabled {
-                ContainerStyle::LightGray
+                light_gray_container
             } else {
-                ContainerStyle::Disabled
+                disabled_container
             })
             .padding(PADDING),
             match page {

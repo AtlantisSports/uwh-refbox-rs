@@ -1,17 +1,9 @@
-use super::{
-    ViewData, fl,
-    message::*,
-    shared_elements::*,
-    style::{
-        ButtonStyle, ContainerStyle, Element, LINE_HEIGHT, MEDIUM_TEXT, MIN_BUTTON_SIZE, PADDING,
-        SMALL_TEXT, SPACING,
-    },
-};
+use super::{ViewData, fl, message::*, shared_elements::*, theme::*};
 use crate::config::Mode;
 use crate::sound_controller::*;
 use collect_array::CollectArrayResult;
 use iced::{
-    Alignment, Length,
+    Alignment, Element, Length,
     alignment::{Horizontal, Vertical},
     widget::{TextInput, button, column, container, horizontal_space, row, text, vertical_space},
 };
@@ -221,12 +213,12 @@ fn make_main_config_page<'a>(
                 fl!("game-options"),
                 Some(Message::ChangeConfigPage(ConfigPage::Game)),
             )
-            .style(ButtonStyle::LightGray),
+            .style(light_gray_button),
             make_message_button(
                 fl!("app-options"),
                 Some(Message::ChangeConfigPage(ConfigPage::App)),
             )
-            .style(ButtonStyle::LightGray),
+            .style(light_gray_button),
         ]
         .spacing(SPACING)
         .width(Length::Fill)
@@ -236,25 +228,25 @@ fn make_main_config_page<'a>(
                 fl!("display-options"),
                 Some(Message::ChangeConfigPage(ConfigPage::Display)),
             )
-            .style(ButtonStyle::LightGray),
+            .style(light_gray_button),
             make_message_button(
                 fl!("sound-options"),
                 Some(Message::ChangeConfigPage(ConfigPage::Sound)),
             )
-            .style(ButtonStyle::LightGray),
+            .style(light_gray_button),
         ]
         .spacing(SPACING)
         .width(Length::Fill)
         .height(Length::Fill),
-        vertical_space(Length::Fill),
+        vertical_space(),
         row![
             make_button(fl!("cancel"))
-                .style(ButtonStyle::Red)
+                .style(red_button)
                 .width(Length::Fill)
                 .on_press(Message::ConfigEditComplete { canceled: true }),
-            horizontal_space(Length::Fill),
+            horizontal_space(),
             make_button(fl!("done"))
-                .style(ButtonStyle::Green)
+                .style(green_button)
                 .width(Length::Fill)
                 .on_press(Message::ConfigEditComplete { canceled: false }),
         ]
@@ -335,23 +327,21 @@ fn make_event_config_page<'a>(
                 None => "CHECKING...",
             };
             let style = match auth {
-                Some(true) => ContainerStyle::Green,
-                Some(false) => ContainerStyle::Red,
-                None => ContainerStyle::Gray,
+                Some(true) => green_container,
+                Some(false) => red_container,
+                None => gray_container,
             };
             container(txt)
-                .center_x()
-                .center_y()
-                .width(Length::Fill)
-                .height(Length::Fill)
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
                 .style(style)
         };
 
         let uwhportal_auth_text = text("UWHPORTAL TOKEN:")
             .size(MEDIUM_TEXT)
             .line_height(LINE_HEIGHT)
-            .vertical_alignment(Vertical::Center)
-            .horizontal_alignment(Horizontal::Right)
+            .align_y(Vertical::Center)
+            .align_x(Horizontal::Right)
             .width(Length::Fill)
             .height(Length::Fill);
 
@@ -377,7 +367,7 @@ fn make_event_config_page<'a>(
         .height(Length::Fixed(MIN_BUTTON_SIZE))
         .width(Length::Fill)
         .padding(0)
-        .style(ButtonStyle::LightGray)
+        .style(light_gray_button)
         .on_press(auth_btn_msg);
 
         [
@@ -389,10 +379,10 @@ fn make_event_config_page<'a>(
                 .into(),
             auth_state_button.into(),
             row![
-                horizontal_space(Length::Fill),
-                horizontal_space(Length::Fill),
+                horizontal_space(),
+                horizontal_space(),
                 make_button(fl!("done"))
-                    .style(ButtonStyle::Green)
+                    .style(green_button)
                     .width(Length::Fill)
                     .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
             ]
@@ -520,7 +510,7 @@ fn make_event_config_page<'a>(
                     },
                 ),
                 make_button(fl!("done"))
-                    .style(ButtonStyle::Green)
+                    .style(green_button)
                     .width(Length::Fill)
                     .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
             ]
@@ -540,7 +530,7 @@ fn make_event_config_page<'a>(
                 Some(Message::ToggleBoolParameter(BoolGameParameter::SingleHalf)),
             ),
             make_button("")
-                .style(ButtonStyle::LightGray)
+                .style(light_gray_button)
                 .on_press(Message::NoAction),
             make_value_button(
                 fl!("using-uwh-portal"),
@@ -617,13 +607,13 @@ fn make_app_config_page<'a>(
         ]
         .spacing(SPACING)
         .height(Length::Fill),
-        vertical_space(Length::Fill),
-        vertical_space(Length::Fill),
+        vertical_space(),
+        vertical_space(),
         row![
-            horizontal_space(Length::Fill),
-            horizontal_space(Length::Fill),
+            horizontal_space(),
+            horizontal_space(),
             make_button(fl!("done"))
-                .style(ButtonStyle::Green)
+                .style(green_button)
                 .width(Length::Fill)
                 .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
         ]
@@ -649,23 +639,19 @@ fn make_display_config_page<'a>(
     } = settings;
 
     let white = container(text(fl!("light-team-name-caps")))
-        .center_x()
-        .center_y()
-        .width(Length::FillPortion(2))
-        .height(Length::Fill)
-        .style(ContainerStyle::White);
+        .center_x(Length::FillPortion(2))
+        .center_y(Length::Fill)
+        .style(white_container);
     let black = container(text(fl!("dark-team-name-caps")))
-        .center_x()
-        .center_y()
-        .width(Length::FillPortion(2))
-        .height(Length::Fill)
-        .style(ContainerStyle::Black);
+        .center_x(Length::FillPortion(2))
+        .center_y(Length::Fill)
+        .style(black_container);
 
     let center = text(fl!("starting-sides"))
         .size(MEDIUM_TEXT)
         .line_height(LINE_HEIGHT)
-        .vertical_alignment(Vertical::Center)
-        .horizontal_alignment(Horizontal::Center)
+        .align_y(Vertical::Center)
+        .align_x(Horizontal::Center)
         .width(Length::FillPortion(3));
 
     // `white_on_right` is based on the view from the front of the panels, so for the ref's point
@@ -682,7 +668,7 @@ fn make_display_config_page<'a>(
         .height(Length::Fixed(MIN_BUTTON_SIZE))
         .width(Length::Fill)
         .padding(0)
-        .style(ButtonStyle::LightGray)
+        .style(light_gray_button)
         .on_press(Message::ToggleBoolParameter(
             BoolGameParameter::WhiteOnRight,
         ));
@@ -705,12 +691,12 @@ fn make_display_config_page<'a>(
             )
         ]
         .spacing(SPACING),
-        vertical_space(Length::Fill),
+        vertical_space(),
         row![
-            horizontal_space(Length::Fill),
-            horizontal_space(Length::Fill),
+            horizontal_space(),
+            horizontal_space(),
             make_button(fl!("done"))
-                .style(ButtonStyle::Green)
+                .style(green_button)
                 .width(Length::Fill)
                 .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
         ]
@@ -754,7 +740,7 @@ fn make_sound_config_page<'a>(
                 fl!("manage-remotes"),
                 Some(Message::ChangeConfigPage(ConfigPage::Remotes(0, false))),
             )
-            .style(ButtonStyle::LightGray),
+            .style(light_gray_button),
         ]
         .spacing(SPACING),
         row![
@@ -829,12 +815,12 @@ fn make_sound_config_page<'a>(
             )
         ]
         .spacing(SPACING),
-        vertical_space(Length::Fill),
+        vertical_space(),
         row![
-            horizontal_space(Length::Fill),
-            horizontal_space(Length::Fill),
+            horizontal_space(),
+            horizontal_space(),
             make_button(fl!("done"))
-                .style(ButtonStyle::Green)
+                .style(green_button)
                 .width(Length::Fill)
                 .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
         ]
@@ -859,8 +845,8 @@ fn make_remote_config_page<'a>(
         .line_height(LINE_HEIGHT)
         .height(Length::Fill)
         .width(Length::Fill)
-        .horizontal_alignment(Horizontal::Center)
-        .vertical_alignment(Vertical::Center);
+        .align_x(Horizontal::Center)
+        .align_y(Vertical::Center);
 
     let buttons: CollectArrayResult<_, REMOTES_LIST_LEN> = settings
         .sound
@@ -885,8 +871,8 @@ fn make_remote_config_page<'a>(
                         text(format!("ID: {:05X}", rem_info.id))
                             .size(MEDIUM_TEXT)
                             .line_height(LINE_HEIGHT)
-                            .vertical_alignment(Vertical::Center)
-                            .horizontal_alignment(Horizontal::Center)
+                            .align_y(Vertical::Center)
+                            .align_x(Horizontal::Center)
                             .height(Length::Fill)
                             .width(Length::Fill),
                         make_message_button(
@@ -897,24 +883,24 @@ fn make_remote_config_page<'a>(
                         )
                         .width(Length::Fixed(275.0))
                         .height(Length::Fixed(MIN_BUTTON_SIZE - (2.0 * PADDING)))
-                        .style(ButtonStyle::Yellow),
+                        .style(yellow_button),
                         make_message_button(fl!("delete"), Some(Message::DeleteRemote(idx)))
                             .width(Length::Fixed(130.0))
                             .height(Length::Fixed(MIN_BUTTON_SIZE - (2.0 * PADDING)))
-                            .style(ButtonStyle::Red),
+                            .style(red_button),
                     ]
                     .padding(PADDING)
                     .spacing(SPACING),
                 )
                 .width(Length::Fill)
                 .height(Length::Fixed(MIN_BUTTON_SIZE))
-                .style(ContainerStyle::Gray)
+                .style(gray_container)
                 .into()
             } else {
-                container(horizontal_space(Length::Fill))
+                container(horizontal_space())
                     .width(Length::Fill)
                     .height(Length::Fixed(MIN_BUTTON_SIZE))
-                    .style(ContainerStyle::Disabled)
+                    .style(disabled_container)
                     .into()
             }
         })
@@ -925,7 +911,7 @@ fn make_remote_config_page<'a>(
     } else {
         make_message_button(fl!("add"), Some(Message::RequestRemoteId))
     }
-    .style(ButtonStyle::Orange);
+    .style(orange_button);
 
     column![
         make_game_time_button(snapshot, false, false, mode, clock_running),
@@ -936,18 +922,18 @@ fn make_remote_config_page<'a>(
                 index,
                 title,
                 ScrollOption::GameParameter,
-                ContainerStyle::LightGray,
+                light_gray_container,
             )
             .height(Length::Fill)
             .width(Length::FillPortion(5)),
             column![
-                vertical_space(Length::Fill),
+                vertical_space(),
                 add_btn,
                 make_message_button(
                     fl!("done"),
                     Some(Message::ChangeConfigPage(ConfigPage::Sound)),
                 )
-                .style(ButtonStyle::Green),
+                .style(green_button),
             ]
             .spacing(SPACING)
             .height(Length::Fill)
@@ -978,24 +964,25 @@ fn make_credential_config_page<'a>(
             text("UWHPORTAL TOKEN:")
                 .size(MEDIUM_TEXT)
                 .line_height(LINE_HEIGHT)
-                .vertical_alignment(Vertical::Center)
+                .align_y(Vertical::Center)
                 .height(Length::Fill),
             TextInput::new("", uwhportal_token,)
                 .on_input(|s| Message::TextParameterChanged(TextParameter::UwhportalToken, s))
-                .password()
+                .secure(true)
+                .style(text_input_style)
                 .width(Length::Fill)
         ]
         .spacing(SPACING)
         .height(Length::Fill),
-        vertical_space(Length::Fill),
+        vertical_space(),
         row![
             make_button("CANCEL")
-                .style(ButtonStyle::Red)
+                .style(red_button)
                 .width(Length::Fill)
                 .on_press(Message::ChangeConfigPage(ConfigPage::Game)),
-            horizontal_space(Length::Fill),
+            horizontal_space(),
             make_button("DONE")
-                .style(ButtonStyle::Green)
+                .style(green_button)
                 .width(Length::Fill)
                 .on_press(Message::ApplyAuthChanges),
         ]
@@ -1039,29 +1026,29 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
 
     column![
         make_game_time_button(snapshot, false, false, mode, clock_running),
-        vertical_space(Length::Fill),
+        vertical_space(),
         make_time_editor(title, length, false),
-        vertical_space(Length::Fill),
+        vertical_space(),
         text(fl!("help") + &hint)
             .size(SMALL_TEXT)
             .line_height(LINE_HEIGHT)
-            .horizontal_alignment(Horizontal::Center),
-        vertical_space(Length::Fill),
+            .align_x(Horizontal::Center),
+        vertical_space(),
         row![
             make_button(fl!("cancel"))
-                .style(ButtonStyle::Red)
+                .style(red_button)
                 .width(Length::Fill)
                 .on_press(Message::ParameterEditComplete { canceled: true }),
-            horizontal_space(Length::Fill),
+            horizontal_space(),
             make_button(fl!("done"))
-                .style(ButtonStyle::Green)
+                .style(green_button)
                 .width(Length::Fill)
                 .on_press(Message::ParameterEditComplete { canceled: false }),
         ]
         .spacing(SPACING),
     ]
     .spacing(SPACING)
-    .align_items(Alignment::Center)
+    .align_x(Alignment::Center)
     .width(Length::Fill)
     .height(Length::Fill)
     .into()

@@ -103,7 +103,10 @@ pub(in super::super) fn build_main_view<'a>(
         }
     };
 
-    center_col = center_col.push(
+    let num_warns_b = snapshot.b_warnings.len();
+    let num_warns_w = snapshot.w_warnings.len();
+
+    center_col = center_col.push(if num_warns_b | num_warns_w < 4 {
         button(
             text(config_string(
                 snapshot,
@@ -119,10 +122,22 @@ pub(in super::super) fn build_main_view<'a>(
         )
         .padding(PADDING)
         .style(ButtonStyle::LightGray)
-        .width(Length::Fill)
         .height(Length::FillPortion(2))
-        .on_press(Message::ShowGameDetails),
-    );
+        .width(Length::Fill)
+        .on_press(Message::ShowGameDetails)
+    } else {
+        button(
+            text(config_string_game_num(snapshot, using_uwhscores, games))
+                .size(SMALL_TEXT)
+                .line_height(LINE_HEIGHT)
+                .vertical_alignment(Vertical::Center)
+                .horizontal_alignment(Horizontal::Left),
+        )
+        .padding(PADDING)
+        .style(ButtonStyle::LightGray)
+        .width(Length::Fill)
+        .on_press(Message::ShowGameDetails)
+    });
 
     if config.track_fouls_and_warnings {
         center_col = center_col.push(
@@ -139,7 +154,7 @@ pub(in super::super) fn build_main_view<'a>(
                                 .b_warnings
                                 .iter()
                                 .rev()
-                                .take(3)
+                                .take(10)
                                 .map(|warning| make_warning_container(
                                     warning,
                                     Some(GameColor::Black)
@@ -155,7 +170,7 @@ pub(in super::super) fn build_main_view<'a>(
                                 .w_warnings
                                 .iter()
                                 .rev()
-                                .take(3)
+                                .take(10)
                                 .map(|warning| make_warning_container(
                                     warning,
                                     Some(GameColor::White)
@@ -174,7 +189,7 @@ pub(in super::super) fn build_main_view<'a>(
                 .height(Length::Fill),
             )
             .width(Length::Fill)
-            .height(Length::FillPortion(1))
+            .height(Length::Fill)
             .on_press(Message::NoAction)
             .style(ButtonStyle::LightGray)
             .on_press(Message::ShowWarnings),

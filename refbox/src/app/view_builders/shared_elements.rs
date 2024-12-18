@@ -904,7 +904,7 @@ pub(super) fn make_penalty_dropdown<'a>(
     });
 
     let name: Container<'_, Message> = container(
-        row![text(format!("Infraction: {}", infraction))]
+        row![text(infraction)]
             .spacing(0)
             .align_items(Alignment::Center),
     )

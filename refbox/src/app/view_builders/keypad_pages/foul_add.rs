@@ -80,7 +80,7 @@ pub(super) fn make_foul_add_page<'a>(
         ]
         .spacing(SPACING),
         vertical_space(Length::Fixed(SPACING)),
-        make_penalty_dropdown(foul),
+        make_penalty_dropdown(foul, true),
         vertical_space(Length::Fill),
         exit_row,
     ]

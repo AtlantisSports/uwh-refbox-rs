@@ -878,10 +878,7 @@ pub(super) fn make_value_button<'a, Message: 'a + Clone, T: ToString, U: ToStrin
     button
 }
 
-pub(super) fn make_penalty_dropdown<'a>(
-    infraction: Infraction,
-    display_infraction_name: bool,
-) -> Element<'a, Message> {
+pub(super) fn make_penalty_dropdown<'a>(infraction: Infraction) -> Element<'a, Message> {
     const ROW_LEN: usize = 6;
 
     let foul_buttons = all::<Infraction>().map(|button_infraction| {
@@ -903,14 +900,6 @@ pub(super) fn make_penalty_dropdown<'a>(
         .on_press(Message::ChangeInfraction(button_infraction))
     });
 
-    let name: Container<'_, Message> = container(
-        row![text(format!("Infraction: {}", infraction))]
-            .spacing(0)
-            .align_items(Alignment::Center),
-    )
-    .style(ContainerStyle::Blue)
-    .width(Length::Fill);
-
     let mut first_row = row![].spacing(SPACING);
     for button in foul_buttons.clone().take(ROW_LEN) {
         first_row = first_row.push(button);
@@ -920,23 +909,12 @@ pub(super) fn make_penalty_dropdown<'a>(
         second_row = second_row.push(button);
     }
 
-    let open_button_content = if display_infraction_name {
-        column![
-            name,
-            vertical_space(Length::Fixed(SPACING)),
-            first_row,
-            vertical_space(Length::Fixed(SPACING)),
-            second_row,
-        ]
-        .padding(0)
-    } else {
-        column![
-            first_row,
-            vertical_space(Length::Fixed(SPACING)),
-            second_row,
-        ]
-        .padding(0)
-    };
+    let open_button_content = column![
+        first_row,
+        vertical_space(Length::Fixed(SPACING)),
+        second_row,
+    ]
+    .padding(0);
 
     container(open_button_content)
         .padding(PADDING)

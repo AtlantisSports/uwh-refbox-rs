@@ -133,7 +133,7 @@ pub(super) fn make_penalty_edit_page<'a>(
     .spacing(SPACING);
 
     if config.track_fouls_and_warnings {
-        content = content.push(make_penalty_dropdown(infraction, false));
+        content = content.push(make_penalty_dropdown(infraction));
     } else {
         content = content.push(vertical_space(Length::Fill));
     }

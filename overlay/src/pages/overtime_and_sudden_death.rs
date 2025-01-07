@@ -78,7 +78,7 @@ impl PageRenderer {
                     675f32 + timeout_offset,
                     67f32,
                     TextParams {
-                        font: self.assets.font,
+                        font: Some(&self.assets.font),
                         font_size: 20,
                         color: Color {
                             a: timeout_alpha_offset,
@@ -87,7 +87,7 @@ impl PageRenderer {
                         ..Default::default()
                     },
                     TextParams {
-                        font: self.assets.font,
+                        font: Some(&self.assets.font),
                         font_size: 20,
                         color: Color {
                             a: timeout_alpha_offset,
@@ -101,7 +101,7 @@ impl PageRenderer {
                     680f32 + timeout_offset,
                     95f32,
                     TextParams {
-                        font: self.assets.font,
+                        font: Some(&self.assets.font),
                         font_size: 20,
                         color: Color {
                             a: timeout_alpha_offset,
@@ -110,7 +110,7 @@ impl PageRenderer {
                         ..Default::default()
                     },
                     TextParams {
-                        font: self.assets.font,
+                        font: Some(&self.assets.font),
                         font_size: 20,
                         color: Color {
                             a: timeout_alpha_offset,
@@ -132,7 +132,7 @@ impl PageRenderer {
                     675f32 + timeout_offset,
                     67f32,
                     TextParams {
-                        font: self.assets.font,
+                        font: Some(&self.assets.font),
                         font_size: 20,
                         color: Color {
                             a: timeout_alpha_offset,
@@ -141,7 +141,7 @@ impl PageRenderer {
                         ..Default::default()
                     },
                     TextParams {
-                        font: self.assets.font,
+                        font: Some(&self.assets.font),
                         font_size: 20,
                         color: Color {
                             a: timeout_alpha_offset,
@@ -155,7 +155,7 @@ impl PageRenderer {
                     690f32 + timeout_offset,
                     95f32,
                     TextParams {
-                        font: self.assets.font,
+                        font: Some(&self.assets.font),
                         font_size: 20,
                         color: Color {
                             a: timeout_alpha_offset,
@@ -164,7 +164,7 @@ impl PageRenderer {
                         ..Default::default()
                     },
                     TextParams {
-                        font: self.assets.font,
+                        font: Some(&self.assets.font),
                         font_size: 20,
                         color: Color {
                             a: timeout_alpha_offset,
@@ -186,13 +186,13 @@ impl PageRenderer {
             },
             64f32,
             TextParams {
-                font: self.assets.font,
+                font: Some(&self.assets.font),
                 font_size: 20,
                 color: BLACK, // don't fade out team name if flags aren't available
                 ..Default::default()
             },
             TextParams {
-                font: self.assets.font,
+                font: Some(&self.assets.font),
                 font_size: 20,
                 color: WHITE, // don't fade out team name if flags aren't available
                 ..Default::default()
@@ -207,7 +207,7 @@ impl PageRenderer {
             },
             100f32,
             TextParams {
-                font: self.assets.font,
+                font: Some(&self.assets.font),
                 font_size: 20,
                 color: WHITE,
                 ..Default::default()
@@ -230,13 +230,13 @@ impl PageRenderer {
                 format!("{secs}")
             }
         );
-        let (x_off, text) = fit_text(180f32, &text, 50, self.assets.font, Justify::Center);
+        let (x_off, text) = fit_text(180f32, &text, 50, &self.assets.font, Justify::Center);
         draw_text_ex(
             text.as_str(),
             430f32 + x_off,
             95f32,
             TextParams {
-                font: self.assets.font,
+                font: Some(&self.assets.font),
                 font_size: 50,
                 color: if [GamePeriod::SuddenDeath, GamePeriod::PreSuddenDeath]
                     .contains(&state.snapshot.current_period)
@@ -256,13 +256,13 @@ impl PageRenderer {
             GamePeriod::PreSuddenDeath => "PRE SUDDEN DEATH",
             _ => "PRE OVERTIME",
         };
-        let (x_off, text) = fit_text(200f32, ot_text, 20, self.assets.font, Justify::Center);
+        let (x_off, text) = fit_text(200f32, ot_text, 20, &self.assets.font, Justify::Center);
         draw_text_ex(
             text.as_str(),
             420f32 + x_off,
             45f32,
             TextParams {
-                font: self.assets.font,
+                font: Some(&self.assets.font),
                 font_size: 20,
                 color: if [GamePeriod::SuddenDeath, GamePeriod::PreSuddenDeath]
                     .contains(&state.snapshot.current_period)
@@ -304,7 +304,7 @@ impl PageRenderer {
             40f32,
             104f32,
             TextParams {
-                font: self.assets.font,
+                font: Some(&self.assets.font),
                 font_size: 30,
                 ..Default::default()
             }
@@ -314,13 +314,13 @@ impl PageRenderer {
             40f32,
             65f32,
             TextParams {
-                font: self.assets.font,
+                font: Some(&self.assets.font),
                 font_size: 30,
                 color: BLACK,
                 ..Default::default()
             },
             TextParams {
-                font: self.assets.font,
+                font: Some(&self.assets.font),
                 font_size: 30,
                 color: WHITE,
                 ..Default::default()

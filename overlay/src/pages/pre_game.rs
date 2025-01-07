@@ -100,13 +100,13 @@ impl PageRenderer {
                     format!("{secs}")
                 }
             );
-            let (x_off, text) = fit_text(180f32, &text, 50, self.assets.font, Justify::Center);
+            let (x_off, text) = fit_text(180f32, &text, 50, &self.assets.font, Justify::Center);
             draw_text_ex(
                 text.as_str(),
                 870f32 + x_off,
                 1020f32,
                 TextParams {
-                    font: self.assets.font,
+                    font: Some(&self.assets.font),
                     font_size: 50,
                     color: Color {
                         a: midfade_alpha,
@@ -120,7 +120,7 @@ impl PageRenderer {
                 905f32,
                 1044f32,
                 TextParams {
-                    font: self.assets.font,
+                    font: Some(&self.assets.font),
                     font_size: 20,
                     color: Color {
                         a: midfade_alpha,
@@ -146,7 +146,7 @@ impl PageRenderer {
             40f32,
             104f32,
             TextParams {
-                font: self.assets.font,
+                font: Some(&self.assets.font),
                 font_size: 30,
                 color: Color {
                     a: tandg_alpha,
@@ -160,7 +160,7 @@ impl PageRenderer {
             40f32,
             65f32,
             TextParams {
-                font: self.assets.font,
+                font: Some(&self.assets.font),
                 font_size: 30,
                 color: Color {
                     a: tandg_alpha,
@@ -169,7 +169,7 @@ impl PageRenderer {
                 ..Default::default()
             },
             TextParams {
-                font: self.assets.font,
+                font: Some(&self.assets.font),
                 font_size: 30,
                 color: Color {
                     a: tandg_alpha,
@@ -188,7 +188,7 @@ impl PageRenderer {
             },
             64f32,
             TextParams {
-                font: self.assets.font,
+                font: Some(&self.assets.font),
                 font_size: 20,
                 color: Color {
                     a: tandg_alpha,
@@ -197,7 +197,7 @@ impl PageRenderer {
                 ..Default::default()
             },
             TextParams {
-                font: self.assets.font,
+                font: Some(&self.assets.font),
                 font_size: 20,
                 color: Color {
                     a: tandg_alpha,
@@ -215,7 +215,7 @@ impl PageRenderer {
             },
             100f32,
             TextParams {
-                font: self.assets.font,
+                font: Some(&self.assets.font),
                 font_size: 20,
                 color: Color {
                     a: tandg_alpha,
@@ -248,13 +248,13 @@ impl PageRenderer {
                 format!("{secs}")
             }
         );
-        let (x_off, text) = fit_text(180f32, &text, 50, self.assets.font, Justify::Center);
+        let (x_off, text) = fit_text(180f32, &text, 50, &self.assets.font, Justify::Center);
         draw_text_ex(
             text.as_str(),
             430f32 + x_off,
             67f32,
             TextParams {
-                font: self.assets.font,
+                font: Some(&self.assets.font),
                 font_size: 50,
                 color: Color {
                     a: tandg_alpha,
@@ -268,7 +268,7 @@ impl PageRenderer {
             478f32,
             100f32,
             TextParams {
-                font: self.assets.font,
+                font: Some(&self.assets.font),
                 font_size: 20,
                 color: Color {
                     a: tandg_alpha,

@@ -118,7 +118,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                 LIST_NUMBER_BG_WIDTH,
                 &format!("#{}", player_identifier.0.number.unwrap()),
                 35,
-                renderer.assets.font,
+                &renderer.assets.font,
                 Justify::Left,
             );
             draw_text_ex(
@@ -130,7 +130,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                 },
                 PLAYER_ROW_HEIGHT.mul_add(i as f32, 255f32),
                 TextParams {
-                    font: renderer.assets.font,
+                    font: Some(&renderer.assets.font),
                     font_size: 35,
                     color: if player_identifier.1 == UwhColor::White {
                         Color {
@@ -155,7 +155,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                 },
                 PLAYER_ROW_HEIGHT.mul_add(i as f32, 255f32),
                 TextParams {
-                    font: renderer.assets.font,
+                    font: Some(&renderer.assets.font),
                     font_size: 35,
                     color: if player_identifier.1 == UwhColor::White {
                         Color {
@@ -171,7 +171,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                     ..Default::default()
                 },
                 TextParams {
-                    font: renderer.assets.font,
+                    font: Some(&renderer.assets.font),
                     font_size: 35,
                     color: Color {
                         a: timeout_alpha_offset,
@@ -195,7 +195,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
         434f32,
         &state.black.team_name,
         45,
-        renderer.assets.font,
+        &renderer.assets.font,
         Justify::Center,
     );
     draw_text_both!(
@@ -203,7 +203,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
         1350f32 + x_off,
         805f32 + offset,
         TextParams {
-            font: renderer.assets.font,
+            font: Some(&renderer.assets.font),
             font_size: 45,
             color: Color {
                 a: timeout_alpha_offset,
@@ -216,7 +216,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
         440f32,
         &state.white.team_name,
         45,
-        renderer.assets.font,
+        &renderer.assets.font,
         Justify::Center,
     );
     draw_text_both_ex!(
@@ -224,7 +224,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
         135f32 + x_off,
         805f32 + offset,
         TextParams {
-            font: renderer.assets.font,
+            font: Some(&renderer.assets.font),
             font_size: 45,
             color: Color {
                 a: timeout_alpha_offset,
@@ -233,7 +233,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
             ..Default::default()
         },
         TextParams {
-            font: renderer.assets.font,
+            font: Some(&renderer.assets.font),
             font_size: 45,
             color: Color {
                 a: timeout_alpha_offset,
@@ -276,7 +276,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
         270f32,
         &format!("GAME #{}", &state.game_id.to_string()),
         25,
-        renderer.assets.font,
+        &renderer.assets.font,
         Justify::Center,
     );
     draw_text_ex(
@@ -284,7 +284,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
         830f32 + x_off,
         745f32 + offset,
         TextParams {
-            font: renderer.assets.font,
+            font: Some(&renderer.assets.font),
             font_size: 25,
             color: Color {
                 a: timeout_alpha_offset,
@@ -297,7 +297,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
         248f32,
         &state.start_time,
         25,
-        renderer.assets.font,
+        &renderer.assets.font,
         Justify::Center,
     );
     draw_text_ex(
@@ -305,7 +305,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
         838f32 + x_off,
         780f32 + offset,
         TextParams {
-            font: renderer.assets.font,
+            font: Some(&renderer.assets.font),
             font_size: 25,
             color: Color {
                 a: timeout_alpha_offset,
@@ -318,7 +318,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
         220f32,
         &state.pool,
         25,
-        renderer.assets.font,
+        &renderer.assets.font,
         Justify::Center,
     );
     draw_text_ex(
@@ -326,7 +326,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
         855f32 + x_off,
         815f32 + offset,
         TextParams {
-            font: renderer.assets.font,
+            font: Some(&renderer.assets.font),
             font_size: 25,
             color: Color {
                 a: timeout_alpha_offset,
@@ -350,13 +350,13 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
             format!("{secs}")
         }
     );
-    let (x_off, text) = fit_text(180f32, &text, 50, renderer.assets.font, Justify::Center);
+    let (x_off, text) = fit_text(180f32, &text, 50, &renderer.assets.font, Justify::Center);
     draw_text_ex(
         text.as_str(),
         870f32 + x_off,
         1020f32,
         TextParams {
-            font: renderer.assets.font,
+            font: Some(&renderer.assets.font),
             font_size: 50,
             color: Color {
                 a: timeout_alpha_offset,
@@ -370,7 +370,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
         905f32,
         1044f32,
         TextParams {
-            font: renderer.assets.font,
+            font: Some(&renderer.assets.font),
             font_size: 20,
             color: Color {
                 a: timeout_alpha_offset,

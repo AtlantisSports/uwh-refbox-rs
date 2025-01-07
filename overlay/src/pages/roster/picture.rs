@@ -169,7 +169,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
         if team_flag.is_some() { 900f32 } else { 1200f32 },
         team_name,
         100,
-        renderer.assets.font,
+        &renderer.assets.font,
         Justify::Center,
     );
     draw_text_both_ex!(
@@ -177,7 +177,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
         if team_flag.is_some() { 680f32 } else { 361f32 } + x_off,
         180f32,
         TextParams {
-            font: renderer.assets.font,
+            font: Some(&renderer.assets.font),
             font_size: 100,
             color: Color {
                 a: top_banner_alpha,
@@ -186,7 +186,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
             ..Default::default()
         },
         TextParams {
-            font: renderer.assets.font,
+            font: Some(&renderer.assets.font),
             font_size: 100,
             color: Color {
                 a: top_banner_alpha,
@@ -312,7 +312,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                         RPD_NUMBER_BG_WIDTH,
                         &format!("#{number}"),
                         40,
-                        renderer.assets.font,
+                        &renderer.assets.font,
                         Justify::Left,
                     );
                     draw_text_ex(
@@ -320,7 +320,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                         (i as f32).mul_add(CARD_WIDTH + margin, margin) + x_off + 15f32,
                         445f32,
                         TextParams {
-                            font: renderer.assets.font,
+                            font: Some(&renderer.assets.font),
                             font_size: 40,
                             color: Color {
                                 a: rpdgroup_alpha,
@@ -341,13 +341,13 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                         }
                     );
                     let (x_off, text) =
-                        fit_text(400f32, role, 40, renderer.assets.font, Justify::Center);
+                        fit_text(400f32, role, 40, &renderer.assets.font, Justify::Center);
                     draw_text_both_ex!(
                         &text,
                         (i as f32).mul_add(CARD_WIDTH + margin, margin) + 22f32 + x_off,
                         377f32,
                         TextParams {
-                            font: renderer.assets.font,
+                            font: Some(&renderer.assets.font),
                             font_size: 40,
                             color: Color {
                                 a: rpdgroup_alpha,
@@ -356,7 +356,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                             ..Default::default()
                         },
                         TextParams {
-                            font: renderer.assets.font,
+                            font: Some(&renderer.assets.font),
                             font_size: 40,
                             color: Color {
                                 a: rpdgroup_alpha,
@@ -367,7 +367,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                     );
                 }
 
-                let lines = multilinify(name, 400f32, Some(renderer.assets.font), 33);
+                let lines = multilinify(name, 400f32, Some(&renderer.assets.font), 33);
                 let text_box_texture = match lines.len() {
                     1 => &team_textures.single_line_name_bg,
                     2 => &team_textures.double_line_name_bg,
@@ -382,20 +382,20 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                         ..WHITE
                     }
                 );
-                let text_height = measure_text("Q", Some(renderer.assets.font), 33, 1.0).height;
+                let text_height = measure_text("Q", Some(&renderer.assets.font), 33, 1.0).height;
                 let v_margin = text_height.mul_add(
                     -(lines.len().min(3) as f32),
                     text_box_texture.color.height(),
                 ) / (lines.len().min(3) as f32 + 1f32);
                 for (j, line) in lines.iter().take(3).enumerate() {
                     let (x_off, text) =
-                        fit_text(400f32, line, 33, renderer.assets.font, Justify::Center);
+                        fit_text(400f32, line, 33, &renderer.assets.font, Justify::Center);
                     draw_text_both_ex!(
                         text.as_str(),
                         (CARD_WIDTH + margin).mul_add(i as f32, margin + 12f32 + x_off),
                         (v_margin + text_height).mul_add(j as f32 + 1f32, 847f32),
                         TextParams {
-                            font: renderer.assets.font,
+                            font: Some(&renderer.assets.font),
                             font_size: 33,
                             color: Color {
                                 a: rpdgroup_alpha,
@@ -404,7 +404,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
                             ..Default::default()
                         },
                         TextParams {
-                            font: renderer.assets.font,
+                            font: Some(&renderer.assets.font),
                             font_size: 33,
                             color: Color {
                                 a: rpdgroup_alpha,

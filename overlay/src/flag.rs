@@ -354,7 +354,7 @@ impl Renderer {
                 160f32,
                 (idx as f32).mul_add(FLAG_HEIGHT, BASE_HEIGHT) + movement_offset + 33f32,
                 TextParams {
-                    font: self.textures.font,
+                    font: Some(&self.textures.font),
                     font_size: 30,
                     color: if color == uwh_common::game_snapshot::Color::Black {
                         Color {
@@ -370,7 +370,7 @@ impl Renderer {
                     ..Default::default()
                 },
                 TextParams {
-                    font: self.textures.font,
+                    font: Some(&self.textures.font),
                     font_size: 30,
                     color: Color {
                         a: alpha_offset,
@@ -381,27 +381,29 @@ impl Renderer {
                 }
             );
             match flag.flag_type {
-                Type::Goal(color, _) => draw_text_ex(
-                    "GOAL",
-                    45f32,
-                    (idx as f32).mul_add(FLAG_HEIGHT, BASE_HEIGHT) + movement_offset + 33f32,
-                    TextParams {
-                        font: self.textures.font,
-                        font_size: 30,
-                        color: if color == uwh_common::game_snapshot::Color::Black {
-                            Color {
-                                a: alpha_offset,
-                                ..WHITE
-                            }
-                        } else {
-                            Color {
-                                a: alpha_offset,
-                                ..BLACK
-                            }
+                Type::Goal(color, _) => {
+                    draw_text_ex(
+                        "GOAL",
+                        45f32,
+                        (idx as f32).mul_add(FLAG_HEIGHT, BASE_HEIGHT) + movement_offset + 33f32,
+                        TextParams {
+                            font: Some(&self.textures.font),
+                            font_size: 30,
+                            color: if color == uwh_common::game_snapshot::Color::Black {
+                                Color {
+                                    a: alpha_offset,
+                                    ..WHITE
+                                }
+                            } else {
+                                Color {
+                                    a: alpha_offset,
+                                    ..BLACK
+                                }
+                            },
+                            ..Default::default()
                         },
-                        ..Default::default()
-                    },
-                ),
+                    );
+                }
                 Type::Penalty(color, timeout, _) => {
                     let text = match timeout {
                         PenaltyTime::Seconds(s) => {
@@ -425,13 +427,13 @@ impl Renderer {
                         PenaltyTime::TotalDismissal => String::from("TD"),
                     };
                     let (x_off, text) =
-                        fit_text(94f32, &text, 30, self.textures.font, Justify::Center);
+                        fit_text(94f32, &text, 30, &self.textures.font, Justify::Center);
                     draw_text_ex(
                         text.as_str(),
                         35f32 + x_off,
                         (idx as f32).mul_add(FLAG_HEIGHT, BASE_HEIGHT) + movement_offset + 33f32,
                         TextParams {
-                            font: self.textures.font,
+                            font: Some(&self.textures.font),
                             font_size: 30,
                             color: if color == uwh_common::game_snapshot::Color::Black {
                                 Color {
@@ -486,7 +488,7 @@ impl Renderer {
                 160f32,
                 (flag.vertical_position as f32).mul_add(FLAG_HEIGHT, BASE_HEIGHT) + 33f32,
                 TextParams {
-                    font: self.textures.font,
+                    font: Some(&self.textures.font),
                     font_size: 30,
                     color: if color == uwh_common::game_snapshot::Color::Black {
                         Color {
@@ -502,7 +504,7 @@ impl Renderer {
                     ..Default::default()
                 },
                 TextParams {
-                    font: self.textures.font,
+                    font: Some(&self.textures.font),
                     font_size: 30,
                     color: Color {
                         a: alpha_offset,
@@ -512,27 +514,29 @@ impl Renderer {
                 }
             );
             match flag.flag_type {
-                Type::Goal(_, _) => draw_text_ex(
-                    "GOAL",
-                    45f32,
-                    (flag.vertical_position as f32).mul_add(FLAG_HEIGHT, BASE_HEIGHT) + 33f32,
-                    TextParams {
-                        font: self.textures.font,
-                        font_size: 30,
-                        color: if color == uwh_common::game_snapshot::Color::Black {
-                            Color {
-                                a: alpha_offset,
-                                ..WHITE
-                            }
-                        } else {
-                            Color {
-                                a: alpha_offset,
-                                ..BLACK
-                            }
+                Type::Goal(_, _) => {
+                    draw_text_ex(
+                        "GOAL",
+                        45f32,
+                        (flag.vertical_position as f32).mul_add(FLAG_HEIGHT, BASE_HEIGHT) + 33f32,
+                        TextParams {
+                            font: Some(&self.textures.font),
+                            font_size: 30,
+                            color: if color == uwh_common::game_snapshot::Color::Black {
+                                Color {
+                                    a: alpha_offset,
+                                    ..WHITE
+                                }
+                            } else {
+                                Color {
+                                    a: alpha_offset,
+                                    ..BLACK
+                                }
+                            },
+                            ..Default::default()
                         },
-                        ..Default::default()
-                    },
-                ),
+                    );
+                }
                 Type::Penalty(_, timeout, _) => {
                     let text = match timeout {
                         PenaltyTime::Seconds(s) => {
@@ -556,13 +560,13 @@ impl Renderer {
                         PenaltyTime::TotalDismissal => String::from("TD"),
                     };
                     let (x_off, text) =
-                        fit_text(94f32, &text, 30, self.textures.font, Justify::Center);
+                        fit_text(94f32, &text, 30, &self.textures.font, Justify::Center);
                     draw_text_ex(
                         text.as_str(),
                         35f32 + x_off,
                         (flag.vertical_position as f32).mul_add(FLAG_HEIGHT, BASE_HEIGHT) + 33f32,
                         TextParams {
-                            font: self.textures.font,
+                            font: Some(&self.textures.font),
                             font_size: 30,
                             color: if color == uwh_common::game_snapshot::Color::Black {
                                 Color {

@@ -31,7 +31,7 @@ impl PageRenderer {
             434f32,
             &state.black.team_name,
             45,
-            self.assets.font,
+            &self.assets.font,
             Justify::Center,
         );
         draw_text_both!(
@@ -39,7 +39,7 @@ impl PageRenderer {
             1350f32 + x_off,
             805f32,
             TextParams {
-                font: self.assets.font,
+                font: Some(&self.assets.font),
                 font_size: 45,
                 ..Default::default()
             }
@@ -48,7 +48,7 @@ impl PageRenderer {
             440f32,
             &state.white.team_name,
             45,
-            self.assets.font,
+            &self.assets.font,
             Justify::Center,
         );
         draw_text_both_ex!(
@@ -56,13 +56,13 @@ impl PageRenderer {
             135f32 + x_off,
             805f32,
             TextParams {
-                font: self.assets.font,
+                font: Some(&self.assets.font),
                 font_size: 45,
                 color: BLACK,
                 ..Default::default()
             },
             TextParams {
-                font: self.assets.font,
+                font: Some(&self.assets.font),
                 font_size: 45,
                 color: WHITE,
                 ..Default::default()
@@ -96,7 +96,7 @@ impl PageRenderer {
             270f32,
             &format!("GAME #{}", &state.game_id.to_string()),
             25,
-            self.assets.font,
+            &self.assets.font,
             Justify::Center,
         );
         draw_text_ex(
@@ -104,7 +104,7 @@ impl PageRenderer {
             830f32 + x_off,
             745f32,
             TextParams {
-                font: self.assets.font,
+                font: Some(&self.assets.font),
                 font_size: 25,
                 ..Default::default()
             },
@@ -113,7 +113,7 @@ impl PageRenderer {
             248f32,
             &state.start_time,
             25,
-            self.assets.font,
+            &self.assets.font,
             Justify::Center,
         );
         draw_text_ex(
@@ -121,18 +121,18 @@ impl PageRenderer {
             838f32 + x_off,
             780f32,
             TextParams {
-                font: self.assets.font,
+                font: Some(&self.assets.font),
                 font_size: 25,
                 ..Default::default()
             },
         );
-        let (x_off, text) = fit_text(220f32, &state.pool, 25, self.assets.font, Justify::Center);
+        let (x_off, text) = fit_text(220f32, &state.pool, 25, &self.assets.font, Justify::Center);
         draw_text_ex(
             text.as_str(),
             855f32 + x_off,
             815f32,
             TextParams {
-                font: self.assets.font,
+                font: Some(&self.assets.font),
                 font_size: 25,
                 ..Default::default()
             },
@@ -152,13 +152,13 @@ impl PageRenderer {
                 format!("{secs}")
             }
         );
-        let (x_off, text) = fit_text(180f32, &text, 50, self.assets.font, Justify::Center);
+        let (x_off, text) = fit_text(180f32, &text, 50, &self.assets.font, Justify::Center);
         draw_text_ex(
             text.as_str(),
             870f32 + x_off,
             1020f32,
             TextParams {
-                font: self.assets.font,
+                font: Some(&self.assets.font),
                 font_size: 50,
                 ..Default::default()
             },
@@ -168,7 +168,7 @@ impl PageRenderer {
             907f32,
             1044f32,
             TextParams {
-                font: self.assets.font,
+                font: Some(&self.assets.font),
                 font_size: 20,
                 ..Default::default()
             },

@@ -42,8 +42,8 @@ impl Default for AppConfig {
         Self {
             refbox_ip: IpAddr::from_str("127.0.0.1").unwrap(),
             refbox_port: 8000,
-            uwhscores_url: String::from("https://uwhscores.com"),
-            uwhportal_url: String::from("https://api.uwhscores.prod.zmvp.host"),
+            uwhscores_url: String::from("https://api.uwhscores.com"),
+            uwhportal_url: String::from("https://api.uwhportal.com"),
         }
     }
 }
@@ -252,9 +252,7 @@ async fn main() {
     };
 
     let mut flag_renderer = flag::Renderer::new();
-    unsafe {
-        get_internal_gl().quad_context.show_mouse(false);
-    }
+    macroquad::window::miniquad::window::show_mouse(false);
 
     loop {
         assert!(!net_worker.is_finished(), "Networking thread panikd!");
@@ -398,6 +396,10 @@ fn window_conf() -> Conf {
         window_width: 3840,
         window_height: 1080,
         window_resizable: false,
+        platform: miniquad::conf::Platform {
+            linux_backend: miniquad::conf::LinuxBackend::X11WithWaylandFallback,
+            ..Default::default()
+        },
         ..Default::default()
     }
 }

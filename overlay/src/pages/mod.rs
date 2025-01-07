@@ -37,7 +37,7 @@ impl Interpolate for (f32, f32) {
 /// Divides the `text` into multiple lines, breaking at whitespace such that new words go on a new
 /// line if they overflow the `width`. Lines may still overflow if there is no whitespace to break
 /// at, so use the `center_text_offset` macro to center lines and crop each one to fit the width.
-pub fn multilinify(text: &str, width: f32, font: Option<Font>, font_size: u16) -> Vec<String> {
+pub fn multilinify(text: &str, width: f32, font: Option<&Font>, font_size: u16) -> Vec<String> {
     let mut lines = Vec::new();
     let mut current_line = String::new();
 
@@ -87,7 +87,7 @@ pub fn fit_text(
     field_width: f32,
     text: &str,
     font_size: u16,
-    font: Font,
+    font: &Font,
     justify: Justify,
 ) -> (f32, String) {
     let mut text = text.to_string();
@@ -127,16 +127,16 @@ pub fn fit_text(
 
 macro_rules! draw_texture_both {
     ($texture: expr, $x: expr, $y: expr, $color: expr) => {
-        draw_texture($texture.color, $x, $y, $color);
-        draw_texture($texture.alpha, $x + 1920f32, $y, $color);
+        draw_texture(&$texture.color, $x, $y, $color);
+        draw_texture(&$texture.alpha, $x + 1920f32, $y, $color);
     };
 }
 pub(crate) use draw_texture_both;
 
 macro_rules! draw_texture_both_ex {
     ($texture: expr, $x: expr, $y: expr, $color: expr, $params: expr) => {
-        draw_texture_ex($texture.color, $x, $y, $color, $params);
-        draw_texture_ex($texture.alpha, $x + 1920f32, $y, $color, $params);
+        draw_texture_ex(&$texture.color, $x, $y, $color, $params);
+        draw_texture_ex(&$texture.alpha, $x + 1920f32, $y, $color, $params);
     };
 }
 pub(crate) use draw_texture_both_ex;

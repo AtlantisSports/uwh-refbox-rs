@@ -9,7 +9,7 @@ use iced::{
     widget::{column, container, horizontal_space, row, text, vertical_space},
 };
 
-use uwh_common::game_snapshot::{Color as GameColor, GameSnapshot};
+use uwh_common::{color::Color as GameColor, game_snapshot::GameSnapshot};
 
 pub(in super::super) fn build_score_edit_view<'a>(
     snapshot: &GameSnapshot,

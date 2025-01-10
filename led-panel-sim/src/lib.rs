@@ -310,8 +310,8 @@ impl DisplayState {
             return Self::FLASH;
         }
 
-        let (b_score_tens, b_score_ones) = Digit::pair_from_num(data.snapshot.b_score, false);
-        let (w_score_tens, w_score_ones) = Digit::pair_from_num(data.snapshot.w_score, false);
+        let (b_score_tens, b_score_ones) = Digit::pair_from_num(data.snapshot.scores.black, false);
+        let (w_score_tens, w_score_ones) = Digit::pair_from_num(data.snapshot.scores.white, false);
 
         let minutes = (data.snapshot.secs_in_period / 60)
             .try_into()

@@ -5,7 +5,6 @@ authors = ["Atlantis Sports <maintainers@atlantissports.org>"]
 edition = "2021"
 
 [dependencies]
-arrayvec = { version = "0.7", default-features = false, features = ["serde"] }
 matrix-drawing = { version = "0.2.0", path = "../matrix-drawing" }
 uwh-common = { version = "0.2.0", path = "../uwh-common" }
 

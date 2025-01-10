@@ -1,6 +1,5 @@
 use super::*;
-use arrayvec::ArrayVec;
-use uwh_common::game_snapshot::GameSnapshotNoHeap;
+use uwh_common::{bundles::BlackWhiteBundle, game_snapshot::GameSnapshotNoHeap};
 
 fn empty_data() -> TransmittedData {
     TransmittedData {
@@ -8,10 +7,8 @@ fn empty_data() -> TransmittedData {
             current_period: GamePeriod::BetweenGames,
             secs_in_period: 0,
             timeout: TimeoutSnapshot::None,
-            b_score: 0,
-            w_score: 0,
-            b_penalties: ArrayVec::new(),
-            w_penalties: ArrayVec::new(),
+            scores: BlackWhiteBundle { black: 0, white: 0 },
+            penalties: Default::default(),
             is_old_game: false,
         },
         white_on_right: false,
@@ -210,7 +207,7 @@ fn test_sores() {
     let state = DisplayState::from_transmitted_data(&data);
     assert_eq!(state, EMPTY_STATE);
 
-    data.snapshot.b_score = 1;
+    data.snapshot.scores.black = 1;
     let state = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
@@ -221,7 +218,7 @@ fn test_sores() {
         }
     );
 
-    data.snapshot.b_score = 10;
+    data.snapshot.scores.black = 10;
     let state = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
@@ -232,7 +229,7 @@ fn test_sores() {
         }
     );
 
-    data.snapshot.w_score = 99;
+    data.snapshot.scores.white = 99;
     let state = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,

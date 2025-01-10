@@ -1,11 +1,7 @@
-use derivative::Derivative;
 use log::*;
 use std::{
     cmp::{max, min},
     convert::TryInto,
-    fmt::{Display, Formatter},
-    iter::FromIterator,
-    ops::{Index, IndexMut},
 };
 use thiserror::Error;
 use time::{OffsetDateTime, PrimitiveDateTime, UtcOffset};
@@ -14,9 +10,11 @@ use tokio::{
     time::{Duration, Instant},
 };
 use uwh_common::{
+    bundles::{BlackWhiteBundle, OptColorBundle},
+    color::Color,
     config::Game as GameConfig,
     drawing_support::*,
-    game_snapshot::{Color, GamePeriod, GameSnapshot, Infraction, TimeoutSnapshot},
+    game_snapshot::{GamePeriod, GameSnapshot, Infraction, TimeoutSnapshot},
     uwhscores::TimingRules,
 };
 
@@ -1784,59 +1782,35 @@ impl TournamentManager {
         let secs_in_period = cur_time.as_secs().try_into().ok()?;
         trace!("Got seconds remaining: {secs_in_period}");
 
-        let b_penalties = self
+        let penalties = self
             .penalties
-            .black
             .iter()
-            .map(|pen| pen.as_snapshot(self.current_period, cur_time, &self.config))
-            .collect::<PenaltyResult<Vec<_>>>()
-            .ok()?;
-        trace!("Got black penalties");
-        let w_penalties = self
-            .penalties
-            .white
-            .iter()
-            .map(|pen| pen.as_snapshot(self.current_period, cur_time, &self.config))
-            .collect::<PenaltyResult<Vec<_>>>()
-            .ok()?;
-        trace!("Got white penalties");
+            .map(|(c, pens)| {
+                (
+                    c,
+                    pens.iter()
+                        .map(|p| p.as_snapshot(self.current_period, cur_time, &self.config))
+                        .collect::<PenaltyResult<Vec<_>>>()
+                        .ok(),
+                )
+            })
+            .collect::<BlackWhiteBundle<_>>()
+            .complete()?;
+        trace!("Got penalties");
 
-        let b_warnings = self
+        let warnings = self
             .warnings
-            .black
             .iter()
-            .map(|war| war.as_snapshot())
+            .map(|(c, warns)| (c, warns.iter().map(|war| war.as_snapshot()).collect()))
             .collect();
-        trace!("Got black warnings");
-        let w_warnings = self
-            .warnings
-            .white
-            .iter()
-            .map(|war| war.as_snapshot())
-            .collect();
-        trace!("Got white warnings");
+        trace!("Got warnings");
 
-        let b_fouls = self
+        let fouls = self
             .fouls
-            .black
             .iter()
-            .map(|war| war.as_snapshot())
+            .map(|(c, fouls)| (c, fouls.iter().map(|foul| foul.as_snapshot()).collect()))
             .collect();
-        trace!("Got black fouls");
-        let w_fouls = self
-            .fouls
-            .white
-            .iter()
-            .map(|war| war.as_snapshot())
-            .collect();
-        trace!("Got white fouls");
-        let equal_fouls = self
-            .fouls
-            .equal
-            .iter()
-            .map(|war| war.as_snapshot())
-            .collect();
-        trace!("Got equal fouls");
+        trace!("Got fouls");
 
         if let Some((_, _, goal_per, goal_time)) = self.recent_goal {
             if (goal_per != self.current_period)
@@ -1855,15 +1829,10 @@ impl TournamentManager {
             current_period: self.current_period,
             secs_in_period,
             timeout: self.timeout_state.as_snapshot(now),
-            b_score: self.scores.black,
-            w_score: self.scores.white,
-            b_penalties,
-            w_penalties,
-            b_warnings,
-            w_warnings,
-            b_fouls,
-            w_fouls,
-            equal_fouls,
+            scores: self.scores,
+            penalties,
+            warnings,
+            fouls,
             is_old_game: !self.has_reset,
             game_number: self.game_number(),
             next_game_number: self.next_game_number(),
@@ -2026,219 +1995,6 @@ impl TimeoutState {
                 TimeoutSnapshot::PenaltyShot(cs.as_secs_u16(now))
             }
         }
-    }
-}
-
-#[derive(Derivative)]
-#[derivative(Default, Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BlackWhiteBundle<T> {
-    pub black: T,
-    pub white: T,
-}
-
-impl<T> BlackWhiteBundle<T> {
-    pub fn iter(&self) -> impl Iterator<Item = (Color, &T)> {
-        self.into_iter()
-    }
-}
-
-#[cfg(test)]
-impl BlackWhiteBundle<u8> {
-    pub fn new(black: u8, white: u8) -> Self {
-        Self { black, white }
-    }
-}
-
-impl<T: Eq> BlackWhiteBundle<T> {
-    pub fn are_not_equal(&self) -> bool {
-        self.black != self.white
-    }
-}
-
-impl<T> Index<Color> for BlackWhiteBundle<T> {
-    type Output = T;
-
-    fn index(&self, color: Color) -> &Self::Output {
-        match color {
-            Color::Black => &self.black,
-            Color::White => &self.white,
-        }
-    }
-}
-
-impl<T> IndexMut<Color> for BlackWhiteBundle<T> {
-    fn index_mut(&mut self, color: Color) -> &mut Self::Output {
-        match color {
-            Color::Black => &mut self.black,
-            Color::White => &mut self.white,
-        }
-    }
-}
-
-impl<T: Display> Display for BlackWhiteBundle<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Black: {}, White: {}", self.black, self.white)
-    }
-}
-
-pub struct BlackWhiteBundleIterator<'a, T> {
-    bundle: &'a BlackWhiteBundle<T>,
-    index: usize,
-}
-
-impl<'a, T> Iterator for BlackWhiteBundleIterator<'a, T> {
-    type Item = (Color, &'a T);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let value = match self.index {
-            0 => (Color::Black, &self.bundle.black),
-            1 => (Color::White, &self.bundle.white),
-            _ => return None,
-        };
-
-        self.index += 1;
-        Some(value)
-    }
-}
-
-impl<'a, T> IntoIterator for &'a BlackWhiteBundle<T> {
-    type Item = (Color, &'a T);
-    type IntoIter = BlackWhiteBundleIterator<'a, T>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        BlackWhiteBundleIterator {
-            bundle: self,
-            index: 0,
-        }
-    }
-}
-
-impl<T> IntoIterator for BlackWhiteBundle<T> {
-    type Item = (Color, T);
-    type IntoIter = std::vec::IntoIter<Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        vec![(Color::Black, self.black), (Color::White, self.white)].into_iter()
-    }
-}
-
-impl<T: Default> FromIterator<(Color, T)> for BlackWhiteBundle<T> {
-    fn from_iter<I: IntoIterator<Item = (Color, T)>>(iter: I) -> Self {
-        let mut bundle = BlackWhiteBundle::default();
-        for (color, value) in iter {
-            match color {
-                Color::Black => bundle.black = value,
-                Color::White => bundle.white = value,
-            }
-        }
-        bundle
-    }
-}
-
-#[derive(Derivative)]
-#[derivative(Default, Debug, Clone, Copy, PartialEq, Eq)]
-pub struct OptColorBundle<T> {
-    pub black: T,
-    pub equal: T,
-    pub white: T,
-}
-
-impl<T> OptColorBundle<T> {
-    pub fn iter(&self) -> impl Iterator<Item = (Option<Color>, &T)> {
-        self.into_iter()
-    }
-}
-
-impl<T> Index<Option<Color>> for OptColorBundle<T> {
-    type Output = T;
-
-    fn index(&self, color: Option<Color>) -> &Self::Output {
-        match color {
-            Some(Color::Black) => &self.black,
-            None => &self.equal,
-            Some(Color::White) => &self.white,
-        }
-    }
-}
-
-impl<T> IndexMut<Option<Color>> for OptColorBundle<T> {
-    fn index_mut(&mut self, color: Option<Color>) -> &mut Self::Output {
-        match color {
-            Some(Color::Black) => &mut self.black,
-            None => &mut self.equal,
-            Some(Color::White) => &mut self.white,
-        }
-    }
-}
-
-impl<T: Display> Display for OptColorBundle<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Black: {}, White: {}, Equal: {}",
-            self.black, self.white, self.equal
-        )
-    }
-}
-
-pub struct OptColorBundleIterator<'a, T> {
-    bundle: &'a OptColorBundle<T>,
-    index: usize,
-}
-
-impl<'a, T> Iterator for OptColorBundleIterator<'a, T> {
-    type Item = (Option<Color>, &'a T);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let value = match self.index {
-            0 => (Some(Color::Black), &self.bundle.black),
-            1 => (None, &self.bundle.equal),
-            2 => (Some(Color::White), &self.bundle.white),
-            _ => return None,
-        };
-
-        self.index += 1;
-        Some(value)
-    }
-}
-
-impl<'a, T> IntoIterator for &'a OptColorBundle<T> {
-    type Item = (Option<Color>, &'a T);
-    type IntoIter = OptColorBundleIterator<'a, T>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        OptColorBundleIterator {
-            bundle: self,
-            index: 0,
-        }
-    }
-}
-
-impl<T> IntoIterator for OptColorBundle<T> {
-    type Item = (Option<Color>, T);
-    type IntoIter = std::vec::IntoIter<Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        vec![
-            (Some(Color::Black), self.black),
-            (None, self.equal),
-            (Some(Color::White), self.white),
-        ]
-        .into_iter()
-    }
-}
-
-impl<T: Default> FromIterator<(Option<Color>, T)> for OptColorBundle<T> {
-    fn from_iter<I: IntoIterator<Item = (Option<Color>, T)>>(iter: I) -> Self {
-        let mut bundle = OptColorBundle::default();
-        for (color, value) in iter {
-            match color {
-                Some(Color::Black) => bundle.black = value,
-                None => bundle.equal = value,
-                Some(Color::White) => bundle.white = value,
-            }
-        }
-        bundle
     }
 }
 
@@ -3765,7 +3521,7 @@ mod test {
             game_start_offset: 0,
             start_period: GamePeriod::SecondHalf,
             remaining: 1,
-            score: Some(BlackWhiteBundle::new(1, 1)),
+            score: Some(BlackWhiteBundle { black: 1, white: 1 }),
             time_delay: 2,
             end_period: GamePeriod::PreOvertime,
             end_clock_time: 6,
@@ -3786,7 +3542,7 @@ mod test {
             game_start_offset: 0,
             start_period: GamePeriod::SecondHalf,
             remaining: 1,
-            score: Some(BlackWhiteBundle::new(1, 1)),
+            score: Some(BlackWhiteBundle { black: 1, white: 1 }),
             time_delay: 2,
             end_period: GamePeriod::PreSuddenDeath,
             end_clock_time: 7,
@@ -3811,7 +3567,7 @@ mod test {
             game_start_offset: -20,
             start_period: GamePeriod::SecondHalf,
             remaining: 1,
-            score: Some(BlackWhiteBundle::new(1, 1)),
+            score: Some(BlackWhiteBundle { black: 1, white: 1 }),
             time_delay: 2,
             end_period: GamePeriod::BetweenGames,
             end_clock_time: 3,
@@ -3836,7 +3592,7 @@ mod test {
             game_start_offset: -30,
             start_period: GamePeriod::SecondHalf,
             remaining: 1,
-            score: Some(BlackWhiteBundle::new(1, 1)),
+            score: Some(BlackWhiteBundle { black: 1, white: 1 }),
             time_delay: 2,
             end_period: GamePeriod::BetweenGames,
             end_clock_time: 4,
@@ -3861,7 +3617,7 @@ mod test {
             game_start_offset: -20,
             start_period: GamePeriod::SecondHalf,
             remaining: 1,
-            score: Some(BlackWhiteBundle::new(2, 4)),
+            score: Some(BlackWhiteBundle { black: 2, white: 4 }),
             time_delay: 2,
             end_period: GamePeriod::BetweenGames,
             end_clock_time: 4,
@@ -3886,7 +3642,7 @@ mod test {
             game_start_offset: -20,
             start_period: GamePeriod::SecondHalf,
             remaining: 1,
-            score: Some(BlackWhiteBundle::new(3, 2)),
+            score: Some(BlackWhiteBundle { black: 3, white: 2 }),
             time_delay: 2,
             end_period: GamePeriod::BetweenGames,
             end_clock_time: 6,
@@ -3967,7 +3723,7 @@ mod test {
             game_start_offset: 0,
             start_period: GamePeriod::OvertimeSecondHalf,
             remaining: 1,
-            score: Some(BlackWhiteBundle::new(1, 1)),
+            score: Some(BlackWhiteBundle { black: 1, white: 1 }),
             time_delay: 2,
             end_period: GamePeriod::PreSuddenDeath,
             end_clock_time: 8,
@@ -3992,7 +3748,7 @@ mod test {
             game_start_offset: -20,
             start_period: GamePeriod::OvertimeSecondHalf,
             remaining: 1,
-            score: Some(BlackWhiteBundle::new(1, 1)),
+            score: Some(BlackWhiteBundle { black: 1, white: 1 }),
             time_delay: 2,
             end_period: GamePeriod::BetweenGames,
             end_clock_time: 6,
@@ -4017,7 +3773,10 @@ mod test {
             game_start_offset: -18,
             start_period: GamePeriod::OvertimeSecondHalf,
             remaining: 1,
-            score: Some(BlackWhiteBundle::new(10, 1)),
+            score: Some(BlackWhiteBundle {
+                black: 10,
+                white: 1,
+            }),
             time_delay: 2,
             end_period: GamePeriod::BetweenGames,
             end_clock_time: 8,
@@ -4042,7 +3801,10 @@ mod test {
             game_start_offset: -21,
             start_period: GamePeriod::OvertimeSecondHalf,
             remaining: 1,
-            score: Some(BlackWhiteBundle::new(11, 9)),
+            score: Some(BlackWhiteBundle {
+                black: 11,
+                white: 9,
+            }),
             time_delay: 2,
             end_period: GamePeriod::BetweenGames,
             end_clock_time: 5,
@@ -4094,7 +3856,7 @@ mod test {
             tm.set_period_and_game_clock_time(GamePeriod::SuddenDeath, Duration::from_secs(5));
             tm.set_game_start(game_start);
             tm.start_game_clock(start);
-            tm.set_scores(BlackWhiteBundle::new(2, 2), start);
+            tm.set_scores(BlackWhiteBundle { black: 2, white: 2 }, start);
             tm.update(second_time).unwrap()
         };
 
@@ -4108,7 +3870,7 @@ mod test {
 
         setup_tm(&mut tm);
 
-        tm.set_scores(BlackWhiteBundle::new(3, 2), third_time);
+        tm.set_scores(BlackWhiteBundle { black: 3, white: 2 }, third_time);
         assert_eq!(tm.current_period, GamePeriod::BetweenGames);
         assert_eq!(
             tm.game_clock_time(fourth_time),
@@ -4845,14 +4607,16 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![PenaltySnapshot {
-                player_number: 2,
-                time: PenaltyTime::Seconds(59),
-                infraction: Infraction::Unknown,
-            }]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![PenaltySnapshot {
+                    player_number: 2,
+                    time: PenaltyTime::Seconds(59),
+                    infraction: Infraction::Unknown,
+                }],
+                white: vec![]
+            }
         );
-        assert_eq!(snapshot.w_penalties, vec![]);
 
         let next_time = next_time + Duration::from_secs(1);
         tm.start_penalty(
@@ -4868,20 +4632,19 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![PenaltySnapshot {
-                player_number: 2,
-                time: PenaltyTime::Seconds(57),
-                infraction: Infraction::Unknown,
-            }]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![PenaltySnapshot {
-                player_number: 3,
-                time: PenaltyTime::Seconds(59),
-                infraction: Infraction::UnsportsmanlikeConduct,
-            }]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![PenaltySnapshot {
+                    player_number: 2,
+                    time: PenaltyTime::Seconds(57),
+                    infraction: Infraction::Unknown,
+                }],
+                white: vec![PenaltySnapshot {
+                    player_number: 3,
+                    time: PenaltyTime::Seconds(59),
+                    infraction: Infraction::UnsportsmanlikeConduct,
+                }]
+            }
         );
 
         let next_time = next_time + Duration::from_secs(1);
@@ -4906,34 +4669,33 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 2,
-                    time: PenaltyTime::Seconds(55),
-                    infraction: Infraction::Unknown,
-                },
-                PenaltySnapshot {
-                    player_number: 4,
-                    time: PenaltyTime::Seconds(119),
-                    infraction: Infraction::DelayOfGame,
-                },
-            ]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 3,
-                    time: PenaltyTime::Seconds(57),
-                    infraction: Infraction::UnsportsmanlikeConduct,
-                },
-                PenaltySnapshot {
-                    player_number: 5,
-                    time: PenaltyTime::Seconds(119),
-                    infraction: Infraction::FalseStart,
-                },
-            ]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        player_number: 2,
+                        time: PenaltyTime::Seconds(55),
+                        infraction: Infraction::Unknown,
+                    },
+                    PenaltySnapshot {
+                        player_number: 4,
+                        time: PenaltyTime::Seconds(119),
+                        infraction: Infraction::DelayOfGame,
+                    },
+                ],
+                white: vec![
+                    PenaltySnapshot {
+                        player_number: 3,
+                        time: PenaltyTime::Seconds(57),
+                        infraction: Infraction::UnsportsmanlikeConduct,
+                    },
+                    PenaltySnapshot {
+                        player_number: 5,
+                        time: PenaltyTime::Seconds(119),
+                        infraction: Infraction::FalseStart,
+                    },
+                ]
+            }
         );
 
         let next_time = next_time + Duration::from_secs(1);
@@ -4958,44 +4720,43 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 2,
-                    time: PenaltyTime::Seconds(53),
-                    infraction: Infraction::Unknown,
-                },
-                PenaltySnapshot {
-                    player_number: 4,
-                    time: PenaltyTime::Seconds(117),
-                    infraction: Infraction::DelayOfGame,
-                },
-                PenaltySnapshot {
-                    player_number: 6,
-                    time: PenaltyTime::Seconds(299),
-                    infraction: Infraction::IllegalAdvancement,
-                },
-            ]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 3,
-                    time: PenaltyTime::Seconds(55),
-                    infraction: Infraction::UnsportsmanlikeConduct,
-                },
-                PenaltySnapshot {
-                    player_number: 5,
-                    time: PenaltyTime::Seconds(117),
-                    infraction: Infraction::FalseStart,
-                },
-                PenaltySnapshot {
-                    player_number: 7,
-                    time: PenaltyTime::Seconds(299),
-                    infraction: Infraction::IllegallyStoppingThePuck,
-                },
-            ]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        player_number: 2,
+                        time: PenaltyTime::Seconds(53),
+                        infraction: Infraction::Unknown,
+                    },
+                    PenaltySnapshot {
+                        player_number: 4,
+                        time: PenaltyTime::Seconds(117),
+                        infraction: Infraction::DelayOfGame,
+                    },
+                    PenaltySnapshot {
+                        player_number: 6,
+                        time: PenaltyTime::Seconds(299),
+                        infraction: Infraction::IllegalAdvancement,
+                    },
+                ],
+                white: vec![
+                    PenaltySnapshot {
+                        player_number: 3,
+                        time: PenaltyTime::Seconds(55),
+                        infraction: Infraction::UnsportsmanlikeConduct,
+                    },
+                    PenaltySnapshot {
+                        player_number: 5,
+                        time: PenaltyTime::Seconds(117),
+                        infraction: Infraction::FalseStart,
+                    },
+                    PenaltySnapshot {
+                        player_number: 7,
+                        time: PenaltyTime::Seconds(299),
+                        infraction: Infraction::IllegallyStoppingThePuck,
+                    },
+                ]
+            }
         );
 
         let next_time = next_time + Duration::from_secs(1);
@@ -5020,54 +4781,53 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 2,
-                    time: PenaltyTime::Seconds(51),
-                    infraction: Infraction::Unknown,
-                },
-                PenaltySnapshot {
-                    player_number: 4,
-                    time: PenaltyTime::Seconds(115),
-                    infraction: Infraction::DelayOfGame,
-                },
-                PenaltySnapshot {
-                    player_number: 6,
-                    time: PenaltyTime::Seconds(297),
-                    infraction: Infraction::IllegalAdvancement,
-                },
-                PenaltySnapshot {
-                    player_number: 8,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::IllegalSubstitution,
-                },
-            ]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 3,
-                    time: PenaltyTime::Seconds(53),
-                    infraction: Infraction::UnsportsmanlikeConduct,
-                },
-                PenaltySnapshot {
-                    player_number: 5,
-                    time: PenaltyTime::Seconds(115),
-                    infraction: Infraction::FalseStart,
-                },
-                PenaltySnapshot {
-                    player_number: 7,
-                    time: PenaltyTime::Seconds(297),
-                    infraction: Infraction::IllegallyStoppingThePuck,
-                },
-                PenaltySnapshot {
-                    player_number: 9,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::Obstruction,
-                },
-            ]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        player_number: 2,
+                        time: PenaltyTime::Seconds(51),
+                        infraction: Infraction::Unknown,
+                    },
+                    PenaltySnapshot {
+                        player_number: 4,
+                        time: PenaltyTime::Seconds(115),
+                        infraction: Infraction::DelayOfGame,
+                    },
+                    PenaltySnapshot {
+                        player_number: 6,
+                        time: PenaltyTime::Seconds(297),
+                        infraction: Infraction::IllegalAdvancement,
+                    },
+                    PenaltySnapshot {
+                        player_number: 8,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::IllegalSubstitution,
+                    },
+                ],
+                white: vec![
+                    PenaltySnapshot {
+                        player_number: 3,
+                        time: PenaltyTime::Seconds(53),
+                        infraction: Infraction::UnsportsmanlikeConduct,
+                    },
+                    PenaltySnapshot {
+                        player_number: 5,
+                        time: PenaltyTime::Seconds(115),
+                        infraction: Infraction::FalseStart,
+                    },
+                    PenaltySnapshot {
+                        player_number: 7,
+                        time: PenaltyTime::Seconds(297),
+                        infraction: Infraction::IllegallyStoppingThePuck,
+                    },
+                    PenaltySnapshot {
+                        player_number: 9,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::Obstruction,
+                    },
+                ]
+            }
         );
 
         // Check 5 seconds after Half Time has started (there were 15s remaining in first half)
@@ -5075,54 +4835,53 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 2,
-                    time: PenaltyTime::Seconds(36),
-                    infraction: Infraction::Unknown,
-                },
-                PenaltySnapshot {
-                    player_number: 4,
-                    time: PenaltyTime::Seconds(100),
-                    infraction: Infraction::DelayOfGame,
-                },
-                PenaltySnapshot {
-                    player_number: 6,
-                    time: PenaltyTime::Seconds(282),
-                    infraction: Infraction::IllegalAdvancement,
-                },
-                PenaltySnapshot {
-                    player_number: 8,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::IllegalSubstitution,
-                },
-            ]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 3,
-                    time: PenaltyTime::Seconds(38),
-                    infraction: Infraction::UnsportsmanlikeConduct,
-                },
-                PenaltySnapshot {
-                    player_number: 5,
-                    time: PenaltyTime::Seconds(100),
-                    infraction: Infraction::FalseStart,
-                },
-                PenaltySnapshot {
-                    player_number: 7,
-                    time: PenaltyTime::Seconds(282),
-                    infraction: Infraction::IllegallyStoppingThePuck,
-                },
-                PenaltySnapshot {
-                    player_number: 9,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::Obstruction,
-                },
-            ]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        player_number: 2,
+                        time: PenaltyTime::Seconds(36),
+                        infraction: Infraction::Unknown,
+                    },
+                    PenaltySnapshot {
+                        player_number: 4,
+                        time: PenaltyTime::Seconds(100),
+                        infraction: Infraction::DelayOfGame,
+                    },
+                    PenaltySnapshot {
+                        player_number: 6,
+                        time: PenaltyTime::Seconds(282),
+                        infraction: Infraction::IllegalAdvancement,
+                    },
+                    PenaltySnapshot {
+                        player_number: 8,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::IllegalSubstitution,
+                    },
+                ],
+                white: vec![
+                    PenaltySnapshot {
+                        player_number: 3,
+                        time: PenaltyTime::Seconds(38),
+                        infraction: Infraction::UnsportsmanlikeConduct,
+                    },
+                    PenaltySnapshot {
+                        player_number: 5,
+                        time: PenaltyTime::Seconds(100),
+                        infraction: Infraction::FalseStart,
+                    },
+                    PenaltySnapshot {
+                        player_number: 7,
+                        time: PenaltyTime::Seconds(282),
+                        infraction: Infraction::IllegallyStoppingThePuck,
+                    },
+                    PenaltySnapshot {
+                        player_number: 9,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::Obstruction,
+                    },
+                ]
+            }
         );
 
         // Check 10 seconds after Second Half has started (there were 175s remaining in Half Time)
@@ -5130,54 +4889,53 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 2,
-                    time: PenaltyTime::Seconds(26),
-                    infraction: Infraction::Unknown,
-                },
-                PenaltySnapshot {
-                    player_number: 4,
-                    time: PenaltyTime::Seconds(90),
-                    infraction: Infraction::DelayOfGame,
-                },
-                PenaltySnapshot {
-                    player_number: 6,
-                    time: PenaltyTime::Seconds(272),
-                    infraction: Infraction::IllegalAdvancement,
-                },
-                PenaltySnapshot {
-                    player_number: 8,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::IllegalSubstitution,
-                },
-            ]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 3,
-                    time: PenaltyTime::Seconds(28),
-                    infraction: Infraction::UnsportsmanlikeConduct,
-                },
-                PenaltySnapshot {
-                    player_number: 5,
-                    time: PenaltyTime::Seconds(90),
-                    infraction: Infraction::FalseStart,
-                },
-                PenaltySnapshot {
-                    player_number: 7,
-                    time: PenaltyTime::Seconds(272),
-                    infraction: Infraction::IllegallyStoppingThePuck,
-                },
-                PenaltySnapshot {
-                    player_number: 9,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::Obstruction,
-                },
-            ]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        player_number: 2,
+                        time: PenaltyTime::Seconds(26),
+                        infraction: Infraction::Unknown,
+                    },
+                    PenaltySnapshot {
+                        player_number: 4,
+                        time: PenaltyTime::Seconds(90),
+                        infraction: Infraction::DelayOfGame,
+                    },
+                    PenaltySnapshot {
+                        player_number: 6,
+                        time: PenaltyTime::Seconds(272),
+                        infraction: Infraction::IllegalAdvancement,
+                    },
+                    PenaltySnapshot {
+                        player_number: 8,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::IllegalSubstitution,
+                    },
+                ],
+                white: vec![
+                    PenaltySnapshot {
+                        player_number: 3,
+                        time: PenaltyTime::Seconds(28),
+                        infraction: Infraction::UnsportsmanlikeConduct,
+                    },
+                    PenaltySnapshot {
+                        player_number: 5,
+                        time: PenaltyTime::Seconds(90),
+                        infraction: Infraction::FalseStart,
+                    },
+                    PenaltySnapshot {
+                        player_number: 7,
+                        time: PenaltyTime::Seconds(272),
+                        infraction: Infraction::IllegallyStoppingThePuck,
+                    },
+                    PenaltySnapshot {
+                        player_number: 9,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::Obstruction,
+                    },
+                ]
+            }
         );
 
         // Check after the first two penalties have finished
@@ -5185,54 +4943,53 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 2,
-                    time: PenaltyTime::Seconds(0),
-                    infraction: Infraction::Unknown,
-                },
-                PenaltySnapshot {
-                    player_number: 4,
-                    time: PenaltyTime::Seconds(60),
-                    infraction: Infraction::DelayOfGame,
-                },
-                PenaltySnapshot {
-                    player_number: 6,
-                    time: PenaltyTime::Seconds(242),
-                    infraction: Infraction::IllegalAdvancement,
-                },
-                PenaltySnapshot {
-                    player_number: 8,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::IllegalSubstitution,
-                },
-            ]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 3,
-                    time: PenaltyTime::Seconds(0),
-                    infraction: Infraction::UnsportsmanlikeConduct,
-                },
-                PenaltySnapshot {
-                    player_number: 5,
-                    time: PenaltyTime::Seconds(60),
-                    infraction: Infraction::FalseStart,
-                },
-                PenaltySnapshot {
-                    player_number: 7,
-                    time: PenaltyTime::Seconds(242),
-                    infraction: Infraction::IllegallyStoppingThePuck,
-                },
-                PenaltySnapshot {
-                    player_number: 9,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::Obstruction,
-                },
-            ]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        player_number: 2,
+                        time: PenaltyTime::Seconds(0),
+                        infraction: Infraction::Unknown,
+                    },
+                    PenaltySnapshot {
+                        player_number: 4,
+                        time: PenaltyTime::Seconds(60),
+                        infraction: Infraction::DelayOfGame,
+                    },
+                    PenaltySnapshot {
+                        player_number: 6,
+                        time: PenaltyTime::Seconds(242),
+                        infraction: Infraction::IllegalAdvancement,
+                    },
+                    PenaltySnapshot {
+                        player_number: 8,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::IllegalSubstitution,
+                    },
+                ],
+                white: vec![
+                    PenaltySnapshot {
+                        player_number: 3,
+                        time: PenaltyTime::Seconds(0),
+                        infraction: Infraction::UnsportsmanlikeConduct,
+                    },
+                    PenaltySnapshot {
+                        player_number: 5,
+                        time: PenaltyTime::Seconds(60),
+                        infraction: Infraction::FalseStart,
+                    },
+                    PenaltySnapshot {
+                        player_number: 7,
+                        time: PenaltyTime::Seconds(242),
+                        infraction: Infraction::IllegallyStoppingThePuck,
+                    },
+                    PenaltySnapshot {
+                        player_number: 9,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::Obstruction,
+                    },
+                ]
+            }
         );
 
         // Check after all the penalties have finished
@@ -5240,54 +4997,53 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 2,
-                    time: PenaltyTime::Seconds(0),
-                    infraction: Infraction::Unknown,
-                },
-                PenaltySnapshot {
-                    player_number: 4,
-                    time: PenaltyTime::Seconds(0),
-                    infraction: Infraction::DelayOfGame,
-                },
-                PenaltySnapshot {
-                    player_number: 6,
-                    time: PenaltyTime::Seconds(0),
-                    infraction: Infraction::IllegalAdvancement,
-                },
-                PenaltySnapshot {
-                    player_number: 8,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::IllegalSubstitution,
-                },
-            ]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 3,
-                    time: PenaltyTime::Seconds(0),
-                    infraction: Infraction::UnsportsmanlikeConduct,
-                },
-                PenaltySnapshot {
-                    player_number: 5,
-                    time: PenaltyTime::Seconds(0),
-                    infraction: Infraction::FalseStart,
-                },
-                PenaltySnapshot {
-                    player_number: 7,
-                    time: PenaltyTime::Seconds(0),
-                    infraction: Infraction::IllegallyStoppingThePuck,
-                },
-                PenaltySnapshot {
-                    player_number: 9,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::Obstruction,
-                },
-            ]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        player_number: 2,
+                        time: PenaltyTime::Seconds(0),
+                        infraction: Infraction::Unknown,
+                    },
+                    PenaltySnapshot {
+                        player_number: 4,
+                        time: PenaltyTime::Seconds(0),
+                        infraction: Infraction::DelayOfGame,
+                    },
+                    PenaltySnapshot {
+                        player_number: 6,
+                        time: PenaltyTime::Seconds(0),
+                        infraction: Infraction::IllegalAdvancement,
+                    },
+                    PenaltySnapshot {
+                        player_number: 8,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::IllegalSubstitution,
+                    },
+                ],
+                white: vec![
+                    PenaltySnapshot {
+                        player_number: 3,
+                        time: PenaltyTime::Seconds(0),
+                        infraction: Infraction::UnsportsmanlikeConduct,
+                    },
+                    PenaltySnapshot {
+                        player_number: 5,
+                        time: PenaltyTime::Seconds(0),
+                        infraction: Infraction::FalseStart,
+                    },
+                    PenaltySnapshot {
+                        player_number: 7,
+                        time: PenaltyTime::Seconds(0),
+                        infraction: Infraction::IllegallyStoppingThePuck,
+                    },
+                    PenaltySnapshot {
+                        player_number: 9,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::Obstruction,
+                    },
+                ]
+            }
         );
     }
 
@@ -5321,14 +5077,16 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![PenaltySnapshot {
-                player_number: 2,
-                time: PenaltyTime::Seconds(59),
-                infraction: Infraction::Unknown,
-            }]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![PenaltySnapshot {
+                    player_number: 2,
+                    time: PenaltyTime::Seconds(59),
+                    infraction: Infraction::Unknown,
+                }],
+                white: vec![]
+            }
         );
-        assert_eq!(snapshot.w_penalties, vec![]);
 
         let next_time = next_time + Duration::from_secs(1);
         tm.start_penalty(
@@ -5352,27 +5110,26 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 2,
-                    time: PenaltyTime::Seconds(57),
-                    infraction: Infraction::Unknown,
-                },
-                PenaltySnapshot {
-                    player_number: 5,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::FalseStart,
-                }
-            ]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![PenaltySnapshot {
-                player_number: 3,
-                time: PenaltyTime::Seconds(119),
-                infraction: Infraction::DelayOfGame,
-            }]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        player_number: 2,
+                        time: PenaltyTime::Seconds(57),
+                        infraction: Infraction::Unknown,
+                    },
+                    PenaltySnapshot {
+                        player_number: 5,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::FalseStart,
+                    }
+                ],
+                white: vec![PenaltySnapshot {
+                    player_number: 3,
+                    time: PenaltyTime::Seconds(119),
+                    infraction: Infraction::DelayOfGame,
+                }]
+            }
         );
 
         // Check after the game has ended
@@ -5381,27 +5138,26 @@ mod test {
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(snapshot.current_period, GamePeriod::BetweenGames);
         assert_eq!(
-            snapshot.b_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 2,
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        player_number: 2,
+                        time: PenaltyTime::Seconds(0),
+                        infraction: Infraction::Unknown,
+                    },
+                    PenaltySnapshot {
+                        player_number: 5,
+                        time: PenaltyTime::Seconds(0),
+                        infraction: Infraction::FalseStart,
+                    },
+                ],
+                white: vec![PenaltySnapshot {
+                    player_number: 3,
                     time: PenaltyTime::Seconds(0),
-                    infraction: Infraction::Unknown,
-                },
-                PenaltySnapshot {
-                    player_number: 5,
-                    time: PenaltyTime::Seconds(0),
-                    infraction: Infraction::FalseStart,
-                },
-            ]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![PenaltySnapshot {
-                player_number: 3,
-                time: PenaltyTime::Seconds(0),
-                infraction: Infraction::DelayOfGame,
-            },]
+                    infraction: Infraction::DelayOfGame,
+                },]
+            }
         );
     }
 
@@ -5433,14 +5189,16 @@ mod test {
 
         let snapshot = tm.generate_snapshot(earlier_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![PenaltySnapshot {
-                player_number: 2,
-                time: PenaltyTime::Seconds(61),
-                infraction: Infraction::Unknown,
-            }]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![PenaltySnapshot {
+                    player_number: 2,
+                    time: PenaltyTime::Seconds(61),
+                    infraction: Infraction::Unknown,
+                }],
+                white: vec![]
+            }
         );
-        assert_eq!(snapshot.w_penalties, vec![]);
     }
 
     #[test]
@@ -5481,14 +5239,16 @@ mod test {
         // The penalty should have 50s left, without the limiting it would have 130s left
         let snapshot = tm.generate_snapshot(check_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![PenaltySnapshot {
-                player_number: 2,
-                time: PenaltyTime::Seconds(50),
-                infraction: Infraction::Unknown,
-            }]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![PenaltySnapshot {
+                    player_number: 2,
+                    time: PenaltyTime::Seconds(50),
+                    infraction: Infraction::Unknown,
+                }],
+                white: vec![]
+            }
         );
-        assert_eq!(snapshot.w_penalties, vec![]);
     }
 
     #[test]
@@ -5561,44 +5321,43 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 2,
-                    time: PenaltyTime::Seconds(59),
-                    infraction: Infraction::Unknown,
-                },
-                PenaltySnapshot {
-                    player_number: 4,
-                    time: PenaltyTime::Seconds(119),
-                    infraction: Infraction::FalseStart,
-                },
-                PenaltySnapshot {
-                    player_number: 6,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::GrabbingTheBarrier,
-                },
-            ]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 3,
-                    time: PenaltyTime::Seconds(59),
-                    infraction: Infraction::DelayOfGame,
-                },
-                PenaltySnapshot {
-                    player_number: 5,
-                    time: PenaltyTime::Seconds(119),
-                    infraction: Infraction::FreeArm,
-                },
-                PenaltySnapshot {
-                    player_number: 7,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::IllegalAdvancement,
-                },
-            ]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        player_number: 2,
+                        time: PenaltyTime::Seconds(59),
+                        infraction: Infraction::Unknown,
+                    },
+                    PenaltySnapshot {
+                        player_number: 4,
+                        time: PenaltyTime::Seconds(119),
+                        infraction: Infraction::FalseStart,
+                    },
+                    PenaltySnapshot {
+                        player_number: 6,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::GrabbingTheBarrier,
+                    },
+                ],
+                white: vec![
+                    PenaltySnapshot {
+                        player_number: 3,
+                        time: PenaltyTime::Seconds(59),
+                        infraction: Infraction::DelayOfGame,
+                    },
+                    PenaltySnapshot {
+                        player_number: 5,
+                        time: PenaltyTime::Seconds(119),
+                        infraction: Infraction::FreeArm,
+                    },
+                    PenaltySnapshot {
+                        player_number: 7,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::IllegalAdvancement,
+                    },
+                ]
+            }
         );
 
         // Check during half time (pre-culling)
@@ -5606,44 +5365,43 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 2,
-                    time: PenaltyTime::Seconds(0),
-                    infraction: Infraction::Unknown,
-                },
-                PenaltySnapshot {
-                    player_number: 4,
-                    time: PenaltyTime::Seconds(50),
-                    infraction: Infraction::FalseStart,
-                },
-                PenaltySnapshot {
-                    player_number: 6,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::GrabbingTheBarrier,
-                },
-            ]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 3,
-                    time: PenaltyTime::Seconds(0),
-                    infraction: Infraction::DelayOfGame,
-                },
-                PenaltySnapshot {
-                    player_number: 5,
-                    time: PenaltyTime::Seconds(50),
-                    infraction: Infraction::FreeArm,
-                },
-                PenaltySnapshot {
-                    player_number: 7,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::IllegalAdvancement,
-                },
-            ]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        player_number: 2,
+                        time: PenaltyTime::Seconds(0),
+                        infraction: Infraction::Unknown,
+                    },
+                    PenaltySnapshot {
+                        player_number: 4,
+                        time: PenaltyTime::Seconds(50),
+                        infraction: Infraction::FalseStart,
+                    },
+                    PenaltySnapshot {
+                        player_number: 6,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::GrabbingTheBarrier,
+                    },
+                ],
+                white: vec![
+                    PenaltySnapshot {
+                        player_number: 3,
+                        time: PenaltyTime::Seconds(0),
+                        infraction: Infraction::DelayOfGame,
+                    },
+                    PenaltySnapshot {
+                        player_number: 5,
+                        time: PenaltyTime::Seconds(50),
+                        infraction: Infraction::FreeArm,
+                    },
+                    PenaltySnapshot {
+                        player_number: 7,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::IllegalAdvancement,
+                    },
+                ]
+            }
         );
 
         // Check 6s after half time (post-culling)
@@ -5651,34 +5409,33 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 4,
-                    time: PenaltyTime::Seconds(44),
-                    infraction: Infraction::FalseStart,
-                },
-                PenaltySnapshot {
-                    player_number: 6,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::GrabbingTheBarrier,
-                },
-            ]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 5,
-                    time: PenaltyTime::Seconds(44),
-                    infraction: Infraction::FreeArm,
-                },
-                PenaltySnapshot {
-                    player_number: 7,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::IllegalAdvancement,
-                },
-            ]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        player_number: 4,
+                        time: PenaltyTime::Seconds(44),
+                        infraction: Infraction::FalseStart,
+                    },
+                    PenaltySnapshot {
+                        player_number: 6,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::GrabbingTheBarrier,
+                    },
+                ],
+                white: vec![
+                    PenaltySnapshot {
+                        player_number: 5,
+                        time: PenaltyTime::Seconds(44),
+                        infraction: Infraction::FreeArm,
+                    },
+                    PenaltySnapshot {
+                        player_number: 7,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::IllegalAdvancement,
+                    },
+                ]
+            }
         );
     }
 
@@ -5801,7 +5558,7 @@ mod test {
         tm.current_period = GamePeriod::SecondHalf;
         assert_eq!(Ok(true), tm.would_end_game(next_time));
 
-        tm.set_scores(BlackWhiteBundle::new(3, 4), start_time);
+        tm.set_scores(BlackWhiteBundle { black: 3, white: 4 }, start_time);
         assert_eq!(Ok(true), tm.would_end_game(next_time));
 
         tm.config.sudden_death_allowed = true;
@@ -5810,7 +5567,7 @@ mod test {
         tm.config.overtime_allowed = true;
         assert_eq!(Ok(true), tm.would_end_game(next_time));
 
-        tm.set_scores(BlackWhiteBundle::new(4, 4), start_time);
+        tm.set_scores(BlackWhiteBundle { black: 4, white: 4 }, start_time);
         assert_eq!(Ok(false), tm.would_end_game(next_time));
 
         tm.current_period = GamePeriod::PreOvertime;
@@ -5828,7 +5585,7 @@ mod test {
         tm.config.sudden_death_allowed = false;
         assert_eq!(Ok(true), tm.would_end_game(next_time));
 
-        tm.set_scores(BlackWhiteBundle::new(4, 5), start_time);
+        tm.set_scores(BlackWhiteBundle { black: 4, white: 5 }, start_time);
         tm.config.sudden_death_allowed = true;
         assert_eq!(Ok(true), tm.would_end_game(next_time));
 
@@ -5889,7 +5646,7 @@ mod test {
             start_time,
             time_at_start: Duration::ZERO,
         };
-        tm.set_scores(BlackWhiteBundle::new(4, 5), start_time);
+        tm.set_scores(BlackWhiteBundle { black: 4, white: 5 }, start_time);
         assert_eq!(Ok(false), tm.would_end_game(next_time));
     }
 

@@ -626,8 +626,12 @@ mod test {
     use more_asserts::*;
     use std::io::ErrorKind;
     use tokio::io::AsyncReadExt;
-    use uwh_common::game_snapshot::{
-        GamePeriod, Infraction, InfractionSnapshot, PenaltySnapshot, PenaltyTime, TimeoutSnapshot,
+    use uwh_common::{
+        bundles::{BlackWhiteBundle, OptColorBundle},
+        game_snapshot::{
+            GamePeriod, Infraction, InfractionSnapshot, PenaltySnapshot, PenaltyTime,
+            TimeoutSnapshot,
+        },
     };
 
     const BINARY_PORT: u16 = 12345;
@@ -702,82 +706,87 @@ mod test {
             current_period: GamePeriod::FirstHalf,
             secs_in_period: 897,
             timeout: TimeoutSnapshot::None,
-            b_score: 2,
-            w_score: 3,
-            b_penalties: vec![
-                PenaltySnapshot {
-                    time: PenaltyTime::Seconds(57),
-                    player_number: 3,
-                    infraction: Infraction::Unknown,
-                },
-                PenaltySnapshot {
-                    time: PenaltyTime::Seconds(117),
-                    player_number: 6,
-                    infraction: Infraction::DelayOfGame,
-                },
-            ],
-            w_penalties: vec![
-                PenaltySnapshot {
-                    time: PenaltyTime::Seconds(297),
-                    player_number: 12,
-                    infraction: Infraction::FalseStart,
-                },
-                PenaltySnapshot {
-                    time: PenaltyTime::TotalDismissal,
-                    player_number: 15,
-                    infraction: Infraction::FreeArm,
-                },
-            ],
-            b_warnings: vec![
-                InfractionSnapshot {
-                    infraction: Infraction::Obstruction,
-                    player_number: Some(3),
-                },
-                InfractionSnapshot {
-                    infraction: Infraction::OutOfBounds,
-                    player_number: Some(6),
-                },
-            ],
-            w_warnings: vec![
-                InfractionSnapshot {
-                    infraction: Infraction::DelayOfGame,
-                    player_number: Some(12),
-                },
-                InfractionSnapshot {
-                    infraction: Infraction::StickInfringement,
-                    player_number: None,
-                },
-            ],
-            b_fouls: vec![
-                InfractionSnapshot {
-                    infraction: Infraction::Obstruction,
-                    player_number: Some(3),
-                },
-                InfractionSnapshot {
-                    infraction: Infraction::OutOfBounds,
-                    player_number: Some(6),
-                },
-            ],
-            w_fouls: vec![
-                InfractionSnapshot {
-                    infraction: Infraction::DelayOfGame,
-                    player_number: Some(12),
-                },
-                InfractionSnapshot {
-                    infraction: Infraction::StickInfringement,
-                    player_number: None,
-                },
-            ],
-            equal_fouls: vec![
-                InfractionSnapshot {
-                    infraction: Infraction::DelayOfGame,
-                    player_number: None,
-                },
-                InfractionSnapshot {
-                    infraction: Infraction::StickInfringement,
-                    player_number: None,
-                },
-            ],
+            scores: BlackWhiteBundle { black: 2, white: 3 },
+            penalties: BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        time: PenaltyTime::Seconds(57),
+                        player_number: 3,
+                        infraction: Infraction::Unknown,
+                    },
+                    PenaltySnapshot {
+                        time: PenaltyTime::Seconds(117),
+                        player_number: 6,
+                        infraction: Infraction::DelayOfGame,
+                    },
+                ],
+                white: vec![
+                    PenaltySnapshot {
+                        time: PenaltyTime::Seconds(297),
+                        player_number: 12,
+                        infraction: Infraction::FalseStart,
+                    },
+                    PenaltySnapshot {
+                        time: PenaltyTime::TotalDismissal,
+                        player_number: 15,
+                        infraction: Infraction::FreeArm,
+                    },
+                ],
+            },
+            warnings: BlackWhiteBundle {
+                black: vec![
+                    InfractionSnapshot {
+                        infraction: Infraction::Obstruction,
+                        player_number: Some(3),
+                    },
+                    InfractionSnapshot {
+                        infraction: Infraction::OutOfBounds,
+                        player_number: Some(6),
+                    },
+                ],
+                white: vec![
+                    InfractionSnapshot {
+                        infraction: Infraction::DelayOfGame,
+                        player_number: Some(12),
+                    },
+                    InfractionSnapshot {
+                        infraction: Infraction::StickInfringement,
+                        player_number: None,
+                    },
+                ],
+            },
+            fouls: OptColorBundle {
+                black: vec![
+                    InfractionSnapshot {
+                        infraction: Infraction::Obstruction,
+                        player_number: Some(3),
+                    },
+                    InfractionSnapshot {
+                        infraction: Infraction::OutOfBounds,
+                        player_number: Some(6),
+                    },
+                ],
+                white: vec![
+                    InfractionSnapshot {
+                        infraction: Infraction::DelayOfGame,
+                        player_number: Some(12),
+                    },
+                    InfractionSnapshot {
+                        infraction: Infraction::StickInfringement,
+                        player_number: None,
+                    },
+                ],
+                equal: vec![
+                    InfractionSnapshot {
+                        infraction: Infraction::DelayOfGame,
+                        player_number: None,
+                    },
+                    InfractionSnapshot {
+                        infraction: Infraction::StickInfringement,
+                        player_number: None,
+                    },
+                ],
+            },
             is_old_game: true,
             game_number: 26,
             next_game_number: 28,

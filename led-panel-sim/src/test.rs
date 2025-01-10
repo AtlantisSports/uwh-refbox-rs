@@ -16,6 +16,7 @@ fn empty_data() -> TransmittedData {
         },
         white_on_right: false,
         flash: false,
+        beep_test: false,
     }
 }
 
@@ -547,6 +548,7 @@ fn test_game_periods() {
     assert_eq!(
         state,
         DisplayState {
+            fst_hlf: true,
             hlf_tm: true,
             ..EMPTY_STATE
         }
@@ -557,6 +559,8 @@ fn test_game_periods() {
     assert_eq!(
         state,
         DisplayState {
+            fst_hlf: true,
+            hlf_tm: true,
             snd_hlf: true,
             ..EMPTY_STATE
         }
@@ -588,6 +592,7 @@ fn test_game_periods() {
     assert_eq!(
         state,
         DisplayState {
+            fst_hlf: true,
             hlf_tm: true,
             overtime: true,
             ..EMPTY_STATE
@@ -599,6 +604,8 @@ fn test_game_periods() {
     assert_eq!(
         state,
         DisplayState {
+            fst_hlf: true,
+            hlf_tm: true,
             snd_hlf: true,
             overtime: true,
             ..EMPTY_STATE

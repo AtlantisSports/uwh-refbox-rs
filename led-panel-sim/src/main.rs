@@ -87,6 +87,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 900,
@@ -104,6 +105,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::HalfTime,
                     secs_in_period: 123,
@@ -121,6 +123,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::SecondHalf,
                     secs_in_period: 0,
@@ -138,6 +141,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::PreOvertime,
                     secs_in_period: 32,
@@ -155,6 +159,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::OvertimeFirstHalf,
                     secs_in_period: 234,
@@ -172,6 +177,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::OvertimeHalfTime,
                     secs_in_period: 45,
@@ -189,6 +195,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::OvertimeSecondHalf,
                     secs_in_period: 456,
@@ -206,6 +213,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::PreSuddenDeath,
                     secs_in_period: 12,
@@ -223,6 +231,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::SuddenDeath,
                     secs_in_period: 5999,
@@ -240,6 +249,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::BetweenGames,
                     secs_in_period: 99,
@@ -257,6 +267,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::BetweenGames,
                     secs_in_period: 45,
@@ -274,6 +285,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -291,6 +303,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -308,6 +321,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -325,6 +339,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -342,6 +357,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -359,6 +375,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -376,6 +393,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -393,6 +411,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -410,6 +429,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -427,6 +447,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -444,6 +465,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -461,6 +483,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -478,6 +501,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -495,6 +519,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -512,6 +537,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -529,6 +555,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -546,6 +573,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -563,6 +591,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -580,6 +609,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::BetweenGames,
                     secs_in_period: 345,
@@ -597,6 +627,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::BetweenGames,
                     secs_in_period: 345,
@@ -614,6 +645,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::BetweenGames,
                     secs_in_period: 345,
@@ -631,6 +663,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::BetweenGames,
                     secs_in_period: 6000,
@@ -648,6 +681,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: false,
+                beep_test: false,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::BetweenGames,
                     secs_in_period: u16::MAX,
@@ -665,6 +699,7 @@ fn main() {
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: true,
+                beep_test: false,
                 snapshot: Default::default(),
             },
         },
@@ -696,9 +731,9 @@ package test_cases;
     )
     .unwrap();
 
-    write!(
+    writeln!(
         &mut file_contents,
-        "{},\n",
+        "{},",
         test_to_verilog(
             "All zeros",
             [0u8; TransmittedData::ENCODED_LEN],

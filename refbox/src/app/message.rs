@@ -1,7 +1,8 @@
 use crate::tournament_manager::penalty::PenaltyKind;
 use tokio::time::Duration;
 use uwh_common::{
-    game_snapshot::{Color as GameColor, GameSnapshot, Infraction},
+    color::Color as GameColor,
+    game_snapshot::{GameSnapshot, Infraction},
     uwhscores::{GameInfo, TournamentInfo},
 };
 

@@ -6,10 +6,10 @@ use iced::widget::scrollable;
 use iced::{
     Length,
     alignment::{Horizontal, Vertical},
-    widget::{column, container, horizontal_space, row, text},
+    widget::{column, container, row, text},
 };
 
-use uwh_common::game_snapshot::{Color as GameColor, GameSnapshot};
+use uwh_common::game_snapshot::GameSnapshot;
 
 pub(in super::super) fn build_warnings_summary_page<'a>(
     snapshot: &GameSnapshot,
@@ -23,42 +23,47 @@ pub(in super::super) fn build_warnings_summary_page<'a>(
             .horizontal_alignment(Horizontal::Center)
             .width(Length::Fill),
         scrollable(
-            row![
-                column(
-                    snapshot
-                        .b_warnings
+            row(snapshot
+                .warnings
+                .iter()
+                .map(|(color, warns)| column(
+                    warns
                         .iter()
                         .rev()
-                        .map(
-                            |warning| make_warning_container(warning, Some(GameColor::Black))
-                                .into()
-                        )
+                        .map(|warning| make_warning_container(warning, Some(color)).into())
                         .collect()
                 )
                 .spacing(SPACING)
                 .width(Length::Fill)
-                .padding(PADDING),
-                column(
-                    snapshot
-                        .w_warnings
-                        .iter()
-                        .rev()
-                        .map(
-                            |warning| make_warning_container(warning, Some(GameColor::White))
-                                .into()
-                        )
-                        .collect()
-                )
-                .spacing(SPACING)
-                .width(Length::Fill)
-                .padding(PADDING),
-            ]
+                .padding(PADDING)
+                .into())
+                .collect())
             .spacing(SPACING)
         )
     ])
     .style(ContainerStyle::LightGray)
     .width(Length::Fill)
     .height(Length::Fill);
+
+    let foul_lists: OptColorBundle<Option<Element<Message>>> = snapshot
+        .fouls
+        .iter()
+        .map(|(color, fouls)| {
+            (
+                color,
+                Some(
+                    column(
+                        fouls
+                            .iter()
+                            .rev()
+                            .map(|fouls| make_warning_container(fouls, color).into())
+                            .collect(),
+                    )
+                    .into(),
+                ),
+            )
+        })
+        .collect();
 
     let fouls_container = container(column![
         text("FOULS")
@@ -67,48 +72,8 @@ pub(in super::super) fn build_warnings_summary_page<'a>(
             .horizontal_alignment(Horizontal::Center)
             .width(Length::Fill),
         scrollable(column![
-            row![
-                column(
-                    snapshot
-                        .b_fouls
-                        .iter()
-                        .rev()
-                        .map(|fouls| make_warning_container(fouls, Some(GameColor::Black)).into())
-                        .collect()
-                )
-                .spacing(SPACING)
-                .width(Length::Fill)
-                .padding(PADDING),
-                column(
-                    snapshot
-                        .w_fouls
-                        .iter()
-                        .rev()
-                        .map(|fouls| make_warning_container(fouls, Some(GameColor::White)).into())
-                        .collect()
-                )
-                .spacing(SPACING)
-                .width(Length::Fill)
-                .padding(PADDING),
-            ]
-            .spacing(SPACING),
-            column(
-                snapshot
-                    .equal_fouls
-                    .iter()
-                    .rev()
-                    .map(|fouls| row![
-                        horizontal_space(Length::Fill),
-                        make_warning_container(fouls, None),
-                        horizontal_space(Length::Fill),
-                    ]
-                    .width(Length::Fill)
-                    .into())
-                    .collect()
-            )
-            .spacing(SPACING)
-            .width(Length::Fill)
-            .padding(PADDING)
+            row![foul_lists.black.unwrap(), foul_lists.white.unwrap()].spacing(SPACING),
+            foul_lists.equal.unwrap()
         ])
         .height(Length::Fill)
     ])

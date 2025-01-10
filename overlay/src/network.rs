@@ -5,7 +5,10 @@ use serde_json::Value;
 use std::net::TcpStream;
 use std::sync::OnceLock;
 use std::{io::Read, time::Duration};
-use uwh_common::game_snapshot::{Color, GamePeriod, GameSnapshot};
+use uwh_common::{
+    color::Color,
+    game_snapshot::{GamePeriod, GameSnapshot},
+};
 
 static CLIENT_CELL: OnceLock<Client> = OnceLock::new();
 

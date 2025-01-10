@@ -13,8 +13,9 @@ use iced::{
     widget::{button, column, horizontal_space, row, text},
 };
 use uwh_common::{
+    color::Color as GameColor,
     config::Game as GameConfig,
-    game_snapshot::{Color as GameColor, GamePeriod, GameSnapshot, PenaltyTime, TimeoutSnapshot},
+    game_snapshot::{GamePeriod, GameSnapshot, PenaltyTime, TimeoutSnapshot},
 };
 
 pub(in super::super) fn build_main_view<'a>(
@@ -105,10 +106,14 @@ pub(in super::super) fn build_main_view<'a>(
         }
     };
 
-    let num_warns_b = snapshot.b_warnings.len();
-    let num_warns_w = snapshot.w_warnings.len();
+    let max_num_warns = snapshot
+        .warnings
+        .iter()
+        .map(|(_, w)| w.len())
+        .max()
+        .unwrap();
 
-    center_col = center_col.push(if num_warns_b | num_warns_w < 4 {
+    center_col = center_col.push(if max_num_warns < 4 {
         button(
             text(config_string(
                 snapshot,
@@ -150,40 +155,22 @@ pub(in super::super) fn build_main_view<'a>(
                         .vertical_alignment(Vertical::Top)
                         .horizontal_alignment(Horizontal::Center)
                         .width(Length::Fill),
-                    row![
-                        column(
-                            snapshot
-                                .b_warnings
+                    row(snapshot
+                        .warnings
+                        .iter()
+                        .map(|(color, warns)| column(
+                            warns
                                 .iter()
                                 .rev()
                                 .take(10)
-                                .map(|warning| make_warning_container(
-                                    warning,
-                                    Some(GameColor::Black)
-                                )
-                                .into())
+                                .map(|warning| make_warning_container(warning, Some(color)).into())
                                 .collect()
                         )
                         .spacing(1)
                         .width(Length::Fill)
-                        .height(Length::Fill),
-                        column(
-                            snapshot
-                                .w_warnings
-                                .iter()
-                                .rev()
-                                .take(10)
-                                .map(|warning| make_warning_container(
-                                    warning,
-                                    Some(GameColor::White)
-                                )
-                                .into())
-                                .collect()
-                        )
-                        .spacing(1)
-                        .width(Length::Fill)
-                        .height(Length::Fill),
-                    ]
+                        .height(Length::Fill)
+                        .into())
+                        .collect())
                     .spacing(SPACING),
                 ]
                 .spacing(0)
@@ -199,10 +186,7 @@ pub(in super::super) fn build_main_view<'a>(
     }
 
     let make_penalty_button = |snapshot: &GameSnapshot, color: GameColor| {
-        let penalties = match color {
-            GameColor::Black => &snapshot.b_penalties,
-            GameColor::White => &snapshot.w_penalties,
-        };
+        let penalties = &snapshot.penalties[color];
 
         let time = penalties
             .iter()
@@ -260,7 +244,7 @@ pub(in super::super) fn build_main_view<'a>(
     let mut black_score_btn = button(
         column![
             text("BLACK").line_height(LINE_HEIGHT),
-            text(snapshot.b_score.to_string())
+            text(snapshot.scores.black.to_string())
                 .size(LARGE_TEXT)
                 .line_height(LINE_HEIGHT),
         ]
@@ -278,7 +262,7 @@ pub(in super::super) fn build_main_view<'a>(
     let mut white_score_btn = button(
         column![
             text("WHITE").line_height(LINE_HEIGHT),
-            text(snapshot.w_score.to_string())
+            text(snapshot.scores.white.to_string())
                 .size(LARGE_TEXT)
                 .line_height(LINE_HEIGHT),
         ]

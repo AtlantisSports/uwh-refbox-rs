@@ -1,6 +1,10 @@
 #[cfg(feature = "std")]
 use crate::config::Game;
-use crate::drawing_support::*;
+use crate::{
+    bundles::{BlackWhiteBundle, OptColorBundle},
+    color::Color,
+    drawing_support::*,
+};
 use arrayref::array_ref;
 use arrayvec::ArrayVec;
 use core::cmp::{Ordering, PartialOrd};
@@ -31,10 +35,8 @@ pub struct GameSnapshotNoHeap {
     pub current_period: GamePeriod,
     pub secs_in_period: u16,
     pub timeout: TimeoutSnapshot,
-    pub b_score: u8,
-    pub w_score: u8,
-    pub b_penalties: ArrayVec<PenaltySnapshot, PANEL_PENALTY_COUNT>,
-    pub w_penalties: ArrayVec<PenaltySnapshot, PANEL_PENALTY_COUNT>,
+    pub scores: BlackWhiteBundle<u8>,
+    pub penalties: BlackWhiteBundle<ArrayVec<PenaltySnapshot, PANEL_PENALTY_COUNT>>,
     pub is_old_game: bool,
 }
 
@@ -46,15 +48,10 @@ pub struct GameSnapshot {
     pub current_period: GamePeriod,
     pub secs_in_period: u32,
     pub timeout: TimeoutSnapshot,
-    pub b_score: u8,
-    pub w_score: u8,
-    pub b_penalties: Vec<PenaltySnapshot>,
-    pub w_penalties: Vec<PenaltySnapshot>,
-    pub b_warnings: Vec<InfractionSnapshot>,
-    pub w_warnings: Vec<InfractionSnapshot>,
-    pub b_fouls: Vec<InfractionSnapshot>,
-    pub w_fouls: Vec<InfractionSnapshot>,
-    pub equal_fouls: Vec<InfractionSnapshot>,
+    pub scores: BlackWhiteBundle<u8>,
+    pub penalties: BlackWhiteBundle<Vec<PenaltySnapshot>>,
+    pub warnings: BlackWhiteBundle<Vec<InfractionSnapshot>>,
+    pub fouls: OptColorBundle<Vec<InfractionSnapshot>>,
     pub is_old_game: bool,
     pub game_number: u32,
     pub next_game_number: u32,
@@ -66,17 +63,21 @@ pub struct GameSnapshot {
 #[cfg(feature = "std")]
 impl From<GameSnapshot> for GameSnapshotNoHeap {
     fn from(snapshot: GameSnapshot) -> Self {
-        let process_penalties = |mut orig: Vec<PenaltySnapshot>| {
-            orig.retain(|pen| {
-                if let PenaltyTime::Seconds(secs) = pen.time {
-                    secs != 0
-                } else {
-                    true
-                }
-            });
-            orig.sort_by(|a, b| a.time.cmp(&b.time));
-            orig.into_iter().take(3).collect()
-        };
+        let penalties = snapshot
+            .penalties
+            .into_iter()
+            .map(|(c, mut orig)| {
+                orig.retain(|pen| {
+                    if let PenaltyTime::Seconds(secs) = pen.time {
+                        secs != 0
+                    } else {
+                        true
+                    }
+                });
+                orig.sort_by(|a, b| a.time.cmp(&b.time));
+                (c, orig.into_iter().take(3).collect())
+            })
+            .collect();
 
         Self {
             current_period: snapshot.current_period,
@@ -88,10 +89,8 @@ impl From<GameSnapshot> for GameSnapshotNoHeap {
                 MAX_STRINGABLE_SECS,
             ),
             timeout: snapshot.timeout,
-            b_score: snapshot.b_score,
-            w_score: snapshot.w_score,
-            b_penalties: process_penalties(snapshot.b_penalties),
-            w_penalties: process_penalties(snapshot.w_penalties),
+            scores: snapshot.scores,
+            penalties,
             is_old_game: snapshot.is_old_game,
         }
     }
@@ -288,32 +287,6 @@ impl core::fmt::Display for TimeoutSnapshot {
             TimeoutSnapshot::White(_) => write!(f, "White Timeout"),
             TimeoutSnapshot::Ref(_) => write!(f, "Ref Timeout"),
             TimeoutSnapshot::PenaltyShot(_) => write!(f, "PenaltyShot"),
-        }
-    }
-}
-
-#[derive(Derivative, Serialize, Deserialize)]
-#[derivative(Debug, Default, PartialEq, Eq, Clone, Copy)]
-pub enum Color {
-    #[derivative(Default)]
-    Black,
-    White,
-}
-
-impl Color {
-    pub fn other(self) -> Self {
-        match self {
-            Self::Black => Self::White,
-            Self::White => Self::Black,
-        }
-    }
-}
-
-impl core::fmt::Display for Color {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match *self {
-            Self::Black => write!(f, "Black"),
-            Self::White => write!(f, "White"),
         }
     }
 }
@@ -588,8 +561,8 @@ impl GameSnapshotNoHeap {
         val[0] |= if self.is_old_game { 0x80 } else { 0x00 };
         val[1..=2].copy_from_slice(&self.secs_in_period.to_be_bytes());
         val[3..=4].copy_from_slice(&self.timeout.encode()?);
-        val[5] = self.b_score;
-        val[6] = self.w_score;
+        val[5] = self.scores.black;
+        val[6] = self.scores.white;
 
         let encode_pen = |pen_opt: Option<&PenaltySnapshot>| -> Result<[u8; 2], EncodingError> {
             match pen_opt {
@@ -598,13 +571,13 @@ impl GameSnapshotNoHeap {
             }
         };
 
-        let mut pen_iter = self.b_penalties.iter();
+        let mut pen_iter = self.penalties.black.iter();
 
         val[7..=8].copy_from_slice(&encode_pen(pen_iter.next())?);
         val[9..=10].copy_from_slice(&encode_pen(pen_iter.next())?);
         val[11..=12].copy_from_slice(&encode_pen(pen_iter.next())?);
 
-        let mut pen_iter = self.w_penalties.iter();
+        let mut pen_iter = self.penalties.white.iter();
 
         val[13..=14].copy_from_slice(&encode_pen(pen_iter.next())?);
         val[15..=16].copy_from_slice(&encode_pen(pen_iter.next())?);
@@ -614,35 +587,36 @@ impl GameSnapshotNoHeap {
     }
 
     pub fn decode(bytes: &[u8; Self::ENCODED_LEN]) -> Result<Self, DecodingError> {
-        let mut b_penalties = ArrayVec::new();
-        let mut w_penalties = ArrayVec::new();
+        let mut penalties: BlackWhiteBundle<ArrayVec<PenaltySnapshot, PANEL_PENALTY_COUNT>> =
+            Default::default();
         if let Some(pen) = PenaltySnapshot::decode(array_ref![bytes, 13, 2]) {
-            w_penalties.push(pen);
+            penalties.white.push(pen);
         }
         if let Some(pen) = PenaltySnapshot::decode(array_ref![bytes, 15, 2]) {
-            w_penalties.push(pen);
+            penalties.white.push(pen);
         }
         if let Some(pen) = PenaltySnapshot::decode(array_ref![bytes, 17, 2]) {
-            w_penalties.push(pen);
+            penalties.white.push(pen);
         }
         if let Some(pen) = PenaltySnapshot::decode(array_ref![bytes, 7, 2]) {
-            b_penalties.push(pen);
+            penalties.black.push(pen);
         }
         if let Some(pen) = PenaltySnapshot::decode(array_ref![bytes, 9, 2]) {
-            b_penalties.push(pen);
+            penalties.black.push(pen);
         }
         if let Some(pen) = PenaltySnapshot::decode(array_ref![bytes, 11, 2]) {
-            b_penalties.push(pen);
+            penalties.black.push(pen);
         }
 
         Ok(Self {
             current_period: GamePeriod::decode(bytes[0] & 0x7f)?,
             secs_in_period: u16::from_be_bytes(*array_ref![bytes, 1, 2]),
             timeout: TimeoutSnapshot::decode(array_ref![bytes, 3, 2])?,
-            b_score: bytes[5],
-            w_score: bytes[6],
-            b_penalties,
-            w_penalties,
+            scores: BlackWhiteBundle {
+                black: bytes[5],
+                white: bytes[6],
+            },
+            penalties,
             is_old_game: ((bytes[0] & 0x80) != 0x00),
         })
     }
@@ -1081,10 +1055,8 @@ mod test {
             current_period: GamePeriod::BetweenGames,
             secs_in_period: 0,
             timeout: TimeoutSnapshot::None,
-            b_score: 0,
-            w_score: 0,
-            b_penalties: ArrayVec::new(),
-            w_penalties: ArrayVec::new(),
+            scores: BlackWhiteBundle { black: 0, white: 0 },
+            penalties: Default::default(),
             is_old_game: false,
         };
 
@@ -1105,14 +1077,14 @@ mod test {
         state.current_period = GamePeriod::FirstHalf;
         state.secs_in_period = 345;
         state.timeout = TimeoutSnapshot::Black(16);
-        state.b_score = 2;
-        state.w_score = 5;
-        state.b_penalties.push(PenaltySnapshot {
+        state.scores.black = 2;
+        state.scores.white = 5;
+        state.penalties.black.push(PenaltySnapshot {
             player_number: 1,
             time: PenaltyTime::Seconds(48),
             infraction: Infraction::Unknown,
         });
-        state.w_penalties.push(PenaltySnapshot {
+        state.penalties.white.push(PenaltySnapshot {
             player_number: 12,
             time: PenaltyTime::Seconds(96),
             infraction: Infraction::Unknown,
@@ -1123,14 +1095,14 @@ mod test {
         state.current_period = GamePeriod::HalfTime;
         state.secs_in_period = 66;
         state.timeout = TimeoutSnapshot::White(60);
-        state.b_score = 12;
-        state.w_score = 25;
-        state.b_penalties.push(PenaltySnapshot {
+        state.scores.black = 12;
+        state.scores.white = 25;
+        state.penalties.black.push(PenaltySnapshot {
             player_number: 4,
             time: PenaltyTime::Seconds(245),
             infraction: Infraction::Unknown,
         });
-        state.w_penalties.push(PenaltySnapshot {
+        state.penalties.white.push(PenaltySnapshot {
             player_number: 14,
             time: PenaltyTime::Seconds(300),
             infraction: Infraction::Unknown,
@@ -1141,14 +1113,14 @@ mod test {
         state.current_period = GamePeriod::SecondHalf;
         state.secs_in_period = 900;
         state.timeout = TimeoutSnapshot::Ref(432);
-        state.b_score = 99;
-        state.w_score = 99;
-        state.b_penalties.push(PenaltySnapshot {
+        state.scores.black = 99;
+        state.scores.white = 99;
+        state.penalties.black.push(PenaltySnapshot {
             player_number: 7,
             time: PenaltyTime::TotalDismissal,
             infraction: Infraction::Unknown,
         });
-        state.w_penalties.push(PenaltySnapshot {
+        state.penalties.white.push(PenaltySnapshot {
             player_number: 15,
             time: PenaltyTime::TotalDismissal,
             infraction: Infraction::Unknown,

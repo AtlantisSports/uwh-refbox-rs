@@ -1,6 +1,10 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+pub mod color;
+
 pub mod game_snapshot;
+
+pub mod bundles;
 
 #[cfg(feature = "std")]
 pub mod config;

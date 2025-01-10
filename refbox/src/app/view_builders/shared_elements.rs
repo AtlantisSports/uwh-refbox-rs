@@ -28,11 +28,12 @@ use std::{
     time::Duration,
 };
 use uwh_common::{
+    color::Color as GameColor,
     config::Game as GameConfig,
     drawing_support::*,
     game_snapshot::{
-        Color as GameColor, GamePeriod, GameSnapshot, Infraction, InfractionSnapshot,
-        PenaltySnapshot, PenaltyTime, TimeoutSnapshot,
+        GamePeriod, GameSnapshot, Infraction, InfractionSnapshot, PenaltySnapshot, PenaltyTime,
+        TimeoutSnapshot,
     },
     uwhscores::GameInfo,
 };

@@ -38,9 +38,9 @@ impl TransmittedData {
 #[cfg(test)]
 mod test {
     use super::*;
-    use arrayvec::ArrayVec;
-    use uwh_common::game_snapshot::{
-        GamePeriod, Infraction, PenaltySnapshot, PenaltyTime, TimeoutSnapshot,
+    use uwh_common::{
+        bundles::BlackWhiteBundle,
+        game_snapshot::{GamePeriod, Infraction, PenaltySnapshot, PenaltyTime, TimeoutSnapshot},
     };
 
     #[test]
@@ -49,10 +49,8 @@ mod test {
             current_period: GamePeriod::BetweenGames,
             secs_in_period: 0,
             timeout: TimeoutSnapshot::None,
-            b_score: 0,
-            w_score: 0,
-            b_penalties: ArrayVec::new(),
-            w_penalties: ArrayVec::new(),
+            scores: BlackWhiteBundle { black: 0, white: 0 },
+            penalties: Default::default(),
             is_old_game: true,
         };
 
@@ -80,14 +78,14 @@ mod test {
         data.snapshot.current_period = GamePeriod::FirstHalf;
         data.snapshot.secs_in_period = 345;
         data.snapshot.timeout = TimeoutSnapshot::Black(16);
-        data.snapshot.b_score = 2;
-        data.snapshot.w_score = 5;
-        data.snapshot.b_penalties.push(PenaltySnapshot {
+        data.snapshot.scores.black = 2;
+        data.snapshot.scores.white = 5;
+        data.snapshot.penalties.black.push(PenaltySnapshot {
             player_number: 1,
             time: PenaltyTime::Seconds(48),
             infraction: Infraction::Unknown, // infraction is not encoded, so the test will fail with any other value
         });
-        data.snapshot.w_penalties.push(PenaltySnapshot {
+        data.snapshot.penalties.white.push(PenaltySnapshot {
             player_number: 12,
             time: PenaltyTime::Seconds(96),
             infraction: Infraction::Unknown, // infraction is not encoded, so the test will fail with any other value

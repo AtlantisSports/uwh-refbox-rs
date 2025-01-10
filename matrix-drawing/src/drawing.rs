@@ -232,17 +232,17 @@ pub fn draw_panels<D: DrawTarget<Color = Rgb888>>(
     let right_color;
 
     if white_on_right {
-        left_penalties = state.b_penalties;
-        right_penalties = state.w_penalties;
-        left_score = state.b_score;
-        right_score = state.w_score;
+        left_penalties = state.penalties.black;
+        right_penalties = state.penalties.white;
+        left_score = state.scores.black;
+        right_score = state.scores.white;
         left_color = BLUE;
         right_color = WHITE;
     } else {
-        left_penalties = state.w_penalties;
-        right_penalties = state.b_penalties;
-        left_score = state.w_score;
-        right_score = state.b_score;
+        left_penalties = state.penalties.white;
+        right_penalties = state.penalties.black;
+        left_score = state.scores.white;
+        right_score = state.scores.black;
         left_color = WHITE;
         right_color = BLUE;
     }

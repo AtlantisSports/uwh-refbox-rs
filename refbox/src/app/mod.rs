@@ -30,9 +30,11 @@ use tokio::{
 };
 use tokio_serial::SerialPortBuilder;
 use uwh_common::{
+    bundles::*,
+    color::Color,
     config::Game as GameConfig,
     drawing_support::*,
-    game_snapshot::{Color, GamePeriod, GameSnapshot, Infraction, TimeoutSnapshot},
+    game_snapshot::{GamePeriod, GameSnapshot, Infraction, TimeoutSnapshot},
     uwhportal::UwhPortalClient,
     uwhscores::*,
 };
@@ -2024,12 +2026,7 @@ impl Application for RefBoxApp {
             Message::ConfirmScores(snapshot) => {
                 self.apply_snapshot(snapshot);
 
-                let scores = BlackWhiteBundle {
-                    black: self.snapshot.b_score,
-                    white: self.snapshot.w_score,
-                };
-
-                self.app_state = AppState::ConfirmScores(scores);
+                self.app_state = AppState::ConfirmScores(self.snapshot.scores);
                 trace!("AppState changed to {:?}", self.app_state);
             }
             Message::ScoreConfirmation { correct } => {
@@ -2129,12 +2126,7 @@ impl Application for RefBoxApp {
                 self.apply_snapshot(snapshot);
 
                 if would_end {
-                    let scores = BlackWhiteBundle {
-                        black: self.snapshot.b_score,
-                        white: self.snapshot.w_score,
-                    };
-
-                    self.app_state = AppState::ConfirmScores(scores);
+                    self.app_state = AppState::ConfirmScores(self.snapshot.scores);
                     trace!("AppState changed to {:?}", self.app_state);
                 }
 

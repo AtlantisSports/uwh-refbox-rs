@@ -439,7 +439,7 @@ impl PageRenderer {
         }
 
         draw_text_both!(
-            state.snapshot.b_score.to_string().as_str(),
+            state.snapshot.scores.black.to_string().as_str(),
             40f32,
             104f32,
             TextParams {
@@ -449,7 +449,7 @@ impl PageRenderer {
             }
         );
         draw_text_both_ex!(
-            state.snapshot.w_score.to_string().as_str(),
+            state.snapshot.scores.white.to_string().as_str(),
             40f32,
             65f32,
             TextParams {

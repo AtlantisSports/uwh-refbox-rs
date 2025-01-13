@@ -14,166 +14,167 @@ impl PageRenderer {
             .duration_since(self.animation_register2)
             .as_f64() as f32;
         // animate the state and time graphic to the left at 895 secs (5 seconds since period started)
-        let (timeout_offset, timeout_alpha_offset) =
-            if state.snapshot.timeout != TimeoutSnapshot::None {
-                if self.last_snapshot_timeout == TimeoutSnapshot::None {
-                    // if this is a new timeout period
-                    self.animation_register2 = Instant::now();
-                    time = 0.0f32;
-                }
-                self.last_snapshot_timeout = state.snapshot.timeout;
-                if time < 1f32 {
-                    (
-                        (0f32, -270f32).interpolate_linear(1f32 - time),
-                        (0f32, 1f32).interpolate_exponential_end(time),
-                    )
-                } else {
-                    (
-                        (0f32, -270f32).interpolate_linear(0f32),
-                        (0f32, 1f32).interpolate_exponential_end(1f32),
-                    )
-                }
-            } else if self.last_snapshot_timeout != TimeoutSnapshot::None {
-                // if a timeout period just finished, and fade out is just starting
-                if !self.animation_register3 {
-                    self.animation_register3 = true;
-                    self.animation_register2 = Instant::now();
-                    time = 0.0f32;
-                }
-                // when fade out is done
-                if time > 1f32 {
-                    self.animation_register3 = false;
-                    self.animation_register2 = Instant::now();
-                    self.last_snapshot_timeout = TimeoutSnapshot::None;
-                    (
-                        (0f32, -270f32).interpolate_linear(1f32),
-                        (0f32, 1f32).interpolate_exponential_end(0f32),
-                    )
-                } else {
-                    (
-                        (0f32, -270f32).interpolate_linear(time),
-                        (0f32, 1f32).interpolate_exponential_end(1f32 - time),
-                    )
-                }
+        let (timeout_offset, timeout_alpha_offset) = if state.snapshot.timeout.is_some() {
+            if self.last_snapshot_timeout.is_none() {
+                // if this is a new timeout period
+                self.animation_register2 = Instant::now();
+                time = 0.0f32;
+            }
+            self.last_snapshot_timeout = state.snapshot.timeout;
+            if time < 1f32 {
+                (
+                    (0f32, -270f32).interpolate_linear(1f32 - time),
+                    (0f32, 1f32).interpolate_exponential_end(time),
+                )
             } else {
-                // return any values when both are None, cause we won't be redering anyways
                 (
                     (0f32, -270f32).interpolate_linear(0f32),
                     (0f32, 1f32).interpolate_exponential_end(1f32),
                 )
-            };
+            }
+        } else if self.last_snapshot_timeout.is_some() {
+            // if a timeout period just finished, and fade out is just starting
+            if !self.animation_register3 {
+                self.animation_register3 = true;
+                self.animation_register2 = Instant::now();
+                time = 0.0f32;
+            }
+            // when fade out is done
+            if time > 1f32 {
+                self.animation_register3 = false;
+                self.animation_register2 = Instant::now();
+                self.last_snapshot_timeout = None;
+                (
+                    (0f32, -270f32).interpolate_linear(1f32),
+                    (0f32, 1f32).interpolate_exponential_end(0f32),
+                )
+            } else {
+                (
+                    (0f32, -270f32).interpolate_linear(time),
+                    (0f32, 1f32).interpolate_exponential_end(1f32 - time),
+                )
+            }
+        } else {
+            // return any values when both are None, cause we won't be redering anyways
+            (
+                (0f32, -270f32).interpolate_linear(0f32),
+                (0f32, 1f32).interpolate_exponential_end(1f32),
+            )
+        };
 
         // No penalty shot, black or white timeouts in overtime
-        match self.last_snapshot_timeout {
-            TimeoutSnapshot::Ref(_) => {
-                draw_timeout_flag!(
-                    self.assets.referee_timout,
-                    timeout_offset,
-                    timeout_alpha_offset,
-                    205f32
-                );
-                draw_text_both_ex!(
-                    "REFEREE",
-                    675f32 + timeout_offset,
-                    67f32,
-                    TextParams {
-                        font: Some(&self.assets.font),
-                        font_size: 20,
-                        color: Color {
-                            a: timeout_alpha_offset,
-                            ..BLACK
+        if let Some(timeout) = self.last_snapshot_timeout {
+            match timeout {
+                TimeoutSnapshot::Ref(_) => {
+                    draw_timeout_flag!(
+                        self.assets.referee_timout,
+                        timeout_offset,
+                        timeout_alpha_offset,
+                        205f32
+                    );
+                    draw_text_both_ex!(
+                        "REFEREE",
+                        675f32 + timeout_offset,
+                        67f32,
+                        TextParams {
+                            font: Some(&self.assets.font),
+                            font_size: 20,
+                            color: Color {
+                                a: timeout_alpha_offset,
+                                ..BLACK
+                            },
+                            ..Default::default()
                         },
-                        ..Default::default()
-                    },
-                    TextParams {
-                        font: Some(&self.assets.font),
-                        font_size: 20,
-                        color: Color {
-                            a: timeout_alpha_offset,
-                            ..WHITE
+                        TextParams {
+                            font: Some(&self.assets.font),
+                            font_size: 20,
+                            color: Color {
+                                a: timeout_alpha_offset,
+                                ..WHITE
+                            },
+                            ..Default::default()
+                        }
+                    );
+                    draw_text_both_ex!(
+                        "TIMEOUT",
+                        680f32 + timeout_offset,
+                        95f32,
+                        TextParams {
+                            font: Some(&self.assets.font),
+                            font_size: 20,
+                            color: Color {
+                                a: timeout_alpha_offset,
+                                ..BLACK
+                            },
+                            ..Default::default()
                         },
-                        ..Default::default()
-                    }
-                );
-                draw_text_both_ex!(
-                    "TIMEOUT",
-                    680f32 + timeout_offset,
-                    95f32,
-                    TextParams {
-                        font: Some(&self.assets.font),
-                        font_size: 20,
-                        color: Color {
-                            a: timeout_alpha_offset,
-                            ..BLACK
+                        TextParams {
+                            font: Some(&self.assets.font),
+                            font_size: 20,
+                            color: Color {
+                                a: timeout_alpha_offset,
+                                ..WHITE
+                            },
+                            ..Default::default()
+                        }
+                    );
+                }
+                TimeoutSnapshot::PenaltyShot(_) => {
+                    draw_timeout_flag!(
+                        self.assets.penalty,
+                        timeout_offset,
+                        timeout_alpha_offset,
+                        205f32
+                    );
+                    draw_text_both_ex!(
+                        "PENALTY",
+                        675f32 + timeout_offset,
+                        67f32,
+                        TextParams {
+                            font: Some(&self.assets.font),
+                            font_size: 20,
+                            color: Color {
+                                a: timeout_alpha_offset,
+                                ..BLACK
+                            },
+                            ..Default::default()
                         },
-                        ..Default::default()
-                    },
-                    TextParams {
-                        font: Some(&self.assets.font),
-                        font_size: 20,
-                        color: Color {
-                            a: timeout_alpha_offset,
-                            ..WHITE
+                        TextParams {
+                            font: Some(&self.assets.font),
+                            font_size: 20,
+                            color: Color {
+                                a: timeout_alpha_offset,
+                                ..WHITE
+                            },
+                            ..Default::default()
+                        }
+                    );
+                    draw_text_both_ex!(
+                        "SHOT",
+                        690f32 + timeout_offset,
+                        95f32,
+                        TextParams {
+                            font: Some(&self.assets.font),
+                            font_size: 20,
+                            color: Color {
+                                a: timeout_alpha_offset,
+                                ..BLACK
+                            },
+                            ..Default::default()
                         },
-                        ..Default::default()
-                    }
-                );
+                        TextParams {
+                            font: Some(&self.assets.font),
+                            font_size: 20,
+                            color: Color {
+                                a: timeout_alpha_offset,
+                                ..WHITE
+                            },
+                            ..Default::default()
+                        }
+                    );
+                }
+                _ => {}
             }
-            TimeoutSnapshot::PenaltyShot(_) => {
-                draw_timeout_flag!(
-                    self.assets.penalty,
-                    timeout_offset,
-                    timeout_alpha_offset,
-                    205f32
-                );
-                draw_text_both_ex!(
-                    "PENALTY",
-                    675f32 + timeout_offset,
-                    67f32,
-                    TextParams {
-                        font: Some(&self.assets.font),
-                        font_size: 20,
-                        color: Color {
-                            a: timeout_alpha_offset,
-                            ..BLACK
-                        },
-                        ..Default::default()
-                    },
-                    TextParams {
-                        font: Some(&self.assets.font),
-                        font_size: 20,
-                        color: Color {
-                            a: timeout_alpha_offset,
-                            ..WHITE
-                        },
-                        ..Default::default()
-                    }
-                );
-                draw_text_both_ex!(
-                    "SHOT",
-                    690f32 + timeout_offset,
-                    95f32,
-                    TextParams {
-                        font: Some(&self.assets.font),
-                        font_size: 20,
-                        color: Color {
-                            a: timeout_alpha_offset,
-                            ..BLACK
-                        },
-                        ..Default::default()
-                    },
-                    TextParams {
-                        font: Some(&self.assets.font),
-                        font_size: 20,
-                        color: Color {
-                            a: timeout_alpha_offset,
-                            ..WHITE
-                        },
-                        ..Default::default()
-                    }
-                );
-            }
-            _ => {}
         }
         draw_texture_both!(self.assets.team_bar, 26f32, 37f32, WHITE);
         draw_text_both_ex!(

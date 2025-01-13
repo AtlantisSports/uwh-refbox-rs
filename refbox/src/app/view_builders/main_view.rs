@@ -15,7 +15,7 @@ use iced::{
 use uwh_common::{
     color::Color as GameColor,
     config::Game as GameConfig,
-    game_snapshot::{GamePeriod, GameSnapshot, PenaltyTime, TimeoutSnapshot},
+    game_snapshot::{GamePeriod, GameSnapshot, PenaltyTime},
 };
 
 pub(in super::super) fn build_main_view<'a>(
@@ -55,56 +55,50 @@ pub(in super::super) fn build_main_view<'a>(
             }))
     };
 
-    match snapshot.timeout {
-        TimeoutSnapshot::White(_)
-        | TimeoutSnapshot::Black(_)
-        | TimeoutSnapshot::Ref(_)
-        | TimeoutSnapshot::PenaltyShot(_) => {
-            if config.track_fouls_and_warnings {
-                center_col =
-                    center_col.push(row![make_foul_button(), make_warn_button()].spacing(SPACING))
-            } else {
-                center_col = center_col.push(
-                    make_button("END TIMEOUT")
-                        .style(ButtonStyle::Yellow)
-                        .on_press(Message::EndTimeout),
-                )
+    if snapshot.timeout.is_some() {
+        if config.track_fouls_and_warnings {
+            center_col =
+                center_col.push(row![make_foul_button(), make_warn_button()].spacing(SPACING));
+        } else {
+            center_col = center_col.push(
+                make_button("END TIMEOUT")
+                    .style(ButtonStyle::Yellow)
+                    .on_press(Message::EndTimeout),
+            );
+        }
+    } else {
+        match snapshot.current_period {
+            GamePeriod::BetweenGames
+            | GamePeriod::HalfTime
+            | GamePeriod::PreOvertime
+            | GamePeriod::OvertimeHalfTime
+            | GamePeriod::PreSuddenDeath => {
+                let mut start_warning_row = row![
+                    make_button("START NOW")
+                        .style(ButtonStyle::Green)
+                        .width(Length::Fill)
+                        .on_press(Message::StartPlayNow)
+                ]
+                .spacing(SPACING);
+
+                if config.track_fouls_and_warnings {
+                    start_warning_row = start_warning_row.push(make_warn_button())
+                }
+
+                center_col = center_col.push(start_warning_row)
             }
-        }
-        TimeoutSnapshot::None => {
-            match snapshot.current_period {
-                GamePeriod::BetweenGames
-                | GamePeriod::HalfTime
-                | GamePeriod::PreOvertime
-                | GamePeriod::OvertimeHalfTime
-                | GamePeriod::PreSuddenDeath => {
-                    let mut start_warning_row = row![
-                        make_button("START NOW")
-                            .style(ButtonStyle::Green)
-                            .width(Length::Fill)
-                            .on_press(Message::StartPlayNow)
-                    ]
-                    .spacing(SPACING);
-
-                    if config.track_fouls_and_warnings {
-                        start_warning_row = start_warning_row.push(make_warn_button())
-                    }
-
-                    center_col = center_col.push(start_warning_row)
+            GamePeriod::FirstHalf
+            | GamePeriod::SecondHalf
+            | GamePeriod::OvertimeFirstHalf
+            | GamePeriod::OvertimeSecondHalf
+            | GamePeriod::SuddenDeath => {
+                if config.track_fouls_and_warnings {
+                    center_col = center_col
+                        .push(row![make_foul_button(), make_warn_button()].spacing(SPACING))
                 }
-                GamePeriod::FirstHalf
-                | GamePeriod::SecondHalf
-                | GamePeriod::OvertimeFirstHalf
-                | GamePeriod::OvertimeSecondHalf
-                | GamePeriod::SuddenDeath => {
-                    if config.track_fouls_and_warnings {
-                        center_col = center_col
-                            .push(row![make_foul_button(), make_warn_button()].spacing(SPACING))
-                    }
-                }
-            };
-        }
-    };
+            }
+        };
+    }
 
     let max_num_warns = snapshot
         .warnings
@@ -197,7 +191,7 @@ pub(in super::super) fn build_main_view<'a>(
             })
             .min();
 
-        let make_penalties_red = if snapshot.timeout == TimeoutSnapshot::None {
+        let make_penalties_red = if snapshot.timeout.is_none() {
             if let Some(t) = time {
                 t <= 10 && (t % 2 == 0) && (t != 0)
             } else {

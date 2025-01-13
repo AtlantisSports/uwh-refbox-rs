@@ -93,9 +93,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 900,
-                    timeout: TimeoutSnapshot::None,
+                    timeout: None,
                     scores: BlackWhiteBundle { black: 0, white: 0 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -109,9 +113,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::HalfTime,
                     secs_in_period: 123,
-                    timeout: TimeoutSnapshot::None,
+                    timeout: None,
                     scores: BlackWhiteBundle { black: 1, white: 2 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -125,9 +133,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::SecondHalf,
                     secs_in_period: 0,
-                    timeout: TimeoutSnapshot::None,
+                    timeout: None,
                     scores: BlackWhiteBundle { black: 3, white: 4 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -141,9 +153,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::PreOvertime,
                     secs_in_period: 32,
-                    timeout: TimeoutSnapshot::None,
+                    timeout: None,
                     scores: BlackWhiteBundle { black: 5, white: 6 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -157,9 +173,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::OvertimeFirstHalf,
                     secs_in_period: 234,
-                    timeout: TimeoutSnapshot::None,
+                    timeout: None,
                     scores: BlackWhiteBundle { black: 7, white: 8 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -173,12 +193,16 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::OvertimeHalfTime,
                     secs_in_period: 45,
-                    timeout: TimeoutSnapshot::None,
+                    timeout: None,
                     scores: BlackWhiteBundle {
                         black: 9,
                         white: 10,
                     },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -192,12 +216,16 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::OvertimeSecondHalf,
                     secs_in_period: 456,
-                    timeout: TimeoutSnapshot::None,
+                    timeout: None,
                     scores: BlackWhiteBundle {
                         black: 11,
                         white: 12,
                     },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -211,12 +239,16 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::PreSuddenDeath,
                     secs_in_period: 12,
-                    timeout: TimeoutSnapshot::None,
+                    timeout: None,
                     scores: BlackWhiteBundle {
                         black: 13,
                         white: 13,
                     },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -230,12 +262,16 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::SuddenDeath,
                     secs_in_period: 5999,
-                    timeout: TimeoutSnapshot::None,
+                    timeout: None,
                     scores: BlackWhiteBundle {
                         black: 14,
                         white: 14,
                     },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -249,12 +285,16 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::BetweenGames,
                     secs_in_period: 99,
-                    timeout: TimeoutSnapshot::None,
+                    timeout: None,
                     scores: BlackWhiteBundle {
                         black: 15,
                         white: 14,
                     },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: true,
                 },
             },
@@ -268,9 +308,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::BetweenGames,
                     secs_in_period: 45,
-                    timeout: TimeoutSnapshot::None,
+                    timeout: None,
                     scores: BlackWhiteBundle { black: 0, white: 0 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -284,9 +328,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
-                    timeout: TimeoutSnapshot::Black(60),
+                    timeout: Some(TimeoutSnapshot::Black(60)),
                     scores: BlackWhiteBundle { black: 2, white: 5 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -300,9 +348,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
-                    timeout: TimeoutSnapshot::White(60),
+                    timeout: Some(TimeoutSnapshot::White(60)),
                     scores: BlackWhiteBundle { black: 2, white: 5 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -316,9 +368,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
-                    timeout: TimeoutSnapshot::Ref(32),
+                    timeout: Some(TimeoutSnapshot::Ref(32)),
                     scores: BlackWhiteBundle { black: 2, white: 5 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -332,9 +388,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
-                    timeout: TimeoutSnapshot::PenaltyShot(32),
+                    timeout: Some(TimeoutSnapshot::PenaltyShot(32)),
                     scores: BlackWhiteBundle { black: 2, white: 5 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -348,9 +408,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
-                    timeout: TimeoutSnapshot::Black(46),
+                    timeout: Some(TimeoutSnapshot::Black(46)),
                     scores: BlackWhiteBundle { black: 2, white: 5 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -364,9 +428,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
-                    timeout: TimeoutSnapshot::White(46),
+                    timeout: Some(TimeoutSnapshot::White(46)),
                     scores: BlackWhiteBundle { black: 2, white: 5 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -380,9 +448,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
-                    timeout: TimeoutSnapshot::Black(45),
+                    timeout: Some(TimeoutSnapshot::Black(45)),
                     scores: BlackWhiteBundle { black: 2, white: 5 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -396,9 +468,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
-                    timeout: TimeoutSnapshot::White(45),
+                    timeout: Some(TimeoutSnapshot::White(45)),
                     scores: BlackWhiteBundle { black: 2, white: 5 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -412,9 +488,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
-                    timeout: TimeoutSnapshot::Black(31),
+                    timeout: Some(TimeoutSnapshot::Black(31)),
                     scores: BlackWhiteBundle { black: 2, white: 5 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -428,9 +508,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
-                    timeout: TimeoutSnapshot::White(31),
+                    timeout: Some(TimeoutSnapshot::White(31)),
                     scores: BlackWhiteBundle { black: 2, white: 5 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -444,9 +528,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
-                    timeout: TimeoutSnapshot::Black(30),
+                    timeout: Some(TimeoutSnapshot::Black(30)),
                     scores: BlackWhiteBundle { black: 2, white: 5 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -460,9 +548,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
-                    timeout: TimeoutSnapshot::White(30),
+                    timeout: Some(TimeoutSnapshot::White(30)),
                     scores: BlackWhiteBundle { black: 2, white: 5 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -476,9 +568,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
-                    timeout: TimeoutSnapshot::Black(16),
+                    timeout: Some(TimeoutSnapshot::Black(16)),
                     scores: BlackWhiteBundle { black: 2, white: 5 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -492,9 +588,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
-                    timeout: TimeoutSnapshot::White(16),
+                    timeout: Some(TimeoutSnapshot::White(16)),
                     scores: BlackWhiteBundle { black: 2, white: 5 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -508,9 +608,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
-                    timeout: TimeoutSnapshot::Black(15),
+                    timeout: Some(TimeoutSnapshot::Black(15)),
                     scores: BlackWhiteBundle { black: 2, white: 5 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -524,9 +628,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
-                    timeout: TimeoutSnapshot::White(15),
+                    timeout: Some(TimeoutSnapshot::White(15)),
                     scores: BlackWhiteBundle { black: 2, white: 5 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -540,9 +648,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
-                    timeout: TimeoutSnapshot::Black(1),
+                    timeout: Some(TimeoutSnapshot::Black(1)),
                     scores: BlackWhiteBundle { black: 2, white: 5 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -556,9 +668,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
-                    timeout: TimeoutSnapshot::White(1),
+                    timeout: Some(TimeoutSnapshot::White(1)),
                     scores: BlackWhiteBundle { black: 2, white: 5 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -572,9 +688,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::BetweenGames,
                     secs_in_period: 345,
-                    timeout: TimeoutSnapshot::Black(0),
+                    timeout: Some(TimeoutSnapshot::Black(0)),
                     scores: BlackWhiteBundle { black: 2, white: 5 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -588,9 +708,13 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::BetweenGames,
                     secs_in_period: 345,
-                    timeout: TimeoutSnapshot::White(0),
+                    timeout: Some(TimeoutSnapshot::White(0)),
                     scores: BlackWhiteBundle { black: 2, white: 5 },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -604,12 +728,16 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::BetweenGames,
                     secs_in_period: 345,
-                    timeout: TimeoutSnapshot::None,
+                    timeout: None,
                     scores: BlackWhiteBundle {
                         black: 100,
                         white: 101,
                     },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -623,12 +751,16 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::BetweenGames,
                     secs_in_period: 6000,
-                    timeout: TimeoutSnapshot::None,
+                    timeout: None,
                     scores: BlackWhiteBundle {
                         black: 99,
                         white: 99,
                     },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
                     is_old_game: false,
                 },
             },
@@ -642,12 +774,76 @@ fn main() {
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::BetweenGames,
                     secs_in_period: u16::MAX,
-                    timeout: TimeoutSnapshot::None,
+                    timeout: None,
                     scores: BlackWhiteBundle {
                         black: u8::MAX,
                         white: u8::MAX,
                     },
                     penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
+                    is_old_game: false,
+                },
+            },
+        },
+        TestCase {
+            name: "First Half, T900, B0, W0, BTO Available".to_string(),
+            transmitted_data: TransmittedData {
+                white_on_right: false,
+                flash: false,
+                beep_test: false,
+                snapshot: GameSnapshotNoHeap {
+                    current_period: GamePeriod::FirstHalf,
+                    secs_in_period: 900,
+                    timeout: None,
+                    scores: BlackWhiteBundle { black: 0, white: 0 },
+                    penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: true,
+                        white: false,
+                    },
+                    is_old_game: false,
+                },
+            },
+        },
+        TestCase {
+            name: "First Half, T900, B0, W0, WTO Available".to_string(),
+            transmitted_data: TransmittedData {
+                white_on_right: false,
+                flash: false,
+                beep_test: false,
+                snapshot: GameSnapshotNoHeap {
+                    current_period: GamePeriod::FirstHalf,
+                    secs_in_period: 900,
+                    timeout: None,
+                    scores: BlackWhiteBundle { black: 0, white: 0 },
+                    penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: true,
+                    },
+                    is_old_game: false,
+                },
+            },
+        },
+        TestCase {
+            name: "First Half, T900, B0, W0, BTO & WTO Available".to_string(),
+            transmitted_data: TransmittedData {
+                white_on_right: false,
+                flash: false,
+                beep_test: false,
+                snapshot: GameSnapshotNoHeap {
+                    current_period: GamePeriod::FirstHalf,
+                    secs_in_period: 900,
+                    timeout: None,
+                    scores: BlackWhiteBundle { black: 0, white: 0 },
+                    penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: true,
+                        white: true,
+                    },
                     is_old_game: false,
                 },
             },

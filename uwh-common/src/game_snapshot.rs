@@ -34,9 +34,10 @@ const PANEL_PENALTY_COUNT: usize = 3;
 pub struct GameSnapshotNoHeap {
     pub current_period: GamePeriod,
     pub secs_in_period: u16,
-    pub timeout: TimeoutSnapshot,
+    pub timeout: Option<TimeoutSnapshot>,
     pub scores: BlackWhiteBundle<u8>,
     pub penalties: BlackWhiteBundle<ArrayVec<PenaltySnapshot, PANEL_PENALTY_COUNT>>,
+    pub timeouts_available: BlackWhiteBundle<bool>,
     pub is_old_game: bool,
 }
 
@@ -47,11 +48,12 @@ pub struct GameSnapshotNoHeap {
 pub struct GameSnapshot {
     pub current_period: GamePeriod,
     pub secs_in_period: u32,
-    pub timeout: TimeoutSnapshot,
+    pub timeout: Option<TimeoutSnapshot>,
     pub scores: BlackWhiteBundle<u8>,
     pub penalties: BlackWhiteBundle<Vec<PenaltySnapshot>>,
     pub warnings: BlackWhiteBundle<Vec<InfractionSnapshot>>,
     pub fouls: OptColorBundle<Vec<InfractionSnapshot>>,
+    pub timeouts_available: BlackWhiteBundle<bool>,
     pub is_old_game: bool,
     pub game_number: u32,
     pub next_game_number: u32,
@@ -91,6 +93,7 @@ impl From<GameSnapshot> for GameSnapshotNoHeap {
             timeout: snapshot.timeout,
             scores: snapshot.scores,
             penalties,
+            timeouts_available: snapshot.timeouts_available,
             is_old_game: snapshot.is_old_game,
         }
     }
@@ -272,7 +275,6 @@ impl core::fmt::Display for GamePeriod {
 #[derivative(Debug, Default, PartialEq, Eq, Clone, Copy)]
 pub enum TimeoutSnapshot {
     #[derivative(Default)]
-    None,
     White(u16),
     Black(u16),
     Ref(u16),
@@ -282,7 +284,6 @@ pub enum TimeoutSnapshot {
 impl core::fmt::Display for TimeoutSnapshot {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match *self {
-            TimeoutSnapshot::None => write!(f, "No Timeout"),
             TimeoutSnapshot::Black(_) => write!(f, "Black Timeout"),
             TimeoutSnapshot::White(_) => write!(f, "White Timeout"),
             TimeoutSnapshot::Ref(_) => write!(f, "Ref Timeout"),
@@ -482,20 +483,45 @@ impl PenaltySnapshot {
     }
 }
 
+struct PeriodTimeoutAvailInfo {
+    current_period: GamePeriod,
+    is_old_game: bool,
+    timeouts_available: BlackWhiteBundle<bool>,
+}
+
+impl PeriodTimeoutAvailInfo {
+    fn encode(&self) -> u8 {
+        let mut val = self.current_period.encode();
+        val |= if self.is_old_game { 0x80 } else { 0x00 };
+        val |= ((self.timeouts_available.black as u8) << 6)
+            | ((self.timeouts_available.white as u8) << 5);
+        val
+    }
+
+    fn decode(val: u8) -> Result<Self, DecodingError> {
+        Ok(Self {
+            current_period: GamePeriod::decode(val & 0x0f)?,
+            is_old_game: (val & 0x80) != 0x00,
+            timeouts_available: BlackWhiteBundle {
+                black: (val & 0x40) != 0x00,
+                white: (val & 0x20) != 0x00,
+            },
+        })
+    }
+}
+
 impl TimeoutSnapshot {
     pub fn encode(&self) -> Result<[u8; 2], EncodingError> {
         match self {
-            Self::None => Ok([0x00, 0x00]),
             Self::Black(time) | Self::White(time) | Self::Ref(time) | Self::PenaltyShot(time) => {
                 if *time > MAX_STRINGABLE_SECS {
                     Err(EncodingError::TimeoutTimeTooLarge(*time))
                 } else {
                     let variant = match self {
-                        Self::None => panic!("Impossible"),
-                        Self::Black(_) => 0x20,
-                        Self::White(_) => 0x40,
-                        Self::Ref(_) => 0x60,
-                        Self::PenaltyShot(_) => 0x80,
+                        Self::Black(_) => 0b0010_0000,
+                        Self::White(_) => 0b0100_0000,
+                        Self::Ref(_) => 0b0110_0000,
+                        Self::PenaltyShot(_) => 0b1000_0000,
                     };
                     let mut arr = time.to_be_bytes();
                     arr[0] |= variant;
@@ -505,16 +531,21 @@ impl TimeoutSnapshot {
         }
     }
 
-    pub fn decode(bytes: &[u8; 2]) -> Result<Self, DecodingError> {
+    pub fn decode(bytes: &[u8; 2]) -> Result<Option<Self>, DecodingError> {
+        const TYPE_MASK: u16 = 0b1110_0000_0000_0000;
+        const TIME_MASK: u16 = 0b0001_1111_1111_1111;
         let val = u16::from_be_bytes(*bytes);
-        let time = val & 0x1fff;
-        match (val & 0xe000) >> 13 {
-            0x0 => Ok(Self::None),
-            0x1 => Ok(Self::Black(time)),
-            0x2 => Ok(Self::White(time)),
-            0x3 => Ok(Self::Ref(time)),
-            0x4 => Ok(Self::PenaltyShot(time)),
-            other => Err(DecodingError::InvalidTimeoutType(other)),
+        if (val & TYPE_MASK) == 0 {
+            Ok(None)
+        } else {
+            let time = val & TIME_MASK;
+            Ok(Some(match (val & TYPE_MASK) >> 13 {
+                0b001 => TimeoutSnapshot::Black(time),
+                0b010 => TimeoutSnapshot::White(time),
+                0b011 => TimeoutSnapshot::Ref(time),
+                0b100 => TimeoutSnapshot::PenaltyShot(time),
+                _ => return Err(DecodingError::InvalidTimeoutType(val)),
+            }))
         }
     }
 }
@@ -556,11 +587,22 @@ impl GameSnapshotNoHeap {
     pub const ENCODED_LEN: usize = 19;
 
     pub fn encode(&self) -> Result<[u8; Self::ENCODED_LEN], EncodingError> {
+        let per_tm_avail = PeriodTimeoutAvailInfo {
+            current_period: self.current_period,
+            is_old_game: self.is_old_game,
+            timeouts_available: self.timeouts_available,
+        };
+
         let mut val = [0u8; Self::ENCODED_LEN];
-        val[0] = self.current_period.encode();
-        val[0] |= if self.is_old_game { 0x80 } else { 0x00 };
+        val[0] = per_tm_avail.encode();
         val[1..=2].copy_from_slice(&self.secs_in_period.to_be_bytes());
-        val[3..=4].copy_from_slice(&self.timeout.encode()?);
+        val[3..=4].copy_from_slice(
+            &self
+                .timeout
+                .as_ref()
+                .map(TimeoutSnapshot::encode)
+                .unwrap_or(Ok([0; 2]))?,
+        );
         val[5] = self.scores.black;
         val[6] = self.scores.white;
 
@@ -587,6 +629,12 @@ impl GameSnapshotNoHeap {
     }
 
     pub fn decode(bytes: &[u8; Self::ENCODED_LEN]) -> Result<Self, DecodingError> {
+        let PeriodTimeoutAvailInfo {
+            current_period,
+            is_old_game,
+            timeouts_available,
+        } = PeriodTimeoutAvailInfo::decode(bytes[0])?;
+
         let mut penalties: BlackWhiteBundle<ArrayVec<PenaltySnapshot, PANEL_PENALTY_COUNT>> =
             Default::default();
         if let Some(pen) = PenaltySnapshot::decode(array_ref![bytes, 13, 2]) {
@@ -609,7 +657,7 @@ impl GameSnapshotNoHeap {
         }
 
         Ok(Self {
-            current_period: GamePeriod::decode(bytes[0] & 0x7f)?,
+            current_period,
             secs_in_period: u16::from_be_bytes(*array_ref![bytes, 1, 2]),
             timeout: TimeoutSnapshot::decode(array_ref![bytes, 3, 2])?,
             scores: BlackWhiteBundle {
@@ -617,7 +665,8 @@ impl GameSnapshotNoHeap {
                 white: bytes[6],
             },
             penalties,
-            is_old_game: ((bytes[0] & 0x80) != 0x00),
+            timeouts_available,
+            is_old_game,
         })
     }
 }
@@ -1054,9 +1103,13 @@ mod test {
         let mut state = GameSnapshotNoHeap {
             current_period: GamePeriod::BetweenGames,
             secs_in_period: 0,
-            timeout: TimeoutSnapshot::None,
+            timeout: None,
             scores: BlackWhiteBundle { black: 0, white: 0 },
             penalties: Default::default(),
+            timeouts_available: BlackWhiteBundle {
+                black: true,
+                white: false,
+            },
             is_old_game: false,
         };
 
@@ -1076,7 +1129,8 @@ mod test {
 
         state.current_period = GamePeriod::FirstHalf;
         state.secs_in_period = 345;
-        state.timeout = TimeoutSnapshot::Black(16);
+        state.timeout = Some(TimeoutSnapshot::Black(16));
+        state.timeouts_available.black = false;
         state.scores.black = 2;
         state.scores.white = 5;
         state.penalties.black.push(PenaltySnapshot {
@@ -1094,7 +1148,7 @@ mod test {
 
         state.current_period = GamePeriod::HalfTime;
         state.secs_in_period = 66;
-        state.timeout = TimeoutSnapshot::White(60);
+        state.timeout = Some(TimeoutSnapshot::White(60));
         state.scores.black = 12;
         state.scores.white = 25;
         state.penalties.black.push(PenaltySnapshot {
@@ -1112,7 +1166,7 @@ mod test {
 
         state.current_period = GamePeriod::SecondHalf;
         state.secs_in_period = 900;
-        state.timeout = TimeoutSnapshot::Ref(432);
+        state.timeout = Some(TimeoutSnapshot::Ref(432));
         state.scores.black = 99;
         state.scores.white = 99;
         state.penalties.black.push(PenaltySnapshot {
@@ -1130,7 +1184,7 @@ mod test {
 
         state.current_period = GamePeriod::PreOvertime;
         state.secs_in_period = 58;
-        state.timeout = TimeoutSnapshot::PenaltyShot(16);
+        state.timeout = Some(TimeoutSnapshot::PenaltyShot(16));
 
         test_state(&mut state)?;
 

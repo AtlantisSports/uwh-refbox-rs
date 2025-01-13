@@ -108,8 +108,12 @@ module segments (
     assign is_bto = data[4][7:5] == 3'd1;
     assign is_wto = data[4][7:5] == 3'd2;
 
-    assign bto = flash ? FLASH_T_O_TIME : '{fifteen: is_bto & timeout_val.fifteen, thirty: is_bto & timeout_val.thirty, forty_five: is_bto & timeout_val.forty_five, sixty: is_bto & timeout_val.sixty, interstice: is_bto & timeout_val.interstice};
-    assign wto = flash ? FLASH_T_O_TIME : '{fifteen: is_wto & timeout_val.fifteen, thirty: is_wto & timeout_val.thirty, forty_five: is_wto & timeout_val.forty_five, sixty: is_wto & timeout_val.sixty, interstice: is_wto & timeout_val.interstice};
+    logic bto_avail, wto_avail;
+    assign bto_avail = data[1][6];
+    assign wto_avail = data[1][5];
+
+    assign bto = flash ? FLASH_T_O_TIME : '{fifteen: is_bto ? timeout_val.fifteen: bto_avail, thirty: is_bto ? timeout_val.thirty: bto_avail, forty_five: is_bto ? timeout_val.forty_five: bto_avail, sixty: is_bto ? timeout_val.sixty: bto_avail, interstice: is_bto ? timeout_val.interstice: bto_avail};
+    assign wto = flash ? FLASH_T_O_TIME : '{fifteen: is_wto ? timeout_val.fifteen: wto_avail, thirty: is_wto ? timeout_val.thirty: wto_avail, forty_five: is_wto ? timeout_val.forty_five: wto_avail, sixty: is_wto ? timeout_val.sixty: wto_avail, interstice: is_wto ? timeout_val.interstice: wto_avail};
 
     assign bto_ind = is_bto | flash;
     assign wto_ind = is_wto | flash;

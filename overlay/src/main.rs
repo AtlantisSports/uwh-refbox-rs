@@ -18,7 +18,7 @@ use macroquad::prelude::*;
 use network::{GameData, StatePacket, TeamInfoRaw};
 use std::{cmp::Ordering, str::FromStr};
 use std::{net::IpAddr, path::PathBuf};
-use uwh_common::game_snapshot::{GamePeriod, GameSnapshot, TimeoutSnapshot};
+use uwh_common::game_snapshot::{GamePeriod, GameSnapshot};
 
 mod flag;
 mod load_images;
@@ -248,7 +248,7 @@ async fn main() {
         animation_register3: false,
         animation_register4: Instant::now(),
         assets,
-        last_snapshot_timeout: TimeoutSnapshot::None,
+        last_snapshot_timeout: None,
     };
 
     let mut flag_renderer = flag::Renderer::new();

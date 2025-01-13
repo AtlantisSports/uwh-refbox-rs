@@ -58,8 +58,8 @@ pub fn draw_panels<D: DrawTarget<Color = Rgb888>>(
     }
 
     let game_color = match state.timeout {
-        TimeoutSnapshot::PenaltyShot(_) => RED,
-        TimeoutSnapshot::Ref(_) => YELLOW,
+        Some(TimeoutSnapshot::PenaltyShot(_)) => RED,
+        Some(TimeoutSnapshot::Ref(_)) => YELLOW,
         _ => match state.current_period {
             GamePeriod::FirstHalf
             | GamePeriod::SecondHalf
@@ -75,60 +75,27 @@ pub fn draw_panels<D: DrawTarget<Color = Rgb888>>(
     };
 
     let timeout_color = match state.timeout {
-        TimeoutSnapshot::White(_) => WHITE,
-        TimeoutSnapshot::Black(_) => BLUE,
-        TimeoutSnapshot::Ref(_) => YELLOW,
+        Some(TimeoutSnapshot::White(_)) => WHITE,
+        Some(TimeoutSnapshot::Black(_)) => BLUE,
+        Some(TimeoutSnapshot::Ref(_)) => YELLOW,
         _ => RED,
     };
 
     // EVERYTHING TO BE DISPLAYED ON THE CENTER 2 TIME PANELS
-    match state.timeout {
-        TimeoutSnapshot::None => {
-            Text::with_text_style(
-                &secs_to_time_string(state.secs_in_period),
-                Point::new(127, 18),
-                MonoTextStyle::new(&FONT_20X46, game_color),
-                CENTERED,
-            )
-            .draw(display)?;
+    if let Some(timeout) = state.timeout {
+        // There is currently a timeout
+        Text::with_text_style(
+            &secs_to_time_string(state.secs_in_period),
+            Point::new(152, 33),
+            MonoTextStyle::new(&FONT_14X31, game_color),
+            CENTERED,
+        )
+        .draw(display)?;
 
-            let text = if beep_test {
-                "BEEP TEST"
-            } else {
-                match state.current_period {
-                    GamePeriod::BetweenGames => "NEXT GAME IN",
-                    GamePeriod::FirstHalf => "1ST HALF",
-                    GamePeriod::HalfTime => "HALF TIME",
-                    GamePeriod::SecondHalf => "2ND HALF",
-                    GamePeriod::PreOvertime => "PRE-OVERTIME",
-                    GamePeriod::OvertimeFirstHalf => "O/T 1ST HALF",
-                    GamePeriod::OvertimeHalfTime => "O/T HALF TIME",
-                    GamePeriod::OvertimeSecondHalf => "O/T 2ND HALF",
-                    GamePeriod::PreSuddenDeath => "PRE-SUDDEN DEATH",
-                    GamePeriod::SuddenDeath => "SUDDEN DEATH",
-                }
-            };
-
-            Text::with_text_style(
-                text,
-                Point::new(127, 2),
-                MonoTextStyle::new(&FONT_7X15, game_color),
-                CENTERED,
-            )
-            .draw(display)?;
-        }
-
-        _ => {
-            // There is currently a timeout
-            Text::with_text_style(
-                &secs_to_time_string(state.secs_in_period),
-                Point::new(152, 33),
-                MonoTextStyle::new(&FONT_14X31, game_color),
-                CENTERED,
-            )
-            .draw(display)?;
-
-            let period_text = match state.current_period {
+        let period_text = if beep_test {
+            "BEEP\nTEST"
+        } else {
+            match state.current_period {
                 GamePeriod::BetweenGames => "NEXT\nGAME",
                 GamePeriod::FirstHalf => "1ST\nHALF",
                 GamePeriod::HalfTime => "HALF\nTIME",
@@ -139,95 +106,119 @@ pub fn draw_panels<D: DrawTarget<Color = Rgb888>>(
                 GamePeriod::OvertimeSecondHalf => "OT 2ND\nHALF",
                 GamePeriod::PreSuddenDeath => "PRE SD\nBREAK",
                 GamePeriod::SuddenDeath => "SUDDEN\nDEATH",
-            };
+            }
+        };
 
-            Text::with_text_style(
-                period_text,
-                Point::new(87, 33),
-                MonoTextStyle::new(&FONT_7X15, game_color),
-                CENTERED,
-            )
-            .draw(display)?;
+        Text::with_text_style(
+            period_text,
+            Point::new(87, 33),
+            MonoTextStyle::new(&FONT_7X15, game_color),
+            CENTERED,
+        )
+        .draw(display)?;
 
-            match state.timeout {
-                TimeoutSnapshot::White(secs) => {
-                    Text::with_text_style(
-                        "WHITE\nTIMEOUT",
-                        Point::new(99, 2),
-                        MonoTextStyle::new(&FONT_7X15, timeout_color),
-                        CENTERED,
-                    )
-                    .draw(display)?;
-                    Text::with_text_style(
-                        &secs_to_short_time_string(secs),
-                        Point::new(138, 2),
-                        MonoTextStyle::new(&FONT_14X31, timeout_color),
-                        LEFT_ALGN,
-                    )
-                    .draw(display)?;
-                }
+        match timeout {
+            TimeoutSnapshot::White(secs) => {
+                Text::with_text_style(
+                    "WHITE\nTIMEOUT",
+                    Point::new(99, 2),
+                    MonoTextStyle::new(&FONT_7X15, timeout_color),
+                    CENTERED,
+                )
+                .draw(display)?;
+                Text::with_text_style(
+                    &secs_to_short_time_string(secs),
+                    Point::new(138, 2),
+                    MonoTextStyle::new(&FONT_14X31, timeout_color),
+                    LEFT_ALGN,
+                )
+                .draw(display)?;
+            }
 
-                TimeoutSnapshot::Black(secs) => {
-                    Text::with_text_style(
-                        "BLACK\nTIMEOUT",
-                        Point::new(99, 2),
-                        MonoTextStyle::new(&FONT_7X15, timeout_color),
-                        CENTERED,
-                    )
-                    .draw(display)?;
-                    Text::with_text_style(
-                        &secs_to_short_time_string(secs),
-                        Point::new(138, 2),
-                        MonoTextStyle::new(&FONT_14X31, timeout_color),
-                        LEFT_ALGN,
-                    )
-                    .draw(display)?;
-                }
+            TimeoutSnapshot::Black(secs) => {
+                Text::with_text_style(
+                    "BLACK\nTIMEOUT",
+                    Point::new(99, 2),
+                    MonoTextStyle::new(&FONT_7X15, timeout_color),
+                    CENTERED,
+                )
+                .draw(display)?;
+                Text::with_text_style(
+                    &secs_to_short_time_string(secs),
+                    Point::new(138, 2),
+                    MonoTextStyle::new(&FONT_14X31, timeout_color),
+                    LEFT_ALGN,
+                )
+                .draw(display)?;
+            }
 
-                TimeoutSnapshot::Ref(_) => {
-                    Text::with_text_style(
-                        "REF TIMEOUT",
-                        Point::new(127, 3),
-                        MonoTextStyle::new(&FONT_10X25, timeout_color),
-                        CENTERED,
-                    )
-                    .draw(display)?;
-                }
+            TimeoutSnapshot::Ref(_) => {
+                Text::with_text_style(
+                    "REF TIMEOUT",
+                    Point::new(127, 3),
+                    MonoTextStyle::new(&FONT_10X25, timeout_color),
+                    CENTERED,
+                )
+                .draw(display)?;
+            }
 
-                TimeoutSnapshot::PenaltyShot(_) => {
-                    Text::with_text_style(
-                        "PENALTY",
-                        Point::new(64, 3),
-                        MonoTextStyle::new(&FONT_10X25, timeout_color),
-                        LEFT_ALGN,
-                    )
-                    .draw(display)?;
-                    Text::with_text_style(
-                        "SHOT",
-                        Point::new(149, 3),
-                        MonoTextStyle::new(&FONT_10X25, timeout_color),
-                        LEFT_ALGN,
-                    )
-                    .draw(display)?;
-                }
+            TimeoutSnapshot::PenaltyShot(_) => {
+                Text::with_text_style(
+                    "PENALTY",
+                    Point::new(64, 3),
+                    MonoTextStyle::new(&FONT_10X25, timeout_color),
+                    LEFT_ALGN,
+                )
+                .draw(display)?;
+                Text::with_text_style(
+                    "SHOT",
+                    Point::new(149, 3),
+                    MonoTextStyle::new(&FONT_10X25, timeout_color),
+                    LEFT_ALGN,
+                )
+                .draw(display)?;
+            }
+        };
+    } else {
+        Text::with_text_style(
+            &secs_to_time_string(state.secs_in_period),
+            Point::new(127, 18),
+            MonoTextStyle::new(&FONT_20X46, game_color),
+            CENTERED,
+        )
+        .draw(display)?;
+        let text = if beep_test {
+            "BEEP TEST"
+        } else {
+            match state.current_period {
+                GamePeriod::BetweenGames => "NEXT GAME IN",
+                GamePeriod::FirstHalf => "1ST HALF",
+                GamePeriod::HalfTime => "HALF TIME",
+                GamePeriod::SecondHalf => "2ND HALF",
+                GamePeriod::PreOvertime => "PRE-OVERTIME",
+                GamePeriod::OvertimeFirstHalf => "O/T 1ST HALF",
+                GamePeriod::OvertimeHalfTime => "O/T HALF TIME",
+                GamePeriod::OvertimeSecondHalf => "O/T 2ND HALF",
+                GamePeriod::PreSuddenDeath => "PRE-SUDDEN DEATH",
+                GamePeriod::SuddenDeath => "SUDDEN DEATH",
+            }
+        };
 
-                _ => {
-                    Text::with_text_style(
-                        "T/O ERROR",
-                        Point::new(127, 3),
-                        MonoTextStyle::new(&FONT_10X25, RED),
-                        CENTERED,
-                    )
-                    .draw(display)?;
-                }
-            };
-        }
-    };
+        Text::with_text_style(
+            text,
+            Point::new(127, 2),
+            MonoTextStyle::new(&FONT_7X15, game_color),
+            CENTERED,
+        )
+        .draw(display)?;
+    }
 
     let left_penalties;
     let right_penalties;
     let left_score;
     let right_score;
+    let left_timeout_available;
+    let right_timeout_available;
     let left_color;
     let right_color;
 
@@ -236,6 +227,8 @@ pub fn draw_panels<D: DrawTarget<Color = Rgb888>>(
         right_penalties = state.penalties.white;
         left_score = state.scores.black;
         right_score = state.scores.white;
+        left_timeout_available = state.timeouts_available.black;
+        right_timeout_available = state.timeouts_available.white;
         left_color = BLUE;
         right_color = WHITE;
     } else {
@@ -243,8 +236,24 @@ pub fn draw_panels<D: DrawTarget<Color = Rgb888>>(
         right_penalties = state.penalties.black;
         left_score = state.scores.white;
         right_score = state.scores.black;
+        left_timeout_available = state.timeouts_available.white;
+        right_timeout_available = state.timeouts_available.black;
         left_color = WHITE;
         right_color = BLUE;
+    }
+
+    // Timeout Availability on Left Score Panel
+    if left_timeout_available {
+        Rectangle::new(Point::new(2, 0), Size::new(60, 1))
+            .into_styled(PrimitiveStyle::with_fill(left_color))
+            .draw(display)?;
+    }
+
+    // Timeout Availability on Right Score Panel
+    if right_timeout_available {
+        Rectangle::new(Point::new(194, 0), Size::new(60, 1))
+            .into_styled(PrimitiveStyle::with_fill(right_color))
+            .draw(display)?;
     }
 
     if !beep_test || !white_on_right {

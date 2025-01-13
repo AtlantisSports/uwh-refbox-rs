@@ -1,14 +1,12 @@
-use std::{cmp::min, fmt::Display, time::Duration};
-
+use crate::config::BeepTest;
 use derivative::Derivative;
 use serde::{Deserialize, Serialize};
+use std::{cmp::min, fmt::Display, time::Duration};
 use uwh_common::{
     bundles::BlackWhiteBundle,
     drawing_support::MAX_STRINGABLE_SECS,
     game_snapshot::{GamePeriod, GameSnapshotNoHeap},
 };
-
-use crate::config::BeepTest;
 
 #[derive(Debug, PartialEq, Eq, Default, Clone, Serialize, Deserialize)]
 pub struct BeepTestSnapshot {

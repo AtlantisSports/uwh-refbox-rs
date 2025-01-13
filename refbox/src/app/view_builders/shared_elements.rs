@@ -639,14 +639,11 @@ pub(super) fn limit_team_name_len(name: &String, len_limit: usize) -> Cow<'_, St
     }
 }
 
-pub(super) fn config_string(
+pub(super) fn config_string_game_num(
     snapshot: &GameSnapshot,
-    config: &GameConfig,
     using_uwhscores: bool,
     games: &Option<BTreeMap<u32, GameInfo>>,
-    fouls_and_warnings: bool,
-) -> String {
-    const TEAM_NAME_LEN_LIMIT: usize = 40;
+) -> (String, u32) {
     let mut result = String::new();
     let game_number = if snapshot.current_period == GamePeriod::BetweenGames {
         let prev_game;
@@ -703,6 +700,22 @@ pub(super) fn config_string(
         write!(&mut result, "Game: {}\n\n", game).unwrap();
         snapshot.game_number
     };
+
+    (result, game_number)
+}
+
+pub(super) fn config_string(
+    snapshot: &GameSnapshot,
+    config: &GameConfig,
+    using_uwhscores: bool,
+    games: &Option<BTreeMap<u32, GameInfo>>,
+    fouls_and_warnings: bool,
+) -> String {
+    const TEAM_NAME_LEN_LIMIT: usize = 40;
+    let (result_string, _) = config_string_game_num(snapshot, using_uwhscores, games);
+    let mut result = result_string;
+    let (_, result_u32) = config_string_game_num(snapshot, using_uwhscores, games);
+    let game_number = result_u32;
 
     if using_uwhscores {
         if let Some(games) = games {

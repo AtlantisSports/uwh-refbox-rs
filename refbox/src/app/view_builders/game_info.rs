@@ -64,63 +64,11 @@ fn details_strings(
     games: &Option<BTreeMap<u32, GameInfo>>,
 ) -> (String, String) {
     const TEAM_NAME_LEN_LIMIT: usize = 40;
-    let mut left_string = String::new();
     let mut right_string = String::new();
-    let game_number = if snapshot.current_period == GamePeriod::BetweenGames {
-        let prev_game;
-        let next_game;
-        if using_uwhscores {
-            if let Some(games) = games {
-                prev_game = match games.get(&snapshot.game_number) {
-                    Some(game) => game_string_short(game),
-                    None if snapshot.game_number == 0 => "None".to_string(),
-                    None => format!("Error ({})", snapshot.game_number),
-                };
-                next_game = match games.get(&snapshot.next_game_number) {
-                    Some(game) => game_string_short(game),
-                    None => format!("Error ({})", snapshot.next_game_number),
-                };
-            } else {
-                prev_game = if snapshot.game_number == 0 {
-                    "None".to_string()
-                } else {
-                    format!("Error ({})", snapshot.game_number)
-                };
-                next_game = format!("Error ({})", snapshot.next_game_number);
-            }
-        } else {
-            prev_game = if snapshot.game_number == 0 {
-                "None".to_string()
-            } else {
-                snapshot.game_number.to_string()
-            };
-            next_game = snapshot.next_game_number.to_string();
-        }
-
-        write!(
-            &mut left_string,
-            "Last Game: {}, \nNext Game: {}\n",
-            prev_game, next_game
-        )
-        .unwrap();
-        snapshot.next_game_number
-    } else {
-        let game;
-        if using_uwhscores {
-            if let Some(games) = games {
-                game = match games.get(&snapshot.game_number) {
-                    Some(game) => game_string_short(game),
-                    None => format!("Error ({})", snapshot.game_number),
-                };
-            } else {
-                game = format!("Error ({})", snapshot.game_number);
-            }
-        } else {
-            game = snapshot.game_number.to_string();
-        }
-        writeln!(&mut left_string, "Game: {}", game).unwrap();
-        snapshot.game_number
-    };
+    let (result_string, _) = config_string_game_num(snapshot, using_uwhscores, games);
+    let mut left_string = result_string;
+    let (_, result_u32) = config_string_game_num(snapshot, using_uwhscores, games);
+    let game_number = result_u32;
 
     if using_uwhscores {
         if let Some(games) = games {
@@ -202,17 +150,21 @@ fn details_strings(
     )
     .unwrap();
 
-    writeln!(&mut left_string, "Stop clock in last 2 minutes: UNKNOWN").unwrap();
+    if using_uwhscores {
+        writeln!(&mut left_string, "Stop clock in last 2 minutes: UNKNOWN").unwrap();
+    }
 
-    write!(
-        &mut right_string,
-        "Chief ref: UNKNOWN\n\
+    if using_uwhscores {
+        write!(
+            &mut right_string,
+            "Chief ref: UNKNOWN\n\
         Timer: UNKNOWN\n\
         Water ref 1: UNKNOWN\n\
         Water ref 2: UNKNOWN\n\
         Water ref 3: UNKNOWN",
-    )
-    .unwrap();
+        )
+        .unwrap();
+    }
 
     (left_string, right_string)
 }

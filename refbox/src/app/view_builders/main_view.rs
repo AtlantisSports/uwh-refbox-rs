@@ -127,7 +127,7 @@ pub(in super::super) fn build_main_view<'a>(
         .on_press(Message::ShowGameDetails)
     } else {
         button(
-            text(config_string_game_num(snapshot, using_uwhscores, games))
+            text(config_string_game_num(snapshot, using_uwhscores, games).0)
                 .size(SMALL_TEXT)
                 .line_height(LINE_HEIGHT)
                 .vertical_alignment(Vertical::Center)

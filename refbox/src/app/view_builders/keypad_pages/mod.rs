@@ -61,6 +61,33 @@ pub(in super::super) fn build_keypad_page<'a>(
             button.style(ButtonStyle::Blue)
         };
 
+    let text_displayed = match page {
+        KeypadPage::WarningAdd { team_warning, .. } => {
+            if team_warning == true {
+                "TEAM".to_string()
+            } else {
+                player_num.to_string()
+            }
+        }
+        KeypadPage::AddScore(_) => {
+            if player_num == 0 {
+                "TEAM".to_string()
+            } else {
+                player_num.to_string()
+            }
+        }
+        KeypadPage::FoulAdd { color, .. } => {
+            if color == None {
+                "TEAM".to_string()
+            } else {
+                player_num.to_string()
+            }
+        }
+        KeypadPage::GameNumber
+        | KeypadPage::Penalty(_, _, _, _)
+        | KeypadPage::TeamTimeouts(_, _) => player_num.to_string(),
+    };
+
     column![
         make_game_time_button(snapshot, false, false, config.mode, clock_running),
         row![
@@ -71,8 +98,12 @@ pub(in super::super) fn build_keypad_page<'a>(
                             .line_height(LINE_HEIGHT)
                             .horizontal_alignment(Horizontal::Left)
                             .vertical_alignment(Vertical::Center),
-                        text(player_num.to_string())
-                            .size(LARGE_TEXT)
+                        text(&text_displayed)
+                            .size(if text_displayed == "TEAM" {
+                                MEDIUM_TEXT
+                            } else {
+                                LARGE_TEXT
+                            })
                             .line_height(LINE_HEIGHT)
                             .width(Length::Fill)
                             .horizontal_alignment(Horizontal::Right)
@@ -127,17 +158,10 @@ pub(in super::super) fn build_keypad_page<'a>(
                     ]
                     .spacing(SPACING),
                     row![
-                        if player_num == 0 {
-                            setup_keypad_button(
-                                make_small_button("TEAM", SMALL_PLUS_TEXT),
-                                Message::ToggleBoolParameter(BoolGameParameter::TeamWarning),
-                            )
-                        } else {
-                            setup_keypad_button(
-                                make_small_button("0", MEDIUM_TEXT),
-                                Message::KeypadButtonPress(KeypadButton::Zero),
-                            )
-                        },
+                        setup_keypad_button(
+                            make_small_button("0", MEDIUM_TEXT),
+                            Message::KeypadButtonPress(KeypadButton::Zero),
+                        ),
                         setup_keypad_button(
                             button(
                                 container(

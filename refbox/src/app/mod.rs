@@ -150,17 +150,18 @@ impl RefBoxApp {
 
     fn maybe_play_sound(&self, new_snapshot: &GameSnapshot) {
         let (play_whistle, play_buzzer) = match new_snapshot.timeout {
-            TimeoutSnapshot::Black(time) | TimeoutSnapshot::White(time) => {
+            Some(TimeoutSnapshot::Black(time)) | Some(TimeoutSnapshot::White(time)) => {
                 match self.snapshot.timeout {
-                    TimeoutSnapshot::Black(old_time) | TimeoutSnapshot::White(old_time) => (
+                    Some(TimeoutSnapshot::Black(old_time))
+                    | Some(TimeoutSnapshot::White(old_time)) => (
                         time != old_time && time == 15,
                         time != old_time && time == 0,
                     ),
                     _ => (false, false),
                 }
             }
-            TimeoutSnapshot::Ref(_) | TimeoutSnapshot::PenaltyShot(_) => (false, false),
-            TimeoutSnapshot::None => {
+            Some(TimeoutSnapshot::Ref(_)) | Some(TimeoutSnapshot::PenaltyShot(_)) => (false, false),
+            None => {
                 let prereqs = new_snapshot.current_period != GamePeriod::SuddenDeath
                     && new_snapshot.secs_in_period != self.snapshot.secs_in_period;
 

@@ -48,9 +48,13 @@ mod test {
         let state = GameSnapshotNoHeap {
             current_period: GamePeriod::BetweenGames,
             secs_in_period: 0,
-            timeout: TimeoutSnapshot::None,
+            timeout: None,
             scores: BlackWhiteBundle { black: 0, white: 0 },
             penalties: Default::default(),
+            timeouts_available: BlackWhiteBundle {
+                black: false,
+                white: false,
+            },
             is_old_game: true,
         };
 
@@ -77,7 +81,7 @@ mod test {
         data.white_on_right = false;
         data.snapshot.current_period = GamePeriod::FirstHalf;
         data.snapshot.secs_in_period = 345;
-        data.snapshot.timeout = TimeoutSnapshot::Black(16);
+        data.snapshot.timeout = Some(TimeoutSnapshot::Black(16));
         data.snapshot.scores.black = 2;
         data.snapshot.scores.white = 5;
         data.snapshot.penalties.black.push(PenaltySnapshot {

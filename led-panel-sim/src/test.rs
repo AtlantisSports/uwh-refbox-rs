@@ -6,9 +6,13 @@ fn empty_data() -> TransmittedData {
         snapshot: GameSnapshotNoHeap {
             current_period: GamePeriod::BetweenGames,
             secs_in_period: 0,
-            timeout: TimeoutSnapshot::None,
+            timeout: None,
             scores: BlackWhiteBundle { black: 0, white: 0 },
             penalties: Default::default(),
+            timeouts_available: BlackWhiteBundle {
+                black: false,
+                white: false,
+            },
             is_old_game: false,
         },
         white_on_right: false,
@@ -315,7 +319,44 @@ fn test_timeouts() {
     let state = DisplayState::from_transmitted_data(&data);
     assert_eq!(state, EMPTY_STATE);
 
-    data.snapshot.timeout = TimeoutSnapshot::Black(0);
+    data.snapshot.timeouts_available.black = true;
+    let state = DisplayState::from_transmitted_data(&data);
+    assert_eq!(
+        state,
+        DisplayState {
+            b_timeout_time: TimeoutTime::ON,
+            bto_ind: false,
+            ..EMPTY_STATE
+        }
+    );
+
+    data.snapshot.timeouts_available.white = true;
+    let state = DisplayState::from_transmitted_data(&data);
+    assert_eq!(
+        state,
+        DisplayState {
+            b_timeout_time: TimeoutTime::ON,
+            w_timeout_time: TimeoutTime::ON,
+            bto_ind: false,
+            wto_ind: false,
+            ..EMPTY_STATE
+        }
+    );
+
+    data.snapshot.timeouts_available.black = false;
+    let state = DisplayState::from_transmitted_data(&data);
+    assert_eq!(
+        state,
+        DisplayState {
+            w_timeout_time: TimeoutTime::ON,
+            wto_ind: false,
+            ..EMPTY_STATE
+        }
+    );
+
+    data.snapshot.timeouts_available.white = false;
+
+    data.snapshot.timeout = Some(TimeoutSnapshot::Black(0));
     let state = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
@@ -332,7 +373,7 @@ fn test_timeouts() {
         }
     );
 
-    data.snapshot.timeout = TimeoutSnapshot::Black(1);
+    data.snapshot.timeout = Some(TimeoutSnapshot::Black(1));
     let state = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
@@ -349,7 +390,7 @@ fn test_timeouts() {
         }
     );
 
-    data.snapshot.timeout = TimeoutSnapshot::Black(15);
+    data.snapshot.timeout = Some(TimeoutSnapshot::Black(15));
     let state = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
@@ -366,7 +407,7 @@ fn test_timeouts() {
         }
     );
 
-    data.snapshot.timeout = TimeoutSnapshot::Black(16);
+    data.snapshot.timeout = Some(TimeoutSnapshot::Black(16));
     let state = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
@@ -383,7 +424,7 @@ fn test_timeouts() {
         }
     );
 
-    data.snapshot.timeout = TimeoutSnapshot::Black(30);
+    data.snapshot.timeout = Some(TimeoutSnapshot::Black(30));
     let state = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
@@ -400,7 +441,7 @@ fn test_timeouts() {
         }
     );
 
-    data.snapshot.timeout = TimeoutSnapshot::Black(31);
+    data.snapshot.timeout = Some(TimeoutSnapshot::Black(31));
     let state = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
@@ -417,7 +458,7 @@ fn test_timeouts() {
         }
     );
 
-    data.snapshot.timeout = TimeoutSnapshot::Black(45);
+    data.snapshot.timeout = Some(TimeoutSnapshot::Black(45));
     let state = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
@@ -434,7 +475,7 @@ fn test_timeouts() {
         }
     );
 
-    data.snapshot.timeout = TimeoutSnapshot::Black(46);
+    data.snapshot.timeout = Some(TimeoutSnapshot::Black(46));
     let state = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
@@ -451,7 +492,7 @@ fn test_timeouts() {
         }
     );
 
-    data.snapshot.timeout = TimeoutSnapshot::Black(60);
+    data.snapshot.timeout = Some(TimeoutSnapshot::Black(60));
     let state = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
@@ -468,7 +509,7 @@ fn test_timeouts() {
         }
     );
 
-    data.snapshot.timeout = TimeoutSnapshot::White(10);
+    data.snapshot.timeout = Some(TimeoutSnapshot::White(10));
     let state = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
@@ -485,7 +526,7 @@ fn test_timeouts() {
         }
     );
 
-    data.snapshot.timeout = TimeoutSnapshot::White(22);
+    data.snapshot.timeout = Some(TimeoutSnapshot::White(22));
     let state = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
@@ -502,7 +543,7 @@ fn test_timeouts() {
         }
     );
 
-    data.snapshot.timeout = TimeoutSnapshot::Ref(24);
+    data.snapshot.timeout = Some(TimeoutSnapshot::Ref(24));
     let state = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
@@ -512,7 +553,7 @@ fn test_timeouts() {
         }
     );
 
-    data.snapshot.timeout = TimeoutSnapshot::PenaltyShot(78);
+    data.snapshot.timeout = Some(TimeoutSnapshot::PenaltyShot(78));
     let state = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,

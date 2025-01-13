@@ -6,29 +6,31 @@ always has space for all 6 penalties, but the penalty encoding includes data on
 whether that penalty is actually present, or just a placeholder. The bytestream
 is organized as follows:
 
-| Byte(s) | Description    |
-| ------- | -------------- |
-| 18:17   | w_penalty_2    |
-| 16:15   | w_penalty_1    |
-| 14:13   | w_penalty_0    |
-| 12:11   | b_penalty_2    |
-| 10:9    | b_penalty_1    |
-| 8:7     | b_penalty_0    |
-| 6       | w_score        |
-| 5       | b_score        |
-| 4:3     | timeout        |
-| 2:1     | secs_in_period |
-| 0       | period_info    |
+| Byte(s) | Description          |
+| ------- | -------------------- |
+| 18:17   | w_penalty_2          |
+| 16:15   | w_penalty_1          |
+| 14:13   | w_penalty_0          |
+| 12:11   | b_penalty_2          |
+| 10:9    | b_penalty_1          |
+| 8:7     | b_penalty_0          |
+| 6       | w_score              |
+| 5       | b_score              |
+| 4:3     | timeout              |
+| 2:1     | secs_in_period       |
+| 0       | period/timeout_avail |
 
 
-# Period encoding
+# Period/Timeout Available encoding
 
-The `current_period` and `is_old_game` values are encoded together in 8 bits as follows:
+The `current_period`, team timeoutavailable, and `is_old_game` values are encoded together in 8 bits as follows:
 
 | Bit(s) | Description                                                                          |
 | ------ | ------------------------------------------------------------------------------------ |
 | 7      | `is_old_game`                                                                        |
-| 4:0    | `current_period`: values 0-9, arranged in order from `BetweenGames` to `SuddenDeath` |
+| 6      | Black timeout available                                                              |
+| 5      | White timeout available                                                              |
+| 3:0    | `current_period`: values 0-9, arranged in order from `BetweenGames` to `SuddenDeath` |
 
 
 # Timeout encoding

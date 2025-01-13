@@ -628,10 +628,7 @@ mod test {
     use tokio::io::AsyncReadExt;
     use uwh_common::{
         bundles::{BlackWhiteBundle, OptColorBundle},
-        game_snapshot::{
-            GamePeriod, Infraction, InfractionSnapshot, PenaltySnapshot, PenaltyTime,
-            TimeoutSnapshot,
-        },
+        game_snapshot::{GamePeriod, Infraction, InfractionSnapshot, PenaltySnapshot, PenaltyTime},
     };
 
     const BINARY_PORT: u16 = 12345;
@@ -705,7 +702,7 @@ mod test {
         let snapshot = GameSnapshot {
             current_period: GamePeriod::FirstHalf,
             secs_in_period: 897,
-            timeout: TimeoutSnapshot::None,
+            timeout: None,
             scores: BlackWhiteBundle { black: 2, white: 3 },
             penalties: BlackWhiteBundle {
                 black: vec![
@@ -786,6 +783,10 @@ mod test {
                         player_number: None,
                     },
                 ],
+            },
+            timeouts_available: BlackWhiteBundle {
+                black: false,
+                white: true,
             },
             is_old_game: true,
             game_number: 26,

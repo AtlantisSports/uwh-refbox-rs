@@ -196,6 +196,22 @@ pub struct TimeoutTime {
 }
 
 impl TimeoutTime {
+    const OFF: Self = Self {
+        fifteen: false,
+        thirty: false,
+        forty_five: false,
+        sixty: false,
+        int: false,
+    };
+
+    const ON: Self = Self {
+        fifteen: true,
+        thirty: true,
+        forty_five: true,
+        sixty: true,
+        int: true,
+    };
+
     pub fn as_verilog(&self) -> String {
         format!(
             r#"'{{fifteen: 1'b{}, thirty: 1'b{}, forty_five: 1'b{}, sixty: 1'b{}, interstice: 1'b{}}}"#,
@@ -325,7 +341,7 @@ impl DisplayState {
         let (time_m_tens, time_m_ones) = Digit::pair_from_num(minutes, false);
         let (time_s_tens, time_s_ones) = Digit::pair_from_num(seconds, true);
 
-        let b_timeout_time = if let TimeoutSnapshot::Black(t) = data.snapshot.timeout {
+        let b_timeout_time = if let Some(TimeoutSnapshot::Black(t)) = data.snapshot.timeout {
             TimeoutTime {
                 fifteen: t > 0,
                 thirty: t > 15,
@@ -333,17 +349,13 @@ impl DisplayState {
                 sixty: t > 45,
                 int: false,
             }
+        } else if data.snapshot.timeouts_available.black {
+            TimeoutTime::ON
         } else {
-            TimeoutTime {
-                fifteen: false,
-                thirty: false,
-                forty_five: false,
-                sixty: false,
-                int: false,
-            }
+            TimeoutTime::OFF
         };
 
-        let w_timeout_time = if let TimeoutSnapshot::White(t) = data.snapshot.timeout {
+        let w_timeout_time = if let Some(TimeoutSnapshot::White(t)) = data.snapshot.timeout {
             TimeoutTime {
                 fifteen: t > 0,
                 thirty: t > 15,
@@ -351,21 +363,17 @@ impl DisplayState {
                 sixty: t > 45,
                 int: false,
             }
+        } else if data.snapshot.timeouts_available.white {
+            TimeoutTime::ON
         } else {
-            TimeoutTime {
-                fifteen: false,
-                thirty: false,
-                forty_five: false,
-                sixty: false,
-                int: false,
-            }
+            TimeoutTime::OFF
         };
 
-        let bto_ind = matches!(data.snapshot.timeout, TimeoutSnapshot::Black(_));
-        let wto_ind = matches!(data.snapshot.timeout, TimeoutSnapshot::White(_));
+        let bto_ind = matches!(data.snapshot.timeout, Some(TimeoutSnapshot::Black(_)));
+        let wto_ind = matches!(data.snapshot.timeout, Some(TimeoutSnapshot::White(_)));
         let rto_ind = matches!(
             data.snapshot.timeout,
-            TimeoutSnapshot::Ref(_) | TimeoutSnapshot::PenaltyShot(_)
+            Some(TimeoutSnapshot::Ref(_)) | Some(TimeoutSnapshot::PenaltyShot(_))
         );
 
         let fst_hlf = matches!(

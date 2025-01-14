@@ -17,7 +17,6 @@ use iced::{
     Alignment, Length,
 };
 
-use style::SMALL_PLUS_TEXT;
 use uwh_common::game_snapshot::GameSnapshot;
 
 mod score_add;
@@ -63,7 +62,7 @@ pub(in super::super) fn build_keypad_page<'a>(
 
     let text_displayed = match page {
         KeypadPage::WarningAdd { team_warning, .. } => {
-            if team_warning == true {
+            if team_warning {
                 "TEAM".to_string()
             } else {
                 player_num.to_string()
@@ -77,7 +76,7 @@ pub(in super::super) fn build_keypad_page<'a>(
             }
         }
         KeypadPage::FoulAdd { color, .. } => {
-            if color == None {
+            if color.is_none() {
                 "TEAM".to_string()
             } else {
                 player_num.to_string()

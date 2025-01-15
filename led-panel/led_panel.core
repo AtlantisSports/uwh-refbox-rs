@@ -22,10 +22,10 @@ filesets:
     files:
       - synth/top.sv: {file_type: systemVerilogSource}
   # boards
-  alchrity_cu:
+  alchitry_cu:
     files:
-      - boards/alchrity_cu/pinmap.pcf: {file_type: PCF}
-      - boards/alchrity_cu/cu.sdc: {file_type: SDC}
+      - boards/alchitry_cu/pinmap.pcf: {file_type: PCF}
+      - boards/alchitry_cu/cu.sdc: {file_type: SDC}
 
 
 # Targets https://fusesoc.readthedocs.io/en/stable/user/build_system/core_files.html#targets
@@ -50,11 +50,11 @@ targets:
       tool: verilator
       verilator_options: [--timing, --main, -Isrc/atlantis_sports_boards_led_panel_1.0.0/tb]
 
-  alchrity_cu:
+  alchitry_cu:
     <<: *synth
     description: Synthesize on Alchrity Cu
     filesets_append:
-      - alchrity_cu
+      - alchitry_cu
     flow: icestorm
     flow_options:
       frontends:

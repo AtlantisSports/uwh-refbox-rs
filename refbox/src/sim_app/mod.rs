@@ -150,7 +150,7 @@ impl Application for SimRefBoxApp {
                         .unwrap();
                     }
                     DisplaySim::Sunlight(ref mut state) => {
-                        *state = DisplayState::from_transmitted_data(&data);
+                        (*state, _) = DisplayState::from_transmitted_data(&data);
                     }
                 }
                 self.cache.clear();

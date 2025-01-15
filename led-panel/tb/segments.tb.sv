@@ -10,14 +10,12 @@ module segments_tb;
     logic bto_ind, wto_ind, rto_ind;
     logic fst_hlf, hlf_tm, snd_hlf, overtime, sdn_dth;
     logic colon;
+    logic [1:0] brightness;
 
     logic test_failed = 0;
 
-        wire [7:0] data_wire [19:0];
-        assign data_wire = current_test.data;
-
     segments segments(
-        .data(data_wire),
+        .data(current_test.data),
         .bs_10(bs_10),
         .bs_1(bs_1),
         .ws_10(ws_10),
@@ -36,7 +34,8 @@ module segments_tb;
         .snd_hlf(snd_hlf),
         .overtime(overtime),
         .sdn_dth(sdn_dth),
-        .colon(colon)
+        .colon(colon),
+        .brightness(brightness)
     );
 
     initial begin
@@ -120,6 +119,10 @@ module segments_tb;
             end
             if (colon !== current_test.colon_ex) begin
                 $error("Test \"%s\" failed: colon is %b, expected %b", current_test.name, colon, current_test.colon_ex);
+                test_failed = 1;
+            end
+            if (brightness !== current_test.brightness_ex) begin
+                $error("Test \"%s\" failed: brightness is %b, expected %b", current_test.name, brightness, current_test.brightness_ex);
                 test_failed = 1;
             end
 

@@ -7,13 +7,16 @@ rust-version = "1.85"
 
 [features]
 default = ["std"]
-std = ["arrayvec/std", "serde/std", "uwh-common/std"]
+std = ["arrayvec/std", "enum-derive-2018", "macro-attr-2018", "serde/std", "uwh-common/std"]
 
 [dependencies]
 arrayref = "0.3"
 arrayvec = { version = "0.7", default-features = false }
+derivative = "2"
 embedded-graphics = "0.8"
+enum-derive-2018 = { version = "3", optional = true }
 fonts = { version = "0.2.1", path = "../fonts" }
+macro-attr-2018 = { version = "3", optional = true }
 more-asserts = "0.3"
 serde = { version = "1", default-features = false }
 serde_derive = "1"

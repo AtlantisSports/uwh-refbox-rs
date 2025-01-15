@@ -16,12 +16,13 @@ localparam t_o_time FLASH_T_O_TIME = '{fifteen: 1, thirty: 1, forty_five: 1, six
 localparam int NUM_DATA_BITS = 20;
 
 module segments (
-    input [7:0] data [(NUM_DATA_BITS - 1):0],
+    input [(NUM_DATA_BITS - 1):0][7:0] data,
     output digit bs_10, bs_1, ws_10, ws_1, m_10, m_1, s_10, s_1,
     output t_o_time bto, wto,
     output logic bto_ind, wto_ind, rto_ind,
     output logic fst_hlf, hlf_tm, snd_hlf, overtime, sdn_dth,
-    output colon
+    output colon,
+    output logic [1:0] brightness
 );
     wire off;
     wire [NUM_DATA_BITS - 1:0] bit_ands;
@@ -196,6 +197,8 @@ module segments (
     end
 
     assign colon = ~off;
+
+    assign brightness = data[0][4:3];
     
 endmodule
 

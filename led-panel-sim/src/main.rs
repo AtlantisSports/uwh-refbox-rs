@@ -1,5 +1,5 @@
 use led_panel_sim::DisplayState;
-use matrix_drawing::transmitted_data::TransmittedData;
+use matrix_drawing::transmitted_data::{Brightness, TransmittedData};
 use std::fmt::Write;
 use std::fs::OpenOptions;
 use std::io::Write as IoWrite;
@@ -12,6 +12,7 @@ fn test_to_verilog(
     name: &str,
     bin: [u8; TransmittedData::ENCODED_LEN],
     disp: DisplayState,
+    brightness: Brightness,
 ) -> String {
     let data_str = bin
         .iter()
@@ -22,28 +23,29 @@ fn test_to_verilog(
 
     format!(
         r#"        '{{
-name: "{}",
-data: '{{{}}},
-bs_10_ex: {},
-bs_1_ex: {},
-ws_10_ex: {},
-ws_1_ex: {},
-m_10_ex: {},
-m_1_ex: {},
-s_10_ex: {},
-s_1_ex: {},
-bto_ex: {},
-wto_ex: {},
-bto_ind_ex: 1'b{},
-wto_ind_ex: 1'b{},
-rto_ind_ex: 1'b{},
-fst_hlf_ex: 1'b{},
-hlf_tm_ex: 1'b{},
-snd_hlf_ex: 1'b{},
-overtime_ex: 1'b{},
-sdn_dth_ex: 1'b{},
-colon_ex: 1'b{}
-    }}"#,
+            name: "{}",
+            data: '{{{}}},
+            bs_10_ex: {},
+            bs_1_ex: {},
+            ws_10_ex: {},
+            ws_1_ex: {},
+            m_10_ex: {},
+            m_1_ex: {},
+            s_10_ex: {},
+            s_1_ex: {},
+            bto_ex: {},
+            wto_ex: {},
+            bto_ind_ex: 1'b{},
+            wto_ind_ex: 1'b{},
+            rto_ind_ex: 1'b{},
+            fst_hlf_ex: 1'b{},
+            hlf_tm_ex: 1'b{},
+            snd_hlf_ex: 1'b{},
+            overtime_ex: 1'b{},
+            sdn_dth_ex: 1'b{},
+            colon_ex: 1'b{},
+            brightness_ex: 2'b{:02b}
+        }}"#,
         name,
         data_str,
         disp.b_score_tens.as_verilog(),
@@ -64,7 +66,8 @@ colon_ex: 1'b{}
         disp.snd_hlf as u8,
         disp.overtime as u8,
         disp.sdn_dth as u8,
-        disp.colon as u8
+        disp.colon as u8,
+        brightness.to_u8(),
     )
 }
 
@@ -75,10 +78,10 @@ struct TestCase {
 
 impl TestCase {
     fn as_verilog(&self) -> String {
-        let disp = DisplayState::from_transmitted_data(&self.transmitted_data);
+        let (disp, brightness) = DisplayState::from_transmitted_data(&self.transmitted_data);
         let bin = self.transmitted_data.encode().unwrap();
 
-        test_to_verilog(&self.name, bin, disp)
+        test_to_verilog(&self.name, bin, disp, brightness)
     }
 }
 
@@ -90,6 +93,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 900,
@@ -110,6 +114,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::HalfTime,
                     secs_in_period: 123,
@@ -130,6 +135,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::SecondHalf,
                     secs_in_period: 0,
@@ -150,6 +156,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::PreOvertime,
                     secs_in_period: 32,
@@ -170,6 +177,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::OvertimeFirstHalf,
                     secs_in_period: 234,
@@ -190,6 +198,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::OvertimeHalfTime,
                     secs_in_period: 45,
@@ -213,6 +222,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::OvertimeSecondHalf,
                     secs_in_period: 456,
@@ -236,6 +246,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::PreSuddenDeath,
                     secs_in_period: 12,
@@ -259,6 +270,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::SuddenDeath,
                     secs_in_period: 5999,
@@ -282,6 +294,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::BetweenGames,
                     secs_in_period: 99,
@@ -305,6 +318,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::BetweenGames,
                     secs_in_period: 45,
@@ -325,6 +339,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -345,6 +360,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -365,6 +381,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -385,6 +402,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -405,6 +423,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -425,6 +444,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -445,6 +465,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -465,6 +486,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -485,6 +507,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -505,6 +528,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -525,6 +549,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -545,6 +570,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -565,6 +591,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -585,6 +612,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -605,6 +633,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -625,6 +654,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -645,6 +675,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -665,6 +696,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 345,
@@ -685,6 +717,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::BetweenGames,
                     secs_in_period: 345,
@@ -705,6 +738,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::BetweenGames,
                     secs_in_period: 345,
@@ -725,6 +759,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::BetweenGames,
                     secs_in_period: 345,
@@ -748,6 +783,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::BetweenGames,
                     secs_in_period: 6000,
@@ -771,6 +807,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::BetweenGames,
                     secs_in_period: u16::MAX,
@@ -794,6 +831,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 900,
@@ -814,6 +852,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 900,
@@ -834,6 +873,7 @@ fn main() {
                 white_on_right: false,
                 flash: false,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: GameSnapshotNoHeap {
                     current_period: GamePeriod::FirstHalf,
                     secs_in_period: 900,
@@ -849,11 +889,75 @@ fn main() {
             },
         },
         TestCase {
+            name: "First Half, T900, B0, W0, Brightness Med".to_string(),
+            transmitted_data: TransmittedData {
+                white_on_right: false,
+                flash: false,
+                beep_test: false,
+                brightness: Brightness::Medium,
+                snapshot: GameSnapshotNoHeap {
+                    current_period: GamePeriod::FirstHalf,
+                    secs_in_period: 900,
+                    timeout: None,
+                    scores: BlackWhiteBundle { black: 0, white: 0 },
+                    penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
+                    is_old_game: false,
+                },
+            },
+        },
+        TestCase {
+            name: "First Half, T900, B0, W0, Brightness High".to_string(),
+            transmitted_data: TransmittedData {
+                white_on_right: false,
+                flash: false,
+                beep_test: false,
+                brightness: Brightness::High,
+                snapshot: GameSnapshotNoHeap {
+                    current_period: GamePeriod::FirstHalf,
+                    secs_in_period: 900,
+                    timeout: None,
+                    scores: BlackWhiteBundle { black: 0, white: 0 },
+                    penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
+                    is_old_game: false,
+                },
+            },
+        },
+        TestCase {
+            name: "First Half, T900, B0, W0, Brightness Outdoor".to_string(),
+            transmitted_data: TransmittedData {
+                white_on_right: false,
+                flash: false,
+                beep_test: false,
+                brightness: Brightness::Outdoor,
+                snapshot: GameSnapshotNoHeap {
+                    current_period: GamePeriod::FirstHalf,
+                    secs_in_period: 900,
+                    timeout: None,
+                    scores: BlackWhiteBundle { black: 0, white: 0 },
+                    penalties: Default::default(),
+                    timeouts_available: BlackWhiteBundle {
+                        black: false,
+                        white: false,
+                    },
+                    is_old_game: false,
+                },
+            },
+        },
+        TestCase {
             name: "Flash".to_string(),
             transmitted_data: TransmittedData {
                 white_on_right: false,
                 flash: true,
                 beep_test: false,
+                brightness: Brightness::Low,
                 snapshot: Default::default(),
             },
         },
@@ -869,7 +973,7 @@ package test_cases;
         string name;
 
         // Inputs
-        logic [7:0] data [19:0];
+        logic [19:0][7:0] data;
 
         // Expected Outputs
         digit bs_10_ex, bs_1_ex, ws_10_ex, ws_1_ex, m_10_ex, m_1_ex, s_10_ex, s_1_ex;
@@ -877,6 +981,7 @@ package test_cases;
         logic bto_ind_ex, wto_ind_ex, rto_ind_ex;
         logic fst_hlf_ex, hlf_tm_ex, snd_hlf_ex, overtime_ex, sdn_dth_ex;
         logic colon_ex;
+        logic [1:0] brightness_ex;
     }} test_case;
 
     test_case all_tests [{}:0] = '{{
@@ -891,7 +996,8 @@ package test_cases;
         test_to_verilog(
             "All zeros",
             [0u8; TransmittedData::ENCODED_LEN],
-            DisplayState::OFF
+            DisplayState::OFF,
+            Brightness::Low,
         )
     )
     .unwrap();

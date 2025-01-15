@@ -1,11 +1,3 @@
-// Uncomment exactly one of the following lines to select the desired
-// display brightness
-`define BRIGHTNESS_LOW
-// `define BRIGHTNESS_MEDIUM
-// `define BRIGHTNESS_HIGH
-// `define BRIGHTNESS_OUTDOOR
-
-
 module top(
     input clk,
     input rst_n,
@@ -30,48 +22,6 @@ module top(
     wire rst;
     
     reset_conditioner reset_conditioner(.clk(clk), .in(!rst_n), .out(rst));
-    
-    reg [10:0] pwm_counter = 11'b0;
-    wire pwm_clk;
-
-    assign pwm_clk = pwm_counter[10];
-
-    always @(posedge clk or posedge rst) begin
-        if (rst) begin
-            pwm_counter <= 11'b0;
-        end else begin
-            pwm_counter <= pwm_counter + 1;
-        end
-    end
-
-    wire [74:0] pwm_out;
-`ifdef BRIGHTNESS_LOW
-    // Spacing 3
-    reg [7:0] compare [75:0] = {8'hE1, 8'hDE, 8'hDB, 8'hD8, 8'hD5, 8'hD2, 8'hCF, 8'hCC, 8'hC9, 8'hC6, 8'hC3, 8'hC0, 8'hBD, 8'hBA, 8'hB7, 8'hB4, 8'hB1, 8'hAE, 8'hAB, 8'hA8, 8'hA5, 8'hA2, 8'h9F, 8'h9C, 8'h99, 8'h96, 8'h93, 8'h90, 8'h8D, 8'h8A, 8'h87, 8'h84, 8'h81, 8'h7E, 8'h7B, 8'h78, 8'h75, 8'h72, 8'h6F, 8'h6C, 8'h69, 8'h66, 8'h63, 8'h60, 8'h5D, 8'h5A, 8'h57, 8'h54, 8'h51, 8'h4E, 8'h4B, 8'h48, 8'h45, 8'h42, 8'h3F, 8'h3C, 8'h39, 8'h36, 8'h33, 8'h30, 8'h2D, 8'h2A, 8'h27, 8'h24, 8'h21, 8'h1E, 8'h1B, 8'h18, 8'h15, 8'h12, 8'h0F, 8'h0C, 8'h09, 8'h06, 8'h03, 8'h00};
-
-    pwm #(.CTR_LEN(8), .NUM_OUTPUTS(75)) pwm(.clk(pwm_clk), .rst(rst), .compare(compare), .pwm(pwm_out));
-`elsif BRIGHTNESS_MEDIUM
-    // Spacing 10
-    reg [7:0] compare [25:0] = {8'hFA, 8'hF0, 8'hE6, 8'hDC, 8'hD2, 8'hC8, 8'hBE, 8'hB4, 8'hAA, 8'hA0, 8'h96, 8'h8C, 8'h82, 8'h78, 8'h6E, 8'h64, 8'h5A, 8'h50, 8'h46, 8'h3C, 8'h32, 8'h28, 8'h1E, 8'h14, 8'h0A, 8'h00};
-
-    wire [24:0] pwm_int;
-    pwm #(.CTR_LEN(8), .NUM_OUTPUTS(25)) pwm(.clk(pwm_clk), .rst(rst), .compare(compare), .pwm(pwm_int));
-    assign pwm_out = {pwm_int[24:0], pwm_int[24:0], pwm_int[24:0]};
-`elsif BRIGHTNESS_HIGH
-    // Spacing 21
-    reg [7:0] compare [12:0] = {8'hFC, 8'hE7, 8'hD2, 8'hBD, 8'hA8, 8'h93, 8'h7E, 8'h69, 8'h54, 8'h3F, 8'h2A, 8'h15, 8'h00};
-
-    wire [11:0] pwm_int;
-    pwm #(.CTR_LEN(8), .NUM_OUTPUTS(12)) pwm(.clk(pwm_clk), .rst(rst), .compare(compare), .pwm(pwm_int));
-    assign pwm_out = {pwm_int[2:0], pwm_int[11:0], pwm_int[11:0], pwm_int[11:0], pwm_int[11:0], pwm_int[11:0], pwm_int[11:0]};
-`elsif BRIGHTNESS_OUTDOOR
-    // Spacing 36
-    reg [7:0] compare [7:0] = {8'hFC, 8'hD8, 8'hB4, 8'h90, 8'h6C, 8'h48, 8'h24, 8'h00};
-
-    wire [6:0] pwm_int;
-    pwm #(.CTR_LEN(8), .NUM_OUTPUTS(7)) pwm(.clk(pwm_clk), .rst(rst), .compare(compare), .pwm(pwm_int));
-    assign pwm_out = {pwm_int[4:0], pwm_int[6:0], pwm_int[6:0], pwm_int[6:0], pwm_int[6:0], pwm_int[6:0], pwm_int[6:0], pwm_int[6:0], pwm_int[6:0], pwm_int[6:0], pwm_int[6:0]};
-`endif
 
     logic timed_out = 1'b0;
     logic receiving = 1'b0;
@@ -279,14 +229,56 @@ module top(
     wire bto_ind_en, wto_ind_en, rto_ind_en;
     wire fst_hlf_en, hlf_tm_en, snd_hlf_en, overtime_en, sdn_dth_en;
     wire colon_en;
+    wire [1:0] brightness;
     segments segments(
         .data(data_q),
         .bs_10(bs_10), .bs_1(bs_1), .ws_10(ws_10), .ws_1(ws_1), .m_10(m_10), .m_1(m_1), .s_10(s_10), .s_1(s_1),
         .bto(bto), .wto(wto),
         .bto_ind(bto_ind_en), .wto_ind(wto_ind_en), .rto_ind(rto_ind_en),
         .fst_hlf(fst_hlf_en), .hlf_tm(hlf_tm_en), .snd_hlf(snd_hlf_en), .overtime(overtime_en), .sdn_dth(sdn_dth_en),
-        .colon(colon_en)
+        .colon(colon_en),
+        .brightness(brightness)
     );
+
+    reg [10:0] pwm_counter = 11'b0;
+    wire pwm_clk;
+
+    assign pwm_clk = pwm_counter[10];
+
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            pwm_counter <= 11'b0;
+        end else begin
+            pwm_counter <= pwm_counter + 1;
+        end
+    end
+
+    wire [74:0] pwm_out;
+
+    // Spacing 3
+    reg [7:0] compare_low [75:0] = {8'hE1, 8'hDE, 8'hDB, 8'hD8, 8'hD5, 8'hD2, 8'hCF, 8'hCC, 8'hC9, 8'hC6, 8'hC3, 8'hC0, 8'hBD, 8'hBA, 8'hB7, 8'hB4, 8'hB1, 8'hAE, 8'hAB, 8'hA8, 8'hA5, 8'hA2, 8'h9F, 8'h9C, 8'h99, 8'h96, 8'h93, 8'h90, 8'h8D, 8'h8A, 8'h87, 8'h84, 8'h81, 8'h7E, 8'h7B, 8'h78, 8'h75, 8'h72, 8'h6F, 8'h6C, 8'h69, 8'h66, 8'h63, 8'h60, 8'h5D, 8'h5A, 8'h57, 8'h54, 8'h51, 8'h4E, 8'h4B, 8'h48, 8'h45, 8'h42, 8'h3F, 8'h3C, 8'h39, 8'h36, 8'h33, 8'h30, 8'h2D, 8'h2A, 8'h27, 8'h24, 8'h21, 8'h1E, 8'h1B, 8'h18, 8'h15, 8'h12, 8'h0F, 8'h0C, 8'h09, 8'h06, 8'h03, 8'h00};
+    wire [74:0] pwm_int_low;
+    pwm #(.CTR_LEN(8), .NUM_OUTPUTS(75)) pwm_low(.clk(pwm_clk), .rst(rst), .compare(compare_low), .pwm(pwm_int_low));
+
+    // Spacing 10
+    reg [7:0] compare_med [25:0] = {8'hFA, 8'hF0, 8'hE6, 8'hDC, 8'hD2, 8'hC8, 8'hBE, 8'hB4, 8'hAA, 8'hA0, 8'h96, 8'h8C, 8'h82, 8'h78, 8'h6E, 8'h64, 8'h5A, 8'h50, 8'h46, 8'h3C, 8'h32, 8'h28, 8'h1E, 8'h14, 8'h0A, 8'h00};
+    wire [24:0] pwm_int_med;
+    pwm #(.CTR_LEN(8), .NUM_OUTPUTS(25)) pwm_med(.clk(pwm_clk), .rst(rst), .compare(compare_med), .pwm(pwm_int_med));
+
+    // Spacing 21
+    reg [7:0] compare_high [12:0] = {8'hFC, 8'hE7, 8'hD2, 8'hBD, 8'hA8, 8'h93, 8'h7E, 8'h69, 8'h54, 8'h3F, 8'h2A, 8'h15, 8'h00};
+    wire [11:0] pwm_int_high;
+    pwm #(.CTR_LEN(8), .NUM_OUTPUTS(12)) pwm_high(.clk(pwm_clk), .rst(rst), .compare(compare_high), .pwm(pwm_int_high));
+
+    // Spacing 36
+    reg [7:0] compare_outdoor [7:0] = {8'hFC, 8'hD8, 8'hB4, 8'h90, 8'h6C, 8'h48, 8'h24, 8'h00};
+    wire [6:0] pwm_int_outdoor;
+    pwm #(.CTR_LEN(8), .NUM_OUTPUTS(7)) pwm_outdoor(.clk(pwm_clk), .rst(rst), .compare(compare_outdoor), .pwm(pwm_int_outdoor));
+
+    assign pwm_out = (brightness == 2'b00) ? pwm_int_low :
+                     (brightness == 2'b01) ? {pwm_int_med[24:0], pwm_int_med[24:0], pwm_int_med[24:0]} :
+                     (brightness == 2'b10) ? {pwm_int_high[2:0], pwm_int_high[11:0], pwm_int_high[11:0], pwm_int_high[11:0], pwm_int_high[11:0], pwm_int_high[11:0], pwm_int_high[11:0]} :
+                     {pwm_int_outdoor[4:0], pwm_int_outdoor[6:0], pwm_int_outdoor[6:0], pwm_int_outdoor[6:0], pwm_int_outdoor[6:0], pwm_int_outdoor[6:0], pwm_int_outdoor[6:0], pwm_int_outdoor[6:0], pwm_int_outdoor[6:0], pwm_int_outdoor[6:0], pwm_int_outdoor[6:0]};
 
     assign bs_10a = bs_10.a && pwm_out[0];
     assign bs_10b = bs_10.b && pwm_out[1];
@@ -378,11 +370,10 @@ module top(
 
     assign led[0] = rx_complete;
     assign led[1] = usb_rx;
-    assign led[2] = clrd;
-    assign led[3] = dcon;
-    assign led[4] = disconnected;
-    assign led[5] = disconenct_counter_q[25];
-    assign led[6] = disconenct_counter_q[0];
-    assign led[7] = state == DONE;
+    assign led[2] = pwm_clk;
+    assign led[3] = pwm_int_low[0];
+    assign led[4] = disconenct_counter_q[25];
+    assign led[5] = disconenct_counter_q[0];
+    assign led[7:6] = brightness;
 
 endmodule

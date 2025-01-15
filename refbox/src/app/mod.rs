@@ -143,7 +143,11 @@ impl RefBoxApp {
         }
         self.maybe_play_sound(&new_snapshot);
         self.update_sender
-            .send_snapshot(new_snapshot.clone(), self.config.hardware.white_on_right)
+            .send_snapshot(
+                new_snapshot.clone(),
+                self.config.hardware.white_on_right,
+                self.config.hardware.brightness,
+            )
             .unwrap();
         self.snapshot = new_snapshot;
     }
@@ -675,6 +679,7 @@ impl RefBoxApp {
 
         let EditableSettings {
             white_on_right,
+            brightness,
             using_uwhscores,
             current_tid,
             current_pool,
@@ -693,6 +698,7 @@ impl RefBoxApp {
         } = edited_settings;
 
         self.config.hardware.white_on_right = white_on_right;
+        self.config.hardware.brightness = brightness;
         self.using_uwhscores = using_uwhscores;
         self.current_tid = current_tid;
         self.current_pool = current_pool;
@@ -1515,6 +1521,7 @@ impl Application for RefBoxApp {
                         self.snapshot.game_number
                     },
                     white_on_right: self.config.hardware.white_on_right,
+                    brightness: self.config.hardware.brightness,
                     using_uwhscores: self.using_uwhscores,
                     uwhscores_email: self.config.uwhscores.email.clone(),
                     uwhscores_password: self.config.uwhscores.password.clone(),
@@ -1902,6 +1909,7 @@ impl Application for RefBoxApp {
                     CyclingParameter::AboveWaterVol => settings.sound.above_water_vol.cycle(),
                     CyclingParameter::UnderWaterVol => settings.sound.under_water_vol.cycle(),
                     CyclingParameter::Mode => settings.mode.cycle(),
+                    CyclingParameter::Brightness => settings.brightness.cycle(),
                 }
             }
             Message::TextParameterChanged(param, val) => {

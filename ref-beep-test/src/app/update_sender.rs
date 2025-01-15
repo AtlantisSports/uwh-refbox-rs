@@ -1,7 +1,7 @@
 use super::super::snapshot::BeepTestSnapshot;
 use futures_lite::future::FutureExt;
 use log::*;
-use matrix_drawing::transmitted_data::TransmittedData;
+use matrix_drawing::transmitted_data::{Brightness, TransmittedData};
 use std::{
     collections::HashMap,
     fmt::Debug,
@@ -143,6 +143,7 @@ async fn serial_worker_loop(
         snapshot,
         flash: false,
         beep_test: true,
+        brightness: Brightness::Low,
         white_on_right,
     };
     let mut bytes = data.encode()?;
@@ -372,6 +373,7 @@ impl Server {
                     white_on_right: self.white_on_right,
                     flash: self.flash,
                     beep_test: true,
+                    brightness: Brightness::Low,
                     snapshot: self.snapshot.clone(),
                 }
                 .encode()
@@ -639,6 +641,7 @@ mod test {
         let white_on_right = false;
         let flash = false;
         let beep_test = true;
+        let brightness = Brightness::Low;
         let snapshot = BeepTestSnapshot {
             current_period: BeepTestPeriod::Level(0),
             secs_in_period: 897,
@@ -655,6 +658,7 @@ mod test {
                 white_on_right,
                 flash,
                 beep_test,
+                brightness,
                 snapshot: snapshot.clone().into(),
             }
             .encode()

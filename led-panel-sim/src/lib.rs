@@ -1,4 +1,4 @@
-use matrix_drawing::transmitted_data::TransmittedData;
+use matrix_drawing::transmitted_data::{Brightness, TransmittedData};
 use uwh_common::game_snapshot::{GamePeriod, TimeoutSnapshot};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -321,9 +321,9 @@ impl DisplayState {
         colon: false,
     };
 
-    pub fn from_transmitted_data(data: &TransmittedData) -> Self {
+    pub fn from_transmitted_data(data: &TransmittedData) -> (Self, Brightness) {
         if data.flash {
-            return Self::FLASH;
+            return (Self::FLASH, data.brightness);
         }
 
         let (b_score_tens, b_score_ones) = Digit::pair_from_num(data.snapshot.scores.black, false);
@@ -410,27 +410,30 @@ impl DisplayState {
 
         let colon = true;
 
-        Self {
-            b_score_ones,
-            b_score_tens,
-            w_score_ones,
-            w_score_tens,
-            time_m_ones,
-            time_m_tens,
-            time_s_ones,
-            time_s_tens,
-            b_timeout_time,
-            w_timeout_time,
-            bto_ind,
-            wto_ind,
-            rto_ind,
-            fst_hlf,
-            hlf_tm,
-            snd_hlf,
-            overtime,
-            sdn_dth,
-            colon,
-        }
+        (
+            Self {
+                b_score_ones,
+                b_score_tens,
+                w_score_ones,
+                w_score_tens,
+                time_m_ones,
+                time_m_tens,
+                time_s_ones,
+                time_s_tens,
+                b_timeout_time,
+                w_timeout_time,
+                bto_ind,
+                wto_ind,
+                rto_ind,
+                fst_hlf,
+                hlf_tm,
+                snd_hlf,
+                overtime,
+                sdn_dth,
+                colon,
+            },
+            data.brightness,
+        )
     }
 }
 

@@ -18,6 +18,7 @@ fn empty_data() -> TransmittedData {
         white_on_right: false,
         flash: false,
         beep_test: false,
+        brightness: Brightness::Low,
     }
 }
 
@@ -208,11 +209,12 @@ fn test_digit_pair_from_num() {
 fn test_sores() {
     let mut data = empty_data();
 
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(state, EMPTY_STATE);
+    assert_eq!(brightness, Brightness::Low);
 
     data.snapshot.scores.black = 1;
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -223,7 +225,7 @@ fn test_sores() {
     );
 
     data.snapshot.scores.black = 10;
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -234,7 +236,7 @@ fn test_sores() {
     );
 
     data.snapshot.scores.white = 99;
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -251,11 +253,12 @@ fn test_sores() {
 fn test_time() {
     let mut data = empty_data();
 
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(state, EMPTY_STATE);
+    assert_eq!(brightness, Brightness::Low);
 
     data.snapshot.secs_in_period = 1;
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -265,7 +268,7 @@ fn test_time() {
     );
 
     data.snapshot.secs_in_period = 10;
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -276,7 +279,7 @@ fn test_time() {
     );
 
     data.snapshot.secs_in_period = 60;
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -286,7 +289,7 @@ fn test_time() {
     );
 
     data.snapshot.secs_in_period = 99 * 60 + 59;
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -299,7 +302,7 @@ fn test_time() {
     );
 
     data.snapshot.secs_in_period = 100 * 60;
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -316,11 +319,12 @@ fn test_time() {
 fn test_timeouts() {
     let mut data = empty_data();
 
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(state, EMPTY_STATE);
+    assert_eq!(brightness, Brightness::Low);
 
     data.snapshot.timeouts_available.black = true;
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -331,7 +335,7 @@ fn test_timeouts() {
     );
 
     data.snapshot.timeouts_available.white = true;
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -344,7 +348,7 @@ fn test_timeouts() {
     );
 
     data.snapshot.timeouts_available.black = false;
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -357,7 +361,7 @@ fn test_timeouts() {
     data.snapshot.timeouts_available.white = false;
 
     data.snapshot.timeout = Some(TimeoutSnapshot::Black(0));
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -374,7 +378,7 @@ fn test_timeouts() {
     );
 
     data.snapshot.timeout = Some(TimeoutSnapshot::Black(1));
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -391,7 +395,7 @@ fn test_timeouts() {
     );
 
     data.snapshot.timeout = Some(TimeoutSnapshot::Black(15));
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -408,7 +412,7 @@ fn test_timeouts() {
     );
 
     data.snapshot.timeout = Some(TimeoutSnapshot::Black(16));
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -425,7 +429,7 @@ fn test_timeouts() {
     );
 
     data.snapshot.timeout = Some(TimeoutSnapshot::Black(30));
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -442,7 +446,7 @@ fn test_timeouts() {
     );
 
     data.snapshot.timeout = Some(TimeoutSnapshot::Black(31));
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -459,7 +463,7 @@ fn test_timeouts() {
     );
 
     data.snapshot.timeout = Some(TimeoutSnapshot::Black(45));
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -476,7 +480,7 @@ fn test_timeouts() {
     );
 
     data.snapshot.timeout = Some(TimeoutSnapshot::Black(46));
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -493,7 +497,7 @@ fn test_timeouts() {
     );
 
     data.snapshot.timeout = Some(TimeoutSnapshot::Black(60));
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -510,7 +514,7 @@ fn test_timeouts() {
     );
 
     data.snapshot.timeout = Some(TimeoutSnapshot::White(10));
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -527,7 +531,7 @@ fn test_timeouts() {
     );
 
     data.snapshot.timeout = Some(TimeoutSnapshot::White(22));
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -544,7 +548,7 @@ fn test_timeouts() {
     );
 
     data.snapshot.timeout = Some(TimeoutSnapshot::Ref(24));
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -554,7 +558,7 @@ fn test_timeouts() {
     );
 
     data.snapshot.timeout = Some(TimeoutSnapshot::PenaltyShot(78));
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -568,11 +572,12 @@ fn test_timeouts() {
 fn test_game_periods() {
     let mut data = empty_data();
 
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(state, EMPTY_STATE);
+    assert_eq!(brightness, Brightness::Low);
 
     data.snapshot.current_period = GamePeriod::FirstHalf;
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -582,7 +587,7 @@ fn test_game_periods() {
     );
 
     data.snapshot.current_period = GamePeriod::HalfTime;
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -593,7 +598,7 @@ fn test_game_periods() {
     );
 
     data.snapshot.current_period = GamePeriod::SecondHalf;
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -605,7 +610,7 @@ fn test_game_periods() {
     );
 
     data.snapshot.current_period = GamePeriod::PreOvertime;
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -615,7 +620,7 @@ fn test_game_periods() {
     );
 
     data.snapshot.current_period = GamePeriod::OvertimeFirstHalf;
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -626,7 +631,7 @@ fn test_game_periods() {
     );
 
     data.snapshot.current_period = GamePeriod::OvertimeHalfTime;
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -638,7 +643,7 @@ fn test_game_periods() {
     );
 
     data.snapshot.current_period = GamePeriod::OvertimeSecondHalf;
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -651,7 +656,7 @@ fn test_game_periods() {
     );
 
     data.snapshot.current_period = GamePeriod::PreSuddenDeath;
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -661,7 +666,7 @@ fn test_game_periods() {
     );
 
     data.snapshot.current_period = GamePeriod::SuddenDeath;
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -675,11 +680,12 @@ fn test_game_periods() {
 fn test_flash() {
     let mut data = empty_data();
 
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(state, EMPTY_STATE);
+    assert_eq!(brightness, Brightness::Low);
 
     data.flash = true;
-    let state = DisplayState::from_transmitted_data(&data);
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
@@ -716,4 +722,28 @@ fn test_flash() {
             colon: true,
         }
     );
+}
+
+#[test]
+fn test_brightness() {
+    let mut data = empty_data();
+
+    let (state, brightness) = DisplayState::from_transmitted_data(&data);
+    assert_eq!(state, EMPTY_STATE);
+    assert_eq!(brightness, Brightness::Low);
+
+    data.brightness = Brightness::Medium;
+    let (state, brightness) = DisplayState::from_transmitted_data(&data);
+    assert_eq!(state, EMPTY_STATE);
+    assert_eq!(brightness, Brightness::Medium);
+
+    data.brightness = Brightness::High;
+    let (state, brightness) = DisplayState::from_transmitted_data(&data);
+    assert_eq!(state, EMPTY_STATE);
+    assert_eq!(brightness, Brightness::High);
+
+    data.brightness = Brightness::Outdoor;
+    let (state, brightness) = DisplayState::from_transmitted_data(&data);
+    assert_eq!(state, EMPTY_STATE);
+    assert_eq!(brightness, Brightness::Outdoor);
 }

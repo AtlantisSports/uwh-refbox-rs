@@ -21,7 +21,7 @@ embedded-graphics = "0.8"
 enum-derive-2018 = "3"
 env_logger = "0.11"
 futures-lite = "2"
-iced = { version = "0.10", default-features = false, features = ["canvas", "svg", "tokio", "wgpu"] }
+iced = { version = "0.10", default-features = false, features = ["canvas", "svg", "tokio", "wgpu", "image"] }
 iced_core = "0.10"
 iced_futures = { version = "0.7", features = ["async-std"] }
 # iced_native = "0.10"

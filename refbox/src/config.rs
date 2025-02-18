@@ -119,6 +119,8 @@ pub struct Config {
     pub collect_scorer_cap_num: bool,
     #[derivative(Default(value = "true"))]
     pub track_fouls_and_warnings: bool,
+    #[derivative(Default(value = "true"))]
+    pub confirm_score: bool,
     pub game: Game,
     pub hardware: Hardware,
     pub uwhscores: UwhScores,
@@ -133,6 +135,7 @@ impl Config {
             mut hide_time,
             mut collect_scorer_cap_num,
             mut track_fouls_and_warnings,
+            confirm_score,
             mut game,
             mut hardware,
             mut uwhscores,
@@ -185,6 +188,7 @@ impl Config {
             hide_time,
             collect_scorer_cap_num,
             track_fouls_and_warnings,
+            confirm_score,
             game,
             hardware,
             uwhscores,

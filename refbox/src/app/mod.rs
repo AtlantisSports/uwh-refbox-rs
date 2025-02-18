@@ -686,6 +686,7 @@ impl RefBoxApp {
             uwhscores_email: _,
             uwhscores_password: _,
             uwhportal_token: _,
+            confirm_score,
         } = edited_settings;
 
         self.config.hardware.white_on_right = white_on_right;
@@ -698,6 +699,7 @@ impl RefBoxApp {
         self.config.mode = mode;
         self.config.collect_scorer_cap_num = collect_scorer_cap_num;
         self.config.track_fouls_and_warnings = track_fouls_and_warnings;
+        self.config.confirm_score = confirm_score;
 
         if self.config.hide_time != hide_time {
             self.config.hide_time = hide_time;
@@ -1522,6 +1524,7 @@ impl Application for RefBoxApp {
                     hide_time: self.config.hide_time,
                     collect_scorer_cap_num: self.config.collect_scorer_cap_num,
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
+                    confirm_score: self.config.confirm_score,
                 };
 
                 self.edited_settings = Some(edited_settings);
@@ -1881,6 +1884,7 @@ impl Application for RefBoxApp {
                         | BoolGameParameter::TimeoutsCountedPerHalf => {
                             unreachable!()
                         }
+                        BoolGameParameter::ConfirmScore => edited_settings.confirm_score ^= true,
                     }
                 }
             },
@@ -2022,15 +2026,25 @@ impl Application for RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
             }
             Message::ConfirmScores(snapshot) => {
-                self.apply_snapshot(snapshot);
+                if self.config.confirm_score {
+                    self.apply_snapshot(snapshot);
 
-                let scores = BlackWhiteBundle {
-                    black: self.snapshot.b_score,
-                    white: self.snapshot.w_score,
-                };
-
-                self.app_state = AppState::ConfirmScores(scores);
-                trace!("AppState changed to {:?}", self.app_state);
+                    let scores = BlackWhiteBundle {
+                        black: self.snapshot.b_score,
+                        white: self.snapshot.w_score,
+                    };
+                    self.app_state = AppState::ConfirmScores(scores);
+                    trace!("AppState changed to {:?}", self.app_state);
+                } else {
+                    let mut tm = self.tm.lock().unwrap();
+                    let now = Instant::now();
+                    let scores = tm.get_scores();
+                    tm.set_scores(scores, now);
+                    tm.start_clock(now);
+                    tm.update(now + Duration::from_millis(2)).unwrap(); // Need to update after game ends
+                    self.app_state = AppState::MainPage;
+                    trace!("AppState changed to {:?}", self.app_state);
+                }
             }
             Message::ScoreConfirmation { correct } => {
                 self.app_state = if let AppState::ConfirmScores(scores) = self.app_state {

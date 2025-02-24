@@ -1867,6 +1867,7 @@ impl Application for RefBoxApp {
                         BoolGameParameter::SuddenDeathAllowed => {
                             edited_settings.config.sudden_death_allowed ^= true
                         }
+                        BoolGameParameter::SingleHalf => edited_settings.config.single_half ^= true,
                         BoolGameParameter::WhiteOnRight => edited_settings.white_on_right ^= true,
                         BoolGameParameter::UsingUwhScores => {
                             edited_settings.using_uwhscores ^= true

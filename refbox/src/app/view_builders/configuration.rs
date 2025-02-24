@@ -441,7 +441,11 @@ fn make_tournament_config_page<'a>(
         [
             row![
                 make_value_button(
-                    "HALF LENGTH:",
+                    if config.single_half {
+                        "GAME LENGTH:"
+                    } else {
+                        "HALF LENGTH:"
+                    },
                     time_string(config.half_play_duration),
                     (false, true),
                     Some(Message::EditParameter(LengthParameter::Half)),
@@ -471,7 +475,11 @@ fn make_tournament_config_page<'a>(
                     "HALF TIME\nLENGTH:",
                     time_string(config.half_time_duration),
                     (false, true),
-                    Some(Message::EditParameter(LengthParameter::HalfTime)),
+                    if !config.single_half {
+                        Some(Message::EditParameter(LengthParameter::HalfTime))
+                    } else {
+                        None
+                    },
                 ),
                 make_value_button(
                     "PRE OT\nBREAK LENGTH:",
@@ -557,14 +565,26 @@ fn make_tournament_config_page<'a>(
 
     let mut col = column![
         make_game_time_button(snapshot, false, false, mode, clock_running),
-        make_value_button(
-            "USING UWHPORTAL:",
-            bool_string(using_uwhscores),
-            (true, true),
-            Some(Message::ToggleBoolParameter(
-                BoolGameParameter::UsingUwhScores,
-            )),
-        )
+        row![
+            make_value_button(
+                "SINGLE\nHALF:",
+                bool_string(settings.config.single_half),
+                (false, true),
+                Some(Message::ToggleBoolParameter(BoolGameParameter::SingleHalf)),
+            ),
+            make_button("")
+                .style(ButtonStyle::LightGray)
+                .on_press(Message::NoAction),
+            make_value_button(
+                "USING UWHPORTAL:",
+                bool_string(using_uwhscores),
+                (false, true),
+                Some(Message::ToggleBoolParameter(
+                    BoolGameParameter::UsingUwhScores,
+                )),
+            )
+        ]
+        .spacing(SPACING)
         .height(Length::Fill),
     ]
     .spacing(SPACING)

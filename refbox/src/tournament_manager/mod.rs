@@ -1264,8 +1264,30 @@ impl TournamentManager {
     }
 
     fn end_first_half(&mut self, now: Instant) {
-        info!("{} Entering half time", self.status_string(now));
-        self.current_period = GamePeriod::HalfTime;
+        if self.config.single_half {
+            if self.scores.are_not_equal()
+                || (!self.config.overtime_allowed && !self.config.sudden_death_allowed)
+            {
+                self.end_game(now);
+            } else if self.config.overtime_allowed {
+                info!(
+                    "{} Entering pre-overtime. Score is {}",
+                    self.status_string(now),
+                    self.scores
+                );
+                self.current_period = GamePeriod::PreOvertime;
+            } else {
+                info!(
+                    "{} Entering pre-sudden death. Score is {}",
+                    self.status_string(now),
+                    self.scores
+                );
+                self.current_period = GamePeriod::PreSuddenDeath;
+            }
+        } else {
+            info!("{} Entering half time", self.status_string(now));
+            self.current_period = GamePeriod::HalfTime;
+        }
     }
 
     fn end_second_half(&mut self, now: Instant) {

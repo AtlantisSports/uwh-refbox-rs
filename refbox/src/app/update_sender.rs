@@ -642,6 +642,7 @@ mod test {
     use uwh_common::{
         bundles::{BlackWhiteBundle, OptColorBundle},
         game_snapshot::{GamePeriod, Infraction, InfractionSnapshot, PenaltySnapshot, PenaltyTime},
+        uwhportal::schedule::EventId,
     };
 
     const BINARY_PORT: u16 = 12345;
@@ -805,7 +806,7 @@ mod test {
             is_old_game: true,
             game_number: 26,
             next_game_number: 28,
-            tournament_id: 1,
+            event_id: Some(EventId::from_partial("1-A")),
             recent_goal: None,
             next_period_len_secs: Some(180),
         };

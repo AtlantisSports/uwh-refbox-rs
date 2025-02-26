@@ -466,7 +466,7 @@ impl PageRenderer {
             }
         );
 
-        if let Some(logo) = state.tournament_logo.as_ref() {
+        if let Some(logo) = state.event_logo.as_ref() {
             let x = 1900f32 - logo.color.width();
             draw_texture_both!(logo, x, 20f32, WHITE);
         }

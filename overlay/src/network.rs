@@ -2,13 +2,15 @@ use log::{error, info, warn};
 use reqwest::{Client, ClientBuilder, IntoUrl};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::net::TcpStream;
-use std::sync::OnceLock;
-use std::{io::Read, time::Duration};
+use std::{io::Read, net::TcpStream, sync::OnceLock, time::Duration};
+use time::{OffsetDateTime, format_description::BorrowedFormatItem, macros::format_description};
 use uwh_common::{
     color::Color,
     game_snapshot::{GamePeriod, GameSnapshot},
+    uwhportal::schedule::{EventId, TeamId},
 };
+
+const START_TIME_FORMAT: &[BorrowedFormatItem<'static>] = format_description!("[hour]:[minute]");
 
 static CLIENT_CELL: OnceLock<Client> = OnceLock::new();
 
@@ -72,19 +74,21 @@ pub struct TeamInfoRaw {
 impl TeamInfoRaw {
     pub async fn new(
         uwhportal_url: &str,
-        tournament_id: u32,
-        team_id: u64,
+        event_id: &EventId,
+        team_id: Option<&TeamId>,
         team_color: Color,
     ) -> Self {
+        let team_id = match team_id {
+            Some(id) => id,
+            None => return Self::default(),
+        };
+
         let client = CLIENT_CELL.get().unwrap();
-        info!(
-            "Requesting UWH API for team information for team: {team_id} of tournament: {tournament_id}"
-        );
+        info!("Requesting UWH API for team information for team: {team_id} of event: {event_id}");
         let data: Value = serde_json::from_str(
             &client
-                .get(format!(
-                    "{uwhportal_url}/api/admin/get-event-team?legacyEventId={tournament_id}&legacyTeamId={team_id}"
-                ))
+                .get(format!("{uwhportal_url}/api/admin/get-event-team"))
+                .query(&[("teamId", team_id.full())])
                 .send()
                 .await
                 .expect("Coudn't request team data")
@@ -148,30 +152,31 @@ impl TeamInfoRaw {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct TournamentLogos {
-    pub tournament_logo: Option<Image>,
+pub struct EventLogos {
+    pub event_logo: Option<Image>,
     pub sponsors: Option<Image>,
 }
 
-impl TournamentLogos {
-    pub async fn new(uwhportal_url: &str, tournament_id: u32) -> Self {
+impl EventLogos {
+    pub async fn new(uwhportal_url: &str, event_id: &EventId) -> Self {
         let client = CLIENT_CELL.get().unwrap();
-        info!("Requesting Portal API for overlay images for tournament: {tournament_id}");
+        info!("Requesting Portal API for overlay images for event: {event_id}");
         let data: Value = serde_json::from_str(
             &client
                 .get(format!(
-                    "{uwhportal_url}/api/admin/events/overlay-attachments?legacyEventId={tournament_id}"
+                    "{uwhportal_url}/api/admin/events/{}/overlay-attachments",
+                    event_id.partial()
                 ))
                 .send()
                 .await
-                .expect("Coudn't request tournament images")
+                .expect("Coudn't request event images")
                 .text()
                 .await
-                .expect("Coudn't get tournament images body"),
+                .expect("Coudn't get event images body"),
         )
         .unwrap();
 
-        let mut tournament_logo_url = None;
+        let mut event_logo_url = None;
         let mut sponsors_url = None;
 
         for attachment in data["overlayAttachments"]
@@ -180,19 +185,19 @@ impl TournamentLogos {
             .unwrap_or_default()
         {
             if attachment["type"].as_str() == Some("Overlay") {
-                tournament_logo_url = attachment["url"].as_str().map(|s| s.to_owned());
+                event_logo_url = attachment["url"].as_str().map(|s| s.to_owned());
             } else if attachment["type"].as_str() == Some("Sponsor") {
                 sponsors_url = attachment["url"].as_str().to_owned().map(|s| s.to_owned());
             }
         }
 
-        let (tournament_logo, sponsors) = tokio::join!(
-            get_image_from_opt_url(tournament_logo_url),
+        let (event_logo, sponsors) = tokio::join!(
+            get_image_from_opt_url(event_logo_url),
             get_image_from_opt_url(sponsors_url)
         );
 
         Self {
-            tournament_logo,
+            event_logo,
             sponsors,
         }
     }
@@ -201,9 +206,9 @@ impl TournamentLogos {
 #[derive(Serialize, Deserialize)]
 pub struct StatePacket {
     pub snapshot: GameSnapshot,
-    pub game_id: Option<u32>,
+    pub game_number: Option<u32>,
     pub data: Option<GameData>,
-    pub tournament_logos: Option<TournamentLogos>,
+    pub event_logos: Option<EventLogos>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -214,12 +219,12 @@ pub struct GameData {
     pub black: TeamInfoRaw,
     pub white: TeamInfoRaw,
     pub sponsor_logo: Option<Image>,
-    pub game_id: u32,
-    pub tournament_id: u32,
+    pub game_number: u32,
+    pub event_id: Option<EventId>,
 }
 
 impl GameData {
-    pub fn default(game_id: u32, tournament_id: u32) -> Self {
+    pub fn default(game_id: u32, event_id: Option<EventId>) -> Self {
         Self {
             pool: String::new(),
             start_time: String::new(),
@@ -227,32 +232,29 @@ impl GameData {
             black: TeamInfoRaw::default(),
             white: TeamInfoRaw::default(),
             sponsor_logo: None,
-            game_id,
-            tournament_id,
+            game_number: game_id,
+            event_id,
         }
     }
 }
 
 async fn fetch_game_referees(
     uwhportal_url: &str,
-    tournament_id: u32,
-    game_id: u32,
+    event_id: &EventId,
+    game_number: u32,
 ) -> Result<Vec<MemberRaw>, reqwest::Error> {
     let client = CLIENT_CELL.get().unwrap();
-    info!(
-        "Requesting Portal API for referees for (tournament, game): ({tournament_id}, {game_id})"
-    );
-    let data: Value =
-        client
-            .get(format!(
-                "{uwhportal_url}/api/admin/events/game-referees?legacyEventId={tournament_id}&gameNumber={game_id}"
-            ))
-            .send()
-            .await
-            ?
-            .json()
-            .await
-            ?;
+    info!("Requesting Portal API for referees for (event, game): ({event_id}, {game_number})");
+    let data: Value = client
+        .get(format!("{uwhportal_url}/api/admin/events/game-referees"))
+        .query(&[
+            ("eventId", event_id.full()),
+            ("gameNumber", &game_number.to_string()),
+        ])
+        .send()
+        .await?
+        .json()
+        .await?;
 
     Ok(futures::future::join_all(
         data.get("referees")
@@ -318,10 +320,9 @@ async fn fetch_game_referees(
 
 async fn fetch_game_data(
     tr: crossbeam_channel::Sender<(GameData, bool)>,
-    uwhscores_url: &str,
     uwhportal_url: &str,
-    tournament_id: u32,
-    game_id: u32,
+    event_id: &EventId,
+    game_number: u32,
     is_current_game: bool,
 ) {
     let client = CLIENT_CELL.get().unwrap();
@@ -329,7 +330,8 @@ async fn fetch_game_data(
     loop {
         if let Ok(data) = client
             .get(format!(
-                "{uwhscores_url}/api/v1/tournaments/{tournament_id}/games/{game_id}"
+                "{uwhportal_url}/api/events/{}/schedule",
+                event_id.partial()
             ))
             .send()
             .await
@@ -342,36 +344,74 @@ async fn fetch_game_data(
                 Ok(d) => d,
                 _ => {
                     error!(
-                        "Aborting game data fetch! Server did not return valid JSON for tournament ID: {tournament_id}, game ID: {game_id}!: {text}"
+                        "Aborting schedule fetch! Server did not return valid JSON for event {event_id}: {text}"
                     );
                     return;
                 }
             };
-            info!("Got game data for tid:{tournament_id}, gid:{game_id} from UWH API");
-            let team_id_black = data["game"]["black_id"].as_u64().unwrap_or(0);
-            let team_id_white = data["game"]["white_id"].as_u64().unwrap_or(0);
+            let data_game = if let Some(game) = data["games"].as_array().and_then(|games| {
+                games.iter().find_map(|game| {
+                    if game["number"].as_u64() == Some(game_number as u64) {
+                        Some(game.clone())
+                    } else {
+                        None
+                    }
+                })
+            }) {
+                game
+            } else {
+                error!(
+                    "Game number {game_number} was not found in the schedule for event {event_id}"
+                );
+                return;
+            };
+            info!("Got game data for event: {event_id}, game number: {game_number} from uwhportal");
+            let team_id_black = data_game["dark"]["assignment"]["teamId"]
+                .as_str()
+                .and_then(|s| TeamId::from_full(s).ok());
+            let team_id_white = data_game["light"]["assignment"]["teamId"]
+                .as_str()
+                .and_then(|s| TeamId::from_full(s).ok());
 
-            let pool = data["game"]["pool"]
+            let pool = data["court"]
                 .as_str()
-                .map(|s| format!("POOL: {s}"))
+                .map(|s| format!("COURT: {s}"))
                 .unwrap_or_default();
-            let start_time = data["game"]["start_time"]
+            let start_time = data["startsOn"]
                 .as_str()
-                .map(|s| String::from("START: ") + s.split_at(11).1.split_at(5).0)
+                .and_then(|s| {
+                    OffsetDateTime::parse(s, &uwh_common::uwhportal::schedule::FORMAT).ok()
+                })
+                .and_then(|dt| Some(String::from("START: ") + &dt.format(START_TIME_FORMAT).ok()?))
                 .unwrap_or_default();
             let (referees, black, white) = tokio::join!(
-                fetch_game_referees(uwhportal_url, tournament_id, game_id),
-                TeamInfoRaw::new(uwhportal_url, tournament_id, team_id_black, Color::Black,),
-                TeamInfoRaw::new(uwhportal_url, tournament_id, team_id_white, Color::White,)
+                fetch_game_referees(uwhportal_url, event_id, game_number),
+                TeamInfoRaw::new(
+                    uwhportal_url,
+                    event_id,
+                    team_id_black.as_ref(),
+                    Color::Black
+                ),
+                TeamInfoRaw::new(
+                    uwhportal_url,
+                    event_id,
+                    team_id_white.as_ref(),
+                    Color::White
+                )
             );
 
             let referees = match referees {
                 Ok(r) => {
-                    info!("Fetched referees for game {game_id}, there are {}", r.len());
+                    info!(
+                        "Fetched referees for game {game_number}, there are {}",
+                        r.len()
+                    );
                     r
                 }
                 Err(e) => {
-                    warn!("Couldn't fetch referees for tid:{tournament_id}, gid:{game_id}!: {e}");
+                    warn!(
+                        "Couldn't fetch referees for event {event_id}, game number {game_number}: {e}"
+                    );
                     Vec::new()
                 }
             };
@@ -384,8 +424,8 @@ async fn fetch_game_data(
                     black,
                     white,
                     sponsor_logo: None,
-                    tournament_id,
-                    game_id,
+                    event_id: Some(event_id.clone()),
+                    game_number,
                 },
                 is_current_game,
             ))
@@ -394,7 +434,7 @@ async fn fetch_game_data(
             return;
         }
         warn!(
-            "Game data request for tid:{tournament_id}, gid:{game_id} failed. Trying again in 5 seconds."
+            "Game data request for event: {event_id}, game: {game_number} failed. Trying again in 5 seconds."
         );
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     }
@@ -424,11 +464,11 @@ pub async fn networking_thread(
     info!("Connected to refbox!");
 
     let (tr, rc) = crossbeam_channel::unbounded::<(GameData, bool)>();
-    let (tt, rt) = crossbeam_channel::unbounded::<TournamentLogos>();
+    let (tt, rt) = crossbeam_channel::unbounded::<EventLogos>();
     let mut buff = vec![0u8; 1024];
     let mut read_bytes;
-    let mut game_id = None;
-    let mut tournament_id = None;
+    let mut game_number = None;
+    let mut event_id = None;
     let mut next_game_data: Option<GameData> = None;
     info!("Networking thread initialized!");
     loop {
@@ -446,99 +486,87 @@ pub async fn networking_thread(
             };
         }
         if let Ok(snapshot) = serde_json::de::from_slice::<GameSnapshot>(&buff[..read_bytes]) {
-            let tournament_id_new = snapshot.tournament_id;
-            let game_id_new =
+            let event_id_new = snapshot.event_id.clone();
+            let game_number_new =
                 if snapshot.current_period == GamePeriod::BetweenGames && !snapshot.is_old_game {
                     snapshot.next_game_number
                 } else {
                     snapshot.game_number
                 };
-            let next_gid = snapshot.next_game_number;
+            let next_game_number = snapshot.next_game_number;
 
             let tr_ = tr.clone();
-            let uwhscores_url = config.uwhscores_url.clone();
             let uwhportal_url = config.uwhportal_url.clone();
 
             // initial case when no data is initialised
-            if game_id.is_none() {
+            if game_number.is_none() {
                 let tr_ = tr.clone();
-                let uwhscores_url = config.uwhscores_url.clone();
                 let uwhportal_url = config.uwhportal_url.clone();
-                game_id = Some(game_id_new);
-                tournament_id = Some(tournament_id_new);
-                info!("Fetching intial game data for tid: {tournament_id_new}, gid: {game_id_new}");
-                tokio::spawn(async move {
-                    fetch_game_data(
-                        tr_,
-                        &uwhscores_url,
-                        &uwhportal_url,
-                        tournament_id_new,
-                        game_id_new,
-                        true,
-                    )
-                    .await;
-                });
+                game_number = Some(game_number_new);
+                event_id = event_id_new.clone();
+                if let Some(ref id) = event_id {
+                    info!("Fetching intial game data for event: {id}, game: {game_number_new}");
+                    let id_ = id.clone();
+                    tokio::spawn(async move {
+                        fetch_game_data(tr_, &uwhportal_url, &id_, game_number_new, true).await;
+                    });
 
-                let tt_ = tt.clone();
-                let uwhportal_url = config.uwhportal_url.clone();
-                tokio::spawn(async move {
-                    tt_.send(TournamentLogos::new(&uwhportal_url, tournament_id_new).await)
-                        .map_err(|e| error!("Couldn't send tournament logos: {e}"))
-                        .unwrap();
-                });
+                    let tt_ = tt.clone();
+                    let uwhportal_url = config.uwhportal_url.clone();
+                    let id_ = id.clone();
+                    tokio::spawn(async move {
+                        tt_.send(EventLogos::new(&uwhportal_url, &id_).await)
+                            .map_err(|e| error!("Couldn't send event logos: {e}"))
+                            .unwrap();
+                    });
+                }
             }
 
             // every other case, when atleast one game has been requested
-            if let (Some(game_id_old), Some(tournament_id_old)) =
-                (game_id.as_mut(), tournament_id.as_mut())
-            {
+            if game_number.is_some() && event_id.is_some() {
+                let game_id_old = game_number.as_mut().unwrap();
                 let tr_ = tr.clone();
-                let uwhscores_url = config.uwhscores_url.clone();
                 let uwhportal_url = config.uwhportal_url.clone();
-                if *game_id_old != game_id_new || *tournament_id_old != tournament_id_new {
-                    if *tournament_id_old != tournament_id_new {
+                if *game_id_old != game_number_new || event_id != event_id_new {
+                    if event_id != event_id_new && event_id_new.is_some() {
                         let tt_ = tt.clone();
                         let uwhportal_url = config.uwhportal_url.clone();
+                        let id = event_id_new.clone().unwrap();
                         tokio::spawn(async move {
-                            tt_.send(TournamentLogos::new(&uwhportal_url, tournament_id_new).await)
-                                .map_err(|e| error!("Couldn't send tournament logos: {e}"))
+                            tt_.send(EventLogos::new(&uwhportal_url, &id).await)
+                                .map_err(|e| error!("Couldn't send event logos: {e}"))
                                 .unwrap();
                         });
                     }
 
-                    *game_id_old = game_id_new;
-                    *tournament_id_old = tournament_id_new;
-                    info!("Got new game ID {game_id_new} / tournament ID {tournament_id_new}");
+                    *game_id_old = game_number_new;
+                    event_id = event_id_new.clone();
+                    info!("Got new game ID {game_number_new} / event ID {event_id_new:?}");
 
                     if next_game_data.is_some()
-                        && next_game_data.as_ref().unwrap().game_id == game_id_new
-                        && next_game_data.as_ref().unwrap().tournament_id == tournament_id_new
+                        && next_game_data.as_ref().unwrap().game_number == game_number_new
+                        && next_game_data.as_ref().unwrap().event_id == event_id_new
                     {
                         let next_game_data = next_game_data.clone().unwrap();
                         info!("Sending cached game data for next game");
                         tx.send(StatePacket {
                             snapshot,
-                            game_id,
+                            game_number,
                             data: Some(next_game_data),
-                            tournament_logos: None,
+                            event_logos: None,
                         })
                         .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
-                    } else {
+                    } else if let Some(ref id) = event_id {
+                        // This must succeed because of the `event_id.is_some()` check above
                         info!(
-                            "Fetching game data for tid: {tournament_id_new}, gid: {game_id_new}. Cache is empty or invalid!"
+                            "Fetching game data for event: {id}, game: {game_number_new}. Cache is empty or invalid!"
                         );
-                        let (uwhscores_url_, uwhportal_url_, tr__) =
-                            (uwhscores_url.clone(), uwhportal_url.clone(), tr_.clone());
+                        let uwhportal_url_ = uwhportal_url.clone();
+                        let tr__ = tr_.clone();
+                        let id_ = id.clone();
                         tokio::spawn(async move {
-                            fetch_game_data(
-                                tr__,
-                                &uwhscores_url_,
-                                &uwhportal_url_,
-                                tournament_id_new,
-                                game_id_new,
-                                true,
-                            )
-                            .await;
+                            fetch_game_data(tr__, &uwhportal_url_, &id_, game_number_new, true)
+                                .await;
                         });
                     }
                     continue;
@@ -546,28 +574,25 @@ pub async fn networking_thread(
             }
 
             // request new game cache if empty or invalid
-            if next_game_data.is_none()
-                || next_game_data.as_ref().unwrap().game_id != next_gid
-                || next_game_data.as_ref().unwrap().tournament_id != tournament_id_new
+            if event_id_new.is_some()
+                && (next_game_data.is_none()
+                    || next_game_data.as_ref().unwrap().game_number != next_game_number
+                    || next_game_data.as_ref().unwrap().event_id != event_id_new)
             {
-                info!("Fetching game data to cache for tid: {tournament_id_new}, gid: {next_gid}");
+                info!(
+                    "Fetching game data to cache for event: {}, game: {next_game_number}",
+                    event_id_new.as_ref().unwrap()
+                );
+                let id = event_id_new.clone().unwrap();
                 tokio::spawn(async move {
-                    fetch_game_data(
-                        tr_,
-                        &uwhscores_url,
-                        &uwhportal_url,
-                        tournament_id_new,
-                        next_gid,
-                        false,
-                    )
-                    .await;
+                    fetch_game_data(tr_, &uwhportal_url, &id, next_game_number, false).await;
                 });
-                next_game_data = Some(GameData::default(next_gid, tournament_id_new));
+                next_game_data = Some(GameData::default(next_game_number, event_id_new.clone()));
             }
 
-            let tournament_logos = if let Ok(tournament_logos) = rt.try_recv() {
-                info!("Got tournament logos!");
-                Some(tournament_logos)
+            let event_logos = if let Ok(event_logos) = rt.try_recv() {
+                info!("Got event logos!");
+                Some(event_logos)
             } else {
                 None
             };
@@ -587,9 +612,9 @@ pub async fn networking_thread(
             };
             tx.send(StatePacket {
                 snapshot,
-                game_id,
+                game_number,
                 data: this_game_data,
-                tournament_logos,
+                event_logos,
             })
             .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
         } else {

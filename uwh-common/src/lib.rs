@@ -10,9 +10,6 @@ pub mod bundles;
 pub mod config;
 
 #[cfg(feature = "std")]
-pub mod uwhscores;
-
-#[cfg(feature = "std")]
 pub mod uwhportal;
 
 pub mod drawing_support {

@@ -14,19 +14,17 @@ use iced_futures::{
 };
 use iced_runtime::{command, window};
 use log::*;
-use reqwest::{Client, Method, StatusCode};
 use std::{
     borrow::Cow,
     cmp::min,
-    collections::BTreeMap,
-    pin::Pin,
+    collections::{BTreeMap, BTreeSet},
     process::Child,
     sync::{Arc, Mutex},
 };
 use tokio::{
     sync::{mpsc, watch},
     task,
-    time::{Duration, Instant, sleep_until, timeout_at},
+    time::{Duration, Instant, timeout_at},
 };
 use tokio_serial::SerialPortBuilder;
 use uwh_common::{
@@ -35,8 +33,10 @@ use uwh_common::{
     config::Game as GameConfig,
     drawing_support::*,
     game_snapshot::{GamePeriod, GameSnapshot, Infraction, TimeoutSnapshot},
-    uwhportal::UwhPortalClient,
-    uwhscores::*,
+    uwhportal::{
+        UwhPortalClient,
+        schedule::{Event, EventId, Schedule},
+    },
 };
 
 mod view_builders;
@@ -52,7 +52,6 @@ pub mod update_sender;
 use update_sender::*;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
-const MAX_RETRIES: usize = 6;
 
 pub type Element<'a, Message> = iced::Element<'a, Message, iced::Renderer<style::ApplicationTheme>>;
 
@@ -71,19 +70,16 @@ pub struct RefBoxApp {
     update_sender: UpdateSender,
     message_listener: MessageListener,
     msg_tx: mpsc::UnboundedSender<Message>,
-    client: Option<Client>,
-    uwhscores_token: Arc<Mutex<Option<String>>>,
-    uwhscores_auth_valid_for: Option<Vec<u32>>,
     uwhportal_client: Option<UwhPortalClient>,
-    using_uwhscores: bool,
-    tournaments: Option<BTreeMap<u32, TournamentInfo>>,
-    games: Option<BTreeMap<u32, GameInfo>>,
-    current_tid: Option<u32>,
-    current_pool: Option<String>,
+    using_uwhportal: bool,
+    events: Option<BTreeMap<EventId, Event>>,
+    schedule: Option<Schedule>,
+    current_event_id: Option<EventId>,
+    current_court: Option<String>,
     sound: SoundController,
     sim_child: Option<Child>,
     fullscreen: bool,
-    list_all_tournaments: bool,
+    list_all_events: bool,
     touchscreen: bool,
 }
 
@@ -96,7 +92,7 @@ pub struct RefBoxAppFlags {
     pub sim_child: Option<Child>,
     pub require_https: bool,
     pub fullscreen: bool,
-    pub list_all_tournaments: bool,
+    pub list_all_events: bool,
     pub touchscreen: bool,
 }
 
@@ -126,21 +122,21 @@ enum ConfirmationKind {
     GameNumberChanged,
     GameConfigChanged(GameConfig),
     Error(String),
-    UwhScoresIncomplete,
+    UwhPortalIncomplete,
 }
 
 impl RefBoxApp {
     fn apply_snapshot(&mut self, mut new_snapshot: GameSnapshot) {
         if new_snapshot.current_period != self.snapshot.current_period {
             if new_snapshot.current_period == GamePeriod::BetweenGames {
-                self.handle_game_end(new_snapshot.game_number, new_snapshot.next_game_number);
+                self.handle_game_end(new_snapshot.game_number);
             } else if self.snapshot.current_period == GamePeriod::BetweenGames {
                 self.handle_game_start(new_snapshot.game_number);
             }
         }
-        if let Some(tid) = self.current_tid {
-            new_snapshot.tournament_id = tid;
-        }
+
+        new_snapshot.event_id = self.current_event_id.clone();
+
         self.maybe_play_sound(&new_snapshot);
         self.update_sender
             .send_snapshot(
@@ -214,379 +210,76 @@ impl RefBoxApp {
         }
     }
 
-    fn do_get_request<T, F>(
-        &self,
-        url: String,
-        short_name: String,
-        on_success: F,
-        on_error: Option<Message>,
-    ) where
-        T: serde::de::DeserializeOwned,
-        F: Fn(T) -> Message + Send + Sync + 'static,
-    {
-        if let Some(client) = &self.client {
-            info!("Starting request for {short_name}");
-            let mut request = client.request(Method::GET, url);
-            if let Some(token) = self.uwhscores_token.lock().unwrap().as_deref() {
-                if !token.is_empty() {
-                    request = request.basic_auth::<_, String>(token.to_string(), None);
-                }
-            }
-            let request = request.build().unwrap();
-            let client_ = client.clone();
-            let msg_tx_ = self.msg_tx.clone();
-
-            let mut delay_until = None;
-
+    fn request_event_list(&self) {
+        if let Some(ref client) = self.uwhportal_client {
+            let request = client.get_event_list(self.list_all_events);
+            let msg_tx = self.msg_tx.clone();
             task::spawn(async move {
-                let mut msg = None;
-                for _ in 0..MAX_RETRIES {
-                    if let Some(time) = delay_until.take() {
-                        sleep_until(time).await;
+                match request.await {
+                    Ok(events) => {
+                        info!("Got event list");
+                        msg_tx.send(Message::RecvEventList(events)).unwrap();
                     }
-
-                    let start = Instant::now();
-                    msg = match client_.execute(request.try_clone().unwrap()).await {
-                        Ok(resp) => {
-                            if resp.status() != StatusCode::OK {
-                                error!(
-                                    "Got bad status code from uwhscores when requesting {}: {}",
-                                    short_name,
-                                    resp.status()
-                                );
-                                info!("Maybe retrying");
-                                continue;
-                            } else {
-                                match resp.json::<T>().await {
-                                    Ok(parsed) => Some(on_success(parsed)),
-                                    Err(e) => {
-                                        error!("Couldn't desesrialize {}: {e}", short_name);
-                                        None
-                                    }
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            error!("Request for {} failed: {e}", short_name);
-                            info!("Maybe retrying");
-                            delay_until = Some(start + REQUEST_TIMEOUT);
-                            continue;
-                        }
-                    };
-                    break;
-                }
-
-                if let Some(msg) = msg {
-                    msg_tx_.send(msg).unwrap();
-                } else {
-                    error!("Too many failures when requesting {short_name}, stopping");
-                    if let Some(on_error) = on_error {
-                        msg_tx_.send(on_error).unwrap();
+                    Err(e) => {
+                        error!("Failed to get event list: {e}");
                     }
                 }
             });
         }
     }
 
-    fn request_tournament_list(&self) {
-        let url = format!("{}tournaments", self.config.uwhscores.url);
-        self.do_get_request(
-            url,
-            "tournament list".to_string(),
-            |parsed: TournamentListResponse| Message::RecvTournamentList(parsed.tournaments),
-            None,
-        );
-    }
-
-    fn request_tournament_details(&self, tid: u32) {
-        let url = format!("{}tournaments/{tid}", self.config.uwhscores.url);
-        self.do_get_request(
-            url,
-            format!("tournament details for tid {tid}"),
-            |parsed: TournamentSingleResponse| Message::RecvTournament(parsed.tournament),
-            None,
-        );
-    }
-
-    fn request_game_list(&self, tid: u32) {
-        let url = format!("{}tournaments/{tid}/games", self.config.uwhscores.url);
-        self.do_get_request(
-            url,
-            format!("game list for tid {tid}"),
-            |parsed: GameListResponse| Message::RecvGameList(parsed.games),
-            None,
-        );
-    }
-
-    fn request_game_details(&self, tid: u32, gid: u32) {
-        let url = format!("{}tournaments/{tid}/games/{gid}", self.config.uwhscores.url);
-        self.do_get_request(
-            url,
-            format!("game deatils for tid {tid} and gid {gid}"),
-            |parsed: GameSingleResponse| Message::RecvGame(parsed.game),
-            None,
-        );
-    }
-
-    fn uwhscores_login(&self) -> Option<Pin<Box<impl std::future::Future<Output = ()> + use<>>>> {
-        if let Some(client) = &self.client {
-            let client_ = client.clone();
-            let login_request = client_
-                .request(Method::GET, format!("{}login", self.config.uwhscores.url))
-                .basic_auth(
-                    self.config.uwhscores.email.clone(),
-                    Some(self.config.uwhscores.password.clone()),
-                )
-                .build()
-                .unwrap();
-
-            let uwhscores_token = self.uwhscores_token.clone();
-            Some(Box::pin(async move {
-                info!("Starting login request");
-
-                for _ in 0..MAX_RETRIES {
-                    match client_.execute(login_request.try_clone().unwrap()).await {
-                        Ok(resp) => {
-                            if resp.status() != StatusCode::OK {
-                                error!(
-                                    "Got bad status code from uwhscores when logging in: {}",
-                                    resp.status()
-                                );
-                                info!("Maybe retrying");
-                                *uwhscores_token.lock().unwrap() = Some(String::new());
-                                continue;
-                            } else {
-                                match resp.json::<LoginResponse>().await {
-                                    Ok(parsed) => {
-                                        info!("Successfully logged in to uwhscores");
-                                        *uwhscores_token.lock().unwrap() = Some(parsed.token);
-                                        return;
-                                    }
-                                    Err(e) => {
-                                        error!("Couldn't deserialize login: {e}");
-                                        *uwhscores_token.lock().unwrap() = Some(String::new());
-                                        return;
-                                    }
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            error!("Login request failed: {e}");
-                            info!("Maybe retrying");
-                            *uwhscores_token.lock().unwrap() = Some(String::new());
-                            continue;
-                        }
-                    };
-                }
-            }))
-        } else {
-            None
-        }
-    }
-
-    fn post_game_score(&self, game: &GameInfo, scores: BlackWhiteBundle<u8>) {
-        if let Some(client) = &self.client {
-            let tid = game.tid;
-            let gid = game.gid;
-            let post_url = format!("{}tournaments/{tid}/games/{gid}", self.config.uwhscores.url);
-
-            let login_request = self.uwhscores_login().unwrap();
-            let mut login_request_2 = Some(self.uwhscores_login().unwrap());
-
-            let post_data = GameScorePostData::new(GameScoreInfo {
-                tid,
-                gid,
-                score_b: scores.black,
-                score_w: scores.white,
-                black_id: game.black_id,
-                white_id: game.white_id,
-            });
-
-            let post_request = client
-                .request(Method::POST, post_url.clone())
-                .json(&post_data);
-
-            let client_ = client.clone();
-            let uwhscores_token = self.uwhscores_token.clone();
+    fn request_teams_list(&self, event_id: EventId, event_slug: &str) {
+        if let Some(ref client) = self.uwhportal_client {
+            let request = client.get_event_schedule(event_slug);
+            let msg_tx = self.msg_tx.clone();
             task::spawn(async move {
-                let token = uwhscores_token.lock().unwrap().clone();
-
-                let mut token = match token {
-                    Some(t) if !t.is_empty() => t,
-                    _ => {
-                        login_request.await;
-                        if let Some(t) = uwhscores_token.lock().unwrap().as_deref() {
-                            t.to_string()
-                        } else {
-                            error!(
-                                "Failed to get uwhscores token. Aborting post score: {post_data:?}"
-                            );
-                            return;
-                        }
+                match request.await {
+                    Ok(teams) => {
+                        info!("Got teams list");
+                        msg_tx
+                            .send(Message::RecvTeamsList(event_id, teams))
+                            .unwrap();
                     }
-                };
-
-                info!("Posting score: {post_data:?}");
-
-                for _ in 0..MAX_RETRIES {
-                    let request = post_request
-                        .try_clone()
-                        .unwrap()
-                        .basic_auth::<_, String>(token.clone(), None)
-                        .build()
-                        .unwrap();
-
-                    match client_.execute(request).await {
-                        Ok(resp) => match resp.status() {
-                            StatusCode::OK => {
-                                info!("Successfully posted score");
-                                return;
-                            }
-                            StatusCode::UNAUTHORIZED => {
-                                error!(
-                                    "Got unauthorized status code from uwhscores when posting score: {}",
-                                    resp.status()
-                                );
-                                info!("Maybe retrying");
-                                if let Some(f) = login_request_2.take() {
-                                    f.await;
-                                }
-                                token = if let Some(token) =
-                                    uwhscores_token.lock().unwrap().as_deref()
-                                {
-                                    token.to_string()
-                                } else {
-                                    error!(
-                                        "Failed to get uwhscores token. Aborting post score: {post_data:?}"
-                                    );
-                                    return;
-                                };
-                                continue;
-                            }
-                            _ => {
-                                error!(
-                                    "Got bad status code from uwhscores when posting score: {}",
-                                    resp.status()
-                                );
-                                info!("Maybe retrying");
-                                continue;
-                            }
-                        },
-                        Err(e) => {
-                            error!("Post score request failed: {e}");
-                            info!("Maybe retrying");
-                            continue;
-                        }
-                    };
+                    Err(e) => {
+                        error!("Failed to get teams list: {e}");
+                    }
                 }
             });
         }
     }
 
-    fn check_uwhscores_auth(&self) {
-        if let Some(client) = &self.client {
-            info!("Starting request for uwhscores auth");
-
-            let login_request = self.uwhscores_login().unwrap();
-            let mut login_request_2 = Some(self.uwhscores_login().unwrap());
-
-            let user_request = client.request(
-                Method::GET,
-                format!("{}users/me", self.config.uwhscores.url),
-            );
-            let client_ = client.clone();
-            let uwhscores_token = self.uwhscores_token.clone();
-            let msg_tx_ = self.msg_tx.clone();
-
-            let mut delay_until = None;
-
+    fn request_schedule(&self, event_id: EventId) {
+        if let Some(ref client) = self.uwhportal_client {
+            let request = client.get_event_schedule_privileged(&event_id);
+            let msg_tx = self.msg_tx.clone();
             task::spawn(async move {
-                let token = uwhscores_token.lock().unwrap().clone();
-
-                let mut token = match token {
-                    Some(t) if !t.is_empty() => t,
-                    _ => {
-                        login_request.await;
-                        if let Some(t) = uwhscores_token.lock().unwrap().as_deref() {
-                            t.to_string()
-                        } else {
-                            error!("Failed to get uwhscores token. Aborting uwhscores auth check");
-                            return;
-                        }
+                match request.await {
+                    Ok(schedule) => {
+                        info!("Got schedule");
+                        msg_tx
+                            .send(Message::RecvSchedule(event_id, schedule))
+                            .unwrap();
                     }
-                };
-
-                for _ in 0..MAX_RETRIES {
-                    if let Some(time) = delay_until.take() {
-                        sleep_until(time).await;
+                    Err(e) => {
+                        error!("Failed to get schedule: {e}");
                     }
-
-                    let request = user_request
-                        .try_clone()
-                        .unwrap()
-                        .basic_auth::<_, String>(token.clone(), None)
-                        .build()
-                        .unwrap();
-
-                    let start = Instant::now();
-                    match client_.execute(request).await {
-                        Ok(resp) => match resp.status() {
-                            StatusCode::OK => match resp.json::<UserResponse>().await {
-                                Ok(parsed) => {
-                                    msg_tx_
-                                        .send(Message::UwhScoresAuthChecked(
-                                            parsed.user.tournaments,
-                                        ))
-                                        .unwrap();
-                                    return;
-                                }
-                                Err(e) => {
-                                    error!("Couldn't desesrialize uwhscores auth: {e}");
-                                }
-                            },
-                            StatusCode::UNAUTHORIZED => {
-                                error!(
-                                    "Got unauthorized status code from uwhscores when requesting uwhscores auth: {}",
-                                    resp.status()
-                                );
-                                info!("Maybe retrying");
-                                if let Some(f) = login_request_2.take() {
-                                    f.await;
-                                }
-                                token = if let Some(token) =
-                                    uwhscores_token.lock().unwrap().as_deref()
-                                {
-                                    token.to_string()
-                                } else {
-                                    error!(
-                                        "Failed to get uwhscores token. Aborting uwhscores auth check"
-                                    );
-                                    msg_tx_.send(Message::UwhScoresAuthChecked(vec![])).unwrap();
-                                    return;
-                                };
-                                continue;
-                            }
-                            _ => {
-                                error!(
-                                    "Got bad status code from uwhscores when requesting uwhscores auth: {}",
-                                    resp.status()
-                                );
-                                info!("Maybe retrying");
-                                continue;
-                            }
-                        },
-                        Err(e) => {
-                            error!("Request for uwhscores auth failed: {e}");
-                            info!("Maybe retrying");
-                            delay_until = Some(start + REQUEST_TIMEOUT);
-                            continue;
-                        }
-                    };
-                    break;
                 }
+            });
+        }
+    }
 
-                error!("Too many failures when requesting uwhscores auth, stopping");
-                msg_tx_.send(Message::UwhScoresAuthChecked(vec![])).unwrap();
+    fn post_game_score(&self, event_id: &EventId, game_number: u32, scores: BlackWhiteBundle<u8>) {
+        if let Some(ref client) = self.uwhportal_client {
+            let request = client.post_game_scores(event_id, game_number, scores, false);
+            task::spawn(async move {
+                match request.await {
+                    Ok(()) => {
+                        info!("Successfully posted game score");
+                    }
+                    Err(e) => {
+                        error!("Failed to post game score: {e}");
+                    }
+                }
             });
         }
     }
@@ -603,9 +296,9 @@ impl RefBoxApp {
         }
     }
 
-    fn post_game_stats(&self, tid: u32, gid: u32, stats: String) {
+    fn post_game_stats(&self, event_id: &EventId, game_number: u32, stats: String) {
         if let Some(ref uwhportal_client) = self.uwhportal_client {
-            let request = uwhportal_client.post_game_stats(tid, gid, stats);
+            let request = uwhportal_client.post_game_stats(event_id, game_number, stats);
             tokio::spawn(async move {
                 match request.await {
                     Ok(()) => info!("Successfully posted game stats"),
@@ -616,27 +309,29 @@ impl RefBoxApp {
     }
 
     fn handle_game_start(&mut self, new_game_num: u32) {
-        if self.using_uwhscores {
-            if let (Some(games), Some(pool)) = (&self.games, &self.current_pool) {
-                let this_game_start = match games.get(&new_game_num) {
+        if self.using_uwhportal {
+            if let (Some(schedule), Some(pool)) = (&self.schedule, &self.current_court) {
+                let this_game_start = match schedule.games.get(&new_game_num) {
                     Some(g) => g.start_time,
                     None => {
-                        error!("Could not find new game's start time (gid {new_game_num}");
+                        error!("Could not find new game's start time (game {new_game_num}");
                         return;
                     }
                 };
 
-                let next_game = games
+                let next_game = schedule
+                    .games
                     .values()
-                    .filter(|game| game.pool == *pool)
+                    .filter(|game| game.court == *pool)
                     .filter(|game| game.start_time > this_game_start)
                     .min_by_key(|game| game.start_time);
 
                 let mut tm = self.tm.lock().unwrap();
                 if let Some(next_game) = next_game {
+                    let timing = schedule.get_game_timing(next_game.number).cloned();
                     let info = NextGameInfo {
-                        number: next_game.gid,
-                        timing: next_game.timing_rules.clone(),
+                        number: next_game.number,
+                        timing,
                         start_time: Some(next_game.start_time),
                     };
                     tm.set_next_game(info);
@@ -648,8 +343,8 @@ impl RefBoxApp {
         }
     }
 
-    fn handle_game_end(&self, game_number: u32, next_game_num: u32) {
-        if self.using_uwhscores {
+    fn handle_game_end(&self, game_number: u32) {
+        if self.using_uwhportal {
             let mut stats = self
                 .tm
                 .lock()
@@ -663,13 +358,13 @@ impl RefBoxApp {
                 warn!("Game ended, but no stats were available");
             }
 
-            if let Some(tid) = self.current_tid {
-                self.request_game_details(tid, next_game_num);
+            if let Some(ref event_id) = self.current_event_id {
+                self.request_schedule(event_id.clone());
                 if let Some(stats) = stats.take() {
-                    self.post_game_stats(tid, game_number, stats);
+                    self.post_game_stats(event_id, game_number, stats);
                 }
             } else {
-                error!("Missing current tid to handle game end");
+                error!("Missing current event id to handle game end");
             }
         }
     }
@@ -680,10 +375,10 @@ impl RefBoxApp {
         let EditableSettings {
             white_on_right,
             brightness,
-            using_uwhscores,
-            current_tid,
-            current_pool,
-            games,
+            using_uwhportal,
+            current_event_id,
+            current_court: current_pool,
+            schedule: games,
             sound,
             mode,
             collect_scorer_cap_num,
@@ -691,18 +386,16 @@ impl RefBoxApp {
             config: _config,
             game_number: _game_number,
             track_fouls_and_warnings,
-            uwhscores_email: _,
-            uwhscores_password: _,
             uwhportal_token: _,
             confirm_score,
         } = edited_settings;
 
         self.config.hardware.white_on_right = white_on_right;
         self.config.hardware.brightness = brightness;
-        self.using_uwhscores = using_uwhscores;
-        self.current_tid = current_tid;
-        self.current_pool = current_pool;
-        self.games = games;
+        self.using_uwhportal = using_uwhportal;
+        self.current_event_id = current_event_id;
+        self.current_court = current_pool;
+        self.schedule = games;
         self.config.sound = sound;
         self.sound.update_settings(self.config.sound.clone());
         self.config.mode = mode;
@@ -743,7 +436,7 @@ impl Application for RefBoxApp {
             sim_child,
             require_https,
             fullscreen,
-            list_all_tournaments,
+            list_all_events,
             touchscreen,
         } = flags;
 
@@ -754,20 +447,7 @@ impl Application for RefBoxApp {
         msg_tx.send(Message::Init).unwrap();
 
         let mut tm = TournamentManager::new(config.game.clone());
-        tm.set_timezone(config.uwhscores.timezone);
         tm.start_clock(Instant::now());
-
-        let client = match Client::builder()
-            .https_only(require_https)
-            .timeout(REQUEST_TIMEOUT)
-            .build()
-        {
-            Ok(c) => Some(c),
-            Err(e) => {
-                error!("Failed to start HTTP Client: {e}");
-                None
-            }
-        };
 
         let portal_token = if !config.uwhportal.token.is_empty() {
             Some(config.uwhportal.token.as_str())
@@ -818,19 +498,16 @@ impl Application for RefBoxApp {
                 update_sender,
                 message_listener,
                 msg_tx,
-                client,
-                uwhscores_token: Arc::new(Mutex::new(None)),
-                uwhscores_auth_valid_for: None,
                 uwhportal_client,
-                using_uwhscores: false,
-                tournaments: None,
-                games: None,
-                current_tid: None,
-                current_pool: None,
+                using_uwhportal: false,
+                events: None,
+                schedule: None,
+                current_event_id: None,
+                current_court: None,
                 sound,
                 sim_child,
                 fullscreen,
-                list_all_tournaments,
+                list_all_events,
                 touchscreen,
             },
             Command::single(command::Action::LoadFont {
@@ -878,8 +555,7 @@ impl Application for RefBoxApp {
 
         match message {
             Message::Init => {
-                self.request_tournament_list();
-                self.check_uwhscores_auth();
+                self.request_event_list();
                 self.check_uwhportal_auth();
             }
             Message::NewSnapshot(snapshot) => {
@@ -1018,12 +694,13 @@ impl Application for RefBoxApp {
                 } = self.app_state
                 {
                     if is_confirmation {
-                        if let Some(game) = self
-                            .games
-                            .as_ref()
-                            .and_then(|games| games.get(&tm.game_number()))
-                        {
-                            self.post_game_score(game, scores);
+                        if let Some((id, game)) = self.schedule.as_ref().and_then(|schedule| {
+                            schedule
+                                .games
+                                .get(&tm.game_number())
+                                .map(|n| (&schedule.event_id, n))
+                        }) {
+                            self.post_game_score(id, game.number, scores);
                         }
 
                         tm.set_scores(scores, now);
@@ -1522,13 +1199,11 @@ impl Application for RefBoxApp {
                     },
                     white_on_right: self.config.hardware.white_on_right,
                     brightness: self.config.hardware.brightness,
-                    using_uwhscores: self.using_uwhscores,
-                    uwhscores_email: self.config.uwhscores.email.clone(),
-                    uwhscores_password: self.config.uwhscores.password.clone(),
+                    using_uwhportal: self.using_uwhportal,
                     uwhportal_token: self.config.uwhportal.token.clone(),
-                    current_tid: self.current_tid,
-                    current_pool: self.current_pool.clone(),
-                    games: self.games.clone(),
+                    current_event_id: self.current_event_id.clone(),
+                    current_court: self.current_court.clone(),
+                    schedule: self.schedule.clone(),
                     sound: self.config.sound.clone(),
                     mode: self.config.mode,
                     hide_time: self.config.hide_time,
@@ -1556,43 +1231,42 @@ impl Application for RefBoxApp {
 
                     let edited_settings = self.edited_settings.as_mut().unwrap();
 
-                    let mut uwhscores_incomplete = edited_settings.using_uwhscores
-                        && (edited_settings.current_tid.is_none()
-                            || edited_settings.current_pool.is_none()
-                            || edited_settings.games.is_none());
-                    if edited_settings.using_uwhscores && !uwhscores_incomplete {
+                    let mut uwhportal_incomplete = edited_settings.using_uwhportal
+                        && (edited_settings.current_event_id.is_none()
+                            || edited_settings.current_court.is_none()
+                            || edited_settings.schedule.is_none());
+                    if edited_settings.using_uwhportal && !uwhportal_incomplete {
                         match edited_settings
-                            .games
+                            .schedule
                             .as_ref()
                             .unwrap()
+                            .games
                             .get(&edited_settings.game_number)
                         {
                             Some(g) => {
-                                uwhscores_incomplete =
-                                    g.pool != *edited_settings.current_pool.as_ref().unwrap()
+                                uwhportal_incomplete =
+                                    g.court != *edited_settings.current_court.as_ref().unwrap()
                             }
-                            None => uwhscores_incomplete = true,
+                            None => uwhportal_incomplete = true,
                         };
                     }
 
-                    let new_config = if edited_settings.using_uwhscores && !uwhscores_incomplete {
-                        match edited_settings
-                            .games
+                    let new_config = if edited_settings.using_uwhportal && !uwhportal_incomplete {
+                        edited_settings
+                            .schedule
                             .as_ref()
-                            .unwrap()
-                            .get(&edited_settings.game_number)
-                            .unwrap()
-                            .timing_rules
-                        {
-                            Some(ref rules) => rules.clone().into(),
-                            None => tm.config().clone(),
-                        }
+                            .and_then(|schedule| {
+                                schedule.get_game_timing(edited_settings.game_number)
+                            })
+                            .cloned()
+                            .map(|tr| tr.into())
+                            .unwrap_or_else(|| tm.config().clone())
                     } else {
                         edited_settings.config.clone()
                     };
 
-                    if uwhscores_incomplete {
-                        AppState::ConfirmationPage(ConfirmationKind::UwhScoresIncomplete)
+                    if uwhportal_incomplete {
+                        AppState::ConfirmationPage(ConfirmationKind::UwhPortalIncomplete)
                     } else if new_config != *tm.config() {
                         if tm.current_period() != GamePeriod::BetweenGames {
                             AppState::ConfirmationPage(ConfirmationKind::GameConfigChanged(
@@ -1602,20 +1276,22 @@ impl Application for RefBoxApp {
                             tm.set_config(new_config.clone()).unwrap();
                             self.config.game = new_config;
 
-                            let game = edited_settings
-                                .games
+                            let (game, timing) = edited_settings
+                                .schedule
                                 .as_ref()
-                                .and_then(|games| games.get(&edited_settings.game_number));
-                            let timing = game.and_then(|g| g.timing_rules.clone());
+                                .map(|schedule| {
+                                    schedule.get_game_and_timing(edited_settings.game_number)
+                                })
+                                .unwrap_or((None, None));
                             let start_time = game.map(|g| g.start_time);
 
                             tm.set_next_game(NextGameInfo {
                                 number: edited_settings.game_number,
-                                timing,
+                                timing: timing.cloned(),
                                 start_time,
                             });
 
-                            if edited_settings.using_uwhscores {
+                            if edited_settings.using_uwhportal {
                                 tm.apply_next_game_start(Instant::now()).unwrap();
                             } else {
                                 tm.clear_scheduled_game_start();
@@ -1631,18 +1307,18 @@ impl Application for RefBoxApp {
                         if tm.current_period() != GamePeriod::BetweenGames {
                             AppState::ConfirmationPage(ConfirmationKind::GameNumberChanged)
                         } else {
-                            let next_game_info = if edited_settings.using_uwhscores {
+                            let next_game_info = if edited_settings.using_uwhportal {
+                                let (game, timing) = edited_settings
+                                    .schedule
+                                    .as_ref()
+                                    .map(|schedule| {
+                                        schedule.get_game_and_timing(edited_settings.game_number)
+                                    })
+                                    .unwrap_or((None, None));
                                 NextGameInfo {
                                     number: edited_settings.game_number,
-                                    timing: self.games.as_ref().and_then(|games| {
-                                        games
-                                            .get(&edited_settings.game_number)?
-                                            .timing_rules
-                                            .clone()
-                                    }),
-                                    start_time: self.games.as_ref().and_then(|games| {
-                                        Some(games.get(&edited_settings.game_number)?.start_time)
-                                    }),
+                                    timing: timing.cloned(),
+                                    start_time: game.map(|g| g.start_time),
                                 }
                             } else {
                                 NextGameInfo {
@@ -1654,7 +1330,7 @@ impl Application for RefBoxApp {
 
                             tm.set_next_game(next_game_info);
 
-                            if edited_settings.using_uwhscores {
+                            if edited_settings.using_uwhportal {
                                 tm.apply_next_game_start(Instant::now()).unwrap();
                             }
 
@@ -1697,37 +1373,40 @@ impl Application for RefBoxApp {
             }
             Message::SelectParameter(param) => {
                 let index = match param {
-                    ListableParameter::Tournament => self.current_tid.and_then(|cur_tid| {
-                        self.tournaments
+                    ListableParameter::Event => {
+                        self.current_event_id.as_ref().and_then(|cur_event_id| {
+                            self.events
+                                .as_ref()?
+                                .iter()
+                                .enumerate()
+                                .find(|(_, (event_id, _))| **event_id == *cur_event_id)
+                                .map(|(i, _)| i)
+                        })
+                    }
+                    ListableParameter::Court => self.current_court.as_ref().and_then(|cur_court| {
+                        self.events
+                            .as_ref()?
+                            .get(self.current_event_id.as_ref()?)?
+                            .courts
                             .as_ref()?
                             .iter()
                             .enumerate()
-                            .find(|(_, (tid, _))| **tid == cur_tid)
+                            .find(|(_, court)| **court == *cur_court)
                             .map(|(i, _)| i)
                     }),
-                    ListableParameter::Pool => self.current_pool.as_ref().and_then(|cur_pool| {
-                        self.tournaments
-                            .as_ref()?
-                            .get(&self.current_tid?)?
-                            .pools
-                            .as_ref()?
-                            .iter()
-                            .enumerate()
-                            .find(|(_, pool)| **pool == *cur_pool)
-                            .map(|(i, _)| i)
-                    }),
-                    ListableParameter::Game => self.games.as_ref().and_then(|games| {
-                        let pool = self
+                    ListableParameter::Game => self.schedule.as_ref().and_then(|schedule| {
+                        let court = self
                             .edited_settings
                             .as_ref()
-                            .and_then(|edit| edit.current_pool.clone())?;
+                            .and_then(|edit| edit.current_court.clone())?;
 
-                        games
+                        schedule
+                            .games
                             .iter()
-                            .filter(|(_, game)| game.pool == pool)
+                            .filter(|(_, game)| game.court == court)
                             .enumerate()
-                            .find(|(_, (gid, _))| {
-                                **gid == self.edited_settings.as_ref().unwrap().game_number
+                            .find(|(_, (game_num, _))| {
+                                **game_num == self.edited_settings.as_ref().unwrap().game_number
                             })
                             .map(|(i, _)| i)
                     }),
@@ -1779,16 +1458,12 @@ impl Application for RefBoxApp {
                 }
 
                 let next_page = match self.app_state {
-                    AppState::ParameterEditor(_, _) => ConfigPage::Tournament,
+                    AppState::ParameterEditor(_, _) => ConfigPage::Game,
                     AppState::KeypadPage(KeypadPage::GameNumber, _) => ConfigPage::Main,
-                    AppState::KeypadPage(KeypadPage::TeamTimeouts(_, _), _) => {
-                        ConfigPage::Tournament
-                    }
+                    AppState::KeypadPage(KeypadPage::TeamTimeouts(_, _), _) => ConfigPage::Game,
                     AppState::ParameterList(param, _) => match param {
                         ListableParameter::Game => ConfigPage::Main,
-                        ListableParameter::Tournament | ListableParameter::Pool => {
-                            ConfigPage::Tournament
-                        }
+                        ListableParameter::Event | ListableParameter::Court => ConfigPage::Game,
                     },
                     _ => unreachable!(),
                 };
@@ -1799,31 +1474,30 @@ impl Application for RefBoxApp {
             Message::ParameterSelected(param, val) => {
                 let edited_settings = self.edited_settings.as_mut().unwrap();
                 match param {
-                    ListableParameter::Tournament => {
-                        edited_settings.current_tid = Some(val as u32);
-                        self.request_tournament_details(val as u32);
-                        self.request_game_list(val as u32);
+                    ListableParameter::Event => {
+                        let id = EventId::from_full(val).unwrap();
+                        edited_settings.current_event_id = Some(id.clone());
+                        if let Some(pools) = self
+                            .events
+                            .as_ref()
+                            .and_then(|events| events.get(&id).and_then(|e| e.courts.as_ref()))
+                        {
+                            if pools.len() == 1 {
+                                if let Some(ref mut edits) = self.edited_settings {
+                                    if edits.current_court.is_none() {
+                                        edits.current_court = Some(pools[0].clone());
+                                    }
+                                }
+                            }
+                        }
+                        self.request_schedule(id);
                     }
-                    ListableParameter::Pool => {
-                        edited_settings.current_pool = Some(
-                            self.tournaments
-                                .as_ref()
-                                .unwrap()
-                                .get(&edited_settings.current_tid.unwrap())
-                                .unwrap()
-                                .pools
-                                .as_ref()
-                                .unwrap()[val]
-                                .clone(),
-                        )
-                    }
-                    ListableParameter::Game => edited_settings.game_number = val as u32,
+                    ListableParameter::Court => edited_settings.current_court = Some(val),
+                    ListableParameter::Game => edited_settings.game_number = val.parse().unwrap(),
                 };
 
                 let next_page = match param {
-                    ListableParameter::Tournament | ListableParameter::Pool => {
-                        ConfigPage::Tournament
-                    }
+                    ListableParameter::Event | ListableParameter::Court => ConfigPage::Game,
                     ListableParameter::Game => ConfigPage::Main,
                 };
 
@@ -1869,8 +1543,8 @@ impl Application for RefBoxApp {
                         }
                         BoolGameParameter::SingleHalf => edited_settings.config.single_half ^= true,
                         BoolGameParameter::WhiteOnRight => edited_settings.white_on_right ^= true,
-                        BoolGameParameter::UsingUwhScores => {
-                            edited_settings.using_uwhscores ^= true
+                        BoolGameParameter::UsingUwhPortal => {
+                            edited_settings.using_uwhportal ^= true
                         }
                         BoolGameParameter::SoundEnabled => {
                             edited_settings.sound.sound_enabled ^= true
@@ -1916,22 +1590,16 @@ impl Application for RefBoxApp {
             Message::TextParameterChanged(param, val) => {
                 let settings = self.edited_settings.as_mut().unwrap();
                 match param {
-                    TextParameter::UwhscoresEmail => settings.uwhscores_email = val,
-                    TextParameter::UwhscoresPassword => settings.uwhscores_password = val,
                     TextParameter::UwhportalToken => settings.uwhportal_token = val,
                 }
             }
             Message::ApplyAuthChanges => {
                 let settings = self.edited_settings.as_mut().unwrap();
-                self.config.uwhscores.email = settings.uwhscores_email.clone();
-                self.config.uwhscores.password = settings.uwhscores_password.clone();
                 self.config.uwhportal.token = settings.uwhportal_token.clone();
 
-                self.uwhscores_token.lock().unwrap().take();
-                self.uwhscores_auth_valid_for = None;
-                self.check_uwhscores_auth();
+                self.check_uwhportal_auth();
 
-                self.app_state = AppState::EditGameConfig(ConfigPage::Tournament);
+                self.app_state = AppState::EditGameConfig(ConfigPage::Game);
                 trace!("AppState changed to {:?}", self.app_state);
             }
             Message::RequestRemoteId => {
@@ -1994,20 +1662,22 @@ impl Application for RefBoxApp {
                             self.config.game = config;
                         }
 
-                        let game = edited_settings
-                            .games
+                        let (game, timing) = edited_settings
+                            .schedule
                             .as_ref()
-                            .and_then(|games| games.get(&edited_settings.game_number));
-                        let timing = game.and_then(|g| g.timing_rules.clone());
+                            .map(|schedule| {
+                                schedule.get_game_and_timing(edited_settings.game_number)
+                            })
+                            .unwrap_or((None, None));
                         let start_time = game.map(|g| g.start_time);
 
                         tm.set_next_game(NextGameInfo {
                             number: edited_settings.game_number,
-                            timing,
+                            timing: timing.cloned(),
                             start_time,
                         });
 
-                        if edited_settings.using_uwhscores {
+                        if edited_settings.using_uwhportal {
                             tm.apply_next_game_start(now).unwrap();
                         } else {
                             tm.clear_scheduled_game_start();
@@ -2059,12 +1729,9 @@ impl Application for RefBoxApp {
                         let mut tm = self.tm.lock().unwrap();
                         let now = Instant::now();
 
-                        if let Some(game) = self
-                            .games
-                            .as_ref()
-                            .and_then(|games| games.get(&tm.game_number()))
+                        if let Some(id) = self.schedule.as_ref().map(|schedule| &schedule.event_id)
                         {
-                            self.post_game_score(game, scores);
+                            self.post_game_score(id, tm.game_number(), scores);
                         }
 
                         tm.set_scores(scores, now);
@@ -2159,76 +1826,93 @@ impl Application for RefBoxApp {
                 }
                 trace!("AppState changed to {:?}", self.app_state);
             }
-            Message::RecvTournamentList(t_list) => {
-                let active_filter = if self.list_all_tournaments {
-                    |_: &TournamentInfo| true
-                } else {
-                    |t: &TournamentInfo| t.is_active == 1
-                };
-                let t_map = t_list
-                    .into_iter()
-                    .filter(active_filter)
-                    .map(|t| (t.tid, t))
-                    .collect();
-                self.tournaments = Some(t_map);
+            Message::RecvEventList(e_list) => {
+                let e_map: BTreeMap<_, _> = e_list.into_iter().map(|e| (e.id.clone(), e)).collect();
+                for event in e_map.values() {
+                    self.request_teams_list(event.id.clone(), &event.slug);
+                }
+                self.events = Some(e_map);
             }
-            Message::RecvTournament(tournament) => {
-                if let Some(tid) = self.current_tid.or_else(|| {
+            Message::RecvTeamsList(event_id, teams) => {
+                if let Some(ref mut events) = self.events {
+                    if let Some(event) = events.get_mut(&event_id) {
+                        event.teams = Some(teams);
+                    } else {
+                        error!(
+                            "Received teams for event_id {}, it is not in the event list",
+                            event_id.full()
+                        );
+                    }
+                } else {
+                    error!(
+                        "Received teams for event_id {}, but there is no event list yet",
+                        event_id.full()
+                    );
+                }
+            }
+            Message::RecvSchedule(event_id, schedule) => {
+                if let Some(id) = self.current_event_id.as_ref().or_else(|| {
                     self.edited_settings
                         .as_ref()
-                        .and_then(|edits| edits.current_tid)
+                        .and_then(|edits| edits.current_event_id.as_ref())
                 }) {
-                    if tid != tournament.tid {
+                    if id.full() != event_id.full() {
                         warn!(
-                            "Received tournament data, but for the wrong tid: {}",
-                            tournament.tid
+                            "Received event data, but for the wrong event_id: {}",
+                            event_id.full()
                         )
                     }
                 } else {
-                    warn!("Received tournament data, but there is no current tid")
+                    warn!("Received event data, but there is no current event_id");
                 }
 
-                if let Some(ref mut tournaments) = self.tournaments {
-                    if let Some(pools) = tournament.pools.as_ref() {
-                        if pools.len() == 1 {
-                            if let Some(ref mut edits) = self.edited_settings {
-                                if edits.current_pool.is_none() {
-                                    edits.current_pool = Some(pools[0].clone());
+                let mut courts = BTreeSet::new();
+                for game in schedule.games.values() {
+                    if !courts.contains(&game.court) {
+                        courts.insert(game.court.clone());
+                    }
+                }
+                let courts: Vec<_> = courts.into_iter().collect();
+
+                if courts.len() == 1 {
+                    if let Some(ref mut edits) = self.edited_settings {
+                        if edits.current_court.is_none() {
+                            edits.current_court = Some(courts[0].clone());
+                        }
+                    }
+                }
+
+                if let Some(ref mut events) = self.events {
+                    if let Some(event) = events.get_mut(&event_id) {
+                        event.courts = Some(courts);
+                        event.schedule = Some(schedule.clone());
+                        if let Some(ref mut edits) = self.edited_settings {
+                            if let Some(ref id) = edits.current_event_id {
+                                if *id == event_id {
+                                    edits.schedule = Some(schedule.clone());
                                 }
                             }
                         }
+                        if let Some(ref id) = self.current_event_id {
+                            if *id == event_id {
+                                self.schedule = Some(schedule);
+                            }
+                        }
+                    } else {
+                        error!(
+                            "Received schedule for event_id {}, it is not in the event list",
+                            event_id.full()
+                        );
                     }
-                    tournaments.insert(tournament.tid, tournament);
                 } else {
-                    warn!(
-                        "Received info for tid {}, but there is no tournament list yet",
-                        tournament.tid
+                    error!(
+                        "Received schedule for event_id {}, but there is no event list yet",
+                        event_id.full()
                     );
-                    self.tournaments = Some(BTreeMap::from([(tournament.tid, tournament)]));
-                }
-            }
-            Message::RecvGameList(games_list) => {
-                let games_map = games_list.into_iter().map(|g| (g.gid, g)).collect();
-                if let Some(ref mut edits) = self.edited_settings {
-                    edits.games = Some(games_map);
-                } else {
-                    self.games = Some(games_map);
-                }
-            }
-            Message::RecvGame(game) => {
-                if let Some(ref mut games) = self.games {
-                    games.insert(game.gid, game);
-                } else {
-                    warn!(
-                        "Received info for gid {}, but there is no game list yet",
-                        game.gid
-                    );
-                    self.games = Some(BTreeMap::from([(game.gid, game)]));
                 }
             }
             Message::StartClock => self.tm.lock().unwrap().start_clock(Instant::now()),
             Message::StopClock => self.tm.lock().unwrap().stop_clock(Instant::now()).unwrap(),
-            Message::UwhScoresAuthChecked(valid) => self.uwhscores_auth_valid_for = Some(valid),
             Message::NoAction => {}
         };
 
@@ -2237,6 +1921,11 @@ impl Application for RefBoxApp {
 
     fn view(&self) -> Element<Message> {
         let clock_running = self.tm.lock().unwrap().clock_is_running();
+        let teams = self.current_event_id.as_ref().and_then(|id| {
+            self.events
+                .as_ref()
+                .and_then(|events| events.get(id).and_then(|event| event.teams.as_ref()))
+        });
         let mut main_view = column![match self.app_state {
             AppState::MainPage => {
                 let new_config = if self.snapshot.current_period == GamePeriod::BetweenGames {
@@ -2258,8 +1947,9 @@ impl Application for RefBoxApp {
                 build_main_view(
                     &self.snapshot,
                     game_config,
-                    self.using_uwhscores,
-                    &self.games,
+                    self.using_uwhportal,
+                    self.schedule.as_ref().map(|s| &s.games),
+                    teams,
                     &self.config,
                     clock_running,
                 )
@@ -2312,8 +2002,9 @@ impl Application for RefBoxApp {
             AppState::GameDetailsPage => build_game_info_page(
                 &self.snapshot,
                 &self.config.game,
-                self.using_uwhscores,
-                &self.games,
+                self.using_uwhportal,
+                self.schedule.as_ref().map(|s| &s.games),
+                teams,
                 self.config.mode,
                 clock_running,
             ),
@@ -2322,11 +2013,10 @@ impl Application for RefBoxApp {
             AppState::EditGameConfig(page) => build_game_config_edit_page(
                 &self.snapshot,
                 self.edited_settings.as_ref().unwrap(),
-                &self.tournaments,
+                self.events.as_ref(),
                 page,
                 self.config.mode,
                 clock_running,
-                &self.uwhscores_auth_valid_for,
                 self.uwhportal_client.as_ref().map(|c| c.token_validity()),
                 self.touchscreen,
             ),
@@ -2342,7 +2032,8 @@ impl Application for RefBoxApp {
                 param,
                 index,
                 self.edited_settings.as_ref().unwrap(),
-                &self.tournaments,
+                self.events.as_ref(),
+                teams,
                 self.config.mode,
                 clock_running,
             ),

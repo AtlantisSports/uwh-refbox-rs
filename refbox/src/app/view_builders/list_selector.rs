@@ -8,15 +8,16 @@ use iced::{
     alignment::{Horizontal, Vertical},
     widget::{button, column, horizontal_space, row, text, vertical_space},
 };
+use uwh_common::{game_snapshot::GameSnapshot, uwhportal::schedule::TeamId};
 
-use uwh_common::game_snapshot::GameSnapshot;
-
+#[expect(clippy::too_many_arguments)]
 pub(in super::super) fn build_list_selector_page<'a>(
     snapshot: &GameSnapshot,
     param: ListableParameter,
     index: usize,
     settings: &EditableSettings,
-    tournaments: &Option<BTreeMap<u32, TournamentInfo>>,
+    events: Option<&BTreeMap<EventId, Event>>,
+    teams: Option<&BTreeMap<TeamId, String>>,
     mode: Mode,
     clock_running: bool,
 ) -> Element<'a, Message> {
@@ -24,8 +25,8 @@ pub(in super::super) fn build_list_selector_page<'a>(
     const TEAM_NAME_LEN_LIMIT: usize = 15;
 
     let title = match param {
-        ListableParameter::Tournament => "SELECT TOURNAMENT",
-        ListableParameter::Pool => "SELECT COURT",
+        ListableParameter::Event => "SELECT EVENT",
+        ListableParameter::Court => "SELECT COURT",
         ListableParameter::Game => "SELECT GAME",
     };
 
@@ -74,33 +75,39 @@ pub(in super::super) fn build_list_selector_page<'a>(
     }
 
     let (num_items, buttons): (usize, CollectArrayResult<_, LIST_LEN>) = match param {
-        ListableParameter::Tournament => {
-            let list = tournaments.as_ref().unwrap();
+        ListableParameter::Event => {
+            let list = events.as_ref().unwrap();
             let num_items = list.len();
             let iter = list.values().rev();
-            let transform = |t: &TournamentInfo| (t.name.clone(), t.tid as usize);
+            let transform = |e: &Event| (e.name.clone(), e.id.full().to_string());
             (num_items, make_buttons!(iter, transform))
         }
-        ListableParameter::Pool => {
-            let list = tournaments
+        ListableParameter::Court => {
+            let list = events
                 .as_ref()
                 .unwrap()
-                .get(&settings.current_tid.unwrap())
+                .get(settings.current_event_id.as_ref().unwrap())
                 .unwrap()
-                .pools
+                .courts
                 .as_ref()
                 .unwrap();
             let num_items = list.len();
-            let iter = list.iter().enumerate();
-            let transform = |(i, p): (usize, &String)| (p.clone(), i);
+            let iter = list.iter();
+            let transform = |p: &String| (p.clone(), p.clone());
             (num_items, make_buttons!(iter, transform))
         }
         ListableParameter::Game => {
-            let list = settings.games.as_ref().unwrap();
-            let pool = settings.current_pool.clone().unwrap();
-            let num_items = list.values().filter(|g| g.pool == pool).count();
-            let iter = list.values().filter(|g| g.pool == pool);
-            let transform = |g| (game_string_long(g, TEAM_NAME_LEN_LIMIT), g.gid as usize);
+            let schedule = settings.schedule.as_ref().unwrap();
+            let list = &schedule.games;
+            let court = settings.current_court.clone().unwrap();
+            let num_items = list.values().filter(|g| g.court == court).count();
+            let iter = list.values().filter(|g| g.court == court);
+            let transform = |g| {
+                (
+                    game_string_long(g, teams, TEAM_NAME_LEN_LIMIT),
+                    g.number.to_string(),
+                )
+            };
             (num_items, make_buttons!(iter, transform))
         }
     };

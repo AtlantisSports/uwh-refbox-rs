@@ -75,12 +75,12 @@ struct Cli {
     baud_rate: u32,
 
     #[clap(long)]
-    /// Don't require HTTPS to connect to uwhscores
+    /// Don't require HTTPS to connect to uwhportal
     allow_http: bool,
 
     #[clap(long, short)]
-    /// List all tournaments from uwhscores, including past ones
-    all_tournaments: bool,
+    /// List all events from uwhportal, including past ones
+    all_events: bool,
 
     #[clap(long)]
     /// Directory within which log files will be placed, default is platform dependent

@@ -25,8 +25,8 @@ pub(in super::super) fn build_confirmation_page<'a>(
             "How would you like to apply this game number change?"
         }
         ConfirmationKind::Error(string) => string,
-        ConfirmationKind::UwhScoresIncomplete => {
-            "When UWHScores is enabled, all fields must be filled out."
+        ConfirmationKind::UwhPortalIncomplete => {
+            "When UWHPortal is enabled, all fields must be filled out."
         }
     };
 
@@ -73,7 +73,7 @@ pub(in super::super) fn build_confirmation_page<'a>(
         ConfirmationKind::Error(_) => {
             vec![("OK", ButtonStyle::Green, ConfirmationOption::DiscardChanges)]
         }
-        ConfirmationKind::UwhScoresIncomplete => vec![
+        ConfirmationKind::UwhPortalIncomplete => vec![
             (
                 "GO BACK TO EDITOR",
                 ButtonStyle::Green,

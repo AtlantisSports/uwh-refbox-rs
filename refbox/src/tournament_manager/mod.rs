@@ -4,7 +4,7 @@ use std::{
     convert::TryInto,
 };
 use thiserror::Error;
-use time::{OffsetDateTime, PrimitiveDateTime, UtcOffset};
+use time::OffsetDateTime;
 use tokio::{
     sync::watch,
     time::{Duration, Instant},
@@ -15,7 +15,7 @@ use uwh_common::{
     config::Game as GameConfig,
     drawing_support::*,
     game_snapshot::{GamePeriod, GameSnapshot, Infraction, TimeoutSnapshot},
-    uwhscores::TimingRules,
+    uwhportal::schedule::TimingRule,
 };
 
 pub mod penalty;
@@ -51,7 +51,6 @@ pub struct TournamentManager {
     next_game: Option<NextGameInfo>,
     next_scheduled_start: Option<Instant>,
     reset_game_time: Duration,
-    timezone: UtcOffset,
     recent_goal: Option<(Color, u8, GamePeriod, Duration)>,
     current_game_stats: GameStats,
     last_game_stats: Option<GameStats>,
@@ -80,7 +79,6 @@ impl TournamentManager {
             next_scheduled_start: None,
             reset_game_time: config.nominal_break,
             config,
-            timezone: UtcOffset::UTC,
             recent_goal: None,
             current_game_stats: GameStats::new(0),
             last_game_stats: None,
@@ -127,10 +125,6 @@ impl TournamentManager {
         if self.current_period == GamePeriod::SuddenDeath && scores.black != scores.white {
             self.end_game(now);
         }
-    }
-
-    pub fn set_timezone(&mut self, timezone: UtcOffset) {
-        self.timezone = timezone;
     }
 
     pub fn current_period(&self) -> GamePeriod {
@@ -875,10 +869,8 @@ impl TournamentManager {
         info!("Next game info is: {:?}", self.next_game);
         let scheduled_start =
             if let Some(start_time) = self.next_game.as_ref().and_then(|info| info.start_time) {
-                let cur_time = OffsetDateTime::now_utc().to_offset(self.timezone);
+                let cur_time = OffsetDateTime::now_utc();
                 info!("Current time is: {cur_time}");
-
-                let start_time = start_time.assume_offset(self.timezone);
                 info!("Start time is: {start_time}");
 
                 let time_to_game = start_time - cur_time;
@@ -925,7 +917,7 @@ impl TournamentManager {
         let time_remaining_at_start = self.calc_time_to_next_game(now, now);
 
         info!(
-            "{} Setting between games time based on uwhscores info: {time_remaining_at_start:?}",
+            "{} Setting between games time based on uwhportal info: {time_remaining_at_start:?}",
             self.status_string(now),
         );
 
@@ -1860,7 +1852,7 @@ impl TournamentManager {
             is_old_game: !self.has_reset,
             game_number: self.game_number(),
             next_game_number: self.next_game_number(),
-            tournament_id: 0,
+            event_id: None,
             recent_goal: self.recent_goal.map(|(c, n, _, _)| (c, n)),
             next_period_len_secs,
         })
@@ -2023,8 +2015,8 @@ impl TimeoutState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NextGameInfo {
     pub number: u32,
-    pub timing: Option<TimingRules>,
-    pub start_time: Option<PrimitiveDateTime>,
+    pub timing: Option<TimingRule>,
+    pub start_time: Option<OffsetDateTime>,
 }
 
 #[derive(Debug, PartialEq, Eq, Error)]

@@ -1,4 +1,3 @@
-use array_concat::*;
 use derivative::Derivative;
 use enum_derive_2018::EnumFromStr;
 use macro_attr_2018::macro_attr;
@@ -26,16 +25,9 @@ const fn process_array<const N: usize, const M: usize>(input: &[u8; M]) -> [f32;
     output
 }
 
-// Until there is a resolution to https://github.com/rust-lang/rust/issues/93481, `process_array()`
-// can't be run on sound samples more than about 0.8s long, so we need to work around it by
-// processing smaller samples then concatenating them. See https://github.com/rust-lang/rust/pull/103877
-// for a resolution that will potentially land soon
-const LEN0: usize = include_bytes!("../../resources/sounds/whistle-0.raw").len() / 4;
-const PT0: [f32; LEN0] = process_array(include_bytes!("../../resources/sounds/whistle-0.raw"));
-const LEN1: usize = include_bytes!("../../resources/sounds/whistle-1.raw").len() / 4;
-const PT1: [f32; LEN1] = process_array(include_bytes!("../../resources/sounds/whistle-1.raw"));
-const WHISTLE_LEN: usize = concat_arrays_size!(PT0, PT1);
-static WHISTLE: [f32; WHISTLE_LEN] = concat_arrays!(PT0, PT1);
+const WHISTLE_LEN: usize = include_bytes!("../../resources/sounds/whistle.raw").len() / 4;
+static WHISTLE: [f32; WHISTLE_LEN] =
+    process_array(include_bytes!("../../resources/sounds/whistle.raw"));
 
 const BUZZ_LEN: usize = include_bytes!("../../resources/sounds/buzz.raw").len() / 4;
 static BUZZ: [f32; BUZZ_LEN] = process_array(include_bytes!("../../resources/sounds/buzz.raw"));

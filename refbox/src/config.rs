@@ -5,7 +5,6 @@ use macro_attr_2018::macro_attr;
 use matrix_drawing::transmitted_data::Brightness;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use time::UtcOffset;
 use toml::Table;
 pub use uwh_common::config::Game;
 
@@ -58,47 +57,6 @@ impl Hardware {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct UwhScores {
-    pub url: String,
-    pub email: String,
-    pub password: String,
-    pub timezone: UtcOffset,
-}
-
-impl Default for UwhScores {
-    fn default() -> Self {
-        Self {
-            url: "https://uwhscores.com/api/v1/".to_string(),
-            email: String::new(),
-            password: String::new(),
-            timezone: UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC),
-        }
-    }
-}
-
-impl UwhScores {
-    pub fn migrate(old: &Table) -> Self {
-        let Self {
-            mut url,
-            mut email,
-            mut password,
-            timezone: _,
-        } = Default::default();
-
-        get_string_value(old, "url", &mut url);
-        get_string_value(old, "email", &mut email);
-        get_string_value(old, "password", &mut password);
-
-        Self {
-            url,
-            email,
-            password,
-            timezone: UtcOffset::UTC,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UwhPortal {
     pub url: String,
     pub token: String,
@@ -135,7 +93,6 @@ pub struct Config {
     pub confirm_score: bool,
     pub game: Game,
     pub hardware: Hardware,
-    pub uwhscores: UwhScores,
     pub uwhportal: UwhPortal,
     pub sound: SoundSettings,
 }
@@ -150,7 +107,6 @@ impl Config {
             confirm_score,
             mut game,
             mut hardware,
-            mut uwhscores,
             mut uwhportal,
             mut sound,
         } = Default::default();
@@ -179,11 +135,6 @@ impl Config {
                 hardware = Hardware::migrate(old_hardware);
             }
         }
-        if let Some(old_uwhscores) = old.get("uwhscores") {
-            if let Some(old_uwhscores) = old_uwhscores.as_table() {
-                uwhscores = UwhScores::migrate(old_uwhscores);
-            }
-        }
         if let Some(old_uwhportal) = old.get("uwhportal") {
             if let Some(old_uwhportal) = old_uwhportal.as_table() {
                 uwhportal = UwhPortal::migrate(old_uwhportal);
@@ -203,7 +154,6 @@ impl Config {
             confirm_score,
             game,
             hardware,
-            uwhscores,
             uwhportal,
             sound,
         }
@@ -263,14 +213,6 @@ mod test {
     }
 
     #[test]
-    fn test_ser_uwhscores() {
-        let u: UwhScores = Default::default();
-        let serialized = toml::to_string(&u).unwrap();
-        let deser = toml::from_str(&serialized);
-        assert_eq!(deser, Ok(u));
-    }
-
-    #[test]
     fn test_ser_uwhportal() {
         let u: UwhPortal = Default::default();
         let serialized = toml::to_string(&u).unwrap();
@@ -296,27 +238,6 @@ mod test {
         assert_eq!(hw.screen_x, 123);
         assert_eq!(hw.screen_y, 456);
         assert_eq!(hw.white_on_right, true);
-    }
-
-    #[test]
-    fn test_migrate_uwhscores() {
-        let mut old: Table = Default::default();
-        old.insert(
-            "url".to_string(),
-            toml::Value::String("https://localhost/api/v1/".to_string()),
-        );
-        old.insert(
-            "email".to_string(),
-            toml::Value::String("test@test.com".to_string()),
-        );
-        old.insert(
-            "password".to_string(),
-            toml::Value::String("password".to_string()),
-        );
-        let u = UwhScores::migrate(&old);
-        assert_eq!(u.url, "https://localhost/api/v1/");
-        assert_eq!(u.email, "test@test.com");
-        assert_eq!(u.password, "password");
     }
 
     #[test]
@@ -352,24 +273,6 @@ mod test {
         hardware.insert("screen_y".to_string(), toml::Value::Integer(456));
         hardware.insert("white_on_right".to_string(), toml::Value::Boolean(true));
         old.insert("hardware".to_string(), toml::Value::Table(hardware));
-        let mut uwhscores: Table = Default::default();
-        uwhscores.insert(
-            "url".to_string(),
-            toml::Value::String("https://localhost/api/v1/".to_string()),
-        );
-        uwhscores.insert(
-            "email".to_string(),
-            toml::Value::String("testing@test.com".to_string()),
-        );
-        uwhscores.insert(
-            "password".to_string(),
-            toml::Value::String("password".to_string()),
-        );
-        uwhscores.insert(
-            "timezone".to_string(),
-            toml::Value::String("UTC".to_string()),
-        );
-        old.insert("uwhscores".to_string(), toml::Value::Table(uwhscores));
         let mut uwhportal: Table = Default::default();
         uwhportal.insert(
             "url".to_string(),
@@ -395,10 +298,6 @@ mod test {
         assert_eq!(config.hardware.screen_x, 123);
         assert_eq!(config.hardware.screen_y, 456);
         assert_eq!(config.hardware.white_on_right, true);
-        assert_eq!(config.uwhscores.url, "https://localhost/api/v1/");
-        assert_eq!(config.uwhscores.email, "testing@test.com");
-        assert_eq!(config.uwhscores.password, "password");
-        assert_eq!(config.uwhscores.timezone, UtcOffset::UTC);
         assert_eq!(config.uwhportal.url, "https://localhost/api/v1/");
         assert_eq!(config.uwhportal.token, "token");
         assert_eq!(config.sound.sound_enabled, false);

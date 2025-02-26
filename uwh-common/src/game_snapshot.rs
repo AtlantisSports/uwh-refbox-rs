@@ -1,10 +1,10 @@
-#[cfg(feature = "std")]
-use crate::config::Game;
 use crate::{
     bundles::{BlackWhiteBundle, OptColorBundle},
     color::Color,
     drawing_support::*,
 };
+#[cfg(feature = "std")]
+use crate::{config::Game, uwhportal::schedule::EventId};
 use arrayref::array_ref;
 use arrayvec::ArrayVec;
 use core::cmp::{Ordering, PartialOrd};
@@ -57,7 +57,7 @@ pub struct GameSnapshot {
     pub is_old_game: bool,
     pub game_number: u32,
     pub next_game_number: u32,
-    pub tournament_id: u32,
+    pub event_id: Option<EventId>,
     pub recent_goal: Option<(Color, u8)>,
     pub next_period_len_secs: Option<u32>,
 }

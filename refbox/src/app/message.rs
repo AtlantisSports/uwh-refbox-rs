@@ -3,7 +3,7 @@ use tokio::time::Duration;
 use uwh_common::{
     color::Color as GameColor,
     game_snapshot::{GameSnapshot, Infraction},
-    uwhscores::{GameInfo, TournamentInfo},
+    uwhportal::schedule::{Event, EventId, Schedule, TeamList},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -79,7 +79,7 @@ pub enum Message {
     ParameterEditComplete {
         canceled: bool,
     },
-    ParameterSelected(ListableParameter, usize),
+    ParameterSelected(ListableParameter, String),
     ToggleBoolParameter(BoolGameParameter),
     CycleParameter(CyclingParameter),
     TextParameterChanged(TextParameter, String),
@@ -96,13 +96,11 @@ pub enum Message {
     ScoreConfirmation {
         correct: bool,
     },
-    RecvTournamentList(Vec<TournamentInfo>),
-    RecvTournament(TournamentInfo),
-    RecvGameList(Vec<GameInfo>),
-    RecvGame(GameInfo),
+    RecvEventList(Vec<Event>),
+    RecvTeamsList(EventId, TeamList),
+    RecvSchedule(EventId, Schedule),
     StopClock,
     StartClock,
-    UwhScoresAuthChecked(Vec<u32>),
     NoAction, // TODO: Remove once UI is functional
 }
 
@@ -116,10 +114,9 @@ impl Message {
             | Self::KeypadButtonPress(_)
             | Self::ToggleBoolParameter(_)
             | Self::CycleParameter(_)
-            | Self::RecvTournamentList(_)
-            | Self::RecvTournament(_)
-            | Self::RecvGameList(_)
-            | Self::RecvGame(_)
+            | Self::RecvEventList(_)
+            | Self::RecvTeamsList(_, _)
+            | Self::RecvSchedule(_, _)
             | Self::NoAction => true,
 
             Self::Init
@@ -165,8 +162,7 @@ impl Message {
             | Self::ConfirmScores(_)
             | Self::ScoreConfirmation { .. }
             | Self::StopClock
-            | Self::StartClock
-            | Self::UwhScoresAuthChecked(_) => false,
+            | Self::StartClock => false,
         }
     }
 }
@@ -174,7 +170,7 @@ impl Message {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConfigPage {
     Main,
-    Tournament,
+    Game,
     Sound,
     Display,
     App,
@@ -196,8 +192,8 @@ pub enum LengthParameter {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ListableParameter {
-    Tournament,
-    Pool,
+    Event,
+    Court,
     Game,
 }
 
@@ -207,7 +203,7 @@ pub enum BoolGameParameter {
     SuddenDeathAllowed,
     SingleHalf,
     WhiteOnRight,
-    UsingUwhScores,
+    UsingUwhPortal,
     SoundEnabled,
     RefAlertEnabled,
     AutoSoundStartPlay,
@@ -233,8 +229,6 @@ pub enum CyclingParameter {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextParameter {
-    UwhscoresEmail,
-    UwhscoresPassword,
     UwhportalToken,
 }
 

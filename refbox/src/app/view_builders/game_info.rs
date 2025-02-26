@@ -7,20 +7,23 @@ use iced::{
     alignment::{Horizontal, Vertical},
     widget::{column, horizontal_space, row, text},
 };
-
 use std::fmt::Write;
-
-use uwh_common::game_snapshot::GameSnapshot;
+use uwh_common::{
+    game_snapshot::GameSnapshot,
+    uwhportal::schedule::{GameList, TeamList},
+};
 
 pub(in super::super) fn build_game_info_page<'a>(
     snapshot: &GameSnapshot,
     config: &GameConfig,
-    using_uwhscores: bool,
-    games: &Option<BTreeMap<u32, GameInfo>>,
+    using_uwhportal: bool,
+    games: Option<&GameList>,
+    teams: Option<&TeamList>,
     mode: Mode,
     clock_running: bool,
 ) -> Element<'a, Message> {
-    let (left_details, right_details) = details_strings(snapshot, config, using_uwhscores, games);
+    let (left_details, right_details) =
+        details_strings(snapshot, config, using_uwhportal, games, teams);
     column![
         make_game_time_button(snapshot, false, false, mode, clock_running,),
         row![
@@ -60,24 +63,27 @@ pub(in super::super) fn build_game_info_page<'a>(
 fn details_strings(
     snapshot: &GameSnapshot,
     config: &GameConfig,
-    using_uwhscores: bool,
-    games: &Option<BTreeMap<u32, GameInfo>>,
+    using_uwhportal: bool,
+    games: Option<&GameList>,
+    teams: Option<&TeamList>,
 ) -> (String, String) {
     const TEAM_NAME_LEN_LIMIT: usize = 40;
     let mut right_string = String::new();
-    let (result_string, _) = config_string_game_num(snapshot, using_uwhscores, games);
+    let (result_string, _) = config_string_game_num(snapshot, using_uwhportal, games);
     let mut left_string = result_string;
-    let (_, result_u32) = config_string_game_num(snapshot, using_uwhscores, games);
+    let (_, result_u32) = config_string_game_num(snapshot, using_uwhportal, games);
     let game_number = result_u32;
 
-    if using_uwhscores {
-        if let Some(games) = games {
+    if using_uwhportal {
+        if let (Some(games), Some(teams)) = (games, teams) {
             if let Some(game) = games.get(&game_number) {
+                let black = get_team_name(&game.dark, teams);
+                let white = get_team_name(&game.light, teams);
                 write!(
                     &mut left_string,
                     "Black Team: {}\nWhite Team: {}\n",
-                    limit_team_name_len(&game.black, TEAM_NAME_LEN_LIMIT),
-                    limit_team_name_len(&game.white, TEAM_NAME_LEN_LIMIT)
+                    limit_team_name_len(&black, TEAM_NAME_LEN_LIMIT),
+                    limit_team_name_len(&white, TEAM_NAME_LEN_LIMIT)
                 )
                 .unwrap()
             }
@@ -135,7 +141,7 @@ fn details_strings(
         )
         .unwrap()
     };
-    if !using_uwhscores {
+    if !using_uwhportal {
         writeln!(
             &mut left_string,
             "Nominal Time Between Games: {}",
@@ -150,11 +156,11 @@ fn details_strings(
     )
     .unwrap();
 
-    if using_uwhscores {
+    if using_uwhportal {
         writeln!(&mut left_string, "Stop clock in last 2 minutes: UNKNOWN").unwrap();
     }
 
-    if using_uwhscores {
+    if using_uwhportal {
         write!(
             &mut right_string,
             "Chief ref: UNKNOWN\n\

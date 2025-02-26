@@ -34,7 +34,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
     } else {
         1f32
     };
-    if let Some(logo) = state.tournament_logo.as_ref() {
+    if let Some(logo) = state.event_logo.as_ref() {
         if offset <= -210f32 {
             let x = (1920f32 - logo.color.width()) / 2f32;
             let y = 675f32 - logo.color.height();

@@ -18,11 +18,9 @@ use iced::{
         text, vertical_space,
     },
 };
-
 use matrix_drawing::{secs_to_long_time_string, secs_to_time_string};
 use std::{
     borrow::Cow,
-    collections::BTreeMap,
     fmt::Write,
     sync::{Arc, Mutex},
     time::Duration,
@@ -35,7 +33,7 @@ use uwh_common::{
         GamePeriod, GameSnapshot, Infraction, InfractionSnapshot, PenaltySnapshot, PenaltyTime,
         TimeoutSnapshot,
     },
-    uwhscores::GameInfo,
+    uwhportal::schedule::{Game, GameList, ResultOf, ScheduledTeam, TeamList},
 };
 
 macro_rules! column {
@@ -621,15 +619,47 @@ pub(super) fn penalty_string(penalties: &[PenaltySnapshot]) -> String {
     string
 }
 
-pub(super) fn game_string_short(game: &GameInfo) -> String {
-    format!("{}{}", game.game_type, game.gid)
+pub(super) fn game_string_short(game: &Game) -> String {
+    format!("{}{}", game.timing_rule, game.number)
 }
 
-pub(super) fn game_string_long(game: &GameInfo, len_limit: usize) -> String {
-    let black = limit_team_name_len(&game.black, len_limit);
-    let white = limit_team_name_len(&game.white, len_limit);
+pub(super) fn game_string_long(game: &Game, teams: Option<&TeamList>, len_limit: usize) -> String {
+    let (black, white) = if let Some(teams) = teams {
+        (
+            get_team_name(&game.dark, teams),
+            get_team_name(&game.light, teams),
+        )
+    } else {
+        ("Unknown".to_string(), "Unknown".to_string())
+    };
 
-    format!("{}{} - {} vs {}", game.game_type, game.gid, black, white)
+    let black = limit_team_name_len(&black, len_limit);
+    let white = limit_team_name_len(&white, len_limit);
+
+    format!(
+        "{}{} - {} vs {}",
+        game.timing_rule, game.number, black, white
+    )
+}
+
+pub(super) fn get_team_name(team: &ScheduledTeam, teams: &TeamList) -> String {
+    if let Some(id) = team.assigned() {
+        teams
+            .get(id)
+            .cloned()
+            .unwrap_or_else(|| id.full().to_string())
+    } else if let Some(result_of) = team.result_of() {
+        match result_of {
+            ResultOf::Loser { game_number } => format!("L{game_number}"),
+            ResultOf::Winner { game_number } => format!("W{game_number}"),
+        }
+    } else if let Some(seed) = team.seeded_by() {
+        format!("Seed {} of {}", seed.number, seed.group)
+    } else if let Some(s) = team.pending() {
+        s.to_string()
+    } else {
+        "Unknown".to_string()
+    }
 }
 
 pub(super) fn limit_team_name_len(name: &String, len_limit: usize) -> Cow<'_, String> {
@@ -644,14 +674,14 @@ pub(super) fn limit_team_name_len(name: &String, len_limit: usize) -> Cow<'_, St
 
 pub(super) fn config_string_game_num(
     snapshot: &GameSnapshot,
-    using_uwhscores: bool,
-    games: &Option<BTreeMap<u32, GameInfo>>,
+    using_uwhportal: bool,
+    games: Option<&GameList>,
 ) -> (String, u32) {
     let mut result = String::new();
     let game_number = if snapshot.current_period == GamePeriod::BetweenGames {
         let prev_game;
         let next_game;
-        if using_uwhscores {
+        if using_uwhportal {
             if let Some(games) = games {
                 prev_game = match games.get(&snapshot.game_number) {
                     Some(game) => game_string_short(game),
@@ -688,7 +718,7 @@ pub(super) fn config_string_game_num(
         snapshot.next_game_number
     } else {
         let game;
-        if using_uwhscores {
+        if using_uwhportal {
             if let Some(games) = games {
                 game = match games.get(&snapshot.game_number) {
                     Some(game) => game_string_short(game),
@@ -710,24 +740,27 @@ pub(super) fn config_string_game_num(
 pub(super) fn config_string(
     snapshot: &GameSnapshot,
     config: &GameConfig,
-    using_uwhscores: bool,
-    games: &Option<BTreeMap<u32, GameInfo>>,
+    using_uwhportal: bool,
+    games: Option<&GameList>,
+    teams: Option<&TeamList>,
     fouls_and_warnings: bool,
 ) -> String {
     const TEAM_NAME_LEN_LIMIT: usize = 40;
-    let (result_string, _) = config_string_game_num(snapshot, using_uwhscores, games);
+    let (result_string, _) = config_string_game_num(snapshot, using_uwhportal, games);
     let mut result = result_string;
-    let (_, result_u32) = config_string_game_num(snapshot, using_uwhscores, games);
+    let (_, result_u32) = config_string_game_num(snapshot, using_uwhportal, games);
     let game_number = result_u32;
 
-    if using_uwhscores {
-        if let Some(games) = games {
+    if using_uwhportal {
+        if let (Some(games), Some(teams)) = (games, teams) {
             if let Some(game) = games.get(&game_number) {
+                let black = get_team_name(&game.dark, teams);
+                let white = get_team_name(&game.light, teams);
                 write!(
                     &mut result,
                     "Black Team: {}\nWhite Team: {}\n",
-                    limit_team_name_len(&game.black, TEAM_NAME_LEN_LIMIT),
-                    limit_team_name_len(&game.white, TEAM_NAME_LEN_LIMIT)
+                    limit_team_name_len(&black, TEAM_NAME_LEN_LIMIT),
+                    limit_team_name_len(&white, TEAM_NAME_LEN_LIMIT)
                 )
                 .unwrap()
             }

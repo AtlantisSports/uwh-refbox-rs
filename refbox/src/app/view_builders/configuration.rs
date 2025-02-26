@@ -3,7 +3,7 @@ use super::{
     shared_elements::*,
     style::{
         ButtonStyle, ContainerStyle, Element, LINE_HEIGHT, MEDIUM_TEXT, MIN_BUTTON_SIZE, PADDING,
-        SMALL_PLUS_TEXT, SMALL_TEXT, SPACING,
+        SMALL_TEXT, SPACING,
     },
 };
 use crate::config::Mode;
@@ -18,7 +18,12 @@ use matrix_drawing::transmitted_data::Brightness;
 use std::collections::BTreeMap;
 use tokio::time::Duration;
 use uwh_common::{
-    config::Game as GameConfig, game_snapshot::GameSnapshot, uwhportal::TokenValidity, uwhscores::*,
+    config::Game as GameConfig,
+    game_snapshot::GameSnapshot,
+    uwhportal::{
+        TokenValidity,
+        schedule::{Event, EventId, Schedule},
+    },
 };
 
 const NO_SELECTION_TXT: &str = "None Selected";
@@ -30,13 +35,11 @@ pub(in super::super) struct EditableSettings {
     pub game_number: u32,
     pub white_on_right: bool,
     pub brightness: Brightness,
-    pub using_uwhscores: bool,
-    pub uwhscores_email: String,
-    pub uwhscores_password: String,
+    pub using_uwhportal: bool,
     pub uwhportal_token: String,
-    pub current_tid: Option<u32>,
-    pub current_pool: Option<String>,
-    pub games: Option<BTreeMap<u32, GameInfo>>,
+    pub current_event_id: Option<EventId>,
+    pub current_court: Option<String>,
+    pub schedule: Option<Schedule>,
     pub sound: SoundSettings,
     pub mode: Mode,
     pub hide_time: bool,
@@ -118,23 +121,21 @@ impl Cyclable for Brightness {
 pub(in super::super) fn build_game_config_edit_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
-    tournaments: &Option<BTreeMap<u32, TournamentInfo>>,
+    events: Option<&BTreeMap<EventId, Event>>,
     page: ConfigPage,
     mode: Mode,
     clock_running: bool,
-    uwhscores_auth: &Option<Vec<u32>>,
     uwhportal_token_valid: Option<(TokenValidity, Option<String>)>,
     touchscreen: bool,
 ) -> Element<'a, Message> {
     match page {
         ConfigPage::Main => make_main_config_page(snapshot, settings, mode, clock_running),
-        ConfigPage::Tournament => make_tournament_config_page(
+        ConfigPage::Game => make_event_config_page(
             snapshot,
             settings,
-            tournaments,
+            events,
             mode,
             clock_running,
-            uwhscores_auth,
             uwhportal_token_valid,
             touchscreen,
         ),
@@ -158,17 +159,17 @@ fn make_main_config_page<'a>(
 ) -> Element<'a, Message> {
     let EditableSettings {
         game_number,
-        using_uwhscores,
-        current_tid,
-        current_pool,
-        games,
+        using_uwhportal,
+        current_event_id,
+        current_court,
+        schedule,
         ..
     } = settings;
 
-    let using_uwhscores = *using_uwhscores;
+    let using_uwhportal = *using_uwhportal;
 
-    let game_btn_msg = if using_uwhscores {
-        if current_tid.is_some() && current_pool.is_some() {
+    let game_btn_msg = if using_uwhportal {
+        if current_event_id.is_some() && current_court.is_some() && schedule.is_some() {
             Some(Message::SelectParameter(ListableParameter::Game))
         } else {
             None
@@ -178,12 +179,12 @@ fn make_main_config_page<'a>(
     };
 
     let mut game_large_text = true;
-    let game_label = if using_uwhscores {
-        if let (Some(_), Some(cur_pool)) = (current_tid, current_pool) {
-            if let Some(games) = games {
-                match games.get(game_number) {
+    let game_label = if using_uwhportal {
+        if let (Some(_), Some(cur_court)) = (current_event_id, current_court) {
+            if let Some(schedule) = schedule {
+                match schedule.games.get(game_number) {
                     Some(game) => {
-                        if game.pool == *cur_pool {
+                        if game.court == *cur_court {
                             game_string_short(game)
                         } else {
                             game_large_text = false;
@@ -210,8 +211,8 @@ fn make_main_config_page<'a>(
         make_value_button("GAME:", game_label, (true, game_large_text), game_btn_msg,),
         row![
             make_message_button(
-                "TOURNAMENT OPTIONS",
-                Some(Message::ChangeConfigPage(ConfigPage::Tournament)),
+                "GAME OPTIONS",
+                Some(Message::ChangeConfigPage(ConfigPage::Game)),
             )
             .style(ButtonStyle::LightGray),
             make_message_button(
@@ -259,30 +260,29 @@ fn make_main_config_page<'a>(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn make_tournament_config_page<'a>(
+fn make_event_config_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
-    tournaments: &Option<BTreeMap<u32, TournamentInfo>>,
+    events: Option<&BTreeMap<EventId, Event>>,
     mode: Mode,
     clock_running: bool,
-    uwhscores_auth: &Option<Vec<u32>>,
     uwhportal_token_valid: Option<(TokenValidity, Option<String>)>,
     touchscreen: bool,
 ) -> Element<'a, Message> {
     let EditableSettings {
         config,
-        using_uwhscores,
-        current_tid,
-        current_pool,
+        using_uwhportal,
+        current_event_id,
+        current_court,
         ..
     } = settings;
 
-    let using_uwhscores = *using_uwhscores;
+    let using_uwhportal = *using_uwhportal;
 
-    let rows: [Element<Message>; 4] = if using_uwhscores {
-        let tournament_label = if let Some(tournaments) = tournaments {
-            if let Some(tid) = current_tid {
-                match tournaments.get(tid) {
+    let rows: [Element<Message>; 4] = if using_uwhportal {
+        let event_label = if let Some(events) = events {
+            if let Some(event_id) = current_event_id {
+                match events.get(event_id) {
                     Some(t) => t.name.clone(),
                     None => NO_SELECTION_TXT.to_string(),
                 }
@@ -293,19 +293,19 @@ fn make_tournament_config_page<'a>(
             LOADING_TXT.to_string()
         };
 
-        let tournament_btn_msg = if tournaments.is_some() {
-            Some(Message::SelectParameter(ListableParameter::Tournament))
+        let event_btn_msg = if events.is_some() {
+            Some(Message::SelectParameter(ListableParameter::Event))
         } else {
             None
         };
 
-        let pool_label = if let Some(tournament) = tournaments
+        let pool_label = if let Some(event) = events
             .as_ref()
-            .and_then(|tournaments| tournaments.get(&(*current_tid)?))
+            .and_then(|events| events.get(current_event_id.as_ref()?))
         {
-            if tournament.pools.is_some() {
-                if let Some(pool) = current_pool {
-                    pool.clone()
+            if event.courts.is_some() {
+                if let Some(court) = current_court {
+                    court.clone()
                 } else {
                     NO_SELECTION_TXT.to_string()
                 }
@@ -316,10 +316,10 @@ fn make_tournament_config_page<'a>(
             String::new()
         };
 
-        let pool_btn_msg = tournaments
+        let pool_btn_msg = events
             .as_ref()
-            .and_then(|tourns| tourns.get(&(*current_tid)?)?.pools.as_ref())
-            .map(|_| Message::SelectParameter(ListableParameter::Pool));
+            .and_then(|tourns| tourns.get(current_event_id.as_ref()?)?.courts.as_ref())
+            .map(|_| Message::SelectParameter(ListableParameter::Court));
 
         let auth_container = |auth| {
             let txt = match auth {
@@ -340,47 +340,13 @@ fn make_tournament_config_page<'a>(
                 .style(style)
         };
 
-        let uwhscores_auth_text = column![
-            text("UWHSCORES")
-                .size(SMALL_PLUS_TEXT)
-                .line_height(LINE_HEIGHT)
-                .vertical_alignment(Vertical::Center)
-                .horizontal_alignment(Horizontal::Right)
-                .width(Length::Fill),
-            text("LOGIN")
-                .size(SMALL_PLUS_TEXT)
-                .line_height(LINE_HEIGHT)
-                .vertical_alignment(Vertical::Center)
-                .horizontal_alignment(Horizontal::Right)
-                .width(Length::Fill),
-        ]
-        .width(Length::Fill)
-        .height(Length::Fill);
-
-        let uwhportal_auth_text = column![
-            text("UWHPORTAL")
-                .size(SMALL_PLUS_TEXT)
-                .line_height(LINE_HEIGHT)
-                .vertical_alignment(Vertical::Center)
-                .horizontal_alignment(Horizontal::Right)
-                .width(Length::Fill),
-            text("TOKEN")
-                .size(SMALL_PLUS_TEXT)
-                .line_height(LINE_HEIGHT)
-                .vertical_alignment(Vertical::Center)
-                .horizontal_alignment(Horizontal::Right)
-                .width(Length::Fill),
-        ]
-        .width(Length::Fill)
-        .height(Length::Fill);
-
-        let uwhscores_auth = uwhscores_auth.as_ref().and_then(|auth| {
-            if auth.is_empty() {
-                Some(false)
-            } else {
-                Some(auth.contains(current_tid.as_ref()?))
-            }
-        });
+        let uwhportal_auth_text = text("UWHPORTAL TOKEN:")
+            .size(MEDIUM_TEXT)
+            .line_height(LINE_HEIGHT)
+            .vertical_alignment(Vertical::Center)
+            .horizontal_alignment(Horizontal::Right)
+            .width(Length::Fill)
+            .height(Length::Fill);
 
         let uwhportal_auth = if matches!(uwhportal_token_valid, Some((TokenValidity::Invalid, _))) {
             Some(false)
@@ -395,16 +361,11 @@ fn make_tournament_config_page<'a>(
         };
 
         let auth_state_button = button(
-            row![
-                uwhscores_auth_text,
-                auth_container(uwhscores_auth),
-                uwhportal_auth_text,
-                auth_container(uwhportal_auth),
-            ]
-            .padding(PADDING)
-            .spacing(SPACING)
-            .width(Length::Fill)
-            .height(Length::Fill),
+            row![uwhportal_auth_text, auth_container(uwhportal_auth),]
+                .padding(PADDING)
+                .spacing(SPACING)
+                .width(Length::Fill)
+                .height(Length::Fill),
         )
         .height(Length::Fixed(MIN_BUTTON_SIZE))
         .width(Length::Fill)
@@ -413,14 +374,9 @@ fn make_tournament_config_page<'a>(
         .on_press(auth_btn_msg);
 
         [
-            make_value_button(
-                "TOURNAMENT:",
-                tournament_label,
-                (true, true),
-                tournament_btn_msg,
-            )
-            .height(Length::Fill)
-            .into(),
+            make_value_button("EVENT:", event_label, (true, true), event_btn_msg)
+                .height(Length::Fill)
+                .into(),
             make_value_button("COURT:", pool_label, (true, true), pool_btn_msg)
                 .height(Length::Fill)
                 .into(),
@@ -577,10 +533,10 @@ fn make_tournament_config_page<'a>(
                 .on_press(Message::NoAction),
             make_value_button(
                 "USING UWHPORTAL:",
-                bool_string(using_uwhscores),
+                bool_string(using_uwhportal),
                 (false, true),
                 Some(Message::ToggleBoolParameter(
-                    BoolGameParameter::UsingUwhScores,
+                    BoolGameParameter::UsingUwhPortal,
                 )),
             )
         ]
@@ -999,39 +955,11 @@ fn make_credential_config_page<'a>(
     clock_running: bool,
 ) -> Element<'a, Message> {
     let EditableSettings {
-        uwhscores_email,
-        uwhscores_password,
-        uwhportal_token,
-        ..
+        uwhportal_token, ..
     } = settings;
 
     column![
         make_game_time_button(snapshot, false, false, mode, clock_running),
-        row![
-            text("UWHSCORES EMAIL:")
-                .size(MEDIUM_TEXT)
-                .line_height(LINE_HEIGHT)
-                .vertical_alignment(Vertical::Center)
-                .height(Length::Fill),
-            TextInput::new("", uwhscores_email,)
-                .on_input(|s| Message::TextParameterChanged(TextParameter::UwhscoresEmail, s))
-                .width(Length::Fill)
-        ]
-        .spacing(SPACING)
-        .height(Length::Fill),
-        row![
-            text("UWHSCORES PASSWORD:")
-                .size(MEDIUM_TEXT)
-                .line_height(LINE_HEIGHT)
-                .vertical_alignment(Vertical::Center)
-                .height(Length::Fill),
-            TextInput::new("", uwhscores_password,)
-                .on_input(|s| Message::TextParameterChanged(TextParameter::UwhscoresPassword, s))
-                .password()
-                .width(Length::Fill)
-        ]
-        .spacing(SPACING)
-        .height(Length::Fill),
         row![
             text("UWHPORTAL TOKEN:")
                 .size(MEDIUM_TEXT)
@@ -1050,7 +978,7 @@ fn make_credential_config_page<'a>(
             make_button("CANCEL")
                 .style(ButtonStyle::Red)
                 .width(Length::Fill)
-                .on_press(Message::ChangeConfigPage(ConfigPage::Tournament)),
+                .on_press(Message::ChangeConfigPage(ConfigPage::Game)),
             horizontal_space(Length::Fill),
             make_button("DONE")
                 .style(ButtonStyle::Green)

@@ -74,12 +74,12 @@ struct Cli {
     baud_rate: u32,
 
     #[clap(long)]
-    /// Don't require HTTPS to connect to uwhscores
+    /// Don't require HTTPS to connect to uwhportal
     allow_http: bool,
 
     #[clap(long, short)]
-    /// List all tournaments from uwhscores, including past ones
-    all_tournaments: bool,
+    /// List all events from uwhportal, including past ones
+    all_events: bool,
 
     #[clap(long)]
     /// Don't allow views that require a keyboard
@@ -281,7 +281,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let config_path = confy::get_configuration_file_path(APP_NAME, None).unwrap();
     info!("Reading config file from {config_path:?}",);
 
-    let mut config: Config = match confy::load(APP_NAME, None) {
+    let config: Config = match confy::load(APP_NAME, None) {
         Ok(c) => c,
         Err(e) => {
             warn!("Failed to use config file. Error: {e}");
@@ -308,18 +308,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    if let Ok(offset) = time::UtcOffset::current_local_offset() {
-        if offset != config.uwhscores.timezone {
-            warn!(
-                "The timezone in the config file ({}) does not match the detected system \
-                 timezone ({offset}). The system timezone will be used.",
-                config.uwhscores.timezone
-            );
-        }
-        config.uwhscores.timezone = offset;
-        confy::store(APP_NAME, None, &config).unwrap();
-    }
-
     let window_size = (
         config.hardware.screen_x as u32,
         config.hardware.screen_y as u32,
@@ -333,7 +321,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         sim_child: child,
         require_https: !args.allow_http,
         fullscreen: args.fullscreen,
-        list_all_tournaments: args.all_tournaments,
+        list_all_events: args.all_events,
         touchscreen: args.touchscreen,
     };
 

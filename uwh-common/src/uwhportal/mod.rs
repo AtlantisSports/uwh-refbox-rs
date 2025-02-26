@@ -1,13 +1,19 @@
 use core::time::Duration;
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
-use log::{info, warn};
+use log::{debug, info, warn};
 use reqwest::header::{AUTHORIZATION, HeaderValue};
 use reqwest::{Client, ClientBuilder, Method, RequestBuilder, StatusCode};
+use schedule::{EventId, TeamId, TeamList};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::{
     error::Error,
     sync::{Arc, Mutex},
 };
+
+use crate::bundles::BlackWhiteBundle;
+
+pub mod schedule;
 
 pub struct UwhPortalClient {
     base_url: String,
@@ -129,16 +135,17 @@ impl UwhPortalClient {
 
     pub fn post_game_stats(
         &self,
-        tid: u32,
-        gid: u32,
+        event_id: &EventId,
+        game_number: u32,
         stats_json: String,
     ) -> impl std::future::Future<Output = Result<(), Box<dyn Error>>> + use<> {
-        let url = format!(
-            "{}/api/admin/events/stats?legacyEventId={}&gameNumber={}",
-            self.base_url, tid, gid
-        );
+        let url = format!("{}/api/admin/events/stats", self.base_url);
 
         let request = authenticated_request(&self.client, Method::POST, &url, &self.access_token)
+            .query(&[
+                ("eventId", event_id.full()),
+                ("gameNumber", &format!("{game_number}")),
+            ])
             .body(stats_json.clone())
             .header("Content-Type", "application/json")
             .send();
@@ -151,6 +158,159 @@ impl UwhPortalClient {
                 Ok(())
             } else {
                 warn!("uwhportal post game stats failed, response: {:?}", response);
+                let body = response.text().await?;
+                Err(Box::new(ApiError::new(body)))?
+            }
+        }
+    }
+
+    pub fn post_game_scores(
+        &self,
+        event_id: &EventId,
+        game_number: u32,
+        scores: BlackWhiteBundle<u8>,
+        force: bool,
+    ) -> impl std::future::Future<Output = Result<(), Box<dyn Error>>> + use<> {
+        let url = format!(
+            "{}/api/events/{}/schedule/games/{game_number}/scores",
+            self.base_url,
+            event_id.partial(),
+        );
+
+        let request = authenticated_request(&self.client, Method::POST, &url, &self.access_token)
+            .query(&[("force", force)])
+            .json(&serde_json::json!({
+            "dark": {
+                "value": scores.black
+            },
+            "light": {
+                "value": scores.white
+            }
+            }));
+
+        let client_ = self.client.clone();
+
+        async move {
+            let request = request.build()?;
+            debug!("Posting game scores to uwhportal: {request:?}");
+            debug!(
+                "Post body: {:?}",
+                std::str::from_utf8(request.body().unwrap().as_bytes().unwrap())
+            );
+            let response = client_.execute(request).await?;
+
+            if response.status() == StatusCode::OK {
+                info!("uwhportal post game scores successful");
+                Ok(())
+            } else {
+                warn!(
+                    "uwhportal post game scores failed, response: {:?}",
+                    response
+                );
+                let body = response.text().await?;
+                Err(Box::new(ApiError::new(body)))?
+            }
+        }
+    }
+
+    pub fn get_event_schedule_privileged(
+        &self,
+        event_id: &EventId,
+    ) -> impl std::future::Future<Output = Result<schedule::Schedule, Box<dyn Error>>> + use<> {
+        let url = format!(
+            "{}/api/events/{}/schedule/privileged",
+            self.base_url,
+            event_id.partial()
+        );
+
+        let request =
+            authenticated_request(&self.client, Method::GET, &url, &self.access_token).send();
+
+        async move {
+            let response = request.await?;
+
+            if response.status() == StatusCode::OK {
+                let body = response.text().await?;
+                let schedule: schedule::Schedule = serde_json::from_str(&body)?;
+                Ok(schedule)
+            } else {
+                warn!(
+                    "uwhportal get event schedule failed, response: {:?}",
+                    response
+                );
+                let body = response.text().await?;
+                Err(Box::new(ApiError::new(body)))?
+            }
+        }
+    }
+
+    pub fn get_event_schedule(
+        &self,
+        event_slug: &str,
+    ) -> impl std::future::Future<Output = Result<TeamList, Box<dyn Error>>> + use<> {
+        let url = format!("{}/api/events/{event_slug}/schedule", self.base_url);
+
+        let request = self.client.get(&url).send();
+
+        async move {
+            let response = request.await?;
+
+            if response.status() == StatusCode::OK {
+                let body = response.json::<serde_json::Value>().await?;
+                let teams = body["teams"].as_object().ok_or("Invalid response format")?;
+                let mut team_map = BTreeMap::new();
+                for (team_id, team_info) in teams {
+                    if let Some(name) = team_info["name"].as_str() {
+                        team_map.insert(TeamId::from_full(team_id)?, name.to_string());
+                    }
+                }
+                Ok(team_map)
+            } else {
+                warn!(
+                    "uwhportal get event schedule failed, response: {:?}",
+                    response
+                );
+                let body = response.text().await?;
+                Err(Box::new(ApiError::new(body)))?
+            }
+        }
+    }
+
+    pub fn get_event_list(
+        &self,
+        past: bool,
+    ) -> impl std::future::Future<Output = Result<Vec<schedule::Event>, Box<dyn Error>>> + use<>
+    {
+        let url = format!("{}/api/events", self.base_url);
+
+        let filter = if past { "Past" } else { "InProgressOrUpcoming" };
+
+        let request = self
+            .client
+            .get(&url)
+            .query(&[
+                ("limit", "100"),
+                ("filter", filter),
+                ("isSchedulePublished", "true"),
+            ])
+            .send();
+
+        #[derive(Debug, Serialize, Deserialize)]
+        struct ResponseWrapper {
+            #[serde(rename = "totalCount")]
+            total_count: u32,
+            items: Vec<schedule::Event>,
+        }
+
+        async move {
+            let response = request.await?;
+
+            if response.status() == StatusCode::OK {
+                let body = response.text().await?;
+                let parsed_response: ResponseWrapper = serde_json::from_str(&body)?;
+                Ok(parsed_response.items)
+            } else {
+                warn!("uwhportal get events list failed, response: {:?}", response);
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(body)))?
             }

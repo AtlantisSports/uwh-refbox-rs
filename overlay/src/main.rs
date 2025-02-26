@@ -33,7 +33,6 @@ const APP_NAME: &str = "overlay";
 pub struct AppConfig {
     refbox_ip: IpAddr,
     refbox_port: u64,
-    uwhscores_url: String,
     uwhportal_url: String,
 }
 
@@ -42,7 +41,6 @@ impl Default for AppConfig {
         Self {
             refbox_ip: IpAddr::from_str("127.0.0.1").unwrap(),
             refbox_port: 8000,
-            uwhscores_url: String::from("https://api.uwhscores.com"),
             uwhportal_url: String::from("https://api.uwhportal.com"),
         }
     }
@@ -57,7 +55,7 @@ pub struct State {
     pool: String,
     start_time: String,
     half_play_duration: Option<u32>,
-    tournament_logo: Option<Texture>,
+    event_logo: Option<Texture>,
     sponsor_logo: Option<Texture>,
 }
 
@@ -98,16 +96,16 @@ impl State {
             self.referees = referees.into_iter().map(Member::from).collect();
             self.pool = pool;
         }
-        if let Some(game_id) = recieved_state.game_id {
+        if let Some(game_id) = recieved_state.game_number {
             self.game_id = game_id;
         }
         self.snapshot = recieved_state.snapshot;
-        if let Some(logos) = recieved_state.tournament_logos {
-            self.tournament_logo = logos.tournament_logo.and_then(texture_from_image);
+        if let Some(logos) = recieved_state.event_logos {
+            self.event_logo = logos.event_logo.and_then(texture_from_image);
             self.sponsor_logo = logos.sponsors.and_then(texture_from_image);
             info!(
-                "Updated tournament logos: Tournament: {}, Sponsor: {}",
-                self.tournament_logo.is_some(),
+                "Updated event logos: Event: {}, Sponsor: {}",
+                self.event_logo.is_some(),
                 self.sponsor_logo.is_some()
             );
         }
@@ -237,7 +235,7 @@ async fn main() {
         pool: String::new(),
         start_time: String::new(),
         half_play_duration: None,
-        tournament_logo: None,
+        event_logo: None,
         sponsor_logo: None,
     };
 

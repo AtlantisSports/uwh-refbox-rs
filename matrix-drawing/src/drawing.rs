@@ -8,10 +8,10 @@ use embedded_graphics::{
     mono_font::MonoTextStyle,
     pixelcolor::Rgb888,
     prelude::*,
-    primitives::{rectangle::Rectangle, PrimitiveStyle},
+    primitives::{PrimitiveStyle, rectangle::Rectangle},
     text::{Alignment, Baseline, LineHeight, Text, TextStyle, TextStyleBuilder},
 };
-use fonts::fonts::{FONT_10X25, FONT_14X31, FONT_20X46, FONT_28X64, FONT_5X8, FONT_7X15};
+use fonts::fonts::{FONT_5X8, FONT_7X15, FONT_10X25, FONT_14X31, FONT_20X46, FONT_28X64};
 use more_asserts::*;
 use uwh_common::{drawing_support::*, game_snapshot::*};
 

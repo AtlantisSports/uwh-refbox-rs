@@ -1,7 +1,7 @@
 use super::{style::Element, *};
 use iced::{
-    widget::{column, horizontal_space, row, vertical_space},
     Length,
+    widget::{column, horizontal_space, row, vertical_space},
 };
 use style::SMALL_PLUS_TEXT;
 

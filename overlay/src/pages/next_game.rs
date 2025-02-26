@@ -1,11 +1,11 @@
+use super::PageRenderer;
 use super::draw_texture_both;
 use super::fit_text;
-use super::PageRenderer;
+use crate::State;
+use crate::pages::Justify;
 use crate::pages::draw_text_both;
 use crate::pages::draw_text_both_ex;
 use crate::pages::draw_texture_both_ex;
-use crate::pages::Justify;
-use crate::State;
 use coarsetime::Instant;
 use macroquad::prelude::*;
 

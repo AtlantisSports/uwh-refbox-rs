@@ -10,9 +10,9 @@ use crate::config::Mode;
 use crate::sound_controller::*;
 use collect_array::CollectArrayResult;
 use iced::{
-    alignment::{Horizontal, Vertical},
-    widget::{button, column, container, horizontal_space, row, text, vertical_space, TextInput},
     Alignment, Length,
+    alignment::{Horizontal, Vertical},
+    widget::{TextInput, button, column, container, horizontal_space, row, text, vertical_space},
 };
 use std::collections::BTreeMap;
 use tokio::time::Duration;
@@ -166,7 +166,7 @@ fn make_main_config_page<'a>(
     let mut game_large_text = true;
     let game_label = if using_uwhscores {
         if let (Some(_), Some(cur_pool)) = (current_tid, current_pool) {
-            if let Some(ref games) = games {
+            if let Some(games) = games {
                 match games.get(game_number) {
                     Some(game) => {
                         if game.pool == *cur_pool {
@@ -266,7 +266,7 @@ fn make_tournament_config_page<'a>(
     let using_uwhscores = *using_uwhscores;
 
     let rows: [Element<Message>; 4] = if using_uwhscores {
-        let tournament_label = if let Some(ref tournaments) = tournaments {
+        let tournament_label = if let Some(tournaments) = tournaments {
             if let Some(tid) = current_tid {
                 match tournaments.get(tid) {
                     Some(t) => t.name.clone(),
@@ -290,7 +290,7 @@ fn make_tournament_config_page<'a>(
             .and_then(|tournaments| tournaments.get(&(*current_tid)?))
         {
             if tournament.pools.is_some() {
-                if let Some(ref pool) = current_pool {
+                if let Some(pool) = current_pool {
                     pool.clone()
                 } else {
                     NO_SELECTION_TXT.to_string()

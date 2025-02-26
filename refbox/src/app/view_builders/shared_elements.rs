@@ -1,22 +1,22 @@
 use super::{
+    Element,
     message::*,
     style::{
-        Button, ButtonStyle, Container, ContainerStyle, Row, SvgStyle, Text, TextStyle, LARGE_TEXT,
-        LINE_HEIGHT, MEDIUM_TEXT, MIN_BUTTON_SIZE, PADDING, SMALL_PLUS_TEXT, SMALL_TEXT, SPACING,
-        XS_BUTTON_SIZE,
+        Button, ButtonStyle, Container, ContainerStyle, LARGE_TEXT, LINE_HEIGHT, MEDIUM_TEXT,
+        MIN_BUTTON_SIZE, PADDING, Row, SMALL_PLUS_TEXT, SMALL_TEXT, SPACING, SvgStyle, Text,
+        TextStyle, XS_BUTTON_SIZE,
     },
-    Element,
 };
 use crate::{config::Mode, tournament_manager::TournamentManager};
 use enum_iterator::all;
 use iced::{
+    Alignment, Length,
     alignment::{Horizontal, Vertical},
     widget::{
         button, column, container, horizontal_space, row,
         svg::{self, Svg},
         text, vertical_space,
     },
-    Alignment, Length,
 };
 use matrix_drawing::{secs_to_long_time_string, secs_to_time_string};
 use std::{

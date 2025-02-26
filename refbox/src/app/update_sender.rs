@@ -16,7 +16,7 @@ use tokio::{
     select,
     sync::mpsc::{self, error::TrySendError},
     task::{self, JoinHandle},
-    time::{sleep_until, timeout, Duration, Instant},
+    time::{Duration, Instant, sleep_until, timeout},
 };
 use tokio_serial::{SerialPortBuilder, SerialPortBuilderExt, SerialStream};
 use uwh_common::game_snapshot::{EncodingError, GamePeriod, GameSnapshot, GameSnapshotNoHeap};
@@ -82,7 +82,7 @@ impl UpdateSender {
 
     pub fn get_trigger_flash_fn(
         &self,
-    ) -> impl Send + Fn() -> Result<(), TrySendError<ServerMessage>> {
+    ) -> impl Send + Fn() -> Result<(), TrySendError<ServerMessage>> + use<> {
         let tx = self.tx.clone();
         move || tx.try_send(ServerMessage::TriggerFlash)
     }

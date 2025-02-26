@@ -1,7 +1,6 @@
 use iced::{
-    application,
+    Background, BorderRadius, Color, Vector, application,
     widget::{self, button, container, scrollable, svg, text, text_input},
-    Background, BorderRadius, Color, Vector,
 };
 use iced_core::text::LineHeight;
 use iced_renderer::Renderer;

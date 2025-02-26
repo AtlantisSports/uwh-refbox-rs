@@ -4,9 +4,9 @@ use super::{
 };
 use iced::widget::scrollable;
 use iced::{
+    Length,
     alignment::{Horizontal, Vertical},
     widget::{column, container, horizontal_space, row, text},
-    Length,
 };
 
 use uwh_common::game_snapshot::{Color as GameColor, GameSnapshot};

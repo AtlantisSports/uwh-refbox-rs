@@ -1,7 +1,7 @@
 use super::{style::Element, *};
 use iced::{
-    widget::{column, row, vertical_space},
     Length,
+    widget::{column, row, vertical_space},
 };
 
 use uwh_common::game_snapshot::Color as GameColor;

@@ -4,8 +4,8 @@ use macro_attr_2018::macro_attr;
 use serde::{Deserialize, Serialize};
 use std::{fmt::Display, ops::Index};
 use web_audio_api::{
-    context::{AudioContext, BaseAudioContext},
     AudioBuffer,
+    context::{AudioContext, BaseAudioContext},
 };
 
 const fn process_array<const N: usize, const M: usize>(input: &[u8; M]) -> [f32; N] {

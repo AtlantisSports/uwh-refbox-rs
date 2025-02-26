@@ -19,25 +19,25 @@ use std::sync::Arc;
 #[cfg(target_os = "linux")]
 use tokio::{
     sync::watch::Receiver,
-    time::{sleep_until, Instant},
+    time::{Instant, sleep_until},
 };
 use tokio::{
     sync::{
-        mpsc::{unbounded_channel, UnboundedSender},
+        mpsc::{UnboundedSender, unbounded_channel},
         watch::{self, Sender},
     },
     task::{self, JoinHandle},
-    time::{sleep, Duration},
+    time::{Duration, sleep},
 };
 use toml::Table;
 use web_audio_api::{
+    AudioBuffer,
     context::{AudioContext, AudioContextOptions, BaseAudioContext},
     media_devices,
     node::{
         AudioBufferSourceNode, AudioNode, AudioScheduledSourceNode, ChannelInterpretation,
         ChannelMergerNode, GainNode,
     },
-    AudioBuffer,
 };
 
 const FADE_LEN: f64 = 0.05;

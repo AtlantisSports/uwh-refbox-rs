@@ -1,4 +1,4 @@
-use super::{draw_texture_both, fit_text, Interpolate, Justify, PageRenderer};
+use super::{Interpolate, Justify, PageRenderer, draw_texture_both, fit_text};
 use crate::State;
 mod list;
 mod picture;

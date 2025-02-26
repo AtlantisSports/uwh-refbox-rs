@@ -1,7 +1,7 @@
 use super::{style::Element, *};
 use iced::{
-    widget::{column, row, vertical_space},
     Length,
+    widget::{column, row, vertical_space},
 };
 
 pub(super) fn make_game_number_edit_page<'a>() -> Element<'a, Message> {

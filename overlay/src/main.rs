@@ -1,15 +1,15 @@
 use clap::Parser;
 use coarsetime::Instant;
 use crossbeam_channel::bounded;
-use log::{info, warn, LevelFilter};
+use log::{LevelFilter, info, warn};
 #[cfg(debug_assertions)]
 use log4rs::append::console::{ConsoleAppender, Target};
 use log4rs::{
     append::rolling_file::{
-        policy::compound::{
-            roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger, CompoundPolicy,
-        },
         RollingFileAppender,
+        policy::compound::{
+            CompoundPolicy, roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger,
+        },
     },
     config::{Appender, Config as LogConfig, Logger, Root},
     encode::pattern::PatternEncoder,

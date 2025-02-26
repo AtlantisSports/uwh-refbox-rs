@@ -74,7 +74,9 @@ impl TeamInfoRaw {
         team_color: Color,
     ) -> Self {
         let client = CLIENT_CELL.get().unwrap();
-        info!("Requesting UWH API for team information for team: {team_id} of tournament: {tournament_id}");
+        info!(
+            "Requesting UWH API for team information for team: {team_id} of tournament: {tournament_id}"
+        );
         let data: Value = serde_json::from_str(
             &client
                 .get(format!(
@@ -336,7 +338,9 @@ async fn fetch_game_data(
             let data: Value = match serde_json::from_str(text.as_str()) {
                 Ok(d) => d,
                 _ => {
-                    error!("Aborting game data fetch! Server did not return valid JSON for tournament ID: {tournament_id}, game ID: {game_id}!: {text}");
+                    error!(
+                        "Aborting game data fetch! Server did not return valid JSON for tournament ID: {tournament_id}, game ID: {game_id}!: {text}"
+                    );
                     return;
                 }
             };
@@ -386,7 +390,9 @@ async fn fetch_game_data(
             .unwrap();
             return;
         }
-        warn!("Game data request for tid:{tournament_id}, gid:{game_id} failed. Trying again in 5 seconds.");
+        warn!(
+            "Game data request for tid:{tournament_id}, gid:{game_id} failed. Trying again in 5 seconds."
+        );
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     }
 }

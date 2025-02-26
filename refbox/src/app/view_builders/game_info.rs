@@ -3,9 +3,9 @@ use super::{
     *,
 };
 use iced::{
+    Length,
     alignment::{Horizontal, Vertical},
     widget::{column, horizontal_space, row, text},
-    Length,
 };
 
 use std::fmt::Write;

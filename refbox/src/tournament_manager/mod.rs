@@ -440,7 +440,7 @@ impl TournamentManager {
     pub fn switch_to_team_timeout(&mut self, new_color: Color) -> Result<()> {
         self.can_switch_to_team_timeout(new_color)?;
         info!("Switching to a {new_color} timeout");
-        if let TimeoutState::Team(ref mut color, _) = &mut self.timeout_state {
+        if let TimeoutState::Team(color, _) = &mut self.timeout_state {
             *color = new_color;
         }
         self.timeouts_used[new_color] += 1;
@@ -1230,7 +1230,9 @@ impl TournamentManager {
                                     time_remaining_at_start: clock_time,
                                 }
                             } else {
-                                panic!("Cannot end {color} team timeout because game clock isn't stopped");
+                                panic!(
+                                    "Cannot end {color} team timeout because game clock isn't stopped"
+                                );
                             }
                             self.timeout_state = TimeoutState::None;
                         }
@@ -1413,7 +1415,7 @@ impl TournamentManager {
         let status_str = self.status_string(now);
         match &mut self.timeout_state {
             TimeoutState::None => need_to_send = self.start_game_clock(now),
-            TimeoutState::Team(_, ref mut cs) => {
+            TimeoutState::Team(_, cs) => {
                 if let ClockState::Stopped { clock_time } = cs {
                     info!("{status_str} Starting the timeout clock");
                     *cs = ClockState::CountingDown {
@@ -1423,7 +1425,7 @@ impl TournamentManager {
                     need_to_send = true;
                 }
             }
-            TimeoutState::RugbyPenaltyShot(ref mut cs) => {
+            TimeoutState::RugbyPenaltyShot(cs) => {
                 if let ClockState::Stopped { clock_time } = cs {
                     info!("{status_str} Starting the penalty shot clock");
                     *cs = ClockState::CountingDown {
@@ -1432,12 +1434,13 @@ impl TournamentManager {
                     };
                     if !self.start_game_clock(now) {
                         warn!(
-                            "{status_str} Starting the penalty shot clock, but the game clock was already running")
+                            "{status_str} Starting the penalty shot clock, but the game clock was already running"
+                        )
                     }
                     need_to_send = true;
                 }
             }
-            TimeoutState::Ref(ref mut cs) | TimeoutState::PenaltyShot(ref mut cs) => {
+            TimeoutState::Ref(cs) | TimeoutState::PenaltyShot(cs) => {
                 if let ClockState::Stopped { clock_time } = cs {
                     info!("{status_str} Starting the timeout clock");
                     *cs = ClockState::CountingUp {
@@ -1458,7 +1461,7 @@ impl TournamentManager {
         let status_str = self.status_string(now);
         match &mut self.timeout_state {
             TimeoutState::None => need_to_send = self.stop_game_clock(now)?,
-            TimeoutState::Team(_, ref mut cs) => {
+            TimeoutState::Team(_, cs) => {
                 if let ClockState::CountingDown { .. } = cs {
                     info!("{status_str} Stopping the timeout clock");
                     *cs = ClockState::Stopped {
@@ -1469,7 +1472,7 @@ impl TournamentManager {
                     need_to_send = true;
                 }
             }
-            TimeoutState::RugbyPenaltyShot(ref mut cs) => {
+            TimeoutState::RugbyPenaltyShot(cs) => {
                 if let ClockState::CountingDown { .. } = cs {
                     info!("{status_str} Stopping the timeout clock");
                     *cs = ClockState::Stopped {
@@ -1478,12 +1481,14 @@ impl TournamentManager {
                             .ok_or(TournamentManagerError::NeedsUpdate)?,
                     };
                     if !self.stop_game_clock(now)? {
-                        warn!("{status_str} Stopping the penalty shot clock, but the game clock was not running");
+                        warn!(
+                            "{status_str} Stopping the penalty shot clock, but the game clock was not running"
+                        );
                     }
                     need_to_send = true;
                 }
             }
-            TimeoutState::Ref(ref mut cs) | TimeoutState::PenaltyShot(ref mut cs) => {
+            TimeoutState::Ref(cs) | TimeoutState::PenaltyShot(cs) => {
                 if let ClockState::CountingUp { .. } = cs {
                     info!("{status_str} Stopping the timeout clock");
                     *cs = ClockState::Stopped {

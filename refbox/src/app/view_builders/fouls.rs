@@ -8,9 +8,9 @@ use super::{
 use crate::app::style::TextStyle;
 use collect_array::CollectArrayResult;
 use iced::{
+    Length,
     alignment::{Horizontal, Vertical},
     widget::{button, column, horizontal_space, row, text},
-    Length,
 };
 
 use uwh_common::game_snapshot::{Color as GameColor, GameSnapshot};

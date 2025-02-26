@@ -203,7 +203,7 @@ pub struct UserResponse {
 mod test {
     use super::*;
     use log::*;
-    use reqwest::{blocking::Client, Method, StatusCode};
+    use reqwest::{Method, StatusCode, blocking::Client};
     use std::sync::Once;
 
     static INIT: Once = Once::new();

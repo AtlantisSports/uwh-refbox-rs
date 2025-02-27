@@ -39,6 +39,9 @@ use uwh_common::{
     },
 };
 
+mod view_data;
+use view_data::ViewData;
+
 mod view_builders;
 use view_builders::*;
 
@@ -1920,12 +1923,17 @@ impl Application for RefBoxApp {
     }
 
     fn view(&self) -> Element<Message> {
-        let clock_running = self.tm.lock().unwrap().clock_is_running();
-        let teams = self.current_event_id.as_ref().and_then(|id| {
-            self.events
-                .as_ref()
-                .and_then(|events| events.get(id).and_then(|event| event.teams.as_ref()))
-        });
+        let data = ViewData {
+            snapshot: &self.snapshot,
+            mode: self.config.mode,
+            clock_running: self.tm.lock().unwrap().clock_is_running(),
+            teams: self.current_event_id.as_ref().and_then(|id| {
+                self.events
+                    .as_ref()
+                    .and_then(|events| events.get(id).and_then(|event| event.teams.as_ref()))
+            }),
+        };
+
         let mut main_view = column![match self.app_state {
             AppState::MainPage => {
                 let new_config = if self.snapshot.current_period == GamePeriod::BetweenGames {
@@ -1945,107 +1953,63 @@ impl Application for RefBoxApp {
                     &self.config.game
                 };
                 build_main_view(
-                    &self.snapshot,
+                    data,
                     game_config,
                     self.using_uwhportal,
                     self.schedule.as_ref().map(|s| &s.games),
-                    teams,
-                    &self.config,
-                    clock_running,
+                    self.config.track_fouls_and_warnings,
                 )
             }
-            AppState::TimeEdit(_, time, timeout_time) => build_time_edit_view(
-                &self.snapshot,
-                time,
-                timeout_time,
-                self.config.mode,
-                clock_running,
-            ),
+            AppState::TimeEdit(_, time, timeout_time) =>
+                build_time_edit_view(data, time, timeout_time),
             AppState::ScoreEdit {
                 scores,
                 is_confirmation,
-            } => build_score_edit_view(
-                &self.snapshot,
-                scores,
-                is_confirmation,
-                self.config.mode,
-                clock_running,
-            ),
+            } => build_score_edit_view(data, scores, is_confirmation),
             AppState::PenaltyOverview(indices) => build_penalty_overview_page(
-                &self.snapshot,
+                data,
                 self.pen_edit.get_printable_lists(Instant::now()).unwrap(),
-                indices,
-                self.config.mode,
-                clock_running,
+                indices
             ),
             AppState::WarningOverview(indices) => build_warning_overview_page(
-                &self.snapshot,
+                data,
                 self.warn_edit.get_printable_lists(Instant::now()).unwrap(),
-                indices,
-                self.config.mode,
-                clock_running,
+                indices
             ),
             AppState::FoulOverview(indices) => build_foul_overview_page(
-                &self.snapshot,
+                data,
                 self.foul_edit.get_printable_lists(Instant::now()).unwrap(),
-                indices,
-                self.config.mode,
-                clock_running,
+                indices
             ),
-            AppState::KeypadPage(page, player_num) => build_keypad_page(
-                &self.snapshot,
-                page,
-                player_num,
-                &self.config,
-                clock_running,
-            ),
+            AppState::KeypadPage(page, player_num) =>
+                build_keypad_page(data, page, player_num, self.config.track_fouls_and_warnings),
             AppState::GameDetailsPage => build_game_info_page(
-                &self.snapshot,
+                data,
                 &self.config.game,
                 self.using_uwhportal,
-                self.schedule.as_ref().map(|s| &s.games),
-                teams,
-                self.config.mode,
-                clock_running,
+                self.schedule.as_ref().map(|s| &s.games)
             ),
-            AppState::WarningsSummaryPage =>
-                build_warnings_summary_page(&self.snapshot, self.config.mode, clock_running,),
+            AppState::WarningsSummaryPage => build_warnings_summary_page(data),
             AppState::EditGameConfig(page) => build_game_config_edit_page(
-                &self.snapshot,
+                data,
                 self.edited_settings.as_ref().unwrap(),
                 self.events.as_ref(),
                 page,
-                self.config.mode,
-                clock_running,
                 self.uwhportal_client.as_ref().map(|c| c.token_validity()),
                 self.touchscreen,
             ),
-            AppState::ParameterEditor(param, dur) => build_game_parameter_editor(
-                &self.snapshot,
-                param,
-                dur,
-                self.config.mode,
-                clock_running,
-            ),
+            AppState::ParameterEditor(param, dur) => build_game_parameter_editor(data, param, dur),
             AppState::ParameterList(param, index) => build_list_selector_page(
-                &self.snapshot,
+                data,
                 param,
                 index,
                 self.edited_settings.as_ref().unwrap(),
                 self.events.as_ref(),
-                teams,
-                self.config.mode,
-                clock_running,
             ),
             AppState::ConfirmationPage(ref kind) => {
-                build_confirmation_page(&self.snapshot, kind, self.config.mode, clock_running)
+                build_confirmation_page(data, kind)
             }
-            AppState::ConfirmScores(scores) => build_score_confirmation_page(
-                &self.snapshot,
-                scores,
-                self.config.mode,
-                clock_running,
-            ),
+            AppState::ConfirmScores(scores) => build_score_confirmation_page(data, scores),
         }]
         .spacing(SPACING)
         .padding(PADDING);

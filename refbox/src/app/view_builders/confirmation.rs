@@ -9,14 +9,17 @@ use iced::{
     widget::{column, container, horizontal_space, row, text, vertical_space},
 };
 
-use uwh_common::game_snapshot::GameSnapshot;
-
 pub(in super::super) fn build_confirmation_page<'a>(
-    snapshot: &GameSnapshot,
+    data: ViewData<'_, '_>,
     kind: &ConfirmationKind,
-    mode: Mode,
-    clock_running: bool,
 ) -> Element<'a, Message> {
+    let ViewData {
+        snapshot,
+        mode,
+        clock_running,
+        ..
+    } = data;
+
     let header_text = match kind {
         ConfirmationKind::GameConfigChanged(_) => {
             "The game configuration can not be changed while a game is in progress.\n\nWhat would you like to do?"
@@ -129,11 +132,16 @@ pub(in super::super) fn build_confirmation_page<'a>(
 }
 
 pub(in super::super) fn build_score_confirmation_page<'a>(
-    snapshot: &GameSnapshot,
+    data: ViewData<'_, '_>,
     scores: BlackWhiteBundle<u8>,
-    mode: Mode,
-    clock_running: bool,
 ) -> Element<'a, Message> {
+    let ViewData {
+        snapshot,
+        mode,
+        clock_running,
+        ..
+    } = data;
+
     let header = text(format!(
         "Is this score correct?\nConfirm with cheif referee.\n\nBlack: {}        White: {}\n",
         scores.black, scores.white

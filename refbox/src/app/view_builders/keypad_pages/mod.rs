@@ -1,12 +1,10 @@
 use super::{
-    super::Config,
     style::{
         Button, ButtonStyle, ContainerStyle, Element, LARGE_TEXT, LINE_HEIGHT, MEDIUM_TEXT,
         MIN_BUTTON_SIZE, PADDING, SPACING, SvgStyle,
     },
     *,
 };
-
 use iced::{
     Alignment, Length,
     alignment::{Horizontal, Vertical},
@@ -16,8 +14,6 @@ use iced::{
         text,
     },
 };
-
-use uwh_common::game_snapshot::GameSnapshot;
 
 mod score_add;
 use score_add::*;
@@ -38,12 +34,18 @@ mod warning_add;
 use warning_add::*;
 
 pub(in super::super) fn build_keypad_page<'a>(
-    snapshot: &GameSnapshot,
+    data: ViewData<'_, '_>,
     page: KeypadPage,
     player_num: u16,
-    config: &Config,
-    clock_running: bool,
+    track_fouls_and_warnings: bool,
 ) -> Element<'a, Message> {
+    let ViewData {
+        snapshot,
+        mode,
+        clock_running,
+        ..
+    } = data;
+
     let enabled = match page {
         KeypadPage::WarningAdd { team_warning, .. } => !team_warning,
         KeypadPage::FoulAdd { color, .. } => color.is_some(),
@@ -88,7 +90,7 @@ pub(in super::super) fn build_keypad_page<'a>(
     };
 
     column![
-        make_game_time_button(snapshot, false, false, config.mode, clock_running),
+        make_game_time_button(snapshot, false, false, mode, clock_running),
         row![
             container(
                 column![
@@ -198,7 +200,14 @@ pub(in super::super) fn build_keypad_page<'a>(
             match page {
                 KeypadPage::AddScore(color) => make_score_add_page(color),
                 KeypadPage::Penalty(origin, color, kind, foul) => {
-                    make_penalty_edit_page(origin, color, kind, config, foul)
+                    make_penalty_edit_page(
+                        origin,
+                        color,
+                        kind,
+                        mode,
+                        track_fouls_and_warnings,
+                        foul,
+                    )
                 }
                 KeypadPage::GameNumber => make_game_number_edit_page(),
                 KeypadPage::TeamTimeouts(dur, per_half) =>

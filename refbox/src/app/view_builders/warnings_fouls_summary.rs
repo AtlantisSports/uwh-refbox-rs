@@ -9,13 +9,16 @@ use iced::{
     widget::{column, container, row, text},
 };
 
-use uwh_common::game_snapshot::GameSnapshot;
-
 pub(in super::super) fn build_warnings_summary_page<'a>(
-    snapshot: &GameSnapshot,
-    mode: Mode,
-    clock_running: bool,
+    data: ViewData<'_, '_>,
 ) -> Element<'a, Message> {
+    let ViewData {
+        snapshot,
+        mode,
+        clock_running,
+        ..
+    } = data;
+
     let warnings_container = container(column![
         text("WARNINGS")
             .size(SMALL_PLUS_TEXT)

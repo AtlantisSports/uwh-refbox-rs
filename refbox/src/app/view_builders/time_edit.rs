@@ -8,15 +8,19 @@ use iced::{
     widget::{column, horizontal_space, row, text, vertical_space},
 };
 use std::time::Duration;
-use uwh_common::game_snapshot::GameSnapshot;
 
 pub(in super::super) fn build_time_edit_view<'a>(
-    snapshot: &GameSnapshot,
+    data: ViewData<'_, '_>,
     time: Duration,
     timeout_time: Option<Duration>,
-    mode: Mode,
-    clock_running: bool,
 ) -> Element<'a, Message> {
+    let ViewData {
+        snapshot,
+        mode,
+        clock_running,
+        ..
+    } = data;
+
     let mut edit_row = row![
         horizontal_space(Length::Fill),
         make_time_editor("GAME TIME", time, false),

@@ -1,5 +1,4 @@
 use super::{
-    super::Config,
     style::{
         ButtonStyle, Element, LARGE_TEXT, LINE_HEIGHT, MIN_BUTTON_SIZE, PADDING, SMALL_PLUS_TEXT,
         SMALL_TEXT, SPACING,
@@ -15,19 +14,24 @@ use uwh_common::{
     color::Color as GameColor,
     config::Game as GameConfig,
     game_snapshot::{GamePeriod, GameSnapshot, PenaltyTime},
-    uwhportal::schedule::{GameList, TeamId},
+    uwhportal::schedule::GameList,
 };
 
 pub(in super::super) fn build_main_view<'a>(
-    snapshot: &GameSnapshot,
+    data: ViewData<'_, '_>,
     game_config: &GameConfig,
     using_uwhportal: bool,
     games: Option<&GameList>,
-    teams: Option<&BTreeMap<TeamId, String>>,
-    config: &Config,
-    clock_running: bool,
+    track_fouls_and_warnings: bool,
 ) -> Element<'a, Message> {
-    let time_button = make_game_time_button(snapshot, true, false, config.mode, clock_running);
+    let ViewData {
+        snapshot,
+        mode,
+        clock_running,
+        teams,
+    } = data;
+
+    let time_button = make_game_time_button(snapshot, true, false, mode, clock_running);
 
     let mut center_col = column![time_button].spacing(SPACING).width(Length::Fill);
 
@@ -57,7 +61,7 @@ pub(in super::super) fn build_main_view<'a>(
     };
 
     if snapshot.timeout.is_some() {
-        if config.track_fouls_and_warnings {
+        if track_fouls_and_warnings {
             center_col =
                 center_col.push(row![make_foul_button(), make_warn_button()].spacing(SPACING));
         } else {
@@ -82,7 +86,7 @@ pub(in super::super) fn build_main_view<'a>(
                 ]
                 .spacing(SPACING);
 
-                if config.track_fouls_and_warnings {
+                if track_fouls_and_warnings {
                     start_warning_row = start_warning_row.push(make_warn_button())
                 }
 
@@ -93,7 +97,7 @@ pub(in super::super) fn build_main_view<'a>(
             | GamePeriod::OvertimeFirstHalf
             | GamePeriod::OvertimeSecondHalf
             | GamePeriod::SuddenDeath => {
-                if config.track_fouls_and_warnings {
+                if track_fouls_and_warnings {
                     center_col = center_col
                         .push(row![make_foul_button(), make_warn_button()].spacing(SPACING))
                 }
@@ -116,7 +120,7 @@ pub(in super::super) fn build_main_view<'a>(
                 using_uwhportal,
                 games,
                 teams,
-                config.track_fouls_and_warnings,
+                track_fouls_and_warnings,
             ))
             .size(SMALL_TEXT)
             .line_height(LINE_HEIGHT)
@@ -142,7 +146,7 @@ pub(in super::super) fn build_main_view<'a>(
         .on_press(Message::ShowGameDetails)
     });
 
-    if config.track_fouls_and_warnings {
+    if track_fouls_and_warnings {
         center_col = center_col.push(
             button(
                 column![

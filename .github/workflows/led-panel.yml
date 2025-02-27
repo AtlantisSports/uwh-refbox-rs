@@ -1,0 +1,44 @@
+name: LED Panel
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+  merge_group:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  check-test-vals:
+    name: Check that the test values are up to date
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - uses: Swatinem/rust-cache@v2
+    - name: Versions
+      run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version
+    - run: (cd led-panel-sim && cargo run) 
+    - run: git diff --exit-code
+
+  run-led-panel-tests:
+    name: Run LED Panel tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        packages: verilator
+        version: latest
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.13'
+        cache: 'pip' # caching pip dependencies
+    - run: pip install -r led-panel/requirements.txt
+    - name: Versions
+      run: fusesoc --version && verilator --version
+    - run: (cd led-panel && fusesoc run --target sim atlantis_sports:boards:led_panel)

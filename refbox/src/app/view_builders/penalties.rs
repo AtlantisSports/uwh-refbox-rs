@@ -13,15 +13,20 @@ use iced::{
     widget::{button, column, horizontal_space, row, text},
 };
 
-use uwh_common::{color::Color as GameColor, game_snapshot::GameSnapshot};
+use uwh_common::color::Color as GameColor;
 
 pub(in super::super) fn build_penalty_overview_page<'a>(
-    snapshot: &GameSnapshot,
+    data: ViewData<'_, '_>,
     penalties: BlackWhiteBundle<Vec<PrintablePenaltySummary>>,
     indices: BlackWhiteBundle<usize>,
-    mode: Mode,
-    clock_running: bool,
 ) -> Element<'a, Message> {
+    let ViewData {
+        snapshot,
+        mode,
+        clock_running,
+        ..
+    } = data;
+
     let default_pen_len = match mode {
         Mode::Hockey3V3 => PenaltyKind::ThirtySecond,
         Mode::Hockey6V6 => PenaltyKind::OneMinute,

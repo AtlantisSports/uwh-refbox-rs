@@ -9,7 +9,8 @@ pub(super) fn make_penalty_edit_page<'a>(
     origin: Option<(GameColor, usize)>,
     color: GameColor,
     kind: PenaltyKind,
-    config: &Config,
+    mode: Mode,
+    track_fouls_and_warnings: bool,
     infraction: Infraction,
 ) -> Element<'a, Message> {
     let (black_style, white_style) = match color {
@@ -17,7 +18,7 @@ pub(super) fn make_penalty_edit_page<'a>(
         GameColor::White => (ButtonStyle::Black, ButtonStyle::WhiteSelected),
     };
 
-    let (green, yellow, orange) = match config.mode {
+    let (green, yellow, orange) = match mode {
         Mode::Hockey6V6 => (
             PenaltyKind::OneMinute,
             PenaltyKind::TwoMinute,
@@ -136,7 +137,7 @@ pub(super) fn make_penalty_edit_page<'a>(
     ]
     .spacing(SPACING);
 
-    if config.track_fouls_and_warnings {
+    if track_fouls_and_warnings {
         content = content.push(make_penalty_dropdown(infraction, false));
     } else {
         content = content.push(vertical_space(Length::Fill));
@@ -160,7 +161,7 @@ pub(super) fn make_penalty_edit_page<'a>(
         .spacing(SPACING),
     );
 
-    if !config.track_fouls_and_warnings {
+    if !track_fouls_and_warnings {
         content = content.push(vertical_space(Length::Fill));
     }
 

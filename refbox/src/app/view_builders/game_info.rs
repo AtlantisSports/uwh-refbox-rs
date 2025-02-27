@@ -14,14 +14,18 @@ use uwh_common::{
 };
 
 pub(in super::super) fn build_game_info_page<'a>(
-    snapshot: &GameSnapshot,
+    data: ViewData<'_, '_>,
     config: &GameConfig,
     using_uwhportal: bool,
     games: Option<&GameList>,
-    teams: Option<&TeamList>,
-    mode: Mode,
-    clock_running: bool,
 ) -> Element<'a, Message> {
+    let ViewData {
+        snapshot,
+        mode,
+        clock_running,
+        teams,
+    } = data;
+
     let (left_details, right_details) =
         details_strings(snapshot, config, using_uwhportal, games, teams);
     column![

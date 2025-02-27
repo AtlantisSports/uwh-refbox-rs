@@ -9,15 +9,20 @@ use iced::{
     widget::{column, container, horizontal_space, row, text, vertical_space},
 };
 
-use uwh_common::{color::Color as GameColor, game_snapshot::GameSnapshot};
+use uwh_common::color::Color as GameColor;
 
 pub(in super::super) fn build_score_edit_view<'a>(
-    snapshot: &GameSnapshot,
+    data: ViewData<'_, '_>,
     scores: BlackWhiteBundle<u8>,
     is_confirmation: bool,
-    mode: Mode,
-    clock_running: bool,
 ) -> Element<'a, Message> {
+    let ViewData {
+        snapshot,
+        mode,
+        clock_running,
+        ..
+    } = data;
+
     let cancel_btn_msg = if is_confirmation {
         None
     } else {

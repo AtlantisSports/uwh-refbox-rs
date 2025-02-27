@@ -13,15 +13,20 @@ use iced::{
     widget::{button, column, horizontal_space, row, text},
 };
 
-use uwh_common::{color::Color as GameColor, game_snapshot::GameSnapshot};
+use uwh_common::color::Color as GameColor;
 
 pub(in super::super) fn build_warning_overview_page<'a>(
-    snapshot: &GameSnapshot,
+    data: ViewData<'_, '_>,
     warnings: BlackWhiteBundle<Vec<PrintableInfractionSummary>>,
     indices: BlackWhiteBundle<usize>,
-    mode: Mode,
-    clock_running: bool,
 ) -> Element<'a, Message> {
+    let ViewData {
+        snapshot,
+        mode,
+        clock_running,
+        ..
+    } = data;
+
     column![
         make_game_time_button(snapshot, false, false, mode, clock_running),
         row![

@@ -8,21 +8,23 @@ use iced::{
     alignment::{Horizontal, Vertical},
     widget::{button, column, horizontal_space, row, text, vertical_space},
 };
-use uwh_common::{game_snapshot::GameSnapshot, uwhportal::schedule::TeamId};
 
-#[expect(clippy::too_many_arguments)]
 pub(in super::super) fn build_list_selector_page<'a>(
-    snapshot: &GameSnapshot,
+    data: ViewData<'_, '_>,
     param: ListableParameter,
     index: usize,
     settings: &EditableSettings,
     events: Option<&BTreeMap<EventId, Event>>,
-    teams: Option<&BTreeMap<TeamId, String>>,
-    mode: Mode,
-    clock_running: bool,
 ) -> Element<'a, Message> {
     const LIST_LEN: usize = 4;
     const TEAM_NAME_LEN_LIMIT: usize = 15;
+
+    let ViewData {
+        snapshot,
+        mode,
+        clock_running,
+        teams,
+    } = data;
 
     let title = match param {
         ListableParameter::Event => "SELECT EVENT",

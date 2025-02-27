@@ -1,4 +1,5 @@
 use super::{
+    ViewData,
     message::*,
     shared_elements::*,
     style::{
@@ -117,17 +118,21 @@ impl Cyclable for Brightness {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(in super::super) fn build_game_config_edit_page<'a>(
-    snapshot: &GameSnapshot,
+    data: ViewData<'_, '_>,
     settings: &EditableSettings,
     events: Option<&BTreeMap<EventId, Event>>,
     page: ConfigPage,
-    mode: Mode,
-    clock_running: bool,
     uwhportal_token_valid: Option<(TokenValidity, Option<String>)>,
     touchscreen: bool,
 ) -> Element<'a, Message> {
+    let ViewData {
+        snapshot,
+        mode,
+        clock_running,
+        ..
+    } = data;
+
     match page {
         ConfigPage::Main => make_main_config_page(snapshot, settings, mode, clock_running),
         ConfigPage::Game => make_event_config_page(
@@ -994,12 +999,17 @@ fn make_credential_config_page<'a>(
 }
 
 pub(in super::super) fn build_game_parameter_editor<'a>(
-    snapshot: &GameSnapshot,
+    data: ViewData<'_, '_>,
     param: LengthParameter,
     length: Duration,
-    mode: Mode,
-    clock_running: bool,
 ) -> Element<'a, Message> {
+    let ViewData {
+        snapshot,
+        mode,
+        clock_running,
+        ..
+    } = data;
+
     let (title, hint) = match param {
         LengthParameter::Half => ("HALF LEN", "The length of a half during regular play"),
         LengthParameter::HalfTime => ("HALF TIME LEN", "The length of the Half Time period"),

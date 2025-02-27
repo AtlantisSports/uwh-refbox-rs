@@ -18,7 +18,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
-    - uses: Swatinem/rust-cache@v2.7.0
+    - uses: Swatinem/rust-cache@v2
     - name: Versions
       run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version
     - run: cargo fmt --all -- --check
@@ -33,7 +33,7 @@ jobs:
       with:
         packages: libssl-dev pkg-config libasound2-dev
         version: latest
-    - uses: Swatinem/rust-cache@v2.7.0
+    - uses: Swatinem/rust-cache@v2
     - name: Versions
       run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version
     - run: cargo clippy --all -- --deny=warnings
@@ -64,7 +64,7 @@ jobs:
       with:
         packages: libssl-dev pkg-config libasound2-dev
         version: latest
-    - uses: Swatinem/rust-cache@v2.7.0
+    - uses: Swatinem/rust-cache@v2
     - name: Versions
       run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version
     - run: cargo build --all
@@ -80,7 +80,7 @@ jobs:
       with:
         packages: libssl-dev pkg-config libasound2-dev
         version: latest
-    - uses: Swatinem/rust-cache@v2.7.0
+    - uses: Swatinem/rust-cache@v2
     - name: Versions
       run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version
     - run: cargo build --all --no-default-features
@@ -100,7 +100,7 @@ jobs:
       with:
         packages: libssl-dev pkg-config libasound2-dev
         version: latest
-    - uses: Swatinem/rust-cache@v2.7.0
+    - uses: Swatinem/rust-cache@v2
     - name: Versions
       run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version
     - run: cargo build --release --all
@@ -116,7 +116,7 @@ jobs:
       with:
         packages: libssl-dev pkg-config libasound2-dev
         version: latest
-    - uses: Swatinem/rust-cache@v2.7.0
+    - uses: Swatinem/rust-cache@v2
     - name: Versions
       run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version
     - run: cargo build --release --all --no-default-features

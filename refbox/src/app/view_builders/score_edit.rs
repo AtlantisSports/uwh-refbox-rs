@@ -4,9 +4,9 @@ use super::{
 };
 
 use iced::{
+    Alignment, Length,
     alignment::Horizontal,
     widget::{column, container, horizontal_space, row, text, vertical_space},
-    Alignment, Length,
 };
 
 use uwh_common::game_snapshot::{Color as GameColor, GameSnapshot};

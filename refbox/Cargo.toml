@@ -3,14 +3,13 @@ name = "refbox"
 version = "0.2.1"
 description = "UI for Atlantis Sports's Underwater Hockey Refbox"
 authors = ["Atlantis Sports <maintainers@atlantissports.org>"]
-edition = "2021"
+edition = "2024"
 
 [features]
 default = []
 debug = ["iced/debug"]
 
 [dependencies]
-array-concat = "0.5"
 arrayref = "0.3"
 collect_array = "0.1"
 clap = { version = "4", features = ["derive"] }

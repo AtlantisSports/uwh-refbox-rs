@@ -1,7 +1,7 @@
 use core::time::Duration;
-use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 use log::{info, warn};
-use reqwest::header::{HeaderValue, AUTHORIZATION};
+use reqwest::header::{AUTHORIZATION, HeaderValue};
 use reqwest::{Client, ClientBuilder, Method, RequestBuilder, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -94,7 +94,9 @@ impl UwhPortalClient {
     }
 
     /// Calling this with any token validity other than `LocallyChecked` is a no-op.
-    pub fn verify_token(&self) -> impl std::future::Future<Output = Result<(), Box<dyn Error>>> {
+    pub fn verify_token(
+        &self,
+    ) -> impl std::future::Future<Output = Result<(), Box<dyn Error>>> + use<> {
         let request = self.event.as_ref().map(|e| {
             let url = format!("{}/api/admin/events/{e}/access-keys/verify", self.base_url);
             authenticated_request(&self.client, Method::GET, &url, &self.access_token)
@@ -130,7 +132,7 @@ impl UwhPortalClient {
         tid: u32,
         gid: u32,
         stats_json: String,
-    ) -> impl std::future::Future<Output = Result<(), Box<dyn Error>>> {
+    ) -> impl std::future::Future<Output = Result<(), Box<dyn Error>>> + use<> {
         let url = format!(
             "{}/api/admin/events/stats?legacyEventId={}&gameNumber={}",
             self.base_url, tid, gid

@@ -4,9 +4,9 @@ use super::{
 };
 
 use iced::{
+    Alignment, Length,
     alignment::Horizontal,
     widget::{column, container, horizontal_space, row, text, vertical_space},
-    Alignment, Length,
 };
 
 use uwh_common::game_snapshot::GameSnapshot;
@@ -18,11 +18,17 @@ pub(in super::super) fn build_confirmation_page<'a>(
     clock_running: bool,
 ) -> Element<'a, Message> {
     let header_text = match kind {
-        ConfirmationKind::GameConfigChanged(_) => "The game configuration can not be changed while a game is in progress.\n\nWhat would you like to do?",
-        ConfirmationKind::GameNumberChanged => "How would you like to apply this game number change?",
+        ConfirmationKind::GameConfigChanged(_) => {
+            "The game configuration can not be changed while a game is in progress.\n\nWhat would you like to do?"
+        }
+        ConfirmationKind::GameNumberChanged => {
+            "How would you like to apply this game number change?"
+        }
         ConfirmationKind::Error(string) => string,
-        ConfirmationKind::UwhScoresIncomplete => "When UWHScores is enabled, all fields must be filled out."
-            };
+        ConfirmationKind::UwhScoresIncomplete => {
+            "When UWHScores is enabled, all fields must be filled out."
+        }
+    };
 
     let buttons = match kind {
         ConfirmationKind::GameConfigChanged(_) => vec![

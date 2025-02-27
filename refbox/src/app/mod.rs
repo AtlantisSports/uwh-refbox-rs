@@ -7,7 +7,7 @@ use crate::{
     sound_controller::*,
     tournament_manager::{penalty::*, *},
 };
-use iced::{executor, widget::column, Application, Command, Subscription};
+use iced::{Application, Command, Subscription, executor, widget::column};
 use iced_futures::{
     futures::stream::{self, BoxStream},
     subscription::{EventStream, Recipe},
@@ -26,7 +26,7 @@ use std::{
 use tokio::{
     sync::{mpsc, watch},
     task,
-    time::{sleep_until, timeout_at, Duration, Instant},
+    time::{Duration, Instant, sleep_until, timeout_at},
 };
 use tokio_serial::SerialPortBuilder;
 use uwh_common::{
@@ -321,7 +321,7 @@ impl RefBoxApp {
         );
     }
 
-    fn uwhscores_login(&self) -> Option<Pin<Box<impl std::future::Future<Output = ()>>>> {
+    fn uwhscores_login(&self) -> Option<Pin<Box<impl std::future::Future<Output = ()> + use<>>>> {
         if let Some(client) = &self.client {
             let client_ = client.clone();
             let login_request = client_
@@ -436,8 +436,10 @@ impl RefBoxApp {
                                 return;
                             }
                             StatusCode::UNAUTHORIZED => {
-                                error!("Got unauthorized status code from uwhscores when posting score: {}",
-                                    resp.status());
+                                error!(
+                                    "Got unauthorized status code from uwhscores when posting score: {}",
+                                    resp.status()
+                                );
                                 info!("Maybe retrying");
                                 if let Some(f) = login_request_2.take() {
                                     f.await;
@@ -447,7 +449,9 @@ impl RefBoxApp {
                                 {
                                     token.to_string()
                                 } else {
-                                    error!("Failed to get uwhscores token. Aborting post score: {post_data:?}");
+                                    error!(
+                                        "Failed to get uwhscores token. Aborting post score: {post_data:?}"
+                                    );
                                     return;
                                 };
                                 continue;
@@ -534,8 +538,10 @@ impl RefBoxApp {
                                 }
                             },
                             StatusCode::UNAUTHORIZED => {
-                                error!("Got unauthorized status code from uwhscores when requesting uwhscores auth: {}",
-                                    resp.status());
+                                error!(
+                                    "Got unauthorized status code from uwhscores when requesting uwhscores auth: {}",
+                                    resp.status()
+                                );
                                 info!("Maybe retrying");
                                 if let Some(f) = login_request_2.take() {
                                     f.await;
@@ -545,7 +551,9 @@ impl RefBoxApp {
                                 {
                                     token.to_string()
                                 } else {
-                                    error!("Failed to get uwhscores token. Aborting uwhscores auth check");
+                                    error!(
+                                        "Failed to get uwhscores token. Aborting uwhscores auth check"
+                                    );
                                     msg_tx_.send(Message::UwhScoresAuthChecked(vec![])).unwrap();
                                     return;
                                 };
@@ -602,7 +610,7 @@ impl RefBoxApp {
 
     fn handle_game_start(&mut self, new_game_num: u32) {
         if self.using_uwhscores {
-            if let (Some(ref games), Some(ref pool)) = (&self.games, &self.current_pool) {
+            if let (Some(games), Some(pool)) = (&self.games, &self.current_pool) {
                 let this_game_start = match games.get(&new_game_num) {
                     Some(g) => g.start_time,
                     None => {
@@ -1107,11 +1115,15 @@ impl Application for RefBoxApp {
                     self.app_state = AppState::MainPage;
                 } else if let Err(e) = self.pen_edit.apply_changes(Instant::now()) {
                     let err_string = match e {
-                        PenaltyEditorError::ListTooLong(colors) => format!("The {colors} penalty list(s) \
-                            is/are too long. Some penalties will not be visible on the main page."),
-                        e => format!("An error occurred while applying the changes to the penalties. \
+                        PenaltyEditorError::ListTooLong(colors) => format!(
+                            "The {colors} penalty list(s) \
+                            is/are too long. Some penalties will not be visible on the main page."
+                        ),
+                        e => format!(
+                            "An error occurred while applying the changes to the penalties. \
                             Some of the changes may have been applied. Please retry any remaining changes.\n\n\
-                            Error Message:\n{e}"),
+                            Error Message:\n{e}"
+                        ),
                     };
                     error!("{err_string}");
                     self.pen_edit.abort_session();
@@ -1134,9 +1146,11 @@ impl Application for RefBoxApp {
                     self.warn_edit.abort_session();
                     self.app_state = AppState::WarningsSummaryPage;
                 } else if let Err(e) = self.warn_edit.apply_changes(Instant::now()) {
-                    let err_string = format!("An error occurred while applying the changes to the warnings. \
+                    let err_string = format!(
+                        "An error occurred while applying the changes to the warnings. \
                     Some of the changes may have been applied. Please retry any remaining changes.\n\n\
-                    Error Message:\n{e}");
+                    Error Message:\n{e}"
+                    );
                     error!("{err_string}");
                     self.warn_edit.abort_session();
                     self.app_state =
@@ -1158,9 +1172,11 @@ impl Application for RefBoxApp {
                     self.foul_edit.abort_session();
                     self.app_state = AppState::WarningsSummaryPage;
                 } else if let Err(e) = self.foul_edit.apply_changes(Instant::now()) {
-                    let err_string = format!("An error occurred while applying the changes to the fouls. \
+                    let err_string = format!(
+                        "An error occurred while applying the changes to the fouls. \
                     Some of the changes may have been applied. Please retry any remaining changes.\n\n\
-                    Error Message:\n{e}");
+                    Error Message:\n{e}"
+                    );
                     error!("{err_string}");
                     self.foul_edit.abort_session();
                     self.app_state =

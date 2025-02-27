@@ -1,20 +1,20 @@
 use super::{
     super::Config,
     style::{
-        Button, ButtonStyle, ContainerStyle, Element, SvgStyle, LARGE_TEXT, LINE_HEIGHT,
-        MEDIUM_TEXT, MIN_BUTTON_SIZE, PADDING, SPACING,
+        Button, ButtonStyle, ContainerStyle, Element, LARGE_TEXT, LINE_HEIGHT, MEDIUM_TEXT,
+        MIN_BUTTON_SIZE, PADDING, SPACING, SvgStyle,
     },
     *,
 };
 
 use iced::{
+    Alignment, Length,
     alignment::{Horizontal, Vertical},
     widget::{
         button, column, container, row,
         svg::{self, Svg},
         text,
     },
-    Alignment, Length,
 };
 
 use uwh_common::game_snapshot::GameSnapshot;

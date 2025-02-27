@@ -4,9 +4,9 @@ use super::{
 };
 use collect_array::CollectArrayResult;
 use iced::{
+    Length,
     alignment::{Horizontal, Vertical},
     widget::{button, column, horizontal_space, row, text, vertical_space},
-    Length,
 };
 
 use uwh_common::game_snapshot::GameSnapshot;

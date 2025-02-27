@@ -1,7 +1,7 @@
-use super::{draw_texture_both, fit_text, Interpolate, Justify, PageRenderer};
+use super::{Interpolate, Justify, PageRenderer, draw_texture_both, fit_text};
 use crate::{
-    pages::{draw_text_both, draw_text_both_ex, draw_texture_both_ex},
     State,
+    pages::{draw_text_both, draw_text_both_ex, draw_texture_both_ex},
 };
 use coarsetime::Instant;
 use macroquad::prelude::*;

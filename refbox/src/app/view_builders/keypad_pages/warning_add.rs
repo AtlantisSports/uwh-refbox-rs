@@ -1,7 +1,7 @@
 use super::{style::Element, *};
 use iced::{
-    widget::{column, row, vertical_space},
     Length,
+    widget::{column, row, vertical_space},
 };
 
 use uwh_common::game_snapshot::Color as GameColor;
@@ -24,14 +24,16 @@ pub(super) fn make_warning_add_page<'a>(
         ButtonStyle::Blue
     };
 
-    let mut exit_row = row![make_button("CANCEL")
-        .style(ButtonStyle::Red)
-        .width(Length::Fill)
-        .on_press(Message::WarningEditComplete {
-            canceled: true,
-            deleted: false,
-            ret_to_overview
-        }),]
+    let mut exit_row = row![
+        make_button("CANCEL")
+            .style(ButtonStyle::Red)
+            .width(Length::Fill)
+            .on_press(Message::WarningEditComplete {
+                canceled: true,
+                deleted: false,
+                ret_to_overview
+            }),
+    ]
     .spacing(SPACING);
 
     if origin.is_some() {

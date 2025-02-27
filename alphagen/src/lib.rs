@@ -1,4 +1,4 @@
-use image::{io::Reader, GenericImageView, ImageBuffer, ImageFormat, LumaA, Rgba};
+use image::{GenericImageView, ImageBuffer, ImageFormat, LumaA, Rgba, io::Reader};
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use std::{
     fs,

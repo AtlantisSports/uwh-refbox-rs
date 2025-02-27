@@ -1,7 +1,7 @@
 use super::{style::Element, *};
 use iced::{
-    widget::{column, row, vertical_space},
     Length,
+    widget::{column, row, vertical_space},
 };
 use uwh_common::game_snapshot::Color as GameColor;
 
@@ -74,13 +74,15 @@ pub(super) fn make_penalty_edit_page<'a>(
         )
     };
 
-    let mut exit_row = row![make_smaller_button("CANCEL")
-        .style(ButtonStyle::Red)
-        .width(Length::Fill)
-        .on_press(Message::PenaltyEditComplete {
-            canceled: true,
-            deleted: false,
-        }),]
+    let mut exit_row = row![
+        make_smaller_button("CANCEL")
+            .style(ButtonStyle::Red)
+            .width(Length::Fill)
+            .on_press(Message::PenaltyEditComplete {
+                canceled: true,
+                deleted: false,
+            }),
+    ]
     .spacing(SPACING);
 
     if origin.is_some() {
@@ -121,15 +123,17 @@ pub(super) fn make_penalty_edit_page<'a>(
     let yellow_label = labels[1];
     let orange_label = labels[2];
 
-    let mut content = column![row![
-        make_smaller_button("BLACK")
-            .style(black_style)
-            .on_press(Message::ChangeColor(Some(GameColor::Black))),
-        make_smaller_button("WHITE")
-            .style(white_style)
-            .on_press(Message::ChangeColor(Some(GameColor::White))),
+    let mut content = column![
+        row![
+            make_smaller_button("BLACK")
+                .style(black_style)
+                .on_press(Message::ChangeColor(Some(GameColor::Black))),
+            make_smaller_button("WHITE")
+                .style(white_style)
+                .on_press(Message::ChangeColor(Some(GameColor::White))),
+        ]
+        .spacing(SPACING)
     ]
-    .spacing(SPACING)]
     .spacing(SPACING);
 
     if config.track_fouls_and_warnings {

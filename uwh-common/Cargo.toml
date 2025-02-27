@@ -2,7 +2,7 @@
 name = "uwh-common"
 version = "0.2.1"
 authors = ["Atlantis Sports <maintainers@atlantissports.org>"]
-edition = "2021"
+edition = "2024"
 
 [features]
 default = ["std"]

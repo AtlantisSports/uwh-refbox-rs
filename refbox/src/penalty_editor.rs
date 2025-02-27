@@ -1,7 +1,7 @@
 use crate::tournament_manager::{
+    BlackWhiteBundle, OptColorBundle, TournamentManager, TournamentManagerError,
     infraction::InfractionDetails,
     penalty::{Penalty, PenaltyKind},
-    BlackWhiteBundle, OptColorBundle, TournamentManager, TournamentManagerError,
 };
 use std::{
     fmt::Debug,

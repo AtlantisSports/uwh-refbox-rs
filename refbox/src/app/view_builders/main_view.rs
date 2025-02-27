@@ -8,9 +8,9 @@ use super::{
 };
 
 use iced::{
+    Alignment, Length,
     alignment::{Horizontal, Vertical},
     widget::{button, column, horizontal_space, row, text},
-    Alignment, Length,
 };
 use uwh_common::{
     config::Game as GameConfig,
@@ -77,10 +77,12 @@ pub(in super::super) fn build_main_view<'a>(
                 | GamePeriod::PreOvertime
                 | GamePeriod::OvertimeHalfTime
                 | GamePeriod::PreSuddenDeath => {
-                    let mut start_warning_row = row![make_button("START NOW")
-                        .style(ButtonStyle::Green)
-                        .width(Length::Fill)
-                        .on_press(Message::StartPlayNow)]
+                    let mut start_warning_row = row![
+                        make_button("START NOW")
+                            .style(ButtonStyle::Green)
+                            .width(Length::Fill)
+                            .on_press(Message::StartPlayNow)
+                    ]
                     .spacing(SPACING);
 
                     if config.track_fouls_and_warnings {

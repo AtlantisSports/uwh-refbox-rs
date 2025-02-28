@@ -13,11 +13,12 @@ use iced::{
     Alignment, Length,
     alignment::{Horizontal, Vertical},
     widget::{
-        button, column, container, horizontal_space, row,
+        Image, button, column, container, horizontal_space, image, row,
         svg::{self, Svg},
         text, vertical_space,
     },
 };
+
 use matrix_drawing::{secs_to_long_time_string, secs_to_time_string};
 use std::{
     borrow::Cow,
@@ -896,12 +897,12 @@ pub(super) fn make_penalty_dropdown<'a>(
     display_infraction_name: bool,
 ) -> Element<'a, Message> {
     const ROW_LEN: usize = 6;
-
     let foul_buttons = all::<Infraction>().map(|button_infraction| {
         button(
             container(
-                Svg::new(svg::Handle::from_memory(button_infraction.svg_fouls()))
-                    .style(SvgStyle::Black),
+                Image::new(image::Handle::from_memory(button_infraction.get_image()))
+                    .width(Length::Fill)
+                    .height(Length::Fixed(MIN_BUTTON_SIZE)),
             )
             .style(ContainerStyle::Transparent),
         )

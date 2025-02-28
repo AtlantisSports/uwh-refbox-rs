@@ -965,15 +965,24 @@ impl Application for RefBoxApp {
             Message::AddNewScore(color) => {
                 if self.config.collect_scorer_cap_num {
                     self.app_state = AppState::KeypadPage(KeypadPage::AddScore(color), 0);
-                    trace!("AppState changed to {:?}", self.app_state);
                 } else {
                     let mut tm = self.tm.lock().unwrap();
                     let now = Instant::now();
-                    tm.add_score(color, 0, now);
-                    let snapshot = tm.generate_snapshot(now).unwrap(); // TODO: Remove this unwrap
-                    std::mem::drop(tm);
-                    self.apply_snapshot(snapshot);
+                    if tm.current_period() == GamePeriod::SuddenDeath {
+                        tm.stop_clock(now).unwrap();
+                        let mut scores = tm.get_scores();
+                        scores[color] = scores[color].saturating_add(1);
+
+                        self.app_state = AppState::ConfirmScores(scores);
+                    } else {
+                        tm.add_score(color, 0, now);
+                        let snapshot = tm.generate_snapshot(now).unwrap(); // TODO: Remove this unwrap
+                        std::mem::drop(tm);
+                        self.apply_snapshot(snapshot);
+                        self.app_state = AppState::MainPage;
+                    }
                 }
+                trace!("AppState changed to {:?}", self.app_state);
             }
 
             Message::ChangeScore { color, increase } => {

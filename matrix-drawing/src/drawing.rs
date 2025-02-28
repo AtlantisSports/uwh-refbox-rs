@@ -23,6 +23,7 @@ pub fn draw_panels<D: DrawTarget<Color = Rgb888>>(
     state: GameSnapshotNoHeap,
     white_on_right: bool,
     flash: bool,
+    beep_test: bool,
 ) -> Result<(), D::Error> {
     const RED: Rgb888 = Rgb888::RED;
     const YELLOW: Rgb888 = Rgb888::YELLOW;
@@ -91,17 +92,21 @@ pub fn draw_panels<D: DrawTarget<Color = Rgb888>>(
             )
             .draw(display)?;
 
-            let text = match state.current_period {
-                GamePeriod::BetweenGames => "NEXT GAME IN",
-                GamePeriod::FirstHalf => "1ST HALF",
-                GamePeriod::HalfTime => "HALF TIME",
-                GamePeriod::SecondHalf => "2ND HALF",
-                GamePeriod::PreOvertime => "PRE-OVERTIME",
-                GamePeriod::OvertimeFirstHalf => "O/T 1ST HALF",
-                GamePeriod::OvertimeHalfTime => "O/T HALF TIME",
-                GamePeriod::OvertimeSecondHalf => "O/T 2ND HALF",
-                GamePeriod::PreSuddenDeath => "PRE-SUDDEN DEATH",
-                GamePeriod::SuddenDeath => "SUDDEN DEATH",
+            let text = if beep_test {
+                "BEEP TEST"
+            } else {
+                match state.current_period {
+                    GamePeriod::BetweenGames => "NEXT GAME IN",
+                    GamePeriod::FirstHalf => "1ST HALF",
+                    GamePeriod::HalfTime => "HALF TIME",
+                    GamePeriod::SecondHalf => "2ND HALF",
+                    GamePeriod::PreOvertime => "PRE-OVERTIME",
+                    GamePeriod::OvertimeFirstHalf => "O/T 1ST HALF",
+                    GamePeriod::OvertimeHalfTime => "O/T HALF TIME",
+                    GamePeriod::OvertimeSecondHalf => "O/T 2ND HALF",
+                    GamePeriod::PreSuddenDeath => "PRE-SUDDEN DEATH",
+                    GamePeriod::SuddenDeath => "SUDDEN DEATH",
+                }
             };
 
             Text::with_text_style(
@@ -242,67 +247,71 @@ pub fn draw_panels<D: DrawTarget<Color = Rgb888>>(
         right_color = BLUE;
     }
 
-    // Score on Left Score Panel
-    let mut left_score_string = ArrayString::<2>::new();
-    write!(&mut left_score_string, "{}", left_score).unwrap();
-    if left_penalties.is_empty() {
-        Text::with_text_style(
-            &left_score_string,
-            Point::new(31, 2),
-            MonoTextStyle::new(&FONT_28X64, left_color),
-            CENTERED,
-        )
-        .draw(display)?;
-    } else if left_score < 10 {
-        // Full Size Left Score, Single Digit - Justified Right/Inside/Towards Time Panels
-        Text::with_text_style(
-            &left_score_string,
-            Point::new(61, 2),
-            MonoTextStyle::new(&FONT_28X64, left_color),
-            RIGHT_ALGN,
-        )
-        .draw(display)?;
-    } else {
-        // 3/4 Size Left Score (Double Digit - Centered on Score Panel)
-        Text::with_text_style(
-            &left_score_string,
-            Point::new(31, 2),
-            MonoTextStyle::new(&FONT_20X46, left_color),
-            CENTERED,
-        )
-        .draw(display)?;
-    };
+    if !beep_test || !white_on_right {
+        // Score on Left Score Panel
+        let mut left_score_string = ArrayString::<2>::new();
+        write!(&mut left_score_string, "{}", left_score).unwrap();
+        if left_penalties.is_empty() {
+            Text::with_text_style(
+                &left_score_string,
+                Point::new(31, 2),
+                MonoTextStyle::new(&FONT_28X64, left_color),
+                CENTERED,
+            )
+            .draw(display)?;
+        } else if left_score < 10 {
+            // Full Size Left Score, Single Digit - Justified Right/Inside/Towards Time Panels
+            Text::with_text_style(
+                &left_score_string,
+                Point::new(61, 2),
+                MonoTextStyle::new(&FONT_28X64, left_color),
+                RIGHT_ALGN,
+            )
+            .draw(display)?;
+        } else {
+            // 3/4 Size Left Score (Double Digit - Centered on Score Panel)
+            Text::with_text_style(
+                &left_score_string,
+                Point::new(31, 2),
+                MonoTextStyle::new(&FONT_20X46, left_color),
+                CENTERED,
+            )
+            .draw(display)?;
+        };
+    }
 
-    // Score on Right Score Panel
-    let mut right_score_string = ArrayString::<2>::new();
-    write!(&mut right_score_string, "{}", right_score).unwrap();
-    if right_penalties.is_empty() {
-        Text::with_text_style(
-            &right_score_string,
-            Point::new(223, 2),
-            MonoTextStyle::new(&FONT_28X64, right_color),
-            CENTERED,
-        )
-        .draw(display)?;
-    } else if right_score < 10 {
-        // Full Size Right Score, Single Digit - Justified Left/Inside/Towards Time Panels
-        Text::with_text_style(
-            &right_score_string,
-            Point::new(194, 2),
-            MonoTextStyle::new(&FONT_28X64, right_color),
-            LEFT_ALGN,
-        )
-        .draw(display)?;
-    } else {
-        // 3/4 Size Right Score (Double Digit - Centered on Score Panel)
-        Text::with_text_style(
-            &right_score_string,
-            Point::new(223, 2),
-            MonoTextStyle::new(&FONT_20X46, right_color),
-            CENTERED,
-        )
-        .draw(display)?;
-    };
+    if !beep_test || white_on_right {
+        // Score on Right Score Panel
+        let mut right_score_string = ArrayString::<2>::new();
+        write!(&mut right_score_string, "{}", right_score).unwrap();
+        if right_penalties.is_empty() {
+            Text::with_text_style(
+                &right_score_string,
+                Point::new(223, 2),
+                MonoTextStyle::new(&FONT_28X64, right_color),
+                CENTERED,
+            )
+            .draw(display)?;
+        } else if right_score < 10 {
+            // Full Size Right Score, Single Digit - Justified Left/Inside/Towards Time Panels
+            Text::with_text_style(
+                &right_score_string,
+                Point::new(194, 2),
+                MonoTextStyle::new(&FONT_28X64, right_color),
+                LEFT_ALGN,
+            )
+            .draw(display)?;
+        } else {
+            // 3/4 Size Right Score (Double Digit - Centered on Score Panel)
+            Text::with_text_style(
+                &right_score_string,
+                Point::new(223, 2),
+                MonoTextStyle::new(&FONT_20X46, right_color),
+                CENTERED,
+            )
+            .draw(display)?;
+        };
+    }
 
     // Define layout for Penalties
     let mut draw_penalty =

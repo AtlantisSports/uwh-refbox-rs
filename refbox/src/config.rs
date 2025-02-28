@@ -70,7 +70,7 @@ impl UwhScores {
             mut url,
             mut email,
             mut password,
-            timezone,
+            timezone: _,
         } = Default::default();
 
         get_string_value(old, "url", &mut url);
@@ -81,7 +81,7 @@ impl UwhScores {
             url,
             email,
             password,
-            timezone,
+            timezone: UtcOffset::UTC,
         }
     }
 }

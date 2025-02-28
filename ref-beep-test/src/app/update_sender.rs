@@ -1,3 +1,4 @@
+use super::super::snapshot::BeepTestSnapshot;
 use futures_lite::future::FutureExt;
 use log::*;
 use matrix_drawing::transmitted_data::TransmittedData;
@@ -19,7 +20,7 @@ use tokio::{
     time::{Duration, Instant, sleep_until, timeout},
 };
 use tokio_serial::{SerialPortBuilder, SerialPortBuilderExt, SerialStream};
-use uwh_common::game_snapshot::{EncodingError, GamePeriod, GameSnapshot, GameSnapshotNoHeap};
+use uwh_common::game_snapshot::{EncodingError, GameSnapshotNoHeap};
 
 const TIMEOUT: Duration = Duration::from_millis(500);
 const SERIAL_SEND_SPACING: Duration = Duration::from_millis(100);
@@ -35,12 +36,7 @@ pub struct UpdateSender {
 }
 
 impl UpdateSender {
-    pub fn new(
-        initial: Vec<SerialPortBuilder>,
-        binary_port: u16,
-        json_port: u16,
-        hide_time: bool,
-    ) -> Self {
+    pub fn new(initial: Vec<SerialPortBuilder>, binary_port: u16, json_port: u16) -> Self {
         let (tx, rx) = mpsc::channel(8);
 
         let initial = initial
@@ -48,7 +44,7 @@ impl UpdateSender {
             .map(|builder| builder.open_native_async().unwrap())
             .collect();
 
-        let server_join = task::spawn(Server::new(rx, initial, hide_time).run_loop());
+        let server_join = task::spawn(Server::new(rx, initial).run_loop());
 
         let listener_join = task::spawn(listener_loop(tx.clone(), binary_port, json_port));
 
@@ -61,19 +57,15 @@ impl UpdateSender {
 
     pub fn send_snapshot(
         &self,
-        snapshot: GameSnapshot,
-        white_on_right: bool,
-    ) -> Result<(), TrySendError<Box<GameSnapshot>>> {
+        snapshot: BeepTestSnapshot,
+    ) -> Result<(), TrySendError<Box<BeepTestSnapshot>>> {
         self.tx
-            .try_send(ServerMessage::NewSnapshot(
-                Box::new(snapshot),
-                white_on_right,
-            ))
+            .try_send(ServerMessage::NewSnapshot(Box::new(snapshot)))
             .map_err(|e| match e {
-                TrySendError::Full(ServerMessage::NewSnapshot(snapshot, _)) => {
+                TrySendError::Full(ServerMessage::NewSnapshot(snapshot)) => {
                     TrySendError::Full(snapshot)
                 }
-                TrySendError::Closed(ServerMessage::NewSnapshot(snapshot, _)) => {
+                TrySendError::Closed(ServerMessage::NewSnapshot(snapshot)) => {
                     TrySendError::Closed(snapshot)
                 }
                 _ => unreachable!(),
@@ -85,20 +77,6 @@ impl UpdateSender {
     ) -> impl Send + Fn() -> Result<(), TrySendError<ServerMessage>> + use<> {
         let tx = self.tx.clone();
         move || tx.try_send(ServerMessage::TriggerFlash)
-    }
-
-    pub fn set_hide_time(&self, hide_time: bool) -> Result<(), TrySendError<bool>> {
-        self.tx
-            .try_send(ServerMessage::SetHideTime(hide_time))
-            .map_err(|e| match e {
-                TrySendError::Full(ServerMessage::SetHideTime(hide_time)) => {
-                    TrySendError::Full(hide_time)
-                }
-                TrySendError::Closed(ServerMessage::SetHideTime(hide_time)) => {
-                    TrySendError::Closed(hide_time)
-                }
-                _ => unreachable!(),
-            })
     }
 }
 
@@ -164,7 +142,7 @@ async fn serial_worker_loop(
     let mut data = TransmittedData {
         snapshot,
         flash: false,
-        beep_test: false,
+        beep_test: true,
         white_on_right,
     };
     let mut bytes = data.encode()?;
@@ -295,10 +273,9 @@ fn error_formatter<T: Debug>(old: TrySendError<T>) -> TrySendError<String> {
 #[derive(Debug)]
 pub enum ServerMessage {
     NewConnection(SendType, TcpStream),
-    NewSnapshot(Box<GameSnapshot>, bool),
+    NewSnapshot(Box<BeepTestSnapshot>),
     TriggerFlash,
     Stop,
-    SetHideTime(bool),
 }
 
 #[derive(Debug)]
@@ -313,15 +290,10 @@ struct Server {
     flash: bool,
     binary: Vec<u8>,
     json: Vec<u8>,
-    hide_time: bool,
 }
 
 impl Server {
-    pub fn new(
-        rx: mpsc::Receiver<ServerMessage>,
-        initial: Vec<SerialStream>,
-        hide_time: bool,
-    ) -> Self {
+    pub fn new(rx: mpsc::Receiver<ServerMessage>, initial: Vec<SerialStream>) -> Self {
         let mut server = Server {
             next_id: 0,
             senders: HashMap::new(),
@@ -333,7 +305,6 @@ impl Server {
             flash: false,
             binary: Vec::new(),
             json: Vec::new(),
-            hide_time,
         };
 
         for stream in initial {
@@ -382,39 +353,14 @@ impl Server {
         self.has_json = self.senders.iter().any(|(_, handle)| handle.is_json());
     }
 
-    fn encode(&mut self, new_snapshot: GameSnapshot) {
+    fn encode(&mut self, new_snapshot: BeepTestSnapshot) {
         self.json = if self.has_json {
             (serde_json::to_string(&new_snapshot).unwrap() + "\n").into_bytes()
         } else {
             Vec::new()
         };
 
-        let next_time = new_snapshot.next_period_len_secs.unwrap_or(0) as u16;
-
         self.snapshot = new_snapshot.into();
-
-        if self.hide_time {
-            match self.snapshot.current_period {
-                GamePeriod::BetweenGames
-                | GamePeriod::HalfTime
-                | GamePeriod::OvertimeHalfTime
-                | GamePeriod::PreOvertime => {
-                    if self.snapshot.secs_in_period < 15 {
-                        self.snapshot.secs_in_period = next_time;
-                    };
-                }
-                GamePeriod::PreSuddenDeath => {
-                    if self.snapshot.secs_in_period < 15 {
-                        self.snapshot.secs_in_period = 0;
-                    }
-                }
-                GamePeriod::FirstHalf
-                | GamePeriod::OvertimeFirstHalf
-                | GamePeriod::OvertimeSecondHalf
-                | GamePeriod::SecondHalf
-                | GamePeriod::SuddenDeath => {}
-            }
-        }
 
         self.encode_flash();
     }
@@ -425,7 +371,7 @@ impl Server {
                 TransmittedData {
                     white_on_right: self.white_on_right,
                     flash: self.flash,
-                    beep_test: false,
+                    beep_test: true,
                     snapshot: self.snapshot.clone(),
                 }
                 .encode()
@@ -486,8 +432,7 @@ impl Server {
                             self.add_sender(send_type, stream);
                             self.check_types();
                         }
-                        Some(ServerMessage::NewSnapshot(snapshot, white_on_right)) => {
-                            self.white_on_right = white_on_right;
+                        Some(ServerMessage::NewSnapshot(snapshot)) => {
                             self.encode(*snapshot);
                             self.send_to_workers(false);
                         }
@@ -506,9 +451,6 @@ impl Server {
                         }
                         Some(ServerMessage::Stop) => {
                             break;
-                        }
-                        Some(ServerMessage::SetHideTime(hide_time)) => {
-                            self.hide_time = hide_time
                         }
                         None => {
                             break;
@@ -622,13 +564,12 @@ impl Future for FlashEnd {
 
 #[cfg(test)]
 mod test {
+    use crate::snapshot::BeepTestPeriod;
+
     use super::*;
     use more_asserts::*;
     use std::io::ErrorKind;
     use tokio::io::AsyncReadExt;
-    use uwh_common::game_snapshot::{
-        GamePeriod, Infraction, InfractionSnapshot, PenaltySnapshot, PenaltyTime, TimeoutSnapshot,
-    };
 
     const BINARY_PORT: u16 = 12345;
     const JSON_PORT: u16 = 12346;
@@ -636,7 +577,7 @@ mod test {
 
     #[tokio::test]
     async fn test_update_sender() {
-        let update_sender = UpdateSender::new(vec![], BINARY_PORT, JSON_PORT, false);
+        let update_sender = UpdateSender::new(vec![], BINARY_PORT, JSON_PORT);
 
         let mut binary_conn;
         let mut fail_count = 0;
@@ -697,93 +638,14 @@ mod test {
 
         let white_on_right = false;
         let flash = false;
-        let beep_test = false;
-        let snapshot = GameSnapshot {
-            current_period: GamePeriod::FirstHalf,
+        let beep_test = true;
+        let snapshot = BeepTestSnapshot {
+            current_period: BeepTestPeriod::Level(0),
             secs_in_period: 897,
-            timeout: TimeoutSnapshot::None,
-            b_score: 2,
-            w_score: 3,
-            b_penalties: vec![
-                PenaltySnapshot {
-                    time: PenaltyTime::Seconds(57),
-                    player_number: 3,
-                    infraction: Infraction::Unknown,
-                },
-                PenaltySnapshot {
-                    time: PenaltyTime::Seconds(117),
-                    player_number: 6,
-                    infraction: Infraction::DelayOfGame,
-                },
-            ],
-            w_penalties: vec![
-                PenaltySnapshot {
-                    time: PenaltyTime::Seconds(297),
-                    player_number: 12,
-                    infraction: Infraction::FalseStart,
-                },
-                PenaltySnapshot {
-                    time: PenaltyTime::TotalDismissal,
-                    player_number: 15,
-                    infraction: Infraction::FreeArm,
-                },
-            ],
-            b_warnings: vec![
-                InfractionSnapshot {
-                    infraction: Infraction::Obstruction,
-                    player_number: Some(3),
-                },
-                InfractionSnapshot {
-                    infraction: Infraction::OutOfBounds,
-                    player_number: Some(6),
-                },
-            ],
-            w_warnings: vec![
-                InfractionSnapshot {
-                    infraction: Infraction::DelayOfGame,
-                    player_number: Some(12),
-                },
-                InfractionSnapshot {
-                    infraction: Infraction::StickInfringement,
-                    player_number: None,
-                },
-            ],
-            b_fouls: vec![
-                InfractionSnapshot {
-                    infraction: Infraction::Obstruction,
-                    player_number: Some(3),
-                },
-                InfractionSnapshot {
-                    infraction: Infraction::OutOfBounds,
-                    player_number: Some(6),
-                },
-            ],
-            w_fouls: vec![
-                InfractionSnapshot {
-                    infraction: Infraction::DelayOfGame,
-                    player_number: Some(12),
-                },
-                InfractionSnapshot {
-                    infraction: Infraction::StickInfringement,
-                    player_number: None,
-                },
-            ],
-            equal_fouls: vec![
-                InfractionSnapshot {
-                    infraction: Infraction::DelayOfGame,
-                    player_number: None,
-                },
-                InfractionSnapshot {
-                    infraction: Infraction::StickInfringement,
-                    player_number: None,
-                },
-            ],
-            is_old_game: true,
-            game_number: 26,
-            next_game_number: 28,
-            tournament_id: 1,
-            recent_goal: None,
-            next_period_len_secs: Some(180),
+            next_period_len_secs: 180,
+            lap_count: 12,
+            total_time_in_period: 20,
+            time_in_next_period: 18,
         };
 
         let json_expected = serde_json::to_string(&snapshot).unwrap().into_bytes();
@@ -799,9 +661,7 @@ mod test {
             .unwrap(),
         );
 
-        update_sender
-            .send_snapshot(snapshot, white_on_right)
-            .unwrap();
+        update_sender.send_snapshot(snapshot).unwrap();
 
         let expected_binary_bytes = binary_expected.len();
         let mut binary_result = vec![0u8; expected_binary_bytes];

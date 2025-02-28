@@ -448,6 +448,49 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
+name = "beep-test"
+version = "0.2.1"
+dependencies = [
+ "arrayref",
+ "clap",
+ "collect_array",
+ "confy",
+ "conquer-once",
+ "derivative",
+ "directories",
+ "embedded-graphics",
+ "enum-derive-2018",
+ "enum-iterator",
+ "env_logger 0.11.6",
+ "futures-lite",
+ "iced",
+ "iced_core",
+ "iced_futures",
+ "iced_renderer",
+ "iced_runtime",
+ "log",
+ "log-panics",
+ "log4rs",
+ "macro-attr-2018",
+ "matrix-drawing",
+ "more-asserts",
+ "paste",
+ "reqwest",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "skip_error",
+ "thiserror 2.0.9",
+ "time",
+ "tokio",
+ "tokio-serial",
+ "toml 0.8.19",
+ "uwh-common",
+ "web-audio-api",
+ "winres",
+]
+
+[[package]]
 name = "bindgen"
 version = "0.70.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

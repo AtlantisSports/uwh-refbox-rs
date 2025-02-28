@@ -1,17 +1,17 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 use clap::Parser;
-use iced::{window::icon, Application, Settings};
+use iced::{Application, Settings, window::icon};
 use iced_core::Font;
 use log::*;
 #[cfg(debug_assertions)]
 use log4rs::append::console::{ConsoleAppender, Target};
 use log4rs::{
     append::rolling_file::{
-        policy::compound::{
-            roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger, CompoundPolicy,
-        },
         RollingFileAppender,
+        policy::compound::{
+            CompoundPolicy, roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger,
+        },
     },
     config::{Appender, Config as LogConfig, Logger, Root},
     encode::pattern::PatternEncoder,

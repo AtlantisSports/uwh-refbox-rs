@@ -1,13 +1,13 @@
 use arrayref::array_ref;
 use iced::{
-    application, executor,
+    Application, Color, Command, Length, Point, Rectangle, Size, Subscription, application,
+    executor,
     mouse::Cursor,
     widget::canvas::{Cache, Canvas, Fill, Geometry, Program},
-    Application, Color, Command, Length, Point, Rectangle, Size, Subscription,
 };
 use iced_futures::{
     futures::{
-        future::{pending, Pending},
+        future::{Pending, pending},
         stream::{self, BoxStream},
     },
     subscription::{EventStream, Recipe},

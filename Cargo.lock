@@ -449,9 +449,8 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "beep-test"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
- "array-concat",
  "arrayref",
  "clap",
  "collect_array",
@@ -462,7 +461,7 @@ dependencies = [
  "embedded-graphics",
  "enum-derive-2018",
  "enum-iterator",
- "env_logger 0.10.2",
+ "env_logger 0.11.6",
  "futures-lite",
  "iced",
  "iced_core",
@@ -481,12 +480,13 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "skip_error",
- "thiserror 1.0.69",
+ "thiserror 2.0.9",
+ "time",
  "tokio",
  "tokio-serial",
  "toml 0.8.19",
  "uwh-common",
- "web-audio-api 0.45.2",
+ "web-audio-api",
  "winres",
 ]
 
@@ -4239,7 +4239,7 @@ dependencies = [
  "tokio-serial",
  "toml 0.8.19",
  "uwh-common",
- "web-audio-api 1.1.0",
+ "web-audio-api",
  "winres",
 ]
 
@@ -4401,18 +4401,6 @@ name = "rubato"
 version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6dd52e80cfc21894deadf554a5673002938ae4625f7a283e536f9cf7c17b0d5"
-dependencies = [
- "num-complex",
- "num-integer",
- "num-traits",
- "realfft",
-]
-
-[[package]]
-name = "rubato"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5d18b486e7d29a408ef3f825bc1327d8f87af091c987ca2f5b734625940e234"
 dependencies = [
  "num-complex",
  "num-integer",
@@ -6146,35 +6134,6 @@ dependencies = [
  "log",
  "once_cell",
  "pkg-config",
-]
-
-[[package]]
-name = "web-audio-api"
-version = "0.45.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72c120a553d7d1a012b5c2a417868209035e4e9bd9442742532b7889500d5c12"
-dependencies = [
- "arc-swap",
- "arrayvec",
- "cpal",
- "creek",
- "crossbeam-channel",
- "dasp_sample",
- "float_eq",
- "futures-channel",
- "futures-core",
- "futures-util",
- "hound",
- "hrtf",
- "llq",
- "log",
- "no_denormals",
- "num-complex",
- "realfft",
- "rubato 0.15.0",
- "smallvec",
- "symphonia",
- "vecmath",
 ]
 
 [[package]]

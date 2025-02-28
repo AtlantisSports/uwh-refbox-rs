@@ -1,16 +1,15 @@
 [package]
 name = "beep-test"
-version = "0.2.0"
+version = "0.2.1"
 description = "UI for Atlantis Sports's Underwater Hockey Refbox"
 authors = ["Atlantis Sports <maintainers@atlantissports.org>"]
-edition = "2021"
+edition = "2024"
 
 [features]
 default = []
 debug = ["iced/debug"]
 
 [dependencies]
-array-concat = "0.5"
 arrayref = "0.3"
 collect_array = "0.1"
 clap = { version = "4", features = ["derive"] }
@@ -20,7 +19,7 @@ derivative = "2"
 directories = "5"
 embedded-graphics = "0.8"
 enum-derive-2018 = "3"
-env_logger = "0.10"
+env_logger = "0.11"
 futures-lite = "2"
 iced = { version = "0.10", default-features = false, features = ["canvas", "svg", "tokio", "wgpu"] }
 iced_core = "0.10"
@@ -39,13 +38,14 @@ serde = "1"
 serde_derive = "1"
 serde_json = "1"
 skip_error = "3"
-thiserror = "1"
+thiserror = "2"
+time = { version = "0.3", features = ["local-offset", "macros", "serde", "serde-human-readable"] }
 tokio = { version = "1", features = ["io-util", "macros", "net", "sync", "time"] }
 tokio-serial = "5"
 toml = "0.8"
-uwh-common = { version = "0.2.0", path = "../uwh-common"}
-matrix-drawing = { version = "0.2.0", path = "../matrix-drawing"}
-web-audio-api = { version = "0.45", default-features = false, features = ["cpal"] }
+uwh-common = { version = "0.2.1", path = "../uwh-common"}
+matrix-drawing = { version = "0.2.1", path = "../matrix-drawing"}
+web-audio-api = { version = "1.1", default-features = false, features = ["cpal"] }
 enum-iterator = "2.1.0"
 
 [target.'cfg(windows)'.build-dependencies]

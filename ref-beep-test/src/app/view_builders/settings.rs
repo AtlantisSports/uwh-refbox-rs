@@ -5,8 +5,8 @@ use super::super::{
 use super::shared_elements::*;
 use crate::{snapshot::BeepTestSnapshot, sound_controller::*};
 use iced::{
-    widget::{column, horizontal_space, row},
     Length,
+    widget::{column, horizontal_space, row},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

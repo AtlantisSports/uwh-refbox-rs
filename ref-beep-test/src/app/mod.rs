@@ -1,6 +1,6 @@
 use super::snapshot::{BeepTestPeriod, BeepTestSnapshot};
-use crate::{config::Config, sound_controller::*, tournament_manager::*, APP_NAME};
-use iced::{executor, widget::column, Application, Command, Subscription};
+use crate::{APP_NAME, config::Config, sound_controller::*, tournament_manager::*};
+use iced::{Application, Command, Subscription, executor, widget::column};
 use iced_futures::{
     futures::stream::{self, BoxStream},
     subscription::{EventStream, Recipe},
@@ -15,7 +15,7 @@ use std::{
 };
 use tokio::{
     sync::{mpsc, watch},
-    time::{timeout_at, Instant},
+    time::{Instant, timeout_at},
 };
 use tokio_serial::SerialPortBuilder;
 use update_sender::UpdateSender;

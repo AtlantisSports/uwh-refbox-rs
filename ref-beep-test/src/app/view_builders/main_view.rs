@@ -1,7 +1,7 @@
 use super::{super::super::snapshot::BeepTestSnapshot, shared_elements::make_info_container};
 use iced::{
-    widget::{column, row, Space},
     Length,
+    widget::{Space, column, row},
 };
 
 use crate::{

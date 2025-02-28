@@ -1,11 +1,10 @@
 use iced::{
-    application,
+    Background, BorderRadius, Color, Vector, application,
     widget::{
         self, button,
         container::{self},
         scrollable, svg, text,
     },
-    Background, BorderRadius, Color, Vector,
 };
 
 use iced_core::text::LineHeight;

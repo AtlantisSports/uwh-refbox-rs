@@ -17,7 +17,7 @@ use tokio::{
     select,
     sync::mpsc::{self, error::TrySendError},
     task::{self, JoinHandle},
-    time::{sleep_until, timeout, Duration, Instant},
+    time::{Duration, Instant, sleep_until, timeout},
 };
 use tokio_serial::{SerialPortBuilder, SerialPortBuilderExt, SerialStream};
 use uwh_common::game_snapshot::{EncodingError, GameSnapshotNoHeap};
@@ -74,7 +74,7 @@ impl UpdateSender {
 
     pub fn get_trigger_flash_fn(
         &self,
-    ) -> impl Send + Fn() -> Result<(), TrySendError<ServerMessage>> {
+    ) -> impl Send + Fn() -> Result<(), TrySendError<ServerMessage>> + use<> {
         let tx = self.tx.clone();
         move || tx.try_send(ServerMessage::TriggerFlash)
     }
@@ -577,6 +577,8 @@ mod test {
 
     #[tokio::test]
     async fn test_update_sender() {
+        let update_sender = UpdateSender::new(vec![], BINARY_PORT, JSON_PORT);
+
         let mut binary_conn;
         let mut fail_count = 0;
         loop {
@@ -658,6 +660,8 @@ mod test {
             .encode()
             .unwrap(),
         );
+
+        update_sender.send_snapshot(snapshot).unwrap();
 
         let expected_binary_bytes = binary_expected.len();
         let mut binary_result = vec![0u8; expected_binary_bytes];

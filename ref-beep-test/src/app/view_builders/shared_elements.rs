@@ -9,14 +9,14 @@ use crate::{
 use super::super::{
     message::*,
     style::{
-        Button, ButtonStyle, Container, Row, Text, TextStyle, LARGE_TEXT, LINE_HEIGHT, MEDIUM_TEXT,
-        MIN_BUTTON_SIZE, PADDING, SMALL_TEXT, SPACING,
+        Button, ButtonStyle, Container, LARGE_TEXT, LINE_HEIGHT, MEDIUM_TEXT, MIN_BUTTON_SIZE,
+        PADDING, Row, SMALL_TEXT, SPACING, Text, TextStyle,
     },
 };
 use iced::{
-    alignment::{Horizontal, Vertical},
-    widget::{button, column, container, horizontal_space, row, text, Column},
     Alignment, Length,
+    alignment::{Horizontal, Vertical},
+    widget::{Column, button, column, container, horizontal_space, row, text},
 };
 use matrix_drawing::secs_to_long_time_string;
 

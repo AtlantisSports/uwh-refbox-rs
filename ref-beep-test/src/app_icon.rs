@@ -1,6 +1,7 @@
 pub const WIDTH: u32 = 256;
 pub const HEIGHT: u32 = 256;
 
+#[allow(clippy::large_const_arrays, reason = "This array is only used once")]
 pub const DATA: [u8; 262144] = [
     80, 80, 80, 0, 80, 80, 80, 0, 80, 80, 80, 0, 80, 80, 80, 0, 80, 80, 80, 0, 80, 80, 80, 0, 80,
     80, 80, 0, 80, 80, 80, 0, 80, 80, 80, 0, 80, 80, 80, 0, 80, 80, 80, 0, 80, 80, 80, 0, 80, 80,

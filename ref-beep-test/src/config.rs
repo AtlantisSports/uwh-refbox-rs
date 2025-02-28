@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::sound_controller::SoundSettings;
 use derivative::Derivative;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use toml::Table;
 
 #[derive(Derivative, Serialize, Deserialize)]

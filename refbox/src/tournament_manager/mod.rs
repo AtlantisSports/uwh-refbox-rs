@@ -1027,28 +1027,37 @@ impl TournamentManager {
     }
 
     pub fn would_end_game(&self, now: Instant) -> Result<bool> {
-        if let TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
-            start_time,
-            time_remaining_at_start,
-        }) = self.timeout_state
-        {
-            if !self.check_time_remaining(now, start_time, time_remaining_at_start)? {
-                return Ok(false);
-            } else if let ClockState::Stopped { clock_time } = self.clock_state {
-                if clock_time.is_zero() {
-                    return Ok(true);
-                }
+        if self.current_period == GamePeriod::SuddenDeath {
+            let scores = self.get_scores();
+            if scores.black != scores.white {
+                Ok(true)
+            } else {
+                Ok(false)
             }
-        };
-
-        if let ClockState::CountingDown {
-            start_time,
-            time_remaining_at_start,
-        } = self.clock_state
-        {
-            self.check_time_remaining(now, start_time, time_remaining_at_start)
         } else {
-            Ok(false)
+            if let TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
+                start_time,
+                time_remaining_at_start,
+            }) = self.timeout_state
+            {
+                if !self.check_time_remaining(now, start_time, time_remaining_at_start)? {
+                    return Ok(false);
+                } else if let ClockState::Stopped { clock_time } = self.clock_state {
+                    if clock_time.is_zero() {
+                        return Ok(true);
+                    }
+                }
+            };
+
+            if let ClockState::CountingDown {
+                start_time,
+                time_remaining_at_start,
+            } = self.clock_state
+            {
+                self.check_time_remaining(now, start_time, time_remaining_at_start)
+            } else {
+                Ok(false)
+            }
         }
     }
 

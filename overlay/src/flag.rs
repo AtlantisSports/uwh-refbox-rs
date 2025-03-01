@@ -2,17 +2,12 @@
 //! and penalty flags. Create an instance of `FlagRenderer` and push Flags into it.
 //! Flags are discarded automatically after their 5 second show time as long as the draw function is called.
 
-use crate::load_images::Texture;
-use crate::pages::Interpolate;
-use crate::pages::Justify;
-use crate::pages::draw_text_both_ex;
-use crate::pages::draw_texture_both;
-use crate::pages::fit_text;
+use crate::{
+    load_images::{Texture, asset_load},
+    pages::{Interpolate, Justify, draw_text_both_ex, draw_texture_both, fit_text},
+};
 use macroquad::prelude::*;
-use uwh_common::game_snapshot::Color as UWHColor;
-use uwh_common::game_snapshot::PenaltyTime;
-
-use crate::load_images::asset_load;
+use uwh_common::{color::Color as UWHColor, game_snapshot::PenaltyTime};
 
 /// Distance from the top of the screen from where the flags are rendered
 const BASE_HEIGHT: f32 = 150f32;
@@ -183,11 +178,7 @@ impl Renderer {
         }
 
         // update or create local penalty flags for current team_color, marking each as visited if updated.
-        for penalty in if team_color == UWHColor::Black {
-            &game_state.snapshot.b_penalties
-        } else {
-            &game_state.snapshot.w_penalties
-        } {
+        for penalty in &game_state.snapshot.penalties[team_color] {
             if !matches!(penalty.time, PenaltyTime::Seconds(0)) {
                 // find the penalty in the local list, create a new penalty if it doesn't exist.
                 let flag_pos = self
@@ -356,7 +347,7 @@ impl Renderer {
                 TextParams {
                     font: Some(&self.textures.font),
                     font_size: 30,
-                    color: if color == uwh_common::game_snapshot::Color::Black {
+                    color: if color == UWHColor::Black {
                         Color {
                             a: alpha_offset,
                             ..WHITE
@@ -389,7 +380,7 @@ impl Renderer {
                         TextParams {
                             font: Some(&self.textures.font),
                             font_size: 30,
-                            color: if color == uwh_common::game_snapshot::Color::Black {
+                            color: if color == UWHColor::Black {
                                 Color {
                                     a: alpha_offset,
                                     ..WHITE
@@ -435,7 +426,7 @@ impl Renderer {
                         TextParams {
                             font: Some(&self.textures.font),
                             font_size: 30,
-                            color: if color == uwh_common::game_snapshot::Color::Black {
+                            color: if color == UWHColor::Black {
                                 Color {
                                     a: alpha_offset,
                                     ..WHITE
@@ -490,7 +481,7 @@ impl Renderer {
                 TextParams {
                     font: Some(&self.textures.font),
                     font_size: 30,
-                    color: if color == uwh_common::game_snapshot::Color::Black {
+                    color: if color == UWHColor::Black {
                         Color {
                             a: alpha_offset,
                             ..WHITE
@@ -522,7 +513,7 @@ impl Renderer {
                         TextParams {
                             font: Some(&self.textures.font),
                             font_size: 30,
-                            color: if color == uwh_common::game_snapshot::Color::Black {
+                            color: if color == UWHColor::Black {
                                 Color {
                                     a: alpha_offset,
                                     ..WHITE
@@ -568,7 +559,7 @@ impl Renderer {
                         TextParams {
                             font: Some(&self.textures.font),
                             font_size: 30,
-                            color: if color == uwh_common::game_snapshot::Color::Black {
+                            color: if color == UWHColor::Black {
                                 Color {
                                     a: alpha_offset,
                                     ..WHITE

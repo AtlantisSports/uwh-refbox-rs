@@ -99,6 +99,9 @@ struct Cli {
 
     #[clap(long, hide = true)]
     is_simulator: bool,
+
+    #[clap(long, hide = true)]
+    simulate_sunlight_display: bool,
 }
 
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
@@ -192,10 +195,15 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     if args.is_simulator {
         let flags = sim_app::SimRefBoxAppFlags {
             tcp_port: args.binary_port,
+            sunlight_mode: args.simulate_sunlight_display,
         };
 
         let mut settings = Settings::with_flags(flags);
-        settings.window.size = sim_app::window_size(args.scale, spacing);
+        settings.window.size = if args.simulate_sunlight_display {
+            sim_app::sunlight_window_size(args.scale)
+        } else {
+            sim_app::matrix_window_size(args.scale, spacing)
+        };
         settings.window.resizable = true;
         settings.window.icon = Some(icon);
         info!("Starting Simulator UI");
@@ -239,6 +247,10 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         ];
 
         child_args.resize(child_args.len() + args.verbose as usize, "--verbose");
+
+        if args.simulate_sunlight_display {
+            child_args.push("--simulate-sunlight-display");
+        }
 
         debug!("Child args: {child_args:?}");
 

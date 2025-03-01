@@ -5,7 +5,7 @@ use crate::{
 };
 use coarsetime::Instant;
 use macroquad::prelude::*;
-use uwh_common::game_snapshot::Color as UwhColor;
+use uwh_common::color::Color as UwhColor;
 
 const LIST_NUMBER_BG_WIDTH: f32 = 85f32;
 const PLAYER_ROW_HEIGHT: f32 = 58f32;

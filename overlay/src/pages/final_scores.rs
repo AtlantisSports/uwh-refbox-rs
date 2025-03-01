@@ -135,7 +135,7 @@ impl PageRenderer {
         );
         let (x_off, text) = fit_text(
             290f32,
-            &state.snapshot.b_score.to_string(),
+            &state.snapshot.scores.black.to_string(),
             180,
             &self.assets.font,
             Justify::Center,
@@ -152,7 +152,7 @@ impl PageRenderer {
         );
         let (x_off, text) = fit_text(
             290f32,
-            &state.snapshot.w_score.to_string(),
+            &state.snapshot.scores.white.to_string(),
             180,
             &self.assets.font,
             Justify::Center,

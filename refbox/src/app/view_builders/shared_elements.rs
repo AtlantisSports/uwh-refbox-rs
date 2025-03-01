@@ -28,11 +28,12 @@ use std::{
     time::Duration,
 };
 use uwh_common::{
+    color::Color as GameColor,
     config::Game as GameConfig,
     drawing_support::*,
     game_snapshot::{
-        Color as GameColor, GamePeriod, GameSnapshot, Infraction, InfractionSnapshot,
-        PenaltySnapshot, PenaltyTime, TimeoutSnapshot,
+        GamePeriod, GameSnapshot, Infraction, InfractionSnapshot, PenaltySnapshot, PenaltyTime,
+        TimeoutSnapshot,
     },
     uwhscores::GameInfo,
 };
@@ -196,87 +197,89 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
     let tm = tm.lock().unwrap();
 
     let black = match snapshot.timeout {
-        TimeoutSnapshot::None => make_multi_label_message_button(
+        None => make_multi_label_message_button(
             ("BLACK", "TIMEOUT"),
             tm.can_start_team_timeout(GameColor::Black)
                 .ok()
                 .map(|_| Message::TeamTimeout(GameColor::Black, false)),
         )
         .style(ButtonStyle::Black),
-        TimeoutSnapshot::Black(_) => {
+        Some(TimeoutSnapshot::Black(_)) => {
             make_multi_label_message_button(("END", "TIMEOUT"), Some(Message::EndTimeout))
                 .style(ButtonStyle::Yellow)
         }
-        TimeoutSnapshot::White(_) | TimeoutSnapshot::Ref(_) | TimeoutSnapshot::PenaltyShot(_) => {
-            make_multi_label_message_button(
-                ("SWITCH TO", "BLACK"),
-                tm.can_switch_to_team_timeout(GameColor::Black)
-                    .ok()
-                    .map(|_| Message::TeamTimeout(GameColor::Black, true)),
-            )
-            .style(ButtonStyle::Black)
-        }
+        Some(TimeoutSnapshot::White(_))
+        | Some(TimeoutSnapshot::Ref(_))
+        | Some(TimeoutSnapshot::PenaltyShot(_)) => make_multi_label_message_button(
+            ("SWITCH TO", "BLACK"),
+            tm.can_switch_to_team_timeout(GameColor::Black)
+                .ok()
+                .map(|_| Message::TeamTimeout(GameColor::Black, true)),
+        )
+        .style(ButtonStyle::Black),
     };
 
     let white = match snapshot.timeout {
-        TimeoutSnapshot::None => make_multi_label_message_button(
+        None => make_multi_label_message_button(
             ("WHITE", "TIMEOUT"),
             tm.can_start_team_timeout(GameColor::White)
                 .ok()
                 .map(|_| Message::TeamTimeout(GameColor::White, false)),
         )
         .style(ButtonStyle::White),
-        TimeoutSnapshot::White(_) => {
+        Some(TimeoutSnapshot::White(_)) => {
             make_multi_label_message_button(("END", "TIMEOUT"), Some(Message::EndTimeout))
                 .style(ButtonStyle::Yellow)
         }
-        TimeoutSnapshot::Black(_) | TimeoutSnapshot::Ref(_) | TimeoutSnapshot::PenaltyShot(_) => {
-            make_multi_label_message_button(
-                ("SWITCH TO", "WHITE"),
-                tm.can_switch_to_team_timeout(GameColor::White)
-                    .ok()
-                    .map(|_| Message::TeamTimeout(GameColor::White, true)),
-            )
-            .style(ButtonStyle::White)
-        }
+        Some(TimeoutSnapshot::Black(_))
+        | Some(TimeoutSnapshot::Ref(_))
+        | Some(TimeoutSnapshot::PenaltyShot(_)) => make_multi_label_message_button(
+            ("SWITCH TO", "WHITE"),
+            tm.can_switch_to_team_timeout(GameColor::White)
+                .ok()
+                .map(|_| Message::TeamTimeout(GameColor::White, true)),
+        )
+        .style(ButtonStyle::White),
     };
 
     let referee = match snapshot.timeout {
-        TimeoutSnapshot::None => make_multi_label_message_button(
+        None => make_multi_label_message_button(
             ("REF", "TIMEOUT"),
             tm.can_start_ref_timeout()
                 .ok()
                 .map(|_| Message::RefTimeout(false)),
         )
         .style(ButtonStyle::Yellow),
-        TimeoutSnapshot::Ref(_) => {
+        Some(TimeoutSnapshot::Ref(_)) => {
             make_multi_label_message_button(("END", "TIMEOUT"), Some(Message::EndTimeout))
                 .style(ButtonStyle::Yellow)
         }
-        TimeoutSnapshot::Black(_) | TimeoutSnapshot::White(_) | TimeoutSnapshot::PenaltyShot(_) => {
-            make_multi_label_message_button(
-                ("SWITCH TO", "REF"),
-                tm.can_switch_to_ref_timeout()
-                    .ok()
-                    .map(|_| Message::RefTimeout(true)),
-            )
-            .style(ButtonStyle::Yellow)
-        }
+        Some(TimeoutSnapshot::Black(_))
+        | Some(TimeoutSnapshot::White(_))
+        | Some(TimeoutSnapshot::PenaltyShot(_)) => make_multi_label_message_button(
+            ("SWITCH TO", "REF"),
+            tm.can_switch_to_ref_timeout()
+                .ok()
+                .map(|_| Message::RefTimeout(true)),
+        )
+        .style(ButtonStyle::Yellow),
     };
 
     let penalty = match snapshot.timeout {
-        TimeoutSnapshot::None => make_multi_label_message_button(
+        None => make_multi_label_message_button(
             ("PENALTY", "SHOT"),
             tm.can_start_penalty_shot()
                 .ok()
                 .map(|_| Message::PenaltyShot(false)),
         )
         .style(ButtonStyle::Red),
-        TimeoutSnapshot::PenaltyShot(_) => {
+        Some(TimeoutSnapshot::PenaltyShot(_)) => {
             make_multi_label_message_button(("END", "TIMEOUT"), Some(Message::EndTimeout))
                 .style(ButtonStyle::Yellow)
         }
-        TimeoutSnapshot::Black(_) | TimeoutSnapshot::White(_) | TimeoutSnapshot::Ref(_) => {
+        Some(TimeoutSnapshot::Black(_))
+        | Some(TimeoutSnapshot::White(_))
+        | Some(TimeoutSnapshot::Ref(_)) => {
             let can_switch = if mode == Mode::Rugby {
                 tm.can_switch_to_rugby_penalty_shot()
             } else {
@@ -306,11 +309,11 @@ pub(super) fn make_game_time_button<'a>(
         false
     } else {
         match snapshot.timeout {
-            TimeoutSnapshot::Black(time) | TimeoutSnapshot::White(time) => {
+            Some(TimeoutSnapshot::Black(time)) | Some(TimeoutSnapshot::White(time)) => {
                 (time <= 10 && (time % 2 == 0) && (time != 0)) || time == 15
             }
-            TimeoutSnapshot::Ref(_) | TimeoutSnapshot::PenaltyShot(_) => false,
-            TimeoutSnapshot::None => {
+            Some(TimeoutSnapshot::Ref(_)) | Some(TimeoutSnapshot::PenaltyShot(_)) => false,
+            None => {
                 let is_alert_period = match snapshot.current_period {
                     GamePeriod::BetweenGames
                     | GamePeriod::HalfTime
@@ -354,7 +357,7 @@ pub(super) fn make_game_time_button<'a>(
         }
     };
 
-    if tall && (snapshot.timeout != TimeoutSnapshot::None) {
+    if tall && (snapshot.timeout.is_some()) {
         match snapshot.current_period {
             GamePeriod::PreOvertime => period_text = "PRE OT BREAK",
             GamePeriod::OvertimeFirstHalf => period_text = "OT FIRST HALF",
@@ -409,23 +412,22 @@ pub(super) fn make_game_time_button<'a>(
         .width(Length::Fill)
         .align_items(Alignment::Center);
 
-    let timeout_info = match snapshot.timeout {
-        TimeoutSnapshot::White(_) => Some((
+    let timeout_info = snapshot.timeout.map(|t| match t {
+        TimeoutSnapshot::White(_) => (
             if tall { "WHT T/O" } else { "WHITE TIMEOUT" },
             if make_red {
                 TextStyle::Black
             } else {
                 TextStyle::White
             },
-        )),
-        TimeoutSnapshot::Black(_) => Some((
+        ),
+        TimeoutSnapshot::Black(_) => (
             if tall { "BLK T/O" } else { "BLACK TIMEOUT" },
             TextStyle::Black,
-        )),
-        TimeoutSnapshot::Ref(_) => Some(("REF TMOUT", TextStyle::Yellow)),
-        TimeoutSnapshot::PenaltyShot(_) => Some(("PNLTY SHT", TextStyle::Red)),
-        TimeoutSnapshot::None => None,
-    };
+        ),
+        TimeoutSnapshot::Ref(_) => ("REF TMOUT", TextStyle::Yellow),
+        TimeoutSnapshot::PenaltyShot(_) => ("PNLTY SHT", TextStyle::Red),
+    });
 
     let time_text = secs_to_long_time_string(snapshot.secs_in_period);
     let time_text = time_text.trim();
@@ -583,11 +585,11 @@ pub(super) fn time_string(time: Duration) -> String {
 
 pub(super) fn timeout_time_string(snapshot: &GameSnapshot) -> String {
     match snapshot.timeout {
-        TimeoutSnapshot::Black(secs)
-        | TimeoutSnapshot::White(secs)
-        | TimeoutSnapshot::Ref(secs)
-        | TimeoutSnapshot::PenaltyShot(secs) => secs_to_time_string(secs).trim().to_string(),
-        TimeoutSnapshot::None => String::new(),
+        Some(TimeoutSnapshot::Black(secs))
+        | Some(TimeoutSnapshot::White(secs))
+        | Some(TimeoutSnapshot::Ref(secs))
+        | Some(TimeoutSnapshot::PenaltyShot(secs)) => secs_to_time_string(secs).trim().to_string(),
+        None => String::new(),
     }
 }
 

@@ -204,6 +204,7 @@ pub enum ListableParameter {
 pub enum BoolGameParameter {
     OvertimeAllowed,
     SuddenDeathAllowed,
+    SingleHalf,
     WhiteOnRight,
     UsingUwhScores,
     SoundEnabled,

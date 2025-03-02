@@ -11,6 +11,7 @@ pub struct Game {
     pub timeouts_counted_per_half: bool,
     pub overtime_allowed: bool,
     pub sudden_death_allowed: bool,
+    pub single_half: bool,
     #[serde(with = "secs_only_duration")]
     pub half_play_duration: Duration,
     #[serde(with = "secs_only_duration")]
@@ -41,7 +42,8 @@ impl Default for Game {
             num_team_timeouts_allowed: 1,
             timeouts_counted_per_half: true,
             overtime_allowed: true,
-            sudden_death_allowed: true,
+            sudden_death_allowed: false,
+            single_half: false,
             half_play_duration: Duration::from_secs(900),
             half_time_duration: Duration::from_secs(180),
             team_timeout_duration: Duration::from_secs(60),
@@ -64,6 +66,7 @@ impl Game {
             mut timeouts_counted_per_half,
             mut overtime_allowed,
             mut sudden_death_allowed,
+            mut single_half,
             mut half_play_duration,
             mut half_time_duration,
             mut team_timeout_duration,
@@ -120,6 +123,11 @@ impl Game {
                 sudden_death_allowed = old_sudden_death_allowed;
             }
         }
+        if let Some(old_single_half) = old.get("single_half") {
+            if let Some(old_single_half) = old_single_half.as_bool() {
+                single_half = old_single_half;
+            }
+        }
         process_duration(old, "half_play_duration", &mut half_play_duration);
         process_duration(old, "half_time_duration", &mut half_time_duration);
         process_duration(old, "team_timeout_duration", &mut team_timeout_duration);
@@ -141,6 +149,7 @@ impl Game {
             timeouts_counted_per_half,
             overtime_allowed,
             sudden_death_allowed,
+            single_half,
             half_play_duration,
             half_time_duration,
             team_timeout_duration,

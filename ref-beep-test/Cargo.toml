@@ -45,7 +45,7 @@ tokio-serial = "5"
 toml = "0.8"
 uwh-common = { version = "0.2.1", path = "../uwh-common"}
 matrix-drawing = { version = "0.2.1", path = "../matrix-drawing"}
-web-audio-api = { version = "1.1", default-features = false, features = ["cpal"] }
+web-audio-api = { version = "1.2", default-features = false, features = ["cpal"] }
 enum-iterator = "2.1.0"
 
 [target.'cfg(windows)'.build-dependencies]

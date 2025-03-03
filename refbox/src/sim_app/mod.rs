@@ -13,6 +13,7 @@ use iced_futures::{
     subscription::{EventStream, Recipe},
 };
 use iced_runtime::{command, window};
+use led_panel_sim::DisplayState;
 use log::*;
 use matrix_drawing::{draw_panels, transmitted_data::TransmittedData};
 use std::{rc::Rc, sync::Mutex};
@@ -24,13 +25,25 @@ use tokio::{
 mod display_simulator;
 use display_simulator::*;
 
+mod sunlight_display;
+use sunlight_display::*;
+
 const WIDTH: usize = 256;
 const HEIGHT: usize = 64;
 
-pub fn window_size(scale: f32, spacing: f32) -> (u32, u32) {
+pub fn matrix_window_size(scale: f32, spacing: f32) -> (u32, u32) {
     (
         (WIDTH as f32 * scale + ((WIDTH as f32 + 1.0) * spacing)).ceil() as u32,
         (HEIGHT as f32 * scale + ((HEIGHT as f32 + 1.0) * spacing)).ceil() as u32,
+    )
+}
+
+pub fn sunlight_window_size(matrix_scale: f32) -> (u32, u32) {
+    let matrix_height = HEIGHT as f32 * matrix_scale + ((HEIGHT as f32 + 1.0) * matrix_scale / 4.0);
+    let scale = matrix_height / PANEL_HEIGHT;
+    (
+        (PANEL_WIDTH * scale).ceil() as u32,
+        (PANEL_HEIGHT * scale).ceil() as u32,
     )
 }
 
@@ -42,8 +55,14 @@ pub enum Message {
 }
 
 #[derive(Debug)]
+enum DisplaySim {
+    Matrix(Box<DisplayBuffer<WIDTH, HEIGHT>>),
+    Sunlight(DisplayState),
+}
+
+#[derive(Debug)]
 pub struct SimRefBoxApp {
-    buffer: Rc<Mutex<DisplayBuffer<WIDTH, HEIGHT>>>,
+    buffer: Rc<Mutex<DisplaySim>>,
     cache: Cache,
     listener: SnapshotListener,
 }
@@ -51,6 +70,7 @@ pub struct SimRefBoxApp {
 #[derive(Clone, Debug)]
 pub struct SimRefBoxAppFlags {
     pub tcp_port: u16,
+    pub sunlight_mode: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -83,11 +103,20 @@ impl Application for SimRefBoxApp {
     type Flags = SimRefBoxAppFlags;
 
     fn new(flags: Self::Flags) -> (Self, Command<Message>) {
-        let Self::Flags { tcp_port } = flags;
+        let Self::Flags {
+            tcp_port,
+            sunlight_mode,
+        } = flags;
+
+        let buffer = if sunlight_mode {
+            DisplaySim::Sunlight(DisplayState::OFF)
+        } else {
+            DisplaySim::Matrix(Default::default())
+        };
 
         (
             Self {
-                buffer: Rc::new(Mutex::new(Default::default())),
+                buffer: Rc::new(Mutex::new(buffer)),
                 cache: Cache::new(),
                 listener: SnapshotListener { port: tcp_port },
             },
@@ -108,15 +137,22 @@ impl Application for SimRefBoxApp {
         match message {
             Message::NewSnapshot(data) => {
                 let mut buffer = self.buffer.lock().unwrap();
-                buffer.clear_buffer();
-                draw_panels(
-                    &mut *buffer,
-                    data.snapshot,
-                    data.white_on_right,
-                    data.flash,
-                    data.beep_test,
-                )
-                .unwrap();
+                match *buffer {
+                    DisplaySim::Matrix(ref mut buffer) => {
+                        buffer.clear_buffer();
+                        draw_panels::<DisplayBuffer<WIDTH, HEIGHT>>(
+                            &mut *buffer,
+                            data.snapshot,
+                            data.white_on_right,
+                            data.flash,
+                            data.beep_test,
+                        )
+                        .unwrap();
+                    }
+                    DisplaySim::Sunlight(ref mut state) => {
+                        (*state, _) = DisplayState::from_transmitted_data(&data);
+                    }
+                }
                 self.cache.clear();
                 Command::none()
             }
@@ -145,33 +181,48 @@ impl<Message> Program<Message, Renderer> for SimRefBoxApp {
         _cursor: Cursor,
     ) -> Vec<Geometry> {
         let buffer_ = self.buffer.clone();
-        let panel =
-            self.cache.draw(renderer, bounds.size(), |frame| {
-                let buffer = buffer_.lock().unwrap();
+        let panel = self.cache.draw(renderer, bounds.size(), |frame| {
+            let buffer = buffer_.lock().unwrap();
 
-                let horiz_spacing = frame.width() / ((WIDTH * 5 + 1) as f32);
-                let vert_spacing = frame.height() / ((HEIGHT * 5 + 1) as f32);
-                let spacing = if horiz_spacing > vert_spacing {
-                    vert_spacing
-                } else {
-                    horiz_spacing
-                };
-                let scale = spacing * 4.0;
+            match *buffer {
+                DisplaySim::Matrix(ref buffer) => {
+                    let horiz_spacing = frame.width() / ((WIDTH * 5 + 1) as f32);
+                    let vert_spacing = frame.height() / ((HEIGHT * 5 + 1) as f32);
+                    let spacing = if horiz_spacing > vert_spacing {
+                        vert_spacing
+                    } else {
+                        horiz_spacing
+                    };
+                    let scale = spacing * 4.0;
 
-                for (x, y, maybe) in buffer.iter().enumerate().flat_map(|(y, row)| {
-                    row.iter().enumerate().map(move |(x, maybe)| (x, y, maybe))
-                }) {
-                    if let Some(color) = maybe {
-                        let x = spacing + x as f32 * (scale + spacing);
-                        let y = spacing + y as f32 * (scale + spacing);
-                        frame.fill_rectangle(
-                            Point::new(x, y),
-                            Size::new(scale, scale),
-                            Fill::from(*color),
-                        );
+                    for (x, y, maybe) in buffer.iter().enumerate().flat_map(|(y, row)| {
+                        row.iter().enumerate().map(move |(x, maybe)| (x, y, maybe))
+                    }) {
+                        if let Some(color) = maybe {
+                            let x = spacing + x as f32 * (scale + spacing);
+                            let y = spacing + y as f32 * (scale + spacing);
+                            frame.fill_rectangle(
+                                Point::new(x, y),
+                                Size::new(scale, scale),
+                                Fill::from(*color),
+                            );
+                        }
                     }
                 }
-            });
+                DisplaySim::Sunlight(ref state) => {
+                    let scale = calculate_scale(frame.width(), frame.height());
+                    for (point, size, color) in
+                        static_rectangles(scale).chain(led_panel_rectangles(state, scale))
+                    {
+                        frame.fill_rectangle(point, size, Fill::from(color));
+                    }
+
+                    for text in static_text(scale) {
+                        frame.fill_text(text);
+                    }
+                }
+            }
+        });
 
         vec![panel]
     }

@@ -4,7 +4,7 @@ use iced::{
     widget::{column, row, vertical_space},
 };
 
-use uwh_common::game_snapshot::Color as GameColor;
+use uwh_common::color::Color as GameColor;
 
 pub(super) fn make_foul_add_page<'a>(
     origin: Option<(Option<GameColor>, usize)>,

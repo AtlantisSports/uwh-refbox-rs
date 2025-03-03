@@ -1,13 +1,12 @@
-use std::{cmp::min, fmt::Display, time::Duration};
-
+use crate::config::BeepTest;
 use derivative::Derivative;
 use serde::{Deserialize, Serialize};
+use std::{cmp::min, fmt::Display, time::Duration};
 use uwh_common::{
+    bundles::BlackWhiteBundle,
     drawing_support::MAX_STRINGABLE_SECS,
     game_snapshot::{GamePeriod, GameSnapshotNoHeap},
 };
-
-use crate::config::BeepTest;
 
 #[derive(Debug, PartialEq, Eq, Default, Clone, Serialize, Deserialize)]
 pub struct BeepTestSnapshot {
@@ -31,7 +30,10 @@ impl From<BeepTestSnapshot> for GameSnapshotNoHeap {
                     .unwrap_or(MAX_STRINGABLE_SECS),
                 MAX_STRINGABLE_SECS,
             ),
-            w_score: snapshot.lap_count,
+            scores: BlackWhiteBundle {
+                black: 0,
+                white: snapshot.lap_count,
+            },
             ..Default::default()
         }
     }

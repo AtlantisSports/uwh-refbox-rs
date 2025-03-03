@@ -8,7 +8,7 @@ use iced::{
     widget::{column, horizontal_space, row, text, vertical_space},
 };
 use std::time::Duration;
-use uwh_common::game_snapshot::{GameSnapshot, TimeoutSnapshot};
+use uwh_common::game_snapshot::GameSnapshot;
 
 pub(in super::super) fn build_time_edit_view<'a>(
     snapshot: &GameSnapshot,
@@ -25,7 +25,7 @@ pub(in super::super) fn build_time_edit_view<'a>(
     .spacing(SPACING)
     .align_items(Alignment::Center);
 
-    if snapshot.timeout != TimeoutSnapshot::None {
+    if snapshot.timeout.is_some() {
         edit_row = edit_row
             .push(horizontal_space(Length::Fill))
             .push(make_time_editor("TIMEOUT", timeout_time.unwrap(), true))

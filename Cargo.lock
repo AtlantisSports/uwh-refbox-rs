@@ -2741,6 +2741,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "03087c2bad5e1034e8cace5926dec053fb3790248370865f5117a7d0213354c8"
 
 [[package]]
+name = "led-panel-sim"
+version = "0.2.0"
+dependencies = [
+ "matrix-drawing",
+ "uwh-common",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.169"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2976,8 +2984,11 @@ version = "0.2.1"
 dependencies = [
  "arrayref",
  "arrayvec",
+ "derivative",
  "embedded-graphics",
+ "enum-derive-2018",
  "fonts",
+ "macro-attr-2018",
  "more-asserts",
  "serde",
  "serde_derive",
@@ -4250,8 +4261,10 @@ dependencies = [
  "iced",
  "iced_core",
  "iced_futures",
+ "iced_graphics",
  "iced_renderer",
  "iced_runtime",
+ "led-panel-sim",
  "log",
  "log-panics",
  "log4rs",

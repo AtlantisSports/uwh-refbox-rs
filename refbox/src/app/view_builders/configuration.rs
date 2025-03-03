@@ -14,6 +14,7 @@ use iced::{
     alignment::{Horizontal, Vertical},
     widget::{TextInput, button, column, container, horizontal_space, row, text, vertical_space},
 };
+use matrix_drawing::transmitted_data::Brightness;
 use std::collections::BTreeMap;
 use tokio::time::Duration;
 use uwh_common::{
@@ -28,6 +29,7 @@ pub(in super::super) struct EditableSettings {
     pub config: GameConfig,
     pub game_number: u32,
     pub white_on_right: bool,
+    pub brightness: Brightness,
     pub using_uwhscores: bool,
     pub uwhscores_email: String,
     pub uwhscores_password: String,
@@ -97,6 +99,17 @@ impl Cyclable for Mode {
             Self::Hockey6V6 => Self::Hockey3V3,
             Self::Hockey3V3 => Self::Rugby,
             Self::Rugby => Self::Hockey6V6,
+        }
+    }
+}
+
+impl Cyclable for Brightness {
+    fn next(&self) -> Self {
+        match self {
+            Self::Low => Self::Medium,
+            Self::Medium => Self::High,
+            Self::High => Self::Outdoor,
+            Self::Outdoor => Self::Low,
         }
     }
 }
@@ -644,6 +657,7 @@ fn make_display_config_page<'a>(
     let EditableSettings {
         white_on_right,
         hide_time,
+        brightness,
         ..
     } = settings;
 
@@ -689,12 +703,20 @@ fn make_display_config_page<'a>(
     column![
         make_game_time_button(snapshot, false, false, mode, clock_running),
         row![sides_btn].spacing(SPACING),
-        row![make_value_button(
-            "HIDE TIME FOR\nLAST 15 SECONDS",
-            bool_string(*hide_time),
-            (false, true),
-            Some(Message::ToggleBoolParameter(BoolGameParameter::HideTime))
-        )]
+        row![
+            make_value_button(
+                "HIDE TIME FOR\nLAST 15 SECONDS",
+                bool_string(*hide_time),
+                (false, true),
+                Some(Message::ToggleBoolParameter(BoolGameParameter::HideTime))
+            ),
+            make_value_button(
+                "PLAYER DISPLAY\nBRIGHTNESS",
+                brightness.to_string().to_uppercase(),
+                (false, true),
+                Some(Message::CycleParameter(CyclingParameter::Brightness))
+            )
+        ]
         .spacing(SPACING),
         vertical_space(Length::Fill),
         row![

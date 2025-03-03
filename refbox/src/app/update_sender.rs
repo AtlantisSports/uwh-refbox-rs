@@ -1,6 +1,6 @@
 use futures_lite::future::FutureExt;
 use log::*;
-use matrix_drawing::transmitted_data::TransmittedData;
+use matrix_drawing::transmitted_data::{Brightness, TransmittedData};
 use std::{
     collections::HashMap,
     fmt::Debug,
@@ -63,17 +63,19 @@ impl UpdateSender {
         &self,
         snapshot: GameSnapshot,
         white_on_right: bool,
+        brightness: Brightness,
     ) -> Result<(), TrySendError<Box<GameSnapshot>>> {
         self.tx
             .try_send(ServerMessage::NewSnapshot(
                 Box::new(snapshot),
                 white_on_right,
+                brightness,
             ))
             .map_err(|e| match e {
-                TrySendError::Full(ServerMessage::NewSnapshot(snapshot, _)) => {
+                TrySendError::Full(ServerMessage::NewSnapshot(snapshot, _, _)) => {
                     TrySendError::Full(snapshot)
                 }
-                TrySendError::Closed(ServerMessage::NewSnapshot(snapshot, _)) => {
+                TrySendError::Closed(ServerMessage::NewSnapshot(snapshot, _, _)) => {
                     TrySendError::Closed(snapshot)
                 }
                 _ => unreachable!(),
@@ -145,7 +147,7 @@ async fn worker_loop<T: AsyncWrite + Debug + Unpin + Send>(
 
 #[derive(Debug)]
 enum SerialWorkerMessage {
-    NewSnapshot(GameSnapshotNoHeap, bool),
+    NewSnapshot(GameSnapshotNoHeap, bool, Brightness),
     TriggerFlash,
 }
 
@@ -154,8 +156,10 @@ async fn serial_worker_loop(
     mut write: SerialStream,
 ) -> Result<(), WorkerError> {
     let msg = rx.recv().await.ok_or(WorkerError::ChannelClosed)?;
-    let (snapshot, white_on_right) = match msg {
-        SerialWorkerMessage::NewSnapshot(snapshot, white_on_right) => (snapshot, white_on_right),
+    let (snapshot, white_on_right, brightness) = match msg {
+        SerialWorkerMessage::NewSnapshot(snapshot, white_on_right, brightness) => {
+            (snapshot, white_on_right, brightness)
+        }
         SerialWorkerMessage::TriggerFlash => {
             return Err(WorkerError::IllegalMessage);
         }
@@ -165,6 +169,7 @@ async fn serial_worker_loop(
         snapshot,
         flash: false,
         beep_test: false,
+        brightness,
         white_on_right,
     };
     let mut bytes = data.encode()?;
@@ -193,9 +198,10 @@ async fn serial_worker_loop(
             }
             recv = rx.recv() => {
                 match recv {
-                    Some(SerialWorkerMessage::NewSnapshot(snapshot, white_on_right)) => {
+                    Some(SerialWorkerMessage::NewSnapshot(snapshot, white_on_right, brightness)) => {
                         data.snapshot = snapshot;
                         data.white_on_right = white_on_right;
+                        data.brightness = brightness;
                         bytes = data.encode()?;
                     }
                     Some(SerialWorkerMessage::TriggerFlash) => {
@@ -271,6 +277,7 @@ impl WorkerHandle {
         json: &[u8],
         snapshot: &GameSnapshotNoHeap,
         white_on_right: bool,
+        brightness: Brightness,
     ) -> Result<(), TrySendError<String>> {
         match self.tx {
             WorkerTx::Binary(ref tx) => tx.try_send(Vec::from(binary)).map_err(error_formatter),
@@ -279,6 +286,7 @@ impl WorkerHandle {
                 .try_send(SerialWorkerMessage::NewSnapshot(
                     snapshot.clone(),
                     white_on_right,
+                    brightness,
                 ))
                 .map_err(error_formatter),
         }
@@ -295,7 +303,7 @@ fn error_formatter<T: Debug>(old: TrySendError<T>) -> TrySendError<String> {
 #[derive(Debug)]
 pub enum ServerMessage {
     NewConnection(SendType, TcpStream),
-    NewSnapshot(Box<GameSnapshot>, bool),
+    NewSnapshot(Box<GameSnapshot>, bool, Brightness),
     TriggerFlash,
     Stop,
     SetHideTime(bool),
@@ -310,6 +318,7 @@ struct Server {
     has_json: bool,
     snapshot: GameSnapshotNoHeap,
     white_on_right: bool,
+    brightness: Brightness,
     flash: bool,
     binary: Vec<u8>,
     json: Vec<u8>,
@@ -330,6 +339,7 @@ impl Server {
             has_json: false,
             snapshot: Default::default(),
             white_on_right: false,
+            brightness: Brightness::Low,
             flash: false,
             binary: Vec::new(),
             json: Vec::new(),
@@ -426,6 +436,7 @@ impl Server {
                     white_on_right: self.white_on_right,
                     flash: self.flash,
                     beep_test: false,
+                    brightness: self.brightness,
                     snapshot: self.snapshot.clone(),
                 }
                 .encode()
@@ -452,6 +463,7 @@ impl Server {
                 &self.json,
                 &self.snapshot,
                 self.white_on_right,
+                self.brightness,
             ) {
                 if matches!(e, TrySendError::Closed(_)) {
                     info!("Worker channel closed");
@@ -486,8 +498,9 @@ impl Server {
                             self.add_sender(send_type, stream);
                             self.check_types();
                         }
-                        Some(ServerMessage::NewSnapshot(snapshot, white_on_right)) => {
+                        Some(ServerMessage::NewSnapshot(snapshot, white_on_right, brightness)) => {
                             self.white_on_right = white_on_right;
+                            self.brightness = brightness;
                             self.encode(*snapshot);
                             self.send_to_workers(false);
                         }
@@ -626,8 +639,9 @@ mod test {
     use more_asserts::*;
     use std::io::ErrorKind;
     use tokio::io::AsyncReadExt;
-    use uwh_common::game_snapshot::{
-        GamePeriod, Infraction, InfractionSnapshot, PenaltySnapshot, PenaltyTime, TimeoutSnapshot,
+    use uwh_common::{
+        bundles::{BlackWhiteBundle, OptColorBundle},
+        game_snapshot::{GamePeriod, Infraction, InfractionSnapshot, PenaltySnapshot, PenaltyTime},
     };
 
     const BINARY_PORT: u16 = 12345;
@@ -696,88 +710,98 @@ mod test {
         }
 
         let white_on_right = false;
+        let brightness = Brightness::Low;
         let flash = false;
         let beep_test = false;
         let snapshot = GameSnapshot {
             current_period: GamePeriod::FirstHalf,
             secs_in_period: 897,
-            timeout: TimeoutSnapshot::None,
-            b_score: 2,
-            w_score: 3,
-            b_penalties: vec![
-                PenaltySnapshot {
-                    time: PenaltyTime::Seconds(57),
-                    player_number: 3,
-                    infraction: Infraction::Unknown,
-                },
-                PenaltySnapshot {
-                    time: PenaltyTime::Seconds(117),
-                    player_number: 6,
-                    infraction: Infraction::DelayOfGame,
-                },
-            ],
-            w_penalties: vec![
-                PenaltySnapshot {
-                    time: PenaltyTime::Seconds(297),
-                    player_number: 12,
-                    infraction: Infraction::FalseStart,
-                },
-                PenaltySnapshot {
-                    time: PenaltyTime::TotalDismissal,
-                    player_number: 15,
-                    infraction: Infraction::FreeArm,
-                },
-            ],
-            b_warnings: vec![
-                InfractionSnapshot {
-                    infraction: Infraction::Obstruction,
-                    player_number: Some(3),
-                },
-                InfractionSnapshot {
-                    infraction: Infraction::OutOfBounds,
-                    player_number: Some(6),
-                },
-            ],
-            w_warnings: vec![
-                InfractionSnapshot {
-                    infraction: Infraction::DelayOfGame,
-                    player_number: Some(12),
-                },
-                InfractionSnapshot {
-                    infraction: Infraction::StickInfringement,
-                    player_number: None,
-                },
-            ],
-            b_fouls: vec![
-                InfractionSnapshot {
-                    infraction: Infraction::Obstruction,
-                    player_number: Some(3),
-                },
-                InfractionSnapshot {
-                    infraction: Infraction::OutOfBounds,
-                    player_number: Some(6),
-                },
-            ],
-            w_fouls: vec![
-                InfractionSnapshot {
-                    infraction: Infraction::DelayOfGame,
-                    player_number: Some(12),
-                },
-                InfractionSnapshot {
-                    infraction: Infraction::StickInfringement,
-                    player_number: None,
-                },
-            ],
-            equal_fouls: vec![
-                InfractionSnapshot {
-                    infraction: Infraction::DelayOfGame,
-                    player_number: None,
-                },
-                InfractionSnapshot {
-                    infraction: Infraction::StickInfringement,
-                    player_number: None,
-                },
-            ],
+            timeout: None,
+            scores: BlackWhiteBundle { black: 2, white: 3 },
+            penalties: BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        time: PenaltyTime::Seconds(57),
+                        player_number: 3,
+                        infraction: Infraction::Unknown,
+                    },
+                    PenaltySnapshot {
+                        time: PenaltyTime::Seconds(117),
+                        player_number: 6,
+                        infraction: Infraction::DelayOfGame,
+                    },
+                ],
+                white: vec![
+                    PenaltySnapshot {
+                        time: PenaltyTime::Seconds(297),
+                        player_number: 12,
+                        infraction: Infraction::FalseStart,
+                    },
+                    PenaltySnapshot {
+                        time: PenaltyTime::TotalDismissal,
+                        player_number: 15,
+                        infraction: Infraction::FreeArm,
+                    },
+                ],
+            },
+            warnings: BlackWhiteBundle {
+                black: vec![
+                    InfractionSnapshot {
+                        infraction: Infraction::Obstruction,
+                        player_number: Some(3),
+                    },
+                    InfractionSnapshot {
+                        infraction: Infraction::OutOfBounds,
+                        player_number: Some(6),
+                    },
+                ],
+                white: vec![
+                    InfractionSnapshot {
+                        infraction: Infraction::DelayOfGame,
+                        player_number: Some(12),
+                    },
+                    InfractionSnapshot {
+                        infraction: Infraction::StickInfringement,
+                        player_number: None,
+                    },
+                ],
+            },
+            fouls: OptColorBundle {
+                black: vec![
+                    InfractionSnapshot {
+                        infraction: Infraction::Obstruction,
+                        player_number: Some(3),
+                    },
+                    InfractionSnapshot {
+                        infraction: Infraction::OutOfBounds,
+                        player_number: Some(6),
+                    },
+                ],
+                white: vec![
+                    InfractionSnapshot {
+                        infraction: Infraction::DelayOfGame,
+                        player_number: Some(12),
+                    },
+                    InfractionSnapshot {
+                        infraction: Infraction::StickInfringement,
+                        player_number: None,
+                    },
+                ],
+                equal: vec![
+                    InfractionSnapshot {
+                        infraction: Infraction::DelayOfGame,
+                        player_number: None,
+                    },
+                    InfractionSnapshot {
+                        infraction: Infraction::StickInfringement,
+                        player_number: None,
+                    },
+                ],
+            },
+            timeouts_available: BlackWhiteBundle {
+                black: false,
+                white: true,
+            },
             is_old_game: true,
             game_number: 26,
             next_game_number: 28,
@@ -791,6 +815,7 @@ mod test {
         let binary_expected = Vec::from(
             TransmittedData {
                 white_on_right,
+                brightness,
                 flash,
                 beep_test,
                 snapshot: snapshot.clone().into(),
@@ -800,7 +825,7 @@ mod test {
         );
 
         update_sender
-            .send_snapshot(snapshot, white_on_right)
+            .send_snapshot(snapshot, white_on_right, brightness)
             .unwrap();
 
         let expected_binary_bytes = binary_expected.len();

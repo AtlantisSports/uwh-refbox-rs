@@ -30,9 +30,11 @@ use tokio::{
 };
 use tokio_serial::SerialPortBuilder;
 use uwh_common::{
+    bundles::*,
+    color::Color,
     config::Game as GameConfig,
     drawing_support::*,
-    game_snapshot::{Color, GamePeriod, GameSnapshot, Infraction, TimeoutSnapshot},
+    game_snapshot::{GamePeriod, GameSnapshot, Infraction, TimeoutSnapshot},
     uwhportal::UwhPortalClient,
     uwhscores::*,
 };
@@ -141,24 +143,29 @@ impl RefBoxApp {
         }
         self.maybe_play_sound(&new_snapshot);
         self.update_sender
-            .send_snapshot(new_snapshot.clone(), self.config.hardware.white_on_right)
+            .send_snapshot(
+                new_snapshot.clone(),
+                self.config.hardware.white_on_right,
+                self.config.hardware.brightness,
+            )
             .unwrap();
         self.snapshot = new_snapshot;
     }
 
     fn maybe_play_sound(&self, new_snapshot: &GameSnapshot) {
         let (play_whistle, play_buzzer) = match new_snapshot.timeout {
-            TimeoutSnapshot::Black(time) | TimeoutSnapshot::White(time) => {
+            Some(TimeoutSnapshot::Black(time)) | Some(TimeoutSnapshot::White(time)) => {
                 match self.snapshot.timeout {
-                    TimeoutSnapshot::Black(old_time) | TimeoutSnapshot::White(old_time) => (
+                    Some(TimeoutSnapshot::Black(old_time))
+                    | Some(TimeoutSnapshot::White(old_time)) => (
                         time != old_time && time == 15,
                         time != old_time && time == 0,
                     ),
                     _ => (false, false),
                 }
             }
-            TimeoutSnapshot::Ref(_) | TimeoutSnapshot::PenaltyShot(_) => (false, false),
-            TimeoutSnapshot::None => {
+            Some(TimeoutSnapshot::Ref(_)) | Some(TimeoutSnapshot::PenaltyShot(_)) => (false, false),
+            None => {
                 let prereqs = new_snapshot.current_period != GamePeriod::SuddenDeath
                     && new_snapshot.secs_in_period != self.snapshot.secs_in_period;
 
@@ -672,6 +679,7 @@ impl RefBoxApp {
 
         let EditableSettings {
             white_on_right,
+            brightness,
             using_uwhscores,
             current_tid,
             current_pool,
@@ -690,6 +698,7 @@ impl RefBoxApp {
         } = edited_settings;
 
         self.config.hardware.white_on_right = white_on_right;
+        self.config.hardware.brightness = brightness;
         self.using_uwhscores = using_uwhscores;
         self.current_tid = current_tid;
         self.current_pool = current_pool;
@@ -1512,6 +1521,7 @@ impl Application for RefBoxApp {
                         self.snapshot.game_number
                     },
                     white_on_right: self.config.hardware.white_on_right,
+                    brightness: self.config.hardware.brightness,
                     using_uwhscores: self.using_uwhscores,
                     uwhscores_email: self.config.uwhscores.email.clone(),
                     uwhscores_password: self.config.uwhscores.password.clone(),
@@ -1899,6 +1909,7 @@ impl Application for RefBoxApp {
                     CyclingParameter::AboveWaterVol => settings.sound.above_water_vol.cycle(),
                     CyclingParameter::UnderWaterVol => settings.sound.under_water_vol.cycle(),
                     CyclingParameter::Mode => settings.mode.cycle(),
+                    CyclingParameter::Brightness => settings.brightness.cycle(),
                 }
             }
             Message::TextParameterChanged(param, val) => {
@@ -2028,12 +2039,7 @@ impl Application for RefBoxApp {
             Message::ConfirmScores(snapshot) => {
                 if self.config.confirm_score {
                     self.apply_snapshot(snapshot);
-
-                    let scores = BlackWhiteBundle {
-                        black: self.snapshot.b_score,
-                        white: self.snapshot.w_score,
-                    };
-                    self.app_state = AppState::ConfirmScores(scores);
+                    self.app_state = AppState::ConfirmScores(self.snapshot.scores);
                     trace!("AppState changed to {:?}", self.app_state);
                 } else {
                     let mut tm = self.tm.lock().unwrap();
@@ -2143,12 +2149,7 @@ impl Application for RefBoxApp {
                 self.apply_snapshot(snapshot);
 
                 if would_end {
-                    let scores = BlackWhiteBundle {
-                        black: self.snapshot.b_score,
-                        white: self.snapshot.w_score,
-                    };
-
-                    self.app_state = AppState::ConfirmScores(scores);
+                    self.app_state = AppState::ConfirmScores(self.snapshot.scores);
                     trace!("AppState changed to {:?}", self.app_state);
                 }
 

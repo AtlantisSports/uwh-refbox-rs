@@ -13,7 +13,7 @@ use iced::{
     widget::{button, column, horizontal_space, row, text},
 };
 
-use uwh_common::game_snapshot::{Color as GameColor, GameSnapshot};
+use uwh_common::{color::Color as GameColor, game_snapshot::GameSnapshot};
 
 pub(in super::super) fn build_penalty_overview_page<'a>(
     snapshot: &GameSnapshot,

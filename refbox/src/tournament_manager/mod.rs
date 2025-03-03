@@ -1,11 +1,7 @@
-use derivative::Derivative;
 use log::*;
 use std::{
     cmp::{max, min},
     convert::TryInto,
-    fmt::{Display, Formatter},
-    iter::FromIterator,
-    ops::{Index, IndexMut},
 };
 use thiserror::Error;
 use time::{OffsetDateTime, PrimitiveDateTime, UtcOffset};
@@ -14,9 +10,11 @@ use tokio::{
     time::{Duration, Instant},
 };
 use uwh_common::{
+    bundles::{BlackWhiteBundle, OptColorBundle},
+    color::Color,
     config::Game as GameConfig,
     drawing_support::*,
-    game_snapshot::{Color, GamePeriod, GameSnapshot, Infraction, TimeoutSnapshot},
+    game_snapshot::{GamePeriod, GameSnapshot, Infraction, TimeoutSnapshot},
     uwhscores::TimingRules,
 };
 
@@ -41,7 +39,7 @@ pub struct TournamentManager {
     game_start_time: Instant,
     current_period: GamePeriod,
     clock_state: ClockState,
-    timeout_state: TimeoutState,
+    timeout_state: Option<TimeoutState>,
     timeouts_used: BlackWhiteBundle<u16>,
     scores: BlackWhiteBundle<u8>,
     penalties: BlackWhiteBundle<Vec<Penalty>>,
@@ -69,7 +67,7 @@ impl TournamentManager {
             clock_state: ClockState::Stopped {
                 clock_time: config.nominal_break,
             },
-            timeout_state: TimeoutState::None,
+            timeout_state: None,
             timeouts_used: Default::default(),
             scores: Default::default(),
             penalties: Default::default(),
@@ -91,11 +89,11 @@ impl TournamentManager {
 
     pub fn clock_is_running(&self) -> bool {
         match &self.timeout_state {
-            TimeoutState::Team(_, cs)
-            | TimeoutState::Ref(cs)
-            | TimeoutState::PenaltyShot(cs)
-            | TimeoutState::RugbyPenaltyShot(cs) => cs.is_running(),
-            TimeoutState::None => self.clock_state.is_running(),
+            Some(TimeoutState::Team(_, cs))
+            | Some(TimeoutState::Ref(cs))
+            | Some(TimeoutState::PenaltyShot(cs))
+            | Some(TimeoutState::RugbyPenaltyShot(cs)) => cs.is_running(),
+            None => self.clock_state.is_running(),
         }
     }
 
@@ -195,7 +193,7 @@ impl TournamentManager {
         self.clock_state = ClockState::Stopped {
             clock_time: self.config.minimum_break,
         };
-        self.timeout_state = TimeoutState::None;
+        self.timeout_state = None;
         self.reset();
 
         if was_running {
@@ -214,7 +212,7 @@ impl TournamentManager {
 
     /// Returns `Ok` if timeout can be started, otherwise returns `Err` describing why not
     pub fn can_start_team_timeout(&self, color: Color) -> Result<()> {
-        if let ts @ TimeoutState::Team(timeout_color, _) = &self.timeout_state {
+        if let Some(ts @ TimeoutState::Team(timeout_color, _)) = &self.timeout_state {
             if *timeout_color == color {
                 return Err(TournamentManagerError::AlreadyInTimeout(
                     ts.as_snapshot(Instant::now()),
@@ -241,7 +239,7 @@ impl TournamentManager {
 
     /// Returns `Ok` if timeout can be started, otherwise returns `Err` describing why not
     pub fn can_start_ref_timeout(&self) -> Result<()> {
-        if let ts @ TimeoutState::Ref(_) = &self.timeout_state {
+        if let Some(ts @ TimeoutState::Ref(_)) = &self.timeout_state {
             Err(TournamentManagerError::AlreadyInTimeout(
                 ts.as_snapshot(Instant::now()),
             ))
@@ -252,11 +250,11 @@ impl TournamentManager {
 
     /// Returns `Ok` if penalty shot can be started, otherwise returns `Err` describing why not
     pub fn can_start_penalty_shot(&self) -> Result<()> {
-        if let ts @ TimeoutState::PenaltyShot(_) = &self.timeout_state {
+        if let Some(ts @ TimeoutState::PenaltyShot(_)) = &self.timeout_state {
             return Err(TournamentManagerError::AlreadyInTimeout(
                 ts.as_snapshot(Instant::now()),
             ));
-        } else if let ts @ TimeoutState::RugbyPenaltyShot(_) = &self.timeout_state {
+        } else if let Some(ts @ TimeoutState::RugbyPenaltyShot(_)) = &self.timeout_state {
             return Err(TournamentManagerError::AlreadyInTimeout(
                 ts.as_snapshot(Instant::now()),
             ));
@@ -276,11 +274,11 @@ impl TournamentManager {
 
     /// Returns `Ok` if penalty shot can be started, otherwise returns `Err` describing why not
     pub fn can_start_rugby_penalty_shot(&self) -> Result<()> {
-        if let ts @ TimeoutState::RugbyPenaltyShot(_) = &self.timeout_state {
+        if let Some(ts @ TimeoutState::RugbyPenaltyShot(_)) = &self.timeout_state {
             return Err(TournamentManagerError::AlreadyInTimeout(
                 ts.as_snapshot(Instant::now()),
             ));
-        } else if let ts @ TimeoutState::PenaltyShot(_) = &self.timeout_state {
+        } else if let Some(ts @ TimeoutState::PenaltyShot(_)) = &self.timeout_state {
             return Err(TournamentManagerError::AlreadyInTimeout(
                 ts.as_snapshot(Instant::now()),
             ));
@@ -300,7 +298,7 @@ impl TournamentManager {
 
     /// Returns `Ok` if timeout type can be switched, otherwise returns `Err` describing why not
     pub fn can_switch_to_team_timeout(&self, color: Color) -> Result<()> {
-        if let TimeoutState::Team(timeout_color, _) = &self.timeout_state {
+        if let Some(TimeoutState::Team(timeout_color, _)) = &self.timeout_state {
             if color != *timeout_color {
                 if self.timeouts_used[color] < self.config.num_team_timeouts_allowed {
                     Ok(())
@@ -317,9 +315,9 @@ impl TournamentManager {
 
     /// Returns `Ok` if timeout type can be switched, otherwise returns `Err` describing why not
     pub fn can_switch_to_ref_timeout(&self) -> Result<()> {
-        if let TimeoutState::PenaltyShot(_) = &self.timeout_state {
+        if let Some(TimeoutState::PenaltyShot(_)) = &self.timeout_state {
             Ok(())
-        } else if let TimeoutState::RugbyPenaltyShot(_) = &self.timeout_state {
+        } else if let Some(TimeoutState::RugbyPenaltyShot(_)) = &self.timeout_state {
             Ok(())
         } else {
             Err(TournamentManagerError::NotInPenaltyShot)
@@ -334,7 +332,7 @@ impl TournamentManager {
             | GamePeriod::OvertimeFirstHalf
             | GamePeriod::OvertimeSecondHalf
             | GamePeriod::SuddenDeath => {
-                if let TimeoutState::Ref(_) = &self.timeout_state {
+                if let Some(TimeoutState::Ref(_)) = &self.timeout_state {
                     Ok(())
                 } else {
                     Err(TournamentManagerError::NotInRefTimeout)
@@ -355,7 +353,7 @@ impl TournamentManager {
             | GamePeriod::OvertimeFirstHalf
             | GamePeriod::OvertimeSecondHalf
             | GamePeriod::SuddenDeath => {
-                if let TimeoutState::Ref(_) = &self.timeout_state {
+                if let Some(TimeoutState::Ref(_)) = &self.timeout_state {
                     Ok(())
                 } else {
                     Err(TournamentManagerError::NotInRefTimeout)
@@ -382,7 +380,7 @@ impl TournamentManager {
                 clock_time: self.config.team_timeout_duration,
             }
         };
-        self.timeout_state = TimeoutState::Team(color, cs);
+        self.timeout_state = Some(TimeoutState::Team(color, cs));
         self.timeouts_used[color] += 1;
         Ok(())
     }
@@ -392,14 +390,14 @@ impl TournamentManager {
         info!("{} Starting a ref timeout", self.status_string(now));
         if self.clock_is_running() {
             self.stop_game_clock(now)?;
-            self.timeout_state = TimeoutState::Ref(ClockState::CountingUp {
+            self.timeout_state = Some(TimeoutState::Ref(ClockState::CountingUp {
                 start_time: now,
                 time_at_start: Duration::ZERO,
-            });
+            }));
         } else {
-            self.timeout_state = TimeoutState::Ref(ClockState::Stopped {
+            self.timeout_state = Some(TimeoutState::Ref(ClockState::Stopped {
                 clock_time: Duration::ZERO,
-            });
+            }));
         }
         Ok(())
     }
@@ -409,14 +407,14 @@ impl TournamentManager {
         info!("{} Starting a penalty shot", self.status_string(now));
         if self.clock_is_running() {
             self.stop_game_clock(now)?;
-            self.timeout_state = TimeoutState::PenaltyShot(ClockState::CountingUp {
+            self.timeout_state = Some(TimeoutState::PenaltyShot(ClockState::CountingUp {
                 start_time: now,
                 time_at_start: Duration::ZERO,
-            });
+            }));
         } else {
-            self.timeout_state = TimeoutState::PenaltyShot(ClockState::Stopped {
+            self.timeout_state = Some(TimeoutState::PenaltyShot(ClockState::Stopped {
                 clock_time: Duration::ZERO,
-            });
+            }));
         }
         Ok(())
     }
@@ -425,14 +423,14 @@ impl TournamentManager {
         self.can_start_rugby_penalty_shot()?;
         info!("{} Starting a rugby penalty shot", self.status_string(now));
         if self.clock_is_running() {
-            self.timeout_state = TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
+            self.timeout_state = Some(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
                 start_time: now,
                 time_remaining_at_start: self.config.penalty_shot_duration,
-            });
+            }));
         } else {
-            self.timeout_state = TimeoutState::RugbyPenaltyShot(ClockState::Stopped {
+            self.timeout_state = Some(TimeoutState::RugbyPenaltyShot(ClockState::Stopped {
                 clock_time: self.config.penalty_shot_duration,
-            });
+            }));
         }
         Ok(())
     }
@@ -440,7 +438,7 @@ impl TournamentManager {
     pub fn switch_to_team_timeout(&mut self, new_color: Color) -> Result<()> {
         self.can_switch_to_team_timeout(new_color)?;
         info!("Switching to a {new_color} timeout");
-        if let TimeoutState::Team(color, _) = &mut self.timeout_state {
+        if let Some(TimeoutState::Team(color, _)) = &mut self.timeout_state {
             *color = new_color;
         }
         self.timeouts_used[new_color] += 1;
@@ -452,13 +450,13 @@ impl TournamentManager {
     pub fn switch_to_ref_timeout(&mut self, now: Instant) -> Result<()> {
         self.can_switch_to_ref_timeout()?;
         info!("Switching to a ref timeout");
-        if let TimeoutState::PenaltyShot(cs) = &self.timeout_state {
-            self.timeout_state = TimeoutState::Ref(cs.clone());
-        } else if let TimeoutState::RugbyPenaltyShot(_) = &self.timeout_state {
-            self.timeout_state = TimeoutState::Ref(ClockState::CountingUp {
+        if let Some(TimeoutState::PenaltyShot(cs)) = &self.timeout_state {
+            self.timeout_state = Some(TimeoutState::Ref(cs.clone()));
+        } else if let Some(TimeoutState::RugbyPenaltyShot(_)) = &self.timeout_state {
+            self.timeout_state = Some(TimeoutState::Ref(ClockState::CountingUp {
                 start_time: now,
                 time_at_start: Duration::ZERO,
-            });
+            }));
         }
         Ok(())
     }
@@ -466,8 +464,8 @@ impl TournamentManager {
     pub fn switch_to_penalty_shot(&mut self) -> Result<()> {
         self.can_switch_to_penalty_shot()?;
         info!("Switching to a penalty shot");
-        if let TimeoutState::Ref(cs) = &self.timeout_state {
-            self.timeout_state = TimeoutState::PenaltyShot(cs.clone());
+        if let Some(TimeoutState::Ref(cs)) = &self.timeout_state {
+            self.timeout_state = Some(TimeoutState::PenaltyShot(cs.clone()));
         }
         Ok(())
     }
@@ -475,7 +473,7 @@ impl TournamentManager {
     pub fn switch_to_rugby_penalty_shot(&mut self, now: Instant) -> Result<()> {
         self.can_switch_to_rugby_penalty_shot()?;
         info!("Switching to a rugby penalty shot");
-        if let TimeoutState::Ref(cs) = &self.timeout_state {
+        if let Some(TimeoutState::Ref(cs)) = &self.timeout_state {
             let new_cs = match cs {
                 ClockState::Stopped { .. } => ClockState::Stopped {
                     clock_time: self.config.penalty_shot_duration,
@@ -487,7 +485,7 @@ impl TournamentManager {
                 ClockState::CountingDown { .. } => unreachable!(),
             };
 
-            self.timeout_state = TimeoutState::RugbyPenaltyShot(new_cs);
+            self.timeout_state = Some(TimeoutState::RugbyPenaltyShot(new_cs));
         }
         Ok(())
     }
@@ -495,7 +493,7 @@ impl TournamentManager {
     pub fn timeout_end_would_end_game(&self, now: Instant) -> Result<bool> {
         if self.would_end_game(now)? {
             return Ok(true);
-        } else if let TimeoutState::RugbyPenaltyShot(ClockState::CountingDown { .. }) =
+        } else if let Some(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown { .. })) =
             self.timeout_state
         {
             if let ClockState::Stopped { clock_time } = self.clock_state {
@@ -520,14 +518,14 @@ impl TournamentManager {
 
     pub fn end_timeout(&mut self, now: Instant) -> Result<()> {
         match &self.timeout_state {
-            TimeoutState::None => Err(TournamentManagerError::NotInTimeout),
-            TimeoutState::Team(color, cs) => {
+            None => Err(TournamentManagerError::NotInTimeout),
+            Some(TimeoutState::Team(color, cs)) => {
                 info!("{} Ending {color} team timeout", self.status_string(now));
                 match cs {
-                    ClockState::Stopped { .. } => self.timeout_state = TimeoutState::None,
+                    ClockState::Stopped { .. } => self.timeout_state = None,
                     ClockState::CountingDown { .. } => {
                         self.start_game_clock(now);
-                        self.timeout_state = TimeoutState::None;
+                        self.timeout_state = None;
                     }
                     ClockState::CountingUp { .. } => {
                         error!("Invalid timeout state");
@@ -537,10 +535,10 @@ impl TournamentManager {
 
                 Ok(())
             }
-            TimeoutState::Ref(cs) | TimeoutState::PenaltyShot(cs) => {
+            Some(TimeoutState::Ref(cs)) | Some(TimeoutState::PenaltyShot(cs)) => {
                 let timeout_time = match cs.clone() {
                     ClockState::Stopped { clock_time } => {
-                        self.timeout_state = TimeoutState::None;
+                        self.timeout_state = None;
                         Some(clock_time)
                     }
                     ClockState::CountingUp {
@@ -548,7 +546,7 @@ impl TournamentManager {
                         time_at_start,
                     } => {
                         self.start_game_clock(now);
-                        self.timeout_state = TimeoutState::None;
+                        self.timeout_state = None;
                         now.checked_duration_since(start_time)
                             .map(|d| d + time_at_start)
                     }
@@ -570,7 +568,7 @@ impl TournamentManager {
 
                 Ok(())
             }
-            TimeoutState::RugbyPenaltyShot(cs) => {
+            Some(TimeoutState::RugbyPenaltyShot(cs)) => {
                 info!("{} Ending rugby penalty shot", self.status_string(now));
                 match cs {
                     ClockState::CountingDown {
@@ -578,7 +576,7 @@ impl TournamentManager {
                         time_remaining_at_start,
                     } => self.handle_rugby_pen_shot_end(now, *start_time, *time_remaining_at_start),
                     ClockState::Stopped { .. } => {
-                        self.timeout_state = TimeoutState::None;
+                        self.timeout_state = None;
                         Ok(())
                     }
                     ClockState::CountingUp { .. } => unreachable!(),
@@ -1028,17 +1026,12 @@ impl TournamentManager {
 
     pub fn would_end_game(&self, now: Instant) -> Result<bool> {
         if self.current_period == GamePeriod::SuddenDeath {
-            let scores = self.get_scores();
-            if scores.black != scores.white {
-                Ok(true)
-            } else {
-                Ok(false)
-            }
+            Ok(self.get_scores().are_not_equal())
         } else {
-            if let TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
+            if let Some(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
                 start_time,
                 time_remaining_at_start,
-            }) = self.timeout_state
+            })) = self.timeout_state
             {
                 if !self.check_time_remaining(now, start_time, time_remaining_at_start)? {
                     return Ok(false);
@@ -1100,10 +1093,10 @@ impl TournamentManager {
 
             // Check if there is a penalty shot that is not finished
             let unfinished_penalty_shot =
-                if let TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
+                if let Some(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
                     start_time,
                     time_remaining_at_start,
-                }) = self.timeout_state
+                })) = self.timeout_state
                 {
                     let elapsed = now
                         .checked_duration_since(start_time)
@@ -1226,7 +1219,7 @@ impl TournamentManager {
             // We are either in a timeout, sudden death, or stopped clock. Sudden death and
             // stopped clock don't need anything done
             match &self.timeout_state {
-                TimeoutState::Team(color, cs) => match cs {
+                Some(TimeoutState::Team(color, cs)) => match cs {
                     ClockState::CountingDown {
                         start_time,
                         time_remaining_at_start,
@@ -1243,12 +1236,12 @@ impl TournamentManager {
                                     "Cannot end {color} team timeout because game clock isn't stopped"
                                 );
                             }
-                            self.timeout_state = TimeoutState::None;
+                            self.timeout_state = None;
                         }
                     }
                     ClockState::CountingUp { .. } | ClockState::Stopped { .. } => {}
                 },
-                TimeoutState::RugbyPenaltyShot(cs) => match cs {
+                Some(TimeoutState::RugbyPenaltyShot(cs)) => match cs {
                     ClockState::CountingDown {
                         start_time,
                         time_remaining_at_start,
@@ -1263,7 +1256,7 @@ impl TournamentManager {
                     }
                     ClockState::CountingUp { .. } | ClockState::Stopped { .. } => (),
                 },
-                TimeoutState::Ref(_) | TimeoutState::PenaltyShot(_) | TimeoutState::None => {}
+                Some(TimeoutState::Ref(_)) | Some(TimeoutState::PenaltyShot(_)) | None => {}
             };
         };
 
@@ -1365,7 +1358,7 @@ impl TournamentManager {
                 time_remaining_at_start: self.current_period.duration(&self.config).unwrap(),
             }
         }
-        self.timeout_state = TimeoutState::None;
+        self.timeout_state = None;
 
         Ok(())
     }
@@ -1423,8 +1416,8 @@ impl TournamentManager {
         let mut need_to_send = false;
         let status_str = self.status_string(now);
         match &mut self.timeout_state {
-            TimeoutState::None => need_to_send = self.start_game_clock(now),
-            TimeoutState::Team(_, cs) => {
+            None => need_to_send = self.start_game_clock(now),
+            Some(TimeoutState::Team(_, cs)) => {
                 if let ClockState::Stopped { clock_time } = cs {
                     info!("{status_str} Starting the timeout clock");
                     *cs = ClockState::CountingDown {
@@ -1434,7 +1427,7 @@ impl TournamentManager {
                     need_to_send = true;
                 }
             }
-            TimeoutState::RugbyPenaltyShot(cs) => {
+            Some(TimeoutState::RugbyPenaltyShot(cs)) => {
                 if let ClockState::Stopped { clock_time } = cs {
                     info!("{status_str} Starting the penalty shot clock");
                     *cs = ClockState::CountingDown {
@@ -1449,7 +1442,7 @@ impl TournamentManager {
                     need_to_send = true;
                 }
             }
-            TimeoutState::Ref(cs) | TimeoutState::PenaltyShot(cs) => {
+            Some(TimeoutState::Ref(cs)) | Some(TimeoutState::PenaltyShot(cs)) => {
                 if let ClockState::Stopped { clock_time } = cs {
                     info!("{status_str} Starting the timeout clock");
                     *cs = ClockState::CountingUp {
@@ -1469,8 +1462,8 @@ impl TournamentManager {
         let mut need_to_send = false;
         let status_str = self.status_string(now);
         match &mut self.timeout_state {
-            TimeoutState::None => need_to_send = self.stop_game_clock(now)?,
-            TimeoutState::Team(_, cs) => {
+            None => need_to_send = self.stop_game_clock(now)?,
+            Some(TimeoutState::Team(_, cs)) => {
                 if let ClockState::CountingDown { .. } = cs {
                     info!("{status_str} Stopping the timeout clock");
                     *cs = ClockState::Stopped {
@@ -1481,7 +1474,7 @@ impl TournamentManager {
                     need_to_send = true;
                 }
             }
-            TimeoutState::RugbyPenaltyShot(cs) => {
+            Some(TimeoutState::RugbyPenaltyShot(cs)) => {
                 if let ClockState::CountingDown { .. } = cs {
                     info!("{status_str} Stopping the timeout clock");
                     *cs = ClockState::Stopped {
@@ -1497,7 +1490,7 @@ impl TournamentManager {
                     need_to_send = true;
                 }
             }
-            TimeoutState::Ref(cs) | TimeoutState::PenaltyShot(cs) => {
+            Some(TimeoutState::Ref(cs)) | Some(TimeoutState::PenaltyShot(cs)) => {
                 if let ClockState::CountingUp { .. } = cs {
                     info!("{status_str} Stopping the timeout clock");
                     *cs = ClockState::Stopped {
@@ -1517,18 +1510,20 @@ impl TournamentManager {
 
     pub fn halt_clock(&mut self, now: Instant, mut end_timeout: bool) -> Result<()> {
         if end_timeout {
-            self.timeout_state = TimeoutState::None;
+            self.timeout_state = None;
         }
 
         match self.timeout_state {
-            TimeoutState::None => {}
-            TimeoutState::RugbyPenaltyShot(_) => {
+            None => {}
+            Some(TimeoutState::RugbyPenaltyShot(_)) => {
                 end_timeout = true;
-                self.timeout_state = TimeoutState::None;
+                self.timeout_state = None;
             }
-            TimeoutState::Team(_, _) | TimeoutState::Ref(_) | TimeoutState::PenaltyShot(_) => {
+            Some(ref ts @ TimeoutState::Team(_, _))
+            | Some(ref ts @ TimeoutState::Ref(_))
+            | Some(ref ts @ TimeoutState::PenaltyShot(_)) => {
                 return Err(TournamentManagerError::AlreadyInTimeout(
-                    self.timeout_state.as_snapshot(now),
+                    ts.as_snapshot(now),
                 ));
             }
         }
@@ -1573,9 +1568,9 @@ impl TournamentManager {
     }
 
     pub fn start_play_now(&mut self, now: Instant) -> Result<()> {
-        if self.timeout_state != TimeoutState::None {
+        if let Some(ref ts) = self.timeout_state {
             return Err(TournamentManagerError::AlreadyInTimeout(
-                self.timeout_state.as_snapshot(Instant::now()),
+                ts.as_snapshot(Instant::now()),
             ));
         }
 
@@ -1688,11 +1683,11 @@ impl TournamentManager {
             );
             let new_cs = ClockState::Stopped { clock_time };
             match self.timeout_state {
-                TimeoutState::Team(_, ref mut cs)
-                | TimeoutState::Ref(ref mut cs)
-                | TimeoutState::PenaltyShot(ref mut cs)
-                | TimeoutState::RugbyPenaltyShot(ref mut cs) => *cs = new_cs,
-                TimeoutState::None => {
+                Some(TimeoutState::Team(_, ref mut cs))
+                | Some(TimeoutState::Ref(ref mut cs))
+                | Some(TimeoutState::PenaltyShot(ref mut cs))
+                | Some(TimeoutState::RugbyPenaltyShot(ref mut cs)) => *cs = new_cs,
+                None => {
                     return Err(TournamentManagerError::NotInTimeout);
                 }
             };
@@ -1731,7 +1726,7 @@ impl TournamentManager {
     }
 
     #[cfg(test)]
-    fn set_timeout_state(&mut self, state: TimeoutState) {
+    fn set_timeout_state(&mut self, state: Option<TimeoutState>) {
         if let ClockState::Stopped { .. } = self.clock_state {
             self.timeout_state = state;
         } else {
@@ -1769,11 +1764,11 @@ impl TournamentManager {
     /// before the start of the current timeout
     pub fn timeout_clock_time(&self, now: Instant) -> Option<Duration> {
         match self.timeout_state {
-            TimeoutState::None => None,
-            TimeoutState::Team(_, ref cs)
-            | TimeoutState::Ref(ref cs)
-            | TimeoutState::PenaltyShot(ref cs)
-            | TimeoutState::RugbyPenaltyShot(ref cs) => cs.clock_time(now),
+            None => None,
+            Some(TimeoutState::Team(_, ref cs))
+            | Some(TimeoutState::Ref(ref cs))
+            | Some(TimeoutState::PenaltyShot(ref cs))
+            | Some(TimeoutState::RugbyPenaltyShot(ref cs)) => cs.clock_time(now),
         }
     }
 
@@ -1784,59 +1779,39 @@ impl TournamentManager {
         let secs_in_period = cur_time.as_secs().try_into().ok()?;
         trace!("Got seconds remaining: {secs_in_period}");
 
-        let b_penalties = self
+        let penalties = self
             .penalties
-            .black
             .iter()
-            .map(|pen| pen.as_snapshot(self.current_period, cur_time, &self.config))
-            .collect::<PenaltyResult<Vec<_>>>()
-            .ok()?;
-        trace!("Got black penalties");
-        let w_penalties = self
-            .penalties
-            .white
-            .iter()
-            .map(|pen| pen.as_snapshot(self.current_period, cur_time, &self.config))
-            .collect::<PenaltyResult<Vec<_>>>()
-            .ok()?;
-        trace!("Got white penalties");
+            .map(|(c, pens)| {
+                (
+                    c,
+                    pens.iter()
+                        .map(|p| p.as_snapshot(self.current_period, cur_time, &self.config))
+                        .collect::<PenaltyResult<Vec<_>>>()
+                        .ok(),
+                )
+            })
+            .collect::<BlackWhiteBundle<_>>()
+            .complete()?;
+        trace!("Got penalties");
 
-        let b_warnings = self
+        let warnings = self
             .warnings
-            .black
             .iter()
-            .map(|war| war.as_snapshot())
+            .map(|(c, warns)| (c, warns.iter().map(|war| war.as_snapshot()).collect()))
             .collect();
-        trace!("Got black warnings");
-        let w_warnings = self
-            .warnings
-            .white
-            .iter()
-            .map(|war| war.as_snapshot())
-            .collect();
-        trace!("Got white warnings");
+        trace!("Got warnings");
 
-        let b_fouls = self
+        let fouls = self
             .fouls
-            .black
             .iter()
-            .map(|war| war.as_snapshot())
+            .map(|(c, fouls)| (c, fouls.iter().map(|foul| foul.as_snapshot()).collect()))
             .collect();
-        trace!("Got black fouls");
-        let w_fouls = self
-            .fouls
-            .white
-            .iter()
-            .map(|war| war.as_snapshot())
+        trace!("Got fouls");
+
+        let timeouts_available = enum_iterator::all()
+            .map(|c| (c, self.can_start_team_timeout(c).is_ok()))
             .collect();
-        trace!("Got white fouls");
-        let equal_fouls = self
-            .fouls
-            .equal
-            .iter()
-            .map(|war| war.as_snapshot())
-            .collect();
-        trace!("Got equal fouls");
 
         if let Some((_, _, goal_per, goal_time)) = self.recent_goal {
             if (goal_per != self.current_period)
@@ -1854,16 +1829,12 @@ impl TournamentManager {
         Some(GameSnapshot {
             current_period: self.current_period,
             secs_in_period,
-            timeout: self.timeout_state.as_snapshot(now),
-            b_score: self.scores.black,
-            w_score: self.scores.white,
-            b_penalties,
-            w_penalties,
-            b_warnings,
-            w_warnings,
-            b_fouls,
-            w_fouls,
-            equal_fouls,
+            timeout: self.timeout_state.as_ref().map(|t| t.as_snapshot(now)),
+            scores: self.scores,
+            penalties,
+            warnings,
+            fouls,
+            timeouts_available,
             is_old_game: !self.has_reset,
             game_number: self.game_number(),
             next_game_number: self.next_game_number(),
@@ -1876,18 +1847,18 @@ impl TournamentManager {
     pub fn next_update_time(&self, now: Instant) -> Option<Instant> {
         match (&self.timeout_state, self.current_period) {
             // cases where the clock is counting up
-            (TimeoutState::Ref(cs), _) | (TimeoutState::PenaltyShot(cs), _) => cs
+            (Some(TimeoutState::Ref(cs)), _) | (Some(TimeoutState::PenaltyShot(cs)), _) => cs
                 .clock_time(now)
                 .map(|ct| now + Duration::from_nanos(1_000_000_000 - ct.subsec_nanos() as u64)),
-            (TimeoutState::None, GamePeriod::SuddenDeath) => self
+            (None, GamePeriod::SuddenDeath) => self
                 .clock_state
                 .clock_time(now)
                 .map(|ct| now + Duration::from_nanos(1_000_000_000 - ct.subsec_nanos() as u64)),
             // cases where the clock is counting down
-            (TimeoutState::Team(_, cs), _) => cs
+            (Some(TimeoutState::Team(_, cs)), _) => cs
                 .clock_time(now)
                 .map(|ct| now + Duration::from_nanos(ct.subsec_nanos() as u64)),
-            (TimeoutState::RugbyPenaltyShot(cs), period) => {
+            (Some(TimeoutState::RugbyPenaltyShot(cs)), period) => {
                 let time_to_pen_update = cs
                     .clock_time(now)
                     .map(|ct| now + Duration::from_nanos(ct.subsec_nanos() as u64));
@@ -1904,7 +1875,7 @@ impl TournamentManager {
                     time_to_period_update.or(time_to_pen_update)
                 }
             }
-            (TimeoutState::None, _) => self
+            (None, _) => self
                 .clock_state
                 .clock_time(now)
                 .map(|ct| now + Duration::from_nanos(ct.subsec_nanos() as u64)),
@@ -2008,7 +1979,6 @@ impl ClockState {
 
 #[derive(Debug, Clone, PartialEq)]
 enum TimeoutState {
-    None,
     Team(Color, ClockState),
     Ref(ClockState),
     PenaltyShot(ClockState),
@@ -2018,7 +1988,6 @@ enum TimeoutState {
 impl TimeoutState {
     fn as_snapshot(&self, now: Instant) -> TimeoutSnapshot {
         match self {
-            TimeoutState::None => TimeoutSnapshot::None,
             TimeoutState::Team(Color::Black, cs) => TimeoutSnapshot::Black(cs.as_secs_u16(now)),
             TimeoutState::Team(Color::White, cs) => TimeoutSnapshot::White(cs.as_secs_u16(now)),
             TimeoutState::Ref(cs) => TimeoutSnapshot::Ref(cs.as_secs_u16(now)),
@@ -2026,219 +1995,6 @@ impl TimeoutState {
                 TimeoutSnapshot::PenaltyShot(cs.as_secs_u16(now))
             }
         }
-    }
-}
-
-#[derive(Derivative)]
-#[derivative(Default, Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BlackWhiteBundle<T> {
-    pub black: T,
-    pub white: T,
-}
-
-impl<T> BlackWhiteBundle<T> {
-    pub fn iter(&self) -> impl Iterator<Item = (Color, &T)> {
-        self.into_iter()
-    }
-}
-
-#[cfg(test)]
-impl BlackWhiteBundle<u8> {
-    pub fn new(black: u8, white: u8) -> Self {
-        Self { black, white }
-    }
-}
-
-impl<T: Eq> BlackWhiteBundle<T> {
-    pub fn are_not_equal(&self) -> bool {
-        self.black != self.white
-    }
-}
-
-impl<T> Index<Color> for BlackWhiteBundle<T> {
-    type Output = T;
-
-    fn index(&self, color: Color) -> &Self::Output {
-        match color {
-            Color::Black => &self.black,
-            Color::White => &self.white,
-        }
-    }
-}
-
-impl<T> IndexMut<Color> for BlackWhiteBundle<T> {
-    fn index_mut(&mut self, color: Color) -> &mut Self::Output {
-        match color {
-            Color::Black => &mut self.black,
-            Color::White => &mut self.white,
-        }
-    }
-}
-
-impl<T: Display> Display for BlackWhiteBundle<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Black: {}, White: {}", self.black, self.white)
-    }
-}
-
-pub struct BlackWhiteBundleIterator<'a, T> {
-    bundle: &'a BlackWhiteBundle<T>,
-    index: usize,
-}
-
-impl<'a, T> Iterator for BlackWhiteBundleIterator<'a, T> {
-    type Item = (Color, &'a T);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let value = match self.index {
-            0 => (Color::Black, &self.bundle.black),
-            1 => (Color::White, &self.bundle.white),
-            _ => return None,
-        };
-
-        self.index += 1;
-        Some(value)
-    }
-}
-
-impl<'a, T> IntoIterator for &'a BlackWhiteBundle<T> {
-    type Item = (Color, &'a T);
-    type IntoIter = BlackWhiteBundleIterator<'a, T>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        BlackWhiteBundleIterator {
-            bundle: self,
-            index: 0,
-        }
-    }
-}
-
-impl<T> IntoIterator for BlackWhiteBundle<T> {
-    type Item = (Color, T);
-    type IntoIter = std::vec::IntoIter<Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        vec![(Color::Black, self.black), (Color::White, self.white)].into_iter()
-    }
-}
-
-impl<T: Default> FromIterator<(Color, T)> for BlackWhiteBundle<T> {
-    fn from_iter<I: IntoIterator<Item = (Color, T)>>(iter: I) -> Self {
-        let mut bundle = BlackWhiteBundle::default();
-        for (color, value) in iter {
-            match color {
-                Color::Black => bundle.black = value,
-                Color::White => bundle.white = value,
-            }
-        }
-        bundle
-    }
-}
-
-#[derive(Derivative)]
-#[derivative(Default, Debug, Clone, Copy, PartialEq, Eq)]
-pub struct OptColorBundle<T> {
-    pub black: T,
-    pub equal: T,
-    pub white: T,
-}
-
-impl<T> OptColorBundle<T> {
-    pub fn iter(&self) -> impl Iterator<Item = (Option<Color>, &T)> {
-        self.into_iter()
-    }
-}
-
-impl<T> Index<Option<Color>> for OptColorBundle<T> {
-    type Output = T;
-
-    fn index(&self, color: Option<Color>) -> &Self::Output {
-        match color {
-            Some(Color::Black) => &self.black,
-            None => &self.equal,
-            Some(Color::White) => &self.white,
-        }
-    }
-}
-
-impl<T> IndexMut<Option<Color>> for OptColorBundle<T> {
-    fn index_mut(&mut self, color: Option<Color>) -> &mut Self::Output {
-        match color {
-            Some(Color::Black) => &mut self.black,
-            None => &mut self.equal,
-            Some(Color::White) => &mut self.white,
-        }
-    }
-}
-
-impl<T: Display> Display for OptColorBundle<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Black: {}, White: {}, Equal: {}",
-            self.black, self.white, self.equal
-        )
-    }
-}
-
-pub struct OptColorBundleIterator<'a, T> {
-    bundle: &'a OptColorBundle<T>,
-    index: usize,
-}
-
-impl<'a, T> Iterator for OptColorBundleIterator<'a, T> {
-    type Item = (Option<Color>, &'a T);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let value = match self.index {
-            0 => (Some(Color::Black), &self.bundle.black),
-            1 => (None, &self.bundle.equal),
-            2 => (Some(Color::White), &self.bundle.white),
-            _ => return None,
-        };
-
-        self.index += 1;
-        Some(value)
-    }
-}
-
-impl<'a, T> IntoIterator for &'a OptColorBundle<T> {
-    type Item = (Option<Color>, &'a T);
-    type IntoIter = OptColorBundleIterator<'a, T>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        OptColorBundleIterator {
-            bundle: self,
-            index: 0,
-        }
-    }
-}
-
-impl<T> IntoIterator for OptColorBundle<T> {
-    type Item = (Option<Color>, T);
-    type IntoIter = std::vec::IntoIter<Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        vec![
-            (Some(Color::Black), self.black),
-            (None, self.equal),
-            (Some(Color::White), self.white),
-        ]
-        .into_iter()
-    }
-}
-
-impl<T: Default> FromIterator<(Option<Color>, T)> for OptColorBundle<T> {
-    fn from_iter<I: IntoIterator<Item = (Option<Color>, T)>>(iter: I) -> Self {
-        let mut bundle = OptColorBundle::default();
-        for (color, value) in iter {
-            match color {
-                Some(Color::Black) => bundle.black = value,
-                None => bundle.equal = value,
-                Some(Color::White) => bundle.white = value,
-            }
-        }
-        bundle
     }
 }
 
@@ -2383,12 +2139,12 @@ mod test {
         let stop = start + Duration::from_secs(2);
 
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(18));
-        tm.set_timeout_state(TimeoutState::Team(
+        tm.set_timeout_state(Some(TimeoutState::Team(
             Color::Black,
             ClockState::Stopped {
                 clock_time: Duration::from_secs(5),
             },
-        ));
+        )));
 
         assert_eq!(tm.clock_is_running(), false);
         assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
@@ -2402,12 +2158,12 @@ mod test {
         assert_eq!(tm.game_clock_time(stop), Some(Duration::from_secs(18)));
         assert_eq!(tm.timeout_clock_time(stop), Some(Duration::from_secs(3)));
 
-        tm.set_timeout_state(TimeoutState::Team(
+        tm.set_timeout_state(Some(TimeoutState::Team(
             Color::White,
             ClockState::Stopped {
                 clock_time: Duration::from_secs(5),
             },
-        ));
+        )));
 
         assert_eq!(tm.clock_is_running(), false);
         assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
@@ -2421,9 +2177,9 @@ mod test {
         assert_eq!(tm.game_clock_time(stop), Some(Duration::from_secs(18)));
         assert_eq!(tm.timeout_clock_time(stop), Some(Duration::from_secs(3)));
 
-        tm.set_timeout_state(TimeoutState::Ref(ClockState::Stopped {
+        tm.set_timeout_state(Some(TimeoutState::Ref(ClockState::Stopped {
             clock_time: Duration::from_secs(5),
-        }));
+        })));
 
         assert_eq!(tm.clock_is_running(), false);
         assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
@@ -2437,9 +2193,9 @@ mod test {
         assert_eq!(tm.game_clock_time(stop), Some(Duration::from_secs(18)));
         assert_eq!(tm.timeout_clock_time(stop), Some(Duration::from_secs(7)));
 
-        tm.set_timeout_state(TimeoutState::PenaltyShot(ClockState::Stopped {
+        tm.set_timeout_state(Some(TimeoutState::PenaltyShot(ClockState::Stopped {
             clock_time: Duration::from_secs(5),
-        }));
+        })));
 
         assert_eq!(tm.clock_is_running(), false);
         assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
@@ -2691,6 +2447,14 @@ mod test {
         assert_eq!(tm.can_start_ref_timeout(), Ok(()));
         assert_eq!(tm.can_start_penalty_shot(), Ok(()));
         assert_eq!(tm.can_start_rugby_penalty_shot(), Ok(()));
+        let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
+        assert_eq!(
+            snapshot.timeouts_available,
+            BlackWhiteBundle {
+                black: true,
+                white: true
+            }
+        );
 
         tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(10));
         assert_eq!(tm.can_start_team_timeout(Color::Black), Ok(()));
@@ -2698,6 +2462,14 @@ mod test {
         assert_eq!(tm.can_start_ref_timeout(), Ok(()));
         assert_eq!(tm.can_start_penalty_shot(), Ok(()));
         assert_eq!(tm.can_start_rugby_penalty_shot(), Ok(()));
+        let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
+        assert_eq!(
+            snapshot.timeouts_available,
+            BlackWhiteBundle {
+                black: true,
+                white: true
+            }
+        );
 
         let otfh = GamePeriod::OvertimeFirstHalf;
         tm.set_period_and_game_clock_time(otfh, Duration::from_secs(10));
@@ -2712,6 +2484,14 @@ mod test {
         assert_eq!(tm.can_start_ref_timeout(), Ok(()));
         assert_eq!(tm.can_start_penalty_shot(), Ok(()));
         assert_eq!(tm.can_start_rugby_penalty_shot(), Ok(()));
+        let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
+        assert_eq!(
+            snapshot.timeouts_available,
+            BlackWhiteBundle {
+                black: false,
+                white: false
+            }
+        );
 
         let otsh = GamePeriod::OvertimeSecondHalf;
         tm.set_period_and_game_clock_time(otsh, Duration::from_secs(10));
@@ -2726,6 +2506,14 @@ mod test {
         assert_eq!(tm.can_start_ref_timeout(), Ok(()));
         assert_eq!(tm.can_start_penalty_shot(), Ok(()));
         assert_eq!(tm.can_start_rugby_penalty_shot(), Ok(()));
+        let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
+        assert_eq!(
+            snapshot.timeouts_available,
+            BlackWhiteBundle {
+                black: false,
+                white: false
+            }
+        );
 
         let otsd = GamePeriod::SuddenDeath;
         tm.set_period_and_game_clock_time(otsd, Duration::from_secs(10));
@@ -2740,6 +2528,14 @@ mod test {
         assert_eq!(tm.can_start_ref_timeout(), Ok(()));
         assert_eq!(tm.can_start_penalty_shot(), Ok(()));
         assert_eq!(tm.can_start_rugby_penalty_shot(), Ok(()));
+        let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
+        assert_eq!(
+            snapshot.timeouts_available,
+            BlackWhiteBundle {
+                black: false,
+                white: false
+            }
+        );
 
         let ht = GamePeriod::HalfTime;
         tm.set_period_and_game_clock_time(ht, Duration::from_secs(10));
@@ -2760,14 +2556,22 @@ mod test {
             tm.can_start_rugby_penalty_shot(),
             Err(TournamentManagerError::WrongGamePeriod(to_rps, ht))
         );
+        let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
+        assert_eq!(
+            snapshot.timeouts_available,
+            BlackWhiteBundle {
+                black: false,
+                white: false
+            }
+        );
 
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(10));
-        tm.set_timeout_state(TimeoutState::Team(
+        tm.set_timeout_state(Some(TimeoutState::Team(
             Color::Black,
             ClockState::Stopped {
                 clock_time: Duration::from_secs(0),
             },
-        ));
+        )));
         assert_eq!(
             tm.can_start_team_timeout(Color::Black),
             Err(TournamentManagerError::AlreadyInTimeout(to_b))
@@ -2776,13 +2580,21 @@ mod test {
         assert_eq!(tm.can_start_ref_timeout(), Ok(()));
         assert_eq!(tm.can_start_penalty_shot(), Ok(()));
         assert_eq!(tm.can_start_rugby_penalty_shot(), Ok(()));
+        let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
+        assert_eq!(
+            snapshot.timeouts_available,
+            BlackWhiteBundle {
+                black: false,
+                white: true
+            }
+        );
 
-        tm.set_timeout_state(TimeoutState::Team(
+        tm.set_timeout_state(Some(TimeoutState::Team(
             Color::White,
             ClockState::Stopped {
                 clock_time: Duration::from_secs(0),
             },
-        ));
+        )));
         assert_eq!(tm.can_start_team_timeout(Color::Black), Ok(()));
         assert_eq!(
             tm.can_start_team_timeout(Color::White),
@@ -2791,10 +2603,18 @@ mod test {
         assert_eq!(tm.can_start_ref_timeout(), Ok(()));
         assert_eq!(tm.can_start_penalty_shot(), Ok(()));
         assert_eq!(tm.can_start_rugby_penalty_shot(), Ok(()));
+        let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
+        assert_eq!(
+            snapshot.timeouts_available,
+            BlackWhiteBundle {
+                black: true,
+                white: false
+            }
+        );
 
-        tm.set_timeout_state(TimeoutState::Ref(ClockState::Stopped {
+        tm.set_timeout_state(Some(TimeoutState::Ref(ClockState::Stopped {
             clock_time: Duration::from_secs(0),
-        }));
+        })));
         assert_eq!(tm.can_start_team_timeout(Color::Black), Ok(()));
         assert_eq!(tm.can_start_team_timeout(Color::White), Ok(()));
         assert_eq!(
@@ -2803,10 +2623,18 @@ mod test {
         );
         assert_eq!(tm.can_start_penalty_shot(), Ok(()));
         assert_eq!(tm.can_start_rugby_penalty_shot(), Ok(()));
+        let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
+        assert_eq!(
+            snapshot.timeouts_available,
+            BlackWhiteBundle {
+                black: true,
+                white: true
+            }
+        );
 
-        tm.set_timeout_state(TimeoutState::PenaltyShot(ClockState::Stopped {
+        tm.set_timeout_state(Some(TimeoutState::PenaltyShot(ClockState::Stopped {
             clock_time: Duration::from_secs(0),
-        }));
+        })));
         assert_eq!(tm.can_start_team_timeout(Color::Black), Ok(()));
         assert_eq!(tm.can_start_team_timeout(Color::White), Ok(()));
         assert_eq!(tm.can_start_ref_timeout(), Ok(()));
@@ -2818,8 +2646,16 @@ mod test {
             tm.can_start_rugby_penalty_shot(),
             Err(TournamentManagerError::AlreadyInTimeout(to_ps))
         );
+        let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
+        assert_eq!(
+            snapshot.timeouts_available,
+            BlackWhiteBundle {
+                black: true,
+                white: true
+            }
+        );
 
-        tm.set_timeout_state(TimeoutState::None);
+        tm.set_timeout_state(None);
         tm.timeouts_used.black = 1;
         tm.timeouts_used.white = 1;
         assert_eq!(
@@ -2833,6 +2669,14 @@ mod test {
         assert_eq!(tm.can_start_ref_timeout(), Ok(()));
         assert_eq!(tm.can_start_penalty_shot(), Ok(()));
         assert_eq!(tm.can_start_rugby_penalty_shot(), Ok(()));
+        let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
+        assert_eq!(
+            snapshot.timeouts_available,
+            BlackWhiteBundle {
+                black: false,
+                white: false
+            }
+        );
     }
 
     #[test]
@@ -2859,42 +2703,42 @@ mod test {
         assert_eq!(tm.start_team_timeout(Color::Black, start), Ok(()));
         assert_eq!(
             tm.timeout_state,
-            TimeoutState::Team(
+            Some(TimeoutState::Team(
                 Color::Black,
                 ClockState::Stopped {
                     clock_time: Duration::from_secs(10)
                 }
-            )
+            ))
         );
 
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(30));
         assert_eq!(tm.start_team_timeout(Color::White, start), Ok(()));
         assert_eq!(
             tm.timeout_state,
-            TimeoutState::Team(
+            Some(TimeoutState::Team(
                 Color::White,
                 ClockState::Stopped {
                     clock_time: Duration::from_secs(10)
                 }
-            )
+            ))
         );
 
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(30));
         assert_eq!(tm.start_ref_timeout(start), Ok(()));
         assert_eq!(
             tm.timeout_state,
-            TimeoutState::Ref(ClockState::Stopped {
+            Some(TimeoutState::Ref(ClockState::Stopped {
                 clock_time: Duration::from_secs(0)
-            })
+            }))
         );
 
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(30));
         assert_eq!(tm.start_penalty_shot(start), Ok(()));
         assert_eq!(
             tm.timeout_state,
-            TimeoutState::PenaltyShot(ClockState::Stopped {
+            Some(TimeoutState::PenaltyShot(ClockState::Stopped {
                 clock_time: Duration::from_secs(0)
-            })
+            }))
         );
 
         tm.end_timeout(start).unwrap();
@@ -2902,27 +2746,27 @@ mod test {
         assert_eq!(tm.start_rugby_penalty_shot(start), Ok(()));
         assert_eq!(
             tm.timeout_state,
-            TimeoutState::RugbyPenaltyShot(ClockState::Stopped {
+            Some(TimeoutState::RugbyPenaltyShot(ClockState::Stopped {
                 clock_time: Duration::from_secs(25)
-            })
+            }))
         );
 
         // Test starting timeouts with clock running, and test team timeouts ending
         tm.timeouts_used.black = 0;
         tm.timeouts_used.white = 0;
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(30));
-        tm.set_timeout_state(TimeoutState::None);
+        tm.set_timeout_state(None);
         tm.start_clock(start);
         assert_eq!(tm.start_team_timeout(Color::Black, t_o_start), Ok(()));
         assert_eq!(
             tm.timeout_state,
-            TimeoutState::Team(
+            Some(TimeoutState::Team(
                 Color::Black,
                 ClockState::CountingDown {
                     start_time: t_o_start,
                     time_remaining_at_start: Duration::from_secs(10)
                 }
-            )
+            ))
         );
         assert_eq!(tm.game_clock_time(t_o_start), Some(Duration::from_secs(28)));
         assert_eq!(tm.timeout_clock_time(mid_t_o), Some(Duration::from_secs(7)));
@@ -2930,18 +2774,18 @@ mod test {
         tm.update(mid_t_o).unwrap();
         assert_eq!(
             tm.timeout_state,
-            TimeoutState::Team(
+            Some(TimeoutState::Team(
                 Color::Black,
                 ClockState::CountingDown {
                     start_time: t_o_start,
                     time_remaining_at_start: Duration::from_secs(10)
                 }
-            )
+            ))
         );
         assert_eq!(tm.timeout_clock_time(t_o_end), Some(Duration::from_secs(0)));
         assert_eq!(tm.timeout_clock_time(after_t_o), None);
         tm.update(after_t_o).unwrap();
-        assert_eq!(tm.timeout_state, TimeoutState::None);
+        assert_eq!(tm.timeout_state, None);
         assert_eq!(tm.timeout_clock_time(after_t_o), None);
         assert_eq!(tm.game_clock_time(after_t_o), Some(Duration::from_secs(26)));
         assert_eq!(
@@ -2951,18 +2795,18 @@ mod test {
 
         tm.stop_clock(after_t_o).unwrap();
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(30));
-        tm.set_timeout_state(TimeoutState::None);
+        tm.set_timeout_state(None);
         tm.start_clock(start);
         assert_eq!(tm.start_team_timeout(Color::White, t_o_start), Ok(()));
         assert_eq!(
             tm.timeout_state,
-            TimeoutState::Team(
+            Some(TimeoutState::Team(
                 Color::White,
                 ClockState::CountingDown {
                     start_time: t_o_start,
                     time_remaining_at_start: Duration::from_secs(10)
                 }
-            )
+            ))
         );
         assert_eq!(tm.game_clock_time(t_o_start), Some(Duration::from_secs(28)));
         assert_eq!(tm.timeout_clock_time(mid_t_o), Some(Duration::from_secs(7)));
@@ -2970,18 +2814,18 @@ mod test {
         tm.update(mid_t_o).unwrap();
         assert_eq!(
             tm.timeout_state,
-            TimeoutState::Team(
+            Some(TimeoutState::Team(
                 Color::White,
                 ClockState::CountingDown {
                     start_time: t_o_start,
                     time_remaining_at_start: Duration::from_secs(10)
                 }
-            )
+            ))
         );
         assert_eq!(tm.timeout_clock_time(t_o_end), Some(Duration::from_secs(0)));
         assert_eq!(tm.timeout_clock_time(after_t_o), None);
         tm.update(after_t_o).unwrap();
-        assert_eq!(tm.timeout_state, TimeoutState::None);
+        assert_eq!(tm.timeout_state, None);
         assert_eq!(tm.timeout_clock_time(after_t_o), None);
         assert_eq!(tm.game_clock_time(after_t_o), Some(Duration::from_secs(26)));
         assert_eq!(
@@ -2991,15 +2835,15 @@ mod test {
 
         tm.stop_clock(after_t_o).unwrap();
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(30));
-        tm.set_timeout_state(TimeoutState::None);
+        tm.set_timeout_state(None);
         tm.start_clock(start);
         assert_eq!(tm.start_ref_timeout(t_o_start), Ok(()));
         assert_eq!(
             tm.timeout_state,
-            TimeoutState::Ref(ClockState::CountingUp {
+            Some(TimeoutState::Ref(ClockState::CountingUp {
                 start_time: t_o_start,
                 time_at_start: Duration::from_secs(0)
-            })
+            }))
         );
         assert_eq!(tm.game_clock_time(t_o_start), Some(Duration::from_secs(28)));
         assert_eq!(tm.timeout_clock_time(mid_t_o), Some(Duration::from_secs(3)));
@@ -3007,10 +2851,10 @@ mod test {
         tm.update(mid_t_o).unwrap();
         assert_eq!(
             tm.timeout_state,
-            TimeoutState::Ref(ClockState::CountingUp {
+            Some(TimeoutState::Ref(ClockState::CountingUp {
                 start_time: t_o_start,
                 time_at_start: Duration::from_secs(0)
-            })
+            }))
         );
         assert_eq!(
             tm.timeout_clock_time(t_o_end),
@@ -3019,15 +2863,15 @@ mod test {
 
         tm.stop_clock(after_t_o).unwrap();
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(30));
-        tm.set_timeout_state(TimeoutState::None);
+        tm.set_timeout_state(None);
         tm.start_clock(start);
         assert_eq!(tm.start_penalty_shot(t_o_start), Ok(()));
         assert_eq!(
             tm.timeout_state,
-            TimeoutState::PenaltyShot(ClockState::CountingUp {
+            Some(TimeoutState::PenaltyShot(ClockState::CountingUp {
                 start_time: t_o_start,
                 time_at_start: Duration::from_secs(0)
-            })
+            }))
         );
         assert_eq!(tm.game_clock_time(t_o_start), Some(Duration::from_secs(28)));
         assert_eq!(tm.timeout_clock_time(mid_t_o), Some(Duration::from_secs(3)));
@@ -3035,10 +2879,10 @@ mod test {
         tm.update(mid_t_o).unwrap();
         assert_eq!(
             tm.timeout_state,
-            TimeoutState::PenaltyShot(ClockState::CountingUp {
+            Some(TimeoutState::PenaltyShot(ClockState::CountingUp {
                 start_time: t_o_start,
                 time_at_start: Duration::from_secs(0)
-            })
+            }))
         );
         assert_eq!(
             tm.timeout_clock_time(t_o_end),
@@ -3047,15 +2891,15 @@ mod test {
 
         tm.stop_clock(after_t_o).unwrap();
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(30));
-        tm.set_timeout_state(TimeoutState::None);
+        tm.set_timeout_state(None);
         tm.start_clock(start);
         assert_eq!(tm.start_rugby_penalty_shot(t_o_start), Ok(()));
         assert_eq!(
             tm.timeout_state,
-            TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
+            Some(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
                 start_time: t_o_start,
                 time_remaining_at_start: Duration::from_secs(25)
-            })
+            }))
         );
         assert_eq!(tm.game_clock_time(t_o_start), Some(Duration::from_secs(28)));
         assert_eq!(
@@ -3066,10 +2910,10 @@ mod test {
         tm.update(mid_t_o).unwrap();
         assert_eq!(
             tm.timeout_state,
-            TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
+            Some(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
                 start_time: t_o_start,
                 time_remaining_at_start: Duration::from_secs(25)
-            })
+            }))
         );
         assert_eq!(
             tm.timeout_clock_time(r_ps_end),
@@ -3077,7 +2921,7 @@ mod test {
         );
         assert_eq!(tm.timeout_clock_time(after_r_ps), None);
         tm.update(after_r_ps).unwrap();
-        assert_eq!(tm.timeout_state, TimeoutState::None);
+        assert_eq!(tm.timeout_state, None);
         assert_eq!(tm.timeout_clock_time(after_r_ps), None);
         assert_eq!(tm.game_clock_time(after_r_ps), Some(Duration::from_secs(1)));
     }
@@ -3102,124 +2946,124 @@ mod test {
         // Test ending timeouts with the clock stopped
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
         assert_eq!(tm.end_timeout(t_o_end), Err(TMErr::NotInTimeout));
-        tm.set_timeout_state(TimeoutState::Team(
+        tm.set_timeout_state(Some(TimeoutState::Team(
             Color::Black,
             ClockState::Stopped {
                 clock_time: two_secs,
             },
-        ));
+        )));
         assert_eq!(tm.clock_is_running(), false);
         assert_eq!(tm.end_timeout(t_o_end), Ok(()));
-        assert_eq!(tm.timeout_state, TimeoutState::None);
+        assert_eq!(tm.timeout_state, None);
         assert_eq!(tm.game_clock_time(t_o_end), Some(thirty_secs));
         assert_eq!(tm.clock_is_running(), false);
 
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
-        tm.set_timeout_state(TimeoutState::Team(
+        tm.set_timeout_state(Some(TimeoutState::Team(
             Color::White,
             ClockState::Stopped {
                 clock_time: two_secs,
             },
-        ));
+        )));
         assert_eq!(tm.clock_is_running(), false);
         assert_eq!(tm.end_timeout(t_o_end), Ok(()));
-        assert_eq!(tm.timeout_state, TimeoutState::None);
+        assert_eq!(tm.timeout_state, None);
         assert_eq!(tm.game_clock_time(t_o_end), Some(thirty_secs));
         assert_eq!(tm.clock_is_running(), false);
 
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
-        tm.set_timeout_state(TimeoutState::Ref(ClockState::Stopped {
+        tm.set_timeout_state(Some(TimeoutState::Ref(ClockState::Stopped {
             clock_time: two_secs,
-        }));
+        })));
         assert_eq!(tm.clock_is_running(), false);
         assert_eq!(tm.end_timeout(t_o_end), Ok(()));
-        assert_eq!(tm.timeout_state, TimeoutState::None);
+        assert_eq!(tm.timeout_state, None);
         assert_eq!(tm.game_clock_time(t_o_end), Some(thirty_secs));
         assert_eq!(tm.clock_is_running(), false);
 
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
-        tm.set_timeout_state(TimeoutState::PenaltyShot(ClockState::Stopped {
+        tm.set_timeout_state(Some(TimeoutState::PenaltyShot(ClockState::Stopped {
             clock_time: two_secs,
-        }));
+        })));
         assert_eq!(tm.clock_is_running(), false);
         assert_eq!(tm.end_timeout(t_o_end), Ok(()));
-        assert_eq!(tm.timeout_state, TimeoutState::None);
+        assert_eq!(tm.timeout_state, None);
         assert_eq!(tm.game_clock_time(t_o_end), Some(thirty_secs));
         assert_eq!(tm.clock_is_running(), false);
 
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
-        tm.set_timeout_state(TimeoutState::RugbyPenaltyShot(ClockState::Stopped {
+        tm.set_timeout_state(Some(TimeoutState::RugbyPenaltyShot(ClockState::Stopped {
             clock_time: two_secs,
-        }));
+        })));
         assert_eq!(tm.clock_is_running(), false);
         assert_eq!(tm.end_timeout(t_o_end), Ok(()));
-        assert_eq!(tm.timeout_state, TimeoutState::None);
+        assert_eq!(tm.timeout_state, None);
         assert_eq!(tm.game_clock_time(t_o_end), Some(thirty_secs));
         assert_eq!(tm.clock_is_running(), false);
 
         // Test ending timeouts with the clock running
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
-        tm.set_timeout_state(TimeoutState::Team(
+        tm.set_timeout_state(Some(TimeoutState::Team(
             Color::Black,
             ClockState::CountingDown {
                 start_time: t_o_start,
                 time_remaining_at_start: ten_secs,
             },
-        ));
+        )));
         assert_eq!(tm.clock_is_running(), true);
         assert_eq!(tm.end_timeout(t_o_end), Ok(()));
-        assert_eq!(tm.timeout_state, TimeoutState::None);
+        assert_eq!(tm.timeout_state, None);
         assert_eq!(tm.game_clock_time(after_t_o), Some(twenty_secs));
         assert_eq!(tm.clock_is_running(), true);
 
         tm.stop_clock(after_t_o).unwrap();
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
-        tm.set_timeout_state(TimeoutState::Team(
+        tm.set_timeout_state(Some(TimeoutState::Team(
             Color::White,
             ClockState::CountingDown {
                 start_time: t_o_start,
                 time_remaining_at_start: ten_secs,
             },
-        ));
+        )));
         assert_eq!(tm.clock_is_running(), true);
         assert_eq!(tm.end_timeout(t_o_end), Ok(()));
-        assert_eq!(tm.timeout_state, TimeoutState::None);
+        assert_eq!(tm.timeout_state, None);
         assert_eq!(tm.game_clock_time(after_t_o), Some(twenty_secs));
         assert_eq!(tm.clock_is_running(), true);
 
         tm.stop_clock(after_t_o).unwrap();
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
-        tm.set_timeout_state(TimeoutState::Ref(ClockState::CountingUp {
+        tm.set_timeout_state(Some(TimeoutState::Ref(ClockState::CountingUp {
             start_time: t_o_start,
             time_at_start: ten_secs,
-        }));
+        })));
         assert_eq!(tm.clock_is_running(), true);
         assert_eq!(tm.end_timeout(t_o_end), Ok(()));
-        assert_eq!(tm.timeout_state, TimeoutState::None);
+        assert_eq!(tm.timeout_state, None);
         assert_eq!(tm.game_clock_time(after_t_o), Some(twenty_secs));
         assert_eq!(tm.clock_is_running(), true);
 
         tm.stop_clock(after_t_o).unwrap();
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
-        tm.set_timeout_state(TimeoutState::PenaltyShot(ClockState::CountingUp {
+        tm.set_timeout_state(Some(TimeoutState::PenaltyShot(ClockState::CountingUp {
             start_time: t_o_start,
             time_at_start: ten_secs,
-        }));
+        })));
         assert_eq!(tm.clock_is_running(), true);
         assert_eq!(tm.end_timeout(t_o_end), Ok(()));
-        assert_eq!(tm.timeout_state, TimeoutState::None);
+        assert_eq!(tm.timeout_state, None);
         assert_eq!(tm.game_clock_time(after_t_o), Some(twenty_secs));
         assert_eq!(tm.clock_is_running(), true);
 
         tm.stop_clock(after_t_o).unwrap();
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
-        tm.set_timeout_state(TimeoutState::RugbyPenaltyShot(ClockState::Stopped {
+        tm.set_timeout_state(Some(TimeoutState::RugbyPenaltyShot(ClockState::Stopped {
             clock_time: ten_secs,
-        }));
+        })));
         tm.start_clock(start);
         assert_eq!(tm.clock_is_running(), true);
         assert_eq!(tm.end_timeout(t_o_end), Ok(()));
-        assert_eq!(tm.timeout_state, TimeoutState::None);
+        assert_eq!(tm.timeout_state, None);
         assert_eq!(tm.game_clock_time(after_t_o), Some(fifteen_secs));
         assert_eq!(tm.clock_is_running(), true);
     }
@@ -3240,24 +3084,24 @@ mod test {
         tm.timeouts_used.white = 1;
 
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(30));
-        tm.set_timeout_state(TimeoutState::Team(
+        tm.set_timeout_state(Some(TimeoutState::Team(
             Color::Black,
             ClockState::CountingDown {
                 start_time: start,
                 time_remaining_at_start: ten_secs,
             },
-        ));
+        )));
         assert_eq!(
             tm.can_switch_to_team_timeout(Color::White),
             Err(TMErr::TooManyTeamTimeouts(Color::White))
         );
-        tm.set_timeout_state(TimeoutState::Team(
+        tm.set_timeout_state(Some(TimeoutState::Team(
             Color::White,
             ClockState::CountingDown {
                 start_time: start,
                 time_remaining_at_start: ten_secs,
             },
-        ));
+        )));
         assert_eq!(
             tm.can_switch_to_team_timeout(Color::Black),
             Err(TMErr::TooManyTeamTimeouts(Color::Black))
@@ -3266,13 +3110,13 @@ mod test {
         tm.timeouts_used.black = 0;
         tm.timeouts_used.white = 0;
 
-        tm.set_timeout_state(TimeoutState::Team(
+        tm.set_timeout_state(Some(TimeoutState::Team(
             Color::Black,
             ClockState::CountingDown {
                 start_time: start,
                 time_remaining_at_start: ten_secs,
             },
-        ));
+        )));
         assert_eq!(
             tm.can_switch_to_team_timeout(Color::Black),
             Err(TMErr::NotInTeamTimeout(Color::Black))
@@ -3285,13 +3129,13 @@ mod test {
             Err(TMErr::NotInRefTimeout)
         );
 
-        tm.set_timeout_state(TimeoutState::Team(
+        tm.set_timeout_state(Some(TimeoutState::Team(
             Color::White,
             ClockState::CountingDown {
                 start_time: start,
                 time_remaining_at_start: ten_secs,
             },
-        ));
+        )));
         assert_eq!(tm.can_switch_to_team_timeout(Color::Black), Ok(()));
         assert_eq!(
             tm.can_switch_to_team_timeout(Color::White),
@@ -3304,10 +3148,10 @@ mod test {
             Err(TMErr::NotInRefTimeout)
         );
 
-        tm.set_timeout_state(TimeoutState::Ref(ClockState::CountingUp {
+        tm.set_timeout_state(Some(TimeoutState::Ref(ClockState::CountingUp {
             start_time: start,
             time_at_start: ten_secs,
-        }));
+        })));
         assert_eq!(
             tm.can_switch_to_team_timeout(Color::Black),
             Err(TMErr::NotInTeamTimeout(Color::Black))
@@ -3320,10 +3164,10 @@ mod test {
         assert_eq!(tm.can_switch_to_penalty_shot(), Ok(()));
         assert_eq!(tm.can_switch_to_rugby_penalty_shot(), Ok(()));
 
-        tm.set_timeout_state(TimeoutState::PenaltyShot(ClockState::CountingUp {
+        tm.set_timeout_state(Some(TimeoutState::PenaltyShot(ClockState::CountingUp {
             start_time: start,
             time_at_start: ten_secs,
-        }));
+        })));
         assert_eq!(
             tm.can_switch_to_team_timeout(Color::Black),
             Err(TMErr::NotInTeamTimeout(Color::Black))
@@ -3339,10 +3183,12 @@ mod test {
             Err(TMErr::NotInRefTimeout)
         );
 
-        tm.set_timeout_state(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
-            start_time: start,
-            time_remaining_at_start: ten_secs,
-        }));
+        tm.set_timeout_state(Some(TimeoutState::RugbyPenaltyShot(
+            ClockState::CountingDown {
+                start_time: start,
+                time_remaining_at_start: ten_secs,
+            },
+        )));
         assert_eq!(
             tm.can_switch_to_team_timeout(Color::Black),
             Err(TMErr::NotInTeamTimeout(Color::Black))
@@ -3359,10 +3205,10 @@ mod test {
         );
 
         tm.set_period_and_game_clock_time(GamePeriod::HalfTime, Duration::from_secs(30));
-        tm.set_timeout_state(TimeoutState::Ref(ClockState::CountingUp {
+        tm.set_timeout_state(Some(TimeoutState::Ref(ClockState::CountingUp {
             start_time: start,
             time_at_start: ten_secs,
-        }));
+        })));
         assert_eq!(
             tm.can_switch_to_penalty_shot(),
             Err(TournamentManagerError::WrongGamePeriod(
@@ -3394,13 +3240,13 @@ mod test {
         let twenty_five_seconds = Duration::from_secs(25);
 
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(30));
-        tm.set_timeout_state(TimeoutState::Team(
+        tm.set_timeout_state(Some(TimeoutState::Team(
             Color::Black,
             ClockState::CountingDown {
                 start_time: start,
                 time_remaining_at_start: ten_secs,
             },
-        ));
+        )));
         assert_eq!(
             tm.switch_to_team_timeout(Color::Black),
             Err(TMErr::NotInTeamTimeout(Color::Black))
@@ -3418,13 +3264,13 @@ mod test {
 
         assert_eq!(
             tm.timeout_state,
-            TimeoutState::Team(
+            Some(TimeoutState::Team(
                 Color::White,
                 ClockState::CountingDown {
                     start_time: start,
                     time_remaining_at_start: ten_secs,
                 }
-            )
+            ))
         );
         assert_eq!(
             tm.switch_to_team_timeout(Color::White),
@@ -3442,19 +3288,19 @@ mod test {
         assert_eq!(tm.switch_to_team_timeout(Color::Black), Ok(()));
         assert_eq!(
             tm.timeout_state,
-            TimeoutState::Team(
+            Some(TimeoutState::Team(
                 Color::Black,
                 ClockState::CountingDown {
                     start_time: start,
                     time_remaining_at_start: ten_secs,
                 }
-            )
+            ))
         );
 
-        tm.set_timeout_state(TimeoutState::Ref(ClockState::CountingUp {
+        tm.set_timeout_state(Some(TimeoutState::Ref(ClockState::CountingUp {
             start_time: start,
             time_at_start: ten_secs,
-        }));
+        })));
         assert_eq!(
             tm.switch_to_team_timeout(Color::Black),
             Err(TMErr::NotInTeamTimeout(Color::Black))
@@ -3471,10 +3317,10 @@ mod test {
 
         assert_eq!(
             tm.timeout_state,
-            TimeoutState::PenaltyShot(ClockState::CountingUp {
+            Some(TimeoutState::PenaltyShot(ClockState::CountingUp {
                 start_time: start,
                 time_at_start: ten_secs,
-            })
+            }))
         );
         assert_eq!(
             tm.switch_to_team_timeout(Color::Black),
@@ -3492,24 +3338,24 @@ mod test {
         assert_eq!(tm.switch_to_ref_timeout(later), Ok(()));
         assert_eq!(
             tm.timeout_state,
-            TimeoutState::Ref(ClockState::CountingUp {
+            Some(TimeoutState::Ref(ClockState::CountingUp {
                 start_time: start,
                 time_at_start: ten_secs,
-            })
+            }))
         );
 
-        tm.set_timeout_state(TimeoutState::Ref(ClockState::CountingUp {
+        tm.set_timeout_state(Some(TimeoutState::Ref(ClockState::CountingUp {
             start_time: start,
             time_at_start: ten_secs,
-        }));
+        })));
         assert_eq!(tm.switch_to_rugby_penalty_shot(later), Ok(()));
 
         assert_eq!(
             tm.timeout_state,
-            TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
+            Some(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
                 start_time: later,
                 time_remaining_at_start: twenty_five_seconds,
-            })
+            }))
         );
         assert_eq!(
             tm.switch_to_team_timeout(Color::Black),
@@ -3527,10 +3373,10 @@ mod test {
         assert_eq!(tm.switch_to_ref_timeout(later), Ok(()));
         assert_eq!(
             tm.timeout_state,
-            TimeoutState::Ref(ClockState::CountingUp {
+            Some(TimeoutState::Ref(ClockState::CountingUp {
                 start_time: later,
                 time_at_start: Duration::ZERO,
-            })
+            }))
         );
     }
 
@@ -3555,33 +3401,33 @@ mod test {
         let to_r = TimeoutSnapshot::Ref(0);
         let to_ps = TimeoutSnapshot::PenaltyShot(0);
 
-        tm.set_timeout_state(TimeoutState::Team(
+        tm.set_timeout_state(Some(TimeoutState::Team(
             Color::Black,
             ClockState::Stopped {
                 clock_time: Duration::from_secs(0),
             },
-        ));
+        )));
         assert_eq!(tm.start_play_now(now), Err(TMErr::AlreadyInTimeout(to_b)));
 
-        tm.set_timeout_state(TimeoutState::Team(
+        tm.set_timeout_state(Some(TimeoutState::Team(
             Color::White,
             ClockState::Stopped {
                 clock_time: Duration::from_secs(0),
             },
-        ));
+        )));
         assert_eq!(tm.start_play_now(now), Err(TMErr::AlreadyInTimeout(to_w)));
 
-        tm.set_timeout_state(TimeoutState::Ref(ClockState::Stopped {
+        tm.set_timeout_state(Some(TimeoutState::Ref(ClockState::Stopped {
             clock_time: Duration::from_secs(0),
-        }));
+        })));
         assert_eq!(tm.start_play_now(now), Err(TMErr::AlreadyInTimeout(to_r)));
 
-        tm.set_timeout_state(TimeoutState::PenaltyShot(ClockState::Stopped {
+        tm.set_timeout_state(Some(TimeoutState::PenaltyShot(ClockState::Stopped {
             clock_time: Duration::from_secs(0),
-        }));
+        })));
         assert_eq!(tm.start_play_now(now), Err(TMErr::AlreadyInTimeout(to_ps)));
 
-        tm.set_timeout_state(TimeoutState::None);
+        tm.set_timeout_state(None);
         assert_eq!(tm.current_period, GamePeriod::BetweenGames);
         assert_eq!(tm.start_play_now(now), Ok(()));
         assert_eq!(tm.current_period, GamePeriod::FirstHalf);
@@ -3765,7 +3611,7 @@ mod test {
             game_start_offset: 0,
             start_period: GamePeriod::SecondHalf,
             remaining: 1,
-            score: Some(BlackWhiteBundle::new(1, 1)),
+            score: Some(BlackWhiteBundle { black: 1, white: 1 }),
             time_delay: 2,
             end_period: GamePeriod::PreOvertime,
             end_clock_time: 6,
@@ -3786,7 +3632,7 @@ mod test {
             game_start_offset: 0,
             start_period: GamePeriod::SecondHalf,
             remaining: 1,
-            score: Some(BlackWhiteBundle::new(1, 1)),
+            score: Some(BlackWhiteBundle { black: 1, white: 1 }),
             time_delay: 2,
             end_period: GamePeriod::PreSuddenDeath,
             end_clock_time: 7,
@@ -3811,7 +3657,7 @@ mod test {
             game_start_offset: -20,
             start_period: GamePeriod::SecondHalf,
             remaining: 1,
-            score: Some(BlackWhiteBundle::new(1, 1)),
+            score: Some(BlackWhiteBundle { black: 1, white: 1 }),
             time_delay: 2,
             end_period: GamePeriod::BetweenGames,
             end_clock_time: 3,
@@ -3836,7 +3682,7 @@ mod test {
             game_start_offset: -30,
             start_period: GamePeriod::SecondHalf,
             remaining: 1,
-            score: Some(BlackWhiteBundle::new(1, 1)),
+            score: Some(BlackWhiteBundle { black: 1, white: 1 }),
             time_delay: 2,
             end_period: GamePeriod::BetweenGames,
             end_clock_time: 4,
@@ -3861,7 +3707,7 @@ mod test {
             game_start_offset: -20,
             start_period: GamePeriod::SecondHalf,
             remaining: 1,
-            score: Some(BlackWhiteBundle::new(2, 4)),
+            score: Some(BlackWhiteBundle { black: 2, white: 4 }),
             time_delay: 2,
             end_period: GamePeriod::BetweenGames,
             end_clock_time: 4,
@@ -3886,7 +3732,7 @@ mod test {
             game_start_offset: -20,
             start_period: GamePeriod::SecondHalf,
             remaining: 1,
-            score: Some(BlackWhiteBundle::new(3, 2)),
+            score: Some(BlackWhiteBundle { black: 3, white: 2 }),
             time_delay: 2,
             end_period: GamePeriod::BetweenGames,
             end_clock_time: 6,
@@ -3967,7 +3813,7 @@ mod test {
             game_start_offset: 0,
             start_period: GamePeriod::OvertimeSecondHalf,
             remaining: 1,
-            score: Some(BlackWhiteBundle::new(1, 1)),
+            score: Some(BlackWhiteBundle { black: 1, white: 1 }),
             time_delay: 2,
             end_period: GamePeriod::PreSuddenDeath,
             end_clock_time: 8,
@@ -3992,7 +3838,7 @@ mod test {
             game_start_offset: -20,
             start_period: GamePeriod::OvertimeSecondHalf,
             remaining: 1,
-            score: Some(BlackWhiteBundle::new(1, 1)),
+            score: Some(BlackWhiteBundle { black: 1, white: 1 }),
             time_delay: 2,
             end_period: GamePeriod::BetweenGames,
             end_clock_time: 6,
@@ -4017,7 +3863,10 @@ mod test {
             game_start_offset: -18,
             start_period: GamePeriod::OvertimeSecondHalf,
             remaining: 1,
-            score: Some(BlackWhiteBundle::new(10, 1)),
+            score: Some(BlackWhiteBundle {
+                black: 10,
+                white: 1,
+            }),
             time_delay: 2,
             end_period: GamePeriod::BetweenGames,
             end_clock_time: 8,
@@ -4042,7 +3891,10 @@ mod test {
             game_start_offset: -21,
             start_period: GamePeriod::OvertimeSecondHalf,
             remaining: 1,
-            score: Some(BlackWhiteBundle::new(11, 9)),
+            score: Some(BlackWhiteBundle {
+                black: 11,
+                white: 9,
+            }),
             time_delay: 2,
             end_period: GamePeriod::BetweenGames,
             end_clock_time: 5,
@@ -4094,7 +3946,7 @@ mod test {
             tm.set_period_and_game_clock_time(GamePeriod::SuddenDeath, Duration::from_secs(5));
             tm.set_game_start(game_start);
             tm.start_game_clock(start);
-            tm.set_scores(BlackWhiteBundle::new(2, 2), start);
+            tm.set_scores(BlackWhiteBundle { black: 2, white: 2 }, start);
             tm.update(second_time).unwrap()
         };
 
@@ -4108,7 +3960,7 @@ mod test {
 
         setup_tm(&mut tm);
 
-        tm.set_scores(BlackWhiteBundle::new(3, 2), third_time);
+        tm.set_scores(BlackWhiteBundle { black: 3, white: 2 }, third_time);
         assert_eq!(tm.current_period, GamePeriod::BetweenGames);
         assert_eq!(
             tm.game_clock_time(fourth_time),
@@ -4845,14 +4697,16 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![PenaltySnapshot {
-                player_number: 2,
-                time: PenaltyTime::Seconds(59),
-                infraction: Infraction::Unknown,
-            }]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![PenaltySnapshot {
+                    player_number: 2,
+                    time: PenaltyTime::Seconds(59),
+                    infraction: Infraction::Unknown,
+                }],
+                white: vec![]
+            }
         );
-        assert_eq!(snapshot.w_penalties, vec![]);
 
         let next_time = next_time + Duration::from_secs(1);
         tm.start_penalty(
@@ -4868,20 +4722,19 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![PenaltySnapshot {
-                player_number: 2,
-                time: PenaltyTime::Seconds(57),
-                infraction: Infraction::Unknown,
-            }]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![PenaltySnapshot {
-                player_number: 3,
-                time: PenaltyTime::Seconds(59),
-                infraction: Infraction::UnsportsmanlikeConduct,
-            }]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![PenaltySnapshot {
+                    player_number: 2,
+                    time: PenaltyTime::Seconds(57),
+                    infraction: Infraction::Unknown,
+                }],
+                white: vec![PenaltySnapshot {
+                    player_number: 3,
+                    time: PenaltyTime::Seconds(59),
+                    infraction: Infraction::UnsportsmanlikeConduct,
+                }]
+            }
         );
 
         let next_time = next_time + Duration::from_secs(1);
@@ -4906,34 +4759,33 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 2,
-                    time: PenaltyTime::Seconds(55),
-                    infraction: Infraction::Unknown,
-                },
-                PenaltySnapshot {
-                    player_number: 4,
-                    time: PenaltyTime::Seconds(119),
-                    infraction: Infraction::DelayOfGame,
-                },
-            ]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 3,
-                    time: PenaltyTime::Seconds(57),
-                    infraction: Infraction::UnsportsmanlikeConduct,
-                },
-                PenaltySnapshot {
-                    player_number: 5,
-                    time: PenaltyTime::Seconds(119),
-                    infraction: Infraction::FalseStart,
-                },
-            ]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        player_number: 2,
+                        time: PenaltyTime::Seconds(55),
+                        infraction: Infraction::Unknown,
+                    },
+                    PenaltySnapshot {
+                        player_number: 4,
+                        time: PenaltyTime::Seconds(119),
+                        infraction: Infraction::DelayOfGame,
+                    },
+                ],
+                white: vec![
+                    PenaltySnapshot {
+                        player_number: 3,
+                        time: PenaltyTime::Seconds(57),
+                        infraction: Infraction::UnsportsmanlikeConduct,
+                    },
+                    PenaltySnapshot {
+                        player_number: 5,
+                        time: PenaltyTime::Seconds(119),
+                        infraction: Infraction::FalseStart,
+                    },
+                ]
+            }
         );
 
         let next_time = next_time + Duration::from_secs(1);
@@ -4958,44 +4810,43 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 2,
-                    time: PenaltyTime::Seconds(53),
-                    infraction: Infraction::Unknown,
-                },
-                PenaltySnapshot {
-                    player_number: 4,
-                    time: PenaltyTime::Seconds(117),
-                    infraction: Infraction::DelayOfGame,
-                },
-                PenaltySnapshot {
-                    player_number: 6,
-                    time: PenaltyTime::Seconds(299),
-                    infraction: Infraction::IllegalAdvancement,
-                },
-            ]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 3,
-                    time: PenaltyTime::Seconds(55),
-                    infraction: Infraction::UnsportsmanlikeConduct,
-                },
-                PenaltySnapshot {
-                    player_number: 5,
-                    time: PenaltyTime::Seconds(117),
-                    infraction: Infraction::FalseStart,
-                },
-                PenaltySnapshot {
-                    player_number: 7,
-                    time: PenaltyTime::Seconds(299),
-                    infraction: Infraction::IllegallyStoppingThePuck,
-                },
-            ]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        player_number: 2,
+                        time: PenaltyTime::Seconds(53),
+                        infraction: Infraction::Unknown,
+                    },
+                    PenaltySnapshot {
+                        player_number: 4,
+                        time: PenaltyTime::Seconds(117),
+                        infraction: Infraction::DelayOfGame,
+                    },
+                    PenaltySnapshot {
+                        player_number: 6,
+                        time: PenaltyTime::Seconds(299),
+                        infraction: Infraction::IllegalAdvancement,
+                    },
+                ],
+                white: vec![
+                    PenaltySnapshot {
+                        player_number: 3,
+                        time: PenaltyTime::Seconds(55),
+                        infraction: Infraction::UnsportsmanlikeConduct,
+                    },
+                    PenaltySnapshot {
+                        player_number: 5,
+                        time: PenaltyTime::Seconds(117),
+                        infraction: Infraction::FalseStart,
+                    },
+                    PenaltySnapshot {
+                        player_number: 7,
+                        time: PenaltyTime::Seconds(299),
+                        infraction: Infraction::IllegallyStoppingThePuck,
+                    },
+                ]
+            }
         );
 
         let next_time = next_time + Duration::from_secs(1);
@@ -5020,54 +4871,53 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 2,
-                    time: PenaltyTime::Seconds(51),
-                    infraction: Infraction::Unknown,
-                },
-                PenaltySnapshot {
-                    player_number: 4,
-                    time: PenaltyTime::Seconds(115),
-                    infraction: Infraction::DelayOfGame,
-                },
-                PenaltySnapshot {
-                    player_number: 6,
-                    time: PenaltyTime::Seconds(297),
-                    infraction: Infraction::IllegalAdvancement,
-                },
-                PenaltySnapshot {
-                    player_number: 8,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::IllegalSubstitution,
-                },
-            ]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 3,
-                    time: PenaltyTime::Seconds(53),
-                    infraction: Infraction::UnsportsmanlikeConduct,
-                },
-                PenaltySnapshot {
-                    player_number: 5,
-                    time: PenaltyTime::Seconds(115),
-                    infraction: Infraction::FalseStart,
-                },
-                PenaltySnapshot {
-                    player_number: 7,
-                    time: PenaltyTime::Seconds(297),
-                    infraction: Infraction::IllegallyStoppingThePuck,
-                },
-                PenaltySnapshot {
-                    player_number: 9,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::Obstruction,
-                },
-            ]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        player_number: 2,
+                        time: PenaltyTime::Seconds(51),
+                        infraction: Infraction::Unknown,
+                    },
+                    PenaltySnapshot {
+                        player_number: 4,
+                        time: PenaltyTime::Seconds(115),
+                        infraction: Infraction::DelayOfGame,
+                    },
+                    PenaltySnapshot {
+                        player_number: 6,
+                        time: PenaltyTime::Seconds(297),
+                        infraction: Infraction::IllegalAdvancement,
+                    },
+                    PenaltySnapshot {
+                        player_number: 8,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::IllegalSubstitution,
+                    },
+                ],
+                white: vec![
+                    PenaltySnapshot {
+                        player_number: 3,
+                        time: PenaltyTime::Seconds(53),
+                        infraction: Infraction::UnsportsmanlikeConduct,
+                    },
+                    PenaltySnapshot {
+                        player_number: 5,
+                        time: PenaltyTime::Seconds(115),
+                        infraction: Infraction::FalseStart,
+                    },
+                    PenaltySnapshot {
+                        player_number: 7,
+                        time: PenaltyTime::Seconds(297),
+                        infraction: Infraction::IllegallyStoppingThePuck,
+                    },
+                    PenaltySnapshot {
+                        player_number: 9,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::Obstruction,
+                    },
+                ]
+            }
         );
 
         // Check 5 seconds after Half Time has started (there were 15s remaining in first half)
@@ -5075,54 +4925,53 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 2,
-                    time: PenaltyTime::Seconds(36),
-                    infraction: Infraction::Unknown,
-                },
-                PenaltySnapshot {
-                    player_number: 4,
-                    time: PenaltyTime::Seconds(100),
-                    infraction: Infraction::DelayOfGame,
-                },
-                PenaltySnapshot {
-                    player_number: 6,
-                    time: PenaltyTime::Seconds(282),
-                    infraction: Infraction::IllegalAdvancement,
-                },
-                PenaltySnapshot {
-                    player_number: 8,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::IllegalSubstitution,
-                },
-            ]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 3,
-                    time: PenaltyTime::Seconds(38),
-                    infraction: Infraction::UnsportsmanlikeConduct,
-                },
-                PenaltySnapshot {
-                    player_number: 5,
-                    time: PenaltyTime::Seconds(100),
-                    infraction: Infraction::FalseStart,
-                },
-                PenaltySnapshot {
-                    player_number: 7,
-                    time: PenaltyTime::Seconds(282),
-                    infraction: Infraction::IllegallyStoppingThePuck,
-                },
-                PenaltySnapshot {
-                    player_number: 9,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::Obstruction,
-                },
-            ]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        player_number: 2,
+                        time: PenaltyTime::Seconds(36),
+                        infraction: Infraction::Unknown,
+                    },
+                    PenaltySnapshot {
+                        player_number: 4,
+                        time: PenaltyTime::Seconds(100),
+                        infraction: Infraction::DelayOfGame,
+                    },
+                    PenaltySnapshot {
+                        player_number: 6,
+                        time: PenaltyTime::Seconds(282),
+                        infraction: Infraction::IllegalAdvancement,
+                    },
+                    PenaltySnapshot {
+                        player_number: 8,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::IllegalSubstitution,
+                    },
+                ],
+                white: vec![
+                    PenaltySnapshot {
+                        player_number: 3,
+                        time: PenaltyTime::Seconds(38),
+                        infraction: Infraction::UnsportsmanlikeConduct,
+                    },
+                    PenaltySnapshot {
+                        player_number: 5,
+                        time: PenaltyTime::Seconds(100),
+                        infraction: Infraction::FalseStart,
+                    },
+                    PenaltySnapshot {
+                        player_number: 7,
+                        time: PenaltyTime::Seconds(282),
+                        infraction: Infraction::IllegallyStoppingThePuck,
+                    },
+                    PenaltySnapshot {
+                        player_number: 9,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::Obstruction,
+                    },
+                ]
+            }
         );
 
         // Check 10 seconds after Second Half has started (there were 175s remaining in Half Time)
@@ -5130,54 +4979,53 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 2,
-                    time: PenaltyTime::Seconds(26),
-                    infraction: Infraction::Unknown,
-                },
-                PenaltySnapshot {
-                    player_number: 4,
-                    time: PenaltyTime::Seconds(90),
-                    infraction: Infraction::DelayOfGame,
-                },
-                PenaltySnapshot {
-                    player_number: 6,
-                    time: PenaltyTime::Seconds(272),
-                    infraction: Infraction::IllegalAdvancement,
-                },
-                PenaltySnapshot {
-                    player_number: 8,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::IllegalSubstitution,
-                },
-            ]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 3,
-                    time: PenaltyTime::Seconds(28),
-                    infraction: Infraction::UnsportsmanlikeConduct,
-                },
-                PenaltySnapshot {
-                    player_number: 5,
-                    time: PenaltyTime::Seconds(90),
-                    infraction: Infraction::FalseStart,
-                },
-                PenaltySnapshot {
-                    player_number: 7,
-                    time: PenaltyTime::Seconds(272),
-                    infraction: Infraction::IllegallyStoppingThePuck,
-                },
-                PenaltySnapshot {
-                    player_number: 9,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::Obstruction,
-                },
-            ]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        player_number: 2,
+                        time: PenaltyTime::Seconds(26),
+                        infraction: Infraction::Unknown,
+                    },
+                    PenaltySnapshot {
+                        player_number: 4,
+                        time: PenaltyTime::Seconds(90),
+                        infraction: Infraction::DelayOfGame,
+                    },
+                    PenaltySnapshot {
+                        player_number: 6,
+                        time: PenaltyTime::Seconds(272),
+                        infraction: Infraction::IllegalAdvancement,
+                    },
+                    PenaltySnapshot {
+                        player_number: 8,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::IllegalSubstitution,
+                    },
+                ],
+                white: vec![
+                    PenaltySnapshot {
+                        player_number: 3,
+                        time: PenaltyTime::Seconds(28),
+                        infraction: Infraction::UnsportsmanlikeConduct,
+                    },
+                    PenaltySnapshot {
+                        player_number: 5,
+                        time: PenaltyTime::Seconds(90),
+                        infraction: Infraction::FalseStart,
+                    },
+                    PenaltySnapshot {
+                        player_number: 7,
+                        time: PenaltyTime::Seconds(272),
+                        infraction: Infraction::IllegallyStoppingThePuck,
+                    },
+                    PenaltySnapshot {
+                        player_number: 9,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::Obstruction,
+                    },
+                ]
+            }
         );
 
         // Check after the first two penalties have finished
@@ -5185,54 +5033,53 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 2,
-                    time: PenaltyTime::Seconds(0),
-                    infraction: Infraction::Unknown,
-                },
-                PenaltySnapshot {
-                    player_number: 4,
-                    time: PenaltyTime::Seconds(60),
-                    infraction: Infraction::DelayOfGame,
-                },
-                PenaltySnapshot {
-                    player_number: 6,
-                    time: PenaltyTime::Seconds(242),
-                    infraction: Infraction::IllegalAdvancement,
-                },
-                PenaltySnapshot {
-                    player_number: 8,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::IllegalSubstitution,
-                },
-            ]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 3,
-                    time: PenaltyTime::Seconds(0),
-                    infraction: Infraction::UnsportsmanlikeConduct,
-                },
-                PenaltySnapshot {
-                    player_number: 5,
-                    time: PenaltyTime::Seconds(60),
-                    infraction: Infraction::FalseStart,
-                },
-                PenaltySnapshot {
-                    player_number: 7,
-                    time: PenaltyTime::Seconds(242),
-                    infraction: Infraction::IllegallyStoppingThePuck,
-                },
-                PenaltySnapshot {
-                    player_number: 9,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::Obstruction,
-                },
-            ]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        player_number: 2,
+                        time: PenaltyTime::Seconds(0),
+                        infraction: Infraction::Unknown,
+                    },
+                    PenaltySnapshot {
+                        player_number: 4,
+                        time: PenaltyTime::Seconds(60),
+                        infraction: Infraction::DelayOfGame,
+                    },
+                    PenaltySnapshot {
+                        player_number: 6,
+                        time: PenaltyTime::Seconds(242),
+                        infraction: Infraction::IllegalAdvancement,
+                    },
+                    PenaltySnapshot {
+                        player_number: 8,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::IllegalSubstitution,
+                    },
+                ],
+                white: vec![
+                    PenaltySnapshot {
+                        player_number: 3,
+                        time: PenaltyTime::Seconds(0),
+                        infraction: Infraction::UnsportsmanlikeConduct,
+                    },
+                    PenaltySnapshot {
+                        player_number: 5,
+                        time: PenaltyTime::Seconds(60),
+                        infraction: Infraction::FalseStart,
+                    },
+                    PenaltySnapshot {
+                        player_number: 7,
+                        time: PenaltyTime::Seconds(242),
+                        infraction: Infraction::IllegallyStoppingThePuck,
+                    },
+                    PenaltySnapshot {
+                        player_number: 9,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::Obstruction,
+                    },
+                ]
+            }
         );
 
         // Check after all the penalties have finished
@@ -5240,54 +5087,53 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 2,
-                    time: PenaltyTime::Seconds(0),
-                    infraction: Infraction::Unknown,
-                },
-                PenaltySnapshot {
-                    player_number: 4,
-                    time: PenaltyTime::Seconds(0),
-                    infraction: Infraction::DelayOfGame,
-                },
-                PenaltySnapshot {
-                    player_number: 6,
-                    time: PenaltyTime::Seconds(0),
-                    infraction: Infraction::IllegalAdvancement,
-                },
-                PenaltySnapshot {
-                    player_number: 8,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::IllegalSubstitution,
-                },
-            ]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 3,
-                    time: PenaltyTime::Seconds(0),
-                    infraction: Infraction::UnsportsmanlikeConduct,
-                },
-                PenaltySnapshot {
-                    player_number: 5,
-                    time: PenaltyTime::Seconds(0),
-                    infraction: Infraction::FalseStart,
-                },
-                PenaltySnapshot {
-                    player_number: 7,
-                    time: PenaltyTime::Seconds(0),
-                    infraction: Infraction::IllegallyStoppingThePuck,
-                },
-                PenaltySnapshot {
-                    player_number: 9,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::Obstruction,
-                },
-            ]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        player_number: 2,
+                        time: PenaltyTime::Seconds(0),
+                        infraction: Infraction::Unknown,
+                    },
+                    PenaltySnapshot {
+                        player_number: 4,
+                        time: PenaltyTime::Seconds(0),
+                        infraction: Infraction::DelayOfGame,
+                    },
+                    PenaltySnapshot {
+                        player_number: 6,
+                        time: PenaltyTime::Seconds(0),
+                        infraction: Infraction::IllegalAdvancement,
+                    },
+                    PenaltySnapshot {
+                        player_number: 8,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::IllegalSubstitution,
+                    },
+                ],
+                white: vec![
+                    PenaltySnapshot {
+                        player_number: 3,
+                        time: PenaltyTime::Seconds(0),
+                        infraction: Infraction::UnsportsmanlikeConduct,
+                    },
+                    PenaltySnapshot {
+                        player_number: 5,
+                        time: PenaltyTime::Seconds(0),
+                        infraction: Infraction::FalseStart,
+                    },
+                    PenaltySnapshot {
+                        player_number: 7,
+                        time: PenaltyTime::Seconds(0),
+                        infraction: Infraction::IllegallyStoppingThePuck,
+                    },
+                    PenaltySnapshot {
+                        player_number: 9,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::Obstruction,
+                    },
+                ]
+            }
         );
     }
 
@@ -5321,14 +5167,16 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![PenaltySnapshot {
-                player_number: 2,
-                time: PenaltyTime::Seconds(59),
-                infraction: Infraction::Unknown,
-            }]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![PenaltySnapshot {
+                    player_number: 2,
+                    time: PenaltyTime::Seconds(59),
+                    infraction: Infraction::Unknown,
+                }],
+                white: vec![]
+            }
         );
-        assert_eq!(snapshot.w_penalties, vec![]);
 
         let next_time = next_time + Duration::from_secs(1);
         tm.start_penalty(
@@ -5352,27 +5200,26 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 2,
-                    time: PenaltyTime::Seconds(57),
-                    infraction: Infraction::Unknown,
-                },
-                PenaltySnapshot {
-                    player_number: 5,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::FalseStart,
-                }
-            ]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![PenaltySnapshot {
-                player_number: 3,
-                time: PenaltyTime::Seconds(119),
-                infraction: Infraction::DelayOfGame,
-            }]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        player_number: 2,
+                        time: PenaltyTime::Seconds(57),
+                        infraction: Infraction::Unknown,
+                    },
+                    PenaltySnapshot {
+                        player_number: 5,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::FalseStart,
+                    }
+                ],
+                white: vec![PenaltySnapshot {
+                    player_number: 3,
+                    time: PenaltyTime::Seconds(119),
+                    infraction: Infraction::DelayOfGame,
+                }]
+            }
         );
 
         // Check after the game has ended
@@ -5381,27 +5228,26 @@ mod test {
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(snapshot.current_period, GamePeriod::BetweenGames);
         assert_eq!(
-            snapshot.b_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 2,
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        player_number: 2,
+                        time: PenaltyTime::Seconds(0),
+                        infraction: Infraction::Unknown,
+                    },
+                    PenaltySnapshot {
+                        player_number: 5,
+                        time: PenaltyTime::Seconds(0),
+                        infraction: Infraction::FalseStart,
+                    },
+                ],
+                white: vec![PenaltySnapshot {
+                    player_number: 3,
                     time: PenaltyTime::Seconds(0),
-                    infraction: Infraction::Unknown,
-                },
-                PenaltySnapshot {
-                    player_number: 5,
-                    time: PenaltyTime::Seconds(0),
-                    infraction: Infraction::FalseStart,
-                },
-            ]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![PenaltySnapshot {
-                player_number: 3,
-                time: PenaltyTime::Seconds(0),
-                infraction: Infraction::DelayOfGame,
-            },]
+                    infraction: Infraction::DelayOfGame,
+                },]
+            }
         );
     }
 
@@ -5433,14 +5279,16 @@ mod test {
 
         let snapshot = tm.generate_snapshot(earlier_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![PenaltySnapshot {
-                player_number: 2,
-                time: PenaltyTime::Seconds(61),
-                infraction: Infraction::Unknown,
-            }]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![PenaltySnapshot {
+                    player_number: 2,
+                    time: PenaltyTime::Seconds(61),
+                    infraction: Infraction::Unknown,
+                }],
+                white: vec![]
+            }
         );
-        assert_eq!(snapshot.w_penalties, vec![]);
     }
 
     #[test]
@@ -5481,14 +5329,16 @@ mod test {
         // The penalty should have 50s left, without the limiting it would have 130s left
         let snapshot = tm.generate_snapshot(check_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![PenaltySnapshot {
-                player_number: 2,
-                time: PenaltyTime::Seconds(50),
-                infraction: Infraction::Unknown,
-            }]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![PenaltySnapshot {
+                    player_number: 2,
+                    time: PenaltyTime::Seconds(50),
+                    infraction: Infraction::Unknown,
+                }],
+                white: vec![]
+            }
         );
-        assert_eq!(snapshot.w_penalties, vec![]);
     }
 
     #[test]
@@ -5561,44 +5411,43 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 2,
-                    time: PenaltyTime::Seconds(59),
-                    infraction: Infraction::Unknown,
-                },
-                PenaltySnapshot {
-                    player_number: 4,
-                    time: PenaltyTime::Seconds(119),
-                    infraction: Infraction::FalseStart,
-                },
-                PenaltySnapshot {
-                    player_number: 6,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::GrabbingTheBarrier,
-                },
-            ]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 3,
-                    time: PenaltyTime::Seconds(59),
-                    infraction: Infraction::DelayOfGame,
-                },
-                PenaltySnapshot {
-                    player_number: 5,
-                    time: PenaltyTime::Seconds(119),
-                    infraction: Infraction::FreeArm,
-                },
-                PenaltySnapshot {
-                    player_number: 7,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::IllegalAdvancement,
-                },
-            ]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        player_number: 2,
+                        time: PenaltyTime::Seconds(59),
+                        infraction: Infraction::Unknown,
+                    },
+                    PenaltySnapshot {
+                        player_number: 4,
+                        time: PenaltyTime::Seconds(119),
+                        infraction: Infraction::FalseStart,
+                    },
+                    PenaltySnapshot {
+                        player_number: 6,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::GrabbingTheBarrier,
+                    },
+                ],
+                white: vec![
+                    PenaltySnapshot {
+                        player_number: 3,
+                        time: PenaltyTime::Seconds(59),
+                        infraction: Infraction::DelayOfGame,
+                    },
+                    PenaltySnapshot {
+                        player_number: 5,
+                        time: PenaltyTime::Seconds(119),
+                        infraction: Infraction::FreeArm,
+                    },
+                    PenaltySnapshot {
+                        player_number: 7,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::IllegalAdvancement,
+                    },
+                ]
+            }
         );
 
         // Check during half time (pre-culling)
@@ -5606,44 +5455,43 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 2,
-                    time: PenaltyTime::Seconds(0),
-                    infraction: Infraction::Unknown,
-                },
-                PenaltySnapshot {
-                    player_number: 4,
-                    time: PenaltyTime::Seconds(50),
-                    infraction: Infraction::FalseStart,
-                },
-                PenaltySnapshot {
-                    player_number: 6,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::GrabbingTheBarrier,
-                },
-            ]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 3,
-                    time: PenaltyTime::Seconds(0),
-                    infraction: Infraction::DelayOfGame,
-                },
-                PenaltySnapshot {
-                    player_number: 5,
-                    time: PenaltyTime::Seconds(50),
-                    infraction: Infraction::FreeArm,
-                },
-                PenaltySnapshot {
-                    player_number: 7,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::IllegalAdvancement,
-                },
-            ]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        player_number: 2,
+                        time: PenaltyTime::Seconds(0),
+                        infraction: Infraction::Unknown,
+                    },
+                    PenaltySnapshot {
+                        player_number: 4,
+                        time: PenaltyTime::Seconds(50),
+                        infraction: Infraction::FalseStart,
+                    },
+                    PenaltySnapshot {
+                        player_number: 6,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::GrabbingTheBarrier,
+                    },
+                ],
+                white: vec![
+                    PenaltySnapshot {
+                        player_number: 3,
+                        time: PenaltyTime::Seconds(0),
+                        infraction: Infraction::DelayOfGame,
+                    },
+                    PenaltySnapshot {
+                        player_number: 5,
+                        time: PenaltyTime::Seconds(50),
+                        infraction: Infraction::FreeArm,
+                    },
+                    PenaltySnapshot {
+                        player_number: 7,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::IllegalAdvancement,
+                    },
+                ]
+            }
         );
 
         // Check 6s after half time (post-culling)
@@ -5651,34 +5499,33 @@ mod test {
         tm.update(next_time).unwrap();
         let snapshot = tm.generate_snapshot(next_time).unwrap();
         assert_eq!(
-            snapshot.b_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 4,
-                    time: PenaltyTime::Seconds(44),
-                    infraction: Infraction::FalseStart,
-                },
-                PenaltySnapshot {
-                    player_number: 6,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::GrabbingTheBarrier,
-                },
-            ]
-        );
-        assert_eq!(
-            snapshot.w_penalties,
-            vec![
-                PenaltySnapshot {
-                    player_number: 5,
-                    time: PenaltyTime::Seconds(44),
-                    infraction: Infraction::FreeArm,
-                },
-                PenaltySnapshot {
-                    player_number: 7,
-                    time: PenaltyTime::TotalDismissal,
-                    infraction: Infraction::IllegalAdvancement,
-                },
-            ]
+            snapshot.penalties,
+            BlackWhiteBundle {
+                black: vec![
+                    PenaltySnapshot {
+                        player_number: 4,
+                        time: PenaltyTime::Seconds(44),
+                        infraction: Infraction::FalseStart,
+                    },
+                    PenaltySnapshot {
+                        player_number: 6,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::GrabbingTheBarrier,
+                    },
+                ],
+                white: vec![
+                    PenaltySnapshot {
+                        player_number: 5,
+                        time: PenaltyTime::Seconds(44),
+                        infraction: Infraction::FreeArm,
+                    },
+                    PenaltySnapshot {
+                        player_number: 7,
+                        time: PenaltyTime::TotalDismissal,
+                        infraction: Infraction::IllegalAdvancement,
+                    },
+                ]
+            }
         );
     }
 
@@ -5801,7 +5648,7 @@ mod test {
         tm.current_period = GamePeriod::SecondHalf;
         assert_eq!(Ok(true), tm.would_end_game(next_time));
 
-        tm.set_scores(BlackWhiteBundle::new(3, 4), start_time);
+        tm.set_scores(BlackWhiteBundle { black: 3, white: 4 }, start_time);
         assert_eq!(Ok(true), tm.would_end_game(next_time));
 
         tm.config.sudden_death_allowed = true;
@@ -5810,7 +5657,7 @@ mod test {
         tm.config.overtime_allowed = true;
         assert_eq!(Ok(true), tm.would_end_game(next_time));
 
-        tm.set_scores(BlackWhiteBundle::new(4, 4), start_time);
+        tm.set_scores(BlackWhiteBundle { black: 4, white: 4 }, start_time);
         assert_eq!(Ok(false), tm.would_end_game(next_time));
 
         tm.current_period = GamePeriod::PreOvertime;
@@ -5828,7 +5675,7 @@ mod test {
         tm.config.sudden_death_allowed = false;
         assert_eq!(Ok(true), tm.would_end_game(next_time));
 
-        tm.set_scores(BlackWhiteBundle::new(4, 5), start_time);
+        tm.set_scores(BlackWhiteBundle { black: 4, white: 5 }, start_time);
         tm.config.sudden_death_allowed = true;
         assert_eq!(Ok(true), tm.would_end_game(next_time));
 
@@ -5836,10 +5683,12 @@ mod test {
         tm.config.overtime_allowed = false;
         tm.config.sudden_death_allowed = false;
         tm.current_period = GamePeriod::SecondHalf;
-        tm.set_timeout_state(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
-            start_time,
-            time_remaining_at_start: Duration::from_secs(20),
-        }));
+        tm.set_timeout_state(Some(TimeoutState::RugbyPenaltyShot(
+            ClockState::CountingDown {
+                start_time,
+                time_remaining_at_start: Duration::from_secs(20),
+            },
+        )));
         tm.clock_state = ClockState::CountingDown {
             start_time,
             time_remaining_at_start: Duration::from_nanos(10),
@@ -5851,10 +5700,12 @@ mod test {
         assert_eq!(Ok(false), tm.would_end_game(next_time));
 
         tm.current_period = GamePeriod::FirstHalf;
-        tm.set_timeout_state(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
-            start_time,
-            time_remaining_at_start: Duration::from_secs(20),
-        }));
+        tm.set_timeout_state(Some(TimeoutState::RugbyPenaltyShot(
+            ClockState::CountingDown {
+                start_time,
+                time_remaining_at_start: Duration::from_secs(20),
+            },
+        )));
         tm.clock_state = ClockState::CountingDown {
             start_time,
             time_remaining_at_start: Duration::from_nanos(10),
@@ -5867,10 +5718,12 @@ mod test {
 
         tm.stop_clock(start_time).unwrap();
         tm.current_period = GamePeriod::SecondHalf;
-        tm.set_timeout_state(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
-            start_time,
-            time_remaining_at_start: Duration::from_nanos(10),
-        }));
+        tm.set_timeout_state(Some(TimeoutState::RugbyPenaltyShot(
+            ClockState::CountingDown {
+                start_time,
+                time_remaining_at_start: Duration::from_nanos(10),
+            },
+        )));
         tm.clock_state = ClockState::CountingDown {
             start_time,
             time_remaining_at_start: Duration::from_secs(20),
@@ -5879,17 +5732,19 @@ mod test {
 
         tm.stop_clock(start_time).unwrap();
         tm.set_game_clock_time(Duration::ZERO).unwrap();
-        tm.set_timeout_state(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
-            start_time,
-            time_remaining_at_start: Duration::from_nanos(10),
-        }));
+        tm.set_timeout_state(Some(TimeoutState::RugbyPenaltyShot(
+            ClockState::CountingDown {
+                start_time,
+                time_remaining_at_start: Duration::from_nanos(10),
+            },
+        )));
         assert_eq!(Ok(true), tm.would_end_game(next_time));
 
         tm.clock_state = ClockState::CountingUp {
             start_time,
             time_at_start: Duration::ZERO,
         };
-        tm.set_scores(BlackWhiteBundle::new(4, 5), start_time);
+        tm.set_scores(BlackWhiteBundle { black: 4, white: 5 }, start_time);
         assert_eq!(Ok(false), tm.would_end_game(next_time));
     }
 
@@ -5908,10 +5763,12 @@ mod test {
 
         tm.stop_clock(start_time).unwrap();
         tm.current_period = GamePeriod::SecondHalf;
-        tm.set_timeout_state(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
-            start_time,
-            time_remaining_at_start: Duration::from_secs(20),
-        }));
+        tm.set_timeout_state(Some(TimeoutState::RugbyPenaltyShot(
+            ClockState::CountingDown {
+                start_time,
+                time_remaining_at_start: Duration::from_secs(20),
+            },
+        )));
         tm.clock_state = ClockState::CountingDown {
             start_time,
             time_remaining_at_start: Duration::from_nanos(10),
@@ -5923,10 +5780,12 @@ mod test {
         assert_eq!(Ok(true), tm.timeout_end_would_end_game(next_time));
 
         tm.current_period = GamePeriod::FirstHalf;
-        tm.set_timeout_state(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
-            start_time,
-            time_remaining_at_start: Duration::from_secs(20),
-        }));
+        tm.set_timeout_state(Some(TimeoutState::RugbyPenaltyShot(
+            ClockState::CountingDown {
+                start_time,
+                time_remaining_at_start: Duration::from_secs(20),
+            },
+        )));
         tm.clock_state = ClockState::CountingDown {
             start_time,
             time_remaining_at_start: Duration::from_nanos(10),
@@ -5938,10 +5797,12 @@ mod test {
         assert_eq!(Ok(false), tm.timeout_end_would_end_game(next_time));
 
         tm.stop_clock(start_time).unwrap();
-        tm.set_timeout_state(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
-            start_time,
-            time_remaining_at_start: Duration::from_nanos(10),
-        }));
+        tm.set_timeout_state(Some(TimeoutState::RugbyPenaltyShot(
+            ClockState::CountingDown {
+                start_time,
+                time_remaining_at_start: Duration::from_nanos(10),
+            },
+        )));
         tm.clock_state = ClockState::CountingDown {
             start_time,
             time_remaining_at_start: Duration::from_secs(20),
@@ -5951,10 +5812,12 @@ mod test {
         tm.stop_clock(start_time).unwrap();
         tm.current_period = GamePeriod::SecondHalf;
         tm.set_game_clock_time(Duration::ZERO).unwrap();
-        tm.set_timeout_state(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
-            start_time,
-            time_remaining_at_start: Duration::from_nanos(10),
-        }));
+        tm.set_timeout_state(Some(TimeoutState::RugbyPenaltyShot(
+            ClockState::CountingDown {
+                start_time,
+                time_remaining_at_start: Duration::from_nanos(10),
+            },
+        )));
         assert_eq!(Ok(true), tm.would_end_game(next_time));
     }
 
@@ -5982,20 +5845,20 @@ mod test {
         );
 
         tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_millis(500));
-        tm.timeout_state = TimeoutState::Ref(ClockState::CountingUp {
+        tm.timeout_state = Some(TimeoutState::Ref(ClockState::CountingUp {
             start_time,
             time_at_start: Duration::ZERO,
-        });
+        }));
         assert_eq!(
             Err(TMErr::AlreadyInTimeout(TimeoutSnapshot::Ref(1))),
             tm.halt_clock(next_time, false)
         );
 
         tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_millis(500));
-        tm.timeout_state = TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
+        tm.timeout_state = Some(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
             start_time,
             time_remaining_at_start: Duration::from_secs(20),
-        });
+        }));
         tm.halt_clock(next_time, false).unwrap();
         assert_eq!(
             ClockState::Stopped {
@@ -6005,10 +5868,10 @@ mod test {
         );
 
         tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::ZERO);
-        tm.timeout_state = TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
+        tm.timeout_state = Some(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
             start_time,
             time_remaining_at_start: Duration::from_secs(20),
-        });
+        }));
         tm.halt_clock(next_time, true).unwrap();
         assert_eq!(
             ClockState::Stopped {
@@ -6017,7 +5880,7 @@ mod test {
             tm.clock_state
         );
 
-        tm.timeout_state = TimeoutState::None;
+        tm.timeout_state = None;
         assert_eq!(Err(TMErr::InvalidState), tm.halt_clock(next_time, false));
     }
 }

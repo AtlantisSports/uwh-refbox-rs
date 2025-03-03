@@ -1,0 +1,17 @@
+[package]
+name = "led-panel-sim"
+version = "0.2.0"
+authors = ["Atlantis Sports <maintainers@atlantissports.org>"]
+edition = "2021"
+
+[dependencies]
+matrix-drawing = { version = "0.2.0", path = "../matrix-drawing" }
+uwh-common = { version = "0.2.0", path = "../uwh-common" }
+
+[lib]
+name = "led_panel_sim"
+path = "src/lib.rs"
+
+[[bin]]
+name = "generate-tests"
+path = "src/main.rs"

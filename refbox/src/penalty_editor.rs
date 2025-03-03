@@ -1,5 +1,5 @@
 use crate::tournament_manager::{
-    BlackWhiteBundle, OptColorBundle, TournamentManager, TournamentManagerError,
+    TournamentManager, TournamentManagerError,
     infraction::InfractionDetails,
     penalty::{Penalty, PenaltyKind},
 };
@@ -11,7 +11,11 @@ use std::{
 };
 use thiserror::Error;
 use tokio::time::Instant;
-use uwh_common::game_snapshot::{Color, Infraction};
+use uwh_common::{
+    bundles::{BlackWhiteBundle, OptColorBundle},
+    color::Color,
+    game_snapshot::Infraction,
+};
 
 pub trait ColorIndex: Debug + Default + PartialEq + Eq + Clone + Copy {
     type Structure<T: Default>;

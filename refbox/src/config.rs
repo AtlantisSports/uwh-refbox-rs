@@ -2,6 +2,7 @@ use crate::sound_controller::SoundSettings;
 use derivative::Derivative;
 use enum_derive_2018::{EnumDisplay, EnumFromStr};
 use macro_attr_2018::macro_attr;
+use matrix_drawing::transmitted_data::Brightness;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use time::UtcOffset;
@@ -13,6 +14,7 @@ pub struct Hardware {
     pub screen_x: i32,
     pub screen_y: i32,
     pub white_on_right: bool,
+    pub brightness: Brightness,
 }
 
 impl Default for Hardware {
@@ -21,6 +23,7 @@ impl Default for Hardware {
             screen_x: 945,
             screen_y: 691,
             white_on_right: false,
+            brightness: Brightness::Low,
         }
     }
 }
@@ -31,16 +34,25 @@ impl Hardware {
             mut screen_x,
             mut screen_y,
             mut white_on_right,
+            mut brightness,
         } = Default::default();
 
         get_integer_value(old, "screen_x", &mut screen_x);
         get_integer_value(old, "screen_y", &mut screen_y);
         get_boolean_value(old, "white_on_right", &mut white_on_right);
+        if let Some(old_brightness) = old.get("brightness") {
+            if let Some(old_brightness) = old_brightness.as_str() {
+                if let Ok(old_brightness) = old_brightness.parse() {
+                    brightness = old_brightness;
+                }
+            }
+        }
 
         Self {
             screen_x,
             screen_y,
             white_on_right,
+            brightness,
         }
     }
 }

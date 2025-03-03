@@ -1,0 +1,64 @@
+CAPI=2:
+name: atlantis_sports:boards:led_panel:1.0.0
+description: Driver for the LED panel used in the Atlantis Sports refbox
+
+# Source Files https://fusesoc.readthedocs.io/en/stable/user/build_system/core_files.html#targets
+filesets:
+  # default
+  rtl:
+    files:
+      - rtl/pwm.sv: {file_type: systemVerilogSource}
+      - rtl/reset_conditioner.sv: {file_type: systemVerilogSource}
+      - rtl/uart_rx.v: {file_type: verilogSource}
+      - rtl/segments.sv: {file_type: systemVerilogSource}
+      - rtl/sr_ff.v: {file_type: verilogSource}
+  # simulation
+  tb:
+    files:
+      - tb/test_cases.sv: {file_type: systemVerilogSource}
+      - tb/segments.tb.sv: {file_type: systemVerilogSource}
+  # synthesis
+  synth:
+    files:
+      - synth/top.sv: {file_type: systemVerilogSource}
+  # boards
+  alchitry_cu:
+    files:
+      - boards/alchitry_cu/pinmap.pcf: {file_type: PCF}
+      - boards/alchitry_cu/cu.sdc: {file_type: SDC}
+
+
+# Targets https://fusesoc.readthedocs.io/en/stable/user/build_system/core_files.html#targets
+targets:
+  default: &default
+    filesets:
+      - rtl
+  synth: &synth
+    filesets:
+      - rtl
+      - synth
+    toplevel: top
+
+  sim: # fusesoc run --target sim e4tham:templates:and
+    <<: *default
+    description: Simulate the design
+    flow: sim
+    filesets_append:
+      - tb
+    toplevel: segments_tb
+    flow_options:
+      tool: verilator
+      verilator_options: [--timing, --main, -Isrc/atlantis_sports_boards_led_panel_1.0.0/tb]
+
+  alchitry_cu:
+    <<: *synth
+    description: Synthesize on Alchrity Cu
+    filesets_append:
+      - alchitry_cu
+    flow: icestorm
+    flow_options:
+      frontends:
+        - sv2v
+      pnr: next
+      nextpnr_options: [--hx8k, --package, cb132]
+      arch: ice40

@@ -3,7 +3,7 @@ use iced::{
     Length,
     widget::{column, row, vertical_space},
 };
-use uwh_common::game_snapshot::Color as GameColor;
+use uwh_common::color::Color as GameColor;
 
 pub(super) fn make_penalty_edit_page<'a>(
     origin: Option<(GameColor, usize)>,

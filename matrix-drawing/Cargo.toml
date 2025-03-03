@@ -3,6 +3,7 @@ name = "matrix-drawing"
 version = "0.2.1"
 authors = ["Atlantis Sports <maintainers@atlantissports.org>"]
 edition = "2024"
+rust-version = "1.85"
 
 [features]
 default = ["std"]

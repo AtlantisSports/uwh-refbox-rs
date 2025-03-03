@@ -11,7 +11,7 @@ futures = "0.3"
 coarsetime = "0.1.35"
 confy = "0.6"
 crossbeam-channel = "0.5.14"
-directories = "5.0.1"
+directories = "6.0.0"
 log = "0.4.22"
 log-panics = { version = "2", features = ["with-backtrace"]}
 log4rs = { version = "1", default-features = false, features = ["background_rotation", "compound_policy", "console_appender", "fixed_window_roller", "gzip", "pattern_encoder", "rolling_file_appender", "size_trigger"]}

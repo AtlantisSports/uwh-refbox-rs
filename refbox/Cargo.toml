@@ -16,7 +16,7 @@ clap = { version = "4", features = ["derive"] }
 confy = "0.6"
 conquer-once = "0.4"
 derivative = "2"
-directories = "5"
+directories = "6"
 embedded-graphics = "0.8"
 enum-derive-2018 = "3"
 env_logger = "0.11"

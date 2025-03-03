@@ -201,7 +201,7 @@ fn make_main_config_page<'a>(
     };
 
     column![
-        make_game_time_button(snapshot, false, false, mode, clock_running,),
+        make_game_time_button(snapshot, false, false, mode, clock_running),
         make_value_button(
             fl!("game-select"),
             game_label,

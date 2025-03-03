@@ -53,7 +53,8 @@ pub struct TournamentManager {
     reset_game_time: Duration,
     recent_goal: Option<(Color, u8, GamePeriod, Duration)>,
     current_game_stats: GameStats,
-    last_game_stats: Option<GameStats>,
+    last_game_info: Option<LastGameInfo>,
+    time_pause_confirmation: Option<ConfirmPause>,
 }
 
 impl TournamentManager {
@@ -81,7 +82,8 @@ impl TournamentManager {
             config,
             recent_goal: None,
             current_game_stats: GameStats::new(0),
-            last_game_stats: None,
+            last_game_info: None,
+            time_pause_confirmation: None,
         }
     }
 
@@ -122,7 +124,11 @@ impl TournamentManager {
     pub fn set_scores(&mut self, scores: BlackWhiteBundle<u8>, now: Instant) {
         self.scores = scores;
         info!("{} Scores set to {scores}", self.status_string(now));
-        if self.current_period == GamePeriod::SuddenDeath && scores.black != scores.white {
+
+        if self.current_period == GamePeriod::SuddenDeath
+            && scores.black != scores.white
+            && !self.in_score_confirm_pause()
+        {
             self.end_game(now);
         }
     }
@@ -148,8 +154,8 @@ impl TournamentManager {
         Ok(())
     }
 
-    pub(crate) fn last_game_stats(&self) -> Option<&GameStats> {
-        self.last_game_stats.as_ref()
+    pub(crate) fn last_game_info(&self) -> Option<&LastGameInfo> {
+        self.last_game_info.as_ref()
     }
 
     pub fn clear_scheduled_game_start(&mut self) {
@@ -485,7 +491,7 @@ impl TournamentManager {
     }
 
     pub fn timeout_end_would_end_game(&self, now: Instant) -> Result<bool> {
-        if self.would_end_game(now)? {
+        if self.could_end_game(now)? {
             return Ok(true);
         } else if let Some(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown { .. })) =
             self.timeout_state
@@ -952,17 +958,28 @@ impl TournamentManager {
         }
 
         self.current_game_stats.add_end_time(now);
-        self.last_game_stats = Some(self.current_game_stats.clone());
+        self.last_game_info = Some(LastGameInfo {
+            scores: self.scores,
+            stats: self.current_game_stats.clone(),
+        });
 
-        let game_end = match self.clock_state {
-            ClockState::CountingDown {
-                start_time,
-                time_remaining_at_start,
-            } => start_time + time_remaining_at_start,
-            ClockState::CountingUp { .. } | ClockState::Stopped { .. } => now,
+        let game_end = if let Some(pause_conf) = &self.time_pause_confirmation {
+            pause_conf.pause_began
+        } else {
+            match self.clock_state {
+                ClockState::CountingDown {
+                    start_time,
+                    time_remaining_at_start,
+                } => start_time + time_remaining_at_start,
+                ClockState::CountingUp { .. } | ClockState::Stopped { .. } => now,
+            }
         };
 
-        let time_remaining_at_start = self.calc_time_to_next_game(now, game_end);
+        let time_remaining_at_start = if let Some(pause_conf) = &self.time_pause_confirmation {
+            self.calc_time_to_next_game(now, pause_conf.pause_began)
+        } else {
+            self.calc_time_to_next_game(now, game_end)
+        };
 
         info!(
             "{} Entering between games, time to next game is {time_remaining_at_start:?}",
@@ -1020,9 +1037,9 @@ impl TournamentManager {
         );
     }
 
-    pub fn would_end_game(&self, now: Instant) -> Result<bool> {
-        if self.current_period == GamePeriod::SuddenDeath {
-            Ok(self.get_scores().are_not_equal())
+    pub fn could_end_game(&self, now: Instant) -> Result<bool> {
+        if self.time_pause_confirmation.is_some() {
+            Ok(false)
         } else {
             if let Some(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
                 start_time,
@@ -1038,6 +1055,15 @@ impl TournamentManager {
                 }
             };
 
+            if let ClockState::CountingUp { .. } = self.clock_state {
+                if (self.current_period == GamePeriod::SuddenDeath) & (self.scores.are_not_equal())
+                {
+                    return Ok(true);
+                } else {
+                    return Ok(false);
+                }
+            }
+
             if let ClockState::CountingDown {
                 start_time,
                 time_remaining_at_start,
@@ -1045,7 +1071,29 @@ impl TournamentManager {
             {
                 self.check_time_remaining(now, start_time, time_remaining_at_start)
             } else {
-                Ok(false)
+                if let Some(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
+                    start_time,
+                    time_remaining_at_start,
+                })) = self.timeout_state
+                {
+                    if !self.check_time_remaining(now, start_time, time_remaining_at_start)? {
+                        return Ok(false);
+                    } else if let ClockState::Stopped { clock_time } = self.clock_state {
+                        if clock_time.is_zero() {
+                            return Ok(true);
+                        }
+                    }
+                };
+
+                if let ClockState::CountingDown {
+                    start_time,
+                    time_remaining_at_start,
+                } = self.clock_state
+                {
+                    self.check_time_remaining(now, start_time, time_remaining_at_start)
+                } else {
+                    Ok(false)
+                }
             }
         }
     }
@@ -1061,11 +1109,17 @@ impl TournamentManager {
             .ok_or(TournamentManagerError::InvalidNowValue)?;
 
         Ok(time >= time_remaining_at_start
-            && ((self.current_period == GamePeriod::SecondHalf
-                && (self.scores.are_not_equal()
-                    || (!self.config.overtime_allowed && !self.config.sudden_death_allowed)))
-                || (self.current_period == GamePeriod::OvertimeSecondHalf
-                    && (self.scores.are_not_equal() || !self.config.sudden_death_allowed))))
+            && (self.current_period == GamePeriod::SecondHalf
+                || (self.current_period == GamePeriod::OvertimeSecondHalf)))
+    }
+
+    pub fn pause_has_ended(&self, now: Instant) -> bool {
+        if let Some(ref pause_conf) = self.time_pause_confirmation {
+            let elapsed = now.duration_since(pause_conf.pause_began);
+            elapsed >= pause_conf.duration_of_pause
+        } else {
+            false
+        }
     }
 
     pub(super) fn update(&mut self, now: Instant) -> Result<()> {
@@ -1210,6 +1264,11 @@ impl TournamentManager {
                         clock_time: Duration::ZERO,
                     };
                 }
+            }
+        } else if let ClockState::CountingUp { .. } = self.clock_state {
+            // In sudden death, check if in socre confirmation pause
+            if self.time_pause_confirmation.is_some() & self.pause_has_ended(now) {
+                self.end_confirm_pause(now)?;
             }
         } else {
             // We are either in a timeout, sudden death, or stopped clock. Sudden death and
@@ -1715,6 +1774,168 @@ impl TournamentManager {
         }
     }
 
+    pub fn pause_for_confirm(&mut self, now: Instant) -> Result<()> {
+        if self.timeout_state.is_some() {
+            return Err(TournamentManagerError::PausingDuringTimeout);
+        }
+        if !self.clock_state.is_running() {
+            return Err(TournamentManagerError::ClockStopped);
+        }
+        info!("Pausing for Confirmation");
+        let pause_inst = match self.clock_state {
+            ClockState::CountingDown {
+                start_time,
+                time_remaining_at_start,
+            } => min(start_time + time_remaining_at_start, now),
+            ClockState::CountingUp { .. } => now,
+            ClockState::Stopped { .. } => unreachable!(),
+        };
+
+        let dur_pause = match self.current_period {
+            GamePeriod::SecondHalf => {
+                if self.config.overtime_allowed {
+                    min(self.config.pre_overtime_break, self.config.minimum_break) / 2
+                } else if self.config.sudden_death_allowed {
+                    min(
+                        self.config.pre_sudden_death_duration,
+                        self.config.minimum_break,
+                    ) / 2
+                } else {
+                    self.config.minimum_break / 2
+                }
+            }
+            GamePeriod::OvertimeSecondHalf => {
+                if self.config.sudden_death_allowed {
+                    min(
+                        self.config.pre_sudden_death_duration,
+                        self.config.minimum_break,
+                    ) / 2
+                } else {
+                    self.config.minimum_break / 2
+                }
+            }
+            GamePeriod::SuddenDeath => self.config.minimum_break / 2,
+            _ => {
+                unreachable!()
+            }
+        };
+
+        info!("Current Period: {}", self.current_period);
+
+        let clock_at_pause = match self.current_period {
+            GamePeriod::SuddenDeath => self.clock_state.clock_time(now).unwrap(),
+            GamePeriod::SecondHalf | GamePeriod::OvertimeSecondHalf => Duration::from_millis(10),
+            GamePeriod::BetweenGames
+            | GamePeriod::FirstHalf
+            | GamePeriod::HalfTime
+            | GamePeriod::OvertimeFirstHalf
+            | GamePeriod::OvertimeHalfTime
+            | GamePeriod::PreOvertime
+            | GamePeriod::PreSuddenDeath => unreachable!(),
+        };
+
+        self.clock_state = ClockState::Stopped {
+            clock_time: Duration::from_millis(10),
+        };
+
+        self.time_pause_confirmation = Some(ConfirmPause {
+            pause_began: pause_inst,
+            duration_of_pause: dur_pause,
+            clock_time: clock_at_pause,
+        });
+
+        Ok(())
+    }
+
+    /// Scores must be accurately set before calling this
+    pub fn end_confirm_pause(&mut self, now: Instant) -> Result<()> {
+        info!(
+            "Ending Pause, Pause Duration: {:?}",
+            self.time_pause_confirmation
+        );
+        if let Some(confirm_pause) = &self.time_pause_confirmation {
+            let scores = self.scores;
+            self.current_period = match self.current_period {
+                GamePeriod::SecondHalf => {
+                    if scores.are_not_equal() {
+                        GamePeriod::BetweenGames
+                    } else if self.config.overtime_allowed {
+                        GamePeriod::PreOvertime
+                    } else if self.config.sudden_death_allowed {
+                        GamePeriod::PreSuddenDeath
+                    } else {
+                        GamePeriod::BetweenGames
+                    }
+                }
+                GamePeriod::OvertimeSecondHalf => {
+                    if scores.are_not_equal() {
+                        GamePeriod::BetweenGames
+                    } else if self.config.sudden_death_allowed {
+                        GamePeriod::PreSuddenDeath
+                    } else {
+                        GamePeriod::BetweenGames
+                    }
+                }
+                GamePeriod::SuddenDeath => {
+                    if !scores.are_not_equal() {
+                        GamePeriod::SuddenDeath
+                    } else {
+                        GamePeriod::BetweenGames
+                    }
+                }
+                _ => {
+                    unreachable!()
+                }
+            };
+
+            info!("Current Period: {}", self.current_period);
+
+            let pause_duration = now.duration_since(confirm_pause.pause_began);
+            let time_into_sd = confirm_pause.clock_time;
+
+            let next_period_remaining_duration = if self.current_period == GamePeriod::BetweenGames
+            {
+                self.calc_time_to_next_game(now, confirm_pause.pause_began)
+                    .saturating_sub(pause_duration)
+            } else {
+                self.current_period
+                    .duration(&self.config)
+                    .map(|d| d.saturating_sub(pause_duration))
+                    .unwrap_or(Duration::ZERO)
+            };
+
+            if self.current_period == GamePeriod::BetweenGames {
+                self.end_game(now)
+            } else {
+                self.send_clock_running(true);
+            }
+
+            info!(
+                "Next period remaining duration: {:?}",
+                next_period_remaining_duration
+            );
+
+            self.clock_state = match self.current_period {
+                GamePeriod::PreOvertime | GamePeriod::PreSuddenDeath | GamePeriod::BetweenGames => {
+                    ClockState::CountingDown {
+                        start_time: now,
+                        time_remaining_at_start: next_period_remaining_duration,
+                    }
+                }
+                GamePeriod::SuddenDeath => ClockState::CountingUp {
+                    start_time: (now),
+                    time_at_start: (time_into_sd),
+                },
+                _ => unreachable!(),
+            };
+
+            self.time_pause_confirmation = None;
+
+            return Ok(());
+        }
+        Err(TournamentManagerError::NotPaused)
+    }
+
     #[cfg(test)]
     pub(super) fn set_period_and_game_clock_time(
         &mut self,
@@ -1725,7 +1946,7 @@ impl TournamentManager {
             self.current_period = period;
             self.clock_state = ClockState::Stopped { clock_time }
         } else {
-            panic!("Can't edit period and remaing time while clock is running");
+            panic!("Can't edit period and remaining time while clock is running");
         }
     }
 
@@ -1794,11 +2015,16 @@ impl TournamentManager {
         }
     }
 
+    pub fn in_score_confirm_pause(&self) -> bool {
+        self.time_pause_confirmation.is_some()
+    }
+
     pub fn generate_snapshot(&mut self, now: Instant) -> Option<GameSnapshot> {
         trace!("Generating snapshot");
         let cur_time = self.game_clock_time(now)?;
         trace!("Got current time: {cur_time:?}");
         let secs_in_period = cur_time.as_secs().try_into().ok()?;
+
         trace!("Got seconds remaining: {secs_in_period}");
 
         let penalties = self
@@ -1867,6 +2093,10 @@ impl TournamentManager {
     }
 
     pub fn next_update_time(&self, now: Instant) -> Option<Instant> {
+        if let Some(ref pause_conf) = self.time_pause_confirmation {
+            return Some(pause_conf.pause_began + pause_conf.duration_of_pause);
+        };
+
         match (&self.timeout_state, self.current_period) {
             // cases where the clock is counting up
             (Some(TimeoutState::Ref(cs)), _) | (Some(TimeoutState::PenaltyShot(cs)), _) => cs
@@ -2027,6 +2257,19 @@ pub struct NextGameInfo {
     pub start_time: Option<OffsetDateTime>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct LastGameInfo {
+    pub scores: BlackWhiteBundle<u8>,
+    pub stats: GameStats,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfirmPause {
+    pub pause_began: Instant,
+    pub duration_of_pause: Duration,
+    pub clock_time: Duration,
+}
+
 #[derive(Debug, PartialEq, Eq, Error)]
 pub enum TournamentManagerError {
     #[error("Can't edit clock time while clock is running")]
@@ -2067,6 +2310,12 @@ pub enum TournamentManagerError {
     NoNextGameInfo,
     #[error("Penalty error: {0}")]
     PenaltyError(#[from] PenaltyError),
+    #[error("Time not paused")]
+    NotPaused,
+    #[error("Cannot pause during timeout")]
+    PausingDuringTimeout,
+    #[error("The clock is already stopped")]
+    ClockStopped,
 }
 
 pub type Result<T> = std::result::Result<T, TournamentManagerError>;
@@ -5645,7 +5894,7 @@ mod test {
     }
 
     #[test]
-    fn test_would_end_game() {
+    fn test_could_end_game() {
         initialize();
         let config = GameConfig {
             overtime_allowed: false,
@@ -5659,47 +5908,47 @@ mod test {
 
         tm.set_period_and_game_clock_time(GamePeriod::BetweenGames, Duration::from_nanos(10));
         tm.start_clock(start_time);
-        assert_eq!(Ok(false), tm.would_end_game(next_time));
+        assert_eq!(Ok(false), tm.could_end_game(next_time));
 
         tm.current_period = GamePeriod::FirstHalf;
-        assert_eq!(Ok(false), tm.would_end_game(next_time));
+        assert_eq!(Ok(false), tm.could_end_game(next_time));
 
         tm.current_period = GamePeriod::HalfTime;
-        assert_eq!(Ok(false), tm.would_end_game(next_time));
+        assert_eq!(Ok(false), tm.could_end_game(next_time));
 
         tm.current_period = GamePeriod::SecondHalf;
-        assert_eq!(Ok(true), tm.would_end_game(next_time));
+        assert_eq!(Ok(true), tm.could_end_game(next_time));
 
         tm.set_scores(BlackWhiteBundle { black: 3, white: 4 }, start_time);
-        assert_eq!(Ok(true), tm.would_end_game(next_time));
+        assert_eq!(Ok(true), tm.could_end_game(next_time));
 
         tm.config.sudden_death_allowed = true;
-        assert_eq!(Ok(true), tm.would_end_game(next_time));
+        assert_eq!(Ok(true), tm.could_end_game(next_time));
 
         tm.config.overtime_allowed = true;
-        assert_eq!(Ok(true), tm.would_end_game(next_time));
+        assert_eq!(Ok(true), tm.could_end_game(next_time));
 
         tm.set_scores(BlackWhiteBundle { black: 4, white: 4 }, start_time);
-        assert_eq!(Ok(false), tm.would_end_game(next_time));
+        assert_eq!(Ok(true), tm.could_end_game(next_time));
 
         tm.current_period = GamePeriod::PreOvertime;
-        assert_eq!(Ok(false), tm.would_end_game(next_time));
+        assert_eq!(Ok(false), tm.could_end_game(next_time));
 
         tm.current_period = GamePeriod::OvertimeFirstHalf;
-        assert_eq!(Ok(false), tm.would_end_game(next_time));
+        assert_eq!(Ok(false), tm.could_end_game(next_time));
 
         tm.current_period = GamePeriod::OvertimeHalfTime;
-        assert_eq!(Ok(false), tm.would_end_game(next_time));
+        assert_eq!(Ok(false), tm.could_end_game(next_time));
 
         tm.current_period = GamePeriod::OvertimeSecondHalf;
-        assert_eq!(Ok(false), tm.would_end_game(next_time));
+        assert_eq!(Ok(true), tm.could_end_game(next_time));
 
         tm.config.sudden_death_allowed = false;
-        assert_eq!(Ok(true), tm.would_end_game(next_time));
+        assert_eq!(Ok(true), tm.could_end_game(next_time));
 
         tm.set_scores(BlackWhiteBundle { black: 4, white: 5 }, start_time);
         tm.config.sudden_death_allowed = true;
-        assert_eq!(Ok(true), tm.would_end_game(next_time));
+        assert_eq!(Ok(true), tm.could_end_game(next_time));
 
         tm.stop_clock(start_time).unwrap();
         tm.config.overtime_allowed = false;
@@ -5715,11 +5964,11 @@ mod test {
             start_time,
             time_remaining_at_start: Duration::from_nanos(10),
         };
-        assert_eq!(Ok(false), tm.would_end_game(next_time));
+        assert_eq!(Ok(false), tm.could_end_game(next_time));
         tm.clock_state = ClockState::Stopped {
             clock_time: Duration::ZERO,
         };
-        assert_eq!(Ok(false), tm.would_end_game(next_time));
+        assert_eq!(Ok(false), tm.could_end_game(next_time));
 
         tm.current_period = GamePeriod::FirstHalf;
         tm.set_timeout_state(Some(TimeoutState::RugbyPenaltyShot(
@@ -5732,11 +5981,11 @@ mod test {
             start_time,
             time_remaining_at_start: Duration::from_nanos(10),
         };
-        assert_eq!(Ok(false), tm.would_end_game(next_time));
+        assert_eq!(Ok(false), tm.could_end_game(next_time));
         tm.clock_state = ClockState::Stopped {
             clock_time: Duration::ZERO,
         };
-        assert_eq!(Ok(false), tm.would_end_game(next_time));
+        assert_eq!(Ok(false), tm.could_end_game(next_time));
 
         tm.stop_clock(start_time).unwrap();
         tm.current_period = GamePeriod::SecondHalf;
@@ -5750,7 +5999,7 @@ mod test {
             start_time,
             time_remaining_at_start: Duration::from_secs(20),
         };
-        assert_eq!(Ok(false), tm.would_end_game(next_time));
+        assert_eq!(Ok(false), tm.could_end_game(next_time));
 
         tm.stop_clock(start_time).unwrap();
         tm.set_game_clock_time(Duration::ZERO).unwrap();
@@ -5760,14 +6009,14 @@ mod test {
                 time_remaining_at_start: Duration::from_nanos(10),
             },
         )));
-        assert_eq!(Ok(true), tm.would_end_game(next_time));
+        assert_eq!(Ok(true), tm.could_end_game(next_time));
 
         tm.clock_state = ClockState::CountingUp {
             start_time,
             time_at_start: Duration::ZERO,
         };
         tm.set_scores(BlackWhiteBundle { black: 4, white: 5 }, start_time);
-        assert_eq!(Ok(false), tm.would_end_game(next_time));
+        assert_eq!(Ok(false), tm.could_end_game(next_time));
     }
 
     #[test]
@@ -5829,7 +6078,7 @@ mod test {
             start_time,
             time_remaining_at_start: Duration::from_secs(20),
         };
-        assert_eq!(Ok(false), tm.would_end_game(next_time));
+        assert_eq!(Ok(false), tm.could_end_game(next_time));
 
         tm.stop_clock(start_time).unwrap();
         tm.current_period = GamePeriod::SecondHalf;
@@ -5840,7 +6089,7 @@ mod test {
                 time_remaining_at_start: Duration::from_nanos(10),
             },
         )));
-        assert_eq!(Ok(true), tm.would_end_game(next_time));
+        assert_eq!(Ok(true), tm.could_end_game(next_time));
     }
 
     #[test]
@@ -5904,5 +6153,741 @@ mod test {
 
         tm.timeout_state = None;
         assert_eq!(Err(TMErr::InvalidState), tm.halt_clock(next_time, false));
+    }
+
+    #[test]
+    fn test_pause_score_confirm_with_ot_and_sd() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: true,
+            sudden_death_allowed: true,
+            pre_sudden_death_duration: Duration::from_secs(12),
+            pre_overtime_break: Duration::from_secs(8),
+            minimum_break: Duration::from_secs(20),
+            post_game_duration: Duration::from_secs(20),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start = Instant::now();
+        let pre_game_end = start + Duration::from_secs(29);
+        let game_end = start + Duration::from_secs(30);
+        let pause_1_end = game_end + Duration::from_secs(4);
+
+        // Coming out of second half, with overtime and sd, pause_duration should be 4
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(30));
+        tm.set_game_start(start);
+        assert_eq!(tm.clock_is_running(), false);
+        tm.start_game_clock(start);
+        assert_eq!(tm.clock_is_running(), true);
+        tm.set_scores(BlackWhiteBundle { black: 1, white: 2 }, start);
+
+        assert_eq!(Ok(false), tm.could_end_game(pre_game_end));
+        assert_eq!(Ok(true), tm.could_end_game(game_end));
+
+        tm.pause_for_confirm(game_end).unwrap();
+
+        assert!(tm.in_score_confirm_pause());
+
+        let confirm = tm.time_pause_confirmation.as_ref().unwrap();
+        assert_eq!(confirm.duration_of_pause, Duration::from_secs(4));
+        assert_eq!(confirm.pause_began, game_end);
+
+        let before_end = game_end + Duration::from_secs(3);
+        let after_end = game_end + Duration::from_secs(5);
+        assert!(!tm.pause_has_ended(before_end));
+        assert!(tm.pause_has_ended(after_end));
+
+        tm.end_confirm_pause(pause_1_end).unwrap();
+
+        assert!(!tm.in_score_confirm_pause());
+        assert_eq!(tm.time_pause_confirmation, None);
+
+        assert_eq!(tm.current_period, GamePeriod::BetweenGames);
+        assert!(tm.clock_is_running());
+    }
+
+    #[test]
+    fn test_pause_score_confirm_with_only_sd_score_changed_to_tie() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: false,
+            sudden_death_allowed: true,
+            pre_sudden_death_duration: Duration::from_secs(12),
+            pre_overtime_break: Duration::from_secs(8),
+            minimum_break: Duration::from_secs(20),
+            post_game_duration: Duration::from_secs(20),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start = Instant::now();
+        let pre_game_end = start + Duration::from_secs(29);
+        let game_end = start + Duration::from_secs(30);
+        let pause_2_end = game_end + Duration::from_secs(6);
+
+        // No overtime, only sd allowed, pause_duration should be 6
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(30));
+        tm.set_game_start(start);
+        assert_eq!(tm.clock_is_running(), false);
+        tm.start_game_clock(start);
+        assert_eq!(tm.clock_is_running(), true);
+        tm.set_scores(BlackWhiteBundle { black: 1, white: 2 }, start);
+
+        assert_eq!(Ok(false), tm.could_end_game(pre_game_end));
+        assert_eq!(Ok(true), tm.could_end_game(game_end));
+
+        tm.pause_for_confirm(game_end).unwrap();
+
+        assert!(tm.in_score_confirm_pause());
+
+        let confirm = tm.time_pause_confirmation.as_ref().unwrap();
+        assert_eq!(confirm.duration_of_pause, Duration::from_secs(6));
+        assert_eq!(confirm.pause_began, game_end);
+
+        let before_end = game_end + Duration::from_secs(5);
+        let after_end = game_end + Duration::from_secs(7);
+        assert!(!tm.pause_has_ended(before_end));
+        assert!(tm.pause_has_ended(after_end));
+
+        tm.set_scores(BlackWhiteBundle { black: 2, white: 2 }, start);
+
+        tm.end_confirm_pause(pause_2_end).unwrap();
+
+        assert_eq!(tm.current_period, GamePeriod::PreSuddenDeath);
+        assert!(tm.clock_is_running());
+
+        assert!(!tm.in_score_confirm_pause());
+        assert_eq!(tm.time_pause_confirmation, None);
+    }
+
+    #[test]
+    fn test_pause_score_confirm_no_ot_and_sd() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            pre_sudden_death_duration: Duration::from_secs(12),
+            pre_overtime_break: Duration::from_secs(8),
+            minimum_break: Duration::from_secs(20),
+            post_game_duration: Duration::from_secs(20),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start = Instant::now();
+        let pre_game_end = start + Duration::from_secs(29);
+        let game_end = start + Duration::from_secs(30);
+        let pause_3_end = game_end + Duration::from_secs(10);
+
+        // No overtime or sd, pause_duration should be 10
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(30));
+        tm.set_game_start(start);
+        assert_eq!(tm.clock_is_running(), false);
+        tm.start_game_clock(start);
+        assert_eq!(tm.clock_is_running(), true);
+        tm.set_scores(BlackWhiteBundle { black: 1, white: 2 }, start);
+
+        assert_eq!(Ok(false), tm.could_end_game(pre_game_end));
+        assert_eq!(Ok(true), tm.could_end_game(game_end));
+
+        tm.pause_for_confirm(game_end).unwrap();
+
+        assert!(tm.in_score_confirm_pause());
+
+        let confirm = tm.time_pause_confirmation.as_ref().unwrap();
+        assert_eq!(confirm.duration_of_pause, Duration::from_secs(10));
+        assert_eq!(confirm.pause_began, game_end);
+
+        let before_end = game_end + Duration::from_secs(9);
+        let after_end = game_end + Duration::from_secs(11);
+        assert!(!tm.pause_has_ended(before_end));
+        assert!(tm.pause_has_ended(after_end));
+
+        tm.end_confirm_pause(pause_3_end).unwrap();
+
+        assert_eq!(tm.current_period, GamePeriod::BetweenGames);
+        assert!(tm.clock_is_running());
+
+        assert!(!tm.in_score_confirm_pause());
+        assert_eq!(tm.time_pause_confirmation, None);
+    }
+
+    #[test]
+    fn test_pause_score_confirm_with_ot_and_sd_btwn_games_shortest() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: true,
+            sudden_death_allowed: true,
+            pre_sudden_death_duration: Duration::from_secs(12),
+            pre_overtime_break: Duration::from_secs(8),
+            minimum_break: Duration::from_secs(4),
+            post_game_duration: Duration::from_secs(4),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start = Instant::now();
+        let pre_game_end = start + Duration::from_secs(29);
+        let game_end = start + Duration::from_secs(30);
+        let pause_4_end = game_end + Duration::from_secs(2);
+
+        // With OT and SD, between games is shortest period, pause_duration should be 2
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(30));
+        tm.set_game_start(start);
+        assert_eq!(tm.clock_is_running(), false);
+        tm.start_game_clock(start);
+        assert_eq!(tm.clock_is_running(), true);
+        tm.set_scores(BlackWhiteBundle { black: 1, white: 2 }, start);
+
+        assert_eq!(Ok(false), tm.could_end_game(pre_game_end));
+        assert_eq!(Ok(true), tm.could_end_game(game_end));
+
+        tm.pause_for_confirm(game_end).unwrap();
+
+        assert!(tm.in_score_confirm_pause());
+
+        let confirm = tm.time_pause_confirmation.as_ref().unwrap();
+        assert_eq!(confirm.duration_of_pause, Duration::from_secs(2));
+        assert_eq!(confirm.pause_began, game_end);
+
+        let before_end = game_end + Duration::from_secs(1);
+        let after_end = game_end + Duration::from_secs(3);
+        assert!(!tm.pause_has_ended(before_end));
+        assert!(tm.pause_has_ended(after_end));
+
+        tm.end_confirm_pause(pause_4_end).unwrap();
+
+        assert_eq!(tm.current_period, GamePeriod::BetweenGames);
+        assert!(tm.clock_is_running());
+
+        assert!(!tm.in_score_confirm_pause());
+        assert_eq!(tm.time_pause_confirmation, None);
+    }
+
+    #[test]
+    fn test_pause_score_confirm_from_ot_with_sd() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: true,
+            sudden_death_allowed: true,
+            pre_sudden_death_duration: Duration::from_secs(12),
+            pre_overtime_break: Duration::from_secs(8),
+            ot_half_play_duration: Duration::from_secs(60),
+            minimum_break: Duration::from_secs(20),
+            post_game_duration: Duration::from_secs(20),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start = Instant::now();
+        let pre_ot_end = start + Duration::from_secs(29);
+        let ot_end = start + Duration::from_secs(30);
+        let pause_5_end = ot_end + Duration::from_secs(6);
+
+        // Coming out of OT, pause should be 6
+        tm.set_period_and_game_clock_time(GamePeriod::OvertimeSecondHalf, Duration::from_secs(30));
+        assert_eq!(tm.clock_is_running(), false);
+        tm.start_game_clock(start);
+        assert_eq!(tm.clock_is_running(), true);
+        tm.set_scores(BlackWhiteBundle { black: 1, white: 2 }, start);
+
+        assert_eq!(Ok(false), tm.could_end_game(pre_ot_end));
+        assert_eq!(Ok(true), tm.could_end_game(ot_end));
+
+        tm.pause_for_confirm(ot_end).unwrap();
+
+        assert!(tm.in_score_confirm_pause());
+
+        let confirm = tm.time_pause_confirmation.as_ref().unwrap();
+        assert_eq!(confirm.duration_of_pause, Duration::from_secs(6));
+        assert_eq!(confirm.pause_began, ot_end);
+
+        let before_end = ot_end + Duration::from_secs(5);
+        let after_end = ot_end + Duration::from_secs(7);
+        assert!(!tm.pause_has_ended(before_end));
+        assert!(tm.pause_has_ended(after_end));
+
+        tm.end_confirm_pause(pause_5_end).unwrap();
+
+        assert_eq!(tm.current_period, GamePeriod::BetweenGames);
+        assert!(tm.clock_is_running());
+
+        assert!(!tm.in_score_confirm_pause());
+        assert_eq!(tm.time_pause_confirmation, None);
+    }
+
+    #[test]
+    fn test_pause_score_confirm_from_ot_no_sd() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: true,
+            sudden_death_allowed: false,
+            pre_overtime_break: Duration::from_secs(8),
+            ot_half_play_duration: Duration::from_secs(60),
+            minimum_break: Duration::from_secs(20),
+            post_game_duration: Duration::from_secs(20),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start = Instant::now();
+        let pre_ot_end = start + Duration::from_secs(29);
+        let ot_end = start + Duration::from_secs(30);
+        let pause_6_end = ot_end + Duration::from_secs(10);
+
+        // Coming out of OT, pause should be 10
+        tm.set_period_and_game_clock_time(GamePeriod::OvertimeSecondHalf, Duration::from_secs(30));
+        assert_eq!(tm.clock_is_running(), false);
+        tm.start_game_clock(start);
+        assert_eq!(tm.clock_is_running(), true);
+        tm.set_scores(BlackWhiteBundle { black: 1, white: 2 }, start);
+
+        assert_eq!(Ok(false), tm.could_end_game(pre_ot_end));
+        assert_eq!(Ok(true), tm.could_end_game(ot_end));
+
+        tm.pause_for_confirm(ot_end).unwrap();
+
+        assert!(tm.in_score_confirm_pause());
+
+        let confirm = tm.time_pause_confirmation.as_ref().unwrap();
+        assert_eq!(confirm.duration_of_pause, Duration::from_secs(10));
+        assert_eq!(confirm.pause_began, ot_end);
+
+        let before_end = ot_end + Duration::from_secs(9);
+        let after_end = ot_end + Duration::from_secs(11);
+        assert!(!tm.pause_has_ended(before_end));
+        assert!(tm.pause_has_ended(after_end));
+
+        tm.end_confirm_pause(pause_6_end).unwrap();
+
+        assert_eq!(tm.current_period, GamePeriod::BetweenGames);
+        assert!(tm.clock_is_running());
+
+        assert!(!tm.in_score_confirm_pause());
+        assert_eq!(tm.time_pause_confirmation, None);
+    }
+
+    #[test]
+    fn test_pause_score_confirm_from_sd() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: true,
+            sudden_death_allowed: true,
+            pre_overtime_break: Duration::from_secs(8),
+            ot_half_play_duration: Duration::from_secs(60),
+            minimum_break: Duration::from_secs(20),
+            post_game_duration: Duration::from_secs(20),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start = Instant::now();
+        let next_time = start + Duration::from_secs(1);
+        let pause_7_end = next_time + Duration::from_secs(10);
+
+        // Coming out of SD, pause should be 10
+        tm.set_period_and_game_clock_time(GamePeriod::SuddenDeath, Duration::from_micros(10));
+        tm.set_scores(BlackWhiteBundle { black: 1, white: 1 }, start);
+        tm.start_game_clock(start);
+        assert!(tm.clock_is_running());
+
+        assert_eq!(Ok(false), tm.could_end_game(next_time));
+
+        tm.pause_for_confirm(next_time).unwrap();
+
+        assert!(tm.in_score_confirm_pause());
+
+        let confirm = tm.time_pause_confirmation.as_ref().unwrap();
+        assert_eq!(confirm.duration_of_pause, Duration::from_secs(10));
+        assert_eq!(confirm.pause_began, next_time);
+
+        let before_end = next_time + Duration::from_secs(9);
+        let after_end = next_time + Duration::from_secs(11);
+        assert!(!tm.pause_has_ended(before_end));
+        assert!(tm.pause_has_ended(after_end));
+
+        tm.set_scores(BlackWhiteBundle { black: 2, white: 1 }, start);
+
+        tm.end_confirm_pause(pause_7_end).unwrap();
+
+        assert_eq!(tm.current_period, GamePeriod::BetweenGames);
+        assert!(tm.clock_is_running());
+
+        assert!(!tm.in_score_confirm_pause());
+        assert_eq!(tm.time_pause_confirmation, None);
+    }
+
+    #[test]
+    fn test_tied_pause_score_confirm_with_ot_and_sd() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: true,
+            sudden_death_allowed: true,
+            pre_sudden_death_duration: Duration::from_secs(12),
+            pre_overtime_break: Duration::from_secs(8),
+            minimum_break: Duration::from_secs(20),
+            post_game_duration: Duration::from_secs(20),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start = Instant::now();
+        let pre_game_end = start + Duration::from_secs(29);
+        let game_end = start + Duration::from_secs(30);
+        let pause_8_end = game_end + Duration::from_secs(4);
+
+        // Coming out of second half, with overtime and sd, pause_duration should be 4
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(30));
+        tm.set_game_start(start);
+        assert_eq!(tm.clock_is_running(), false);
+        tm.start_game_clock(start);
+        assert_eq!(tm.clock_is_running(), true);
+        tm.set_scores(BlackWhiteBundle { black: 2, white: 2 }, start);
+
+        assert_eq!(Ok(false), tm.could_end_game(pre_game_end));
+        assert_eq!(Ok(true), tm.could_end_game(game_end));
+
+        tm.pause_for_confirm(game_end).unwrap();
+
+        assert!(tm.in_score_confirm_pause());
+
+        let confirm = tm.time_pause_confirmation.as_ref().unwrap();
+        assert_eq!(confirm.duration_of_pause, Duration::from_secs(4));
+        assert_eq!(confirm.pause_began, game_end);
+
+        let before_end = game_end + Duration::from_secs(3);
+        let after_end = game_end + Duration::from_secs(5);
+        assert!(!tm.pause_has_ended(before_end));
+        assert!(tm.pause_has_ended(after_end));
+
+        tm.end_confirm_pause(pause_8_end).unwrap();
+
+        assert!(!tm.in_score_confirm_pause());
+        assert_eq!(tm.time_pause_confirmation, None);
+
+        assert_eq!(tm.current_period, GamePeriod::PreOvertime);
+        assert!(tm.clock_is_running());
+    }
+
+    #[test]
+    fn test_tied_pause_score_confirm_with_only_sd() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: false,
+            sudden_death_allowed: true,
+            pre_sudden_death_duration: Duration::from_secs(12),
+            pre_overtime_break: Duration::from_secs(8),
+            minimum_break: Duration::from_secs(20),
+            post_game_duration: Duration::from_secs(20),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start = Instant::now();
+        let pre_game_end = start + Duration::from_secs(29);
+        let game_end = start + Duration::from_secs(30);
+        let pause_9_end = game_end + Duration::from_secs(6);
+
+        // No overtime, only sd allowed, pause_duration should be 6
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(30));
+        tm.set_game_start(start);
+        assert_eq!(tm.clock_is_running(), false);
+        tm.start_game_clock(start);
+        assert_eq!(tm.clock_is_running(), true);
+        tm.set_scores(BlackWhiteBundle { black: 2, white: 2 }, start);
+
+        assert_eq!(Ok(false), tm.could_end_game(pre_game_end));
+        assert_eq!(Ok(true), tm.could_end_game(game_end));
+
+        tm.pause_for_confirm(game_end).unwrap();
+
+        assert!(tm.in_score_confirm_pause());
+
+        let confirm = tm.time_pause_confirmation.as_ref().unwrap();
+        assert_eq!(confirm.duration_of_pause, Duration::from_secs(6));
+        assert_eq!(confirm.pause_began, game_end);
+
+        let before_end = game_end + Duration::from_secs(5);
+        let after_end = game_end + Duration::from_secs(7);
+        assert!(!tm.pause_has_ended(before_end));
+        assert!(tm.pause_has_ended(after_end));
+
+        tm.end_confirm_pause(pause_9_end).unwrap();
+
+        assert_eq!(tm.current_period, GamePeriod::PreSuddenDeath);
+        assert!(tm.clock_is_running());
+
+        assert!(!tm.in_score_confirm_pause());
+        assert_eq!(tm.time_pause_confirmation, None);
+    }
+
+    #[test]
+    fn test_tied_pause_score_confirm_no_ot_and_sd() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            pre_sudden_death_duration: Duration::from_secs(12),
+            pre_overtime_break: Duration::from_secs(8),
+            minimum_break: Duration::from_secs(20),
+            post_game_duration: Duration::from_secs(20),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start = Instant::now();
+        let pre_game_end = start + Duration::from_secs(29);
+        let game_end = start + Duration::from_secs(30);
+        let pause_10_end = game_end + Duration::from_secs(10);
+
+        // No overtime or sd, pause_duration should be 10
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(30));
+        tm.set_game_start(start);
+        assert_eq!(tm.clock_is_running(), false);
+        tm.start_game_clock(start);
+        assert_eq!(tm.clock_is_running(), true);
+        tm.set_scores(BlackWhiteBundle { black: 2, white: 2 }, start);
+
+        assert_eq!(Ok(false), tm.could_end_game(pre_game_end));
+        assert_eq!(Ok(true), tm.could_end_game(game_end));
+
+        tm.pause_for_confirm(game_end).unwrap();
+
+        assert!(tm.in_score_confirm_pause());
+
+        let confirm = tm.time_pause_confirmation.as_ref().unwrap();
+        assert_eq!(confirm.duration_of_pause, Duration::from_secs(10));
+        assert_eq!(confirm.pause_began, game_end);
+
+        let before_end = game_end + Duration::from_secs(9);
+        let after_end = game_end + Duration::from_secs(11);
+        assert!(!tm.pause_has_ended(before_end));
+        assert!(tm.pause_has_ended(after_end));
+
+        tm.end_confirm_pause(pause_10_end).unwrap();
+
+        assert_eq!(tm.current_period, GamePeriod::BetweenGames);
+        assert!(tm.clock_is_running());
+
+        assert!(!tm.in_score_confirm_pause());
+        assert_eq!(tm.time_pause_confirmation, None);
+    }
+
+    // End of OT with SD
+    #[test]
+    fn test_tied_pause_score_confirm_from_ot_to_sd() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: true,
+            sudden_death_allowed: true,
+            pre_sudden_death_duration: Duration::from_secs(12),
+            pre_overtime_break: Duration::from_secs(8),
+            minimum_break: Duration::from_secs(20),
+            post_game_duration: Duration::from_secs(20),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start = Instant::now();
+        let pre_game_end = start + Duration::from_secs(29);
+        let game_end = start + Duration::from_secs(30);
+        let pause_11_end = game_end + Duration::from_secs(6);
+
+        // Overtime into SD, pause_duration should be 6
+        tm.set_period_and_game_clock_time(GamePeriod::OvertimeSecondHalf, Duration::from_secs(30));
+        tm.set_game_start(start);
+        assert_eq!(tm.clock_is_running(), false);
+        tm.start_game_clock(start);
+        assert_eq!(tm.clock_is_running(), true);
+        tm.set_scores(BlackWhiteBundle { black: 2, white: 2 }, start);
+
+        assert_eq!(Ok(false), tm.could_end_game(pre_game_end));
+        assert_eq!(Ok(true), tm.could_end_game(game_end));
+
+        tm.pause_for_confirm(game_end).unwrap();
+
+        assert!(tm.in_score_confirm_pause());
+
+        let confirm = tm.time_pause_confirmation.as_ref().unwrap();
+        assert_eq!(confirm.duration_of_pause, Duration::from_secs(6));
+        assert_eq!(confirm.pause_began, game_end);
+
+        let before_end = game_end + Duration::from_secs(5);
+        let after_end = game_end + Duration::from_secs(7);
+        assert!(!tm.pause_has_ended(before_end));
+        assert!(tm.pause_has_ended(after_end));
+
+        tm.end_confirm_pause(pause_11_end).unwrap();
+
+        assert_eq!(tm.current_period, GamePeriod::PreSuddenDeath);
+        assert!(tm.clock_is_running());
+
+        assert!(!tm.in_score_confirm_pause());
+        assert_eq!(tm.time_pause_confirmation, None);
+    }
+
+    #[test]
+    fn test_tied_pause_score_confirm_from_game_to_ot_changed_to_not_tied() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: true,
+            sudden_death_allowed: true,
+            pre_sudden_death_duration: Duration::from_secs(12),
+            pre_overtime_break: Duration::from_secs(8),
+            minimum_break: Duration::from_secs(20),
+            post_game_duration: Duration::from_secs(20),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start = Instant::now();
+        let pre_game_end = start + Duration::from_secs(29);
+        let game_end = start + Duration::from_secs(30);
+        let mid_pause = game_end + Duration::from_secs(2);
+
+        // Game into Overtime, pause_duration should be 4
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(30));
+        tm.set_game_start(start);
+        assert_eq!(tm.clock_is_running(), false);
+        tm.start_game_clock(start);
+        assert_eq!(tm.clock_is_running(), true);
+        tm.set_scores(BlackWhiteBundle { black: 2, white: 2 }, start);
+
+        assert_eq!(Ok(false), tm.could_end_game(pre_game_end));
+        assert_eq!(Ok(true), tm.could_end_game(game_end));
+
+        tm.pause_for_confirm(game_end).unwrap();
+
+        assert!(tm.in_score_confirm_pause());
+
+        let confirm = tm.time_pause_confirmation.as_ref().unwrap();
+        assert_eq!(confirm.duration_of_pause, Duration::from_secs(4));
+        assert_eq!(confirm.pause_began, game_end);
+
+        let before_end = game_end + Duration::from_secs(3);
+        let after_end = game_end + Duration::from_secs(5);
+        assert!(!tm.pause_has_ended(before_end));
+        assert!(tm.pause_has_ended(after_end));
+
+        tm.set_scores(BlackWhiteBundle { black: 2, white: 3 }, mid_pause);
+
+        assert_eq!(tm.current_period, GamePeriod::SecondHalf);
+
+        tm.end_confirm_pause(mid_pause).unwrap();
+
+        assert_eq!(tm.current_period, GamePeriod::BetweenGames);
+        assert!(tm.clock_is_running());
+
+        assert!(!tm.in_score_confirm_pause());
+        assert_eq!(tm.time_pause_confirmation, None);
+    }
+
+    #[test]
+    fn test_tied_pause_score_confirm_from_ot_to_sd_changed_to_not_tied() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: true,
+            sudden_death_allowed: true,
+            pre_sudden_death_duration: Duration::from_secs(12),
+            pre_overtime_break: Duration::from_secs(8),
+            minimum_break: Duration::from_secs(20),
+            post_game_duration: Duration::from_secs(20),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start = Instant::now();
+        let pre_game_end = start + Duration::from_secs(29);
+        let game_end = start + Duration::from_secs(30);
+        let mid_pause = game_end + Duration::from_secs(3);
+        let pause_13_end = game_end + Duration::from_secs(6);
+
+        // Overtime into SD, pause_duration should be 6
+        tm.set_period_and_game_clock_time(GamePeriod::OvertimeSecondHalf, Duration::from_secs(30));
+        tm.set_game_start(start);
+        assert_eq!(tm.clock_is_running(), false);
+        tm.start_game_clock(start);
+        assert_eq!(tm.clock_is_running(), true);
+        tm.set_scores(BlackWhiteBundle { black: 2, white: 2 }, start);
+
+        assert_eq!(Ok(false), tm.could_end_game(pre_game_end));
+        assert_eq!(Ok(true), tm.could_end_game(game_end));
+
+        tm.pause_for_confirm(game_end).unwrap();
+
+        assert!(tm.in_score_confirm_pause());
+
+        let confirm = tm.time_pause_confirmation.as_ref().unwrap();
+        assert_eq!(confirm.duration_of_pause, Duration::from_secs(6));
+        assert_eq!(confirm.pause_began, game_end);
+
+        let before_end = game_end + Duration::from_secs(5);
+        let after_end = game_end + Duration::from_secs(7);
+        assert!(!tm.pause_has_ended(before_end));
+        assert!(tm.pause_has_ended(after_end));
+
+        tm.set_scores(BlackWhiteBundle { black: 2, white: 3 }, mid_pause);
+
+        tm.end_confirm_pause(pause_13_end).unwrap();
+
+        assert_eq!(tm.current_period, GamePeriod::BetweenGames);
+        assert!(tm.clock_is_running());
+
+        assert!(!tm.in_score_confirm_pause());
+        assert_eq!(tm.time_pause_confirmation, None);
+    }
+
+    #[test]
+    fn test_pause_score_confirm_from_sd_changed_back_to_tie_in_pause() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: true,
+            sudden_death_allowed: true,
+            pre_overtime_break: Duration::from_secs(8),
+            ot_half_play_duration: Duration::from_secs(60),
+            minimum_break: Duration::from_secs(20),
+            post_game_duration: Duration::from_secs(20),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start = Instant::now();
+        let next_time = start + Duration::from_secs(1);
+        let mid_pause = next_time + Duration::from_secs(5);
+        let pause_14_end = next_time + Duration::from_secs(10);
+
+        // Coming out of SD, pause should be 10
+        tm.set_period_and_game_clock_time(GamePeriod::SuddenDeath, Duration::from_secs(30));
+        tm.set_scores(BlackWhiteBundle { black: 1, white: 1 }, start);
+        tm.start_game_clock(start);
+        assert_eq!(tm.clock_is_running(), true);
+
+        assert_eq!(Ok(false), tm.could_end_game(next_time));
+
+        tm.pause_for_confirm(next_time).unwrap();
+
+        assert!(tm.in_score_confirm_pause());
+
+        let confirm = tm.time_pause_confirmation.as_ref().unwrap();
+        assert_eq!(confirm.duration_of_pause, Duration::from_secs(10));
+        assert_eq!(confirm.pause_began, next_time);
+
+        let before_end = next_time + Duration::from_secs(9);
+        let after_end = next_time + Duration::from_secs(11);
+        assert!(!tm.pause_has_ended(before_end));
+        assert!(tm.pause_has_ended(after_end));
+
+        tm.set_scores(BlackWhiteBundle { black: 1, white: 1 }, mid_pause);
+
+        tm.end_confirm_pause(pause_14_end).unwrap();
+
+        assert_eq!(tm.current_period, GamePeriod::SuddenDeath);
+        let clock_time = Duration::from_secs(31);
+        assert_eq!(tm.game_clock_time(pause_14_end), Some(clock_time));
+        assert!(tm.clock_is_running());
+
+        assert!(!tm.in_score_confirm_pause());
+        assert_eq!(tm.time_pause_confirmation, None);
     }
 }

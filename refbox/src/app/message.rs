@@ -215,6 +215,7 @@ pub enum BoolGameParameter {
     FoulsAndWarnings,
     TeamWarning,
     TimeoutsCountedPerHalf,
+    ConfirmScore,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

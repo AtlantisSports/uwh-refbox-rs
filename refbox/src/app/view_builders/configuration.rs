@@ -40,6 +40,7 @@ pub(in super::super) struct EditableSettings {
     pub hide_time: bool,
     pub collect_scorer_cap_num: bool,
     pub track_fouls_and_warnings: bool,
+    pub confirm_score: bool,
 }
 
 pub(in super::super) trait Cyclable
@@ -572,6 +573,7 @@ fn make_app_config_page<'a>(
     let EditableSettings {
         collect_scorer_cap_num,
         track_fouls_and_warnings,
+        confirm_score,
         ..
     } = settings;
 
@@ -604,7 +606,14 @@ fn make_app_config_page<'a>(
                     BoolGameParameter::FoulsAndWarnings,
                 )),
             ),
-            horizontal_space(Length::Fill),
+            make_value_button(
+                "CONFIRM SCORE\nAT GAME END",
+                bool_string(*confirm_score),
+                (false, true),
+                Some(Message::ToggleBoolParameter(
+                    BoolGameParameter::ConfirmScore,
+                )),
+            ),
         ]
         .spacing(SPACING)
         .height(Length::Fill),

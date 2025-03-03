@@ -420,6 +420,7 @@ pub(super) fn make_game_time_button<'a>(
     });
 
     let time_text = secs_to_long_time_string(snapshot.secs_in_period);
+
     let time_text = time_text.trim().to_owned();
 
     if tall {

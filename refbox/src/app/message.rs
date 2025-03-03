@@ -98,6 +98,7 @@ pub enum Message {
     ScoreConfirmation {
         correct: bool,
     },
+    AutoConfirmScores(GameSnapshot),
     RecvEventList(Vec<Event>),
     RecvTeamsList(EventId, TeamList),
     RecvSchedule(EventId, Schedule),
@@ -165,6 +166,7 @@ impl Message {
             | Self::EndTimeout
             | Self::ConfirmScores(_)
             | Self::ScoreConfirmation { .. }
+            | Self::AutoConfirmScores(_)
             | Self::StopClock
             | Self::StartClock => false,
         }
@@ -281,6 +283,7 @@ impl PartialEq for Message {
             (Self::ScoreConfirmation { correct: a }, Self::ScoreConfirmation { correct: b }) => {
                 a == b
             }
+            (Self::AutoConfirmScores(a), Self::AutoConfirmScores(b)) => a == b,
             (Self::EditParameter(a), Self::EditParameter(b)) => a == b,
             (Self::SelectParameter(a), Self::SelectParameter(b)) => a == b,
             (
@@ -353,6 +356,7 @@ impl PartialEq for Message {
             | (Self::EndTimeout, _)
             | (Self::ConfirmScores(_), _)
             | (Self::ScoreConfirmation { .. }, _)
+            | (Self::AutoConfirmScores(_), _)
             | (Self::RecvEventList(_), _)
             | (Self::RecvTeamsList(_, _), _)
             | (Self::RecvSchedule(_, _), _)

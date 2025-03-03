@@ -365,28 +365,26 @@ impl RefBoxApp {
     fn handle_game_end(&self, game_number: u32) -> Task<Message> {
         let mut tasks = vec![];
         if self.using_uwhportal {
-            let mut stats = self
-                .tm
-                .lock()
-                .unwrap()
-                .last_game_stats()
-                .map(|s| s.as_json());
+            if let Some(info) = self.tm.lock().unwrap().last_game_info() {
+                let stats = info.stats.as_json();
 
-            if let Some(ref stats) = stats {
-                info!("Game ended, stats were: {:?}", stats);
-            } else {
-                warn!("Game ended, but no stats were available");
-            }
+                info!(
+                    "Game ended, scores: {:?} stats were: {:?}",
+                    info.scores, stats
+                );
 
-            if let Some(ref event_id) = self.current_event_id {
-                tasks.push(self.request_schedule(event_id.clone()));
-                if let Some(stats) = stats.take() {
+                if let Some(ref event_id) = self.current_event_id {
+                    tasks.push(self.request_schedule(event_id.clone()));
+                    tasks.push(self.post_game_score(event_id, game_number, info.scores));
                     tasks.push(self.post_game_stats(event_id, game_number, stats));
+                } else {
+                    error!("Missing current event id to handle game end");
                 }
             } else {
-                error!("Missing current event id to handle game end");
+                warn!("Game ended, but no last game info was available");
             }
         }
+
         Task::batch(tasks)
     }
 
@@ -640,10 +638,10 @@ impl RefBoxApp {
                     let mut tm = self.tm.lock().unwrap();
                     let now = Instant::now();
                     if tm.current_period() == GamePeriod::SuddenDeath {
-                        tm.stop_clock(now).unwrap();
                         let mut scores = tm.get_scores();
                         scores[color] = scores[color].saturating_add(1);
 
+                        tm.pause_for_confirm(now).unwrap();
                         self.app_state = AppState::ConfirmScores(scores);
                         Task::none()
                     } else {
@@ -682,16 +680,8 @@ impl RefBoxApp {
                 } = self.app_state
                 {
                     if is_confirmation {
-                        if let Some((id, game)) = self.schedule.as_ref().and_then(|schedule| {
-                            schedule
-                                .games
-                                .get(&tm.game_number())
-                                .map(|n| (&schedule.event_id, n))
-                        }) {
-                            tasks.push(self.post_game_score(id, game.number, scores));
-                        }
-
                         tm.set_scores(scores, now);
+                        tm.end_confirm_pause(now).unwrap();
                         tm.start_clock(now);
 
                         // Update `tm` after game ends to get into Between Games
@@ -702,7 +692,7 @@ impl RefBoxApp {
                         if tm.current_period() == GamePeriod::SuddenDeath
                             && (scores.black != scores.white)
                         {
-                            tm.stop_clock(now).unwrap();
+                            tm.pause_for_confirm(now).unwrap();
                             AppState::ConfirmScores(scores)
                         } else {
                             tm.set_scores(scores, now);
@@ -1162,10 +1152,10 @@ impl RefBoxApp {
                         let now = Instant::now();
 
                         let app_state = if tm.current_period() == GamePeriod::SuddenDeath {
-                            tm.stop_clock(now).unwrap();
                             let mut scores = tm.get_scores();
                             scores[color] = scores[color].saturating_add(1);
 
+                            tm.pause_for_confirm(now).unwrap();
                             AppState::ConfirmScores(scores)
                         } else {
                             tm.add_score(color, player.try_into().unwrap(), now);
@@ -1778,8 +1768,6 @@ impl RefBoxApp {
                 } else {
                     let mut tm = self.tm.lock().unwrap();
                     let now = Instant::now();
-                    let scores = tm.get_scores();
-                    tm.set_scores(scores, now);
                     tm.start_clock(now);
                     tm.update(now + Duration::from_millis(2)).unwrap(); // Need to update after game ends
                     self.app_state = AppState::MainPage;
@@ -1788,21 +1776,14 @@ impl RefBoxApp {
                 task
             }
             Message::ScoreConfirmation { correct } => {
-                let mut task = Task::none();
+                info!("Manual Score confirmation");
                 self.app_state = if let AppState::ConfirmScores(scores) = self.app_state {
                     if correct {
-                        let mut tm = self.tm.lock().unwrap();
                         let now = Instant::now();
-
-                        if let Some(id) = self.schedule.as_ref().map(|schedule| &schedule.event_id)
-                        {
-                            task = self.post_game_score(id, tm.game_number(), scores);
-                        }
+                        let mut tm = self.tm.lock().unwrap();
 
                         tm.set_scores(scores, now);
-                        tm.start_clock(now);
-                        tm.update(now + Duration::from_millis(2)).unwrap(); // Need to update after game ends
-
+                        tm.end_confirm_pause(now).unwrap();
                         AppState::MainPage
                     } else {
                         AppState::ScoreEdit {
@@ -1813,6 +1794,16 @@ impl RefBoxApp {
                 } else {
                     unreachable!()
                 };
+
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::AutoConfirmScores(snapshot) => {
+                info!("Autoconfirming");
+
+                let task = self.apply_snapshot(snapshot);
+
+                self.app_state = AppState::MainPage;
 
                 trace!("AppState changed to {:?}", self.app_state);
                 task
@@ -2199,10 +2190,12 @@ fn time_updater() -> impl Stream<Item = Message> {
                 let mut tm_ = tm.lock().unwrap();
                 let now = Instant::now();
 
-                let msg_type = if tm_.would_end_game(now).unwrap() {
-                    tm_.halt_clock(now, false).unwrap();
-                    clock_running = false;
+                let msg_type = if tm_.could_end_game(now).unwrap() {
+                    tm_.pause_for_confirm(now).unwrap();
                     Message::ConfirmScores
+                } else if tm_.pause_has_ended(now) {
+                    tm_.end_confirm_pause(now).unwrap();
+                    Message::AutoConfirmScores
                 } else {
                     tm_.update(now).unwrap();
                     Message::NewSnapshot

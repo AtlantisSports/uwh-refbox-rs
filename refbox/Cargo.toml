@@ -23,13 +23,13 @@ enum-derive-2018 = "3"
 enum-iterator = "2.1.0"
 env_logger = "0.11"
 futures-lite = "2"
-iced = { version = "0.10", default-features = false, features = ["canvas", "image", "svg", "tokio"] }
-iced_core = "0.10"
-iced_futures = { version = "0.7", features = ["async-std"] }
-iced_graphics = "0.9"
+iced = { version = "0.13", default-features = false, features = ["canvas", "image", "svg", "tokio"] }
+iced_core = "0.13"
+iced_futures = { version = "0.13", features = ["async-std"] }
+iced_graphics = "0.13"
 # iced_native = "0.10"
-iced_renderer = "0.1"
-iced_runtime = "0.1"
+iced_renderer = "0.13"
+iced_runtime = "0.13"
 led-panel-sim = { version = "0.2.0", path = "../led-panel-sim" }
 log = "0.4"
 log-panics = { version = "2", features = ["with-backtrace"]}

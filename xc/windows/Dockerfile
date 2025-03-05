@@ -1,4 +1,4 @@
-FROM lukemathwalker/cargo-chef:latest-rust-1.82-slim-bullseye AS builder
+FROM lukemathwalker/cargo-chef:latest-rust-1.85-slim-bullseye AS builder
 
 ENV KEYRINGS /usr/local/share/keyrings
 
@@ -87,7 +87,7 @@ ENV CFLAGS_x86_64_pc_windows_msvc="$CL_FLAGS" \
 # container run
 RUN wine wineboot --init
 
-FROM lukemathwalker/cargo-chef:latest-rust-1.82-slim-bullseye AS planner
+FROM lukemathwalker/cargo-chef:latest-rust-1.85-slim-bullseye AS planner
 WORKDIR /workdir
 COPY . .
 RUN find . -type d -name "target" -exec rm -rf {} +

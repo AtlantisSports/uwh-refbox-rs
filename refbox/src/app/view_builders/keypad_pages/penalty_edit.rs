@@ -136,11 +136,13 @@ pub(super) fn make_penalty_edit_page<'a>(
         .spacing(SPACING)
     ];
 
+    content = content.push(vertical_space(Length::Fill));
+
     if track_fouls_and_warnings {
         content = content.push(make_penalty_dropdown(infraction, false));
-    } else {
-        content = content.push(vertical_space(Length::Fill));
     }
+
+    content = content.push(vertical_space(Length::Fill));
 
     content = content.push(
         row![
@@ -160,9 +162,7 @@ pub(super) fn make_penalty_edit_page<'a>(
         .spacing(SPACING),
     );
 
-    if !track_fouls_and_warnings {
-        content = content.push(vertical_space(Length::Fill));
-    }
+    content = content.push(vertical_space(Length::Fill));
 
     content = content.push(exit_row);
     content.into()

@@ -51,8 +51,3 @@ enum-iterator = "2.1.0"
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1"
-
-[package.metadata.bundle]
-identifier = "com.atlantissports.uwhrefbox"
-icon = ["resources/AppIcon.png"]
-osx_minimum_system_version = "12"

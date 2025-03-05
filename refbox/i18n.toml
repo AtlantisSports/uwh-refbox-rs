@@ -1,0 +1,5 @@
+fallback_language = "en-US"
+
+# Use the fluent localization system.
+[fluent]
+assets_dir = "translations"

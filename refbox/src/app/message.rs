@@ -1,3 +1,4 @@
+use super::fl;
 use crate::tournament_manager::penalty::PenaltyKind;
 use tokio::time::Duration;
 use uwh_common::{
@@ -273,20 +274,20 @@ impl KeypadPage {
             | Self::Penalty(_, _, _, _)
             | Self::FoulAdd { .. }
             | Self::WarningAdd { .. } => 99,
-            Self::GameNumber => 9999,
             Self::TeamTimeouts(_, _) => 999,
+            Self::GameNumber => 9999,
         }
     }
 
-    pub fn text(&self) -> &'static str {
+    pub fn text(&self) -> String {
         match self {
             Self::AddScore(_)
             | Self::Penalty(_, _, _, _)
             | Self::FoulAdd { .. }
-            | Self::WarningAdd { .. } => "PLAYER\nNUMBER:",
-            Self::GameNumber => "GAME\nNUMBER:",
-            Self::TeamTimeouts(_, true) => "NUM T/Os\nPER HALF:",
-            Self::TeamTimeouts(_, false) => "NUM T/Os\nPER GAME:",
+            | Self::WarningAdd { .. } => fl!("player-number"),
+            Self::GameNumber => fl!("game-number"),
+            Self::TeamTimeouts(_, true) => fl!("num-tos-per-half"),
+            Self::TeamTimeouts(_, false) => fl!("num-tos-per-game"),
         }
     }
 }

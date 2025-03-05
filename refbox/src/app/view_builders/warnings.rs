@@ -44,11 +44,11 @@ pub(in super::super) fn build_warning_overview_page<'a>(
         .spacing(SPACING)
         .height(Length::Fill),
         row![
-            make_button("CANCEL")
+            make_button(fl!("cancel"))
                 .style(ButtonStyle::Red)
                 .width(Length::Fill)
                 .on_press(Message::WarningOverviewComplete { canceled: true }),
-            make_button("NEW")
+            make_button(fl!("new"))
                 .style(ButtonStyle::Blue)
                 .width(Length::Fill)
                 .on_press(Message::KeypadPage(KeypadPage::WarningAdd {
@@ -58,7 +58,7 @@ pub(in super::super) fn build_warning_overview_page<'a>(
                     team_warning: false,
                     ret_to_overview: true,
                 })),
-            make_button("DONE")
+            make_button(fl!("done"))
                 .style(ButtonStyle::Green)
                 .width(Length::Fill)
                 .on_press(Message::WarningOverviewComplete { canceled: false }),
@@ -77,7 +77,12 @@ fn make_warning_list<'a>(
 ) -> Container<'a, Message> {
     const WARNING_LIST_LEN: usize = 3;
 
-    let title = text(format!("{} WARNINGS", color.to_string().to_uppercase()))
+    let color_text = match color {
+        GameColor::Black => fl!("black-warnings"),
+        GameColor::White => fl!("white-warnings"),
+    };
+
+    let title = text(color_text.to_string().to_uppercase())
         .line_height(LINE_HEIGHT)
         .height(Length::Fill)
         .width(Length::Fill)
@@ -95,13 +100,22 @@ fn make_warning_list<'a>(
         .take(WARNING_LIST_LEN)
         .map(|foul| {
             if let Some((i, details)) = foul {
-                let mut text = text(details.text)
+                let printable = fl!(
+                    "warning",
+                    player_number = details
+                        .player_number
+                        .map(|n| n.to_string())
+                        .unwrap_or_else(|| String::from("none")),
+                    infraction = inf_short_name(details.infraction)
+                );
+
+                let mut text = text(printable)
                     .line_height(LINE_HEIGHT)
                     .vertical_alignment(Vertical::Center)
                     .horizontal_alignment(Horizontal::Left)
                     .width(Length::Fill);
 
-                match details.hint {
+                match details.format_hint {
                     FormatHint::NoChange => {}
                     FormatHint::Edited => text = text.style(TextStyle::Orange),
                     FormatHint::Deleted => text = text.style(TextStyle::Red),
@@ -117,7 +131,7 @@ fn make_warning_list<'a>(
                         origin: Some((color, i)),
                         color,
                         infraction: details.infraction,
-                        team_warning: details.team,
+                        team_warning: details.player_number.is_none(),
                         ret_to_overview: true,
                     }))
                     .into()

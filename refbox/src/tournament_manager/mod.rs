@@ -715,9 +715,10 @@ impl TournamentManager {
         now: Instant,
     ) -> Result<()> {
         info!(
-            "{} Adding {color} {} warning for {infraction}",
+            "{} Adding {color} {} warning for {}",
             self.status_string(now),
-            print_p_num_warn(player_number)
+            print_p_num_warn(player_number),
+            infraction.short_name()
         );
         let start_time = self
             .game_clock_time(now)
@@ -742,10 +743,11 @@ impl TournamentManager {
         now: Instant,
     ) -> Result<()> {
         info!(
-            "{} Adding {}{} foul for {infraction}",
+            "{} Adding {}{} foul for {}",
             self.status_string(now),
             print_color(color),
-            print_p_num_foul(player_number)
+            print_p_num_foul(player_number),
+            infraction.short_name()
         );
         let start_time = self
             .game_clock_time(now)
@@ -784,10 +786,11 @@ impl TournamentManager {
             .ok_or(TournamentManagerError::InvalidWarnIndex(old_color, index))?;
         info!(
             "{status_str} Editing {old_color} {} warning for {}: \
-            it is now {new_color} {} warning for {new_infraction}",
+            it is now {new_color} {} warning for {}",
             print_p_num_warn(warning.player_number),
-            warning.infraction,
-            print_p_num_warn(new_player_number)
+            warning.infraction.short_name(),
+            print_p_num_warn(new_player_number),
+            new_infraction.short_name()
         );
 
         warning.player_number = new_player_number;
@@ -815,12 +818,13 @@ impl TournamentManager {
             .ok_or(TournamentManagerError::InvalidFoulIndex(old_color, index))?;
         info!(
             "{status_str} Editing {}{} foul for {}: \
-            it is now {}{} foul for {new_infraction}",
+            it is now {}{} foul for {}",
             print_color(old_color),
             print_p_num_foul(foul.player_number),
-            foul.infraction,
+            foul.infraction.short_name(),
             print_color(new_color),
             print_p_num_foul(new_player_number),
+            new_infraction.short_name()
         );
 
         foul.player_number = new_player_number;
@@ -843,7 +847,7 @@ impl TournamentManager {
             "{} Deleting {color} {} warning for {}",
             self.status_string(Instant::now()),
             print_p_num_warn(warning.player_number),
-            warning.infraction
+            warning.infraction.short_name()
         );
 
         Ok(())
@@ -859,7 +863,7 @@ impl TournamentManager {
             self.status_string(Instant::now()),
             print_color(color),
             print_p_num_foul(foul.player_number),
-            foul.infraction
+            foul.infraction.short_name()
         );
 
         Ok(())
@@ -1748,19 +1752,23 @@ impl TournamentManager {
         }
     }
 
-    pub(crate) fn printable_penalty_time(&self, pen: &Penalty, now: Instant) -> Option<String> {
+    pub(crate) fn printable_penalty_time(
+        &self,
+        pen: &Penalty,
+        now: Instant,
+    ) -> Option<PenaltyTimePrintable> {
         let cur_time = self.game_clock_time(now)?;
         if pen
             .is_complete(self.current_period, cur_time, &self.config)
             .ok()?
         {
-            return Some("Served".to_string());
+            return Some(PenaltyTimePrintable::Served);
         }
         if let Ok(time) = pen.time_remaining(self.current_period, cur_time, &self.config) {
             let time = time.whole_seconds();
-            Some(format!("{}:{:02}", time / 60, time % 60))
+            Some(PenaltyTimePrintable::Remaining(time))
         } else {
-            Some("DSMS".to_string())
+            Some(PenaltyTimePrintable::TotalDismissal)
         }
     }
 

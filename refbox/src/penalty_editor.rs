@@ -1,7 +1,7 @@
 use crate::tournament_manager::{
     TournamentManager, TournamentManagerError,
     infraction::InfractionDetails,
-    penalty::{Penalty, PenaltyKind},
+    penalty::{Penalty, PenaltyKind, PenaltyTimePrintable},
 };
 use std::{
     fmt::Debug,
@@ -403,10 +403,11 @@ where
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PrintablePenaltySummary {
-    pub text: String,
-    pub hint: FormatHint,
+    pub player_number: u8,
     pub kind: PenaltyKind,
     pub infraction: Infraction,
+    pub time: PenaltyTimePrintable,
+    pub format_hint: FormatHint,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -459,7 +460,7 @@ impl Editable<Color> for Penalty {
         items
             .iter()
             .map(|pen| {
-                let (p_num, time, kind, infraction) = match pen {
+                let (player_number, time, kind, infraction) = match pen {
                     EditableItem::Original(_, p)
                     | EditableItem::Edited(_, p)
                     | EditableItem::Deleted(_, p) => (
@@ -469,28 +470,23 @@ impl Editable<Color> for Penalty {
                         p.infraction,
                     ),
                     EditableItem::New(kind, num, infraction) => {
-                        (*num, String::from("Pending"), *kind, *infraction)
+                        (*num, PenaltyTimePrintable::Pending, *kind, *infraction)
                     }
                 };
-                let hint = match pen {
+
+                let format_hint = match pen {
                     EditableItem::Original(_, _) => FormatHint::NoChange,
                     EditableItem::Edited(_, _) => FormatHint::Edited,
                     EditableItem::Deleted(_, _) => FormatHint::Deleted,
                     EditableItem::New(_, _, _) => FormatHint::New,
                 };
-                let kind_str = match kind {
-                    PenaltyKind::ThirtySecond => "30s",
-                    PenaltyKind::OneMinute => "1m",
-                    PenaltyKind::TwoMinute => "2m",
-                    PenaltyKind::FourMinute => "4m",
-                    PenaltyKind::FiveMinute => "5m",
-                    PenaltyKind::TotalDismissal => "DSMS",
-                };
+
                 Some(Self::PrintableSummary {
-                    text: format!("Player {p_num} - {time} ({kind_str})"),
-                    hint,
+                    player_number,
                     kind,
                     infraction,
+                    time,
+                    format_hint,
                 })
             })
             .collect()
@@ -543,10 +539,10 @@ impl Editable<Color> for Penalty {
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PrintableInfractionSummary {
-    pub text: String,
-    pub hint: FormatHint,
+    /// None indicates a team infraction
+    pub player_number: Option<u8>,
+    pub format_hint: FormatHint,
     pub infraction: Infraction,
-    pub team: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -592,7 +588,7 @@ impl Editable<Color> for InfractionDetails {
         items: &[EditableItem<Self, Color>],
         _now: Instant,
     ) -> Option<Vec<Self::PrintableSummary>> {
-        generate_printable_infraction_list(items, InfractionPrintMode::Warning)
+        generate_printable_infraction_list(items)
     }
 
     fn edit_in_tm(
@@ -687,7 +683,7 @@ impl Editable<Option<Color>> for InfractionDetails {
         items: &[EditableItem<Self, Option<Color>>],
         _now: Instant,
     ) -> Option<Vec<Self::PrintableSummary>> {
-        generate_printable_infraction_list(items, InfractionPrintMode::Foul)
+        generate_printable_infraction_list(items)
     }
 
     fn edit_in_tm(
@@ -735,15 +731,8 @@ impl Editable<Option<Color>> for InfractionDetails {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum InfractionPrintMode {
-    Warning,
-    Foul,
-}
-
 fn generate_printable_infraction_list<C: ColorIndex>(
     items: &[EditableItem<InfractionDetails, C>],
-    mode: InfractionPrintMode,
 ) -> Option<Vec<PrintableInfractionSummary>>
 where
     InfractionDetails: Editable<C, Number = Option<u8>>,
@@ -751,45 +740,24 @@ where
     items
         .iter()
         .map(|pen| {
-            let (p_num, infraction, team) = match pen {
+            let (player_number, infraction) = match pen {
                 EditableItem::Original(_, p)
                 | EditableItem::Edited(_, p)
-                | EditableItem::Deleted(_, p) => {
-                    (p.player_number, p.infraction, p.player_number.is_none())
-                }
-                EditableItem::New(_, num, infraction) => (*num, *infraction, num.is_none()),
+                | EditableItem::Deleted(_, p) => (p.player_number, p.infraction),
+                EditableItem::New(_, num, infraction) => (*num, *infraction),
             };
-            let hint = match pen {
+
+            let format_hint = match pen {
                 EditableItem::Original(_, _) => FormatHint::NoChange,
                 EditableItem::Edited(_, _) => FormatHint::Edited,
                 EditableItem::Deleted(_, _) => FormatHint::Deleted,
                 EditableItem::New(_, _, _) => FormatHint::New,
             };
 
-            let text = match mode {
-                InfractionPrintMode::Warning => {
-                    let who = if let Some(p_num) = p_num {
-                        format!("#{p_num}")
-                    } else {
-                        "T".to_string()
-                    };
-                    format!("{who} - {}", infraction.short_name())
-                }
-                InfractionPrintMode::Foul => {
-                    let who = if let Some(p_num) = p_num {
-                        format!("#{p_num} - ")
-                    } else {
-                        "".to_string()
-                    };
-                    format!("{who}{}", infraction.short_name())
-                }
-            };
-
             Some(PrintableInfractionSummary {
-                text,
-                hint,
+                player_number,
+                format_hint,
                 infraction,
-                team,
             })
         })
         .collect()

@@ -1,5 +1,5 @@
 use super::{
-    Element,
+    Element, fl,
     message::*,
     style::{
         Button, ButtonStyle, Container, ContainerStyle, LARGE_TEXT, LINE_HEIGHT, MEDIUM_TEXT,
@@ -20,7 +20,6 @@ use iced::{
 };
 use matrix_drawing::{secs_to_long_time_string, secs_to_time_string};
 use std::{
-    borrow::Cow,
     fmt::Write,
     sync::{Arc, Mutex},
     time::Duration,
@@ -196,20 +195,21 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
 
     let black = match snapshot.timeout {
         None => make_multi_label_message_button(
-            ("BLACK", "TIMEOUT"),
+            (fl!("dark-timeout-line-1"), fl!("dark-timeout-line-2")),
             tm.can_start_team_timeout(GameColor::Black)
                 .ok()
                 .map(|_| Message::TeamTimeout(GameColor::Black, false)),
         )
         .style(ButtonStyle::Black),
-        Some(TimeoutSnapshot::Black(_)) => {
-            make_multi_label_message_button(("END", "TIMEOUT"), Some(Message::EndTimeout))
-                .style(ButtonStyle::Yellow)
-        }
+        Some(TimeoutSnapshot::Black(_)) => make_multi_label_message_button(
+            (fl!("end-timeout-line-1"), fl!("end-timeout-line-2")),
+            Some(Message::EndTimeout),
+        )
+        .style(ButtonStyle::Yellow),
         Some(TimeoutSnapshot::White(_))
         | Some(TimeoutSnapshot::Ref(_))
         | Some(TimeoutSnapshot::PenaltyShot(_)) => make_multi_label_message_button(
-            ("SWITCH TO", "BLACK"),
+            (fl!("switch-to"), fl!("dark-team-name-caps")),
             tm.can_switch_to_team_timeout(GameColor::Black)
                 .ok()
                 .map(|_| Message::TeamTimeout(GameColor::Black, true)),
@@ -219,20 +219,21 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
 
     let white = match snapshot.timeout {
         None => make_multi_label_message_button(
-            ("WHITE", "TIMEOUT"),
+            (fl!("light-timeout-line-1"), fl!("light-timeout-line-2")),
             tm.can_start_team_timeout(GameColor::White)
                 .ok()
                 .map(|_| Message::TeamTimeout(GameColor::White, false)),
         )
         .style(ButtonStyle::White),
-        Some(TimeoutSnapshot::White(_)) => {
-            make_multi_label_message_button(("END", "TIMEOUT"), Some(Message::EndTimeout))
-                .style(ButtonStyle::Yellow)
-        }
+        Some(TimeoutSnapshot::White(_)) => make_multi_label_message_button(
+            (fl!("end-timeout-line-1"), fl!("end-timeout-line-2")),
+            Some(Message::EndTimeout),
+        )
+        .style(ButtonStyle::Yellow),
         Some(TimeoutSnapshot::Black(_))
         | Some(TimeoutSnapshot::Ref(_))
         | Some(TimeoutSnapshot::PenaltyShot(_)) => make_multi_label_message_button(
-            ("SWITCH TO", "WHITE"),
+            (fl!("switch-to"), fl!("light-team-name-caps")),
             tm.can_switch_to_team_timeout(GameColor::White)
                 .ok()
                 .map(|_| Message::TeamTimeout(GameColor::White, true)),
@@ -242,20 +243,21 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
 
     let referee = match snapshot.timeout {
         None => make_multi_label_message_button(
-            ("REF", "TIMEOUT"),
+            (fl!("ref-timeout-line-1"), fl!("ref-timeout-line-2")),
             tm.can_start_ref_timeout()
                 .ok()
                 .map(|_| Message::RefTimeout(false)),
         )
         .style(ButtonStyle::Yellow),
-        Some(TimeoutSnapshot::Ref(_)) => {
-            make_multi_label_message_button(("END", "TIMEOUT"), Some(Message::EndTimeout))
-                .style(ButtonStyle::Yellow)
-        }
+        Some(TimeoutSnapshot::Ref(_)) => make_multi_label_message_button(
+            (fl!("end-timeout-line-1"), fl!("end-timeout-line-2")),
+            Some(Message::EndTimeout),
+        )
+        .style(ButtonStyle::Yellow),
         Some(TimeoutSnapshot::Black(_))
         | Some(TimeoutSnapshot::White(_))
         | Some(TimeoutSnapshot::PenaltyShot(_)) => make_multi_label_message_button(
-            ("SWITCH TO", "REF"),
+            (fl!("switch-to"), fl!("ref")),
             tm.can_switch_to_ref_timeout()
                 .ok()
                 .map(|_| Message::RefTimeout(true)),
@@ -265,16 +267,17 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
 
     let penalty = match snapshot.timeout {
         None => make_multi_label_message_button(
-            ("PENALTY", "SHOT"),
+            (fl!("penalty-shot-line-1"), fl!("penalty-shot-line-2")),
             tm.can_start_penalty_shot()
                 .ok()
                 .map(|_| Message::PenaltyShot(false)),
         )
         .style(ButtonStyle::Red),
-        Some(TimeoutSnapshot::PenaltyShot(_)) => {
-            make_multi_label_message_button(("END", "TIMEOUT"), Some(Message::EndTimeout))
-                .style(ButtonStyle::Yellow)
-        }
+        Some(TimeoutSnapshot::PenaltyShot(_)) => make_multi_label_message_button(
+            (fl!("end-timeout-line-1"), fl!("end-timeout-line-2")),
+            Some(Message::EndTimeout),
+        )
+        .style(ButtonStyle::Yellow),
         Some(TimeoutSnapshot::Black(_))
         | Some(TimeoutSnapshot::White(_))
         | Some(TimeoutSnapshot::Ref(_)) => {
@@ -284,7 +287,7 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
                 tm.can_switch_to_penalty_shot()
             };
             make_multi_label_message_button(
-                ("SWITCH TO", "PEN SHOT"),
+                (fl!("switch-to"), fl!("pen-shot")),
                 can_switch.ok().map(|_| Message::PenaltyShot(true)),
             )
             .style(ButtonStyle::Red)
@@ -336,16 +339,16 @@ pub(super) fn make_game_time_button<'a>(
 
     let (mut period_text, period_color) = {
         let (text, color) = match snapshot.current_period {
-            GamePeriod::BetweenGames => ("NEXT GAME", TextStyle::Yellow),
-            GamePeriod::FirstHalf => ("FIRST HALF", TextStyle::Green),
-            GamePeriod::HalfTime => ("HALF TIME", TextStyle::Yellow),
-            GamePeriod::SecondHalf => ("SECOND HALF", TextStyle::Green),
-            GamePeriod::PreOvertime => ("PRE OVERTIME BREAK", TextStyle::Yellow),
-            GamePeriod::OvertimeFirstHalf => ("OVERTIME FIRST HALF", TextStyle::Green),
-            GamePeriod::OvertimeHalfTime => ("OVERTIME HALF TIME", TextStyle::Yellow),
-            GamePeriod::OvertimeSecondHalf => ("OVERTIME SECOND HALF", TextStyle::Green),
-            GamePeriod::PreSuddenDeath => ("PRE SUDDEN DEATH BREAK", TextStyle::Yellow),
-            GamePeriod::SuddenDeath => ("SUDDEN DEATH", TextStyle::Green),
+            GamePeriod::BetweenGames => (fl!("next-game"), TextStyle::Yellow),
+            GamePeriod::FirstHalf => (fl!("first-half"), TextStyle::Green),
+            GamePeriod::HalfTime => (fl!("half-time"), TextStyle::Yellow),
+            GamePeriod::SecondHalf => (fl!("second-half"), TextStyle::Green),
+            GamePeriod::PreOvertime => (fl!("pre-ot-break-full"), TextStyle::Yellow),
+            GamePeriod::OvertimeFirstHalf => (fl!("overtime-first-half"), TextStyle::Green),
+            GamePeriod::OvertimeHalfTime => (fl!("overtime-half-time"), TextStyle::Yellow),
+            GamePeriod::OvertimeSecondHalf => (fl!("overtime-second-half"), TextStyle::Green),
+            GamePeriod::PreSuddenDeath => (fl!("pre-sudden-death-break"), TextStyle::Yellow),
+            GamePeriod::SuddenDeath => (fl!("sudden-death"), TextStyle::Green),
         };
 
         if make_red {
@@ -357,11 +360,11 @@ pub(super) fn make_game_time_button<'a>(
 
     if tall && (snapshot.timeout.is_some()) {
         match snapshot.current_period {
-            GamePeriod::PreOvertime => period_text = "PRE OT BREAK",
-            GamePeriod::OvertimeFirstHalf => period_text = "OT FIRST HALF",
-            GamePeriod::OvertimeHalfTime => period_text = "OT HALF TIME",
-            GamePeriod::OvertimeSecondHalf => period_text = "OT 2ND HALF",
-            GamePeriod::PreSuddenDeath => period_text = "PRE SD BREAK",
+            GamePeriod::PreOvertime => period_text = fl!("pre-ot-break-abreviated"),
+            GamePeriod::OvertimeFirstHalf => period_text = fl!("ot-first-half"),
+            GamePeriod::OvertimeHalfTime => period_text = fl!("ot-half-time"),
+            GamePeriod::OvertimeSecondHalf => period_text = fl!("ot-2nd-half"),
+            GamePeriod::PreSuddenDeath => period_text = fl!("pre-sd-break"),
             _ => {}
         };
     }
@@ -412,7 +415,11 @@ pub(super) fn make_game_time_button<'a>(
 
     let timeout_info = snapshot.timeout.map(|t| match t {
         TimeoutSnapshot::White(_) => (
-            if tall { "WHT T/O" } else { "WHITE TIMEOUT" },
+            if tall {
+                fl!("white-timeout-short")
+            } else {
+                fl!("white-timeout-full")
+            },
             if make_red {
                 TextStyle::Black
             } else {
@@ -420,11 +427,15 @@ pub(super) fn make_game_time_button<'a>(
             },
         ),
         TimeoutSnapshot::Black(_) => (
-            if tall { "BLK T/O" } else { "BLACK TIMEOUT" },
+            if tall {
+                fl!("black-timeout-short")
+            } else {
+                fl!("black-timeout-full")
+            },
             TextStyle::Black,
         ),
-        TimeoutSnapshot::Ref(_) => ("REF TMOUT", TextStyle::Yellow),
-        TimeoutSnapshot::PenaltyShot(_) => ("PNLTY SHT", TextStyle::Red),
+        TimeoutSnapshot::Ref(_) => (fl!("ref-timeout-short"), TextStyle::Yellow),
+        TimeoutSnapshot::PenaltyShot(_) => (fl!("penalty-shot-short"), TextStyle::Red),
     });
 
     let time_text = secs_to_long_time_string(snapshot.secs_in_period);
@@ -593,8 +604,8 @@ pub(super) fn timeout_time_string(snapshot: &GameSnapshot) -> String {
 
 pub(super) fn bool_string(val: bool) -> String {
     match val {
-        true => "YES".to_string(),
-        false => "NO".to_string(),
+        true => fl!("yes"),
+        false => fl!("no"),
     }
 }
 
@@ -608,10 +619,14 @@ pub(super) fn penalty_string(penalties: &[PenaltySnapshot]) -> String {
                 if secs != 0 {
                     writeln!(&mut string, "{}:{:02}", secs / 60, secs % 60).unwrap();
                 } else {
-                    string.push_str("Served\n");
+                    string += &fl!("served");
+                    string += "\n";
                 }
             }
-            PenaltyTime::TotalDismissal => string.push_str("DSMS\n"),
+            PenaltyTime::TotalDismissal => {
+                string += &fl!("total-dismissial");
+                string += "\n"
+            }
         }
     }
     // if the string is not empty, the last char is a '\n' that we don't want
@@ -662,13 +677,13 @@ pub(super) fn get_team_name(team: &ScheduledTeam, teams: &TeamList) -> String {
     }
 }
 
-pub(super) fn limit_team_name_len(name: &String, len_limit: usize) -> Cow<'_, String> {
+pub(super) fn limit_team_name_len(name: &str, len_limit: usize) -> String {
     const ELIPSIS: [char; 3] = ['.', '.', '.'];
 
     if name.len() > len_limit {
-        Cow::Owned(name.chars().take(len_limit - 1).chain(ELIPSIS).collect())
+        name.chars().take(len_limit - 1).chain(ELIPSIS).collect()
     } else {
-        Cow::Borrowed(name)
+        name.to_owned()
     }
 }
 
@@ -685,36 +700,32 @@ pub(super) fn config_string_game_num(
             if let Some(games) = games {
                 prev_game = match games.get(&snapshot.game_number) {
                     Some(game) => game_string_short(game),
-                    None if snapshot.game_number == 0 => "None".to_string(),
-                    None => format!("Error ({})", snapshot.game_number),
+                    None if snapshot.game_number == 0 => fl!("none"),
+                    None => fl!("error", number = snapshot.game_number),
                 };
                 next_game = match games.get(&snapshot.next_game_number) {
                     Some(game) => game_string_short(game),
-                    None => format!("Error ({})", snapshot.next_game_number),
+                    None => fl!("error", number = snapshot.next_game_number),
                 };
             } else {
                 prev_game = if snapshot.game_number == 0 {
-                    "None".to_string()
+                    fl!("none")
                 } else {
-                    format!("Error ({})", snapshot.game_number)
+                    fl!("error", number = snapshot.game_number)
                 };
-                next_game = format!("Error ({})", snapshot.next_game_number);
+                next_game = fl!("error", number = snapshot.next_game_number);
             }
         } else {
             prev_game = if snapshot.game_number == 0 {
-                "None".to_string()
+                fl!("none")
             } else {
                 snapshot.game_number.to_string()
             };
             next_game = snapshot.next_game_number.to_string();
         }
 
-        write!(
-            &mut result,
-            "Last Game: {},  Next Game: {}\n\n",
-            prev_game, next_game
-        )
-        .unwrap();
+        result += &fl!("two-games", prev_game = prev_game, next_game = next_game);
+        result += "\n\n";
         snapshot.next_game_number
     } else {
         let game;
@@ -722,15 +733,16 @@ pub(super) fn config_string_game_num(
             if let Some(games) = games {
                 game = match games.get(&snapshot.game_number) {
                     Some(game) => game_string_short(game),
-                    None => format!("Error ({})", snapshot.game_number),
+                    None => fl!("error", number = snapshot.game_number),
                 };
             } else {
-                game = format!("Error ({})", snapshot.game_number);
+                game = fl!("error", number = snapshot.game_number);
             }
         } else {
             game = snapshot.game_number.to_string();
         }
-        write!(&mut result, "Game: {}\n\n", game).unwrap();
+        result += &fl!("one-game", game = game);
+        result += "\n\n";
         snapshot.game_number
     };
 
@@ -756,63 +768,53 @@ pub(super) fn config_string(
             if let Some(game) = games.get(&game_number) {
                 let black = get_team_name(&game.dark, teams);
                 let white = get_team_name(&game.light, teams);
-                write!(
-                    &mut result,
-                    "Black Team: {}\nWhite Team: {}\n",
-                    limit_team_name_len(&black, TEAM_NAME_LEN_LIMIT),
-                    limit_team_name_len(&white, TEAM_NAME_LEN_LIMIT)
-                )
-                .unwrap()
+                result += &fl!(
+                    "teams",
+                    dark_team = limit_team_name_len(&black, TEAM_NAME_LEN_LIMIT),
+                    light_team = limit_team_name_len(&white, TEAM_NAME_LEN_LIMIT)
+                );
+                result += "\n";
             }
         }
     }
 
-    writeln!(
-        &mut result,
-        "Half Length: {},  \
-         Half Time Length: {}",
-        time_string(config.half_play_duration),
-        time_string(config.half_time_duration),
-    )
-    .unwrap();
+    let unknown = &fl!("unknown");
 
-    writeln!(
-        &mut result,
-        "Sudden Death Allowed: {},  \
-         Overtime Allowed: {}",
-        bool_string(config.sudden_death_allowed),
-        bool_string(config.overtime_allowed),
-    )
-    .unwrap();
+    result += &fl!(
+        "game-config",
+        half_len = time_string(config.half_play_duration),
+        half_time_len = time_string(config.half_time_duration),
+        sd_allowed = bool_string(config.sudden_death_allowed),
+        ot_allowed = bool_string(config.overtime_allowed)
+    );
 
     if config.timeouts_counted_per_half {
-        writeln!(
-            &mut result,
-            "Team Timeouts Allowed Per Half: {}",
-            config.num_team_timeouts_allowed
-        )
-        .unwrap();
+        result += "\n";
+        result += &fl!(
+            "team-timeouts-per-half",
+            team_timeouts = config.num_team_timeouts_allowed
+        );
     } else {
-        writeln!(
-            &mut result,
-            "Team Timeouts Allowed Per Game: {}",
-            config.num_team_timeouts_allowed
-        )
-        .unwrap();
+        result += "\n";
+        result += &fl!(
+            "team-timeouts-per-game",
+            team_timeouts = config.num_team_timeouts_allowed
+        );
     }
 
-    writeln!(&mut result, "Stop clock in last 2 minutes: ").unwrap();
+    result += "\n";
+    result += &fl!("stop-clock-last-2", stop_clock = unknown);
+    result += "\n";
 
     if !fouls_and_warnings {
-        write!(
-            &mut result,
-            "Chief ref: \n\
-            Timer: \n\
-            Water ref 1: \n\
-            Water ref 2: \n\
-            Water ref 3: ",
-        )
-        .unwrap();
+        result += &fl!(
+            "ref-list",
+            chief_ref = unknown,
+            timer = unknown,
+            water_ref_1 = unknown,
+            water_ref_2 = unknown,
+            water_ref_3 = unknown
+        );
     }
 
     result
@@ -953,9 +955,12 @@ pub(super) fn make_penalty_dropdown<'a>(
     });
 
     let name: Container<'_, Message> = container(
-        row![text(format!("Infraction: {}", infraction))]
-            .spacing(0)
-            .align_items(Alignment::Center),
+        row![text(fl!(
+            "infraction",
+            infraction = inf_short_name(infraction)
+        ))]
+        .spacing(0)
+        .align_items(Alignment::Center),
     )
     .style(ContainerStyle::Blue)
     .width(Length::Fill);
@@ -1004,13 +1009,13 @@ pub fn make_warning_container<'a>(
     let who = if let Some(num) = warning.player_number {
         format!("#{num}")
     } else {
-        "T".to_string()
+        fl!("team-warning-abreviation")
     };
 
     container(if color.is_some() {
         row![
             horizontal_space(PADDING),
-            text(warning.infraction.short_name()).size(SMALL_TEXT),
+            text(inf_short_name(warning.infraction)).size(SMALL_TEXT),
             horizontal_space(Length::Fill),
             text(who).size(SMALL_TEXT),
             horizontal_space(PADDING),
@@ -1018,7 +1023,7 @@ pub fn make_warning_container<'a>(
     } else {
         row![
             horizontal_space(Length::Fill),
-            text(warning.infraction.short_name()).size(SMALL_TEXT),
+            text(inf_short_name(warning.infraction)).size(SMALL_TEXT),
             horizontal_space(Length::Fill),
         ]
     })
@@ -1030,4 +1035,21 @@ pub fn make_warning_container<'a>(
         None => ContainerStyle::Blue,
     })
     .padding(0)
+}
+
+pub fn inf_short_name(inf: Infraction) -> String {
+    match inf {
+        Infraction::Unknown => fl!("unknown"),
+        Infraction::StickInfringement => fl!("stick-foul"),
+        Infraction::IllegalAdvancement => fl!("illegal-advance"),
+        Infraction::IllegalSubstitution => fl!("sub-foul"),
+        Infraction::IllegallyStoppingThePuck => fl!("illegal-stoppage"),
+        Infraction::OutOfBounds => fl!("out-of-bounds"),
+        Infraction::GrabbingTheBarrier => fl!("grabbing-the-wall"),
+        Infraction::Obstruction => fl!("obstruction"),
+        Infraction::DelayOfGame => fl!("delay-of-game"),
+        Infraction::UnsportsmanlikeConduct => fl!("unsportsmanlike"),
+        Infraction::FreeArm => fl!("free-arm"),
+        Infraction::FalseStart => fl!("false-start"),
+    }
 }

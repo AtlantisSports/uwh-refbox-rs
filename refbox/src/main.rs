@@ -1,6 +1,10 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 use clap::Parser;
+use i18n_embed::{
+    DesktopLanguageRequester,
+    fluent::{FluentLanguageLoader, fluent_language_loader},
+};
 use iced::{Application, Settings, window::icon};
 use iced_core::Font;
 use log::*;
@@ -16,11 +20,15 @@ use log4rs::{
     config::{Appender, Config as LogConfig, Logger, Root},
     encode::pattern::PatternEncoder,
 };
+use once_cell::sync::Lazy;
+use rust_embed::RustEmbed;
 use std::{
     path::PathBuf,
     process::{Command, Stdio},
+    sync::Arc,
 };
 use tokio_serial::{DataBits, FlowControl, Parity, StopBits};
+use unic_langid::LanguageIdentifier;
 
 mod app;
 mod app_icon;
@@ -33,6 +41,47 @@ mod config;
 use config::Config;
 
 const APP_NAME: &str = "refbox";
+
+#[derive(RustEmbed)]
+#[folder = "translations/"]
+struct Localizations;
+
+static LANGUAGE_OVERRIDE: Lazy<Arc<std::sync::Mutex<Option<LanguageIdentifier>>>> =
+    Lazy::new(|| Arc::new(std::sync::Mutex::new(None)));
+
+static LANGUAGE_LOADER: Lazy<FluentLanguageLoader> = Lazy::new(|| {
+    let loader: FluentLanguageLoader = fluent_language_loader!();
+
+    let requested_languages = if let Some(lang) = LANGUAGE_OVERRIDE.lock().unwrap().take() {
+        info!("Using language override: {lang:?}");
+        vec![lang]
+    } else {
+        DesktopLanguageRequester::requested_languages()
+    };
+
+    let result = i18n_embed::select(&loader, &Localizations, &requested_languages);
+    match result {
+        Ok(lang) => info!("Using language: {lang:?}"),
+        Err(e) => warn!(
+            "Unable to select languages: {e}\nRequested languages were: {requested_languages:?}"
+        ),
+    }
+
+    loader.set_use_isolating(false); // Required until iced supports RTL text (https://github.com/iced-rs/iced/issues/250)
+
+    loader
+});
+
+#[macro_export]
+macro_rules! fl {
+    ($message_id:literal) => {{
+        i18n_embed_fl::fl!($crate::LANGUAGE_LOADER, $message_id)
+    }};
+
+    ($message_id:literal, $($args:expr),*) => {{
+        i18n_embed_fl::fl!($crate::LANGUAGE_LOADER, $message_id, $($args), *)
+    }};
+}
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -97,6 +146,10 @@ struct Cli {
     /// Number of archived logs to keep
     num_old_logs: u32,
 
+    #[clap(long)]
+    /// Override the system language (ex: en-US, fr, es, etc.)
+    language: Option<LanguageIdentifier>,
+
     #[clap(long, hide = true)]
     is_simulator: bool,
 
@@ -106,6 +159,10 @@ struct Cli {
 
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let args = Cli::parse();
+
+    if let Some(lang) = args.language {
+        *LANGUAGE_OVERRIDE.lock().unwrap() = Some(lang);
+    }
 
     let log_level = match args.verbose {
         0 => LevelFilter::Info,

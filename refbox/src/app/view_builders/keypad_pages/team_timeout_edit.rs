@@ -29,15 +29,15 @@ pub(super) fn make_team_timeout_edit_page<'a>(
 
     column![
         row![
-            text("TIMEOUTS\nCOUNTED PER:")
+            text(fl!("timeouts-counted-per"))
                 .size(SMALL_PLUS_TEXT)
                 .height(Length::Fixed(MIN_BUTTON_SIZE))
                 .vertical_alignment(Vertical::Center),
-            make_button("HALF")
+            make_button(fl!("half"))
                 .style(half_style)
                 .width(Length::Fill)
                 .on_press(half_message),
-            make_button("GAME")
+            make_button(fl!("game"))
                 .style(game_style)
                 .width(Length::Fill)
                 .on_press(game_message),
@@ -46,16 +46,16 @@ pub(super) fn make_team_timeout_edit_page<'a>(
         vertical_space(Length::Fill),
         row![
             horizontal_space(Length::Fill),
-            make_time_editor("TIMEOUT LENGTH", duration, false),
+            make_time_editor(fl!("timeout-length"), duration, false),
             horizontal_space(Length::Fill)
         ],
         vertical_space(Length::Fill),
         row![
-            make_button("CANCEL")
+            make_button(fl!("cancel"))
                 .style(ButtonStyle::Red)
                 .width(Length::Fill)
                 .on_press(Message::ParameterEditComplete { canceled: true }),
-            make_button("DONE")
+            make_button(fl!("done"))
                 .style(ButtonStyle::Green)
                 .width(Length::Fill)
                 .on_press(Message::ParameterEditComplete { canceled: false }),

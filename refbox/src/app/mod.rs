@@ -1,6 +1,5 @@
 use self::infraction::InfractionDetails;
-
-use super::APP_NAME;
+use super::{APP_NAME, fl};
 use crate::{
     config::{Config, Mode},
     penalty_editor::*,

@@ -1,4 +1,5 @@
 use super::{
+    fl,
     style::{ButtonStyle, ContainerStyle, Element, LINE_HEIGHT, PADDING, SPACING},
     *,
 };
@@ -20,70 +21,68 @@ pub(in super::super) fn build_confirmation_page<'a>(
         ..
     } = data;
 
-    let header_text = match kind {
-        ConfirmationKind::GameConfigChanged(_) => {
-            "The game configuration can not be changed while a game is in progress.\n\nWhat would you like to do?"
-        }
-        ConfirmationKind::GameNumberChanged => {
-            "How would you like to apply this game number change?"
-        }
-        ConfirmationKind::Error(string) => string,
-        ConfirmationKind::UwhPortalIncomplete => {
-            "When UWHPortal is enabled, all fields must be filled out."
-        }
+    let header_text: String = match kind {
+        ConfirmationKind::GameConfigChanged(_) => fl!("game-configuration-can-not-be-changed"),
+        ConfirmationKind::GameNumberChanged => fl!("apply-this-game-number-change"),
+        ConfirmationKind::Error(string) => string.clone(),
+        ConfirmationKind::UwhPortalIncomplete => fl!("UWHPortal-enabled"),
     };
 
     let buttons = match kind {
         ConfirmationKind::GameConfigChanged(_) => vec![
             (
-                "GO BACK TO EDITOR",
+                fl!("go-back-to-editor"),
                 ButtonStyle::Green,
                 ConfirmationOption::GoBack,
             ),
             (
-                "DISCARD CHANGES",
+                fl!("discard-changes"),
                 ButtonStyle::Yellow,
                 ConfirmationOption::DiscardChanges,
             ),
             (
-                "END CURRENT GAME AND APPLY CHANGES",
+                fl!("end-current-game-and-apply-changes"),
                 ButtonStyle::Red,
                 ConfirmationOption::EndGameAndApply,
             ),
         ],
         ConfirmationKind::GameNumberChanged => vec![
             (
-                "GO BACK TO EDITOR",
+                fl!("go-back-to-editor"),
                 ButtonStyle::Green,
                 ConfirmationOption::GoBack,
             ),
             (
-                "DISCARD CHANGES",
+                fl!("discard-changes"),
                 ButtonStyle::Yellow,
                 ConfirmationOption::DiscardChanges,
             ),
             (
-                "KEEP CURRENT GAME AND APPLY CHANGE",
+                fl!("keep-current-game-and-apply-change"),
                 ButtonStyle::Orange,
                 ConfirmationOption::KeepGameAndApply,
             ),
             (
-                "END CURRENT GAME AND APPLY CHANGE",
+                fl!("end-current-game-and-apply-change"),
                 ButtonStyle::Red,
                 ConfirmationOption::EndGameAndApply,
             ),
         ],
         ConfirmationKind::Error(_) => {
-            vec![("OK", ButtonStyle::Green, ConfirmationOption::DiscardChanges)]
+            vec![(
+                fl!("ok"),
+                ButtonStyle::Green,
+                ConfirmationOption::DiscardChanges,
+            )]
         }
         ConfirmationKind::UwhPortalIncomplete => vec![
             (
-                "GO BACK TO EDITOR",
+                fl!("go-back-to-editor"),
                 ButtonStyle::Green,
                 ConfirmationOption::GoBack,
             ),
             (
-                "DISCARD CHANGES",
+                fl!("discard-changes"),
                 ButtonStyle::Yellow,
                 ConfirmationOption::DiscardChanges,
             ),
@@ -142,18 +141,19 @@ pub(in super::super) fn build_score_confirmation_page<'a>(
         ..
     } = data;
 
-    let header = text(format!(
-        "Is this score correct?\nConfirm with cheif referee.\n\nBlack: {}        White: {}\n",
-        scores.black, scores.white
+    let header = text(fl!(
+        "confirm-score",
+        score_black = scores.black,
+        score_white = scores.white
     ))
     .line_height(LINE_HEIGHT)
     .horizontal_alignment(Horizontal::Center);
 
     let options = row![
-        make_button("YES")
+        make_button(fl!("yes"))
             .style(ButtonStyle::Green)
             .on_press(Message::ScoreConfirmation { correct: true }),
-        make_button("NO")
+        make_button(fl!("no"))
             .style(ButtonStyle::Red)
             .on_press(Message::ScoreConfirmation { correct: false }),
     ]

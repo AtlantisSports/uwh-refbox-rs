@@ -52,11 +52,11 @@ pub(in super::super) fn build_penalty_overview_page<'a>(
         .spacing(SPACING)
         .height(Length::Fill),
         row![
-            make_button("CANCEL")
+            make_button(fl!("cancel"))
                 .style(ButtonStyle::Red)
                 .width(Length::Fill)
                 .on_press(Message::PenaltyOverviewComplete { canceled: true }),
-            make_button("NEW")
+            make_button(fl!("new"))
                 .style(ButtonStyle::Blue)
                 .width(Length::Fill)
                 .on_press(Message::KeypadPage(KeypadPage::Penalty(
@@ -65,7 +65,7 @@ pub(in super::super) fn build_penalty_overview_page<'a>(
                     default_pen_len,
                     Infraction::Unknown,
                 ))),
-            make_button("DONE")
+            make_button(fl!("done"))
                 .style(ButtonStyle::Green)
                 .width(Length::Fill)
                 .on_press(Message::PenaltyOverviewComplete { canceled: false }),
@@ -85,7 +85,12 @@ fn make_penalty_list<'a>(
 ) -> Container<'a, Message> {
     const PENALTY_LIST_LEN: usize = 3;
 
-    let title = text(format!("{} PENALTIES", color.to_string().to_uppercase()))
+    let color_text = match color {
+        GameColor::Black => fl!("black-penalties"),
+        GameColor::White => fl!("white-penalties"),
+    };
+
+    let title = text(color_text.to_string().to_uppercase())
         .line_height(LINE_HEIGHT)
         .height(Length::Fill)
         .width(Length::Fill)
@@ -103,13 +108,19 @@ fn make_penalty_list<'a>(
         .take(PENALTY_LIST_LEN)
         .map(|pen| {
             if let Some((i, details)) = pen {
-                let mut text = text(details.text)
+                let printable = fl!(
+                    "penalty",
+                    player_number = details.player_number,
+                    time = details.time.fluent(),
+                    kind = details.kind.fluent()
+                );
+                let mut text = text(printable)
                     .line_height(LINE_HEIGHT)
                     .vertical_alignment(Vertical::Center)
                     .horizontal_alignment(Horizontal::Left)
                     .width(Length::Fill);
 
-                match details.hint {
+                match details.format_hint {
                     FormatHint::NoChange => {}
                     FormatHint::Edited => text = text.style(TextStyle::Orange),
                     FormatHint::Deleted => text = text.style(TextStyle::Red),

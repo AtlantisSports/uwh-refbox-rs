@@ -14,11 +14,7 @@ use core::{cmp::min, time::Duration};
 use defmt::Format;
 use derivative::Derivative;
 use displaydoc::Display;
-#[cfg(feature = "std")]
-use enum_derive_2018::EnumDisplay;
 use enum_iterator::Sequence;
-#[cfg(feature = "std")]
-use macro_attr_2018::macro_attr;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "std")]
 use time::Duration as SignedDuration;
@@ -319,28 +315,6 @@ impl PartialOrd for PenaltyTime {
     }
 }
 
-#[cfg(feature = "std")]
-macro_attr! {
-    #[derive(Derivative, Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, Sequence, EnumDisplay!)]
-    #[derivative(Default)]
-    pub enum Infraction {
-        #[derivative(Default)]
-        Unknown,
-        StickInfringement,
-        IllegalAdvancement,
-        IllegalSubstitution,
-        IllegallyStoppingThePuck,
-        OutOfBounds,
-        GrabbingTheBarrier,
-        Obstruction,
-        DelayOfGame,
-        UnsportsmanlikeConduct,
-        FreeArm,
-        FalseStart,
-    }
-}
-
-#[cfg(not(feature = "std"))]
 #[derive(Derivative, Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize, Sequence)]
 #[derivative(Default)]
 pub enum Infraction {
@@ -376,9 +350,7 @@ impl Infraction {
             Self::FalseStart => "False Start",
         }
     }
-}
 
-impl Infraction {
     pub fn get_image(&self) -> Cow<'static, [u8]> {
         match self {
             Self::Unknown => Cow::Borrowed(include_bytes!(

@@ -1,10 +1,12 @@
+use super::fl;
 use crate::sound_controller::SoundSettings;
 use derivative::Derivative;
-use enum_derive_2018::{EnumDisplay, EnumFromStr};
+use enum_derive_2018::EnumFromStr;
 use macro_attr_2018::macro_attr;
 use matrix_drawing::transmitted_data::Brightness;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 use toml::Table;
 pub use uwh_common::config::Game;
 
@@ -161,13 +163,23 @@ impl Config {
 }
 
 macro_attr! {
-    #[derive(Debug, Clone, Copy, Derivative, PartialEq, Eq, Serialize, Deserialize, EnumDisplay!, EnumFromStr!)]
+    #[derive(Debug, Clone, Copy, Derivative, PartialEq, Eq, Serialize, Deserialize, EnumFromStr!)]
     #[derivative(Default)]
     pub enum Mode {
         #[derivative(Default)]
         Hockey6V6,
         Hockey3V3,
         Rugby,
+    }
+}
+
+impl Display for Mode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Hockey6V6 => f.write_str(&fl!("hockey6v6")),
+            Self::Hockey3V3 => f.write_str(&fl!("hockey3v3")),
+            Self::Rugby => f.write_str(&fl!("rugby")),
+        }
     }
 }
 

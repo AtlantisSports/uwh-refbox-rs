@@ -20,7 +20,7 @@ pub(in super::super) fn build_warnings_summary_page<'a>(
     } = data;
 
     let warnings_container = container(column![
-        text("WARNINGS")
+        text(fl!("warnings"))
             .size(SMALL_PLUS_TEXT)
             .vertical_alignment(Vertical::Top)
             .horizontal_alignment(Horizontal::Center)
@@ -69,7 +69,7 @@ pub(in super::super) fn build_warnings_summary_page<'a>(
         .collect();
 
     let fouls_container = container(column![
-        text("FOULS")
+        text(fl!("fouls"))
             .size(SMALL_PLUS_TEXT)
             .vertical_alignment(Vertical::Top)
             .horizontal_alignment(Horizontal::Center)
@@ -95,15 +95,15 @@ pub(in super::super) fn build_warnings_summary_page<'a>(
         make_game_time_button(snapshot, false, false, mode, clock_running,),
         warnings_and_fouls_row.height(Length::Fill),
         row![
-            make_button("BACK")
+            make_button(fl!("back"))
                 .style(ButtonStyle::Red)
                 .width(Length::Fill)
                 .on_press(Message::ConfigEditComplete { canceled: true }),
-            make_button("EDIT WARNINGS")
+            make_button(fl!("edit-warnings"))
                 .style(ButtonStyle::Blue)
                 .width(Length::Fill)
                 .on_press(Message::WarningOverview),
-            make_button("EDIT FOULS")
+            make_button(fl!("edit-fouls"))
                 .style(ButtonStyle::Orange)
                 .width(Length::Fill)
                 .on_press(Message::FoulOverview),

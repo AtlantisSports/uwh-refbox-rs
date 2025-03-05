@@ -1,6 +1,6 @@
 [package]
 name = "matrix-drawing"
-version = "0.2.1"
+version = "0.3.0"
 authors = ["Atlantis Sports <maintainers@atlantissports.org>"]
 edition = "2024"
 rust-version = "1.85"
@@ -15,9 +15,9 @@ arrayvec = { version = "0.7", default-features = false }
 derivative = "2"
 embedded-graphics = "0.8"
 enum-derive-2018 = { version = "3", optional = true }
-fonts = { version = "0.2.1", path = "../fonts" }
+fonts = { version = "0.3.0", path = "../fonts" }
 macro-attr-2018 = { version = "3", optional = true }
 more-asserts = "0.3"
 serde = { version = "1", default-features = false }
 serde_derive = "1"
-uwh-common = { version = "0.2.1", path = "../uwh-common", default-features = false }
+uwh-common = { version = "0.3.0", path = "../uwh-common", default-features = false }

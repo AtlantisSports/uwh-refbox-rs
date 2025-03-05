@@ -1,6 +1,6 @@
 [package]
 name = "uwh-common"
-version = "0.2.1"
+version = "0.3.0"
 authors = ["Atlantis Sports <maintainers@atlantissports.org>"]
 edition = "2024"
 rust-version = "1.85"
@@ -16,7 +16,7 @@ defmt = "0.3"
 derivative = { version = "2", features = ["use_core"] }
 displaydoc = { version = "0.2", default-features = false }
 enum-iterator = "2"
-fonts = { version = "0.2.1", path = "../fonts" }
+fonts = { version = "0.3.0", path = "../fonts" }
 image = "0.24"
 jsonwebtoken = { version = "9.3.1", optional = true }
 log = "0.4"

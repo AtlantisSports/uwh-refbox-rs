@@ -5,5 +5,5 @@ REPO_DIR=$(cd "$SCRIPT_DIR/../.." && pwd)
 
 (
     cd "$REPO_DIR" && \
-    docker build -t windows-rust-1.82-xc -f "$SCRIPT_DIR/Dockerfile" "$REPO_DIR" 
+    docker build -t windows-rust-1.85-xc -f "$SCRIPT_DIR/Dockerfile" "$REPO_DIR" 
 )

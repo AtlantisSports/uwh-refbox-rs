@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-windows:
+    name: Build release on windows-latest
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - uses: Swatinem/rust-cache@v2
+    - name: Versions
+      run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version
+    - run: cargo build --release --bin refbox
+    - uses: actions/upload-artifact@v4
+      with:
+        name: refbox-windows
+        path: target/release/refbox.exe
+
+  build-macos-arm:
+    name: Build release on macos-latest for arm target
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - uses: Swatinem/rust-cache@v2
+    - name: Install cargo-bundle from crates.io
+      uses: baptiste0928/cargo-install@v3
+      with:
+        crate: cargo-bundle
+    - name: Versions
+      run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version && cargo bundle --version
+    - run: cargo bundle --release --target aarch64-apple-darwin
+    - uses: actions/upload-artifact@v4
+      with:
+        name: refbox-macos-arm
+        path: target/release/bundle/osx/refbox.app
+
+  build-macos-x86:
+    name: Build release on macos-latest for x86 target
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - uses: Swatinem/rust-cache@v2
+    - name: Install cargo-bundle from crates.io
+      uses: baptiste0928/cargo-install@v3
+      with:
+        crate: cargo-bundle
+    - name: Versions
+      run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version && cargo bundle --version
+    - run: cargo bundle --release --target x86_64-apple-darwin
+    - uses: actions/upload-artifact@v4
+      with:
+        name: refbox-macos-x86
+        path: target/x86_64-apple-darwin/release/bundle/osx/refbox.app
+
+  upload-release:
+    name: Upload release artifacts
+    runs-on: ubuntu-latest
+
+    needs: [build-windows, build-macos-arm, build-macos-x86]
+
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        name: refbox-windows
+        path: release/Windows/refbox.exe
+    - uses: actions/download-artifact@v4
+      with:
+        name: refbox-macos-arm
+        path: release/Mac\ (Arm processor)/refbox.app
+    - uses: actions/download-artifact@v4
+      with:
+        name: refbox-macos-x86
+        path: release/Mac\ (Intel processor)/refbox.app
+    - name: Add english getting started guide
+      uses: k0staa/download-gdrive-file-action@v1
+      with:
+        service-account-key-json: ${{ secrets.SERVICE_ACCOUNT_AUTH_JSON }}
+        download-file-name: Getting Started Guide - English.pdf
+        download-to: release/
+    - name: Add spanish getting started guide
+      uses: k0staa/download-gdrive-file-action@v1
+      with:
+        service-account-key-json: ${{ secrets.SERVICE_ACCOUNT_AUTH_JSON }}
+        download-file-name: Getting Started Guide - Spanish (Guía de Inicio).pdf
+        download-to: release/
+    - name: Add manual
+      uses: k0staa/download-gdrive-file-action@v1
+      with:
+        service-account-key-json: ${{ secrets.SERVICE_ACCOUNT_AUTH_JSON }}
+        download-file-name: Refbox User Manual.pdf
+        download-to: release/
+    - name: Add manual with fouls
+      uses: k0staa/download-gdrive-file-action@v1
+      with:
+        service-account-key-json: ${{ secrets.SERVICE_ACCOUNT_AUTH_JSON }}
+        download-file-name: Refbox User Manual with Fouls.pdf
+        download-to: release/
+    - name: Zip release
+      run: cd release && zip -r ../refbox.zip .
+    - uses: softprops/action-gh-release@v2
+      with:
+        files: refbox.zip
+        draft: true
+        generate_release_notes: true

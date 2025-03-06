@@ -1623,6 +1623,9 @@ impl RefBoxApp {
             Message::ApplyAuthChanges => {
                 let settings = self.edited_settings.as_mut().unwrap();
                 self.config.uwhportal.token = settings.uwhportal_token.clone();
+                if let Some(client) = self.uwhportal_client.as_mut() {
+                    client.set_token(&settings.uwhportal_token);
+                }
 
                 let task = self.check_uwhportal_auth();
 

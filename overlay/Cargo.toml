@@ -9,7 +9,7 @@ rust-version = "1.85"
 [dependencies]
 clap = { version = "4.5.31", features = ["derive"] }
 futures = "0.3"
-coarsetime = "0.1.35"
+coarsetime = "0.1.36"
 confy = "0.6"
 crossbeam-channel = "0.5.14"
 directories = "6.0.0"
@@ -21,8 +21,8 @@ reqwest = {version = "0.12", features = ["gzip"]}
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1" }
 time = { version = "0.3", features = ["local-offset", "macros", "serde", "serde-human-readable"] }
-tokio = { version = "1.43", features = ["full"] }
+tokio = { version = "1.44", features = ["full"] }
 uwh-common = { path = "../uwh-common/" }
-bytes = "1.10.0"
+bytes = "1.10.1"
 alphagen = {path="../alphagen"}
 image = { version = "0.24", default-features = false, features = ["png", "jpeg_rayon"] }

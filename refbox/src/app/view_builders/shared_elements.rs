@@ -182,90 +182,96 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
     let tm = tm.lock().unwrap();
 
     let black = match snapshot.timeout {
-        None => make_multi_label_message_button(
-            (fl!("dark-timeout-line-1"), fl!("dark-timeout-line-2")),
-            tm.can_start_team_timeout(GameColor::Black)
-                .ok()
-                .map(|_| Message::TeamTimeout(GameColor::Black, false)),
-        )
-        .style(black_button),
-        Some(TimeoutSnapshot::Black(_)) => make_multi_label_message_button(
-            (fl!("end-timeout-line-1"), fl!("end-timeout-line-2")),
-            Some(Message::EndTimeout),
-        )
-        .style(yellow_button),
+        None => make_multi_label_button((fl!("dark-timeout-line-1"), fl!("dark-timeout-line-2")))
+            .on_press_maybe(
+                tm.can_start_team_timeout(GameColor::Black)
+                    .ok()
+                    .map(|_| Message::TeamTimeout(GameColor::Black, false)),
+            )
+            .style(black_button),
+        Some(TimeoutSnapshot::Black(_)) => {
+            make_multi_label_button((fl!("end-timeout-line-1"), fl!("end-timeout-line-2")))
+                .on_press(Message::EndTimeout)
+                .style(yellow_button)
+        }
         Some(TimeoutSnapshot::White(_))
         | Some(TimeoutSnapshot::Ref(_))
-        | Some(TimeoutSnapshot::PenaltyShot(_)) => make_multi_label_message_button(
-            (fl!("switch-to"), fl!("dark-team-name-caps")),
-            tm.can_switch_to_team_timeout(GameColor::Black)
-                .ok()
-                .map(|_| Message::TeamTimeout(GameColor::Black, true)),
-        )
-        .style(black_button),
+        | Some(TimeoutSnapshot::PenaltyShot(_)) => {
+            make_multi_label_button((fl!("switch-to"), fl!("dark-team-name-caps")))
+                .on_press_maybe(
+                    tm.can_switch_to_team_timeout(GameColor::Black)
+                        .ok()
+                        .map(|_| Message::TeamTimeout(GameColor::Black, true)),
+                )
+                .style(black_button)
+        }
     };
 
     let white = match snapshot.timeout {
-        None => make_multi_label_message_button(
-            (fl!("light-timeout-line-1"), fl!("light-timeout-line-2")),
-            tm.can_start_team_timeout(GameColor::White)
-                .ok()
-                .map(|_| Message::TeamTimeout(GameColor::White, false)),
-        )
-        .style(white_button),
-        Some(TimeoutSnapshot::White(_)) => make_multi_label_message_button(
-            (fl!("end-timeout-line-1"), fl!("end-timeout-line-2")),
-            Some(Message::EndTimeout),
-        )
-        .style(yellow_button),
+        None => make_multi_label_button((fl!("light-timeout-line-1"), fl!("light-timeout-line-2")))
+            .on_press_maybe(
+                tm.can_start_team_timeout(GameColor::White)
+                    .ok()
+                    .map(|_| Message::TeamTimeout(GameColor::White, false)),
+            )
+            .style(white_button),
+        Some(TimeoutSnapshot::White(_)) => {
+            make_multi_label_button((fl!("end-timeout-line-1"), fl!("end-timeout-line-2")))
+                .on_press(Message::EndTimeout)
+                .style(yellow_button)
+        }
         Some(TimeoutSnapshot::Black(_))
         | Some(TimeoutSnapshot::Ref(_))
-        | Some(TimeoutSnapshot::PenaltyShot(_)) => make_multi_label_message_button(
-            (fl!("switch-to"), fl!("light-team-name-caps")),
-            tm.can_switch_to_team_timeout(GameColor::White)
-                .ok()
-                .map(|_| Message::TeamTimeout(GameColor::White, true)),
-        )
-        .style(white_button),
+        | Some(TimeoutSnapshot::PenaltyShot(_)) => {
+            make_multi_label_button((fl!("switch-to"), fl!("light-team-name-caps")))
+                .on_press_maybe(
+                    tm.can_switch_to_team_timeout(GameColor::White)
+                        .ok()
+                        .map(|_| Message::TeamTimeout(GameColor::White, true)),
+                )
+                .style(white_button)
+        }
     };
 
     let referee = match snapshot.timeout {
-        None => make_multi_label_message_button(
-            (fl!("ref-timeout-line-1"), fl!("ref-timeout-line-2")),
-            tm.can_start_ref_timeout()
-                .ok()
-                .map(|_| Message::RefTimeout(false)),
-        )
-        .style(yellow_button),
-        Some(TimeoutSnapshot::Ref(_)) => make_multi_label_message_button(
-            (fl!("end-timeout-line-1"), fl!("end-timeout-line-2")),
-            Some(Message::EndTimeout),
-        )
-        .style(yellow_button),
+        None => make_multi_label_button((fl!("ref-timeout-line-1"), fl!("ref-timeout-line-2")))
+            .on_press_maybe(
+                tm.can_start_ref_timeout()
+                    .ok()
+                    .map(|_| Message::RefTimeout(false)),
+            )
+            .style(yellow_button),
+        Some(TimeoutSnapshot::Ref(_)) => {
+            make_multi_label_button((fl!("end-timeout-line-1"), fl!("end-timeout-line-2")))
+                .on_press(Message::EndTimeout)
+                .style(yellow_button)
+        }
         Some(TimeoutSnapshot::Black(_))
         | Some(TimeoutSnapshot::White(_))
-        | Some(TimeoutSnapshot::PenaltyShot(_)) => make_multi_label_message_button(
-            (fl!("switch-to"), fl!("ref")),
-            tm.can_switch_to_ref_timeout()
-                .ok()
-                .map(|_| Message::RefTimeout(true)),
-        )
-        .style(yellow_button),
+        | Some(TimeoutSnapshot::PenaltyShot(_)) => {
+            make_multi_label_button((fl!("switch-to"), fl!("ref")))
+                .on_press_maybe(
+                    tm.can_switch_to_ref_timeout()
+                        .ok()
+                        .map(|_| Message::RefTimeout(true)),
+                )
+                .style(yellow_button)
+        }
     };
 
     let penalty = match snapshot.timeout {
-        None => make_multi_label_message_button(
-            (fl!("penalty-shot-line-1"), fl!("penalty-shot-line-2")),
-            tm.can_start_penalty_shot()
-                .ok()
-                .map(|_| Message::PenaltyShot(false)),
-        )
-        .style(red_button),
-        Some(TimeoutSnapshot::PenaltyShot(_)) => make_multi_label_message_button(
-            (fl!("end-timeout-line-1"), fl!("end-timeout-line-2")),
-            Some(Message::EndTimeout),
-        )
-        .style(yellow_button),
+        None => make_multi_label_button((fl!("penalty-shot-line-1"), fl!("penalty-shot-line-2")))
+            .on_press_maybe(
+                tm.can_start_penalty_shot()
+                    .ok()
+                    .map(|_| Message::PenaltyShot(false)),
+            )
+            .style(red_button),
+        Some(TimeoutSnapshot::PenaltyShot(_)) => {
+            make_multi_label_button((fl!("end-timeout-line-1"), fl!("end-timeout-line-2")))
+                .on_press(Message::EndTimeout)
+                .style(yellow_button)
+        }
         Some(TimeoutSnapshot::Black(_))
         | Some(TimeoutSnapshot::White(_))
         | Some(TimeoutSnapshot::Ref(_)) => {
@@ -274,11 +280,9 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
             } else {
                 tm.can_switch_to_penalty_shot()
             };
-            make_multi_label_message_button(
-                (fl!("switch-to"), fl!("pen-shot")),
-                can_switch.ok().map(|_| Message::PenaltyShot(true)),
-            )
-            .style(red_button)
+            make_multi_label_button((fl!("switch-to"), fl!("pen-shot")))
+                .on_press_maybe(can_switch.ok().map(|_| Message::PenaltyShot(true)))
+                .style(red_button)
         }
     };
 
@@ -365,13 +369,11 @@ pub(super) fn make_game_time_button<'a>(
 
     let make_time_view_row = |period_text, time_text, style: fn(&Theme) -> TextStyle| {
         let per = text(period_text)
-            .line_height(LINE_HEIGHT)
             .style(style)
             .width(Length::Fill)
             .align_y(Vertical::Center)
             .align_x(Horizontal::Right);
         let time = text(time_text)
-            .line_height(LINE_HEIGHT)
             .style(style)
             .size(LARGE_TEXT)
             .width(Length::Fill)
@@ -382,11 +384,8 @@ pub(super) fn make_game_time_button<'a>(
     };
 
     let make_time_view_col = |period_text, time_text, style| {
-        let per = text(period_text).line_height(LINE_HEIGHT).style(style);
-        let time = text(time_text)
-            .line_height(LINE_HEIGHT)
-            .style(style)
-            .size(LARGE_TEXT);
+        let per = text(period_text).style(style);
+        let time = text(time_text).style(style).size(LARGE_TEXT);
         let c = column![];
         make_time_view!(c, per, time).align_x(Alignment::Center)
     };
@@ -544,7 +543,6 @@ pub(super) fn make_time_editor<'a, T: IntoFragment<'a>>(
         min_edits,
         text(time_string(time))
             .size(LARGE_TEXT)
-            .line_height(LINE_HEIGHT)
             .align_x(Horizontal::Center)
             .width(Length::Fixed(if wide { 300.0 } else { 200.0 })),
         sec_edits,
@@ -553,12 +551,9 @@ pub(super) fn make_time_editor<'a, T: IntoFragment<'a>>(
     .align_y(Alignment::Center);
 
     container(
-        column![
-            text(title).size(MEDIUM_TEXT).line_height(LINE_HEIGHT),
-            time_edit
-        ]
-        .spacing(SPACING)
-        .align_x(Alignment::Center),
+        column![text(title).size(MEDIUM_TEXT), time_edit]
+            .spacing(SPACING)
+            .align_x(Alignment::Center),
     )
     .style(light_gray_container)
     .padding(PADDING)
@@ -829,33 +824,10 @@ pub(super) fn make_multi_label_button<'a, Message: 'a + Clone, T: IntoFragment<'
 
 pub fn centered_text<'a, T: IntoFragment<'a>>(label: T) -> Text<'a> {
     text(label)
-        .line_height(LINE_HEIGHT)
         .align_y(Vertical::Center)
         .align_x(Horizontal::Center)
         .width(Length::Fill)
         .height(Length::Fill)
-}
-
-pub(super) fn make_message_button<'a, Message: Clone, T: IntoFragment<'a>>(
-    label: T,
-    message: Option<Message>,
-) -> Button<'a, Message> {
-    if let Some(msg) = message {
-        make_button(label).on_press(msg)
-    } else {
-        make_button(label)
-    }
-}
-
-pub(super) fn make_multi_label_message_button<'a, Message: 'a + Clone, T: IntoFragment<'a>>(
-    labels: (T, T),
-    message: Option<Message>,
-) -> Button<'a, Message> {
-    if let Some(msg) = message {
-        make_multi_label_button(labels).on_press(msg)
-    } else {
-        make_multi_label_button(labels)
-    }
 }
 
 pub(super) fn make_small_button<'a, Message: Clone, T: IntoFragment<'a>>(
@@ -886,7 +858,6 @@ where
                 } else {
                     SMALL_TEXT
                 })
-                .line_height(LINE_HEIGHT)
                 .height(Length::Fill)
                 .align_y(Vertical::Center),
             horizontal_space(),
@@ -896,7 +867,6 @@ where
                 } else {
                     SMALL_TEXT
                 })
-                .line_height(LINE_HEIGHT)
                 .height(Length::Fill)
                 .align_y(Vertical::Center),
         ]

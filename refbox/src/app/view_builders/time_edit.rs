@@ -42,7 +42,6 @@ pub(in super::super) fn build_time_edit_view<'a>(
         vertical_space(),
         text(fl!("Note-Game-time-is-paused"))
             .size(SMALL_TEXT)
-            .line_height(LINE_HEIGHT)
             .width(Length::Fill)
             .align_x(Horizontal::Center),
         vertical_space(),

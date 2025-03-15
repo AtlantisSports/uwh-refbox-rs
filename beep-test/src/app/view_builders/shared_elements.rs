@@ -47,10 +47,7 @@ pub(super) fn make_time_button<'a>(snapshot: &BeepTestSnapshot) -> Row<'a, Messa
     let button_height = Length::Fixed(MIN_BUTTON_SIZE);
 
     let make_time_view_col = |time, style| {
-        let time = text(time)
-            .line_height(LINE_HEIGHT)
-            .style(style)
-            .size(LARGE_TEXT);
+        let time = text(time).style(style).size(LARGE_TEXT);
         let r = column![].spacing(SPACING);
         make_time_view!(r, time)
     };
@@ -85,7 +82,6 @@ pub(super) fn make_info_container<'a>(snapshot: &BeepTestSnapshot) -> Container<
     let info = container(
         text(config_string(snapshot))
             .size(SMALL_TEXT)
-            .line_height(LINE_HEIGHT)
             .align_y(Vertical::Top)
             .align_x(Horizontal::Left),
     )
@@ -108,7 +104,6 @@ pub(super) fn make_button<'a, Message: Clone>(
 
 pub fn centered_text<'a>(label: impl text::IntoFragment<'a>) -> Text<'a> {
     text(label)
-        .line_height(LINE_HEIGHT)
         .align_y(Vertical::Center)
         .align_x(Horizontal::Center)
         .width(Length::Fill)
@@ -130,7 +125,6 @@ pub(super) fn make_value_button<'a, Message: 'a + Clone>(
                     SMALL_TEXT
                 })
                 .height(Length::Fill)
-                .line_height(LINE_HEIGHT)
                 .align_y(Vertical::Center),
             horizontal_space(),
             text(second_label)
@@ -140,7 +134,6 @@ pub(super) fn make_value_button<'a, Message: 'a + Clone>(
                     SMALL_TEXT
                 })
                 .height(Length::Fill)
-                .line_height(LINE_HEIGHT)
                 .align_y(Vertical::Center),
         ]
         .spacing(SPACING)

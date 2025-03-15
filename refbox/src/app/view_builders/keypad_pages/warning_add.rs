@@ -66,11 +66,9 @@ pub(super) fn make_warning_add_page<'a>(
     );
     column![
         row![
-            make_multi_label_message_button(
-                (fl!("team-warning-line-1"), fl!("team-warning-line-2")),
-                Some(Message::ToggleBoolParameter(BoolGameParameter::TeamWarning))
-            )
-            .style(team_warning_style),
+            make_multi_label_button((fl!("team-warning-line-1"), fl!("team-warning-line-2")))
+                .on_press(Message::ToggleBoolParameter(BoolGameParameter::TeamWarning))
+                .style(team_warning_style),
             make_button(fl!("dark-team-name-caps"))
                 .style(black_style)
                 .on_press(Message::ChangeColor(Some(GameColor::Black))),

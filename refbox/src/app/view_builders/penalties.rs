@@ -84,7 +84,6 @@ fn make_penalty_list<'a>(
     };
 
     let title = text(color_text.to_string().to_uppercase())
-        .line_height(LINE_HEIGHT)
         .height(Length::Fill)
         .width(Length::Fill)
         .align_x(Horizontal::Center)
@@ -108,7 +107,6 @@ fn make_penalty_list<'a>(
                     kind = details.kind.fluent()
                 );
                 let mut text = text(printable)
-                    .line_height(LINE_HEIGHT)
                     .align_y(Vertical::Center)
                     .align_x(Horizontal::Left)
                     .width(Length::Fill);

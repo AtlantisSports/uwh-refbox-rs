@@ -1,5 +1,5 @@
 use super::{
-    theme::{LARGE_TEXT, LINE_HEIGHT, MEDIUM_TEXT, MIN_BUTTON_SIZE, PADDING, SPACING},
+    theme::{LARGE_TEXT, MEDIUM_TEXT, MIN_BUTTON_SIZE, PADDING, SPACING},
     *,
 };
 use iced::{
@@ -101,12 +101,10 @@ pub(in super::super) fn build_keypad_page<'a>(
                 column![
                     row![
                         text(page.text())
-                            .line_height(LINE_HEIGHT)
                             .align_x(Horizontal::Left)
                             .align_y(Vertical::Center),
                         text(text_displayed)
                             .size(text_size)
-                            .line_height(LINE_HEIGHT)
                             .width(Length::Fill)
                             .align_x(Horizontal::Right)
                             .align_y(Vertical::Center),

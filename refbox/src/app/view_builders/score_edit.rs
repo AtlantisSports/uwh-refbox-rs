@@ -43,9 +43,7 @@ pub(in super::super) fn build_score_edit_view<'a>(
             .spacing(SPACING),
             column![
                 text(fl!("dark-team-name-caps")),
-                text(scores.black.to_string())
-                    .size(LARGE_TEXT)
-                    .line_height(LINE_HEIGHT)
+                text(scores.black.to_string()).size(LARGE_TEXT)
             ]
             .spacing(SPACING)
             .width(Length::Fill)
@@ -62,9 +60,7 @@ pub(in super::super) fn build_score_edit_view<'a>(
         row![
             column![
                 text(fl!("light-team-name-caps")),
-                text(scores.white.to_string())
-                    .size(LARGE_TEXT)
-                    .line_height(LINE_HEIGHT)
+                text(scores.white.to_string()).size(LARGE_TEXT)
             ]
             .spacing(SPACING)
             .width(Length::Fill)
@@ -103,7 +99,6 @@ pub(in super::super) fn build_score_edit_view<'a>(
         main_col = main_col
             .push(
                 text(fl!("final-score"))
-                    .line_height(LINE_HEIGHT)
                     .align_x(Horizontal::Center)
                     .width(Length::Fill),
             )
@@ -124,7 +119,9 @@ pub(in super::super) fn build_score_edit_view<'a>(
         .push(vertical_space())
         .push(
             row![
-                make_message_button(fl!("cancel"), cancel_btn_msg).style(red_button),
+                make_button(fl!("cancel"))
+                    .on_press_maybe(cancel_btn_msg)
+                    .style(red_button),
                 horizontal_space(),
                 make_button(fl!("done"))
                     .style(green_button)

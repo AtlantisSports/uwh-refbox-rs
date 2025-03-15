@@ -117,7 +117,6 @@ pub(in super::super) fn build_main_view<'a>(
                 track_fouls_and_warnings,
             ))
             .size(SMALL_TEXT)
-            .line_height(LINE_HEIGHT)
             .align_y(Vertical::Center)
             .align_x(Horizontal::Left),
         )
@@ -130,7 +129,6 @@ pub(in super::super) fn build_main_view<'a>(
         button(
             text(config_string_game_num(snapshot, using_uwhportal, games).0)
                 .size(SMALL_TEXT)
-                .line_height(LINE_HEIGHT)
                 .align_y(Vertical::Center)
                 .align_x(Horizontal::Left),
         )
@@ -145,7 +143,6 @@ pub(in super::super) fn build_main_view<'a>(
             button(
                 column![
                     text(fl!("warnings"))
-                        .line_height(LINE_HEIGHT)
                         .align_y(Vertical::Top)
                         .align_x(Horizontal::Center)
                         .width(Length::Fill),
@@ -208,12 +205,10 @@ pub(in super::super) fn build_main_view<'a>(
         button(
             column![
                 text(fl!("penalties"))
-                    .line_height(LINE_HEIGHT)
                     .align_y(Vertical::Center)
                     .align_x(Horizontal::Center)
                     .width(Length::Fill),
                 text(penalty_string(penalties))
-                    .line_height(LINE_HEIGHT)
                     .align_y(Vertical::Top)
                     .align_x(Horizontal::Left)
                     .width(Length::Fill)
@@ -232,10 +227,8 @@ pub(in super::super) fn build_main_view<'a>(
 
     let mut black_score_btn = button(
         column![
-            text(fl!("dark-team-name-caps")).line_height(LINE_HEIGHT),
-            text(snapshot.scores.black.to_string())
-                .size(LARGE_TEXT)
-                .line_height(LINE_HEIGHT),
+            text(fl!("dark-team-name-caps")),
+            text(snapshot.scores.black.to_string()).size(LARGE_TEXT),
         ]
         .align_x(Alignment::Center)
         .width(Length::Fill),
@@ -251,10 +244,8 @@ pub(in super::super) fn build_main_view<'a>(
 
     let mut white_score_btn = button(
         column![
-            text(fl!("light-team-name-caps")).line_height(LINE_HEIGHT),
-            text(snapshot.scores.white.to_string())
-                .size(LARGE_TEXT)
-                .line_height(LINE_HEIGHT),
+            text(fl!("light-team-name-caps")),
+            text(snapshot.scores.white.to_string()).size(LARGE_TEXT),
         ]
         .align_x(Alignment::Center)
         .width(Length::Fill),

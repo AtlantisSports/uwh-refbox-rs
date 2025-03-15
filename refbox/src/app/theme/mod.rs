@@ -6,7 +6,7 @@ use iced::{
         text_input,
     },
 };
-use iced_core::{border::Radius, text::LineHeight};
+use iced_core::border::Radius;
 use paste::paste;
 
 pub const BORDER_RADIUS: Radius = Radius {
@@ -31,8 +31,6 @@ pub const SMALL_TEXT: f32 = 19.0;
 pub const SMALL_PLUS_TEXT: f32 = 29.0;
 pub const MEDIUM_TEXT: f32 = 38.0;
 pub const LARGE_TEXT: f32 = 66.0;
-
-pub const LINE_HEIGHT: LineHeight = LineHeight::Relative(1.15);
 
 // See https://stackoverflow.com/a/727339 for color mixing math. For darkening colors with pure
 // black, the math simplifies to new_r = orig_r * (1 - black_alpha), so we will multiply by the
@@ -68,12 +66,6 @@ pub const DISABLED_COLOR: Color = GRAY;
 pub const WINDOW_BACKGROUND: Color = Color::from_rgb(0.82, 0.82, 0.82);
 
 pub const SCROLLBAR_COLOR: Color = Color::from_rgba(0.0, 0.0, 0.0, 0.7);
-
-// #[derive(Clone, Copy, Debug, Default)]
-// pub enum ApplicationTheme {
-//     #[default]
-//     Light,
-// }
 
 pub mod button;
 pub use button::{

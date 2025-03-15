@@ -103,15 +103,10 @@ pub(in super::super) fn build_confirmation_page<'a>(
         row![
             horizontal_space(),
             container(
-                column![
-                    text(header_text)
-                        .line_height(LINE_HEIGHT)
-                        .align_x(Horizontal::Center),
-                    button_col
-                ]
-                .spacing(SPACING)
-                .width(Length::Fill)
-                .align_x(Alignment::Center),
+                column![text(header_text).align_x(Horizontal::Center), button_col]
+                    .spacing(SPACING)
+                    .width(Length::Fill)
+                    .align_x(Alignment::Center),
             )
             .width(Length::FillPortion(3))
             .style(light_gray_container)
@@ -142,7 +137,6 @@ pub(in super::super) fn build_score_confirmation_page<'a>(
         score_black = scores.black,
         score_white = scores.white
     ))
-    .line_height(LINE_HEIGHT)
     .align_x(Horizontal::Center);
 
     let options = row![

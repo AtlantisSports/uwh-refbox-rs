@@ -81,7 +81,6 @@ fn make_foul_list<'a>(
     };
 
     let title = text(title)
-        .line_height(LINE_HEIGHT)
         .height(Length::Fill)
         .width(Length::Fill)
         .align_x(Horizontal::Center)
@@ -108,7 +107,6 @@ fn make_foul_list<'a>(
                 );
 
                 let mut text = text(printable)
-                    .line_height(LINE_HEIGHT)
                     .align_y(Vertical::Center)
                     .align_x(Horizontal::Left)
                     .width(Length::Fill);

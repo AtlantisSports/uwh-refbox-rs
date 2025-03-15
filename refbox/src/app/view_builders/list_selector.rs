@@ -30,7 +30,6 @@ pub(in super::super) fn build_list_selector_page<'a>(
     };
 
     let title = text(title)
-        .line_height(LINE_HEIGHT)
         .height(Length::Fill)
         .width(Length::Fill)
         .align_x(Horizontal::Center)
@@ -49,7 +48,6 @@ pub(in super::super) fn build_list_selector_page<'a>(
                 .map(|pen| {
                     if let Some((btn_text, msg_val)) = pen {
                         let text = text(btn_text)
-                            .line_height(LINE_HEIGHT)
                             .align_y(Vertical::Center)
                             .align_x(Horizontal::Left)
                             .width(Length::Fill);

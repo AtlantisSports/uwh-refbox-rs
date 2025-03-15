@@ -8,10 +8,6 @@ use crate::{
 };
 use futures_lite::Stream;
 use iced::{Element, Subscription, Task, Theme, application::Appearance, widget::column, window};
-use iced_futures::{
-    futures::stream::{self, BoxStream},
-    subscription::{EventStream, Recipe},
-};
 use log::*;
 use std::{
     cmp::min,
@@ -2180,34 +2176,4 @@ fn time_updater() -> impl Stream<Item = Message> {
             msg_tx.send(msg_type(snapshot)).await.unwrap();
         }
     })
-}
-
-#[derive(Debug, Clone)]
-struct MessageListener {
-    rx: Arc<Mutex<Option<mpsc::UnboundedReceiver<Message>>>>,
-}
-
-impl Recipe for MessageListener {
-    type Output = Message;
-
-    fn hash(&self, state: &mut iced_futures::subscription::Hasher) {
-        use std::hash::Hash;
-
-        "MessageListener".hash(state);
-    }
-
-    fn stream(self: Box<Self>, _input: EventStream) -> BoxStream<'static, Self::Output> {
-        info!("Message Listener started");
-
-        let rx = self
-            .rx
-            .lock()
-            .unwrap()
-            .take()
-            .expect("Listener has already been started");
-
-        Box::pin(stream::unfold(rx, |mut rx| async move {
-            rx.recv().await.map(|msg| (msg, rx))
-        }))
-    }
 }

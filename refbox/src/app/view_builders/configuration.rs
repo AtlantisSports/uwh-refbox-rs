@@ -209,31 +209,23 @@ fn make_main_config_page<'a>(
             game_btn_msg,
         ),
         row![
-            make_message_button(
-                fl!("game-options"),
-                Some(Message::ChangeConfigPage(ConfigPage::Game)),
-            )
-            .style(light_gray_button),
-            make_message_button(
-                fl!("app-options"),
-                Some(Message::ChangeConfigPage(ConfigPage::App)),
-            )
-            .style(light_gray_button),
+            make_button(fl!("game-options"))
+                .on_press(Message::ChangeConfigPage(ConfigPage::Game),)
+                .style(light_gray_button),
+            make_button(fl!("app-options"))
+                .on_press(Message::ChangeConfigPage(ConfigPage::App),)
+                .style(light_gray_button),
         ]
         .spacing(SPACING)
         .width(Length::Fill)
         .height(Length::Fill),
         row![
-            make_message_button(
-                fl!("display-options"),
-                Some(Message::ChangeConfigPage(ConfigPage::Display)),
-            )
-            .style(light_gray_button),
-            make_message_button(
-                fl!("sound-options"),
-                Some(Message::ChangeConfigPage(ConfigPage::Sound)),
-            )
-            .style(light_gray_button),
+            make_button(fl!("display-options"))
+                .on_press(Message::ChangeConfigPage(ConfigPage::Display),)
+                .style(light_gray_button),
+            make_button(fl!("sound-options"))
+                .on_press(Message::ChangeConfigPage(ConfigPage::Sound),)
+                .style(light_gray_button),
         ]
         .spacing(SPACING)
         .width(Length::Fill)
@@ -339,7 +331,6 @@ fn make_event_config_page<'a>(
 
         let uwhportal_auth_text = text("UWHPORTAL TOKEN:")
             .size(MEDIUM_TEXT)
-            .line_height(LINE_HEIGHT)
             .align_y(Vertical::Center)
             .align_x(Horizontal::Right)
             .width(Length::Fill)
@@ -649,7 +640,6 @@ fn make_display_config_page<'a>(
 
     let center = text(fl!("starting-sides"))
         .size(MEDIUM_TEXT)
-        .line_height(LINE_HEIGHT)
         .align_y(Vertical::Center)
         .align_x(Horizontal::Center)
         .width(Length::FillPortion(3));
@@ -736,11 +726,9 @@ fn make_sound_config_page<'a>(
                     None
                 },
             ),
-            make_message_button(
-                fl!("manage-remotes"),
-                Some(Message::ChangeConfigPage(ConfigPage::Remotes(0, false))),
-            )
-            .style(light_gray_button),
+            make_button(fl!("manage-remotes"))
+                .on_press(Message::ChangeConfigPage(ConfigPage::Remotes(0, false)),)
+                .style(light_gray_button),
         ]
         .spacing(SPACING),
         row![
@@ -842,7 +830,6 @@ fn make_remote_config_page<'a>(
     const REMOTES_LIST_LEN: usize = 4;
 
     let title = text(fl!("remotes"))
-        .line_height(LINE_HEIGHT)
         .height(Length::Fill)
         .width(Length::Fill)
         .align_x(Horizontal::Center)
@@ -870,21 +857,19 @@ fn make_remote_config_page<'a>(
                     row![
                         text(format!("ID: {:05X}", rem_info.id))
                             .size(MEDIUM_TEXT)
-                            .line_height(LINE_HEIGHT)
                             .align_y(Vertical::Center)
                             .align_x(Horizontal::Center)
                             .height(Length::Fill)
                             .width(Length::Fill),
-                        make_message_button(
-                            sound_text,
-                            Some(Message::CycleParameter(
+                        make_button(sound_text)
+                            .on_press(Message::CycleParameter(
                                 CyclingParameter::RemoteBuzzerSound(idx),
-                            )),
-                        )
-                        .width(Length::Fixed(275.0))
-                        .height(Length::Fixed(MIN_BUTTON_SIZE - (2.0 * PADDING)))
-                        .style(yellow_button),
-                        make_message_button(fl!("delete"), Some(Message::DeleteRemote(idx)))
+                            ))
+                            .width(Length::Fixed(275.0))
+                            .height(Length::Fixed(MIN_BUTTON_SIZE - (2.0 * PADDING)))
+                            .style(yellow_button),
+                        make_button(fl!("delete"))
+                            .on_press(Message::DeleteRemote(idx))
                             .width(Length::Fixed(130.0))
                             .height(Length::Fixed(MIN_BUTTON_SIZE - (2.0 * PADDING)))
                             .style(red_button),
@@ -907,9 +892,9 @@ fn make_remote_config_page<'a>(
         .collect();
 
     let add_btn = if listening {
-        make_message_button(fl!("waiting"), None)
+        make_button(fl!("waiting"))
     } else {
-        make_message_button(fl!("add"), Some(Message::RequestRemoteId))
+        make_button(fl!("add")).on_press(Message::RequestRemoteId)
     }
     .style(orange_button);
 
@@ -929,11 +914,9 @@ fn make_remote_config_page<'a>(
             column![
                 vertical_space(),
                 add_btn,
-                make_message_button(
-                    fl!("done"),
-                    Some(Message::ChangeConfigPage(ConfigPage::Sound)),
-                )
-                .style(green_button),
+                make_button(fl!("done"))
+                    .on_press(Message::ChangeConfigPage(ConfigPage::Sound),)
+                    .style(green_button),
             ]
             .spacing(SPACING)
             .height(Length::Fill)
@@ -963,7 +946,6 @@ fn make_credential_config_page<'a>(
         row![
             text("UWHPORTAL TOKEN:")
                 .size(MEDIUM_TEXT)
-                .line_height(LINE_HEIGHT)
                 .align_y(Vertical::Center)
                 .height(Length::Fill),
             TextInput::new("", uwhportal_token,)
@@ -1031,7 +1013,6 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
         vertical_space(),
         text(fl!("help") + &hint)
             .size(SMALL_TEXT)
-            .line_height(LINE_HEIGHT)
             .align_x(Horizontal::Center),
         vertical_space(),
         row![

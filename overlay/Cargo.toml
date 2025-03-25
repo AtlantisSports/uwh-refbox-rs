@@ -13,7 +13,7 @@ coarsetime = "0.1.36"
 confy = "0.6"
 crossbeam-channel = "0.5.14"
 directories = "6.0.0"
-log = "0.4.26"
+log = "0.4.27"
 log-panics = { version = "2", features = ["with-backtrace"]}
 log4rs = { version = "1", default-features = false, features = ["background_rotation", "compound_policy", "console_appender", "fixed_window_roller", "gzip", "pattern_encoder", "rolling_file_appender", "size_trigger"]}
 macroquad = { version = "0.4", default-features = false }

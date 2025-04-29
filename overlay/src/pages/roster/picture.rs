@@ -57,7 +57,7 @@ pub fn get_cycle_times(state: &State) -> (f32, f32, f32) {
             .iter()
             .any(|member| member.geared_picture.is_some() || member.picture.is_some())
     {
-        4.5 + ((state.white.members.len() + 3) / 4 * RPD_GROUP_TIME as usize) as f32
+        4.5 + (state.white.members.len().div_ceil(4) * RPD_GROUP_TIME as usize) as f32
     } else {
         0f32
     };
@@ -69,7 +69,7 @@ pub fn get_cycle_times(state: &State) -> (f32, f32, f32) {
                 .iter()
                 .any(|member| member.geared_picture.is_some() || member.picture.is_some())
         {
-            4.5 + ((state.black.members.len() + 3) / 4 * RPD_GROUP_TIME as usize) as f32
+            4.5 + (state.black.members.len().div_ceil(4) * RPD_GROUP_TIME as usize) as f32
         } else {
             0f32
         };
@@ -80,7 +80,7 @@ pub fn get_cycle_times(state: &State) -> (f32, f32, f32) {
                 .iter()
                 .any(|referee| referee.geared_picture.is_some() || referee.picture.is_some())
         {
-            4.5 + ((state.referees.len() + 3) / 4 * RPD_GROUP_TIME as usize) as f32
+            4.5 + (state.referees.len().div_ceil(4) * RPD_GROUP_TIME as usize) as f32
         } else {
             0f32
         };

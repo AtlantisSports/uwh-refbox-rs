@@ -12,7 +12,7 @@ std = ["arrayvec/std", "displaydoc/std", "jsonwebtoken", "reqwest", "serde/std",
 [dependencies]
 arrayref = "0.3"
 arrayvec = { version = "0.7", default-features = false, features = ["serde"] }
-defmt = "0.3"
+defmt = "1.0"
 derivative = { version = "2", features = ["use_core"] }
 displaydoc = { version = "0.2", default-features = false }
 enum-iterator = "2"

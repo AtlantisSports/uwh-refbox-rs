@@ -211,6 +211,8 @@ impl GamePeriod {
             Self::PreOvertime => {
                 if config.overtime_allowed {
                     Some(config.pre_overtime_break)
+                } else if config.sudden_death_allowed {
+                    Some(config.pre_sudden_death_duration)
                 } else {
                     None
                 }
@@ -835,7 +837,7 @@ mod test {
 
     #[test]
     fn test_next_period_duration() {
-        let config = Game {
+        let mut config = Game {
             half_play_duration: Duration::from_secs(5),
             half_time_duration: Duration::from_secs(7),
             pre_overtime_break: Duration::from_secs(9),
@@ -847,7 +849,7 @@ mod test {
             ..Default::default()
         };
 
-        // Test once with all th egame periods enabled
+        // Test once with all the game periods enabled
         assert_eq!(
             GamePeriod::BetweenGames.next_period_dur(&config),
             Some(Duration::from_secs(5))
@@ -883,11 +885,36 @@ mod test {
         assert_eq!(GamePeriod::PreSuddenDeath.next_period_dur(&config), None);
         assert_eq!(GamePeriod::SuddenDeath.next_period_dur(&config), None);
 
-        let config = Game {
-            overtime_allowed: false,
-            sudden_death_allowed: false,
-            ..config
-        };
+        config.overtime_allowed = false;
+
+        // Test once with sudden death enabled and overtime disabled
+        assert_eq!(
+            GamePeriod::BetweenGames.next_period_dur(&config),
+            Some(Duration::from_secs(5))
+        );
+        assert_eq!(
+            GamePeriod::FirstHalf.next_period_dur(&config),
+            Some(Duration::from_secs(7))
+        );
+        assert_eq!(
+            GamePeriod::HalfTime.next_period_dur(&config),
+            Some(Duration::from_secs(5))
+        );
+        assert_eq!(
+            GamePeriod::SecondHalf.next_period_dur(&config),
+            Some(Duration::from_secs(15))
+        );
+        assert_eq!(GamePeriod::PreOvertime.next_period_dur(&config), None);
+        assert_eq!(GamePeriod::OvertimeFirstHalf.next_period_dur(&config), None);
+        assert_eq!(GamePeriod::OvertimeHalfTime.next_period_dur(&config), None);
+        assert_eq!(
+            GamePeriod::OvertimeSecondHalf.next_period_dur(&config),
+            Some(Duration::from_secs(15))
+        );
+        assert_eq!(GamePeriod::PreSuddenDeath.next_period_dur(&config), None);
+        assert_eq!(GamePeriod::SuddenDeath.next_period_dur(&config), None);
+
+        config.sudden_death_allowed = false;
 
         // Test again with only the minimal periods enabled
         assert_eq!(

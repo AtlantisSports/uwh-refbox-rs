@@ -12,7 +12,7 @@ back = BACK
 new = NEW
 
 # Penalty Edit
-total-dismissial = TD
+total-dismissal = TD
 
 # Team Timeout Edit
 timeout-length = TEAM TIMEOUT
@@ -217,7 +217,6 @@ penalty-shot-line-2 = SHOT
 pen-shot = PEN SHOT
 ## Penalty string
 served = Served
-total-dismissal = TD
 penalty = #{$player_number} - {$time ->
         [pending] Pending
         [served] Served

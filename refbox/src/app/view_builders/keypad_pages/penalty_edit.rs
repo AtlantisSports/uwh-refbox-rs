@@ -156,7 +156,7 @@ pub(super) fn make_penalty_edit_page<'a>(
             make_smaller_button(orange_label)
                 .style(orange_style)
                 .on_press(Message::ChangeKind(orange)),
-            make_smaller_button(fl!("total-dismissial"))
+            make_smaller_button(fl!("total-dismissal"))
                 .style(td_style)
                 .on_press(Message::ChangeKind(PenaltyKind::TotalDismissal)),
         ]

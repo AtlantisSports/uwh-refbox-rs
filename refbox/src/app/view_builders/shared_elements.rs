@@ -595,7 +595,7 @@ pub(super) fn penalty_string(penalties: &[PenaltySnapshot]) -> String {
                 }
             }
             PenaltyTime::TotalDismissal => {
-                string += &fl!("total-dismissial");
+                string += &fl!("total-dismissal");
                 string += "\n"
             }
         }

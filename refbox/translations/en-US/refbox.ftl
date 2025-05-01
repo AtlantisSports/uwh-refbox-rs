@@ -284,6 +284,8 @@ penalty-shot-short = PNLTY SHT
 infraction = INFRACTION
 ## Make warning container
 team-warning-abreviation = T
+## Make time editor
+zero = ZERO
 
 # Time edit
 game-time = GAME TIME

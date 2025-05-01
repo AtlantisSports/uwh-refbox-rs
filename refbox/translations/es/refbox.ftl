@@ -281,6 +281,8 @@ penalty-shot-short = TIRO PENAL
 infraction = INFRACCIÓN
 ## Make warning container
 team-warning-abreviation = A
+## Make time editor
+zero = CERO
 
 # Time edit
 game-time = TIEMPO DE JUEGO

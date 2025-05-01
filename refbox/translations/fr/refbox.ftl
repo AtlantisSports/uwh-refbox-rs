@@ -273,6 +273,8 @@ penalty-shot-short = TIR DE PÉN.
 infraction = INFRACTION
 ## Make warning container
 team-warning-abreviation = É
+## Make time editor
+zero = ZÉRO
 
 # Time edit
 game-time = TEMPS DE MATCH

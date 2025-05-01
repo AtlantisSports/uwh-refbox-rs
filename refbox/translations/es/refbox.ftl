@@ -12,7 +12,7 @@ back = ATRÁS
 new = NUEVO
 
 # Penalty Edit
-total-dismissial = T
+total-dismissal = T
 
 # Team Timeout Edit
 timeout-length = DURACIÓN DEL

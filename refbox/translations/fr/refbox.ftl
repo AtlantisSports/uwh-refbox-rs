@@ -12,7 +12,7 @@ back = RETOUR
 new = NOUVEAU
 
 # Penalty Edit
-total-dismissial = TD
+total-dismissal = TD
 
 # Team Timeout Edit
 timeout-length = DURÉE DU TEMPS MORT

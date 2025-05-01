@@ -323,6 +323,7 @@ impl RefBoxApp {
 
     fn handle_game_start(&mut self, new_game_num: u32) {
         if self.using_uwhportal {
+            debug!("Searching for next game info after game {new_game_num}");
             if let (Some(schedule), Some(pool)) = (&self.schedule, &self.current_court) {
                 let this_game_start = match schedule.games.get(&new_game_num) {
                     Some(g) => g.start_time,
@@ -353,6 +354,8 @@ impl RefBoxApp {
                 }
                 self.config.game = tm.config().clone();
             }
+        } else {
+            debug!("Skipped next game info search after game {new_game_num}");
         }
     }
 

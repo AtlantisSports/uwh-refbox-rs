@@ -539,16 +539,28 @@ pub(super) fn make_time_editor<'a, T: IntoFragment<'a>>(
     ]
     .spacing(SPACING);
 
-    let time_edit = row![
-        min_edits,
-        text(time_string(time))
-            .size(LARGE_TEXT)
-            .align_x(Horizontal::Center)
-            .width(Length::Fixed(if wide { 300.0 } else { 200.0 })),
-        sec_edits,
-    ]
-    .spacing(SPACING)
-    .align_y(Alignment::Center);
+    let mut time_col = column![text(time_string(time)).size(LARGE_TEXT),]
+        .align_x(Horizontal::Center)
+        .width(Length::Fixed(if wide { 300.0 } else { 200.0 }))
+        .spacing(SPACING);
+
+    if wide {
+        time_col = time_col.push(row![
+            horizontal_space(),
+            make_smaller_button(fl!("zero"))
+                .style(blue_button)
+                .on_press(Message::ChangeTime {
+                    increase: false,
+                    secs: u64::MAX,
+                    timeout,
+                }),
+            horizontal_space(),
+        ]);
+    }
+
+    let time_edit = row![min_edits, time_col, sec_edits]
+        .spacing(SPACING)
+        .align_y(Alignment::Center);
 
     container(
         column![text(title).size(MEDIUM_TEXT), time_edit]

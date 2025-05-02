@@ -241,7 +241,6 @@ warning = {$player_number ->
 infraction = Infracción: {$infraction}
 ## Config String
 error = Error ({ $number })
-none = Ninguno
 two-games = Último partido: { $prev_game }, Próximo partido: { $next_game }
 one-game = Juego: { $game }
 teams = { -dark-team-name } Equipo: { $dark_team }
@@ -277,8 +276,6 @@ black-timeout-short = T/M NEGRO
 black-timeout-full = TIEMPO MUERTO NEGRO
 ref-timeout-short = T/M ÁRBITRO
 penalty-shot-short = TIRO PENAL
-## Make penalty dropdown
-infraction = INFRACCIÓN
 ## Make warning container
 team-warning-abreviation = A
 ## Make time editor

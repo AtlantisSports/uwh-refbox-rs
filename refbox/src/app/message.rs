@@ -69,6 +69,7 @@ pub enum Message {
         canceled: bool,
     },
     ShowGameDetails,
+    RequestPortalRefresh,
     ShowWarnings,
     EditGameConfig,
     ChangeConfigPage(ConfigPage),
@@ -143,6 +144,7 @@ impl Message {
             | Self::ChangeColor(_)
             | Self::AddScoreComplete { .. }
             | Self::ShowGameDetails
+            | Self::RequestPortalRefresh
             | Self::ShowWarnings
             | Self::EditGameConfig
             | Self::ChangeConfigPage(_)
@@ -179,6 +181,7 @@ impl PartialEq for Message {
             | (Self::WarningOverview, Self::WarningOverview)
             | (Self::FoulOverview, Self::FoulOverview)
             | (Self::ShowGameDetails, Self::ShowGameDetails)
+            | (Self::RequestPortalRefresh, Self::RequestPortalRefresh)
             | (Self::ShowWarnings, Self::ShowWarnings)
             | (Self::EditGameConfig, Self::EditGameConfig)
             | (Self::ApplyAuthChanges, Self::ApplyAuthChanges)
@@ -327,6 +330,7 @@ impl PartialEq for Message {
             | (Self::ChangeColor(_), _)
             | (Self::AddScoreComplete { .. }, _)
             | (Self::ShowGameDetails, _)
+            | (Self::RequestPortalRefresh, _)
             | (Self::ShowWarnings, _)
             | (Self::EditGameConfig, _)
             | (Self::ChangeConfigPage(_), _)

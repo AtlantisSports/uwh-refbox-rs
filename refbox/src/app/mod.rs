@@ -98,7 +98,7 @@ enum AppState {
     WarningOverview(BlackWhiteBundle<usize>),
     FoulOverview(OptColorBundle<usize>),
     KeypadPage(KeypadPage, u16),
-    GameDetailsPage,
+    GameDetailsPage(bool),
     WarningsSummaryPage,
     EditGameConfig(ConfigPage),
     ParameterEditor(LengthParameter, Duration),
@@ -1184,9 +1184,19 @@ impl RefBoxApp {
                 task
             }
             Message::ShowGameDetails => {
-                self.app_state = AppState::GameDetailsPage;
+                self.app_state = AppState::GameDetailsPage(false);
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
+            }
+            Message::RequestPortalRefresh => {
+                if let AppState::GameDetailsPage(ref mut is_refreshing) = self.app_state {
+                    *is_refreshing = true;
+                }
+                if let Some(ref event_id) = self.current_event_id {
+                    self.request_schedule(event_id.clone())
+                } else {
+                    Task::none()
+                }
             }
             Message::ShowWarnings => {
                 self.app_state = AppState::WarningsSummaryPage;
@@ -1947,6 +1957,32 @@ impl RefBoxApp {
                         if let Some(ref id) = self.current_event_id {
                             if *id == event_id {
                                 self.schedule = Some(schedule);
+                                if self.edited_settings.is_none() {
+                                    let mut tm = self.tm.lock().unwrap();
+                                    if tm.current_period() == GamePeriod::BetweenGames {
+                                        if let (Some(game), Some(timing)) = self
+                                            .schedule
+                                            .as_ref()
+                                            .unwrap()
+                                            .get_game_and_timing(tm.next_game_number())
+                                        {
+                                            info!(
+                                                "Setting upcoming game info from received schedule: {game:?}"
+                                            );
+                                            tm.set_next_game(NextGameInfo {
+                                                number: game.number,
+                                                timing: Some(timing.clone()),
+                                                start_time: Some(game.start_time),
+                                            });
+                                            if let AppState::GameDetailsPage(
+                                                ref mut is_refreshing,
+                                            ) = self.app_state
+                                            {
+                                                *is_refreshing = false;
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     } else {
@@ -2041,10 +2077,11 @@ impl RefBoxApp {
             ),
             AppState::KeypadPage(page, player_num) =>
                 build_keypad_page(data, page, player_num, self.config.track_fouls_and_warnings),
-            AppState::GameDetailsPage => build_game_info_page(
+            AppState::GameDetailsPage(is_refreshing) => build_game_info_page(
                 data,
                 &self.config.game,
                 self.using_uwhportal,
+                is_refreshing,
                 self.schedule.as_ref().map(|s| &s.games)
             ),
             AppState::WarningsSummaryPage => build_warnings_summary_page(data),

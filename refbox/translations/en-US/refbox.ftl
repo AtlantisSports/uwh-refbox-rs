@@ -155,6 +155,8 @@ no = NO
 equal = EQUAL
 
 # Game Info
+refresh = REFRESH
+refreshing = REFRESHING...
 settings = SETTINGS 
 none = None
 game-number-error = Error ({ $game_number })

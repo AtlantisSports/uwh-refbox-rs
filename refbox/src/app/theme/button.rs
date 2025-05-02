@@ -9,29 +9,6 @@ use iced::{
     widget::button::{Status, Style},
 };
 
-// #[derive(Clone, Copy, Debug, Default)]
-// pub enum ButtonClass {
-//     White,
-//     WhiteSelected,
-//     Black,
-//     BlackSelected,
-//     Red,
-//     RedSelected,
-//     Orange,
-//     OrangeSelected,
-//     Yellow,
-//     YellowSelected,
-//     Green,
-//     GreenSelected,
-//     Blue,
-//     BlueSelected,
-//     BlueWithBorder,
-//     #[default]
-//     Gray,
-//     LightGraySelected,
-//     LightGray,
-// }
-
 pub fn gray_button(_theme: &Theme, status: Status) -> Style {
     let background = match status {
         Status::Disabled => Some(Background::Color(WINDOW_BACKGROUND)),

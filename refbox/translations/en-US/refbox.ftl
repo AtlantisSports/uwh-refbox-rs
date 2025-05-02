@@ -138,6 +138,8 @@ ot-half-tm-len = OT HLF TM LEN
 len-of-overtime-halftime = The length of Overtime Half Time
 pre-sd-break = PRE SD BREAK
 pre-sd-len = The length of the break between the preceeding play period and Sudden Death
+language = LANGUAGE
+this-language = ENGLISH
 
 help = HELP: 
 

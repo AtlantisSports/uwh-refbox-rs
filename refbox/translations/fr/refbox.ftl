@@ -127,6 +127,8 @@ ot-half-tm-len = DURÉE DE LA PAUSE A LA PROLONGATION
 len-of-overtime-halftime = La durée de la mi-temps des prolongations
 pre-sd-break = PAUSE PRÉ M/S
 pre-sd-len = La durée de la pause entre la période de match précédente et la mort subite
+language = LANGUE
+this-language = FRANÇAIS
 
 help = AIDE: 
 

@@ -135,6 +135,9 @@ len-of-overtime-halftime = La duración del medio tiempo durante el tiempo extra
 pre-sd-break = DESCANSO PREVIO
     A MUERTE SÚBITA
 pre-sd-len = La duración del descanso entre el período de juego precedente y la muerte súbita
+language = IDIOMA
+this-language = ESPAÑOL
+
 help = AYUDA:
 
 # Confirmation

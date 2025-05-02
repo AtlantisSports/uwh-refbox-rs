@@ -422,6 +422,7 @@ pub enum CyclingParameter {
     UnderWaterVol,
     Mode,
     Brightness,
+    Language,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

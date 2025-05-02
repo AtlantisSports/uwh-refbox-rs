@@ -109,21 +109,9 @@ pub(super) fn make_penalty_edit_page<'a>(
             }),
     );
 
-    let labels: Vec<&str> = [green, yellow, orange]
-        .iter()
-        .map(|kind| match kind {
-            PenaltyKind::ThirtySecond => "30s",
-            PenaltyKind::OneMinute => "1m",
-            PenaltyKind::TwoMinute => "2m",
-            PenaltyKind::FourMinute => "4m",
-            PenaltyKind::FiveMinute => "5m",
-            PenaltyKind::TotalDismissal => "TD",
-        })
-        .collect();
-
-    let green_label = labels[0];
-    let yellow_label = labels[1];
-    let orange_label = labels[2];
+    let green_label = fl!("penalty-kind", kind = green.fluent());
+    let yellow_label = fl!("penalty-kind", kind = yellow.fluent());
+    let orange_label = fl!("penalty-kind", kind = orange.fluent());
 
     let mut content = column![
         row![

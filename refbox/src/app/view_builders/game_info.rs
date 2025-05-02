@@ -13,6 +13,7 @@ pub(in super::super) fn build_game_info_page<'a>(
     data: ViewData<'_, '_>,
     config: &GameConfig,
     using_uwhportal: bool,
+    is_refreshing: bool,
     games: Option<&GameList>,
 ) -> Element<'a, Message> {
     let ViewData {
@@ -21,6 +22,23 @@ pub(in super::super) fn build_game_info_page<'a>(
         clock_running,
         teams,
     } = data;
+
+    let middle_item: Element<_> = if using_uwhportal {
+        if is_refreshing {
+            make_button(fl!("refreshing"))
+                .style(blue_button)
+                .width(Length::Fill)
+                .into()
+        } else {
+            make_button(fl!("refresh"))
+                .style(blue_button)
+                .width(Length::Fill)
+                .on_press(Message::RequestPortalRefresh)
+                .into()
+        }
+    } else {
+        horizontal_space().into()
+    };
 
     let (left_details, right_details) =
         details_strings(snapshot, config, using_uwhportal, games, teams);
@@ -46,7 +64,7 @@ pub(in super::super) fn build_game_info_page<'a>(
                 .style(red_button)
                 .width(Length::Fill)
                 .on_press(Message::ConfigEditComplete { canceled: true }),
-            horizontal_space(),
+            middle_item,
             make_button(fl!("settings"))
                 .style(gray_button)
                 .width(Length::Fill)

@@ -151,6 +151,8 @@ no = NO
 equal = IGUAL
 
 # Game Info
+refresh = RECARGAR
+refreshing = RECARGANDO...
 settings = CONFIGURACIÓN
 none = Ninguno
 game-number-error = Error ({ $game_number })

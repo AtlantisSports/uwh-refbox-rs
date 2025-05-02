@@ -144,6 +144,8 @@ no = NON
 equal = ÉGAL
 
 # Game Info
+refresh = RAFRAÎCHIR
+refreshing = RAFRAÎCHISSANT...
 settings = PARAMÈTRES 
 none = Aucun
 game-number-error = Erreur ({ $game_number })

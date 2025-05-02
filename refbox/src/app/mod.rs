@@ -2208,11 +2208,22 @@ fn time_updater() -> impl Stream<Item = Message> {
                     Message::NewSnapshot
                 };
 
-                let snapshot = match tm_.generate_snapshot(now) {
-                    Some(val) => val,
-                    None => {
-                        error!("Failed to generate snapshot. State:\n{tm_:#?}");
+                let mut i = 0;
+                let snapshot = loop {
+                    if i > 4 {
+                        error!(
+                            "Failed to generate snapshot after 5 attempts. State: {:#?}",
+                            tm_
+                        );
                         panic!("No snapshot");
+                    }
+                    match tm_.generate_snapshot(now) {
+                        Some(val) => break val,
+                        None => {
+                            warn!("Failed to generate snapshot. Updating and trying again");
+                            tm_.update(now).unwrap();
+                            i += 1;
+                        }
                     }
                 };
 

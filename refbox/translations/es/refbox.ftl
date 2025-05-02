@@ -13,6 +13,15 @@ new = NUEVO
 
 # Penalty Edit
 total-dismissal = T
+penalty-kind = {$kind ->
+    [thirty-seconds] 30s
+    [one-minute] 1m
+    [two-minutes] 2m
+    [four-minutes] 4m
+    [five-minutes] 5m
+    [total-dismissal] { total-dismissal }
+   *[other] {$kind}
+}
 
 # Team Timeout Edit
 timeout-length = DURACIÓN DEL
@@ -215,7 +224,6 @@ penalty-shot-line-2 = PENAL
 pen-shot = TIRO PENAL
 ## Penalty string
 served = Servido
-total-dismissal = DESCARTADO
 penalty = #{$player_number} - {$time ->
         [pending] Pendiente
         [served] Servido
@@ -224,12 +232,7 @@ penalty = #{$player_number} - {$time ->
     } {$time ->
         [total-dismissal] {""}
        *[other] ({$kind ->
-            [thirty-seconds] 30s
-            [one-minute] 1m
-            [two-minutes] 2m
-            [four-minutes] 4m
-            [five-minutes] 5m
-           *[other] {$kind}
+           *[any] { penalty-kind }
         })
     }
 foul = {$player_number ->

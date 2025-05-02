@@ -598,7 +598,17 @@ fn make_app_config_page<'a>(
         ]
         .spacing(SPACING)
         .height(Length::Fill),
-        vertical_space(),
+        row![
+            make_value_button(
+                fl!("language"),
+                fl!("this-language"),
+                (false, true),
+                Some(Message::CycleParameter(CyclingParameter::Language,)),
+            ),
+            horizontal_space(),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill),
         vertical_space(),
         row![
             horizontal_space(),

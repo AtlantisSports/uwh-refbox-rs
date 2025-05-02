@@ -63,8 +63,13 @@ static LANGUAGE_LOADER: Lazy<FluentLanguageLoader> = Lazy::new(|| {
         DesktopLanguageRequester::requested_languages()
     };
 
-    let result = i18n_embed::select(&loader, &Localizations, &requested_languages);
-    match result {
+    request_language(&loader, &requested_languages);
+
+    loader
+});
+
+fn request_language(loader: &FluentLanguageLoader, requested_languages: &[LanguageIdentifier]) {
+    match i18n_embed::select(loader, &Localizations, requested_languages) {
         Ok(lang) => info!("Using language: {lang:?}"),
         Err(e) => warn!(
             "Unable to select languages: {e}\nRequested languages were: {requested_languages:?}"
@@ -72,9 +77,7 @@ static LANGUAGE_LOADER: Lazy<FluentLanguageLoader> = Lazy::new(|| {
     }
 
     loader.set_use_isolating(false); // Required until iced supports RTL text (https://github.com/iced-rs/iced/issues/250)
-
-    loader
-});
+}
 
 #[macro_export]
 macro_rules! fl {

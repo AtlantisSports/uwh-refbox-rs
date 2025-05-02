@@ -47,6 +47,9 @@ use theme::*;
 pub mod update_sender;
 use update_sender::*;
 
+mod languages;
+use languages::*;
+
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct RefBoxApp {
@@ -1623,6 +1626,12 @@ impl RefBoxApp {
                     CyclingParameter::UnderWaterVol => settings.sound.under_water_vol.cycle(),
                     CyclingParameter::Mode => settings.mode.cycle(),
                     CyclingParameter::Brightness => settings.brightness.cycle(),
+                    CyclingParameter::Language => {
+                        let mut language =
+                            Language::from_lang_id(&crate::LANGUAGE_LOADER.current_languages()[0]);
+                        language.cycle();
+                        crate::request_language(&crate::LANGUAGE_LOADER, &[language.as_lang_id()]);
+                    }
                 }
                 Task::none()
             }

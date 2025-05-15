@@ -4,7 +4,10 @@ use crate::{
     drawing_support::*,
 };
 #[cfg(feature = "std")]
-use crate::{config::Game, uwhportal::schedule::EventId};
+use crate::{
+    config::Game,
+    uwhportal::schedule::{EventId, GameNumber},
+};
 use arrayref::array_ref;
 use arrayvec::ArrayVec;
 use core::cmp::{Ordering, PartialOrd};
@@ -49,8 +52,8 @@ pub struct GameSnapshot {
     pub fouls: OptColorBundle<Vec<InfractionSnapshot>>,
     pub timeouts_available: BlackWhiteBundle<bool>,
     pub is_old_game: bool,
-    pub game_number: u32,
-    pub next_game_number: u32,
+    pub game_number: GameNumber,
+    pub next_game_number: GameNumber,
     pub event_id: Option<EventId>,
     pub recent_goal: Option<(Color, u8)>,
     pub next_period_len_secs: Option<u32>,

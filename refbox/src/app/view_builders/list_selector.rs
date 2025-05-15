@@ -95,10 +95,15 @@ pub(in super::super) fn build_list_selector_page<'a>(
         }
         ListableParameter::Game => {
             let schedule = settings.schedule.as_ref().unwrap();
-            let list = &schedule.games;
             let court = settings.current_court.clone().unwrap();
-            let num_items = list.values().filter(|g| g.court == court).count();
-            let iter = list.values().filter(|g| g.court == court);
+            let mut list: Vec<_> = schedule
+                .games
+                .values()
+                .filter(|g| g.court == court)
+                .collect();
+            list.sort_by_key(|g| g.start_time);
+            let num_items = list.len();
+            let iter = list.into_iter();
             let transform = |g| {
                 (
                     game_string_long(g, teams, TEAM_NAME_LEN_LIMIT),

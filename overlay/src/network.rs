@@ -7,7 +7,7 @@ use time::{OffsetDateTime, format_description::BorrowedFormatItem, macros::forma
 use uwh_common::{
     color::Color,
     game_snapshot::{GamePeriod, GameSnapshot},
-    uwhportal::schedule::{EventId, TeamId},
+    uwhportal::schedule::{EventId, GameNumber, TeamId},
 };
 
 const START_TIME_FORMAT: &[BorrowedFormatItem<'static>] = format_description!("[hour]:[minute]");
@@ -206,7 +206,7 @@ impl EventLogos {
 #[derive(Serialize, Deserialize)]
 pub struct StatePacket {
     pub snapshot: GameSnapshot,
-    pub game_number: Option<u32>,
+    pub game_number: Option<GameNumber>,
     pub data: Option<GameData>,
     pub event_logos: Option<EventLogos>,
 }
@@ -219,12 +219,12 @@ pub struct GameData {
     pub black: TeamInfoRaw,
     pub white: TeamInfoRaw,
     pub sponsor_logo: Option<Image>,
-    pub game_number: u32,
+    pub game_number: GameNumber,
     pub event_id: Option<EventId>,
 }
 
 impl GameData {
-    pub fn default(game_id: u32, event_id: Option<EventId>) -> Self {
+    pub fn default(game_id: GameNumber, event_id: Option<EventId>) -> Self {
         Self {
             pool: String::new(),
             start_time: String::new(),
@@ -241,16 +241,13 @@ impl GameData {
 async fn fetch_game_referees(
     uwhportal_url: &str,
     event_id: &EventId,
-    game_number: u32,
+    game_number: &GameNumber,
 ) -> Result<Vec<MemberRaw>, reqwest::Error> {
     let client = CLIENT_CELL.get().unwrap();
     info!("Requesting Portal API for referees for (event, game): ({event_id}, {game_number})");
     let data: Value = client
         .get(format!("{uwhportal_url}/api/admin/events/game-referees"))
-        .query(&[
-            ("eventId", event_id.full()),
-            ("gameNumber", &game_number.to_string()),
-        ])
+        .query(&[("eventId", event_id.full()), ("gameNumber", game_number)])
         .send()
         .await?
         .json()
@@ -322,7 +319,7 @@ async fn fetch_game_data(
     tr: crossbeam_channel::Sender<(GameData, bool)>,
     uwhportal_url: &str,
     event_id: &EventId,
-    game_number: u32,
+    game_number: &GameNumber,
     is_current_game: bool,
 ) {
     let client = CLIENT_CELL.get().unwrap();
@@ -351,7 +348,7 @@ async fn fetch_game_data(
             };
             let data_game = if let Some(game) = data["games"].as_array().and_then(|games| {
                 games.iter().find_map(|game| {
-                    if game["number"].as_u64() == Some(game_number as u64) {
+                    if game["number"].as_str() == Some(game_number.as_str()) {
                         Some(game.clone())
                     } else {
                         None
@@ -425,7 +422,7 @@ async fn fetch_game_data(
                     white,
                     sponsor_logo: None,
                     event_id: Some(event_id.clone()),
-                    game_number,
+                    game_number: game_number.clone(),
                 },
                 is_current_game,
             ))
@@ -489,11 +486,11 @@ pub async fn networking_thread(
             let event_id_new = snapshot.event_id.clone();
             let game_number_new =
                 if snapshot.current_period == GamePeriod::BetweenGames && !snapshot.is_old_game {
-                    snapshot.next_game_number
+                    snapshot.next_game_number.clone()
                 } else {
-                    snapshot.game_number
+                    snapshot.game_number.clone()
                 };
-            let next_game_number = snapshot.next_game_number;
+            let next_game_number = snapshot.next_game_number.clone();
 
             let tr_ = tr.clone();
             let uwhportal_url = config.uwhportal_url.clone();
@@ -502,13 +499,14 @@ pub async fn networking_thread(
             if game_number.is_none() {
                 let tr_ = tr.clone();
                 let uwhportal_url = config.uwhportal_url.clone();
-                game_number = Some(game_number_new);
+                game_number = Some(game_number_new.clone());
                 event_id = event_id_new.clone();
                 if let Some(ref id) = event_id {
                     info!("Fetching intial game data for event: {id}, game: {game_number_new}");
                     let id_ = id.clone();
+                    let game_number_new_ = game_number_new.clone();
                     tokio::spawn(async move {
-                        fetch_game_data(tr_, &uwhportal_url, &id_, game_number_new, true).await;
+                        fetch_game_data(tr_, &uwhportal_url, &id_, &game_number_new_, true).await;
                     });
 
                     let tt_ = tt.clone();
@@ -539,7 +537,7 @@ pub async fn networking_thread(
                         });
                     }
 
-                    *game_id_old = game_number_new;
+                    *game_id_old = game_number_new.clone();
                     event_id = event_id_new.clone();
                     info!("Got new game ID {game_number_new} / event ID {event_id_new:?}");
 
@@ -551,7 +549,7 @@ pub async fn networking_thread(
                         info!("Sending cached game data for next game");
                         tx.send(StatePacket {
                             snapshot,
-                            game_number,
+                            game_number: game_number.clone(),
                             data: Some(next_game_data),
                             event_logos: None,
                         })
@@ -565,7 +563,7 @@ pub async fn networking_thread(
                         let tr__ = tr_.clone();
                         let id_ = id.clone();
                         tokio::spawn(async move {
-                            fetch_game_data(tr__, &uwhportal_url_, &id_, game_number_new, true)
+                            fetch_game_data(tr__, &uwhportal_url_, &id_, &game_number_new, true)
                                 .await;
                         });
                     }
@@ -584,8 +582,9 @@ pub async fn networking_thread(
                     event_id_new.as_ref().unwrap()
                 );
                 let id = event_id_new.clone().unwrap();
+                let next_game_number_ = next_game_number.clone();
                 tokio::spawn(async move {
-                    fetch_game_data(tr_, &uwhportal_url, &id, next_game_number, false).await;
+                    fetch_game_data(tr_, &uwhportal_url, &id, &next_game_number_, false).await;
                 });
                 next_game_data = Some(GameData::default(next_game_number, event_id_new.clone()));
             }
@@ -612,7 +611,7 @@ pub async fn networking_thread(
             };
             tx.send(StatePacket {
                 snapshot,
-                game_number,
+                game_number: game_number.clone(),
                 data: this_game_data,
                 event_logos,
             })

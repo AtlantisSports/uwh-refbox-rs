@@ -81,20 +81,24 @@ impl ScheduledTeam {
         }
     }
 
-    pub fn new_winner_of(game_number: u32) -> Self {
+    pub fn new_winner_of<S: ToString>(game_number: S) -> Self {
         Self {
             team_id: None,
             pending_assignment_name: None,
-            result_of: Some(ResultOf::Winner { game_number }),
+            result_of: Some(ResultOf::Winner {
+                game_number: game_number.to_string(),
+            }),
             seeded_by: None,
         }
     }
 
-    pub fn new_loser_of(game_number: u32) -> Self {
+    pub fn new_loser_of<S: ToString>(game_number: S) -> Self {
         Self {
             team_id: None,
             pending_assignment_name: None,
-            result_of: Some(ResultOf::Loser { game_number }),
+            result_of: Some(ResultOf::Loser {
+                game_number: game_number.to_string(),
+            }),
             seeded_by: None,
         }
     }
@@ -153,19 +157,19 @@ impl ScheduledTeam {
 pub enum ResultOf {
     Winner {
         #[serde(rename = "gameNumber")]
-        game_number: u32,
+        game_number: GameNumber,
     },
     Loser {
         #[serde(rename = "gameNumber")]
-        game_number: u32,
+        game_number: GameNumber,
     },
 }
 
 impl ResultOf {
-    pub fn game_number(&self) -> u32 {
+    pub fn game_number(&self) -> &GameNumber {
         match self {
-            ResultOf::Winner { game_number } => *game_number,
-            ResultOf::Loser { game_number } => *game_number,
+            ResultOf::Winner { game_number } => game_number,
+            ResultOf::Loser { game_number } => game_number,
         }
     }
 }
@@ -177,10 +181,12 @@ pub struct SeededBy {
     pub group: String,
 }
 
+pub type GameNumber = String;
+
 #[serde_with::skip_serializing_none]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Game {
-    pub number: u32,
+    pub number: GameNumber,
     pub dark: ScheduledTeam,
     pub light: ScheduledTeam,
     #[serde(with = "iso8601_4dig_year_no_subsecs", rename = "startsOn")]
@@ -375,14 +381,14 @@ pub struct Group {
     #[serde(rename = "type")]
     pub group_type: GroupType,
     #[serde(rename = "gameNumbers")]
-    pub game_numbers: Vec<u32>,
+    pub game_numbers: Vec<GameNumber>,
     #[serde(rename = "standingsCalculation", with = "option_standings_calculation")]
     pub standings_calculation: Option<StandingsCalculation>,
     #[serde(rename = "finalResultsCalculation")]
     pub final_results: Option<FinalResults>,
 }
 
-pub type GameList = BTreeMap<u32, Game>;
+pub type GameList = BTreeMap<GameNumber, Game>;
 
 #[serde_with::skip_serializing_none]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -402,16 +408,19 @@ pub struct Schedule {
 }
 
 impl Schedule {
-    pub fn get_game_and_timing(&self, game_number: u32) -> (Option<&Game>, Option<&TimingRule>) {
-        let game = self.games.get(&game_number);
+    pub fn get_game_and_timing(
+        &self,
+        game_number: &GameNumber,
+    ) -> (Option<&Game>, Option<&TimingRule>) {
+        let game = self.games.get(game_number);
         let timing_rule =
             game.and_then(|g| self.timing_rules.iter().find(|tr| tr.name == g.timing_rule));
         (game, timing_rule)
     }
 
-    pub fn get_game_timing(&self, game_number: u32) -> Option<&TimingRule> {
+    pub fn get_game_timing(&self, game_number: &GameNumber) -> Option<&TimingRule> {
         self.games
-            .get(&game_number)
+            .get(game_number)
             .and_then(|g| self.timing_rules.iter().find(|tr| tr.name == g.timing_rule))
     }
 }
@@ -597,21 +606,21 @@ mod tests {
 
     #[test]
     fn test_serialize_winner() {
-        let winner = ScheduledTeam::new_winner_of(2);
+        let winner = ScheduledTeam::new_winner_of("2");
         let serialized = serde_json::to_string(&winner).unwrap();
         assert_eq!(
             serialized,
-            r#"{"resultOf":{"type":"Winner","gameNumber":2}}"#
+            r#"{"resultOf":{"type":"Winner","gameNumber":"2"}}"#
         );
     }
 
     #[test]
     fn test_serialize_loser() {
-        let loser = ScheduledTeam::new_loser_of(2);
+        let loser = ScheduledTeam::new_loser_of("2");
         let serialized = serde_json::to_string(&loser).unwrap();
         assert_eq!(
             serialized,
-            r#"{"resultOf":{"type":"Loser","gameNumber":2}}"#
+            r#"{"resultOf":{"type":"Loser","gameNumber":"2"}}"#
         );
     }
 
@@ -641,16 +650,16 @@ mod tests {
 
     #[test]
     fn test_deserialize_winner() {
-        let winner_json = r#"{"resultOf":{"type":"Winner","gameNumber":2}}"#;
+        let winner_json = r#"{"resultOf":{"type":"Winner","gameNumber":"2"}}"#;
         let deserialized: ScheduledTeam = serde_json::from_str(winner_json).unwrap();
-        assert_eq!(deserialized, ScheduledTeam::new_winner_of(2));
+        assert_eq!(deserialized, ScheduledTeam::new_winner_of("2"));
     }
 
     #[test]
     fn test_deserialize_loser() {
-        let loser_json = r#"{"resultOf":{"type":"Loser","gameNumber":2}}"#;
+        let loser_json = r#"{"resultOf":{"type":"Loser","gameNumber":"2"}}"#;
         let deserialized: ScheduledTeam = serde_json::from_str(loser_json).unwrap();
-        assert_eq!(deserialized, ScheduledTeam::new_loser_of(2));
+        assert_eq!(deserialized, ScheduledTeam::new_loser_of("2"));
     }
 
     #[test]
@@ -683,7 +692,7 @@ mod tests {
     #[test]
     fn test_serialize_game() {
         let game = Game {
-            number: 1,
+            number: "1".to_string(),
             light: ScheduledTeam::new_team_id(TeamId::from_partial("1-A")),
             dark: ScheduledTeam::new_team_id(TeamId::from_partial("2-A")),
             start_time: datetime!(2023-08-07 0:00 UTC),
@@ -694,18 +703,18 @@ mod tests {
         let serialized = serde_json::to_string(&game).unwrap();
         assert_eq!(
             serialized,
-            r#"{"number":1,"dark":{"teamId":"teams/2-A"},"light":{"teamId":"teams/1-A"},"startsOn":"2023-08-07T00:00:00Z","court":"A","timingRule":{"name":"RR"}}"#
+            r#"{"number":"1","dark":{"teamId":"teams/2-A"},"light":{"teamId":"teams/1-A"},"startsOn":"2023-08-07T00:00:00Z","court":"A","timingRule":{"name":"RR"}}"#
         );
     }
 
     #[test]
     fn test_deserialize_game() {
-        let game_json = r#"{"number":1,"dark":{"teamId":"teams/2-A"},"light":{"teamId":"teams/1-A"},"startsOn":"2023-08-07T00:00:00Z","court":"A","timingRule":{"name":"RR"}}"#;
+        let game_json = r#"{"number":"1","dark":{"teamId":"teams/2-A"},"light":{"teamId":"teams/1-A"},"startsOn":"2023-08-07T00:00:00Z","court":"A","timingRule":{"name":"RR"}}"#;
         let deserialized: Game = serde_json::from_str(game_json).unwrap();
         assert_eq!(
             deserialized,
             Game {
-                number: 1,
+                number: "1".to_string(),
                 light: ScheduledTeam::new_team_id(TeamId::from_partial("1-A")),
                 dark: ScheduledTeam::new_team_id(TeamId::from_partial("2-A")),
                 start_time: datetime!(2023-08-07 0:00 UTC),
@@ -813,28 +822,28 @@ mod tests {
         let standings = StandingsCalculation::SlideIfUpset {
             slide_direction: SlideDirection::Down,
             starting_ranks: vec![
-                ScheduledTeam::new_winner_of(2),
-                ScheduledTeam::new_loser_of(2),
+                ScheduledTeam::new_winner_of("2"),
+                ScheduledTeam::new_loser_of("2"),
             ],
         };
         let serialized = serde_json::to_string(&standings).unwrap();
         assert_eq!(
             serialized,
-            r#"{"type":"SlideIfUpset","startingRanks":[{"resultOf":{"type":"Winner","gameNumber":2}},{"resultOf":{"type":"Loser","gameNumber":2}}],"slideDirection":"Down"}"#
+            r#"{"type":"SlideIfUpset","startingRanks":[{"resultOf":{"type":"Winner","gameNumber":"2"}},{"resultOf":{"type":"Loser","gameNumber":"2"}}],"slideDirection":"Down"}"#
         );
     }
 
     #[test]
     fn test_deserialize_slide_if_upset_standings() {
-        let standings_json = r#"{"type":"SlideIfUpset","startingRanks":[{"resultOf":{"type":"Winner","gameNumber":2}},{"resultOf":{"type":"Loser","gameNumber":2}}],"slideDirection":"Down"}"#;
+        let standings_json = r#"{"type":"SlideIfUpset","startingRanks":[{"resultOf":{"type":"Winner","gameNumber":"2"}},{"resultOf":{"type":"Loser","gameNumber":"2"}}],"slideDirection":"Down"}"#;
         let deserialized: StandingsCalculation = serde_json::from_str(standings_json).unwrap();
         assert_eq!(
             deserialized,
             StandingsCalculation::SlideIfUpset {
                 slide_direction: SlideDirection::Down,
                 starting_ranks: vec![
-                    ScheduledTeam::new_winner_of(2),
-                    ScheduledTeam::new_loser_of(2)
+                    ScheduledTeam::new_winner_of("2"),
+                    ScheduledTeam::new_loser_of("2")
                 ],
             }
         );
@@ -858,27 +867,35 @@ mod tests {
     fn test_serialize_list_of_games_final_results() {
         let final_results = FinalResults::ListOfGames {
             list_of_games: vec![
-                ResultOf::Winner { game_number: 4 },
-                ResultOf::Loser { game_number: 4 },
+                ResultOf::Winner {
+                    game_number: "4".to_string(),
+                },
+                ResultOf::Loser {
+                    game_number: "4".to_string(),
+                },
             ],
         };
         let serialized = serde_json::to_string(&final_results).unwrap();
         assert_eq!(
             serialized,
-            r#"{"type":"ListOfGames","listOfGames":[{"type":"Winner","gameNumber":4},{"type":"Loser","gameNumber":4}]}"#
+            r#"{"type":"ListOfGames","listOfGames":[{"type":"Winner","gameNumber":"4"},{"type":"Loser","gameNumber":"4"}]}"#
         );
     }
 
     #[test]
     fn test_deserialize_list_of_games_final_results() {
-        let final_results_json = r#"{"type":"ListOfGames","listOfGames":[{"type":"Winner","gameNumber":4},{"type":"Loser","gameNumber":4}]}"#;
+        let final_results_json = r#"{"type":"ListOfGames","listOfGames":[{"type":"Winner","gameNumber":"4"},{"type":"Loser","gameNumber":"4"}]}"#;
         let deserialized: FinalResults = serde_json::from_str(final_results_json).unwrap();
         assert_eq!(
             deserialized,
             FinalResults::ListOfGames {
                 list_of_games: vec![
-                    ResultOf::Winner { game_number: 4 },
-                    ResultOf::Loser { game_number: 4 },
+                    ResultOf::Winner {
+                        game_number: "4".to_string()
+                    },
+                    ResultOf::Loser {
+                        game_number: "4".to_string()
+                    },
                 ],
             }
         );
@@ -890,20 +907,20 @@ mod tests {
             name: "A Group".to_string(),
             short_name: "A".to_string(),
             group_type: GroupType::Pod,
-            game_numbers: vec![1],
+            game_numbers: vec!["1".to_string()],
             standings_calculation: Some(StandingsCalculation::Standard),
             final_results: Some(FinalResults::Standings),
         };
         let serialized = serde_json::to_string(&group).unwrap();
         assert_eq!(
             serialized,
-            r#"{"name":"A Group","shortName":"A","type":"Pod","gameNumbers":[1],"standingsCalculation":{"type":"Standard"},"finalResultsCalculation":{"type":"Standings"}}"#
+            r#"{"name":"A Group","shortName":"A","type":"Pod","gameNumbers":["1"],"standingsCalculation":{"type":"Standard"},"finalResultsCalculation":{"type":"Standings"}}"#
         );
     }
 
     #[test]
     fn test_deserialize_group() {
-        let group_json = r#"{"name":"A Group","shortName":"A","type":"Pod","gameNumbers":[1],"standingsCalculation":{"type":"Standard"},"finalResultsCalculation":{"type":"Standings"}}"#;
+        let group_json = r#"{"name":"A Group","shortName":"A","type":"Pod","gameNumbers":["1"],"standingsCalculation":{"type":"Standard"},"finalResultsCalculation":{"type":"Standings"}}"#;
         let deserialized: Group = serde_json::from_str(group_json).unwrap();
         assert_eq!(
             deserialized,
@@ -911,7 +928,7 @@ mod tests {
                 name: "A Group".to_string(),
                 short_name: "A".to_string(),
                 group_type: GroupType::Pod,
-                game_numbers: vec![1],
+                game_numbers: vec!["1".to_string()],
                 standings_calculation: Some(StandingsCalculation::Standard),
                 final_results: Some(FinalResults::Standings),
             }
@@ -925,7 +942,7 @@ mod tests {
             event_id: EventId::from_partial("1-A"),
             games: vec![
                 Game {
-                    number: 1,
+                    number: "1".to_string(),
                     light: ScheduledTeam::new_team_id(TeamId::from_partial("1-A")),
                     dark: ScheduledTeam::new_team_id(TeamId::from_partial("2-A")),
                     start_time: datetime!(2023-08-07 0:00 UTC),
@@ -934,7 +951,7 @@ mod tests {
                     timing_rule: "RR".to_string(),
                 },
                 Game {
-                    number: 2,
+                    number: "2".to_string(),
                     light: ScheduledTeam::new_pending_assignment_name("Team A"),
                     dark: ScheduledTeam::new_pending_assignment_name("Team B"),
                     start_time: datetime!(2023-08-07 1:00 UTC),
@@ -943,7 +960,7 @@ mod tests {
                     timing_rule: "RR".to_string(),
                 },
                 Game {
-                    number: 3,
+                    number: "3".to_string(),
                     light: ScheduledTeam::new_seeded_by(1, "A Group"),
                     dark: ScheduledTeam::new_seeded_by(2, "A Group"),
                     start_time: datetime!(2023-08-07 2:00 UTC),
@@ -952,9 +969,9 @@ mod tests {
                     timing_rule: "RR".to_string(),
                 },
                 Game {
-                    number: 4,
-                    light: ScheduledTeam::new_winner_of(2),
-                    dark: ScheduledTeam::new_loser_of(2),
+                    number: "4".to_string(),
+                    light: ScheduledTeam::new_winner_of("2"),
+                    dark: ScheduledTeam::new_loser_of("2"),
                     start_time: datetime!(2023-08-07 3:00 UTC),
                     court: "A".to_string(),
                     description: None,
@@ -962,7 +979,7 @@ mod tests {
                 },
             ]
             .into_iter()
-            .map(|game| (game.number, game))
+            .map(|game| (game.number.clone(), game))
             .collect(),
             non_game_entries: vec![],
             groups: vec![
@@ -970,7 +987,7 @@ mod tests {
                     name: "A Group".to_string(),
                     short_name: "A".to_string(),
                     group_type: GroupType::Pod,
-                    game_numbers: vec![1],
+                    game_numbers: vec!["1".to_string()],
                     standings_calculation: Some(StandingsCalculation::Standard),
                     final_results: Some(FinalResults::Standings),
                 },
@@ -978,7 +995,7 @@ mod tests {
                     name: "B Group - No calculations".to_string(),
                     short_name: "B".to_string(),
                     group_type: GroupType::Pod,
-                    game_numbers: vec![2],
+                    game_numbers: vec!["2".to_string()],
                     standings_calculation: None,
                     final_results: None,
                 },
@@ -986,7 +1003,7 @@ mod tests {
                     name: "C Group - Swap if Upset".to_string(),
                     short_name: "C".to_string(),
                     group_type: GroupType::Pod,
-                    game_numbers: vec![3],
+                    game_numbers: vec!["3".to_string()],
                     standings_calculation: Some(StandingsCalculation::SwapIfUpset {
                         starting_ranks: vec![
                             ScheduledTeam::new_seeded_by(1, "A Group"),
@@ -999,18 +1016,22 @@ mod tests {
                     name: "d Group - Slide if Upset".to_string(),
                     short_name: "D".to_string(),
                     group_type: GroupType::Pod,
-                    game_numbers: vec![4],
+                    game_numbers: vec!["4".to_string()],
                     standings_calculation: Some(StandingsCalculation::SlideIfUpset {
                         slide_direction: SlideDirection::Down,
                         starting_ranks: vec![
-                            ScheduledTeam::new_winner_of(2),
-                            ScheduledTeam::new_loser_of(2),
+                            ScheduledTeam::new_winner_of("2"),
+                            ScheduledTeam::new_loser_of("2"),
                         ],
                     }),
                     final_results: Some(FinalResults::ListOfGames {
                         list_of_games: vec![
-                            ResultOf::Winner { game_number: 4 },
-                            ResultOf::Loser { game_number: 4 },
+                            ResultOf::Winner {
+                                game_number: "4".to_string(),
+                            },
+                            ResultOf::Loser {
+                                game_number: "4".to_string(),
+                            },
                         ],
                     }),
                 },

@@ -618,39 +618,26 @@ pub(super) fn penalty_string(penalties: &[PenaltySnapshot]) -> String {
     string
 }
 
-pub(super) fn game_string_short(game: &Game) -> String {
-    format!("{}{}", game.timing_rule, game.number)
-}
-
 pub(super) fn game_string_long(game: &Game, teams: Option<&TeamList>, len_limit: usize) -> String {
-    let (black, white) = if let Some(teams) = teams {
-        (
-            get_team_name(&game.dark, teams),
-            get_team_name(&game.light, teams),
-        )
-    } else {
-        ("Unknown".to_string(), "Unknown".to_string())
-    };
+    let black = get_team_name(&game.dark, teams);
+    let white = get_team_name(&game.light, teams);
 
     let black = limit_team_name_len(&black, len_limit);
     let white = limit_team_name_len(&white, len_limit);
 
-    format!(
-        "{}{} - {} vs {}",
-        game.timing_rule, game.number, black, white
-    )
+    format!("{} - {} vs {}", game.number, black, white)
 }
 
-pub(super) fn get_team_name(team: &ScheduledTeam, teams: &TeamList) -> String {
-    if let Some(id) = team.assigned() {
+pub(super) fn get_team_name(team: &ScheduledTeam, teams: Option<&TeamList>) -> String {
+    if let (Some(id), Some(teams)) = (team.assigned(), teams) {
         teams
             .get(id)
             .cloned()
             .unwrap_or_else(|| id.full().to_string())
     } else if let Some(result_of) = team.result_of() {
         match result_of {
-            ResultOf::Loser { game_number } => format!("L{game_number}"),
-            ResultOf::Winner { game_number } => format!("W{game_number}"),
+            ResultOf::Loser { game_number } => format!("L_{game_number}"),
+            ResultOf::Winner { game_number } => format!("W_{game_number}"),
         }
     } else if let Some(seed) = team.seeded_by() {
         format!("Seed {} of {}", seed.number, seed.group)
@@ -675,7 +662,7 @@ pub(super) fn config_string_game_num(
     snapshot: &GameSnapshot,
     using_uwhportal: bool,
     games: Option<&GameList>,
-) -> (String, u32) {
+) -> (String, GameNumber) {
     let mut result = String::new();
     let game_number = if snapshot.current_period == GamePeriod::BetweenGames {
         let prev_game;
@@ -683,24 +670,24 @@ pub(super) fn config_string_game_num(
         if using_uwhportal {
             if let Some(games) = games {
                 prev_game = match games.get(&snapshot.game_number) {
-                    Some(game) => game_string_short(game),
-                    None if snapshot.game_number == 0 => fl!("none"),
-                    None => fl!("error", number = snapshot.game_number),
+                    Some(game) => game.number.to_string(),
+                    None if snapshot.game_number == "0" => fl!("none"),
+                    None => fl!("error", number = snapshot.game_number.clone()),
                 };
                 next_game = match games.get(&snapshot.next_game_number) {
-                    Some(game) => game_string_short(game),
-                    None => fl!("error", number = snapshot.next_game_number),
+                    Some(game) => game.number.to_string(),
+                    None => fl!("error", number = snapshot.next_game_number.clone()),
                 };
             } else {
-                prev_game = if snapshot.game_number == 0 {
+                prev_game = if snapshot.game_number == "0" {
                     fl!("none")
                 } else {
-                    fl!("error", number = snapshot.game_number)
+                    fl!("error", number = snapshot.game_number.clone())
                 };
-                next_game = fl!("error", number = snapshot.next_game_number);
+                next_game = fl!("error", number = snapshot.next_game_number.clone());
             }
         } else {
-            prev_game = if snapshot.game_number == 0 {
+            prev_game = if snapshot.game_number == "0" {
                 fl!("none")
             } else {
                 snapshot.game_number.to_string()
@@ -710,24 +697,24 @@ pub(super) fn config_string_game_num(
 
         result += &fl!("two-games", prev_game = prev_game, next_game = next_game);
         result += "\n\n";
-        snapshot.next_game_number
+        snapshot.next_game_number.clone()
     } else {
         let game;
         if using_uwhportal {
             if let Some(games) = games {
                 game = match games.get(&snapshot.game_number) {
-                    Some(game) => game_string_short(game),
-                    None => fl!("error", number = snapshot.game_number),
+                    Some(game) => game.number.to_string(),
+                    None => fl!("error", number = snapshot.game_number.clone()),
                 };
             } else {
-                game = fl!("error", number = snapshot.game_number);
+                game = fl!("error", number = snapshot.game_number.clone());
             }
         } else {
             game = snapshot.game_number.to_string();
         }
         result += &fl!("one-game", game = game);
         result += "\n\n";
-        snapshot.game_number
+        snapshot.game_number.clone()
     };
 
     (result, game_number)
@@ -748,7 +735,7 @@ pub(super) fn config_string(
     let game_number = result_u32;
 
     if using_uwhportal {
-        if let (Some(games), Some(teams)) = (games, teams) {
+        if let Some(games) = games {
             if let Some(game) = games.get(&game_number) {
                 let black = get_team_name(&game.dark, teams);
                 let white = get_team_name(&game.light, teams);

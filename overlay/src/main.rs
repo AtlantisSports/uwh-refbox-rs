@@ -18,7 +18,10 @@ use macroquad::prelude::*;
 use network::{GameData, StatePacket, TeamInfoRaw};
 use std::{cmp::Ordering, str::FromStr};
 use std::{net::IpAddr, path::PathBuf};
-use uwh_common::game_snapshot::{GamePeriod, GameSnapshot};
+use uwh_common::{
+    game_snapshot::{GamePeriod, GameSnapshot},
+    uwhportal::schedule::GameNumber,
+};
 
 mod flag;
 mod load_images;
@@ -51,7 +54,7 @@ pub struct State {
     black: TeamInfo,
     white: TeamInfo,
     referees: Vec<Member>,
-    game_id: u32,
+    game_id: GameNumber,
     pool: String,
     start_time: String,
     half_play_duration: Option<u32>,
@@ -231,7 +234,7 @@ async fn main() {
         black: TeamInfo::with_name("BLACK"),
         referees: Vec::new(),
         white: TeamInfo::with_name("WHITE"),
-        game_id: 0,
+        game_id: "0".to_string(),
         pool: String::new(),
         start_time: String::new(),
         half_play_duration: None,

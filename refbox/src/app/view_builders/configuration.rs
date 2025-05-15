@@ -15,14 +15,14 @@ use uwh_common::{
     game_snapshot::GameSnapshot,
     uwhportal::{
         TokenValidity,
-        schedule::{Event, EventId, Schedule},
+        schedule::{Event, EventId, GameNumber, Schedule},
     },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(in super::super) struct EditableSettings {
     pub config: GameConfig,
-    pub game_number: u32,
+    pub game_number: GameNumber,
     pub white_on_right: bool,
     pub brightness: Brightness,
     pub using_uwhportal: bool,
@@ -179,7 +179,7 @@ fn make_main_config_page<'a>(
                 match schedule.games.get(game_number) {
                     Some(game) => {
                         if game.court == *cur_court {
-                            game_string_short(game)
+                            game.number.to_string()
                         } else {
                             game_large_text = false;
                             fl!("none-selected")

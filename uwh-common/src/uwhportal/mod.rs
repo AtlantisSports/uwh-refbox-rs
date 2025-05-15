@@ -3,7 +3,7 @@ use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 use log::{debug, info, warn};
 use reqwest::header::{AUTHORIZATION, HeaderValue};
 use reqwest::{Client, ClientBuilder, Method, RequestBuilder, StatusCode};
-use schedule::{EventId, TeamId, TeamList};
+use schedule::{EventId, GameNumber, TeamId, TeamList};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::{
@@ -136,16 +136,13 @@ impl UwhPortalClient {
     pub fn post_game_stats(
         &self,
         event_id: &EventId,
-        game_number: u32,
+        game_number: &GameNumber,
         stats_json: String,
     ) -> impl std::future::Future<Output = Result<(), Box<dyn Error>>> + use<> {
         let url = format!("{}/api/admin/events/stats", self.base_url);
 
         let request = authenticated_request(&self.client, Method::POST, &url, &self.access_token)
-            .query(&[
-                ("eventId", event_id.full()),
-                ("gameNumber", &format!("{game_number}")),
-            ])
+            .query(&[("eventId", event_id.full()), ("gameNumber", game_number)])
             .body(stats_json.clone())
             .header("Content-Type", "application/json")
             .send();
@@ -167,7 +164,7 @@ impl UwhPortalClient {
     pub fn post_game_scores(
         &self,
         event_id: &EventId,
-        game_number: u32,
+        game_number: &GameNumber,
         scores: BlackWhiteBundle<u8>,
         force: bool,
     ) -> impl std::future::Future<Output = Result<(), Box<dyn Error>>> + use<> {
@@ -230,7 +227,7 @@ impl UwhPortalClient {
             let response = request.await?;
 
             if response.status() == StatusCode::OK {
-                let body = response.text().await?;
+                let body = response.text().await?; // TODO: Can we just call response.json()?
                 let schedule: schedule::Schedule = serde_json::from_str(&body)?;
                 Ok(schedule)
             } else {

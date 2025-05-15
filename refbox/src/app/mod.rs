@@ -28,7 +28,7 @@ use uwh_common::{
     game_snapshot::{GamePeriod, GameSnapshot, Infraction, TimeoutSnapshot},
     uwhportal::{
         UwhPortalClient,
-        schedule::{Event, EventId, Schedule},
+        schedule::{Event, EventId, GameNumber, Schedule},
     },
 };
 
@@ -123,9 +123,9 @@ impl RefBoxApp {
         let mut task = Task::none();
         if new_snapshot.current_period != self.snapshot.current_period {
             if new_snapshot.current_period == GamePeriod::BetweenGames {
-                task = self.handle_game_end(new_snapshot.game_number);
+                task = self.handle_game_end(&new_snapshot.game_number);
             } else if self.snapshot.current_period == GamePeriod::BetweenGames {
-                self.handle_game_start(new_snapshot.game_number);
+                self.handle_game_start(&new_snapshot.game_number);
             }
         }
 
@@ -268,7 +268,7 @@ impl RefBoxApp {
     fn post_game_score(
         &self,
         event_id: &EventId,
-        game_number: u32,
+        game_number: &GameNumber,
         scores: BlackWhiteBundle<u8>,
     ) -> Task<Message> {
         if let Some(ref client) = self.uwhportal_client {
@@ -307,7 +307,7 @@ impl RefBoxApp {
     fn post_game_stats(
         &self,
         event_id: &EventId,
-        game_number: u32,
+        game_number: &GameNumber,
         stats: String,
     ) -> Task<Message> {
         if let Some(ref uwhportal_client) = self.uwhportal_client {
@@ -324,11 +324,11 @@ impl RefBoxApp {
         }
     }
 
-    fn handle_game_start(&mut self, new_game_num: u32) {
+    fn handle_game_start(&mut self, new_game_num: &GameNumber) {
         if self.using_uwhportal {
             debug!("Searching for next game info after game {new_game_num}");
             if let (Some(schedule), Some(pool)) = (&self.schedule, &self.current_court) {
-                let this_game_start = match schedule.games.get(&new_game_num) {
+                let this_game_start = match schedule.games.get(new_game_num) {
                     Some(g) => g.start_time,
                     None => {
                         error!("Could not find new game's start time (game {new_game_num}");
@@ -345,9 +345,9 @@ impl RefBoxApp {
 
                 let mut tm = self.tm.lock().unwrap();
                 if let Some(next_game) = next_game {
-                    let timing = schedule.get_game_timing(next_game.number).cloned();
+                    let timing = schedule.get_game_timing(&next_game.number).cloned();
                     let info = NextGameInfo {
-                        number: next_game.number,
+                        number: next_game.number.clone(),
                         timing,
                         start_time: Some(next_game.start_time),
                     };
@@ -362,7 +362,7 @@ impl RefBoxApp {
         }
     }
 
-    fn handle_game_end(&self, game_number: u32) -> Task<Message> {
+    fn handle_game_end(&self, game_number: &GameNumber) -> Task<Message> {
         let mut tasks = vec![];
         if self.using_uwhportal {
             if let Some(info) = self.tm.lock().unwrap().last_game_info() {
@@ -1094,7 +1094,7 @@ impl RefBoxApp {
                         .as_ref()
                         .unwrap()
                         .game_number
-                        .try_into()
+                        .parse()
                         .unwrap_or(0),
                 };
                 self.app_state = AppState::KeypadPage(page, init_val);
@@ -1200,9 +1200,9 @@ impl RefBoxApp {
                 let edited_settings = EditableSettings {
                     config: self.tm.lock().unwrap().config().clone(),
                     game_number: if self.snapshot.current_period == GamePeriod::BetweenGames {
-                        self.snapshot.next_game_number
+                        self.snapshot.next_game_number.clone()
                     } else {
-                        self.snapshot.game_number
+                        self.snapshot.game_number.clone()
                     },
                     white_on_right: self.config.hardware.white_on_right,
                     brightness: self.config.hardware.brightness,
@@ -1265,7 +1265,7 @@ impl RefBoxApp {
                             .schedule
                             .as_ref()
                             .and_then(|schedule| {
-                                schedule.get_game_timing(edited_settings.game_number)
+                                schedule.get_game_timing(&edited_settings.game_number)
                             })
                             .cloned()
                             .map(|tr| tr.into())
@@ -1289,13 +1289,13 @@ impl RefBoxApp {
                                 .schedule
                                 .as_ref()
                                 .map(|schedule| {
-                                    schedule.get_game_and_timing(edited_settings.game_number)
+                                    schedule.get_game_and_timing(&edited_settings.game_number)
                                 })
                                 .unwrap_or((None, None));
                             let start_time = game.map(|g| g.start_time);
 
                             tm.set_next_game(NextGameInfo {
-                                number: edited_settings.game_number,
+                                number: edited_settings.game_number.clone(),
                                 timing: timing.cloned(),
                                 start_time,
                             });
@@ -1321,17 +1321,17 @@ impl RefBoxApp {
                                     .schedule
                                     .as_ref()
                                     .map(|schedule| {
-                                        schedule.get_game_and_timing(edited_settings.game_number)
+                                        schedule.get_game_and_timing(&edited_settings.game_number)
                                     })
                                     .unwrap_or((None, None));
                                 NextGameInfo {
-                                    number: edited_settings.game_number,
+                                    number: edited_settings.game_number.clone(),
                                     timing: timing.cloned(),
                                     start_time: game.map(|g| g.start_time),
                                 }
                             } else {
                                 NextGameInfo {
-                                    number: edited_settings.game_number,
+                                    number: edited_settings.game_number.clone(),
                                     timing: None,
                                     start_time: None,
                                 }
@@ -1458,7 +1458,7 @@ impl RefBoxApp {
                             }
                         },
                         AppState::KeypadPage(KeypadPage::GameNumber, num) => {
-                            edited_settings.game_number = num.into();
+                            edited_settings.game_number = num.to_string();
                         }
                         AppState::KeypadPage(KeypadPage::TeamTimeouts(len, per_half), num) => {
                             edited_settings.config.team_timeout_duration = len;
@@ -1510,7 +1510,7 @@ impl RefBoxApp {
                         Task::none()
                     }
                     ListableParameter::Game => {
-                        edited_settings.game_number = val.parse().unwrap();
+                        edited_settings.game_number = val;
                         Task::none()
                     }
                 };
@@ -1718,13 +1718,13 @@ impl RefBoxApp {
                             .schedule
                             .as_ref()
                             .map(|schedule| {
-                                schedule.get_game_and_timing(edited_settings.game_number)
+                                schedule.get_game_and_timing(&edited_settings.game_number)
                             })
                             .unwrap_or((None, None));
                         let start_time = game.map(|g| g.start_time);
 
                         tm.set_next_game(NextGameInfo {
-                            number: edited_settings.game_number,
+                            number: edited_settings.game_number.clone(),
                             timing: timing.cloned(),
                             start_time,
                         });
@@ -1745,7 +1745,7 @@ impl RefBoxApp {
                     ConfirmationOption::KeepGameAndApply => {
                         let edited_settings = self.edited_settings.as_ref().unwrap();
                         let mut tm = self.tm.lock().unwrap();
-                        tm.set_game_number(edited_settings.game_number);
+                        tm.set_game_number(&edited_settings.game_number);
                         let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
                         std::mem::drop(tm);
 
@@ -1964,13 +1964,13 @@ impl RefBoxApp {
                                             .schedule
                                             .as_ref()
                                             .unwrap()
-                                            .get_game_and_timing(tm.next_game_number())
+                                            .get_game_and_timing(&tm.next_game_number())
                                         {
                                             info!(
                                                 "Setting upcoming game info from received schedule: {game:?}"
                                             );
                                             tm.set_next_game(NextGameInfo {
-                                                number: game.number,
+                                                number: game.number.clone(),
                                                 timing: Some(timing.clone()),
                                                 start_time: Some(game.start_time),
                                             });

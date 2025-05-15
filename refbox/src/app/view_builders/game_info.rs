@@ -94,30 +94,36 @@ fn details_strings(
         if using_uwhportal {
             if let Some(games) = games {
                 prev_game = match games.get(&snapshot.game_number) {
-                    Some(game) => game_string_short(game),
-                    None if snapshot.game_number == 0 => fl!("none").to_string(),
-                    None => fl!("game-number-error", game_number = snapshot.game_number),
+                    Some(game) => game.number.to_string(),
+                    None if snapshot.game_number == "0" => fl!("none").to_string(),
+                    None => fl!(
+                        "game-number-error",
+                        game_number = snapshot.game_number.clone()
+                    ),
                 };
                 next_game = match games.get(&snapshot.next_game_number) {
-                    Some(game) => game_string_short(game),
+                    Some(game) => game.number.to_string(),
                     None => fl!(
                         "next-game-number-error",
-                        next_game_number = snapshot.next_game_number
+                        next_game_number = snapshot.next_game_number.clone()
                     ),
                 };
             } else {
-                prev_game = if snapshot.game_number == 0 {
+                prev_game = if snapshot.game_number == "0" {
                     fl!("none").to_string()
                 } else {
-                    fl!("game-number-error", game_number = snapshot.game_number)
+                    fl!(
+                        "game-number-error",
+                        game_number = snapshot.game_number.clone()
+                    )
                 };
                 next_game = fl!(
                     "next-game-number-error",
-                    next_game_number = snapshot.next_game_number
+                    next_game_number = snapshot.next_game_number.clone()
                 );
             }
         } else {
-            prev_game = if snapshot.game_number == 0 {
+            prev_game = if snapshot.game_number == "0" {
                 fl!("none").to_string()
             } else {
                 snapshot.game_number.to_string()
@@ -133,39 +139,43 @@ fn details_strings(
 
         left_string += "\n";
 
-        snapshot.next_game_number
+        &snapshot.next_game_number
     } else {
         let game;
         if using_uwhportal {
             if let Some(games) = games {
                 game = match games.get(&snapshot.game_number) {
-                    Some(game) => game_string_short(game),
-                    None => fl!("game-number-error", game_number = snapshot.game_number),
+                    Some(game) => game.number.to_string(),
+                    None => fl!(
+                        "game-number-error",
+                        game_number = snapshot.game_number.clone()
+                    ),
                 };
             } else {
-                game = fl!("game-number-error", game_number = snapshot.game_number);
+                game = fl!(
+                    "game-number-error",
+                    game_number = snapshot.game_number.clone()
+                );
             }
         } else {
             game = snapshot.game_number.to_string();
         }
         left_string += &fl!("one-game", game = game);
         left_string += "\n";
-        snapshot.game_number
+        &snapshot.game_number
     };
 
     if using_uwhportal {
         if let Some(games) = games {
-            if let Some(game) = games.get(&game_number) {
-                if let Some(teams) = teams {
-                    let black = get_team_name(&game.dark, teams);
-                    let white = get_team_name(&game.light, teams);
-                    left_string += &fl!(
-                        "black-team-white-team",
-                        black_team = limit_team_name_len(&black, TEAM_NAME_LEN_LIMIT),
-                        white_team = limit_team_name_len(&white, TEAM_NAME_LEN_LIMIT)
-                    );
-                    left_string += "\n";
-                }
+            if let Some(game) = games.get(game_number) {
+                let black = get_team_name(&game.dark, teams);
+                let white = get_team_name(&game.light, teams);
+                left_string += &fl!(
+                    "black-team-white-team",
+                    black_team = limit_team_name_len(&black, TEAM_NAME_LEN_LIMIT),
+                    white_team = limit_team_name_len(&white, TEAM_NAME_LEN_LIMIT)
+                );
+                left_string += "\n";
             }
         }
     }

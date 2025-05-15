@@ -15,7 +15,7 @@ use uwh_common::{
     config::Game as GameConfig,
     drawing_support::*,
     game_snapshot::{GamePeriod, GameSnapshot, Infraction, TimeoutSnapshot},
-    uwhportal::schedule::TimingRule,
+    uwhportal::schedule::{GameNumber, TimingRule},
 };
 
 pub mod penalty;
@@ -35,7 +35,7 @@ const RECENT_GOAL_TIME: Duration = Duration::from_secs(15);
 #[derive(Debug)]
 pub struct TournamentManager {
     config: GameConfig,
-    game_number: u32,
+    game_number: GameNumber,
     game_start_time: Instant,
     current_period: GamePeriod,
     clock_state: ClockState,
@@ -61,7 +61,7 @@ impl TournamentManager {
     pub fn new(config: GameConfig) -> Self {
         let (start_stop_tx, start_stop_rx) = watch::channel(false);
         Self {
-            game_number: 0,
+            game_number: "0".to_string(),
             game_start_time: Instant::now(),
             current_period: GamePeriod::BetweenGames,
             clock_state: ClockState::Stopped {
@@ -81,7 +81,7 @@ impl TournamentManager {
             reset_game_time: config.nominal_break,
             config,
             recent_goal: None,
-            current_game_stats: GameStats::new(0),
+            current_game_stats: GameStats::new("0"),
             last_game_info: None,
             time_pause_confirmation: None,
         }
@@ -162,22 +162,31 @@ impl TournamentManager {
         self.next_scheduled_start = None;
     }
 
-    pub fn game_number(&self) -> u32 {
-        self.game_number
+    pub fn game_number(&self) -> GameNumber {
+        self.game_number.clone()
     }
 
-    pub fn next_game_number(&self) -> u32 {
+    pub fn next_game_number(&self) -> GameNumber {
         if self.current_period == GamePeriod::BetweenGames {
             if let Some(ref info) = self.next_game {
-                return info.number;
+                return info.number.clone();
             }
         }
-        self.game_number + 1
+        match self.game_number.parse::<u32>() {
+            Ok(num) => (num + 1).to_string(),
+            Err(_) => {
+                error!(
+                    "Failed to parse game_number '{}'. Defaulting to '1' for next game number",
+                    self.game_number
+                );
+                "1".to_string()
+            }
+        }
     }
 
-    pub fn set_game_number(&mut self, number: u32) {
-        info!("Game Number set to {number}");
-        self.game_number = number;
+    pub fn set_game_number<S: ToString>(&mut self, number: S) {
+        self.game_number = number.to_string();
+        info!("Game Number set to {}", self.game_number);
     }
 
     pub fn set_next_game(&mut self, info: NextGameInfo) {
@@ -2252,7 +2261,7 @@ impl TimeoutState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NextGameInfo {
-    pub number: u32,
+    pub number: GameNumber,
     pub timing: Option<TimingRule>,
     pub start_time: Option<OffsetDateTime>,
 }
@@ -3808,7 +3817,7 @@ mod test {
 
         assert_eq!(GamePeriod::FirstHalf, tm.current_period);
         assert_eq!(tm.game_clock_time(next_time), Some(Duration::from_secs(3)));
-        assert_eq!(tm.game_number(), 1);
+        assert_eq!(tm.game_number(), "1");
         assert_eq!(tm.game_start_time, next_time);
     }
 

@@ -2,6 +2,7 @@ use super::{Color, Duration, GamePeriod, Instant, OffsetDateTime, Penalty, Penal
 use serde::Serialize;
 use std::cmp::Ordering;
 use time::format_description::well_known::{Iso8601, iso8601};
+use uwh_common::uwhportal::schedule::GameNumber;
 
 const CONFIG: iso8601::EncodedConfig = iso8601::Config::DEFAULT
     .set_year_is_six_digits(false)
@@ -11,16 +12,16 @@ time::serde::format_description!(iso8601_short_year, OffsetDateTime, FORMAT);
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct GameStats {
-    game_number: u32,
+    game_number: GameNumber,
     start_timestamp: Option<OffsetDateTime>,
     end_timestamp: Option<OffsetDateTime>,
     events: Vec<Event>,
 }
 
 impl GameStats {
-    pub(crate) fn new(game_number: u32) -> Self {
+    pub(crate) fn new<S: ToString>(game_number: S) -> Self {
         Self {
-            game_number,
+            game_number: game_number.to_string(),
             start_timestamp: None,
             end_timestamp: None,
             events: Vec::new(),

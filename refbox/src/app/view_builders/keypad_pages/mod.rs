@@ -32,10 +32,13 @@ use foul_add::*;
 mod warning_add;
 use warning_add::*;
 
+mod portal_login;
+use portal_login::*;
+
 pub(in super::super) fn build_keypad_page<'a>(
     data: ViewData<'_, '_>,
     page: KeypadPage,
-    player_num: u16,
+    player_num: u32,
     track_fouls_and_warnings: bool,
 ) -> Element<'a, Message> {
     let ViewData {
@@ -85,10 +88,11 @@ pub(in super::super) fn build_keypad_page<'a>(
         }
         KeypadPage::GameNumber
         | KeypadPage::Penalty(_, _, _, _)
-        | KeypadPage::TeamTimeouts(_, _) => player_num.to_string(),
+        | KeypadPage::TeamTimeouts(_, _)
+        | KeypadPage::PortalLogin(_, _) => player_num.to_string(),
     };
 
-    let text_size = if text_displayed == "TEAM" {
+    let text_size = if text_displayed == "TEAM" || matches!(page, KeypadPage::PortalLogin(_, _)) {
         MEDIUM_TEXT
     } else {
         LARGE_TEXT
@@ -218,6 +222,7 @@ pub(in super::super) fn build_keypad_page<'a>(
                     ret_to_overview,
                 } =>
                     make_warning_add_page(origin, color, infraction, team_warning, ret_to_overview),
+                KeypadPage::PortalLogin(id, requested) => make_portal_login_page(id, requested),
             }
         ]
         .spacing(SPACING)

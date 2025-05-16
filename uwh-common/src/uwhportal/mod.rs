@@ -1,26 +1,22 @@
-use core::time::Duration;
-use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
+use crate::bundles::BlackWhiteBundle;
+use core::{cell::OnceCell, time::Duration};
 use log::{debug, info, warn};
-use reqwest::header::{AUTHORIZATION, HeaderValue};
-use reqwest::{Client, ClientBuilder, Method, RequestBuilder, StatusCode};
+use rand::{Rng, SeedableRng};
+use reqwest::{
+    Client, ClientBuilder, Method, RequestBuilder, StatusCode,
+    header::{AUTHORIZATION, HeaderValue},
+};
 use schedule::{EventId, GameNumber, TeamId, TeamList};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
-use std::{
-    error::Error,
-    sync::{Arc, Mutex},
-};
-
-use crate::bundles::BlackWhiteBundle;
+use std::{collections::BTreeMap, error::Error};
 
 pub mod schedule;
 
 pub struct UwhPortalClient {
     base_url: String,
     access_token: Option<String>,
-    token_validity: Arc<Mutex<TokenValidity>>,
-    event: Option<String>,
     client: Client,
+    id: OnceCell<u32>,
 }
 
 impl UwhPortalClient {
@@ -37,93 +33,103 @@ impl UwhPortalClient {
 
         let base_url = base_url.trim_end_matches('/').to_string();
 
-        let mut ret = Self {
+        Ok(Self {
             base_url,
             access_token: access_token.map(|s| s.to_string()),
-            token_validity: Arc::new(Mutex::new(TokenValidity::Unknown)),
-            event: None,
             client,
-        };
-
-        ret.check_token();
-
-        Ok(ret)
-    }
-
-    /// Returns the current token validity state and the event name if
-    /// for which the token is valid. If the event name is None, the token
-    /// is valid for all events.
-    pub fn token_validity(&self) -> (TokenValidity, Option<String>) {
-        (*self.token_validity.lock().unwrap(), self.event.clone())
+            id: OnceCell::new(),
+        })
     }
 
     pub fn set_token(&mut self, token: &str) {
         self.access_token = Some(token.to_string());
-
-        self.check_token();
     }
 
-    fn check_token(&mut self) {
-        if let Some(token) = &self.access_token {
-            let mut issuer = self.base_url.clone();
-            if issuer.starts_with("https://api.") {
-                issuer = issuer.replacen("https://api.", "https://", 1);
-            } else if issuer.starts_with("http://api.") {
-                issuer = issuer.replacen("http://api.", "http://", 1);
-            }
+    pub fn has_token(&self) -> bool {
+        self.access_token.is_some()
+    }
 
-            let mut val = Validation::new(Algorithm::RS256);
-            val.set_required_spec_claims(&["exp", "iss"]);
-            val.set_audience(&["API"]);
-            val.set_issuer(&[issuer]);
-            val.reject_tokens_expiring_in_less_than = 60;
-            val.validate_exp = true;
-            val.validate_nbf = true;
-            val.insecure_disable_signature_validation();
+    pub fn id(&self) -> u32 {
+        *self
+            .id
+            .get_or_init(|| rand::rngs::StdRng::from_os_rng().random_range(1..=999_999))
+    }
 
-            // Garbage, but we need a key to compile
-            let decoder = DecodingKey::from_secret(b"secret");
-            let ret = decode::<PortalToken>(token, &decoder, &val);
-            match ret {
-                Ok(t) => {
-                    self.event = t.claims.entity.map(|s| s.replacen("events/", "", 1));
-                    *self.token_validity.lock().unwrap() = TokenValidity::LocallyChecked;
+    /// Will generate a refbox id if it does not already exist.
+    pub fn login_to_portal(
+        &self,
+        event_id: &EventId,
+        code: u32,
+    ) -> impl std::future::Future<Output = Result<PortalTokenResponse, Box<dyn Error>>> + use<>
+    {
+        let url = format!(
+            "{}/api/events/{}/access-keys/ref-box",
+            self.base_url,
+            event_id.partial()
+        );
+
+        let request = self
+            .client
+            .request(Method::POST, &url)
+            .json(&serde_json::json!({
+                "refBoxId": self.id().to_string(),
+                "code": code.to_string()
+            }));
+
+        async move {
+            let response = request.send().await?;
+
+            if response.status() == StatusCode::OK {
+                info!("uwhportal login successful");
+                let body = response.json::<serde_json::Value>().await?;
+                if let Some(token) = body["accessKey"].as_str() {
+                    Ok(PortalTokenResponse::Success(token.to_string()))
+                } else {
+                    Err(Box::new(ApiError::new(
+                        "Token not found in response".to_string(),
+                    )))?
                 }
-                Err(e) => {
-                    warn!("uwhportal token validation failed: {e:?}");
-                    *self.token_validity.lock().unwrap() = TokenValidity::Invalid;
+            } else if response.status() == StatusCode::BAD_REQUEST {
+                warn!("uwhportal login failed, response: {:?}", response);
+                let body = response.json::<serde_json::Value>().await?;
+                if let Some(reason) = body["reason"].as_str() {
+                    match reason {
+                        "NoPendingLink" => Ok(PortalTokenResponse::NoPendingLink),
+                        "InvalidCode" => Ok(PortalTokenResponse::InvalidCode),
+                        _ => Err(Box::new(ApiError::new(format!(
+                            "Unknown reason: {}",
+                            reason
+                        ))))?,
+                    }
+                } else {
+                    Err(Box::new(ApiError::new(
+                        "Reason not found in response".to_string(),
+                    )))?
                 }
+            } else {
+                warn!("uwhportal login failed, response: {:?}", response);
+                let body = response.text().await?;
+                Err(Box::new(ApiError::new(body)))?
             }
-        } else {
-            *self.token_validity.lock().unwrap() = TokenValidity::Invalid;
         }
     }
 
-    /// Calling this with any token validity other than `LocallyChecked` is a no-op.
     pub fn verify_token(
         &self,
+        event: &EventId,
     ) -> impl std::future::Future<Output = Result<(), Box<dyn Error>>> + use<> {
-        let request = self.event.as_ref().map(|e| {
-            let url = format!("{}/api/admin/events/{e}/access-keys/verify", self.base_url);
-            authenticated_request(&self.client, Method::GET, &url, &self.access_token)
-        });
+        let url = format!(
+            "{}/api/events/{}/access-keys/verify",
+            self.base_url,
+            event.partial()
+        );
+        let request = authenticated_request(&self.client, Method::GET, &url, &self.access_token);
 
-        let token_validity = self.token_validity.clone();
         async move {
-            if *token_validity.lock().unwrap() != TokenValidity::LocallyChecked {
-                info!("uwhportal token validation skipped");
-                return Ok(());
-            }
-
-            let response = if let Some(request) = request {
-                request.send().await?
-            } else {
-                return Ok(());
-            };
+            let response = request.send().await?;
 
             if response.status() == StatusCode::OK {
                 info!("uwhportal token validation successful");
-                *token_validity.lock().unwrap() = TokenValidity::Valid;
                 Ok(())
             } else {
                 warn!("uwhportal token validation failed, response: {response:?}");
@@ -363,10 +369,9 @@ struct PortalToken {
     sub: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TokenValidity {
-    Invalid,
-    LocallyChecked,
-    Valid,
-    Unknown,
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PortalTokenResponse {
+    Success(String),
+    NoPendingLink,
+    InvalidCode,
 }

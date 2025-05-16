@@ -5,7 +5,10 @@ use tokio::{sync::mpsc::Sender, time::Duration};
 use uwh_common::{
     color::Color as GameColor,
     game_snapshot::{GameSnapshot, Infraction},
-    uwhportal::schedule::{Event, EventId, Schedule, TeamList},
+    uwhportal::{
+        PortalTokenResponse,
+        schedule::{Event, EventId, Schedule, TeamList},
+    },
 };
 
 #[derive(Debug, Clone)]
@@ -84,8 +87,6 @@ pub enum Message {
     ParameterSelected(ListableParameter, String),
     ToggleBoolParameter(BoolGameParameter),
     CycleParameter(CyclingParameter),
-    TextParameterChanged(TextParameter, String),
-    ApplyAuthChanges,
     RequestRemoteId,
     GotRemoteId(u32),
     DeleteRemote(usize),
@@ -102,6 +103,8 @@ pub enum Message {
     RecvEventList(Vec<Event>),
     RecvTeamsList(EventId, TeamList),
     RecvSchedule(EventId, Schedule),
+    RecvPortalToken(PortalTokenResponse),
+    RecvTokenValid(bool),
     StopClock,
     StartClock,
     TimeUpdaterStarted(Sender<Arc<Mutex<TournamentManager>>>),
@@ -121,6 +124,8 @@ impl Message {
             | Self::RecvEventList(_)
             | Self::RecvTeamsList(_, _)
             | Self::RecvSchedule(_, _)
+            | Self::RecvPortalToken(_)
+            | Self::RecvTokenValid(_)
             | Self::TimeUpdaterStarted(_)
             | Self::NoAction => true,
 
@@ -154,8 +159,6 @@ impl Message {
             | Self::SelectParameter(_)
             | Self::ParameterEditComplete { .. }
             | Self::ParameterSelected(_, _)
-            | Self::TextParameterChanged(_, _)
-            | Self::ApplyAuthChanges
             | Self::RequestRemoteId
             | Self::GotRemoteId(_)
             | Self::DeleteRemote(_)
@@ -186,7 +189,6 @@ impl PartialEq for Message {
             | (Self::RequestPortalRefresh, Self::RequestPortalRefresh)
             | (Self::ShowWarnings, Self::ShowWarnings)
             | (Self::EditGameConfig, Self::EditGameConfig)
-            | (Self::ApplyAuthChanges, Self::ApplyAuthChanges)
             | (Self::RequestRemoteId, Self::RequestRemoteId)
             | (Self::EndTimeout, Self::EndTimeout)
             | (Self::StopClock, Self::StopClock)
@@ -293,9 +295,6 @@ impl PartialEq for Message {
             (Self::ParameterSelected(a, b), Self::ParameterSelected(c, d)) => a == c && b == d,
             (Self::ToggleBoolParameter(a), Self::ToggleBoolParameter(b)) => a == b,
             (Self::CycleParameter(a), Self::CycleParameter(b)) => a == b,
-            (Self::TextParameterChanged(a, b), Self::TextParameterChanged(c, d)) => {
-                a == c && b == d
-            }
             (Self::GotRemoteId(a), Self::GotRemoteId(b)) => a == b,
             (Self::DeleteRemote(a), Self::DeleteRemote(b)) => a == b,
             (Self::ConfirmationSelected(a), Self::ConfirmationSelected(b)) => a == b,
@@ -306,6 +305,8 @@ impl PartialEq for Message {
             (Self::RecvEventList(a), Self::RecvEventList(b)) => a == b,
             (Self::RecvTeamsList(a, b), Self::RecvTeamsList(c, d)) => a == c && b == d,
             (Self::RecvSchedule(a, b), Self::RecvSchedule(c, d)) => a == c && b == d,
+            (Self::RecvPortalToken(a), Self::RecvPortalToken(b)) => a == b,
+            (Self::RecvTokenValid(a), Self::RecvTokenValid(b)) => a == b,
 
             (Self::NewSnapshot(_), _)
             | (Self::EditTime, _)
@@ -344,8 +345,6 @@ impl PartialEq for Message {
             | (Self::ParameterSelected(_, _), _)
             | (Self::ToggleBoolParameter(_), _)
             | (Self::CycleParameter(_), _)
-            | (Self::TextParameterChanged(_, _), _)
-            | (Self::ApplyAuthChanges, _)
             | (Self::RequestRemoteId, _)
             | (Self::GotRemoteId(_), _)
             | (Self::DeleteRemote(_), _)
@@ -360,6 +359,8 @@ impl PartialEq for Message {
             | (Self::RecvEventList(_), _)
             | (Self::RecvTeamsList(_, _), _)
             | (Self::RecvSchedule(_, _), _)
+            | (Self::RecvPortalToken(_), _)
+            | (Self::RecvTokenValid(_), _)
             | (Self::StopClock, _)
             | (Self::StartClock, _)
             | (Self::TimeUpdaterStarted(_), _)
@@ -375,7 +376,6 @@ pub enum ConfigPage {
     Sound,
     Display,
     App,
-    Credentials,
     Remotes(usize, bool),
 }
 
@@ -430,11 +430,6 @@ pub enum CyclingParameter {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TextParameter {
-    UwhportalToken,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScrollOption {
     Black,
     White,
@@ -466,10 +461,11 @@ pub enum KeypadPage {
         team_warning: bool,
         ret_to_overview: bool,
     },
+    PortalLogin(u32, bool),
 }
 
 impl KeypadPage {
-    pub fn max_val(&self) -> u16 {
+    pub fn max_val(&self) -> u32 {
         match self {
             Self::AddScore(_)
             | Self::Penalty(_, _, _, _)
@@ -477,6 +473,7 @@ impl KeypadPage {
             | Self::WarningAdd { .. } => 99,
             Self::TeamTimeouts(_, _) => 999,
             Self::GameNumber => 9999,
+            Self::PortalLogin(_, _) => 999_999,
         }
     }
 
@@ -489,6 +486,7 @@ impl KeypadPage {
             Self::GameNumber => fl!("game-number"),
             Self::TeamTimeouts(_, true) => fl!("num-tos-per-half"),
             Self::TeamTimeouts(_, false) => fl!("num-tos-per-game"),
+            Self::PortalLogin(_, _) => fl!("portal-login-code"),
         }
     }
 }

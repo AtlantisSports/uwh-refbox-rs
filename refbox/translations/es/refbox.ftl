@@ -169,6 +169,8 @@ confirm-score = ¿Es correcto este puntaje?
     Confirma con el árbitro principal.
 
     Negro: { $score_black }        Blanco: { $score_white }
+
+    { confirmation-count-down }
 yes = SI
 no = NO
 
@@ -222,6 +224,8 @@ white-penalties = EXPULSIONES E. BLANCO
 
 # Score edit
 final-score = Por favor ingrese la puntuación final
+### Check
+confirmation-count-down = Nota: La puntuación no modificada se confirmará automáticamente en { $countdown }
 
 # Shared Elements
 ## Timeout ribbon

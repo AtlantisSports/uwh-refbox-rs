@@ -801,6 +801,7 @@ mod test {
             event_id: Some(EventId::from_partial("1-A")),
             recent_goal: None,
             next_period_len_secs: Some(180),
+            conf_pause_time: None,
         };
 
         let json_expected = serde_json::to_string(&snapshot).unwrap().into_bytes();

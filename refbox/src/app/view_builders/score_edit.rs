@@ -10,6 +10,7 @@ pub(in super::super) fn build_score_edit_view<'a>(
     data: ViewData<'_, '_>,
     scores: BlackWhiteBundle<u8>,
     is_confirmation: bool,
+    confirmation_time: Option<u32>,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -96,13 +97,20 @@ pub(in super::super) fn build_score_edit_view<'a>(
     .height(Length::Fill);
 
     if is_confirmation {
-        main_col = main_col
-            .push(
-                text(fl!("final-score"))
+        main_col = main_col.push(
+            text(fl!("final-score"))
+                .align_x(Horizontal::Center)
+                .width(Length::Fill),
+        );
+        if let Some(time) = confirmation_time {
+            let time = time_string(Duration::from_secs(time as u64));
+            main_col = main_col.push(
+                text(fl!("confirmation-count-down", countdown = time))
                     .align_x(Horizontal::Center)
                     .width(Length::Fill),
-            )
-            .push(vertical_space());
+            );
+        }
+        main_col = main_col.push(vertical_space());
     }
 
     main_col

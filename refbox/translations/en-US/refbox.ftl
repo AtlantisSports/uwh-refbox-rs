@@ -168,6 +168,8 @@ confirm-score = Is this score correct?
     Confirm with chief referee.
     
     Black: { $score_black }        White: { $score_white }
+
+    { confirmation-count-down }
 yes = YES
 no = NO
 
@@ -221,6 +223,7 @@ white-penalties = WHITE PENALTIES
 
 # Score edit
 final-score = Please enter the final score
+confirmation-count-down = Note: The unchanged score will be automatically confirmed in { $countdown }
 
 # Shared Elements
 ## Timeout ribbon

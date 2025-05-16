@@ -134,6 +134,7 @@ pub(in super::super) fn build_confirmation_page<'a>(
 pub(in super::super) fn build_score_confirmation_page<'a>(
     data: ViewData<'_, '_>,
     scores: BlackWhiteBundle<u8>,
+    confirmation_time: Option<u32>,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -142,10 +143,13 @@ pub(in super::super) fn build_score_confirmation_page<'a>(
         ..
     } = data;
 
+    let time = time_string(Duration::from_secs(confirmation_time.unwrap_or(0) as u64));
+
     let header = text(fl!(
         "confirm-score",
         score_black = scores.black,
-        score_white = scores.white
+        score_white = scores.white,
+        countdown = time
     ))
     .align_x(Horizontal::Center);
 

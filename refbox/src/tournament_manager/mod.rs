@@ -2083,6 +2083,14 @@ impl TournamentManager {
             .next_period_dur(&self.config)
             .map(|dur| dur.as_secs().try_into().unwrap_or(0));
 
+        let conf_pause_time = self.time_pause_confirmation.as_ref().map(|p| {
+            p.duration_of_pause
+                .saturating_sub(now.duration_since(p.pause_began))
+                .as_secs()
+                .try_into()
+                .unwrap_or(0)
+        });
+
         Some(GameSnapshot {
             current_period: self.current_period,
             secs_in_period,
@@ -2098,48 +2106,51 @@ impl TournamentManager {
             event_id: None,
             recent_goal: self.recent_goal.map(|(c, n, _, _)| (c, n)),
             next_period_len_secs,
+            conf_pause_time,
         })
     }
 
     pub fn next_update_time(&self, now: Instant) -> Option<Instant> {
+        let now_plus_subsec = |d: Duration| now + Duration::from_nanos(d.subsec_nanos() as u64);
+        let now_plus_invert_subsec =
+            |d: Duration| now + Duration::from_nanos(1_000_000_000 - d.subsec_nanos() as u64);
+
         if let Some(ref pause_conf) = self.time_pause_confirmation {
-            return Some(pause_conf.pause_began + pause_conf.duration_of_pause);
+            return now
+                .checked_duration_since(pause_conf.pause_began)
+                .and_then(|d| pause_conf.duration_of_pause.checked_sub(d))
+                .map(now_plus_subsec);
         };
 
         match (&self.timeout_state, self.current_period) {
             // cases where the clock is counting up
-            (Some(TimeoutState::Ref(cs)), _) | (Some(TimeoutState::PenaltyShot(cs)), _) => cs
-                .clock_time(now)
-                .map(|ct| now + Duration::from_nanos(1_000_000_000 - ct.subsec_nanos() as u64)),
-            (None, GamePeriod::SuddenDeath) => self
-                .clock_state
-                .clock_time(now)
-                .map(|ct| now + Duration::from_nanos(1_000_000_000 - ct.subsec_nanos() as u64)),
+            (Some(TimeoutState::Ref(cs)), _) | (Some(TimeoutState::PenaltyShot(cs)), _) => {
+                cs.clock_time(now).map(now_plus_invert_subsec)
+            }
+            (None, GamePeriod::SuddenDeath) => {
+                self.clock_state.clock_time(now).map(now_plus_invert_subsec)
+            }
             // cases where the clock is counting down
-            (Some(TimeoutState::Team(_, cs)), _) => cs
-                .clock_time(now)
-                .map(|ct| now + Duration::from_nanos(ct.subsec_nanos() as u64)),
+            (Some(TimeoutState::Team(_, cs)), _) => cs.clock_time(now).map(now_plus_subsec),
             (Some(TimeoutState::RugbyPenaltyShot(cs)), period) => {
-                let time_to_pen_update = cs
-                    .clock_time(now)
-                    .map(|ct| now + Duration::from_nanos(ct.subsec_nanos() as u64));
+                let time_to_pen_update = cs.clock_time(now).map(now_plus_subsec);
                 let time_to_period_update = self.clock_state.clock_time(now).map(|ct| {
                     if period == GamePeriod::SuddenDeath {
-                        now + Duration::from_nanos(1_000_000_000 - ct.subsec_nanos() as u64)
+                        now_plus_invert_subsec(ct)
                     } else {
-                        now + Duration::from_nanos(ct.subsec_nanos() as u64)
+                        now_plus_subsec(ct)
                     }
                 });
                 if cs.is_running() && !self.clock_state.is_running() {
                     time_to_pen_update
                 } else {
-                    time_to_period_update.or(time_to_pen_update)
+                    match (time_to_period_update, time_to_pen_update) {
+                        (Some(period), Some(pen)) => Some(std::cmp::min(period, pen)),
+                        _ => time_to_period_update.or(time_to_pen_update),
+                    }
                 }
             }
-            (None, _) => self
-                .clock_state
-                .clock_time(now)
-                .map(|ct| now + Duration::from_nanos(ct.subsec_nanos() as u64)),
+            (None, _) => self.clock_state.clock_time(now).map(now_plus_subsec),
         }
     }
 
@@ -2680,6 +2691,158 @@ mod test {
         assert_eq!(tm.penalties.black, vec![]);
         assert_eq!(tm.penalties.white, vec![]);
         assert_eq!(tm.has_reset, true);
+    }
+
+    #[test]
+    fn test_next_update_time() {
+        initialize();
+        let config = GameConfig {
+            penalty_shot_duration: Duration::from_secs(10),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let now = Instant::now();
+
+        // Case 1: Time pause confirmation is active
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::ZERO);
+        tm.start_clock(now);
+        tm.time_pause_confirmation = Some(ConfirmPause {
+            pause_began: now,
+            duration_of_pause: Duration::from_secs(5),
+            clock_time: Duration::ZERO,
+        });
+        assert_eq!(tm.next_update_time(now), Some(now));
+        assert_eq!(
+            tm.next_update_time(now + Duration::from_nanos(8_0000)),
+            Some(now + Duration::from_secs(1))
+        );
+        assert_eq!(
+            tm.next_update_time(now + Duration::from_nanos(1_000_008_000)),
+            Some(now + Duration::from_secs(2))
+        );
+
+        // Case 2: TimeoutState::Ref with clock counting up
+        tm.time_pause_confirmation = None;
+        tm.stop_clock(now).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(10));
+        tm.set_timeout_state(Some(TimeoutState::Ref(ClockState::Stopped {
+            clock_time: Duration::ZERO,
+        })));
+        tm.start_clock(now);
+        assert_eq!(tm.next_update_time(now), Some(now + Duration::from_secs(1)));
+        assert_eq!(
+            tm.next_update_time(now + Duration::from_nanos(8_000)),
+            Some(now + Duration::from_secs(1))
+        );
+        assert_eq!(
+            tm.next_update_time(now + Duration::from_nanos(1_000_008_000)),
+            Some(now + Duration::from_secs(2))
+        );
+
+        // Case 3: TimeoutState::PenaltyShot with clock counting up
+        tm.stop_clock(now).unwrap();
+        tm.set_timeout_state(Some(TimeoutState::PenaltyShot(ClockState::Stopped {
+            clock_time: Duration::ZERO,
+        })));
+        tm.start_clock(now);
+        assert_eq!(tm.next_update_time(now), Some(now + Duration::from_secs(1)));
+        assert_eq!(
+            tm.next_update_time(now + Duration::from_nanos(8_000)),
+            Some(now + Duration::from_secs(1))
+        );
+        assert_eq!(
+            tm.next_update_time(now + Duration::from_nanos(1_000_008_000)),
+            Some(now + Duration::from_secs(2))
+        );
+
+        // Case 4: GamePeriod::SuddenDeath with clock counting up
+        tm.set_timeout_state(None);
+        tm.stop_clock(now).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SuddenDeath, Duration::ZERO);
+        tm.start_clock(now);
+        assert_eq!(tm.next_update_time(now), Some(now + Duration::from_secs(1)));
+        assert_eq!(
+            tm.next_update_time(now + Duration::from_nanos(8_000)),
+            Some(now + Duration::from_secs(1))
+        );
+        assert_eq!(
+            tm.next_update_time(now + Duration::from_nanos(1_000_008_000)),
+            Some(now + Duration::from_secs(2))
+        );
+
+        // Case 5: TimeoutState::Team with clock counting down
+        tm.stop_clock(now).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(10));
+        tm.set_timeout_state(Some(TimeoutState::Team(
+            Color::Black,
+            ClockState::Stopped {
+                clock_time: Duration::from_secs(5),
+            },
+        )));
+        tm.start_clock(now);
+        assert_eq!(tm.next_update_time(now), Some(now));
+        assert_eq!(
+            tm.next_update_time(now + Duration::from_nanos(8_000)),
+            Some(now + Duration::from_secs(1))
+        );
+        assert_eq!(
+            tm.next_update_time(now + Duration::from_nanos(1_000_008_000)),
+            Some(now + Duration::from_secs(2))
+        );
+
+        // Case 6: TimeoutState::RugbyPenaltyShot with clock counting down, Rugby penalty shot is cause of update time
+        tm.stop_clock(now).unwrap();
+        tm.set_timeout_state(Some(TimeoutState::RugbyPenaltyShot(ClockState::Stopped {
+            clock_time: Duration::from_millis(5_500),
+        })));
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(10));
+        tm.start_clock(now);
+        assert_eq!(tm.next_update_time(now), Some(now));
+        assert_eq!(
+            tm.next_update_time(now + Duration::from_nanos(8_000)),
+            Some(now + Duration::from_millis(500))
+        );
+        assert_eq!(
+            tm.next_update_time(now + Duration::from_nanos(1_000_008_000)),
+            Some(now + Duration::from_millis(1_500))
+        );
+
+        // Case 7: TimeoutState::RugbyPenaltyShot with clock counting down, Game clock is cause of update time
+        tm.stop_clock(now).unwrap();
+        tm.set_timeout_state(Some(TimeoutState::RugbyPenaltyShot(ClockState::Stopped {
+            clock_time: Duration::from_secs(5),
+        })));
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_millis(10_500));
+        tm.start_clock(now);
+        assert_eq!(tm.next_update_time(now), Some(now));
+        assert_eq!(
+            tm.next_update_time(now + Duration::from_nanos(8_000)),
+            Some(now + Duration::from_millis(500))
+        );
+        assert_eq!(
+            tm.next_update_time(now + Duration::from_nanos(1_000_008_000)),
+            Some(now + Duration::from_millis(1_500))
+        );
+
+        // Case 8: ClockState::CountingDown with no timeout
+        tm.stop_clock(now).unwrap();
+        tm.set_timeout_state(None);
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(10));
+        tm.start_clock(now);
+        assert_eq!(tm.next_update_time(now), Some(now));
+        assert_eq!(
+            tm.next_update_time(now + Duration::from_nanos(8_000)),
+            Some(now + Duration::from_secs(1))
+        );
+        assert_eq!(
+            tm.next_update_time(now + Duration::from_nanos(1_000_008_000)),
+            Some(now + Duration::from_secs(2))
+        );
+
+        // Case 9: ClockState::Stopped
+        tm.stop_clock(now).unwrap();
+        assert_eq!(tm.next_update_time(now), Some(now));
     }
 
     #[test]

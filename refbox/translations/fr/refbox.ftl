@@ -161,6 +161,8 @@ confirm-score = Ce score est-il correct ?
     Confirmer avec l'arbitre en chef.
     
     Noir: { $score_black }        Blanc: { $score_white }
+
+    { confirmation-count-down }
 yes = OUI
 no = NON
 
@@ -213,6 +215,8 @@ white-penalties = PÉNALITÉS BLANC
 
 # Score edit
 final-score = Veuillez entrer le score final
+### Check
+confirmation-count-down = Note : Le score inchangé sera automatiquement confirmé dans { $countdown }
 
 # Shared Elements
 ## Timeout ribbon

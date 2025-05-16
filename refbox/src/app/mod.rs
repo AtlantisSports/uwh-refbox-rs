@@ -2161,7 +2161,8 @@ impl RefBoxApp {
             AppState::ScoreEdit {
                 scores,
                 is_confirmation,
-            } => build_score_edit_view(data, scores, is_confirmation),
+            } =>
+                build_score_edit_view(data, scores, is_confirmation, self.snapshot.conf_pause_time),
             AppState::PenaltyOverview(indices) => build_penalty_overview_page(
                 data,
                 self.pen_edit.get_printable_lists(Instant::now()).unwrap(),
@@ -2204,7 +2205,8 @@ impl RefBoxApp {
             AppState::ConfirmationPage(ref kind) => {
                 build_confirmation_page(data, kind)
             }
-            AppState::ConfirmScores(scores) => build_score_confirmation_page(data, scores),
+            AppState::ConfirmScores(scores) =>
+                build_score_confirmation_page(data, scores, self.snapshot.conf_pause_time),
         }]
         .spacing(SPACING)
         .padding(PADDING);

@@ -57,6 +57,7 @@ pub struct GameSnapshot {
     pub event_id: Option<EventId>,
     pub recent_goal: Option<(Color, u8)>,
     pub next_period_len_secs: Option<u32>,
+    pub conf_pause_time: Option<u32>,
 }
 
 #[cfg(feature = "std")]

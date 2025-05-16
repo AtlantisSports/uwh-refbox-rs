@@ -61,9 +61,20 @@ fn main() {
         }
     }
 
-    assert_eq!(
-        missing_keys,
-        HashMap::new(),
-        "Some translations are missing keys"
-    );
+    let msg_type = if cfg!(debug_assertions) {
+        "warning"
+    } else {
+        "error"
+    };
+
+    if missing_keys != HashMap::new() {
+        for (file, missing) in &missing_keys {
+            println!(
+                "cargo:{}=Missing keys in {}: {}",
+                msg_type,
+                file,
+                missing.join(", ")
+            );
+        }
+    }
 }

@@ -1,9 +1,8 @@
 use iced::{
-    Background, Border, Color, Shadow, Theme,
+    Border, Color, Shadow, Theme,
     widget::{
         container::Style as ContainerStyle,
         scrollable::{self, Scroller},
-        text_input,
     },
 };
 use iced_core::border::Radius;
@@ -123,31 +122,5 @@ pub fn scrollable_style(_theme: &Theme, _status: scrollable::Status) -> scrollab
         vertical_rail: rail,
         horizontal_rail: rail,
         gap: None,
-    }
-}
-
-pub fn text_input_style(_theme: &Theme, status: text_input::Status) -> text_input::Style {
-    let border = Border {
-        width: match status {
-            text_input::Status::Active
-            | text_input::Status::Focused
-            | text_input::Status::Hovered => 0.5,
-            text_input::Status::Disabled => 1.0,
-        },
-        color: match status {
-            text_input::Status::Focused => BLACK,
-            text_input::Status::Disabled => DISABLED_COLOR,
-            text_input::Status::Active | text_input::Status::Hovered => GRAY,
-        },
-        radius: BORDER_RADIUS,
-    };
-
-    text_input::Style {
-        background: Background::Color(WINDOW_BACKGROUND),
-        border,
-        icon: BLACK,
-        placeholder: GRAY,
-        value: BLACK,
-        selection: BLUE,
     }
 }

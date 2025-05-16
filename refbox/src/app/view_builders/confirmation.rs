@@ -24,6 +24,13 @@ pub(in super::super) fn build_confirmation_page<'a>(
         ConfirmationKind::GameNumberChanged => fl!("apply-this-game-number-change"),
         ConfirmationKind::Error(string) => string.clone(),
         ConfirmationKind::UwhPortalIncomplete => fl!("UWHPortal-enabled"),
+        ConfirmationKind::UwhPortalLinkFailed(PortalTokenResponse::InvalidCode) => {
+            fl!("uwhportal-token-invalid-code")
+        }
+        ConfirmationKind::UwhPortalLinkFailed(PortalTokenResponse::NoPendingLink) => {
+            fl!("uwhportal-token-no-pending-link")
+        }
+        ConfirmationKind::UwhPortalLinkFailed(PortalTokenResponse::Success(_)) => unreachable!(),
     };
 
     type ButtonStyleFn = fn(&Theme, Status) -> Style;
@@ -83,6 +90,9 @@ pub(in super::super) fn build_confirmation_page<'a>(
                 ConfirmationOption::DiscardChanges,
             ),
         ],
+        ConfirmationKind::UwhPortalLinkFailed(_) => {
+            vec![(fl!("ok"), green_button, ConfirmationOption::GoBack)]
+        }
     };
 
     let buttons = buttons.into_iter().map(|(text, style, option)| {

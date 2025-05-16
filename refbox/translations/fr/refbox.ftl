@@ -129,6 +129,13 @@ pre-sd-break = PAUSE PRÉ M/S
 pre-sd-len = La durée de la pause entre la période de match précédente et la mort subite
 language = LANGUE
 this-language = FRANÇAIS
+### Check
+portal-login-code = Code de connexion
+### Check
+portal-login-instructions = Veuillez aller sur UWHPortal et entrer l'ID ci-dessous pour établir un lien.
+    Le portail fournira un code à entrer ici.
+
+    L'ID de cet appareil est : { $id }
 
 help = AIDE: 
 
@@ -138,6 +145,12 @@ game-configuration-can-not-be-changed = La configuration du match ne peut pas ê
     Que souhaitez-vous faire ?
 apply-this-game-number-change = Comment souhaitez-vous appliquer ce changement de numéro ?
 UWHPortal-enabled = Lorsque UWHPortal est activé, tous les champs doivent être remplis.
+### Check
+uwhportal-token-invalid-code = Code invalide.
+    Veuillez réessayer.
+### Check
+uwhportal-token-no-pending-link = Aucun lien en attente trouvé.
+    Veuillez réessayer.
 go-back-to-editor = RETOURNER À L'ÉDITEUR
 discard-changes = ANNULER LES MODIFICATIONS
 end-current-game-and-apply-changes = TERMINER LE MATCH EN COURS ET APPLIQUER LES MODIFICATIONS

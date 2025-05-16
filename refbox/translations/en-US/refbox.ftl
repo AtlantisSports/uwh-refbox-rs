@@ -140,6 +140,11 @@ pre-sd-break = PRE SD BREAK
 pre-sd-len = The length of the break between the preceeding play period and Sudden Death
 language = LANGUAGE
 this-language = ENGLISH
+portal-login-code = CODE
+portal-login-instructions = Please go to UWHPortal and enter the ID below to establish a link.
+    The portal will provide a code to enter here.
+
+    This device's ID is: { $id }
 
 help = HELP: 
 
@@ -149,6 +154,10 @@ game-configuration-can-not-be-changed = The game configuration can not be change
     What would you like to do?
 apply-this-game-number-change = How would you like to apply this game number change?
 UWHPortal-enabled = When UWHPortal is enabled, all fields must be filled out.
+uwhportal-token-invalid-code = Invalid code entered.
+    Please try again.
+uwhportal-token-no-pending-link = Portal not expecting a connection.
+    Please try again.
 go-back-to-editor = GO BACK TO EDITOR
 discard-changes = DISCARD CHANGES
 end-current-game-and-apply-changes = END CURRENT GAME AND APPLY CHANGES

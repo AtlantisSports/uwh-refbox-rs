@@ -7,7 +7,7 @@ rust-version = "1.85"
 
 [features]
 default = ["std"]
-std = ["arrayvec/std", "displaydoc/std", "jsonwebtoken", "reqwest", "serde/std", "serde_json", "serde_with", "time", "toml"]
+std = ["arrayvec/std", "displaydoc/std", "rand", "reqwest", "serde/std", "serde_json", "serde_with", "time", "toml"]
 
 [dependencies]
 arrayref = "0.3"
@@ -18,8 +18,8 @@ displaydoc = { version = "0.2", default-features = false }
 enum-iterator = "2"
 fonts = { version = "0.3.0", path = "../fonts" }
 image = "0.24"
-jsonwebtoken = { version = "9.3.1", optional = true }
 log = "0.4"
+rand = { version = "0.9.1", features = ["os_rng", "std_rng"], optional = true }
 reqwest = { version = "0.12", optional = true, features = ["json"] }
 serde = { version = "1", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.135", optional = true }

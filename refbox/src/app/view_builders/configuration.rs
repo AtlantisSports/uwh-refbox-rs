@@ -5,7 +5,7 @@ use collect_array::CollectArrayResult;
 use iced::{
     Alignment, Element, Length,
     alignment::{Horizontal, Vertical},
-    widget::{TextInput, button, column, container, horizontal_space, row, text, vertical_space},
+    widget::{button, column, container, horizontal_space, row, text, vertical_space},
 };
 use matrix_drawing::transmitted_data::Brightness;
 use std::collections::BTreeMap;
@@ -13,10 +13,7 @@ use tokio::time::Duration;
 use uwh_common::{
     config::Game as GameConfig,
     game_snapshot::GameSnapshot,
-    uwhportal::{
-        TokenValidity,
-        schedule::{Event, EventId, GameNumber, Schedule},
-    },
+    uwhportal::schedule::{Event, EventId, GameNumber, Schedule},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -26,7 +23,7 @@ pub(in super::super) struct EditableSettings {
     pub white_on_right: bool,
     pub brightness: Brightness,
     pub using_uwhportal: bool,
-    pub uwhportal_token: String,
+    pub uwhportal_token_valid: Option<bool>,
     pub current_event_id: Option<EventId>,
     pub current_court: Option<String>,
     pub schedule: Option<Schedule>,
@@ -112,8 +109,6 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
     settings: &EditableSettings,
     events: Option<&BTreeMap<EventId, Event>>,
     page: ConfigPage,
-    uwhportal_token_valid: Option<(TokenValidity, Option<String>)>,
-    touchscreen: bool,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -124,21 +119,10 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
 
     match page {
         ConfigPage::Main => make_main_config_page(snapshot, settings, mode, clock_running),
-        ConfigPage::Game => make_event_config_page(
-            snapshot,
-            settings,
-            events,
-            mode,
-            clock_running,
-            uwhportal_token_valid,
-            touchscreen,
-        ),
+        ConfigPage::Game => make_event_config_page(snapshot, settings, events, mode, clock_running),
         ConfigPage::Sound => make_sound_config_page(snapshot, settings, mode, clock_running),
         ConfigPage::Display => make_display_config_page(snapshot, settings, mode, clock_running),
         ConfigPage::App => make_app_config_page(mode, snapshot, settings, clock_running),
-        ConfigPage::Credentials => {
-            make_credential_config_page(snapshot, settings, mode, clock_running)
-        }
         ConfigPage::Remotes(index, listening) => {
             make_remote_config_page(snapshot, settings, index, listening, mode, clock_running)
         }
@@ -257,8 +241,6 @@ fn make_event_config_page<'a>(
     events: Option<&BTreeMap<EventId, Event>>,
     mode: Mode,
     clock_running: bool,
-    uwhportal_token_valid: Option<(TokenValidity, Option<String>)>,
-    touchscreen: bool,
 ) -> Element<'a, Message> {
     let EditableSettings {
         config,
@@ -336,39 +318,30 @@ fn make_event_config_page<'a>(
             .width(Length::Fill)
             .height(Length::Fill);
 
-        let uwhportal_auth = if matches!(uwhportal_token_valid, Some((TokenValidity::Invalid, _))) {
-            Some(false)
-        } else {
-            None
-        };
-
-        let auth_btn_msg = if touchscreen {
-            Message::NoAction
-        } else {
-            Message::ChangeConfigPage(ConfigPage::Credentials)
-        };
-
         let auth_state_button = button(
-            row![uwhportal_auth_text, auth_container(uwhportal_auth),]
-                .padding(PADDING)
-                .spacing(SPACING)
-                .width(Length::Fill)
-                .height(Length::Fill),
+            row![
+                uwhportal_auth_text,
+                auth_container(settings.uwhportal_token_valid),
+            ]
+            .padding(PADDING)
+            .spacing(SPACING)
+            .width(Length::Fill)
+            .height(Length::Fill),
         )
         .height(Length::Fixed(MIN_BUTTON_SIZE))
         .width(Length::Fill)
         .padding(0)
         .style(light_gray_button)
-        .on_press(auth_btn_msg);
+        .on_press(Message::KeypadPage(KeypadPage::PortalLogin(0, false)));
 
         [
             make_value_button(fl!("event"), event_label, (true, true), event_btn_msg)
                 .height(Length::Fill)
                 .into(),
+            auth_state_button.into(),
             make_value_button(fl!("court"), pool_label, (true, true), pool_btn_msg)
                 .height(Length::Fill)
                 .into(),
-            auth_state_button.into(),
             row![
                 horizontal_space(),
                 horizontal_space(),
@@ -935,51 +908,6 @@ fn make_remote_config_page<'a>(
         .spacing(SPACING)
         .height(Length::Fill)
         .width(Length::Fill),
-    ]
-    .spacing(SPACING)
-    .height(Length::Fill)
-    .into()
-}
-
-fn make_credential_config_page<'a>(
-    snapshot: &GameSnapshot,
-    settings: &EditableSettings,
-    mode: Mode,
-    clock_running: bool,
-) -> Element<'a, Message> {
-    let EditableSettings {
-        uwhportal_token, ..
-    } = settings;
-
-    column![
-        make_game_time_button(snapshot, false, false, mode, clock_running),
-        row![
-            text("UWHPORTAL TOKEN:")
-                .size(MEDIUM_TEXT)
-                .align_y(Vertical::Center)
-                .height(Length::Fill),
-            TextInput::new("", uwhportal_token,)
-                .on_input(|s| Message::TextParameterChanged(TextParameter::UwhportalToken, s))
-                .secure(true)
-                .style(text_input_style)
-                .width(Length::Fill)
-        ]
-        .spacing(SPACING)
-        .height(Length::Fill),
-        vertical_space(),
-        row![
-            make_button("CANCEL")
-                .style(red_button)
-                .width(Length::Fill)
-                .on_press(Message::ChangeConfigPage(ConfigPage::Game)),
-            horizontal_space(),
-            make_button("DONE")
-                .style(green_button)
-                .width(Length::Fill)
-                .on_press(Message::ApplyAuthChanges),
-        ]
-        .spacing(SPACING)
-        .height(Length::Fill),
     ]
     .spacing(SPACING)
     .height(Length::Fill)

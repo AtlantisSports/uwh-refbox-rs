@@ -27,7 +27,7 @@ use uwh_common::{
     drawing_support::*,
     game_snapshot::{GamePeriod, GameSnapshot, Infraction, TimeoutSnapshot},
     uwhportal::{
-        UwhPortalClient,
+        PortalTokenResponse, UwhPortalClient,
         schedule::{Event, EventId, GameNumber, Schedule},
     },
 };
@@ -73,7 +73,6 @@ pub struct RefBoxApp {
     sound: SoundController,
     sim_child: Option<Child>,
     list_all_events: bool,
-    touchscreen: bool,
 }
 
 #[derive(Debug)]
@@ -86,7 +85,6 @@ pub struct RefBoxAppFlags {
     pub require_https: bool,
     pub fullscreen: bool,
     pub list_all_events: bool,
-    pub touchscreen: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -100,7 +98,7 @@ enum AppState {
     PenaltyOverview(BlackWhiteBundle<usize>),
     WarningOverview(BlackWhiteBundle<usize>),
     FoulOverview(OptColorBundle<usize>),
-    KeypadPage(KeypadPage, u16),
+    KeypadPage(KeypadPage, u32),
     GameDetailsPage(bool),
     WarningsSummaryPage,
     EditGameConfig(ConfigPage),
@@ -116,6 +114,7 @@ enum ConfirmationKind {
     GameConfigChanged(GameConfig),
     Error(String),
     UwhPortalIncomplete,
+    UwhPortalLinkFailed(PortalTokenResponse),
 }
 
 impl RefBoxApp {
@@ -289,15 +288,40 @@ impl RefBoxApp {
         }
     }
 
-    fn check_uwhportal_auth(&self) -> Task<Message> {
+    fn request_uwhportal_token(&self, event_id: &EventId, code: u32) -> Task<Message> {
         if let Some(ref uwhportal_client) = self.uwhportal_client {
-            let request = uwhportal_client.verify_token();
+            let request = uwhportal_client.login_to_portal(event_id, code);
             Task::future(async move {
                 match request.await {
-                    Ok(()) => info!("Successfully checked uwhportal token validity"),
-                    Err(e) => error!("Failed to check uwhportal token validity: {e}"),
+                    Ok(token) => {
+                        info!("Got a response from UWH Portal token request");
+                        Message::RecvPortalToken(token)
+                    }
+                    Err(e) => {
+                        error!("Failed to get uwhportal token: {e}");
+                        Message::NoAction
+                    }
                 }
-                Message::NoAction
+            })
+        } else {
+            Task::none()
+        }
+    }
+
+    fn check_uwhportal_auth(&self, event_id: &EventId) -> Task<Message> {
+        if let Some(ref uwhportal_client) = self.uwhportal_client {
+            let request = uwhportal_client.verify_token(event_id);
+            Task::future(async move {
+                match request.await {
+                    Ok(()) => {
+                        info!("Portal token validated");
+                        Message::RecvTokenValid(true)
+                    }
+                    Err(e) => {
+                        error!("Portal token validity check failed: {e}");
+                        Message::RecvTokenValid(false)
+                    }
+                }
             })
         } else {
             Task::none()
@@ -405,7 +429,7 @@ impl RefBoxApp {
             config: _config,
             game_number: _game_number,
             track_fouls_and_warnings,
-            uwhportal_token: _,
+            uwhportal_token_valid: _,
             confirm_score,
         } = edited_settings;
 
@@ -451,7 +475,6 @@ impl RefBoxApp {
             require_https,
             fullscreen,
             list_all_events,
-            touchscreen,
         } = flags;
 
         let mut tm = TournamentManager::new(config.game.clone());
@@ -506,12 +529,10 @@ impl RefBoxApp {
             sound,
             sim_child,
             list_all_events,
-            touchscreen,
         };
 
         let task = Task::batch(vec![
             new.request_event_list(),
-            new.check_uwhportal_auth(),
             if fullscreen {
                 window::get_latest().and_then(|w| window::change_mode(w, window::Mode::Fullscreen))
             } else {
@@ -587,9 +608,7 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::TimeEditComplete { canceled } => {
-                let task = if let AppState::TimeEdit(was_running, game_time, timeout_time) =
-                    self.app_state
-                {
+                if let AppState::TimeEdit(was_running, game_time, timeout_time) = self.app_state {
                     let mut tm = self.tm.lock().unwrap();
                     let now = Instant::now();
                     if !canceled {
@@ -610,8 +629,7 @@ impl RefBoxApp {
                     task
                 } else {
                     unreachable!();
-                };
-                task
+                }
             }
             Message::StartPlayNow => {
                 let mut tm = self.tm.lock().unwrap();
@@ -1059,14 +1077,14 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
-            Message::KeypadPage(page) => {
+            Message::KeypadPage(mut page) => {
                 let init_val = match page {
                     KeypadPage::AddScore(_)
                     | KeypadPage::Penalty(None, _, _, _)
                     | KeypadPage::FoulAdd { origin: None, .. }
                     | KeypadPage::WarningAdd { origin: None, .. } => 0,
                     KeypadPage::Penalty(Some((color, index)), _, _, _) => {
-                        self.pen_edit.get_item(color, index).unwrap().player_number as u16
+                        self.pen_edit.get_item(color, index).unwrap().player_number as u32
                     }
                     KeypadPage::WarningAdd {
                         origin: Some((color, index)),
@@ -1088,7 +1106,9 @@ impl RefBoxApp {
                         .player_number
                         .map(|n| n.into())
                         .unwrap_or(0),
-                    KeypadPage::TeamTimeouts(_, _) => self.config.game.num_team_timeouts_allowed,
+                    KeypadPage::TeamTimeouts(_, _) => {
+                        self.config.game.num_team_timeouts_allowed as u32
+                    }
                     KeypadPage::GameNumber => self
                         .edited_settings
                         .as_ref()
@@ -1096,6 +1116,10 @@ impl RefBoxApp {
                         .game_number
                         .parse()
                         .unwrap_or(0),
+                    KeypadPage::PortalLogin(ref mut id, _) => {
+                        *id = self.uwhportal_client.as_ref().unwrap().id();
+                        0
+                    }
                 };
                 self.app_state = AppState::KeypadPage(page, init_val);
                 trace!("AppState changed to {:?}", self.app_state);
@@ -1197,6 +1221,23 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::EditGameConfig => {
+                let mut task = Task::none();
+
+                let uwhportal_token_valid = if let Some(ref client) = self.uwhportal_client {
+                    if client.has_token() {
+                        if let Some(event_id) = self.current_event_id.as_ref() {
+                            task = self.check_uwhportal_auth(event_id);
+                            None
+                        } else {
+                            Some(false)
+                        }
+                    } else {
+                        Some(false)
+                    }
+                } else {
+                    Some(false)
+                };
+
                 let edited_settings = EditableSettings {
                     config: self.tm.lock().unwrap().config().clone(),
                     game_number: if self.snapshot.current_period == GamePeriod::BetweenGames {
@@ -1207,7 +1248,7 @@ impl RefBoxApp {
                     white_on_right: self.config.hardware.white_on_right,
                     brightness: self.config.hardware.brightness,
                     using_uwhportal: self.using_uwhportal,
-                    uwhportal_token: self.config.uwhportal.token.clone(),
+                    uwhportal_token_valid,
                     current_event_id: self.current_event_id.clone(),
                     current_court: self.current_court.clone(),
                     schedule: self.schedule.clone(),
@@ -1223,7 +1264,7 @@ impl RefBoxApp {
 
                 self.app_state = AppState::EditGameConfig(ConfigPage::Main);
                 trace!("AppState changed to {:?}", self.app_state);
-                Task::none()
+                task
             }
             Message::ChangeConfigPage(new_page) => {
                 if let AppState::EditGameConfig(ref mut page) = self.app_state {
@@ -1428,6 +1469,7 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::ParameterEditComplete { canceled } => {
+                let mut task = Task::none();
                 if !canceled {
                     let edited_settings = self.edited_settings.as_mut().unwrap();
                     match self.app_state {
@@ -1462,8 +1504,17 @@ impl RefBoxApp {
                         }
                         AppState::KeypadPage(KeypadPage::TeamTimeouts(len, per_half), num) => {
                             edited_settings.config.team_timeout_duration = len;
-                            edited_settings.config.num_team_timeouts_allowed = num;
+                            edited_settings.config.num_team_timeouts_allowed = num as u16;
                             edited_settings.config.timeouts_counted_per_half = per_half;
+                        }
+                        AppState::KeypadPage(
+                            KeypadPage::PortalLogin(_, ref mut requested),
+                            code,
+                        ) => {
+                            *requested = true;
+                            edited_settings.uwhportal_token_valid = None;
+                            let event_id = edited_settings.current_event_id.clone().unwrap();
+                            task = self.request_uwhportal_token(&event_id, code);
                         }
                         _ => unreachable!(),
                     }
@@ -1472,7 +1523,8 @@ impl RefBoxApp {
                 let next_page = match self.app_state {
                     AppState::ParameterEditor(_, _) => ConfigPage::Game,
                     AppState::KeypadPage(KeypadPage::GameNumber, _) => ConfigPage::Main,
-                    AppState::KeypadPage(KeypadPage::TeamTimeouts(_, _), _) => ConfigPage::Game,
+                    AppState::KeypadPage(KeypadPage::TeamTimeouts(_, _), _)
+                    | AppState::KeypadPage(KeypadPage::PortalLogin(_, _), _) => ConfigPage::Game,
                     AppState::ParameterList(param, _) => match param {
                         ListableParameter::Game => ConfigPage::Main,
                         ListableParameter::Event | ListableParameter::Court => ConfigPage::Game,
@@ -1482,7 +1534,7 @@ impl RefBoxApp {
 
                 self.app_state = AppState::EditGameConfig(next_page);
                 trace!("AppState changed to {:?}", self.app_state);
-                Task::none()
+                task
             }
             Message::ParameterSelected(param, val) => {
                 let edited_settings = self.edited_settings.as_mut().unwrap();
@@ -1490,6 +1542,17 @@ impl RefBoxApp {
                     ListableParameter::Event => {
                         let id = EventId::from_full(val).unwrap();
                         edited_settings.current_event_id = Some(id.clone());
+
+                        if let Some(ref client) = self.uwhportal_client {
+                            if client.has_token() {
+                                edited_settings.uwhportal_token_valid = None;
+                            } else {
+                                edited_settings.uwhportal_token_valid = Some(false);
+                            }
+                        } else {
+                            edited_settings.uwhportal_token_valid = Some(false);
+                        };
+
                         if let Some(pools) = self
                             .events
                             .as_ref()
@@ -1503,7 +1566,10 @@ impl RefBoxApp {
                                 }
                             }
                         }
-                        self.request_schedule(id)
+                        Task::batch(vec![
+                            self.check_uwhportal_auth(&id),
+                            self.request_schedule(id),
+                        ])
                     }
                     ListableParameter::Court => {
                         edited_settings.current_court = Some(val);
@@ -1625,26 +1691,6 @@ impl RefBoxApp {
                 }
                 Task::none()
             }
-            Message::TextParameterChanged(param, val) => {
-                let settings = self.edited_settings.as_mut().unwrap();
-                match param {
-                    TextParameter::UwhportalToken => settings.uwhportal_token = val,
-                }
-                Task::none()
-            }
-            Message::ApplyAuthChanges => {
-                let settings = self.edited_settings.as_mut().unwrap();
-                self.config.uwhportal.token = settings.uwhportal_token.clone();
-                if let Some(client) = self.uwhportal_client.as_mut() {
-                    client.set_token(&settings.uwhportal_token);
-                }
-
-                let task = self.check_uwhportal_auth();
-
-                self.app_state = AppState::EditGameConfig(ConfigPage::Game);
-                trace!("AppState changed to {:?}", self.app_state);
-                task
-            }
             Message::RequestRemoteId => {
                 let task =
                     if let AppState::EditGameConfig(ConfigPage::Remotes(_, ref mut listening)) =
@@ -1702,7 +1748,23 @@ impl RefBoxApp {
                 let (app_state, task) = match selection {
                     ConfirmationOption::DiscardChanges => (AppState::MainPage, Task::none()),
                     ConfirmationOption::GoBack => {
-                        (AppState::EditGameConfig(ConfigPage::Main), Task::none())
+                        if matches!(
+                            self.app_state,
+                            AppState::ConfirmationPage(ConfirmationKind::UwhPortalLinkFailed(_))
+                        ) {
+                            (
+                                AppState::KeypadPage(
+                                    KeypadPage::PortalLogin(
+                                        self.uwhportal_client.as_ref().unwrap().id(),
+                                        false,
+                                    ),
+                                    0,
+                                ),
+                                Task::none(),
+                            )
+                        } else {
+                            (AppState::EditGameConfig(ConfigPage::Main), Task::none())
+                        }
                     }
                     ConfirmationOption::EndGameAndApply => {
                         let edited_settings = self.edited_settings.as_ref().unwrap();
@@ -1999,6 +2061,46 @@ impl RefBoxApp {
                 }
                 Task::none()
             }
+            Message::RecvPortalToken(token_response) => {
+                let mut task = Task::none();
+                self.app_state = match token_response {
+                    PortalTokenResponse::Success(token) => {
+                        info!("Portal token request succeeded");
+                        if let Some(client) = self.uwhportal_client.as_mut() {
+                            client.set_token(&token);
+                        }
+                        self.config.uwhportal.token = token;
+                        if let Some(ref mut settings) = self.edited_settings {
+                            settings.uwhportal_token_valid = Some(true);
+                        }
+
+                        if let Some(event_id) = self
+                            .edited_settings
+                            .as_ref()
+                            .and_then(|settings| settings.current_event_id.as_ref())
+                            .or(self.current_event_id.as_ref())
+                        {
+                            info!("Requesting schedule for event_id: {}", event_id.full());
+                            task = self.request_schedule(event_id.clone())
+                        }
+
+                        AppState::EditGameConfig(ConfigPage::Game)
+                    }
+                    r @ PortalTokenResponse::NoPendingLink
+                    | r @ PortalTokenResponse::InvalidCode => {
+                        warn!("Portal token request failed: {:?}", r);
+                        AppState::ConfirmationPage(ConfirmationKind::UwhPortalLinkFailed(r))
+                    }
+                };
+                trace!("AppState changed to {:?}", self.app_state);
+                task
+            }
+            Message::RecvTokenValid(valid) => {
+                if let Some(ref mut settings) = self.edited_settings {
+                    settings.uwhportal_token_valid = Some(valid);
+                }
+                Task::none()
+            }
             Message::StartClock => {
                 self.tm.lock().unwrap().start_clock(Instant::now());
                 Task::none()
@@ -2090,8 +2192,6 @@ impl RefBoxApp {
                 self.edited_settings.as_ref().unwrap(),
                 self.events.as_ref(),
                 page,
-                self.uwhportal_client.as_ref().map(|c| c.token_validity()),
-                self.touchscreen,
             ),
             AppState::ParameterEditor(param, dur) => build_game_parameter_editor(data, param, dur),
             AppState::ParameterList(param, index) => build_list_selector_page(

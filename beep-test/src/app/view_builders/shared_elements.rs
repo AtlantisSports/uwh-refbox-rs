@@ -69,17 +69,15 @@ pub(super) fn make_time_button<'a>(snapshot: &BeepTestSnapshot) -> Row<'a, Messa
         .style(gray_button)
         .padding(PADDING);
 
-    let time_row = row![time_button]
+    row![time_button]
         .height(button_height)
         .width(Length::Fill)
-        .spacing(SPACING);
-
-    time_row
+        .spacing(SPACING)
 }
 
 pub(super) fn make_info_container<'a>(snapshot: &BeepTestSnapshot) -> Container<'a, Message> {
     let boxheight: f32 = 385.0;
-    let info = container(
+    container(
         text(config_string(snapshot))
             .size(SMALL_TEXT)
             .align_y(Vertical::Top)
@@ -88,9 +86,7 @@ pub(super) fn make_info_container<'a>(snapshot: &BeepTestSnapshot) -> Container<
     .padding(PADDING)
     .width(Length::Fill)
     .height(Length::Fixed(boxheight))
-    .style(light_gray_container);
-
-    info
+    .style(light_gray_container)
 }
 
 pub(super) fn make_button<'a, Message: Clone>(

@@ -137,6 +137,13 @@ pre-sd-break = DESCANSO PREVIO
 pre-sd-len = La duración del descanso entre el período de juego precedente y la muerte súbita
 language = IDIOMA
 this-language = ESPAÑOL
+### Check
+portal-login-code = Código de inicio de sesión
+### Check
+portal-login-instructions = Por favor, vaya a UWHPortal e introduzca el ID que aparece a continuación para establecer un enlace.
+    El portal proporcionará un código para introducir aquí.
+
+    El ID de este dispositivo es: { $id }
 
 help = AYUDA:
 
@@ -146,6 +153,12 @@ game-configuration-can-not-be-changed = La configuración del juego no se puede 
     ¿Qué te gustaría hacer?
 apply-this-game-number-change = ¿Cómo te gustaría aplicar este cambio de número de juego?
 UWHPortal-enabled = Cuando UWHPortal está habilitado, todos los campos deben ser completados.
+### Check
+uwhportal-token-invalid-code = Código inválido.
+    Por favor, inténtelo de nuevo.
+### Check
+uwhportal-token-no-pending-link = No se encontró ningún enlace pendiente.
+    Por favor, inténtelo de nuevo.
 go-back-to-editor = VOLVER AL EDITOR
 discard-changes = DESCARTAR CAMBIOS
 end-current-game-and-apply-changes = TERMINAR EL JUEGO ACTUAL Y APLICAR CAMBIOS

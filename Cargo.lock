@@ -458,7 +458,7 @@ dependencies = [
 
 [[package]]
 name = "beep-test"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "arrayref",
  "clap",
@@ -1823,7 +1823,7 @@ dependencies = [
 
 [[package]]
 name = "fonts"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "embedded-graphics",
 ]
@@ -3111,7 +3111,7 @@ checksum = "03087c2bad5e1034e8cace5926dec053fb3790248370865f5117a7d0213354c8"
 
 [[package]]
 name = "led-panel-sim"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "matrix-drawing",
  "uwh-common",
@@ -3410,7 +3410,7 @@ dependencies = [
 
 [[package]]
 name = "matrix-drawing"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "arrayref",
  "arrayvec",
@@ -4148,7 +4148,7 @@ dependencies = [
 
 [[package]]
 name = "overlay"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "alphagen",
  "bytes",
@@ -4693,7 +4693,7 @@ dependencies = [
 
 [[package]]
 name = "refbox"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "arrayref",
  "clap",
@@ -6279,7 +6279,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uwh-common"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "arrayref",
  "arrayvec",

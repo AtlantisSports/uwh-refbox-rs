@@ -1,6 +1,6 @@
 [package]
 name = "beep-test"
-version = "0.3.0"
+version = "0.3.1"
 description = "UI for Atlantis Sports's Underwater Hockey Refbox"
 authors = ["Atlantis Sports <maintainers@atlantissports.org>"]
 edition = "2024"
@@ -28,7 +28,7 @@ iced_futures = { version = "0.13", features = ["async-std"] }
 iced_graphics = "0.13"
 iced_renderer = "0.13"
 iced_runtime = "0.13"
-led-panel-sim = { version = "0.3.0", path = "../led-panel-sim" }
+led-panel-sim = { version = "0.3.1", path = "../led-panel-sim" }
 log = "0.4"
 log4rs = { version = "1", default-features = false, features = ["background_rotation", "compound_policy", "console_appender", "fixed_window_roller", "gzip", "pattern_encoder", "rolling_file_appender", "size_trigger"]}
 log-panics = { version = "2", features = ["with-backtrace"]}
@@ -45,8 +45,8 @@ time = { version = "0.3", features = ["local-offset", "macros", "serde", "serde-
 tokio = { version = "1", features = ["io-util", "macros", "net", "sync", "time"] }
 tokio-serial = "5"
 toml = "0.8"
-uwh-common = { version = "0.3.0", path = "../uwh-common"}
-matrix-drawing = { version = "0.3.0", path = "../matrix-drawing"}
+uwh-common = { version = "0.3.1", path = "../uwh-common"}
+matrix-drawing = { version = "0.3.1", path = "../matrix-drawing"}
 web-audio-api = { version = "1.2", default-features = false, features = ["cpal"] }
 enum-iterator = "2.1.0"
 

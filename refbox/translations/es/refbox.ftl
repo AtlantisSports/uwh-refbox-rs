@@ -140,10 +140,11 @@ this-language = ESPAÑOL
 ### Check
 portal-login-code = Código de inicio de sesión
 ### Check
-portal-login-instructions = Por favor, vaya a UWHPortal e introduzca el ID que aparece a continuación para establecer un enlace.
-    El portal proporcionará un código para introducir aquí.
-
-    El ID de este dispositivo es: { $id }
+portal-login-instructions = Por favor, vaya a UWH Portal >> Gestión de Eventos >> Gestión de Árbitros, haga clic en el botón + para añadir un nuevo Refbox, e introduzca este ID de Refbox:
+    { $id }
+    
+    El UWH Portal proporcionará un código de confirmación que deberá introducir a la izquierda utilizando el teclado numérico.
+    Presione HECHO una vez que haya introducido el código.
 
 help = AYUDA:
 

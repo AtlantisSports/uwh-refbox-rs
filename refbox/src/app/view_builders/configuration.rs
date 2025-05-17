@@ -318,6 +318,12 @@ fn make_event_config_page<'a>(
             .width(Length::Fill)
             .height(Length::Fill);
 
+        let auth_state_message = if settings.current_event_id.is_some() {
+            Some(Message::KeypadPage(KeypadPage::PortalLogin(0, false)))
+        } else {
+            None
+        };
+
         let auth_state_button = button(
             row![
                 uwhportal_auth_text,
@@ -332,7 +338,7 @@ fn make_event_config_page<'a>(
         .width(Length::Fill)
         .padding(0)
         .style(light_gray_button)
-        .on_press(Message::KeypadPage(KeypadPage::PortalLogin(0, false)));
+        .on_press_maybe(auth_state_message);
 
         [
             make_value_button(fl!("event"), event_label, (true, true), event_btn_msg)

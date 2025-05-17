@@ -141,10 +141,11 @@ pre-sd-len = The length of the break between the preceeding play period and Sudd
 language = LANGUAGE
 this-language = ENGLISH
 portal-login-code = CODE
-portal-login-instructions = Please go to UWHPortal and enter the ID below to establish a link.
-    The portal will provide a code to enter here.
-
-    This device's ID is: { $id }
+portal-login-instructions = Please go to the UWH Portal >> Event Management >> Referee Management, click on the + button to add a new Refbox, and enter this Refbox ID:
+    { $id }
+    
+    The UWH Portal will then provide a confirmation code for you to enter to the left using the number pad.
+    Press done once you have entered the code
 
 help = HELP: 
 

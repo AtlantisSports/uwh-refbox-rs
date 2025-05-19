@@ -14,7 +14,7 @@ debug = ["iced/debug"]
 arrayref = "0.3"
 collect_array = "0.1"
 clap = { version = "4", features = ["derive"] }
-confy = "0.6"
+confy = "1.0"
 conquer-once = "0.4"
 derivative = "2"
 directories = "6"

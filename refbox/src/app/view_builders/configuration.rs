@@ -533,7 +533,6 @@ fn make_app_config_page<'a>(
     let EditableSettings {
         collect_scorer_cap_num,
         track_fouls_and_warnings,
-        confirm_score,
         ..
     } = settings;
 
@@ -567,27 +566,17 @@ fn make_app_config_page<'a>(
                 )),
             ),
             make_value_button(
-                fl!("confirm-score-at-game-end"),
-                bool_string(*confirm_score),
-                (false, true),
-                Some(Message::ToggleBoolParameter(
-                    BoolGameParameter::ConfirmScore,
-                )),
-            ),
-        ]
-        .spacing(SPACING)
-        .height(Length::Fill),
-        row![
-            make_value_button(
                 fl!("language"),
                 fl!("this-language"),
                 (false, true),
                 Some(Message::CycleParameter(CyclingParameter::Language,)),
             ),
-            horizontal_space(),
         ]
         .spacing(SPACING)
         .height(Length::Fill),
+        row![horizontal_space(),]
+            .spacing(SPACING)
+            .height(Length::Fill),
         vertical_space(),
         row![
             horizontal_space(),

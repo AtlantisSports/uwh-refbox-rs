@@ -493,12 +493,18 @@ fn make_event_config_page<'a>(
     let mut col = column![
         make_game_time_button(snapshot, false, false, mode, clock_running),
         row![
-            make_value_button(
-                fl!("single-half"),
-                bool_string(settings.config.single_half),
-                (false, true),
-                Some(Message::ToggleBoolParameter(BoolGameParameter::SingleHalf)),
-            ),
+            if !using_uwhportal {
+                make_value_button(
+                    fl!("single-half"),
+                    bool_string(settings.config.single_half),
+                    (false, true),
+                    Some(Message::ToggleBoolParameter(BoolGameParameter::SingleHalf)),
+                )
+            } else {
+                make_button("")
+                    .style(light_gray_button)
+                    .on_press(Message::NoAction)
+            },
             make_button("")
                 .style(light_gray_button)
                 .on_press(Message::NoAction),

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "packageRules": [
+    {
+      "matchManagers": ["cargo"],
+      "matchPackagePatterns": ["*"],
+      "excludePackagePatterns": ["iced*"],
+      "groupName": "non-major",
+      "updateTypes": ["minor", "patch"]
+    },
+    {
+      "matchManagers": ["cargo"],
+      "matchPackagePatterns": ["iced*"],
+      "groupName": "iced"
+    }
+  ],
+  "schedule": ["at any time"],
+  "dependencyDashboard": true,
+  "prConcurrentLimit": 10
+}

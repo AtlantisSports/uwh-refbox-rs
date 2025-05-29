@@ -9,5 +9,9 @@ members = [
   "matrix-drawing",
   "overlay",
   "refbox",
-  "uwh-common",
+  "uwh-common", "wireless-modes",
+]
+
+exclude = [
+  "wireless-remote",
 ]

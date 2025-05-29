@@ -1,7 +1,17 @@
 #!/bin/bash
 
 # Find all .toml files excluding ./Cargo.toml that do not contain 'rust-version'
-missing_rust_version=$(grep -rL 'rust-version' --include \*.toml . | grep -v './Cargo.toml' | grep -v './refbox/i18n.toml')
+excluded_files=(
+  './Cargo.toml'
+  './refbox/i18n.toml'
+  './wireless-remote/rust-toolchain.toml'
+  './wireless-remote/.cargo/config.toml'
+)
+
+missing_rust_version=$(grep -rL 'rust-version' --include \*.toml .)
+for file in "${excluded_files[@]}"; do
+  missing_rust_version=$(echo "$missing_rust_version" | grep -v -F "$file")
+done
 
 # Check if any files are found
 if [ -n "$missing_rust_version" ]; then

@@ -2,7 +2,8 @@
 name = "led-panel-sim"
 version = "0.3.1"
 authors = ["Atlantis Sports <maintainers@atlantissports.org>"]
-edition = "2021"
+edition = "2024"
+rust-version = "1.85"
 
 [dependencies]
 matrix-drawing = { version = "0.3.1", path = "../matrix-drawing" }

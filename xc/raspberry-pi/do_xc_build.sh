@@ -13,7 +13,7 @@ CONTAINER_NAME="$(docker create -t -w "$CONTAINER_WORKDIR/" $IMAGE_NAME /root/.c
 
 BASE_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-for file in $(ls "$BASE_DIR" | grep -v target | grep -v xc); do
+for file in $(ls "$BASE_DIR" | grep -v target | grep -v xc | grep -v wireless-remote); do
     docker cp "$BASE_DIR/$file" "$CONTAINER_NAME:$CONTAINER_WORKDIR/"
 done
 

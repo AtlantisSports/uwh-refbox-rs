@@ -850,7 +850,7 @@ fn make_remote_config_page<'a>(
 
                 container(
                     row![
-                        text(format!("ID: {:05X}", rem_info.id))
+                        text(format!("ID: {}", rem_info.id))
                             .size(MEDIUM_TEXT)
                             .align_y(Vertical::Center)
                             .align_x(Horizontal::Center)

@@ -1,5 +1,8 @@
 use super::fl;
-use crate::tournament_manager::{TournamentManager, penalty::PenaltyKind};
+use crate::{
+    sound_controller::RemoteId,
+    tournament_manager::{TournamentManager, penalty::PenaltyKind},
+};
 use std::sync::{Arc, Mutex};
 use tokio::{sync::mpsc::Sender, time::Duration};
 use uwh_common::{
@@ -88,7 +91,7 @@ pub enum Message {
     ToggleBoolParameter(BoolGameParameter),
     CycleParameter(CyclingParameter),
     RequestRemoteId,
-    GotRemoteId(u32),
+    GotRemoteId(RemoteId),
     DeleteRemote(usize),
     ConfirmationSelected(ConfirmationOption),
     TeamTimeout(GameColor, bool),

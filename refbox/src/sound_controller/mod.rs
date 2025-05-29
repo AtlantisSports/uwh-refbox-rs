@@ -1,34 +1,27 @@
 use super::fl;
 #[cfg(target_os = "linux")]
-use arrayref::array_ref;
-#[cfg(target_os = "linux")]
-use core::{
-    future::Future,
-    pin::Pin,
-    task::{Context, Poll},
-};
+use core::future::Future;
 use derivative::Derivative;
 use enum_derive_2018::EnumFromStr;
-#[cfg(target_os = "linux")]
-use futures_lite::future::FutureExt;
 use log::*;
 use macro_attr_2018::macro_attr;
-#[cfg(target_os = "linux")]
-use rppal::gpio::{Gpio, InputPin, Level, Trigger};
 use serde::{Deserialize, Serialize};
-use std::{fmt::Display, sync::Arc};
-#[cfg(target_os = "linux")]
-use tokio::{
-    sync::watch::Receiver,
-    time::{Instant, sleep_until},
+use std::{
+    collections::{BTreeMap, VecDeque},
+    fmt::Display,
+    future::pending,
+    pin::Pin,
+    sync::Arc,
 };
+#[cfg(target_os = "linux")]
+use tokio::sync::watch::Receiver;
 use tokio::{
     sync::{
         mpsc::{UnboundedSender, unbounded_channel},
         watch::{self, Sender},
     },
-    task::{self, JoinHandle},
-    time::{Duration, sleep},
+    task::{self, AbortHandle, JoinError, JoinHandle, JoinSet},
+    time::{Duration, Instant, sleep, sleep_until},
 };
 use toml::Table;
 use web_audio_api::{
@@ -42,22 +35,23 @@ use web_audio_api::{
 };
 
 const FADE_LEN: f64 = 0.05;
-const FADE_WAIT: Duration = Duration::from_millis(50); // TODO: base this on `FADE_TIME` (blocked on rust allowing floats in const fns)
+const FADE_WAIT: Duration = Duration::from_nanos((FADE_LEN * 1_000_000_000.0) as u64);
 
 const SOUND_LEN: f64 = 2.0;
 
-#[cfg(target_os = "linux")]
-const MESSAGE_LEN: usize = 24;
-#[cfg(target_os = "linux")]
-const ID_LEN: usize = 20;
-#[cfg(target_os = "linux")]
-const DATA_LEN: usize = MESSAGE_LEN - ID_LEN;
+const TIMED_SOUND_LEN: f64 = SOUND_LEN + FADE_LEN * 2.0;
+const TIMED_SOUND_DURATION: Duration =
+    Duration::from_nanos((TIMED_SOUND_LEN * 1_000_000_000.0) as u64);
 
 #[cfg(target_os = "linux")]
-const BUTTON_TIMEOUT: Duration = Duration::from_millis(500);
+const BUTTON_TIMEOUT: Duration = Duration::from_millis(600);
 
 mod sounds;
 pub use sounds::*;
+
+mod button_handler;
+pub use button_handler::RemoteId;
+use button_handler::*;
 
 use crate::app::update_sender::ServerMessage;
 
@@ -148,7 +142,7 @@ impl SoundSettings {
                     .iter()
                     .filter_map(|r| {
                         if let Some(r) = r.as_table() {
-                            let id = r.get("id")?.as_integer()? as u32;
+                            let id = (r.get("id")?.as_integer()? as u32).into();
                             let sound = r.get("sound")?.as_str()?.parse().ok();
                             Some(RemoteInfo { id, sound })
                         } else {
@@ -212,18 +206,63 @@ impl Display for Volume {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct RemoteInfo {
-    pub id: u32,
+    pub id: RemoteId,
     pub sound: Option<BuzzerSound>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum SoundMessage {
-    TriggerBuzzer,
-    TriggerWhistle,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum SoundId {
+    AutoBuzzer,
+    Whistle,
     #[cfg(target_os = "linux")]
-    StartBuzzer(Option<BuzzerSound>),
+    WiredButton,
     #[cfg(target_os = "linux")]
-    StopBuzzer,
+    WirelessButton(RemoteId),
+}
+
+struct SoundEnds {
+    join_set: JoinSet<SoundId>,
+    handles: BTreeMap<SoundId, AbortHandle>,
+}
+
+impl SoundEnds {
+    fn new() -> Self {
+        Self {
+            join_set: JoinSet::new(),
+            handles: BTreeMap::new(),
+        }
+    }
+
+    async fn join_next(&mut self) -> Result<SoundId, JoinError> {
+        self.handles.retain(|_, handle| !handle.is_finished());
+
+        if let Some(res) = self.join_set.join_next().await {
+            res
+        } else {
+            pending().await
+        }
+    }
+
+    /// Cancels the sound with the given `sound_id`. If the sound is
+    /// not in the set, this function does nothing.
+    fn cancel(&self, sound_id: &SoundId) {
+        if let Some(handle) = self.handles.get(sound_id) {
+            handle.abort();
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn contains(&self, sound_id: &SoundId) -> bool {
+        self.handles.contains_key(sound_id)
+    }
+
+    fn add(&mut self, sound_id: SoundId, end: Pin<Box<dyn Future<Output = ()> + Send>>) {
+        let handle = self.join_set.spawn(async move {
+            end.await;
+            sound_id
+        });
+        self.handles.insert(sound_id, handle);
+    }
 }
 
 pub struct SoundController {
@@ -231,11 +270,11 @@ pub struct SoundController {
     msg_tx: UnboundedSender<SoundMessage>,
     settings_tx: Sender<SoundSettings>,
     stop_tx: Sender<bool>,
-    tasks: Vec<JoinHandle<()>>,
+    handle: Option<JoinHandle<()>>,
     #[cfg(target_os = "linux")]
-    remote_id_rx: Option<Receiver<u32>>,
+    _button_handler: Option<ButtonHandler>,
     #[cfg(target_os = "linux")]
-    _pins: Option<(InputPin, InputPin)>,
+    remote_id_rx: Option<Receiver<RemoteId>>,
 }
 
 impl SoundController {
@@ -243,12 +282,13 @@ impl SoundController {
     pub fn new<F>(mut settings: SoundSettings, trigger_flash: F) -> Self
     where
         F: Send
+            + Sync
             + Fn() -> Result<(), tokio::sync::mpsc::error::TrySendError<ServerMessage>>
             + 'static,
     {
         let available_devices = media_devices::enumerate_devices_sync();
 
-        info!("Available audio devices:\n{:#?}", available_devices);
+        debug!("Available audio devices:\n{:#?}", available_devices);
 
         let opts = AudioContextOptions {
             sample_rate: Some(SAMPLE_RATE),
@@ -256,7 +296,7 @@ impl SoundController {
         };
 
         let context = AudioContext::new(opts);
-        info!("Audio context created with sink {:?}", context.sink_id());
+        debug!("Audio context created with sink {:?}", context.sink_id());
 
         let context = Arc::new(context);
 
@@ -272,49 +312,52 @@ impl SoundController {
 
         let mut _stop_rx = stop_rx.clone();
         let mut _settings_rx = settings_rx.clone();
-        #[cfg_attr(not(target_os = "linux"), allow(clippy::redundant_clone))]
-        let mut _settings = settings.clone();
         let _context = context.clone();
 
-        let handler = task::spawn(async move {
+        let handle = task::spawn(async move {
             #[cfg_attr(not(target_os = "linux"), allow(unused_assignments))]
-            let mut last_sound: Option<Sound> = None;
+            let mut last_sound: Option<(SoundId, Sound)> = None;
+            let mut sound_queue: VecDeque<SoundId> = VecDeque::new();
+            let mut sound_ends: SoundEnds = SoundEnds::new();
 
             loop {
                 tokio::select! {
                     msg = msg_rx.recv() => {
                         match msg {
                             Some(msg) => {
-                                if let Some(sound) = last_sound.take() {
-                                    sound.stop().await;
-                                }
-
                                 match msg {
                                     SoundMessage::TriggerBuzzer => {
-                                        info!("Auto-triggering buzzer");
-                                        let volumes = ChannelVolumes::new(&_settings, false);
-                                        let sound = Sound::new(_context.clone(), volumes, library[_settings.buzzer_sound].clone(), true, true);
-                                        trigger_flash().unwrap();
-                                        last_sound = Some(sound);
+                                        if !sound_queue.contains(&SoundId::AutoBuzzer) {
+                                            sound_queue.push_back(SoundId::AutoBuzzer);
+                                        }
                                     }
                                     SoundMessage::TriggerWhistle => {
-                                        info!("Playing whistle once");
-                                        let volumes = ChannelVolumes::new(&_settings, true);
-                                        let sound = Sound::new(_context.clone(), volumes, library.whistle().clone(), false, false);
-                                        last_sound = Some(sound);
+                                        if !sound_queue.contains(&SoundId::Whistle) {
+                                            sound_queue.push_back(SoundId::Whistle);
+                                        }
                                     }
                                     #[cfg(target_os = "linux")]
-                                    SoundMessage::StartBuzzer(sound_option) => {
-                                        info!("Starting buzzer");
-                                        let buzzer_sound = sound_option.unwrap_or(_settings.buzzer_sound);
-                                        let volumes = ChannelVolumes::new(&_settings, false);
-                                        let sound = Sound::new(_context.clone(), volumes, library[buzzer_sound].clone(), true, false);
-                                        trigger_flash().unwrap();
-                                        last_sound = Some(sound);
+                                    SoundMessage::StartWiredBuzzer => {
+                                        if !sound_queue.contains(&SoundId::WiredButton) {
+                                            sound_queue.push_back(SoundId::WiredButton);
+                                        }
                                     }
                                     #[cfg(target_os = "linux")]
-                                    SoundMessage::StopBuzzer => {
-                                        info!("Stopped buzzer");
+                                    SoundMessage::StopWiredBuzzer => {
+                                        if sound_queue.contains(&SoundId::WiredButton) {
+                                            sound_queue.retain(|s| *s != SoundId::WiredButton);
+                                        }
+                                    }
+                                    #[cfg(target_os = "linux")]
+                                    SoundMessage::WirelessRemoteReceived(id) => {
+                                        if settings.remotes.iter().any(|r| r.id == id) {
+                                            if !sound_queue.contains(&SoundId::WirelessButton(id)) {
+                                                sound_queue.push_back(SoundId::WirelessButton(id));}
+                                            if sound_ends.contains(&SoundId::WirelessButton(id)) {
+                                                sound_ends.cancel(&SoundId::WirelessButton(id));
+                                            }
+                                            sound_ends.add(SoundId::WirelessButton(id), Box::pin(sleep(BUTTON_TIMEOUT)));
+                                        }
                                     }
                                 }
                             },
@@ -324,245 +367,153 @@ impl SoundController {
                     maybe_err = _settings_rx.changed() => {
                         match maybe_err {
                             Ok(()) => {
-                                _settings = _settings_rx.borrow().clone();
+                                settings = _settings_rx.borrow().clone();
                             }
                             Err(_) => break,
+                        }
+                    }
+                    ended_sound = sound_ends.join_next() => {
+                        match ended_sound {
+                            Ok(sound_id) => {
+                                if sound_queue.contains(&sound_id) {
+                                    sound_queue.retain(|s| *s != sound_id);
+                                }
+                            }
+                            Err(e) => {
+                                if !e.is_cancelled() {
+                                    error!("A sound end task failed: {e}");
+                                }
+                            }
                         }
                     }
                     _ = _stop_rx.changed() => {
                         break;
                     }
                 }
+
+                let start_sound = |last_sound: &mut Option<(SoundId, Sound)>,
+                                   sound_ends: &mut SoundEnds,
+                                   sound_id,
+                                   flash| {
+                    let sound = match sound_id {
+                        SoundId::AutoBuzzer => {
+                            info!("Auto-triggering buzzer");
+                            let volumes = ChannelVolumes::new(&settings, false);
+                            if flash {
+                                trigger_flash().unwrap();
+                            }
+                            Sound::new(
+                                _context.clone(),
+                                volumes,
+                                library[settings.buzzer_sound].clone(),
+                                true,
+                                true,
+                            )
+                        }
+                        SoundId::Whistle => {
+                            info!("Playing whistle once");
+                            let volumes = ChannelVolumes::new(&settings, true);
+                            Sound::new(
+                                _context.clone(),
+                                volumes,
+                                library.whistle().clone(),
+                                false,
+                                false,
+                            )
+                        }
+                        #[cfg(target_os = "linux")]
+                        SoundId::WiredButton => {
+                            info!("Starting wired buzzer");
+                            let volumes = ChannelVolumes::new(&settings, false);
+                            if flash {
+                                trigger_flash().unwrap();
+                            }
+                            Sound::new(
+                                _context.clone(),
+                                volumes,
+                                library[settings.buzzer_sound].clone(),
+                                true,
+                                false,
+                            )
+                        }
+                        #[cfg(target_os = "linux")]
+                        SoundId::WirelessButton(id) => {
+                            let volumes = ChannelVolumes::new(&settings, false);
+                            if let Some(buzzer_sound) = settings
+                                .remotes
+                                .iter()
+                                .find(|r| r.id == id)
+                                .map(|r| r.sound.unwrap_or(settings.buzzer_sound))
+                            {
+                                info!("Starting buzzer sound {buzzer_sound:?} for remote {id}");
+                                if flash {
+                                    trigger_flash().unwrap();
+                                }
+                                Sound::new(
+                                    _context.clone(),
+                                    volumes,
+                                    library[buzzer_sound].clone(),
+                                    true,
+                                    false,
+                                )
+                            } else {
+                                error!("No buzzer sound found for remote {id}");
+                                return;
+                            }
+                        }
+                    };
+
+                    if let Some(end) = sound.sound_end() {
+                        sound_ends.add(sound_id, Box::pin(end));
+                    }
+                    *last_sound = Some((sound_id, sound));
+                };
+
+                match (last_sound.is_some(), sound_queue.is_empty()) {
+                    (true, true) => {
+                        if let Some((sound_id, sound)) = last_sound.take() {
+                            info!("Stopping sound: {sound_id:?}");
+                            sound.stop().await;
+                            sound_ends.cancel(&sound_id);
+                        }
+                    }
+                    (false, false) => {
+                        start_sound(&mut last_sound, &mut sound_ends, sound_queue[0], true);
+                    }
+                    (false, true) => {}
+                    (true, false) => {
+                        if let Some((last_sound_id, _)) = last_sound {
+                            if last_sound_id != sound_queue[0] {
+                                if let Some((sound_id, sound)) = last_sound.take() {
+                                    info!("Stopping sound: {sound_id:?}");
+                                    sound.stop().await;
+                                    sound_ends.cancel(&sound_id);
+                                }
+                                let flash = last_sound_id == SoundId::Whistle;
+                                start_sound(
+                                    &mut last_sound,
+                                    &mut sound_ends,
+                                    sound_queue[0],
+                                    flash,
+                                );
+                            }
+                        }
+                    }
+                }
             }
         });
 
-        #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
-        let mut tasks = vec![handler];
+        #[cfg(target_os = "linux")]
+        let (remote_id_tx, remote_id_rx) = watch::channel(0.into());
 
         #[cfg(target_os = "linux")]
-        let (_pins, remote_id_rx) = if let Ok(sys_info) = rppal::system::DeviceInfo::new() {
-            info!("Detected a Raspberry Pi system: {sys_info:?}, starting GPIO processes");
+        let _button_handler = ButtonHandler::new(msg_tx.clone(), remote_id_tx);
 
-            let gpio = Gpio::new().unwrap();
-
-            let mut ant_pin = gpio.get(16).unwrap().into_input_pullup();
-            let (ant_tx, mut ant_rx) = unbounded_channel();
-            ant_pin
-                .set_async_interrupt(Trigger::Both, None, move |event| {
-                    ant_tx.send((event.trigger, Instant::now())).unwrap()
-                })
-                .unwrap();
-
-            let mut wired_pin = gpio.get(12).unwrap().into_input_pullup();
-            let (wired_tx, mut wired_rx) = unbounded_channel();
-            wired_pin
-                .set_async_interrupt(Trigger::Both, None, move |event| {
-                    wired_tx.send(event.trigger).unwrap()
-                })
-                .unwrap();
-
-            let ant_start_state = match ant_pin.read() {
-                Level::Low => Trigger::FallingEdge,
-                Level::High => Trigger::RisingEdge,
-            };
-
-            let (wireless_tx, mut wireless_rx) = unbounded_channel();
-            let (remote_id_tx, mut remote_id_rx) = watch::channel(0);
-            remote_id_rx.borrow_and_update();
-
-            let mut _stop_rx = stop_rx.clone();
-
-            let wireless_button_listener = task::spawn(async move {
-                let mut state = RemoteDetectorState {
-                    preamble_detected: false,
-                    bits: vec![],
-                    last_pin_edge: ant_start_state,
-                    last_edge_time: Instant::now(),
-                    last_pulse: None,
-                };
-
-                loop {
-                    tokio::select! {
-                        pin_update = ant_rx.recv() => {
-                            match pin_update {
-                                Some((l @ Trigger::RisingEdge, now)) => {
-                                    if state.last_pin_edge != l {
-                                        let pulse = now.duration_since(state.last_edge_time).as_micros();
-                                        trace!("Detected LOW  pulse {pulse:>5}us long");
-                                        state.last_pin_edge = l;
-                                        state.last_edge_time = now;
-
-                                        let maybe_pulse_type = identify_pulse(pulse);
-                                        debug!("Detected a LOW  pulse of length {maybe_pulse_type:?}");
-
-                                        if let Some(pulse_type) = maybe_pulse_type {
-                                            if !state.preamble_detected {
-                                                if matches!(state.last_pulse, Some(PulseType::Short))
-                                                    && pulse_type == PulseType::Preamble
-                                                {
-                                                    debug!("Detected a preamble");
-                                                    state.preamble_detected = true;
-                                                }
-                                            } else {
-                                                if matches!(state.last_pulse, Some(PulseType::Short))
-                                                    && pulse_type == PulseType::Long
-                                                {
-                                                    debug!("Detected a low bit");
-                                                    state.bits.push(false);
-                                                } else if matches!(state.last_pulse, Some(PulseType::Long))
-                                                    && pulse_type == PulseType::Short
-                                                {
-                                                    debug!("Detected a high bit");
-                                                    state.bits.push(true);
-                                                } else {
-                                                    info!("Detected an invalid pulse sequence");
-                                                    state.preamble_detected = false;
-                                                    state.bits.clear();
-                                                }
-
-                                                if state.bits.len() == MESSAGE_LEN {
-                                                    let message: String = state
-                                                        .bits
-                                                        .iter()
-                                                        .map(|bit| if *bit { '1' } else { '0' })
-                                                        .collect();
-                                                    debug!("Received a complete message: 0b{message}");
-
-                                                    let remote_id = state.bits[..ID_LEN]
-                                                        .iter()
-                                                        .fold(0, |acc, &b| acc * 2 + b as u32);
-                                                    let data = array_ref![state.bits, ID_LEN, DATA_LEN];
-
-                                                    debug!("Remote {remote_id} sent data {data:?}");
-                                                    wireless_tx.send(remote_id).unwrap();
-                                                    remote_id_tx.send(remote_id).unwrap();
-
-                                                    state.preamble_detected = false;
-                                                    state.bits.clear();
-                                                }
-                                            }
-                                        } else {
-                                            trace!("Detected an invalid pulse");
-                                            state.preamble_detected = false;
-                                            state.bits.clear();
-                                        }
-
-                                        state.last_pulse = maybe_pulse_type;
-                                    }
-                                }
-                                Some((l @ Trigger::FallingEdge, now)) => {
-                                    if state.last_pin_edge != l {
-                                        let pulse = now.duration_since(state.last_edge_time).as_micros();
-                                        trace!("Detected HIGH pulse {pulse:>5}us long");
-                                        state.last_pin_edge = l;
-                                        state.last_edge_time = now;
-
-                                        let maybe_pulse_type = identify_pulse(pulse);
-                                        debug!("Detected a LOW  pulse of length {maybe_pulse_type:?}");
-
-                                        if maybe_pulse_type.is_none() {
-                                            trace!("Detected an invalid pulse");
-                                            state.preamble_detected = false;
-                                            state.bits.clear();
-                                        }
-
-                                        state.last_pulse = maybe_pulse_type;
-                                    }
-                                }
-                                Some((Trigger::Disabled, _))
-                                | Some((Trigger::Both, _)) => panic!("Imposible pin state"),
-                                None => panic!("The Pin has been dropped"),
-                            }
-                        }
-                        _ = _stop_rx.changed() => {
-                            break;
-                        }
-                    }
-                }
-            });
-
-            tasks.push(wireless_button_listener);
-
-            let mut _msg_tx = msg_tx.clone();
-            let mut _stop_rx = stop_rx.clone();
-            let mut _settings_rx = settings_rx.clone();
-
-            let button_listener = task::spawn(async move {
-                let mut wired_pressed = false;
-                let mut wireless_pressed = false;
-                let mut wireless_expires = None;
-                let mut sound = None;
-
-                let mut was_pressed = false;
-                let mut last_sound = None;
-
-                loop {
-                    let wireless_expiration = if let Some(time) = wireless_expires {
-                        WirelessTimeout::Time(Box::pin(sleep_until(time)))
-                    } else {
-                        WirelessTimeout::Never(core::future::pending())
-                    };
-
-                    tokio::pin!(wireless_expiration);
-
-                    tokio::select! {
-                        event = wired_rx.recv() => {
-                            match event {
-                                Some(Trigger::FallingEdge) => wired_pressed = false,
-                                Some(Trigger::RisingEdge) => {
-                                    wired_pressed = true;
-                                    sound = None;
-                                }
-                                Some(Trigger::Disabled)
-                                | Some(Trigger::Both) => panic!("Imposible pin state"),
-                                None => break,
-                            }
-                        }
-                        remote = wireless_rx.recv() => {
-                            match remote {
-                                Some(id) => if let Some(rem) = settings.remotes.iter().find(|rem| rem.id == id) {
-                                    wireless_pressed = true;
-                                    wireless_expires = Some(Instant::now() + BUTTON_TIMEOUT);
-                                    sound = rem.sound;
-                                }
-                                None => break,
-                            }
-                        }
-                        maybe_err = _settings_rx.changed() => {
-                            match maybe_err {
-                                Ok(()) => {
-                                    settings = _settings_rx.borrow().clone();
-                                }
-                                Err(_) => break,
-                            }
-                        }
-                        _ = wireless_expiration => {
-                            wireless_pressed = false;
-                            wireless_expires = None;
-                        }
-                        _ = _stop_rx.changed() => break,
-                    }
-
-                    let pressed = wired_pressed || wireless_pressed;
-                    if pressed != was_pressed || sound != last_sound {
-                        _msg_tx
-                            .send(if pressed {
-                                SoundMessage::StartBuzzer(sound)
-                            } else {
-                                SoundMessage::StopBuzzer
-                            })
-                            .unwrap();
-                        was_pressed = pressed;
-                        last_sound = sound;
-                    }
-                }
-            });
-
-            tasks.push(button_listener);
-
-            (Some((wired_pin, ant_pin)), Some(remote_id_rx))
+        #[cfg(target_os = "linux")]
+        let remote_id_rx = if _button_handler.is_some() {
+            Some(remote_id_rx)
         } else {
-            (None, None)
+            None
         };
 
         Self {
@@ -570,11 +521,11 @@ impl SoundController {
             msg_tx,
             settings_tx,
             stop_tx,
-            tasks,
+            handle: Some(handle),
+            #[cfg(target_os = "linux")]
+            _button_handler,
             #[cfg(target_os = "linux")]
             remote_id_rx,
-            #[cfg(target_os = "linux")]
-            _pins,
         }
     }
 
@@ -593,7 +544,7 @@ impl SoundController {
     /// Returns a future that resolves to the next detected remote id.
     /// If buttons are not available on the current system, the future
     /// will immediately resolve to `None`.
-    pub fn request_next_remote_id(&self) -> impl Future<Output = Option<u32>> + Send + use<> {
+    pub fn request_next_remote_id(&self) -> impl Future<Output = Option<RemoteId>> + Send + use<> {
         #[cfg(target_os = "linux")]
         let remote_id_rx = self.remote_id_rx.clone();
         async move {
@@ -615,9 +566,11 @@ impl Drop for SoundController {
             return;
         }
 
-        tokio::runtime::Handle::current().block_on(async {
-            for join_handle in self.tasks.drain(..) {
-                join_handle.await.unwrap();
+        tokio::runtime::Handle::current().block_on(async move {
+            if let Some(handle) = self.handle.take() {
+                if let Err(e) = handle.await {
+                    error!("Sound controller thread failed: {e}");
+                }
             }
         });
     }
@@ -655,6 +608,7 @@ struct Sound {
     source: AudioBufferSourceNode,
     context: Arc<AudioContext>,
     volumes: ChannelVolumes,
+    end: Option<Instant>,
 }
 
 impl Sound {
@@ -677,6 +631,7 @@ impl Sound {
         gain_r.connect_from_output_to_input(&_merger, 0, 1);
         gain_r.gain().set_value(volumes.right);
 
+        let length = buffer.length();
         let mut source = context.create_buffer_source();
         source.set_buffer(buffer);
         source.connect(&gain_l);
@@ -684,6 +639,7 @@ impl Sound {
         source.set_loop(repeat);
 
         let fade_end = context.current_time() + FADE_LEN;
+        let start = Instant::now();
 
         // Set the gains so that the start of the fade is now
         gain_l.gain().set_value(0.0);
@@ -696,7 +652,7 @@ impl Sound {
             .gain()
             .linear_ramp_to_value_at_time(volumes.right, fade_end);
 
-        if timed {
+        let end = if timed {
             let sound_end = fade_end + SOUND_LEN;
             let fade_out_end = sound_end + FADE_LEN;
 
@@ -709,7 +665,16 @@ impl Sound {
             gain_r
                 .gain()
                 .linear_ramp_to_value_at_time(0.0, fade_out_end);
-        }
+
+            Some(start + TIMED_SOUND_DURATION)
+        } else if !repeat {
+            let length_secs = length as f32 / context.sample_rate();
+            Duration::try_from_secs_f32(length_secs)
+                .ok()
+                .map(|d| start + d)
+        } else {
+            None
+        };
 
         source.start();
 
@@ -720,7 +685,16 @@ impl Sound {
             source,
             context,
             volumes,
+            end,
         }
+    }
+
+    /// If the sound has a predictable end time, this will return a future that resolves
+    /// after the sound ends.
+    fn sound_end(&self) -> Option<impl Future<Output = ()> + use<>> {
+        self.end.map(|end| async move {
+            sleep_until(end).await;
+        })
     }
 
     async fn stop(mut self) {
@@ -739,59 +713,6 @@ impl Sound {
 
         sleep(FADE_WAIT).await;
         self.source.stop();
-    }
-}
-
-#[cfg(target_os = "linux")]
-const fn identify_pulse(len: u128) -> Option<PulseType> {
-    const SHORT_PULSE_BOT_THRESH: u128 = 200;
-    const SHORT_PULSE_TOP_THRESH: u128 = 500;
-    const LONG_PULSE_BOT_THRESH: u128 = 800;
-    const LONG_PULSE_TOP_THRESH: u128 = 1500;
-    const PREAMBLE_PULSE_BOT_THRESH: u128 = 9000;
-    const PREAMBLE_PULSE_TOP_THRESH: u128 = 12000;
-
-    match len {
-        SHORT_PULSE_BOT_THRESH..=SHORT_PULSE_TOP_THRESH => Some(PulseType::Short),
-        LONG_PULSE_BOT_THRESH..=LONG_PULSE_TOP_THRESH => Some(PulseType::Long),
-        PREAMBLE_PULSE_BOT_THRESH..=PREAMBLE_PULSE_TOP_THRESH => Some(PulseType::Preamble),
-        _ => None,
-    }
-}
-
-#[cfg(target_os = "linux")]
-#[derive(Debug, PartialEq, Eq)]
-struct RemoteDetectorState {
-    preamble_detected: bool,
-    bits: Vec<bool>,
-    last_pin_edge: Trigger,
-    last_edge_time: Instant,
-    last_pulse: Option<PulseType>,
-}
-
-#[cfg(target_os = "linux")]
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-enum PulseType {
-    Short,
-    Long,
-    Preamble,
-}
-
-#[cfg(target_os = "linux")]
-enum WirelessTimeout {
-    Never(core::future::Pending<()>),
-    Time(Pin<Box<tokio::time::Sleep>>),
-}
-
-#[cfg(target_os = "linux")]
-impl Future for WirelessTimeout {
-    type Output = ();
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        match *self {
-            Self::Never(ref mut pend) => pend.poll(cx),
-            Self::Time(ref mut slp) => slp.poll(cx),
-        }
     }
 }
 
@@ -910,11 +831,11 @@ mod tests {
             settings.remotes,
             vec![
                 RemoteInfo {
-                    id: 1,
+                    id: 1.into(),
                     sound: Some(BuzzerSound::Buzz),
                 },
                 RemoteInfo {
-                    id: 2,
+                    id: 2.into(),
                     sound: Some(BuzzerSound::DeDeDu),
                 },
             ]

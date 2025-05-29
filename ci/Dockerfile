@@ -1,6 +1,6 @@
 # vim:set ft=dockerfile:
 
-FROM cimg/rust:1.70
+FROM cimg/rust:1.87
 
 RUN rustup component add clippy && \
     cargo install cargo-audit && \

@@ -18,7 +18,7 @@ embedded-hal = { version = "1.0.0", features = ["defmt-03"] }
 embedded-hal-async = { version = "1.0.0", features = ["defmt-03"] }
 embedded-hal-bus = { version = "0.2.0", features = ["async", "defmt-03"] }
 lora-phy = "3.0.1"
-panic-probe = { version = "0.3", features = ["print-defmt"] }
+panic-probe = { version = "1.0", features = ["print-defmt"] }
 portable-atomic = { version = "1.9.0", features = ["critical-section", "require-cas"] }
 wireless-modes = { version = "0.3.1", path = "../wireless-modes" }
 

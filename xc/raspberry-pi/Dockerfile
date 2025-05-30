@@ -1,4 +1,4 @@
-FROM debian:bullseye AS base
+FROM debian:bookworm AS base
 
 RUN apt update && apt install --no-install-recommends -y libssl-dev pkg-config libasound2-dev gcc-aarch64-linux-gnu curl ca-certificates libc6-dev-arm64-cross
 

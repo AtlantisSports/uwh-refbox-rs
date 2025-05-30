@@ -25,4 +25,4 @@ tokio = { version = "1.45", features = ["full"] }
 uwh-common = { path = "../uwh-common/" }
 bytes = "1.10.1"
 alphagen = {path="../alphagen"}
-image = { version = "0.24", default-features = false, features = ["png", "jpeg_rayon"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg_rayon"] }

@@ -299,6 +299,12 @@ pub enum StandingsCalculation {
         #[serde(rename = "slideDirection")]
         slide_direction: SlideDirection,
     },
+    Exclusion {
+        #[serde(rename = "startingRanks")]
+        starting_ranks: Vec<ScheduledTeam>,
+        #[serde(rename = "excludedTeams")]
+        excluded_teams: Vec<ScheduledTeam>,
+    },
 }
 
 mod option_standings_calculation {
@@ -379,7 +385,7 @@ pub struct Group {
     #[serde(rename = "shortName")]
     pub short_name: String,
     #[serde(rename = "type")]
-    pub group_type: GroupType,
+    pub group_type: Option<GroupType>,
     #[serde(rename = "gameNumbers")]
     pub game_numbers: Vec<GameNumber>,
     #[serde(rename = "standingsCalculation", with = "option_standings_calculation")]
@@ -906,7 +912,7 @@ mod tests {
         let group = Group {
             name: "A Group".to_string(),
             short_name: "A".to_string(),
-            group_type: GroupType::Pod,
+            group_type: Some(GroupType::Pod),
             game_numbers: vec!["1".to_string()],
             standings_calculation: Some(StandingsCalculation::Standard),
             final_results: Some(FinalResults::Standings),
@@ -927,7 +933,7 @@ mod tests {
             Group {
                 name: "A Group".to_string(),
                 short_name: "A".to_string(),
-                group_type: GroupType::Pod,
+                group_type: Some(GroupType::Pod),
                 game_numbers: vec!["1".to_string()],
                 standings_calculation: Some(StandingsCalculation::Standard),
                 final_results: Some(FinalResults::Standings),
@@ -986,7 +992,7 @@ mod tests {
                 Group {
                     name: "A Group".to_string(),
                     short_name: "A".to_string(),
-                    group_type: GroupType::Pod,
+                    group_type: Some(GroupType::Pod),
                     game_numbers: vec!["1".to_string()],
                     standings_calculation: Some(StandingsCalculation::Standard),
                     final_results: Some(FinalResults::Standings),
@@ -994,7 +1000,7 @@ mod tests {
                 Group {
                     name: "B Group - No calculations".to_string(),
                     short_name: "B".to_string(),
-                    group_type: GroupType::Pod,
+                    group_type: Some(GroupType::Pod),
                     game_numbers: vec!["2".to_string()],
                     standings_calculation: None,
                     final_results: None,
@@ -1002,7 +1008,7 @@ mod tests {
                 Group {
                     name: "C Group - Swap if Upset".to_string(),
                     short_name: "C".to_string(),
-                    group_type: GroupType::Pod,
+                    group_type: Some(GroupType::Pod),
                     game_numbers: vec!["3".to_string()],
                     standings_calculation: Some(StandingsCalculation::SwapIfUpset {
                         starting_ranks: vec![
@@ -1015,7 +1021,7 @@ mod tests {
                 Group {
                     name: "d Group - Slide if Upset".to_string(),
                     short_name: "D".to_string(),
-                    group_type: GroupType::Pod,
+                    group_type: Some(GroupType::Pod),
                     game_numbers: vec!["4".to_string()],
                     standings_calculation: Some(StandingsCalculation::SlideIfUpset {
                         slide_direction: SlideDirection::Down,

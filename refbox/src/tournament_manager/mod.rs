@@ -1784,21 +1784,42 @@ impl TournamentManager {
     }
 
     pub fn pause_for_confirm(&mut self, now: Instant) -> Result<()> {
-        if self.timeout_state.is_some() {
-            return Err(TournamentManagerError::PausingDuringTimeout);
-        }
-        if !self.clock_state.is_running() {
+        match self.timeout_state {
+            Some(TimeoutState::PenaltyShot(_))
+            | Some(TimeoutState::Ref(_))
+            | Some(TimeoutState::Team(_, _)) => {
+                return Err(TournamentManagerError::PausingDuringTimeout);
+            }
+            Some(TimeoutState::RugbyPenaltyShot(_)) | None => {}
+        };
+        let in_rugby_pen_sht = if self.timeout_state
+            == Some(TimeoutState::RugbyPenaltyShot(ClockState::Stopped {
+                clock_time: Duration::ZERO,
+            })) {
+            true
+        } else {
+            false
+        };
+        if !self.clock_state.is_running() && !in_rugby_pen_sht {
             return Err(TournamentManagerError::ClockStopped);
         }
         info!("Pausing for Confirmation");
-        let pause_inst = match self.clock_state {
-            ClockState::CountingDown {
-                start_time,
-                time_remaining_at_start,
-            } => min(start_time + time_remaining_at_start, now),
-            ClockState::CountingUp { .. } => now,
-            ClockState::Stopped { .. } => unreachable!(),
-        };
+
+        let pause_inst =
+            if let Some(TimeoutState::RugbyPenaltyShot(ClockState::Stopped { clock_time })) =
+                self.timeout_state
+            {
+                now
+            } else {
+                match self.clock_state {
+                    ClockState::CountingDown {
+                        start_time,
+                        time_remaining_at_start,
+                    } => min(start_time + time_remaining_at_start, now),
+                    ClockState::CountingUp { .. } => now,
+                    ClockState::Stopped { .. } => unreachable!(),
+                }
+            };
 
         let dur_pause = match self.current_period {
             GamePeriod::SecondHalf => {
@@ -7057,6 +7078,63 @@ mod test {
         assert_eq!(tm.current_period, GamePeriod::SuddenDeath);
         let clock_time = Duration::from_secs(31);
         assert_eq!(tm.game_clock_time(pause_14_end), Some(clock_time));
+        assert!(tm.clock_is_running());
+
+        assert!(!tm.in_score_confirm_pause());
+        assert_eq!(tm.time_pause_confirmation, None);
+    }
+
+    #[test]
+    fn test_pause_score_confirm_rugby_penalty_shot() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            minimum_break: Duration::from_secs(20),
+            post_game_duration: Duration::from_secs(20),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        // start is when penalty shot starts, 10 sec before end of game
+        let start = Instant::now();
+        let end_of_game = start + Duration::from_secs(10);
+        let end_of_penalty_shot = start + Duration::from_secs(45);
+        let pause_15_end = end_of_penalty_shot + Duration::from_secs(10);
+
+        // Ending game in Rugby Penalty Shot
+        // pause should be 10 sec
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(10));
+        tm.set_timeout_state(Some(TimeoutState::RugbyPenaltyShot(
+            ClockState::CountingDown {
+                start_time: start,
+                time_remaining_at_start: Duration::from_secs(45),
+            },
+        )));
+        tm.set_scores(BlackWhiteBundle { black: 1, white: 2 }, start);
+        tm.start_game_clock(start);
+        assert_eq!(tm.clock_is_running(), true);
+
+        assert_eq!(Ok(false), tm.could_end_game(end_of_game));
+
+        assert_eq!(Ok(true), tm.could_end_game(end_of_penalty_shot));
+
+        tm.pause_for_confirm(end_of_penalty_shot).unwrap();
+
+        assert!(tm.in_score_confirm_pause());
+
+        let confirm = tm.time_pause_confirmation.as_ref().unwrap();
+        assert_eq!(confirm.duration_of_pause, Duration::from_secs(10));
+        assert_eq!(confirm.pause_began, end_of_penalty_shot);
+
+        let before_end = end_of_penalty_shot + Duration::from_secs(9);
+        let after_end = end_of_penalty_shot + Duration::from_secs(11);
+        assert!(!tm.pause_has_ended(before_end));
+        assert!(tm.pause_has_ended(after_end));
+
+        tm.end_confirm_pause(pause_15_end).unwrap();
+
+        assert_eq!(tm.current_period, GamePeriod::BetweenGames);
         assert!(tm.clock_is_running());
 
         assert!(!tm.in_score_confirm_pause());

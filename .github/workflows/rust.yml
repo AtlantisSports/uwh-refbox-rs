@@ -22,6 +22,7 @@ jobs:
     - name: Versions
       run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version
     - run: cargo fmt --all -- --check
+    - run: (cd wireless-remote && cargo fmt --all -- --check)
 
   clippy:
     name: Clippy check
@@ -38,6 +39,7 @@ jobs:
       run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version
     - run: cargo clippy --all -- --deny=warnings
     - run: cargo clippy --all --no-default-features -- --deny=warnings
+    - run: (cd wireless-remote && cargo clippy --all -- --deny=warnings)
 
   audit:
     name: Cargo audit
@@ -49,6 +51,10 @@ jobs:
       with:
         file: Cargo.lock
         ignore: RUSTSEC-2024-0384,RUSTSEC-2024-0388
+    - uses: actions-rust-lang/audit@v1
+      with:
+        workingDirectory: wireless-remote
+        file: Cargo.lock
 
   check-for-msrv:
     name: Check for MSRV
@@ -73,9 +79,15 @@ jobs:
         packages: libssl-dev pkg-config libasound2-dev
         version: latest
     - uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: |
+          . -> target
+          wireless-remote -> target
     - name: Versions
       run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version
     - run: cargo build --all
+    - run: cargo build --all
+      working-directory: wireless-remote
     - run: cargo test --all
 
   build-ndf:
@@ -89,9 +101,15 @@ jobs:
         packages: libssl-dev pkg-config libasound2-dev
         version: latest
     - uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: |
+          . -> target
+          wireless-remote -> target
     - name: Versions
       run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version
     - run: cargo build --all --no-default-features
+    - run: cargo build --all --no-default-features
+      working-directory: wireless-remote
     - run: cargo test --all --no-default-features
 
   build-release:
@@ -109,9 +127,15 @@ jobs:
         packages: libssl-dev pkg-config libasound2-dev
         version: latest
     - uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: |
+          . -> target
+          wireless-remote -> target
     - name: Versions
       run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version
     - run: cargo build --release --all
+    - run: cargo build --release --all
+      working-directory: wireless-remote
     - run: cargo test --release --all
 
   build-release-ndf:
@@ -125,8 +149,14 @@ jobs:
         packages: libssl-dev pkg-config libasound2-dev
         version: latest
     - uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: |
+          . -> target
+          wireless-remote -> target
     - name: Versions
       run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version
     - run: cargo build --release --all --no-default-features
+    - run: cargo build --release --all --no-default-features
+      working-directory: wireless-remote
     - run: cargo test --release --all --no-default-features
             

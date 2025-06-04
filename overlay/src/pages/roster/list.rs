@@ -274,7 +274,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
     }
     let (x_off, text) = fit_text(
         270f32,
-        &format!("GAME #{}", &state.game_id.to_string()),
+        &format!("GAME #{}", &state.snapshot.game_number()),
         25,
         &renderer.assets.font,
         Justify::Center,

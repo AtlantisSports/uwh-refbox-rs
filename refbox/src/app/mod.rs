@@ -206,7 +206,7 @@ impl RefBoxApp {
 
     fn request_event_list(&self) -> Task<Message> {
         if let Some(ref client) = self.uwhportal_client {
-            let request = client.get_event_list(self.list_all_events);
+            let request = client.get_event_list(self.list_all_events, true);
             Task::future(async move {
                 match request.await {
                     Ok(events) => {
@@ -224,9 +224,9 @@ impl RefBoxApp {
         }
     }
 
-    fn request_teams_list(&self, event_id: EventId, event_slug: &str) -> Task<Message> {
+    fn request_teams_list(&self, event_id: EventId) -> Task<Message> {
         if let Some(ref client) = self.uwhportal_client {
-            let request = client.get_event_schedule(event_slug);
+            let request = client.get_event_teams(&event_id);
             Task::future(async move {
                 match request.await {
                     Ok(teams) => {
@@ -1950,7 +1950,7 @@ impl RefBoxApp {
                 let mut tasks = vec![];
                 let e_map: BTreeMap<_, _> = e_list.into_iter().map(|e| (e.id.clone(), e)).collect();
                 for event in e_map.values() {
-                    tasks.push(self.request_teams_list(event.id.clone(), &event.slug));
+                    tasks.push(self.request_teams_list(event.id.clone()));
                 }
                 self.events = Some(e_map);
                 Task::batch(tasks)
@@ -1973,7 +1973,7 @@ impl RefBoxApp {
                 }
                 Task::none()
             }
-            Message::RecvSchedule(event_id, schedule) => {
+            Message::RecvSchedule(event_id, mut schedule) => {
                 if let Some(id) = self.current_event_id.as_ref().or_else(|| {
                     self.edited_settings
                         .as_ref()
@@ -1988,6 +1988,10 @@ impl RefBoxApp {
                 } else {
                     warn!("Received event data, but there is no current event_id");
                 }
+
+                schedule
+                    .games
+                    .sort_by(|_, v1, _, v2| v1.start_time.cmp(&v2.start_time));
 
                 let mut courts = BTreeSet::new();
                 for game in schedule.games.values() {

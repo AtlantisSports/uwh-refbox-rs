@@ -1,0 +1,26 @@
+[package]
+name = "schedule-processor"
+version = "0.3.1"
+authors = ["Atlantis Sports <maintainers@atlantissports.org>"]
+edition = "2024"
+rust-version = "1.85"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+csv = "1"
+indexmap = { version = "2.9.0", features = ["serde"] }
+inquire = "0.7.5"
+itertools = "0.11"
+lazy_static = "1"
+log = "0.4"
+log-panics = "2"
+log4rs = { version = "1", default-features = false, features = ["console_appender", "pattern_encoder"]}
+prettytable = "0.10.0"
+regex = "1"
+rfd = "0.15.3"
+serde = { version = "1", default-features = false, features = ["derive"] }
+serde_json = "1.0"
+strsim = "0.11.1"
+time = { version = "0.3", features = ["local-offset", "macros", "serde", "serde-human-readable"] }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"], default-features = false }
+uwh-common = { version = "0.3", path = "../uwh-common" }

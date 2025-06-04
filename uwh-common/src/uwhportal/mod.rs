@@ -45,6 +45,10 @@ impl UwhPortalClient {
         self.access_token = Some(token.to_string());
     }
 
+    pub fn clear_token(&mut self) {
+        self.access_token = None;
+    }
+
     pub fn has_token(&self) -> bool {
         self.access_token.is_some()
     }
@@ -104,6 +108,42 @@ impl UwhPortalClient {
                 } else {
                     Err(Box::new(ApiError::new(
                         "Reason not found in response".to_string(),
+                    )))?
+                }
+            } else {
+                warn!("uwhportal login failed, response: {:?}", response);
+                let body = response.text().await?;
+                Err(Box::new(ApiError::new(body)))?
+            }
+        }
+    }
+
+    pub fn login_with_email_and_password(
+        &self,
+        email: &str,
+        password: &str,
+    ) -> impl std::future::Future<Output = Result<String, Box<dyn Error>>> + use<> {
+        let url = format!("{}/api/authentication", self.base_url,);
+
+        let request = self
+            .client
+            .request(Method::POST, &url)
+            .json(&serde_json::json!({
+                "email": email,
+                "password": password
+            }));
+
+        async move {
+            let response = request.send().await?;
+
+            if response.status() == StatusCode::OK {
+                info!("uwhportal login successful");
+                let body = response.json::<serde_json::Value>().await?;
+                if let Some(token) = body["accessToken"].as_str() {
+                    Ok(token.to_string())
+                } else {
+                    Err(Box::new(ApiError::new(
+                        "Token not found in response".to_string(),
                     )))?
                 }
             } else {
@@ -247,11 +287,11 @@ impl UwhPortalClient {
         }
     }
 
-    pub fn get_event_schedule(
+    pub fn get_event_teams(
         &self,
-        event_slug: &str,
+        event_id: &EventId,
     ) -> impl std::future::Future<Output = Result<TeamList, Box<dyn Error>>> + use<> {
-        let url = format!("{}/api/events/{event_slug}/schedule", self.base_url);
+        let url = format!("{}/api/events/{}/teams", self.base_url, event_id.partial());
 
         let request = self.client.get(&url).send();
 
@@ -260,12 +300,19 @@ impl UwhPortalClient {
 
             if response.status() == StatusCode::OK {
                 let body = response.json::<serde_json::Value>().await?;
-                let teams = body["teams"].as_object().ok_or("Invalid response format")?;
+                let teams = body["teams"]
+                    .as_array()
+                    .ok_or(format!("Invalid response format. Response: {:?}", body))?;
                 let mut team_map = BTreeMap::new();
-                for (team_id, team_info) in teams {
-                    if let Some(name) = team_info["name"].as_str() {
-                        team_map.insert(TeamId::from_full(team_id)?, name.to_string());
-                    }
+                for team_entry in teams {
+                    let team_info = &team_entry["team"];
+                    let team_id = team_info["id"]
+                        .as_str()
+                        .ok_or(format!("Missing team id in response: {:?}", team_info))?;
+                    let name = team_info["name"]
+                        .as_str()
+                        .ok_or(format!("Missing team name in response: {:?}", team_info))?;
+                    team_map.insert(TeamId::from_full(team_id)?, name.to_string());
                 }
                 Ok(team_map)
             } else {
@@ -282,11 +329,13 @@ impl UwhPortalClient {
     pub fn get_event_list(
         &self,
         past: bool,
+        schedule_published: bool,
     ) -> impl std::future::Future<Output = Result<Vec<schedule::Event>, Box<dyn Error>>> + use<>
     {
         let url = format!("{}/api/events", self.base_url);
 
         let filter = if past { "Past" } else { "InProgressOrUpcoming" };
+        let schedule_published = if schedule_published { "true" } else { "false" };
 
         let request = self
             .client
@@ -294,7 +343,7 @@ impl UwhPortalClient {
             .query(&[
                 ("limit", "100"),
                 ("filter", filter),
-                ("isSchedulePublished", "true"),
+                ("isSchedulePublished", schedule_published),
             ])
             .send();
 
@@ -314,6 +363,67 @@ impl UwhPortalClient {
                 Ok(parsed_response.items)
             } else {
                 warn!("uwhportal get events list failed, response: {:?}", response);
+                let body = response.text().await?;
+                Err(Box::new(ApiError::new(body)))?
+            }
+        }
+    }
+
+    pub fn push_event_schedule(
+        &self,
+        event_slug: &str,
+        schedule: &schedule::SendableSchedule,
+        force: bool,
+    ) -> impl std::future::Future<Output = Result<(), Box<dyn Error>>> + use<> {
+        let url = format!("{}/api/events/{event_slug}/schedule", self.base_url);
+
+        let mut request =
+            authenticated_request(&self.client, Method::POST, &url, &self.access_token)
+                .json(schedule);
+
+        if force {
+            request = request.query(&[("force", "true")]);
+        }
+
+        async move {
+            let response = request.send().await?;
+
+            if response.status() == StatusCode::OK {
+                info!("uwhportal push event schedule successful");
+                Ok(())
+            } else {
+                warn!(
+                    "uwhportal push event schedule failed, response: {:?}",
+                    response
+                );
+                let body = response.text().await?;
+                Err(Box::new(ApiError::new(body)))?
+            }
+        }
+    }
+
+    /// The team map must map from unassigned name to full team id
+    pub fn push_team_map(
+        &self,
+        event_slug: &str,
+        team_map: &BTreeMap<&str, &str>,
+    ) -> impl std::future::Future<Output = Result<(), Box<dyn Error>>> + use<> {
+        let url = format!(
+            "{}/api/events/{event_slug}/schedule/map-teams",
+            self.base_url
+        );
+
+        let request = authenticated_request(&self.client, Method::POST, &url, &self.access_token)
+            .json(&team_map);
+
+        async move {
+            let response = request.send().await?;
+
+            if response.status() == StatusCode::OK {
+                info!("uwhportal push team map successful");
+                Ok(())
+            } else {
+                warn!("uwhportal push team map failed, response: {:?}", response);
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(body)))?
             }

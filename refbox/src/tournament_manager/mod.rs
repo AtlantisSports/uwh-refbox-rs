@@ -167,11 +167,10 @@ impl TournamentManager {
     }
 
     pub fn next_game_number(&self) -> GameNumber {
-        if self.current_period == GamePeriod::BetweenGames {
-            if let Some(ref info) = self.next_game {
-                return info.number.clone();
-            }
+        if let Some(ref info) = self.next_game {
+            return info.number.clone();
         }
+
         match self.game_number.parse::<u32>() {
             Ok(num) => (num + 1).to_string(),
             Err(_) => {

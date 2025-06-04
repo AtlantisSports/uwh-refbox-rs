@@ -1,4 +1,5 @@
 use crate::config::Game as GameConfig;
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt, time::Duration};
 use time::{
@@ -31,7 +32,7 @@ pub struct NonGameEntry {
 }
 
 #[serde_with::skip_serializing_none]
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord, Hash)]
 pub struct ScheduledTeam {
     #[serde(rename = "teamId")]
     team_id: Option<TeamId>,
@@ -152,7 +153,7 @@ impl ScheduledTeam {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord, Hash)]
 #[serde(tag = "type")]
 pub enum ResultOf {
     Winner {
@@ -174,7 +175,7 @@ impl ResultOf {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord, Hash)]
 pub struct SeededBy {
     pub number: u32,
     #[serde(with = "item_name")]
@@ -394,7 +395,7 @@ pub struct Group {
     pub final_results: Option<FinalResults>,
 }
 
-pub type GameList = BTreeMap<GameNumber, Game>;
+pub type GameList = IndexMap<GameNumber, Game>;
 
 #[serde_with::skip_serializing_none]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -428,6 +429,34 @@ impl Schedule {
         self.games
             .get(game_number)
             .and_then(|g| self.timing_rules.iter().find(|tr| tr.name == g.timing_rule))
+    }
+}
+
+#[serde_with::skip_serializing_none]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SendableSchedule {
+    games: Vec<Game>,
+    #[serde(rename = "nonGameEntries")]
+    pub non_game_entries: Vec<NonGameEntry>,
+    pub groups: Vec<Group>,
+    #[serde(rename = "timingRules")]
+    pub timing_rules: Vec<TimingRule>,
+    #[serde(rename = "standingsOrder")]
+    pub standings_order: Option<Vec<usize>>,
+    #[serde(rename = "finalResultsOrder")]
+    pub final_results_order: Option<Vec<usize>>,
+}
+
+impl From<Schedule> for SendableSchedule {
+    fn from(schedule: Schedule) -> Self {
+        SendableSchedule {
+            games: schedule.games.into_values().collect(),
+            non_game_entries: schedule.non_game_entries,
+            groups: schedule.groups,
+            timing_rules: schedule.timing_rules,
+            standings_order: schedule.standings_order,
+            final_results_order: schedule.final_results_order,
+        }
     }
 }
 
@@ -528,7 +557,7 @@ impl fmt::Display for EventId {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Serialize, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, Serialize, PartialOrd, Ord, Hash)]
 pub struct TeamId(String);
 
 impl core::fmt::Debug for TeamId {

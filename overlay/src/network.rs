@@ -1,20 +1,26 @@
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use reqwest::{Client, ClientBuilder, IntoUrl};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{io::Read, net::TcpStream, sync::OnceLock, time::Duration};
+use std::{sync::OnceLock, time::Duration};
 use time::{OffsetDateTime, format_description::BorrowedFormatItem, macros::format_description};
+use tokio::{io::AsyncReadExt, net::TcpStream};
 use uwh_common::{
     color::Color,
-    game_snapshot::{GamePeriod, GameSnapshot},
+    game_snapshot::GameSnapshot,
     uwhportal::schedule::{EventId, GameNumber, TeamId},
 };
+
+use crate::AppConfig;
 
 const START_TIME_FORMAT: &[BorrowedFormatItem<'static>] = format_description!("[hour]:[minute]");
 
 static CLIENT_CELL: OnceLock<Client> = OnceLock::new();
 
 pub type Image = (u16, u16, Vec<u8>);
+
+pub const BLACK_TEAM_NAME: &str = "BLACK";
+pub const WHITE_TEAM_NAME: &str = "WHITE";
 
 async fn get_image_from_opt_url<T: IntoUrl>(url: Option<T>) -> Option<Image> {
     let client = CLIENT_CELL.get().unwrap();
@@ -140,8 +146,8 @@ impl TeamInfoRaw {
         Self {
             team_name: data["name"].as_str().map_or(
                 match team_color {
-                    Color::Black => String::from("Black"),
-                    Color::White => String::from("White"),
+                    Color::Black => String::from(BLACK_TEAM_NAME),
+                    Color::White => String::from(WHITE_TEAM_NAME),
                 },
                 |s| s.trim().to_uppercase(),
             ),
@@ -153,12 +159,13 @@ impl TeamInfoRaw {
 
 #[derive(Serialize, Deserialize)]
 pub struct EventLogos {
+    pub event_id: EventId,
     pub event_logo: Option<Image>,
     pub sponsors: Option<Image>,
 }
 
 impl EventLogos {
-    pub async fn new(uwhportal_url: &str, event_id: &EventId) -> Self {
+    pub async fn new(uwhportal_url: &str, event_id: EventId) -> Self {
         let client = CLIENT_CELL.get().unwrap();
         info!("Requesting Portal API for overlay images for event: {event_id}");
         let data: Value = serde_json::from_str(
@@ -197,6 +204,7 @@ impl EventLogos {
         );
 
         Self {
+            event_id,
             event_logo,
             sponsors,
         }
@@ -211,6 +219,13 @@ pub struct StatePacket {
     pub event_logos: Option<EventLogos>,
 }
 
+#[derive(Serialize, Deserialize)]
+pub enum StateUpdate {
+    Snapshot(GameSnapshot),
+    GameData(GameData),
+    EventLogos(EventId, EventLogos),
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct GameData {
     pub pool: String,
@@ -218,24 +233,8 @@ pub struct GameData {
     pub referees: Vec<MemberRaw>,
     pub black: TeamInfoRaw,
     pub white: TeamInfoRaw,
-    pub sponsor_logo: Option<Image>,
     pub game_number: GameNumber,
-    pub event_id: Option<EventId>,
-}
-
-impl GameData {
-    pub fn default(game_id: GameNumber, event_id: Option<EventId>) -> Self {
-        Self {
-            pool: String::new(),
-            start_time: String::new(),
-            referees: Vec::new(),
-            black: TeamInfoRaw::default(),
-            white: TeamInfoRaw::default(),
-            sponsor_logo: None,
-            game_number: game_id,
-            event_id,
-        }
-    }
+    pub event_id: EventId,
 }
 
 async fn fetch_game_referees(
@@ -316,11 +315,10 @@ async fn fetch_game_referees(
 }
 
 async fn fetch_game_data(
-    tr: crossbeam_channel::Sender<(GameData, bool)>,
+    game_data_tx: tokio::sync::mpsc::UnboundedSender<GameData>,
     uwhportal_url: &str,
-    event_id: &EventId,
+    event_id: EventId,
     game_number: &GameNumber,
-    is_current_game: bool,
 ) {
     let client = CLIENT_CELL.get().unwrap();
     // retry periodically if no connection
@@ -382,16 +380,16 @@ async fn fetch_game_data(
                 .and_then(|dt| Some(String::from("START: ") + &dt.format(START_TIME_FORMAT).ok()?))
                 .unwrap_or_default();
             let (referees, black, white) = tokio::join!(
-                fetch_game_referees(uwhportal_url, event_id, game_number),
+                fetch_game_referees(uwhportal_url, &event_id, game_number),
                 TeamInfoRaw::new(
                     uwhportal_url,
-                    event_id,
+                    &event_id,
                     team_id_black.as_ref(),
                     Color::Black
                 ),
                 TeamInfoRaw::new(
                     uwhportal_url,
-                    event_id,
+                    &event_id,
                     team_id_white.as_ref(),
                     Color::White
                 )
@@ -413,21 +411,18 @@ async fn fetch_game_data(
                 }
             };
 
-            tr.send((
-                GameData {
+            game_data_tx
+                .send(GameData {
                     pool,
                     start_time,
                     referees,
                     black,
                     white,
-                    sponsor_logo: None,
-                    event_id: Some(event_id.clone()),
+                    event_id,
                     game_number: game_number.clone(),
-                },
-                is_current_game,
-            ))
-            .map_err(|e| error!("Couldn't send data: {e}"))
-            .unwrap();
+                })
+                .map_err(|e| error!("Couldn't send data: {e}"))
+                .unwrap();
             return;
         }
         warn!(
@@ -439,7 +434,7 @@ async fn fetch_game_data(
 
 #[tokio::main]
 pub async fn networking_thread(
-    tx: crossbeam_channel::Sender<StatePacket>,
+    state_tx: crossbeam_channel::Sender<StateUpdate>,
     config: crate::AppConfig,
 ) {
     CLIENT_CELL
@@ -451,173 +446,228 @@ pub async fn networking_thread(
         )
         .unwrap();
 
-    info!("Attempting refbox connection!");
-    let mut stream = loop {
-        if let Ok(stream) = TcpStream::connect((config.refbox_ip, config.refbox_port as u16)) {
-            break stream;
-        }
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    };
-    info!("Connected to refbox!");
+    let AppConfig {
+        refbox_ip,
+        refbox_port,
+        uwhportal_url,
+    } = config;
 
-    let (tr, rc) = crossbeam_channel::unbounded::<(GameData, bool)>();
-    let (tt, rt) = crossbeam_channel::unbounded::<EventLogos>();
-    let mut buff = vec![0u8; 1024];
-    let mut read_bytes;
-    let mut game_number = None;
-    let mut event_id = None;
+    let (snapshot_tx, mut snapshot_rx) = tokio::sync::mpsc::unbounded_channel::<GameSnapshot>();
+    let (game_data_tx, mut game_data_rx) = tokio::sync::mpsc::unbounded_channel::<GameData>();
+    let (logos_tx, mut logos_rx) = tokio::sync::mpsc::unbounded_channel::<EventLogos>();
+
+    tokio::spawn(async move {
+        let mut buff = vec![0u8; 1024];
+        loop {
+            info!("Connecting to refbox at {refbox_ip}:{refbox_port}");
+            let mut stream = loop {
+                match TcpStream::connect((refbox_ip, refbox_port)).await {
+                    Ok(stream) => {
+                        info!("Connected to refbox at {refbox_ip}:{refbox_port}");
+                        break stream;
+                    }
+                    Err(_) => {
+                        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    }
+                }
+            };
+            info!("Connected to refbox at {refbox_ip}:{refbox_port}, waiting for snapshots...");
+
+            loop {
+                let read_bytes = match stream.read(&mut buff).await {
+                    Ok(0) => {
+                        error!("Connection to refbox lost! Attempting to reconnect!");
+                        break;
+                    }
+                    Ok(bytes) => bytes,
+                    Err(e) => {
+                        error!("Error reading from refbox: {e}");
+                        break;
+                    }
+                };
+                match serde_json::de::from_slice::<GameSnapshot>(&buff[..read_bytes]) {
+                    Ok(snapshot) => {
+                        debug!("Got snapshot from refbox!");
+                        snapshot_tx.send(snapshot.clone()).unwrap_or_else(|e| {
+                            error!("Frontend could not recieve snapshot!: {e}")
+                        });
+                    }
+                    Err(e) => {
+                        warn!("Corrupted snapshot discarded! Error: {e}");
+                    }
+                }
+            }
+        }
+    });
+
+    let mut last_snapshot: Option<GameSnapshot> = None;
     let mut next_game_data: Option<GameData> = None;
     info!("Networking thread initialized!");
     loop {
-        read_bytes = stream.read(&mut buff).unwrap();
-        if read_bytes == 0 {
-            error!("Connection to refbox lost! Attempting to reconnect!");
-            stream = loop {
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                if let Ok(stream) =
-                    TcpStream::connect((config.refbox_ip, config.refbox_port as u16))
-                {
-                    info!("Found refbox!");
-                    break stream;
-                }
-            };
-        }
-        if let Ok(snapshot) = serde_json::de::from_slice::<GameSnapshot>(&buff[..read_bytes]) {
-            let event_id_new = snapshot.event_id.clone();
-            let game_number_new =
-                if snapshot.current_period == GamePeriod::BetweenGames && !snapshot.is_old_game {
-                    snapshot.next_game_number.clone()
+        tokio::select! {
+            snapshot = snapshot_rx.recv() => {
+                let new_snapshot = if let Some(snapshot) = snapshot {
+                    snapshot
                 } else {
-                    snapshot.game_number.clone()
+                    error!("Snapshot channel closed, exiting networking thread!");
+                    return;
                 };
-            let next_game_number = snapshot.next_game_number.clone();
 
-            let tr_ = tr.clone();
-            let uwhportal_url = config.uwhportal_url.clone();
+                state_tx
+                    .send(StateUpdate::Snapshot(new_snapshot.clone()))
+                    .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
 
-            // initial case when no data is initialised
-            if game_number.is_none() {
-                let tr_ = tr.clone();
-                let uwhportal_url = config.uwhportal_url.clone();
-                game_number = Some(game_number_new.clone());
-                event_id = event_id_new.clone();
-                if let Some(ref id) = event_id {
-                    info!("Fetching intial game data for event: {id}, game: {game_number_new}");
-                    let id_ = id.clone();
-                    let game_number_new_ = game_number_new.clone();
-                    tokio::spawn(async move {
-                        fetch_game_data(tr_, &uwhportal_url, &id_, &game_number_new_, true).await;
-                    });
-
-                    let tt_ = tt.clone();
-                    let uwhportal_url = config.uwhportal_url.clone();
-                    let id_ = id.clone();
-                    tokio::spawn(async move {
-                        tt_.send(EventLogos::new(&uwhportal_url, &id_).await)
-                            .map_err(|e| error!("Couldn't send event logos: {e}"))
-                            .unwrap();
-                    });
-                }
-            }
-
-            // every other case, when atleast one game has been requested
-            if game_number.is_some() && event_id.is_some() {
-                let game_id_old = game_number.as_mut().unwrap();
-                let tr_ = tr.clone();
-                let uwhportal_url = config.uwhportal_url.clone();
-                if *game_id_old != game_number_new || event_id != event_id_new {
-                    if event_id != event_id_new && event_id_new.is_some() {
-                        let tt_ = tt.clone();
-                        let uwhportal_url = config.uwhportal_url.clone();
-                        let id = event_id_new.clone().unwrap();
+                // initial case when no data is initialised
+                if last_snapshot.is_none() {
+                    if let Some(ref event_id) = new_snapshot.event_id {
+                        info!("Fetching intial game data for event: {event_id}, game: {}", new_snapshot.game_number());
+                        let event_id_ = event_id.clone();
+                        let game_data_tx_ = game_data_tx.clone();
+                        let uwhportal_url_ = uwhportal_url.clone();
+                        let game_number = new_snapshot.game_number().clone();
                         tokio::spawn(async move {
-                            tt_.send(EventLogos::new(&uwhportal_url, &id).await)
+                            fetch_game_data(game_data_tx_, &uwhportal_url_, event_id_, &game_number)
+                                .await;
+                        });
+
+                        let logos_tx_ = logos_tx.clone();
+                        let uwhportal_url_ = uwhportal_url.clone();
+                        let event_id_ = event_id.clone();
+                        tokio::spawn(async move {
+                            logos_tx_.send(EventLogos::new(&uwhportal_url_, event_id_).await)
                                 .map_err(|e| error!("Couldn't send event logos: {e}"))
                                 .unwrap();
                         });
                     }
+                }
+                // every other case, when at least one game has been requested
+                else if let Some(ref old_snapshot) = last_snapshot {
+                    if old_snapshot.game_number() != new_snapshot.game_number() || old_snapshot.event_id != new_snapshot.event_id {
+                        if old_snapshot.event_id != new_snapshot.event_id && new_snapshot.event_id.is_some() {
+                            let logos_tx_ = logos_tx.clone();
+                            let uwhportal_url_ = uwhportal_url.clone();
+                            let event_id = new_snapshot.event_id.clone().unwrap();
+                            tokio::spawn(async move {
+                                logos_tx_.send(EventLogos::new(&uwhportal_url_, event_id).await)
+                                    .map_err(|e| error!("Couldn't send event logos: {e}"))
+                                    .unwrap();
+                            });
+                        }
 
-                    *game_id_old = game_number_new.clone();
-                    event_id = event_id_new.clone();
-                    info!("Got new game ID {game_number_new} / event ID {event_id_new:?}");
+                        info!("Got new game ID {} / event ID {:?}", new_snapshot.game_number(), new_snapshot.event_id);
 
-                    if next_game_data.is_some()
-                        && next_game_data.as_ref().unwrap().game_number == game_number_new
-                        && next_game_data.as_ref().unwrap().event_id == event_id_new
-                    {
-                        let next_game_data = next_game_data.clone().unwrap();
-                        info!("Sending cached game data for next game");
-                        tx.send(StatePacket {
-                            snapshot,
-                            game_number: game_number.clone(),
-                            data: Some(next_game_data),
-                            event_logos: None,
-                        })
-                        .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
-                    } else if let Some(ref id) = event_id {
-                        // This must succeed because of the `event_id.is_some()` check above
-                        info!(
-                            "Fetching game data for event: {id}, game: {game_number_new}. Cache is empty or invalid!"
-                        );
-                        let uwhportal_url_ = uwhportal_url.clone();
-                        let tr__ = tr_.clone();
-                        let id_ = id.clone();
-                        tokio::spawn(async move {
-                            fetch_game_data(tr__, &uwhportal_url_, &id_, &game_number_new, true)
+                        if next_game_data.is_some()
+                            && new_snapshot.event_id.is_some()
+                            && next_game_data.as_ref().unwrap().game_number == *new_snapshot.game_number()
+                            && next_game_data.as_ref().unwrap().event_id == *new_snapshot.event_id.as_ref().unwrap()
+                        {
+                            let next_game_data = next_game_data.take().unwrap();
+                            info!("Sending cached game data for next game");
+                            state_tx
+                                .send(StateUpdate::GameData(next_game_data))
+                                .unwrap_or_else(|e| {
+                                    error!("Frontend could not recieve snapshot!: {e}")
+                                });
+                        } else if let Some(ref event_id) = new_snapshot.event_id {
+                            let game_number = new_snapshot.game_number().clone();
+                            info!(
+                                "Fetching game data for event: {event_id}, game: {game_number}. Cache is empty or invalid!",
+                            );
+                            let game_data_tx_ = game_data_tx.clone();
+                            let uwhportal_url_ = uwhportal_url.clone();
+                            let event_id_ = event_id.clone();
+                            tokio::spawn(async move {
+                                fetch_game_data(
+                                    game_data_tx_,
+                                    &uwhportal_url_,
+                                    event_id_,
+                                    &game_number,
+                                )
                                 .await;
-                        });
+                            });
+                        }
                     }
-                    continue;
                 }
+
+                // request new game cache if empty or invalid
+                if new_snapshot.event_id.is_some()
+                    && new_snapshot.next_game_number().is_some()
+                    && (next_game_data.is_none()
+                        || next_game_data.as_ref().unwrap().game_number != *new_snapshot.next_game_number().unwrap()
+                        || next_game_data.as_ref().unwrap().event_id != *new_snapshot.event_id.as_ref().unwrap())
+                {
+                    let game_data_tx_ = game_data_tx.clone();
+                    let uwhportal_url_ = uwhportal_url.clone();
+                    let event_id = new_snapshot.event_id.clone().unwrap();
+                    let next_game_number = new_snapshot.next_game_number().unwrap().clone();
+                    info!(
+                        "Fetching game data to cache for event: {event_id}, game: {next_game_number}",
+                    );
+                    tokio::spawn(async move {
+                        fetch_game_data(game_data_tx_, &uwhportal_url_, event_id, &next_game_number)
+                            .await;
+                    });
+                }
+                last_snapshot = Some(new_snapshot);
             }
-
-            // request new game cache if empty or invalid
-            if event_id_new.is_some()
-                && (next_game_data.is_none()
-                    || next_game_data.as_ref().unwrap().game_number != next_game_number
-                    || next_game_data.as_ref().unwrap().event_id != event_id_new)
-            {
-                info!(
-                    "Fetching game data to cache for event: {}, game: {next_game_number}",
-                    event_id_new.as_ref().unwrap()
-                );
-                let id = event_id_new.clone().unwrap();
-                let next_game_number_ = next_game_number.clone();
-                tokio::spawn(async move {
-                    fetch_game_data(tr_, &uwhportal_url, &id, &next_game_number_, false).await;
-                });
-                next_game_data = Some(GameData::default(next_game_number, event_id_new.clone()));
-            }
-
-            let event_logos = if let Ok(event_logos) = rt.try_recv() {
-                info!("Got event logos!");
-                Some(event_logos)
-            } else {
-                None
-            };
-
-            // recieve data for requested games
-            let this_game_data = if let Ok((game_data, is_current_game)) = rc.try_recv() {
-                if is_current_game {
-                    info!("Got game state update from network!");
-                    Some(game_data)
+            game_data = game_data_rx.recv() => {
+                if let Some(game_data) = game_data {
+                    info!("Got game data from network for game: {} / event: {:?}", game_data.game_number, game_data.event_id);
+                    if let Some(ref snapshot) = last_snapshot {
+                        if let Some(ref event_id) = snapshot.event_id {
+                            if game_data.event_id == *event_id {
+                                if game_data.game_number == *snapshot.game_number() {
+                                    info!("Sending game data for event: {:?}, game: {}", event_id, game_data.game_number);
+                                    state_tx
+                                        .send(StateUpdate::GameData(game_data))
+                                        .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
+                                } else if let Some(next_game_number) = snapshot.next_game_number() {
+                                    if game_data.game_number == *next_game_number {
+                                        info!("Saving game data for next game: {} / event: {:?}", next_game_number, event_id);
+                                        next_game_data = Some(game_data);
+                                    } else {
+                                        warn!("Received game data for event {:?}, but for unexpected game {:?}, discarding!", game_data.event_id, game_data.game_number);
+                                    }
+                                } else {
+                                    warn!("Received game data for event {:?}, but for unexpected game {:?}, discarding!", game_data.event_id, game_data.game_number);
+                                }
+                            } else {
+                                warn!("Received game data for event {:?}, but current snapshot is for event {:?}, discarding!", game_data.event_id, snapshot.event_id);
+                            }
+                        } else {
+                            warn!("Received game data, but current snapshot has no event ID, discarding!");
+                        }
+                    } else {
+                        warn!("Received game data before any snapshots, discarding!");
+                    }
                 } else {
-                    info!("Got game state update from network for next_game!");
-                    next_game_data = Some(game_data);
-                    None
+                    error!("Game data channel closed, exiting networking thread!");
+                    return;
                 }
-            } else {
-                None
-            };
-            tx.send(StatePacket {
-                snapshot,
-                game_number: game_number.clone(),
-                data: this_game_data,
-                event_logos,
-            })
-            .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
-        } else {
-            warn!("Corrupted snapshot discarded!");
+            }
+            event_logos = logos_rx.recv() => {
+                if let Some(event_logos) = event_logos {
+                    info!("Got event logos from network!");
+                    if let Some(ref snapshot) = last_snapshot {
+                        if let Some(ref event_id) = snapshot.event_id {
+                            if event_logos.event_id == *event_id {
+                                state_tx
+                                    .send(StateUpdate::EventLogos(event_id.clone(), event_logos))
+                                    .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
+                            } else {
+                                warn!("Received event logos for event {:?}, but current snapshot is for event {:?}, discarding!", event_logos.event_id, snapshot.event_id);
+                            }
+                        } else {
+                            warn!("Received event logos, but current snapshot has no event ID, discarding!");
+                        }
+                    } else {
+                        warn!("Received event logos before any snapshots, discarding!");
+                    }
+                } else {
+                    error!("Event logos channel closed, exiting networking thread!");
+                    return;
+                }
+            }
         }
     }
 }

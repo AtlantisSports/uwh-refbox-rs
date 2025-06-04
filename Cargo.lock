@@ -4604,7 +4604,6 @@ name = "overlay"
 version = "0.3.1"
 dependencies = [
  "alphagen",
- "bytes",
  "clap",
  "coarsetime",
  "confy",
@@ -6493,9 +6492,7 @@ dependencies = [
  "bytes",
  "libc",
  "mio 1.0.3",
- "parking_lot 0.12.3",
  "pin-project-lite",
- "signal-hook-registry",
  "socket2",
  "tokio-macros",
  "windows-sys 0.52.0",

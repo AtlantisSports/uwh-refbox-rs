@@ -15,17 +15,15 @@ use log4rs::{
     encode::pattern::PatternEncoder,
 };
 use macroquad::prelude::*;
-use network::{GameData, StatePacket, TeamInfoRaw};
+use network::{StateUpdate, TeamInfoRaw};
 use std::{cmp::Ordering, str::FromStr};
 use std::{net::IpAddr, path::PathBuf};
-use uwh_common::{
-    game_snapshot::{GamePeriod, GameSnapshot},
-    uwhportal::schedule::GameNumber,
-};
+use uwh_common::game_snapshot::{GamePeriod, GameSnapshot};
 
 mod flag;
 mod load_images;
 mod network;
+use network::{BLACK_TEAM_NAME, WHITE_TEAM_NAME};
 mod pages;
 
 use load_images::Texture;
@@ -35,7 +33,7 @@ const APP_NAME: &str = "overlay";
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct AppConfig {
     refbox_ip: IpAddr,
-    refbox_port: u64,
+    refbox_port: u16,
     uwhportal_url: String,
 }
 
@@ -54,7 +52,6 @@ pub struct State {
     black: TeamInfo,
     white: TeamInfo,
     referees: Vec<Member>,
-    game_id: GameNumber,
     pool: String,
     start_time: String,
     half_play_duration: Option<u32>,
@@ -83,34 +80,57 @@ fn texture_from_image_result(image: network::Image) -> Result<Texture, Box<dyn s
 }
 
 impl State {
-    fn update_state(&mut self, recieved_state: StatePacket) {
-        if let Some(GameData {
-            black,
-            white,
-            pool,
-            start_time,
-            referees,
-            ..
-        }) = recieved_state.data
-        {
-            self.black = TeamInfo::from(black);
-            self.white = TeamInfo::from(white);
-            self.start_time = start_time;
-            self.referees = referees.into_iter().map(Member::from).collect();
-            self.pool = pool;
-        }
-        if let Some(game_id) = recieved_state.game_number {
-            self.game_id = game_id;
-        }
-        self.snapshot = recieved_state.snapshot;
-        if let Some(logos) = recieved_state.event_logos {
-            self.event_logo = logos.event_logo.and_then(texture_from_image);
-            self.sponsor_logo = logos.sponsors.and_then(texture_from_image);
-            info!(
-                "Updated event logos: Event: {}, Sponsor: {}",
-                self.event_logo.is_some(),
-                self.sponsor_logo.is_some()
-            );
+    fn update_state(&mut self, recieved_update: StateUpdate) {
+        match recieved_update {
+            StateUpdate::Snapshot(snapshot) => {
+                if self.snapshot.event_id != snapshot.event_id {
+                    info!("Snapshot for new event received: {:?}", snapshot.event_id);
+                    self.event_logo = None;
+                    self.sponsor_logo = None;
+
+                    if self.snapshot.game_number() != snapshot.game_number() {
+                        info!("Snapshot for new game received: {}", snapshot.game_number());
+                        self.black = TeamInfo::with_name(BLACK_TEAM_NAME);
+                        self.white = TeamInfo::with_name(WHITE_TEAM_NAME);
+                        self.referees.clear();
+                        self.pool = String::new();
+                        self.start_time = String::new();
+                        self.half_play_duration = None;
+                    }
+                }
+                self.snapshot = snapshot;
+            }
+            StateUpdate::GameData(game_data) => {
+                if let Some(ref event_id) = self.snapshot.event_id {
+                    if game_data.event_id == *event_id
+                        && game_data.game_number == *self.snapshot.game_number()
+                    {
+                        self.black = TeamInfo::from(game_data.black);
+                        self.white = TeamInfo::from(game_data.white);
+                        self.start_time = game_data.start_time;
+                        self.referees = game_data.referees.into_iter().map(Member::from).collect();
+                        self.pool = game_data.pool;
+                    } else {
+                        warn!(
+                            "Received game data for incorrect game: {} in event {}",
+                            game_data.game_number, game_data.event_id
+                        );
+                    }
+                }
+            }
+            StateUpdate::EventLogos(event_id, logos) => {
+                if self.snapshot.event_id.as_ref() == Some(&event_id) {
+                    self.event_logo = logos.event_logo.and_then(texture_from_image);
+                    self.sponsor_logo = logos.sponsors.and_then(texture_from_image);
+                    info!(
+                        "Updated event logos: Event: {}, Sponsor: {}",
+                        self.event_logo.is_some(),
+                        self.sponsor_logo.is_some()
+                    );
+                } else {
+                    warn!("Received event logos for incorrect event: {}", event_id);
+                }
+            }
         }
     }
 }
@@ -216,7 +236,7 @@ async fn main() {
         }
     };
 
-    let (tx, rx) = bounded::<StatePacket>(3);
+    let (tx, rx) = bounded::<StateUpdate>(3);
 
     let net_worker = std::thread::spawn(|| {
         network::networking_thread(tx, config);
@@ -231,10 +251,9 @@ async fn main() {
             ..Default::default()
         },
 
-        black: TeamInfo::with_name("BLACK"),
+        black: TeamInfo::with_name(BLACK_TEAM_NAME),
         referees: Vec::new(),
-        white: TeamInfo::with_name("WHITE"),
-        game_id: "0".to_string(),
+        white: TeamInfo::with_name(WHITE_TEAM_NAME),
         pool: String::new(),
         start_time: String::new(),
         half_play_duration: None,

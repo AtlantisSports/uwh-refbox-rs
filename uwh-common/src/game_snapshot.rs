@@ -97,6 +97,25 @@ impl From<GameSnapshot> for GameSnapshotNoHeap {
     }
 }
 
+#[cfg(feature = "std")]
+impl GameSnapshot {
+    pub fn game_number(&self) -> &GameNumber {
+        if matches!(self.current_period, GamePeriod::BetweenGames) && !self.is_old_game {
+            &self.next_game_number
+        } else {
+            &self.game_number
+        }
+    }
+
+    pub fn next_game_number(&self) -> Option<&GameNumber> {
+        if !matches!(self.current_period, GamePeriod::BetweenGames) || self.is_old_game {
+            Some(&self.next_game_number)
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct PenaltySnapshot {
     pub player_number: u8,

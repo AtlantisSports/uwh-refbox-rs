@@ -14,7 +14,7 @@ confy = "1.0"
 crossbeam-channel = "0.5.15"
 directories = "6.0.0"
 futures = "0.3"
-image = { version = "0.24", default-features = false, features = ["png", "jpeg_rayon"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "rayon"] }
 log = "0.4.27"
 log-panics = { version = "2", features = ["with-backtrace"]}
 log4rs = { version = "1", default-features = false, features = ["background_rotation", "compound_policy", "console_appender", "fixed_window_roller", "gzip", "pattern_encoder", "rolling_file_appender", "size_trigger"]}

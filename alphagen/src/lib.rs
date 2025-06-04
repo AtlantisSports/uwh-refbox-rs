@@ -1,4 +1,4 @@
-use image::{GenericImageView, ImageBuffer, ImageFormat, LumaA, Rgba, io::Reader};
+use image::{GenericImageView, ImageBuffer, ImageFormat, ImageReader, LumaA, Rgba};
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use std::{
     fs,
@@ -92,7 +92,7 @@ fn process_images_on_paths<O>(
 
 /// Process raw image data
 pub fn on_raw(input: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let img_in = Reader::new(Cursor::new(input))
+    let img_in = ImageReader::new(Cursor::new(input))
         .with_guessed_format()?
         .decode()?;
     let mut img_out = image::GrayAlphaImage::new(img_in.width(), img_in.height());

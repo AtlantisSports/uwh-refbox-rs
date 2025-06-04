@@ -14,12 +14,12 @@ use embassy_time::{Delay, Duration, Instant};
 use embedded_hal_async::delay::DelayNs;
 use embedded_hal_bus::spi::ExclusiveDevice;
 use lora_phy::{
-    iv::GenericSx127xInterfaceVariant,
-    sx127x::{self, Sx1276, Sx127x},
     LoRa,
+    iv::GenericSx127xInterfaceVariant,
+    sx127x::{self, Sx127x, Sx1276},
 };
-use {defmt_rtt as _, panic_probe as _};
 use wireless_modes::WirelessMode;
+use {defmt_rtt as _, panic_probe as _};
 
 const FLASH_SIZE: usize = 2 * 1024 * 1024;
 
@@ -84,17 +84,15 @@ async fn main(_spawner: Spawner) {
         Delay.delay_ms(1).await;
     }
 
-    let wireless_mode = WirelessMode::from_gray_code(
-        pins[0].2,
-        pins[1].2,
-        pins[2].2,
-        pins[3].2,
-    );
+    let wireless_mode = WirelessMode::from_gray_code(pins[0].2, pins[1].2, pins[2].2, pins[3].2);
 
     let wireless_mode = match wireless_mode {
         Some(wireless_mode) => wireless_mode,
         None => {
-            error!("Invalid wireless mode. Gray code was 1: {}, 2: {}, 4: {}, 8: {}", pins[0].2, pins[1].2, pins[2].2, pins[3].2);
+            error!(
+                "Invalid wireless mode. Gray code was 1: {}, 2: {}, 4: {}, 8: {}",
+                pins[0].2, pins[1].2, pins[2].2, pins[3].2
+            );
             return;
         }
     };
@@ -240,7 +238,12 @@ async fn main(_spawner: Spawner) {
             }
 
             match lora
-                .prepare_for_tx(&mdltn_params, &mut tx_pkt_params, wireless_mode.tx_power(), &msg)
+                .prepare_for_tx(
+                    &mdltn_params,
+                    &mut tx_pkt_params,
+                    wireless_mode.tx_power(),
+                    &msg,
+                )
                 .await
             {
                 Ok(()) => {

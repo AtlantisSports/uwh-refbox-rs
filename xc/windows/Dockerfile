@@ -1,6 +1,6 @@
-FROM lukemathwalker/cargo-chef:latest-rust-1.85-slim-bullseye AS builder
+FROM lukemathwalker/cargo-chef:latest-rust-1.87-slim-bullseye AS builder
 
-ENV KEYRINGS /usr/local/share/keyrings
+ENV KEYRINGS="/usr/local/share/keyrings"
 
 RUN set -eux; \
     mkdir -p $KEYRINGS; \

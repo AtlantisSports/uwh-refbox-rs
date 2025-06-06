@@ -34,7 +34,7 @@ struct Args {
     verbose: u8,
 }
 
-const APP_NAME: &str = "processor";
+const APP_NAME: &str = "schedule_processor";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -87,6 +87,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("No file selected".into());
     };
 
+    let options = vec!["Underwater Hockey", "Underwater Rugby"];
+    let sport_choice = Select::new("Select the sport for the schedule:", options)
+        .prompt()
+        .unwrap_or_else(|_| {
+            error!("No sport selected. Exiting.");
+            std::process::exit(1);
+        });
+
     let options = vec!["Production", "Development", "Local"];
     let site_choice = Select::new("Select the uwhportal site to connect to:", options)
         .prompt()
@@ -95,10 +103,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::process::exit(1);
         });
 
-    let site_url = match site_choice {
-        "Production" => "https://api.uwhportal.com",
-        "Development" => "https://api.dev.uwhportal.com",
-        "Local" => "http://localhost:9000",
+    let site_url = match (site_choice, sport_choice) {
+        ("Production", "Underwater Hockey") => "https://api.uwhportal.com",
+        ("Production", "Underwater Rugby") => "https://api.uwrportal.com",
+        ("Development", "Underwater Hockey") => "https://api.dev.uwhportal.com",
+        ("Development", "Underwater Rugby") => "https://api.dev.uwrportal.com",
+        ("Local", _) => "http://localhost:9000",
         _ => unreachable!(),
     };
 
@@ -138,7 +148,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Reading csv file: {}", csv_path.display());
     let csv = std::fs::read_to_string(&csv_path)?;
-    let schedule = parse_csv(&csv, offset, event.id.clone())?;
+    let schedule = match parse_csv(&csv, offset, event.id.clone()) {
+        Ok(schedule) => schedule,
+        Err(e) => {
+            error!("Failed to parse CSV file: {e}");
+            Text::new("Press any key close the app")
+                .with_placeholder("Press Enter to proceed")
+                .prompt()
+                .unwrap_or_else(|_| {
+                    error!("Failed to proceed. Exiting.");
+                    std::process::exit(1);
+                });
+            return Err(e);
+        }
+    };
 
     let mut success_string = "Successfully parsed schedule. Details:".to_string();
     write!(
@@ -188,9 +211,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Running schedule checks");
     if let Err(e) = run_schedule_checks(&schedule) {
-        if args.allow_failures {
-            error!("Schedule checks failed: {e}");
-        } else {
+        error!("Schedule checks failed: {e}");
+        if !args.allow_failures {
+            Text::new("Press any key to close the app")
+                .with_placeholder("Press Enter to proceed")
+                .prompt()
+                .unwrap_or_else(|_| {
+                    error!("Failed to proceed. Exiting.");
+                    std::process::exit(1);
+                });
             return Err(e);
         }
     }

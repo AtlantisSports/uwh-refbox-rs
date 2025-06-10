@@ -1662,9 +1662,6 @@ impl RefBoxApp {
                             | BoolGameParameter::TimeoutsCountedPerHalf => {
                                 unreachable!()
                             }
-                            BoolGameParameter::ConfirmScore => {
-                                edited_settings.confirm_score ^= true
-                            }
                         }
                     }
                 };

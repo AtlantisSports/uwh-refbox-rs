@@ -21,6 +21,10 @@ filesets:
   synth:
     files:
       - synth/top.sv: {file_type: systemVerilogSource}
+  # LED test synthesis
+  synth_led_test:
+    files:
+      - synth/top_led_test.sv: {file_type: systemVerilogSource}
   # boards
   alchitry_cu:
     files:
@@ -38,6 +42,11 @@ targets:
       - rtl
       - synth
     toplevel: top
+  synth_led_test: &synth_led_test
+    filesets:
+      - rtl
+      - synth_led_test
+    toplevel: top_led_test
 
   sim: # fusesoc run --target sim e4tham:templates:and
     <<: *default
@@ -53,6 +62,19 @@ targets:
   alchitry_cu:
     <<: *synth
     description: Synthesize on Alchrity Cu
+    filesets_append:
+      - alchitry_cu
+    flow: icestorm
+    flow_options:
+      frontends:
+        - sv2v
+      pnr: next
+      nextpnr_options: [--hx8k, --package, cb132]
+      arch: ice40
+
+  alchitry_cu_led_test:
+    <<: *synth_led_test
+    description: Synthesize LED test on Alchrity Cu
     filesets_append:
       - alchitry_cu
     flow: icestorm

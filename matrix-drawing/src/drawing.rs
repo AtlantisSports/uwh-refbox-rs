@@ -217,8 +217,6 @@ pub fn draw_panels<D: DrawTarget<Color = Rgb888>>(
     let right_penalties;
     let left_score;
     let right_score;
-    let left_timeout_available;
-    let right_timeout_available;
     let left_color;
     let right_color;
 
@@ -227,8 +225,6 @@ pub fn draw_panels<D: DrawTarget<Color = Rgb888>>(
         right_penalties = state.penalties.white;
         left_score = state.scores.black;
         right_score = state.scores.white;
-        left_timeout_available = state.timeouts_available.black;
-        right_timeout_available = state.timeouts_available.white;
         left_color = BLUE;
         right_color = WHITE;
     } else {
@@ -236,24 +232,8 @@ pub fn draw_panels<D: DrawTarget<Color = Rgb888>>(
         right_penalties = state.penalties.black;
         left_score = state.scores.white;
         right_score = state.scores.black;
-        left_timeout_available = state.timeouts_available.white;
-        right_timeout_available = state.timeouts_available.black;
         left_color = WHITE;
         right_color = BLUE;
-    }
-
-    // Timeout Availability on Left Score Panel
-    if left_timeout_available {
-        Rectangle::new(Point::new(2, 0), Size::new(60, 1))
-            .into_styled(PrimitiveStyle::with_fill(left_color))
-            .draw(display)?;
-    }
-
-    // Timeout Availability on Right Score Panel
-    if right_timeout_available {
-        Rectangle::new(Point::new(194, 0), Size::new(60, 1))
-            .into_styled(PrimitiveStyle::with_fill(right_color))
-            .draw(display)?;
     }
 
     if !beep_test || !white_on_right {

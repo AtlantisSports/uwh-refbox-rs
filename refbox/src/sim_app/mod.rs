@@ -6,6 +6,10 @@ use iced::{
     mouse::Cursor,
     widget::canvas::{Cache, Canvas, Fill, Geometry, Program},
 };
+use iced_graphics::geometry::{
+    Path,
+    path::lyon_path::geom::{Angle, Transform},
+};
 use led_panel_sim::DisplayState;
 use log::*;
 use matrix_drawing::{draw_panels, transmitted_data::TransmittedData};
@@ -185,10 +189,28 @@ impl<Message> Program<Message> for SimRefBoxApp {
                 }
                 DisplaySim::Sunlight(ref state) => {
                     let scale = calculate_scale(frame.width(), frame.height());
-                    for (point, size, color) in
+                    for (point, size, angle, color) in
                         static_rectangles(scale).chain(led_panel_rectangles(state, scale))
                     {
-                        frame.fill_rectangle(point, size, Fill::from(color));
+                        if let Some(angle) = angle {
+                            let top_left = Point::new(
+                                -sunlight_display::HORIZONTAL.width / 2.0 * scale,
+                                -sunlight_display::HORIZONTAL.height / 2.0 * scale,
+                            );
+                            let mut path =
+                                Path::rectangle(top_left, sunlight_display::HORIZONTAL * scale);
+                            let translate = [
+                                point.x + sunlight_display::HORIZONTAL.width / 2.0 * scale,
+                                point.y + sunlight_display::HORIZONTAL.height / 2.0 * scale,
+                            ]
+                            .into();
+                            let transform = Transform::rotation(Angle::radians(-angle))
+                                .then_translate(translate);
+                            path = path.transform(&transform);
+                            frame.fill(&path, Fill::from(color));
+                        } else {
+                            frame.fill_rectangle(point, size, Fill::from(color));
+                        }
                     }
 
                     for text in static_text(scale) {

@@ -791,10 +791,6 @@ mod test {
                     },
                 ],
             },
-            timeouts_available: BlackWhiteBundle {
-                black: false,
-                white: true,
-            },
             is_old_game: true,
             game_number: "26".to_string(),
             next_game_number: "28".to_string(),

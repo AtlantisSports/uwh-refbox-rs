@@ -105,10 +105,6 @@ mod test {
             timeout: None,
             scores: BlackWhiteBundle { black: 0, white: 0 },
             penalties: Default::default(),
-            timeouts_available: BlackWhiteBundle {
-                black: false,
-                white: false,
-            },
             is_old_game: true,
         };
 

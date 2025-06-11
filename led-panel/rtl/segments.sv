@@ -4,23 +4,17 @@ typedef struct packed {
     logic a, b, c, d, e, f, g;
 } digit;
 
-typedef struct packed {
-    logic fifteen, thirty, forty_five, sixty, interstice;
-} t_o_time;
-
 localparam digit OFF_DIGIT = '{a:0, b:0, c:0, d:0, e:0, f:0, g:0};
 localparam digit FLASH_DIGIT = '{a:1, b:1, c:1, d:1, e:1, f:1, g:1};
-
-localparam t_o_time FLASH_T_O_TIME = '{fifteen: 1, thirty: 1, forty_five: 1, sixty: 1, interstice: 1};
 
 localparam int NUM_DATA_BITS = 20;
 
 module segments (
     input [(NUM_DATA_BITS - 1):0][7:0] data,
-    output digit bs_10, bs_1, ws_10, ws_1, m_10, m_1, s_10, s_1,
-    output t_o_time bto, wto,
-    output logic bto_ind, wto_ind, rto_ind,
-    output logic fst_hlf, hlf_tm, snd_hlf, overtime, sdn_dth,
+    output digit ls_10, ls_1, rs_10, rs_1, m_10, m_1, s_10, s_1,
+    output logic white_on_left, white_on_right,
+    output logic left_to_ind, right_to_ind, ref_to_ind,
+    output logic one, slash, two, overtime, sdn_dth,
     output colon,
     output logic [1:0] brightness
 );
@@ -39,25 +33,35 @@ module segments (
     wire flash;
     assign flash = data[0][1];
 
-    wire [7:0] bs_bcd;
-    wire bs_leading_zero;
-    bin_to_bcd bs_bin_to_bcd(data[6][6:0], bs_bcd, bs_leading_zero);
-    digit bs_10_values;
-    data_to_digit bs_10_digit(bs_bcd[7:4], bs_10_values);
-    assign bs_10 = flash ? FLASH_DIGIT : (bs_leading_zero || off) ? OFF_DIGIT : bs_10_values;
-    digit bs_1_values;
-    data_to_digit bs_1_digit(bs_bcd[3:0], bs_1_values);
-    assign bs_1 = flash ? FLASH_DIGIT : off ? OFF_DIGIT : bs_1_values;
+    wire white_assigned_to_right;
+    assign white_assigned_to_right = data[0][0];
 
-    wire [7:0] ws_bcd;
-    wire ws_leading_zero;
-    bin_to_bcd ws_bin_to_bcd(data[7][6:0], ws_bcd, ws_leading_zero);
-    digit ws_10_values;
-    data_to_digit ws_10_digit(ws_bcd[7:4], ws_10_values);
-    assign ws_10 = flash ? FLASH_DIGIT : (ws_leading_zero || off) ? OFF_DIGIT : ws_10_values;
-    digit ws_1_values;
-    data_to_digit ws_1_digit(ws_bcd[3:0], ws_1_values);
-    assign ws_1 = flash ? FLASH_DIGIT : off ? OFF_DIGIT : ws_1_values;
+    wire [7:0] ls_bcd;
+    wire ls_leading_zero;
+    // data[6] is the black score, and data[7] is the white score
+    // We only use the 7 least significant bits of the score because we can only display 0-99
+    wire [6:0] left_score;
+    assign left_score = white_assigned_to_right ? data[6][6:0] : data[7][6:0];
+    bin_to_bcd ls_bin_to_bcd(left_score, ls_bcd, ls_leading_zero);
+    digit ls_10_values;
+    data_to_digit ls_10_digit(ls_bcd[7:4], ls_10_values);
+    assign ls_10 = flash ? FLASH_DIGIT : (ls_leading_zero || off) ? OFF_DIGIT : ls_10_values;
+    digit ls_1_values;
+    data_to_digit ls_1_digit(ls_bcd[3:0], ls_1_values);
+    assign ls_1 = flash ? FLASH_DIGIT : off ? OFF_DIGIT : ls_1_values;
+
+    wire [7:0] rs_bcd;
+    wire rs_leading_zero;
+    // data[6] is the black score, and data[7] is the white score
+    wire [6:0] right_score;
+    assign right_score = white_assigned_to_right ? data[7][6:0] : data[6][6:0];
+    bin_to_bcd rs_bin_to_bcd(right_score, rs_bcd, rs_leading_zero);
+    digit rs_10_values;
+    data_to_digit rs_10_digit(rs_bcd[7:4], rs_10_values);
+    assign rs_10 = flash ? FLASH_DIGIT : (rs_leading_zero || off) ? OFF_DIGIT : rs_10_values;
+    digit rs_1_values;
+    data_to_digit rs_1_digit(rs_bcd[3:0], rs_1_values);
+    assign rs_1 = flash ? FLASH_DIGIT : off ? OFF_DIGIT : rs_1_values;
 
     logic [6:0] minutes;
     logic [6:0] seconds;
@@ -77,19 +81,37 @@ module segments (
         end
     end
 
+    shortint unsigned timeout_secs;
+    assign timeout_secs[7:0] = data[5];
+    assign timeout_secs[12:8] = data[4][4:0];
+    assign timeout_secs[15:13] = 3'b0;
+
+    logic [6:0] timeout_time;
+    always_comb begin
+        if (timeout_secs >= 16'd100) begin
+            timeout_time = 100;  // Will get displayed as --
+        end else begin
+            timeout_time = timeout_secs[6:0];
+        end
+    end
+
+    logic is_bto, is_wto;
+    assign is_bto = data[4][7:5] == 3'd1;
+    assign is_wto = data[4][7:5] == 3'd2;
+
     wire [7:0] m_bcd;
     wire m_leading_zero;
     bin_to_bcd m_bin_to_bcd(minutes, m_bcd, m_leading_zero);
     digit m_10_values;
     data_to_digit m_10_digit(m_bcd[7:4], m_10_values);
-    assign m_10 = flash ? FLASH_DIGIT : (m_leading_zero || off) ? OFF_DIGIT : m_10_values;
+    assign m_10 = flash ? FLASH_DIGIT : (m_leading_zero || off || is_bto || is_wto) ? OFF_DIGIT : m_10_values;
     digit m_1_values;
     data_to_digit m_1_digit(m_bcd[3:0], m_1_values);
-    assign m_1 = flash ? FLASH_DIGIT : off ? OFF_DIGIT : m_1_values;
+    assign m_1 = flash ? FLASH_DIGIT : (off || is_bto || is_wto) ? OFF_DIGIT : m_1_values;
 
     wire [7:0] s_bcd;
     wire s_leading_zero;
-    bin_to_bcd s_bin_to_bcd(seconds, s_bcd, s_leading_zero);
+    bin_to_bcd s_bin_to_bcd((is_bto || is_wto) ? timeout_time : seconds, s_bcd, s_leading_zero);
     digit s_10_values;
     data_to_digit s_10_digit(s_bcd[7:4], s_10_values);
     assign s_10 = flash ? FLASH_DIGIT : off ? OFF_DIGIT : s_10_values;
@@ -97,99 +119,83 @@ module segments (
     data_to_digit s_1_digit(s_bcd[3:0], s_1_values);
     assign s_1 = flash ? FLASH_DIGIT : off ? OFF_DIGIT : s_1_values;
 
-    shortint unsigned timeout_secs;
-    assign timeout_secs[7:0] = data[5];
-    assign timeout_secs[12:8] = data[4][4:0];
-    assign timeout_secs[15:13] = 3'b0;
+    assign left_to_ind = flash | (white_assigned_to_right ? is_bto : is_wto);
+    assign right_to_ind = flash | (white_assigned_to_right ? is_wto : is_bto);
+    assign ref_to_ind = data[4][7:5] == 3'd3 | data[4][7:5] == 3'd4 | flash;
 
-    t_o_time timeout_val;
-    assign timeout_val = '{fifteen: timeout_secs > 0, thirty: timeout_secs > 15, forty_five: timeout_secs > 30, sixty: timeout_secs > 45, interstice: 1'b0};
-
-    logic is_bto, is_wto;
-    assign is_bto = data[4][7:5] == 3'd1;
-    assign is_wto = data[4][7:5] == 3'd2;
-
-    logic bto_avail, wto_avail;
-    assign bto_avail = data[1][6];
-    assign wto_avail = data[1][5];
-
-    assign bto = flash ? FLASH_T_O_TIME : '{fifteen: is_bto ? timeout_val.fifteen: bto_avail, thirty: is_bto ? timeout_val.thirty: bto_avail, forty_five: is_bto ? timeout_val.forty_five: bto_avail, sixty: is_bto ? timeout_val.sixty: bto_avail, interstice: is_bto ? timeout_val.interstice: bto_avail};
-    assign wto = flash ? FLASH_T_O_TIME : '{fifteen: is_wto ? timeout_val.fifteen: wto_avail, thirty: is_wto ? timeout_val.thirty: wto_avail, forty_five: is_wto ? timeout_val.forty_five: wto_avail, sixty: is_wto ? timeout_val.sixty: wto_avail, interstice: is_wto ? timeout_val.interstice: wto_avail};
-
-    assign bto_ind = is_bto | flash;
-    assign wto_ind = is_wto | flash;
-    assign rto_ind = data[4][7:5] == 3'd3 | data[4][7:5] == 3'd4 | flash;
+    assign white_on_left = off ? 1'b0 : flash | !white_assigned_to_right;
+    assign white_on_right = off ? 1'b0 : flash | white_assigned_to_right;
 
     always_comb begin
         case (data[1][3:0])
             4'd0: begin  // Between Games
-                fst_hlf = flash;
-                hlf_tm = flash;
-                snd_hlf = flash;
+                one = flash;
+                slash = flash;
+                two = flash;
                 overtime = flash;
                 sdn_dth = flash;
             end
             4'd1: begin  // First Half
-                fst_hlf = 1;
-                hlf_tm = flash;
-                snd_hlf = flash;
+                one = 1;
+                slash = flash;
+                two = flash;
                 overtime = flash;
                 sdn_dth = flash;
             end
             4'd2: begin  // Half Time
-                fst_hlf = 1;
-                hlf_tm = 1;
-                snd_hlf = flash;
+                one = 1;
+                slash = 1;
+                two = 1;
                 overtime = flash;
                 sdn_dth = flash;
             end
             4'd3: begin  // Second Half
-                fst_hlf = 1;
-                hlf_tm = 1;
-                snd_hlf = 1;
+                one = flash;
+                slash = flash;
+                two = 1;
                 overtime = flash;
                 sdn_dth = flash;
             end
             4'd4: begin  // Pre Overtime
-                fst_hlf = flash;
-                hlf_tm = flash;
-                snd_hlf = flash;
+                one = flash;
+                slash = flash;
+                two = flash;
                 overtime = 1;
                 sdn_dth = flash;
             end
             4'd5: begin  // Overtime First Half
-                fst_hlf = 1;
-                hlf_tm = flash;
-                snd_hlf = flash;
+                one = 1;
+                slash = flash;
+                two = flash;
                 overtime = 1;
                 sdn_dth = flash;
             end
             4'd6: begin  // Overtime Half Time
-                fst_hlf = 1;
-                hlf_tm = 1;
-                snd_hlf = flash;
+                one = 1;
+                slash = 1;
+                two = 1;
                 overtime = 1;
                 sdn_dth = flash;
             end
             4'd7: begin  // Overtime Second Half
-                fst_hlf = 1;
-                hlf_tm = 1;
-                snd_hlf = 1;
+                one = flash;
+                slash = flash;
+                two = 1;
                 overtime = 1;
                 sdn_dth = flash;
             end
             4'd8,  // Pre Suden Death
             4'd9: begin  // Suden Death
-                fst_hlf = flash;
-                hlf_tm = flash;
-                snd_hlf = flash;
-                overtime = flash;
+                one = flash;
+                slash = flash;
+                two = flash;
+                overtime = 1;
                 sdn_dth = 1;
             end
             default: begin
-                fst_hlf = flash;
-                hlf_tm = flash;
-                snd_hlf = flash;
+                one = flash;
+                slash = flash;
+                two = flash;
                 overtime = flash;
                 sdn_dth = flash;
             end

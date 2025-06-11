@@ -5,10 +5,10 @@ import test_cases::*;
 module segments_tb;
     test_case current_test;
 
-    digit bs_10, bs_1, ws_10, ws_1, m_10, m_1, s_10, s_1;
-    t_o_time bto, wto;
-    logic bto_ind, wto_ind, rto_ind;
-    logic fst_hlf, hlf_tm, snd_hlf, overtime, sdn_dth;
+    digit ls_10, ls_1, rs_10, rs_1, m_10, m_1, s_10, s_1;
+    logic white_on_left, white_on_right;
+    logic left_to_ind, right_to_ind, ref_to_ind;
+    logic one, slash, two, overtime, sdn_dth;
     logic colon;
     logic [1:0] brightness;
 
@@ -16,22 +16,22 @@ module segments_tb;
 
     segments segments(
         .data(current_test.data),
-        .bs_10(bs_10),
-        .bs_1(bs_1),
-        .ws_10(ws_10),
-        .ws_1(ws_1),
+        .ls_10(ls_10),
+        .ls_1(ls_1),
+        .rs_10(rs_10),
+        .rs_1(rs_1),
         .m_10(m_10),
         .m_1(m_1),
         .s_10(s_10),
         .s_1(s_1),
-        .bto(bto),
-        .wto(wto),
-        .bto_ind(bto_ind),
-        .wto_ind(wto_ind),
-        .rto_ind(rto_ind),
-        .fst_hlf(fst_hlf),
-        .hlf_tm(hlf_tm),
-        .snd_hlf(snd_hlf),
+        .white_on_left(white_on_left),
+        .white_on_right(white_on_right),
+        .left_to_ind(left_to_ind),
+        .right_to_ind(right_to_ind),
+        .ref_to_ind(ref_to_ind),
+        .one(one),
+        .slash(slash),
+        .two(two),
         .overtime(overtime),
         .sdn_dth(sdn_dth),
         .colon(colon),
@@ -45,20 +45,20 @@ module segments_tb;
 
             #10; // Wait for 10 time units
 
-            if (bs_10 !== current_test.bs_10_ex) begin
-                $error("Test \"%s\" failed: bs_10 is %b, expected %b", current_test.name, bs_10, current_test.bs_10_ex);
+            if (ls_10 !== current_test.ls_10_ex) begin
+                $error("Test \"%s\" failed: ls_10 is %b, expected %b", current_test.name, ls_10, current_test.ls_10_ex);
                 test_failed = 1;
             end
-            if (bs_1 !== current_test.bs_1_ex) begin
-                $error("Test \"%s\" failed: bs_1 is %b, expected %b", current_test.name, bs_1, current_test.bs_1_ex);
+            if (ls_1 !== current_test.ls_1_ex) begin
+                $error("Test \"%s\" failed: ls_1 is %b, expected %b", current_test.name, ls_1, current_test.ls_1_ex);
                 test_failed = 1;
             end
-            if (ws_10 !== current_test.ws_10_ex) begin
-                $error("Test \"%s\" failed: ws_10 is %b, expected %b", current_test.name, ws_10, current_test.ws_10_ex);
+            if (rs_10 !== current_test.rs_10_ex) begin
+                $error("Test \"%s\" failed: rs_10 is %b, expected %b", current_test.name, rs_10, current_test.rs_10_ex);
                 test_failed = 1;
             end
-            if (ws_1 !== current_test.ws_1_ex) begin
-                $error("Test \"%s\" failed: ws_1 is %b, expected %b", current_test.name, ws_1, current_test.ws_1_ex);
+            if (rs_1 !== current_test.rs_1_ex) begin
+                $error("Test \"%s\" failed: rs_1 is %b, expected %b", current_test.name, rs_1, current_test.rs_1_ex);
                 test_failed = 1;
             end
             if (m_10 !== current_test.m_10_ex) begin
@@ -77,36 +77,36 @@ module segments_tb;
                 $error("Test \"%s\" failed: s_1 is %b, expected %b", current_test.name, s_1, current_test.s_1_ex);
                 test_failed = 1;
             end
-            if (bto !== current_test.bto_ex) begin
-                $error("Test \"%s\" failed: bto is %b, expected %b", current_test.name, bto, current_test.bto_ex);
+            if (white_on_left !== current_test.white_on_left_ex) begin
+                $error("Test \"%s\" failed: white_on_left is %b, expected %b", current_test.name, white_on_left, current_test.white_on_left_ex);
                 test_failed = 1;
             end
-            if (wto !== current_test.wto_ex) begin
-                $error("Test \"%s\" failed: wto is %b, expected %b", current_test.name, wto, current_test.wto_ex);
+            if (white_on_right !== current_test.white_on_right_ex) begin
+                $error("Test \"%s\" failed: white_on_right is %b, expected %b", current_test.name, white_on_right, current_test.white_on_right_ex);
                 test_failed = 1;
             end
-            if (bto_ind !== current_test.bto_ind_ex) begin
-                $error("Test \"%s\" failed: bto_ind is %b, expected %b", current_test.name, bto_ind, current_test.bto_ind_ex);
+            if (left_to_ind !== current_test.left_to_ind_ex) begin
+                $error("Test \"%s\" failed: left_to_ind is %b, expected %b", current_test.name, left_to_ind, current_test.left_to_ind_ex);
                 test_failed = 1;
             end
-            if (wto_ind !== current_test.wto_ind_ex) begin
-                $error("Test \"%s\" failed: wto_ind is %b, expected %b", current_test.name, wto_ind, current_test.wto_ind_ex);
+            if (right_to_ind !== current_test.right_to_ind_ex) begin
+                $error("Test \"%s\" failed: right_to_ind is %b, expected %b", current_test.name, right_to_ind, current_test.right_to_ind_ex);
                 test_failed = 1;
             end
-            if (rto_ind !== current_test.rto_ind_ex) begin
-                $error("Test \"%s\" failed: rto_ind is %b, expected %b", current_test.name, rto_ind, current_test.rto_ind_ex);
+            if (ref_to_ind !== current_test.ref_to_ind_ex) begin
+                $error("Test \"%s\" failed: ref_to_ind is %b, expected %b", current_test.name, ref_to_ind, current_test.ref_to_ind_ex);
                 test_failed = 1;
             end
-            if (fst_hlf !== current_test.fst_hlf_ex) begin
-                $error("Test \"%s\" failed: fst_hlf is %b, expected %b", current_test.name, fst_hlf, current_test.fst_hlf_ex);
+            if (one !== current_test.one_ex) begin
+                $error("Test \"%s\" failed: one is %b, expected %b", current_test.name, one, current_test.one_ex);
                 test_failed = 1;
             end
-            if (hlf_tm !== current_test.hlf_tm_ex) begin
-                $error("Test \"%s\" failed: hlf_tm is %b, expected %b", current_test.name, hlf_tm, current_test.hlf_tm_ex);
+            if (slash !== current_test.slash_ex) begin
+                $error("Test \"%s\" failed: slash is %b, expected %b", current_test.name, slash, current_test.slash_ex);
                 test_failed = 1;
             end
-            if (snd_hlf !== current_test.snd_hlf_ex) begin
-                $error("Test \"%s\" failed: snd_hlf is %b, expected %b", current_test.name, snd_hlf, current_test.snd_hlf_ex);
+            if (two !== current_test.two_ex) begin
+                $error("Test \"%s\" failed: two is %b, expected %b", current_test.name, two, current_test.two_ex);
                 test_failed = 1;
             end
             if (overtime !== current_test.overtime_ex) begin

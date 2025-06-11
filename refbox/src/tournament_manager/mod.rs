@@ -2065,10 +2065,6 @@ impl TournamentManager {
             .collect();
         trace!("Got fouls");
 
-        let timeouts_available = enum_iterator::all()
-            .map(|c| (c, self.can_start_team_timeout(c).is_ok()))
-            .collect();
-
         if let Some((_, _, goal_per, goal_time)) = self.recent_goal {
             if (goal_per != self.current_period)
                 | (goal_time.saturating_sub(cur_time) > RECENT_GOAL_TIME)
@@ -2098,7 +2094,6 @@ impl TournamentManager {
             penalties,
             warnings,
             fouls,
-            timeouts_available,
             is_old_game: !self.has_reset,
             game_number: self.game_number(),
             next_game_number: self.next_game_number(),
@@ -2889,14 +2884,6 @@ mod test {
         assert_eq!(tm.can_start_ref_timeout(), Ok(()));
         assert_eq!(tm.can_start_penalty_shot(), Ok(()));
         assert_eq!(tm.can_start_rugby_penalty_shot(), Ok(()));
-        let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
-        assert_eq!(
-            snapshot.timeouts_available,
-            BlackWhiteBundle {
-                black: true,
-                white: true
-            }
-        );
 
         tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(10));
         assert_eq!(tm.can_start_team_timeout(Color::Black), Ok(()));
@@ -2904,14 +2891,6 @@ mod test {
         assert_eq!(tm.can_start_ref_timeout(), Ok(()));
         assert_eq!(tm.can_start_penalty_shot(), Ok(()));
         assert_eq!(tm.can_start_rugby_penalty_shot(), Ok(()));
-        let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
-        assert_eq!(
-            snapshot.timeouts_available,
-            BlackWhiteBundle {
-                black: true,
-                white: true
-            }
-        );
 
         let otfh = GamePeriod::OvertimeFirstHalf;
         tm.set_period_and_game_clock_time(otfh, Duration::from_secs(10));
@@ -2926,14 +2905,6 @@ mod test {
         assert_eq!(tm.can_start_ref_timeout(), Ok(()));
         assert_eq!(tm.can_start_penalty_shot(), Ok(()));
         assert_eq!(tm.can_start_rugby_penalty_shot(), Ok(()));
-        let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
-        assert_eq!(
-            snapshot.timeouts_available,
-            BlackWhiteBundle {
-                black: false,
-                white: false
-            }
-        );
 
         let otsh = GamePeriod::OvertimeSecondHalf;
         tm.set_period_and_game_clock_time(otsh, Duration::from_secs(10));
@@ -2948,14 +2919,6 @@ mod test {
         assert_eq!(tm.can_start_ref_timeout(), Ok(()));
         assert_eq!(tm.can_start_penalty_shot(), Ok(()));
         assert_eq!(tm.can_start_rugby_penalty_shot(), Ok(()));
-        let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
-        assert_eq!(
-            snapshot.timeouts_available,
-            BlackWhiteBundle {
-                black: false,
-                white: false
-            }
-        );
 
         let otsd = GamePeriod::SuddenDeath;
         tm.set_period_and_game_clock_time(otsd, Duration::from_secs(10));
@@ -2970,14 +2933,6 @@ mod test {
         assert_eq!(tm.can_start_ref_timeout(), Ok(()));
         assert_eq!(tm.can_start_penalty_shot(), Ok(()));
         assert_eq!(tm.can_start_rugby_penalty_shot(), Ok(()));
-        let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
-        assert_eq!(
-            snapshot.timeouts_available,
-            BlackWhiteBundle {
-                black: false,
-                white: false
-            }
-        );
 
         let ht = GamePeriod::HalfTime;
         tm.set_period_and_game_clock_time(ht, Duration::from_secs(10));
@@ -2998,14 +2953,6 @@ mod test {
             tm.can_start_rugby_penalty_shot(),
             Err(TournamentManagerError::WrongGamePeriod(to_rps, ht))
         );
-        let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
-        assert_eq!(
-            snapshot.timeouts_available,
-            BlackWhiteBundle {
-                black: false,
-                white: false
-            }
-        );
 
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(10));
         tm.set_timeout_state(Some(TimeoutState::Team(
@@ -3022,14 +2969,6 @@ mod test {
         assert_eq!(tm.can_start_ref_timeout(), Ok(()));
         assert_eq!(tm.can_start_penalty_shot(), Ok(()));
         assert_eq!(tm.can_start_rugby_penalty_shot(), Ok(()));
-        let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
-        assert_eq!(
-            snapshot.timeouts_available,
-            BlackWhiteBundle {
-                black: false,
-                white: true
-            }
-        );
 
         tm.set_timeout_state(Some(TimeoutState::Team(
             Color::White,
@@ -3045,14 +2984,6 @@ mod test {
         assert_eq!(tm.can_start_ref_timeout(), Ok(()));
         assert_eq!(tm.can_start_penalty_shot(), Ok(()));
         assert_eq!(tm.can_start_rugby_penalty_shot(), Ok(()));
-        let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
-        assert_eq!(
-            snapshot.timeouts_available,
-            BlackWhiteBundle {
-                black: true,
-                white: false
-            }
-        );
 
         tm.set_timeout_state(Some(TimeoutState::Ref(ClockState::Stopped {
             clock_time: Duration::from_secs(0),
@@ -3065,14 +2996,6 @@ mod test {
         );
         assert_eq!(tm.can_start_penalty_shot(), Ok(()));
         assert_eq!(tm.can_start_rugby_penalty_shot(), Ok(()));
-        let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
-        assert_eq!(
-            snapshot.timeouts_available,
-            BlackWhiteBundle {
-                black: true,
-                white: true
-            }
-        );
 
         tm.set_timeout_state(Some(TimeoutState::PenaltyShot(ClockState::Stopped {
             clock_time: Duration::from_secs(0),
@@ -3087,14 +3010,6 @@ mod test {
         assert_eq!(
             tm.can_start_rugby_penalty_shot(),
             Err(TournamentManagerError::AlreadyInTimeout(to_ps))
-        );
-        let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
-        assert_eq!(
-            snapshot.timeouts_available,
-            BlackWhiteBundle {
-                black: true,
-                white: true
-            }
         );
 
         tm.set_timeout_state(None);
@@ -3111,14 +3026,6 @@ mod test {
         assert_eq!(tm.can_start_ref_timeout(), Ok(()));
         assert_eq!(tm.can_start_penalty_shot(), Ok(()));
         assert_eq!(tm.can_start_rugby_penalty_shot(), Ok(()));
-        let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
-        assert_eq!(
-            snapshot.timeouts_available,
-            BlackWhiteBundle {
-                black: false,
-                white: false
-            }
-        );
     }
 
     #[test]

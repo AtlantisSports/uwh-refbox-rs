@@ -1,8 +1,7 @@
 use derivative::Derivative;
-use enum_iterator::Sequence;
 use serde::{Deserialize, Serialize};
 
-#[derive(Derivative, Serialize, Deserialize, Sequence)]
+#[derive(Derivative, Serialize, Deserialize)]
 #[derivative(Debug, Default, PartialEq, Eq, Clone, Copy)]
 pub enum Color {
     #[derivative(Default)]

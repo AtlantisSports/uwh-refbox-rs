@@ -15,102 +15,92 @@ set_io led[7] N14
 set_io usb_rx P14 # tx in the schematic
 set_io usb_tx M9  # rx in the schematic
 
-## Black tens digit
-set_io bs_10a K4 # Cu pin A46
-set_io bs_10b K3 # Cu pin A45
-set_io bs_10c J3 # Cu pin A6
-set_io bs_10d J1 # Cu pin A5
-set_io bs_10e L1 # Cu pin A3
-set_io bs_10f P1 # Cu pin A49
-set_io bs_10g M1 # Cu pin A2
+## Left tens digit
+set_io ls_10a F3 # Cu pin A37
+set_io ls_10b H4 # Cu pin A39
+set_io ls_10c K4 # Cu pin A46
+set_io ls_10d N1 # Cu pin A48
+set_io ls_10e H3 # Cu pin A43
+set_io ls_10f G4 # Cu pin A40
+set_io ls_10g K3 # Cu pin A45
 
-## Black ones digit
-set_io bs_1a F4 # Cu pin A36
-set_io bs_1b E4 # Cu pin A34
-set_io bs_1c D1 # Cu pin A12
-set_io bs_1d E1 # Cu pin A11
-set_io bs_1e G3 # Cu pin A9
-set_io bs_1f G4 # Cu pin A40
-set_io bs_1g G1 # Cu pin A8
+## Left ones digit
+set_io ls_1a F4 # Cu pin A36
+set_io ls_1b C4 # Cu pin A31
+set_io ls_1c J1 # Cu pin A5
+set_io ls_1d J3 # Cu pin A6
+set_io ls_1e M1 # Cu pin A3
+set_io ls_1f E4 # Cu pin A34
+set_io ls_1g P1 # Cu pin A49
 
-## White tens digit
-set_io ws_10a D14 # Cu pin B15
-set_io ws_10b A12 # Cu pin B11
-set_io ws_10c L4 # Cu pin C5
-set_io ws_10d M3 # Cu pin C2
-set_io ws_10e A6 # Cu pin B2
-set_io ws_10f C14 # Cu pin B14
-set_io ws_10g C10 # Cu pin B9
+## Right tens digit
+set_io rs_10a H12 # Cu pin B23
+set_io rs_10b E14 # Cu pin B17
+set_io rs_10c M4 # Cu pin C3
+set_io rs_10d M3 # Cu pin C2
+set_io rs_10e L1 # Cu pin A2
+set_io rs_10f A6 # Cu pin B2
+set_io rs_10g A7 # Cu pin B3
 
-## White ones digit
-set_io ws_1a E14 # Cu pin B17
-set_io ws_1b A11 # Cu pin B6
-set_io ws_1c A7 # Cu pin B3
-set_io ws_1d M4 # Cu pin C3
-set_io ws_1e L5 # Cu pin C6
-set_io ws_1f C9 # Cu pin B8
-set_io ws_1g A10 # Cu pin B5
+## Right ones digit
+set_io rs_1a F14 # Cu pin B20
+set_io rs_1b L9 # Cu pin C11
+set_io rs_1c M7 # Cu pin C9
+set_io rs_1d L5 # Cu pin C6
+set_io rs_1e L4 # Cu pin C5
+set_io rs_1f E12 # Cu pin B18
+set_io rs_1g M6 # Cu pin C8
 
-## Black timeout time indicators
-set_io bto_15s N1 # Cu pin A48
-set_io bto_30s H1 # Cu pin A42
-set_io bto_45s H4 # Cu pin A39
-set_io bto_60s D4 # Cu pin A33
-set_io bto_int H3 # Cu pin A43
-
-## White timeout time indicators
-set_io wto_15s J12 # Cu pin B24
-set_io wto_30s F14 # Cu pin B20
-set_io wto_45s G14 # Cu pin B21
-set_io wto_60s H12 # Cu pin B23
-set_io wto_int E12 # Cu pin B18
+## Frames
+set_io white_on_left D4 # Cu pin A33
+set_io white_on_right G14 # Cu pin B21
 
 ## Minutes tens digit
 set_io m_10a D5 # Cu pin A30
-set_io m_10b C5 # Cu pin A28
-set_io m_10c C3 # Cu pin A18
-set_io m_10d D3 # Cu pin A17
-set_io m_10e B1 # Cu pin A15
-set_io m_10f C4 # Cu pin A31
-set_io m_10g C1 # Cu pin A14
+set_io m_10b C6 # Cu pin B49
+set_io m_10c D1 # Cu pin A12
+set_io m_10d E1 # Cu pin A11
+set_io m_10e G3 # Cu pin A9
+set_io m_10f C5 # Cu pin A28
+set_io m_10g G1 # Cu pin A8
 
 ## Minutes ones digit
-set_io m_1a D6 # Cu pin B46
-set_io m_1b D7 # Cu pin B45
-set_io m_1c A4 # Cu pin A24
-set_io m_1d A3 # Cu pin A23
-set_io m_1e A2 # Cu pin A21
+set_io m_1a C7 # Cu pin B48
+set_io m_1b D6 # Cu pin B46
+set_io m_1c C3 # Cu pin A18
+set_io m_1d D3 # Cu pin A17
+set_io m_1e B1 # Cu pin A15
 set_io m_1f A5 # Cu pin A27
-set_io m_1g A1 # Cu pin A20
+set_io m_1g C1 # Cu pin A14
 
 ## Seconds tens digit
-set_io s_10a D12 # Cu pin B36
-set_io s_10b E11 # Cu pin B34
-set_io s_10c L6 # Cu pin C43
-set_io s_10d P4 # Cu pin C46
-set_io s_10e P5 # Cu pin C45
-set_io s_10f D11 # Cu pin B37
-set_io s_10g P9 # Cu pin C40
+set_io s_10a C11 # Cu pin B40
+set_io s_10b D10 # Cu pin B42
+set_io s_10c A2 # Cu pin A21
+set_io s_10d P9 # Cu pin C40
+set_io s_10e P10 # Cu pin C39
+set_io s_10f D7 # Cu pin B45
+set_io s_10g A1 # Cu pin A20
 
 ## Seconds ones digit
-set_io s_1a G12 # Cu pin B30
-set_io s_1b G11 # Cu pin B28
-set_io s_1c P2 # Cu pin C49
-set_io s_1d P3 # Cu pin C48
-set_io s_1e L8 # Cu pin C42
-set_io s_1f F11 # Cu pin B33
-set_io s_1g F12 # Cu pin B31
+set_io s_1a E11 # Cu pin B34
+set_io s_1b D11 # Cu pin B37
+set_io s_1c L6 # Cu pin C43
+set_io s_1d L8 # Cu pin C42
+set_io s_1e A4 # Cu pin A24
+set_io s_1f C12 # Cu pin B39
+set_io s_1g A3 # Cu pin A23
 
 ## Timeout indicators
-set_io rto_ind H11 # Cu pin B27
-set_io bto_ind F3 # Cu pin A37
-set_io wto_ind B14 # Cu pin B12
+set_io ref_to_ind H11 # Cu pin B27
+set_io left_to_ind H1 # Cu pin A42
+set_io right_to_ind J12 # Cu pin B24
 
 ## Period indicators
-set_io fst_hlf C6 # Cu pin B49
-set_io hlf_tm C7 # Cu pin B48
-set_io snd_hlf D10 # Cu pin B42
-set_io overtime C12 # Cu pin B39
-set_io sdn_dth C11 # Cu pin B40
+set_io one D12 # Cu pin B36
+set_io slash F11 # Cu pin B33
+set_io two F12 # Cu pin B31
+set_io overtime G12 # Cu pin B30
+set_io sdn_dth G11 # Cu pin B28
 
 set_io colon D9 # Cu pin B43

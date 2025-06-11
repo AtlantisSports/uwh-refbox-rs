@@ -9,10 +9,6 @@ fn empty_data() -> TransmittedData {
             timeout: None,
             scores: BlackWhiteBundle { black: 0, white: 0 },
             penalties: Default::default(),
-            timeouts_available: BlackWhiteBundle {
-                black: false,
-                white: false,
-            },
             is_old_game: false,
         },
         white_on_right: false,
@@ -23,34 +19,22 @@ fn empty_data() -> TransmittedData {
 }
 
 const EMPTY_STATE: DisplayState = DisplayState {
-    b_score_ones: Digit::ZERO,
-    b_score_tens: Digit::EMPTY,
-    w_score_ones: Digit::ZERO,
-    w_score_tens: Digit::EMPTY,
+    left_score_ones: Digit::ZERO,
+    left_score_tens: Digit::EMPTY,
+    right_score_ones: Digit::ZERO,
+    right_score_tens: Digit::EMPTY,
     time_m_ones: Digit::ZERO,
     time_m_tens: Digit::EMPTY,
     time_s_ones: Digit::ZERO,
     time_s_tens: Digit::ZERO,
-    b_timeout_time: TimeoutTime {
-        fifteen: false,
-        thirty: false,
-        forty_five: false,
-        sixty: false,
-        int: false,
-    },
-    w_timeout_time: TimeoutTime {
-        fifteen: false,
-        thirty: false,
-        forty_five: false,
-        sixty: false,
-        int: false,
-    },
-    bto_ind: false,
-    wto_ind: false,
-    rto_ind: false,
-    fst_hlf: false,
-    hlf_tm: false,
-    snd_hlf: false,
+    white_on_left: true,
+    white_on_right: false,
+    left_to_ind: false,
+    right_to_ind: false,
+    ref_to_ind: false,
+    one: false,
+    slash: false,
+    two: false,
     overtime: false,
     sdn_dth: false,
     colon: true,
@@ -218,8 +202,8 @@ fn test_sores() {
     assert_eq!(
         state,
         DisplayState {
-            b_score_ones: Digit::ONE,
-            b_score_tens: Digit::EMPTY,
+            right_score_ones: Digit::ONE,
+            right_score_tens: Digit::EMPTY,
             ..EMPTY_STATE
         }
     );
@@ -229,8 +213,8 @@ fn test_sores() {
     assert_eq!(
         state,
         DisplayState {
-            b_score_ones: Digit::ZERO,
-            b_score_tens: Digit::ONE,
+            right_score_ones: Digit::ZERO,
+            right_score_tens: Digit::ONE,
             ..EMPTY_STATE
         }
     );
@@ -240,10 +224,10 @@ fn test_sores() {
     assert_eq!(
         state,
         DisplayState {
-            b_score_ones: Digit::ZERO,
-            b_score_tens: Digit::ONE,
-            w_score_ones: Digit::NINE,
-            w_score_tens: Digit::NINE,
+            right_score_ones: Digit::ZERO,
+            right_score_tens: Digit::ONE,
+            left_score_ones: Digit::NINE,
+            left_score_tens: Digit::NINE,
             ..EMPTY_STATE
         }
     );
@@ -323,56 +307,13 @@ fn test_timeouts() {
     assert_eq!(state, EMPTY_STATE);
     assert_eq!(brightness, Brightness::Low);
 
-    data.snapshot.timeouts_available.black = true;
-    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
-    assert_eq!(
-        state,
-        DisplayState {
-            b_timeout_time: TimeoutTime::ON,
-            bto_ind: false,
-            ..EMPTY_STATE
-        }
-    );
-
-    data.snapshot.timeouts_available.white = true;
-    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
-    assert_eq!(
-        state,
-        DisplayState {
-            b_timeout_time: TimeoutTime::ON,
-            w_timeout_time: TimeoutTime::ON,
-            bto_ind: false,
-            wto_ind: false,
-            ..EMPTY_STATE
-        }
-    );
-
-    data.snapshot.timeouts_available.black = false;
-    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
-    assert_eq!(
-        state,
-        DisplayState {
-            w_timeout_time: TimeoutTime::ON,
-            wto_ind: false,
-            ..EMPTY_STATE
-        }
-    );
-
-    data.snapshot.timeouts_available.white = false;
-
     data.snapshot.timeout = Some(TimeoutSnapshot::Black(0));
     let (state, _brightness) = DisplayState::from_transmitted_data(&data);
     assert_eq!(
         state,
         DisplayState {
-            b_timeout_time: TimeoutTime {
-                fifteen: false,
-                thirty: false,
-                forty_five: false,
-                sixty: false,
-                int: false,
-            },
-            bto_ind: true,
+            time_m_ones: Digit::EMPTY,
+            right_to_ind: true,
             ..EMPTY_STATE
         }
     );
@@ -382,14 +323,9 @@ fn test_timeouts() {
     assert_eq!(
         state,
         DisplayState {
-            b_timeout_time: TimeoutTime {
-                fifteen: true,
-                thirty: false,
-                forty_five: false,
-                sixty: false,
-                int: false,
-            },
-            bto_ind: true,
+            time_m_ones: Digit::EMPTY,
+            time_s_ones: Digit::ONE,
+            right_to_ind: true,
             ..EMPTY_STATE
         }
     );
@@ -399,14 +335,10 @@ fn test_timeouts() {
     assert_eq!(
         state,
         DisplayState {
-            b_timeout_time: TimeoutTime {
-                fifteen: true,
-                thirty: false,
-                forty_five: false,
-                sixty: false,
-                int: false,
-            },
-            bto_ind: true,
+            time_m_ones: Digit::EMPTY,
+            time_s_tens: Digit::ONE,
+            time_s_ones: Digit::FIVE,
+            right_to_ind: true,
             ..EMPTY_STATE
         }
     );
@@ -416,14 +348,10 @@ fn test_timeouts() {
     assert_eq!(
         state,
         DisplayState {
-            b_timeout_time: TimeoutTime {
-                fifteen: true,
-                thirty: true,
-                forty_five: false,
-                sixty: false,
-                int: false,
-            },
-            bto_ind: true,
+            time_m_ones: Digit::EMPTY,
+            time_s_tens: Digit::ONE,
+            time_s_ones: Digit::SIX,
+            right_to_ind: true,
             ..EMPTY_STATE
         }
     );
@@ -433,14 +361,9 @@ fn test_timeouts() {
     assert_eq!(
         state,
         DisplayState {
-            b_timeout_time: TimeoutTime {
-                fifteen: true,
-                thirty: true,
-                forty_five: false,
-                sixty: false,
-                int: false,
-            },
-            bto_ind: true,
+            time_m_ones: Digit::EMPTY,
+            time_s_tens: Digit::THREE,
+            right_to_ind: true,
             ..EMPTY_STATE
         }
     );
@@ -450,14 +373,10 @@ fn test_timeouts() {
     assert_eq!(
         state,
         DisplayState {
-            b_timeout_time: TimeoutTime {
-                fifteen: true,
-                thirty: true,
-                forty_five: true,
-                sixty: false,
-                int: false,
-            },
-            bto_ind: true,
+            time_m_ones: Digit::EMPTY,
+            time_s_tens: Digit::THREE,
+            time_s_ones: Digit::ONE,
+            right_to_ind: true,
             ..EMPTY_STATE
         }
     );
@@ -467,14 +386,10 @@ fn test_timeouts() {
     assert_eq!(
         state,
         DisplayState {
-            b_timeout_time: TimeoutTime {
-                fifteen: true,
-                thirty: true,
-                forty_five: true,
-                sixty: false,
-                int: false,
-            },
-            bto_ind: true,
+            time_m_ones: Digit::EMPTY,
+            time_s_tens: Digit::FOUR,
+            time_s_ones: Digit::FIVE,
+            right_to_ind: true,
             ..EMPTY_STATE
         }
     );
@@ -484,14 +399,10 @@ fn test_timeouts() {
     assert_eq!(
         state,
         DisplayState {
-            b_timeout_time: TimeoutTime {
-                fifteen: true,
-                thirty: true,
-                forty_five: true,
-                sixty: true,
-                int: false,
-            },
-            bto_ind: true,
+            time_m_ones: Digit::EMPTY,
+            time_s_tens: Digit::FOUR,
+            time_s_ones: Digit::SIX,
+            right_to_ind: true,
             ..EMPTY_STATE
         }
     );
@@ -501,14 +412,48 @@ fn test_timeouts() {
     assert_eq!(
         state,
         DisplayState {
-            b_timeout_time: TimeoutTime {
-                fifteen: true,
-                thirty: true,
-                forty_five: true,
-                sixty: true,
-                int: false,
-            },
-            bto_ind: true,
+            time_m_ones: Digit::EMPTY,
+            time_s_tens: Digit::SIX,
+            right_to_ind: true,
+            ..EMPTY_STATE
+        }
+    );
+
+    data.snapshot.timeout = Some(TimeoutSnapshot::Black(61));
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
+    assert_eq!(
+        state,
+        DisplayState {
+            time_m_ones: Digit::EMPTY,
+            time_s_tens: Digit::SIX,
+            time_s_ones: Digit::ONE,
+            right_to_ind: true,
+            ..EMPTY_STATE
+        }
+    );
+
+    data.snapshot.timeout = Some(TimeoutSnapshot::Black(99));
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
+    assert_eq!(
+        state,
+        DisplayState {
+            time_m_ones: Digit::EMPTY,
+            time_s_ones: Digit::NINE,
+            time_s_tens: Digit::NINE,
+            right_to_ind: true,
+            ..EMPTY_STATE
+        }
+    );
+
+    data.snapshot.timeout = Some(TimeoutSnapshot::Black(100));
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
+    assert_eq!(
+        state,
+        DisplayState {
+            time_m_ones: Digit::EMPTY,
+            time_s_ones: Digit::NINE,
+            time_s_tens: Digit::NINE,
+            right_to_ind: true,
             ..EMPTY_STATE
         }
     );
@@ -518,14 +463,9 @@ fn test_timeouts() {
     assert_eq!(
         state,
         DisplayState {
-            w_timeout_time: TimeoutTime {
-                fifteen: true,
-                thirty: false,
-                forty_five: false,
-                sixty: false,
-                int: false,
-            },
-            wto_ind: true,
+            time_m_ones: Digit::EMPTY,
+            time_s_tens: Digit::ONE,
+            left_to_ind: true,
             ..EMPTY_STATE
         }
     );
@@ -535,14 +475,26 @@ fn test_timeouts() {
     assert_eq!(
         state,
         DisplayState {
-            w_timeout_time: TimeoutTime {
-                fifteen: true,
-                thirty: true,
-                forty_five: false,
-                sixty: false,
-                int: false,
-            },
-            wto_ind: true,
+            time_m_ones: Digit::EMPTY,
+            time_s_tens: Digit::TWO,
+            time_s_ones: Digit::TWO,
+            left_to_ind: true,
+            ..EMPTY_STATE
+        }
+    );
+
+    data.white_on_right = true;
+    let (state, _brightness) = DisplayState::from_transmitted_data(&data);
+    assert_eq!(
+        state,
+        DisplayState {
+            time_m_ones: Digit::EMPTY,
+            time_s_tens: Digit::TWO,
+            time_s_ones: Digit::TWO,
+            left_to_ind: false,
+            right_to_ind: true,
+            white_on_left: false,
+            white_on_right: true,
             ..EMPTY_STATE
         }
     );
@@ -552,7 +504,9 @@ fn test_timeouts() {
     assert_eq!(
         state,
         DisplayState {
-            rto_ind: true,
+            ref_to_ind: true,
+            white_on_left: false,
+            white_on_right: true,
             ..EMPTY_STATE
         }
     );
@@ -562,7 +516,9 @@ fn test_timeouts() {
     assert_eq!(
         state,
         DisplayState {
-            rto_ind: true,
+            ref_to_ind: true,
+            white_on_left: false,
+            white_on_right: true,
             ..EMPTY_STATE
         }
     );
@@ -581,7 +537,7 @@ fn test_game_periods() {
     assert_eq!(
         state,
         DisplayState {
-            fst_hlf: true,
+            one: true,
             ..EMPTY_STATE
         }
     );
@@ -591,8 +547,9 @@ fn test_game_periods() {
     assert_eq!(
         state,
         DisplayState {
-            fst_hlf: true,
-            hlf_tm: true,
+            one: true,
+            slash: true,
+            two: true,
             ..EMPTY_STATE
         }
     );
@@ -602,9 +559,7 @@ fn test_game_periods() {
     assert_eq!(
         state,
         DisplayState {
-            fst_hlf: true,
-            hlf_tm: true,
-            snd_hlf: true,
+            two: true,
             ..EMPTY_STATE
         }
     );
@@ -624,7 +579,7 @@ fn test_game_periods() {
     assert_eq!(
         state,
         DisplayState {
-            fst_hlf: true,
+            one: true,
             overtime: true,
             ..EMPTY_STATE
         }
@@ -635,8 +590,9 @@ fn test_game_periods() {
     assert_eq!(
         state,
         DisplayState {
-            fst_hlf: true,
-            hlf_tm: true,
+            one: true,
+            slash: true,
+            two: true,
             overtime: true,
             ..EMPTY_STATE
         }
@@ -647,9 +603,7 @@ fn test_game_periods() {
     assert_eq!(
         state,
         DisplayState {
-            fst_hlf: true,
-            hlf_tm: true,
-            snd_hlf: true,
+            two: true,
             overtime: true,
             ..EMPTY_STATE
         }
@@ -660,6 +614,7 @@ fn test_game_periods() {
     assert_eq!(
         state,
         DisplayState {
+            overtime: true,
             sdn_dth: true,
             ..EMPTY_STATE
         }
@@ -670,6 +625,7 @@ fn test_game_periods() {
     assert_eq!(
         state,
         DisplayState {
+            overtime: true,
             sdn_dth: true,
             ..EMPTY_STATE
         }
@@ -689,34 +645,22 @@ fn test_flash() {
     assert_eq!(
         state,
         DisplayState {
-            b_score_ones: Digit::EIGHT,
-            b_score_tens: Digit::EIGHT,
-            w_score_ones: Digit::EIGHT,
-            w_score_tens: Digit::EIGHT,
+            left_score_ones: Digit::EIGHT,
+            left_score_tens: Digit::EIGHT,
+            right_score_ones: Digit::EIGHT,
+            right_score_tens: Digit::EIGHT,
             time_m_ones: Digit::EIGHT,
             time_m_tens: Digit::EIGHT,
             time_s_ones: Digit::EIGHT,
             time_s_tens: Digit::EIGHT,
-            b_timeout_time: TimeoutTime {
-                fifteen: true,
-                thirty: true,
-                forty_five: true,
-                sixty: true,
-                int: true,
-            },
-            w_timeout_time: TimeoutTime {
-                fifteen: true,
-                thirty: true,
-                forty_five: true,
-                sixty: true,
-                int: true,
-            },
-            bto_ind: true,
-            wto_ind: true,
-            rto_ind: true,
-            fst_hlf: true,
-            hlf_tm: true,
-            snd_hlf: true,
+            white_on_left: true,
+            white_on_right: true,
+            left_to_ind: true,
+            right_to_ind: true,
+            ref_to_ind: true,
+            one: true,
+            slash: true,
+            two: true,
             overtime: true,
             sdn_dth: true,
             colon: true,

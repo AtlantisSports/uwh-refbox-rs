@@ -21,7 +21,13 @@ fn main() {
     #[cfg(target_os = "windows")]
     {
         let mut res = winres::WindowsResource::new();
-        res.set_icon("resources/AppIcon.ico");
+        res.set_icon_with_id("resources/AppIcon.ico", "refbox_icon");
+        res.append_rc_content(
+            r#"HICON icon = LoadIconA(hInstance, "refbox_icon");
+global_window_class.hIcon = icon;
+global_window_class.hIconSm = icon;
+"#,
+        );
         res.compile().unwrap();
     }
 

@@ -347,6 +347,12 @@ mod option_standings_calculation {
                 #[serde(rename = "slideDirection")]
                 slide_direction: SlideDirection,
             },
+            Exclusion {
+                #[serde(rename = "startingRanks")]
+                starting_ranks: Vec<ScheduledTeam>,
+                #[serde(rename = "excludedTeams")]
+                excluded_teams: Vec<ScheduledTeam>,
+            },
             #[serde(rename = "None")]
             None,
         }
@@ -363,6 +369,13 @@ mod option_standings_calculation {
             } => Some(StandingsCalculation::SlideIfUpset {
                 starting_ranks,
                 slide_direction,
+            }),
+            StandingsCalculationHelper::Exclusion {
+                starting_ranks,
+                excluded_teams,
+            } => Some(StandingsCalculation::Exclusion {
+                starting_ranks,
+                excluded_teams,
             }),
             StandingsCalculationHelper::None => None,
         })

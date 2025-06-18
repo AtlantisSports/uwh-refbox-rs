@@ -65,6 +65,8 @@ mod button_handler_rpi {
     const ROTARY_SWITCH_PIN_4: u8 = 16;
     const ROTARY_SWITCH_PIN_8: u8 = 26;
 
+    const MAX_STABILIZATION_ATTEMPTS: u32 = 100;
+
     struct Delay();
 
     impl embedded_hal_async::delay::DelayNs for Delay {
@@ -115,8 +117,12 @@ mod button_handler_rpi {
                 ];
 
                 // Wait for the rotary switch pins to stabilize, require 10 consecutive stable readings
-                // spaced out by 10ms
-                while pins.iter().any(|(_, stable, _, _)| !stable) {
+                // spaced out by 10ms. If the pins don't stabilize within one second, we skip the
+                // wireless button setup
+                let mut iterations = 0;
+                while pins.iter().any(|(_, stable, _, _)| !stable)
+                    && iterations < MAX_STABILIZATION_ATTEMPTS
+                {
                     for (pin, stable, last, stable_count) in &mut pins {
                         let current = pin.is_low();
                         if current == *last {
@@ -131,20 +137,31 @@ mod button_handler_rpi {
                         *last = current;
                     }
                     std::thread::sleep(std::time::Duration::from_millis(10));
+                    iterations += 1;
                 }
 
-                let one = pins[0].2;
-                let two = pins[1].2;
-                let four = pins[2].2;
-                let eight = pins[3].2;
-                debug!("Rotary switch pins: 1: {one}, 2: {two}, 4: {four}, 8: {eight}");
+                let wireless_mode = if iterations < MAX_STABILIZATION_ATTEMPTS {
+                    let one = pins[0].2;
+                    let two = pins[1].2;
+                    let four = pins[2].2;
+                    let eight = pins[3].2;
+                    debug!("Rotary switch pins: 1: {one}, 2: {two}, 4: {four}, 8: {eight}");
 
-                let wireless_mode = WirelessMode::from_gray_code(one, two, four, eight);
+                    let mode = WirelessMode::from_gray_code(one, two, four, eight);
 
-                info!("Wireless mode selected: {wireless_mode:?}");
+                    if let Some(mode) = mode {
+                        info!("Selected wireless mode: {mode:?}");
+                    } else {
+                        warn!("Invalid wireless mode selected, skipping wireless button setup");
+                    }
+                    mode
+                } else {
+                    warn!("Couldn't read wireless mode, skipping wireless button setup");
+                    None
+                };
 
-                let wireless_button_handle = if let Some(wireless_mode) = wireless_mode {
-                    Some(task::spawn(async move {
+                let wireless_button_handle = wireless_mode.map(|wireless_mode| {
+                    task::spawn(async move {
                         let spi =
                             AsyncSpi::new(Bus::Spi0, SlaveSelect::Ss0, 2_000_000, Mode::Mode0);
                         let reset = gpio.get(RESET_PIN).unwrap().into_output();
@@ -237,11 +254,8 @@ mod button_handler_rpi {
                                 }
                             }
                         }
-                    }))
-                } else {
-                    warn!("Invalid wireless mode selected");
-                    None
-                };
+                    })
+                });
 
                 Some(Self {
                     _wired_pin: wired_pin,

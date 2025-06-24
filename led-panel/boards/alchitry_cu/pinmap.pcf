@@ -29,7 +29,7 @@ set_io ls_1a F4 # Cu pin A36
 set_io ls_1b C4 # Cu pin A31
 set_io ls_1c J1 # Cu pin A5
 set_io ls_1d J3 # Cu pin A6
-set_io ls_1e M1 # Cu pin A3
+set_io ls_1e L1 # Cu pin A3
 set_io ls_1f E4 # Cu pin A34
 set_io ls_1g P1 # Cu pin A49
 
@@ -38,7 +38,7 @@ set_io rs_10a H12 # Cu pin B23
 set_io rs_10b E14 # Cu pin B17
 set_io rs_10c M4 # Cu pin C3
 set_io rs_10d M3 # Cu pin C2
-set_io rs_10e L1 # Cu pin A2
+set_io rs_10e M1 # Cu pin A2
 set_io rs_10f A6 # Cu pin B2
 set_io rs_10g A7 # Cu pin B3
 

@@ -20,11 +20,15 @@ filesets:
   # synthesis
   synth:
     files:
-      - synth/top.sv: {file_type: systemVerilogSource}
+      - synth/led_panel.sv: {file_type: systemVerilogSource}
   # LED test synthesis
   synth_led_test:
     files:
-      - synth/top_led_test.sv: {file_type: systemVerilogSource}
+      - synth/led_test.sv: {file_type: systemVerilogSource}
+  # LED functional test synthesis
+  synth_led_func_test:
+    files:
+      - synth/led_functional_test.sv: {file_type: systemVerilogSource}
   # boards
   alchitry_cu:
     files:
@@ -41,12 +45,17 @@ targets:
     filesets:
       - rtl
       - synth
-    toplevel: top
+    toplevel: led_panel
   synth_led_test: &synth_led_test
     filesets:
       - rtl
       - synth_led_test
-    toplevel: top_led_test
+    toplevel: led_test
+  synth_led_func_test: &synth_led_func_test
+    filesets:
+      - rtl
+      - synth_led_func_test
+    toplevel: led_functional_test
 
   sim: # fusesoc run --target sim e4tham:templates:and
     <<: *default
@@ -61,7 +70,7 @@ targets:
 
   alchitry_cu:
     <<: *synth
-    description: Synthesize on Alchrity Cu
+    description: Synthesize on Alchitry Cu
     filesets_append:
       - alchitry_cu
     flow: icestorm
@@ -74,7 +83,20 @@ targets:
 
   alchitry_cu_led_test:
     <<: *synth_led_test
-    description: Synthesize LED test on Alchrity Cu
+    description: Synthesize LED test on Alchitry Cu
+    filesets_append:
+      - alchitry_cu
+    flow: icestorm
+    flow_options:
+      frontends:
+        - sv2v
+      pnr: next
+      nextpnr_options: [--hx8k, --package, cb132]
+      arch: ice40
+
+  alchitry_cu_led_func_test:
+    <<: *synth_led_func_test
+    description: Synthesize LED functional test on Alchitry Cu
     filesets_append:
       - alchitry_cu
     flow: icestorm

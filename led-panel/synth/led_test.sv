@@ -1,4 +1,4 @@
-module top_led_test(
+module led_test(
     input clk,
     input rst_n,
     output bit [7:0] led,
@@ -34,8 +34,6 @@ module top_led_test(
             pwm_counter <= pwm_counter + 1;
         end
     end
-
-    wire [74:0] pwm_out;
 
     // Spacing 3
     reg [7:0] compare [67:0] = {8'hC9, 8'hC6, 8'hC3, 8'hC0, 8'hBD, 8'hBA, 8'hB7, 8'hB4, 8'hB1, 8'hAE, 8'hAB, 8'hA8, 8'hA5, 8'hA2, 8'h9F, 8'h9C, 8'h99, 8'h96, 8'h93, 8'h90, 8'h8D, 8'h8A, 8'h87, 8'h84, 8'h81, 8'h7E, 8'h7B, 8'h78, 8'h75, 8'h72, 8'h6F, 8'h6C, 8'h69, 8'h66, 8'h63, 8'h60, 8'h5D, 8'h5A, 8'h57, 8'h54, 8'h51, 8'h4E, 8'h4B, 8'h48, 8'h45, 8'h42, 8'h3F, 8'h3C, 8'h39, 8'h36, 8'h33, 8'h30, 8'h2D, 8'h2A, 8'h27, 8'h24, 8'h21, 8'h1E, 8'h1B, 8'h18, 8'h15, 8'h12, 8'h0F, 8'h0C, 8'h09, 8'h06, 8'h03, 8'h00};

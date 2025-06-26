@@ -59,6 +59,7 @@ web-audio-api = { version = "1.2", default-features = false, features = ["cpal"]
 
 [build-dependencies]
 fluent-syntax = "0.12.0"
+winresource = "0.1.22"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 crc = "3.3.0"
@@ -71,9 +72,6 @@ wireless-modes = { version = "0.3.1", path = "../wireless-modes" }
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 iced = { version = "0.13", default-features = false, features = ["canvas", "image", "svg", "tokio", "wgpu"] }
-
-[target.'cfg(windows)'.build-dependencies]
-winres = "0.1"
 
 [package.metadata.bundle]
 identifier = "com.atlantissports.uwhrefbox"

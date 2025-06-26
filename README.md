@@ -18,17 +18,27 @@ The app will log all events to a folder called `uwh-refbox-logs`, which will be 
 
 # Running From Source
 
-1. You will need to [Install Rust](https://rustup.rs/)
-2. Ensure that you have the following libraries installed: 
+1. If you are building on Windows, ensure that you have the [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) installed, with the "Desktop development with C++" workload selected.
+2. [Install Rust](https://rustup.rs/)
+3. Ensure that you have the following libraries installed: 
    - OpenSSL (`libssl-dev` package in `apt`)
    - pkg-config (`pkg-config` package in `apt`)
    - Alsa (`libasound2-dev` package in `apt`)
-3. Go to the [`refbox`](refbox) folder and `cargo run`
-4. Call the binary with the `-h` or `--help` flags to get the usage
+4. Go to the [`refbox`](refbox) folder and `cargo run`
+5. Call the binary with the `-h` or `--help` flags to get the usage
 
-# Packaging
+# Cross Compiling
 
-There are provisions for cross compiling to windows and linux via Docker in the [xc](xc) folder. If you are building on a Mac, you can also bundle the build into a `.app` with `cargo bundle --release` (you will need to `cargo install cargo-bundle` first).
+Builds for cargo targets other than the host target can be compiled using the `cross` tool:
+
+1. Install [Docker](https://www.docker.com/products/docker-desktop/) and ensure it is running
+2. Install `cross` using `cargo install cross`
+3. Compile the binary using `cross build --all --release --target <target>`, where `<target>` is the target you want to compile for:
+   - `aarch64-unknown-linux-gnu` for the Raspberry Pi 4 or 5
+   - `x86_64-pc-windows-gnu` for Windows
+   - `aarch64-apple-darwin` for newer Arm based Macs (M series chips)
+   - `x86_64-apple-darwin` for Intel based Macs
+4. The resulting binaries will be in the `target/<target>/release` folder.
 
 # Contributing
 

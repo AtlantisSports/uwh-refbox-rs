@@ -3,6 +3,7 @@
 # Find all .toml files excluding ./Cargo.toml that do not contain 'rust-version'
 excluded_files=(
   './Cargo.toml'
+  './Cross.toml'
   './refbox/i18n.toml'
   './wireless-remote/rust-toolchain.toml'
   './wireless-remote/.cargo/config.toml'

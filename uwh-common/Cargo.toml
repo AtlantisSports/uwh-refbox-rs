@@ -31,7 +31,7 @@ time = { version = "0.3", features = [
   "serde",
   "serde-human-readable",
 ], optional = true }
-toml = { version = "0.8", optional = true }
+toml = { version = "0.9", optional = true }
 
 
 [dev-dependencies]

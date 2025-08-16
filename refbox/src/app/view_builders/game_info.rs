@@ -1,13 +1,20 @@
 use super::*;
 use iced::{
     Length,
-    alignment::{Horizontal, Vertical},
-    widget::{column, horizontal_space, row, text},
+    widget::{column, horizontal_space, row, container},
 };
 use uwh_common::{
     game_snapshot::GameSnapshot,
     uwhportal::schedule::{GameList, TeamList},
 };
+
+#[derive(Debug, Clone)]
+struct TableRow {
+    left_label: String,
+    left_value: String,
+    right_label: Option<String>,
+    right_value: Option<String>,
+}
 
 pub(in super::super) fn build_game_info_page<'a>(
     data: ViewData<'_, '_>,
@@ -40,25 +47,52 @@ pub(in super::super) fn build_game_info_page<'a>(
         horizontal_space().into()
     };
 
-    let (left_details, right_details) =
-        details_strings(snapshot, config, using_uwhportal, games, teams);
+    let table_rows = build_details_table(snapshot, config, using_uwhportal, games, teams);
+
+    let mut details_column = column![]
+        .spacing(SPACING / 2.0)
+        .width(Length::Fill);
+
+    for table_row in table_rows {
+        if let (Some(right_label), Some(right_value)) = (&table_row.right_label, &table_row.right_value) {
+            // Two-column row
+            details_column = details_column.push(
+                row![
+                    make_value_button(
+                        table_row.left_label,
+                        table_row.left_value,
+                        (false, false),
+                        None
+                    ),
+                    make_value_button(
+                        right_label.clone(),
+                        right_value.clone(),
+                        (false, false),
+                        None
+                    ),
+                ]
+                .spacing(SPACING)
+                .width(Length::Fill)
+            );
+        } else {
+            // Single-column row
+            details_column = details_column.push(
+                make_value_button(
+                    table_row.left_label,
+                    table_row.left_value,
+                    (false, false),
+                    None
+                )
+            );
+        }
+    }
+
     column![
         make_game_time_button(snapshot, false, false, mode, clock_running),
-        row![
-            text(left_details)
-                .size(SMALL_TEXT)
-                .align_y(Vertical::Top)
-                .align_x(Horizontal::Left)
-                .width(Length::Fill),
-            text(right_details)
-                .size(SMALL_TEXT)
-                .align_y(Vertical::Top)
-                .align_x(Horizontal::Left)
-                .width(Length::Fill),
-        ]
-        .spacing(SPACING)
-        .width(Length::Fill)
-        .height(Length::Fill),
+        container(details_column)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .padding(PADDING),
         row![
             make_button(fl!("back"))
                 .style(red_button)
@@ -78,16 +112,15 @@ pub(in super::super) fn build_game_info_page<'a>(
     .into()
 }
 
-fn details_strings(
+fn build_details_table(
     snapshot: &GameSnapshot,
     config: &GameConfig,
     using_uwhportal: bool,
     games: Option<&GameList>,
     teams: Option<&TeamList>,
-) -> (String, String) {
+) -> Vec<TableRow> {
     const TEAM_NAME_LEN_LIMIT: usize = 40;
-    let mut right_string = String::new();
-    let mut left_string = String::new();
+    let mut table_rows = Vec::new();
     let game_number = if snapshot.current_period == GamePeriod::BetweenGames {
         let prev_game;
         let next_game;
@@ -131,13 +164,12 @@ fn details_strings(
             next_game = snapshot.next_game_number.to_string();
         }
 
-        left_string += &fl!(
-            "last-game-next-game",
-            prev_game = prev_game,
-            next_game = next_game
-        );
-
-        left_string += "\n";
+        table_rows.push(TableRow {
+            left_label: "Last Game".to_string(),
+            left_value: prev_game,
+            right_label: Some("Next Game".to_string()),
+            right_value: Some(next_game),
+        });
 
         &snapshot.next_game_number
     } else {
@@ -160,8 +192,12 @@ fn details_strings(
         } else {
             game = snapshot.game_number.to_string();
         }
-        left_string += &fl!("one-game", game = game);
-        left_string += "\n";
+        table_rows.push(TableRow {
+            left_label: "Game".to_string(),
+            left_value: game,
+            right_label: None,
+            right_value: None,
+        });
         &snapshot.game_number
     };
 
@@ -170,92 +206,123 @@ fn details_strings(
             if let Some(game) = games.get(game_number) {
                 let black = get_team_name(&game.dark, teams);
                 let white = get_team_name(&game.light, teams);
-                left_string += &fl!(
-                    "black-team-white-team",
-                    black_team = limit_team_name_len(&black, TEAM_NAME_LEN_LIMIT),
-                    white_team = limit_team_name_len(&white, TEAM_NAME_LEN_LIMIT)
-                );
-                left_string += "\n";
+                table_rows.push(TableRow {
+                    left_label: "Black Team".to_string(),
+                    left_value: limit_team_name_len(&black, TEAM_NAME_LEN_LIMIT),
+                    right_label: Some("White Team".to_string()),
+                    right_value: Some(limit_team_name_len(&white, TEAM_NAME_LEN_LIMIT)),
+                });
             }
         }
     }
 
-    left_string += &fl!(
-        "game-length-ot-allowed",
-        half_length = time_string(config.half_play_duration),
-        half_time_length = time_string(config.half_time_duration),
-        overtime = bool_string(config.overtime_allowed)
-    );
-    left_string += "\n";
+    table_rows.push(TableRow {
+        left_label: "Half Duration".to_string(),
+        left_value: time_string(config.half_play_duration),
+        right_label: Some("Half Time Duration".to_string()),
+        right_value: Some(time_string(config.half_time_duration)),
+    });
+
+    table_rows.push(TableRow {
+        left_label: "Sudden Death Allowed".to_string(),
+        left_value: bool_string(config.sudden_death_allowed),
+        right_label: Some("Overtime Allowed".to_string()),
+        right_value: Some(bool_string(config.overtime_allowed)),
+    });
 
     if config.overtime_allowed {
-        left_string += &fl!(
-            "overtime-details",
-            pre_overtime = time_string(config.pre_overtime_break),
-            overtime_len = time_string(config.ot_half_play_duration),
-            overtime_half_time_len = time_string(config.ot_half_time_duration)
-        );
-        left_string += "\n";
-    };
+        table_rows.push(TableRow {
+            left_label: "Pre-Overtime Break".to_string(),
+            left_value: time_string(config.pre_overtime_break),
+            right_label: Some("Overtime Half Length".to_string()),
+            right_value: Some(time_string(config.ot_half_play_duration)),
+        });
 
-    left_string += &fl!("sd-allowed", sd = bool_string(config.sudden_death_allowed));
-    left_string += "\n";
+        table_rows.push(TableRow {
+            left_label: "Overtime Half Time Length".to_string(),
+            left_value: time_string(config.ot_half_time_duration),
+            right_label: None,
+            right_value: None,
+        });
+    }
 
     if config.sudden_death_allowed {
-        left_string += &fl!(
-            "pre-sd",
-            pre_sd_len = time_string(config.pre_sudden_death_duration)
-        );
-        left_string += "\n";
+        table_rows.push(TableRow {
+            left_label: "Pre-Sudden-Death Break".to_string(),
+            left_value: time_string(config.pre_sudden_death_duration),
+            right_label: None,
+            right_value: None,
+        });
+    }
+
+    let timeout_label = if config.timeouts_counted_per_half {
+        "Team Timeouts Allowed Per Half"
+    } else {
+        "Team Timeouts Allowed Per Game"
     };
 
-    left_string += &if config.timeouts_counted_per_half {
-        fl!(
-            "team-timeouts-per-half",
-            team_timeouts = config.num_team_timeouts_allowed
-        )
-    } else {
-        fl!(
-            "team-timeouts-per-game",
-            team_timeouts = config.num_team_timeouts_allowed
-        )
-    };
-    left_string += "\n";
+    table_rows.push(TableRow {
+        left_label: timeout_label.to_string(),
+        left_value: config.num_team_timeouts_allowed.to_string(),
+        right_label: None,
+        right_value: None,
+    });
 
     if config.num_team_timeouts_allowed != 0 {
-        left_string += &fl!(
-            "team-to-len",
-            to_len = time_string(config.team_timeout_duration)
-        );
-        left_string += "\n";
-    };
-    if !using_uwhportal {
-        left_string += &fl!(
-            "time-btwn-games",
-            time_btwn = time_string(config.nominal_break)
-        );
-        left_string += "\n";
+        table_rows.push(TableRow {
+            left_label: "Team Timeout Length".to_string(),
+            left_value: time_string(config.team_timeout_duration),
+            right_label: None,
+            right_value: None,
+        });
     }
-    left_string += &fl!(
-        "min-brk-btwn-games",
-        min_brk_time = time_string(config.minimum_break)
-    );
-    left_string += "\n";
+    if !using_uwhportal {
+        table_rows.push(TableRow {
+            left_label: "Time Between Games".to_string(),
+            left_value: time_string(config.nominal_break),
+            right_label: None,
+            right_value: None,
+        });
+    }
+
+    table_rows.push(TableRow {
+        left_label: "Minimum Break Between Games".to_string(),
+        left_value: time_string(config.minimum_break),
+        right_label: None,
+        right_value: None,
+    });
 
     if using_uwhportal {
-        let unknown = &fl!("unknown");
-        left_string += &fl!("stop-clock-last-2", stop_clock = unknown);
-        left_string += "\n";
+        let unknown = fl!("unknown");
 
-        right_string += &fl!(
-            "ref-list",
-            chief_ref = unknown,
-            timer = unknown,
-            water_ref_1 = unknown,
-            water_ref_2 = unknown,
-            water_ref_3 = unknown
-        );
+        table_rows.push(TableRow {
+            left_label: "Stop Clock in Last 2 Minutes".to_string(),
+            left_value: unknown.clone(),
+            right_label: None,
+            right_value: None,
+        });
+
+        table_rows.push(TableRow {
+            left_label: "Chief Ref".to_string(),
+            left_value: unknown.clone(),
+            right_label: Some("Timer".to_string()),
+            right_value: Some(unknown.clone()),
+        });
+
+        table_rows.push(TableRow {
+            left_label: "Water Ref 1".to_string(),
+            left_value: unknown.clone(),
+            right_label: Some("Water Ref 2".to_string()),
+            right_value: Some(unknown.clone()),
+        });
+
+        table_rows.push(TableRow {
+            left_label: "Water Ref 3".to_string(),
+            left_value: unknown,
+            right_label: None,
+            right_value: None,
+        });
     }
 
-    (left_string, right_string)
+    table_rows
 }

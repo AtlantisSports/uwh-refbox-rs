@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Atlantis UWH-REFBOX-RS Automated Testing Design</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --panel: #111827;
+    --text: #e5e7eb;
+    --muted: #9ca3af;
+    --accent: #22d3ee;
+    --accent2: #a78bfa;
+    --good: #22c55e;
+    --warn: #f59e0b;
+    --bad: #ef4444;
+    --link: #60a5fa;
+    --code-bg: #0b1220;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial, 'Noto Sans', 'Apple Color Emoji', 'Segoe UI Emoji';
+    background: linear-gradient(180deg, #0b1220, #0f172a 50%, #0b1220);
+    color: var(--text);
+  }
+  header { position: sticky; top: 0; z-index: 5; backdrop-filter: blur(8px); background: rgba(15, 23, 42, 0.8); border-bottom: 1px solid #1f2937; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 20px; }
+  h1 { font-size: 28px; margin: 10px 0; letter-spacing: 0.2px; }
+  h2 { font-size: 22px; margin: 28px 0 12px; color: var(--accent); }
+  h3 { font-size: 18px; margin: 22px 0 10px; color: var(--accent2); }
+  p { line-height: 1.6; color: var(--text); }
+  .panel { background: var(--panel); border: 1px solid #1f2937; border-radius: 12px; padding: 16px 18px; box-shadow: 0 10px 24px rgba(0,0,0,0.3); }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .muted { color: var(--muted); }
+  a { color: var(--link); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .index { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: #1f2937; color: var(--muted); border: 1px solid #374151; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace; }
+  pre { background: var(--code-bg); color: #d1d5db; padding: 14px; border-radius: 10px; overflow-x: auto; border: 1px solid #1f2937; }
+  .return { display: inline-block; margin-top: 12px; }
+  .toc-link { display: block; padding: 8px 10px; border: 1px solid #1f2937; border-radius: 8px; background: #0b1220; }
+  .toc-link:hover { background: #0c1323; }
+  .callout { border-left: 4px solid var(--accent); padding: 8px 10px; background: #0b1220; border-radius: 6px; }
+  .ok { color: var(--good); }
+  .warn { color: var(--warn); }
+  .bad { color: var(--bad); }
+  footer { padding: 18px; text-align: center; color: var(--muted); }
+  @media (max-width: 720px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="container">
+    <h1>Atlantis UWH-REFBOX-RS Automated Testing Design</h1>
+    <div class="muted">Author: Augment Agent • Date: 2025-08-17</div>
+  </div>
+</header>
+<main class="container">
+  <section id="index" class="panel">
+    <h2>Navigation Index</h2>
+    <div class="index">
+      <a class="toc-link" href="#purpose">1. Purpose and Goals</a>
+      <a class="toc-link" href="#current">2. Current State Assessment</a>
+      <a class="toc-link" href="#architecture">3. Target Architecture Overview</a>
+      <a class="toc-link" href="#structure">4. Directory Structure (proposed)</a>
+      <a class="toc-link" href="#focus">5. Testing Focus Areas and Examples</a>
+      <a class="toc-link" href="#ci">6. CI/CD Integration</a>
+      <a class="toc-link" href="#workflow">7. Developer Workflow Enhancements</a>
+      <a class="toc-link" href="#acceptance">8. Acceptance Criteria</a>
+      <a class="toc-link" href="#roadmap">9. Roadmap (Incremental Plan)</a>
+      <a class="toc-link" href="#risks">10. Risks and Mitigations</a>
+      <a class="toc-link" href="#timeline">11. Estimated Timeline</a>
+      <a class="toc-link" href="#snippets">12. Code Snippets</a>
+    </div>
+  </section>
+
+  <section id="purpose" class="panel">
+    <h2>1. Purpose and Goals</h2>
+    <p>This document defines a comprehensive, incremental, and maintainable automated testing strategy for the UWH RefBox Rust workspace. It covers unit, integration, UI/layout structural, i18n, and visual regression-style checks, integrating with GitHub Actions and preserving backward compatibility.</p>
+    <a href="#index" class="return">↩ Return to index</a>
+  </section>
+
+  <section id="current" class="panel">
+    <h2>2. Current State Assessment</h2>
+    <ul>
+      <li>Workspace has multiple crates; some unit tests already exist</li>
+      <li>CI runs <code>cargo test --all</code> across platforms</li>
+      <li class="warn">Gaps: UI/view testing, i18n validation, layout structure assertions, visual checks</li>
+    </ul>
+    <a href="#index" class="return">↩ Return to index</a>
+  </section>
+
+  <section id="architecture" class="panel">
+    <h2>3. Target Architecture Overview</h2>
+    <p>Introduce a new workspace member <code>integration-tests</code> for cross-crate and UI/layout logic tests while keeping unit tests within crates.</p>
+    <div class="callout">Layers: Unit → Integration → UI/Layout Structure → i18n → Visual Regression-style</div>
+    <a href="#index" class="return">↩ Return to index</a>
+  </section>
+
+  <section id="structure" class="panel">
+    <h2>4. Directory Structure (proposed)</h2>
+    <pre><code>integration-tests/
+  Cargo.toml
+  src/
+    lib.rs
+    ui_tests/
+      mod.rs
+      view_builders/
+        main_view_tests.rs
+        layout_tests.rs
+        label_width_tests.rs
+      internationalization/
+        language_tests.rs
+        layout_consistency_tests.rs
+    integration/
+      tournament_manager_tests.rs
+      config_tests.rs
+    visual_regression/
+      snapshot_tests.rs
+      layout_validation.rs
+    utils/
+      mock_data.rs
+      test_helpers.rs
+      layout_assertions.rs
+  tests/
+    ui_integration.rs
+    full_app_tests.rs
+</code></pre>
+    <a href="#index" class="return">↩ Return to index</a>
+  </section>
+
+  <section id="focus" class="panel">
+    <h2>5. Testing Focus Areas and Examples</h2>
+    <h3>5.1 Label Width Changes</h3>
+    <p>Constants <span class="badge">GAME_LABEL_WIDTH=100</span> <span class="badge">REF_LABEL_WIDTH=120</span>. Single <code>match</code> to select widths.</p>
+    <h3>5.2 Internationalization</h3>
+    <p>Instantiate app/components for <span class="badge">en-US</span> <span class="badge">es</span> <span class="badge">fr</span>; verify width rules apply consistently.</p>
+    <h3>5.3 Layout Structure</h3>
+    <p>Assert row counts and width kinds (fixed vs proportional); avoid pixel diffs.</p>
+    <h3>5.4 Integration Tests</h3>
+    <p>Exercise TournamentManager flows and config round-trips.</p>
+    <h3>5.5 Visual Regression-style</h3>
+    <p>Snapshot structural expectations; no raster comparisons.</p>
+    <a href="#index" class="return">↩ Return to index</a>
+  </section>
+
+  <section id="ci" class="panel">
+    <h2>6. CI/CD Integration</h2>
+    <ul>
+      <li>Run <code>cargo test</code> for new test crate</li>
+      <li>Allow serialized i18n tests if needed</li>
+      <li>Keep workflow backward compatible</li>
+    </ul>
+    <a href="#index" class="return">↩ Return to index</a>
+  </section>
+
+  <section id="workflow" class="panel">
+    <h2>7. Developer Workflow Enhancements</h2>
+    <ul>
+      <li>Pre-commit: fmt, clippy, unit + integration tests</li>
+      <li>Coverage on Linux (optional)</li>
+    </ul>
+    <a href="#index" class="return">↩ Return to index</a>
+  </section>
+
+  <section id="acceptance" class="panel">
+    <h2>8. Acceptance Criteria</h2>
+    <ul>
+      <li>All tests pass on Windows/macOS/Linux</li>
+      <li>No breaking changes</li>
+      <li>Label width tests pass in all languages</li>
+      <li>Docs and guidance included</li>
+    </ul>
+    <a href="#index" class="return">↩ Return to index</a>
+  </section>
+
+  <section id="roadmap" class="panel">
+    <h2>9. Roadmap (Incremental Plan)</h2>
+    <ol>
+      <li>Design docs (this file + MD)</li>
+      <li>Scaffold <code>integration-tests</code> crate</li>
+      <li>Unit tests for label width logic</li>
+      <li>i18n utilities + smoke tests</li>
+      <li>Layout structure tests</li>
+      <li>Cross-module integration tests</li>
+      <li>CI enhancements</li>
+      <li>Pre-commit checks</li>
+      <li>Coverage reporting</li>
+      <li>Maintenance & contribution guide</li>
+    </ol>
+    <a href="#index" class="return">↩ Return to index</a>
+  </section>
+
+  <section id="risks" class="panel">
+    <h2>10. Risks and Mitigations</h2>
+    <ul>
+      <li>GUI variance → prefer structural assertions</li>
+      <li>i18n drift → build-time checks + tolerant tests</li>
+      <li>Flakiness → deterministic tests, serialize when needed</li>
+    </ul>
+    <a href="#index" class="return">↩ Return to index</a>
+  </section>
+
+  <section id="timeline" class="panel">
+    <h2>11. Estimated Timeline</h2>
+    <p>Each task subdivided into ~20-minute units with review gates between major tasks.</p>
+    <a href="#index" class="return">↩ Return to index</a>
+  </section>
+
+  <section id="snippets" class="panel">
+    <h2>12. Code Snippets</h2>
+    <pre><code>#[test]
+fn test_label_width_logic() {
+    use iced::Length;
+    let cases = vec![
+        ("Last Game", Some(GAME_LABEL_WIDTH)),
+        ("Next Game", Some(GAME_LABEL_WIDTH)),
+        ("Chief Ref", Some(REF_LABEL_WIDTH)),
+        ("Other", None),
+    ];
+    for (label, expected) in cases {
+        let width = determine_label_width(label);
+        match expected {
+            Some(w) => assert!(matches!(width, Length::Fixed(x) if x == w)),
+            None => assert!(matches!(width, Length::FillPortion(_))),
+        }
+    }
+}
+</code></pre>
+    <a href="#index" class="return">↩ Return to index</a>
+  </section>
+</main>
+<footer>
+  © 2025 Atlantis Sports — Automated Testing Design (UWH RefBox)
+</footer>
+</body>
+</html>

@@ -11,6 +11,42 @@ use uwh_common::{
     uwhportal::schedule::{GameList, TeamList},
 };
 
+// Constants for fixed-width label cells
+const GAME_LABEL_WIDTH: f32 = 100.0;
+const REF_LABEL_WIDTH: f32 = 120.0;
+
+fn label_width_for(label: &str, label_portion: u16) -> Length {
+    match label {
+        "Last Game" | "Next Game" => Length::Fixed(GAME_LABEL_WIDTH),
+        "Chief Ref" | "Timer" | "Water Ref 1" | "Water Ref 2" | "Water Ref 3" => {
+            Length::Fixed(REF_LABEL_WIDTH)
+        }
+        _ => Length::FillPortion(label_portion),
+    }
+}
+
+#[cfg(test)]
+mod label_width_tests {
+    use super::*;
+    use iced::Length;
+
+    #[test]
+    fn known_labels_use_fixed_widths() {
+        let lp = 3;
+        assert!(matches!(label_width_for("Last Game", lp), Length::Fixed(w) if (w - GAME_LABEL_WIDTH).abs() < f32::EPSILON));
+        assert!(matches!(label_width_for("Next Game", lp), Length::Fixed(w) if (w - GAME_LABEL_WIDTH).abs() < f32::EPSILON));
+        for lbl in ["Chief Ref", "Timer", "Water Ref 1", "Water Ref 2", "Water Ref 3"] {
+            assert!(matches!(label_width_for(lbl, lp), Length::Fixed(w) if (w - REF_LABEL_WIDTH).abs() < f32::EPSILON), "label {} should be fixed width", lbl);
+        }
+    }
+
+    #[test]
+    fn other_labels_use_fillportion() {
+        let lp = 5;
+        assert!(matches!(label_width_for("Other", lp), Length::FillPortion(p) if p == lp));
+    }
+}
+
 #[derive(Debug, Clone)]
 struct TableRow {
     left_label: String,
@@ -432,7 +468,7 @@ fn build_config_table<'a>(
     table_rows.push(TableRow {
         left_label: "Timeouts".to_string(),
         left_value: timeout_value,
-        center_label: Some("Fin 2 Min Stop Time".to_string()),
+        center_label: Some("Last 2 Min Ref T/Out".to_string()),
         center_value: Some("YES".to_string()), // Default value, will be configurable later
         right_label: None,
         right_value: None,
@@ -505,24 +541,18 @@ fn build_config_table<'a>(
         if let (Some(center_label), Some(center_value)) = (table_row.center_label, table_row.center_value) {
             // Create a 4-column row: Label | Value | Label | Value
             // Adjust proportions based on content to prevent text wrapping
-            let (left_label_portion, center_label_portion) = if table_row.left_label == "Half Duration" {
-                // Half Duration row: "Half Duration" (13 chars) needs more space, "Half Time Duration" (18 chars) needs most space
-                (2, 3)
-            } else if table_row.left_label == "Overtime" {
-                // Overtime row: "Overtime" (8 chars) needs less space, "Sudden Death" (12 chars) needs more space
-                (1, 2)
-            } else if table_row.left_label == "Timeouts" {
-                // Timeouts row: Use same proportions as Overtime row to match label column width
-                (1, 2)
-            } else {
-                // Default proportions for any other 4-column rows
-                (2, 2)
-            };
+            // Fixed column proportions so value cells (e.g., "3:00" and "YES") are the same width across rows
+            // Use fixed width for left labels to prevent proportional changes when center label width changes
+            let is_half_duration_row = table_row.left_label == "Half Duration";
+            let is_sudden_death_or_timeout_row = center_label == "Sudden Death" || center_label == "Last 2 Min Ref T/Out";
+            let is_overtime_or_timeout_value_row = table_row.left_label == "Overtime" || table_row.left_label == "Timeouts";
+            let left_label_width = if is_half_duration_row { 120.0 } else { 90.0 };  // Increased to 90px to prevent "Timeouts" from wrapping
+            let center_label_portion = if is_half_duration_row { 3 } else { 1 };
 
             let row_element = row![
                 container(text(table_row.left_label).size(SMALL_TEXT))
-                    .padding([2, 1])
-                    .width(Length::FillPortion(left_label_portion))
+                    .padding([1, 1])
+                    .width(Length::Fixed(left_label_width))
                     .style(container::rounded_box),
                 container(
                     text(table_row.left_value.clone())
@@ -530,12 +560,18 @@ fn build_config_table<'a>(
                         .width(Length::Fill)
                         .align_x(Horizontal::Center)
                 )
-                    .padding([2, 1])
-                    .width(Length::FillPortion(1))  // Space for values like "15:00" or "YES"
+                    .center_x(Length::Fill)
+                    .padding([1, 1])
+                    .width(if is_overtime_or_timeout_value_row { Length::Fixed(86.0) } else { Length::Fixed(60.0) })  // Fixed width for Overtime/Timeouts value cells
                     .style(container::rounded_box),
-                container(text(center_label).size(SMALL_TEXT))
-                    .padding([2, 1])
-                    .width(Length::FillPortion(center_label_portion))
+                container(
+                    text(center_label)
+                        .size(SMALL_TEXT)
+                        .align_x(Horizontal::Left)
+                        .width(Length::Fill)
+                )
+                    .padding([1, 1])
+                    .width(if is_sudden_death_or_timeout_row { Length::Fixed(180.0) } else { Length::FillPortion(center_label_portion) })
                     .style(container::rounded_box),
                 container(
                     text(center_value.clone())
@@ -543,8 +579,9 @@ fn build_config_table<'a>(
                         .width(Length::Fill)
                         .align_x(Horizontal::Center)
                 )
-                    .padding([2, 1])
-                    .width(Length::FillPortion(1))  // Space for values like "3:00" or "YES"
+                    .center_x(Length::Fill)
+                    .padding([1, 1])
+                    .width(if is_overtime_or_timeout_value_row { Length::Fixed(86.0) } else { Length::Fixed(60.0) })  // Fixed width for Overtime/Timeouts value cells - ensures "YES" cells same size as "3:00" cell
                     .style(container::rounded_box),
             ]
             .spacing(1)
@@ -554,12 +591,18 @@ fn build_config_table<'a>(
         } else {
             // Single 2-column row: Label | Value (spanning full width)
             // Give more space to values for people's names
-            let (label_portion, value_portion) = (3, 5);  // More space for people's names
+            let (label_portion, value_portion) = (3, 5);  // Keep consistent; value column wider for names
+
+            let label_width = match table_row.left_label.as_str() {
+                "Last Game" | "Next Game" => Length::Fixed(GAME_LABEL_WIDTH),
+                "Chief Ref" | "Timer" | "Water Ref 1" | "Water Ref 2" | "Water Ref 3" => Length::Fixed(REF_LABEL_WIDTH),
+                _ => Length::FillPortion(label_portion)
+            };
 
             let row_element = row![
                 container(text(table_row.left_label).size(SMALL_TEXT))
-                    .padding([2, 4])
-                    .width(Length::FillPortion(label_portion))
+                    .padding([1, 2])
+                    .width(label_width)
                     .style(container::rounded_box),
                 container(
                     text(table_row.left_value.clone())
@@ -567,7 +610,8 @@ fn build_config_table<'a>(
                         .width(Length::Fill)
                         .align_x(Horizontal::Center)
                 )
-                    .padding([2, 4])
+                    .center_x(Length::Fill)
+                    .padding([1, 2])
                     .width(Length::FillPortion(value_portion))
                     .style(container::rounded_box),
             ]

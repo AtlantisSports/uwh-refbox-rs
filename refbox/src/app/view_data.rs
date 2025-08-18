@@ -7,4 +7,6 @@ pub(super) struct ViewData<'a, 'b> {
     pub(super) mode: Mode,
     pub(super) clock_running: bool,
     pub(super) teams: Option<&'b TeamList>,
+    pub(super) font_demo: bool,
+    pub(super) demo_data_type: String,
 }

@@ -1,8 +1,9 @@
 use super::*;
+use crate::app::dynamic_font_sizing::{DynamicFontSizing, GameInfoCell};
 use iced::{
     Alignment, Element, Length,
     alignment::{Horizontal, Vertical},
-    widget::{Space, button, column, row, text, container},
+    widget::{Space, button, column, container, row, text},
 };
 use uwh_common::{
     color::Color as GameColor,
@@ -10,42 +11,91 @@ use uwh_common::{
     game_snapshot::{GamePeriod, GameSnapshot, PenaltyTime},
     uwhportal::schedule::{GameList, TeamList},
 };
+use std::collections::HashMap;
+
+/// Test data for demonstrating font sizing in the GUI
+pub struct FontSizingTestData {
+    pub team_names: HashMap<String, String>,
+    pub referee_names: HashMap<String, String>,
+}
+
+impl FontSizingTestData {
+    /// Create test data with your specification values
+    pub fn specification_data() -> Self {
+        let mut team_names = HashMap::new();
+        team_names.insert("WHITE".to_string(), "Australia".to_string());
+        team_names.insert("BLACK".to_string(), "New Zealand".to_string());
+        team_names.insert("NEXT_WHITE".to_string(), "Nederlands".to_string());
+        team_names.insert("NEXT_BLACK".to_string(), "South Africa".to_string());
+
+        let mut referee_names = HashMap::new();
+        referee_names.insert("Chief Ref".to_string(), "Russell Owen Camilo La Torre".to_string());
+        referee_names.insert("Timer".to_string(), "Norfatin Aainaa Binti Hashim".to_string());
+        referee_names.insert("Water Ref 1".to_string(), "Tuan San Jonathan Chan".to_string());
+        referee_names.insert("Water Ref 2".to_string(), "Muhammad Danish Haikal Mohd Fadel".to_string());
+        referee_names.insert("Water Ref 3".to_string(), "A very long person name".to_string());
+
+        Self {
+            team_names,
+            referee_names,
+        }
+    }
+
+    /// Create test data with short names (should not trigger font reduction)
+    pub fn short_names_data() -> Self {
+        let mut team_names = HashMap::new();
+        team_names.insert("WHITE".to_string(), "USA".to_string());
+        team_names.insert("BLACK".to_string(), "UK".to_string());
+        team_names.insert("NEXT_WHITE".to_string(), "France".to_string());
+        team_names.insert("NEXT_BLACK".to_string(), "Spain".to_string());
+
+        let mut referee_names = HashMap::new();
+        referee_names.insert("Chief Ref".to_string(), "John Smith".to_string());
+        referee_names.insert("Timer".to_string(), "Jane Doe".to_string());
+        referee_names.insert("Water Ref 1".to_string(), "Bob Wilson".to_string());
+        referee_names.insert("Water Ref 2".to_string(), "Sue Chen".to_string());
+        referee_names.insert("Water Ref 3".to_string(), "Tom Brown".to_string());
+
+        Self {
+            team_names,
+            referee_names,
+        }
+    }
+}
+
+/// Helper function to get the appropriate font size for a table row value
+fn get_font_size_for_table_row(
+    label: &str,
+    dynamic_font_sizing: &DynamicFontSizing,
+) -> f32 {
+    // Map table row labels to GameInfoCell enum
+    let cell = match label {
+        "WHITE" => Some(GameInfoCell::NextGame),  // WHITE team uses NextGame cell
+        "BLACK" => Some(GameInfoCell::LastGame),  // BLACK team uses LastGame cell
+        "Chief Ref" => Some(GameInfoCell::ChiefRef),
+        "Timer" => Some(GameInfoCell::Timer),
+        "Water Ref 1" => Some(GameInfoCell::WaterRef1),
+        "Water Ref 2" => Some(GameInfoCell::WaterRef2),
+        "Water Ref 3" => Some(GameInfoCell::WaterRef3),
+        _ => None,
+    };
+
+    // Return dynamic font size for target cells, default size for others
+    if let Some(cell) = cell {
+        dynamic_font_sizing.get_font_size(cell)
+    } else {
+        SMALL_TEXT
+    }
+}
 
 // Constants for fixed-width label cells
 const GAME_LABEL_WIDTH: f32 = 100.0;
 const REF_LABEL_WIDTH: f32 = 120.0;
+// Fixed cell height to keep rows from shrinking when font sizes are reduced
+const GAME_INFO_CELL_HEIGHT: f32 = 26.0;
 
-fn label_width_for(label: &str, label_portion: u16) -> Length {
-    match label {
-        "Last Game" | "Next Game" => Length::Fixed(GAME_LABEL_WIDTH),
-        "Chief Ref" | "Timer" | "Water Ref 1" | "Water Ref 2" | "Water Ref 3" => {
-            Length::Fixed(REF_LABEL_WIDTH)
-        }
-        _ => Length::FillPortion(label_portion),
-    }
-}
 
-#[cfg(test)]
-mod label_width_tests {
-    use super::*;
-    use iced::Length;
 
-    #[test]
-    fn known_labels_use_fixed_widths() {
-        let lp = 3;
-        assert!(matches!(label_width_for("Last Game", lp), Length::Fixed(w) if (w - GAME_LABEL_WIDTH).abs() < f32::EPSILON));
-        assert!(matches!(label_width_for("Next Game", lp), Length::Fixed(w) if (w - GAME_LABEL_WIDTH).abs() < f32::EPSILON));
-        for lbl in ["Chief Ref", "Timer", "Water Ref 1", "Water Ref 2", "Water Ref 3"] {
-            assert!(matches!(label_width_for(lbl, lp), Length::Fixed(w) if (w - REF_LABEL_WIDTH).abs() < f32::EPSILON), "label {} should be fixed width", lbl);
-        }
-    }
-
-    #[test]
-    fn other_labels_use_fillportion() {
-        let lp = 5;
-        assert!(matches!(label_width_for("Other", lp), Length::FillPortion(p) if p == lp));
-    }
-}
 
 #[derive(Debug, Clone)]
 struct TableRow {
@@ -53,8 +103,6 @@ struct TableRow {
     left_value: String,
     center_label: Option<String>,
     center_value: Option<String>,
-    right_label: Option<String>,
-    right_value: Option<String>,
 }
 
 pub(in super::super) fn build_main_view<'a>(
@@ -63,12 +111,15 @@ pub(in super::super) fn build_main_view<'a>(
     using_uwhportal: bool,
     games: Option<&GameList>,
     track_fouls_and_warnings: bool,
+    dynamic_font_sizing: &mut DynamicFontSizing,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
         mode,
         clock_running,
         teams,
+        font_demo,
+        demo_data_type,
     } = data;
 
     let time_button = make_game_time_button(snapshot, true, false, mode, clock_running);
@@ -153,16 +204,17 @@ pub(in super::super) fn build_main_view<'a>(
         .unwrap();
 
     center_col = center_col.push(if max_num_warns < 4 {
-        button(
-            build_config_table(
-                snapshot,
-                game_config,
-                using_uwhportal,
-                games,
-                teams,
-                track_fouls_and_warnings,
-            )
-        )
+        button(build_config_table(
+            snapshot,
+            game_config,
+            using_uwhportal,
+            games,
+            teams,
+            track_fouls_and_warnings,
+            dynamic_font_sizing,
+            font_demo,
+            &demo_data_type,
+        ))
         .padding(PADDING)
         .style(light_gray_button)
         .height(Length::FillPortion(2))
@@ -360,12 +412,15 @@ fn build_config_table<'a>(
     games: Option<&GameList>,
     teams: Option<&TeamList>,
     fouls_and_warnings: bool,
+    dynamic_font_sizing: &mut DynamicFontSizing,
+    font_demo: bool,
+    demo_data_type: &str,
 ) -> Element<'a, Message> {
     const TEAM_NAME_LEN_LIMIT: usize = 40;
     let mut table_rows = Vec::new();
 
     // Always show Game Number as Row 1
-    let game_display = if using_uwhportal {
+    let _game_display = if using_uwhportal {
         if let Some(games) = games {
             match games.get(&snapshot.game_number) {
                 Some(game) => game.number.to_string(),
@@ -389,26 +444,6 @@ fn build_config_table<'a>(
         }
     };
 
-    // Add "Last Game" row first
-    table_rows.push(TableRow {
-        left_label: "Last Game".to_string(),
-        left_value: "None".to_string(),
-        center_label: None,
-        center_value: None,
-        right_label: None,
-        right_value: None,
-    });
-
-    // Change "Game" to "Next Game"
-    table_rows.push(TableRow {
-        left_label: "Next Game".to_string(),
-        left_value: game_display,
-        center_label: None,
-        center_value: None,
-        right_label: None,
-        right_value: None,
-    });
-
     // Game number information for reference
     let game_number = if snapshot.current_period == GamePeriod::BetweenGames {
         &snapshot.next_game_number
@@ -416,23 +451,88 @@ fn build_config_table<'a>(
         &snapshot.game_number
     };
 
-    // Team information
-    if using_uwhportal {
+    // Get team names for current/next game
+    let (current_black_team, current_white_team) = if using_uwhportal {
         if let Some(games) = games {
             if let Some(game) = games.get(game_number) {
                 let black = get_team_name(&game.dark, teams);
                 let white = get_team_name(&game.light, teams);
-                table_rows.push(TableRow {
-                    left_label: "Black Team".to_string(),
-                    left_value: limit_team_name_len(&black, TEAM_NAME_LEN_LIMIT),
-                    center_label: Some("White Team".to_string()),
-                    center_value: Some(limit_team_name_len(&white, TEAM_NAME_LEN_LIMIT)),
-                    right_label: None,
-                    right_value: None,
-                });
+                (
+                    limit_team_name_len(&black, TEAM_NAME_LEN_LIMIT),
+                    limit_team_name_len(&white, TEAM_NAME_LEN_LIMIT),
+                )
+            } else {
+                ("None".to_string(), "None".to_string())
             }
+        } else {
+            ("None".to_string(), "None".to_string())
         }
-    }
+    } else {
+        ("None".to_string(), "None".to_string())
+    };
+
+    // Get team names for previous game (if available)
+    let (_prev_black_team, _prev_white_team) = if using_uwhportal {
+        if let Some(games) = games {
+            // Try to get previous game number (current game number - 1)
+            let prev_game_num = if let Ok(current_num) = snapshot.game_number.parse::<i32>() {
+                if current_num > 1 {
+                    (current_num - 1).to_string()
+                } else {
+                    "0".to_string()
+                }
+            } else {
+                "0".to_string()
+            };
+
+            if let Some(prev_game) = games.get(&prev_game_num) {
+                let black = get_team_name(&prev_game.dark, teams);
+                let white = get_team_name(&prev_game.light, teams);
+                (
+                    limit_team_name_len(&black, TEAM_NAME_LEN_LIMIT),
+                    limit_team_name_len(&white, TEAM_NAME_LEN_LIMIT),
+                )
+            } else {
+                ("None".to_string(), "None".to_string())
+            }
+        } else {
+            ("None".to_string(), "None".to_string())
+        }
+    } else {
+        ("None".to_string(), "None".to_string())
+    };
+
+    // Add "Last Game" rows - first row with White team
+    table_rows.push(TableRow {
+        left_label: "Last Game".to_string(),
+        left_value: "White".to_string(),
+        center_label: Some(_prev_white_team.clone()),
+        center_value: None,
+    });
+
+    // Add second row for Last Game with Black team (empty label)
+    table_rows.push(TableRow {
+        left_label: "".to_string(),
+        left_value: "Black".to_string(),
+        center_label: Some(_prev_black_team.clone()),
+        center_value: None,
+    });
+
+    // Add "Next Game" rows - first row with White team
+    table_rows.push(TableRow {
+        left_label: "Next Game".to_string(),
+        left_value: "White".to_string(),
+        center_label: Some(current_white_team.clone()),
+        center_value: None,
+    });
+
+    // Add second row for Next Game with Black team (empty label)
+    table_rows.push(TableRow {
+        left_label: "".to_string(),
+        left_value: "Black".to_string(),
+        center_label: Some(current_black_team.clone()),
+        center_value: None,
+    });
 
     // Compact layout - everything in fewer rows to match screenshot
     // Row: Half Duration | 15:00 | Half Time Duration | 3:00
@@ -441,8 +541,6 @@ fn build_config_table<'a>(
         left_value: time_string(config.half_play_duration),
         center_label: Some("Half Time Duration".to_string()),
         center_value: Some(time_string(config.half_time_duration)),
-        right_label: None,
-        right_value: None,
     });
 
     // Row: Overtime | YES | Sudden Death | YES (swapped positions)
@@ -451,8 +549,6 @@ fn build_config_table<'a>(
         left_value: bool_string(config.overtime_allowed),
         center_label: Some("Sudden Death".to_string()),
         center_value: Some(bool_string(config.sudden_death_allowed)),
-        right_label: None,
-        right_value: None,
     });
 
     // Row 3: Timeouts Per Half | 1 (single column)
@@ -470,150 +566,318 @@ fn build_config_table<'a>(
         left_value: timeout_value,
         center_label: Some("Last 2 Min Ref T/Out".to_string()),
         center_value: Some("YES".to_string()), // Default value, will be configurable later
-        right_label: None,
-        right_value: None,
     });
-
-
 
     // Officials information - compact layout to match screenshot
     if !fouls_and_warnings {
         let unknown = fl!("unknown");
 
+        // Check if we're in demo mode and get test data
+        let demo_data = if font_demo {
+            match demo_data_type {
+                "short" => Some(FontSizingTestData::short_names_data()),
+                _ => Some(FontSizingTestData::specification_data()),
+            }
+        } else {
+            None
+        };
+
         // Row 5: Chief Ref | Unknown (single column)
         table_rows.push(TableRow {
             left_label: "Chief Ref".to_string(),
-            left_value: unknown.clone(),
+            left_value: demo_data.as_ref()
+                .and_then(|d| d.referee_names.get("Chief Ref"))
+                .cloned()
+                .unwrap_or_else(|| unknown.clone()),
             center_label: None,
             center_value: None,
-            right_label: None,
-            right_value: None,
         });
 
         // Row 6: Timer | Unknown (single column)
         table_rows.push(TableRow {
             left_label: "Timer".to_string(),
-            left_value: unknown.clone(),
+            left_value: demo_data.as_ref()
+                .and_then(|d| d.referee_names.get("Timer"))
+                .cloned()
+                .unwrap_or_else(|| unknown.clone()),
             center_label: None,
             center_value: None,
-            right_label: None,
-            right_value: None,
         });
 
         // Row 7: Water Ref 1 | Unknown (single column)
         table_rows.push(TableRow {
             left_label: "Water Ref 1".to_string(),
-            left_value: unknown.clone(),
+            left_value: demo_data.as_ref()
+                .and_then(|d| d.referee_names.get("Water Ref 1"))
+                .cloned()
+                .unwrap_or_else(|| unknown.clone()),
             center_label: None,
             center_value: None,
-            right_label: None,
-            right_value: None,
         });
 
         // Row 8: Water Ref 2 | Unknown (single column)
         table_rows.push(TableRow {
             left_label: "Water Ref 2".to_string(),
-            left_value: unknown.clone(),
+            left_value: demo_data.as_ref()
+                .and_then(|d| d.referee_names.get("Water Ref 2"))
+                .cloned()
+                .unwrap_or_else(|| unknown.clone()),
             center_label: None,
             center_value: None,
-            right_label: None,
-            right_value: None,
         });
 
         // Row 9: Water Ref 3 | Unknown (single column)
         table_rows.push(TableRow {
             left_label: "Water Ref 3".to_string(),
-            left_value: unknown,
+            left_value: demo_data.as_ref()
+                .and_then(|d| d.referee_names.get("Water Ref 3"))
+                .cloned()
+                .unwrap_or_else(|| unknown.clone()),
             center_label: None,
             center_value: None,
-            right_label: None,
-            right_value: None,
         });
+    }
+
+    // Update dynamic font sizing with the current cell values
+    // Update font sizes for all target cells with their current text content
+    let mut current_section: Option<&str> = None;
+    let mut last_game_max: Option<String> = None;
+    let mut next_game_max: Option<String> = None;
+
+    for table_row in &table_rows {
+        // Track the current game section so both White/Black rows share the same font size
+        if table_row.left_label == "Last Game" { current_section = Some("Last Game"); }
+        if table_row.left_label == "Next Game" { current_section = Some("Next Game"); }
+
+        // Accumulate the longest team name within each section (Last/Next Game)
+        if (table_row.left_label == "Last Game" || table_row.left_label == "Next Game" || table_row.left_label.is_empty())
+            && (table_row.left_value == "White" || table_row.left_value == "Black")
+        {
+            if let Some(center_text) = &table_row.center_label {
+                match current_section {
+                    Some("Next Game") => {
+                        if next_game_max.as_ref().map(|s| s.len()).unwrap_or(0) < center_text.len() {
+                            next_game_max = Some(center_text.clone());
+                        }
+                    }
+                    _ => {
+                        if last_game_max.as_ref().map(|s| s.len()).unwrap_or(0) < center_text.len() {
+                            last_game_max = Some(center_text.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Handle other target cells
+        match table_row.left_label.as_str() {
+            "Chief Ref" => {
+                dynamic_font_sizing.update_cell_font_size(GameInfoCell::ChiefRef, &table_row.left_value);
+            }
+            "Timer" => {
+                dynamic_font_sizing.update_cell_font_size(GameInfoCell::Timer, &table_row.left_value);
+            }
+            "Water Ref 1" => {
+                dynamic_font_sizing.update_cell_font_size(GameInfoCell::WaterRef1, &table_row.left_value);
+            }
+            "Water Ref 2" => {
+                dynamic_font_sizing.update_cell_font_size(GameInfoCell::WaterRef2, &table_row.left_value);
+            }
+            "Water Ref 3" => {
+                dynamic_font_sizing.update_cell_font_size(GameInfoCell::WaterRef3, &table_row.left_value);
+            }
+            _ => {} // Non-target cells don't need font size updates
+        }
+    }
+
+    // Now update font sizing once per section with the longest name so both rows match
+    if let Some(text) = last_game_max.as_ref() {
+        dynamic_font_sizing.update_cell_font_size(GameInfoCell::LastGame, text);
+    }
+    if let Some(text) = next_game_max.as_ref() {
+        dynamic_font_sizing.update_cell_font_size(GameInfoCell::NextGame, text);
     }
 
     // Build the table layout with compact spacing to fit all content
     let mut details_column = column![]
-        .spacing(SPACING / 4.0)  // Much smaller spacing to fit more rows
+        .spacing(SPACING / 4.0) // Much smaller spacing to fit more rows
         .width(Length::Fill);
 
+    // Track which game section we're in so both rows (White/Black) share the same font sizing
+    let mut current_game_header: Option<String> = None;
+
     for table_row in table_rows {
-        // Check if we have a center column to create a 4-column row (Label|Value|Label|Value)
-        if let (Some(center_label), Some(center_value)) = (table_row.center_label, table_row.center_value) {
-            // Create a 4-column row: Label | Value | Label | Value
-            // Adjust proportions based on content to prevent text wrapping
-            // Fixed column proportions so value cells (e.g., "3:00" and "YES") are the same width across rows
-            // Use fixed width for left labels to prevent proportional changes when center label width changes
-            let is_half_duration_row = table_row.left_label == "Half Duration";
-            let is_sudden_death_or_timeout_row = center_label == "Sudden Death" || center_label == "Last 2 Min Ref T/Out";
-            let is_overtime_or_timeout_value_row = table_row.left_label == "Overtime" || table_row.left_label == "Timeouts";
-            let left_label_width = if is_half_duration_row { 120.0 } else { 90.0 };  // Increased to 90px to prevent "Timeouts" from wrapping
-            let center_label_portion = if is_half_duration_row { 3 } else { 1 };
+        // Check if we have center content to create multi-column row
+        if let Some(center_label) = table_row.center_label {
+            // Check if this is a 4-column row (Label|Value|Label|Value) or 3-column row (Label|Value|TeamName)
+            let is_four_column = table_row.center_value.is_some();
 
-            let row_element = row![
-                container(text(table_row.left_label).size(SMALL_TEXT))
-                    .padding([1, 1])
-                    .width(Length::Fixed(left_label_width))
-                    .style(container::rounded_box),
-                container(
-                    text(table_row.left_value.clone())
-                        .size(SMALL_TEXT)
-                        .width(Length::Fill)
-                        .align_x(Horizontal::Center)
-                )
+            if is_four_column {
+                let center_value = table_row.center_value.unwrap();
+                // Create a 4-column row: Label | Value | Label | Value
+                // Adjust proportions based on content to prevent text wrapping
+                // Fixed column proportions so value cells (e.g., "3:00" and "YES") are the same width across rows
+                // Use fixed width for left labels to prevent proportional changes when center label width changes
+                let is_half_duration_row = table_row.left_label == "Half Duration";
+                let is_sudden_death_or_timeout_row =
+                    center_label == "Sudden Death" || center_label == "Last 2 Min Ref T/Out";
+                let is_overtime_or_timeout_value_row =
+                    table_row.left_label == "Overtime" || table_row.left_label == "Timeouts";
+                let left_label_width = if is_half_duration_row { 120.0 } else { 90.0 }; // Increased to 90px to prevent "Timeouts" from wrapping
+                let center_label_portion = if is_half_duration_row { 3 } else { 1 };
+
+                let row_element = row![
+                    container(text(table_row.left_label).size(SMALL_TEXT))
+                        .padding([1, 1])
+                        .width(Length::Fixed(left_label_width))
+                        .style(container::rounded_box),
+                    container(
+                        text(table_row.left_value.clone())
+                            .size(SMALL_TEXT)
+                            .width(Length::Fill)
+                            .align_x(Horizontal::Center)
+                    )
                     .center_x(Length::Fill)
                     .padding([1, 1])
-                    .width(if is_overtime_or_timeout_value_row { Length::Fixed(86.0) } else { Length::Fixed(60.0) })  // Fixed width for Overtime/Timeouts value cells
+                    .width(if is_overtime_or_timeout_value_row {
+                        Length::Fixed(86.0)
+                    } else {
+                        Length::Fixed(60.0)
+                    }) // Fixed width for Overtime/Timeouts value cells
                     .style(container::rounded_box),
-                container(
-                    text(center_label)
-                        .size(SMALL_TEXT)
-                        .align_x(Horizontal::Left)
-                        .width(Length::Fill)
-                )
+                    container(
+                        text(center_label)
+                            .size(SMALL_TEXT)
+                            .align_x(Horizontal::Left)
+                            .width(Length::Fill)
+                    )
                     .padding([1, 1])
-                    .width(if is_sudden_death_or_timeout_row { Length::Fixed(180.0) } else { Length::FillPortion(center_label_portion) })
+                    .width(if is_sudden_death_or_timeout_row {
+                        Length::Fixed(180.0)
+                    } else {
+                        Length::FillPortion(center_label_portion)
+                    })
                     .style(container::rounded_box),
-                container(
-                    text(center_value.clone())
-                        .size(SMALL_TEXT)
-                        .width(Length::Fill)
-                        .align_x(Horizontal::Center)
-                )
+                    container(
+                        text(center_value.clone())
+                            .size(SMALL_TEXT)
+                            .width(Length::Fill)
+                            .align_x(Horizontal::Center)
+                    )
                     .center_x(Length::Fill)
                     .padding([1, 1])
-                    .width(if is_overtime_or_timeout_value_row { Length::Fixed(86.0) } else { Length::Fixed(60.0) })  // Fixed width for Overtime/Timeouts value cells - ensures "YES" cells same size as "3:00" cell
+                    .width(Length::Fixed(86.0)) // All right-side value cells same width for alignment
                     .style(container::rounded_box),
-            ]
-            .spacing(1)
-            .width(Length::Fill);
+                ]
+                .spacing(1)
+                .width(Length::Fill);
 
-            details_column = details_column.push(row_element);
+                details_column = details_column.push(row_element);
+            } else {
+                // Create a 3-column row: Label | Color | TeamName (for game rows)
+
+                // Determine font size for team names
+                // Maintain same font size across the two rows of each game section
+                // When we hit a header ("Last Game" or "Next Game"), update the current section
+                if table_row.left_label == "Last Game" || table_row.left_label == "Next Game" {
+                    current_game_header = Some(table_row.left_label.clone());
+                }
+
+                let is_game_row_color = table_row.left_value == "White" || table_row.left_value == "Black";
+                let is_game_section = table_row.left_label == "Last Game"
+                    || table_row.left_label == "Next Game"
+                    || table_row.left_label.is_empty();
+
+                let team_name_font_size = if is_game_row_color && is_game_section {
+                    // Use the current section (Last/Next Game) for both rows
+                    let header = current_game_header.as_deref().unwrap_or_else(|| {
+                        if table_row.left_label == "Next Game" { "Next Game" } else { "Last Game" }
+                    });
+                    if header == "Next Game" {
+                        dynamic_font_sizing.get_font_size(GameInfoCell::NextGame)
+                    } else {
+                        dynamic_font_sizing.get_font_size(GameInfoCell::LastGame)
+                    }
+                } else {
+                    SMALL_TEXT
+                };
+
+                let row_element = row![
+                    container(text(table_row.left_label).size(SMALL_TEXT))
+                        .padding([1, 1])
+                        .width(Length::Fixed(GAME_LABEL_WIDTH))
+                        .style(container::rounded_box),
+                    container(
+                        text(table_row.left_value.clone())
+                            .size(SMALL_TEXT)
+                            .width(Length::Fill)
+                            .align_x(Horizontal::Center)
+                    )
+                    .center_x(Length::Fill)
+                    .padding([1, 1])
+                    .width(Length::Fixed(60.0)) // Fixed width for color labels
+                    .style(container::rounded_box),
+                    container(
+                        text(center_label)
+                            .size(team_name_font_size)
+                            .align_x(Horizontal::Left)
+                            .width(Length::Fill)
+                    )
+                    .padding([1, 1])
+                    .width(Length::Fill) // Team name takes remaining space
+                    .height(Length::Fixed(GAME_INFO_CELL_HEIGHT))
+                    .align_y(Vertical::Center)
+                    .style(container::rounded_box),
+                ]
+                .spacing(1)
+                .width(Length::Fill);
+
+                details_column = details_column.push(row_element);
+            }
         } else {
             // Single 2-column row: Label | Value (spanning full width)
             // Give more space to values for people's names
-            let (label_portion, value_portion) = (3, 5);  // Keep consistent; value column wider for names
+            let (label_portion, value_portion) = (3, 5); // Keep consistent; value column wider for names
 
             let label_width = match table_row.left_label.as_str() {
                 "Last Game" | "Next Game" => Length::Fixed(GAME_LABEL_WIDTH),
-                "Chief Ref" | "Timer" | "Water Ref 1" | "Water Ref 2" | "Water Ref 3" => Length::Fixed(REF_LABEL_WIDTH),
-                _ => Length::FillPortion(label_portion)
+                "" => Length::Fixed(GAME_LABEL_WIDTH), // Empty labels for second rows of game info
+                "Chief Ref" | "Timer" | "Water Ref 1" | "Water Ref 2" | "Water Ref 3" => {
+                    Length::Fixed(REF_LABEL_WIDTH)
+                }
+                _ => Length::FillPortion(label_portion),
             };
 
+            let font_size = get_font_size_for_table_row(&table_row.left_label, dynamic_font_sizing);
+            let is_ref_row_label = matches!(
+                table_row.left_label.as_str(),
+                "Chief Ref" | "Timer" | "Water Ref 1" | "Water Ref 2" | "Water Ref 3"
+            );
             let row_element = row![
                 container(text(table_row.left_label).size(SMALL_TEXT))
                     .padding([1, 2])
                     .width(label_width)
                     .style(container::rounded_box),
-                container(
-                    text(table_row.left_value.clone())
-                        .size(SMALL_TEXT)
-                        .width(Length::Fill)
-                        .align_x(Horizontal::Center)
-                )
-                    .center_x(Length::Fill)
+                {
+                    // Build the value container and only lock height for Referee rows
+                    let value_base = container(
+                        text(table_row.left_value.clone())
+                            .size(font_size)
+                            .width(Length::Fill)
+                            .align_x(Horizontal::Left)
+                    )
                     .padding([1, 2])
-                    .width(Length::FillPortion(value_portion))
-                    .style(container::rounded_box),
+                    .width(Length::FillPortion(value_portion));
+
+                    if is_ref_row_label {
+                        value_base
+                            .height(Length::Fixed(GAME_INFO_CELL_HEIGHT))
+                            .align_y(Vertical::Center)
+                            .style(container::rounded_box)
+                    } else {
+                        value_base.style(container::rounded_box)
+                    }
+                },
             ]
             .spacing(1)
             .width(Length::Fill);
@@ -628,34 +892,28 @@ fn build_config_table<'a>(
         .into()
 }
 
-fn make_value_button<'a>(label: String, value: String) -> Element<'a, Message> {
-    let content = column![
-        text(label).size(SMALL_TEXT * 0.8),
-        text(value).size(SMALL_TEXT),
-    ]
-    .spacing(2)
-    .width(Length::Fill);
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    container(content)
-        .padding([4, 8])
-        .width(Length::Fill)
-        .style(container::rounded_box)
-        .into()
+    #[test]
+    fn test_font_size_mapping_preserves_alignment() {
+        let dfs = DynamicFontSizing::new();
+
+        // Test that target cell labels map correctly to dynamic font sizes
+        assert_eq!(get_font_size_for_table_row("Chief Ref", &dfs), SMALL_TEXT);
+        assert_eq!(get_font_size_for_table_row("Timer", &dfs), SMALL_TEXT);
+        assert_eq!(get_font_size_for_table_row("Water Ref 1", &dfs), SMALL_TEXT);
+        assert_eq!(get_font_size_for_table_row("Water Ref 2", &dfs), SMALL_TEXT);
+        assert_eq!(get_font_size_for_table_row("Water Ref 3", &dfs), SMALL_TEXT);
+
+        // Test that non-target labels return default font size
+        assert_eq!(get_font_size_for_table_row("Last Game", &dfs), SMALL_TEXT);
+        assert_eq!(get_font_size_for_table_row("Next Game", &dfs), SMALL_TEXT);
+        assert_eq!(get_font_size_for_table_row("", &dfs), SMALL_TEXT); // Empty labels
+        assert_eq!(get_font_size_for_table_row("Half Duration", &dfs), SMALL_TEXT);
+        assert_eq!(get_font_size_for_table_row("Unknown Label", &dfs), SMALL_TEXT);
+    }
 }
 
-fn make_label_value_pair<'a>(label: String, value: String) -> Element<'a, Message> {
-    // Create a 2-column layout: label on left, value on right
-    row![
-        container(text(label).size(SMALL_TEXT))
-            .padding([4, 8])
-            .width(Length::FillPortion(1))
-            .style(container::rounded_box),
-        container(text(value).size(SMALL_TEXT))
-            .padding([4, 8])
-            .width(Length::FillPortion(1))
-            .style(container::rounded_box),
-    ]
-    .spacing(2)
-    .width(Length::Fill)
-    .into()
-}
+

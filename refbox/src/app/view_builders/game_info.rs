@@ -1,7 +1,7 @@
 use super::*;
 use iced::{
     Length,
-    widget::{column, horizontal_space, row, container},
+    widget::{column, container, horizontal_space, row},
 };
 use uwh_common::{
     game_snapshot::GameSnapshot,
@@ -28,6 +28,7 @@ pub(in super::super) fn build_game_info_page<'a>(
         mode,
         clock_running,
         teams,
+        ..
     } = data;
 
     let middle_item: Element<_> = if using_uwhportal {
@@ -49,12 +50,12 @@ pub(in super::super) fn build_game_info_page<'a>(
 
     let table_rows = build_details_table(snapshot, config, using_uwhportal, games, teams);
 
-    let mut details_column = column![]
-        .spacing(SPACING / 2.0)
-        .width(Length::Fill);
+    let mut details_column = column![].spacing(SPACING / 2.0).width(Length::Fill);
 
     for table_row in table_rows {
-        if let (Some(right_label), Some(right_value)) = (&table_row.right_label, &table_row.right_value) {
+        if let (Some(right_label), Some(right_value)) =
+            (&table_row.right_label, &table_row.right_value)
+        {
             // Two-column row
             details_column = details_column.push(
                 row![
@@ -72,18 +73,16 @@ pub(in super::super) fn build_game_info_page<'a>(
                     ),
                 ]
                 .spacing(SPACING)
-                .width(Length::Fill)
+                .width(Length::Fill),
             );
         } else {
             // Single-column row
-            details_column = details_column.push(
-                make_value_button(
-                    table_row.left_label,
-                    table_row.left_value,
-                    (false, false),
-                    None
-                )
-            );
+            details_column = details_column.push(make_value_button(
+                table_row.left_label,
+                table_row.left_value,
+                (false, false),
+                None,
+            ));
         }
     }
 

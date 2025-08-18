@@ -50,6 +50,12 @@ use update_sender::*;
 mod languages;
 use languages::*;
 
+mod dynamic_font_sizing;
+use dynamic_font_sizing::*;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::cell::RefCell;
+
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct RefBoxApp {
@@ -73,6 +79,9 @@ pub struct RefBoxApp {
     sound: SoundController,
     sim_child: Option<Child>,
     list_all_events: bool,
+    dynamic_font_sizing: RefCell<DynamicFontSizing>,
+    font_demo: bool,
+    demo_data_type: String,
 }
 
 #[derive(Debug)]
@@ -85,6 +94,8 @@ pub struct RefBoxAppFlags {
     pub require_https: bool,
     pub fullscreen: bool,
     pub list_all_events: bool,
+    pub font_demo: bool,
+    pub demo_data_type: String,
 }
 
 #[derive(Debug, Clone)]
@@ -118,8 +129,35 @@ enum ConfirmationKind {
 }
 
 impl RefBoxApp {
+    /// Calculate a hash representing the current game state for change detection
+    fn calculate_game_state_hash(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+
+        // Hash key game state components that should trigger font size reset
+        self.snapshot.game_number.hash(&mut hasher);
+        self.snapshot.next_game_number.hash(&mut hasher);
+
+        // Hash current period as discriminant since it may not implement Hash
+        std::mem::discriminant(&self.snapshot.current_period).hash(&mut hasher);
+
+        // Include game configuration that might affect display
+        if let Some(schedule) = &self.schedule {
+            if let Some(game) = schedule.games.get(&self.snapshot.game_number) {
+                game.number.hash(&mut hasher);
+                game.dark.hash(&mut hasher);
+                game.light.hash(&mut hasher);
+            }
+        }
+
+        hasher.finish()
+    }
+
     fn apply_snapshot(&mut self, mut new_snapshot: GameSnapshot) -> Task<Message> {
         let mut task = Task::none();
+
+        // Calculate game state hash before updating snapshot
+        let old_game_state_hash = self.calculate_game_state_hash();
+
         if new_snapshot.current_period != self.snapshot.current_period {
             if new_snapshot.current_period == GamePeriod::BetweenGames {
                 task = self.handle_game_end(&new_snapshot.game_number);
@@ -138,7 +176,16 @@ impl RefBoxApp {
                 self.config.hardware.brightness,
             )
             .unwrap();
+
+        // Update snapshot and check for game state changes
         self.snapshot = new_snapshot;
+        let new_game_state_hash = self.calculate_game_state_hash();
+
+        // Reset dynamic font sizing if game state changed
+        if old_game_state_hash != new_game_state_hash {
+            self.dynamic_font_sizing.borrow_mut().reset_for_new_game(new_game_state_hash);
+        }
+
         task
     }
 
@@ -413,6 +460,9 @@ impl RefBoxApp {
     }
 
     fn apply_settings_change(&mut self) {
+        // Calculate game state hash before applying changes
+        let old_game_state_hash = self.calculate_game_state_hash();
+
         let edited_settings = self.edited_settings.take().unwrap();
 
         let EditableSettings {
@@ -452,6 +502,12 @@ impl RefBoxApp {
                 .set_hide_time(self.config.hide_time)
                 .unwrap();
         }
+
+        // Check for game state changes after applying settings
+        let new_game_state_hash = self.calculate_game_state_hash();
+        if old_game_state_hash != new_game_state_hash {
+            self.dynamic_font_sizing.borrow_mut().reset_for_new_game(new_game_state_hash);
+        }
     }
 }
 
@@ -475,6 +531,8 @@ impl RefBoxApp {
             require_https,
             fullscreen,
             list_all_events,
+            font_demo,
+            demo_data_type,
         } = flags;
 
         let mut tm = TournamentManager::new(config.game.clone());
@@ -529,6 +587,9 @@ impl RefBoxApp {
             sound,
             sim_child,
             list_all_events,
+            dynamic_font_sizing: RefCell::new(DynamicFontSizing::new()),
+            font_demo,
+            demo_data_type,
         };
 
         let task = Task::batch(vec![
@@ -2132,6 +2193,8 @@ impl RefBoxApp {
                     .as_ref()
                     .and_then(|events| events.get(id).and_then(|event| event.teams.as_ref()))
             }),
+            font_demo: self.font_demo,
+            demo_data_type: self.demo_data_type.clone(),
         };
 
         let mut main_view = column![match self.app_state {
@@ -2158,6 +2221,7 @@ impl RefBoxApp {
                     self.using_uwhportal,
                     self.schedule.as_ref().map(|s| &s.games),
                     self.config.track_fouls_and_warnings,
+                    &mut self.dynamic_font_sizing.borrow_mut(),
                 )
             }
             AppState::TimeEdit(_, time, timeout_time) =>

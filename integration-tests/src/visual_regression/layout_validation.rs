@@ -5,4 +5,3 @@ mod tests {
         assert!(true);
     }
 }
-

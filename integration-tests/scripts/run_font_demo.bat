@@ -15,9 +15,10 @@ echo.
 echo Available demo modes:
 echo 1. Specification data (long referee names from your requirements)
 echo 2. Short names (should not trigger font reduction)
+echo 3. Exit without running demo
 echo.
 
-set /p choice="Enter your choice (1-2): "
+set /p choice="Enter your choice (1-3): "
 
 if "%choice%"=="1" (
     echo.
@@ -45,6 +46,14 @@ if "%choice%"=="1" (
     echo Font sizes should remain at default size.
     echo.
     cargo run --bin refbox -- --font-demo --demo-data short --no-simulate
+) else if "%choice%"=="3" (
+    echo.
+    echo Exiting without running demo...
+    echo.
+    echo To run unit tests instead, use: run_font_tests.bat
+    echo To modify test data, edit: refbox/test_data/font_sizing_test_data.csv
+    echo.
+    goto end
 ) else (
     echo.
     echo Starting RefBox with specification test data (default)...
@@ -62,4 +71,6 @@ echo To modify test data:
 echo   Edit: refbox/test_data/font_sizing_test_data.csv
 echo ========================================
 echo.
+
+:end
 pause

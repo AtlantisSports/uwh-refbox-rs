@@ -40,6 +40,33 @@ Builds for cargo targets other than the host target can be compiled using the `c
    - `x86_64-apple-darwin` for Intel based Macs
 4. The resulting binaries will be in the `target/<target>/release` folder.
 
+# Documentation
+
+Comprehensive design documentation is available in the [`docs/`](docs) directory:
+
+- **Design Documents**: [`docs/design/`](docs/design) contains detailed design specifications
+- **Documentation Scripts**: [`docs/scripts/`](docs/scripts) contains tools for generating HTML documentation
+
+To view the formatted documentation, open [`docs/design/Atlantis UWH-REFBOX-RS Detailed Design.html`](docs/design/Atlantis%20UWH-REFBOX-RS%20Detailed%20Design.html) in your web browser.
+
+# Testing
+
+## Integration Tests
+
+Integration tests and test scripts are located in [`integration-tests/`](integration-tests):
+
+- **Test Scripts**: [`integration-tests/scripts/`](integration-tests/scripts) contains scripts for running font sizing tests and demonstrations
+- **Test Suites**: [`integration-tests/src/`](integration-tests/src) contains the test implementation code
+
+Run test scripts from the project root:
+```bash
+# Font sizing demonstration
+integration-tests\scripts\run_font_demo.bat
+
+# Font sizing tests
+integration-tests\scripts\run_font_tests.bat
+```
+
 # Contributing
 
 Contributions are welcome, just open a PR with your changes. All PRs must pass all tests, must have no `clippy` warnings, and must pass `cargo audit` before being merged.

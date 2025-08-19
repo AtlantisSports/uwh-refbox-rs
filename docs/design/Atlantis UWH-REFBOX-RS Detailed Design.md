@@ -212,18 +212,189 @@ All test cases use the exact specification data:
 - **Font Sizing**: Validates that all referee rows remain visible with long names
 - **Layout**: Ensures Water Ref 3 is no longer cut off from display
 
-## 8. Developer Workflow Enhancements
+## 8. Timer System Functional Requirements
+
+### 8.1 Core Timer Architecture
+
+#### 8.1.1 Multi-Clock System
+- **Game Clock**: Primary countdown timer for game periods
+  - Supports countdown mode for regular periods (First Half, Second Half, Overtime)
+  - Supports count-up mode for Sudden Death periods
+  - Precision: Nanosecond accuracy using `tokio::time::Instant`
+  - Range: 0 to 65,535 seconds (18+ hours)
+
+- **Timeout Clock**: Independent timer for timeout periods
+  - Team timeouts, referee timeouts, penalty shots
+  - Can run concurrently with stopped game clock
+  - Supports both countdown and count-up modes
+  - Automatic timeout type detection and display
+
+- **Penalty Timers**: Individual penalty duration tracking
+  - Multiple concurrent penalty timers per team
+  - Automatic calculation of time remaining based on game state
+  - Cross-period penalty time tracking
+  - Support for 30-second, 1-minute, 2-minute, 4-minute, 5-minute, and Total Dismissal penalties
+
+#### 8.1.2 Clock State Management
+- **Three Clock States**:
+  - `Stopped`: Clock paused with fixed time value
+  - `CountingDown`: Active countdown from start time with remaining duration
+  - `CountingUp`: Active count-up from start time (used in Sudden Death)
+
+- **State Transitions**: Atomic state changes with logging
+- **Thread Safety**: Mutex-protected tournament manager for concurrent access
+- **State Persistence**: Clock state maintained across application restarts
+
+### 8.2 Game Period Management
+
+#### 8.2.1 Period Types and Durations
+- **Between Games**: Variable duration based on schedule
+- **First Half**: Configurable duration (default: 15 minutes)
+- **Half Time**: Configurable break duration (default: 3 minutes)
+- **Second Half**: Same duration as First Half
+- **Pre-Overtime**: Configurable break (default: 3 minutes)
+- **Overtime First Half**: Configurable duration (default: 5 minutes)
+- **Overtime Half Time**: Configurable break (default: 3 minutes)
+- **Overtime Second Half**: Same as Overtime First Half
+- **Pre-Sudden Death**: Configurable break (default: 1 minute)
+- **Sudden Death**: Count-up timer with no maximum duration
+
+#### 8.2.2 Period Transition Logic
+- **Automatic Transitions**: Seamless progression between periods when time expires
+- **Manual Transitions**: Referee-controlled period advancement
+- **Conditional Transitions**: Overtime and Sudden Death based on game configuration
+- **Score-Based Logic**: Automatic game end when score difference determined
+- **Reset Functionality**: Game reset during Between Games period
+
+### 8.3 Timeout System
+
+#### 8.3.1 Timeout Types
+- **Team Timeouts**:
+  - Configurable count per team (default: 1 per half)
+  - Configurable duration (default: 60 seconds)
+  - Can be counted per half or per game
+  - Automatic timeout count reset at half time (if configured)
+
+- **Referee Timeouts**:
+  - Unlimited duration
+  - Manual start/stop control
+  - Can be initiated during any game state
+
+- **Penalty Shots**:
+  - Standard penalty shot: Count-up timer
+  - Rugby penalty shot: Countdown timer (default: 45 seconds)
+  - Automatic timeout state management
+
+#### 8.3.2 Timeout State Management
+- **Concurrent Operation**: Timeouts can run while game clock is stopped
+- **State Preservation**: Timeout state maintained during clock operations
+- **Automatic Termination**: Timeouts end automatically or manually
+- **Display Integration**: Timeout information displayed on all output devices
+
+### 8.4 Penalty Timer System
+
+#### 8.4.1 Penalty Duration Tracking
+- **Individual Penalty Tracking**: Each penalty tracked separately with:
+  - Start time and period
+  - Player number and team color
+  - Penalty type and duration
+  - Infraction type
+  - Start instant for real-time calculations
+
+- **Cross-Period Calculations**:
+  - Penalties continue across period boundaries
+  - Automatic adjustment for non-penalty periods (Half Time, etc.)
+  - Complex time elapsed calculations across multiple periods
+
+#### 8.4.2 Penalty Time Calculations
+- **Time Remaining**: Real-time calculation of penalty time remaining
+- **Time Elapsed**: Calculation of penalty time served
+- **Completion Detection**: Automatic detection when penalty is fully served
+- **Total Dismissal Handling**: Special handling for indefinite penalties
+
+### 8.5 Time Synchronization and Broadcasting
+
+#### 8.5.1 Update Mechanism
+- **Subscription System**: Watch channel for clock running state changes
+- **Automatic Updates**: Continuous time updates when clocks are running
+- **Precision Timing**: Next update time calculation for optimal performance
+- **Snapshot Generation**: Real-time game state snapshots with current time values
+
+#### 8.5.2 Multi-Output Broadcasting
+- **LED Panel Output**: Binary protocol for LED matrix displays
+- **Serial Communication**: Hardware integration via serial ports
+- **Network Broadcasting**: JSON and binary network protocols
+- **UI Updates**: Real-time UI updates via message passing
+- **Overlay System**: Live streaming overlay integration
+
+### 8.6 Time Display and Formatting
+
+#### 8.6.1 Display Formats
+- **Standard Format**: MM:SS for most displays
+- **Long Format**: MM:SS.sss with milliseconds for precise timing
+- **Compact Format**: M:SS for space-constrained displays
+- **Penalty Format**: Time remaining or "TD" for Total Dismissal
+
+#### 8.6.2 Visual Indicators
+- **Period Identification**: Clear indication of current game period
+- **Timeout Indicators**: Visual distinction for different timeout types
+- **Clock Running State**: Visual indication when clocks are active
+- **Color Coding**: Different colors for different game states (normal, overtime, sudden death)
+
+### 8.7 Configuration and Customization
+
+#### 8.7.1 Timing Configuration
+- **Game Configuration**: All timing values configurable via TOML files
+- **UWH Portal Integration**: Automatic timing rule application from tournament management
+- **Runtime Adjustment**: Manual time setting during games (when clock stopped)
+- **Default Values**: Sensible defaults for all timing parameters
+
+#### 8.7.2 Behavioral Configuration
+- **Timeout Counting**: Per-half vs per-game timeout counting
+- **Period Enablement**: Enable/disable overtime and sudden death
+- **Single Half Mode**: Support for shortened game formats
+- **Break Durations**: Configurable break times between periods
+
+### 8.8 Error Handling and Validation
+
+#### 8.8.1 Time Validation
+- **Range Checking**: All time values validated within acceptable ranges
+- **Negative Time Prevention**: Protection against negative time calculations
+- **Overflow Protection**: Prevention of time value overflows
+- **State Consistency**: Validation of clock state consistency
+
+#### 8.8.2 Error Recovery
+- **Graceful Degradation**: System continues operation despite timing errors
+- **Automatic Correction**: Self-correction of minor timing inconsistencies
+- **Logging**: Comprehensive logging of all timing operations and errors
+- **Manual Override**: Referee ability to manually correct timing issues
+
+### 8.9 Performance Requirements
+
+#### 8.9.1 Timing Accuracy
+- **Precision**: Nanosecond-level internal precision
+- **Display Accuracy**: Sub-second accuracy for all displayed times
+- **Update Frequency**: Minimum 10Hz update rate for smooth display
+- **Latency**: Maximum 100ms latency from time change to display update
+
+#### 8.9.2 Resource Efficiency
+- **CPU Usage**: Minimal CPU overhead during normal operation
+- **Memory Usage**: Efficient memory usage for timing data structures
+- **Network Efficiency**: Optimized network protocols for time broadcasting
+- **Battery Life**: Power-efficient operation for portable devices
+
+## 9. Developer Workflow Enhancements
 - Optional pre-commit script to run fmt, clippy, unit and integration tests
 - Documentation for enabling hooks locally
 - Coverage collection on Linux job (optional, non-blocking) via grcov or tarpaulin
 
-## 8. Acceptance Criteria
+## 10. Acceptance Criteria
 - New tests compile and pass across Windows/macOS/Linux in CI
 - No breaking changes to existing crates or behavior
 - Tests for the recent label width logic exist and pass in all languages
 - Clear documentation and contribution guidance exists
 
-## 9. Roadmap (Incremental Plan)
+## 11. Roadmap (Incremental Plan)
 1) Author this design doc (MD + HTML) with diagrams and navigation
 2) Create `integration-tests` crate skeleton; compile baseline
 3) Add unit tests for label width logic and constants
@@ -235,12 +406,12 @@ All test cases use the exact specification data:
 9) Add optional coverage reporting
 10) Finalize maintenance & contribution guide
 
-## 10. Risks and Mitigations
+## 12. Risks and Mitigations
 - GUI-render differences: Avoid pixel diffs; test structure and properties instead
 - i18n string drift: Build-time checks (`build.rs`) already help; add tests that tolerate minor variations
 - Flaky tests: Keep tests deterministic; serialize where necessary
 
-## 11. Estimated Timeline
+## 13. Estimated Timeline
 Each task is ~20 minutes per subtask. See task list for detailed breakdown with review gates.
 
 Status update (in progress):
@@ -249,7 +420,7 @@ Status update (in progress):
 - Task 3 (Unit tests for label widths): Completed in refbox and integration-tests
 - Task 4 (i18n smoke tests): Initial key-consistency test added and passing
 
-## 12. Code Snippets (illustrative)
+## 14. Code Snippets (illustrative)
 Unit-style test for label mapping (pseudo):
 
 ```rust

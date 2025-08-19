@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🏗️ Atlantis UWH-REFBOX-RS Detailed Design</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #e8eaed;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 2rem 0;
+            text-align: center;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .header h1 {
+            color: #ffffff;
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .header .subtitle {
+            color: #b8c5d6;
+            font-size: 1.1rem;
+            font-weight: 300;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .toc-section {
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .toc-section h2 {
+            color: #4a90e2;
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .toc-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .toc-item {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 1rem;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            color: #4a90e2;
+            display: block;
+            font-weight: 500;
+        }
+
+        .toc-item:hover {
+            background: rgba(74, 144, 226, 0.1);
+            border-color: #4a90e2;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(74, 144, 226, 0.2);
+        }
+
+        .main-content {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 12px;
+            padding: 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .section {
+            margin-bottom: 3rem;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .section:last-child {
+            border-bottom: none;
+        }
+
+        .return-btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #4a90e2, #357abd);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .return-btn:hover {
+            background: linear-gradient(135deg, #357abd, #2968a3);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 2.2rem;
+            margin-bottom: 1rem;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+        }
+
+        h2 {
+            color: #4a90e2;
+            font-size: 1.8rem;
+            margin: 2rem 0 1rem 0;
+            border-bottom: 2px solid #4a90e2;
+            padding-bottom: 0.5rem;
+        }
+
+        h3 {
+            color: #6bb6ff;
+            font-size: 1.4rem;
+            margin: 1.5rem 0 0.75rem 0;
+        }
+
+        h4 {
+            color: #8cc8ff;
+            font-size: 1.2rem;
+            margin: 1rem 0 0.5rem 0;
+        }
+
+        p {
+            margin-bottom: 1rem;
+            color: #e8eaed;
+        }
+
+        ul, ol {
+            margin: 1rem 0;
+            padding-left: 2rem;
+        }
+
+        li {
+            margin: 0.5rem 0;
+            color: #e8eaed;
+            line-height: 1.6;
+        }
+
+        /* Nested list indentation */
+        ul ul, ol ol, ul ol, ol ul {
+            margin: 0.25rem 0;
+            padding-left: 2rem;
+        }
+
+        ul ul ul, ol ol ol {
+            padding-left: 2rem;
+        }
+
+        .tree-diagram {
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            line-height: 1.4;
+            color: #e8eaed;
+            overflow-x: auto;
+        }
+
+        .tree-diagram .comment {
+            color: #7dd3fc;
+        }
+
+        .tree-diagram .folder {
+            color: #fbbf24;
+            font-weight: bold;
+        }
+
+        .tree-diagram .file {
+            color: #a7f3d0;
+        }
+
+        code {
+            background: rgba(0, 0, 0, 0.4);
+            color: #fbbf24;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+
+        pre {
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            overflow-x: auto;
+            color: #e8eaed;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+            color: inherit;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            margin-left: 0.5rem;
+        }
+
+        .status-planned {
+            background: #f59e0b;
+            color: #000;
+        }
+
+        .status-complete {
+            background: #10b981;
+            color: #000;
+        }
+
+        .timer-highlight {
+            background: linear-gradient(135deg, rgba(74, 144, 226, 0.2), rgba(53, 122, 189, 0.2));
+            border: 1px solid rgba(74, 144, 226, 0.4);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .toc-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🏗️ Atlantis UWH-REFBOX-RS Detailed Design</h1>
+        <p class="subtitle">Comprehensive design documentation including dynamic font sizing, referee information display, and automated testing strategy</p>
+    </div>
+
+    <div class="container">
+        <div class="toc-section" id="index">
+            <h2>📋 Table of Contents</h2>
+            <div class="toc-grid">
+                <a href="#1-purpose-and-goals" class="toc-item">1. Purpose and Goals</a>
+                <a href="#2-recent-enhancements" class="toc-item">2. Recent Enhancements</a>
+                <a href="#3-target-architecture-overview" class="toc-item">3. Target Architecture Overview</a>
+                <a href="#4-directory-structure-proposed" class="toc-item">4. Directory Structure (proposed)</a>
+                <a href="#5-testing-focus-areas-and-examples" class="toc-item">5. Testing Focus Areas and Examples</a>
+                <a href="#6-ci-cd-integration" class="toc-item">6. CI/CD Integration</a>
+                <a href="#7-implementation-status" class="toc-item">7. Implementation Status</a>
+                <a href="#8-timer-system-functional-requirements" class="toc-item">8. Timer System Functional Requirements</a>
+                <a href="#9-developer-workflow-enhancements" class="toc-item">9. Developer Workflow Enhancements</a>
+                <a href="#10-acceptance-criteria" class="toc-item">10. Acceptance Criteria</a>
+                <a href="#11-roadmap-incremental-plan" class="toc-item">11. Roadmap (Incremental Plan)</a>
+                <a href="#12-risks-and-mitigations" class="toc-item">12. Risks and Mitigations</a>
+                <a href="#13-estimated-timeline" class="toc-item">13. Estimated Timeline</a>
+                <a href="#14-code-snippets-illustrative" class="toc-item">14. Code Snippets (illustrative)</a>
+            </div>
+        </div>
+
+        <main class="main-content"><h1>Atlantis UWH-REFBOX-RS Detailed Design</h1>
+
+
+<div class="section" id="1-purpose-and-goals">
+<a href="#index" class="return-btn">↑ Return to Index</a>
+<h2>1. Purpose and Goals</h2>
+<p>This document provides a comprehensive design overview of the UWH RefBox Rust workspace, including recent enhancements and automated testing strategy. It covers:</p>
+<ul>
+<li><strong>Dynamic Font Sizing System</strong>: Intelligent font scaling for UI elements with long text content</li>
+<li><strong>Referee Information Display</strong>: Enhanced table layout for referee assignments and roles</li>
+<li><strong>Automated Testing Strategy</strong>: Comprehensive testing approach for UI, integration, and functionality</li>
+<li><strong>CI/CD Pipeline Integration</strong>: Continuous integration and deployment configuration</li>
+<li><strong>Developer Workflow</strong>: Tools and processes for maintaining code quality</li>
+<li><strong>Internationalization Support</strong>: Multi-language layout consistency and validation</li>
+</ul>
+
+</div>
+<div class="section" id="2-recent-enhancements">
+<a href="#index" class="return-btn">↑ Return to Index</a>
+<h2>2. Recent Enhancements</h2>
+
+<h3>2.1 Dynamic Font Sizing System</h3>
+<p><strong>Implementation</strong>: <code>refbox/src/app/dynamic_font_sizing.rs</code></p>
+
+<p>The dynamic font sizing system automatically adjusts font sizes to accommodate long text content while maintaining readability and layout consistency.</p>
+
+<p><strong>Key Features</strong>:</p>
+<ul>
+<li><strong>Group-based Font Sizing</strong>: All referee information cells use consistent font sizes</li>
+<li><strong>Real-time Text Measurement</strong>: Uses Roboto-Medium.ttf font for accurate width calculations</li>
+<li><strong>Minimum Readability</strong>: Enforces minimum font size (12px) to maintain usability</li>
+<li><strong>State Management</strong>: Resets font sizes on game state changes</li>
+</ul>
+
+<p><strong>Target Cells</strong>:</p>
+<ul>
+<li>Chief Ref: 176px available width</li>
+<li>Timer: 176px available width</li>
+<li>Water Ref 1-3: 176px available width each</li>
+<li>Team Names (Last/Next Game): 196px available width</li>
+</ul>
+
+<p><strong>Algorithm</strong>:</p>
+<p>1. Measure text width at default size (18px)</p>
+<p>2. If text exceeds available width, use binary search to find optimal size</p>
+<p>3. Apply group-based sizing (all cells use the smallest required size)</p>
+<p>4. Enforce minimum font size for readability</p>
+
+<h3>2.2 Referee Information Display</h3>
+<p><strong>Implementation</strong>: <code>refbox/src/app/view_builders/main_view.rs</code></p>
+
+<p>Enhanced table layout displays referee assignments with proper spacing and font sizing.</p>
+
+<p><strong>Referee Roles Supported</strong>:</p>
+<ul>
+<li><strong>Chief Ref</strong>: Primary referee for the game</li>
+<li><strong>Timer</strong>: Official timekeeper</li>
+<li><strong>Water Ref 1-3</strong>: In-water referees (up to 3 positions)</li>
+</ul>
+
+<p><strong>Layout Features</strong>:</p>
+<ul>
+<li>Fixed-width labels (120px) for consistent alignment</li>
+<li>Dynamic font sizing for long referee names</li>
+<li>Compact vertical spacing to fit all roles on screen</li>
+<li>Integration with UWH Portal for referee data</li>
+</ul>
+
+<h3>2.3 Current State Assessment</h3>
+<ul>
+<li><strong>Workspace Structure</strong>: Multiple crates (refbox, uwh-common, overlay, etc.)</li>
+<li><strong>Testing Coverage</strong>: Unit tests for config, tournament manager, sound controller, uwh-common</li>
+<li><strong>CI Pipeline</strong>: GitHub Actions runs <code>cargo test --all</code> across platforms</li>
+<li><strong>Recent Additions</strong>: Dynamic font sizing tests, referee information validation</li>
+<li><strong>Remaining Gaps</strong>: Visual regression testing, comprehensive i18n validation</li>
+</ul>
+
+</div>
+<div class="section" id="3-target-architecture-overview">
+<a href="#index" class="return-btn">↑ Return to Index</a>
+<h2>3. Target Architecture Overview</h2>
+<p>Introduce a new workspace member <code>integration-tests</code> dedicated to tests that span crates and UI/layout logic. Keep existing unit tests in-place within each crate. Run tests locally and in CI.</p>
+
+<p>High-level layers:</p>
+<ul>
+<li>Unit tests: localized logic checks (e.g., label width match expression) within or alongside crates</li>
+<li>Integration tests: cross-module behaviors, app flows</li>
+<li>UI/layout structural tests: assert table structure and length/width decisions (not pixel rendering)</li>
+<li>Internationalization tests: build app or components under en-US, es, fr and verify rules</li>
+<li>Visual regression-style: snapshot-like structural expectations, avoiding brittle pixel diffs</li>
+</ul>
+
+</div>
+<div class="section" id="4-directory-structure-proposed">
+<a href="#index" class="return-btn">↑ Return to Index</a>
+<h2>4. Directory Structure (proposed)</h2>
+<ul>
+<li>integration-tests/</li>
+<li style="margin-left: 1.5rem;">Cargo.toml</li>
+<li style="margin-left: 1.5rem;">src/</li>
+<li style="margin-left: 3.0rem;">lib.rs</li>
+<li style="margin-left: 3.0rem;">ui_tests/</li>
+<li style="margin-left: 4.5rem;">mod.rs</li>
+<li style="margin-left: 4.5rem;">view_builders/</li>
+<li style="margin-left: 6.0rem;">main_view_tests.rs</li>
+<li style="margin-left: 6.0rem;">layout_tests.rs</li>
+<li style="margin-left: 6.0rem;">label_width_tests.rs</li>
+<li style="margin-left: 4.5rem;">internationalization/</li>
+<li style="margin-left: 6.0rem;">language_tests.rs</li>
+<li style="margin-left: 6.0rem;">layout_consistency_tests.rs</li>
+<li style="margin-left: 3.0rem;">integration/</li>
+<li style="margin-left: 4.5rem;">tournament_manager_tests.rs</li>
+<li style="margin-left: 4.5rem;">config_tests.rs</li>
+<li style="margin-left: 3.0rem;">visual_regression/</li>
+<li style="margin-left: 4.5rem;">snapshot_tests.rs</li>
+<li style="margin-left: 4.5rem;">layout_validation.rs</li>
+<li style="margin-left: 3.0rem;">utils/</li>
+<li style="margin-left: 4.5rem;">mock_data.rs</li>
+<li style="margin-left: 4.5rem;">test_helpers.rs</li>
+<li style="margin-left: 4.5rem;">layout_assertions.rs</li>
+<li style="margin-left: 1.5rem;">tests/</li>
+<li style="margin-left: 3.0rem;">ui_integration.rs</li>
+<li style="margin-left: 3.0rem;">full_app_tests.rs</li>
+</ul>
+
+</div>
+<div class="section" id="5-testing-focus-areas-and-examples">
+<a href="#index" class="return-btn">↑ Return to Index</a>
+<h2>5. Testing Focus Areas and Examples</h2>
+
+<h3>5.1 Dynamic Font Sizing Tests</h3>
+<p><strong>Location</strong>: <code>refbox/src/app/dynamic_font_sizing.rs</code></p>
+
+<p><strong>Test Data</strong> (matching specification requirements):</p>
+<pre><code class="language-rust">
+// Team names
+(&quot;Australia&quot;, &quot;New Zealand&quot;)        // Last Game
+(&quot;Nederlands&quot;, &quot;South Africa&quot;)      // Next Game
+
+// Referee names
+(&quot;Russell Owen Camilo La Torre&quot;)    // Chief Ref
+(&quot;Norfatin Aainaa Binti Hashim&quot;)   // Timer
+(&quot;Tuan San Jonathan Chan&quot;)         // Water Ref 1
+(&quot;Muhammad Danish Haikal Mohd Fadel&quot;) // Water Ref 2
+(&quot;A very long person name&quot;)        // Water Ref 3
+</pre>
+
+<p><strong>Key Test Cases</strong>:</p>
+<ul>
+<li><code>test_font_resizing_with_specification_test_data()</code>: Validates all specified names</li>
+<li><code>test_all_referee_rows_visible_with_long_names()</code>: Ensures all referee rows remain visible</li>
+<li><code>test_font_sizing_maintains_readability()</code>: Enforces minimum readable font sizes</li>
+<li><code>test_font_sizing_reset_on_state_changes()</code>: Validates state management</li>
+<li><code>test_specification_team_names_font_sizing()</code>: Team name specific validation</li>
+</ul>
+
+<h3>5.2 Referee Information Row Tests</h3>
+<p><strong>Location</strong>: <code>integration-tests/src/ui_tests/view_builders/main_view_tests.rs</code></p>
+
+<p><strong>Test Coverage</strong>:</p>
+<ul>
+<li><code>test_referee_information_rows_structure()</code>: Validates table row structure</li>
+<li><code>test_referee_information_values_display()</code>: Tests value display and formatting</li>
+<li><code>test_table_row_visibility_and_layout()</code>: Ensures all rows are visible</li>
+<li><code>test_font_sizing_consistency_across_referee_cells()</code>: Group-based font sizing</li>
+</ul>
+
+<h3>5.3 Label Width and Layout (foundation)</h3>
+<ul>
+<li>Constants:</li>
+<li style="margin-left: 1.5rem;"><code>GAME_LABEL_WIDTH = 100.0</code></li>
+<li style="margin-left: 1.5rem;"><code>REF_LABEL_WIDTH = 120.0</code></li>
+<li>Single <code>match</code> expression determines width for known labels; default uses <code>FillPortion</code></li>
+<li>Unit tests: verify mappings for Last/Next Game, Chief Ref, Timer, Water Ref 1-3, and default path</li>
+</ul>
+
+<h3>5.4 Internationalization (i18n)</h3>
+<p><strong>Location</strong>: <code>integration-tests/src/ui_tests/internationalization/</code></p>
+
+<p><strong>Test Coverage</strong>:</p>
+<ul>
+<li>Instantiate app/components under <code>en-US</code>, <code>es</code>, <code>fr</code></li>
+<li>Verify that fixed-width rules still apply regardless of translated label text</li>
+<li>Validate dynamic font sizing works with translated referee role labels</li>
+<li>Ensure layout consistency across different language text lengths</li>
+<li>Test that referee information labels translate correctly while maintaining layout</li>
+</ul>
+
+<h3>5.3 Layout Structure Tests</h3>
+<ul>
+<li>Validate number and type of rows (4-column vs 2-column)</li>
+<li>Assert fixed widths are used where expected; proportional widths elsewhere</li>
+</ul>
+
+<h3>5.4 Integration Tests</h3>
+<ul>
+<li>TournamentManager clock start/stop behaviors</li>
+<li>Config persistence round-trips through UI interactions (as feasible)</li>
+</ul>
+
+<h3>5.5 Visual Regression-Style</h3>
+<ul>
+<li>Snapshot expectations on structural properties (counts, label types, width kinds) — not pixels</li>
+</ul>
+
+</div>
+<div class="section" id="6-ci-cd-integration">
+<a href="#index" class="return-btn">↑ Return to Index</a>
+<h2>6. CI/CD Integration</h2>
+
+<h3>6.1 Current Pipeline Status</h3>
+<p><strong>File</strong>: <code>.github/workflows/rust.yml</code></p>
+
+<p><strong>Current Configuration</strong>:</p>
+<ul>
+<li>Runs <code>cargo test --all</code> across multiple platforms (Windows, macOS, Linux)</li>
+<li>Builds all workspace crates including refbox, uwh-common, overlay</li>
+<li>Validates compilation and basic functionality</li>
+</ul>
+
+<h3>6.2 Enhanced Pipeline Features</h3>
+<p><strong>Planned Enhancements</strong>:</p>
+<ul>
+<li>Build and test the <code>integration-tests</code> crate</li>
+<li>Run dynamic font sizing tests with specification test data</li>
+<li>Validate referee information display tests</li>
+<li>Execute i18n-focused tests (serialized with <code>--test-threads=1</code> if needed)</li>
+<li>Maintain backward compatibility (keep existing jobs green)</li>
+</ul>
+
+<h3>6.3 Test Categories in CI</h3>
+<p>1. <strong>Unit Tests</strong>: Individual crate functionality</p>
+<p>2. <strong>Integration Tests</strong>: Cross-crate interactions</p>
+<p>3. <strong>UI/Layout Tests</strong>: Table structure and font sizing validation</p>
+<p>4. <strong>Font Sizing Tests</strong>: Dynamic sizing with long names</p>
+<p>5. <strong>Internationalization Tests</strong>: Multi-language layout consistency</p>
+
+</div>
+<div class="section" id="7-implementation-status">
+<a href="#index" class="return-btn">↑ Return to Index</a>
+<h2>7. Implementation Status</h2>
+
+<h3>7.1 Completed Features ✅</h3>
+<ul>
+<li><strong>Dynamic Font Sizing System</strong>: Fully implemented with comprehensive test coverage</li>
+<li><strong>Referee Information Display</strong>: All 5 referee roles (Chief Ref, Timer, Water Ref 1-3) supported</li>
+<li><strong>Font Size Optimization</strong>: Reduced from 19px to 18px for better space utilization</li>
+<li><strong>Group-based Font Sizing</strong>: Consistent font sizes across all referee information cells</li>
+<li><strong>Test Coverage</strong>: Specification-compliant test data for all referee names and team names</li>
+<li><strong>State Management</strong>: Font sizing resets properly on game state changes</li>
+</ul>
+
+<h3>7.2 Current Configuration</h3>
+<ul>
+<li><strong>Default Font Size</strong>: 18px (SMALL_TEXT)</li>
+<li><strong>Minimum Font Size</strong>: 12px (MIN_FONT_SIZE)</li>
+<li><strong>Available Widths</strong>:</li>
+<li style="margin-left: 1.5rem;">Referee cells: 176px</li>
+<li style="margin-left: 1.5rem;">Team name cells: 196px</li>
+<li><strong>Font</strong>: Roboto-Medium.ttf for accurate text measurement</li>
+</ul>
+
+<h3>7.3 Test Data Validation ✅</h3>
+<p>All test cases use the exact specification data:</p>
+<ul>
+<li><strong>Team Names</strong>: Australia, New Zealand, Nederlands, South Africa</li>
+<li><strong>Referee Names</strong>: Russell Owen Camilo La Torre, Norfatin Aainaa Binti Hashim, etc.</li>
+<li><strong>Font Sizing</strong>: Validates that all referee rows remain visible with long names</li>
+<li><strong>Layout</strong>: Ensures Water Ref 3 is no longer cut off from display</li>
+</ul>
+
+</div>
+<div class="section" id="8-timer-system-functional-requirements">
+<a href="#index" class="return-btn">↑ Return to Index</a>
+<div class="timer-highlight">
+<h2>8. Timer System Functional Requirements</h2>
+
+<h3>8.1 Core Timer Architecture</h3>
+
+<h4>8.1.1 Multi-Clock System</h4>
+<ul>
+<li><strong>Game Clock</strong>: Primary countdown timer for game periods</li>
+<li style="margin-left: 1.5rem;">Supports countdown mode for regular periods (First Half, Second Half, Overtime)</li>
+<li style="margin-left: 1.5rem;">Supports count-up mode for Sudden Death periods</li>
+<li style="margin-left: 1.5rem;">Precision: Nanosecond accuracy using <code>tokio::time::Instant</code></li>
+<li style="margin-left: 1.5rem;">Range: 0 to 65,535 seconds (18+ hours)</li>
+</ul>
+
+<ul>
+<li><strong>Timeout Clock</strong>: Independent timer for timeout periods</li>
+<li style="margin-left: 1.5rem;">Team timeouts, referee timeouts, penalty shots</li>
+<li style="margin-left: 1.5rem;">Can run concurrently with stopped game clock</li>
+<li style="margin-left: 1.5rem;">Supports both countdown and count-up modes</li>
+<li style="margin-left: 1.5rem;">Automatic timeout type detection and display</li>
+</ul>
+
+<ul>
+<li><strong>Penalty Timers</strong>: Individual penalty duration tracking</li>
+<li style="margin-left: 1.5rem;">Multiple concurrent penalty timers per team</li>
+<li style="margin-left: 1.5rem;">Automatic calculation of time remaining based on game state</li>
+<li style="margin-left: 1.5rem;">Cross-period penalty time tracking</li>
+<li style="margin-left: 1.5rem;">Support for 30-second, 1-minute, 2-minute, 4-minute, 5-minute, and Total Dismissal penalties</li>
+</ul>
+
+<h4>8.1.2 Clock State Management</h4>
+<ul>
+<li><strong>Three Clock States</strong>:</li>
+<li style="margin-left: 1.5rem;"><code>Stopped</code>: Clock paused with fixed time value</li>
+<li style="margin-left: 1.5rem;"><code>CountingDown</code>: Active countdown from start time with remaining duration</li>
+<li style="margin-left: 1.5rem;"><code>CountingUp</code>: Active count-up from start time (used in Sudden Death)</li>
+</ul>
+
+<ul>
+<li><strong>State Transitions</strong>: Atomic state changes with logging</li>
+<li><strong>Thread Safety</strong>: Mutex-protected tournament manager for concurrent access</li>
+<li><strong>State Persistence</strong>: Clock state maintained across application restarts</li>
+</ul>
+
+<h3>8.2 Game Period Management</h3>
+
+<h4>8.2.1 Period Types and Durations</h4>
+<ul>
+<li><strong>Between Games</strong>: Variable duration based on schedule</li>
+<li><strong>First Half</strong>: Configurable duration (default: 15 minutes)</li>
+<li><strong>Half Time</strong>: Configurable break duration (default: 3 minutes)</li>
+<li><strong>Second Half</strong>: Same duration as First Half</li>
+<li><strong>Pre-Overtime</strong>: Configurable break (default: 3 minutes)</li>
+<li><strong>Overtime First Half</strong>: Configurable duration (default: 5 minutes)</li>
+<li><strong>Overtime Half Time</strong>: Configurable break (default: 3 minutes)</li>
+<li><strong>Overtime Second Half</strong>: Same as Overtime First Half</li>
+<li><strong>Pre-Sudden Death</strong>: Configurable break (default: 1 minute)</li>
+<li><strong>Sudden Death</strong>: Count-up timer with no maximum duration</li>
+</ul>
+
+<h4>8.2.2 Period Transition Logic</h4>
+<ul>
+<li><strong>Automatic Transitions</strong>: Seamless progression between periods when time expires</li>
+<li><strong>Manual Transitions</strong>: Referee-controlled period advancement</li>
+<li><strong>Conditional Transitions</strong>: Overtime and Sudden Death based on game configuration</li>
+<li><strong>Score-Based Logic</strong>: Automatic game end when score difference determined</li>
+<li><strong>Reset Functionality</strong>: Game reset during Between Games period</li>
+</ul>
+
+<h3>8.3 Timeout System</h3>
+
+<h4>8.3.1 Timeout Types</h4>
+<ul>
+<li><strong>Team Timeouts</strong>:</li>
+<li style="margin-left: 1.5rem;">Configurable count per team (default: 1 per half)</li>
+<li style="margin-left: 1.5rem;">Configurable duration (default: 60 seconds)</li>
+<li style="margin-left: 1.5rem;">Can be counted per half or per game</li>
+<li style="margin-left: 1.5rem;">Automatic timeout count reset at half time (if configured)</li>
+</ul>
+
+<ul>
+<li><strong>Referee Timeouts</strong>:</li>
+<li style="margin-left: 1.5rem;">Unlimited duration</li>
+<li style="margin-left: 1.5rem;">Manual start/stop control</li>
+<li style="margin-left: 1.5rem;">Can be initiated during any game state</li>
+</ul>
+
+<ul>
+<li><strong>Penalty Shots</strong>:</li>
+<li style="margin-left: 1.5rem;">Standard penalty shot: Count-up timer</li>
+<li style="margin-left: 1.5rem;">Rugby penalty shot: Countdown timer (default: 45 seconds)</li>
+<li style="margin-left: 1.5rem;">Automatic timeout state management</li>
+</ul>
+
+<h4>8.3.2 Timeout State Management</h4>
+<ul>
+<li><strong>Concurrent Operation</strong>: Timeouts can run while game clock is stopped</li>
+<li><strong>State Preservation</strong>: Timeout state maintained during clock operations</li>
+<li><strong>Automatic Termination</strong>: Timeouts end automatically or manually</li>
+<li><strong>Display Integration</strong>: Timeout information displayed on all output devices</li>
+</ul>
+
+<h3>8.4 Penalty Timer System</h3>
+
+<h4>8.4.1 Penalty Duration Tracking</h4>
+<ul>
+<li><strong>Individual Penalty Tracking</strong>: Each penalty tracked separately with:</li>
+<li style="margin-left: 1.5rem;">Start time and period</li>
+<li style="margin-left: 1.5rem;">Player number and team color</li>
+<li style="margin-left: 1.5rem;">Penalty type and duration</li>
+<li style="margin-left: 1.5rem;">Infraction type</li>
+<li style="margin-left: 1.5rem;">Start instant for real-time calculations</li>
+</ul>
+
+<ul>
+<li><strong>Cross-Period Calculations</strong>:</li>
+<li style="margin-left: 1.5rem;">Penalties continue across period boundaries</li>
+<li style="margin-left: 1.5rem;">Automatic adjustment for non-penalty periods (Half Time, etc.)</li>
+<li style="margin-left: 1.5rem;">Complex time elapsed calculations across multiple periods</li>
+</ul>
+
+<h4>8.4.2 Penalty Time Calculations</h4>
+<ul>
+<li><strong>Time Remaining</strong>: Real-time calculation of penalty time remaining</li>
+<li><strong>Time Elapsed</strong>: Calculation of penalty time served</li>
+<li><strong>Completion Detection</strong>: Automatic detection when penalty is fully served</li>
+<li><strong>Total Dismissal Handling</strong>: Special handling for indefinite penalties</li>
+</ul>
+
+<h3>8.5 Time Synchronization and Broadcasting</h3>
+
+<h4>8.5.1 Update Mechanism</h4>
+<ul>
+<li><strong>Subscription System</strong>: Watch channel for clock running state changes</li>
+<li><strong>Automatic Updates</strong>: Continuous time updates when clocks are running</li>
+<li><strong>Precision Timing</strong>: Next update time calculation for optimal performance</li>
+<li><strong>Snapshot Generation</strong>: Real-time game state snapshots with current time values</li>
+</ul>
+
+<h4>8.5.2 Multi-Output Broadcasting</h4>
+<ul>
+<li><strong>LED Panel Output</strong>: Binary protocol for LED matrix displays</li>
+<li><strong>Serial Communication</strong>: Hardware integration via serial ports</li>
+<li><strong>Network Broadcasting</strong>: JSON and binary network protocols</li>
+<li><strong>UI Updates</strong>: Real-time UI updates via message passing</li>
+<li><strong>Overlay System</strong>: Live streaming overlay integration</li>
+</ul>
+
+<h3>8.6 Time Display and Formatting</h3>
+
+<h4>8.6.1 Display Formats</h4>
+<ul>
+<li><strong>Standard Format</strong>: MM:SS for most displays</li>
+<li><strong>Long Format</strong>: MM:SS.sss with milliseconds for precise timing</li>
+<li><strong>Compact Format</strong>: M:SS for space-constrained displays</li>
+<li><strong>Penalty Format</strong>: Time remaining or "TD" for Total Dismissal</li>
+</ul>
+
+<h4>8.6.2 Visual Indicators</h4>
+<ul>
+<li><strong>Period Identification</strong>: Clear indication of current game period</li>
+<li><strong>Timeout Indicators</strong>: Visual distinction for different timeout types</li>
+<li><strong>Clock Running State</strong>: Visual indication when clocks are active</li>
+<li><strong>Color Coding</strong>: Different colors for different game states (normal, overtime, sudden death)</li>
+</ul>
+
+<h3>8.7 Configuration and Customization</h3>
+
+<h4>8.7.1 Timing Configuration</h4>
+<ul>
+<li><strong>Game Configuration</strong>: All timing values configurable via TOML files</li>
+<li><strong>UWH Portal Integration</strong>: Automatic timing rule application from tournament management</li>
+<li><strong>Runtime Adjustment</strong>: Manual time setting during games (when clock stopped)</li>
+<li><strong>Default Values</strong>: Sensible defaults for all timing parameters</li>
+</ul>
+
+<h4>8.7.2 Behavioral Configuration</h4>
+<ul>
+<li><strong>Timeout Counting</strong>: Per-half vs per-game timeout counting</li>
+<li><strong>Period Enablement</strong>: Enable/disable overtime and sudden death</li>
+<li><strong>Single Half Mode</strong>: Support for shortened game formats</li>
+<li><strong>Break Durations</strong>: Configurable break times between periods</li>
+</ul>
+
+<h3>8.8 Error Handling and Validation</h3>
+
+<h4>8.8.1 Time Validation</h4>
+<ul>
+<li><strong>Range Checking</strong>: All time values validated within acceptable ranges</li>
+<li><strong>Negative Time Prevention</strong>: Protection against negative time calculations</li>
+<li><strong>Overflow Protection</strong>: Prevention of time value overflows</li>
+<li><strong>State Consistency</strong>: Validation of clock state consistency</li>
+</ul>
+
+<h4>8.8.2 Error Recovery</h4>
+<ul>
+<li><strong>Graceful Degradation</strong>: System continues operation despite timing errors</li>
+<li><strong>Automatic Correction</strong>: Self-correction of minor timing inconsistencies</li>
+<li><strong>Logging</strong>: Comprehensive logging of all timing operations and errors</li>
+<li><strong>Manual Override</strong>: Referee ability to manually correct timing issues</li>
+</ul>
+
+<h3>8.9 Performance Requirements</h3>
+
+<h4>8.9.1 Timing Accuracy</h4>
+<ul>
+<li><strong>Precision</strong>: Nanosecond-level internal precision</li>
+<li><strong>Display Accuracy</strong>: Sub-second accuracy for all displayed times</li>
+<li><strong>Update Frequency</strong>: Minimum 10Hz update rate for smooth display</li>
+<li><strong>Latency</strong>: Maximum 100ms latency from time change to display update</li>
+</ul>
+
+<h4>8.9.2 Resource Efficiency</h4>
+<ul>
+<li><strong>CPU Usage</strong>: Minimal CPU overhead during normal operation</li>
+<li><strong>Memory Usage</strong>: Efficient memory usage for timing data structures</li>
+<li><strong>Network Efficiency</strong>: Optimized network protocols for time broadcasting</li>
+<li><strong>Battery Life</strong>: Power-efficient operation for portable devices</li>
+</ul>
+
+</div>
+<div class="section" id="9-developer-workflow-enhancements">
+<a href="#index" class="return-btn">↑ Return to Index</a>
+<h2>9. Developer Workflow Enhancements</h2>
+<ul>
+<li>Optional pre-commit script to run fmt, clippy, unit and integration tests</li>
+<li>Documentation for enabling hooks locally</li>
+<li>Coverage collection on Linux job (optional, non-blocking) via grcov or tarpaulin</li>
+</ul>
+
+</div>
+<div class="section" id="10-acceptance-criteria">
+<a href="#index" class="return-btn">↑ Return to Index</a>
+<h2>10. Acceptance Criteria</h2>
+<ul>
+<li>New tests compile and pass across Windows/macOS/Linux in CI</li>
+<li>No breaking changes to existing crates or behavior</li>
+<li>Tests for the recent label width logic exist and pass in all languages</li>
+<li>Clear documentation and contribution guidance exists</li>
+</ul>
+
+</div>
+<div class="section" id="11-roadmap-incremental-plan">
+<a href="#index" class="return-btn">↑ Return to Index</a>
+<h2>11. Roadmap (Incremental Plan)</h2>
+<p>1) Author this design doc (MD + HTML) with diagrams and navigation</p>
+<p>2) Create <code>integration-tests</code> crate skeleton; compile baseline</p>
+<p>3) Add unit tests for label width logic and constants</p>
+<p>4) Add i18n utilities and smoke tests (en, es, fr)</p>
+<p>5) Add layout structural tests</p>
+<p>6) Add cross-module integration tests</p>
+<p>7) Enhance CI to run new tests</p>
+<p>8) Add developer pre-commit checks</p>
+<p>9) Add optional coverage reporting</p>
+<p>10) Finalize maintenance &amp; contribution guide</p>
+
+</div>
+<div class="section" id="12-risks-and-mitigations">
+<a href="#index" class="return-btn">↑ Return to Index</a>
+<h2>12. Risks and Mitigations</h2>
+<ul>
+<li>GUI-render differences: Avoid pixel diffs; test structure and properties instead</li>
+<li>i18n string drift: Build-time checks (<code>build.rs</code>) already help; add tests that tolerate minor variations</li>
+<li>Flaky tests: Keep tests deterministic; serialize where necessary</li>
+</ul>
+
+</div>
+<div class="section" id="13-estimated-timeline">
+<a href="#index" class="return-btn">↑ Return to Index</a>
+<h2>13. Estimated Timeline</h2>
+<p>Each task is ~20 minutes per subtask. See task list for detailed breakdown with review gates.</p>
+
+<p>Status update (in progress):</p>
+<ul>
+<li>Task 1 (Design docs): Completed (MD + HTML produced)</li>
+<li>Task 2 (Scaffold integration-tests crate): Completed; compiles and tests pass (placeholders + first unit)</li>
+<li>Task 3 (Unit tests for label widths): Completed in refbox and integration-tests</li>
+<li>Task 4 (i18n smoke tests): Initial key-consistency test added and passing</li>
+</ul>
+
+</div>
+<div class="section" id="14-code-snippets-illustrative">
+<a href="#index" class="return-btn">↑ Return to Index</a>
+<h2>14. Code Snippets (illustrative)</h2>
+<p>Unit-style test for label mapping (pseudo):</p>
+
+<pre><code class="language-rust">
+#[test]
+fn test_label_width_logic() {
+    use iced::Length;
+    let cases = vec![
+        (&quot;Last Game&quot;, Some(GAME_LABEL_WIDTH)),
+        (&quot;Next Game&quot;, Some(GAME_LABEL_WIDTH)),
+        (&quot;Chief Ref&quot;, Some(REF_LABEL_WIDTH)),
+        (&quot;Other&quot;, None),
+    ];
+    for (label, expected) in cases {
+        let width = determine_label_width(label);
+        match expected {
+            Some(w) =&gt; assert!(matches!(width, Length::Fixed(x) if x == w)),
+            None =&gt; assert!(matches!(width, Length::FillPortion(_))),
+        }
+    }
+}
+</pre>
+
+<p>---</p>
+
+<p>Appendix A: CI additions (conceptual):</p>
+<ul>
+<li>cargo test --workspace</li>
+<li>cargo test -p integration-tests</li>
+<li>cargo test -p integration-tests -- ui_tests::internationalization --test-threads=1</li>
+</ul>
+
+
+</div>
+</div>
+
+        </main>
+    </div>
+</body>
+</html>

@@ -5,73 +5,24 @@ use iced::{
     alignment::{Horizontal, Vertical},
     widget::{Space, button, column, container, row, text},
 };
+
 use uwh_common::{
     color::Color as GameColor,
     config::Game as GameConfig,
     game_snapshot::{GamePeriod, GameSnapshot, PenaltyTime},
     uwhportal::schedule::{GameList, TeamList},
 };
-use std::collections::HashMap;
 
-/// Test data for demonstrating font sizing in the GUI
-pub struct FontSizingTestData {
-    pub team_names: HashMap<String, String>,
-    pub referee_names: HashMap<String, String>,
-}
 
-impl FontSizingTestData {
-    /// Create test data with your specification values
-    pub fn specification_data() -> Self {
-        let mut team_names = HashMap::new();
-        team_names.insert("WHITE".to_string(), "Australia".to_string());
-        team_names.insert("BLACK".to_string(), "New Zealand".to_string());
-        team_names.insert("NEXT_WHITE".to_string(), "Nederlands".to_string());
-        team_names.insert("NEXT_BLACK".to_string(), "South Africa".to_string());
 
-        let mut referee_names = HashMap::new();
-        referee_names.insert("Chief Ref".to_string(), "Russell Owen Camilo La Torre".to_string());
-        referee_names.insert("Timer".to_string(), "Norfatin Aainaa Binti Hashim".to_string());
-        referee_names.insert("Water Ref 1".to_string(), "Tuan San Jonathan Chan".to_string());
-        referee_names.insert("Water Ref 2".to_string(), "Muhammad Danish Haikal Mohd Fadel".to_string());
-        referee_names.insert("Water Ref 3".to_string(), "A very long person name".to_string());
 
-        Self {
-            team_names,
-            referee_names,
-        }
-    }
-
-    /// Create test data with short names (should not trigger font reduction)
-    pub fn short_names_data() -> Self {
-        let mut team_names = HashMap::new();
-        team_names.insert("WHITE".to_string(), "USA".to_string());
-        team_names.insert("BLACK".to_string(), "UK".to_string());
-        team_names.insert("NEXT_WHITE".to_string(), "France".to_string());
-        team_names.insert("NEXT_BLACK".to_string(), "Spain".to_string());
-
-        let mut referee_names = HashMap::new();
-        referee_names.insert("Chief Ref".to_string(), "John Smith".to_string());
-        referee_names.insert("Timer".to_string(), "Jane Doe".to_string());
-        referee_names.insert("Water Ref 1".to_string(), "Bob Wilson".to_string());
-        referee_names.insert("Water Ref 2".to_string(), "Sue Chen".to_string());
-        referee_names.insert("Water Ref 3".to_string(), "Tom Brown".to_string());
-
-        Self {
-            team_names,
-            referee_names,
-        }
-    }
-}
 
 /// Helper function to get the appropriate font size for a table row value
-fn get_font_size_for_table_row(
-    label: &str,
-    dynamic_font_sizing: &DynamicFontSizing,
-) -> f32 {
+fn get_font_size_for_table_row(label: &str, dynamic_font_sizing: &DynamicFontSizing) -> f32 {
     // Map table row labels to GameInfoCell enum
     let cell = match label {
-        "WHITE" => Some(GameInfoCell::NextGame),  // WHITE team uses NextGame cell
-        "BLACK" => Some(GameInfoCell::LastGame),  // BLACK team uses LastGame cell
+        "WHITE" => Some(GameInfoCell::NextGame), // WHITE team uses NextGame cell
+        "BLACK" => Some(GameInfoCell::LastGame), // BLACK team uses LastGame cell
         "Chief Ref" => Some(GameInfoCell::ChiefRef),
         "Timer" => Some(GameInfoCell::Timer),
         "Water Ref 1" => Some(GameInfoCell::WaterRef1),
@@ -93,9 +44,6 @@ const GAME_LABEL_WIDTH: f32 = 100.0;
 const REF_LABEL_WIDTH: f32 = 120.0;
 // Fixed cell height to keep rows from shrinking when font sizes are reduced
 const GAME_INFO_CELL_HEIGHT: f32 = 26.0;
-
-
-
 
 #[derive(Debug, Clone)]
 struct TableRow {
@@ -413,8 +361,8 @@ fn build_config_table<'a>(
     teams: Option<&TeamList>,
     fouls_and_warnings: bool,
     dynamic_font_sizing: &mut DynamicFontSizing,
-    font_demo: bool,
-    demo_data_type: &str,
+    _font_demo: bool,
+    _demo_data_type: &str,
 ) -> Element<'a, Message> {
     const TEAM_NAME_LEN_LIMIT: usize = 40;
     let mut table_rows = Vec::new();
@@ -572,23 +520,12 @@ fn build_config_table<'a>(
     if !fouls_and_warnings {
         let unknown = fl!("unknown");
 
-        // Check if we're in demo mode and get test data
-        let demo_data = if font_demo {
-            match demo_data_type {
-                "short" => Some(FontSizingTestData::short_names_data()),
-                _ => Some(FontSizingTestData::specification_data()),
-            }
-        } else {
-            None
-        };
+        // Demo mode removed - font sizing now uses minimal test coverage
 
         // Row 5: Chief Ref | Unknown (single column)
         table_rows.push(TableRow {
             left_label: "Chief Ref".to_string(),
-            left_value: demo_data.as_ref()
-                .and_then(|d| d.referee_names.get("Chief Ref"))
-                .cloned()
-                .unwrap_or_else(|| unknown.clone()),
+            left_value: unknown.clone(),
             center_label: None,
             center_value: None,
         });
@@ -596,10 +533,7 @@ fn build_config_table<'a>(
         // Row 6: Timer | Unknown (single column)
         table_rows.push(TableRow {
             left_label: "Timer".to_string(),
-            left_value: demo_data.as_ref()
-                .and_then(|d| d.referee_names.get("Timer"))
-                .cloned()
-                .unwrap_or_else(|| unknown.clone()),
+            left_value: unknown.clone(),
             center_label: None,
             center_value: None,
         });
@@ -607,10 +541,7 @@ fn build_config_table<'a>(
         // Row 7: Water Ref 1 | Unknown (single column)
         table_rows.push(TableRow {
             left_label: "Water Ref 1".to_string(),
-            left_value: demo_data.as_ref()
-                .and_then(|d| d.referee_names.get("Water Ref 1"))
-                .cloned()
-                .unwrap_or_else(|| unknown.clone()),
+            left_value: unknown.clone(),
             center_label: None,
             center_value: None,
         });
@@ -618,10 +549,7 @@ fn build_config_table<'a>(
         // Row 8: Water Ref 2 | Unknown (single column)
         table_rows.push(TableRow {
             left_label: "Water Ref 2".to_string(),
-            left_value: demo_data.as_ref()
-                .and_then(|d| d.referee_names.get("Water Ref 2"))
-                .cloned()
-                .unwrap_or_else(|| unknown.clone()),
+            left_value: unknown.clone(),
             center_label: None,
             center_value: None,
         });
@@ -629,10 +557,7 @@ fn build_config_table<'a>(
         // Row 9: Water Ref 3 | Unknown (single column)
         table_rows.push(TableRow {
             left_label: "Water Ref 3".to_string(),
-            left_value: demo_data.as_ref()
-                .and_then(|d| d.referee_names.get("Water Ref 3"))
-                .cloned()
-                .unwrap_or_else(|| unknown.clone()),
+            left_value: unknown.clone(),
             center_label: None,
             center_value: None,
         });
@@ -646,22 +571,30 @@ fn build_config_table<'a>(
 
     for table_row in &table_rows {
         // Track the current game section so both White/Black rows share the same font size
-        if table_row.left_label == "Last Game" { current_section = Some("Last Game"); }
-        if table_row.left_label == "Next Game" { current_section = Some("Next Game"); }
+        if table_row.left_label == "Last Game" {
+            current_section = Some("Last Game");
+        }
+        if table_row.left_label == "Next Game" {
+            current_section = Some("Next Game");
+        }
 
         // Accumulate the longest team name within each section (Last/Next Game)
-        if (table_row.left_label == "Last Game" || table_row.left_label == "Next Game" || table_row.left_label.is_empty())
+        if (table_row.left_label == "Last Game"
+            || table_row.left_label == "Next Game"
+            || table_row.left_label.is_empty())
             && (table_row.left_value == "White" || table_row.left_value == "Black")
         {
             if let Some(center_text) = &table_row.center_label {
                 match current_section {
                     Some("Next Game") => {
-                        if next_game_max.as_ref().map(|s| s.len()).unwrap_or(0) < center_text.len() {
+                        if next_game_max.as_ref().map(|s| s.len()).unwrap_or(0) < center_text.len()
+                        {
                             next_game_max = Some(center_text.clone());
                         }
                     }
                     _ => {
-                        if last_game_max.as_ref().map(|s| s.len()).unwrap_or(0) < center_text.len() {
+                        if last_game_max.as_ref().map(|s| s.len()).unwrap_or(0) < center_text.len()
+                        {
                             last_game_max = Some(center_text.clone());
                         }
                     }
@@ -672,19 +605,24 @@ fn build_config_table<'a>(
         // Handle other target cells
         match table_row.left_label.as_str() {
             "Chief Ref" => {
-                dynamic_font_sizing.update_cell_font_size(GameInfoCell::ChiefRef, &table_row.left_value);
+                dynamic_font_sizing
+                    .update_cell_font_size(GameInfoCell::ChiefRef, &table_row.left_value);
             }
             "Timer" => {
-                dynamic_font_sizing.update_cell_font_size(GameInfoCell::Timer, &table_row.left_value);
+                dynamic_font_sizing
+                    .update_cell_font_size(GameInfoCell::Timer, &table_row.left_value);
             }
             "Water Ref 1" => {
-                dynamic_font_sizing.update_cell_font_size(GameInfoCell::WaterRef1, &table_row.left_value);
+                dynamic_font_sizing
+                    .update_cell_font_size(GameInfoCell::WaterRef1, &table_row.left_value);
             }
             "Water Ref 2" => {
-                dynamic_font_sizing.update_cell_font_size(GameInfoCell::WaterRef2, &table_row.left_value);
+                dynamic_font_sizing
+                    .update_cell_font_size(GameInfoCell::WaterRef2, &table_row.left_value);
             }
             "Water Ref 3" => {
-                dynamic_font_sizing.update_cell_font_size(GameInfoCell::WaterRef3, &table_row.left_value);
+                dynamic_font_sizing
+                    .update_cell_font_size(GameInfoCell::WaterRef3, &table_row.left_value);
             }
             _ => {} // Non-target cells don't need font size updates
         }
@@ -783,7 +721,8 @@ fn build_config_table<'a>(
                     current_game_header = Some(table_row.left_label.clone());
                 }
 
-                let is_game_row_color = table_row.left_value == "White" || table_row.left_value == "Black";
+                let is_game_row_color =
+                    table_row.left_value == "White" || table_row.left_value == "Black";
                 let is_game_section = table_row.left_label == "Last Game"
                     || table_row.left_label == "Next Game"
                     || table_row.left_label.is_empty();
@@ -791,7 +730,11 @@ fn build_config_table<'a>(
                 let team_name_font_size = if is_game_row_color && is_game_section {
                     // Use the current section (Last/Next Game) for both rows
                     let header = current_game_header.as_deref().unwrap_or_else(|| {
-                        if table_row.left_label == "Next Game" { "Next Game" } else { "Last Game" }
+                        if table_row.left_label == "Next Game" {
+                            "Next Game"
+                        } else {
+                            "Last Game"
+                        }
                     });
                     if header == "Next Game" {
                         dynamic_font_sizing.get_font_size(GameInfoCell::NextGame)
@@ -864,7 +807,7 @@ fn build_config_table<'a>(
                         text(table_row.left_value.clone())
                             .size(font_size)
                             .width(Length::Fill)
-                            .align_x(Horizontal::Left)
+                            .align_x(Horizontal::Left),
                     )
                     .padding([1, 2])
                     .width(Length::FillPortion(value_portion));
@@ -911,9 +854,13 @@ mod tests {
         assert_eq!(get_font_size_for_table_row("Last Game", &dfs), SMALL_TEXT);
         assert_eq!(get_font_size_for_table_row("Next Game", &dfs), SMALL_TEXT);
         assert_eq!(get_font_size_for_table_row("", &dfs), SMALL_TEXT); // Empty labels
-        assert_eq!(get_font_size_for_table_row("Half Duration", &dfs), SMALL_TEXT);
-        assert_eq!(get_font_size_for_table_row("Unknown Label", &dfs), SMALL_TEXT);
+        assert_eq!(
+            get_font_size_for_table_row("Half Duration", &dfs),
+            SMALL_TEXT
+        );
+        assert_eq!(
+            get_font_size_for_table_row("Unknown Label", &dfs),
+            SMALL_TEXT
+        );
     }
 }
-
-

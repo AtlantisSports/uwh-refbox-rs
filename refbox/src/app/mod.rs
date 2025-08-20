@@ -52,9 +52,9 @@ use languages::*;
 
 mod dynamic_font_sizing;
 use dynamic_font_sizing::*;
+use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::cell::RefCell;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -183,7 +183,9 @@ impl RefBoxApp {
 
         // Reset dynamic font sizing if game state changed
         if old_game_state_hash != new_game_state_hash {
-            self.dynamic_font_sizing.borrow_mut().reset_for_new_game(new_game_state_hash);
+            self.dynamic_font_sizing
+                .borrow_mut()
+                .reset_for_new_game(new_game_state_hash);
         }
 
         task
@@ -506,7 +508,9 @@ impl RefBoxApp {
         // Check for game state changes after applying settings
         let new_game_state_hash = self.calculate_game_state_hash();
         if old_game_state_hash != new_game_state_hash {
-            self.dynamic_font_sizing.borrow_mut().reset_for_new_game(new_game_state_hash);
+            self.dynamic_font_sizing
+                .borrow_mut()
+                .reset_for_new_game(new_game_state_hash);
         }
     }
 }

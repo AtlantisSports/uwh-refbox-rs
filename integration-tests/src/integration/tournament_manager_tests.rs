@@ -5,6 +5,7 @@
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
+    #[allow(unused_imports)]
     use tokio::time::Instant;
     use uwh_common::{
         bundles::BlackWhiteBundle,

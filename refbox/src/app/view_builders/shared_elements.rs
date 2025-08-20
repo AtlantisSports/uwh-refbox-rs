@@ -719,8 +719,6 @@ pub(super) fn config_string_game_num(
     (result, game_number)
 }
 
-
-
 pub(super) fn make_button<'a, Message: Clone, T: IntoFragment<'a>>(
     label: T,
 ) -> Button<'a, Message> {

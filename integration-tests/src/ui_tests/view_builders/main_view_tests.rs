@@ -169,7 +169,7 @@ mod tests {
     #[test]
     fn test_referee_information_rows_structure() {
         // Test that referee information rows are properly structured
-        let data = MockViewData::new();
+        let _data = MockViewData::new();
 
         // Expected referee information rows when using UWH Portal
         let expected_referee_labels = vec![
@@ -177,7 +177,7 @@ mod tests {
             "Timer",
             "Water Ref 1",
             "Water Ref 2",
-            "Water Ref 3"
+            "Water Ref 3",
         ];
 
         // In a real implementation, we would:
@@ -202,7 +202,7 @@ mod tests {
     #[test]
     fn test_referee_information_values_display() {
         // Test that referee information values are properly displayed
-        let data = MockViewData::new();
+        let _data = MockViewData::new();
 
         // Test data for referee names (matching the specification)
         let test_referee_data = vec![
@@ -220,9 +220,11 @@ mod tests {
             // Verify names that might require font sizing
             if name.len() > 25 {
                 // These names should trigger dynamic font sizing
-                assert!(name == "Russell Owen Camilo La Torre" ||
-                       name == "Norfatin Aainaa Binti Hashim" ||
-                       name == "Muhammad Danish Haikal Mohd Fadel");
+                assert!(
+                    name == "Russell Owen Camilo La Torre"
+                        || name == "Norfatin Aainaa Binti Hashim"
+                        || name == "Muhammad Danish Haikal Mohd Fadel"
+                );
             }
 
             // Verify role-name association is logical
@@ -250,7 +252,7 @@ mod tests {
         ];
 
         // Test team name cases
-        for (game_type, white_team, black_team) in test_cases {
+        for (_game_type, white_team, black_team) in test_cases {
             // Verify team names are reasonable length
             assert!(!white_team.is_empty() && !black_team.is_empty());
             assert!(white_team.len() <= 30 && black_team.len() <= 30);
@@ -271,9 +273,11 @@ mod tests {
             let should_reduce_font = name.len() > 25; // Adjusted threshold
             if should_reduce_font {
                 // These names should require font size reduction
-                assert!(name == "Russell Owen Camilo La Torre" ||
-                       name == "Norfatin Aainaa Binti Hashim" ||
-                       name == "Muhammad Danish Haikal Mohd Fadel");
+                assert!(
+                    name == "Russell Owen Camilo La Torre"
+                        || name == "Norfatin Aainaa Binti Hashim"
+                        || name == "Muhammad Danish Haikal Mohd Fadel"
+                );
             }
 
             // Verify all test names are from the specification
@@ -282,7 +286,7 @@ mod tests {
                 "Norfatin Aainaa Binti Hashim",
                 "Tuan San Jonathan Chan",
                 "Muhammad Danish Haikal Mohd Fadel",
-                "A very long person name"
+                "A very long person name",
             ];
             assert!(valid_names.contains(&name), "Unexpected name: {}", name);
 
@@ -297,11 +301,11 @@ mod tests {
     #[test]
     fn test_table_row_visibility_and_layout() {
         // Test that all referee information rows are visible and properly laid out
-        let data = MockViewData::new();
+        let _data = MockViewData::new();
 
         // Expected table structure for referee information
         let expected_structure = vec![
-            ("Chief Ref", true, false),    // (label, has_value, is_two_column)
+            ("Chief Ref", true, false), // (label, has_value, is_two_column)
             ("Timer", true, false),
             ("Water Ref 1", true, false),
             ("Water Ref 2", true, false),
@@ -315,7 +319,7 @@ mod tests {
 
             // Verify structure expectations
             assert!(should_have_value); // All referee rows should have values
-            assert!(!is_two_column);    // Referee rows are single-column in current design
+            assert!(!is_two_column); // Referee rows are single-column in current design
 
             // In a real implementation, we would:
             // 1. Build actual table rows
@@ -363,7 +367,7 @@ mod tests {
             ("Water Ref 3", "Tom"),
         ];
 
-        for (role, name) in short_name_scenario {
+        for (_role, name) in short_name_scenario {
             assert!(name.len() <= 10); // All names are short
             // In real implementation: verify font size remains at SMALL_TEXT
         }

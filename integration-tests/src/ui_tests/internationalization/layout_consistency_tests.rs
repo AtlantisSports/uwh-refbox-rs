@@ -73,10 +73,7 @@ mod tests {
                 let ratio = max_len as f64 / min_len as f64;
                 assert!(
                     ratio <= 3.0,
-                    "Translation length ratio for '{}' is {:.2}, which may cause layout issues. Lengths: {:?}",
-                    key,
-                    ratio,
-                    lengths
+                    "Translation length ratio for '{key}' is {ratio:.2}, which may cause layout issues. Lengths: {lengths:?}"
                 );
             }
         }
@@ -102,18 +99,13 @@ mod tests {
                         // In the real implementation, we'd check that these map to Length::Fixed
                         assert!(
                             !translation.is_empty(),
-                            "Translation for '{}' in '{}' should not be empty",
-                            key,
-                            lang
+                            "Translation for '{key}' in '{lang}' should not be empty"
                         );
 
                         // Verify reasonable length bounds for fixed-width labels
                         assert!(
                             translation.len() <= 25,
-                            "Fixed-width label '{}' in '{}' is too long: '{}'",
-                            key,
-                            lang,
-                            translation
+                            "Fixed-width label '{key}' in '{lang}' is too long: '{translation}'"
                         );
                     }
                 }
@@ -156,8 +148,7 @@ mod tests {
                 for category in &categories[1..] {
                     assert_eq!(
                         *category, first_category,
-                        "Key '{}' maps to different UI categories across languages",
-                        key
+                        "Key '{key}' maps to different UI categories across languages"
                     );
                 }
             }
@@ -176,21 +167,17 @@ mod tests {
                 for key in required_keys {
                     assert!(
                         lang_map.contains_key(key),
-                        "Missing required translation key '{}' in language '{}'",
-                        key,
-                        lang
+                        "Missing required translation key '{key}' in language '{lang}'"
                     );
 
                     let translation = lang_map.get(key).unwrap();
                     assert!(
                         !translation.trim().is_empty(),
-                        "Empty translation for key '{}' in language '{}'",
-                        key,
-                        lang
+                        "Empty translation for key '{key}' in language '{lang}'"
                     );
                 }
             } else {
-                panic!("Missing translations for language '{}'", lang);
+                panic!("Missing translations for language '{lang}'");
             }
         }
     }

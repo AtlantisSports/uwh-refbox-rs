@@ -13,10 +13,6 @@ use uwh_common::{
     uwhportal::schedule::{GameList, TeamList},
 };
 
-
-
-
-
 /// Helper function to get the appropriate font size for a table row value
 fn get_font_size_for_table_row(label: &str, dynamic_font_sizing: &DynamicFontSizing) -> f32 {
     // Map table row labels to GameInfoCell enum
@@ -384,12 +380,10 @@ fn build_config_table<'a>(
                 game_number = snapshot.game_number.clone()
             )
         }
+    } else if snapshot.game_number == "0" {
+        fl!("none").to_string()
     } else {
-        if snapshot.game_number == "0" {
-            fl!("none").to_string()
-        } else {
-            snapshot.game_number.to_string()
-        }
+        snapshot.game_number.to_string()
     };
 
     // Game number information for reference

@@ -27,7 +27,7 @@ impl Language {
         } else if lang_id.matches(&"es".parse::<LanguageIdentifier>().unwrap(), false, true) {
             Self::Spanish
         } else {
-            error!("Unsupported language: {}", lang_id);
+            error!("Unsupported language: {lang_id}");
             Self::English // Default to English if unsupported
         }
     }

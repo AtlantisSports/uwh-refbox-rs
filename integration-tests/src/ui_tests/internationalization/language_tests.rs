@@ -20,16 +20,13 @@ mod tests {
             let path = ftl_path(lang);
             assert!(
                 Path::new(&path).exists(),
-                "missing translations file for {}",
-                lang
+                "missing translations file for {lang}"
             );
             let content = fs::read_to_string(&path).expect("read ftl");
             for key in required_keys {
                 assert!(
-                    content.contains(&format!("{} =", key)),
-                    "missing key '{}' in {}",
-                    key,
-                    lang
+                    content.contains(&format!("{key} =")),
+                    "missing key '{key}' in {lang}"
                 );
             }
         }

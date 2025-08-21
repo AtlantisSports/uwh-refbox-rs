@@ -35,7 +35,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     ' ' => None,
                     '\n' => None,
                     '\r' => None,
-                    _ => panic!("Bad character in file {}: {}", name, c),
+                    _ => panic!("Bad character in file {name}: {c}"),
                 })
                 .collect();
             assert_eq!(bits.len() % 8, 0);

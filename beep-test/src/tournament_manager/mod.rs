@@ -197,7 +197,7 @@ impl TournamentManager {
                 (time / 60.0).floor(),
                 time % 60.0
             ) {
-                error!("Error with time string: {}", e);
+                error!("Error with time string: {e}");
             }
         } else {
             string.push_str("[XX:XX.XXX ");

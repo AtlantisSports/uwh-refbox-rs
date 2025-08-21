@@ -94,16 +94,13 @@ impl UwhPortalClient {
                     )))?
                 }
             } else if response.status() == StatusCode::BAD_REQUEST {
-                warn!("uwhportal login failed, response: {:?}", response);
+                warn!("uwhportal login failed, response: {response:?}");
                 let body = response.json::<serde_json::Value>().await?;
                 if let Some(reason) = body["reason"].as_str() {
                     match reason {
                         "NoPendingLink" => Ok(PortalTokenResponse::NoPendingLink),
                         "InvalidCode" => Ok(PortalTokenResponse::InvalidCode),
-                        _ => Err(Box::new(ApiError::new(format!(
-                            "Unknown reason: {}",
-                            reason
-                        ))))?,
+                        _ => Err(Box::new(ApiError::new(format!("Unknown reason: {reason}"))))?,
                     }
                 } else {
                     Err(Box::new(ApiError::new(
@@ -111,7 +108,7 @@ impl UwhPortalClient {
                     )))?
                 }
             } else {
-                warn!("uwhportal login failed, response: {:?}", response);
+                warn!("uwhportal login failed, response: {response:?}");
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(body)))?
             }
@@ -147,7 +144,7 @@ impl UwhPortalClient {
                     )))?
                 }
             } else {
-                warn!("uwhportal login failed, response: {:?}", response);
+                warn!("uwhportal login failed, response: {response:?}");
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(body)))?
             }
@@ -200,7 +197,7 @@ impl UwhPortalClient {
                 info!("uwhportal post game stats successful");
                 Ok(())
             } else {
-                warn!("uwhportal post game stats failed, response: {:?}", response);
+                warn!("uwhportal post game stats failed, response: {response:?}");
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(body)))?
             }
@@ -246,10 +243,7 @@ impl UwhPortalClient {
                 info!("uwhportal post game scores successful");
                 Ok(())
             } else {
-                warn!(
-                    "uwhportal post game scores failed, response: {:?}",
-                    response
-                );
+                warn!("uwhportal post game scores failed, response: {response:?}");
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(body)))?
             }
@@ -277,10 +271,7 @@ impl UwhPortalClient {
                 let schedule: schedule::Schedule = serde_json::from_str(&body)?;
                 Ok(schedule)
             } else {
-                warn!(
-                    "uwhportal get event schedule failed, response: {:?}",
-                    response
-                );
+                warn!("uwhportal get event schedule failed, response: {response:?}");
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(body)))?
             }
@@ -302,24 +293,21 @@ impl UwhPortalClient {
                 let body = response.json::<serde_json::Value>().await?;
                 let teams = body["teams"]
                     .as_array()
-                    .ok_or(format!("Invalid response format. Response: {:?}", body))?;
+                    .ok_or(format!("Invalid response format. Response: {body:?}"))?;
                 let mut team_map = BTreeMap::new();
                 for team_entry in teams {
                     let team_info = &team_entry["team"];
                     let team_id = team_info["id"]
                         .as_str()
-                        .ok_or(format!("Missing team id in response: {:?}", team_info))?;
+                        .ok_or(format!("Missing team id in response: {team_info:?}"))?;
                     let name = team_info["name"]
                         .as_str()
-                        .ok_or(format!("Missing team name in response: {:?}", team_info))?;
+                        .ok_or(format!("Missing team name in response: {team_info:?}"))?;
                     team_map.insert(TeamId::from_full(team_id)?, name.to_string());
                 }
                 Ok(team_map)
             } else {
-                warn!(
-                    "uwhportal get event schedule failed, response: {:?}",
-                    response
-                );
+                warn!("uwhportal get event schedule failed, response: {response:?}");
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(body)))?
             }
@@ -362,7 +350,7 @@ impl UwhPortalClient {
                 let parsed_response: ResponseWrapper = serde_json::from_str(&body)?;
                 Ok(parsed_response.items)
             } else {
-                warn!("uwhportal get events list failed, response: {:?}", response);
+                warn!("uwhportal get events list failed, response: {response:?}");
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(body)))?
             }
@@ -392,10 +380,7 @@ impl UwhPortalClient {
                 info!("uwhportal push event schedule successful");
                 Ok(())
             } else {
-                warn!(
-                    "uwhportal push event schedule failed, response: {:?}",
-                    response
-                );
+                warn!("uwhportal push event schedule failed, response: {response:?}");
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(body)))?
             }
@@ -423,7 +408,7 @@ impl UwhPortalClient {
                 info!("uwhportal push team map successful");
                 Ok(())
             } else {
-                warn!("uwhportal push team map failed, response: {:?}", response);
+                warn!("uwhportal push team map failed, response: {response:?}");
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(body)))?
             }
@@ -441,7 +426,7 @@ fn authenticated_request(
     if let Some(token) = access_token {
         request = request.header(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
+            HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
         );
     }
     request

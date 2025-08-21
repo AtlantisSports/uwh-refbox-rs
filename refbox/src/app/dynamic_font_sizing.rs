@@ -3,19 +3,12 @@ use fontdue::{Font, FontSettings};
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-
-
-
 /// Default minimum font size to prevent text from becoming unreadable
 pub const MIN_FONT_SIZE: f32 = 12.0;
 
 /// Font size reduction step when text doesn't fit
 #[allow(dead_code)]
 pub const FONT_SIZE_STEP: f32 = 1.0;
-
-
-
-
 
 /// Target cells that require dynamic font sizing in the Game Info screen
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -218,15 +211,11 @@ impl DynamicFontSizing {
         }
     }
 
-
-
     /// Check if any font size reduction is currently active
     #[allow(dead_code)]
     pub fn has_size_reduction(&self) -> bool {
         self.game_info_group.size_reduced
     }
-
-
 
     /// Force recalculation of all font sizes
     #[allow(dead_code)]
@@ -235,8 +224,8 @@ impl DynamicFontSizing {
         let current_requirements: Vec<_> = self
             .game_info_group
             .cell_requirements
-            .iter()
-            .map(|(cell, _)| (*cell, String::new())) // We don't have the original text, so use empty
+            .keys()
+            .map(|cell| (*cell, String::new())) // We don't have the original text, so use empty
             .collect();
 
         if !current_requirements.is_empty() {
@@ -245,8 +234,6 @@ impl DynamicFontSizing {
             self.game_info_group.recalculate_group_font_size();
         }
     }
-
-
 
     /// Reset all state (useful for testing)
     pub fn reset_all_state(&mut self) {
@@ -265,13 +252,7 @@ impl DynamicFontSizing {
     pub fn is_at_default_size(&self) -> bool {
         (self.game_info_group.current_font_size - SMALL_TEXT).abs() < 0.1
     }
-
-
 }
-
-
-
-
 
 impl Default for DynamicFontSizing {
     fn default() -> Self {
@@ -351,10 +332,6 @@ pub fn calculate_required_font_size(text: &str, available_width: f32) -> f32 {
     best_size.max(MIN_FONT_SIZE)
 }
 
-
-
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -373,7 +350,13 @@ mod tests {
         let font_size = dfs.get_font_size(GameInfoCell::ChiefRef);
 
         // Verify font reduction works and is within bounds
-        assert!(font_size < SMALL_TEXT, "Long names should trigger font reduction");
-        assert!(font_size >= MIN_FONT_SIZE, "Font should not go below minimum");
+        assert!(
+            font_size < SMALL_TEXT,
+            "Long names should trigger font reduction"
+        );
+        assert!(
+            font_size >= MIN_FONT_SIZE,
+            "Font should not go below minimum"
+        );
     }
 }

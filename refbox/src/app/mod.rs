@@ -2157,7 +2157,7 @@ impl RefBoxApp {
                     }
                     r @ PortalTokenResponse::NoPendingLink
                     | r @ PortalTokenResponse::InvalidCode => {
-                        warn!("Portal token request failed: {:?}", r);
+                        warn!("Portal token request failed: {r:?}");
                         AppState::ConfirmationPage(ConfirmationKind::UwhPortalLinkFailed(r))
                     }
                 };
@@ -2378,10 +2378,7 @@ fn time_updater() -> impl Stream<Item = Message> {
                 let mut i = 0;
                 let snapshot = loop {
                     if i > 4 {
-                        error!(
-                            "Failed to generate snapshot after 5 attempts. State: {:#?}",
-                            tm_
-                        );
+                        error!("Failed to generate snapshot after 5 attempts. State: {tm_:#?}");
                         panic!("No snapshot");
                     }
                     match tm_.generate_snapshot(now) {

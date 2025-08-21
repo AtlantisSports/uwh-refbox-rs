@@ -623,7 +623,7 @@ pub async fn networking_thread(
                                         .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
                                 } else if let Some(next_game_number) = snapshot.next_game_number() {
                                     if game_data.game_number == *next_game_number {
-                                        info!("Saving game data for next game: {} / event: {:?}", next_game_number, event_id);
+                                        info!("Saving game data for next game: {next_game_number} / event: {event_id:?}");
                                         next_game_data = Some(game_data);
                                     } else {
                                         warn!("Received game data for event {:?}, but for unexpected game {:?}, discarding!", game_data.event_id, game_data.game_number);

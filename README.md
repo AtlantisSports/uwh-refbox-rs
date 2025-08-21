@@ -53,18 +53,24 @@ To view the formatted documentation, open [`docs/design/Atlantis UWH-REFBOX-RS D
 
 ## Integration Tests
 
-Integration tests and test scripts are located in [`integration-tests/`](integration-tests):
+Integration tests are located in [`integration-tests/`](integration-tests) and run as part of the standard cargo test suite:
 
-- **Test Scripts**: [`integration-tests/scripts/`](integration-tests/scripts) contains scripts for running font sizing tests and demonstrations
-- **Test Suites**: [`integration-tests/src/`](integration-tests/src) contains the test implementation code
+- **Test Suites**: [`integration-tests/src/`](integration-tests/src) contains comprehensive test implementation
+- **UI Tests**: Font sizing, layout validation, and internationalization tests
+- **Integration Tests**: Cross-crate functionality and tournament manager tests
 
-Run test scripts from the project root:
+Run integration tests:
 ```bash
-# Font sizing demonstration
-integration-tests\scripts\run_font_demo.bat
+# Run all tests including integration tests
+cargo test --all
 
-# Font sizing tests
-integration-tests\scripts\run_font_tests.bat
+# Run only integration tests
+cargo test -p integration-tests
+
+# Run specific test categories
+cargo test font_sizing
+cargo test ui_tests
+cargo test integration
 ```
 
 # Contributing

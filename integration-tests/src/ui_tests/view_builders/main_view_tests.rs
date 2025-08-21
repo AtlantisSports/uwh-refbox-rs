@@ -281,14 +281,14 @@ mod tests {
             }
 
             // Verify all test names are from the specification
-            let valid_names = vec![
+            let valid_names = [
                 "Russell Owen Camilo La Torre",
                 "Norfatin Aainaa Binti Hashim",
                 "Tuan San Jonathan Chan",
                 "Muhammad Danish Haikal Mohd Fadel",
                 "A very long person name",
             ];
-            assert!(valid_names.contains(&name), "Unexpected name: {}", name);
+            assert!(valid_names.contains(&name), "Unexpected name: {name}");
 
             // In a real implementation, we would:
             // 1. Calculate required font size for this name

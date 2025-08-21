@@ -364,8 +364,7 @@ mod test {
             assert_eq!(
                 penalty.time_elapsed(end_period, end_time, config),
                 result,
-                "{}",
-                msg
+                "{msg}"
             );
         }
     }
@@ -464,8 +463,7 @@ mod test {
             assert_eq!(
                 penalty.time_remaining(end_period, end_time, &config),
                 result,
-                "{}",
-                msg
+                "{msg}"
             );
         }
     }

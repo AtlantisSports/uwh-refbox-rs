@@ -111,11 +111,11 @@ async fn worker_loop<T: AsyncWrite + Debug + Unpin + Send>(
         match timeout(TIMEOUT, write.write_all(&data[..])).await {
             Ok(Ok(())) => {}
             Ok(Err(e)) => {
-                error!("Send to {:?} failed: {e:?}", write);
+                error!("Send to {write:?} failed: {e:?}");
                 Err(e)?;
             }
             Err(_) => {
-                warn!("Send to {:?} timed out", write);
+                warn!("Send to {write:?} timed out");
             }
         }
     }

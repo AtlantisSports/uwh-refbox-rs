@@ -110,8 +110,8 @@ mod tests {
             Ok(config) => {
                 assert_eq!(config.half_play_duration, Duration::from_secs(900));
                 assert_eq!(config.half_time_duration, Duration::from_secs(180));
-                assert_eq!(config.overtime_allowed, true);
-                assert_eq!(config.sudden_death_allowed, false);
+                assert!(config.overtime_allowed);
+                assert!(!config.sudden_death_allowed);
                 assert_eq!(config.num_team_timeouts_allowed, 1);
             }
             Err(_) => {

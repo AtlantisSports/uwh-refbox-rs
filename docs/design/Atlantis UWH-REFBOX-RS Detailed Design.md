@@ -6,60 +6,201 @@ Last Updated: 2025-08-18
 
 ## 1. Purpose and Goals
 This document provides a comprehensive design overview of the UWH RefBox Rust workspace, including recent enhancements and automated testing strategy. It covers:
-- **Dynamic Font Sizing System**: Intelligent font scaling for UI elements with long text content
-- **Referee Information Display**: Enhanced table layout for referee assignments and roles
-- **Automated Testing Strategy**: Comprehensive testing approach for UI, integration, and functionality
+- **Application Architecture**: Complete system design including UI components, timer systems, and data management
+- **Testing Strategy**: Comprehensive testing approach for UI, integration, and functionality validation
 - **CI/CD Pipeline Integration**: Continuous integration and deployment configuration
 - **Developer Workflow**: Tools and processes for maintaining code quality
 - **Internationalization Support**: Multi-language layout consistency and validation
+- **Performance Requirements**: System performance specifications and optimization strategies
 
-## 2. Recent Enhancements
+## 2. How to Run the Application
 
-### 2.1 Dynamic Font Sizing System
-**Implementation**: `refbox/src/app/dynamic_font_sizing.rs`
+### 2.1 Basic Usage
 
-The dynamic font sizing system automatically adjusts font sizes to accommodate long text content while maintaining readability and layout consistency.
+**From the refbox directory:**
+```powershell
+cd refbox
+cargo run
+```
 
-**Key Features**:
-- **Group-based Font Sizing**: All referee information cells use consistent font sizes
-- **Real-time Text Measurement**: Uses Roboto-Medium.ttf font for accurate width calculations
-- **Minimum Readability**: Enforces minimum font size (12px) to maintain usability
-- **State Management**: Resets font sizes on game state changes
+**Or from the project root:**
+```powershell
+cargo run --bin refbox
+```
 
-**Target Cells**:
-- Chief Ref: 176px available width
-- Timer: 176px available width
-- Water Ref 1-3: 176px available width each
-- Team Names (Last/Next Game): 196px available width
+### 2.2 Command Line Options
 
-**Algorithm**:
-1. Measure text width at default size (18px)
-2. If text exceeds available width, use binary search to find optimal size
-3. Apply group-based sizing (all cells use the smallest required size)
-4. Enforce minimum font size for readability
+The app supports extensive configuration through command-line arguments:
 
-### 2.2 Referee Information Display
-**Implementation**: `refbox/src/app/view_builders/main_view.rs`
+#### Essential Options
+```powershell
+# Basic run
+cargo run
 
-Enhanced table layout displays referee assignments with proper spacing and font sizing.
+# Run with help to see all options
+cargo run -- --help
 
-**Referee Roles Supported**:
-- **Chief Ref**: Primary referee for the game
-- **Timer**: Official timekeeper
-- **Water Ref 1-3**: In-water referees (up to 3 positions)
+# Run in fullscreen mode
+cargo run -- --fullscreen
 
-**Layout Features**:
-- Fixed-width labels (120px) for consistent alignment
-- Dynamic font sizing for long referee names
-- Compact vertical spacing to fit all roles on screen
-- Integration with UWH Portal for referee data
+# Run without the simulator GUI
+cargo run -- --no-simulate
 
-### 2.3 Current State Assessment
-- **Workspace Structure**: Multiple crates (refbox, uwh-common, overlay, etc.)
-- **Testing Coverage**: Unit tests for config, tournament manager, sound controller, uwh-common
-- **CI Pipeline**: GitHub Actions runs `cargo test --all` across platforms
-- **Recent Additions**: Dynamic font sizing tests, referee information validation
-- **Remaining Gaps**: Visual regression testing, comprehensive i18n validation
+# Increase verbosity for debugging
+cargo run -- -v    # or -vv for more verbose
+```
+
+#### Network Configuration
+```powershell
+# Set custom ports
+cargo run -- --binary-port 8001 --json-port 8000
+
+# Run with serial port connection
+cargo run -- --serial-port COM3 --baud-rate 115200
+
+# Allow HTTP connections to UWH Portal (disable HTTPS requirement)
+cargo run -- --allow-http
+
+# List all events from UWH Portal, including past ones
+cargo run -- --all-events
+```
+
+#### Display and Simulator Options
+```powershell
+# Set pixel scale for simulator (default: 4)
+cargo run -- --scale 6
+
+# Set spacing between pixels in simulator
+cargo run -- --spacing 2.0
+
+# Run simulator in sunlight mode
+cargo run -- --simulate-sunlight-display
+```
+
+#### Logging Configuration
+```powershell
+# Set custom log directory
+cargo run -- --log-location "C:\custom\log\path"
+
+# Set maximum log file size (default: 5MB)
+cargo run -- --log-max-file-size 10000000
+
+# Set number of archived logs to keep (default: 3)
+cargo run -- --num-old-logs 5
+```
+
+### 2.3 Testing Options
+
+#### Comprehensive Test Suite
+```powershell
+# Run all tests across all crates (recommended)
+cargo test --all
+
+# Run all tests with output visible
+cargo test --all -- --nocapture
+
+# Run tests with specific thread count (useful for UI tests)
+cargo test --all -- --test-threads=1
+```
+
+#### Individual Test Suites
+```powershell
+# Integration tests (UI, font sizing, i18n)
+cargo test -p integration-tests
+
+# Main refbox application tests
+cargo test -p refbox
+
+# Common utilities tests
+cargo test -p uwh-common
+
+# Overlay functionality tests
+cargo test -p overlay
+
+# LED panel simulation tests
+cargo test -p led-panel-sim
+
+# Font processing tests
+cargo test -p fonts
+```
+
+#### Specialized Testing
+```powershell
+# Audio/beep testing utility
+cargo run -p beep-test
+
+# Run specific test by name
+cargo test test_font_sizing
+
+# Run tests matching a pattern
+cargo test font_sizing
+
+# Run tests with debug output
+cargo test -- --nocapture --test-threads=1
+```
+
+### 2.4 Development Workflow
+
+#### Building for Different Targets
+```powershell
+# Install cross-compilation tool
+cargo install cross
+
+# Build for Raspberry Pi 4/5
+cross build --all --release --target aarch64-unknown-linux-gnu
+
+# Build for Windows
+cross build --all --release --target x86_64-pc-windows-gnu
+
+# Build for Intel Macs
+cross build --all --release --target x86_64-apple-darwin
+
+# Build for ARM Macs (M series)
+cross build --all --release --target aarch64-apple-darwin
+```
+
+#### Quality Checks
+```powershell
+# Run clippy for linting
+cargo clippy --all
+
+# Check for security vulnerabilities
+cargo audit
+
+# Format code
+cargo fmt --all
+
+# Check formatting without changing files
+cargo fmt --all -- --check
+```
+
+### 2.5 Key Features Available
+
+- **Timer System**: Full refbox timer functionality with period management
+- **Panel Simulator**: Built-in LED panel simulator (runs by default unless `--no-simulate`)
+- **Network Connectivity**: TCP connections on configurable ports
+- **Serial Communication**: Hardware connection via serial ports
+- **UWH Portal Integration**: Tournament data synchronization
+- **Multi-language Support**: Internationalization with multiple language options
+- **Sound System**: Audio alerts and wireless remote support
+- **Logging**: Comprehensive logging to system-appropriate directories
+
+### 2.6 Quick Start Guide
+
+For a basic timer session:
+```powershell
+cd refbox
+cargo run
+```
+
+This starts both the refbox timer application and LED panel simulator. The application opens in a window where you can immediately begin using timer functionality.
+
+For tournament integration:
+```powershell
+cargo run -- --allow-http --all-events
+```
+
+This enables UWH Portal connectivity and shows all available events for selection.
 
 ## 3. Target Architecture Overview
 Introduce a new workspace member `integration-tests` dedicated to tests that span crates and UI/layout logic. Keep existing unit tests in-place within each crate. Run tests locally and in CI.
@@ -71,33 +212,123 @@ High-level layers:
 - Internationalization tests: build app or components under en-US, es, fr and verify rules
 - Visual regression-style: snapshot-like structural expectations, avoiding brittle pixel diffs
 
-## 4. Directory Structure (proposed)
-- integration-tests/
-  - Cargo.toml
-  - src/
-    - lib.rs
-    - ui_tests/
-      - mod.rs
-      - view_builders/
-        - main_view_tests.rs
-        - layout_tests.rs
-        - label_width_tests.rs
-      - internationalization/
-        - language_tests.rs
-        - layout_consistency_tests.rs
-    - integration/
-      - tournament_manager_tests.rs
-      - config_tests.rs
-    - visual_regression/
-      - snapshot_tests.rs
-      - layout_validation.rs
-    - utils/
-      - mock_data.rs
-      - test_helpers.rs
-      - layout_assertions.rs
-  - tests/
-    - ui_integration.rs
-    - full_app_tests.rs
+## 4. Directory Structure
+
+### 4.1. Workspace Overview
+
+```
+uwh-refbox-rs/                                   # Root workspace directory
+├── Cargo.toml                                   # Workspace configuration
+├── Cargo.lock                                   # Dependency lock file
+├── Cross.toml                                   # Cross-compilation configuration
+├── LICENSE.txt                                  # Project license
+├── README.md                                    # Project documentation
+├── uwh-refbox-rs.code-workspace                # VS Code workspace file
+├── alphagen/                                    # Alpha channel generation utility
+│   ├── Cargo.toml                              # Package configuration
+│   └── src/                                    # Source code
+├── beep-test/                                   # Audio testing utility
+│   ├── Cargo.toml                              # Package configuration
+│   ├── build.rs                                # Build script
+│   ├── resources/                              # Audio resources
+│   └── src/                                    # Source code
+├── ci/                                          # Continuous integration scripts
+│   └── check-msrv-present.sh                  # MSRV validation script
+├── docs/                                        # Documentation
+│   ├── README.md                               # Documentation index
+│   ├── design/                                 # Design documents
+│   └── scripts/                                # Documentation generation scripts
+├── fonts/                                       # Font processing utilities
+│   ├── Cargo.toml                              # Package configuration
+│   ├── build.rs                                # Build script
+│   ├── convert_to_raw.py                       # Font conversion script
+│   ├── print_raw.py                            # Font debugging script
+│   └── src/                                    # Source code
+├── integration-tests/                           # Integration testing suite
+│   └── [detailed structure below]              # See section 4.2
+├── led-panel/                                   # Hardware LED panel support
+│   ├── README.md                               # Hardware documentation
+│   ├── boards/                                 # Board definitions
+│   ├── builds/                                 # Build artifacts
+│   ├── fusesoc.conf                            # FuseSoC configuration
+│   ├── led_panel.core                          # Core definition
+│   ├── requirements.txt                        # Python dependencies
+│   ├── rtl/                                    # RTL source code
+│   ├── synth/                                  # Synthesis scripts
+│   └── tb/                                     # Testbenches
+├── led-panel-sim/                              # LED panel simulator
+│   ├── Cargo.toml                              # Package configuration
+│   └── src/                                    # Source code
+├── matrix-drawing/                              # Matrix display utilities
+│   ├── Cargo.toml                              # Package configuration
+│   └── src/                                    # Source code
+├── overlay/                                     # Streaming overlay system
+│   ├── Cargo.toml                              # Package configuration
+│   ├── assets/                                 # Web assets
+│   ├── src/                                    # Source code
+│   └── test_server/                            # Test server utilities
+├── refbox/                                      # Main referee box application
+│   ├── Cargo.toml                              # Package configuration
+│   ├── build.rs                                # Build script
+│   ├── i18n.toml                               # Internationalization config
+│   ├── resources/                              # Application resources
+│   ├── src/                                    # Source code
+│   ├── test_data/                              # Test data files
+│   └── translations/                           # Translation files
+├── schedule-processor/                          # Tournament schedule processor
+│   ├── Cargo.toml                              # Package configuration
+│   └── src/                                    # Source code
+├── uwh-common/                                  # Common utilities library
+│   ├── Cargo.toml                              # Package configuration
+│   └── src/                                    # Source code
+├── wireless-modes/                              # Wireless communication modes
+│   ├── Cargo.toml                              # Package configuration
+│   └── src/                                    # Source code
+└── wireless-remote/                             # Wireless remote control
+    ├── Cargo.toml                              # Package configuration
+    ├── Cargo.lock                              # Dependency lock file
+    ├── builds/                                 # Build artifacts
+    ├── memory.x                                # Memory layout
+    ├── rust-toolchain.toml                     # Rust toolchain config
+    └── src/                                    # Source code
+```
+
+### 4.2. Integration Tests Directory Structure
+
+```
+integration-tests/
+├── Cargo.toml                                    # Package configuration
+├── src/                                          # Source code directory
+│   ├── lib.rs                                   # Library root module
+│   ├── ui_tests/                                # UI and layout tests
+│   │   ├── mod.rs                               # UI tests module
+│   │   ├── view_builders/                       # View builder tests
+│   │   │   ├── mod.rs                           # View builder module
+│   │   │   ├── main_view_tests.rs              # Main view structure tests
+│   │   │   ├── layout_tests.rs                 # Layout validation tests
+│   │   │   └── label_width_tests.rs            # Label width logic tests
+│   │   └── internationalization/               # i18n tests
+│   │       ├── mod.rs                           # i18n module
+│   │       ├── language_tests.rs               # Language consistency tests
+│   │       └── layout_consistency_tests.rs     # Cross-language layout tests
+│   ├── integration/                             # Cross-module integration tests
+│   │   ├── mod.rs                               # Integration module
+│   │   ├── tournament_manager_tests.rs         # Tournament manager tests
+│   │   └── config_tests.rs                     # Configuration tests
+│   ├── visual_regression/                       # Visual regression tests
+│   │   ├── mod.rs                               # Visual regression module
+│   │   ├── snapshot_tests.rs                   # Structural snapshot tests
+│   │   └── layout_validation.rs                # Layout validation tests
+│   └── utils/                                   # Test utilities
+│       ├── mod.rs                               # Utils module
+│       ├── mock_data.rs                        # Mock data generators
+│       ├── test_helpers.rs                     # Common test helpers
+│       └── layout_assertions.rs                # Layout assertion helpers
+└── tests/                                       # Integration test files
+    ├── ui_integration.rs                        # UI integration tests
+    └── full_app_tests.rs                        # Full application tests
+```
+
 
 ## 5. Testing Focus Areas and Examples
 
@@ -406,12 +637,159 @@ All test cases use the exact specification data:
 9) Add optional coverage reporting
 10) Finalize maintenance & contribution guide
 
-## 12. Risks and Mitigations
+## 12. UWH Portal Integration
+
+### Overview
+The refbox system provides comprehensive two-way integration with the UWH Portal, enabling real-time tournament management, live scoring, and detailed game statistics tracking.
+
+### Authentication & Connection
+
+#### Login Process
+- **RefBox ID**: A randomly generated ID (1-999,999) that uniquely identifies the refbox
+- **Access Code**: A numeric code entered by the user to link the refbox to a specific event
+- **Bearer Token**: JWT token received after successful authentication for subsequent API calls
+
+```rust
+pub fn login_to_portal(
+    &self,
+    event_id: &EventId,
+    code: u32,
+) -> impl std::future::Future<Output = Result<PortalTokenResponse, Box<dyn Error>>> + use<>
+{
+    let url = format!(
+        "{}/api/events/{}/access-keys/ref-box",
+        self.base_url,
+        event_id.partial()
+    );
+
+    let request = self
+        .client
+        .request(Method::POST, &url)
+        .json(&serde_json::json!({
+            "refBoxId": self.id().to_string(),
+            "code": code.to_string()
+        }));
+```
+
+### Data Retrieved FROM UWH Portal
+
+#### 1. Event List
+- Event names, IDs, and slugs
+- Date ranges (start/end times)
+- Team lists with team IDs and names
+- Court information
+
+#### 2. Event Schedules
+- Complete game schedules with timing
+- Team assignments (dark/light sides)
+- Game numbers and court assignments
+- Timing rules (half duration, timeouts, etc.)
+- Non-game entries (breaks, ceremonies)
+- Group structures and standings calculations
+
+```rust
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Game {
+    pub number: GameNumber,
+    pub dark: ScheduledTeam,
+    pub light: ScheduledTeam,
+    #[serde(with = "iso8601_4dig_year_no_subsecs", rename = "startsOn")]
+    pub start_time: OffsetDateTime,
+    pub court: String,
+    #[serde(with = "item_name", rename = "timingRule")]
+    pub timing_rule: String,
+    pub description: Option<String>,
+}
+```
+
+### Data Sent TO UWH Portal
+
+#### 1. Game Scores
+- Final scores for both teams (dark/light)
+- Game number and event ID
+- Force flag to override existing scores
+
+```rust
+.json(&serde_json::json!({
+    "dark": {
+        "value": scores.black
+    },
+    "light": {
+        "value": scores.white
+    }
+}));
+```
+
+#### 2. Detailed Game Statistics
+- **Goals**: Player cap number, team side, game period, time in period, timestamp
+- **Penalties**: Player cap number, team side, game period, time, duration, dismissal status
+- Game start/end timestamps
+- All events sorted chronologically
+
+```rust
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "$type")]
+enum Event {
+    #[serde(rename = "goal")]
+    Goal {
+        #[serde(rename = "playerCapNumber")]
+        player_cap_number: u8,
+        side: String,
+        #[serde(rename = "gamePeriod")]
+        game_period: GamePeriod,
+        #[serde(rename = "periodTime")]
+        period_time: f32,
+        #[serde(with = "iso8601_short_year")]
+        #[serde(rename = "occurredOn")]
+        occurred_on: OffsetDateTime,
+    },
+    #[serde(rename = "penalty")]
+    Penalty {
+        #[serde(rename = "playerCapNumber")]
+        player_cap_number: u8,
+        side: String,
+        #[serde(rename = "gamePeriod")]
+        game_period: GamePeriod,
+        #[serde(rename = "periodTime")]
+        period_time: f32,
+        #[serde(with = "iso8601_short_year")]
+        #[serde(rename = "occurredOn")]
+        occurred_on: OffsetDateTime,
+        duration: Option<u64>,
+        #[serde(rename = "isTotalDismissal")]
+        is_total_dismissal: bool,
+    },
+}
+```
+
+#### 3. Schedule Management
+- Complete tournament schedules can be uploaded
+- Team mappings (linking unassigned names to full team IDs)
+- Schedule modifications and updates
+
+### API Endpoints Used
+- `POST /api/events/{eventId}/access-keys/ref-box` - Authentication
+- `GET /api/events` - List available events
+- `GET /api/events/{eventId}/schedule/privileged` - Get event schedule
+- `POST /api/events/{eventId}/schedule/games/{gameNumber}/scores` - Post game scores
+- `POST /api/admin/events/stats` - Post detailed game statistics
+- `POST /api/events/{eventSlug}/schedule` - Upload complete schedules
+- `POST /api/events/{eventSlug}/schedule/map-teams` - Map team assignments
+
+### Security & Configuration
+- **HTTPS Enforcement**: Configurable requirement for secure connections
+- **Bearer Token Authentication**: All authenticated requests use JWT tokens
+- **Request Timeouts**: Configurable timeout settings
+- **Error Handling**: Comprehensive error responses and logging
+
+The system provides a complete two-way integration where the refbox can both consume tournament data from the portal and push back real-time game results and detailed statistics for tournament management and live scoring displays.
+
+## 13. Risks and Mitigations
 - GUI-render differences: Avoid pixel diffs; test structure and properties instead
 - i18n string drift: Build-time checks (`build.rs`) already help; add tests that tolerate minor variations
 - Flaky tests: Keep tests deterministic; serialize where necessary
 
-## 13. Estimated Timeline
+## 14. Estimated Timeline
 Each task is ~20 minutes per subtask. See task list for detailed breakdown with review gates.
 
 Status update (in progress):

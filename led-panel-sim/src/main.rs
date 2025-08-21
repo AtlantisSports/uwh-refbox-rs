@@ -17,7 +17,7 @@ fn test_to_verilog(
     let data_str = bin
         .iter()
         .rev()
-        .map(|byte| format!("8'h{:02x}", byte))
+        .map(|byte| format!("8'h{byte:02x}"))
         .collect::<Vec<_>>()
         .join(", ");
 

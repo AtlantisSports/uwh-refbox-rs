@@ -112,7 +112,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => unreachable!(),
     };
 
-    info!("Using URL: {}", site_url);
+    info!("Using URL: {site_url}");
     info!("Fetching event list from uwhportal...");
 
     let mut portal_client = UwhPortalClient::new(
@@ -549,7 +549,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             StepChoice::PrintTeamMap => {
                 let output = serde_json::to_string_pretty(&sendable_team_map(&team_map))?;
-                println!("{}", output);
+                println!("{output}");
             }
             StepChoice::PrintTeamMapDisabled => {
                 error!(

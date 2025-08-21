@@ -53,6 +53,16 @@ def markdown_to_html(markdown_content):
             font-size: 2.5rem;
             margin-bottom: 0.5rem;
             text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+        }
+
+        .header .logo {
+            width: 60px;
+            height: 60px;
+            object-fit: contain;
         }
 
         .header .subtitle {
@@ -294,8 +304,11 @@ def markdown_to_html(markdown_content):
 </head>
 <body>
     <div class="header">
-        <h1>🏗️ Atlantis UWH-REFBOX-RS Detailed Design</h1>
-        <p class="subtitle">Comprehensive design documentation including dynamic font sizing, referee information display, and automated testing strategy</p>
+        <h1>
+            <img src="[PNG] (RGB) - Atlantis Sports - Lambda_Original.png" alt="Atlantis Sports Logo" class="logo">
+            Atlantis UWH-REFBOX-RS Detailed Design
+        </h1>
+        <p class="subtitle">Comprehensive design documentation including application architecture, testing strategy, and system performance requirements</p>
     </div>
 
     <div class="container">
@@ -325,7 +338,7 @@ def markdown_to_html(markdown_content):
         # Handle code blocks
         if line.startswith('```'):
             if in_code_block:
-                html_content += '</pre>\n'
+                html_content += '</code></pre>\n'
                 in_code_block = False
             else:
                 lang = line[3:].strip()

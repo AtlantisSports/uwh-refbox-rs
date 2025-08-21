@@ -29,12 +29,10 @@ pub fn assert_mock_layout_structure(rows: &[MockRow]) {
     let two_col = rows.iter().filter(|r| r.center_label.is_none()).count();
     assert!(
         four_col >= 3,
-        "expected at least 3 four-column rows, got {}",
-        four_col
+        "expected at least 3 four-column rows, got {four_col}"
     );
     assert!(
         two_col >= 5,
-        "expected at least 5 two-column rows, got {}",
-        two_col
+        "expected at least 5 two-column rows, got {two_col}"
     );
 }

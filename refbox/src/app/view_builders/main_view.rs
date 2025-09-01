@@ -485,16 +485,7 @@ fn build_config_table<'a>(
         center_value: Some(time_string(config.half_time_duration)),
     });
 
-    // Row: Overtime | YES | Sudden Death | YES (swapped positions)
-    table_rows.push(TableRow {
-        left_label: "Overtime".to_string(),
-        left_value: bool_string(config.overtime_allowed),
-        center_label: Some("Sudden Death".to_string()),
-        center_value: Some(bool_string(config.sudden_death_allowed)),
-    });
-
-    // Row 3: Timeouts Per Half | 1 (single column)
-    // Row: Timeouts | 1 / Game | Last 2 Min Stop Time | YES
+    // Row: Timeouts | 1 / Game | Last 2 Min Ref T/Out | YES
     let timeout_value = if config.timeouts_counted_per_half {
         format!("{} / Half", config.num_team_timeouts_allowed)
     } else if config.num_team_timeouts_allowed == 0 {
@@ -506,8 +497,16 @@ fn build_config_table<'a>(
     table_rows.push(TableRow {
         left_label: "Timeouts".to_string(),
         left_value: timeout_value,
-        center_label: Some("Last 2 Min Ref T/Out".to_string()),
+        center_label: Some("Last 2 Min Stop Clock".to_string()),
         center_value: Some("YES".to_string()), // Default value, will be configurable later
+    });
+
+    // Row: Overtime | YES | Sudden Death | YES
+    table_rows.push(TableRow {
+        left_label: "Overtime".to_string(),
+        left_value: bool_string(config.overtime_allowed),
+        center_label: Some("Sudden Death".to_string()),
+        center_value: Some(bool_string(config.sudden_death_allowed)),
     });
 
     // Officials information - compact layout to match screenshot
@@ -652,7 +651,7 @@ fn build_config_table<'a>(
                 // Use fixed width for left labels to prevent proportional changes when center label width changes
                 let is_half_duration_row = table_row.left_label == "Half Duration";
                 let is_sudden_death_or_timeout_row =
-                    center_label == "Sudden Death" || center_label == "Last 2 Min Ref T/Out";
+                    center_label == "Sudden Death" || center_label == "Last 2 Min Stop Clock";
                 let is_overtime_or_timeout_value_row =
                     table_row.left_label == "Overtime" || table_row.left_label == "Timeouts";
                 let left_label_width = if is_half_duration_row { 120.0 } else { 90.0 }; // Increased to 90px to prevent "Timeouts" from wrapping

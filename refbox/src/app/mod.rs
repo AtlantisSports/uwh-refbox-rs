@@ -1331,6 +1331,52 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 task
             }
+            Message::EditGameConfigPage(page) => {
+                let mut task = Task::none();
+
+                let uwhportal_token_valid = if let Some(ref client) = self.uwhportal_client {
+                    if client.has_token() {
+                        if let Some(event_id) = self.current_event_id.as_ref() {
+                            task = self.check_uwhportal_auth(event_id);
+                            None
+                        } else {
+                            Some(false)
+                        }
+                    } else {
+                        Some(false)
+                    }
+                } else {
+                    Some(false)
+                };
+
+                let edited_settings = EditableSettings {
+                    config: self.tm.lock().unwrap().config().clone(),
+                    game_number: if self.snapshot.current_period == GamePeriod::BetweenGames {
+                        self.snapshot.next_game_number.clone()
+                    } else {
+                        self.snapshot.game_number.clone()
+                    },
+                    white_on_right: self.config.hardware.white_on_right,
+                    brightness: self.config.hardware.brightness,
+                    using_uwhportal: self.using_uwhportal,
+                    uwhportal_token_valid,
+                    current_event_id: self.current_event_id.clone(),
+                    current_court: self.current_court.clone(),
+                    schedule: self.schedule.clone(),
+                    sound: self.config.sound.clone(),
+                    mode: self.config.mode,
+                    hide_time: self.config.hide_time,
+                    collect_scorer_cap_num: self.config.collect_scorer_cap_num,
+                    track_fouls_and_warnings: self.config.track_fouls_and_warnings,
+                    confirm_score: self.config.confirm_score,
+                };
+
+                self.edited_settings = Some(edited_settings);
+
+                self.app_state = AppState::EditGameConfig(page);
+                trace!("AppState changed to {:?}", self.app_state);
+                task
+            }
             Message::ChangeConfigPage(new_page) => {
                 if let AppState::EditGameConfig(ref mut page) = self.app_state {
                     *page = new_page;

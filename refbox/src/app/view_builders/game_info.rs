@@ -1,20 +1,22 @@
 use super::*;
 use iced::{
-    Length,
-    alignment::{Horizontal, Vertical},
-    widget::{column, container, horizontal_space, row, text},
+    Element, Length,
+    alignment::Horizontal,
+    widget::{button, column, container, horizontal_space, row, text, Space},
 };
 use uwh_common::{
-    game_snapshot::GameSnapshot,
+    config::Game as GameConfig,
+    game_snapshot::{GamePeriod, GameSnapshot},
     uwhportal::schedule::{GameList, TeamList},
 };
+use crate::app::view_builders::shared_elements::{time_string, bool_string, get_team_name, limit_team_name_len};
 
 #[derive(Debug, Clone)]
 struct TableRow {
     left_label: String,
     left_value: String,
-    right_label: Option<String>,
-    right_value: Option<String>,
+    center_label: Option<String>,
+    center_value: Option<String>,
 }
 
 pub(in super::super) fn build_game_info_page<'a>(
@@ -49,58 +51,133 @@ pub(in super::super) fn build_game_info_page<'a>(
         horizontal_space().into()
     };
 
-    let table_rows = build_details_table(snapshot, config, using_uwhportal, games, teams);
+    // Create a container with the table from build_details_table
+    let details_table_rows = build_details_table(
+        snapshot,
+        config,
+        using_uwhportal,
+        games,
+        teams,
+    );
 
-    let mut details_column = column![].spacing(SPACING / 4.0).width(Length::Fill);
+    // Convert table rows to visual elements
+    let mut details_column = column![]
+        .spacing(SPACING / 6.0) // Reduced spacing to fit more rows
+        .width(Length::Fill);
 
-    for table_row in table_rows {
-        if let (Some(right_label), Some(right_value)) =
-            (&table_row.right_label, &table_row.right_value)
-        {
-            // Two-column row - create compact table style
-            let row_element = row![
-                container(text(table_row.left_label.clone()).size(SMALL_TEXT))
+    for table_row in details_table_rows {
+        let row_element = if let Some(center_label) = table_row.center_label {
+            if let Some(center_value) = table_row.center_value {
+                // 4-column row OR special 2-column stop clock row
+                if table_row.left_label == "Stop clock during last 2 minutes of the game" {
+                    // Special 2-column layout for stop clock
+                    row![
+                        container(
+                            text(table_row.left_label)
+                                .size(SMALL_TEXT)
+                                .align_x(Horizontal::Left)
+                        )
+                        .padding([1, 1])
+                        .width(Length::Fixed(388.0))
+                        .style(container::rounded_box),
+                        container(
+                            text(center_value)
+                                .size(SMALL_TEXT)
+                                .width(Length::Fill)
+                                .align_x(Horizontal::Center)
+                        )
+                        .center_x(Length::Fill)
+                        .padding([1, 1])
+                        .width(Length::Fixed(86.0))
+                        .style(container::rounded_box),
+                    ]
+                } else {
+                    // Regular 4-column layout
+                    row![
+                        container(
+                            text(table_row.left_label)
+                                .size(SMALL_TEXT)
+                                .align_x(Horizontal::Left)
+                        )
+                        .padding([1, 1])
+                        .width(Length::Fixed(120.0))
+                        .style(container::rounded_box),
+                        container(
+                            text(table_row.left_value.clone())
+                                .size(SMALL_TEXT)
+                                .width(Length::Fill)
+                                .align_x(Horizontal::Center)
+                        )
+                        .center_x(Length::Fill)
+                        .padding([1, 1])
+                        .width(Length::Fixed(86.0))
+                        .style(container::rounded_box),
+                        container(
+                            text(center_label)
+                                .size(SMALL_TEXT)
+                                .align_x(Horizontal::Left)
+                                .width(Length::Fill)
+                        )
+                        .padding([1, 1])
+                        .width(Length::Fixed(180.0))
+                        .style(container::rounded_box),
+                        container(
+                            text(center_value)
+                                .size(SMALL_TEXT)
+                                .width(Length::Fill)
+                                .align_x(Horizontal::Center)
+                        )
+                        .center_x(Length::Fill)
+                        .padding([1, 1])
+                        .width(Length::Fixed(86.0))
+                        .style(container::rounded_box),
+                    ]
+                }
+            } else {
+                // 3-column layout for game team rows
+                row![
+                    container(
+                        text(table_row.left_label)
+                            .size(SMALL_TEXT)
+                            .align_x(Horizontal::Left)
+                    )
                     .padding([1, 1])
-                    .width(Length::Fixed(120.0))
+                    .width(Length::Fixed(100.0))
                     .style(container::rounded_box),
-                container(
-                    text(table_row.left_value.clone())
-                        .size(SMALL_TEXT)
-                        .width(Length::Fill)
-                        .align_x(Horizontal::Center)
-                )
-                .center_x(Length::Fill)
-                .padding([1, 1])
-                .width(Length::Fixed(86.0))
-                .style(container::rounded_box),
-                container(text(right_label.clone()).size(SMALL_TEXT))
+                    container(
+                        text(table_row.left_value.clone())
+                            .size(SMALL_TEXT)
+                            .width(Length::Fill)
+                            .align_x(Horizontal::Center)
+                    )
+                    .center_x(Length::Fill)
                     .padding([1, 1])
-                    .width(Length::Fixed(140.0))
+                    .width(Length::Fixed(60.0))
                     .style(container::rounded_box),
-                container(
-                    text(right_value.clone())
-                        .size(SMALL_TEXT)
-                        .width(Length::Fill)
-                        .align_x(Horizontal::Center)
-                )
-                .center_x(Length::Fill)
-                .padding([1, 1])
-                .width(Length::Fixed(86.0))
-                .style(container::rounded_box),
-            ]
-            .spacing(1)
-            .width(Length::Fill);
-            
-            details_column = details_column.push(row_element);
+                    container(
+                        text(center_label)
+                            .size(SMALL_TEXT)
+                            .width(Length::Fill)
+                            .align_x(Horizontal::Left)
+                    )
+                    .padding([1, 1])
+                    .width(Length::Fill)
+                    .style(container::rounded_box),
+                ]
+            }
         } else {
-            // Single-column row - create compact table style
-            let row_element = row![
-                container(text(table_row.left_label.clone()).size(SMALL_TEXT))
-                    .padding([1, 1])
-                    .width(Length::Fixed(180.0))
-                    .style(container::rounded_box),
+            // 2-column layout for officials
+            row![
                 container(
-                    text(table_row.left_value.clone())
+                    text(table_row.left_label)
+                        .size(SMALL_TEXT)
+                        .align_x(Horizontal::Left)
+                )
+                .padding([1, 1])
+                .width(Length::Fixed(120.0))
+                .style(container::rounded_box),
+                container(
+                    text(table_row.left_value)
                         .size(SMALL_TEXT)
                         .width(Length::Fill)
                         .align_x(Horizontal::Center)
@@ -110,19 +187,34 @@ pub(in super::super) fn build_game_info_page<'a>(
                 .width(Length::Fill)
                 .style(container::rounded_box),
             ]
-            .spacing(1)
-            .width(Length::Fill);
-            
-            details_column = details_column.push(row_element);
-        }
+        };
+
+        details_column = details_column.push(
+            row_element
+                .spacing(1)
+                .width(Length::Fill)
+        );
     }
+
+    let config_table = button(details_column)
+        .padding(PADDING)
+        .style(light_gray_button)
+        .height(Length::Fill)
+        .width(Length::Fill)
+        .on_press(Message::EditGameConfigPage(ConfigPage::Game)); // Navigate directly to Game Options page
+
+    // Apply width constraint only to the table to match main page table width
+    let config_table_with_spacing = row![
+        Space::with_width(Length::FillPortion(1)),
+        config_table.width(Length::FillPortion(2)),
+        Space::with_width(Length::FillPortion(1)),
+    ]
+    .spacing(0)
+    .width(Length::Fill);
 
     column![
         make_game_time_button(snapshot, false, false, mode, clock_running),
-        container(details_column)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .padding(PADDING),
+        config_table_with_spacing,
         row![
             make_button(fl!("back"))
                 .style(red_button)
@@ -151,208 +243,188 @@ fn build_details_table(
 ) -> Vec<TableRow> {
     const TEAM_NAME_LEN_LIMIT: usize = 40;
     let mut table_rows = Vec::new();
+
+    // Game number information for reference
     let game_number = if snapshot.current_period == GamePeriod::BetweenGames {
-        let prev_game;
-        let next_game;
-        if using_uwhportal {
-            if let Some(games) = games {
-                prev_game = match games.get(&snapshot.game_number) {
-                    Some(game) => game.number.to_string(),
-                    None if snapshot.game_number == "0" => fl!("none").to_string(),
-                    None => fl!(
-                        "game-number-error",
-                        game_number = snapshot.game_number.clone()
-                    ),
-                };
-                next_game = match games.get(&snapshot.next_game_number) {
-                    Some(game) => game.number.to_string(),
-                    None => fl!(
-                        "next-game-number-error",
-                        next_game_number = snapshot.next_game_number.clone()
-                    ),
-                };
-            } else {
-                prev_game = if snapshot.game_number == "0" {
-                    fl!("none").to_string()
-                } else {
-                    fl!(
-                        "game-number-error",
-                        game_number = snapshot.game_number.clone()
-                    )
-                };
-                next_game = fl!(
-                    "next-game-number-error",
-                    next_game_number = snapshot.next_game_number.clone()
-                );
-            }
-        } else {
-            prev_game = if snapshot.game_number == "0" {
-                fl!("none").to_string()
-            } else {
-                snapshot.game_number.to_string()
-            };
-            next_game = snapshot.next_game_number.to_string();
-        }
-
-        table_rows.push(TableRow {
-            left_label: "Last Game".to_string(),
-            left_value: prev_game,
-            right_label: Some("Next Game".to_string()),
-            right_value: Some(next_game),
-        });
-
         &snapshot.next_game_number
     } else {
-        let game;
-        if using_uwhportal {
-            if let Some(games) = games {
-                game = match games.get(&snapshot.game_number) {
-                    Some(game) => game.number.to_string(),
-                    None => fl!(
-                        "game-number-error",
-                        game_number = snapshot.game_number.clone()
-                    ),
-                };
-            } else {
-                game = fl!(
-                    "game-number-error",
-                    game_number = snapshot.game_number.clone()
-                );
-            }
-        } else {
-            game = snapshot.game_number.to_string();
-        }
-        table_rows.push(TableRow {
-            left_label: "Game".to_string(),
-            left_value: game,
-            right_label: None,
-            right_value: None,
-        });
         &snapshot.game_number
     };
 
-    if using_uwhportal {
+    // Get team names for current/next game
+    let (current_black_team, current_white_team) = if using_uwhportal {
         if let Some(games) = games {
             if let Some(game) = games.get(game_number) {
                 let black = get_team_name(&game.dark, teams);
                 let white = get_team_name(&game.light, teams);
-                table_rows.push(TableRow {
-                    left_label: "Black Team".to_string(),
-                    left_value: limit_team_name_len(&black, TEAM_NAME_LEN_LIMIT),
-                    right_label: Some("White Team".to_string()),
-                    right_value: Some(limit_team_name_len(&white, TEAM_NAME_LEN_LIMIT)),
-                });
+                (
+                    limit_team_name_len(&black, TEAM_NAME_LEN_LIMIT),
+                    limit_team_name_len(&white, TEAM_NAME_LEN_LIMIT),
+                )
+            } else {
+                ("None".to_string(), "None".to_string())
             }
+        } else {
+            ("None".to_string(), "None".to_string())
         }
-    }
+    } else {
+        ("None".to_string(), "None".to_string())
+    };
 
+    // Get team names for previous game (if available)
+    let (_prev_black_team, _prev_white_team) = if using_uwhportal {
+        if let Some(games) = games {
+            // Try to get previous game number (current game number - 1)
+            let prev_game_num = if let Ok(current_num) = snapshot.game_number.parse::<i32>() {
+                if current_num > 1 {
+                    (current_num - 1).to_string()
+                } else {
+                    "0".to_string()
+                }
+            } else {
+                "0".to_string()
+            };
+
+            if let Some(prev_game) = games.get(&prev_game_num) {
+                let black = get_team_name(&prev_game.dark, teams);
+                let white = get_team_name(&prev_game.light, teams);
+                (
+                    limit_team_name_len(&black, TEAM_NAME_LEN_LIMIT),
+                    limit_team_name_len(&white, TEAM_NAME_LEN_LIMIT),
+                )
+            } else {
+                ("None".to_string(), "None".to_string())
+            }
+        } else {
+            ("None".to_string(), "None".to_string())
+        }
+    } else {
+        ("None".to_string(), "None".to_string())
+    };
+
+    // Add "Last Game" rows - first row with White team
+    table_rows.push(TableRow {
+        left_label: "Last Game".to_string(),
+        left_value: "White".to_string(),
+        center_label: Some(_prev_white_team.clone()),
+        center_value: None,
+    });
+
+    // Add second row for Last Game with Black team (empty label)
+    table_rows.push(TableRow {
+        left_label: "".to_string(),
+        left_value: "Black".to_string(),
+        center_label: Some(_prev_black_team.clone()),
+        center_value: None,
+    });
+
+    // Add "Next Game" rows - first row with White team
+    table_rows.push(TableRow {
+        left_label: "Next Game".to_string(),
+        left_value: "White".to_string(),
+        center_label: Some(current_white_team.clone()),
+        center_value: None,
+    });
+
+    // Add second row for Next Game with Black team (empty label)
+    table_rows.push(TableRow {
+        left_label: "".to_string(),
+        left_value: "Black".to_string(),
+        center_label: Some(current_black_team.clone()),
+        center_value: None,
+    });
+
+    // Compact layout - everything in fewer rows to match screenshot
+    // Row: Half Duration | 15:00 | Half Time Duration | 3:00
     table_rows.push(TableRow {
         left_label: "Half Duration".to_string(),
         left_value: time_string(config.half_play_duration),
-        right_label: Some("Half Time Duration".to_string()),
-        right_value: Some(time_string(config.half_time_duration)),
+        center_label: Some("Half Time Duration".to_string()),
+        center_value: Some(time_string(config.half_time_duration)),
     });
 
-    table_rows.push(TableRow {
-        left_label: "Sudden Death Allowed".to_string(),
-        left_value: bool_string(config.sudden_death_allowed),
-        right_label: Some("Overtime Allowed".to_string()),
-        right_value: Some(bool_string(config.overtime_allowed)),
-    });
-
-    if config.overtime_allowed {
-        table_rows.push(TableRow {
-            left_label: "Pre-Overtime Break".to_string(),
-            left_value: time_string(config.pre_overtime_break),
-            right_label: Some("Overtime Half Length".to_string()),
-            right_value: Some(time_string(config.ot_half_play_duration)),
-        });
-
-        table_rows.push(TableRow {
-            left_label: "Overtime Half Time Length".to_string(),
-            left_value: time_string(config.ot_half_time_duration),
-            right_label: None,
-            right_value: None,
-        });
-    }
-
-    if config.sudden_death_allowed {
-        table_rows.push(TableRow {
-            left_label: "Pre-Sudden-Death Break".to_string(),
-            left_value: time_string(config.pre_sudden_death_duration),
-            right_label: None,
-            right_value: None,
-        });
-    }
-
-    let timeout_label = if config.timeouts_counted_per_half {
-        "Team Timeouts Allowed Per Half"
+    // Row: Timeouts | 1 / Game | Timeout Duration | 2:00
+    let timeout_value = if config.timeouts_counted_per_half {
+        format!("{} / Half", config.num_team_timeouts_allowed)
+    } else if config.num_team_timeouts_allowed == 0 {
+        "None".to_string()
     } else {
-        "Team Timeouts Allowed Per Game"
+        format!("{} / Game", config.num_team_timeouts_allowed)
     };
 
     table_rows.push(TableRow {
-        left_label: timeout_label.to_string(),
-        left_value: config.num_team_timeouts_allowed.to_string(),
-        right_label: None,
-        right_value: None,
+        left_label: "Timeouts".to_string(),
+        left_value: timeout_value,
+        center_label: Some("Timeout Duration".to_string()),
+        center_value: Some(time_string(config.team_timeout_duration)),
     });
 
-    if config.num_team_timeouts_allowed != 0 {
-        table_rows.push(TableRow {
-            left_label: "Team Timeout Length".to_string(),
-            left_value: time_string(config.team_timeout_duration),
-            right_label: None,
-            right_value: None,
-        });
-    }
-    if !using_uwhportal {
-        table_rows.push(TableRow {
-            left_label: "Time Between Games".to_string(),
-            left_value: time_string(config.nominal_break),
-            right_label: None,
-            right_value: None,
-        });
-    }
-
+    // Row: Stop clock during last 2 minutes of the game | empty | empty | YES
     table_rows.push(TableRow {
-        left_label: "Minimum Break Between Games".to_string(),
-        left_value: time_string(config.minimum_break),
-        right_label: None,
-        right_value: None,
+        left_label: "Stop clock during last 2 minutes of the game".to_string(),
+        left_value: "".to_string(), // Empty left value to make space for the label
+        center_label: Some("".to_string()), // Empty center label
+        center_value: Some("YES".to_string()), // YES aligns with timeout duration above
     });
 
-    if using_uwhportal {
-        let unknown = fl!("unknown");
+    // Row: Overtime | YES | Pre-Overtime Break | 5:00
+    table_rows.push(TableRow {
+        left_label: "Overtime".to_string(),
+        left_value: bool_string(config.overtime_allowed),
+        center_label: Some("Pre-Overtime Break".to_string()),
+        center_value: Some(time_string(config.pre_overtime_break)),
+    });
 
-        table_rows.push(TableRow {
-            left_label: "Stop Clock in Last 2 Minutes".to_string(),
-            left_value: unknown.clone(),
-            right_label: None,
-            right_value: None,
-        });
+    // Row: Sudden Death | YES | Pre-Sudden Death | 2:00
+    table_rows.push(TableRow {
+        left_label: "Sudden Death".to_string(),
+        left_value: bool_string(config.sudden_death_allowed),
+        center_label: Some("Pre-Sudden Death".to_string()),
+        center_value: Some(time_string(config.pre_sudden_death_duration)),
+    });
 
-        table_rows.push(TableRow {
-            left_label: "Chief Ref".to_string(),
-            left_value: unknown.clone(),
-            right_label: Some("Timer".to_string()),
-            right_value: Some(unknown.clone()),
-        });
+    // Officials information - compact layout to match screenshot
+    let unknown = fl!("unknown");
 
-        table_rows.push(TableRow {
-            left_label: "Water Ref 1".to_string(),
-            left_value: unknown.clone(),
-            right_label: Some("Water Ref 2".to_string()),
-            right_value: Some(unknown.clone()),
-        });
+    // Row 5: Chief Ref | Unknown (single column)
+    table_rows.push(TableRow {
+        left_label: "Chief Ref".to_string(),
+        left_value: unknown.clone(),
+        center_label: None,
+        center_value: None,
+    });
 
-        table_rows.push(TableRow {
-            left_label: "Water Ref 3".to_string(),
-            left_value: unknown,
-            right_label: None,
-            right_value: None,
-        });
-    }
+    // Row 6: Timer | Unknown (single column)
+    table_rows.push(TableRow {
+        left_label: "Timer".to_string(),
+        left_value: unknown.clone(),
+        center_label: None,
+        center_value: None,
+    });
+
+    // Row 7: Water Ref 1 | Unknown (single column)
+    table_rows.push(TableRow {
+        left_label: "Water Ref 1".to_string(),
+        left_value: unknown.clone(),
+        center_label: None,
+        center_value: None,
+    });
+
+    // Row 8: Water Ref 2 | Unknown (single column)
+    table_rows.push(TableRow {
+        left_label: "Water Ref 2".to_string(),
+        left_value: unknown.clone(),
+        center_label: None,
+        center_value: None,
+    });
+
+    // Row 9: Water Ref 3 | Unknown (single column)
+    table_rows.push(TableRow {
+        left_label: "Water Ref 3".to_string(),
+        left_value: unknown.clone(),
+        center_label: None,
+        center_value: None,
+    });
 
     table_rows
 }

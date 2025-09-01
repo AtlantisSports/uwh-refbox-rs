@@ -1,4 +1,10 @@
-# Definitions for the translation file to use
+# Defi# Multipage 
+done = TERMINÉ
+cancel = ANNULER
+delete = SUPPRIMER
+back = RETOUR
+new = NOUVEAU
+interface-options = OPTIONS UTILISATEUR
 -dark-team-name = Noir
 dark-team-name-caps = NOIR
 -light-team-name = Blanc
@@ -10,6 +16,7 @@ cancel = ANNULER
 delete = SUPPRIMER
 back = RETOUR
 new = NOUVEAU
+ui-page = OPTIONS UTILISATEUR
 
 # Penalty Edit
 total-dismissal = TD
@@ -36,9 +43,13 @@ none-selected = Aucun Sélectionné
 loading = Chargement...
 game-select = MATCH:
 game-options = OPTIONS DU MATCH
-app-options = OPTIONS DE L'APPLICATION
+app-options = OPTIONS UTILISATEUR
+interface-options = OPTIONS D'INTERFACE
+interface-panel = OPTIONS UTILISATEUR
 display-options = OPTIONS D'AFFICHAGE
+ui-options = OPTIONS UTILISATEUR
 sound-options = OPTIONS SONORES
+ui-interface-options = OPTIONS D'INTERFACE
 app-mode = MODE
 hide-time-for-last-15-seconds = CACHER LE TEMPS POUR
     LES 15 DERNIÈRES SECONDES
@@ -259,7 +270,7 @@ infraction = Faute: {$infraction}
 ## Config String
 error = Erreur ({ $number })
 two-games = Dernier Match: { $prev_game },  Prochain Match: { $next_game }
-one-game = Match: { $game }
+one-game = MATCH: { $game }
 teams = Équipe { -dark-team-name }: { $dark_team }
     Équipe { -light-team-name }: { $light_team }
 game-config = Durée de la Pér.: { $half_len },  Mi-temps: { $half_time_len }

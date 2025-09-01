@@ -379,6 +379,8 @@ pub enum ConfigPage {
     Sound,
     Display,
     App,
+    UserInterface,
+    InterfaceOptions,
     Remotes(usize, bool),
 }
 

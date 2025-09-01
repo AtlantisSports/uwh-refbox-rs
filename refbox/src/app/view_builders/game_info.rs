@@ -1,7 +1,8 @@
 use super::*;
 use iced::{
     Length,
-    widget::{column, container, horizontal_space, row},
+    alignment::{Horizontal, Vertical},
+    widget::{column, container, horizontal_space, row, text},
 };
 use uwh_common::{
     game_snapshot::GameSnapshot,
@@ -50,39 +51,69 @@ pub(in super::super) fn build_game_info_page<'a>(
 
     let table_rows = build_details_table(snapshot, config, using_uwhportal, games, teams);
 
-    let mut details_column = column![].spacing(SPACING / 2.0).width(Length::Fill);
+    let mut details_column = column![].spacing(SPACING / 4.0).width(Length::Fill);
 
     for table_row in table_rows {
         if let (Some(right_label), Some(right_value)) =
             (&table_row.right_label, &table_row.right_value)
         {
-            // Two-column row
-            details_column = details_column.push(
-                row![
-                    make_value_button(
-                        table_row.left_label,
-                        table_row.left_value,
-                        (false, false),
-                        None
-                    ),
-                    make_value_button(
-                        right_label.clone(),
-                        right_value.clone(),
-                        (false, false),
-                        None
-                    ),
-                ]
-                .spacing(SPACING)
-                .width(Length::Fill),
-            );
+            // Two-column row - create compact table style
+            let row_element = row![
+                container(text(table_row.left_label.clone()).size(SMALL_TEXT))
+                    .padding([1, 1])
+                    .width(Length::Fixed(120.0))
+                    .style(container::rounded_box),
+                container(
+                    text(table_row.left_value.clone())
+                        .size(SMALL_TEXT)
+                        .width(Length::Fill)
+                        .align_x(Horizontal::Center)
+                )
+                .center_x(Length::Fill)
+                .padding([1, 1])
+                .width(Length::Fixed(86.0))
+                .style(container::rounded_box),
+                container(text(right_label.clone()).size(SMALL_TEXT))
+                    .padding([1, 1])
+                    .width(Length::Fixed(140.0))
+                    .style(container::rounded_box),
+                container(
+                    text(right_value.clone())
+                        .size(SMALL_TEXT)
+                        .width(Length::Fill)
+                        .align_x(Horizontal::Center)
+                )
+                .center_x(Length::Fill)
+                .padding([1, 1])
+                .width(Length::Fixed(86.0))
+                .style(container::rounded_box),
+            ]
+            .spacing(1)
+            .width(Length::Fill);
+            
+            details_column = details_column.push(row_element);
         } else {
-            // Single-column row
-            details_column = details_column.push(make_value_button(
-                table_row.left_label,
-                table_row.left_value,
-                (false, false),
-                None,
-            ));
+            // Single-column row - create compact table style
+            let row_element = row![
+                container(text(table_row.left_label.clone()).size(SMALL_TEXT))
+                    .padding([1, 1])
+                    .width(Length::Fixed(180.0))
+                    .style(container::rounded_box),
+                container(
+                    text(table_row.left_value.clone())
+                        .size(SMALL_TEXT)
+                        .width(Length::Fill)
+                        .align_x(Horizontal::Center)
+                )
+                .center_x(Length::Fill)
+                .padding([1, 1])
+                .width(Length::Fill)
+                .style(container::rounded_box),
+            ]
+            .spacing(1)
+            .width(Length::Fill);
+            
+            details_column = details_column.push(row_element);
         }
     }
 

@@ -1587,7 +1587,7 @@ impl RefBoxApp {
 
                 let next_page = match self.app_state {
                     AppState::ParameterEditor(_, _) => ConfigPage::Game,
-                    AppState::KeypadPage(KeypadPage::GameNumber, _) => ConfigPage::Main,
+                    AppState::KeypadPage(KeypadPage::GameNumber, _) => ConfigPage::Game,
                     AppState::KeypadPage(KeypadPage::TeamTimeouts(_, _), _)
                     | AppState::KeypadPage(KeypadPage::PortalLogin(_, _), _) => ConfigPage::Game,
                     AppState::ParameterList(param, _) => match param {

@@ -212,6 +212,232 @@ High-level layers:
 - Internationalization tests: build app or components under en-US, es, fr and verify rules
 - Visual regression-style: snapshot-like structural expectations, avoiding brittle pixel diffs
 
+### 3.1 Core System Components
+
+The UWH Refbox system is designed as a modular, cross-platform application built in Rust. The architecture emphasizes real-time performance, network connectivity, and tournament integration.
+
+**Primary Components:**
+- **Refbox Application**: Main timer and game management interface
+- **Tournament Manager**: Game state, penalty tracking, and scoring logic
+- **Network Layer**: TCP/UDP communication for displays and overlays
+- **UWH Portal Integration**: Tournament data synchronization
+- **LED Panel Simulator**: Built-in display simulation for development
+- **Sound System**: Audio alerts and wireless remote support
+- **Configuration Management**: Persistent settings and game parameters
+
+**Technology Stack:**
+- **Language**: Rust (stable channel)
+- **GUI Framework**: Iced (cross-platform native UI)
+- **Networking**: Tokio async runtime with TCP/UDP protocols
+- **Serialization**: Serde with JSON and binary formats
+- **Time Management**: Tokio time primitives with high precision
+- **Configuration**: TOML-based configuration files
+- **Internationalization**: Fluent localization system
+- **Testing**: Comprehensive unit and integration test suites
+
+**Design Principles:**
+- **Real-time Performance**: Sub-second response times for critical operations
+- **Cross-platform Compatibility**: Windows, macOS, Linux, and Raspberry Pi support
+- **Network-first Architecture**: Designed for distributed display systems
+- **Tournament Integration**: Seamless UWH Portal connectivity
+- **Extensibility**: Modular design supporting future enhancements
+- **Reliability**: Robust error handling and graceful degradation
+
+### 3.2 Penalty System Architecture
+
+The penalty system is a sophisticated, multi-layered component that handles real-time penalty tracking, timing calculations, and data export to the UWH Portal.
+
+#### 3.2.1 Core Data Structures
+
+**Primary Penalty Record**
+```rust
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Penalty {
+    pub(crate) kind: PenaltyKind,           // Duration type
+    pub(crate) player_number: u8,          // Player cap number
+    pub(crate) start_period: GamePeriod,   // When penalty started
+    pub(crate) start_time: Duration,       // Time in period when started
+    pub(crate) start_instant: Instant,     // System timestamp
+    pub(crate) infraction: Infraction,     // Type of violation
+}
+```
+
+**Penalty Types**
+- **ThirtySecond**: 30 seconds
+- **OneMinute**: 60 seconds (default)
+- **TwoMinute**: 120 seconds
+- **FourMinute**: 240 seconds
+- **FiveMinute**: 300 seconds
+- **TotalDismissal**: Permanent removal (no duration)
+
+**Infraction Types**
+- StickInfringement, IllegalAdvancement, IllegalSubstitution
+- IllegallyStoppingThePuck, OutOfBounds, GrabbingTheBarrier
+- Obstruction, DelayOfGame, UnsportsmanlikeConduct
+- FreeArm, FalseStart, Unknown
+
+#### 3.2.2 Timing System
+
+**Complex Time Calculation**
+The system handles sophisticated timing across multiple game periods:
+
+- **Cross-period tracking**: Penalties can span multiple game periods
+- **Period-aware timing**: Only counts time during periods where penalties run
+- **Negative time handling**: Supports penalties that start in future periods
+- **Between Games**: Penalties from previous game are automatically served
+- **Total Dismissals**: Handled as special case with no duration
+
+**Key Timing Methods**
+```rust
+pub fn time_elapsed(&self, cur_per: GamePeriod, cur_time: Duration, config: &GameConfig) -> PenaltyResult<SignedDuration>
+pub fn time_remaining(&self, cur_per: GamePeriod, cur_time: Duration, config: &GameConfig) -> PenaltyResult<SignedDuration>
+pub fn is_complete(&self, cur_per: GamePeriod, cur_time: Duration, config: &GameConfig) -> PenaltyResult<bool>
+```
+
+#### 3.2.3 Storage and Management
+
+**In-Memory Storage Structure**
+```rust
+pub struct TournamentManager {
+    penalties: BlackWhiteBundle<Vec<Penalty>>,  // Separate lists per team
+    // ... other fields
+}
+```
+
+**Penalty Lifecycle Management**
+
+1. **Creation**: `start_penalty()` - Records new penalty with timing data
+2. **Editing**: `edit_penalty()` - Modifies existing penalties, can move between teams
+3. **Automatic Cleanup**: `cull_penalties()` - Removes completed penalties, transfers to statistics
+4. **List Length Limiting**: `limit_pen_list_len()` - Maintains LED panel constraints (3 per team)
+
+#### 3.2.4 Real-Time Data Distribution
+
+**Game Snapshots (Live Updates)**
+```rust
+pub struct PenaltySnapshot {
+    pub player_number: u8,
+    pub time: PenaltyTime,        // Seconds remaining or TotalDismissal
+    pub infraction: Infraction,
+}
+```
+
+**LED Panel Binary Protocol**
+- **Wire Format**: 19-byte binary encoding
+- **Penalty Encoding**: 2 bytes per penalty
+  - Bits 15-9: Player number (0-99)
+  - Bits 8-0: Time remaining (0-510 seconds, 511 = Total Dismissal)
+- **Constraint**: Maximum 3 penalties per team displayed
+
+**Network Broadcasting**
+- **TCP/JSON**: Full snapshots to overlay applications
+- **Binary Protocol**: Efficient updates to LED panels
+- **Real-time Updates**: Continuous broadcasting during games
+
+#### 3.2.5 UWH Portal Integration
+
+**Data Export Format**
+```rust
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "$type")]
+enum Event {
+    #[serde(rename = "penalty")]
+    Penalty {
+        #[serde(rename = "playerCapNumber")]
+        player_cap_number: u8,
+        side: String,                    // "dark" or "light"
+        #[serde(rename = "gamePeriod")]
+        game_period: GamePeriod,
+        #[serde(rename = "periodTime")]
+        period_time: f32,                // Time in period when penalty started
+        #[serde(with = "iso8601_short_year")]
+        #[serde(rename = "occurredOn")]
+        occurred_on: OffsetDateTime,     // Absolute timestamp
+        duration: Option<u64>,           // Penalty duration in seconds
+        #[serde(rename = "isTotalDismissal")]
+        is_total_dismissal: bool,
+    },
+}
+```
+
+**Portal API Endpoints**
+```rust
+// Game statistics (including penalties)
+POST /api/admin/events/stats
+Content-Type: application/json
+Query: eventId={event_id}&gameNumber={game_number}
+Body: [Event] // Array of goals and penalties
+
+// Game scores (final results only)
+POST /api/events/{event_id}/schedule/games/{game_number}/scores
+Body: {
+    "dark": {"value": black_score},
+    "light": {"value": white_score}
+}
+```
+
+**What Gets Sent to Portal**
+
+✅ **Penalty Data Exported:**
+1. **Player Information**: Cap number, team side
+2. **Timing Data**: Game period, time in period, absolute timestamp
+3. **Penalty Details**: Duration, total dismissal flag
+4. **Chronological Order**: All events sorted by occurrence time
+
+✅ **Export Triggers:**
+- **Game End**: Complete statistics sent automatically
+- **Manual Export**: Via UI when game concludes
+- **Score Updates**: Separate endpoint for final scores
+
+❌ **NOT Sent to Portal:**
+- **Live penalty updates**: Only final statistics at game end
+- **Infraction types**: Specific violation details not exported
+- **Real-time timing**: Current remaining time not sent
+- **Penalty edits**: Only final penalty state exported
+
+#### 3.2.6 Data Flow Summary
+
+**1. Penalty Creation → Storage**
+```
+Referee Input → start_penalty() → In-Memory Vec<Penalty> → Real-time Snapshots
+```
+
+**2. Live Distribution**
+```
+In-Memory Penalties → generate_snapshot() → Network Broadcast → LED Panels/Overlays
+```
+
+**3. Game End Export**
+```
+Completed Penalties → GameStats → JSON Export → UWH Portal API
+```
+
+**4. Automatic Management**
+```
+Active Penalties → cull_penalties() → Archive to Statistics → Memory Cleanup
+```
+
+#### 3.2.7 System Characteristics
+
+**Strengths:**
+- **Real-time Performance**: Sub-second penalty timing updates
+- **Cross-period Tracking**: Handles complex multi-period penalty scenarios
+- **Automatic Management**: Self-cleaning penalty lists
+- **Multiple Output Formats**: Binary, JSON, and snapshot formats
+- **Portal Integration**: Seamless tournament record keeping
+
+**Limitations:**
+- **Memory-only Storage**: No local persistence between sessions
+- **LED Panel Constraint**: Maximum 3 penalties per team displayed
+- **Export Timing**: Portal only receives final statistics, not live updates
+- **Infraction Detail Loss**: Specific violation types not sent to portal
+
+**Performance Optimizations:**
+- **Efficient Binary Encoding**: 2 bytes per penalty for LED panels
+- **Automatic Culling**: Removes completed penalties to maintain performance
+- **Prioritized Display**: Shows most urgent penalties on limited displays
+- **Batch Processing**: Groups penalty operations for efficiency
+
 ## 4. Directory Structure
 
 ### 4.1. Workspace Overview

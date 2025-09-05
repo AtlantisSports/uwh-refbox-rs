@@ -1,4 +1,10 @@
-# Definitions for the translation file to use
+# Defi# Multipage 
+done = TERMINÉ
+cancel = ANNULER
+delete = SUPPRIMER
+back = RETOUR
+new = NOUVEAU
+interface-options = INTERFACE UTILISATEUR for the translation file to use
 -dark-team-name = Noir
 dark-team-name-caps = NOIR
 -light-team-name = Blanc
@@ -10,6 +16,7 @@ cancel = ANNULER
 delete = SUPPRIMER
 back = RETOUR
 new = NOUVEAU
+ui-page = INTERFACE UTILISATEUR
 
 # Penalty Edit
 total-dismissal = TD
@@ -36,8 +43,10 @@ none-selected = Aucun Sélectionné
 loading = Chargement...
 game-select = MATCH:
 game-options = OPTIONS DU MATCH
-app-options = OPTIONS DE L'APPLICATION
+app-options = INTERFACE UTILISATEUR
+interface-panel = INTERFACE UTILISATEUR
 display-options = OPTIONS D'AFFICHAGE
+ui-options = INTERFACE UTILISATEUR
 sound-options = OPTIONS SONORES
 app-mode = MODE
 hide-time-for-last-15-seconds = CACHER LE TEMPS POUR

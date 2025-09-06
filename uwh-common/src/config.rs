@@ -196,6 +196,7 @@ pub mod test {
         assert_eq!(deser, Ok(gm));
     }
 
+    #[allow(clippy::bool_assert_comparison)]
     #[test]
     fn test_migrate_game() {
         let mut old: Table = Default::default();

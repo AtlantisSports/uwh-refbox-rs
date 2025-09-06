@@ -4,7 +4,7 @@ dark-team-name-caps = NOIR
 -light-team-name = Blanc
 light-team-name-caps = BLANC
 
-# Multipage 
+# Multipage
 done = TERMINÉ
 cancel = ANNULER
 delete = SUPPRIMER
@@ -45,6 +45,7 @@ app-mode = MODE
 touchscreen = ÉCRAN TACTILE
 pointer = POINTEUR
 contrast = CONTRASTE
+
 hide-time-for-last-15-seconds = CACHER LE TEMPS POUR
     LES 15 DERNIÈRES SECONDES
 ### Shorten
@@ -54,7 +55,7 @@ confirm-score-at-game-end = CONFIRMER LE SCORE
     À LA FIN DU MATCH
 track-cap-number-of-scorer = SUIVRE LE NUMÉRO DU
     BUTEUR
-track-fouls-and-warnings = SUIVRE LES FAUTES 
+track-fouls-and-warnings = SUIVRE LES FAUTES
     ET LES AVERTISSEMENTS
 event = EVÉNEMENT:
 court = TERRAIN:
@@ -139,15 +140,15 @@ portal-login-code = Code de connexion
 ### Check
 portal-login-instructions = Veuillez aller sur le Portail UWH >> Gestion des Événements >> Gestion des Arbitres, cliquer sur le bouton + pour ajouter une nouvelle Refbox, et entrer cet ID Refbox :
     { $id }
-    
+
     Le Portail UWH fournira ensuite un code de confirmation que vous devrez entrer à gauche en utilisant le pavé numérique.
     Appuyez sur Terminé une fois que vous avez entré le code.
 
-help = AIDE: 
+help = AIDE:
 
 # Confirmation
 game-configuration-can-not-be-changed = La configuration du match ne peut pas être modifiée pendant qu'un match est en cours.
-    
+
     Que souhaitez-vous faire ?
 apply-this-game-number-change = Comment souhaitez-vous appliquer ce changement de numéro ?
 UWHPortal-enabled = Lorsque UWHPortal est activé, tous les champs doivent être remplis.
@@ -165,7 +166,7 @@ keep-current-game-and-apply-change = GARDER LE MATCH EN COURS ET APPLIQUER LE CH
 ok = OK
 confirm-score = Ce score est-il correct ?
     Confirmer avec l'arbitre en chef.
-    
+
     Noir: { $score_black }        Blanc: { $score_white }
 
     { confirmation-count-down }
@@ -178,7 +179,7 @@ equal = ÉGAL
 # Game Info
 refresh = RAFRAÎCHIR
 refreshing = RAFRAÎCHISSANT...
-settings = PARAMÈTRES 
+settings = PARAMÈTRES
 none = Aucun
 game-number-error = Erreur ({ $game_number })
 next-game-number-error = Erreur ({ $next_game_number })

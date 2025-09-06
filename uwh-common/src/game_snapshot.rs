@@ -636,6 +636,7 @@ mod test {
         assert_eq!(PenaltyTime::TotalDismissal, PenaltyTime::TotalDismissal);
     }
 
+    #[allow(clippy::bool_assert_comparison)]
     #[test]
     fn test_period_penalties_run() {
         let all_periods_config = Game {

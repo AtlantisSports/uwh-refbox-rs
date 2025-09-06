@@ -48,6 +48,7 @@ touchscreen = PANTALLA TÁCTIL
 pointer = PUNTERO
 contrast = CONTRASTE
     LA APLICACIÓN
+
 hide-time-for-last-15-seconds = OCULTAR TIEMPO PARA
     LOS ÚLTIMOS 15 SEGUNDOS
 player-display-brightness = BRILLO DE LA
@@ -147,7 +148,7 @@ portal-login-code = Código de inicio de sesión
 ### Check
 portal-login-instructions = Por favor, vaya a UWH Portal >> Gestión de Eventos >> Gestión de Árbitros, haga clic en el botón + para añadir un nuevo Refbox, e introduzca este ID de Refbox:
     { $id }
-    
+
     El UWH Portal proporcionará un código de confirmación que deberá introducir a la izquierda utilizando el teclado numérico.
     Presione HECHO una vez que haya introducido el código.
 

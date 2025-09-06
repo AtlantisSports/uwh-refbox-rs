@@ -82,7 +82,7 @@ pub fn draw(renderer: &mut PageRenderer, state: &State) {
         )
     {
         if PLAYER_ROW_HEIGHT.mul_add(i as f32, 220f32)
-            > -1f32 * TEAM_BANNER_ROSTER_OFFSET + offset + 100f32
+            > -TEAM_BANNER_ROSTER_OFFSET + offset + 100f32
         {
             // display only cards revealed by the bottom bar sliding up
             if player_identifier.1 == UwhColor::White {

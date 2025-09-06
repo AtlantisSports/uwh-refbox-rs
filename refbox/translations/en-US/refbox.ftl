@@ -4,7 +4,7 @@ dark-team-name-caps = BLACK
 -light-team-name = White
 light-team-name-caps = WHITE
 
-# Multipage 
+# Multipage
 done = DONE
 cancel = CANCEL
 delete = DELETE
@@ -48,6 +48,7 @@ touchscreen = TOUCHSCREEN
 pointer = POINTER
 contrast = CONTRAST
     MODE
+
 hide-time-for-last-15-seconds = HIDE TIME FOR
     LAST 15 SECONDS
 player-display-brightness = PLAYER DISPLAY
@@ -64,9 +65,9 @@ single-half = SINGLE
     HALF:
 half-length-full = HALF LENGTH:
 game-length = GAME LENGTH:
-overtime-allowed = OVERTIME 
+overtime-allowed = OVERTIME
     ALLOWED:
-sudden-death-allowed = SUDDEN DEATH 
+sudden-death-allowed = SUDDEN DEATH
     ALLOWED:
 half-time-length = HALF TIME
     LENGTH:
@@ -87,19 +88,19 @@ minimum-brk-btwn-games = MINIMUM BRK
 ot-half-time-length = OT HALF
     TIME LENGTH
 using-uwh-portal = USING UWHPORTAL:
-starting-sides = STARTING SIDES 
+starting-sides = STARTING SIDES
 sound-enabled = SOUND
     ENABLED:
 whistle-volume = WHISTLE
     VOLUME:
 manage-remotes = MANAGE REMOTES
-whistle-enabled = WHISTLE 
+whistle-enabled = WHISTLE
     ENABLED:
 above-water-volume = ABOVE WATER
     VOLUME:
 auto-sound-start-play = AUTO SOUND
     START PLAY:
-buzzer-sound = BUZZER 
+buzzer-sound = BUZZER
     SOUND:
 underwater-volume = UNDERWATER
     VOLUME:
@@ -148,15 +149,15 @@ this-language = ENGLISH
 portal-login-code = CODE
 portal-login-instructions = Please go to the UWH Portal >> Event Management >> Referee Management, click on the + button to add a new Refbox, and enter this Refbox ID:
     { $id }
-    
+
     The UWH Portal will then provide a confirmation code for you to enter to the left using the number pad.
     Press done once you have entered the code
 
-help = HELP: 
+help = HELP:
 
 # Confirmation
 game-configuration-can-not-be-changed = The game configuration can not be changed while a game is in progress.
-    
+
     What would you like to do?
 apply-this-game-number-change = How would you like to apply this game number change?
 UWHPortal-enabled = When UWHPortal is enabled, all fields must be filled out.
@@ -172,7 +173,7 @@ keep-current-game-and-apply-change = KEEP CURRENT GAME AND APPLY CHANGE
 ok = OK
 confirm-score = Is this score correct?
     Confirm with chief referee.
-    
+
     Black: { $score_black }        White: { $score_white }
 
     { confirmation-count-down }
@@ -185,7 +186,7 @@ equal = EQUAL
 # Game Info
 refresh = REFRESH
 refreshing = REFRESHING...
-settings = SETTINGS 
+settings = SETTINGS
 none = None
 game-number-error = Error ({ $game_number })
 next-game-number-error = Error ({ $next_game_number })

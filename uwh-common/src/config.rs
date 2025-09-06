@@ -238,8 +238,8 @@ pub mod test {
 
         let gm = Game::migrate(&old);
         assert_eq!(gm.num_team_timeouts_allowed, 2);
-        assert_eq!(gm.overtime_allowed, false);
-        assert_eq!(gm.sudden_death_allowed, false);
+        assert!(!gm.overtime_allowed);
+        assert!(!gm.sudden_death_allowed);
         assert_eq!(gm.half_play_duration, Duration::from_secs(123));
         assert_eq!(gm.half_time_duration, Duration::from_secs(45));
         assert_eq!(gm.team_timeout_duration, Duration::from_secs(67));

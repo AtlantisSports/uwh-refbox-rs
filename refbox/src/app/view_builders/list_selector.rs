@@ -21,6 +21,7 @@ pub(in super::super) fn build_list_selector_page<'a>(
         mode,
         clock_running,
         teams,
+        ..
     } = data;
 
     let title = match param {

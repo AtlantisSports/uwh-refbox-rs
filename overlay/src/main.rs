@@ -128,7 +128,7 @@ impl State {
                         self.sponsor_logo.is_some()
                     );
                 } else {
-                    warn!("Received event logos for incorrect event: {}", event_id);
+                    warn!("Received event logos for incorrect event: {event_id}");
                 }
             }
         }

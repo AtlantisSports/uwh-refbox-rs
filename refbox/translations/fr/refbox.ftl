@@ -1,15 +1,22 @@
-# Definitions for the translation file to use
--dark-team-name = Noir
-dark-team-name-caps = NOIR
--light-team-name = Blanc
-light-team-name-caps = BLANC
-
-# Multipage
+# Defi# Multipage 
 done = TERMINÉ
 cancel = ANNULER
 delete = SUPPRIMER
 back = RETOUR
 new = NOUVEAU
+interface-options = INTERFACE UTILISATEUR for the translation file to use
+-dark-team-name = Noir
+dark-team-name-caps = NOIR
+-light-team-name = Blanc
+light-team-name-caps = BLANC
+
+# Multipage 
+done = TERMINÉ
+cancel = ANNULER
+delete = SUPPRIMER
+back = RETOUR
+new = NOUVEAU
+ui-page = INTERFACE UTILISATEUR
 
 # Penalty Edit
 total-dismissal = TD
@@ -36,16 +43,12 @@ none-selected = Aucun Sélectionné
 loading = Chargement...
 game-select = MATCH:
 game-options = OPTIONS DU MATCH
-app-options = OPTIONS DE L'APPLICATION
+app-options = INTERFACE UTILISATEUR
+interface-panel = INTERFACE UTILISATEUR
 display-options = OPTIONS D'AFFICHAGE
-interface-options = OPTIONS D'INTERFACE
-user-options = OPTIONS UTILISATEUR
+ui-options = INTERFACE UTILISATEUR
 sound-options = OPTIONS SONORES
 app-mode = MODE
-touchscreen = ÉCRAN TACTILE
-pointer = POINTEUR
-contrast = CONTRASTE
-
 hide-time-for-last-15-seconds = CACHER LE TEMPS POUR
     LES 15 DERNIÈRES SECONDES
 ### Shorten
@@ -55,7 +58,7 @@ confirm-score-at-game-end = CONFIRMER LE SCORE
     À LA FIN DU MATCH
 track-cap-number-of-scorer = SUIVRE LE NUMÉRO DU
     BUTEUR
-track-fouls-and-warnings = SUIVRE LES FAUTES
+track-fouls-and-warnings = SUIVRE LES FAUTES 
     ET LES AVERTISSEMENTS
 event = EVÉNEMENT:
 court = TERRAIN:
@@ -86,8 +89,7 @@ minimum-brk-btwn-games = PAUSE MIN. ENTRE
     LES MATCHS:
 ot-half-time-length = DURÉE DE LA PAUSE
     A LA PROLONGATION
-using-uwh-portal = UTILISATION DU
-    UWHPORTAL:
+using-uwh-portal = UTILISATION DU UWHPORTAL:
 starting-sides = CÔTÉS DE DÉPART
 sound-enabled = SON
     ACTIVÉ:
@@ -141,15 +143,15 @@ portal-login-code = Code de connexion
 ### Check
 portal-login-instructions = Veuillez aller sur le Portail UWH >> Gestion des Événements >> Gestion des Arbitres, cliquer sur le bouton + pour ajouter une nouvelle Refbox, et entrer cet ID Refbox :
     { $id }
-
+    
     Le Portail UWH fournira ensuite un code de confirmation que vous devrez entrer à gauche en utilisant le pavé numérique.
-    Appuyez sur TERMINÉ une fois que vous avez entré le code.
+    Appuyez sur Terminé une fois que vous avez entré le code.
 
-help = AIDE:
+help = AIDE: 
 
 # Confirmation
 game-configuration-can-not-be-changed = La configuration du match ne peut pas être modifiée pendant qu'un match est en cours.
-
+    
     Que souhaitez-vous faire ?
 apply-this-game-number-change = Comment souhaitez-vous appliquer ce changement de numéro ?
 UWHPortal-enabled = Lorsque UWHPortal est activé, tous les champs doivent être remplis.
@@ -165,13 +167,9 @@ end-current-game-and-apply-changes = TERMINER LE MATCH EN COURS ET APPLIQUER LES
 end-current-game-and-apply-change = TERMINER LE MATCH EN COURS ET APPLIQUER LE CHANGEMENT
 keep-current-game-and-apply-change = GARDER LE MATCH EN COURS ET APPLIQUER LE CHANGEMENT
 ok = OK
-status-complete = TERMINÉ
-status-incomplete = CLIQUEZ POUR TERMINER
-status-checking = VÉRIFICATION...
-
 confirm-score = Ce score est-il correct ?
     Confirmer avec l'arbitre en chef.
-
+    
     Noir: { $score_black }        Blanc: { $score_white }
 
     { confirmation-count-down }
@@ -184,7 +182,7 @@ equal = ÉGAL
 # Game Info
 refresh = RAFRAÎCHIR
 refreshing = RAFRAÎCHISSANT...
-settings = PARAMÈTRES
+settings = PARAMÈTRES 
 none = Aucun
 game-number-error = Erreur ({ $game_number })
 next-game-number-error = Erreur ({ $next_game_number })
@@ -344,7 +342,6 @@ max = MAX
 hockey6v6 = Hockey6V6
 hockey3v3 = Hockey3V3
 rugby = Rugby
-beep-test = TEST BIP
 
 # Infractions
 stick-foul = Faute de crosse

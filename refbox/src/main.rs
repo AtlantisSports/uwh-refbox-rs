@@ -158,6 +158,14 @@ struct Cli {
 
     #[clap(long, hide = true)]
     simulate_sunlight_display: bool,
+
+    #[clap(long)]
+    /// Run in font sizing demo mode with test data populated
+    font_demo: bool,
+
+    #[clap(long, default_value = "specification")]
+    /// Type of demo data to use: 'specification' or 'short'
+    demo_data: String,
 }
 
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
@@ -392,6 +400,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         require_https: !args.allow_http,
         fullscreen: args.fullscreen,
         list_all_events: args.all_events,
+        font_demo: args.font_demo,
+        demo_data_type: args.demo_data,
     };
 
     let settings = Settings {

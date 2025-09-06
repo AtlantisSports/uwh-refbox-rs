@@ -4,6 +4,7 @@ uwh-overlay-drawing/target
 **/*.rs.bk
 timeshark.toml
 uwh-matrix-drawing/state.json
+uwh-refbox-rs\wireless-remote\Cargo.lockCargo.lock
 
 # VIM swap files
 *.swp

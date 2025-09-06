@@ -239,7 +239,7 @@ pub fn draw_panels<D: DrawTarget<Color = Rgb888>>(
     if !beep_test || !white_on_right {
         // Score on Left Score Panel
         let mut left_score_string = ArrayString::<2>::new();
-        write!(&mut left_score_string, "{}", left_score).unwrap();
+        write!(&mut left_score_string, "{left_score}").unwrap();
         if left_penalties.is_empty() {
             Text::with_text_style(
                 &left_score_string,
@@ -272,7 +272,7 @@ pub fn draw_panels<D: DrawTarget<Color = Rgb888>>(
     if !beep_test || white_on_right {
         // Score on Right Score Panel
         let mut right_score_string = ArrayString::<2>::new();
-        write!(&mut right_score_string, "{}", right_score).unwrap();
+        write!(&mut right_score_string, "{right_score}").unwrap();
         if right_penalties.is_empty() {
             Text::with_text_style(
                 &right_score_string,
@@ -380,7 +380,7 @@ where
     let min = secs / T::from(60u16);
     let sec = secs % T::from(60u16);
     let mut time_string = ArrayString::new();
-    write!(&mut time_string, "{:2}:{:02}", min, sec).unwrap();
+    write!(&mut time_string, "{min:2}:{sec:02}").unwrap();
     time_string
 }
 
@@ -394,7 +394,7 @@ where
     let min = secs / T::from(60u32);
     let sec = secs % T::from(60u32);
     let mut time_string = ArrayString::new();
-    write!(&mut time_string, "{:5}:{:02}", min, sec).unwrap();
+    write!(&mut time_string, "{min:5}:{sec:02}").unwrap();
     time_string
 }
 
@@ -404,6 +404,6 @@ where
 {
     assert_le!(secs, T::from(99u8));
     let mut time_string = ArrayString::new();
-    write!(&mut time_string, ":{:02}", secs).unwrap();
+    write!(&mut time_string, ":{secs:02}").unwrap();
     time_string
 }

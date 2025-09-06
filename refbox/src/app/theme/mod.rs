@@ -26,7 +26,7 @@ pub const PADDING: f32 = 8.0;
 pub const MIN_BUTTON_SIZE: f32 = 89.0;
 pub const XS_BUTTON_SIZE: f32 = 86.0;
 
-pub const SMALL_TEXT: f32 = 19.0;
+pub const SMALL_TEXT: f32 = 18.0;
 pub const SMALL_PLUS_TEXT: f32 = 29.0;
 pub const MEDIUM_TEXT: f32 = 38.0;
 pub const LARGE_TEXT: f32 = 66.0;
@@ -78,7 +78,8 @@ pub use button::{
 pub mod container;
 pub use container::{
     black_container, blue_container, disabled_container, gray_container, green_container,
-    light_gray_container, red_container, scroll_bar_container, transparent_container,
+    light_gray_container, red_container, rounded_box, scroll_bar_container,
+    team_color_black_container_square, team_color_white_container_square, transparent_container,
     white_container,
 };
 

@@ -10,6 +10,7 @@ cancel = CANCELAR
 delete = ELIMINAR
 back = ATRÁS
 new = NUEVO
+interface-options = OPCIONES DE USUARIO
 
 # Penalty Edit
 total-dismissal = T
@@ -36,19 +37,17 @@ team-warning-line-2 = DE EQUIPO
 # Configuration
 none-selected = Ninguno seleccionado
 loading = Cargando...
-game-select = Juego:
+game-select = JUEGO:
 game-options = OPCIONES DE JUEGO
-app-options = OPCIONES DE APP
-display-options = OPCIONES DE PANTALLA
+app-options = OPCIONES DE USUARIO
 interface-options = OPCIONES DE INTERFAZ
-user-options = OPCIONES DE USUARIO
+interface-panel = OPCIONES DE USUARIO
+display-options = OPCIONES DE PANTALLA
+ui-options = OPCIONES DE USUARIO
 sound-options = OPCIONES DE SONIDO
+ui-interface-options = OPCIONES DE INTERFAZ
 app-mode = MODO DE
-touchscreen = PANTALLA TÁCTIL
-pointer = PUNTERO
-contrast = CONTRASTE
     LA APLICACIÓN
-
 hide-time-for-last-15-seconds = OCULTAR TIEMPO PARA
     LOS ÚLTIMOS 15 SEGUNDOS
 player-display-brightness = BRILLO DE LA
@@ -88,8 +87,7 @@ minimum-brk-btwn-games = DESCANSO MÍNIMO
     ENTRE JUEGOS:
 ot-half-time-length = DUR. MEDIO
     TIEMPO DEL T/E
-using-uwh-portal = USANDO
-    UWHPORTAL:
+using-uwh-portal = USANDO UWHPORTAL:
 starting-sides = LADOS INICIALES
 sound-enabled = SONIDO
     HABILITADO:
@@ -149,7 +147,7 @@ portal-login-code = Código de inicio de sesión
 ### Check
 portal-login-instructions = Por favor, vaya a UWH Portal >> Gestión de Eventos >> Gestión de Árbitros, haga clic en el botón + para añadir un nuevo Refbox, e introduzca este ID de Refbox:
     { $id }
-
+    
     El UWH Portal proporcionará un código de confirmación que deberá introducir a la izquierda utilizando el teclado numérico.
     Presione HECHO una vez que haya introducido el código.
 
@@ -173,10 +171,6 @@ end-current-game-and-apply-changes = TERMINAR EL JUEGO ACTUAL Y APLICAR CAMBIOS
 end-current-game-and-apply-change = TERMINAR EL JUEGO ACTUAL Y APLICAR CAMBIO
 keep-current-game-and-apply-change = MANTENER EL JUEGO ACTUAL Y APLICAR CAMBIO
 ok = OK
-status-complete = COMPLETO
-status-incomplete = HAGA CLIC PARA COMPLETAR
-status-checking = VERIFICANDO...
-
 confirm-score = ¿Es correcto este puntaje?
     Confirma con el árbitro principal.
 
@@ -279,7 +273,7 @@ infraction = Infracción: {$infraction}
 ## Config String
 error = Error ({ $number })
 two-games = Último partido: { $prev_game }, Próximo partido: { $next_game }
-one-game = Juego: { $game }
+one-game = JUEGO: { $game }
 teams = { -dark-team-name } Equipo: { $dark_team }
     { -light-team-name } Equipo: { $light_team }
 game-config = Duración de la mitad: { $half_len },  Duración del medio tiempo: { $half_time_len }
@@ -353,7 +347,6 @@ max = MÁX
 hockey6v6 = HOCKEY 6vs6
 hockey3v3 = HOCKEY 3vs3
 rugby = RUGBY
-beep-test = PRUEBA DE PITIDO
 
 # Infractions
 stick-foul = Infracción con el palo

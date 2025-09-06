@@ -40,6 +40,39 @@ Builds for cargo targets other than the host target can be compiled using the `c
    - `x86_64-apple-darwin` for Intel based Macs
 4. The resulting binaries will be in the `target/<target>/release` folder.
 
+# Documentation
+
+Comprehensive design documentation is available in the [`docs/`](docs) directory:
+
+- **Design Documents**: [`docs/design/`](docs/design) contains detailed design specifications
+- **Documentation Scripts**: [`docs/scripts/`](docs/scripts) contains tools for generating HTML documentation
+
+To view the formatted documentation, open [`docs/design/Atlantis UWH-REFBOX-RS Detailed Design.html`](docs/design/Atlantis%20UWH-REFBOX-RS%20Detailed%20Design.html) in your web browser.
+
+# Testing
+
+## Integration Tests
+
+Integration tests are located in [`integration-tests/`](integration-tests) and run as part of the standard cargo test suite:
+
+- **Test Suites**: [`integration-tests/src/`](integration-tests/src) contains comprehensive test implementation
+- **UI Tests**: Font sizing, layout validation, and internationalization tests
+- **Integration Tests**: Cross-crate functionality and tournament manager tests
+
+Run integration tests:
+```bash
+# Run all tests including integration tests
+cargo test --all
+
+# Run only integration tests
+cargo test -p integration-tests
+
+# Run specific test categories
+cargo test font_sizing
+cargo test ui_tests
+cargo test integration
+```
+
 # Contributing
 
 Contributions are welcome, just open a PR with your changes. All PRs must pass all tests, must have no `clippy` warnings, and must pass `cargo audit` before being merged.

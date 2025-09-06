@@ -49,11 +49,11 @@ impl fmt::Display for ScheduledTeam {
         if let Some(id) = &self.team_id {
             write!(f, "Team with ID {}", id.full())
         } else if let Some(name) = &self.pending_assignment_name {
-            write!(f, "Pending Assignment {}", name)
+            write!(f, "Pending Assignment {name}")
         } else if let Some(result_of) = &self.result_of {
             match result_of {
-                ResultOf::Winner { game_number } => write!(f, "Winner of game {}", game_number),
-                ResultOf::Loser { game_number } => write!(f, "Loser of game {}", game_number),
+                ResultOf::Winner { game_number } => write!(f, "Winner of game {game_number}"),
+                ResultOf::Loser { game_number } => write!(f, "Loser of game {game_number}"),
             }
         } else if let Some(seeded_by) = &self.seeded_by {
             write!(f, "Group {} Seed {}", seeded_by.group, seeded_by.number)
@@ -1134,7 +1134,7 @@ mod tests {
         let mut default_remote_name: Option<String> = None;
         for remote in repo.remotes().unwrap().iter() {
             let remote_name = remote.unwrap();
-            let remote_ref = format!("refs/remotes/{}/{}", remote_name, branch_name);
+            let remote_ref = format!("refs/remotes/{remote_name}/{branch_name}");
 
             // Check if the remote_ref exists
             if repo.revparse_single(&remote_ref).is_ok() {
@@ -1173,7 +1173,7 @@ mod tests {
 
         // Get the OID (object ID) of the HEAD commit for the file in the local repository
         let file_oid = repo
-            .revparse_single(&format!("HEAD:{}", POSTMAN_JSON_PATH))
+            .revparse_single(&format!("HEAD:{POSTMAN_JSON_PATH}"))
             .unwrap()
             .id();
 

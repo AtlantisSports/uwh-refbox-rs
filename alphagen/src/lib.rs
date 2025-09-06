@@ -67,8 +67,7 @@ fn process_images_on_paths<O>(
     [O::Subpixel]: image::EncodableLayout,
 {
     paths.iter().par_bridge().for_each(|path| {
-        let file =
-            image::open(path).unwrap_or_else(|_| panic!("Couldn't open image at {:?}", path));
+        let file = image::open(path).unwrap_or_else(|_| panic!("Couldn't open image at {path:?}"));
         let mut output_image_buff =
             image::ImageBuffer::<O, Vec<O::Subpixel>>::new(file.width(), file.height());
         let mut pixs = output_image_buff.pixels_mut();

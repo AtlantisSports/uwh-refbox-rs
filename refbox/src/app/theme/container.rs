@@ -88,3 +88,108 @@ pub fn transparent_container(theme: &Theme) -> Style {
         ..gray_container(theme)
     }
 }
+
+pub fn rounded_box(theme: &Theme) -> Style {
+    light_gray_container(theme)
+}
+
+pub fn team_color_white_container(theme: &Theme) -> Style {
+    Style {
+        background: Some(Background::Color(WHITE)),
+        text_color: Some(BLACK),
+        ..gray_container(theme)
+    }
+}
+
+pub fn team_color_white_container_square(_theme: &Theme) -> Style {
+    Style {
+        background: Some(Background::Color(WHITE)),
+        text_color: Some(BLACK),
+        border: Border {
+            width: 0.0,
+            color: BORDER_COLOR,
+            radius: super::BORDER_RADIUS_ZERO,
+        },
+        shadow: Default::default(),
+    }
+}
+
+pub fn team_color_black_container(theme: &Theme) -> Style {
+    Style {
+        background: Some(Background::Color(BLACK)),
+        text_color: Some(WHITE),
+        ..gray_container(theme)
+    }
+}
+
+pub fn team_color_black_container_square(_theme: &Theme) -> Style {
+    Style {
+        background: Some(Background::Color(BLACK)),
+        text_color: Some(WHITE),
+        border: Border {
+            width: 0.0,
+            color: BORDER_COLOR,
+            radius: super::BORDER_RADIUS_ZERO,
+        },
+        shadow: Default::default(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use iced::Theme;
+
+    #[test]
+    fn test_team_color_white_container_styling() {
+        let theme = Theme::default();
+        let style = team_color_white_container(&theme);
+
+        // Should have white background
+        assert_eq!(style.background, Some(Background::Color(WHITE)));
+        // Should have black text for contrast
+        assert_eq!(style.text_color, Some(BLACK));
+        // Should inherit border properties from gray_container
+        assert_eq!(style.border.radius, super::BORDER_RADIUS);
+    }
+
+    #[test]
+    fn test_team_color_black_container_styling() {
+        let theme = Theme::default();
+        let style = team_color_black_container(&theme);
+
+        // Should have black background
+        assert_eq!(style.background, Some(Background::Color(BLACK)));
+        // Should have white text for contrast
+        assert_eq!(style.text_color, Some(WHITE));
+        // Should inherit border properties from gray_container
+        assert_eq!(style.border.radius, super::BORDER_RADIUS);
+    }
+
+    #[test]
+    fn test_rounded_box_is_light_gray() {
+        let theme = Theme::default();
+        let rounded_style = rounded_box(&theme);
+        let light_gray_style = light_gray_container(&theme);
+
+        // rounded_box should be equivalent to light_gray_container
+        assert_eq!(rounded_style.background, light_gray_style.background);
+        assert_eq!(rounded_style.text_color, light_gray_style.text_color);
+        assert_eq!(rounded_style.border.radius, light_gray_style.border.radius);
+    }
+
+    #[test]
+    fn test_team_color_contrast_accessibility() {
+        let theme = Theme::default();
+
+        // Test white container has dark text (good contrast)
+        let white_style = team_color_white_container(&theme);
+        assert_eq!(white_style.background, Some(Background::Color(WHITE)));
+        assert_eq!(white_style.text_color, Some(BLACK));
+
+        // Test black container has light text (good contrast)
+        let black_style = team_color_black_container(&theme);
+        assert_eq!(black_style.background, Some(Background::Color(BLACK)));
+        assert_eq!(black_style.text_color, Some(WHITE));
+    }
+}

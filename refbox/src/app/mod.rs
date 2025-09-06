@@ -2218,6 +2218,8 @@ impl RefBoxApp {
                     .as_ref()
                     .and_then(|events| events.get(id).and_then(|event| event.teams.as_ref()))
             }),
+            demo_data_type: "".to_string(), // Add missing field
+            font_demo: false,               // Add missing field
         };
 
         let mut main_view = column![match self.app_state {

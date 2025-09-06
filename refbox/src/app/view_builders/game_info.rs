@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::theme::{team_color_black_container_square, team_color_white_container_square};
 use crate::app::view_builders::shared_elements::{
     bool_string, get_team_name, limit_team_name_len, time_string,
 };
@@ -138,7 +139,7 @@ pub(in super::super) fn build_game_info_page<'a>(
                             .align_x(Horizontal::Left)
                     )
                     .padding([1, 1])
-                    .width(Length::Fixed(100.0))
+                    .width(Length::Fixed(60.0)) // Reduced from 100.0 since "Last"/"Next" are shorter
                     .style(container::rounded_box),
                     container(
                         text(table_row.left_value.clone())
@@ -149,7 +150,13 @@ pub(in super::super) fn build_game_info_page<'a>(
                     .center_x(Length::Fill)
                     .padding([1, 1])
                     .width(Length::Fixed(60.0))
-                    .style(container::rounded_box),
+                    .style(if table_row.left_value == "White" {
+                        team_color_white_container_square
+                    } else if table_row.left_value == "Black" {
+                        team_color_black_container_square
+                    } else {
+                        container::rounded_box
+                    }),
                     container(
                         text(center_label)
                             .size(SMALL_TEXT)
@@ -157,7 +164,7 @@ pub(in super::super) fn build_game_info_page<'a>(
                             .align_x(Horizontal::Left)
                     )
                     .padding([1, 1])
-                    .width(Length::Fill)
+                    .width(Length::Fill) // Fill remaining space for team names
                     .style(container::rounded_box),
                 ]
             }
@@ -193,7 +200,7 @@ pub(in super::super) fn build_game_info_page<'a>(
         .style(light_gray_button)
         .height(Length::Fill)
         .width(Length::Fill)
-        .on_press(Message::EditGameConfigPage(ConfigPage::Game)); // Navigate directly to Game Options page
+        .on_press(Message::EditGameConfig);
 
     // Apply width constraint only to the table to match main page table width
     let config_table_with_spacing = row![
@@ -294,15 +301,15 @@ fn build_details_table(
         ("None".to_string(), "None".to_string())
     };
 
-    // Add "Last Game" rows - first row with White team
+    // Add "Last" rows - first row with White team
     table_rows.push(TableRow {
-        left_label: "Last Game".to_string(),
+        left_label: "Last".to_string(),
         left_value: "White".to_string(),
         center_label: Some(_prev_white_team.clone()),
         center_value: None,
     });
 
-    // Add second row for Last Game with Black team (empty label)
+    // Add second row for Last with Black team (empty label)
     table_rows.push(TableRow {
         left_label: "".to_string(),
         left_value: "Black".to_string(),
@@ -310,15 +317,15 @@ fn build_details_table(
         center_value: None,
     });
 
-    // Add "Next Game" rows - first row with White team
+    // Add "Next" rows - first row with White team
     table_rows.push(TableRow {
-        left_label: "Next Game".to_string(),
+        left_label: "Next".to_string(),
         left_value: "White".to_string(),
         center_label: Some(current_white_team.clone()),
         center_value: None,
     });
 
-    // Add second row for Next Game with Black team (empty label)
+    // Add second row for Next with Black team (empty label)
     table_rows.push(TableRow {
         left_label: "".to_string(),
         left_value: "Black".to_string(),

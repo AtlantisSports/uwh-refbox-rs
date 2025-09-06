@@ -1,5 +1,4 @@
 use super::*;
-use crate::app::dynamic_font_sizing::{DynamicFontSizing, GameInfoCell};
 use crate::app::theme::{
     rounded_box, team_color_black_container_square, team_color_white_container_square,
 };
@@ -8,7 +7,6 @@ use iced::{
     alignment::{Horizontal, Vertical},
     widget::{Space, button, column, container, row, text},
 };
-
 use uwh_common::{
     color::Color as GameColor,
     config::Game as GameConfig,
@@ -16,30 +14,8 @@ use uwh_common::{
     uwhportal::schedule::{GameList, TeamList},
 };
 
-/// Helper function to get the appropriate font size for a table row value
-fn get_font_size_for_table_row(label: &str, dynamic_font_sizing: &DynamicFontSizing) -> f32 {
-    // Map table row labels to GameInfoCell enum
-    let cell = match label {
-        "WHITE" => Some(GameInfoCell::NextGame), // WHITE team uses NextGame cell
-        "BLACK" => Some(GameInfoCell::LastGame), // BLACK team uses LastGame cell
-        "Chief Ref" => Some(GameInfoCell::ChiefRef),
-        "Timer" => Some(GameInfoCell::Timer),
-        "Water Ref 1" => Some(GameInfoCell::WaterRef1),
-        "Water Ref 2" => Some(GameInfoCell::WaterRef2),
-        "Water Ref 3" => Some(GameInfoCell::WaterRef3),
-        _ => None,
-    };
-
-    // Return dynamic font size for target cells, default size for others
-    if let Some(cell) = cell {
-        dynamic_font_sizing.get_font_size(cell)
-    } else {
-        SMALL_TEXT
-    }
-}
-
 // Constants for fixed-width label cells
-const GAME_LABEL_WIDTH: f32 = 100.0;
+const GAME_LABEL_WIDTH: f32 = 60.0;
 const REF_LABEL_WIDTH: f32 = 120.0;
 // Fixed cell height to keep rows from shrinking when font sizes are reduced
 const GAME_INFO_CELL_HEIGHT: f32 = 26.0;
@@ -58,15 +34,14 @@ pub(in super::super) fn build_main_view<'a>(
     using_uwhportal: bool,
     games: Option<&GameList>,
     track_fouls_and_warnings: bool,
-    dynamic_font_sizing: &mut DynamicFontSizing,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
         mode,
         clock_running,
         teams,
-        font_demo,
-        demo_data_type,
+        font_demo: _,
+        demo_data_type: _,
     } = data;
 
     let time_button = make_game_time_button(snapshot, true, false, mode, clock_running);
@@ -158,9 +133,6 @@ pub(in super::super) fn build_main_view<'a>(
             games,
             teams,
             track_fouls_and_warnings,
-            dynamic_font_sizing,
-            font_demo,
-            &demo_data_type,
         ))
         .padding(PADDING)
         .style(light_gray_button)
@@ -359,35 +331,9 @@ fn build_config_table<'a>(
     games: Option<&GameList>,
     teams: Option<&TeamList>,
     fouls_and_warnings: bool,
-    dynamic_font_sizing: &mut DynamicFontSizing,
-    _font_demo: bool,
-    _demo_data_type: &str,
 ) -> Element<'a, Message> {
     const TEAM_NAME_LEN_LIMIT: usize = 40;
     let mut table_rows = Vec::new();
-
-    // Always show Game Number as Row 1
-    let _game_display = if using_uwhportal {
-        if let Some(games) = games {
-            match games.get(&snapshot.game_number) {
-                Some(game) => game.number.to_string(),
-                None if snapshot.game_number == "0" => fl!("none").to_string(),
-                None => fl!(
-                    "game-number-error",
-                    game_number = snapshot.game_number.clone()
-                ),
-            }
-        } else {
-            fl!(
-                "game-number-error",
-                game_number = snapshot.game_number.clone()
-            )
-        }
-    } else if snapshot.game_number == "0" {
-        fl!("none").to_string()
-    } else {
-        snapshot.game_number.to_string()
-    };
 
     // Game number information for reference
     let game_number = if snapshot.current_period == GamePeriod::BetweenGames {
@@ -417,7 +363,7 @@ fn build_config_table<'a>(
     };
 
     // Get team names for previous game (if available)
-    let (_prev_black_team, _prev_white_team) = if using_uwhportal {
+    let (prev_black_team, prev_white_team) = if using_uwhportal {
         if let Some(games) = games {
             // Try to get previous game number (current game number - 1)
             let prev_game_num = if let Ok(current_num) = snapshot.game_number.parse::<i32>() {
@@ -447,31 +393,31 @@ fn build_config_table<'a>(
         ("None".to_string(), "None".to_string())
     };
 
-    // Add "Last Game" rows - first row with White team
+    // Add "Last" rows - first row with White team
     table_rows.push(TableRow {
-        left_label: "Last Game".to_string(),
+        left_label: "Last".to_string(),
         left_value: "White".to_string(),
-        center_label: Some(_prev_white_team.clone()),
+        center_label: Some(prev_white_team.clone()),
         center_value: None,
     });
 
-    // Add second row for Last Game with Black team (empty label)
+    // Add second row for Last with Black team (empty label)
     table_rows.push(TableRow {
         left_label: "".to_string(),
         left_value: "Black".to_string(),
-        center_label: Some(_prev_black_team.clone()),
+        center_label: Some(prev_black_team.clone()),
         center_value: None,
     });
 
-    // Add "Next Game" rows - first row with White team
+    // Add "Next" rows - first row with White team
     table_rows.push(TableRow {
-        left_label: "Next Game".to_string(),
+        left_label: "Next".to_string(),
         left_value: "White".to_string(),
         center_label: Some(current_white_team.clone()),
         center_value: None,
     });
 
-    // Add second row for Next Game with Black team (empty label)
+    // Add second row for Next with Black team (empty label)
     table_rows.push(TableRow {
         left_label: "".to_string(),
         left_value: "Black".to_string(),
@@ -516,8 +462,6 @@ fn build_config_table<'a>(
     if !fouls_and_warnings {
         let unknown = fl!("unknown");
 
-        // Demo mode removed - font sizing now uses minimal test coverage
-
         // Row 5: Chief Ref | Unknown (single column)
         table_rows.push(TableRow {
             left_label: "Chief Ref".to_string(),
@@ -559,86 +503,10 @@ fn build_config_table<'a>(
         });
     }
 
-    // Update dynamic font sizing with the current cell values
-    // Update font sizes for all target cells with their current text content
-    let mut current_section: Option<&str> = None;
-    let mut last_game_max: Option<String> = None;
-    let mut next_game_max: Option<String> = None;
-
-    for table_row in &table_rows {
-        // Track the current game section so both White/Black rows share the same font size
-        if table_row.left_label == "Last Game" {
-            current_section = Some("Last Game");
-        }
-        if table_row.left_label == "Next Game" {
-            current_section = Some("Next Game");
-        }
-
-        // Accumulate the longest team name within each section (Last/Next Game)
-        if (table_row.left_label == "Last Game"
-            || table_row.left_label == "Next Game"
-            || table_row.left_label.is_empty())
-            && (table_row.left_value == "White" || table_row.left_value == "Black")
-        {
-            if let Some(center_text) = &table_row.center_label {
-                match current_section {
-                    Some("Next Game") => {
-                        if next_game_max.as_ref().map(|s| s.len()).unwrap_or(0) < center_text.len()
-                        {
-                            next_game_max = Some(center_text.clone());
-                        }
-                    }
-                    _ => {
-                        if last_game_max.as_ref().map(|s| s.len()).unwrap_or(0) < center_text.len()
-                        {
-                            last_game_max = Some(center_text.clone());
-                        }
-                    }
-                }
-            }
-        }
-
-        // Handle other target cells
-        match table_row.left_label.as_str() {
-            "Chief Ref" => {
-                dynamic_font_sizing
-                    .update_cell_font_size(GameInfoCell::ChiefRef, &table_row.left_value);
-            }
-            "Timer" => {
-                dynamic_font_sizing
-                    .update_cell_font_size(GameInfoCell::Timer, &table_row.left_value);
-            }
-            "Water Ref 1" => {
-                dynamic_font_sizing
-                    .update_cell_font_size(GameInfoCell::WaterRef1, &table_row.left_value);
-            }
-            "Water Ref 2" => {
-                dynamic_font_sizing
-                    .update_cell_font_size(GameInfoCell::WaterRef2, &table_row.left_value);
-            }
-            "Water Ref 3" => {
-                dynamic_font_sizing
-                    .update_cell_font_size(GameInfoCell::WaterRef3, &table_row.left_value);
-            }
-            _ => {} // Non-target cells don't need font size updates
-        }
-    }
-
-    // Now update font sizing once per section with the longest name so both rows match
-    if let Some(text) = last_game_max.as_ref() {
-        dynamic_font_sizing.update_cell_font_size(GameInfoCell::LastGame, text);
-    }
-    if let Some(text) = next_game_max.as_ref() {
-        dynamic_font_sizing.update_cell_font_size(GameInfoCell::NextGame, text);
-    }
-
     // Build the table layout with compact spacing to fit all content
     let mut details_column = column![]
         .spacing(SPACING / 4.0) // Much smaller spacing to fit more rows
         .width(Length::Fill);
-
-    // Track which game section we're in so both rows (White/Black) share the same font sizing
-    let mut current_game_header: Option<String> = None;
 
     for table_row in table_rows {
         // Check if we have center content to create multi-column row
@@ -710,37 +578,6 @@ fn build_config_table<'a>(
             } else {
                 // Create a 3-column row: Label | Color | TeamName (for game rows)
 
-                // Determine font size for team names
-                // Maintain same font size across the two rows of each game section
-                // When we hit a header ("Last Game" or "Next Game"), update the current section
-                if table_row.left_label == "Last Game" || table_row.left_label == "Next Game" {
-                    current_game_header = Some(table_row.left_label.clone());
-                }
-
-                let is_game_row_color =
-                    table_row.left_value == "White" || table_row.left_value == "Black";
-                let is_game_section = table_row.left_label == "Last Game"
-                    || table_row.left_label == "Next Game"
-                    || table_row.left_label.is_empty();
-
-                let team_name_font_size = if is_game_row_color && is_game_section {
-                    // Use the current section (Last/Next Game) for both rows
-                    let header = current_game_header.as_deref().unwrap_or_else(|| {
-                        if table_row.left_label == "Next Game" {
-                            "Next Game"
-                        } else {
-                            "Last Game"
-                        }
-                    });
-                    if header == "Next Game" {
-                        dynamic_font_sizing.get_font_size(GameInfoCell::NextGame)
-                    } else {
-                        dynamic_font_sizing.get_font_size(GameInfoCell::LastGame)
-                    }
-                } else {
-                    SMALL_TEXT
-                };
-
                 let row_element = row![
                     container(text(table_row.left_label).size(SMALL_TEXT))
                         .padding([1, 1])
@@ -764,7 +601,7 @@ fn build_config_table<'a>(
                     }),
                     container(
                         text(center_label)
-                            .size(team_name_font_size)
+                            .size(SMALL_TEXT)
                             .align_x(Horizontal::Left)
                             .width(Length::Fill)
                     )
@@ -785,7 +622,7 @@ fn build_config_table<'a>(
             let (label_portion, value_portion) = (3, 5); // Keep consistent; value column wider for names
 
             let label_width = match table_row.left_label.as_str() {
-                "Last Game" | "Next Game" => Length::Fixed(GAME_LABEL_WIDTH),
+                "Last" | "Next" => Length::Fixed(GAME_LABEL_WIDTH),
                 "" => Length::Fixed(GAME_LABEL_WIDTH), // Empty labels for second rows of game info
                 "Chief Ref" | "Timer" | "Water Ref 1" | "Water Ref 2" | "Water Ref 3" => {
                     Length::Fixed(REF_LABEL_WIDTH)
@@ -793,7 +630,6 @@ fn build_config_table<'a>(
                 _ => Length::FillPortion(label_portion),
             };
 
-            let font_size = get_font_size_for_table_row(&table_row.left_label, dynamic_font_sizing);
             let is_ref_row_label = matches!(
                 table_row.left_label.as_str(),
                 "Chief Ref" | "Timer" | "Water Ref 1" | "Water Ref 2" | "Water Ref 3"
@@ -807,7 +643,7 @@ fn build_config_table<'a>(
                     // Build the value container and only lock height for Referee rows
                     let value_base = container(
                         text(table_row.left_value.clone())
-                            .size(font_size)
+                            .size(SMALL_TEXT)
                             .width(Length::Fill)
                             .align_x(Horizontal::Left),
                     )
@@ -835,96 +671,4 @@ fn build_config_table<'a>(
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_font_size_mapping_preserves_alignment() {
-        let dfs = DynamicFontSizing::new();
-
-        // Test that target cell labels map correctly to dynamic font sizes
-        assert_eq!(get_font_size_for_table_row("Chief Ref", &dfs), SMALL_TEXT);
-        assert_eq!(get_font_size_for_table_row("Timer", &dfs), SMALL_TEXT);
-        assert_eq!(get_font_size_for_table_row("Water Ref 1", &dfs), SMALL_TEXT);
-        assert_eq!(get_font_size_for_table_row("Water Ref 2", &dfs), SMALL_TEXT);
-        assert_eq!(get_font_size_for_table_row("Water Ref 3", &dfs), SMALL_TEXT);
-
-        // Test that non-target labels return default font size
-        assert_eq!(get_font_size_for_table_row("Last Game", &dfs), SMALL_TEXT);
-        assert_eq!(get_font_size_for_table_row("Next Game", &dfs), SMALL_TEXT);
-        assert_eq!(get_font_size_for_table_row("", &dfs), SMALL_TEXT); // Empty labels
-        assert_eq!(
-            get_font_size_for_table_row("Half Duration", &dfs),
-            SMALL_TEXT
-        );
-        assert_eq!(
-            get_font_size_for_table_row("Unknown Label", &dfs),
-            SMALL_TEXT
-        );
-    }
-
-    #[test]
-    fn test_team_color_container_selection() {
-        use crate::app::theme::{
-            rounded_box, team_color_black_container_square, team_color_white_container_square,
-        };
-        use iced::Theme;
-
-        let theme = Theme::default();
-
-        // Test that White team gets white background with black text (square corners)
-        let white_style = team_color_white_container_square(&theme);
-        assert_eq!(
-            white_style.background,
-            Some(iced::Background::Color(crate::app::theme::WHITE))
-        );
-        assert_eq!(white_style.text_color, Some(crate::app::theme::BLACK));
-        assert_eq!(
-            white_style.border.radius,
-            crate::app::theme::BORDER_RADIUS_ZERO
-        );
-
-        // Test that Black team gets black background with white text (square corners)
-        let black_style = team_color_black_container_square(&theme);
-        assert_eq!(
-            black_style.background,
-            Some(iced::Background::Color(crate::app::theme::BLACK))
-        );
-        assert_eq!(black_style.text_color, Some(crate::app::theme::WHITE));
-        assert_eq!(
-            black_style.border.radius,
-            crate::app::theme::BORDER_RADIUS_ZERO
-        );
-
-        // Test that other values get default rounded_box style
-        let default_style = rounded_box(&theme);
-        assert_eq!(
-            default_style.background,
-            Some(iced::Background::Color(crate::app::theme::LIGHT_GRAY))
-        );
-        assert_eq!(default_style.text_color, Some(crate::app::theme::BLACK));
-    }
-
-    #[test]
-    fn test_team_color_logic_conditions() {
-        // Test the logic conditions used in the main view
-        let white_value = "White";
-        let black_value = "Black";
-        let other_value = "None";
-
-        // Test White condition
-        assert!(white_value == "White");
-        assert!(!(white_value == "Black"));
-
-        // Test Black condition
-        assert!(black_value == "Black");
-        assert!(!(black_value == "White"));
-
-        // Test other values fall through to default
-        assert!(!(other_value == "White"));
-        assert!(!(other_value == "Black"));
-    }
 }

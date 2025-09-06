@@ -426,7 +426,10 @@ fn make_event_config_page<'a>(
                 .height(Length::Fill)
                 .into(),
             row![
-                horizontal_space(),
+                make_button(fl!("manual-edit"))
+                    .style(blue_button)
+                    .width(Length::Fill)
+                    .on_press(Message::NoAction), // Placeholder - no action at this time
                 horizontal_space(),
                 make_button(fl!("done"))
                     .style(green_button)

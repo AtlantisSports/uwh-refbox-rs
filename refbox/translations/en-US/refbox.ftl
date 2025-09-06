@@ -6,6 +6,7 @@ light-team-name-caps = WHITE
 
 # Multipage
 done = DONE
+manual-edit = MANUAL EDIT
 cancel = CANCEL
 delete = DELETE
 back = BACK
@@ -41,6 +42,10 @@ game-options = GAME OPTIONS
 app-options = APP OPTIONS
 display-options = DISPLAY OPTIONS
 interface-options = INTERFACE OPTIONS
+ui-interface-options = UI INTERFACE OPTIONS
+ui-options = UI OPTIONS
+ui-page = UI PAGE
+interface-panel = INTERFACE PANEL
 user-options = USER OPTIONS
 sound-options = SOUND OPTIONS
 app-mode = APP

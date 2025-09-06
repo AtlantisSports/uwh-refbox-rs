@@ -400,8 +400,6 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         require_https: !args.allow_http,
         fullscreen: args.fullscreen,
         list_all_events: args.all_events,
-        font_demo: args.font_demo,
-        demo_data_type: args.demo_data,
     };
 
     let settings = Settings {

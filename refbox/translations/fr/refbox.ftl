@@ -12,6 +12,7 @@ light-team-name-caps = BLANC
 
 # Multipage 
 done = TERMINÉ
+manual-edit = ÉDITION MANUELLE
 cancel = ANNULER
 delete = SUPPRIMER
 back = RETOUR
@@ -48,6 +49,15 @@ interface-panel = INTERFACE UTILISATEUR
 display-options = OPTIONS D'AFFICHAGE
 ui-options = INTERFACE UTILISATEUR
 sound-options = OPTIONS SONORES
+ui-interface-options = OPTIONS D'INTERFACE UTILISATEUR
+user-options = OPTIONS UTILISATEUR
+touchscreen = ÉCRAN TACTILE
+pointer = POINTEUR
+contrast = CONTRASTE
+beep-test = TEST DE SIGNAL SONORE
+status-checking = VÉRIFICATION DU STATUT
+status-complete = STATUT COMPLET
+status-incomplete = STATUT INCOMPLET
 app-mode = MODE
 hide-time-for-last-15-seconds = CACHER LE TEMPS POUR
     LES 15 DERNIÈRES SECONDES
@@ -89,7 +99,8 @@ minimum-brk-btwn-games = PAUSE MIN. ENTRE
     LES MATCHS:
 ot-half-time-length = DURÉE DE LA PAUSE
     A LA PROLONGATION
-using-uwh-portal = UTILISATION DU UWHPORTAL:
+using-uwh-portal = UTILISATION
+    DU UWHPORTAL:
 starting-sides = CÔTÉS DE DÉPART
 sound-enabled = SON
     ACTIVÉ:

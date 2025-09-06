@@ -40,8 +40,13 @@ game-select = Juego:
 game-options = OPCIONES DE JUEGO
 app-options = OPCIONES DE APP
 display-options = OPCIONES DE PANTALLA
+interface-options = OPCIONES DE INTERFAZ
+user-options = OPCIONES DE USUARIO
 sound-options = OPCIONES DE SONIDO
 app-mode = MODO DE
+touchscreen = PANTALLA TÁCTIL
+pointer = PUNTERO
+contrast = CONTRASTE
     LA APLICACIÓN
 hide-time-for-last-15-seconds = OCULTAR TIEMPO PARA
     LOS ÚLTIMOS 15 SEGUNDOS
@@ -342,6 +347,7 @@ max = MÁX
 hockey6v6 = HOCKEY 6vs6
 hockey3v3 = HOCKEY 3vs3
 rugby = RUGBY
+beep-test = PRUEBA DE PITIDO
 
 # Infractions
 stick-foul = Infracción con el palo

@@ -40,8 +40,13 @@ game-select = Game:
 game-options = GAME OPTIONS
 app-options = APP OPTIONS
 display-options = DISPLAY OPTIONS
+interface-options = INTERFACE OPTIONS
+user-options = USER OPTIONS
 sound-options = SOUND OPTIONS
 app-mode = APP
+touchscreen = TOUCHSCREEN
+pointer = POINTER
+contrast = CONTRAST
     MODE
 hide-time-for-last-15-seconds = HIDE TIME FOR
     LAST 15 SECONDS
@@ -340,6 +345,7 @@ max = MAX
 hockey6v6 = HOCKEY6V6
 hockey3v3 = HOCKEY3V3
 rugby = RUGBY
+beep-test = BEEP TEST
 
 # Infractions
 stick-foul = Stick Foul

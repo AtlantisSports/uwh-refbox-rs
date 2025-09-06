@@ -38,3 +38,6 @@ pub(super) use shared_elements::*;
 
 pub mod time_edit;
 pub(super) use time_edit::*;
+
+pub mod beep_test_blank;
+pub(super) use beep_test_blank::*;

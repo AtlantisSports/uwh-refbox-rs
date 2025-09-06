@@ -111,6 +111,7 @@ pub enum Message {
     StopClock,
     StartClock,
     TimeUpdaterStarted(Sender<Arc<Mutex<TournamentManager>>>),
+    ReturnToRefBox,
     NoAction,
 }
 
@@ -174,7 +175,8 @@ impl Message {
             | Self::ScoreConfirmation { .. }
             | Self::AutoConfirmScores(_)
             | Self::StopClock
-            | Self::StartClock => false,
+            | Self::StartClock
+            | Self::ReturnToRefBox => false,
         }
     }
 }
@@ -196,6 +198,7 @@ impl PartialEq for Message {
             | (Self::EndTimeout, Self::EndTimeout)
             | (Self::StopClock, Self::StopClock)
             | (Self::StartClock, Self::StartClock)
+            | (Self::ReturnToRefBox, Self::ReturnToRefBox)
             | (Self::NoAction, Self::NoAction) => true,
 
             (Self::NewSnapshot(a), Self::NewSnapshot(b)) => a == b,
@@ -367,6 +370,7 @@ impl PartialEq for Message {
             | (Self::StopClock, _)
             | (Self::StartClock, _)
             | (Self::TimeUpdaterStarted(_), _)
+            | (Self::ReturnToRefBox, _)
             | (Self::NoAction, _) => false,
         }
     }
@@ -379,6 +383,7 @@ pub enum ConfigPage {
     Sound,
     Display,
     App,
+    User,
     Remotes(usize, bool),
 }
 
@@ -430,6 +435,8 @@ pub enum CyclingParameter {
     Mode,
     Brightness,
     Language,
+    UiMode,
+    ViewMode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

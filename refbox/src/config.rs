@@ -170,6 +170,7 @@ macro_attr! {
         Hockey6V6,
         Hockey3V3,
         Rugby,
+        BeepTest,
     }
 }
 
@@ -179,6 +180,7 @@ impl Display for Mode {
             Self::Hockey6V6 => f.write_str(&fl!("hockey6v6")),
             Self::Hockey3V3 => f.write_str(&fl!("hockey3v3")),
             Self::Rugby => f.write_str(&fl!("rugby")),
+            Self::BeepTest => f.write_str(&fl!("beep-test")),
         }
     }
 }

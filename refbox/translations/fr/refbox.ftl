@@ -38,8 +38,13 @@ game-select = MATCH:
 game-options = OPTIONS DU MATCH
 app-options = OPTIONS DE L'APPLICATION
 display-options = OPTIONS D'AFFICHAGE
+interface-options = OPTIONS D'INTERFACE
+user-options = OPTIONS UTILISATEUR
 sound-options = OPTIONS SONORES
 app-mode = MODE
+touchscreen = ÉCRAN TACTILE
+pointer = POINTEUR
+contrast = CONTRASTE
 hide-time-for-last-15-seconds = CACHER LE TEMPS POUR
     LES 15 DERNIÈRES SECONDES
 ### Shorten
@@ -333,6 +338,7 @@ max = MAX
 hockey6v6 = Hockey6V6
 hockey3v3 = Hockey3V3
 rugby = Rugby
+beep-test = TEST BIP
 
 # Infractions
 stick-foul = Faute de crosse

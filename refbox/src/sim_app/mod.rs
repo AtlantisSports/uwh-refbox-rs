@@ -70,6 +70,7 @@ pub struct SimRefBoxAppFlags {
     pub sunlight_mode: bool,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Default)]
 pub enum ApplicationTheme {
     #[default]
@@ -132,7 +133,7 @@ impl SimRefBoxApp {
         }
     }
 
-    pub(super) fn view(&self) -> Element<Message> {
+    pub(super) fn view(&self) -> Element<'_, Message> {
         Canvas::new(self)
             .width(Length::Fill)
             .height(Length::Fill)

@@ -1,4 +1,5 @@
 use self::infraction::InfractionDetails;
+use self::view_builders::configuration::{UiMode, ViewMode};
 use super::{APP_NAME, fl};
 use crate::{
     config::{Config, Mode},
@@ -63,6 +64,7 @@ pub struct RefBoxApp {
     app_state: AppState,
     last_app_state: AppState,
     last_message: Message,
+    prev_mode: Option<Mode>,
     update_sender: UpdateSender,
     uwhportal_client: Option<UwhPortalClient>,
     using_uwhportal: bool,
@@ -431,6 +433,8 @@ impl RefBoxApp {
             track_fouls_and_warnings,
             uwhportal_token_valid: _,
             confirm_score,
+            ui_mode: _,
+            view_mode: _,
         } = edited_settings;
 
         self.config.hardware.white_on_right = white_on_right;
@@ -441,6 +445,11 @@ impl RefBoxApp {
         self.schedule = games;
         self.config.sound = sound;
         self.sound.update_settings(self.config.sound.clone());
+        if mode == Mode::BeepTest && self.config.mode != Mode::BeepTest {
+            self.prev_mode = Some(self.config.mode);
+        } else if mode != Mode::BeepTest {
+            self.prev_mode = None;
+        }
         self.config.mode = mode;
         self.config.collect_scorer_cap_num = collect_scorer_cap_num;
         self.config.track_fouls_and_warnings = track_fouls_and_warnings;
@@ -519,6 +528,7 @@ impl RefBoxApp {
             app_state: AppState::MainPage,
             last_app_state: AppState::MainPage,
             last_message: Message::NoAction,
+            prev_mode: None,
             update_sender,
             uwhportal_client,
             using_uwhportal: false,
@@ -1258,6 +1268,8 @@ impl RefBoxApp {
                     collect_scorer_cap_num: self.config.collect_scorer_cap_num,
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
                     confirm_score: self.config.confirm_score,
+                    ui_mode: UiMode::default(),
+                    view_mode: ViewMode::default(),
                 };
 
                 self.edited_settings = Some(edited_settings);
@@ -1687,6 +1699,14 @@ impl RefBoxApp {
                             Language::from_lang_id(&crate::LANGUAGE_LOADER.current_languages()[0]);
                         language.cycle();
                         crate::request_language(&crate::LANGUAGE_LOADER, &[language.as_lang_id()]);
+                    }
+                    CyclingParameter::UiMode => {
+                        settings.ui_mode.cycle();
+                        // Note: This is a placeholder - no actual UI changes implemented yet
+                    }
+                    CyclingParameter::ViewMode => {
+                        settings.view_mode.cycle();
+                        // Note: This is a placeholder - no actual functionality implemented yet
                     }
                 }
                 Task::none()
@@ -2118,11 +2138,24 @@ impl RefBoxApp {
                 tx.blocking_send(tm).unwrap();
                 Task::none()
             }
+            Message::ReturnToRefBox => {
+                let fallback = Mode::Hockey6V6;
+                let new_mode = self.prev_mode.unwrap_or(fallback);
+                self.prev_mode = None;
+                self.config.mode = new_mode;
+                self.app_state = AppState::MainPage;
+                trace!(
+                    "Returning to RefBox main screen with mode: {:?}",
+                    self.config.mode
+                );
+                confy::store(APP_NAME, None, &self.config).unwrap();
+                Task::none()
+            }
             Message::NoAction => Task::none(),
         }
     }
 
-    pub(super) fn view(&self) -> Element<Message> {
+    pub(super) fn view(&self) -> Element<'_, Message> {
         let data = ViewData {
             snapshot: &self.snapshot,
             mode: self.config.mode,
@@ -2152,13 +2185,17 @@ impl RefBoxApp {
                 } else {
                     &self.config.game
                 };
-                build_main_view(
-                    data,
-                    game_config,
-                    self.using_uwhportal,
-                    self.schedule.as_ref().map(|s| &s.games),
-                    self.config.track_fouls_and_warnings,
-                )
+                if self.config.mode == Mode::BeepTest {
+                    build_beep_test_blank_page()
+                } else {
+                    build_main_view(
+                        data,
+                        game_config,
+                        self.using_uwhportal,
+                        self.schedule.as_ref().map(|s| &s.games),
+                        self.config.track_fouls_and_warnings,
+                    )
+                }
             }
             AppState::TimeEdit(_, time, timeout_time) =>
                 build_time_edit_view(data, time, timeout_time),
@@ -2215,17 +2252,19 @@ impl RefBoxApp {
         .spacing(SPACING)
         .padding(PADDING);
 
-        match self.app_state {
-            AppState::ScoreEdit {
-                is_confirmation, ..
-            } if is_confirmation => {}
-            AppState::ConfirmScores(_) => {}
-            _ => {
-                main_view = main_view.push(build_timeout_ribbon(
-                    &self.snapshot,
-                    &self.tm,
-                    self.config.mode,
-                ));
+        if self.config.mode != Mode::BeepTest {
+            match self.app_state {
+                AppState::ScoreEdit {
+                    is_confirmation, ..
+                } if is_confirmation => {}
+                AppState::ConfirmScores(_) => {}
+                _ => {
+                    main_view = main_view.push(build_timeout_ribbon(
+                        &self.snapshot,
+                        &self.tm,
+                        self.config.mode,
+                    ));
+                }
             }
         }
 

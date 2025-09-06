@@ -16,6 +16,66 @@ use uwh_common::{
     uwhportal::schedule::{Event, EventId, GameNumber, Schedule},
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UiMode {
+    Touchscreen,
+    Pointer,
+}
+
+impl Default for UiMode {
+    fn default() -> Self {
+        Self::Touchscreen
+    }
+}
+
+impl UiMode {
+    pub fn as_str(&self) -> String {
+        match self {
+            Self::Touchscreen => fl!("touchscreen"),
+            Self::Pointer => fl!("pointer"),
+        }
+    }
+}
+
+impl super::Cyclable for UiMode {
+    fn next(&self) -> Self {
+        match self {
+            Self::Touchscreen => Self::Pointer,
+            Self::Pointer => Self::Touchscreen,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewMode {
+    Default,
+    Contrast,
+}
+
+impl Default for ViewMode {
+    fn default() -> Self {
+        Self::Default
+    }
+}
+
+impl ViewMode {
+    pub fn as_str(&self) -> String {
+        match self {
+            Self::Default => fl!("default"),
+            Self::Contrast => fl!("contrast"),
+        }
+    }
+}
+
+impl super::Cyclable for ViewMode {
+    fn next(&self) -> Self {
+        match self {
+            Self::Default => Self::Contrast,
+            Self::Contrast => Self::Default,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(in super::super) struct EditableSettings {
     pub config: GameConfig,
@@ -33,6 +93,8 @@ pub(in super::super) struct EditableSettings {
     pub collect_scorer_cap_num: bool,
     pub track_fouls_and_warnings: bool,
     pub confirm_score: bool,
+    pub ui_mode: UiMode,
+    pub view_mode: ViewMode,
 }
 
 pub(in super::super) trait Cyclable
@@ -88,7 +150,8 @@ impl Cyclable for Mode {
         match self {
             Self::Hockey6V6 => Self::Hockey3V3,
             Self::Hockey3V3 => Self::Rugby,
-            Self::Rugby => Self::Hockey6V6,
+            Self::Rugby => Self::BeepTest,
+            Self::BeepTest => Self::Hockey6V6,
         }
     }
 }
@@ -123,6 +186,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
         ConfigPage::Sound => make_sound_config_page(snapshot, settings, mode, clock_running),
         ConfigPage::Display => make_display_config_page(snapshot, settings, mode, clock_running),
         ConfigPage::App => make_app_config_page(mode, snapshot, settings, clock_running),
+        ConfigPage::User => make_user_config_page(snapshot, settings, mode, clock_running),
         ConfigPage::Remotes(index, listening) => {
             make_remote_config_page(snapshot, settings, index, listening, mode, clock_running)
         }
@@ -131,11 +195,68 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
 
 fn make_main_config_page<'a>(
     snapshot: &GameSnapshot,
+    _settings: &EditableSettings,
+    mode: Mode,
+    clock_running: bool,
+) -> Element<'a, Message> {
+    column![
+        make_game_time_button(snapshot, false, false, mode, clock_running),
+        row![
+            make_button(fl!("game-options"))
+                .on_press(Message::ChangeConfigPage(ConfigPage::Game),)
+                .style(light_gray_button),
+            make_button(fl!("app-options"))
+                .on_press(Message::ChangeConfigPage(ConfigPage::App),)
+                .style(light_gray_button),
+        ]
+        .spacing(SPACING)
+        .width(Length::Fill)
+        .height(Length::Fill),
+        row![
+            make_button(fl!("user-options"))
+                .on_press(Message::ChangeConfigPage(ConfigPage::User),)
+                .style(light_gray_button),
+            make_value_button(
+                "LANGUAGE /\nLANGUE / IDIOMA",
+                fl!("this-language"),
+                (false, true),
+                Some(Message::CycleParameter(CyclingParameter::Language,)),
+            ),
+        ]
+        .spacing(SPACING)
+        .width(Length::Fill)
+        .height(Length::Fill),
+        vertical_space(),
+        vertical_space(),
+        row![
+            make_button(fl!("cancel"))
+                .style(red_button)
+                .width(Length::Fill)
+                .on_press(Message::ConfigEditComplete { canceled: true }),
+            horizontal_space(),
+            make_button(fl!("done"))
+                .style(green_button)
+                .width(Length::Fill)
+                .on_press(Message::ConfigEditComplete { canceled: false }),
+        ]
+        .spacing(SPACING)
+        .width(Length::Fill),
+    ]
+    .spacing(SPACING)
+    .height(Length::Fill)
+    .into()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn make_event_config_page<'a>(
+    snapshot: &GameSnapshot,
     settings: &EditableSettings,
+    events: Option<&BTreeMap<EventId, Event>>,
     mode: Mode,
     clock_running: bool,
 ) -> Element<'a, Message> {
     let EditableSettings {
+        config,
         game_number,
         using_uwhportal,
         current_event_id,
@@ -146,6 +267,7 @@ fn make_main_config_page<'a>(
 
     let using_uwhportal = *using_uwhportal;
 
+    // Game selection logic (moved from main config page)
     let game_btn_msg = if using_uwhportal {
         if current_event_id.is_some() && current_court.is_some() && schedule.is_some() {
             Some(Message::SelectParameter(ListableParameter::Game))
@@ -184,75 +306,7 @@ fn make_main_config_page<'a>(
         game_number.to_string()
     };
 
-    column![
-        make_game_time_button(snapshot, false, false, mode, clock_running),
-        make_value_button(
-            fl!("game-select"),
-            game_label,
-            (true, game_large_text),
-            game_btn_msg,
-        ),
-        row![
-            make_button(fl!("game-options"))
-                .on_press(Message::ChangeConfigPage(ConfigPage::Game),)
-                .style(light_gray_button),
-            make_button(fl!("app-options"))
-                .on_press(Message::ChangeConfigPage(ConfigPage::App),)
-                .style(light_gray_button),
-        ]
-        .spacing(SPACING)
-        .width(Length::Fill)
-        .height(Length::Fill),
-        row![
-            make_button(fl!("display-options"))
-                .on_press(Message::ChangeConfigPage(ConfigPage::Display),)
-                .style(light_gray_button),
-            make_button(fl!("sound-options"))
-                .on_press(Message::ChangeConfigPage(ConfigPage::Sound),)
-                .style(light_gray_button),
-        ]
-        .spacing(SPACING)
-        .width(Length::Fill)
-        .height(Length::Fill),
-        vertical_space(),
-        row![
-            make_button(fl!("cancel"))
-                .style(red_button)
-                .width(Length::Fill)
-                .on_press(Message::ConfigEditComplete { canceled: true }),
-            horizontal_space(),
-            make_button(fl!("done"))
-                .style(green_button)
-                .width(Length::Fill)
-                .on_press(Message::ConfigEditComplete { canceled: false }),
-        ]
-        .spacing(SPACING)
-        .width(Length::Fill),
-    ]
-    .spacing(SPACING)
-    .height(Length::Fill)
-    .into()
-}
-
-#[allow(clippy::too_many_arguments)]
-fn make_event_config_page<'a>(
-    snapshot: &GameSnapshot,
-    settings: &EditableSettings,
-    events: Option<&BTreeMap<EventId, Event>>,
-    mode: Mode,
-    clock_running: bool,
-) -> Element<'a, Message> {
-    let EditableSettings {
-        config,
-        using_uwhportal,
-        current_event_id,
-        current_court,
-        ..
-    } = settings;
-
-    let using_uwhportal = *using_uwhportal;
-
-    let rows: [Element<Message>; 4] = if using_uwhportal {
+    let rows: [Element<Message>; 5] = if using_uwhportal {
         let event_label = if let Some(events) = events {
             if let Some(event_id) = current_event_id {
                 match events.get(event_id) {
@@ -341,11 +395,34 @@ fn make_event_config_page<'a>(
         .on_press_maybe(auth_state_message);
 
         [
+            // Top row with COURT button using existing pool_label and pool_btn_msg
+            row![
+                make_value_button(fl!("court"), pool_label, (true, true), pool_btn_msg,),
+                make_value_button(
+                    fl!("game-select"),
+                    game_label.clone(),
+                    (true, game_large_text),
+                    game_btn_msg.clone(),
+                ),
+                make_value_button(
+                    fl!("using-uwh-portal"),
+                    bool_string(using_uwhportal),
+                    (false, true),
+                    Some(Message::ToggleBoolParameter(
+                        BoolGameParameter::UsingUwhPortal,
+                    )),
+                )
+            ]
+            .spacing(SPACING)
+            .height(Length::Fill)
+            .into(),
+            // UWH Portal specific rows
             make_value_button(fl!("event"), event_label, (true, true), event_btn_msg)
                 .height(Length::Fill)
                 .into(),
-            auth_state_button.into(),
-            make_value_button(fl!("court"), pool_label, (true, true), pool_btn_msg)
+            auth_state_button.height(Length::Fill).into(),
+            row![horizontal_space(), horizontal_space(), horizontal_space(),]
+                .spacing(SPACING)
                 .height(Length::Fill)
                 .into(),
             row![
@@ -362,6 +439,32 @@ fn make_event_config_page<'a>(
         ]
     } else {
         [
+            // Top row with SINGLE HALF button for non-UWH Portal mode
+            row![
+                make_value_button(
+                    fl!("single-half"),
+                    bool_string(settings.config.single_half),
+                    (false, true),
+                    Some(Message::ToggleBoolParameter(BoolGameParameter::SingleHalf)),
+                ),
+                make_value_button(
+                    fl!("game-select"),
+                    game_label,
+                    (true, game_large_text),
+                    game_btn_msg,
+                ),
+                make_value_button(
+                    fl!("using-uwh-portal"),
+                    bool_string(using_uwhportal),
+                    (false, true),
+                    Some(Message::ToggleBoolParameter(
+                        BoolGameParameter::UsingUwhPortal,
+                    )),
+                )
+            ]
+            .spacing(SPACING)
+            .height(Length::Fill)
+            .into(),
             row![
                 make_value_button(
                     if config.single_half {
@@ -490,36 +593,13 @@ fn make_event_config_page<'a>(
         ]
     };
 
-    let mut col = column![
-        make_game_time_button(snapshot, false, false, mode, clock_running),
-        row![
-            if !using_uwhportal {
-                make_value_button(
-                    fl!("single-half"),
-                    bool_string(settings.config.single_half),
-                    (false, true),
-                    Some(Message::ToggleBoolParameter(BoolGameParameter::SingleHalf)),
-                )
-            } else {
-                make_button("")
-                    .style(light_gray_button)
-                    .on_press(Message::NoAction)
-            },
-            make_button("")
-                .style(light_gray_button)
-                .on_press(Message::NoAction),
-            make_value_button(
-                fl!("using-uwh-portal"),
-                bool_string(using_uwhportal),
-                (false, true),
-                Some(Message::ToggleBoolParameter(
-                    BoolGameParameter::UsingUwhPortal,
-                )),
-            )
-        ]
-        .spacing(SPACING)
-        .height(Length::Fill),
-    ]
+    let mut col = column![make_game_time_button(
+        snapshot,
+        false,
+        false,
+        mode,
+        clock_running
+    ),]
     .spacing(SPACING)
     .height(Length::Fill);
 
@@ -583,17 +663,7 @@ fn make_app_config_page<'a>(
         ]
         .spacing(SPACING)
         .height(Length::Fill),
-        row![
-            make_value_button(
-                fl!("language"),
-                fl!("this-language"),
-                (false, true),
-                Some(Message::CycleParameter(CyclingParameter::Language,)),
-            ),
-            horizontal_space(),
-        ]
-        .spacing(SPACING)
-        .height(Length::Fill),
+        vertical_space(),
         vertical_space(),
         row![
             horizontal_space(),
@@ -683,7 +753,7 @@ fn make_display_config_page<'a>(
             make_button(fl!("done"))
                 .style(green_button)
                 .width(Length::Fill)
-                .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
+                .on_press(Message::ChangeConfigPage(ConfigPage::User)),
         ]
         .spacing(SPACING)
     ]
@@ -805,7 +875,7 @@ fn make_sound_config_page<'a>(
             make_button(fl!("done"))
                 .style(green_button)
                 .width(Length::Fill)
-                .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
+                .on_press(Message::ChangeConfigPage(ConfigPage::User)),
         ]
         .spacing(SPACING),
     ]
@@ -981,6 +1051,63 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
     .spacing(SPACING)
     .align_x(Alignment::Center)
     .width(Length::Fill)
+    .height(Length::Fill)
+    .into()
+}
+
+fn make_user_config_page<'a>(
+    snapshot: &GameSnapshot,
+    settings: &EditableSettings,
+    mode: Mode,
+    clock_running: bool,
+) -> Element<'a, Message> {
+    column![
+        make_game_time_button(snapshot, false, false, mode, clock_running),
+        row![
+            make_button(fl!("display-options"))
+                .on_press(Message::ChangeConfigPage(ConfigPage::Display),)
+                .style(light_gray_button),
+            make_value_button(
+                "INTERFACE\nOPTIONS",
+                settings.ui_mode.as_str(),
+                (false, true),
+                Some(Message::CycleParameter(CyclingParameter::UiMode)),
+            ),
+        ]
+        .spacing(SPACING)
+        .width(Length::Fill)
+        .height(Length::Fill),
+        row![
+            make_button(fl!("sound-options"))
+                .on_press(Message::ChangeConfigPage(ConfigPage::Sound),)
+                .style(light_gray_button),
+            make_value_button(
+                "VIEW\nMODE",
+                settings.view_mode.as_str(),
+                (false, true),
+                Some(Message::CycleParameter(CyclingParameter::ViewMode)),
+            ),
+        ]
+        .spacing(SPACING)
+        .width(Length::Fill)
+        .height(Length::Fill),
+        vertical_space(),
+        vertical_space(),
+        row![
+            make_button(fl!("cancel"))
+                .style(red_button)
+                .width(Length::Fill)
+                .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
+            horizontal_space(),
+            make_button(fl!("done"))
+                .style(green_button)
+                .width(Length::Fill)
+                .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
+        ]
+        .spacing(SPACING)
+        .width(Length::Fill),
+    ]
+    .spacing(SPACING)
     .height(Length::Fill)
     .into()
 }

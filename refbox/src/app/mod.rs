@@ -75,6 +75,7 @@ pub struct RefBoxApp {
     sound: SoundController,
     sim_child: Option<Child>,
     list_all_events: bool,
+    last_game_scores: Option<(u8, u8)>, // (white_score, black_score) from previous game
 }
 
 #[derive(Debug)]
@@ -388,10 +389,13 @@ impl RefBoxApp {
         }
     }
 
-    fn handle_game_end(&self, game_number: &GameNumber) -> Task<Message> {
+    fn handle_game_end(&mut self, game_number: &GameNumber) -> Task<Message> {
         let mut tasks = vec![];
-        if self.using_uwhportal {
-            if let Some(info) = self.tm.lock().unwrap().last_game_info() {
+        if let Some(info) = self.tm.lock().unwrap().last_game_info() {
+            // Store the final game scores locally for display in next game
+            self.last_game_scores = Some((info.scores.white, info.scores.black));
+            
+            if self.using_uwhportal {
                 let stats = info.stats.as_json();
 
                 info!(
@@ -406,9 +410,9 @@ impl RefBoxApp {
                 } else {
                     error!("Missing current event id to handle game end");
                 }
-            } else {
-                warn!("Game ended, but no last game info was available");
             }
+        } else {
+            warn!("Game ended, but no last game info was available");
         }
 
         Task::batch(tasks)
@@ -539,6 +543,7 @@ impl RefBoxApp {
             sound,
             sim_child,
             list_all_events,
+            last_game_scores: None,
         };
 
         let task = Task::batch(vec![
@@ -2249,6 +2254,7 @@ impl RefBoxApp {
                         self.using_uwhportal,
                         self.schedule.as_ref().map(|s| &s.games),
                         self.config.track_fouls_and_warnings,
+                        self.last_game_scores,
                     )
                 }
             }

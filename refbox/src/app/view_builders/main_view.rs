@@ -1,6 +1,6 @@
 use super::*;
 use crate::app::theme::{
-    rounded_box, team_color_black_container_square, team_color_white_container_square,
+    team_color_black_container_square, team_color_white_container_square,
 };
 use iced::{
     Alignment, Element, Length,
@@ -15,7 +15,7 @@ use uwh_common::{
 };
 
 // Constants for fixed-width label cells
-const GAME_LABEL_WIDTH: f32 = 60.0;
+const GAME_LABEL_WIDTH: f32 = 120.0;
 const REF_LABEL_WIDTH: f32 = 120.0;
 // Fixed cell height to keep rows from shrinking when font sizes are reduced
 const GAME_INFO_CELL_HEIGHT: f32 = 26.0;
@@ -26,6 +26,7 @@ struct TableRow {
     left_value: String,
     center_label: Option<String>,
     center_value: Option<String>,
+    score: Option<String>, // New field for score display
 }
 
 pub(in super::super) fn build_main_view<'a>(
@@ -34,6 +35,7 @@ pub(in super::super) fn build_main_view<'a>(
     using_uwhportal: bool,
     games: Option<&GameList>,
     track_fouls_and_warnings: bool,
+    last_game_scores: Option<(u8, u8)>, // (black, white) scores from previous game
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -133,6 +135,7 @@ pub(in super::super) fn build_main_view<'a>(
             games,
             teams,
             track_fouls_and_warnings,
+            last_game_scores,
         ))
         .padding(PADDING)
         .style(light_gray_button)
@@ -331,6 +334,7 @@ fn build_config_table<'a>(
     games: Option<&GameList>,
     teams: Option<&TeamList>,
     fouls_and_warnings: bool,
+    last_game_scores: Option<(u8, u8)>, // (black, white) scores from previous game
 ) -> Element<'a, Message> {
     const TEAM_NAME_LEN_LIMIT: usize = 40;
     let mut table_rows = Vec::new();
@@ -393,12 +397,35 @@ fn build_config_table<'a>(
         ("None".to_string(), "None".to_string())
     };
 
+    // Determine labels based on game state:
+    // - During NEXT GAME state (between games): "Prior Game" and "Next Game"
+    // - During active gameplay: "Current" and "Next Game"
+    let (last_label, next_label) = if snapshot.current_period == GamePeriod::BetweenGames {
+        (fl!("prior-game"), fl!("next-game"))
+    } else {
+        (fl!("current-game"), fl!("next-game"))
+    };
+
+    // Determine what scores to show based on game state and available data
+    let (white_score, black_score) = if snapshot.current_period == GamePeriod::BetweenGames {
+        // Between games - show previous game final scores if available, otherwise use "-"
+        if let Some((prev_white, prev_black)) = last_game_scores {
+            (Some(prev_white.to_string()), Some(prev_black.to_string()))
+        } else {
+            (Some("-".to_string()), Some("-".to_string()))
+        }
+    } else {
+        // During active game - show current scores
+        (Some(snapshot.scores.white.to_string()), Some(snapshot.scores.black.to_string()))
+    };
+
     // Add "Last" rows - first row with White team
     table_rows.push(TableRow {
-        left_label: "Last".to_string(),
+        left_label: last_label.clone(),
         left_value: "White".to_string(),
         center_label: Some(prev_white_team.clone()),
         center_value: None,
+        score: white_score,
     });
 
     // Add second row for Last with Black team (empty label)
@@ -407,14 +434,16 @@ fn build_config_table<'a>(
         left_value: "Black".to_string(),
         center_label: Some(prev_black_team.clone()),
         center_value: None,
+        score: black_score,
     });
 
     // Add "Next" rows - first row with White team
     table_rows.push(TableRow {
-        left_label: "Next".to_string(),
+        left_label: next_label.clone(),
         left_value: "White".to_string(),
         center_label: Some(current_white_team.clone()),
         center_value: None,
+        score: None,
     });
 
     // Add second row for Next with Black team (empty label)
@@ -423,6 +452,7 @@ fn build_config_table<'a>(
         left_value: "Black".to_string(),
         center_label: Some(current_black_team.clone()),
         center_value: None,
+        score: None,
     });
 
     // Compact layout - everything in fewer rows to match screenshot
@@ -432,6 +462,7 @@ fn build_config_table<'a>(
         left_value: time_string(config.half_play_duration),
         center_label: Some("Half Time Duration".to_string()),
         center_value: Some(time_string(config.half_time_duration)),
+        score: None,
     });
 
     // Row: Timeouts | 1 / Game | Last 2 Min Ref T/Out | YES
@@ -448,6 +479,7 @@ fn build_config_table<'a>(
         left_value: timeout_value,
         center_label: Some("Last 2 Min Stop Clock".to_string()),
         center_value: Some("YES".to_string()), // Default value, will be configurable later
+        score: None,
     });
 
     // Row: Overtime | YES | Sudden Death | YES
@@ -456,6 +488,7 @@ fn build_config_table<'a>(
         left_value: bool_string(config.overtime_allowed),
         center_label: Some("Sudden Death".to_string()),
         center_value: Some(bool_string(config.sudden_death_allowed)),
+        score: None,
     });
 
     // Officials information - compact layout to match screenshot
@@ -468,6 +501,7 @@ fn build_config_table<'a>(
             left_value: unknown.clone(),
             center_label: None,
             center_value: None,
+            score: None,
         });
 
         // Row 6: Timer | Unknown (single column)
@@ -476,6 +510,7 @@ fn build_config_table<'a>(
             left_value: unknown.clone(),
             center_label: None,
             center_value: None,
+            score: None,
         });
 
         // Row 7: Water Ref 1 | Unknown (single column)
@@ -484,6 +519,7 @@ fn build_config_table<'a>(
             left_value: unknown.clone(),
             center_label: None,
             center_value: None,
+            score: None,
         });
 
         // Row 8: Water Ref 2 | Unknown (single column)
@@ -492,6 +528,7 @@ fn build_config_table<'a>(
             left_value: unknown.clone(),
             center_label: None,
             center_value: None,
+            score: None,
         });
 
         // Row 9: Water Ref 3 | Unknown (single column)
@@ -500,6 +537,7 @@ fn build_config_table<'a>(
             left_value: unknown.clone(),
             center_label: None,
             center_value: None,
+            score: None,
         });
     }
 
@@ -576,45 +614,83 @@ fn build_config_table<'a>(
 
                 details_column = details_column.push(row_element);
             } else {
-                // Create a 3-column row: Label | Color | TeamName (for game rows)
-
-                let row_element = row![
-                    container(text(table_row.left_label).size(SMALL_TEXT))
+                // Create a row for team names - always 3-column layout with score cell for team rows
+                let is_team_row = table_row.left_value == "White" || table_row.left_value == "Black";
+                
+                if is_team_row && table_row.score.is_some() {
+                    // 3-column row for team with score: Label | TeamName | Score
+                    let score_text = table_row.score.as_ref().unwrap().clone();
+                    let row_element = row![
+                        container(text(table_row.left_label).size(SMALL_TEXT))
+                            .padding([1, 1])
+                            .width(Length::Fixed(120.0))
+                            .style(container::rounded_box),
+                        container(
+                            text(center_label)
+                                .size(SMALL_TEXT)
+                                .align_x(Horizontal::Left)
+                                .width(Length::Fill)
+                        )
                         .padding([1, 1])
-                        .width(Length::Fixed(GAME_LABEL_WIDTH))
-                        .style(container::rounded_box),
-                    container(
-                        text(table_row.left_value.clone())
-                            .size(SMALL_TEXT)
-                            .width(Length::Fill)
-                            .align_x(Horizontal::Center)
-                    )
-                    .center_x(Length::Fill)
-                    .padding([1, 1])
-                    .width(Length::Fixed(60.0)) // Fixed width for color labels
-                    .style(if table_row.left_value == "White" {
-                        team_color_white_container_square
-                    } else if table_row.left_value == "Black" {
-                        team_color_black_container_square
-                    } else {
-                        rounded_box
-                    }),
-                    container(
-                        text(center_label)
-                            .size(SMALL_TEXT)
-                            .align_x(Horizontal::Left)
-                            .width(Length::Fill)
-                    )
-                    .padding([1, 1])
-                    .width(Length::Fill) // Team name takes remaining space
-                    .height(Length::Fixed(GAME_INFO_CELL_HEIGHT))
-                    .align_y(Vertical::Center)
-                    .style(container::rounded_box),
-                ]
-                .spacing(1)
-                .width(Length::Fill);
+                        .width(Length::Fill) // Team name takes most of the remaining space
+                        .height(Length::Fixed(GAME_INFO_CELL_HEIGHT))
+                        .align_y(Vertical::Center)
+                        .style(if table_row.left_value == "White" {
+                            team_color_white_container_square
+                        } else {
+                            team_color_black_container_square
+                        }),
+                        container(
+                            text(score_text)
+                                .size(SMALL_TEXT)
+                                .align_x(Horizontal::Center)
+                                .width(Length::Fill)
+                        )
+                        .padding([1, 1])
+                        .width(Length::Fixed(40.0)) // Square-ish score cell
+                        .height(Length::Fixed(GAME_INFO_CELL_HEIGHT))
+                        .align_y(Vertical::Center)
+                        .style(if table_row.left_value == "White" {
+                            team_color_white_container_square
+                        } else {
+                            team_color_black_container_square
+                        }),
+                    ]
+                    .spacing(1)
+                    .width(Length::Fill);
 
-                details_column = details_column.push(row_element);
+                    details_column = details_column.push(row_element);
+                } else {
+                    // Create a 2-column row: Label | TeamName (with colored background for game rows)
+
+                    let row_element = row![
+                        container(text(table_row.left_label).size(SMALL_TEXT))
+                            .padding([1, 1])
+                            .width(Length::Fixed(120.0)) // Wider to absorb the former color indicator space
+                            .style(container::rounded_box),
+                        container(
+                            text(center_label)
+                                .size(SMALL_TEXT)
+                                .align_x(Horizontal::Left)
+                                .width(Length::Fill)
+                        )
+                        .padding([1, 1])
+                        .width(Length::Fill) // Team name takes remaining space with colored background
+                        .height(Length::Fixed(GAME_INFO_CELL_HEIGHT))
+                        .align_y(Vertical::Center)
+                        .style(if table_row.left_value == "White" {
+                            team_color_white_container_square
+                        } else if table_row.left_value == "Black" {
+                            team_color_black_container_square
+                        } else {
+                            container::rounded_box
+                        }),
+                    ]
+                    .spacing(1)
+                    .width(Length::Fill);
+
+                    details_column = details_column.push(row_element);
+                }
             }
         } else {
             // Single 2-column row: Label | Value (spanning full width)
@@ -622,7 +698,9 @@ fn build_config_table<'a>(
             let (label_portion, value_portion) = (3, 5); // Keep consistent; value column wider for names
 
             let label_width = match table_row.left_label.as_str() {
+                // Game-related labels (both static and dynamic)
                 "Last" | "Next" => Length::Fixed(GAME_LABEL_WIDTH),
+                label if label == fl!("prior-game") || label == fl!("current-game") || label == fl!("next-game") => Length::Fixed(GAME_LABEL_WIDTH),
                 "" => Length::Fixed(GAME_LABEL_WIDTH), // Empty labels for second rows of game info
                 "Chief Ref" | "Timer" | "Water Ref 1" | "Water Ref 2" | "Water Ref 3" => {
                     Length::Fixed(REF_LABEL_WIDTH)

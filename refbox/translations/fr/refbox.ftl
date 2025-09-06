@@ -295,6 +295,8 @@ ref-list = Arbitre en Chef: { $chief_ref }
 unknown = Inconnu
 ## Game time button
 next-game = MATCH SUIVANT
+prior-game = MATCH PRÉCÉDENT
+current-game = ACTUEL
 first-half = 1ere PÉRIODE
 half-time = MI-TEMPS
 second-half = 2eme PÉRIODE

@@ -89,6 +89,7 @@ pub fn transparent_container(theme: &Theme) -> Style {
     }
 }
 
+#[allow(dead_code)] // This function is used through container::rounded_box path
 pub fn rounded_box(theme: &Theme) -> Style {
     light_gray_container(theme)
 }

@@ -20,6 +20,8 @@ struct TableRow {
     left_value: String,
     center_label: Option<String>,
     center_value: Option<String>,
+    #[allow(dead_code)] // This field is used in main_view.rs but not in game_info.rs
+    score: Option<String>, // New field for score display
 }
 
 pub(in super::super) fn build_game_info_page<'a>(
@@ -131,7 +133,7 @@ pub(in super::super) fn build_game_info_page<'a>(
                     ]
                 }
             } else {
-                // 3-column layout for game team rows
+                // 2-column layout for game team rows: Label | TeamName (with colored background)
                 row![
                     container(
                         text(table_row.left_label)
@@ -139,24 +141,8 @@ pub(in super::super) fn build_game_info_page<'a>(
                             .align_x(Horizontal::Left)
                     )
                     .padding([1, 1])
-                    .width(Length::Fixed(60.0)) // Reduced from 100.0 since "Last"/"Next" are shorter
+                    .width(Length::Fixed(120.0)) // Wider to absorb the former color indicator space
                     .style(container::rounded_box),
-                    container(
-                        text(table_row.left_value.clone())
-                            .size(SMALL_TEXT)
-                            .width(Length::Fill)
-                            .align_x(Horizontal::Center)
-                    )
-                    .center_x(Length::Fill)
-                    .padding([1, 1])
-                    .width(Length::Fixed(60.0))
-                    .style(if table_row.left_value == "White" {
-                        team_color_white_container_square
-                    } else if table_row.left_value == "Black" {
-                        team_color_black_container_square
-                    } else {
-                        container::rounded_box
-                    }),
                     container(
                         text(center_label)
                             .size(SMALL_TEXT)
@@ -164,8 +150,14 @@ pub(in super::super) fn build_game_info_page<'a>(
                             .align_x(Horizontal::Left)
                     )
                     .padding([1, 1])
-                    .width(Length::Fill) // Fill remaining space for team names
-                    .style(container::rounded_box),
+                    .width(Length::Fill) // Team name takes remaining space with colored background
+                    .style(if table_row.left_value == "White" {
+                        team_color_white_container_square
+                    } else if table_row.left_value == "Black" {
+                        team_color_black_container_square
+                    } else {
+                        container::rounded_box
+                    }),
                 ]
             }
         } else {
@@ -301,12 +293,22 @@ fn build_details_table(
         ("None".to_string(), "None".to_string())
     };
 
+    // Determine labels based on game state:
+    // - During NEXT GAME state (between games): "Prior Game" and "Next Game"
+    // - During active gameplay: "Current" and "Next Game"
+    let (last_label, next_label) = if snapshot.current_period == GamePeriod::BetweenGames {
+        (fl!("prior-game"), fl!("next-game"))
+    } else {
+        (fl!("current-game"), fl!("next-game"))
+    };
+
     // Add "Last" rows - first row with White team
     table_rows.push(TableRow {
-        left_label: "Last".to_string(),
+        left_label: last_label.clone(),
         left_value: "White".to_string(),
         center_label: Some(_prev_white_team.clone()),
         center_value: None,
+        score: None,
     });
 
     // Add second row for Last with Black team (empty label)
@@ -315,14 +317,16 @@ fn build_details_table(
         left_value: "Black".to_string(),
         center_label: Some(_prev_black_team.clone()),
         center_value: None,
+        score: None,
     });
 
     // Add "Next" rows - first row with White team
     table_rows.push(TableRow {
-        left_label: "Next".to_string(),
+        left_label: next_label.clone(),
         left_value: "White".to_string(),
         center_label: Some(current_white_team.clone()),
         center_value: None,
+        score: None,
     });
 
     // Add second row for Next with Black team (empty label)
@@ -331,6 +335,7 @@ fn build_details_table(
         left_value: "Black".to_string(),
         center_label: Some(current_black_team.clone()),
         center_value: None,
+        score: None,
     });
 
     // Compact layout - everything in fewer rows to match screenshot
@@ -340,6 +345,7 @@ fn build_details_table(
         left_value: time_string(config.half_play_duration),
         center_label: Some("Half Time Duration".to_string()),
         center_value: Some(time_string(config.half_time_duration)),
+        score: None,
     });
 
     // Row: Timeouts | 1 / Game | Timeout Duration | 2:00
@@ -356,6 +362,7 @@ fn build_details_table(
         left_value: timeout_value,
         center_label: Some("Timeout Duration".to_string()),
         center_value: Some(time_string(config.team_timeout_duration)),
+        score: None,
     });
 
     // Row: Stop clock during last 2 minutes of the game | empty | empty | YES
@@ -364,6 +371,7 @@ fn build_details_table(
         left_value: "".to_string(), // Empty left value to make space for the label
         center_label: Some("".to_string()), // Empty center label
         center_value: Some("YES".to_string()), // YES aligns with timeout duration above
+        score: None,
     });
 
     // Row: Overtime | YES | Pre-Overtime Break | 5:00
@@ -372,6 +380,7 @@ fn build_details_table(
         left_value: bool_string(config.overtime_allowed),
         center_label: Some("Pre-Overtime Break".to_string()),
         center_value: Some(time_string(config.pre_overtime_break)),
+        score: None,
     });
 
     // Row: Sudden Death | YES | Pre-Sudden Death | 2:00
@@ -380,6 +389,7 @@ fn build_details_table(
         left_value: bool_string(config.sudden_death_allowed),
         center_label: Some("Pre-Sudden Death".to_string()),
         center_value: Some(time_string(config.pre_sudden_death_duration)),
+        score: None,
     });
 
     // Officials information - compact layout to match screenshot
@@ -391,6 +401,7 @@ fn build_details_table(
         left_value: unknown.clone(),
         center_label: None,
         center_value: None,
+        score: None,
     });
 
     // Row 6: Timer | Unknown (single column)
@@ -399,6 +410,7 @@ fn build_details_table(
         left_value: unknown.clone(),
         center_label: None,
         center_value: None,
+        score: None,
     });
 
     // Row 7: Water Ref 1 | Unknown (single column)
@@ -407,6 +419,7 @@ fn build_details_table(
         left_value: unknown.clone(),
         center_label: None,
         center_value: None,
+        score: None,
     });
 
     // Row 8: Water Ref 2 | Unknown (single column)
@@ -415,6 +428,7 @@ fn build_details_table(
         left_value: unknown.clone(),
         center_label: None,
         center_value: None,
+        score: None,
     });
 
     // Row 9: Water Ref 3 | Unknown (single column)
@@ -423,6 +437,7 @@ fn build_details_table(
         left_value: unknown.clone(),
         center_label: None,
         center_value: None,
+        score: None,
     });
 
     table_rows

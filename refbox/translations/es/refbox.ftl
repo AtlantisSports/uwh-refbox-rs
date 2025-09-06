@@ -300,6 +300,8 @@ ref-list = Árbitro principal: { $chief_ref }
 unknown = Desconocido
 ## Game time button
 next-game = PRÓXIMO JUEGO
+prior-game = JUEGO ANTERIOR
+current-game = ACTUAL
 first-half = 1a MITAD
 half-time = MEDIO TIEMPO
 second-half = SEGUNDA MITAD

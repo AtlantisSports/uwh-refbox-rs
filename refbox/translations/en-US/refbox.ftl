@@ -298,6 +298,8 @@ ref-list = Chief Ref: { $chief_ref }
 unknown = Unknown
 ## Game time button
 next-game = NEXT GAME
+prior-game = PRIOR GAME
+current-game = CURRENT
 first-half = FIRST HALF
 half-time = HALF TIME
 second-half = SECOND HALF

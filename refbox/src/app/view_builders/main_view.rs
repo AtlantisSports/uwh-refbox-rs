@@ -1,7 +1,5 @@
 use super::*;
-use crate::app::theme::{
-    team_color_black_container_square, team_color_white_container_square,
-};
+use crate::app::theme::{team_color_black_container_square, team_color_white_container_square};
 use iced::{
     Alignment, Element, Length,
     alignment::{Horizontal, Vertical},
@@ -416,7 +414,10 @@ fn build_config_table<'a>(
         }
     } else {
         // During active game - show current scores
-        (Some(snapshot.scores.white.to_string()), Some(snapshot.scores.black.to_string()))
+        (
+            Some(snapshot.scores.white.to_string()),
+            Some(snapshot.scores.black.to_string()),
+        )
     };
 
     // Add "Last" rows - first row with White team
@@ -615,8 +616,9 @@ fn build_config_table<'a>(
                 details_column = details_column.push(row_element);
             } else {
                 // Create a row for team names - always 3-column layout with score cell for team rows
-                let is_team_row = table_row.left_value == "White" || table_row.left_value == "Black";
-                
+                let is_team_row =
+                    table_row.left_value == "White" || table_row.left_value == "Black";
+
                 if is_team_row && table_row.score.is_some() {
                     // 3-column row for team with score: Label | TeamName | Score
                     let score_text = table_row.score.as_ref().unwrap().clone();
@@ -700,7 +702,13 @@ fn build_config_table<'a>(
             let label_width = match table_row.left_label.as_str() {
                 // Game-related labels (both static and dynamic)
                 "Last" | "Next" => Length::Fixed(GAME_LABEL_WIDTH),
-                label if label == fl!("prior-game") || label == fl!("current-game") || label == fl!("next-game") => Length::Fixed(GAME_LABEL_WIDTH),
+                label
+                    if label == fl!("prior-game")
+                        || label == fl!("current-game")
+                        || label == fl!("next-game") =>
+                {
+                    Length::Fixed(GAME_LABEL_WIDTH)
+                }
                 "" => Length::Fixed(GAME_LABEL_WIDTH), // Empty labels for second rows of game info
                 "Chief Ref" | "Timer" | "Water Ref 1" | "Water Ref 2" | "Water Ref 3" => {
                     Length::Fixed(REF_LABEL_WIDTH)

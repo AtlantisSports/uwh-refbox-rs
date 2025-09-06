@@ -394,7 +394,7 @@ impl RefBoxApp {
         if let Some(info) = self.tm.lock().unwrap().last_game_info() {
             // Store the final game scores locally for display in next game
             self.last_game_scores = Some((info.scores.white, info.scores.black));
-            
+
             if self.using_uwhportal {
                 let stats = info.stats.as_json();
 

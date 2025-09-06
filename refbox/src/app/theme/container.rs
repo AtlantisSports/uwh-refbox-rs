@@ -101,11 +101,37 @@ pub fn team_color_white_container(theme: &Theme) -> Style {
     }
 }
 
+pub fn team_color_white_container_square(_theme: &Theme) -> Style {
+    Style {
+        background: Some(Background::Color(WHITE)),
+        text_color: Some(BLACK),
+        border: Border {
+            width: 0.0,
+            color: BORDER_COLOR,
+            radius: super::BORDER_RADIUS_ZERO,
+        },
+        shadow: Default::default(),
+    }
+}
+
 pub fn team_color_black_container(theme: &Theme) -> Style {
     Style {
         background: Some(Background::Color(BLACK)),
         text_color: Some(WHITE),
         ..gray_container(theme)
+    }
+}
+
+pub fn team_color_black_container_square(_theme: &Theme) -> Style {
+    Style {
+        background: Some(Background::Color(BLACK)),
+        text_color: Some(WHITE),
+        border: Border {
+            width: 0.0,
+            color: BORDER_COLOR,
+            radius: super::BORDER_RADIUS_ZERO,
+        },
+        shadow: Default::default(),
     }
 }
 

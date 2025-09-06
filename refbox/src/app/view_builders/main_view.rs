@@ -1,6 +1,6 @@
 use super::*;
 use crate::app::dynamic_font_sizing::{DynamicFontSizing, GameInfoCell};
-use crate::app::theme::{team_color_white_container, team_color_black_container, rounded_box};
+use crate::app::theme::{team_color_white_container_square, team_color_black_container_square, rounded_box};
 use iced::{
     Alignment, Element, Length,
     alignment::{Horizontal, Vertical},
@@ -754,9 +754,9 @@ fn build_config_table<'a>(
                     .padding([1, 1])
                     .width(Length::Fixed(60.0)) // Fixed width for color labels
                     .style(if table_row.left_value == "White" {
-                        team_color_white_container
+                        team_color_white_container_square
                     } else if table_row.left_value == "Black" {
-                        team_color_black_container
+                        team_color_black_container_square
                     } else {
                         rounded_box
                     }),
@@ -866,20 +866,22 @@ mod tests {
 
     #[test]
     fn test_team_color_container_selection() {
-        use crate::app::theme::{team_color_white_container, team_color_black_container, rounded_box};
+        use crate::app::theme::{team_color_white_container_square, team_color_black_container_square, rounded_box};
         use iced::Theme;
 
         let theme = Theme::default();
 
-        // Test that White team gets white background with black text
-        let white_style = team_color_white_container(&theme);
+        // Test that White team gets white background with black text (square corners)
+        let white_style = team_color_white_container_square(&theme);
         assert_eq!(white_style.background, Some(iced::Background::Color(crate::app::theme::WHITE)));
         assert_eq!(white_style.text_color, Some(crate::app::theme::BLACK));
+        assert_eq!(white_style.border.radius, crate::app::theme::BORDER_RADIUS_ZERO);
 
-        // Test that Black team gets black background with white text
-        let black_style = team_color_black_container(&theme);
+        // Test that Black team gets black background with white text (square corners)
+        let black_style = team_color_black_container_square(&theme);
         assert_eq!(black_style.background, Some(iced::Background::Color(crate::app::theme::BLACK)));
         assert_eq!(black_style.text_color, Some(crate::app::theme::WHITE));
+        assert_eq!(black_style.border.radius, crate::app::theme::BORDER_RADIUS_ZERO);
 
         // Test that other values get default rounded_box style
         let default_style = rounded_box(&theme);

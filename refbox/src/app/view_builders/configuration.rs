@@ -133,7 +133,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
 
 fn make_main_config_page<'a>(
     snapshot: &GameSnapshot,
-    settings: &EditableSettings,
+    _settings: &EditableSettings,
     mode: Mode,
     clock_running: bool,
 ) -> Element<'a, Message> {
@@ -262,7 +262,7 @@ fn make_event_config_page<'a>(
             None
         };
 
-        let pool_label = if let Some(event) = events
+        let _pool_label = if let Some(event) = events
             .as_ref()
             .and_then(|events| events.get(current_event_id.as_ref()?))
         {
@@ -279,7 +279,7 @@ fn make_event_config_page<'a>(
             String::new()
         };
 
-        let pool_btn_msg = events
+        let _pool_btn_msg = events
             .as_ref()
             .and_then(|tourns| tourns.get(current_event_id.as_ref()?)?.courts.as_ref())
             .map(|_| Message::SelectParameter(ListableParameter::Court));
@@ -616,7 +616,7 @@ fn make_app_config_page<'a>(
 fn make_user_interface_page<'a>(
     mode: Mode,
     snapshot: &GameSnapshot,
-    settings: &EditableSettings,
+    _settings: &EditableSettings,
     clock_running: bool,
 ) -> Element<'a, Message> {
     column![

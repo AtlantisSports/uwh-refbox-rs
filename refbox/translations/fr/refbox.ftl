@@ -86,7 +86,8 @@ minimum-brk-btwn-games = PAUSE MIN. ENTRE
     LES MATCHS:
 ot-half-time-length = DURÉE DE LA PAUSE
     A LA PROLONGATION
-using-uwh-portal = UTILISATION DU UWHPORTAL:
+using-uwh-portal = UTILISATION DU
+    UWHPORTAL:
 starting-sides = CÔTÉS DE DÉPART
 sound-enabled = SON
     ACTIVÉ:
@@ -142,7 +143,7 @@ portal-login-instructions = Veuillez aller sur le Portail UWH >> Gestion des Év
     { $id }
 
     Le Portail UWH fournira ensuite un code de confirmation que vous devrez entrer à gauche en utilisant le pavé numérique.
-    Appuyez sur Terminé une fois que vous avez entré le code.
+    Appuyez sur TERMINÉ une fois que vous avez entré le code.
 
 help = AIDE:
 
@@ -164,6 +165,10 @@ end-current-game-and-apply-changes = TERMINER LE MATCH EN COURS ET APPLIQUER LES
 end-current-game-and-apply-change = TERMINER LE MATCH EN COURS ET APPLIQUER LE CHANGEMENT
 keep-current-game-and-apply-change = GARDER LE MATCH EN COURS ET APPLIQUER LE CHANGEMENT
 ok = OK
+status-complete = TERMINÉ
+status-incomplete = CLIQUEZ POUR TERMINER
+status-checking = VÉRIFICATION...
+
 confirm-score = Ce score est-il correct ?
     Confirmer avec l'arbitre en chef.
 

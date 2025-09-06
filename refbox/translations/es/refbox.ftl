@@ -88,7 +88,8 @@ minimum-brk-btwn-games = DESCANSO MÍNIMO
     ENTRE JUEGOS:
 ot-half-time-length = DUR. MEDIO
     TIEMPO DEL T/E
-using-uwh-portal = USANDO UWHPORTAL:
+using-uwh-portal = USANDO
+    UWHPORTAL:
 starting-sides = LADOS INICIALES
 sound-enabled = SONIDO
     HABILITADO:
@@ -172,6 +173,10 @@ end-current-game-and-apply-changes = TERMINAR EL JUEGO ACTUAL Y APLICAR CAMBIOS
 end-current-game-and-apply-change = TERMINAR EL JUEGO ACTUAL Y APLICAR CAMBIO
 keep-current-game-and-apply-change = MANTENER EL JUEGO ACTUAL Y APLICAR CAMBIO
 ok = OK
+status-complete = COMPLETO
+status-incomplete = HAGA CLIC PARA COMPLETAR
+status-checking = VERIFICANDO...
+
 confirm-score = ¿Es correcto este puntaje?
     Confirma con el árbitro principal.
 

@@ -1279,6 +1279,42 @@ impl RefBoxApp {
                 task
             }
             Message::ChangeConfigPage(new_page) => {
+                // If attempting to leave the Game parameters page while UWHPortal
+                // fields are incomplete, show the confirmation dialog instead of
+                // silently navigating away.
+                if let AppState::EditGameConfig(current_page) = self.app_state.clone() {
+                    if current_page == ConfigPage::Game && new_page != ConfigPage::Game {
+                        let edits = self.edited_settings.as_ref().unwrap();
+                        let mut uwhportal_incomplete = edits.using_uwhportal
+                            && (edits.current_event_id.is_none()
+                                || edits.current_court.is_none()
+                                || edits.schedule.is_none());
+                        if edits.using_uwhportal && !uwhportal_incomplete {
+                            match edits
+                                .schedule
+                                .as_ref()
+                                .unwrap()
+                                .games
+                                .get(&edits.game_number)
+                            {
+                                Some(g) => {
+                                    if g.court != *edits.current_court.as_ref().unwrap() {
+                                        uwhportal_incomplete = true;
+                                    }
+                                }
+                                None => uwhportal_incomplete = true,
+                            }
+                        }
+
+                        if uwhportal_incomplete {
+                            self.app_state =
+                                AppState::ConfirmationPage(ConfirmationKind::UwhPortalIncomplete);
+                            trace!("AppState changed to {:?}", self.app_state);
+                            return Task::none();
+                        }
+                    }
+                }
+
                 if let AppState::EditGameConfig(ref mut page) = self.app_state {
                     *page = new_page;
                 } else {
@@ -1766,9 +1802,26 @@ impl RefBoxApp {
                 };
 
                 let (app_state, task) = match selection {
-                    ConfirmationOption::DiscardChanges => (AppState::MainPage, Task::none()),
+                    ConfirmationOption::DiscardChanges => {
+                        if matches!(
+                            self.app_state,
+                            AppState::ConfirmationPage(ConfirmationKind::UwhPortalIncomplete)
+                        ) {
+                            if let Some(ref mut edits) = self.edited_settings {
+                                edits.using_uwhportal = false;
+                            }
+                            (AppState::EditGameConfig(ConfigPage::Game), Task::none())
+                        } else {
+                            (AppState::MainPage, Task::none())
+                        }
+                    }
                     ConfirmationOption::GoBack => {
                         if matches!(
+                            self.app_state,
+                            AppState::ConfirmationPage(ConfirmationKind::UwhPortalIncomplete)
+                        ) {
+                            (AppState::EditGameConfig(ConfigPage::Game), Task::none())
+                        } else if matches!(
                             self.app_state,
                             AppState::ConfirmationPage(ConfirmationKind::UwhPortalLinkFailed(_))
                         ) {

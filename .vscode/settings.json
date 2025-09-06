@@ -1,0 +1,7 @@
+{
+    // Rust analyzer configuration
+    "rust-analyzer.diagnostics.disabled": [
+        "macro-error"
+    ],
+    "rust-analyzer.cargo.features": "all"
+}

@@ -87,7 +87,8 @@ minimum-brk-btwn-games = MINIMUM BRK
     BTWN GAMES:
 ot-half-time-length = OT HALF
     TIME LENGTH
-using-uwh-portal = USING UWHPORTAL:
+using-uwh-portal = USING
+    UWHPORTAL:
 starting-sides = STARTING SIDES
 sound-enabled = SOUND
     ENABLED:
@@ -151,7 +152,7 @@ portal-login-instructions = Please go to the UWH Portal >> Event Management >> R
     { $id }
 
     The UWH Portal will then provide a confirmation code for you to enter to the left using the number pad.
-    Press done once you have entered the code
+    Press DONE once you have entered the code
 
 help = HELP:
 
@@ -171,6 +172,10 @@ end-current-game-and-apply-changes = END CURRENT GAME AND APPLY CHANGES
 end-current-game-and-apply-change = END CURRENT GAME AND APPLY CHANGE
 keep-current-game-and-apply-change = KEEP CURRENT GAME AND APPLY CHANGE
 ok = OK
+status-complete = COMPLETE
+status-incomplete = CLICK TO COMPLETE
+status-checking = CHECKING...
+
 confirm-score = Is this score correct?
     Confirm with chief referee.
 

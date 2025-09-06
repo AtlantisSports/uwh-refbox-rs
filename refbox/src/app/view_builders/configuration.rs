@@ -350,16 +350,16 @@ fn make_event_config_page<'a>(
 
         let auth_container = |auth| {
             let txt = match auth {
-                Some(true) => "OK",
-                Some(false) => "FAILED",
-                None => "CHECKING...",
+                Some(true) => fl!("status-complete"),
+                Some(false) => fl!("status-incomplete"),
+                None => fl!("status-checking"),
             };
             let style = match auth {
                 Some(true) => green_container,
                 Some(false) => red_container,
                 None => gray_container,
             };
-            container(txt)
+            container(text(txt))
                 .center_x(Length::Fill)
                 .center_y(Length::Fill)
                 .style(style)

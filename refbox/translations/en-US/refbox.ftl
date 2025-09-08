@@ -49,6 +49,7 @@ interface-panel = INTERFACE PANEL
 user-options = USER OPTIONS
 sound-options = SOUND OPTIONS
 app-mode = APP
+    MODE
 touchscreen = TOUCHSCREEN
 pointer = POINTER
 contrast = CONTRAST

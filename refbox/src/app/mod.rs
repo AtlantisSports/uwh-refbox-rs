@@ -1287,7 +1287,7 @@ impl RefBoxApp {
                 // Chain two messages: first EditGameConfig, then ChangeConfigPage
                 Task::batch([
                     Task::done(Message::EditGameConfig),
-                    Task::done(Message::ChangeConfigPage(ConfigPage::Game))
+                    Task::done(Message::ChangeConfigPage(ConfigPage::Game)),
                 ])
             }
             Message::ChangeConfigPage(new_page) => {

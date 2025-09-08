@@ -57,7 +57,7 @@ status-checking = VERIFICANDO ESTADO
 status-complete = ESTADO COMPLETO
 status-incomplete = ESTADO INCOMPLETO
 app-mode = MODO DE
-    LA APLICACIÓN
+    LA APLI
 hide-time-for-last-15-seconds = OCULTAR TIEMPO PARA
     LOS ÚLTIMOS 15 SEGUNDOS
 player-display-brightness = BRILLO DE LA

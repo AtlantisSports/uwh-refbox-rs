@@ -59,6 +59,7 @@ status-checking = VÉRIFICATION DU STATUT
 status-complete = STATUT COMPLET
 status-incomplete = STATUT INCOMPLET
 app-mode = MODE
+    APPLI
 hide-time-for-last-15-seconds = CACHER LE TEMPS POUR
     LES 15 DERNIÈRES SECONDES
 ### Shorten

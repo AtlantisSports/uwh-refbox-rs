@@ -192,7 +192,7 @@ pub(in super::super) fn build_game_info_page<'a>(
         .style(light_gray_button)
         .height(Length::Fill)
         .width(Length::Fill)
-        .on_press(Message::EditGameConfig);
+        .on_press(Message::EditGameConfigDirect);
 
     // Apply width constraint only to the table to match main page table width
     let config_table_with_spacing = row![

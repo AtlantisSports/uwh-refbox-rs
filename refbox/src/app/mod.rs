@@ -1283,6 +1283,13 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 task
             }
+            Message::EditGameConfigDirect => {
+                // Chain two messages: first EditGameConfig, then ChangeConfigPage
+                Task::batch([
+                    Task::done(Message::EditGameConfig),
+                    Task::done(Message::ChangeConfigPage(ConfigPage::Game))
+                ])
+            }
             Message::ChangeConfigPage(new_page) => {
                 // If attempting to leave the Game parameters page while UWHPortal
                 // fields are incomplete, show the confirmation dialog instead of

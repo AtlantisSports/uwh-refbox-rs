@@ -78,6 +78,7 @@ pub enum Message {
     RequestPortalRefresh,
     ShowWarnings,
     EditGameConfig,
+    EditGameConfigDirect,
     ChangeConfigPage(ConfigPage),
     ConfigEditComplete {
         canceled: bool,
@@ -157,6 +158,7 @@ impl Message {
             | Self::RequestPortalRefresh
             | Self::ShowWarnings
             | Self::EditGameConfig
+            | Self::EditGameConfigDirect
             | Self::ChangeConfigPage(_)
             | Self::ConfigEditComplete { .. }
             | Self::EditParameter(_)
@@ -194,6 +196,7 @@ impl PartialEq for Message {
             | (Self::RequestPortalRefresh, Self::RequestPortalRefresh)
             | (Self::ShowWarnings, Self::ShowWarnings)
             | (Self::EditGameConfig, Self::EditGameConfig)
+            | (Self::EditGameConfigDirect, Self::EditGameConfigDirect)
             | (Self::RequestRemoteId, Self::RequestRemoteId)
             | (Self::EndTimeout, Self::EndTimeout)
             | (Self::StopClock, Self::StopClock)
@@ -343,6 +346,7 @@ impl PartialEq for Message {
             | (Self::RequestPortalRefresh, _)
             | (Self::ShowWarnings, _)
             | (Self::EditGameConfig, _)
+            | (Self::EditGameConfigDirect, _)
             | (Self::ChangeConfigPage(_), _)
             | (Self::ConfigEditComplete { .. }, _)
             | (Self::EditParameter(_), _)

@@ -7,7 +7,10 @@ param(
     [string]$Message,
     
     [Parameter(HelpMessage="Skip quality checks (not recommended)")]
-    [switch]$SkipChecks
+    [switch]$SkipChecks,
+    
+    [Parameter(HelpMessage="Skip pushing to remote repository")]
+    [switch]$SkipPush
 )
 
 if (-not $SkipChecks) {
@@ -38,3 +41,25 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "🎉 Successfully committed with message: '$Message'" -ForegroundColor Green
+
+if (-not $SkipPush) {
+    # Push to remote repository
+    Write-Host "🌐 Pushing to remote repository..." -ForegroundColor Cyan
+    $currentBranch = git branch --show-current
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "❌ Failed to get current branch name." -ForegroundColor Red
+        exit 1
+    }
+    
+    git push origin $currentBranch
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "❌ Failed to push to remote repository." -ForegroundColor Red
+        Write-Host "💡 Commit was successful but push failed. You can manually push later with: git push origin $currentBranch" -ForegroundColor Yellow
+        exit 1
+    }
+    
+    Write-Host "🚀 Successfully pushed to remote repository!" -ForegroundColor Green
+    Write-Host "🎉 Smart commit complete: committed and pushed '$Message'" -ForegroundColor Green
+} else {
+    Write-Host "⏭️  Skipping push to remote repository (use -SkipPush to change this behavior)" -ForegroundColor Yellow
+}

@@ -2253,7 +2253,7 @@ impl RefBoxApp {
                     &self.config.game
                 };
                 if self.config.mode == Mode::BeepTest {
-                    build_beep_test_blank_page()
+                    build_beep_test_home_page()
                 } else {
                     build_main_view(
                         data,

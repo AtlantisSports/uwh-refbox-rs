@@ -5,7 +5,7 @@ use iced::{
 };
 
 // 7-row layout: rows 1-6 are empty spacers; row 7 holds a right-half button.
-pub(in super::super) fn build_beep_test_blank_page<'a>() -> Element<'a, Message> {
+pub(in super::super) fn build_beep_test_home_page<'a>() -> Element<'a, Message> {
     let bottom_row = row![
         // left half empty
         Space::with_width(Length::FillPortion(1)),

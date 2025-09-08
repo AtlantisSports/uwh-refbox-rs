@@ -168,7 +168,7 @@ async fn serial_worker_loop(
     let mut data = TransmittedData {
         snapshot,
         flash: false,
-        beep_test: false,
+        beep_test: false, // Not used in this application
         brightness,
         white_on_right,
     };
@@ -435,7 +435,7 @@ impl Server {
                 TransmittedData {
                     white_on_right: self.white_on_right,
                     flash: self.flash,
-                    beep_test: false,
+                    beep_test: false, // Not used in this application
                     brightness: self.brightness,
                     snapshot: self.snapshot.clone(),
                 }
@@ -705,7 +705,7 @@ mod test {
         let white_on_right = false;
         let brightness = Brightness::Low;
         let flash = false;
-        let beep_test = false;
+        let beep_test = false; // Not used in this application
         let snapshot = GameSnapshot {
             current_period: GamePeriod::FirstHalf,
             secs_in_period: 897,

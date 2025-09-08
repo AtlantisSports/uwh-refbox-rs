@@ -43,7 +43,7 @@ pub(super) fn make_penalty_edit_page<'a>(
         ),
 
         Mode::BeepTest => (
-            PenaltyKind::OneMinute,
+            PenaltyKind::OneMinute, // Default fallback
             PenaltyKind::TwoMinute,
             PenaltyKind::FiveMinute,
         ),

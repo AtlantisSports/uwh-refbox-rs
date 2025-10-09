@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - uses: Swatinem/rust-cache@v2
     - name: Versions
       run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version
@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - uses: awalsh128/cache-apt-pkgs-action@latest
       with:
         packages: libssl-dev pkg-config libasound2-dev
@@ -46,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - uses: actions-rust-lang/audit@v1
       with:
         file: Cargo.lock
@@ -61,7 +61,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - run: ./ci/check-msrv-present.sh
 
   build:
@@ -72,7 +72,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macOS-latest]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - if: ${{ matrix.os == 'ubuntu-latest' }}
       uses: awalsh128/cache-apt-pkgs-action@latest
       with:
@@ -95,7 +95,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - uses: awalsh128/cache-apt-pkgs-action@latest
       with:
         packages: libssl-dev pkg-config libasound2-dev
@@ -120,7 +120,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macOS-latest]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - if: ${{ matrix.os == 'ubuntu-latest' }}
       uses: awalsh128/cache-apt-pkgs-action@latest
       with:
@@ -143,7 +143,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - uses: awalsh128/cache-apt-pkgs-action@latest
       with:
         packages: libssl-dev pkg-config libasound2-dev

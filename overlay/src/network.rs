@@ -212,14 +212,6 @@ impl EventLogos {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct StatePacket {
-    pub snapshot: GameSnapshot,
-    pub game_number: Option<GameNumber>,
-    pub data: Option<GameData>,
-    pub event_logos: Option<EventLogos>,
-}
-
-#[derive(Serialize, Deserialize)]
 pub enum StateUpdate {
     Snapshot(GameSnapshot),
     GameData(GameData),

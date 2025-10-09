@@ -2122,7 +2122,7 @@ impl RefBoxApp {
         }
     }
 
-    pub(super) fn view(&self) -> Element<Message> {
+    pub(super) fn view(&self) -> Element<'_, Message> {
         let data = ViewData {
             snapshot: &self.snapshot,
             mode: self.config.mode,

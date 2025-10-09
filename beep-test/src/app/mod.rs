@@ -177,7 +177,7 @@ impl BeepTestApp {
         Task::none()
     }
 
-    pub(super) fn view(&self) -> Element<Message> {
+    pub(super) fn view(&self) -> Element<'_, Message> {
         let clock_running = self.tm.lock().unwrap().clock_is_running();
         let main_view = column![match self.app_state {
             AppState::MainPage =>

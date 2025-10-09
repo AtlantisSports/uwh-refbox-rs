@@ -9,7 +9,7 @@ rust-version = "1.85"
 clap = { version = "4", features = ["derive"] }
 csv = "1"
 indexmap = { version = "2.9.0", features = ["serde"] }
-inquire = "0.7.5"
+inquire = "0.9.0"
 itertools = "0.14"
 lazy_static = "1"
 log = "0.4"

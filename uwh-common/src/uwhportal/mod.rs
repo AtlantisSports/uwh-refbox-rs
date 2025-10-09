@@ -466,19 +466,6 @@ impl std::fmt::Display for ApiError {
 
 impl Error for ApiError {}
 
-#[derive(Debug, Serialize, Deserialize)]
-struct PortalToken {
-    aud: String,
-    entity: Option<String>,
-    exp: u64,
-    iat: u64,
-    iss: String,
-    jti: String,
-    nbf: u64,
-    scope: String,
-    sub: String,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PortalTokenResponse {
     Success(String),

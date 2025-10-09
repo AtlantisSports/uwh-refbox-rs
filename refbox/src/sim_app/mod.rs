@@ -70,12 +70,6 @@ pub struct SimRefBoxAppFlags {
     pub sunlight_mode: bool,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
-pub enum ApplicationTheme {
-    #[default]
-    Dark,
-}
-
 impl SimRefBoxApp {
     pub(super) fn new(flags: SimRefBoxAppFlags) -> (Self, Task<Message>) {
         let SimRefBoxAppFlags {
@@ -132,7 +126,7 @@ impl SimRefBoxApp {
         }
     }
 
-    pub(super) fn view(&self) -> Element<Message> {
+    pub(super) fn view(&self) -> Element<'_, Message> {
         Canvas::new(self)
             .width(Length::Fill)
             .height(Length::Fill)

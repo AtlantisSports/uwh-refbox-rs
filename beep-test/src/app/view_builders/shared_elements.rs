@@ -182,7 +182,7 @@ pub(super) fn config_string(snapshot: &BeepTestSnapshot) -> String {
 // This function puts each value in a container of the background color (table), and then puts all the
 // rows and columns on a black container, giving it a grid (chart)
 // second_chart is for cases when making a second chart if there are more levels than fit in one
-pub fn build_levels_table(levels: &[Level], second_chart: bool) -> Container<Message> {
+pub fn build_levels_table(levels: &[Level], second_chart: bool) -> Container<'_, Message> {
     pub const CHART_PADDING: f32 = 2.0;
 
     let mut table = Column::new().spacing(CHART_PADDING).padding(0);

@@ -23,12 +23,7 @@ impl Interpolate for (f32, f32) {
 
     fn interpolate_exponential_end(&self, value: f32) -> f32 {
         let offset = ((self.1 - self.0).abs() + 1f32).powf(value);
-        self.0
-            + if self.0 > self.1 {
-                -1f32 * offset
-            } else {
-                offset
-            }
+        self.0 + if self.0 > self.1 { -offset } else { offset }
     }
 }
 

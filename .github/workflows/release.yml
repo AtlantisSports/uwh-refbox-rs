@@ -66,15 +66,15 @@ jobs:
     needs: [build-windows, build-macos-arm, build-macos-x86]
 
     steps:
-    - uses: actions/download-artifact@v4
+    - uses: actions/download-artifact@v5
       with:
         name: refbox-windows
         path: release/Windows/refbox.exe
-    - uses: actions/download-artifact@v4
+    - uses: actions/download-artifact@v5
       with:
         name: refbox-macos-arm
         path: release/Mac\ (Arm processor)/refbox.app
-    - uses: actions/download-artifact@v4
+    - uses: actions/download-artifact@v5
       with:
         name: refbox-macos-x86
         path: release/Mac\ (Intel processor)/refbox.app

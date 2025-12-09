@@ -9,6 +9,7 @@ rust-version = "1.85"
 [features]
 default = []
 debug = ["iced/debug"]
+sim-ui = []
 
 [dependencies]
 arrayref = "0.3"

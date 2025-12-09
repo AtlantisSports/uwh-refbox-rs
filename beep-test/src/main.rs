@@ -28,6 +28,7 @@ use tokio_serial::{DataBits, FlowControl, Parity, StopBits};
 
 mod app;
 mod app_icon;
+#[cfg(feature = "sim-ui")]
 mod sim_app;
 mod sound_controller;
 mod tournament_manager;
@@ -194,33 +195,43 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         icon::from_rgba(Vec::from(app_icon::DATA), app_icon::WIDTH, app_icon::HEIGHT).unwrap();
 
     if args.is_simulator {
-        let flags = sim_app::SimRefBoxAppFlags {
-            tcp_port: args.binary_port,
-            sunlight_mode: args.simulate_sunlight_display,
-        };
+        #[cfg(feature = "sim-ui")]
+        {
+            let flags = sim_app::SimRefBoxAppFlags {
+                tcp_port: args.binary_port,
+                sunlight_mode: args.simulate_sunlight_display,
+            };
 
-        let window_settings = window::Settings {
-            size: if args.simulate_sunlight_display {
-                sim_app::sunlight_window_size(args.scale)
-            } else {
-                sim_app::matrix_window_size(args.scale, spacing)
-            },
-            resizable: true,
-            icon: Some(icon),
-            ..Default::default()
-        };
+            let window_settings = window::Settings {
+                size: if args.simulate_sunlight_display {
+                    sim_app::sunlight_window_size(args.scale)
+                } else {
+                    sim_app::matrix_window_size(args.scale, spacing)
+                },
+                resizable: true,
+                icon: Some(icon),
+                ..Default::default()
+            };
 
-        info!("Starting Simulator UI");
-        return iced::application(
-            "Panel Simulator",
-            sim_app::SimRefBoxApp::update,
-            sim_app::SimRefBoxApp::view,
-        )
-        .subscription(sim_app::SimRefBoxApp::subscription)
-        .window(window_settings)
-        .style(sim_app::SimRefBoxApp::application_style)
-        .run_with(|| sim_app::SimRefBoxApp::new(flags))
-        .map_err(|e| e.into());
+            info!("Starting Simulator UI");
+            return iced::application(
+                "Panel Simulator",
+                sim_app::SimRefBoxApp::update,
+                sim_app::SimRefBoxApp::view,
+            )
+            .subscription(sim_app::SimRefBoxApp::subscription)
+            .window(window_settings)
+            .style(sim_app::SimRefBoxApp::application_style)
+            .run_with(|| sim_app::SimRefBoxApp::new(flags))
+            .map_err(|e| e.into());
+        }
+        #[cfg(not(feature = "sim-ui"))]
+        {
+            eprintln!(
+                "This build was compiled without the simulator UI. Rebuild with: cargo run -p beep-test --features sim-ui -- --is-simulator"
+            );
+            return Ok(());
+        }
     } else {
         info!("Starting RefBox App");
     }

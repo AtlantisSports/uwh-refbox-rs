@@ -42,7 +42,7 @@ mod sound_controller;
 mod tournament_manager;
 
 mod config;
-use config::Config;
+use config::{Config, Mode};
 
 const APP_NAME: &str = "refbox";
 
@@ -158,6 +158,14 @@ struct Cli {
 
     #[clap(long, hide = true)]
     simulate_sunlight_display: bool,
+
+    #[clap(long)]
+    /// Run in font sizing demo mode with test data populated
+    font_demo: bool,
+
+    #[clap(long, default_value = "specification")]
+    /// Type of demo data to use: 'specification' or 'short'
+    demo_data: String,
 }
 
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
@@ -378,6 +386,17 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+    // If the last used mode was BeepTest, default to Hockey6V6 instead
+    let mut config = config;
+    if config.mode == Mode::BeepTest {
+        info!("Last mode was BeepTest, defaulting to Hockey6V6 instead");
+        config.mode = Mode::Hockey6V6;
+        // Save the updated config immediately
+        if let Err(e) = confy::store(APP_NAME, None, &config) {
+            warn!("Failed to save updated config: {e}");
+        }
+    }
+
     let window_size = Size::new(
         config.hardware.screen_x as f32,
         config.hardware.screen_y as f32,
@@ -392,6 +411,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         require_https: !args.allow_http,
         fullscreen: args.fullscreen,
         list_all_events: args.all_events,
+        font_demo: args.font_demo,
+        demo_data_type: args.demo_data,
     };
 
     let settings = Settings {

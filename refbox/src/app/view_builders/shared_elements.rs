@@ -18,7 +18,6 @@ use std::{
 };
 use uwh_common::{
     color::Color as GameColor,
-    config::Game as GameConfig,
     game_snapshot::{
         GamePeriod, GameSnapshot, Infraction, InfractionSnapshot, PenaltySnapshot, PenaltyTime,
         TimeoutSnapshot,
@@ -718,77 +717,6 @@ pub(super) fn config_string_game_num(
     };
 
     (result, game_number)
-}
-
-pub(super) fn config_string(
-    snapshot: &GameSnapshot,
-    config: &GameConfig,
-    using_uwhportal: bool,
-    games: Option<&GameList>,
-    teams: Option<&TeamList>,
-    fouls_and_warnings: bool,
-) -> String {
-    const TEAM_NAME_LEN_LIMIT: usize = 40;
-    let (result_string, _) = config_string_game_num(snapshot, using_uwhportal, games);
-    let mut result = result_string;
-    let (_, result_u32) = config_string_game_num(snapshot, using_uwhportal, games);
-    let game_number = result_u32;
-
-    if using_uwhportal {
-        if let Some(games) = games {
-            if let Some(game) = games.get(&game_number) {
-                let black = get_team_name(&game.dark, teams);
-                let white = get_team_name(&game.light, teams);
-                result += &fl!(
-                    "teams",
-                    dark_team = limit_team_name_len(&black, TEAM_NAME_LEN_LIMIT),
-                    light_team = limit_team_name_len(&white, TEAM_NAME_LEN_LIMIT)
-                );
-                result += "\n";
-            }
-        }
-    }
-
-    let unknown = &fl!("unknown");
-
-    result += &fl!(
-        "game-config",
-        half_len = time_string(config.half_play_duration),
-        half_time_len = time_string(config.half_time_duration),
-        sd_allowed = bool_string(config.sudden_death_allowed),
-        ot_allowed = bool_string(config.overtime_allowed)
-    );
-
-    if config.timeouts_counted_per_half {
-        result += "\n";
-        result += &fl!(
-            "team-timeouts-per-half",
-            team_timeouts = config.num_team_timeouts_allowed
-        );
-    } else {
-        result += "\n";
-        result += &fl!(
-            "team-timeouts-per-game",
-            team_timeouts = config.num_team_timeouts_allowed
-        );
-    }
-
-    result += "\n";
-    result += &fl!("stop-clock-last-2", stop_clock = unknown);
-    result += "\n";
-
-    if !fouls_and_warnings {
-        result += &fl!(
-            "ref-list",
-            chief_ref = unknown,
-            timer = unknown,
-            water_ref_1 = unknown,
-            water_ref_2 = unknown,
-            water_ref_3 = unknown
-        );
-    }
-
-    result
 }
 
 pub(super) fn make_button<'a, Message: Clone, T: IntoFragment<'a>>(

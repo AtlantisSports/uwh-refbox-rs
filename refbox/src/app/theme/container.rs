@@ -1,5 +1,5 @@
 use super::{
-    BLACK, BLUE, BORDER_COLOR, BORDER_RADIUS, BORDER_WIDTH, DISABLED_COLOR, GRAY, GREEN,
+    BLACK, BLUE, BORDER_COLOR, BORDER_RADIUS, BORDER_RADIUS_ZERO, BORDER_WIDTH, DISABLED_COLOR, GRAY, GREEN,
     LIGHT_GRAY, RED, WHITE, WINDOW_BACKGROUND,
 };
 use iced::{Background, Border, Theme, widget::container::Style};
@@ -87,4 +87,23 @@ pub fn transparent_container(theme: &Theme) -> Style {
         text_color: None,
         ..gray_container(theme)
     }
+}
+
+pub fn square_black_container(_theme: &Theme) -> Style {
+    Style {
+        background: Some(Background::Color(BLACK)),
+        text_color: Some(WHITE),
+        border: Border {
+            width: 0.0,
+            color: BORDER_COLOR,
+            radius: BORDER_RADIUS_ZERO,
+        },
+        shadow: Default::default(),
+    }
+}
+
+pub fn square_light_gray_container(theme: &Theme) -> Style {
+    let mut style = light_gray_container(theme);
+    style.border.radius = BORDER_RADIUS_ZERO;
+    style
 }

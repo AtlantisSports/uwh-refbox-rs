@@ -4,7 +4,7 @@ dark-team-name-caps = BLACK
 -light-team-name = White
 light-team-name-caps = WHITE
 
-# Multipage 
+# Multipage
 done = DONE
 cancel = CANCEL
 delete = DELETE
@@ -36,11 +36,15 @@ team-warning-line-2 = WARNING
 # Configuration
 none-selected = None Selected
 loading = Loading...
-game-select = Game:
+game-select = GAME:
 game-options = GAME OPTIONS
-app-options = APP OPTIONS
+app-options = USER OPTIONS
+interface-options = INTERFACE OPTIONS
+interface-panel = USER OPTIONS
 display-options = DISPLAY OPTIONS
+ui-options = USER OPTIONS
 sound-options = SOUND OPTIONS
+ui-interface-options = INTERFACE OPTIONS
 app-mode = APP
     MODE
 hide-time-for-last-15-seconds = HIDE TIME FOR
@@ -266,7 +270,7 @@ infraction = Infraction: {$infraction}
 ## Config String
 error = Error ({ $number })
 two-games = Last Game: { $prev_game },  Next Game: { $next_game }
-one-game = Game: { $game }
+one-game = GAME: { $game }
 teams = { -dark-team-name } Team: { $dark_team }
     { -light-team-name } Team: { $light_team }
 game-config = Half Length: { $half_len },  Half Time Length: { $half_time_len }
@@ -340,6 +344,7 @@ max = MAX
 hockey6v6 = HOCKEY6V6
 hockey3v3 = HOCKEY3V3
 rugby = RUGBY
+beeptest = BEEP TEST
 
 # Infractions
 stick-foul = Stick Foul

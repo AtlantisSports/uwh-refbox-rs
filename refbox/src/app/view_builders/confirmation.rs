@@ -31,6 +31,8 @@ pub(in super::super) fn build_confirmation_page<'a>(
             fl!("uwhportal-token-no-pending-link")
         }
         ConfirmationKind::UwhPortalLinkFailed(PortalTokenResponse::Success(_)) => unreachable!(),
+        ConfirmationKind::BeepTestBackToRefbox => "Are you sure you want to return to the Refbox?".to_string(),
+        ConfirmationKind::EnterBeepTestMode => "You are exiting the Refbox software and entering Beep Test mode, this will lose any game data. Proceed?".to_string(),
     };
 
     type ButtonStyleFn = fn(&Theme, Status) -> Style;
@@ -93,6 +95,30 @@ pub(in super::super) fn build_confirmation_page<'a>(
         ConfirmationKind::UwhPortalLinkFailed(_) => {
             vec![(fl!("ok"), green_button, ConfirmationOption::GoBack)]
         }
+        ConfirmationKind::BeepTestBackToRefbox => vec![
+            (
+                "No".to_string(),
+                green_button,
+                ConfirmationOption::GoBack,
+            ),
+            (
+                "Yes".to_string(),
+                red_button,
+                ConfirmationOption::BackToRefbox,
+            ),
+        ],
+        ConfirmationKind::EnterBeepTestMode => vec![
+            (
+                "CANCEL".to_string(),
+                red_button,
+                ConfirmationOption::GoBack,
+            ),
+            (
+                "CONTINUE".to_string(),
+                green_button,
+                ConfirmationOption::ContinueToBeepTest,
+            ),
+        ],
     };
 
     let buttons = buttons.into_iter().map(|(text, style, option)| {

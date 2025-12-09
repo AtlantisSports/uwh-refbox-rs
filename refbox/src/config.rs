@@ -170,6 +170,7 @@ macro_attr! {
         Hockey6V6,
         Hockey3V3,
         Rugby,
+        BeepTest,
     }
 }
 
@@ -179,6 +180,7 @@ impl Display for Mode {
             Self::Hockey6V6 => f.write_str(&fl!("hockey6v6")),
             Self::Hockey3V3 => f.write_str(&fl!("hockey3v3")),
             Self::Rugby => f.write_str(&fl!("rugby")),
+            Self::BeepTest => f.write_str("BEEP TEST"),
         }
     }
 }
@@ -249,7 +251,7 @@ mod test {
         let hw = Hardware::migrate(&old);
         assert_eq!(hw.screen_x, 123);
         assert_eq!(hw.screen_y, 456);
-        assert_eq!(hw.white_on_right, true);
+        assert!(hw.white_on_right);
     }
 
     #[test]
@@ -304,15 +306,15 @@ mod test {
         old.insert("sound".to_string(), toml::Value::Table(sound));
         let config = Config::migrate(&old);
         assert_eq!(config.mode, Mode::Rugby);
-        assert_eq!(config.hide_time, true);
-        assert_eq!(config.collect_scorer_cap_num, true);
+        assert!(config.hide_time);
+        assert!(config.collect_scorer_cap_num);
         assert_eq!(config.game.half_play_duration, Duration::from_secs(123));
         assert_eq!(config.hardware.screen_x, 123);
         assert_eq!(config.hardware.screen_y, 456);
-        assert_eq!(config.hardware.white_on_right, true);
+        assert!(config.hardware.white_on_right);
         assert_eq!(config.uwhportal.url, "https://localhost/api/v1/");
         assert_eq!(config.uwhportal.token, "token");
-        assert_eq!(config.sound.sound_enabled, false);
+        assert!(!config.sound.sound_enabled);
         assert_eq!(config.sound.whistle_vol, Volume::Max);
     }
 }

@@ -70,6 +70,13 @@ pub struct SimRefBoxAppFlags {
     pub sunlight_mode: bool,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+#[allow(dead_code)]
+pub enum ApplicationTheme {
+    #[default]
+    Dark,
+}
+
 impl SimRefBoxApp {
     pub(super) fn new(flags: SimRefBoxAppFlags) -> (Self, Task<Message>) {
         let SimRefBoxAppFlags {

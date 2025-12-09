@@ -37,6 +37,7 @@ use view_data::ViewData;
 
 mod view_builders;
 use view_builders::*;
+use view_builders::beep_test::BeepTestState;
 
 mod message;
 use message::*;
@@ -49,6 +50,12 @@ use update_sender::*;
 
 mod languages;
 use languages::*;
+
+mod dynamic_font_sizing;
+use dynamic_font_sizing::*;
+use std::cell::RefCell;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -73,6 +80,10 @@ pub struct RefBoxApp {
     sound: SoundController,
     sim_child: Option<Child>,
     list_all_events: bool,
+    dynamic_font_sizing: RefCell<DynamicFontSizing>,
+    font_demo: bool,
+    demo_data_type: String,
+    beep_test_state: BeepTestState,
 }
 
 #[derive(Debug)]
@@ -85,6 +96,8 @@ pub struct RefBoxAppFlags {
     pub require_https: bool,
     pub fullscreen: bool,
     pub list_all_events: bool,
+    pub font_demo: bool,
+    pub demo_data_type: String,
 }
 
 #[derive(Debug, Clone)]
@@ -115,11 +128,40 @@ enum ConfirmationKind {
     Error(String),
     UwhPortalIncomplete,
     UwhPortalLinkFailed(PortalTokenResponse),
+    BeepTestBackToRefbox,
+    EnterBeepTestMode,
 }
 
 impl RefBoxApp {
+    /// Calculate a hash representing the current game state for change detection
+    fn calculate_game_state_hash(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+
+        // Hash key game state components that should trigger font size reset
+        self.snapshot.game_number.hash(&mut hasher);
+        self.snapshot.next_game_number.hash(&mut hasher);
+
+        // Hash current period as discriminant since it may not implement Hash
+        std::mem::discriminant(&self.snapshot.current_period).hash(&mut hasher);
+
+        // Include game configuration that might affect display
+        if let Some(schedule) = &self.schedule {
+            if let Some(game) = schedule.games.get(&self.snapshot.game_number) {
+                game.number.hash(&mut hasher);
+                game.dark.hash(&mut hasher);
+                game.light.hash(&mut hasher);
+            }
+        }
+
+        hasher.finish()
+    }
+
     fn apply_snapshot(&mut self, mut new_snapshot: GameSnapshot) -> Task<Message> {
         let mut task = Task::none();
+
+        // Calculate game state hash before updating snapshot
+        let old_game_state_hash = self.calculate_game_state_hash();
+
         if new_snapshot.current_period != self.snapshot.current_period {
             if new_snapshot.current_period == GamePeriod::BetweenGames {
                 task = self.handle_game_end(&new_snapshot.game_number);
@@ -138,7 +180,18 @@ impl RefBoxApp {
                 self.config.hardware.brightness,
             )
             .unwrap();
+
+        // Update snapshot and check for game state changes
         self.snapshot = new_snapshot;
+        let new_game_state_hash = self.calculate_game_state_hash();
+
+        // Reset dynamic font sizing if game state changed
+        if old_game_state_hash != new_game_state_hash {
+            self.dynamic_font_sizing
+                .borrow_mut()
+                .reset_for_new_game(new_game_state_hash);
+        }
+
         task
     }
 
@@ -413,6 +466,9 @@ impl RefBoxApp {
     }
 
     fn apply_settings_change(&mut self) {
+        // Calculate game state hash before applying changes
+        let old_game_state_hash = self.calculate_game_state_hash();
+
         let edited_settings = self.edited_settings.take().unwrap();
 
         let EditableSettings {
@@ -452,6 +508,14 @@ impl RefBoxApp {
                 .set_hide_time(self.config.hide_time)
                 .unwrap();
         }
+
+        // Check for game state changes after applying settings
+        let new_game_state_hash = self.calculate_game_state_hash();
+        if old_game_state_hash != new_game_state_hash {
+            self.dynamic_font_sizing
+                .borrow_mut()
+                .reset_for_new_game(new_game_state_hash);
+        }
     }
 }
 
@@ -475,6 +539,8 @@ impl RefBoxApp {
             require_https,
             fullscreen,
             list_all_events,
+            font_demo,
+            demo_data_type,
         } = flags;
 
         let mut tm = TournamentManager::new(config.game.clone());
@@ -529,6 +595,10 @@ impl RefBoxApp {
             sound,
             sim_child,
             list_all_events,
+            dynamic_font_sizing: RefCell::new(DynamicFontSizing::new()),
+            font_demo,
+            demo_data_type,
+            beep_test_state: BeepTestState::default(),
         };
 
         let task = Task::batch(vec![
@@ -1266,6 +1336,52 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 task
             }
+            Message::EditGameConfigPage(page) => {
+                let mut task = Task::none();
+
+                let uwhportal_token_valid = if let Some(ref client) = self.uwhportal_client {
+                    if client.has_token() {
+                        if let Some(event_id) = self.current_event_id.as_ref() {
+                            task = self.check_uwhportal_auth(event_id);
+                            None
+                        } else {
+                            Some(false)
+                        }
+                    } else {
+                        Some(false)
+                    }
+                } else {
+                    Some(false)
+                };
+
+                let edited_settings = EditableSettings {
+                    config: self.tm.lock().unwrap().config().clone(),
+                    game_number: if self.snapshot.current_period == GamePeriod::BetweenGames {
+                        self.snapshot.next_game_number.clone()
+                    } else {
+                        self.snapshot.game_number.clone()
+                    },
+                    white_on_right: self.config.hardware.white_on_right,
+                    brightness: self.config.hardware.brightness,
+                    using_uwhportal: self.using_uwhportal,
+                    uwhportal_token_valid,
+                    current_event_id: self.current_event_id.clone(),
+                    current_court: self.current_court.clone(),
+                    schedule: self.schedule.clone(),
+                    sound: self.config.sound.clone(),
+                    mode: self.config.mode,
+                    hide_time: self.config.hide_time,
+                    collect_scorer_cap_num: self.config.collect_scorer_cap_num,
+                    track_fouls_and_warnings: self.config.track_fouls_and_warnings,
+                    confirm_score: self.config.confirm_score,
+                };
+
+                self.edited_settings = Some(edited_settings);
+
+                self.app_state = AppState::EditGameConfig(page);
+                trace!("AppState changed to {:?}", self.app_state);
+                task
+            }
             Message::ChangeConfigPage(new_page) => {
                 if let AppState::EditGameConfig(ref mut page) = self.app_state {
                     *page = new_page;
@@ -1348,10 +1464,15 @@ impl RefBoxApp {
                             }
 
                             drop(tm);
-                            self.apply_settings_change();
-
-                            confy::store(APP_NAME, None, &self.config).unwrap();
-                            AppState::MainPage
+                            
+                            if edited_settings.mode == Mode::BeepTest && self.config.mode != Mode::BeepTest {
+                                // Show confirmation before entering BeepTest mode
+                                AppState::ConfirmationPage(ConfirmationKind::EnterBeepTestMode)
+                            } else {
+                                self.apply_settings_change();
+                                confy::store(APP_NAME, None, &self.config).unwrap();
+                                AppState::MainPage
+                            }
                         }
                     } else if edited_settings.game_number != self.snapshot.game_number {
                         if tm.current_period() != GamePeriod::BetweenGames {
@@ -1385,18 +1506,29 @@ impl RefBoxApp {
                             }
 
                             drop(tm);
-                            self.apply_settings_change();
-
-                            confy::store(APP_NAME, None, &self.config).unwrap();
-
-                            AppState::MainPage
+                            
+                            if edited_settings.mode == Mode::BeepTest && self.config.mode != Mode::BeepTest {
+                                // Show confirmation before entering BeepTest mode
+                                AppState::ConfirmationPage(ConfirmationKind::EnterBeepTestMode)
+                            } else {
+                                self.apply_settings_change();
+                                confy::store(APP_NAME, None, &self.config).unwrap();
+                                AppState::MainPage
+                            }
                         }
                     } else {
                         drop(tm);
-                        self.apply_settings_change();
-
-                        confy::store(APP_NAME, None, &self.config).unwrap();
-                        AppState::MainPage
+                        
+                        // Check if the mode is changing to BeepTest
+                        let edited_settings = self.edited_settings.as_ref().unwrap();
+                        if edited_settings.mode == Mode::BeepTest && self.config.mode != Mode::BeepTest {
+                            // Show confirmation before entering BeepTest mode
+                            AppState::ConfirmationPage(ConfirmationKind::EnterBeepTestMode)
+                        } else {
+                            self.apply_settings_change();
+                            confy::store(APP_NAME, None, &self.config).unwrap();
+                            AppState::MainPage
+                        }
                     }
                 } else {
                     AppState::MainPage
@@ -1522,7 +1654,7 @@ impl RefBoxApp {
 
                 let next_page = match self.app_state {
                     AppState::ParameterEditor(_, _) => ConfigPage::Game,
-                    AppState::KeypadPage(KeypadPage::GameNumber, _) => ConfigPage::Main,
+                    AppState::KeypadPage(KeypadPage::GameNumber, _) => ConfigPage::Game,
                     AppState::KeypadPage(KeypadPage::TeamTimeouts(_, _), _)
                     | AppState::KeypadPage(KeypadPage::PortalLogin(_, _), _) => ConfigPage::Game,
                     AppState::ParameterList(param, _) => match param {
@@ -1816,6 +1948,14 @@ impl RefBoxApp {
                         confy::store(APP_NAME, None, &self.config).unwrap();
                         (AppState::MainPage, self.apply_snapshot(snapshot))
                     }
+                    ConfirmationOption::ContinueToBeepTest => {
+                        self.apply_settings_change();
+                        confy::store(APP_NAME, None, &self.config).unwrap();
+                        (AppState::MainPage, Task::none())
+                    }
+                    ConfirmationOption::BackToRefbox => {
+                        (AppState::MainPage, Task::none())
+                    }
                 };
                 self.app_state = app_state;
                 trace!("AppState changed to {:?}", self.app_state);
@@ -2092,7 +2232,7 @@ impl RefBoxApp {
                     }
                     r @ PortalTokenResponse::NoPendingLink
                     | r @ PortalTokenResponse::InvalidCode => {
-                        warn!("Portal token request failed: {:?}", r);
+                        warn!("Portal token request failed: {r:?}");
                         AppState::ConfirmationPage(ConfirmationKind::UwhPortalLinkFailed(r))
                     }
                 };
@@ -2118,6 +2258,27 @@ impl RefBoxApp {
                 tx.blocking_send(tm).unwrap();
                 Task::none()
             }
+            Message::BeepTestStart => {
+                self.beep_test_state.update(Message::BeepTestStart)
+            }
+            Message::BeepTestStop => {
+                self.beep_test_state.update(Message::BeepTestStop)
+            }
+            Message::BeepTestReset => {
+                self.beep_test_state.update(Message::BeepTestReset)
+            }
+            Message::BeepTestUpdate => {
+                self.beep_test_state.update(Message::BeepTestUpdate)
+            }
+            Message::BeepTestBackToRefbox => {
+                self.app_state = AppState::ConfirmationPage(ConfirmationKind::BeepTestBackToRefbox);
+                Task::none()
+            }
+            Message::BeepTestShowSettings => {
+                // For now, we'll just implement a placeholder - 
+                // TODO: Implement proper settings view
+                Task::none()
+            }
             Message::NoAction => Task::none(),
         }
     }
@@ -2132,33 +2293,42 @@ impl RefBoxApp {
                     .as_ref()
                     .and_then(|events| events.get(id).and_then(|event| event.teams.as_ref()))
             }),
+            font_demo: self.font_demo,
+            demo_data_type: self.demo_data_type.clone(),
         };
 
         let mut main_view = column![match self.app_state {
             AppState::MainPage => {
-                let new_config = if self.snapshot.current_period == GamePeriod::BetweenGames {
-                    self.tm
-                        .lock()
-                        .unwrap()
-                        .next_game_info()
-                        .as_ref()
-                        .and_then(|info| Some(info.timing.as_ref()?.clone().into()))
+                if self.config.mode == Mode::BeepTest {
+                    // Show BeepTest UI
+                    build_beep_test_view(&self.beep_test_state)
                 } else {
-                    None
-                };
+                    // Show normal refbox UI
+                    let new_config = if self.snapshot.current_period == GamePeriod::BetweenGames {
+                        self.tm
+                            .lock()
+                            .unwrap()
+                            .next_game_info()
+                            .as_ref()
+                            .and_then(|info| Some(info.timing.as_ref()?.clone().into()))
+                    } else {
+                        None
+                    };
 
-                let game_config = if let Some(ref c) = new_config {
-                    c
-                } else {
-                    &self.config.game
-                };
-                build_main_view(
-                    data,
-                    game_config,
-                    self.using_uwhportal,
-                    self.schedule.as_ref().map(|s| &s.games),
-                    self.config.track_fouls_and_warnings,
-                )
+                    let game_config = if let Some(ref c) = new_config {
+                        c
+                    } else {
+                        &self.config.game
+                    };
+                    build_main_view(
+                        data,
+                        game_config,
+                        self.using_uwhportal,
+                        self.schedule.as_ref().map(|s| &s.games),
+                        self.config.track_fouls_and_warnings,
+                        &mut self.dynamic_font_sizing.borrow_mut(),
+                    )
+                }
             }
             AppState::TimeEdit(_, time, timeout_time) =>
                 build_time_edit_view(data, time, timeout_time),
@@ -2233,7 +2403,15 @@ impl RefBoxApp {
     }
 
     pub(super) fn subscription(&self) -> Subscription<Message> {
-        Subscription::run(time_updater)
+        if self.config.mode == Mode::BeepTest {
+            Subscription::batch(vec![
+                Subscription::run(time_updater),
+                iced::time::every(Duration::from_millis(100))
+                    .map(|_| Message::BeepTestUpdate),
+            ])
+        } else {
+            Subscription::run(time_updater)
+        }
     }
 
     pub fn application_style(&self, _theme: &Theme) -> Appearance {
@@ -2310,10 +2488,7 @@ fn time_updater() -> impl Stream<Item = Message> {
                 let mut i = 0;
                 let snapshot = loop {
                     if i > 4 {
-                        error!(
-                            "Failed to generate snapshot after 5 attempts. State: {:#?}",
-                            tm_
-                        );
+                        error!("Failed to generate snapshot after 5 attempts. State: {tm_:#?}");
                         panic!("No snapshot");
                     }
                     match tm_.generate_snapshot(now) {

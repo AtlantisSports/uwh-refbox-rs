@@ -24,6 +24,7 @@ pub(in super::super) fn build_penalty_overview_page<'a>(
         Mode::Hockey3V3 => PenaltyKind::ThirtySecond,
         Mode::Hockey6V6 => PenaltyKind::OneMinute,
         Mode::Rugby => PenaltyKind::TwoMinute,
+        Mode::BeepTest => PenaltyKind::TwoMinute,
     };
 
     column![

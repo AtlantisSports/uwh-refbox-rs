@@ -10,6 +10,7 @@ cancel = CANCELAR
 delete = ELIMINAR
 back = ATRÁS
 new = NUEVO
+interface-options = OPCIONES DE USUARIO
 
 # Penalty Edit
 total-dismissal = T
@@ -36,11 +37,15 @@ team-warning-line-2 = DE EQUIPO
 # Configuration
 none-selected = Ninguno seleccionado
 loading = Cargando...
-game-select = Juego:
+game-select = JUEGO:
 game-options = OPCIONES DE JUEGO
-app-options = OPCIONES DE APP
+app-options = OPCIONES DE USUARIO
+interface-options = OPCIONES DE INTERFAZ
+interface-panel = OPCIONES DE USUARIO
 display-options = OPCIONES DE PANTALLA
+ui-options = OPCIONES DE USUARIO
 sound-options = OPCIONES DE SONIDO
+ui-interface-options = OPCIONES DE INTERFAZ
 app-mode = MODO DE
     LA APLICACIÓN
 hide-time-for-last-15-seconds = OCULTAR TIEMPO PARA
@@ -268,7 +273,7 @@ infraction = Infracción: {$infraction}
 ## Config String
 error = Error ({ $number })
 two-games = Último partido: { $prev_game }, Próximo partido: { $next_game }
-one-game = Juego: { $game }
+one-game = JUEGO: { $game }
 teams = { -dark-team-name } Equipo: { $dark_team }
     { -light-team-name } Equipo: { $light_team }
 game-config = Duración de la mitad: { $half_len },  Duración del medio tiempo: { $half_time_len }
@@ -342,6 +347,7 @@ max = MÁX
 hockey6v6 = HOCKEY 6vs6
 hockey3v3 = HOCKEY 3vs3
 rugby = RUGBY
+beeptest = PRUEBA SONIDO
 
 # Infractions
 stick-foul = Infracción con el palo

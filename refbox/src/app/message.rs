@@ -78,6 +78,7 @@ pub enum Message {
     RequestPortalRefresh,
     ShowWarnings,
     EditGameConfig,
+    EditGameConfigPage(ConfigPage),
     ChangeConfigPage(ConfigPage),
     ConfigEditComplete {
         canceled: bool,
@@ -111,6 +112,12 @@ pub enum Message {
     StopClock,
     StartClock,
     TimeUpdaterStarted(Sender<Arc<Mutex<TournamentManager>>>),
+    BeepTestStart,
+    BeepTestStop,
+    BeepTestReset,
+    BeepTestUpdate,
+    BeepTestBackToRefbox,
+    BeepTestShowSettings,
     NoAction,
 }
 
@@ -130,6 +137,7 @@ impl Message {
             | Self::RecvPortalToken(_)
             | Self::RecvTokenValid(_)
             | Self::TimeUpdaterStarted(_)
+            | Self::BeepTestUpdate
             | Self::NoAction => true,
 
             Self::EditTime
@@ -156,6 +164,7 @@ impl Message {
             | Self::RequestPortalRefresh
             | Self::ShowWarnings
             | Self::EditGameConfig
+            | Self::EditGameConfigPage(_)
             | Self::ChangeConfigPage(_)
             | Self::ConfigEditComplete { .. }
             | Self::EditParameter(_)
@@ -175,6 +184,7 @@ impl Message {
             | Self::AutoConfirmScores(_)
             | Self::StopClock
             | Self::StartClock => false,
+            Self::BeepTestStart | Self::BeepTestStop | Self::BeepTestReset | Self::BeepTestBackToRefbox | Self::BeepTestShowSettings => false,
         }
     }
 }
@@ -192,10 +202,17 @@ impl PartialEq for Message {
             | (Self::RequestPortalRefresh, Self::RequestPortalRefresh)
             | (Self::ShowWarnings, Self::ShowWarnings)
             | (Self::EditGameConfig, Self::EditGameConfig)
+            | (Self::EditGameConfigPage(_), Self::EditGameConfigPage(_))
             | (Self::RequestRemoteId, Self::RequestRemoteId)
             | (Self::EndTimeout, Self::EndTimeout)
             | (Self::StopClock, Self::StopClock)
             | (Self::StartClock, Self::StartClock)
+            | (Self::BeepTestStart, Self::BeepTestStart)
+            | (Self::BeepTestStop, Self::BeepTestStop)
+            | (Self::BeepTestReset, Self::BeepTestReset)
+            | (Self::BeepTestUpdate, Self::BeepTestUpdate)
+            | (Self::BeepTestBackToRefbox, Self::BeepTestBackToRefbox)
+            | (Self::BeepTestShowSettings, Self::BeepTestShowSettings)
             | (Self::NoAction, Self::NoAction) => true,
 
             (Self::NewSnapshot(a), Self::NewSnapshot(b)) => a == b,
@@ -340,6 +357,7 @@ impl PartialEq for Message {
             | (Self::RequestPortalRefresh, _)
             | (Self::ShowWarnings, _)
             | (Self::EditGameConfig, _)
+            | (Self::EditGameConfigPage(_), _)
             | (Self::ChangeConfigPage(_), _)
             | (Self::ConfigEditComplete { .. }, _)
             | (Self::EditParameter(_), _)
@@ -367,6 +385,12 @@ impl PartialEq for Message {
             | (Self::StopClock, _)
             | (Self::StartClock, _)
             | (Self::TimeUpdaterStarted(_), _)
+            | (Self::BeepTestStart, _)
+            | (Self::BeepTestStop, _)
+            | (Self::BeepTestReset, _)
+            | (Self::BeepTestUpdate, _)
+            | (Self::BeepTestBackToRefbox, _)
+            | (Self::BeepTestShowSettings, _)
             | (Self::NoAction, _) => false,
         }
     }
@@ -379,6 +403,8 @@ pub enum ConfigPage {
     Sound,
     Display,
     App,
+    UserInterface,
+    InterfaceOptions,
     Remotes(usize, bool),
 }
 
@@ -515,4 +541,6 @@ pub enum ConfirmationOption {
     GoBack,
     EndGameAndApply,
     KeepGameAndApply,
+    BackToRefbox,
+    ContinueToBeepTest,
 }

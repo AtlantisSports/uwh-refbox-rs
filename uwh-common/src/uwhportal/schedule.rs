@@ -184,7 +184,6 @@ pub struct SeededBy {
 
 pub type GameNumber = String;
 
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RefereeAssignment {
     pub identifier: String,

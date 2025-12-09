@@ -14,45 +14,61 @@ pub mod schedule;
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct CoinFlipDetails {
-    #[serde(rename = "Groups", alias = "groups")] pub groups: Vec<GroupCoinFlips>,
-    #[serde(rename = "Games", alias = "games")] pub games: Vec<CoinFlip>,
+    #[serde(rename = "Groups", alias = "groups")]
+    pub groups: Vec<GroupCoinFlips>,
+    #[serde(rename = "Games", alias = "games")]
+    pub games: Vec<CoinFlip>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct GroupCoinFlips {
-    #[serde(rename = "Identifier", alias = "identifier")] pub identifier: String,
-    #[serde(rename = "Name", alias = "name")] pub name: String,
-    #[serde(rename = "ShortName", alias = "shortName")] pub short_name: Option<String>,
-    #[serde(rename = "CoinFlips", alias = "coinFlips")] pub coin_flips: Vec<CoinFlip>,
+    #[serde(rename = "Identifier", alias = "identifier")]
+    pub identifier: String,
+    #[serde(rename = "Name", alias = "name")]
+    pub name: String,
+    #[serde(rename = "ShortName", alias = "shortName")]
+    pub short_name: Option<String>,
+    #[serde(rename = "CoinFlips", alias = "coinFlips")]
+    pub coin_flips: Vec<CoinFlip>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct CoinFlip {
-    #[serde(rename = "Identifier", alias = "identifier")] pub identifier: String,
-    #[serde(rename = "TiedTeams", alias = "tiedTeams")] pub tied_teams: Vec<CoinFlipTeam>,
-    #[serde(rename = "Result", alias = "result")] pub result: Option<CoinFlipResult>,
+    #[serde(rename = "Identifier", alias = "identifier")]
+    pub identifier: String,
+    #[serde(rename = "TiedTeams", alias = "tiedTeams")]
+    pub tied_teams: Vec<CoinFlipTeam>,
+    #[serde(rename = "Result", alias = "result")]
+    pub result: Option<CoinFlipResult>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct CoinFlipTeam {
-    #[serde(rename = "TeamId", alias = "teamId")] pub team_id: Option<String>,
-    #[serde(rename = "PendingAssignmentName", alias = "pendingAssignmentName")] pub pending_assignment_name: Option<String>,
+    #[serde(rename = "TeamId", alias = "teamId")]
+    pub team_id: Option<String>,
+    #[serde(rename = "PendingAssignmentName", alias = "pendingAssignmentName")]
+    pub pending_assignment_name: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct CoinFlipResult {
-    #[serde(rename = "Kind", alias = "kind")] pub kind: String,
-    #[serde(rename = "Team", alias = "team")] pub team: CoinFlipTeam,
+    #[serde(rename = "Kind", alias = "kind")]
+    pub kind: String,
+    #[serde(rename = "Team", alias = "team")]
+    pub team: CoinFlipTeam,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct SetCoinFlipModel {
-    #[serde(rename = "GroupIdentifier")] pub group_identifier: Option<String>,
-    #[serde(rename = "CoinFlipIdentifier")] pub coin_flip_identifier: String,
-    #[serde(rename = "TeamIdOrPendingAssignmentName")] pub team_id_or_pending_assignment_name: String,
-    #[serde(rename = "Kind")] pub kind: String,
+    #[serde(rename = "GroupIdentifier")]
+    pub group_identifier: Option<String>,
+    #[serde(rename = "CoinFlipIdentifier")]
+    pub coin_flip_identifier: String,
+    #[serde(rename = "TeamIdOrPendingAssignmentName")]
+    pub team_id_or_pending_assignment_name: String,
+    #[serde(rename = "Kind")]
+    pub kind: String,
 }
-
 
 pub struct UwhPortalClient {
     base_url: String,
@@ -383,7 +399,8 @@ impl UwhPortalClient {
             event_id.partial()
         );
 
-        let request = authenticated_request(&self.client, Method::GET, &url, &self.access_token).send();
+        let request =
+            authenticated_request(&self.client, Method::GET, &url, &self.access_token).send();
 
         async move {
             let response = request.await?;
@@ -398,7 +415,6 @@ impl UwhPortalClient {
             }
         }
     }
-
 
     pub fn get_event_teams(
         &self,
@@ -441,13 +457,15 @@ impl UwhPortalClient {
     pub fn get_event_referee_name_map(
         &self,
         event_id: &EventId,
-    ) -> impl std::future::Future<Output = Result<BTreeMap<String, String>, Box<dyn Error>>> + use<> {
+    ) -> impl std::future::Future<Output = Result<BTreeMap<String, String>, Box<dyn Error>>> + use<>
+    {
         let url = format!(
             "{}/api/events/{}/participants",
             self.base_url,
             event_id.partial()
         );
-        let request = authenticated_request(&self.client, Method::GET, &url, &self.access_token).send();
+        let request =
+            authenticated_request(&self.client, Method::GET, &url, &self.access_token).send();
         async move {
             let response = request.await?;
             let status = response.status();
@@ -462,7 +480,7 @@ impl UwhPortalClient {
                             let name_opt = user.get("name").and_then(|x| x.as_str());
                             if let (Some(id), Some(name)) = (id_opt, name_opt) {
                                 let key_full = id.to_string();
-                                let key_tail = id.split('/').last().unwrap_or(id).to_string();
+                                let key_tail = id.split('/').next_back().unwrap_or(id).to_string();
                                 map.insert(key_full, name.to_string());
                                 map.insert(key_tail, name.to_string());
                             }
@@ -481,7 +499,8 @@ impl UwhPortalClient {
     pub fn get_event_referee_name_map_from_referees(
         &self,
         event_id: &EventId,
-    ) -> impl std::future::Future<Output = Result<BTreeMap<String, String>, Box<dyn Error>>> + use<> {
+    ) -> impl std::future::Future<Output = Result<BTreeMap<String, String>, Box<dyn Error>>> + use<>
+    {
         let url = format!(
             "{}/api/events/{}/referees",
             self.base_url,
@@ -497,13 +516,22 @@ impl UwhPortalClient {
                 let mut map: BTreeMap<String, String> = BTreeMap::new();
 
                 // Tournament referee (if present)
-                if let Some(tr) = body.get("tournamentReferee").or_else(|| body.get("TournamentReferee")) {
+                if let Some(tr) = body
+                    .get("tournamentReferee")
+                    .or_else(|| body.get("TournamentReferee"))
+                {
                     if let Some(user) = tr.get("user").or_else(|| tr.get("User")) {
-                        let id_opt = user.get("id").or_else(|| user.get("Id")).and_then(|x| x.as_str());
-                        let name_opt = user.get("name").or_else(|| user.get("Name")).and_then(|x| x.as_str());
+                        let id_opt = user
+                            .get("id")
+                            .or_else(|| user.get("Id"))
+                            .and_then(|x| x.as_str());
+                        let name_opt = user
+                            .get("name")
+                            .or_else(|| user.get("Name"))
+                            .and_then(|x| x.as_str());
                         if let (Some(id), Some(name)) = (id_opt, name_opt) {
                             let key_full = id.to_string();
-                            let key_tail = id.split('/').last().unwrap_or(id).to_string();
+                            let key_tail = id.split('/').next_back().unwrap_or(id).to_string();
                             map.insert(key_full, name.to_string());
                             map.insert(key_tail, name.to_string());
                         }
@@ -512,16 +540,31 @@ impl UwhPortalClient {
 
                 // Referees categories
                 if let Some(refs) = body.get("referees").or_else(|| body.get("Referees")) {
-                    let cats = [("dedicated", "Dedicated"), ("hybrid", "Hybrid"), ("timeOrScoreKeeper", "TimeOrScoreKeeper")];
+                    let cats = [
+                        ("dedicated", "Dedicated"),
+                        ("hybrid", "Hybrid"),
+                        ("timeOrScoreKeeper", "TimeOrScoreKeeper"),
+                    ];
                     for (low, up) in cats {
-                        if let Some(arr) = refs.get(low).or_else(|| refs.get(up)).and_then(|v| v.as_array()) {
+                        if let Some(arr) = refs
+                            .get(low)
+                            .or_else(|| refs.get(up))
+                            .and_then(|v| v.as_array())
+                        {
                             for item in arr {
                                 if let Some(user) = item.get("user").or_else(|| item.get("User")) {
-                                    let id_opt = user.get("id").or_else(|| user.get("Id")).and_then(|x| x.as_str());
-                                    let name_opt = user.get("name").or_else(|| user.get("Name")).and_then(|x| x.as_str());
+                                    let id_opt = user
+                                        .get("id")
+                                        .or_else(|| user.get("Id"))
+                                        .and_then(|x| x.as_str());
+                                    let name_opt = user
+                                        .get("name")
+                                        .or_else(|| user.get("Name"))
+                                        .and_then(|x| x.as_str());
                                     if let (Some(id), Some(name)) = (id_opt, name_opt) {
                                         let key_full = id.to_string();
-                                        let key_tail = id.split('/').last().unwrap_or(id).to_string();
+                                        let key_tail =
+                                            id.split('/').next_back().unwrap_or(id).to_string();
                                         map.insert(key_full, name.to_string());
                                         map.insert(key_tail, name.to_string());
                                     }
@@ -544,7 +587,8 @@ impl UwhPortalClient {
         &self,
         event_id: &EventId,
         game_number: &GameNumber,
-    ) -> impl std::future::Future<Output = Result<BTreeMap<String, String>, Box<dyn Error>>> + use<> {
+    ) -> impl std::future::Future<Output = Result<BTreeMap<String, String>, Box<dyn Error>>> + use<>
+    {
         let url = format!("{}/api/admin/events/game-referees", self.base_url);
         let request = self
             .client
@@ -558,16 +602,30 @@ impl UwhPortalClient {
             if status == StatusCode::OK {
                 let body: serde_json::Value = serde_json::from_str(&body_text)?;
                 let mut map: BTreeMap<String, String> = BTreeMap::new();
-                if let Some(items) = body.get("referees").or_else(|| body.get("Referees")).and_then(|v| v.as_array()) {
+                if let Some(items) = body
+                    .get("referees")
+                    .or_else(|| body.get("Referees"))
+                    .and_then(|v| v.as_array())
+                {
                     for it in items {
                         if let Some(user) = it.get("user").or_else(|| it.get("User")) {
-                            let id_opt = user.get("id").or_else(|| user.get("Id")).and_then(|x| x.as_str());
-                            let name_opt = user.get("name").or_else(|| user.get("Name")).and_then(|x| x.as_str());
-                            let username_opt = user.get("username").or_else(|| user.get("Username")).and_then(|x| x.as_str());
+                            let id_opt = user
+                                .get("id")
+                                .or_else(|| user.get("Id"))
+                                .and_then(|x| x.as_str());
+                            let name_opt = user
+                                .get("name")
+                                .or_else(|| user.get("Name"))
+                                .and_then(|x| x.as_str());
+                            let username_opt = user
+                                .get("username")
+                                .or_else(|| user.get("Username"))
+                                .and_then(|x| x.as_str());
                             if let Some(id) = id_opt {
                                 if let Some(name) = name_opt.or(username_opt) {
                                     let key_full = id.to_string();
-                                    let key_tail = id.split('/').last().unwrap_or(id).to_string();
+                                    let key_tail =
+                                        id.split('/').next_back().unwrap_or(id).to_string();
                                     map.insert(key_full, name.to_string());
                                     map.insert(key_tail, name.to_string());
                                 }
@@ -581,7 +639,6 @@ impl UwhPortalClient {
             }
         }
     }
-
 
     pub fn get_event_list(
         &self,
@@ -684,57 +741,68 @@ impl UwhPortalClient {
         }
     }
 
-        pub fn get_user_display_name(
-            &self,
-            user_full_id: &str,
-        ) -> impl std::future::Future<Output = Result<String, Box<dyn Error>>> + use<> {
-            // user_full_id is typically like "users/257-B"
-            let url = format!(
-                "{}/api/{}",
-                self.base_url,
-                user_full_id.trim_start_matches('/')
-            );
-            // Precompute a fallback display name (the trailing part of the id), so we don't
-            // hold a reference to user_full_id inside the async block.
-            let fallback = user_full_id
-                .split('/')
-                .last()
-                .unwrap_or(user_full_id)
-                .to_string();
-            let request = authenticated_request(&self.client, Method::GET, &url, &self.access_token).send();
-            async move {
-                let response = request.await?;
-                if response.status() == StatusCode::OK {
-                    let body = response.json::<serde_json::Value>().await?;
-                    // Prefer roster name if available, then fall back through other display fields
-                    let display = body["playerInfo"]["rosterName"].as_str()
-                        .or_else(|| body["PlayerInfo"]["RosterName"].as_str())
-                        .or_else(|| body["displayName"].as_str())
-                        .or_else(|| body["DisplayName"].as_str())
-                        .or_else(|| body["preferredName"].as_str())
-                        .or_else(|| body["PreferredName"].as_str())
-                        .or_else(|| body["name"].as_str())
-                        .or_else(|| body["Name"].as_str())
-                        .map(|s| s.to_string())
-                        .or_else(|| {
-                            let first = body["firstName"].as_str().or_else(|| body["FirstName"].as_str());
-                            let last = body["lastName"].as_str().or_else(|| body["LastName"].as_str());
-                            match (first, last) {
-                                (Some(f), Some(l)) => Some(format!("{} {}", f, l)),
-                                (Some(f), None) => Some(f.to_string()),
-                                (None, Some(l)) => Some(l.to_string()),
-                                _ => None,
-                            }
-                        })
-                        .or_else(|| body["username"].as_str().or_else(|| body["Username"].as_str()).map(|s| s.to_string()))
-                        .unwrap_or_else(|| fallback);
-                    Ok(display)
-                } else {
-                    let body = response.text().await?;
-                    Err(Box::new(ApiError::new(body)))?
-                }
+    pub fn get_user_display_name(
+        &self,
+        user_full_id: &str,
+    ) -> impl std::future::Future<Output = Result<String, Box<dyn Error>>> + use<> {
+        // user_full_id is typically like "users/257-B"
+        let url = format!(
+            "{}/api/{}",
+            self.base_url,
+            user_full_id.trim_start_matches('/')
+        );
+        // Precompute a fallback display name (the trailing part of the id), so we don't
+        // hold a reference to user_full_id inside the async block.
+        let fallback = user_full_id
+            .split('/')
+            .next_back()
+            .unwrap_or(user_full_id)
+            .to_string();
+        let request =
+            authenticated_request(&self.client, Method::GET, &url, &self.access_token).send();
+        async move {
+            let response = request.await?;
+            if response.status() == StatusCode::OK {
+                let body = response.json::<serde_json::Value>().await?;
+                // Prefer roster name if available, then fall back through other display fields
+                let display = body["playerInfo"]["rosterName"]
+                    .as_str()
+                    .or_else(|| body["PlayerInfo"]["RosterName"].as_str())
+                    .or_else(|| body["displayName"].as_str())
+                    .or_else(|| body["DisplayName"].as_str())
+                    .or_else(|| body["preferredName"].as_str())
+                    .or_else(|| body["PreferredName"].as_str())
+                    .or_else(|| body["name"].as_str())
+                    .or_else(|| body["Name"].as_str())
+                    .map(|s| s.to_string())
+                    .or_else(|| {
+                        let first = body["firstName"]
+                            .as_str()
+                            .or_else(|| body["FirstName"].as_str());
+                        let last = body["lastName"]
+                            .as_str()
+                            .or_else(|| body["LastName"].as_str());
+                        match (first, last) {
+                            (Some(f), Some(l)) => Some(format!("{} {}", f, l)),
+                            (Some(f), None) => Some(f.to_string()),
+                            (None, Some(l)) => Some(l.to_string()),
+                            _ => None,
+                        }
+                    })
+                    .or_else(|| {
+                        body["username"]
+                            .as_str()
+                            .or_else(|| body["Username"].as_str())
+                            .map(|s| s.to_string())
+                    })
+                    .unwrap_or(fallback);
+                Ok(display)
+            } else {
+                let body = response.text().await?;
+                Err(Box::new(ApiError::new(body)))?
             }
         }
+    }
     pub fn get_coin_flips(
         &self,
         event_slug: &str,
@@ -743,7 +811,8 @@ impl UwhPortalClient {
             "{}/api/events/{}/schedule/coin-flips",
             self.base_url, event_slug
         );
-        let request = authenticated_request(&self.client, Method::GET, &url, &self.access_token).send();
+        let request =
+            authenticated_request(&self.client, Method::GET, &url, &self.access_token).send();
         async move {
             let response = request.await?;
             let status = response.status();
@@ -753,7 +822,9 @@ impl UwhPortalClient {
                     Ok(parsed) => Ok(parsed),
                     Err(e) => {
                         debug!("get_coin_flips: failed to decode body: {e}; body: {body}");
-                        Err(Box::new(ApiError::new(format!("error decoding response body: {e}"))))?
+                        Err(Box::new(ApiError::new(format!(
+                            "error decoding response body: {e}"
+                        ))))?
                     }
                 }
             } else {
@@ -786,8 +857,6 @@ impl UwhPortalClient {
             }
         }
     }
-
-
 }
 
 fn authenticated_request(

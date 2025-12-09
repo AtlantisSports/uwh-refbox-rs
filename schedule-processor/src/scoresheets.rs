@@ -1,13 +1,16 @@
-use std::{
-    fs,
-    fmt,
-    process::Command,
-    path::{Path, PathBuf},
-};
 use std::collections::HashMap;
-use time::{format_description::FormatItem, macros::format_description, OffsetDateTime, Duration as TimeDur};
-use uwh_common::uwhportal::schedule::{Event, Game, ScheduledTeam, TeamList, TimingRule, DateRange, EventId};
+use std::{
+    fmt, fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
+use time::{
+    Duration as TimeDur, OffsetDateTime, format_description::FormatItem, macros::format_description,
+};
 use uwh_common::uwhportal::UwhPortalClient;
+use uwh_common::uwhportal::schedule::{
+    DateRange, Event, EventId, Game, ScheduledTeam, TeamList, TimingRule,
+};
 
 #[derive(Debug)]
 struct AuthRequiredError;
@@ -44,7 +47,9 @@ pub async fn generate_scoresheets_for_event(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let schedule = if portal_client.has_token() {
         // Prefer privileged schedule when we can; it includes referee assignments
-        portal_client.get_event_schedule_privileged(&event.id).await?
+        portal_client
+            .get_event_schedule_privileged(&event.id)
+            .await?
     } else {
         match portal_client.get_event_schedule_public(&event.id).await {
             Ok(s) => s,
@@ -64,15 +69,24 @@ pub async fn generate_scoresheets_for_event(
         match parse_referee_csv(p) {
             Ok(map) => map,
             Err(e) => {
-                log::warn!("Failed to parse referee schedule CSV ({}): {}", p.display(), e);
+                log::warn!(
+                    "Failed to parse referee schedule CSV ({}): {}",
+                    p.display(),
+                    e
+                );
                 HashMap::new()
             }
         }
-    } else { HashMap::new() };
+    } else {
+        HashMap::new()
+    };
 
     let mut name_cache: HashMap<String, String> = HashMap::new();
     // Pre-fill official name cache: try public /referees first (no auth), then merge /participants (auth)
-    match portal_client.get_event_referee_name_map_from_referees(&event.id).await {
+    match portal_client
+        .get_event_referee_name_map_from_referees(&event.id)
+        .await
+    {
         Ok(map) => {
             let count = map.len();
             for (uid, name) in map {
@@ -88,15 +102,19 @@ pub async fn generate_scoresheets_for_event(
         Ok(map) => {
             let mut added = 0usize;
             for (uid, name) in map {
-                if name_cache.insert(uid.clone(), name).is_none() { added += 1; }
+                if name_cache.insert(uid.clone(), name).is_none() {
+                    added += 1;
+                }
             }
             log::debug!("Merged {} official names from /participants", added);
         }
         Err(e) => {
-            log::debug!("Participants map not available (unauthenticated or forbidden): {}", e);
+            log::debug!(
+                "Participants map not available (unauthenticated or forbidden): {}",
+                e
+            );
         }
     }
-
 
     // For combined single-PDF generation
     let mut combined_pages: String = String::new();
@@ -106,22 +124,26 @@ pub async fn generate_scoresheets_for_event(
         let (white_suffix, white_name) = placeholder_suffix_and_name(&game.light, &teams);
         let (black_suffix, black_name) = placeholder_suffix_and_name(&game.dark, &teams);
 
-
         // Decide official names based on preference: portal display names vs CSV
         let officials = if inputs.prefer_portal_officials {
-            let resolved = resolve_officials(&*portal_client, &event.id, game, &mut name_cache).await;
+            let resolved =
+                resolve_officials(&*portal_client, &event.id, game, &mut name_cache).await;
             // Fallback to CSV for this game if portal provides nothing
-            if resolved.chief.is_empty() && resolved.water1.is_empty() && resolved.water2.is_empty() && resolved.water3.is_empty() && resolved.ts_keeper.is_empty() && resolved.ts_helper.is_empty() {
+            if resolved.chief.is_empty()
+                && resolved.water1.is_empty()
+                && resolved.water2.is_empty()
+                && resolved.water3.is_empty()
+                && resolved.ts_keeper.is_empty()
+                && resolved.ts_helper.is_empty()
+            {
                 ref_overrides.get(num).cloned().unwrap_or(resolved)
             } else {
                 resolved
             }
+        } else if let Some(o) = ref_overrides.get(num) {
+            o.clone()
         } else {
-            if let Some(o) = ref_overrides.get(num) {
-                o.clone()
-            } else {
-                resolve_officials(&*portal_client, &event.id, game, &mut name_cache).await
-            }
+            resolve_officials(&*portal_client, &event.id, game, &mut name_cache).await
         };
 
         let tr = find_timing_rule(game, csv_schedule, &schedule)?;
@@ -155,9 +177,10 @@ pub async fn generate_scoresheets_for_event(
             ),
         };
 
-        let html_path = inputs.output_dir.join(format!("game-{}.html", sanitize(num)));
+        let html_path = inputs
+            .output_dir
+            .join(format!("game-{}.html", sanitize(num)));
         fs::write(&html_path, html.as_bytes())?;
-
 
         // Capture CSS from the first page and append this page fragment for combined output
         if combined_css.is_none() {
@@ -174,7 +197,10 @@ pub async fn generate_scoresheets_for_event(
                     let frag = &html[s..d + "</div>".len()];
                     combined_pages.push_str(frag);
                 } else {
-                    log::warn!("Could not find closing </div> before </body> for game {}", num);
+                    log::warn!(
+                        "Could not find closing </div> before </body> for game {}",
+                        num
+                    );
                 }
             } else if let Some(e) = html.rfind("</div></div>") {
                 // Fallback for pages that end with two closing divs right before </body>
@@ -204,7 +230,8 @@ pub async fn generate_scoresheets_for_event(
         let html_abs = if all_html_path.is_absolute() {
             all_html_path.clone()
         } else {
-            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+            std::env::current_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("."))
                 .join(&all_html_path)
         };
         let html_url = format!("file:///{}", html_abs.to_string_lossy().replace('\\', "/"));
@@ -221,20 +248,46 @@ pub async fn generate_scoresheets_for_event(
         }
         candidates.push("chrome".into());
         let try_arg_sets: [&[&str]; 4] = [
-            &["--headless=new", "--disable-gpu", "--allow-file-access-from-files", "--virtual-time-budget=8000", "--no-sandbox", "--disable-extensions", "--disable-dev-shm-usage"],
-            &["--headless", "--disable-gpu", "--allow-file-access-from-files", "--virtual-time-budget=8000", "--no-sandbox", "--disable-extensions", "--disable-dev-shm-usage"],
-            &["--headless=new", "--disable-gpu", "--allow-file-access-from-files", "--run-all-compositor-stages-before-draw", "--no-sandbox"],
-            &["--headless", "--disable-gpu", "--allow-file-access-from-files", "--run-all-compositor-stages-before-draw", "--no-sandbox"],
+            &[
+                "--headless=new",
+                "--disable-gpu",
+                "--allow-file-access-from-files",
+                "--virtual-time-budget=8000",
+                "--no-sandbox",
+                "--disable-extensions",
+                "--disable-dev-shm-usage",
+            ],
+            &[
+                "--headless",
+                "--disable-gpu",
+                "--allow-file-access-from-files",
+                "--virtual-time-budget=8000",
+                "--no-sandbox",
+                "--disable-extensions",
+                "--disable-dev-shm-usage",
+            ],
+            &[
+                "--headless=new",
+                "--disable-gpu",
+                "--allow-file-access-from-files",
+                "--run-all-compositor-stages-before-draw",
+                "--no-sandbox",
+            ],
+            &[
+                "--headless",
+                "--disable-gpu",
+                "--allow-file-access-from-files",
+                "--run-all-compositor-stages-before-draw",
+                "--no-sandbox",
+            ],
         ];
         let mut printed = false;
         'outer: for c in &candidates {
             // If 'c' looks like a path, ensure it exists before trying
             let is_path_like = c.contains('\\') || c.contains('/') || c.contains(':');
-            if is_path_like {
-                if !std::path::Path::new(c).exists() {
-                    log::warn!("Chrome not found at: {}", c);
-                    continue;
-                }
+            if is_path_like && !std::path::Path::new(c).exists() {
+                log::warn!("Chrome not found at: {}", c);
+                continue;
             }
             for args in &try_arg_sets {
                 let mut cmd = Command::new(c);
@@ -244,7 +297,12 @@ pub async fn generate_scoresheets_for_event(
                     .arg("--no-default-browser-check")
                     .arg(print_arg)
                     .arg(&html_url);
-                log::info!("Attempting to print via '{}' url={} pdf={}", c, &html_url, all_pdf_path.display());
+                log::info!(
+                    "Attempting to print via '{}' url={} pdf={}",
+                    c,
+                    &html_url,
+                    all_pdf_path.display()
+                );
                 match cmd.output() {
                     Ok(out) if out.status.success() => {
                         log::info!("Wrote combined PDF to {}", all_pdf_path.display());
@@ -254,7 +312,12 @@ pub async fn generate_scoresheets_for_event(
                     Ok(out) => {
                         let so = String::from_utf8_lossy(&out.stdout);
                         let se = String::from_utf8_lossy(&out.stderr);
-                        log::error!("Chrome run failed (status {}). stdout: {} stderr: {}", out.status, so, se);
+                        log::error!(
+                            "Chrome run failed (status {}). stdout: {} stderr: {}",
+                            out.status,
+                            so,
+                            se
+                        );
                     }
                     Err(e) => {
                         log::error!("Failed to run Chrome '{}': {}", c, e);
@@ -286,22 +349,22 @@ fn copy_logo(
     stem: &str,
 ) -> Result<Option<String>, Box<dyn std::error::Error>> {
     if let Some(src) = src {
-        let ext = src
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("png");
+        let ext = src.extension().and_then(|e| e.to_str()).unwrap_or("png");
         let dst = output_dir.join(format!("{}.{ext}", stem));
         fs::copy(src, &dst)?;
-        return Ok(Some(dst.file_name().unwrap().to_string_lossy().into_owned()));
+        return Ok(Some(
+            dst.file_name().unwrap().to_string_lossy().into_owned(),
+        ));
     }
     Ok(None)
 }
 
-
-
 fn placeholder_suffix_and_name(team: &ScheduledTeam, teams: &TeamList) -> (String, String) {
     if let Some(id) = team.assigned() {
-        let name = teams.get(id).cloned().unwrap_or_else(|| id.partial().to_string());
+        let name = teams
+            .get(id)
+            .cloned()
+            .unwrap_or_else(|| id.partial().to_string());
         // Treat any assigned team whose name contains "Seed" (case-insensitive) as a placeholder suffix
         if name.to_ascii_lowercase().contains("seed") {
             (format!(" ({})", name), String::new())
@@ -310,16 +373,23 @@ fn placeholder_suffix_and_name(team: &ScheduledTeam, teams: &TeamList) -> (Strin
         }
     } else if let Some(r) = team.result_of() {
         match r {
-            uwh_common::uwhportal::schedule::ResultOf::Winner { game_number } =>
-                (format!(" (Winner {})", game_number), String::new()),
-            uwh_common::uwhportal::schedule::ResultOf::Loser { game_number } =>
-                (format!(" (Loser {})", game_number), String::new()),
+            uwh_common::uwhportal::schedule::ResultOf::Winner { game_number } => {
+                (format!(" (Winner {})", game_number), String::new())
+            }
+            uwh_common::uwhportal::schedule::ResultOf::Loser { game_number } => {
+                (format!(" (Loser {})", game_number), String::new())
+            }
         }
     } else if let Some(s) = team.seeded_by() {
         (format!(" (Seed {} {})", s.number, s.group), String::new())
     } else if let Some(p) = team.pending() {
         let up = p.to_ascii_uppercase();
-        if up.contains("SEED") || up.starts_with("W_") || up.starts_with("L_") || up.contains("WINNER") || up.contains("LOSER") {
+        if up.contains("SEED")
+            || up.starts_with("W_")
+            || up.starts_with("L_")
+            || up.contains("WINNER")
+            || up.contains("LOSER")
+        {
             (format!(" ({})", p), String::new())
         } else {
             // Treat as a free-text team name if not a recognized placeholder pattern
@@ -332,37 +402,52 @@ fn placeholder_suffix_and_name(team: &ScheduledTeam, teams: &TeamList) -> (Strin
 
 fn derive_category(rule_name: &str) -> &'static str {
     let up = rule_name.to_ascii_uppercase();
-    if up.contains("RR") { "Round Robin" }
-    else if up.contains("XO") { "Crossover" }
-    else if up.contains("PO") { "Playoff" }
-    else if up.contains("MD") { "Medal Game" }
-    else { "" }
+    if up.contains("RR") {
+        "Round Robin"
+    } else if up.contains("XO") {
+        "Crossover"
+    } else if up.contains("PO") {
+        "Playoff"
+    } else if up.contains("MD") {
+        "Medal Game"
+    } else {
+        ""
+    }
 }
 
-fn div_pod_for_game(csv_schedule: Option<&uwh_common::uwhportal::schedule::Schedule>, game_number: &str) -> Option<(String, String, String)> {
+fn div_pod_for_game(
+    csv_schedule: Option<&uwh_common::uwhportal::schedule::Schedule>,
+    game_number: &str,
+) -> Option<(String, String, String)> {
     // Returns (div_short, div_long, pod_short)
     let mut div_short: Option<String> = None;
     let mut div_long: Option<String> = None;
     let mut pod_short: Option<String> = None;
     let sched = csv_schedule?;
     // Normalize target by stripping a leading 'G' (common notation differences)
-    let target_norm = game_number.trim_start_matches(|c: char| c == 'G' || c == 'g');
+    let target_norm = game_number.trim_start_matches(|c: char| ['G', 'g'].contains(&c));
     for g in &sched.groups {
         // Match if any group game number equals raw or normalized target (case-insensitive)
         let matches_group = g.game_numbers.iter().any(|n| {
             let n_str = n.as_str();
-            let n_norm = n_str.trim_start_matches(|c: char| c == 'G' || c == 'g');
+            let n_norm = n_str.trim_start_matches(|c: char| ['G', 'g'].contains(&c));
             n_str.eq_ignore_ascii_case(game_number) || n_norm.eq_ignore_ascii_case(target_norm)
         });
         if matches_group {
             if let Some(t) = g.group_type {
                 match t {
                     uwh_common::uwhportal::schedule::GroupType::Division => {
-                        if !g.short_name.is_empty() { div_short = Some(g.short_name.clone()); }
-                        if !g.name.is_empty() { div_long = Some(g.name.clone()); }
+                        if !g.short_name.is_empty() {
+                            div_short = Some(g.short_name.clone());
+                        }
+                        if !g.name.is_empty() {
+                            div_long = Some(g.name.clone());
+                        }
                     }
                     uwh_common::uwhportal::schedule::GroupType::Pod => {
-                        if !g.short_name.is_empty() { pod_short = Some(g.short_name.clone()); }
+                        if !g.short_name.is_empty() {
+                            pod_short = Some(g.short_name.clone());
+                        }
                     }
                 }
             }
@@ -376,26 +461,40 @@ fn div_pod_for_game(csv_schedule: Option<&uwh_common::uwhportal::schedule::Sched
     }
 }
 
-fn find_timing_rule<'a>(game: &Game, csv_sched: Option<&'a uwh_common::uwhportal::schedule::Schedule>, portal_sched: &'a uwh_common::uwhportal::schedule::Schedule) -> Result<&'a uwh_common::uwhportal::schedule::TimingRule, Box<dyn std::error::Error>> {
+fn find_timing_rule<'a>(
+    game: &Game,
+    csv_sched: Option<&'a uwh_common::uwhportal::schedule::Schedule>,
+    portal_sched: &'a uwh_common::uwhportal::schedule::Schedule,
+) -> Result<&'a uwh_common::uwhportal::schedule::TimingRule, Box<dyn std::error::Error>> {
     // Prefer CSV timing rules (last value wins) when available
     if let Some(cs) = csv_sched {
         if let Some(tr) = cs.get_game_timing(&game.number) {
             return Ok(tr);
         }
-        if let Some(tr) = cs.timing_rules.iter().find(|tr| tr.name == game.timing_rule) {
+        if let Some(tr) = cs
+            .timing_rules
+            .iter()
+            .find(|tr| tr.name == game.timing_rule)
+        {
             return Ok(tr);
         }
-
     }
     if let Some(tr) = portal_sched.get_game_timing(&game.number) {
         return Ok(tr);
     }
-    if let Some(tr) = portal_sched.timing_rules.iter().find(|tr| tr.name == game.timing_rule) {
+    if let Some(tr) = portal_sched
+        .timing_rules
+        .iter()
+        .find(|tr| tr.name == game.timing_rule)
+    {
         return Ok(tr);
     }
-    Err(format!("Missing timing rule '{}'. Please ensure CSV has complete timing rules for this name.", game.timing_rule).into())
+    Err(format!(
+        "Missing timing rule '{}'. Please ensure CSV has complete timing rules for this name.",
+        game.timing_rule
+    )
+    .into())
 }
-
 
 #[derive(Default, Clone)]
 struct OfficialNames {
@@ -422,11 +521,17 @@ async fn resolve_officials(
             } else {
                 // On first miss for this game, try to fetch all game refs in one call (public endpoint)
                 if !fetched_for_game {
-                    if let Ok(per_game) = portal_client.get_game_referee_name_map(event_id, &game.number).await {
+                    if let Ok(per_game) = portal_client
+                        .get_game_referee_name_map(event_id, &game.number)
+                        .await
+                    {
                         for (uid, name) in per_game {
                             cache.entry(uid).or_insert(name);
                         }
-                        log::debug!("Filled official names from /admin/events/game-referees for game {}", game.number);
+                        log::debug!(
+                            "Filled official names from /admin/events/game-referees for game {}",
+                            game.number
+                        );
                     }
                     fetched_for_game = true;
                 }
@@ -441,7 +546,7 @@ async fn resolve_officials(
                         Err(_) => a
                             .user_id
                             .split('/')
-                            .last()
+                            .next_back()
                             .unwrap_or(&a.user_id)
                             .to_string(),
                     }
@@ -468,7 +573,9 @@ async fn resolve_officials(
     names
 }
 
-fn parse_referee_csv(path: &Path) -> Result<HashMap<String, OfficialNames>, Box<dyn std::error::Error>> {
+fn parse_referee_csv(
+    path: &Path,
+) -> Result<HashMap<String, OfficialNames>, Box<dyn std::error::Error>> {
     let mut rdr = csv::ReaderBuilder::new()
         .trim(csv::Trim::All)
         .flexible(true)
@@ -492,7 +599,9 @@ fn parse_referee_csv(path: &Path) -> Result<HashMap<String, OfficialNames>, Box<
     for result in rdr.records() {
         let rec = result?;
         let game = rec.get(idx_game).unwrap_or("").trim().to_string();
-        if game.is_empty() { continue; }
+        if game.is_empty() {
+            continue;
+        }
         let get = |i: usize| rec.get(i).unwrap_or("").trim().to_string();
         let names = OfficialNames {
             chief: get(idx_chief),
@@ -507,7 +616,7 @@ fn parse_referee_csv(path: &Path) -> Result<HashMap<String, OfficialNames>, Box<
     Ok(map)
 }
 
-
+#[allow(clippy::too_many_arguments)]
 fn render_html(
     event: &Event,
     game_number: &str,
@@ -526,12 +635,13 @@ fn render_html(
     let offset = event.date_range.start.offset();
     let local_dt: OffsetDateTime = game.start_time.to_offset(offset);
     // Example: Fri - Oct 17
-    const DATE_FMT: &[FormatItem<'static>] = format_description!("[weekday repr:short] - [month repr:short] [day padding:none]");
+    const DATE_FMT: &[FormatItem<'static>] =
+        format_description!("[weekday repr:short] - [month repr:short] [day padding:none]");
     // Example: 10:15 AM
-    const TIME_FMT: &[FormatItem<'static>] = format_description!("[hour repr:12]:[minute] [period case:upper]");
+    const TIME_FMT: &[FormatItem<'static>] =
+        format_description!("[hour repr:12]:[minute] [period case:upper]");
     let date_str = local_dt.format(&DATE_FMT).unwrap_or_default();
     let time_str = local_dt.format(&TIME_FMT).unwrap_or_default();
-
 
     // CSS ported from scoresheet-mock for pixel-match layout
     let css = r#"
@@ -655,13 +765,29 @@ fn render_html(
     // Category and division/pod
     let cat = derive_category(&game.timing_rule);
     // Per request: always display Division Long name (fallback to Division Short), even if there is a pod
-    let divpod = if let Some((div_short, div_long, _pod_short)) = div_pod_for_game(csv_schedule, game_number) {
-        if !div_long.is_empty() { div_long } else { div_short }
-    } else { String::new() };
+    let divpod = if let Some((div_short, div_long, _pod_short)) =
+        div_pod_for_game(csv_schedule, game_number)
+    {
+        if !div_long.is_empty() {
+            div_long
+        } else {
+            div_short
+        }
+    } else {
+        String::new()
+    };
 
     // Logos inside squares
-    let left_square = if let Some(src) = left_logo { format!("<img class='logo-in-square' src=\"{}\"/>", html_escape(src)) } else { "SANCTIONING<br/>BODY LOGO".to_string() };
-    let right_square = if let Some(src) = right_logo { format!("<img class='logo-in-square' src=\"{}\"/>", html_escape(src)) } else { "TOURNAMENT<br/>LOGO".to_string() };
+    let left_square = if let Some(src) = left_logo {
+        format!("<img class='logo-in-square' src=\"{}\"/>", html_escape(src))
+    } else {
+        "SANCTIONING<br/>BODY LOGO".to_string()
+    };
+    let right_square = if let Some(src) = right_logo {
+        format!("<img class='logo-in-square' src=\"{}\"/>", html_escape(src))
+    } else {
+        "TOURNAMENT<br/>LOGO".to_string()
+    };
 
     // Combined side blocks
     let side_white = format!(
@@ -669,14 +795,22 @@ fn render_html(
            <div class='team-row'><div class='team-label'>WHITE TEAM<span class='suffix'>{}</span></div><div class='team-name'>{}</div></div>\
            {}{}{}\
          </div>",
-        html_escape(white_suffix), html_escape(white_name), faults_table, penalty_table, score_table
+        html_escape(white_suffix),
+        html_escape(white_name),
+        faults_table,
+        penalty_table,
+        score_table
     );
     let side_black = format!(
         "<div class='block'>\
            <div class='team-row'><div class='team-label'>BLACK TEAM<span class='suffix'>{}</span></div><div class='team-name'>{}</div></div>\
            {}{}{}\
          </div>",
-        html_escape(black_suffix), html_escape(black_name), faults_table, penalty_table, score_table
+        html_escape(black_suffix),
+        html_escape(black_name),
+        faults_table,
+        penalty_table,
+        score_table
     );
 
     format!(
@@ -729,8 +863,6 @@ fn render_html(
         divpod = html_escape(&divpod),
         category = html_escape(cat),
         date = html_escape(&date_str),
-
-
         time = html_escape(&time_str),
         chief = html_escape(&officials.chief),
         water1 = html_escape(&officials.water1),
@@ -743,15 +875,15 @@ fn render_html(
         side_white = side_white,
         side_black = side_black,
     )
-
 }
 
 // Simple scoresheet layout (portrait) based on provided mockup
+#[allow(clippy::too_many_arguments)]
 fn render_html_simple(
     event: &Event,
     game_number: &str,
     game: &Game,
-    csv_schedule: Option<&uwh_common::uwhportal::schedule::Schedule>,
+    _csv_schedule: Option<&uwh_common::uwhportal::schedule::Schedule>,
     tr: &uwh_common::uwhportal::schedule::TimingRule,
     white_suffix: &str,
     white_name: &str,
@@ -762,17 +894,26 @@ fn render_html_simple(
     // Date/time formatting in event timezone
     let offset = event.date_range.start.offset();
     let local_dt: OffsetDateTime = game.start_time.to_offset(offset);
-    const DATE_FMT: &[FormatItem<'static>] = format_description!("[weekday repr:short] [month repr:short] [day padding:none]");
-    const TIME_FMT: &[FormatItem<'static>] = format_description!("[hour repr:12]:[minute] [period case:upper]");
+    const DATE_FMT: &[FormatItem<'static>] =
+        format_description!("[weekday repr:short] [month repr:short] [day padding:none]");
+    const TIME_FMT: &[FormatItem<'static>] =
+        format_description!("[hour repr:12]:[minute] [period case:upper]");
     let date_str = local_dt.format(&DATE_FMT).unwrap_or_default();
-    let white_label = if white_suffix.is_empty() { white_name.to_string() } else { format!("{} {}", white_name, white_suffix) };
-    let black_label = if black_suffix.is_empty() { black_name.to_string() } else { format!("{} {}", black_name, black_suffix) };
+    let white_label = if white_suffix.is_empty() {
+        white_name.to_string()
+    } else {
+        format!("{} {}", white_name, white_suffix)
+    };
+    let black_label = if black_suffix.is_empty() {
+        black_name.to_string()
+    } else {
+        format!("{} {}", black_name, black_suffix)
+    };
 
     let time_str = local_dt.format(&TIME_FMT).unwrap_or_default();
 
     // Category and division/pod
     let cat = derive_category(&game.timing_rule);
-    let _divpod = if let Some((_ds, _dl, _ps)) = div_pod_for_game(csv_schedule, game_number) { };
 
     let css = r#"
       * { box-sizing:border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -863,7 +1004,6 @@ fn render_html_simple(
         )
     };
 
-
     let html = format!(
         r#"<!doctype html><html><head><meta charset='utf-8'/>
   <title>Scoresheet G{game_number}</title>
@@ -947,7 +1087,6 @@ fn render_html_simple(
         category = html_escape(cat),
         white_team = html_escape(&white_label),
         black_team = html_escape(&black_label),
-
         wr1 = html_escape(&officials.water1),
         wr2 = html_escape(&officials.water2),
         wr3 = html_escape(&officials.water3),
@@ -958,7 +1097,9 @@ fn render_html_simple(
         penalty_rows = {
             // Produce a fixed number of blank rows
             let mut rows = String::new();
-            for _ in 0..9 { rows.push_str("<tr><td class='pen'><div class='split2'><div></div><div></div></div></td><td class='pen'></td><td class='pen black'><div class='split2'><div></div><div></div></div></td><td class='pen black'></td></tr>"); }
+            for _ in 0..9 {
+                rows.push_str("<tr><td class='pen'><div class='split2'><div></div><div></div></div></td><td class='pen'></td><td class='pen black'><div class='split2'><div></div><div></div></div></td><td class='pen black'></td></tr>");
+            }
             rows
         },
     );
@@ -966,56 +1107,78 @@ fn render_html_simple(
     html
 }
 
-
-
-
-
 fn empty_cells(n: usize) -> String {
     let mut s = String::new();
-    for _ in 0..n { s.push_str("<td></td>"); }
+    for _ in 0..n {
+        s.push_str("<td></td>");
+    }
     s
 }
 
 fn speckled_cells(n: usize) -> String {
     let mut s = String::new();
-    for _ in 0..n { s.push_str("<td class='speckled'></td>"); }
+    for _ in 0..n {
+        s.push_str("<td class='speckled'></td>");
+    }
     s
 }
 
 fn score_section_with_rules(tr: &uwh_common::uwhportal::schedule::TimingRule) -> String {
     let mut cols = String::new();
-    for i in 1..=14 { cols.push_str(&format!("<th>{}</th>", i)); }
+    for i in 1..=14 {
+        cols.push_str(&format!("<th>{}</th>", i));
+    }
 
     let blank = empty_cells(14);
     let blank_speckled = speckled_cells(14);
 
     // Team timeouts for 1st/2nd half
     let (to_first, to_second) = if tr.team_timeout_count == 0 {
-        ("<td class='speckled'></td>".to_string(), "<td class='speckled'></td>".to_string())
+        (
+            "<td class='speckled'></td>".to_string(),
+            "<td class='speckled'></td>".to_string(),
+        )
     } else if tr.team_timeout_count == 1 && !tr.team_timeouts_counted_per_half {
-        ("<td rowspan='2'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;of 1</td>".to_string(), String::new())
+        (
+            "<td rowspan='2'>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;of 1</td>".to_string(),
+            String::new(),
+        )
     } else if tr.team_timeout_count == 1 && tr.team_timeouts_counted_per_half {
-        ("<td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;of 1</td>".to_string(), "<td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;of 1</td>".to_string())
+        (
+            "<td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;of 1</td>".to_string(),
+            "<td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;of 1</td>".to_string(),
+        )
     } else {
         ("<td></td>".to_string(), "<td></td>".to_string())
     };
 
     // OT rows
     let (ot_cells, ot_pgt_attr, ot_sub_attr) = if !tr.overtime_allowed {
-        (blank_speckled.as_str(), " class='speckled'", " class='speckled'")
+        (
+            blank_speckled.as_str(),
+            " class='speckled'",
+            " class='speckled'",
+        )
     } else {
         (blank.as_str(), "", "")
     };
 
     // Gold goal row
 
-
     // Gold goal row: col 1 separate; cols 2–14 merged (colspan=13) and always speckled
-    let gg_col1 = if !tr.sudden_death_allowed { "<td class='speckled'></td>" } else { "<td></td>" }.to_string();
+    let gg_col1 = if !tr.sudden_death_allowed {
+        "<td class='speckled'></td>"
+    } else {
+        "<td></td>"
+    }
+    .to_string();
     let gg_merged = speckled_cells(13);
     let gg_nums = format!("{}{}", gg_col1, gg_merged);
     let (gg_pgt, gg_sub) = if !tr.sudden_death_allowed {
-        ("<td class='speckled'></td>".to_string(), "<td class='speckled'></td>".to_string())
+        (
+            "<td class='speckled'></td>".to_string(),
+            "<td class='speckled'></td>".to_string(),
+        )
     } else {
         ("<td></td>".to_string(), "<td></td>".to_string())
     };
@@ -1032,11 +1195,22 @@ fn score_section_with_rules(tr: &uwh_common::uwhportal::schedule::TimingRule) ->
            <tr class='sep-top gold-goal'><td class='tl period'>GOLD GOAL</td>{}{}{}<td class='speckled'></td></tr>\
            <tr class='notes-final'><td class='tl period'>NOTES</td><td colspan='11'></td><td class='final-score' colspan='6'>FINAL SCORE</td></tr>\
          </table>",
-        cols, blank, to_first, blank, to_second, ot_cells, ot_pgt_attr, ot_sub_attr, ot_cells, ot_pgt_attr, ot_sub_attr, gg_nums, gg_pgt, gg_sub
+        cols,
+        blank,
+        to_first,
+        blank,
+        to_second,
+        ot_cells,
+        ot_pgt_attr,
+        ot_sub_attr,
+        ot_cells,
+        ot_pgt_attr,
+        ot_sub_attr,
+        gg_nums,
+        gg_pgt,
+        gg_sub
     )
 }
-
-
 
 pub fn generate_example_rule_sheets(output_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir_all(output_dir)?;
@@ -1047,38 +1221,60 @@ pub fn generate_example_rule_sheets(output_dir: &Path) -> Result<(), Box<dyn std
         id: EventId::from_partial("EXAMPLE"),
         name: "Example Event".to_string(),
         slug: "example-event".to_string(),
-        date_range: DateRange { start, end: start + TimeDur::hours(8) },
+        date_range: DateRange {
+            start,
+            end: start + TimeDur::hours(8),
+        },
         teams: None,
         schedule: None,
         courts: None,
     };
 
     // Helper to make a timing rule with the flags we want
-    let make_rule = |name: &str, to_count: u16, per_half: bool, ot_allowed: bool, sd_allowed: bool| TimingRule {
-        name: name.to_string(),
-        team_timeout_count: to_count,
-        team_timeouts_counted_per_half: per_half,
-        overtime_allowed: ot_allowed,
-        sudden_death_allowed: sd_allowed,
-        half_play_duration: std::time::Duration::from_secs(15 * 60),
-        half_time_duration: std::time::Duration::from_secs(3 * 60),
-        team_timeout_duration: std::time::Duration::from_secs(60),
-        ot_half_play_duration: std::time::Duration::from_secs(5 * 60),
-        ot_half_time_duration: std::time::Duration::from_secs(60),
-        pre_overtime_break: std::time::Duration::from_secs(2 * 60),
-        pre_sudden_death_duration: std::time::Duration::from_secs(60),
-        minimum_break: std::time::Duration::from_secs(5 * 60),
-    };
+    let make_rule =
+        |name: &str, to_count: u16, per_half: bool, ot_allowed: bool, sd_allowed: bool| {
+            TimingRule {
+                name: name.to_string(),
+                team_timeout_count: to_count,
+                team_timeouts_counted_per_half: per_half,
+                overtime_allowed: ot_allowed,
+                sudden_death_allowed: sd_allowed,
+                half_play_duration: std::time::Duration::from_secs(15 * 60),
+                half_time_duration: std::time::Duration::from_secs(3 * 60),
+                team_timeout_duration: std::time::Duration::from_secs(60),
+                ot_half_play_duration: std::time::Duration::from_secs(5 * 60),
+                ot_half_time_duration: std::time::Duration::from_secs(60),
+                pre_overtime_break: std::time::Duration::from_secs(2 * 60),
+                pre_sudden_death_duration: std::time::Duration::from_secs(60),
+                minimum_break: std::time::Duration::from_secs(5 * 60),
+            }
+        };
 
     let examples: Vec<(&str, TimingRule)> = vec![
-        ("ot_disallowed", make_rule("RR - OT OFF", 1, false, false, true)),
-        ("sudden_death_disallowed", make_rule("RR - SD OFF", 1, false, true, false)),
-        ("timeouts_none", make_rule("RR - TO 0", 0, false, true, true)),
-        ("timeouts_one_combined", make_rule("RR - TO 1 combined", 1, false, true, true)),
-        ("timeouts_one_per_half", make_rule("RR - TO 1 per half", 1, true, true, true)),
-
-
-        ("all_allowed", make_rule("RR - All Allowed", 1, true, true, true)),
+        (
+            "ot_disallowed",
+            make_rule("RR - OT OFF", 1, false, false, true),
+        ),
+        (
+            "sudden_death_disallowed",
+            make_rule("RR - SD OFF", 1, false, true, false),
+        ),
+        (
+            "timeouts_none",
+            make_rule("RR - TO 0", 0, false, true, true),
+        ),
+        (
+            "timeouts_one_combined",
+            make_rule("RR - TO 1 combined", 1, false, true, true),
+        ),
+        (
+            "timeouts_one_per_half",
+            make_rule("RR - TO 1 per half", 1, true, true, true),
+        ),
+        (
+            "all_allowed",
+            make_rule("RR - All Allowed", 1, true, true, true),
+        ),
     ];
 
     for (i, (slug, tr)) in examples.iter().enumerate() {
@@ -1116,18 +1312,46 @@ pub fn generate_example_rule_sheets(output_dir: &Path) -> Result<(), Box<dyn std
 
 fn faults_warnings_section() -> String {
     let mut counts12 = String::new();
-    for i in 1..=12 { counts12.push_str(&format!("<th>{}</th>", i)); }
+    for i in 1..=12 {
+        counts12.push_str(&format!("<th>{}</th>", i));
+    }
     let mut counts8 = String::new();
-    for i in 1..=8 { if i==1 { counts8.push_str(&format!("<th class='sep-left'>{}</th>", i)); } else { counts8.push_str(&format!("<th>{}</th>", i)); } }
+    for i in 1..=8 {
+        if i == 1 {
+            counts8.push_str(&format!("<th class='sep-left'>{}</th>", i));
+        } else {
+            counts8.push_str(&format!("<th>{}</th>", i));
+        }
+    }
     let items = [
-        "STICK INFRINGEMENT","ILLEGAL ADVANCEMENT","OBSTR. / SCREEN / BARG.","ILLEGALLY STOP","FREE ARM",
-        "FALSE START / BREAKING","GRABBING BARRIER","ILLEGAL SUBSTITUTION","OUT OF BOUNDS","DELAY OF GAME","UNSPORTING CONDUCT"
+        "STICK INFRINGEMENT",
+        "ILLEGAL ADVANCEMENT",
+        "OBSTR. / SCREEN / BARG.",
+        "ILLEGALLY STOP",
+        "FREE ARM",
+        "FALSE START / BREAKING",
+        "GRABBING BARRIER",
+        "ILLEGAL SUBSTITUTION",
+        "OUT OF BOUNDS",
+        "DELAY OF GAME",
+        "UNSPORTING CONDUCT",
     ];
     let mut rows = String::new();
     for it in items {
         let mut warn = String::new();
-        for j in 0..8 { if j==0 { warn.push_str("<td class='sep-left'></td>"); } else { warn.push_str("<td></td>"); } }
-        rows.push_str(&format!("<tr><td class='tl'>{}</td>{}{}</tr>", html_escape(it), empty_cells(12), warn));
+        for j in 0..8 {
+            if j == 0 {
+                warn.push_str("<td class='sep-left'></td>");
+            } else {
+                warn.push_str("<td></td>");
+            }
+        }
+        rows.push_str(&format!(
+            "<tr><td class='tl'>{}</td>{}{}</tr>",
+            html_escape(it),
+            empty_cells(12),
+            warn
+        ));
     }
     format!(
         "<table class='sheet faults'>\
@@ -1140,12 +1364,11 @@ fn faults_warnings_section() -> String {
     )
 }
 
-
-
-
 fn time_penalty_section_fixed() -> String {
     let mut hdr = String::new();
-    for i in 1..=20 { hdr.push_str(&format!("<th>{}</th>", i)); }
+    for i in 1..=20 {
+        hdr.push_str(&format!("<th>{}</th>", i));
+    }
     format!(
         "<table class='sheet penalty'>\
            <colgroup><col class='col-label'/><col class='col-pen' span='20'/></colgroup>\
@@ -1155,7 +1378,12 @@ fn time_penalty_section_fixed() -> String {
            <tr><td class='tl'>5 min</td>{}</tr>\
            <tr><td class='tl'>TOTAL DISMISSAL</td>{}{}</tr>\
          </table>",
-        hdr, empty_cells(20), empty_cells(20), empty_cells(20), empty_cells(10), speckled_cells(10)
+        hdr,
+        empty_cells(20),
+        empty_cells(20),
+        empty_cells(20),
+        empty_cells(10),
+        speckled_cells(10)
     )
 }
 
@@ -1171,5 +1399,3 @@ fn html_escape(s: &str) -> String {
         })
         .collect()
 }
-
-

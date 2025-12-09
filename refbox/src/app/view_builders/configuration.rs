@@ -124,8 +124,12 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
         ConfigPage::Sound => make_sound_config_page(snapshot, settings, mode, clock_running),
         ConfigPage::Display => make_display_config_page(snapshot, settings, mode, clock_running),
         ConfigPage::App => make_app_config_page(mode, snapshot, settings, clock_running),
-        ConfigPage::UserInterface => make_user_interface_page(mode, snapshot, settings, clock_running),
-        ConfigPage::InterfaceOptions => make_interface_options_page(mode, snapshot, settings, clock_running),
+        ConfigPage::UserInterface => {
+            make_user_interface_page(mode, snapshot, settings, clock_running)
+        }
+        ConfigPage::InterfaceOptions => {
+            make_interface_options_page(mode, snapshot, settings, clock_running)
+        }
         ConfigPage::Remotes(index, listening) => {
             make_remote_config_page(snapshot, settings, index, listening, mode, clock_running)
         }
@@ -240,8 +244,6 @@ fn make_event_config_page<'a>(
     } else {
         game_number.to_string()
     };
-
-
 
     let rows: [Element<Message>; 4] = if using_uwhportal {
         let event_label = if let Some(events) = events {
@@ -681,7 +683,7 @@ fn make_interface_options_page<'a>(
                 .on_press(Message::ChangeConfigPage(ConfigPage::UserInterface)),
         ]
         .spacing(0)
-        .width(Length::Fill)
+        .width(Length::Fill),
     )
     .style(transparent_container)
     .into()

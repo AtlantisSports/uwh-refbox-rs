@@ -40,4 +40,3 @@ impl SimRefBoxApp {
         Self
     }
 }
-

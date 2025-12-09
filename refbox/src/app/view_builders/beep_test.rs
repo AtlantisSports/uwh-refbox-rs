@@ -1,15 +1,15 @@
 use super::super::message::Message;
 use crate::app::theme::*;
+use derivative::Derivative;
 use iced::{
-    Element, Length, Alignment,
+    Alignment, Element, Length,
     alignment::{Horizontal, Vertical},
-    widget::{Space, button, column, container, row, text, Button, Column, Container, Row, Text},
+    widget::{Button, Column, Container, Row, Space, Text, button, column, container, row, text},
 };
-use std::time::{Duration, Instant};
-use std::fmt::Write;
 use matrix_drawing::secs_to_long_time_string;
 use serde::{Deserialize, Serialize};
-use derivative::Derivative;
+use std::fmt::Write;
+use std::time::{Duration, Instant};
 
 // Copy exact structures from original beep test
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -38,21 +38,66 @@ impl Default for BeepTest {
         Self {
             pre: Duration::from_secs(10),
             levels: vec![
-                Level { count: 3, duration: Duration::from_secs(36) },
-                Level { count: 3, duration: Duration::from_secs(34) },
-                Level { count: 3, duration: Duration::from_secs(32) },
-                Level { count: 4, duration: Duration::from_secs(30) },
-                Level { count: 4, duration: Duration::from_secs(28) },
-                Level { count: 5, duration: Duration::from_secs(26) },
-                Level { count: 5, duration: Duration::from_secs(24) },
-                Level { count: 6, duration: Duration::from_secs(22) },
-                Level { count: 6, duration: Duration::from_secs(20) },
-                Level { count: 7, duration: Duration::from_secs(18) },
-                Level { count: 7, duration: Duration::from_secs(16) },
-                Level { count: 8, duration: Duration::from_secs(14) },
-                Level { count: 8, duration: Duration::from_secs(12) },
-                Level { count: 9, duration: Duration::from_secs(10) },
-                Level { count: 9, duration: Duration::from_secs(8) },
+                Level {
+                    count: 3,
+                    duration: Duration::from_secs(36),
+                },
+                Level {
+                    count: 3,
+                    duration: Duration::from_secs(34),
+                },
+                Level {
+                    count: 3,
+                    duration: Duration::from_secs(32),
+                },
+                Level {
+                    count: 4,
+                    duration: Duration::from_secs(30),
+                },
+                Level {
+                    count: 4,
+                    duration: Duration::from_secs(28),
+                },
+                Level {
+                    count: 5,
+                    duration: Duration::from_secs(26),
+                },
+                Level {
+                    count: 5,
+                    duration: Duration::from_secs(24),
+                },
+                Level {
+                    count: 6,
+                    duration: Duration::from_secs(22),
+                },
+                Level {
+                    count: 6,
+                    duration: Duration::from_secs(20),
+                },
+                Level {
+                    count: 7,
+                    duration: Duration::from_secs(18),
+                },
+                Level {
+                    count: 7,
+                    duration: Duration::from_secs(16),
+                },
+                Level {
+                    count: 8,
+                    duration: Duration::from_secs(14),
+                },
+                Level {
+                    count: 8,
+                    duration: Duration::from_secs(12),
+                },
+                Level {
+                    count: 9,
+                    duration: Duration::from_secs(10),
+                },
+                Level {
+                    count: 9,
+                    duration: Duration::from_secs(8),
+                },
             ],
         }
     }
@@ -202,9 +247,11 @@ impl BeepTestState {
                             self.snapshot.current_period = BeepTestPeriod::Level(level_idx + 1);
                             self.snapshot.lap_count = 1;
                             self.snapshot.secs_in_period = next_level.duration.as_secs() as u32;
-                            self.snapshot.total_time_in_period = next_level.duration.as_secs() as u32;
+                            self.snapshot.total_time_in_period =
+                                next_level.duration.as_secs() as u32;
                             if let Some(future_level) = self.config.levels.get(level_idx + 1) {
-                                self.snapshot.time_in_next_period = future_level.duration.as_secs() as u32;
+                                self.snapshot.time_in_next_period =
+                                    future_level.duration.as_secs() as u32;
                             }
                         } else {
                             // Test complete, stop
@@ -267,9 +314,7 @@ pub fn make_info_container<'a>(snapshot: &BeepTestSnapshot) -> Container<'a, Mes
     .style(light_gray_container)
 }
 
-pub fn make_button<'a>(
-    label: impl text::IntoFragment<'a>,
-) -> Button<'a, Message> {
+pub fn make_button<'a>(label: impl text::IntoFragment<'a>) -> Button<'a, Message> {
     button(centered_text(label))
         .padding(PADDING)
         .height(Length::Fixed(MIN_BUTTON_SIZE))

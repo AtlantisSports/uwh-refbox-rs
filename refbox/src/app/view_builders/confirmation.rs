@@ -96,11 +96,7 @@ pub(in super::super) fn build_confirmation_page<'a>(
             vec![(fl!("ok"), green_button, ConfirmationOption::GoBack)]
         }
         ConfirmationKind::BeepTestBackToRefbox => vec![
-            (
-                "No".to_string(),
-                green_button,
-                ConfirmationOption::GoBack,
-            ),
+            ("No".to_string(), green_button, ConfirmationOption::GoBack),
             (
                 "Yes".to_string(),
                 red_button,
@@ -108,11 +104,7 @@ pub(in super::super) fn build_confirmation_page<'a>(
             ),
         ],
         ConfirmationKind::EnterBeepTestMode => vec![
-            (
-                "CANCEL".to_string(),
-                red_button,
-                ConfirmationOption::GoBack,
-            ),
+            ("CANCEL".to_string(), red_button, ConfirmationOption::GoBack),
             (
                 "CONTINUE".to_string(),
                 green_button,

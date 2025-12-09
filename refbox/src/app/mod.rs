@@ -36,8 +36,8 @@ mod view_data;
 use view_data::ViewData;
 
 mod view_builders;
-use view_builders::*;
 use view_builders::beep_test::BeepTestState;
+use view_builders::*;
 
 mod message;
 use message::*;
@@ -1464,8 +1464,10 @@ impl RefBoxApp {
                             }
 
                             drop(tm);
-                            
-                            if edited_settings.mode == Mode::BeepTest && self.config.mode != Mode::BeepTest {
+
+                            if edited_settings.mode == Mode::BeepTest
+                                && self.config.mode != Mode::BeepTest
+                            {
                                 // Show confirmation before entering BeepTest mode
                                 AppState::ConfirmationPage(ConfirmationKind::EnterBeepTestMode)
                             } else {
@@ -1506,8 +1508,10 @@ impl RefBoxApp {
                             }
 
                             drop(tm);
-                            
-                            if edited_settings.mode == Mode::BeepTest && self.config.mode != Mode::BeepTest {
+
+                            if edited_settings.mode == Mode::BeepTest
+                                && self.config.mode != Mode::BeepTest
+                            {
                                 // Show confirmation before entering BeepTest mode
                                 AppState::ConfirmationPage(ConfirmationKind::EnterBeepTestMode)
                             } else {
@@ -1518,10 +1522,12 @@ impl RefBoxApp {
                         }
                     } else {
                         drop(tm);
-                        
+
                         // Check if the mode is changing to BeepTest
                         let edited_settings = self.edited_settings.as_ref().unwrap();
-                        if edited_settings.mode == Mode::BeepTest && self.config.mode != Mode::BeepTest {
+                        if edited_settings.mode == Mode::BeepTest
+                            && self.config.mode != Mode::BeepTest
+                        {
                             // Show confirmation before entering BeepTest mode
                             AppState::ConfirmationPage(ConfirmationKind::EnterBeepTestMode)
                         } else {
@@ -1953,9 +1959,7 @@ impl RefBoxApp {
                         confy::store(APP_NAME, None, &self.config).unwrap();
                         (AppState::MainPage, Task::none())
                     }
-                    ConfirmationOption::BackToRefbox => {
-                        (AppState::MainPage, Task::none())
-                    }
+                    ConfirmationOption::BackToRefbox => (AppState::MainPage, Task::none()),
                 };
                 self.app_state = app_state;
                 trace!("AppState changed to {:?}", self.app_state);
@@ -2258,24 +2262,16 @@ impl RefBoxApp {
                 tx.blocking_send(tm).unwrap();
                 Task::none()
             }
-            Message::BeepTestStart => {
-                self.beep_test_state.update(Message::BeepTestStart)
-            }
-            Message::BeepTestStop => {
-                self.beep_test_state.update(Message::BeepTestStop)
-            }
-            Message::BeepTestReset => {
-                self.beep_test_state.update(Message::BeepTestReset)
-            }
-            Message::BeepTestUpdate => {
-                self.beep_test_state.update(Message::BeepTestUpdate)
-            }
+            Message::BeepTestStart => self.beep_test_state.update(Message::BeepTestStart),
+            Message::BeepTestStop => self.beep_test_state.update(Message::BeepTestStop),
+            Message::BeepTestReset => self.beep_test_state.update(Message::BeepTestReset),
+            Message::BeepTestUpdate => self.beep_test_state.update(Message::BeepTestUpdate),
             Message::BeepTestBackToRefbox => {
                 self.app_state = AppState::ConfirmationPage(ConfirmationKind::BeepTestBackToRefbox);
                 Task::none()
             }
             Message::BeepTestShowSettings => {
-                // For now, we'll just implement a placeholder - 
+                // For now, we'll just implement a placeholder -
                 // TODO: Implement proper settings view
                 Task::none()
             }
@@ -2406,8 +2402,7 @@ impl RefBoxApp {
         if self.config.mode == Mode::BeepTest {
             Subscription::batch(vec![
                 Subscription::run(time_updater),
-                iced::time::every(Duration::from_millis(100))
-                    .map(|_| Message::BeepTestUpdate),
+                iced::time::every(Duration::from_millis(100)).map(|_| Message::BeepTestUpdate),
             ])
         } else {
             Subscription::run(time_updater)

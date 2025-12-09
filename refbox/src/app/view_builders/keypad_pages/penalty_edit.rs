@@ -41,7 +41,7 @@ pub(super) fn make_penalty_edit_page<'a>(
             PenaltyKind::FourMinute,
             PenaltyKind::FiveMinute,
         ),
-        
+
         Mode::BeepTest => (
             PenaltyKind::TwoMinute,
             PenaltyKind::FourMinute,

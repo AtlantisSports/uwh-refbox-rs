@@ -1,15 +1,17 @@
 use super::*;
+use crate::app::view_builders::shared_elements::{
+    bool_string, get_team_name, limit_team_name_len, time_string,
+};
 use iced::{
     Element, Length,
     alignment::Horizontal,
-    widget::{button, column, container, horizontal_space, row, text, Space},
+    widget::{Space, button, column, container, horizontal_space, row, text},
 };
 use uwh_common::{
     config::Game as GameConfig,
     game_snapshot::{GamePeriod, GameSnapshot},
     uwhportal::schedule::{GameList, TeamList},
 };
-use crate::app::view_builders::shared_elements::{time_string, bool_string, get_team_name, limit_team_name_len};
 
 #[derive(Debug, Clone)]
 struct TableRow {
@@ -52,13 +54,7 @@ pub(in super::super) fn build_game_info_page<'a>(
     };
 
     // Create a container with the table from build_details_table
-    let details_table_rows = build_details_table(
-        snapshot,
-        config,
-        using_uwhportal,
-        games,
-        teams,
-    );
+    let details_table_rows = build_details_table(snapshot, config, using_uwhportal, games, teams);
 
     // Convert table rows to visual elements
     let mut details_column = column![]
@@ -189,11 +185,7 @@ pub(in super::super) fn build_game_info_page<'a>(
             ]
         };
 
-        details_column = details_column.push(
-            row_element
-                .spacing(1)
-                .width(Length::Fill)
-        );
+        details_column = details_column.push(row_element.spacing(1).width(Length::Fill));
     }
 
     let config_table = button(details_column)

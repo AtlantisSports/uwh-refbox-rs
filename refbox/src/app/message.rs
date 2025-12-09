@@ -184,7 +184,11 @@ impl Message {
             | Self::AutoConfirmScores(_)
             | Self::StopClock
             | Self::StartClock => false,
-            Self::BeepTestStart | Self::BeepTestStop | Self::BeepTestReset | Self::BeepTestBackToRefbox | Self::BeepTestShowSettings => false,
+            Self::BeepTestStart
+            | Self::BeepTestStop
+            | Self::BeepTestReset
+            | Self::BeepTestBackToRefbox
+            | Self::BeepTestShowSettings => false,
         }
     }
 }

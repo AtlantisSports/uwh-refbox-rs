@@ -65,8 +65,7 @@ fn check_for_multiple_standings(schedule: &Schedule) {
                 .collect();
             if standings_groups.len() > 1 {
                 warn!(
-                    "Game {} is part of multiple groups that calculate standings: {:?}",
-                    game, standings_groups
+                    "Game {game} is part of multiple groups that calculate standings: {standings_groups:?}"
                 );
             }
         }
@@ -174,9 +173,9 @@ fn format_game_numbers(mut numbers: Vec<GameNumber>) -> String {
 
 fn format_range(start: &String, end: &String) -> String {
     if start == end {
-        format!("{}, ", start)
+        format!("{start}, ")
     } else {
-        format!("{}-{}, ", start, end)
+        format!("{start}-{end}, ")
     }
 }
 

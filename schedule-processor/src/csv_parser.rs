@@ -342,6 +342,7 @@ pub(crate) fn parse_games(
             dark,
             light,
             start_time,
+            referee_assignments: None,
             description: None,
         };
         debug!("Parsed game: {}", game.number);
@@ -522,8 +523,7 @@ pub(crate) fn parse_group(
         "exclusion" | "excluded" => {
             if !game_numbers.is_empty() {
                 return Err(format!(
-                    "Group {name} with Exclusion standings calculation cannot have game numbers specified. It currently has: {:?}",
-                    game_numbers
+                    "Group {name} with Exclusion standings calculation cannot have game numbers specified. It currently has: {game_numbers:?}"
                 ));
             }
             if let (Some(excluded_teams), Some(starting_ranks)) =

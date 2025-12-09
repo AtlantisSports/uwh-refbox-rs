@@ -49,11 +49,11 @@ impl fmt::Display for ScheduledTeam {
         if let Some(id) = &self.team_id {
             write!(f, "Team with ID {}", id.full())
         } else if let Some(name) = &self.pending_assignment_name {
-            write!(f, "Pending Assignment {}", name)
+            write!(f, "Pending Assignment {name}")
         } else if let Some(result_of) = &self.result_of {
             match result_of {
-                ResultOf::Winner { game_number } => write!(f, "Winner of game {}", game_number),
-                ResultOf::Loser { game_number } => write!(f, "Loser of game {}", game_number),
+                ResultOf::Winner { game_number } => write!(f, "Winner of game {game_number}"),
+                ResultOf::Loser { game_number } => write!(f, "Loser of game {game_number}"),
             }
         } else if let Some(seeded_by) = &self.seeded_by {
             write!(f, "Group {} Seed {}", seeded_by.group, seeded_by.number)
@@ -184,6 +184,18 @@ pub struct SeededBy {
 
 pub type GameNumber = String;
 
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RefereeAssignment {
+    pub identifier: String,
+    pub role: String,
+    #[serde(rename = "userId")]
+    pub user_id: String,
+    #[serde(rename = "teamId")]
+    pub team_id: Option<TeamId>,
+    pub comments: Option<String>,
+}
+
 #[serde_with::skip_serializing_none]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Game {
@@ -195,6 +207,8 @@ pub struct Game {
     pub court: String,
     #[serde(with = "item_name", rename = "timingRule")]
     pub timing_rule: String,
+    #[serde(rename = "refereeAssignments")]
+    pub referee_assignments: Option<Vec<RefereeAssignment>>,
     pub description: Option<String>,
 }
 
@@ -745,8 +759,9 @@ mod tests {
             dark: ScheduledTeam::new_team_id(TeamId::from_partial("2-A")),
             start_time: datetime!(2023-08-07 0:00 UTC),
             court: "A".to_string(),
-            description: None,
             timing_rule: "RR".to_string(),
+            referee_assignments: None,
+            description: None,
         };
         let serialized = serde_json::to_string(&game).unwrap();
         assert_eq!(
@@ -767,8 +782,9 @@ mod tests {
                 dark: ScheduledTeam::new_team_id(TeamId::from_partial("2-A")),
                 start_time: datetime!(2023-08-07 0:00 UTC),
                 court: "A".to_string(),
-                description: None,
                 timing_rule: "RR".to_string(),
+                referee_assignments: None,
+                description: None,
             }
         );
     }
@@ -995,8 +1011,9 @@ mod tests {
                     dark: ScheduledTeam::new_team_id(TeamId::from_partial("2-A")),
                     start_time: datetime!(2023-08-07 0:00 UTC),
                     court: "A".to_string(),
-                    description: None,
                     timing_rule: "RR".to_string(),
+                    referee_assignments: None,
+                    description: None,
                 },
                 Game {
                     number: "2".to_string(),
@@ -1004,8 +1021,9 @@ mod tests {
                     dark: ScheduledTeam::new_pending_assignment_name("Team B"),
                     start_time: datetime!(2023-08-07 1:00 UTC),
                     court: "A".to_string(),
-                    description: None,
                     timing_rule: "RR".to_string(),
+                    referee_assignments: None,
+                    description: None,
                 },
                 Game {
                     number: "3".to_string(),
@@ -1013,8 +1031,9 @@ mod tests {
                     dark: ScheduledTeam::new_seeded_by(2, "A Group"),
                     start_time: datetime!(2023-08-07 2:00 UTC),
                     court: "A".to_string(),
-                    description: None,
                     timing_rule: "RR".to_string(),
+                    referee_assignments: None,
+                    description: None,
                 },
                 Game {
                     number: "4".to_string(),
@@ -1022,8 +1041,9 @@ mod tests {
                     dark: ScheduledTeam::new_loser_of("2"),
                     start_time: datetime!(2023-08-07 3:00 UTC),
                     court: "A".to_string(),
-                    description: None,
                     timing_rule: "RR".to_string(),
+                    referee_assignments: None,
+                    description: None,
                 },
             ]
             .into_iter()
@@ -1134,7 +1154,7 @@ mod tests {
         let mut default_remote_name: Option<String> = None;
         for remote in repo.remotes().unwrap().iter() {
             let remote_name = remote.unwrap();
-            let remote_ref = format!("refs/remotes/{}/{}", remote_name, branch_name);
+            let remote_ref = format!("refs/remotes/{remote_name}/{branch_name}");
 
             // Check if the remote_ref exists
             if repo.revparse_single(&remote_ref).is_ok() {
@@ -1173,7 +1193,7 @@ mod tests {
 
         // Get the OID (object ID) of the HEAD commit for the file in the local repository
         let file_oid = repo
-            .revparse_single(&format!("HEAD:{}", POSTMAN_JSON_PATH))
+            .revparse_single(&format!("HEAD:{POSTMAN_JSON_PATH}"))
             .unwrap()
             .id();
 
@@ -1188,7 +1208,7 @@ mod tests {
         // Compare the OIDs to check if the file is up to date
         assert_eq!(file_oid, default_remote_file_oid);
 
-        let file = File::open(&format!("{UWHPORTAL_REPO_PATH}/{POSTMAN_JSON_PATH}")).unwrap();
+        let file = File::open(format!("{UWHPORTAL_REPO_PATH}/{POSTMAN_JSON_PATH}")).unwrap();
         let reader = BufReader::new(file);
         let postman: serde_json::Value = serde_json::from_reader(reader).unwrap();
 

@@ -126,6 +126,20 @@ pub fn parse_csv(
         }
     }
 
+    // Normalize seeded group references in Final Results (ListOfPlacements) to full group names
+    for group in groups.iter_mut() {
+        if let Some(FinalResults::ListOfPlacements { list_of_placements }) = &mut group.final_results {
+            for placement in list_of_placements.iter_mut() {
+                if let Some(SeededBy { group, .. }) = &mut placement.seeded_by {
+                    if let Some(name) = group_name_map.get(group.as_str()) {
+                        *group = name.clone();
+                    }
+                }
+            }
+        }
+    }
+
+
     let mut timing_rules = vec![];
     for (name, values) in timing_rules_raw {
         let mut rule_string = format!("{{\"name\": \"{name}\", ");
@@ -540,26 +554,63 @@ pub(crate) fn parse_group(
         _ => return Err(format!("Invalid Standings cell: {standings_type:?}")),
     };
 
-    let final_results = row
+    let final_results_cell = row
         .get(indices.final_results)
         .ok_or("Missing Final Results column")?
         .trim();
-    let final_results = match final_results {
-        "Standings" => Some(FinalResults::Standings),
-        list => {
-            if list.is_empty() {
-                None
+    let final_results = if final_results_cell.is_empty() {
+        None
+    } else if final_results_cell.eq_ignore_ascii_case("Standings")
+        || final_results_cell.eq_ignore_ascii_case("Seeds")
+    {
+        // Allow "Seeds" as a synonym for using standings (seed order as final results)
+        Some(FinalResults::Standings)
+    } else {
+        {
+            // Tokenize, then map each token into either a game result or a seeded placement.
+            let tokens: Vec<&str> = final_results_cell
+                .split(',')
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .collect();
+
+            let mut any_seed = false;
+            let mut placements: Vec<FinalPlacingSource> = Vec::new();
+            for t in tokens {
+                if let Some(caps) = GROUP_SEED_PATTERN.captures(t) {
+                    let group = caps
+                        .get(3)
+                        .ok_or_else(|| format!("Missing group in Final Results token: {t}"))?
+                        .as_str()
+                        .to_string();
+                    let number: u32 = caps
+                        .get(4)
+                        .ok_or_else(|| format!("Missing seed number in Final Results token: {t}"))?
+                        .as_str()
+                        .parse()
+                        .map_err(|_| format!("Invalid seed number in Final Results token: {t}"))?;
+                    placements.push(FinalPlacingSource {
+                        result_of: None,
+                        seeded_by: Some(SeededBy { number, group }),
+                    });
+                    any_seed = true;
+                } else if WINNER_LOSER_PATTERN.captures(t).is_some() {
+                    let ro = parse_final_results_team(t)
+                        .map_err(|e| format!("Failed to parse Final Results cell: {e}"))?;
+                    placements.push(FinalPlacingSource { result_of: Some(ro), seeded_by: None });
+                } else {
+                    return Err(format!("Unrecognized Final Results token: {t}"));
+                }
+            }
+
+            if any_seed {
+                Some(FinalResults::ListOfPlacements { list_of_placements: placements })
             } else {
                 Some(FinalResults::ListOfGames {
-                    list_of_games: list
-                        .split(',')
-                        .filter_map(|s| {
-                            let s = s.trim();
-                            if s.is_empty() { None } else { Some(s) }
-                        })
-                        .map(parse_final_results_team)
-                        .collect::<Result<Vec<_>, _>>()
-                        .map_err(|e| format!("Failed to parse Final Results cell: {e}"))?,
+                    list_of_games: placements
+                        .into_iter()
+                        .map(|p| p.result_of.expect("only result_of when any_seed=false"))
+                        .collect(),
                 })
             }
         }
@@ -591,5 +642,57 @@ pub(crate) fn parse_timing_rule_row(
         return None;
     }
 
+
+
     Some((name, format!("\"{field}\": {}", value.to_lowercase())))
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_csv_allows_seeds_in_final_results_cell() {
+        let csv = include_str!(
+            "../Mock Schedules for testing/2025 3x3 Tournament Organization Tool - UWHPortal (12).csv"
+        );
+        let offset = UtcOffset::UTC;
+        let event_id = EventId::from_partial("TEST");
+        let parsed = parse_csv(csv, offset, event_id);
+        assert!(parsed.is_ok(), "CSV parse failed: {:?}", parsed.err());
+    }
+}
+
+    #[test]
+    fn parse_csv_emits_list_of_placements_when_seeds_present() {
+        let csv = include_str!(
+            "../Mock Schedules for testing/2025 3x3 Tournament Organization Tool - UWHPortal (12).csv"
+        );
+        let offset = UtcOffset::UTC;
+        let event_id = EventId::from_partial("TEST");
+        let parsed = parse_csv(csv, offset, event_id).expect("CSV should parse");
+
+        // Find at least one group that produced ListOfPlacements with at least one seededBy
+        let mut found = false;
+        for g in &parsed.groups {
+            if let Some(FinalResults::ListOfPlacements { list_of_placements }) = &g.final_results {
+                if list_of_placements.iter().any(|p| p.seeded_by.is_some()) {
+                    // Ensure seeded group names were normalized to full group names (exist in schedule)
+                    for p in list_of_placements.iter() {
+                        if let Some(sb) = &p.seeded_by {
+                            assert!(
+                                parsed.groups.iter().any(|gg| gg.name == sb.group),
+                                "SeededBy.group '{}' should match an existing group name",
+                                sb.group
+                            );
+                        }
+                    }
+                    found = true;
+                    break;
+                }
+            }
+        }
+        assert!(found, "Expected at least one ListOfPlacements group with seeded entries");
+    }
+

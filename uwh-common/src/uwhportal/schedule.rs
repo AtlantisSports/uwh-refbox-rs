@@ -182,6 +182,16 @@ pub struct SeededBy {
     pub group: String,
 }
 
+#[serde_with::skip_serializing_none]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FinalPlacingSource {
+    #[serde(rename = "resultOf")]
+    pub result_of: Option<ResultOf>,
+    #[serde(rename = "seededBy")]
+    pub seeded_by: Option<SeededBy>,
+}
+
+
 pub type GameNumber = String;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -403,7 +413,52 @@ pub enum FinalResults {
         #[serde(rename = "listOfGames")]
         list_of_games: Vec<ResultOf>,
     },
+    ListOfPlacements {
+        #[serde(rename = "listOfPlacements")]
+        list_of_placements: Vec<FinalPlacingSource>,
+    },
 }
+
+mod option_final_results {
+    use super::*;
+    use serde::{Deserialize, Deserializer};
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<FinalResults>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(tag = "type")]
+        enum FinalResultsHelper {
+            Standings,
+            ListOfGames {
+                #[serde(rename = "listOfGames")]
+                list_of_games: Vec<ResultOf>,
+            },
+            ListOfPlacements {
+                #[serde(rename = "listOfPlacements")]
+                list_of_placements: Vec<FinalPlacingSource>,
+            },
+            #[serde(other)]
+            Other,
+        }
+
+        // Accept null or missing as None by deserializing into Option<...>
+        let helper: Option<FinalResultsHelper> = Option::deserialize(deserializer)?;
+        Ok(match helper {
+            None => None,
+            Some(FinalResultsHelper::Standings) => Some(FinalResults::Standings),
+            Some(FinalResultsHelper::ListOfGames { list_of_games }) => {
+                Some(FinalResults::ListOfGames { list_of_games })
+            }
+            Some(FinalResultsHelper::ListOfPlacements { list_of_placements }) => {
+                Some(FinalResults::ListOfPlacements { list_of_placements })
+            }
+            Some(FinalResultsHelper::Other) => None,
+        })
+    }
+}
+
 
 #[serde_with::skip_serializing_none]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -417,7 +472,7 @@ pub struct Group {
     pub game_numbers: Vec<GameNumber>,
     #[serde(rename = "standingsCalculation", with = "option_standings_calculation")]
     pub standings_calculation: Option<StandingsCalculation>,
-    #[serde(rename = "finalResultsCalculation")]
+    #[serde(rename = "finalResultsCalculation", deserialize_with = "option_final_results::deserialize")]
     pub final_results: Option<FinalResults>,
 }
 
@@ -958,6 +1013,49 @@ mod tests {
                     },
                     ResultOf::Loser {
                         game_number: "4".to_string()
+                    },
+                ],
+            }
+        );
+    }
+
+
+    #[test]
+    fn test_serialize_list_of_placements_final_results() {
+        let final_results = FinalResults::ListOfPlacements {
+            list_of_placements: vec![
+                FinalPlacingSource {
+                    result_of: None,
+                    seeded_by: Some(SeededBy { number: 1, group: "GB_RR".to_string() }),
+                },
+                FinalPlacingSource {
+                    result_of: Some(ResultOf::Winner { game_number: "4".to_string() }),
+                    seeded_by: None,
+                },
+            ],
+        };
+        let serialized = serde_json::to_string(&final_results).unwrap();
+        assert_eq!(
+            serialized,
+            r#"{"type":"ListOfPlacements","listOfPlacements":[{"seededBy":{"number":1,"group":{"name":"GB_RR"}}},{"resultOf":{"type":"Winner","gameNumber":"4"}}]}"#
+        );
+    }
+
+    #[test]
+    fn test_deserialize_list_of_placements_final_results() {
+        let final_results_json = r#"{"type":"ListOfPlacements","listOfPlacements":[{"seededBy":{"number":1,"group":{"name":"GB_RR"}}},{"resultOf":{"type":"Winner","gameNumber":"4"}}]}"#;
+        let deserialized: FinalResults = serde_json::from_str(final_results_json).unwrap();
+        assert_eq!(
+            deserialized,
+            FinalResults::ListOfPlacements {
+                list_of_placements: vec![
+                    FinalPlacingSource {
+                        result_of: None,
+                        seeded_by: Some(SeededBy { number: 1, group: "GB_RR".to_string() }),
+                    },
+                    FinalPlacingSource {
+                        result_of: Some(ResultOf::Winner { game_number: "4".to_string() }),
+                        seeded_by: None,
                     },
                 ],
             }

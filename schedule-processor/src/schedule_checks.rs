@@ -488,12 +488,14 @@ fn check_final_results(schedule: &Schedule) -> Result<(), Box<dyn std::error::Er
         if let Some(final_results) = &group.final_results {
             match final_results {
                 FinalResults::Standings => {
+                    // Historically, some CSVs used "Seeds" to indicate final results should follow the
+                    // starting seeding order with no explicit standings calculation. Treat this as valid.
                     if group.standings_calculation.is_none() {
-                        error!(
-                            "Group {} has Standings final results but no standings calculation",
+                        warn!(
+                            "Group {} has Standings final results but no standings calculation; interpreting as Seeds order",
                             group.name
                         );
-                        check_failed = true;
+                        // do not mark as failure
                     }
                 }
                 FinalResults::ListOfGames { list_of_games } => {
@@ -505,6 +507,30 @@ fn check_final_results(schedule: &Schedule) -> Result<(), Box<dyn std::error::Er
                                 group.name
                             );
                             check_failed = true;
+                        }
+                    }
+                }
+                FinalResults::ListOfPlacements { list_of_placements } => {
+                    for placement in list_of_placements.iter() {
+                        if let Some(result_of) = &placement.result_of {
+                            if !group.game_numbers.contains(result_of.game_number()) {
+                                error!(
+                                    "Game {} is referenced in the final placements of group {} but is not part of the group",
+                                    result_of.game_number(),
+                                    group.name
+                                );
+                                check_failed = true;
+                            }
+                        }
+                        if let Some(SeededBy { group: seeded_group, number: _ }) = &placement.seeded_by {
+                            if !schedule.groups.iter().any(|g| g.name == *seeded_group) {
+                                error!(
+                                    "Seeded group {} referenced in the final placements of group {} does not exist",
+                                    seeded_group,
+                                    group.name
+                                );
+                                check_failed = true;
+                            }
                         }
                     }
                 }

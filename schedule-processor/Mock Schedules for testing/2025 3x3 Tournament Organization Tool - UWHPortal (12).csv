@@ -1,0 +1,104 @@
+Date,Time,Div,Pod,Rule,Game,Court,Light,Dark,,Group,Short Name,Filter Type,Ending Standings,,Games,Excluded Teams,Starting Seedings,Final Results,Timing Rule Name,Timing Rule Field,Timing Rule Value
+2025-12-11,18:00,---,---,BR,,1,Day 1 Warm Up,,,Men,M,Division,None,,"7,8,9,10,19,20,21,22,33,34,36,39,40,41,42,47,48,49,50,53,55,56,58,65,66,67,68,29,30,73,75,78,82,85,69,70,71,72",,,"W_85,L_85,W_82,L_82,W_78,L_78,W_75,L_75,W_73,L_73",RR,halfPlayDuration,480
+2025-12-11,18:30,B,BE_RR,RR, 1 ,1,Arrecife,Inder A,,Women,W,Division,None,,"3,5,6,15,17,18,31,32,35,37,38,43,44,45,51,52,54,57,59,60,63,64,25,74,76,79,81,84",,,"W_84,L_84,W_81,L_81, W_B Seed 1, W_B Seed 2, W_B Seed 3",RR,halfTimeDuration,120
+2025-12-11,18:55,W,W_RR,RR, 3 ,1,Afrika,229,,Beginner,B,Division,None,,"1,2,4,11,12,13,14,16,23,24,46,61,62,26,27,28,77,80,83",,,"W_83,L_83,W_80,L_80,W_77,L_77",RR,teamTimeoutCount,1
+2025-12-11,19:20,W,W_RR,RR, 5 ,1,Nereidas,Care Bears,,Women 5-7,W_B,Group/Pod,Standard,,"74,76,79",,,,RR,teamTimeoutsCountedPerHalf,FALSE
+2025-12-11,19:45,M,GB_RR,RR, 7 ,1,Multiverso,Colpensiones,,GA Round Robin,GA_RR,Group/Pod,Standard,,"8,10,20,22,34,36,40,42,48,50,30",,,,RR,teamTimeoutDuration,60
+2025-12-11,20:10,M,GB_RR,RR, 9 ,1,Todorico,Nova,,GB Round Robin,GB_RR,Group/Pod,Standard,,"7,9,19,21,33,39,41,47,49,29",,,,RR,last2minStopTime,FALSE
+2025-12-11,20:35,B,BE_RR,RR, 11 ,1,Inder B,Inder A,,Women Round Robin,W_RR,Group/Pod,Standard,,"3,5,6,15,17,18,31,32,35,37,38,43,44,45,51,52,54,57,59,60,25",,,,RR,overtimeAllowed,FALSE
+2025-12-11,21:00,---,---,BR,,1,End of Day 1 Games,,,Beginner Round Robin,BE_RR,Group/Pod,Standard,,"1,2,4,11,12,13,14,16,23,24,46,26,27,28",,,,RR,preOvertimeBreak,180
+2025-12-12,18:00,---,---,BR,,1,Day 2 Warmup,,,,,,,,,,,,RR,overtimeHalfPlayDuration,300
+2025-12-12,18:30,B,BE_RR,RR, 13 ,1,Inder B,Arrecife,,,,,,,,,,,RR,overtimeHalfTimeDuration,60
+2025-12-12,18:55,W,W_RR,RR, 15 ,1,Aquacrew,229,,,,,,,,,,,RR,suddenDeathAllowed,FALSE
+2025-12-12,19:20,W,W_RR,RR, 17 ,1,Nereidas,Hydroqueen 2.0,,,,,,,,,,,RR,preSuddenDeathDuration,60
+2025-12-12,19:45,M,GB_RR,RR, 19 ,1,Nova,Colpensiones,,,,,,,,,,,RR,minimumBreak,240
+2025-12-12,20:10,M,GB_RR,RR, 21 ,1,Todorico,The Hell Club,,,,,,,,,,,,,
+2025-12-12,20:35,B,BE_RR,RR, 23 ,1,Leviatanes,Arrecife,,,,,,,,,,,XO,halfPlayDuration,480
+2025-12-12,21:00,---,---,BR,,1,End of Day 2 Games,,,,,,,,,,,,XO,halfTimeDuration,120
+2025-12-13,8:30,---,---,BR,,1,Day 3 Warmup,,,,,,,,,,,,XO,teamTimeoutCount,1
+2025-12-13,9:00,W,W_RR,RR, 25 ,1,Aquacrew,Afrika,,,,,,,,,,,XO,teamTimeoutsCountedPerHalf,FALSE
+2025-12-13,9:25,B,BE_RR,RR, 27 ,1,Leviatanes,Inder B,,,,,,,,,,,XO,teamTimeoutDuration,60
+2025-12-13,9:50,M,GB_RR,RR, 29 ,1,Nova,Multiverso,,,,,,,,,,,XO,last2minStopTime,FALSE
+2025-12-13,10:15,W,W_RR,RR, 31 ,1,Care Bears,229,,,,,,,,,,,XO,overtimeAllowed,FALSE
+2025-12-13,10:40,M,GB_RR,RR, 33 ,1,The Hell Club,Colpensiones,,,,,,,,,,,XO,preOvertimeBreak,180
+2025-12-13,11:05,W,W_RR,RR, 35 ,1,Care Bears,Afrika,,,,,,,,,,,XO,overtimeHalfPlayDuration,300
+2025-12-13,11:30,W,W_RR,RR, 37 ,1,Hydroqueen 2.0,229,,,,,,,,,,,XO,overtimeHalfTimeDuration,60
+2025-12-13,11:55,M,GB_RR,RR, 39 ,1,The Hell Club,Multiverso,,,,,,,,,,,XO,suddenDeathAllowed,FALSE
+2025-12-13,12:20,---,---,BR,,1,100 min Break,,,,,,,,,,,,XO,preSuddenDeathDuration,60
+2025-12-13,14:00,M,GB_RR,RR, 41 ,1,Todorico,Colpensiones,,,,,,,,,,,XO,minimumBreak,240
+2025-12-13,14:25,W,W_RR,RR, 43 ,1,Care Bears,Aquacrew,,,,,,,,,,,,,
+2025-12-13,14:50,W,W_RR,RR, 45 ,1,Hydroqueen 2.0,Afrika,,,,,,,,,,,PO,halfPlayDuration,480
+2025-12-13,15:15,M,GB_RR,RR, 47 ,1,The Hell Club,Nova,,,,,,,,,,,PO,halfTimeDuration,120
+2025-12-13,15:40,M,GB_RR,RR, 49 ,1,Todorico,Multiverso,,,,,,,,,,,PO,teamTimeoutCount,1
+2025-12-13,16:05,W,W_RR,RR, 51 ,1,Hydroqueen 2.0,Aquacrew,,,,,,,,,,,PO,teamTimeoutsCountedPerHalf,FALSE
+2025-12-13,16:30,M,---,RR,53,1,GA_RR Seed 2,GB_RR Seed 5,,,,,,,,,,,PO,teamTimeoutDuration,60
+2025-12-13,17:00,M,---,RR,55,1,GA_RR Seed 3,GB_RR Seed 4,,,,,,,,,,,PO,last2minStopTime,FALSE
+2025-12-13,17:30,W,W_RR,RR,57,1,Hydroqueen 2.0,Care Bears,,,,,,,,,,,PO,overtimeAllowed,FALSE
+2025-12-13,18:00,W,W_RR,RR,59,1,Nereidas,Aquacrew,,,,,,,,,,,PO,preOvertimeBreak,180
+2025-12-13,18:30,B,---,RR,61,1,BE_RR Seed 1,BE_RR Seed 4,,,,,,,,,,,PO,overtimeHalfPlayDuration,300
+2025-12-13,19:00,W,---,RR,63,1,W_RR Seed 1,W_RR Seed 4,,,,,,,,,,,PO,overtimeHalfTimeDuration,60
+2025-12-13,19:30,M,---,RR,65,1,GA_RR Seed 1,L_55,,,,,,,,,,,PO,suddenDeathAllowed,TRUE
+2025-12-13,20:00,M,---,RR,67,1,W_53,W_58,,,,,,,,,,,PO,preSuddenDeathDuration,60
+2025-12-13,20:30,---,---,BR,,1,End of Day 3 Games,,,,,,,,,,,,PO,minimumBreak,240
+2025-12-13,12:20,---,---,BR,,1,100 min Break,,,,,,,,,,,,,,
+2025-12-14,8:30,---,---,BR,,1,Day 4 Warmup,,,,,,,,,,,,MD,halfPlayDuration,480
+2025-12-14,9:00,M,---,PO,69,1,W_65,W_68,,,,,,,,,,,MD,halfTimeDuration,120
+2025-12-14,9:30,M,---,PO,71,1,L_68,L_65,,,,,,,,,,,MD,teamTimeoutCount,1
+2025-12-14,10:00,M,---,PO,73,1,L_56,L_53,,,,,,,,,,,MD,teamTimeoutsCountedPerHalf,FALSE
+2025-12-14,10:30,W,W_B,PO,74,1,W_RR Seed 5,W_RR Seed 7,,,,,,,,,,,MD,teamTimeoutDuration,60
+2025-12-14,11:00,M,---,PO,75,1,L_71,L_72,,,,,,,,,,,MD,last2minStopTime,FALSE
+2025-12-14,11:30,W,W_B,PO,76,1,W_RR Seed 6,W_RR Seed 7,,,,,,,,,,,MD,overtimeAllowed,FALSE
+2025-12-14,12:00,B,---,PO,77,1,BE_RR Seed 5,BE_RR Seed 6,,,,,,,,,,,MD,preOvertimeBreak,180
+2025-12-14,12:30,M,---,PO,78,1,W_71,W_72,,,,,,,,,,,MD,overtimeHalfPlayDuration,300
+2025-12-14,13:00,W,W_B,PO,79,1,W_RR Seed 5,W_RR Seed 6,,,,,,,,,,,MD,overtimeHalfTimeDuration,60
+2025-12-14,13:30,B,---,MD,80,1,L_62,L_61,,,,,,,,,,,MD,suddenDeathAllowed,TRUE
+2025-12-14,14:00,W,---,MD,81,1,L_64,L_63,,,,,,,,,,,MD,preSuddenDeathDuration,60
+2025-12-14,14:30,M,---,MD,82,1,L_70,L_69,,,,,,,,,,,MD,minimumBreak,240
+2025-12-14,15:00,B,---,MD,83,1,W_61,W_62,,,,,,,,,,,,,
+2025-12-14,15:30,W,---,MD,84,1,W_63,W_64,,,,,,,,,,,,,
+2025-12-14,16:00,M,---,MD,85,1,W_69,W_70,,,,,,,,,,,,,
+2025-12-14,16:30,---,---,BR,,1,End of Day 4 Games,,,,,,,,,,,,,,
+2025-12-11,18:00,---,---,BR,,2,Day 1 Warm Up,,,,,,,,,,,,,,
+2025-12-11,18:30,B,BE_RR,RR, 2 ,2,Los Electrolits,Inder B,,,,,,,,,,,,,
+2025-12-11,18:55,B,BE_RR,RR, 4 ,2,San Luis Hs_B,Leviatanes,,,,,,,,,,,,,
+2025-12-11,19:20,W,W_RR,RR, 6 ,2,Tropicoquetas,Aquacrew,,,,,,,,,,,,,
+2025-12-11,19:45,M,GA_RR,RR, 8 ,2,Hello Afrika,Anunnakis,,,,,,,,,,,,,
+2025-12-11,20:10,M,GA_RR,RR, 10 ,2,San Luis Hs_M,Looney Tunes,,,,,,,,,,,,,
+2025-12-11,20:35,B,BE_RR,RR, 12 ,2,Los Electrolits,Leviatanes,,,,,,,,,,,,,
+2025-12-11,21:00,---,---,BR,,2,End of Day 1 Games,,,,,,,,,,,,,,
+2025-12-12,18:00,---,---,BR,,2,Day 2 Warmup,,,,,,,,,,,,,,
+2025-12-12,18:30,B,BE_RR,RR, 14 ,2,Leviatanes,Inder A,,,,,,,,,,,,,
+2025-12-12,18:55,B,BE_RR,RR, 16 ,2,San Luis Hs_B,Los Electrolits,,,,,,,,,,,,,
+2025-12-12,19:20,W,W_RR,RR, 18 ,2,Tropicoquetas,Care Bears,,,,,,,,,,,,,
+2025-12-12,19:45,M,GA_RR,RR, 20 ,2,Looney Tunes,Anunnakis,,,,,,,,,,,,,
+2025-12-12,20:10,M,GA_RR,RR, 22 ,2,San Luis Hs_M,Reverberados 4.0,,,,,,,,,,,,,
+2025-12-12,20:35,B,BE_RR,RR, 24 ,2,Los Electrolits,Inder A,,,,,,,,,,,,,
+2025-12-12,21:00,---,---,BR,,2,End of Day 2 Games,,,,,,,,,,,,,,
+2025-12-13,8:30,---,---,BR,,2,Day 3 Warmup,,,,,,,,,,,,,,
+2025-12-13,9:00,B,BE_RR,RR, 26 ,2,Los Electrolits,Arrecife,,,,,,,,,,,,,
+2025-12-13,9:25,B,BE_RR,RR, 28 ,2,San Luis Hs_B,Inder A,,,,,,,,,,,,,
+2025-12-13,9:50,M,GA_RR,RR, 30 ,2,Looney Tunes,Hello Afrika,,,,,,,,,,,,,
+2025-12-13,10:15,W,W_RR,RR, 32 ,2,Tropicoquetas,Hydroqueen 2.0,,,,,,,,,,,,,
+2025-12-13,10:40,M,GA_RR,RR, 34 ,2,Reverberados 4.0,Anunnakis,,,,,,,,,,,,,
+2025-12-13,11:05,M,GA_RR,RR, 36 ,2,San Luis Hs_M,Arrecife,,,,,,,,,,,,,
+2025-12-13,11:30,W,W_RR,RR, 38 ,2,Tropicoquetas,Nereidas,,,,,,,,,,,,,
+2025-12-13,11:55,M,GA_RR,RR, 40 ,2,Reverberados 4.0,Hello Afrika,,,,,,,,,,,,,
+2025-12-13,14:00,M,GA_RR,RR, 42 ,2,San Luis Hs_M,Anunnakis,,,,,,,,,,,,,
+2025-12-13,14:25,W,W_RR,RR, 44 ,2,Nereidas,229,,,,,,,,,,,,,
+2025-12-13,14:50,B,BE_RR,RR, 46 ,2,San Luis Hs_B,Inder B,,,,,,,,,,,,,
+2025-12-13,15:15,M,GA_RR,RR, 48 ,2,Reverberados 4.0,Looney Tunes,,,,,,,,,,,,,
+2025-12-13,15:40,M,GA_RR,RR, 50 ,2,San Luis Hs_M,Hello Afrika,,,,,,,,,,,,,
+2025-12-13,16:05,W,W_RR,RR, 52 ,2,Nereidas,Afrika,,,,,,,,,,,,,
+2025-12-13,16:30,W,W_RR,RR, 54 ,2,Tropicoquetas,229,,,,,,,,,,,,,
+2025-12-13,17:00,M,---,RR,56,2,GB_RR Seed 2,GA_RR Seed 5,,,,,,,,,,,,,
+2025-12-13,17:30,M,---,RR,58,2,GB_RR Seed 3,GA_RR Seed 4,,,,,,,,,,,,,
+2025-12-13,18:00,W,W_RR,RR,60,2,Tropicoquetas,Afrika,,,,,,,,,,,,,
+2025-12-13,18:30,B,---,RR,62,2,BE_RR Seed 2,BE_RR Seed 3,,,,,,,,,,,,,
+2025-12-13,19:00,W,---,RR,64,2,W_RR Seed 2,W_RR Seed 3,,,,,,,,,,,,,
+2025-12-13,19:30,M,---,RR,66,2,GB_RR Seed 1,L_58,,,,,,,,,,,,,
+2025-12-13,20:00,M,---,RR,68,2,W_56,W_55,,,,,,,,,,,,,
+2025-12-13,20:30,---,---,BR,,2,End of Day 3 Games,,,,,,,,,,,,,,
+2025-12-14,8:30,---,---,BR,,2,Day 4 Warmup,,,,,,,,,,,,,,
+2025-12-14,9:00,M,---,PO,70,2,W_66,W_67,,,,,,,,,,,,,
+2025-12-14,9:30,M,---,PO,72,2,L_67,L_66,,,,,,,,,,,,,
+2025-12-14,10:00,---,---,BR,,2,End of Day 4 Games,,,,,,,,,,,,,,

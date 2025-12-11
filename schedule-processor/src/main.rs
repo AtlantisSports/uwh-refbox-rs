@@ -108,6 +108,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     info!("Using URL: {site_url}");
+
+    // Offer Generate Example Sheets as a top-level option only for Mock environment
+    if site_choice == "Mock" {
+        let top_level_options = vec!["Continue to event selection", "Generate Example Sheets"];
+        let top_level_choice = Select::new("What would you like to do?", top_level_options)
+            .prompt()
+            .unwrap_or_else(|_| {
+                error!("No option selected. Exiting.");
+                std::process::exit(1);
+            });
+
+        if top_level_choice == "Generate Example Sheets" {
+            let output_dir = match FileDialog::new()
+                .set_title("Select output folder for example sheets")
+                .pick_folder()
+            {
+                Some(dir) => dir,
+                None => {
+                    error!("No output folder selected. Aborting.");
+                    std::process::exit(1);
+                }
+            };
+
+            // Choose sheet style
+            let style = match Select::new("Sheet style:", vec!["Detailed", "Simple", "Col_3x3"]).prompt() {
+                Ok("Simple") => SheetStyle::Simple,
+                Ok("Col_3x3") => SheetStyle::Col3x3,
+                Ok(_) => SheetStyle::Detailed,
+                Err(_) => SheetStyle::Detailed,
+            };
+
+            match generate_example_rule_sheets(&output_dir, style) {
+                Ok(()) => info!("Example sheets generated in {}", output_dir.display()),
+                Err(e) => error!("Failed to generate example sheets: {e}"),
+            }
+            return Ok(());
+        }
+    }
+
     info!("Fetching event list from uwhportal...");
 
     let mut portal_client = UwhPortalClient::new(
@@ -192,7 +231,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        let choices = if team_map.is_empty() {
+        let mut choices = if team_map.is_empty() {
             vec![
                 StepChoice::LoadSchedule,
                 StepChoice::MapTeams,
@@ -202,7 +241,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 StepChoice::DumpScheduleJson,
                 StepChoice::ResolveCoinTosses,
                 StepChoice::GenerateScoreSheets,
-                StepChoice::GenerateExampleSheets,
                 StepChoice::SaveTeamMapDisabled,
                 StepChoice::PrintTeamMapDisabled,
                 StepChoice::Exit,
@@ -217,12 +255,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 StepChoice::DumpScheduleJson,
                 StepChoice::ResolveCoinTosses,
                 StepChoice::GenerateScoreSheets,
-                StepChoice::GenerateExampleSheets,
                 StepChoice::SaveTeamMap,
                 StepChoice::PrintTeamMap,
                 StepChoice::Exit,
             ]
         };
+
+        // Only add GenerateExampleSheets option for Mock environment
+        if site_choice == "Mock" {
+            let insert_pos = choices.iter().position(|c| *c == StepChoice::Exit).unwrap_or(choices.len());
+            choices.insert(insert_pos, StepChoice::GenerateExampleSheets);
+        }
 
         let step_choice = Select::new("What would you like to do next?", choices)
             .prompt()
@@ -841,53 +884,71 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 };
 
-                let left_logo = {
-                    loop {
-                        let p = FileDialog::new()
-                            .add_filter("Images", &["png", "jpg", "jpeg", "svg"])
-                            .set_title("Select sanctioning body logo image file (left) - optional")
-                            .pick_file();
-                        match p {
-                            Some(p) if p.is_file() => break Some(p),
-                            Some(p) if p.is_dir() => {
-                                error!("Selected a folder. Please select an image file.");
-                                continue;
-                            }
-                            Some(_) => break None,
-                            None => break None,
-                        }
-                    }
-                };
-                let right_logo = {
-                    loop {
-                        let p = FileDialog::new()
-                            .add_filter("Images", &["png", "jpg", "jpeg", "svg"])
-                            .set_title("Select tournament logo image file (right) - optional")
-                            .pick_file();
-                        match p {
-                            Some(p) if p.is_file() => break Some(p),
-                            Some(p) if p.is_dir() => {
-                                error!("Selected a folder. Please select an image file.");
-                                continue;
-                            }
-                            Some(_) => break None,
-                            None => break None,
-                        }
-                    }
-                };
-
-                // Ask for referee schedule CSV (optional) per user preference
-                let ref_csv_path = FileDialog::new()
-                    .add_filter("CSV files", &["csv"])
-                    .set_title("Select Referee Schedule CSV (optional)")
-                    .pick_file();
-
-                // Choose sheet style
-                let style = match Select::new("Sheet style:", vec!["Detailed", "Simple"]).prompt() {
+                // Choose sheet style first
+                let style = match Select::new("Sheet style:", vec!["Detailed", "Simple", "Col_3x3"]).prompt() {
                     Ok("Simple") => SheetStyle::Simple,
+                    Ok("Col_3x3") => SheetStyle::Col3x3,
                     Ok(_) => SheetStyle::Detailed,
                     Err(_) => SheetStyle::Detailed,
                 };
+
+                // Only ask for logos if using Detailed style
+                let (left_logo, right_logo) = if style == SheetStyle::Detailed {
+                    let left = {
+                        loop {
+                            let p = FileDialog::new()
+                                .add_filter("Images", &["png", "jpg", "jpeg", "svg"])
+                                .set_title("Select sanctioning body logo image file (left) - optional")
+                                .pick_file();
+                            match p {
+                                Some(p) if p.is_file() => break Some(p),
+                                Some(p) if p.is_dir() => {
+                                    error!("Selected a folder. Please select an image file.");
+                                    continue;
+                                }
+                                Some(_) => break None,
+                                None => break None,
+                            }
+                        }
+                    };
+                    let right = {
+                        loop {
+                            let p = FileDialog::new()
+                                .add_filter("Images", &["png", "jpg", "jpeg", "svg"])
+                                .set_title("Select tournament logo image file (right) - optional")
+                                .pick_file();
+                            match p {
+                                Some(p) if p.is_file() => break Some(p),
+                                Some(p) if p.is_dir() => {
+                                    error!("Selected a folder. Please select an image file.");
+                                    continue;
+                                }
+                                Some(_) => break None,
+                                None => break None,
+                            }
+                        }
+                    };
+                    (left, right)
+                } else {
+                    (None, None)
+                };
+
+                // Ask if user wants to include referee names
+                let include_referees = Confirm::new("Include referee names on the scoresheet?")
+                    .with_default(true)
+                    .prompt()
+                    .unwrap_or(true);
+
+                // Ask for referee schedule CSV only if user wants to include referee names
+                let ref_csv_path = if include_referees {
+                    FileDialog::new()
+                        .add_filter("CSV files", &["csv"])
+                        .set_title("Select Referee Schedule CSV (optional)")
+                        .pick_file()
+                } else {
+                    None
+                };
+
                 // If a Referee CSV is provided, allow choosing portal display names instead of CSV names
                 let prefer_portal_officials = if ref_csv_path.is_some() {
                     Confirm::new("Use portal display names instead of names from the Referee CSV?")
@@ -1037,7 +1098,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         continue 'outer;
                     }
                 };
-                match generate_example_rule_sheets(&output_dir) {
+
+                // Choose sheet style
+                let style = match Select::new("Sheet style:", vec!["Detailed", "Simple", "Col_3x3"]).prompt() {
+                    Ok("Simple") => SheetStyle::Simple,
+                    Ok("Col_3x3") => SheetStyle::Col3x3,
+                    Ok(_) => SheetStyle::Detailed,
+                    Err(_) => SheetStyle::Detailed,
+                };
+
+                match generate_example_rule_sheets(&output_dir, style) {
                     Ok(()) => info!("Example sheets generated in {}", output_dir.display()),
                     Err(e) => error!("Failed to generate example sheets: {e}"),
                 }

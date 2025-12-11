@@ -803,6 +803,73 @@ impl UwhPortalClient {
             }
         }
     }
+
+    pub fn get_team_roster(
+        &self,
+        team_id: &TeamId,
+    ) -> impl std::future::Future<Output = Result<(Vec<(Option<u8>, String)>, Option<String>), Box<dyn Error>>> + use<>
+    {
+        let url = format!(
+            "{}/api/admin/get-event-team",
+            self.base_url
+        );
+        let team_id_full = team_id.full().to_string();
+        let request = self
+            .client
+            .get(&url)
+            .query(&[("teamId", &team_id_full)])
+            .send();
+        async move {
+            let response = request.await?;
+            if response.status() == StatusCode::OK {
+                let body = response.json::<serde_json::Value>().await?;
+                let mut players = Vec::new();
+                let mut captain_name: Option<String> = None;
+
+                if let Some(roster) = body.get("roster").and_then(|v| v.as_array()) {
+                    for member in roster {
+                        let number = member.get("capNumber").and_then(|v| v.as_u64()).map(|n| n as u8);
+                        // Use rosterName if available, otherwise use username
+                        let roster_name = member
+                            .get("rosterName")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.trim())
+                            .filter(|s| !s.is_empty());
+                        let username = member
+                            .get("username")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.trim())
+                            .filter(|s| !s.is_empty());
+                        let name = roster_name.or(username).unwrap_or("").to_string();
+
+                        // Check if this player is a captain
+                        if let Some(roles) = member.get("roles").and_then(|v| v.as_array()) {
+                            if roles.iter().any(|r| r.as_str() == Some("Captain")) {
+                                captain_name = Some(name.clone());
+                            }
+                        }
+
+                        // Only add players that have a name or number
+                        if !name.is_empty() || number.is_some() {
+                            players.push((number, name));
+                        }
+                    }
+                }
+                // Sort by number (players with numbers first, then by number)
+                players.sort_by(|a, b| match (a.0, b.0) {
+                    (Some(num_a), Some(num_b)) => num_a.cmp(&num_b),
+                    (Some(_), None) => std::cmp::Ordering::Less,
+                    (None, Some(_)) => std::cmp::Ordering::Greater,
+                    (None, None) => a.1.cmp(&b.1),
+                });
+                Ok((players, captain_name))
+            } else {
+                let body = response.text().await?;
+                Err(Box::new(ApiError::new(body)))?
+            }
+        }
+    }
+
     pub fn get_coin_flips(
         &self,
         event_slug: &str,

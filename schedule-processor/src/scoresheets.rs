@@ -9,8 +9,20 @@ use time::{
 };
 use uwh_common::uwhportal::UwhPortalClient;
 use uwh_common::uwhportal::schedule::{
-    DateRange, Event, EventId, Game, ScheduledTeam, TeamList, TimingRule,
+    DateRange, Event, EventId, Game, ScheduledTeam, TeamList, TimingRule, TeamId,
 };
+
+#[derive(Clone, Debug)]
+pub struct PlayerInfo {
+    pub number: Option<u8>,
+    pub name: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct TeamRosterInfo {
+    pub players: Vec<PlayerInfo>,
+    pub captain: Option<String>,
+}
 
 #[derive(Debug)]
 struct AuthRequiredError;
@@ -26,6 +38,7 @@ impl std::error::Error for AuthRequiredError {}
 pub enum SheetStyle {
     Detailed,
     Simple,
+    Col3x3,
 }
 
 // Simple container for user inputs
@@ -148,6 +161,21 @@ pub async fn generate_scoresheets_for_event(
 
         let tr = find_timing_rule(game, csv_schedule, &schedule)?;
 
+        // Fetch rosters for Col3x3 scoresheet
+        let (black_roster, white_roster) = if matches!(inputs.style, SheetStyle::Col3x3) {
+            log::info!("Fetching rosters for game {}", num);
+            let black = fetch_team_roster(&*portal_client, game.dark.assigned()).await;
+            log::info!("Black team roster: {} players, captain: {:?}", black.players.len(), black.captain);
+            let white = fetch_team_roster(&*portal_client, game.light.assigned()).await;
+            log::info!("White team roster: {} players, captain: {:?}", white.players.len(), white.captain);
+            (black, white)
+        } else {
+            (
+                TeamRosterInfo { players: Vec::new(), captain: None },
+                TeamRosterInfo { players: Vec::new(), captain: None },
+            )
+        };
+
         let html = match inputs.style {
             SheetStyle::Detailed => render_html(
                 event,
@@ -174,6 +202,20 @@ pub async fn generate_scoresheets_for_event(
                 &black_suffix,
                 &black_name,
                 &officials,
+            ),
+            SheetStyle::Col3x3 => render_html_col3x3(
+                event,
+                num,
+                game,
+                csv_schedule.or(Some(&schedule)),
+                tr,
+                &white_suffix,
+                &white_name,
+                &black_suffix,
+                &black_name,
+                &officials,
+                &black_roster,
+                &white_roster,
             ),
         };
 
@@ -573,6 +615,41 @@ async fn resolve_officials(
     names
 }
 
+async fn fetch_team_roster(
+    portal_client: &UwhPortalClient,
+    team_id: Option<&TeamId>,
+) -> TeamRosterInfo {
+    if let Some(id) = team_id {
+        log::debug!("fetch_team_roster: Fetching roster for team {}", id);
+        match portal_client.get_team_roster(id).await {
+            Ok((players, captain)) => {
+                log::debug!("fetch_team_roster: Got {} players and captain: {:?}", players.len(), captain);
+                let player_infos = players
+                    .into_iter()
+                    .map(|(number, name)| PlayerInfo { number, name })
+                    .collect();
+                TeamRosterInfo {
+                    players: player_infos,
+                    captain,
+                }
+            }
+            Err(e) => {
+                log::warn!("Failed to fetch roster for team {}: {}", id, e);
+                TeamRosterInfo {
+                    players: Vec::new(),
+                    captain: None,
+                }
+            }
+        }
+    } else {
+        log::debug!("fetch_team_roster: No team_id provided");
+        TeamRosterInfo {
+            players: Vec::new(),
+            captain: None,
+        }
+    }
+}
+
 fn parse_referee_csv(
     path: &Path,
 ) -> Result<HashMap<String, OfficialNames>, Box<dyn std::error::Error>> {
@@ -899,79 +976,55 @@ fn render_html_simple(
     const TIME_FMT: &[FormatItem<'static>] =
         format_description!("[hour repr:12]:[minute] [period case:upper]");
     let date_str = local_dt.format(&DATE_FMT).unwrap_or_default();
-    let white_label = if white_suffix.is_empty() {
+    let _white_label = if white_suffix.is_empty() {
         white_name.to_string()
     } else {
         format!("{} {}", white_name, white_suffix)
     };
-    let black_label = if black_suffix.is_empty() {
+    let _black_label = if black_suffix.is_empty() {
         black_name.to_string()
     } else {
         format!("{} {}", black_name, black_suffix)
     };
 
-    let time_str = local_dt.format(&TIME_FMT).unwrap_or_default();
+    let _time_str = local_dt.format(&TIME_FMT).unwrap_or_default();
 
     // Category and division/pod
     let cat = derive_category(&game.timing_rule);
 
     let css = r#"
       * { box-sizing:border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      body { font-family: Arial, Helvetica, sans-serif; margin:18px; color:#000; }
-      .page { width: 8.5in; height: 11in; margin: 0 auto; border:1px solid #cfcfcf; padding:0.5in 0.75in; background:#fff; }
+      body { font-family: Arial, Helvetica, sans-serif; margin:8px; color:#000; }
+      .page { width: 8.5in; height: 11in; margin: 0 auto; border:1px solid #cfcfcf; padding:0.3in 0.3in; background:#fff; }
       .page { break-after: page; page-break-after: always; }
-      @media print { @page { size: 8.5in 11in; margin: 0; } html, body { width:8.5in; height:11in; margin:0; } .page { padding:0.5in 0.75in; } }
-      h1 { text-align:center; font-size:36px; margin:0 0 10px 0; }
-      .tournament { text-align:center; font-size:22px; margin-bottom:24px; }
-      .grid { display:grid; grid-template-columns: 0.6fr 0.6fr 1.4fr 1.4fr; gap:10px; margin-bottom:14px; }
-      .field { display:grid; grid-template-columns:auto 1fr; gap:6px; align-items:center; }
-      .lbl { font-size:12px; white-space:nowrap; }
-      .val { border-bottom:1px solid #888; height:22px; text-align:center; }
-      .vals3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
-      .vals3 .val { border-bottom:1px solid #888; height:22px; text-align:center; }
-      .row { display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:10px; }
-      .row .water-refs { grid-column: 1 / -1; }
+      @media print { @page { size: 8.5in 11in; margin: 0; } html, body { width:8.5in; height:11in; margin:0; } .page { padding:0.3in 0.3in; } }
 
-      /* Single sheet table */
-      table.sheet { width:100%; border-collapse:collapse; margin-top:6px; table-layout: fixed; }
-      table.sheet th, table.sheet td { border:1px solid #888; height:36px; text-align:center; }
-      table.sheet th.black, table.sheet td.black { background:#d3d3d3; }
-      table.sheet td.label { font-weight:bold; background:none; }
-      table.sheet td.label.black { background:#d3d3d3; }
-      table.sheet td.sb { height:48px; }
+      /* Header table */
+      table.header { width:100%; border-collapse:collapse; margin-bottom:4px; table-layout: fixed; font-size:10px; }
+      table.header th, table.header td { border:1px solid #000; padding:2px; text-align:center; height:18px; }
+      table.header th { font-weight:bold; background:#fff; }
+      table.header td.label { font-weight:bold; text-align:left; }
 
-      /* Disabled cells (X) */
-      /* Spacing between split tables */
-      table.sheet + table.sheet { margin-top:10px; }
+      /* Main scoring table */
+      table.sheet { width:100%; border-collapse:collapse; margin-top:2px; table-layout: fixed; font-size:9px; }
+      table.sheet th, table.sheet td { border:1px solid #000; padding:1px; text-align:center; height:14px; }
+      table.sheet th { font-weight:bold; background:#fff; }
+      table.sheet td.label { font-weight:bold; text-align:left; background:none; }
+      table.sheet td.team-header { font-weight:bold; text-align:center; background:#fff; }
 
-      td.speckled { position: relative; background:transparent; }
-      td.speckled::before { content: "X"; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -52%); font-size: 12px; line-height: 1; color: #9b9b9b; font-weight: 600; pointer-events: none; }
+      /* Team section styling */
+      .team-section { margin-top:4px; }
+      .team-name { font-weight:bold; text-align:center; margin-bottom:2px; font-size:10px; }
 
-      /* Penalties body rows: keep verticals, remove horizontals */
-      table.sheet td.pen { border-top:none; border-bottom:none; height:28px; }
-      table.sheet tr:last-child td.pen { border-bottom:1px solid #888; }
-      table.sheet tr.sigrow td { border-top:none !important; height:48px; }
-
-      /* Two-up split cells (Time | Number) */
-      .split2 { display:grid; grid-template-columns:1fr 1fr; height:100%; }
-      .split2 > div { border-right:1px solid #888; display:flex; align-items:center; justify-content:center; height:100%; }
-      .split2 > div:last-child { border-right:none; }
-
-      .sig { border-bottom:1px solid #888; height:14px; text-align:left; padding-top:0; }
-      .bottom { margin-top:28px; display:grid; grid-template-columns:auto 1fr; align-items:end; column-gap:10px; }
-      .bottom .lbl { font-size:12px; white-space:nowrap; line-height:14px; }
-      .sig.short { width:40%; margin-top:0; margin-left:0; justify-self:start; }
-
-      /* Bold center box for Final Score */
-      table.sheet td.final-center { border:2px solid #000 !important; }
-
-
-
-
+      /* Judges section */
+      table.judges { width:100%; border-collapse:collapse; margin-top:4px; table-layout: fixed; font-size:9px; }
+      table.judges th, table.judges td { border:1px solid #000; padding:2px; text-align:center; height:16px; }
+      table.judges th { font-weight:bold; background:#fff; }
+      table.judges td.label { font-weight:bold; text-align:left; }
     "#;
 
     // Officials combined timer/scorer text
-    let timer_scorer = if officials.ts_keeper.is_empty() && officials.ts_helper.is_empty() {
+    let _timer_scorer = if officials.ts_keeper.is_empty() && officials.ts_helper.is_empty() {
         String::new()
     } else if officials.ts_helper.is_empty() {
         officials.ts_keeper.clone()
@@ -982,7 +1035,7 @@ fn render_html_simple(
     };
 
     // Timeouts boxes (smart like Detailed): 0 => X, 1 combined => single 'of 1', 1 per half => two 'of 1'
-    let (to_cells_white, to_cells_black) = if tr.team_timeout_count == 0 {
+    let (_to_cells_white, _to_cells_black) = if tr.team_timeout_count == 0 {
         (
             "<td class='box speckled'></td><td class='box speckled'></td>".to_string(),
             "<td class='box speckled black'></td><td class='box speckled black'></td>".to_string(),
@@ -1007,98 +1060,674 @@ fn render_html_simple(
     let html = format!(
         r#"<!doctype html><html><head><meta charset='utf-8'/>
   <title>Scoresheet G{game_number}</title>
-
   <style>{css}</style>
 </head><body>
-<div class='page'><div class='inner'>
-  <h1>Underwater Hockey Score Sheet</h1>
-  <div class='tournament'>{event_name}</div>
-  <div class='grid'>
-    <div class='field'><div class='lbl'>Game #:</div><div class='val'>{game_number}</div></div>
-    <div class='field'><div class='lbl'>Court #:</div><div class='val'>{pool}</div></div>
-    <div class='field'><div class='lbl'>Day/Time:</div><div class='val'>{date} {time}</div></div>
-    <div class='field'><div class='lbl'>Game Type:</div><div class='val'>{category}</div></div>
-  </div>
-  <div class='row'>
-    <div class='field water-refs'><div class='lbl'>Water Refs:</div><div class='vals3'><div class='val'>{wr1}</div><div class='val'>{wr2}</div><div class='val'>{wr3}</div></div></div>
-  </div>
-  <div class='row'>
-    <div class='field'><div class='lbl'>Chief Ref:</div><div class='val'>{chief}</div></div>
-    <div class='field'><div class='lbl'>Timer/Scorer:</div><div class='val'>{ts}</div></div>
-  </div>
+<div class='page'>
+  <!-- Header Table -->
+  <table class='header'>
+    <colgroup>
+      <col style='width:8%'/>
+      <col style='width:10%'/>
+      <col style='width:8%'/>
+      <col style='width:6%'/>
+      <col style='width:6%'/>
+      <col style='width:6%'/>
+      <col style='width:6%'/>
+      <col style='width:8%'/>
+      <col style='width:8%'/>
+      <col style='width:8%'/>
+      <col style='width:8%'/>
+      <col style='width:10%'/>
+      <col style='width:8%'/>
+    </colgroup>
+    <tr>
+      <th>PARTIDO #:</th>
+      <th>CATEGORIA:</th>
+      <th>MIN:SEG</th>
+      <th>ACCIÓN<br/>NR</th>
+      <th>NR</th>
+      <th>GOL</th>
+      <th>FALTA</th>
+      <th>EXPULSIÓN</th>
+      <th>PENAL</th>
+      <th>AMONESTACIÓN</th>
+      <th>TIEMPO<br/>FUERA</th>
+      <th>COMENTARIOS</th>
+      <th>MARCADOR<br/>NEGRO|BLANCO</th>
+    </tr>
+    <tr>
+      <td>{game_number}</td>
+      <td>{category}</td>
+      <td>{date}</td>
+      <td colspan='10'></td>
+      <td></td>
+    </tr>
+    <tr>
+      <td colspan='2'>EQUIPO NEGRO</td>
+      <td colspan='11'>EQUIPO BLANCO</td>
+    </tr>
+    <tr>
+      <td colspan='2'></td>
+      <td colspan='11'></td>
+    </tr>
+  </table>
 
+  <!-- Player Roster and Scoring Grid -->
   <table class='sheet'>
     <colgroup>
-      <col style='width:25%'/>
-      <col style='width:25%'/>
-      <col style='width:25%'/>
-      <col style='width:25%'/>
+      <col style='width:4%'/>
+      <col style='width:8%'/>
+      <col style='width:4%'/>
+      <col style='width:8%'/>
+      <col style='width:6%'/>
+      <col style='width:6%'/>
+      <col style='width:6%'/>
+      <col style='width:6%'/>
+      <col style='width:6%'/>
+      <col style='width:6%'/>
+      <col style='width:6%'/>
+      <col style='width:6%'/>
+      <col style='width:6%'/>
     </colgroup>
     <tr>
-      <th colspan='2'>White Team: {white_team}</th>
-      <th class='black' colspan='2'>Black Team: {black_team}</th>
+      <th>NR</th>
+      <th>NOMBRE</th>
+      <th>NR</th>
+      <th>NOMBRE</th>
+      <th>ACCIÓN</th>
+      <th>NR</th>
+      <th>GOL</th>
+      <th>FALTA</th>
+      <th>EXPUL-<br/>CIÓN</th>
+      <th>PENAL</th>
+      <th>AMONES-<br/>TACIÓN</th>
+      <th>TIEMPO<br/>FUERA</th>
+      <th>COMENTARIOS</th>
     </tr>
-    <tr><td class='label' colspan='4'>Timed Penalties</td></tr>
-    <tr>
-      <th class='subhdr'><div class='split2'><div>Time</div><div>Number</div></div></th>
-      <th>Infraction</th>
-      <th class='black subhdr'><div class='split2'><div>Time</div><div>Number</div></div></th>
-      <th class='black'>Infraction</th>
-    </tr>
-    {penalty_rows}
+    {scoring_rows}
   </table>
-  <table class='sheet'>
+
+  <!-- Judges and Captains Section -->
+  <table class='judges'>
     <colgroup>
-      <col style='width:25%'/>
-      <col style='width:25%'/>
-      <col style='width:25%'/>
-      <col style='width:25%'/>
+      <col style='width:20%'/>
+      <col style='width:30%'/>
+      <col style='width:50%'/>
     </colgroup>
     <tr>
-      <td class='label'>1st Half</td><td class='label'>2nd Half</td>
-      <td class='label black'>1st Half</td><td class='label black'>2nd Half</td>
-    </tr>
-    <tr><td class='label' colspan='4'>Timeouts</td></tr>
-    <tr>{to_w}{to_b}</tr>
-    <tr><td class='label' colspan='4'>Scores Each Half</td></tr>
-    <tr>
-      <td class='box sb'></td><td class='box sb'></td>
-      <td class='box black sb'></td><td class='box black sb'></td>
+      <th colspan='3'>NOMBRES</th>
     </tr>
     <tr>
-      <td class='label'>Final Score</td>
-      <td class='final-center'></td>
-      <td class='final-center black'></td>
-      <td class='label black'>Final Score</td>
+      <td class='label'>JUEZ1:</td>
+      <td colspan='2'></td>
     </tr>
-    <tr><td class='label' colspan='4'>Captain's Signatures</td></tr>
-    <tr class='sigrow'><td colspan='2'></td><td class='black' colspan='2'></td></tr>
+    <tr>
+      <td class='label'>JUEZ2:</td>
+      <td colspan='2'></td>
+    </tr>
+    <tr>
+      <td class='label'>JUEZ3:</td>
+      <td colspan='2'></td>
+    </tr>
+    <tr>
+      <td class='label'>CAPITAN BLANCO</td>
+      <td colspan='2'></td>
+    </tr>
+    <tr>
+      <td class='label'>CAPITAN NEGRO</td>
+      <td colspan='2'></td>
+    </tr>
+    <tr>
+      <td colspan='2'></td>
+      <td class='label'>TOTALES</td>
+    </tr>
+    <tr>
+      <td colspan='3'></td>
+    </tr>
   </table>
-  <div class='bottom'><div class='lbl'>Chief Ref Signature:</div><div class='sig short'></div></div></div>
+
+  <div style='text-align:right; margin-top:4px; font-size:9px;'>
+    <strong>MARCADOR FINAL</strong>
+  </div>
 </div>
 </body></html>
         "#,
         css = css,
-        event_name = html_escape(&event.name),
         game_number = html_escape(game_number),
-        pool = html_escape(&game.court),
-        date = html_escape(&date_str),
-        time = html_escape(&time_str),
         category = html_escape(cat),
-        white_team = html_escape(&white_label),
-        black_team = html_escape(&black_label),
-        wr1 = html_escape(&officials.water1),
-        wr2 = html_escape(&officials.water2),
-        wr3 = html_escape(&officials.water3),
-        chief = html_escape(&officials.chief),
-        ts = html_escape(&timer_scorer),
-        to_w = to_cells_white,
-        to_b = to_cells_black,
-        penalty_rows = {
-            // Produce a fixed number of blank rows
+        date = html_escape(&date_str),
+        scoring_rows = {
+            // Produce a fixed number of blank rows for scoring
             let mut rows = String::new();
-            for _ in 0..9 {
-                rows.push_str("<tr><td class='pen'><div class='split2'><div></div><div></div></div></td><td class='pen'></td><td class='pen black'><div class='split2'><div></div><div></div></div></td><td class='pen black'></td></tr>");
+            for _ in 0..20 {
+                rows.push_str("<tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>");
+            }
+            rows
+        },
+    );
+
+    html
+}
+
+// Col_3x3 scoresheet layout (landscape) based on provided mockup
+#[allow(clippy::too_many_arguments)]
+fn render_html_col3x3(
+    event: &Event,
+    game_number: &str,
+    game: &Game,
+    _csv_schedule: Option<&uwh_common::uwhportal::schedule::Schedule>,
+    _tr: &uwh_common::uwhportal::schedule::TimingRule,
+    white_suffix: &str,
+    white_name: &str,
+    black_suffix: &str,
+    black_name: &str,
+    officials: &OfficialNames,
+    black_roster: &TeamRosterInfo,
+    white_roster: &TeamRosterInfo,
+) -> String {
+    // Date/time formatting in event timezone
+    let offset = event.date_range.start.offset();
+    let local_dt: OffsetDateTime = game.start_time.to_offset(offset);
+    const DATE_FMT: &[FormatItem<'static>] =
+        format_description!("[weekday repr:short] [month repr:short] [day padding:none]");
+    const TIME_FMT: &[FormatItem<'static>] =
+        format_description!("[hour repr:12]:[minute] [period case:upper]");
+    let date_str = local_dt.format(&DATE_FMT).unwrap_or_default();
+    let time_str = local_dt.format(&TIME_FMT).unwrap_or_default();
+
+    // Category
+    let cat = derive_category(&game.timing_rule);
+
+    // Team names
+    let white_label = if white_suffix.is_empty() {
+        white_name.to_string()
+    } else {
+        format!("{} {}", white_name, white_suffix)
+    };
+    let black_label = if black_suffix.is_empty() {
+        black_name.to_string()
+    } else {
+        format!("{} {}", black_name, black_suffix)
+    };
+
+    let css = r#"
+      * { box-sizing:border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      body { font-family: Arial, Helvetica, sans-serif; margin:8px; color:#000; }
+      .page { width: 11in; height: 8.5in; margin: 0 auto; border:1px solid #cfcfcf; padding:1in 0.5in 0.5in 0.5in; background:#fff; display:flex; flex-direction:column; }
+      .page { break-after: page; page-break-after: always; }
+      @media print { @page { size: 11in 8.5in; margin: 0; } html, body { width:11in; height:8.5in; margin:0; } .page { padding:1in 0.5in 0.5in 0.5in; } }
+
+      /* Main unified table */
+      table.sheet { width:100%; border-collapse:collapse; table-layout: fixed; font-size:9px; line-height:1.1; flex:1; }
+      table.sheet th, table.sheet td { border:1px solid #000; padding:2px; text-align:center; vertical-align:middle; overflow:hidden; height:0.189in; max-height:0.189in; }
+      table.sheet th { font-weight:bold; background:#fff; }
+      table.sheet td.label { font-weight:bold; text-align:left; padding-left:3px; }
+      table.sheet td.label-center { font-weight:bold; text-align:center; }
+      table.sheet td.text-left { text-align:left; padding-left:3px; }
+      table.sheet tr:nth-child(-n+3) td:nth-child(-n+4) { text-align:left; padding-left:3px; }
+      table.sheet tr:nth-child(1) td:nth-child(5), table.sheet tr:nth-child(1) td:nth-child(6) { text-align:center; padding-left:2px; }
+      table.sheet tr:nth-child(2) td:nth-child(15), table.sheet tr:nth-child(2) td:nth-child(16) { text-align:center; }
+      table.sheet tr:nth-child(7) td { text-align:center; }
+      table.sheet tr:nth-child(33) td:nth-child(1), table.sheet tr:nth-child(36) td:nth-child(1) { text-align:center; }
+      table.sheet td:nth-child(n+5) { text-align:center; }
+      table.sheet { font-weight:bold; }
+      table.sheet tr { height:0.189in; max-height:0.189in; }
+      table.sheet tr.header-row th { padding:2px; }
+      table.sheet tr.header-row td { padding:2px; }
+      table.sheet tr.team-row td { font-weight:bold; }
+      table.sheet tr.judges-header td { font-weight:bold; text-align:center; }
+      table.sheet tr.judges-row td { }
+      table.sheet tr.totals-row td { font-weight:bold; }
+      table.sheet tr:nth-child(5) td:nth-child(-n+4) { font-size:18px; word-wrap:break-word; overflow:hidden; }
+      table.sheet td.no-border { border:none; }
+      .circle { font-size:6px; }
+    "#;
+
+    let html = format!(
+        r#"<!doctype html><html><head><meta charset='utf-8'/>
+  <title>Scoresheet G{game_number}</title>
+  <style>{css}</style>
+</head><body>
+<div class='page'>
+  <table class='sheet'>
+    <colgroup>
+      <col style='width:2.8%'/>
+      <col style='width:18.5%'/>
+      <col style='width:2.8%'/>
+      <col style='width:18.5%'/>
+      <col style='width:6.5%'/>
+      <col style='width:6.5%'/>
+      <col style='width:2.8%'/>
+      <col style='width:3.7%'/>
+      <col style='width:4.6%'/>
+      <col style='width:5.6%'/>
+      <col style='width:5.6%'/>
+      <col style='width:6.5%'/>
+      <col style='width:5.6%'/>
+      <col style='width:13%'/>
+      <col style='width:5.6%'/>
+      <col style='width:5.6%'/>
+    </colgroup>
+{table_rows}
+  </table>
+</div>
+</body></html>
+        "#,
+        css = css,
+        table_rows = {
+            let mut rows = String::new();
+
+            // Define grouped cells with their labels
+            let mut grouped: std::collections::HashMap<(usize, usize), Option<String>> = std::collections::HashMap::new();
+
+            // Row 1-4: A1:B1, C1:D1, A2:B2, C2:D2, A3:B3, C3:D3, A4:B4, C4:D4
+            for row in 1..=4 {
+                grouped.insert((0, row), Some(format!("A{}:B{}", row, row)));
+                grouped.insert((1, row), None);
+                grouped.insert((2, row), Some(format!("C{}:D{}", row, row)));
+                grouped.insert((3, row), None);
+            }
+
+            // Row 5-6: A5:B6, C5:D6
+            for row in 5..=6 {
+                grouped.insert((0, row), if row == 5 { Some("A5:B6".to_string()) } else { None });
+                grouped.insert((1, row), None);
+                grouped.insert((2, row), if row == 5 { Some("C5:D6".to_string()) } else { None });
+                grouped.insert((3, row), None);
+            }
+
+            // Rows 1-2: E1:E2, F1:F2, G1:G2, H1:H2, I1:I2, J1:J2, K1:K2, L1:L2, M1:M2, N1:N2
+            for col in 4..=13 {
+                grouped.insert((col, 1), Some(format!("{}1:{}2", (b'A' + col as u8) as char, (b'A' + col as u8) as char)));
+                grouped.insert((col, 2), None);
+            }
+
+            // O1:P1
+            grouped.insert((14, 1), Some("O1:P1".to_string()));
+            grouped.insert((15, 1), None);
+
+            // Rows 8-9: A8:A9, B8:B9, C8:C9, D8:D9
+            for col in 0..=3 {
+                grouped.insert((col, 8), Some(format!("{}8:{}9", (b'A' + col as u8) as char, (b'A' + col as u8) as char)));
+                grouped.insert((col, 9), None);
+            }
+
+            // Rows 10-11: A10:A11, B10:B11, C10:C11, D10:D11
+            for col in 0..=3 {
+                grouped.insert((col, 10), Some(format!("{}10:{}11", (b'A' + col as u8) as char, (b'A' + col as u8) as char)));
+                grouped.insert((col, 11), None);
+            }
+
+            // Rows 12-13: A12:A13, B12:B13, C12:C13, D12:D13
+            for col in 0..=3 {
+                grouped.insert((col, 12), Some(format!("{}12:{}13", (b'A' + col as u8) as char, (b'A' + col as u8) as char)));
+                grouped.insert((col, 13), None);
+            }
+
+            // Rows 14-15: A14:A15, B14:B15, C14:C15, D14:D15
+            for col in 0..=3 {
+                grouped.insert((col, 14), Some(format!("{}14:{}15", (b'A' + col as u8) as char, (b'A' + col as u8) as char)));
+                grouped.insert((col, 15), None);
+            }
+
+            // Rows 16-17: A16:A17, B16:B17, C16:C17, D16:D17
+            for col in 0..=3 {
+                grouped.insert((col, 16), Some(format!("{}16:{}17", (b'A' + col as u8) as char, (b'A' + col as u8) as char)));
+                grouped.insert((col, 17), None);
+            }
+
+            // Rows 18-19: A18:A19, B18:B19, C18:C19, D18:D19
+            for col in 0..=3 {
+                grouped.insert((col, 18), Some(format!("{}18:{}19", (b'A' + col as u8) as char, (b'A' + col as u8) as char)));
+                grouped.insert((col, 19), None);
+            }
+
+            // Rows 20-21: A20:A21, B20:B21, C20:C21, D20:D21
+            for col in 0..=3 {
+                grouped.insert((col, 20), Some(format!("{}20:{}21", (b'A' + col as u8) as char, (b'A' + col as u8) as char)));
+                grouped.insert((col, 21), None);
+            }
+
+            // Row 22: A22:B22, C22:D22
+            grouped.insert((0, 22), Some("A22:B22".to_string()));
+            grouped.insert((1, 22), None);
+            grouped.insert((2, 22), Some("C22:D22".to_string()));
+            grouped.insert((3, 22), None);
+
+            // Row 23: A23:D23
+            grouped.insert((0, 23), Some("A23:D23".to_string()));
+            grouped.insert((1, 23), None);
+            grouped.insert((2, 23), None);
+            grouped.insert((3, 23), None);
+
+            // Rows 24-25: A24:B25, C24:D25
+            grouped.insert((0, 24), Some("A24:B25".to_string()));
+            grouped.insert((1, 24), None);
+            grouped.insert((0, 25), None);
+            grouped.insert((1, 25), None);
+            grouped.insert((2, 24), Some("C24:D25".to_string()));
+            grouped.insert((3, 24), None);
+            grouped.insert((2, 25), None);
+            grouped.insert((3, 25), None);
+
+            // Row 26: A26:D26
+            grouped.insert((0, 26), Some("A26:D26".to_string()));
+            grouped.insert((1, 26), None);
+            grouped.insert((2, 26), None);
+            grouped.insert((3, 26), None);
+
+            // Rows 27-28: A27:B28, C27:D28
+            grouped.insert((0, 27), Some("A27:B28".to_string()));
+            grouped.insert((1, 27), None);
+            grouped.insert((0, 28), None);
+            grouped.insert((1, 28), None);
+            grouped.insert((2, 27), Some("C27:D28".to_string()));
+            grouped.insert((3, 27), None);
+            grouped.insert((2, 28), None);
+            grouped.insert((3, 28), None);
+
+            // Row 29: A29:D29
+            grouped.insert((0, 29), Some("A29:D29".to_string()));
+            grouped.insert((1, 29), None);
+            grouped.insert((2, 29), None);
+            grouped.insert((3, 29), None);
+
+            // Rows 30-31: A30:B31, C30:D31
+            grouped.insert((0, 30), Some("A30:B31".to_string()));
+            grouped.insert((1, 30), None);
+            grouped.insert((0, 31), None);
+            grouped.insert((1, 31), None);
+            grouped.insert((2, 30), Some("C30:D31".to_string()));
+            grouped.insert((3, 30), None);
+            grouped.insert((2, 31), None);
+            grouped.insert((3, 31), None);
+
+            // Row 32: A32:D32
+            grouped.insert((0, 32), Some("A32:D32".to_string()));
+            grouped.insert((1, 32), None);
+            grouped.insert((2, 32), None);
+            grouped.insert((3, 32), None);
+
+            // Rows 33-34: A33:B34, C33:D34
+            grouped.insert((0, 33), Some("A33:B34".to_string()));
+            grouped.insert((1, 33), None);
+            grouped.insert((0, 34), None);
+            grouped.insert((1, 34), None);
+            grouped.insert((2, 33), Some("C33:D34".to_string()));
+            grouped.insert((3, 33), None);
+            grouped.insert((2, 34), None);
+            grouped.insert((3, 34), None);
+
+            // Row 35: A35:D35
+            grouped.insert((0, 35), Some("A35:D35".to_string()));
+            grouped.insert((1, 35), None);
+            grouped.insert((2, 35), None);
+            grouped.insert((3, 35), None);
+
+            // Rows 36-37: A36:B37, C36:D37
+            grouped.insert((0, 36), Some("A36:B37".to_string()));
+            grouped.insert((1, 36), None);
+            grouped.insert((0, 37), None);
+            grouped.insert((1, 37), None);
+            grouped.insert((2, 36), Some("C36:D37".to_string()));
+            grouped.insert((3, 36), None);
+            grouped.insert((2, 37), None);
+            grouped.insert((3, 37), None);
+
+            // Row 37: E37:G37
+            grouped.insert((4, 37), Some("E37:G37".to_string()));
+            grouped.insert((5, 37), None);
+            grouped.insert((6, 37), None);
+
+            // Define cell content
+            let mut content: std::collections::HashMap<(usize, usize), String> = std::collections::HashMap::new();
+
+            // Row 1
+            content.insert((0, 1), format!("PARTIDO #: {}", html_escape(game_number)));
+            content.insert((2, 1), format!("CATEGORIA: {}", cat));
+            content.insert((4, 1), "MIN:SEG".to_string());
+            content.insert((5, 1), "ACCIÓN<br/>N/B".to_string());
+            content.insert((6, 1), "NR".to_string());
+            content.insert((7, 1), "GOL".to_string());
+            content.insert((8, 1), "FALTA".to_string());
+            content.insert((9, 1), "EXPUL<br/>-CIÓN".to_string());
+            content.insert((10, 1), "PENAL".to_string());
+            content.insert((11, 1), "AMONES<br/>-TACIÓN".to_string());
+            content.insert((12, 1), "TIEMPO<br/>FUERA".to_string());
+            content.insert((13, 1), "COMENTARIOS".to_string());
+            content.insert((14, 1), "MARCADOR".to_string());
+
+            // Row 2
+            content.insert((0, 2), "CIUDAD:".to_string());
+            content.insert((2, 2), format!("FECHA: {}", date_str));
+            content.insert((14, 2), "NEGRO".to_string());
+            content.insert((15, 2), "BLANCO".to_string());
+
+            // Row 3
+            content.insert((0, 3), format!("HORA: {}", time_str));
+            content.insert((2, 3), format!("PLANILLERO: {}", html_escape(&officials.ts_keeper)));
+            for col in 7..=13 {
+                if col != 13 {
+                    content.insert((col, 3), "○".to_string());
+                }
+            }
+
+            // Row 4
+            content.insert((0, 4), "<b>EQUIPO NEGRO</b>".to_string());
+            content.insert((2, 4), "<b>EQUIPO BLANCO</b>".to_string());
+            for col in 7..=13 {
+                if col != 13 {
+                    content.insert((col, 4), "○".to_string());
+                }
+            }
+
+            // Row 5 - Team names
+            content.insert((0, 5), html_escape(&black_label));
+            content.insert((2, 5), html_escape(&white_label));
+            for col in 7..=13 {
+                if col != 13 {
+                    content.insert((col, 5), "○".to_string());
+                }
+            }
+
+            // Rows 6-7
+            for row in 6..=7 {
+                for col in 7..=13 {
+                    if col != 13 {
+                        content.insert((col, row), "○".to_string());
+                    }
+                }
+            }
+
+            // Row 7 - Player headers
+            content.insert((0, 7), "<b>NR</b>".to_string());
+            content.insert((1, 7), "<b>NOMBRE</b>".to_string());
+            content.insert((2, 7), "<b>NR</b>".to_string());
+            content.insert((3, 7), "<b>NOMBRE</b>".to_string());
+
+            // Rows 8-21 - Player data and scoring rows with circles
+            // Only insert player data into even rows (8, 10, 12, 14, 16, 18, 20) since odd rows are grouped
+            let player_rows = vec![8, 10, 12, 14, 16, 18, 20];
+            for (idx, &row) in player_rows.iter().enumerate() {
+                // Add player data for black team (columns 0-1)
+                if idx < black_roster.players.len() {
+                    let player = &black_roster.players[idx];
+                    if let Some(num) = player.number {
+                        content.insert((0, row), num.to_string());
+                    }
+                    content.insert((1, row), html_escape(&player.name));
+                }
+
+                // Add player data for white team (columns 2-3)
+                if idx < white_roster.players.len() {
+                    let player = &white_roster.players[idx];
+                    if let Some(num) = player.number {
+                        content.insert((2, row), num.to_string());
+                    }
+                    content.insert((3, row), html_escape(&player.name));
+                }
+            }
+
+            // Add scoring circles to all rows 8-21 (both player rows and grouped rows)
+            for row in 8..=21 {
+                for col in 7..=13 {
+                    if col != 13 {
+                        content.insert((col, row), "○".to_string());
+                    }
+                }
+            }
+
+            // Add captain names to A33 (black) and A36 (white)
+            if let Some(captain) = &black_roster.captain {
+                content.insert((0, 33), html_escape(captain));
+            }
+            if let Some(captain) = &white_roster.captain {
+                content.insert((0, 36), html_escape(captain));
+            }
+
+            // Row 22
+            content.insert((0, 22), "<b>NOMBRES</b>".to_string());
+            content.insert((2, 22), "<b>FIRMAS</b>".to_string());
+            for col in 7..=13 {
+                if col != 13 {
+                    content.insert((col, 22), "○".to_string());
+                }
+            }
+
+            // Row 23 - JUEZ1
+            content.insert((0, 23), "<b>JUEZ1:</b>".to_string());
+            for col in 7..=13 {
+                if col != 13 {
+                    content.insert((col, 23), "○".to_string());
+                }
+            }
+
+            // Rows 24-25
+            for row in 24..=25 {
+                for col in 7..=13 {
+                    if col != 13 {
+                        content.insert((col, row), "○".to_string());
+                    }
+                }
+            }
+
+            // Row 26 - JUEZ2
+            content.insert((0, 26), "<b>JUEZ2:</b>".to_string());
+            for col in 7..=13 {
+                if col != 13 {
+                    content.insert((col, 26), "○".to_string());
+                }
+            }
+
+            // Rows 27-28
+            for row in 27..=28 {
+                for col in 7..=13 {
+                    if col != 13 {
+                        content.insert((col, row), "○".to_string());
+                    }
+                }
+            }
+
+            // Row 29 - JUEZ3
+            content.insert((0, 29), "<b>JUEZ3:</b>".to_string());
+            for col in 7..=13 {
+                if col != 13 {
+                    content.insert((col, 29), "○".to_string());
+                }
+            }
+
+            // Rows 30-31
+            for row in 30..=31 {
+                for col in 7..=13 {
+                    if col != 13 {
+                        content.insert((col, row), "○".to_string());
+                    }
+                }
+            }
+
+            // Row 32 - CAPITAN BLANCO
+            content.insert((0, 32), "<b>CAPITAN BLANCO:</b>".to_string());
+            for col in 7..=13 {
+                if col != 13 {
+                    content.insert((col, 32), "○".to_string());
+                }
+            }
+
+            // Rows 33-34
+            for row in 33..=34 {
+                for col in 7..=13 {
+                    if col != 13 {
+                        content.insert((col, row), "○".to_string());
+                    }
+                }
+            }
+
+            // Row 35 - CAPITAN NEGRO
+            content.insert((0, 35), "<b>CAPITAN NEGRO:</b>".to_string());
+            for col in 7..=13 {
+                if col != 13 {
+                    content.insert((col, 35), "○".to_string());
+                }
+            }
+
+            // Row 36
+            for col in 7..=13 {
+                if col != 13 {
+                    content.insert((col, 36), "○".to_string());
+                }
+            }
+
+            // Row 37 - TOTALES
+            content.insert((4, 37), "<b>TOTALES</b>".to_string());
+            content.insert((13, 37), "<b>MARCADOR FINAL</b>".to_string());
+
+            // Generate table
+            for row in 1..=37 {
+                rows.push_str("    <tr>\n");
+                let mut col = 0;
+                while col < 16 {
+
+                    if let Some(label_opt) = grouped.get(&(col, row)) {
+                        if let Some(label) = label_opt {
+                            let label_str = label.as_str();
+
+                            let (colspan, rowspan) = if label_str.contains(':') {
+                                let parts: Vec<&str> = label_str.split(':').collect();
+                                let start_col = (parts[0].chars().next().unwrap() as usize) - ('A' as usize);
+                                let start_row: usize = parts[0][1..].parse().unwrap_or(row);
+                                let end_col = (parts[1].chars().next().unwrap() as usize) - ('A' as usize);
+                                let end_row: usize = parts[1][1..].parse().unwrap_or(row);
+
+                                let cs = end_col - start_col + 1;
+                                let rs = end_row - start_row + 1;
+                                (cs, rs)
+                            } else {
+                                (1, 1)
+                            };
+
+                            let cell_content = content.get(&(col, row))
+                                .map(|s| s.as_str())
+                                .unwrap_or("");
+
+                            if colspan > 1 || rowspan > 1 {
+                                rows.push_str(&format!("      <td colspan='{}' rowspan='{}'>{}</td>\n", colspan, rowspan, cell_content));
+                                col += colspan;
+                            } else {
+                                rows.push_str(&format!("      <td>{}</td>\n", cell_content));
+                                col += 1;
+                            }
+                        } else {
+                            col += 1;
+                        }
+                    } else {
+                        let cell_content = content.get(&(col, row))
+                            .map(|s| s.as_str())
+                            .unwrap_or("");
+                        rows.push_str(&format!("      <td>{}</td>\n", cell_content));
+                        col += 1;
+                    }
+                }
+                rows.push_str("    </tr>\n");
             }
             rows
         },
@@ -1212,7 +1841,7 @@ fn score_section_with_rules(tr: &uwh_common::uwhportal::schedule::TimingRule) ->
     )
 }
 
-pub fn generate_example_rule_sheets(output_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
+pub fn generate_example_rule_sheets(output_dir: &Path, style: SheetStyle) -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir_all(output_dir)?;
 
     // Minimal example event and times
@@ -1289,21 +1918,65 @@ pub fn generate_example_rule_sheets(output_dir: &Path) -> Result<(), Box<dyn std
             description: Some(format!("Example: {}", slug.replace('_', " "))),
         };
         let officials = OfficialNames::default();
-        let html = render_html(
-            &event,
-            &game.number,
-            &game,
-            None,
-            tr,
-            "",
-            "Example White",
-            "",
-            "Example Black",
-            &officials,
-            None,
-            None,
-        );
-        let path = output_dir.join(format!("scoresheet_example_{}.html", slug));
+
+        // Generate the selected style
+        let (html, style_name) = match style {
+            SheetStyle::Detailed => {
+                let html = render_html(
+                    &event,
+                    &game.number,
+                    &game,
+                    None,
+                    tr,
+                    "",
+                    "Example White",
+                    "",
+                    "Example Black",
+                    &officials,
+                    None,
+                    None,
+                );
+                (html, "detailed")
+            }
+            SheetStyle::Simple => {
+                let html = render_html_simple(
+                    &event,
+                    &game.number,
+                    &game,
+                    None,
+                    tr,
+                    "",
+                    "Example White",
+                    "",
+                    "Example Black",
+                    &officials,
+                );
+                (html, "simple")
+            }
+            SheetStyle::Col3x3 => {
+                let empty_roster = TeamRosterInfo {
+                    players: Vec::new(),
+                    captain: None,
+                };
+                let html = render_html_col3x3(
+                    &event,
+                    &game.number,
+                    &game,
+                    None,
+                    tr,
+                    "",
+                    "Example White",
+                    "",
+                    "Example Black",
+                    &officials,
+                    &empty_roster,
+                    &empty_roster,
+                );
+                (html, "col3x3")
+            }
+        };
+
+        let path = output_dir.join(format!("scoresheet_example_{}_{}.html", slug, style_name));
         fs::write(&path, html)?;
     }
 

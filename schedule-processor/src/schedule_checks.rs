@@ -16,6 +16,7 @@ pub fn run_schedule_checks(schedule: &Schedule) -> Result<(), Box<dyn std::error
     check_game_overlap(schedule)?;
     check_same_team_in_game(schedule)?;
     check_unique_group_names(schedule)?;
+    check_teams_in_multiple_divisions(schedule)?;
     check_group_standings(schedule)?;
     let _ = check_final_results(schedule); // Ignore this error and complete the rest of the checks
     check_game_references(schedule)?;
@@ -330,6 +331,48 @@ fn check_unique_group_names(schedule: &Schedule) -> Result<(), Box<dyn std::erro
         Err("Found duplicate group name".into())
     } else if duplicate_short_name_found {
         Err("Found duplicate group short name".into())
+    } else {
+        Ok(())
+    }
+}
+
+fn check_teams_in_multiple_divisions(schedule: &Schedule) -> Result<(), Box<dyn std::error::Error>> {
+    let mut team_divisions: IndexMap<ScheduledTeam, Vec<String>> = IndexMap::new();
+    let mut check_failed = false;
+
+    // Collect all teams and the divisions they appear in
+    for group in &schedule.groups {
+        if matches!(group.group_type, Some(GroupType::Division)) {
+            for game_number in &group.game_numbers {
+                if let Some(game) = schedule.games.get(game_number) {
+                    team_divisions
+                        .entry(game.light.clone())
+                        .or_default()
+                        .push(group.name.clone());
+                    team_divisions
+                        .entry(game.dark.clone())
+                        .or_default()
+                        .push(group.name.clone());
+                }
+            }
+        }
+    }
+
+    // Check for teams in multiple divisions
+    for (team, divisions) in team_divisions.iter() {
+        let unique_divisions: IndexSet<_> = divisions.iter().cloned().collect();
+        if unique_divisions.len() > 1 {
+            error!(
+                "Team {} appears in multiple divisions: {}",
+                team,
+                unique_divisions.iter().cloned().collect::<Vec<_>>().join(", ")
+            );
+            check_failed = true;
+        }
+    }
+
+    if check_failed {
+        Err("Found teams appearing in multiple divisions".into())
     } else {
         Ok(())
     }

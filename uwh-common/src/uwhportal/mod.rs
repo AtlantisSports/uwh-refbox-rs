@@ -12,6 +12,64 @@ use std::{collections::BTreeMap, error::Error};
 
 pub mod schedule;
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct CoinFlipDetails {
+    #[serde(rename = "Groups", alias = "groups")]
+    pub groups: Vec<GroupCoinFlips>,
+    #[serde(rename = "Games", alias = "games")]
+    pub games: Vec<CoinFlip>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GroupCoinFlips {
+    #[serde(rename = "Identifier", alias = "identifier")]
+    pub identifier: String,
+    #[serde(rename = "Name", alias = "name")]
+    pub name: String,
+    #[serde(rename = "ShortName", alias = "shortName")]
+    pub short_name: Option<String>,
+    #[serde(rename = "CoinFlips", alias = "coinFlips")]
+    pub coin_flips: Vec<CoinFlip>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CoinFlip {
+    #[serde(rename = "Identifier", alias = "identifier")]
+    pub identifier: String,
+    #[serde(rename = "TiedTeams", alias = "tiedTeams")]
+    pub tied_teams: Vec<CoinFlipTeam>,
+    #[serde(rename = "Result", alias = "result")]
+    pub result: Option<CoinFlipResult>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CoinFlipTeam {
+    #[serde(rename = "TeamId", alias = "teamId")]
+    pub team_id: Option<String>,
+    #[serde(rename = "PendingAssignmentName", alias = "pendingAssignmentName")]
+    pub pending_assignment_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CoinFlipResult {
+    #[serde(rename = "Kind", alias = "kind")]
+    pub kind: String,
+    #[serde(rename = "Team", alias = "team")]
+    pub team: CoinFlipTeam,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SetCoinFlipModel {
+    #[serde(rename = "GroupIdentifier")]
+    pub group_identifier: Option<String>,
+    #[serde(rename = "CoinFlipIdentifier")]
+    pub coin_flip_identifier: String,
+    #[serde(rename = "TeamIdOrPendingAssignmentName")]
+    pub team_id_or_pending_assignment_name: String,
+    #[serde(rename = "Kind")]
+    pub kind: String,
+}
+
 pub struct UwhPortalClient {
     base_url: String,
     access_token: Option<String>,
@@ -129,7 +187,7 @@ impl UwhPortalClient {
             .client
             .request(Method::POST, &url)
             .json(&serde_json::json!({
-                "email": email,
+                "emailOrUsername": email,
                 "password": password
             }));
 
@@ -424,6 +482,85 @@ impl UwhPortalClient {
                 Ok(())
             } else {
                 warn!("uwhportal push team map failed, response: {:?}", response);
+                let body = response.text().await?;
+                Err(Box::new(ApiError::new(body)))?
+            }
+        }
+    }
+
+    pub fn get_event_schedule_privileged_raw(
+        &self,
+        event_id: &EventId,
+    ) -> impl std::future::Future<Output = Result<String, Box<dyn Error>>> + use<> {
+        let url = format!(
+            "{}/api/events/{}/schedule/privileged",
+            self.base_url,
+            event_id.partial()
+        );
+        let request =
+            authenticated_request(&self.client, Method::GET, &url, &self.access_token).send();
+        async move {
+            let response = request.await?;
+            if response.status() == StatusCode::OK {
+                let body = response.text().await?;
+                Ok(body)
+            } else {
+                warn!("uwhportal get privileged event schedule failed, response: {response:?}");
+                let body = response.text().await?;
+                Err(Box::new(ApiError::new(body)))?
+            }
+        }
+    }
+
+    pub fn get_coin_flips(
+        &self,
+        event_slug: &str,
+    ) -> impl std::future::Future<Output = Result<CoinFlipDetails, Box<dyn Error>>> + use<> {
+        let url = format!(
+            "{}/api/events/{event_slug}/schedule/coin-flips",
+            self.base_url
+        );
+        let request =
+            authenticated_request(&self.client, Method::GET, &url, &self.access_token).send();
+        async move {
+            let response = request.await?;
+            let status = response.status();
+            let body = response.text().await?;
+            if status == StatusCode::OK {
+                match serde_json::from_str::<CoinFlipDetails>(&body) {
+                    Ok(parsed) => Ok(parsed),
+                    Err(e) => {
+                        debug!("get_coin_flips: failed to decode body: {e}; body: {body}");
+                        Err(Box::new(ApiError::new(format!(
+                            "error decoding response body: {e}"
+                        ))))?
+                    }
+                }
+            } else {
+                Err(Box::new(ApiError::new(body)))?
+            }
+        }
+    }
+
+    pub fn set_coin_flip_result(
+        &self,
+        event_slug: &str,
+        model: &SetCoinFlipModel,
+        force: bool,
+    ) -> impl std::future::Future<Output = Result<(), Box<dyn Error>>> + use<> {
+        let url = format!(
+            "{}/api/events/{event_slug}/schedule/coin-flips",
+            self.base_url
+        );
+        let request = authenticated_request(&self.client, Method::POST, &url, &self.access_token)
+            .query(&[("force", force)])
+            .json(model)
+            .send();
+        async move {
+            let response = request.await?;
+            if response.status() == StatusCode::OK {
+                Ok(())
+            } else {
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(body)))?
             }

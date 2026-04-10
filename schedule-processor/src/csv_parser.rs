@@ -151,6 +151,7 @@ pub fn parse_csv(
         timing_rules,
         standings_order: None,
         final_results_order: None,
+        referees_by_game_number: None,
     })
 }
 
@@ -349,6 +350,7 @@ pub(crate) fn parse_games(
             light,
             start_time,
             description: None,
+            referee_assignments: None,
         };
         debug!("Parsed game: {}", game.number);
         trace!("    {game:?}");

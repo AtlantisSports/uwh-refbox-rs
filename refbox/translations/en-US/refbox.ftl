@@ -279,6 +279,8 @@ ref-list = Chief Ref: { $chief_ref }
     Water Ref 1: { $water_ref_1 }
     Water Ref 2: { $water_ref_2 }
     Water Ref 3: { $water_ref_3 }
+team-ref-list = Referees: { $ref_team }
+    T/S Keeper: { $ts_keeper_team }
 unknown = Unknown
 ## Game time button
 next-game = NEXT GAME

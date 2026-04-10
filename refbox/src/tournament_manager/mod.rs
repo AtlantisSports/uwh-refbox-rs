@@ -1891,8 +1891,13 @@ impl TournamentManager {
                         GamePeriod::BetweenGames
                     }
                 }
-                _ => {
-                    unreachable!()
+                other => {
+                    warn!(
+                        "end_confirm_pause called while in unexpected period {:?}, clearing pause state",
+                        other
+                    );
+                    self.time_pause_confirmation = None;
+                    return Ok(());
                 }
             };
 

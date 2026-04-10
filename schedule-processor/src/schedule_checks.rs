@@ -509,6 +509,10 @@ fn check_final_results(schedule: &Schedule) -> Result<(), Box<dyn std::error::Er
                         }
                     }
                 }
+                FinalResults::ListOfPlacements { .. } => {
+                    // Placements reference seeds and game results from other groups;
+                    // cross-group validation is not performed here
+                }
             }
         }
     }
@@ -586,7 +590,11 @@ fn check_game_references(schedule: &Schedule) -> Result<(), Box<dyn std::error::
             let mut last_game_end_time = OffsetDateTime::UNIX_EPOCH;
 
             for team in starting_ranks {
-                if let Some(SeededBy { number, group }) = team.seeded_by() {
+                if let Some(SeededBy {
+                    number,
+                    group: Some(group),
+                }) = team.seeded_by()
+                {
                     if let Some((num_teams, end_time)) = group_teams_count.get(group) {
                         if *number > *num_teams as u32 {
                             error!(
@@ -654,7 +662,11 @@ fn check_game_references(schedule: &Schedule) -> Result<(), Box<dyn std::error::
                     error!("Game {} references a non-existent game: {n}", game.number);
                     check_failed = true;
                 }
-            } else if let Some(SeededBy { number, group }) = team.seeded_by() {
+            } else if let Some(SeededBy {
+                number,
+                group: Some(group),
+            }) = team.seeded_by()
+            {
                 if let Some((num_teams, last_end)) = group_teams_count.get(group) {
                     if u32::try_from(*num_teams).unwrap() < *number {
                         error!(

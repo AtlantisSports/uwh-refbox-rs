@@ -1,0 +1,43 @@
+FROM ubuntu:22.04
+
+ARG CROSS_DEB_ARCH=arm64
+ARG CROSS_CMD
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Host toolchain (needed to run build scripts compiled by the host Rust compiler)
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# aarch64 cross-compilation toolchain
+RUN apt-get update && apt-get install -y \
+    gcc-aarch64-linux-gnu \
+    g++-aarch64-linux-gnu \
+    binutils-aarch64-linux-gnu \
+    && rm -rf /var/lib/apt/lists/*
+
+# Configure apt sources: restrict existing sources to amd64, add ports.ubuntu.com for arm64
+RUN sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list \
+    && echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse" >> /etc/apt/sources.list.d/arm64-ports.list \
+    && echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse" >> /etc/apt/sources.list.d/arm64-ports.list \
+    && echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse" >> /etc/apt/sources.list.d/arm64-ports.list
+
+# ARM64 native libraries required by the refbox build
+RUN dpkg --add-architecture arm64 \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libssl-dev:arm64 \
+        pkg-config \
+        libasound2-dev:arm64 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Tell cargo to use the aarch64 cross-linker
+ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+
+# Tell pkg-config to find arm64 libraries when cross-compiling
+ENV PKG_CONFIG_ALLOW_CROSS=1
+ENV PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig
+
+RUN eval "${CROSS_CMD}"

@@ -1,0 +1,52 @@
+#!/bin/bash
+# Pre-commit hook for uwh-refbox-rs
+# Checks branch naming convention and code formatting before every commit.
+# Install with: just install-hooks
+
+set -e
+
+# Ensure cargo is available (rustup installs to ~/.cargo/bin)
+if [ -f "$HOME/.cargo/env" ]; then
+  . "$HOME/.cargo/env"
+fi
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+# ── Branch naming convention check ────────────────────────────────────────────
+
+EXEMPT="^(master|staging)$"
+LEGACY="^pr/"
+
+if [[ ! "$BRANCH" =~ $EXEMPT && ! "$BRANCH" =~ $LEGACY ]]; then
+  VALID="^(fix|feat|chore|refactor|docs|hotfix|wip)/(refbox|schedule-processor|uwh-common|overlay|wireless-remote|beep-test|alphagen|fonts|led-panel-sim|matrix-drawing|wireless-modes|ci|deps|workspace)/[a-z0-9][a-z0-9-]{0,39}$"
+  if [[ ! "$BRANCH" =~ $VALID ]]; then
+    echo ""
+    echo "ERROR: Branch name '$BRANCH' does not follow the naming convention."
+    echo ""
+    echo "  Format:  type/scope/description"
+    echo "  Example: fix/refbox/confirm-score-timing"
+    echo ""
+    echo "  Valid types:  fix, feat, chore, refactor, docs, hotfix, wip"
+    echo "  Valid scopes: refbox, schedule-processor, uwh-common, overlay,"
+    echo "                wireless-remote, beep-test, alphagen, fonts,"
+    echo "                led-panel-sim, matrix-drawing, wireless-modes,"
+    echo "                ci, deps, workspace"
+    echo ""
+    echo "  See docs/conventions.md for the full reference."
+    echo ""
+    exit 1
+  fi
+fi
+
+# ── Formatting check ──────────────────────────────────────────────────────────
+
+echo "Checking code formatting..."
+if ! cargo fmt --all -- --check 2>&1; then
+  echo ""
+  echo "ERROR: Formatting check failed."
+  echo "Run 'just fmt' to fix formatting, then re-stage and commit."
+  echo ""
+  exit 1
+fi
+
+echo "Pre-commit checks passed."

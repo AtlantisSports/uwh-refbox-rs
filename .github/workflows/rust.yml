@@ -50,7 +50,9 @@ jobs:
     - uses: actions-rust-lang/audit@v1
       with:
         file: Cargo.lock
-        ignore: RUSTSEC-2024-0384,RUSTSEC-2024-0388
+        # RUSTSEC-2026-0009: time CVE fix requires Rust 1.88+, above current MSRV 1.85
+        # See docs/decisions/002-time-cve-msrv.md
+        ignore: RUSTSEC-2024-0384,RUSTSEC-2024-0388,RUSTSEC-2026-0009
     - uses: actions-rust-lang/audit@v1
       with:
         workingDirectory: wireless-remote

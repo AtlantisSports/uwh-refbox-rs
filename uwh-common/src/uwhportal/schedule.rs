@@ -56,7 +56,8 @@ impl fmt::Display for ScheduledTeam {
                 ResultOf::Loser { game_number } => write!(f, "Loser of game {}", game_number),
             }
         } else if let Some(seeded_by) = &self.seeded_by {
-            write!(f, "Group {} Seed {}", seeded_by.group, seeded_by.number)
+            let group_name = seeded_by.group.as_deref().unwrap_or("Unknown");
+            write!(f, "Group {} Seed {}", group_name, seeded_by.number)
         } else {
             write!(f, "Unknown team")
         }
@@ -111,7 +112,7 @@ impl ScheduledTeam {
             result_of: None,
             seeded_by: Some(SeededBy {
                 number: seed,
-                group: group.to_string(),
+                group: Some(group.to_string()),
             }),
         }
     }
@@ -178,8 +179,21 @@ impl ResultOf {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, PartialOrd, Ord, Hash)]
 pub struct SeededBy {
     pub number: u32,
-    #[serde(with = "item_name")]
-    pub group: String,
+    #[serde(
+        with = "option_item_name",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub group: Option<String>,
+}
+
+#[serde_with::skip_serializing_none]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FinalPlacingSource {
+    #[serde(rename = "resultOf")]
+    pub result_of: Option<ResultOf>,
+    #[serde(rename = "seededBy")]
+    pub seeded_by: Option<SeededBy>,
 }
 
 pub type GameNumber = String;
@@ -258,7 +272,7 @@ impl Into<GameConfig> for TimingRule {
             timeouts_counted_per_half: team_timeouts_counted_per_half,
             overtime_allowed,
             sudden_death_allowed,
-            single_half: half_play_duration == Duration::ZERO,
+            single_half: half_time_duration == Duration::ZERO,
             half_play_duration,
             half_time_duration,
             team_timeout_duration,
@@ -390,6 +404,10 @@ pub enum FinalResults {
         #[serde(rename = "listOfGames")]
         list_of_games: Vec<ResultOf>,
     },
+    ListOfPlacements {
+        #[serde(rename = "listOfPlacements")]
+        list_of_placements: Vec<FinalPlacingSource>,
+    },
 }
 
 #[serde_with::skip_serializing_none]
@@ -519,6 +537,40 @@ mod item_name {
 
         let item_name = ItemName::deserialize(deserializer)?;
         Ok(item_name.name)
+    }
+}
+
+mod option_item_name {
+    use serde::{self, Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(name: &Option<String>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use serde::Serialize;
+        match name {
+            Some(n) => {
+                #[derive(Serialize)]
+                struct ItemName<'a> {
+                    name: &'a str,
+                }
+                ItemName { name: n }.serialize(serializer)
+            }
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct ItemName {
+            name: String,
+        }
+
+        let item_name = Option::<ItemName>::deserialize(deserializer)?;
+        Ok(item_name.map(|i| i.name))
     }
 }
 

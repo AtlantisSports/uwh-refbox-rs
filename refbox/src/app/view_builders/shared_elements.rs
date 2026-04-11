@@ -799,12 +799,17 @@ pub(super) fn config_string(
                 for ref_assignment in refs {
                     if ref_assignment.user_id.is_some() {
                         has_individual_refs = true;
+                        let display = ref_assignment
+                            .display_name
+                            .as_deref()
+                            .unwrap_or(&ref_assignment.identifier)
+                            .to_string();
                         match ref_assignment.role.as_str() {
-                            "Chief" => chief_ref = ref_assignment.identifier.clone(),
-                            "TimeOrScoreKeeper" => timer = ref_assignment.identifier.clone(),
-                            "Water1" => water_ref_1 = ref_assignment.identifier.clone(),
-                            "Water2" => water_ref_2 = ref_assignment.identifier.clone(),
-                            "Water3" => water_ref_3 = ref_assignment.identifier.clone(),
+                            "Chief" => chief_ref = display,
+                            "TimeOrScoreKeeper" => timer = display,
+                            "Water1" => water_ref_1 = display,
+                            "Water2" => water_ref_2 = display,
+                            "Water3" => water_ref_3 = display,
                             _ => {}
                         }
                     }

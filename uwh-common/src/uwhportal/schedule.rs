@@ -1299,7 +1299,7 @@ mod tests {
         // Compare the OIDs to check if the file is up to date
         assert_eq!(file_oid, default_remote_file_oid);
 
-        let file = File::open(&format!("{UWHPORTAL_REPO_PATH}/{POSTMAN_JSON_PATH}")).unwrap();
+        let file = File::open(format!("{UWHPORTAL_REPO_PATH}/{POSTMAN_JSON_PATH}")).unwrap();
         let reader = BufReader::new(file);
         let postman: serde_json::Value = serde_json::from_reader(reader).unwrap();
 

@@ -344,36 +344,19 @@ impl UwhPortalClient {
                 let body = response.text().await?;
                 let mut schedule: schedule::Schedule = serde_json::from_str(&body)?;
 
-                // Extract refereesByGameNumber from raw JSON if not populated by serde
-                if schedule.referees_by_game_number.is_none() {
-                    if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&body) {
-                        if let Some(refs) = raw.get("refereesByGameNumber") {
-                            if let Ok(parsed) = serde_json::from_value::<
-                                schedule::RefereesByGameNumber,
-                            >(refs.clone())
-                            {
-                                schedule.referees_by_game_number = Some(parsed);
-                            }
-                        }
-                    }
-                }
-
-                // Fall back to public endpoint if still no referee data
-                if schedule.referees_by_game_number.is_none() {
-                    if let Ok(pub_resp) = client.get(&public_url).send().await {
-                        if pub_resp.status() == StatusCode::OK {
-                            if let Ok(pub_body) = pub_resp.text().await {
-                                if let Ok(raw) =
-                                    serde_json::from_str::<serde_json::Value>(&pub_body)
-                                {
-                                    if let Some(refs) = raw.get("refereesByGameNumber") {
-                                        if let Ok(parsed) = serde_json::from_value::<
-                                            schedule::RefereesByGameNumber,
-                                        >(
-                                            refs.clone()
-                                        ) {
-                                            schedule.referees_by_game_number = Some(parsed);
-                                        }
+                // refereesByGameNumber is not present on the privileged endpoint;
+                // fetch it from the public endpoint and merge in.
+                if let Ok(pub_resp) = client.get(&public_url).send().await {
+                    if pub_resp.status() == StatusCode::OK {
+                        if let Ok(pub_body) = pub_resp.text().await {
+                            if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&pub_body) {
+                                if let Some(refs) = raw.get("refereesByGameNumber") {
+                                    if let Ok(parsed) =
+                                        serde_json::from_value::<schedule::RefereesByGameNumber>(
+                                            refs.clone(),
+                                        )
+                                    {
+                                        schedule.referees_by_game_number = Some(parsed);
                                     }
                                 }
                             }
@@ -533,6 +516,13 @@ impl UwhPortalClient {
         }
     }
 
+    /// Attempts to parse the public schedule endpoint as a `Schedule`.
+    ///
+    /// Note: the public endpoint returns games as a JSON array, but `GameList`
+    /// (`IndexMap<String, Game>`) requires an object keyed by game number.
+    /// Deserialization will fail for real portal data. Use
+    /// `get_event_schedule_privileged` with an access token for full schedule
+    /// data, or `get_event_schedule_public_raw` to access the raw JSON.
     pub fn get_event_schedule_public(
         &self,
         event_id: &EventId,
@@ -547,20 +537,7 @@ impl UwhPortalClient {
             let response = request.await?;
             if response.status() == StatusCode::OK {
                 let body = response.text().await?;
-                let mut schedule: schedule::Schedule = serde_json::from_str(&body)?;
-                // Extract refereesByGameNumber from raw JSON if not populated
-                if schedule.referees_by_game_number.is_none() {
-                    if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&body) {
-                        if let Some(refs) = raw.get("refereesByGameNumber") {
-                            if let Ok(parsed) = serde_json::from_value::<
-                                schedule::RefereesByGameNumber,
-                            >(refs.clone())
-                            {
-                                schedule.referees_by_game_number = Some(parsed);
-                            }
-                        }
-                    }
-                }
+                let schedule: schedule::Schedule = serde_json::from_str(&body)?;
                 Ok(schedule)
             } else {
                 warn!("uwhportal get public event schedule failed, response: {response:?}");
@@ -587,65 +564,6 @@ impl UwhPortalClient {
                 Ok(body)
             } else {
                 warn!("uwhportal get public event schedule failed, response: {response:?}");
-                let body = response.text().await?;
-                Err(Box::new(ApiError::new(body)))?
-            }
-        }
-    }
-
-    pub fn get_user_display_name(
-        &self,
-        user_full_id: &str,
-    ) -> impl std::future::Future<Output = Result<String, Box<dyn Error>>> + use<> {
-        let url = format!(
-            "{}/api/{}",
-            self.base_url,
-            user_full_id.trim_start_matches('/')
-        );
-        let fallback = user_full_id
-            .split('/')
-            .next_back()
-            .unwrap_or(user_full_id)
-            .to_string();
-        let request =
-            authenticated_request(&self.client, Method::GET, &url, &self.access_token).send();
-        async move {
-            let response = request.await?;
-            if response.status() == StatusCode::OK {
-                let body = response.json::<serde_json::Value>().await?;
-                let display = body["playerInfo"]["rosterName"]
-                    .as_str()
-                    .or_else(|| body["PlayerInfo"]["RosterName"].as_str())
-                    .or_else(|| body["displayName"].as_str())
-                    .or_else(|| body["DisplayName"].as_str())
-                    .or_else(|| body["preferredName"].as_str())
-                    .or_else(|| body["PreferredName"].as_str())
-                    .or_else(|| body["name"].as_str())
-                    .or_else(|| body["Name"].as_str())
-                    .map(|s| s.to_string())
-                    .or_else(|| {
-                        let first = body["firstName"]
-                            .as_str()
-                            .or_else(|| body["FirstName"].as_str());
-                        let last = body["lastName"]
-                            .as_str()
-                            .or_else(|| body["LastName"].as_str());
-                        match (first, last) {
-                            (Some(f), Some(l)) => Some(format!("{f} {l}")),
-                            (Some(f), None) => Some(f.to_string()),
-                            (None, Some(l)) => Some(l.to_string()),
-                            _ => None,
-                        }
-                    })
-                    .or_else(|| {
-                        body["username"]
-                            .as_str()
-                            .or_else(|| body["Username"].as_str())
-                            .map(|s| s.to_string())
-                    })
-                    .unwrap_or(fallback);
-                Ok(display)
-            } else {
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(body)))?
             }
@@ -797,16 +715,18 @@ impl UwhPortalClient {
                 .or_else(|| body["referees"].as_array().cloned())
                 .or_else(|| body["items"].as_array().cloned())
                 .unwrap_or_default();
+            // Response: array of objects with a nested `user` object.
+            // user ID is at item["user"]["id"]; display name is item["rosterName"]
+            // (preferred) or item["user"]["name"] / item["user"]["username"] as fallback.
             for item in &items {
-                let uid = item["userId"]
+                let uid = item["user"]["id"]
                     .as_str()
-                    .or_else(|| item["user_id"].as_str())
+                    .or_else(|| item["userId"].as_str())
                     .or_else(|| item["id"].as_str());
                 let name = item["rosterName"]
                     .as_str()
-                    .or_else(|| item["displayName"].as_str())
-                    .or_else(|| item["preferredName"].as_str())
-                    .or_else(|| item["name"].as_str());
+                    .or_else(|| item["user"]["name"].as_str())
+                    .or_else(|| item["user"]["username"].as_str());
                 if let (Some(uid), Some(name)) = (uid, name) {
                     map.insert(uid.to_string(), name.to_string());
                 }
@@ -823,9 +743,9 @@ impl UwhPortalClient {
     ) -> impl std::future::Future<Output = Result<HashMap<String, String>, Box<dyn Error>>> + use<>
     {
         let url = format!(
-            "{}/api/admin/events/{}/participants",
+            "{}/api/events/{}/participants",
             self.base_url,
-            event_id.full()
+            event_id.partial()
         );
         let request =
             authenticated_request(&self.client, Method::GET, &url, &self.access_token).send();
@@ -843,16 +763,16 @@ impl UwhPortalClient {
                 .or_else(|| body["participants"].as_array().cloned())
                 .or_else(|| body["items"].as_array().cloned())
                 .unwrap_or_default();
+            // Same nested-user structure as /referees
             for item in &items {
-                let uid = item["userId"]
+                let uid = item["user"]["id"]
                     .as_str()
-                    .or_else(|| item["user_id"].as_str())
+                    .or_else(|| item["userId"].as_str())
                     .or_else(|| item["id"].as_str());
                 let name = item["rosterName"]
                     .as_str()
-                    .or_else(|| item["displayName"].as_str())
-                    .or_else(|| item["preferredName"].as_str())
-                    .or_else(|| item["name"].as_str());
+                    .or_else(|| item["user"]["name"].as_str())
+                    .or_else(|| item["user"]["username"].as_str());
                 if let (Some(uid), Some(name)) = (uid, name) {
                     map.insert(uid.to_string(), name.to_string());
                 }
@@ -862,7 +782,7 @@ impl UwhPortalClient {
     }
 
     /// Returns a map from user_id string to display name for all referees
-    /// assigned to the given game (authenticated admin endpoint).
+    /// assigned to the given game (authenticated admin endpoint, AllowAnonymous).
     pub fn get_game_referee_name_map(
         &self,
         event_id: &EventId,
@@ -883,22 +803,22 @@ impl UwhPortalClient {
             }
             let body = response.json::<serde_json::Value>().await?;
             let mut map = HashMap::new();
-            let items = body
+            // Response: { referees: [ { user: { id, name, username } } ] }
+            // name may be null; username is the fallback.
+            let items = body["referees"]
                 .as_array()
                 .cloned()
-                .or_else(|| body["referees"].as_array().cloned())
-                .or_else(|| body["items"].as_array().cloned())
+                .or_else(|| body.as_array().cloned())
                 .unwrap_or_default();
             for item in &items {
-                let uid = item["userId"]
+                let uid = item["user"]["id"]
                     .as_str()
-                    .or_else(|| item["user_id"].as_str())
+                    .or_else(|| item["userId"].as_str())
                     .or_else(|| item["id"].as_str());
-                let name = item["rosterName"]
+                let name = item["user"]["name"]
                     .as_str()
-                    .or_else(|| item["displayName"].as_str())
-                    .or_else(|| item["preferredName"].as_str())
-                    .or_else(|| item["name"].as_str());
+                    .or_else(|| item["user"]["username"].as_str())
+                    .or_else(|| item["rosterName"].as_str());
                 if let (Some(uid), Some(name)) = (uid, name) {
                     map.insert(uid.to_string(), name.to_string());
                 }

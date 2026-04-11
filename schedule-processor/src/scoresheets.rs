@@ -596,7 +596,7 @@ async fn resolve_officials(
             let display = if let Some(n) = cache.get(user_id) {
                 n.clone()
             } else {
-                // On first miss for this game, try to fetch all game refs in one call (public endpoint)
+                // On first miss for this game, fetch all game refs in one call
                 if !fetched_for_game {
                     if let Ok(per_game) = portal_client
                         .get_game_referee_name_map(event_id, &game.number)
@@ -612,21 +612,14 @@ async fn resolve_officials(
                     }
                     fetched_for_game = true;
                 }
-                if let Some(n) = cache.get(user_id) {
-                    n.clone()
-                } else {
-                    match portal_client.get_user_display_name(user_id).await {
-                        Ok(n) => {
-                            cache.insert(user_id.clone(), n.clone());
-                            n
-                        }
-                        Err(_) => user_id
-                            .split('/')
-                            .next_back()
-                            .unwrap_or(user_id)
-                            .to_string(),
-                    }
-                }
+                // Fall back to the last segment of the user ID (e.g. "abc123")
+                cache.get(user_id).cloned().unwrap_or_else(|| {
+                    user_id
+                        .split('/')
+                        .next_back()
+                        .unwrap_or(user_id)
+                        .to_string()
+                })
             };
 
             match a.role.as_str() {

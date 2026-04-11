@@ -808,11 +808,11 @@ pub(super) fn config_string(
                     if ref_assignment.user_id.is_some() {
                         has_individual_refs = true;
                         match ref_assignment.role.as_str() {
-                            "Chief Ref" => chief_ref = ref_assignment.identifier.clone(),
-                            "Timer" => timer = ref_assignment.identifier.clone(),
-                            "Water Ref 1" => water_ref_1 = ref_assignment.identifier.clone(),
-                            "Water Ref 2" => water_ref_2 = ref_assignment.identifier.clone(),
-                            "Water Ref 3" => water_ref_3 = ref_assignment.identifier.clone(),
+                            "Chief" => chief_ref = ref_assignment.identifier.clone(),
+                            "TimeOrScoreKeeper" => timer = ref_assignment.identifier.clone(),
+                            "Water1" => water_ref_1 = ref_assignment.identifier.clone(),
+                            "Water2" => water_ref_2 = ref_assignment.identifier.clone(),
+                            "Water3" => water_ref_3 = ref_assignment.identifier.clone(),
                             _ => {}
                         }
                     }

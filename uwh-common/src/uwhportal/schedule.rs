@@ -207,6 +207,10 @@ pub struct RefereeAssignment {
     #[serde(rename = "teamId")]
     pub team_id: Option<TeamId>,
     pub comments: Option<String>,
+    /// Human-readable display name, resolved from the portal after fetching.
+    /// Not present in the portal JSON; populated locally via name-map lookup.
+    #[serde(skip)]
+    pub display_name: Option<String>,
 }
 
 /// Basic team info for team referee assignments

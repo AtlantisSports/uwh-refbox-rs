@@ -709,22 +709,30 @@ impl UwhPortalClient {
             }
             let body = response.json::<serde_json::Value>().await?;
             let mut map = HashMap::new();
-            let items = body
-                .as_array()
-                .cloned()
-                .or_else(|| body["referees"].as_array().cloned())
-                .or_else(|| body["items"].as_array().cloned())
-                .unwrap_or_default();
-            // Response: array of objects with a nested `user` object.
-            // user ID is at item["user"]["id"]; display name is item["rosterName"]
-            // (preferred) or item["user"]["name"] / item["user"]["username"] as fallback.
-            for item in &items {
+            // Response: { tournamentReferee: {...}, referees: { dedicated: [...],
+            //   hybrid: {...}, timeOrScoreKeeper: [...] } }
+            // Collect all referee objects into a flat list regardless of category.
+            let mut all_items: Vec<&serde_json::Value> = Vec::new();
+            if body["tournamentReferee"].is_object() {
+                all_items.push(&body["tournamentReferee"]);
+            }
+            if let Some(cats) = body["referees"].as_object() {
+                for (_cat, val) in cats {
+                    if let Some(arr) = val.as_array() {
+                        all_items.extend(arr.iter());
+                    }
+                }
+            }
+            // user ID at item["user"]["id"]; name: non-empty rosterName preferred,
+            // then user.name, then user.username.
+            for item in all_items {
                 let uid = item["user"]["id"]
                     .as_str()
                     .or_else(|| item["userId"].as_str())
                     .or_else(|| item["id"].as_str());
                 let name = item["rosterName"]
                     .as_str()
+                    .filter(|s| !s.is_empty())
                     .or_else(|| item["user"]["name"].as_str())
                     .or_else(|| item["user"]["username"].as_str());
                 if let (Some(uid), Some(name)) = (uid, name) {

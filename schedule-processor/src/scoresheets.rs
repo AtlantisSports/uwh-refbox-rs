@@ -9,7 +9,7 @@ use time::{
 };
 use uwh_common::uwhportal::UwhPortalClient;
 use uwh_common::uwhportal::schedule::{
-    DateRange, Event, EventId, Game, ScheduledTeam, TeamId, TeamList, TimingRule,
+    DateRange, Event, EventId, Game, Schedule, ScheduledTeam, TeamId, TeamList, TimingRule,
 };
 
 #[derive(Clone, Debug)]
@@ -56,10 +56,13 @@ pub async fn generate_scoresheets_for_event(
     portal_client: &mut UwhPortalClient,
     event: &Event,
     inputs: RenderInputs,
-    csv_schedule: Option<&uwh_common::uwhportal::schedule::Schedule>,
+    csv_schedule: Option<&Schedule>,
     ref_csv_path: Option<&Path>,
+    schedule_override: Option<Schedule>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let schedule = if portal_client.has_token() {
+    let schedule = if let Some(s) = schedule_override {
+        s
+    } else if portal_client.has_token() {
         // Prefer privileged schedule when we can; it includes referee assignments
         portal_client
             .get_event_schedule_privileged(&event.id)
@@ -70,7 +73,16 @@ pub async fn generate_scoresheets_for_event(
             Err(_) => return Err(Box::new(AuthRequiredError)),
         }
     };
-    let teams = portal_client.get_event_teams(&event.id).await?;
+    let teams = portal_client
+        .get_event_teams(&event.id)
+        .await
+        .unwrap_or_else(|e| {
+            log::warn!(
+                "Could not fetch event teams ({}); team names will fall back to IDs",
+                e
+            );
+            TeamList::new()
+        });
 
     fs::create_dir_all(&inputs.output_dir)?;
 
@@ -315,6 +327,9 @@ pub async fn generate_scoresheets_for_event(
             candidates.push(p.to_string_lossy().into_owned());
         }
         candidates.push("chrome".into());
+        candidates.push("google-chrome".into());
+        candidates.push("chromium".into());
+        candidates.push("chromium-browser".into());
         let try_arg_sets: [&[&str]; 4] = [
             &[
                 "--headless=new",

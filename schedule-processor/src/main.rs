@@ -19,8 +19,7 @@ use uwh_common::uwhportal::{CoinFlipTeam, SetCoinFlipModel, UwhPortalClient, sch
 mod csv_parser;
 use csv_parser::parse_csv;
 
-mod scoresheets;
-use scoresheets::{
+use schedule_processor::scoresheets::{
     RenderInputs, SheetStyle, generate_example_rule_sheets, generate_scoresheets_for_event,
 };
 
@@ -987,6 +986,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     inputs.clone(),
                     csv_schedule_opt,
                     ref_csv_path.as_deref(),
+                    None,
                 )
                 .await
                 {
@@ -1032,6 +1032,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 inputs,
                                 csv_schedule_opt,
                                 ref_csv_path.as_deref(),
+                                None,
                             )
                             .await
                             {

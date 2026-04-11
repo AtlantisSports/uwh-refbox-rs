@@ -8,7 +8,10 @@ use reqwest::{
 };
 use schedule::{EventId, GameNumber, TeamId, TeamList};
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, error::Error};
+use std::{
+    collections::{BTreeMap, HashMap},
+    error::Error,
+};
 
 pub mod schedule;
 
@@ -327,18 +330,60 @@ impl UwhPortalClient {
         let request =
             authenticated_request(&self.client, Method::GET, &url, &self.access_token).send();
 
+        let public_url = format!(
+            "{}/api/events/{}/schedule",
+            self.base_url,
+            event_id.partial()
+        );
+        let client = self.client.clone();
+
         async move {
             let response = request.await?;
 
             if response.status() == StatusCode::OK {
-                let body = response.text().await?; // TODO: Can we just call response.json()?
-                let schedule: schedule::Schedule = serde_json::from_str(&body)?;
+                let body = response.text().await?;
+                let mut schedule: schedule::Schedule = serde_json::from_str(&body)?;
+
+                // Extract refereesByGameNumber from raw JSON if not populated by serde
+                if schedule.referees_by_game_number.is_none() {
+                    if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&body) {
+                        if let Some(refs) = raw.get("refereesByGameNumber") {
+                            if let Ok(parsed) = serde_json::from_value::<
+                                schedule::RefereesByGameNumber,
+                            >(refs.clone())
+                            {
+                                schedule.referees_by_game_number = Some(parsed);
+                            }
+                        }
+                    }
+                }
+
+                // Fall back to public endpoint if still no referee data
+                if schedule.referees_by_game_number.is_none() {
+                    if let Ok(pub_resp) = client.get(&public_url).send().await {
+                        if pub_resp.status() == StatusCode::OK {
+                            if let Ok(pub_body) = pub_resp.text().await {
+                                if let Ok(raw) =
+                                    serde_json::from_str::<serde_json::Value>(&pub_body)
+                                {
+                                    if let Some(refs) = raw.get("refereesByGameNumber") {
+                                        if let Ok(parsed) = serde_json::from_value::<
+                                            schedule::RefereesByGameNumber,
+                                        >(
+                                            refs.clone()
+                                        ) {
+                                            schedule.referees_by_game_number = Some(parsed);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Ok(schedule)
             } else {
-                warn!(
-                    "uwhportal get event schedule failed, response: {:?}",
-                    response
-                );
+                warn!("uwhportal get event schedule failed, response: {response:?}");
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(body)))?
             }
@@ -488,6 +533,189 @@ impl UwhPortalClient {
         }
     }
 
+    pub fn get_event_schedule_public(
+        &self,
+        event_id: &EventId,
+    ) -> impl std::future::Future<Output = Result<schedule::Schedule, Box<dyn Error>>> + use<> {
+        let url = format!(
+            "{}/api/events/{}/schedule",
+            self.base_url,
+            event_id.partial()
+        );
+        let request = self.client.get(&url).send();
+        async move {
+            let response = request.await?;
+            if response.status() == StatusCode::OK {
+                let body = response.text().await?;
+                let mut schedule: schedule::Schedule = serde_json::from_str(&body)?;
+                // Extract refereesByGameNumber from raw JSON if not populated
+                if schedule.referees_by_game_number.is_none() {
+                    if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&body) {
+                        if let Some(refs) = raw.get("refereesByGameNumber") {
+                            if let Ok(parsed) = serde_json::from_value::<
+                                schedule::RefereesByGameNumber,
+                            >(refs.clone())
+                            {
+                                schedule.referees_by_game_number = Some(parsed);
+                            }
+                        }
+                    }
+                }
+                Ok(schedule)
+            } else {
+                warn!("uwhportal get public event schedule failed, response: {response:?}");
+                let body = response.text().await?;
+                Err(Box::new(ApiError::new(body)))?
+            }
+        }
+    }
+
+    pub fn get_event_schedule_public_raw(
+        &self,
+        event_id: &EventId,
+    ) -> impl std::future::Future<Output = Result<String, Box<dyn Error>>> + use<> {
+        let url = format!(
+            "{}/api/events/{}/schedule",
+            self.base_url,
+            event_id.partial()
+        );
+        let request = self.client.get(&url).send();
+        async move {
+            let response = request.await?;
+            if response.status() == StatusCode::OK {
+                let body = response.text().await?;
+                Ok(body)
+            } else {
+                warn!("uwhportal get public event schedule failed, response: {response:?}");
+                let body = response.text().await?;
+                Err(Box::new(ApiError::new(body)))?
+            }
+        }
+    }
+
+    pub fn get_user_display_name(
+        &self,
+        user_full_id: &str,
+    ) -> impl std::future::Future<Output = Result<String, Box<dyn Error>>> + use<> {
+        let url = format!(
+            "{}/api/{}",
+            self.base_url,
+            user_full_id.trim_start_matches('/')
+        );
+        let fallback = user_full_id
+            .split('/')
+            .next_back()
+            .unwrap_or(user_full_id)
+            .to_string();
+        let request =
+            authenticated_request(&self.client, Method::GET, &url, &self.access_token).send();
+        async move {
+            let response = request.await?;
+            if response.status() == StatusCode::OK {
+                let body = response.json::<serde_json::Value>().await?;
+                let display = body["playerInfo"]["rosterName"]
+                    .as_str()
+                    .or_else(|| body["PlayerInfo"]["RosterName"].as_str())
+                    .or_else(|| body["displayName"].as_str())
+                    .or_else(|| body["DisplayName"].as_str())
+                    .or_else(|| body["preferredName"].as_str())
+                    .or_else(|| body["PreferredName"].as_str())
+                    .or_else(|| body["name"].as_str())
+                    .or_else(|| body["Name"].as_str())
+                    .map(|s| s.to_string())
+                    .or_else(|| {
+                        let first = body["firstName"]
+                            .as_str()
+                            .or_else(|| body["FirstName"].as_str());
+                        let last = body["lastName"]
+                            .as_str()
+                            .or_else(|| body["LastName"].as_str());
+                        match (first, last) {
+                            (Some(f), Some(l)) => Some(format!("{f} {l}")),
+                            (Some(f), None) => Some(f.to_string()),
+                            (None, Some(l)) => Some(l.to_string()),
+                            _ => None,
+                        }
+                    })
+                    .or_else(|| {
+                        body["username"]
+                            .as_str()
+                            .or_else(|| body["Username"].as_str())
+                            .map(|s| s.to_string())
+                    })
+                    .unwrap_or(fallback);
+                Ok(display)
+            } else {
+                let body = response.text().await?;
+                Err(Box::new(ApiError::new(body)))?
+            }
+        }
+    }
+
+    #[allow(clippy::type_complexity)]
+    pub fn get_team_roster(
+        &self,
+        team_id: &TeamId,
+    ) -> impl std::future::Future<
+        Output = Result<(Vec<(Option<u8>, String)>, Option<String>), Box<dyn Error>>,
+    > + use<> {
+        let url = format!("{}/api/admin/get-event-team", self.base_url);
+        let team_id_full = team_id.full().to_string();
+        let request = self
+            .client
+            .get(&url)
+            .query(&[("teamId", &team_id_full)])
+            .send();
+        async move {
+            let response = request.await?;
+            if response.status() == StatusCode::OK {
+                let body = response.json::<serde_json::Value>().await?;
+                let mut players = Vec::new();
+                let mut captain_name: Option<String> = None;
+
+                if let Some(roster) = body.get("roster").and_then(|v| v.as_array()) {
+                    for member in roster {
+                        let number = member
+                            .get("capNumber")
+                            .and_then(|v| v.as_u64())
+                            .map(|n| n as u8);
+                        let roster_name = member
+                            .get("rosterName")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.trim())
+                            .filter(|s| !s.is_empty());
+                        let username = member
+                            .get("username")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.trim())
+                            .filter(|s| !s.is_empty());
+                        let name = roster_name.or(username).unwrap_or("").to_string();
+
+                        if let Some(roles) = member.get("roles").and_then(|v| v.as_array()) {
+                            if roles.iter().any(|r| r.as_str() == Some("Captain")) {
+                                captain_name = Some(name.clone());
+                            }
+                        }
+
+                        if !name.is_empty() || number.is_some() {
+                            players.push((number, name));
+                        }
+                    }
+                }
+                players.sort_by(|a, b| match (a.0, b.0) {
+                    (Some(na), Some(nb)) => na.cmp(&nb),
+                    (Some(_), None) => std::cmp::Ordering::Less,
+                    (None, Some(_)) => std::cmp::Ordering::Greater,
+                    (None, None) => a.1.cmp(&b.1),
+                });
+                Ok((players, captain_name))
+            } else {
+                let body = response.text().await?;
+                Err(Box::new(ApiError::new(body)))?
+            }
+        }
+    }
+
     pub fn get_event_schedule_privileged_raw(
         &self,
         event_id: &EventId,
@@ -539,6 +767,143 @@ impl UwhPortalClient {
             } else {
                 Err(Box::new(ApiError::new(body)))?
             }
+        }
+    }
+
+    /// Returns a map from user_id string to display name, populated from the public
+    /// `/referees` endpoint for the event (no authentication required).
+    pub fn get_event_referee_name_map_from_referees(
+        &self,
+        event_id: &EventId,
+    ) -> impl std::future::Future<Output = Result<HashMap<String, String>, Box<dyn Error>>> + use<>
+    {
+        let url = format!(
+            "{}/api/events/{}/referees",
+            self.base_url,
+            event_id.partial()
+        );
+        let request = self.client.get(&url).send();
+        async move {
+            let response = request.await?;
+            if response.status() != StatusCode::OK {
+                let body = response.text().await?;
+                return Err(Box::new(ApiError::new(body)) as Box<dyn Error>);
+            }
+            let body = response.json::<serde_json::Value>().await?;
+            let mut map = HashMap::new();
+            let items = body
+                .as_array()
+                .cloned()
+                .or_else(|| body["referees"].as_array().cloned())
+                .or_else(|| body["items"].as_array().cloned())
+                .unwrap_or_default();
+            for item in &items {
+                let uid = item["userId"]
+                    .as_str()
+                    .or_else(|| item["user_id"].as_str())
+                    .or_else(|| item["id"].as_str());
+                let name = item["rosterName"]
+                    .as_str()
+                    .or_else(|| item["displayName"].as_str())
+                    .or_else(|| item["preferredName"].as_str())
+                    .or_else(|| item["name"].as_str());
+                if let (Some(uid), Some(name)) = (uid, name) {
+                    map.insert(uid.to_string(), name.to_string());
+                }
+            }
+            Ok(map)
+        }
+    }
+
+    /// Returns a map from user_id string to display name, populated from the
+    /// authenticated `/participants` endpoint for the event.
+    pub fn get_event_referee_name_map(
+        &self,
+        event_id: &EventId,
+    ) -> impl std::future::Future<Output = Result<HashMap<String, String>, Box<dyn Error>>> + use<>
+    {
+        let url = format!(
+            "{}/api/admin/events/{}/participants",
+            self.base_url,
+            event_id.full()
+        );
+        let request =
+            authenticated_request(&self.client, Method::GET, &url, &self.access_token).send();
+        async move {
+            let response = request.await?;
+            if response.status() != StatusCode::OK {
+                let body = response.text().await?;
+                return Err(Box::new(ApiError::new(body)) as Box<dyn Error>);
+            }
+            let body = response.json::<serde_json::Value>().await?;
+            let mut map = HashMap::new();
+            let items = body
+                .as_array()
+                .cloned()
+                .or_else(|| body["participants"].as_array().cloned())
+                .or_else(|| body["items"].as_array().cloned())
+                .unwrap_or_default();
+            for item in &items {
+                let uid = item["userId"]
+                    .as_str()
+                    .or_else(|| item["user_id"].as_str())
+                    .or_else(|| item["id"].as_str());
+                let name = item["rosterName"]
+                    .as_str()
+                    .or_else(|| item["displayName"].as_str())
+                    .or_else(|| item["preferredName"].as_str())
+                    .or_else(|| item["name"].as_str());
+                if let (Some(uid), Some(name)) = (uid, name) {
+                    map.insert(uid.to_string(), name.to_string());
+                }
+            }
+            Ok(map)
+        }
+    }
+
+    /// Returns a map from user_id string to display name for all referees
+    /// assigned to the given game (authenticated admin endpoint).
+    pub fn get_game_referee_name_map(
+        &self,
+        event_id: &EventId,
+        game_number: &GameNumber,
+    ) -> impl std::future::Future<Output = Result<HashMap<String, String>, Box<dyn Error>>> + use<>
+    {
+        let url = format!("{}/api/admin/events/game-referees", self.base_url);
+        let event_id_full = event_id.full().to_string();
+        let game_number = game_number.clone();
+        let request = authenticated_request(&self.client, Method::GET, &url, &self.access_token)
+            .query(&[("eventId", &event_id_full), ("gameNumber", &game_number)])
+            .send();
+        async move {
+            let response = request.await?;
+            if response.status() != StatusCode::OK {
+                let body = response.text().await?;
+                return Err(Box::new(ApiError::new(body)) as Box<dyn Error>);
+            }
+            let body = response.json::<serde_json::Value>().await?;
+            let mut map = HashMap::new();
+            let items = body
+                .as_array()
+                .cloned()
+                .or_else(|| body["referees"].as_array().cloned())
+                .or_else(|| body["items"].as_array().cloned())
+                .unwrap_or_default();
+            for item in &items {
+                let uid = item["userId"]
+                    .as_str()
+                    .or_else(|| item["user_id"].as_str())
+                    .or_else(|| item["id"].as_str());
+                let name = item["rosterName"]
+                    .as_str()
+                    .or_else(|| item["displayName"].as_str())
+                    .or_else(|| item["preferredName"].as_str())
+                    .or_else(|| item["name"].as_str());
+                if let (Some(uid), Some(name)) = (uid, name) {
+                    map.insert(uid.to_string(), name.to_string());
+                }
+            }
+            Ok(map)
         }
     }
 

@@ -68,10 +68,10 @@ pub async fn generate_scoresheets_for_event(
             .get_event_schedule_privileged(&event.id)
             .await?
     } else {
-        match portal_client.get_event_schedule_public(&event.id).await {
-            Ok(s) => s,
-            Err(_) => return Err(Box::new(AuthRequiredError)),
-        }
+        // The public schedule endpoint returns games as a JSON array which
+        // cannot be deserialized into the Schedule type (requires an object
+        // keyed by game number). An access token is required.
+        return Err(Box::new(AuthRequiredError));
     };
     let teams = portal_client
         .get_event_teams(&event.id)

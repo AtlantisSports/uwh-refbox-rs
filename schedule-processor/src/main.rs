@@ -12,6 +12,7 @@ use rfd::FileDialog;
 use std::{
     collections::BTreeMap,
     fmt::{Display, Write},
+    path::PathBuf,
     vec,
 };
 use uwh_common::uwhportal::{CoinFlipTeam, SetCoinFlipModel, UwhPortalClient, schedule::*};
@@ -116,7 +117,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::time::Duration::from_secs(10),
     )?;
 
-    let events = portal_client.get_event_list(false, false).await?;
+    let events = portal_client.get_event_list(true, false).await?;
 
     struct SelectableEvent(Event);
 
@@ -900,7 +901,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     (None, None)
                 };
 
-                let (ref_csv_path, prefer_portal_officials) = if style == SheetStyle::SimpleTeamRefs
+                let (ref_csv_path, prefer_portal_officials): (Option<PathBuf>, bool) = if style
+                    == SheetStyle::SimpleTeamRefs
                 {
                     (None, false)
                 } else {
@@ -908,29 +910,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .with_default(true)
                         .prompt()
                         .unwrap_or(true);
-
-                    let csv_path = if include_referees {
-                        FileDialog::new()
-                            .add_filter("CSV files", &["csv"])
-                            .set_title("Select Referee Schedule CSV (optional)")
-                            .pick_file()
-                    } else {
-                        None
-                    };
-
-                    let prefer_officials = if csv_path.is_some() {
-                        Confirm::new(
-                            "Use portal display names instead of names from the Referee CSV?",
-                        )
-                        .with_default(true)
-                        .prompt()
-                        .unwrap_or(true)
-                    } else {
-                        // No CSV provided: use portal names directly if the user wants refs shown
-                        include_referees
-                    };
-
-                    (csv_path, prefer_officials)
+                    (None, include_referees)
                 };
 
                 let inputs = RenderInputs {

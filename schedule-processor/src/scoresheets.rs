@@ -257,11 +257,6 @@ pub async fn generate_scoresheets_for_event(
             ),
         };
 
-        let html_path = inputs
-            .output_dir
-            .join(format!("game-{}.html", sanitize(num)));
-        fs::write(&html_path, html.as_bytes())?;
-
         // Capture CSS from the first page and append this page fragment for combined output
         if combined_css.is_none() {
             if let (Some(s), Some(e)) = (html.find("<style>"), html.find("</style>")) {
@@ -418,12 +413,6 @@ pub async fn generate_scoresheets_for_event(
     }
 
     Ok(())
-}
-
-fn sanitize(s: &str) -> String {
-    s.chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
-        .collect()
 }
 
 fn copy_logo(

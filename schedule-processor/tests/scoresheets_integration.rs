@@ -91,15 +91,10 @@ async fn test_generate_scoresheets_detailed() {
         .filter_map(|e| e.ok())
         .collect();
 
-    // HTML files must always be produced (one per game + combined)
-    let htmls: Vec<_> = entries
-        .iter()
-        .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("html"))
-        .collect();
+    // Combined HTML must always be produced
     assert!(
-        htmls.len() >= 67,
-        "expected at least 67 HTML files, got {}",
-        htmls.len()
+        output_dir.join("scoresheets-all.html").exists(),
+        "expected scoresheets-all.html to be produced"
     );
 
     // PDF is produced if Chrome is available
@@ -108,10 +103,7 @@ async fn test_generate_scoresheets_detailed() {
         .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("pdf"))
         .collect();
     if pdfs.is_empty() {
-        println!(
-            "No PDF produced (Chrome not available or failed). {} HTML files generated.",
-            htmls.len()
-        );
+        println!("No PDF produced (Chrome not available or failed).");
     } else {
         println!("Generated {} PDF(s) in {:?}", pdfs.len(), output_dir);
     }
@@ -145,14 +137,10 @@ async fn test_generate_scoresheets_simple() {
         .filter_map(|e| e.ok())
         .collect();
 
-    let htmls: Vec<_> = entries
-        .iter()
-        .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("html"))
-        .collect();
+    // Combined HTML must always be produced
     assert!(
-        htmls.len() >= 67,
-        "expected at least 67 HTML files, got {}",
-        htmls.len()
+        output_dir.join("scoresheets-all.html").exists(),
+        "expected scoresheets-all.html to be produced"
     );
 
     let pdfs: Vec<_> = entries
@@ -160,10 +148,7 @@ async fn test_generate_scoresheets_simple() {
         .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("pdf"))
         .collect();
     if pdfs.is_empty() {
-        println!(
-            "No PDF produced (Chrome not available or failed). {} HTML files generated.",
-            htmls.len()
-        );
+        println!("No PDF produced (Chrome not available or failed).");
     } else {
         println!("Generated {} PDF(s) in {:?}", pdfs.len(), output_dir);
     }

@@ -117,7 +117,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::time::Duration::from_secs(10),
     )?;
 
-    let events = portal_client.get_event_list(true, false).await?;
+    let events = portal_client.get_event_list(false, false).await?;
 
     struct SelectableEvent(Event);
 
@@ -901,17 +901,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     (None, None)
                 };
 
-                let (ref_csv_path, prefer_portal_officials): (Option<PathBuf>, bool) = if style
-                    == SheetStyle::SimpleTeamRefs
-                {
-                    (None, false)
-                } else {
-                    let include_referees = Confirm::new("Include referee names on the scoresheet?")
-                        .with_default(true)
-                        .prompt()
-                        .unwrap_or(true);
-                    (None, include_referees)
-                };
+                // SimpleTeamRefs uses team-based assignments; all other styles fetch names
+                // from the portal directly — no prompt needed.
+                let ref_csv_path: Option<PathBuf> = None;
+                let prefer_portal_officials = style != SheetStyle::SimpleTeamRefs;
 
                 let inputs = RenderInputs {
                     left_logo,

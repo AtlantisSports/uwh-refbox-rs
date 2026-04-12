@@ -926,7 +926,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .prompt()
                         .unwrap_or(true)
                     } else {
-                        false
+                        // No CSV provided: use portal names directly if the user wants refs shown
+                        include_referees
                     };
 
                     (csv_path, prefer_officials)

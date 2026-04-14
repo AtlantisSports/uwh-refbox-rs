@@ -7,7 +7,13 @@ use crate::{
     tournament_manager::{penalty::*, *},
 };
 use futures_lite::Stream;
-use iced::{Element, Subscription, Task, Theme, application::Appearance, widget::column, window};
+use iced::{
+    Element, Subscription, Task, Theme,
+    application::Appearance,
+    keyboard::{self, Key, key::Named},
+    widget::column,
+    window,
+};
 use log::*;
 use std::{
     cmp::min,
@@ -2286,7 +2292,27 @@ impl RefBoxApp {
     }
 
     pub(super) fn subscription(&self) -> Subscription<Message> {
-        Subscription::run(time_updater)
+        let time_sub = Subscription::run(time_updater);
+
+        if self.config.sound.sound_enabled && self.config.sound.manual_alarm_enabled {
+            let key_press = keyboard::on_key_press(|key, _modifiers| {
+                if matches!(key, Key::Named(Named::Space)) {
+                    Some(Message::AlarmPressed)
+                } else {
+                    None
+                }
+            });
+            let key_release = keyboard::on_key_release(|key, _modifiers| {
+                if matches!(key, Key::Named(Named::Space)) {
+                    Some(Message::AlarmReleased)
+                } else {
+                    None
+                }
+            });
+            Subscription::batch([time_sub, key_press, key_release])
+        } else {
+            time_sub
+        }
     }
 
     pub fn application_style(&self, _theme: &Theme) -> Appearance {

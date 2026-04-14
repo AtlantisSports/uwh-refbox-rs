@@ -71,6 +71,7 @@ pub struct SoundSettings {
     pub auto_sound_start_play: bool,
     #[derivative(Default(value = "true"))]
     pub auto_sound_stop_play: bool,
+    pub manual_alarm_enabled: bool,
     pub remotes: Vec<RemoteInfo>,
 }
 
@@ -85,6 +86,7 @@ impl SoundSettings {
             mut under_water_vol,
             mut auto_sound_start_play,
             mut auto_sound_stop_play,
+            mut manual_alarm_enabled,
             mut remotes,
         } = Default::default();
 
@@ -136,6 +138,11 @@ impl SoundSettings {
                 auto_sound_stop_play = old_auto_sound_stop_play;
             }
         }
+        if let Some(old_manual_alarm_enabled) = old.get("manual_alarm_enabled") {
+            if let Some(old_manual_alarm_enabled) = old_manual_alarm_enabled.as_bool() {
+                manual_alarm_enabled = old_manual_alarm_enabled;
+            }
+        }
         if let Some(old_remotes) = old.get("remotes") {
             if let Some(old_remotes) = old_remotes.as_array() {
                 remotes = old_remotes
@@ -162,6 +169,7 @@ impl SoundSettings {
             under_water_vol,
             auto_sound_start_play,
             auto_sound_stop_play,
+            manual_alarm_enabled,
             remotes,
         }
     }

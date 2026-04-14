@@ -110,6 +110,9 @@ pub enum Message {
     RecvTokenValid(bool),
     StopClock,
     StartClock,
+    AlarmPressed,
+    AlarmReleased,
+    AlarmFired(u32),
     TimeUpdaterStarted(Sender<Arc<Mutex<TournamentManager>>>),
     NoAction,
 }
@@ -174,7 +177,10 @@ impl Message {
             | Self::ScoreConfirmation { .. }
             | Self::AutoConfirmScores(_)
             | Self::StopClock
-            | Self::StartClock => false,
+            | Self::StartClock
+            | Self::AlarmPressed
+            | Self::AlarmReleased
+            | Self::AlarmFired(_) => false,
         }
     }
 }
@@ -196,6 +202,8 @@ impl PartialEq for Message {
             | (Self::EndTimeout, Self::EndTimeout)
             | (Self::StopClock, Self::StopClock)
             | (Self::StartClock, Self::StartClock)
+            | (Self::AlarmPressed, Self::AlarmPressed)
+            | (Self::AlarmReleased, Self::AlarmReleased)
             | (Self::NoAction, Self::NoAction) => true,
 
             (Self::NewSnapshot(a), Self::NewSnapshot(b)) => a == b,
@@ -298,6 +306,7 @@ impl PartialEq for Message {
             (Self::ParameterSelected(a, b), Self::ParameterSelected(c, d)) => a == c && b == d,
             (Self::ToggleBoolParameter(a), Self::ToggleBoolParameter(b)) => a == b,
             (Self::CycleParameter(a), Self::CycleParameter(b)) => a == b,
+            (Self::AlarmFired(a), Self::AlarmFired(b)) => a == b,
             (Self::GotRemoteId(a), Self::GotRemoteId(b)) => a == b,
             (Self::DeleteRemote(a), Self::DeleteRemote(b)) => a == b,
             (Self::ConfirmationSelected(a), Self::ConfirmationSelected(b)) => a == b,
@@ -366,6 +375,9 @@ impl PartialEq for Message {
             | (Self::RecvTokenValid(_), _)
             | (Self::StopClock, _)
             | (Self::StartClock, _)
+            | (Self::AlarmPressed, _)
+            | (Self::AlarmReleased, _)
+            | (Self::AlarmFired(_), _)
             | (Self::TimeUpdaterStarted(_), _)
             | (Self::NoAction, _) => false,
         }
@@ -418,6 +430,7 @@ pub enum BoolGameParameter {
     TeamWarning,
     TimeoutsCountedPerHalf,
     ConfirmScore,
+    ManualAlarmEnabled,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

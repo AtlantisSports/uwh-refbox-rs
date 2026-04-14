@@ -101,6 +101,11 @@ underwater-volume = VOLUMEN
     BAJO EL AGUA:
 auto-sound-stop-play = SONIDO AUTOMÁTICO
     AL PARAR:
+alarm-button = BOTÓN DE
+    ALARMA:
+alarm = ALARMA
+or-press-spacebar = O Presiona la Barra
+game-info = INFO JUEGO
 remotes = REMOTOS
 default = POR DEFECTO
 sound = SONIDO: { $sound_text }

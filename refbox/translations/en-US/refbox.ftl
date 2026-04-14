@@ -100,6 +100,11 @@ underwater-volume = UNDERWATER
     VOLUME:
 auto-sound-stop-play = AUTO SOUND
     STOP PLAY:
+alarm-button = ALARM
+    BUTTON:
+alarm = ALARM
+or-press-spacebar = Or Press Spacebar
+game-info = GAME INFO
 remotes = REMOTES
 default = DEFAULT
 sound = SOUND: { $sound_text }

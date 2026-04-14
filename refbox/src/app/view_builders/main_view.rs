@@ -123,18 +123,17 @@ pub(in super::super) fn build_main_view<'a>(
         );
 
         // Determine whether alarm is interactive in the current state
-        let alarm_available = match (snapshot.current_period, snapshot.timeout) {
+        let alarm_available = matches!(
+            (snapshot.current_period, snapshot.timeout),
             (
                 GamePeriod::FirstHalf
-                | GamePeriod::SecondHalf
-                | GamePeriod::OvertimeFirstHalf
-                | GamePeriod::OvertimeSecondHalf
-                | GamePeriod::SuddenDeath,
+                    | GamePeriod::SecondHalf
+                    | GamePeriod::OvertimeFirstHalf
+                    | GamePeriod::OvertimeSecondHalf
+                    | GamePeriod::SuddenDeath,
                 None,
-            ) => true,
-            (GamePeriod::BetweenGames, _) => true,
-            _ => false,
-        };
+            ) | (GamePeriod::BetweenGames, _)
+        );
 
         // Build the alarm button (visual only — mouse_area handles press/release)
         let mut alarm_btn = button(

@@ -73,6 +73,7 @@ pub struct RefBoxApp {
     sound: SoundController,
     sim_child: Option<Child>,
     list_all_events: bool,
+    alarm_hold_generation: u32,
 }
 
 #[derive(Debug)]
@@ -529,6 +530,7 @@ impl RefBoxApp {
             sound,
             sim_child,
             list_all_events,
+            alarm_hold_generation: 0,
         };
 
         let task = Task::batch(vec![
@@ -1665,6 +1667,9 @@ impl RefBoxApp {
                             BoolGameParameter::ConfirmScore => {
                                 edited_settings.confirm_score ^= true
                             }
+                            BoolGameParameter::ManualAlarmEnabled => {
+                                edited_settings.sound.manual_alarm_enabled ^= true
+                            }
                         }
                     }
                 };
@@ -2116,6 +2121,47 @@ impl RefBoxApp {
             Message::TimeUpdaterStarted(tx) => {
                 let tm = self.tm.clone();
                 tx.blocking_send(tm).unwrap();
+                Task::none()
+            }
+            Message::AlarmPressed => {
+                if self.config.sound.sound_enabled && self.config.sound.manual_alarm_enabled {
+                    match (self.snapshot.current_period, self.snapshot.timeout) {
+                        (
+                            GamePeriod::FirstHalf
+                            | GamePeriod::SecondHalf
+                            | GamePeriod::OvertimeFirstHalf
+                            | GamePeriod::OvertimeSecondHalf
+                            | GamePeriod::SuddenDeath,
+                            None,
+                        ) => {
+                            self.sound.trigger_buzzer();
+                        }
+                        (GamePeriod::BetweenGames, _) => {
+                            self.alarm_hold_generation = self.alarm_hold_generation.wrapping_add(1);
+                            let generation = self.alarm_hold_generation;
+                            return Task::future(async move {
+                                tokio::time::sleep(Duration::from_secs(1)).await;
+                                Message::AlarmFired(generation)
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+                Task::none()
+            }
+            Message::AlarmReleased => {
+                self.alarm_hold_generation = self.alarm_hold_generation.wrapping_add(1);
+                Task::none()
+            }
+            Message::AlarmFired(generation) => {
+                if generation == self.alarm_hold_generation
+                    && self.snapshot.current_period == GamePeriod::BetweenGames
+                    && self.snapshot.timeout.is_none()
+                    && self.config.sound.sound_enabled
+                    && self.config.sound.manual_alarm_enabled
+                {
+                    self.sound.trigger_buzzer();
+                }
                 Task::none()
             }
             Message::NoAction => Task::none(),

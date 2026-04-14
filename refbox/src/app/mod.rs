@@ -2134,9 +2134,11 @@ impl RefBoxApp {
                             | GamePeriod::SuddenDeath,
                             None,
                         ) => {
+                            info!("Manual alarm triggered during active play");
                             self.sound.trigger_buzzer();
                         }
                         (GamePeriod::BetweenGames, _) => {
+                            // wrapping_add: overflow would require ~4 billion presses per second, impossible.
                             self.alarm_hold_generation = self.alarm_hold_generation.wrapping_add(1);
                             let generation = self.alarm_hold_generation;
                             return Task::future(async move {
@@ -2144,13 +2146,17 @@ impl RefBoxApp {
                                 Message::AlarmFired(generation)
                             });
                         }
-                        _ => {}
+                        _ => {} // no alarm during non-play breaks (HalfTime, PreOvertime, etc.)
                     }
                 }
                 Task::none()
             }
             Message::AlarmReleased => {
-                self.alarm_hold_generation = self.alarm_hold_generation.wrapping_add(1);
+                // Only cancel a pending delayed-fire if we are in BetweenGames,
+                // since that is the only period where an async task was started.
+                if self.snapshot.current_period == GamePeriod::BetweenGames {
+                    self.alarm_hold_generation = self.alarm_hold_generation.wrapping_add(1);
+                }
                 Task::none()
             }
             Message::AlarmFired(generation) => {
@@ -2160,6 +2166,7 @@ impl RefBoxApp {
                     && self.config.sound.sound_enabled
                     && self.config.sound.manual_alarm_enabled
                 {
+                    info!("Manual alarm triggered after hold during BetweenGames");
                     self.sound.trigger_buzzer();
                 }
                 Task::none()

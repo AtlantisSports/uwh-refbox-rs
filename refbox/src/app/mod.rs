@@ -2218,6 +2218,7 @@ impl RefBoxApp {
                     self.using_uwhportal,
                     self.schedule.as_ref().map(|s| &s.games),
                     self.config.track_fouls_and_warnings,
+                    self.config.sound.sound_enabled && self.config.sound.manual_alarm_enabled,
                 )
             }
             AppState::TimeEdit(_, time, timeout_time) =>

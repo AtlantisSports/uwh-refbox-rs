@@ -2,7 +2,7 @@ use super::*;
 use iced::{
     Alignment, Element, Length,
     alignment::{Horizontal, Vertical},
-    widget::{Space, button, column, row, text},
+    widget::{Space, button, column, container, mouse_area, row, text},
 };
 use uwh_common::{
     color::Color as GameColor,
@@ -17,6 +17,7 @@ pub(in super::super) fn build_main_view<'a>(
     using_uwhportal: bool,
     games: Option<&GameList>,
     track_fouls_and_warnings: bool,
+    manual_alarm_enabled: bool,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -106,41 +107,73 @@ pub(in super::super) fn build_main_view<'a>(
         .max()
         .unwrap();
 
-    center_col = center_col.push(if max_num_warns < 4 {
-        button(
-            text(config_string(
-                snapshot,
-                game_config,
-                using_uwhportal,
-                games,
-                teams,
-                track_fouls_and_warnings,
-            ))
-            .size(SMALL_TEXT)
-            .align_y(Vertical::Center)
-            .align_x(Horizontal::Left),
-        )
-        .padding(PADDING)
-        .style(light_gray_button)
-        .height(Length::FillPortion(2))
-        .width(Length::Fill)
-        .on_press(Message::ShowGameDetails)
-    } else {
-        button(
-            text(config_string_game_num(snapshot, using_uwhportal, games).0)
-                .size(SMALL_TEXT)
-                .align_y(Vertical::Center)
-                .align_x(Horizontal::Left),
-        )
-        .padding(PADDING)
-        .style(light_gray_button)
-        .width(Length::Fill)
-        .on_press(Message::ShowGameDetails)
-    });
-
-    if track_fouls_and_warnings {
+    if manual_alarm_enabled {
+        // Compact GAME INFO button
         center_col = center_col.push(
             button(
+                text(fl!("game-info"))
+                    .size(SMALL_TEXT)
+                    .align_y(Vertical::Center)
+                    .align_x(Horizontal::Center),
+            )
+            .padding(PADDING)
+            .style(light_gray_button)
+            .width(Length::Fill)
+            .on_press(Message::ShowGameDetails),
+        );
+
+        // Determine whether alarm is interactive in the current state
+        let alarm_available = match (snapshot.current_period, snapshot.timeout) {
+            (
+                GamePeriod::FirstHalf
+                | GamePeriod::SecondHalf
+                | GamePeriod::OvertimeFirstHalf
+                | GamePeriod::OvertimeSecondHalf
+                | GamePeriod::SuddenDeath,
+                None,
+            ) => true,
+            (GamePeriod::BetweenGames, _) => true,
+            _ => false,
+        };
+
+        // Build the alarm button (visual only — mouse_area handles press/release)
+        let mut alarm_btn = button(
+            column![
+                text(fl!("alarm")).size(MEDIUM_TEXT),
+                text(fl!("or-press-spacebar")).size(SMALL_TEXT),
+            ]
+            .align_x(Alignment::Center),
+        )
+        .style(red_button)
+        .width(Length::Fill);
+
+        if alarm_available {
+            alarm_btn = alarm_btn.on_press(Message::NoAction);
+        }
+
+        // Alarm zone: padded container so the button doesn't fill edge-to-edge
+        let alarm_zone = {
+            let inner = container(alarm_btn)
+                .style(light_gray_container)
+                .padding([PADDING * 3.0, PADDING * 3.0])
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .align_x(Horizontal::Center)
+                .align_y(Vertical::Center);
+
+            let area = mouse_area(inner);
+
+            if alarm_available {
+                area.on_press(Message::AlarmPressed)
+                    .on_release(Message::AlarmReleased)
+            } else {
+                area
+            }
+        };
+
+        if track_fouls_and_warnings {
+            // Split the lower area: alarm left, warnings right
+            let warnings_zone = button(
                 column![
                     text(fl!("warnings"))
                         .align_y(Vertical::Top)
@@ -165,10 +198,82 @@ pub(in super::super) fn build_main_view<'a>(
             )
             .width(Length::Fill)
             .height(Length::Fill)
-            .on_press(Message::NoAction)
             .style(light_gray_button)
-            .on_press(Message::ShowWarnings),
-        )
+            .on_press(Message::ShowWarnings);
+
+            center_col = center_col.push(
+                row![alarm_zone, warnings_zone]
+                    .spacing(SPACING)
+                    .height(Length::Fill),
+            );
+        } else {
+            center_col = center_col.push(alarm_zone);
+        }
+    } else {
+        // Original behavior: game info area + optional warnings panel
+        center_col = center_col.push(if max_num_warns < 4 {
+            button(
+                text(config_string(
+                    snapshot,
+                    game_config,
+                    using_uwhportal,
+                    games,
+                    teams,
+                    track_fouls_and_warnings,
+                ))
+                .size(SMALL_TEXT)
+                .align_y(Vertical::Center)
+                .align_x(Horizontal::Left),
+            )
+            .padding(PADDING)
+            .style(light_gray_button)
+            .height(Length::FillPortion(2))
+            .width(Length::Fill)
+            .on_press(Message::ShowGameDetails)
+        } else {
+            button(
+                text(config_string_game_num(snapshot, using_uwhportal, games).0)
+                    .size(SMALL_TEXT)
+                    .align_y(Vertical::Center)
+                    .align_x(Horizontal::Left),
+            )
+            .padding(PADDING)
+            .style(light_gray_button)
+            .width(Length::Fill)
+            .on_press(Message::ShowGameDetails)
+        });
+
+        if track_fouls_and_warnings {
+            center_col = center_col.push(
+                button(
+                    column![
+                        text(fl!("warnings"))
+                            .align_y(Vertical::Top)
+                            .align_x(Horizontal::Center)
+                            .width(Length::Fill),
+                        row(snapshot.warnings.iter().map(|(color, warns)| column(
+                            warns
+                                .iter()
+                                .rev()
+                                .take(10)
+                                .map(|warning| make_warning_container(warning, Some(color)).into())
+                        )
+                        .spacing(1)
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .into()))
+                        .spacing(SPACING),
+                    ]
+                    .spacing(0)
+                    .width(Length::Fill)
+                    .height(Length::Fill),
+                )
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .style(light_gray_button)
+                .on_press(Message::ShowWarnings),
+            )
+        }
     }
 
     let make_penalty_button = |snapshot: &GameSnapshot, color: GameColor| {

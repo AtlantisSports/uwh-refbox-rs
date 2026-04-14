@@ -212,3 +212,93 @@ base64-encoded data URI ready to drop into an `<img>` tag:
 
 If `None`, no logo was provided — the style should handle this gracefully (skip the
 `<img>` tag entirely, don't show a broken image).
+
+---
+
+## User-Provided XLSX Templates
+
+In addition to the built-in styles, the system supports custom scoresheet templates designed
+by the user in Excel or Google Sheets.
+
+**The workflow:**
+
+1. The user designs their scoresheet layout in Excel or Google Sheets — merged cells, borders,
+   row heights, fonts, logos (as static images), and page setup (orientation, margins, print
+   area) are all set directly in the spreadsheet using normal tools
+2. Where game data should appear, the user types a placeholder token (e.g., `{game_number}`)
+3. The file is saved as XLSX and provided to the tool (or uploaded to the portal)
+4. For each game, the tool copies the template and substitutes all placeholder tokens with
+   real values, leaving all formatting untouched
+5. A PDF is produced for each game (or all games combined)
+
+**How substitution works:**
+
+An XLSX file is a ZIP archive containing XML files. The tool modifies only the cell value
+XML — the formatting XML (borders, merged cell regions, column widths, row heights, fonts)
+is never touched. This means the visual layout comes out exactly as the author designed it,
+including merged cells.
+
+**Optional fields:**
+
+Any token that resolves to no value (e.g., `{chief_ref}` when no referee has been assigned
+yet) is substituted with an empty string. The cell is blank on the output — acceptable for
+a paper form where it can be filled in by hand.
+
+**Logos:**
+
+Logos are not injected into XLSX templates. The template author embeds their own logos
+directly in the Excel file as static images. The tool does not modify image content.
+
+**Page layout:**
+
+Orientation, margins, paper size, and print area are defined by the template author inside
+their spreadsheet using the standard page setup tools in Excel or Google Sheets. The tool
+honours whatever the author set — there is no code-level page layout setting for XLSX
+templates.
+
+---
+
+## Placeholder Token Reference
+
+The following tokens are available in any template — XLSX or HTML. A template only needs to
+include the tokens it uses; everything else is ignored.
+
+### Single-Value Tokens
+
+| Token | What it contains |
+|-------|-----------------|
+| `{game_number}` | Game number (e.g., `G01`) |
+| `{pool}` | Court/pool name (e.g., `Pool A`) |
+| `{start_time}` | Formatted start time (e.g., `09:30`) |
+| `{dark_team}` | Dark team name (or ID if name unavailable) |
+| `{light_team}` | Light team name (or ID if name unavailable) |
+| `{chief_ref}` | Chief referee name, or blank if not assigned |
+| `{timer}` | Timer/scorer name, or blank if not assigned |
+| `{event_name}` | Tournament name (e.g., `2026 Australian Nationals`) |
+| `{event_dates}` | Tournament dates as a formatted string |
+
+### Water Referee Tokens
+
+Up to three water referees, blank if not assigned:
+
+| Token | What it contains |
+|-------|-----------------|
+| `{water_ref_1}` | First water referee name |
+| `{water_ref_2}` | Second water referee name |
+| `{water_ref_3}` | Third water referee name |
+
+### Player Roster Tokens
+
+Numbered tokens for each player. The template author decides how many rows to allocate.
+If a team has fewer players than the template provides, unused cells are blank. If a team
+has more players than the template provides, excess players are not shown.
+
+| Token pattern | What it contains |
+|---------------|-----------------|
+| `{dark_player_N_name}` | Dark team player N name (N = 1, 2, 3, ...) |
+| `{dark_player_N_cap}` | Dark team player N cap number |
+| `{light_player_N_name}` | Light team player N name |
+| `{light_player_N_cap}` | Light team player N cap number |
+
+**Example:** A template with rows for 15 players would use `{dark_player_1_name}` through
+`{dark_player_15_name}` and `{dark_player_1_cap}` through `{dark_player_15_cap}`.

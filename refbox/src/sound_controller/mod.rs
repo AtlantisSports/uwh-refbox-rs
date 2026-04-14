@@ -850,6 +850,7 @@ mod tests {
         assert_eq!(settings.under_water_vol, Volume::Medium);
         assert_eq!(settings.auto_sound_start_play, false);
         assert_eq!(settings.auto_sound_stop_play, false);
+        assert!(!settings.manual_alarm_enabled);
         assert_eq!(
             settings.remotes,
             vec![

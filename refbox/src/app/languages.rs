@@ -3,7 +3,7 @@ use unic_langid::LanguageIdentifier;
 
 use super::Cyclable;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Language {
     English,
     French,

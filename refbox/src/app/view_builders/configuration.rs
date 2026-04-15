@@ -1014,13 +1014,34 @@ fn make_language_select_page<'a>(
 ) -> Element<'a, Message> {
     let selected = settings.pending_language.unwrap_or(Language::English);
 
-    let lang_btn = |lang: Language, label: &'static str| -> Element<'a, Message> {
+    let cjk_font = iced_core::Font {
+        family: iced_core::font::Family::Name("Noto Sans CJK KR"),
+        weight: iced_core::font::Weight::Normal,
+        stretch: iced_core::font::Stretch::Normal,
+        style: iced_core::font::Style::Normal,
+    };
+    let thai_font = iced_core::Font {
+        family: iced_core::font::Family::Name("Noto Sans Thai"),
+        weight: iced_core::font::Weight::Normal,
+        stretch: iced_core::font::Stretch::Normal,
+        style: iced_core::font::Style::Normal,
+    };
+    let lang_btn = |lang: Language,
+                    label: &'static str,
+                    font: Option<iced_core::Font>|
+     -> Element<'a, Message> {
         let style = if lang == selected {
             blue_selected_button
         } else {
             light_gray_button
         };
-        make_button(label)
+        let label_widget = {
+            let t = centered_text(label);
+            if let Some(f) = font { t.font(f) } else { t }
+        };
+        button(label_widget)
+            .padding(PADDING)
+            .height(Length::Fixed(MIN_BUTTON_SIZE))
             .style(style)
             .width(Length::Fill)
             .on_press(Message::SelectLanguage(lang))
@@ -1052,30 +1073,30 @@ fn make_language_select_page<'a>(
                 .style(bahasa_melayu_style)
                 .width(Length::Fill)
                 .on_press(Message::SelectLanguage(Language::Malay)),
-            lang_btn(Language::German, "DEUTSCH"),
-            lang_btn(Language::English, "ENGLISH"),
+            lang_btn(Language::German, "DEUTSCH", None),
+            lang_btn(Language::English, "ENGLISH", None),
         ]
         .spacing(SPACING)
         .height(Length::Fill),
         row![
-            lang_btn(Language::Spanish, "ESPAÑOL"),
-            lang_btn(Language::Tagalog, "FILIPINO"),
-            lang_btn(Language::French, "FRANÇAIS"),
-            lang_btn(Language::Korean, "한국어"),
+            lang_btn(Language::Spanish, "ESPAÑOL", None),
+            lang_btn(Language::Tagalog, "FILIPINO", None),
+            lang_btn(Language::French, "FRANÇAIS", None),
+            lang_btn(Language::Korean, "한국어", Some(cjk_font)),
         ]
         .spacing(SPACING)
         .height(Length::Fill),
         row![
-            lang_btn(Language::Italian, "ITALIANO"),
-            lang_btn(Language::Dutch, "NEDERLANDS"),
-            lang_btn(Language::Japanese, "日本語"),
-            lang_btn(Language::Portuguese, "PORTUGUÊS"),
+            lang_btn(Language::Italian, "ITALIANO", None),
+            lang_btn(Language::Dutch, "NEDERLANDS", None),
+            lang_btn(Language::Japanese, "日本語", Some(cjk_font)),
+            lang_btn(Language::Portuguese, "PORTUGUÊS", None),
         ]
         .spacing(SPACING)
         .height(Length::Fill),
         row![
-            lang_btn(Language::Thai, "ภาษาไทย"),
-            lang_btn(Language::Mandarin, "中文"),
+            lang_btn(Language::Thai, "ภาษาไทย", Some(thai_font)),
+            lang_btn(Language::Mandarin, "中文", Some(cjk_font)),
             horizontal_space(),
             horizontal_space(),
         ]

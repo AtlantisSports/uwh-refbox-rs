@@ -55,7 +55,7 @@ use theme::*;
 pub mod update_sender;
 use update_sender::*;
 
-mod languages;
+pub(crate) mod languages;
 use languages::*;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
@@ -1739,6 +1739,9 @@ impl RefBoxApp {
                     if let Some(original) = settings.original_language {
                         crate::request_language(&crate::LANGUAGE_LOADER, &[original.as_lang_id()]);
                     }
+                } else if let Some(lang) = settings.pending_language {
+                    self.config.language = Some(lang);
+                    confy::store(crate::APP_NAME, None, &self.config).unwrap();
                 }
                 settings.pending_language = None;
                 settings.original_language = None;

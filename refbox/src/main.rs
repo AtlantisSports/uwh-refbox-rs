@@ -42,6 +42,7 @@ mod sound_controller;
 mod tournament_manager;
 
 mod config;
+use app::languages::Language;
 use config::Config;
 
 const APP_NAME: &str = "refbox";
@@ -383,6 +384,26 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         config.hardware.screen_y as f32,
     );
 
+    // If a language was saved from the previous session and no CLI override was given, apply it.
+    if LANGUAGE_OVERRIDE.lock().unwrap().is_none() {
+        if let Some(lang) = config.language {
+            *LANGUAGE_OVERRIDE.lock().unwrap() = Some(lang.as_lang_id());
+        }
+    }
+
+    // Choose the default font based on the active language. Iced sets the font once at startup
+    // and cannot change it at runtime, so a restart is required when switching between script
+    // families (e.g. Latin ↔ Korean). The language select screen uses explicit per-button fonts
+    // so all language names render correctly regardless of this default.
+    let saved_language = config.language.unwrap_or(Language::English);
+    let (default_font_family, default_font_weight) = match saved_language {
+        Language::Korean | Language::Japanese | Language::Mandarin => {
+            ("Noto Sans CJK KR", iced_core::font::Weight::Normal)
+        }
+        Language::Thai => ("Noto Sans Thai", iced_core::font::Weight::Normal),
+        _ => ("Roboto", iced_core::font::Weight::Medium),
+    };
+
     let flags = app::RefBoxAppFlags {
         config,
         serial_ports,
@@ -408,8 +429,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         id: Some(APP_NAME.into()),
         fonts,
         default_font: Font {
-            family: iced_core::font::Family::Name("Roboto"),
-            weight: iced_core::font::Weight::Medium,
+            family: iced_core::font::Family::Name(default_font_family),
+            weight: default_font_weight,
             stretch: iced_core::font::Stretch::Normal,
             style: iced_core::font::Style::Normal,
         },

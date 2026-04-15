@@ -1830,6 +1830,7 @@ impl RefBoxApp {
                 } else {
                     let mut tm = self.tm.lock().unwrap();
                     let now = Instant::now();
+                    tm.end_confirm_pause(now).unwrap();
                     tm.start_clock(now);
                     tm.update(now + Duration::from_millis(2)).unwrap(); // Need to update after game ends
                     self.app_state = AppState::MainPage;

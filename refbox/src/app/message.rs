@@ -112,7 +112,9 @@ pub enum Message {
     StartClock,
     AlarmPressed,
     AlarmReleased,
-    AlarmFired(u32),
+    SpacebarPressed,
+    SpacebarReleased,
+    AlarmDelayElapsed(u64),
     TimeUpdaterStarted(Sender<Arc<Mutex<TournamentManager>>>),
     NoAction,
 }
@@ -180,7 +182,9 @@ impl Message {
             | Self::StartClock
             | Self::AlarmPressed
             | Self::AlarmReleased
-            | Self::AlarmFired(_) => false,
+            | Self::SpacebarPressed
+            | Self::SpacebarReleased
+            | Self::AlarmDelayElapsed(_) => false,
         }
     }
 }
@@ -204,7 +208,10 @@ impl PartialEq for Message {
             | (Self::StartClock, Self::StartClock)
             | (Self::AlarmPressed, Self::AlarmPressed)
             | (Self::AlarmReleased, Self::AlarmReleased)
+            | (Self::SpacebarPressed, Self::SpacebarPressed)
+            | (Self::SpacebarReleased, Self::SpacebarReleased)
             | (Self::NoAction, Self::NoAction) => true,
+            (Self::AlarmDelayElapsed(a), Self::AlarmDelayElapsed(b)) => a == b,
 
             (Self::NewSnapshot(a), Self::NewSnapshot(b)) => a == b,
             (
@@ -306,7 +313,6 @@ impl PartialEq for Message {
             (Self::ParameterSelected(a, b), Self::ParameterSelected(c, d)) => a == c && b == d,
             (Self::ToggleBoolParameter(a), Self::ToggleBoolParameter(b)) => a == b,
             (Self::CycleParameter(a), Self::CycleParameter(b)) => a == b,
-            (Self::AlarmFired(a), Self::AlarmFired(b)) => a == b,
             (Self::GotRemoteId(a), Self::GotRemoteId(b)) => a == b,
             (Self::DeleteRemote(a), Self::DeleteRemote(b)) => a == b,
             (Self::ConfirmationSelected(a), Self::ConfirmationSelected(b)) => a == b,
@@ -377,7 +383,9 @@ impl PartialEq for Message {
             | (Self::StartClock, _)
             | (Self::AlarmPressed, _)
             | (Self::AlarmReleased, _)
-            | (Self::AlarmFired(_), _)
+            | (Self::SpacebarPressed, _)
+            | (Self::SpacebarReleased, _)
+            | (Self::AlarmDelayElapsed(_), _)
             | (Self::TimeUpdaterStarted(_), _)
             | (Self::NoAction, _) => false,
         }

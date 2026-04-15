@@ -1,6 +1,6 @@
 use super::{
-    BLACK, BLUE, BORDER_COLOR, BORDER_RADIUS, BORDER_WIDTH, DISABLED_COLOR, GRAY, GREEN,
-    LIGHT_GRAY, RED, WHITE, WINDOW_BACKGROUND,
+    BLACK, BLUE, BLUE_PRESSED, BORDER_COLOR, BORDER_RADIUS, BORDER_WIDTH, DISABLED_COLOR, GRAY,
+    GREEN, LIGHT_GRAY, RED, RED_PRESSED, WHITE, WINDOW_BACKGROUND,
 };
 use iced::{Background, Border, Theme, widget::container::Style};
 
@@ -57,6 +57,21 @@ pub fn green_container(theme: &Theme) -> Style {
 pub fn red_container(theme: &Theme) -> Style {
     Style {
         background: Some(Background::Color(RED)),
+        ..gray_container(theme)
+    }
+}
+
+pub fn red_pressed_container(theme: &Theme) -> Style {
+    Style {
+        background: Some(Background::Color(RED_PRESSED)),
+        ..gray_container(theme)
+    }
+}
+
+pub fn blue_pressed_container(theme: &Theme) -> Style {
+    Style {
+        background: Some(Background::Color(BLUE_PRESSED)),
+        text_color: Some(WHITE),
         ..gray_container(theme)
     }
 }

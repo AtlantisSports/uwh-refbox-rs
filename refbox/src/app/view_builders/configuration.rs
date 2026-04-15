@@ -1,4 +1,5 @@
 use super::{ViewData, fl, message::*, shared_elements::*, theme::*};
+use crate::app::languages::Language;
 use crate::config::Mode;
 use crate::sound_controller::*;
 use collect_array::CollectArrayResult;
@@ -33,6 +34,8 @@ pub(in super::super) struct EditableSettings {
     pub collect_scorer_cap_num: bool,
     pub track_fouls_and_warnings: bool,
     pub confirm_score: bool,
+    pub pending_language: Option<Language>,
+    pub original_language: Option<Language>,
 }
 
 pub(in super::super) trait Cyclable
@@ -126,6 +129,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
         ConfigPage::Remotes(index, listening) => {
             make_remote_config_page(snapshot, settings, index, listening, mode, clock_running)
         }
+        ConfigPage::Language => make_language_select_page(snapshot, settings, mode, clock_running),
     }
 }
 
@@ -588,7 +592,7 @@ fn make_app_config_page<'a>(
                 fl!("language"),
                 fl!("this-language"),
                 (false, true),
-                Some(Message::CycleParameter(CyclingParameter::Language,)),
+                Some(Message::ChangeConfigPage(ConfigPage::Language)),
             ),
             horizontal_space(),
         ]
@@ -798,6 +802,23 @@ fn make_sound_config_page<'a>(
             )
         ]
         .spacing(SPACING),
+        row![
+            make_value_button(
+                fl!("alarm-button"),
+                bool_string(sound.manual_alarm_enabled),
+                (false, true),
+                if sound.sound_enabled {
+                    Some(Message::ToggleBoolParameter(
+                        BoolGameParameter::ManualAlarmEnabled,
+                    ))
+                } else {
+                    None
+                },
+            ),
+            horizontal_space(),
+            horizontal_space(),
+        ]
+        .spacing(SPACING),
         vertical_space(),
         row![
             horizontal_space(),
@@ -981,6 +1002,101 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
     .spacing(SPACING)
     .align_x(Alignment::Center)
     .width(Length::Fill)
+    .height(Length::Fill)
+    .into()
+}
+
+fn make_language_select_page<'a>(
+    snapshot: &GameSnapshot,
+    settings: &EditableSettings,
+    mode: Mode,
+    clock_running: bool,
+) -> Element<'a, Message> {
+    let selected = settings.pending_language.unwrap_or(Language::English);
+
+    let lang_btn = |lang: Language, label: &'static str| -> Element<'a, Message> {
+        let style = if lang == selected {
+            blue_selected_button
+        } else {
+            light_gray_button
+        };
+        make_button(label)
+            .style(style)
+            .width(Length::Fill)
+            .on_press(Message::SelectLanguage(lang))
+            .into()
+    };
+
+    // Languages sorted alphabetically by romanized native name:
+    // Bahasa Indonesia(B), Bahasa Melayu(B), Deutsch(D), English(E),
+    // Español(E), Filipino(F), Français(F), Hangugeo/한국어(H), Italiano(I),
+    // Nederlands(N), Nihongo/日本語(N), Português(P), Zhōngwén/中文(Z)
+    let bahasa_indonesia_style = if selected == Language::Indonesian {
+        blue_selected_button
+    } else {
+        light_gray_button
+    };
+    let bahasa_melayu_style = if selected == Language::Malay {
+        blue_selected_button
+    } else {
+        light_gray_button
+    };
+    column![
+        make_game_time_button(snapshot, false, true, mode, clock_running),
+        row![
+            make_multi_label_button(("BAHASA", "INDONESIA"))
+                .style(bahasa_indonesia_style)
+                .width(Length::Fill)
+                .on_press(Message::SelectLanguage(Language::Indonesian)),
+            make_multi_label_button(("BAHASA", "MELAYU"))
+                .style(bahasa_melayu_style)
+                .width(Length::Fill)
+                .on_press(Message::SelectLanguage(Language::Malay)),
+            lang_btn(Language::German, "DEUTSCH"),
+            lang_btn(Language::English, "ENGLISH"),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill),
+        row![
+            lang_btn(Language::Spanish, "ESPAÑOL"),
+            lang_btn(Language::Tagalog, "FILIPINO"),
+            lang_btn(Language::French, "FRANÇAIS"),
+            lang_btn(Language::Korean, "한국어"),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill),
+        row![
+            lang_btn(Language::Italian, "ITALIANO"),
+            lang_btn(Language::Dutch, "NEDERLANDS"),
+            lang_btn(Language::Japanese, "日本語"),
+            lang_btn(Language::Portuguese, "PORTUGUÊS"),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill),
+        row![
+            lang_btn(Language::Mandarin, "中文"),
+            horizontal_space(),
+            horizontal_space(),
+            horizontal_space(),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill),
+        row![
+            make_button(fl!("cancel"))
+                .style(red_button)
+                .width(Length::Fill)
+                .on_press(Message::LanguageSelectComplete { canceled: true }),
+            horizontal_space(),
+            make_button(fl!("done"))
+                .style(green_button)
+                .width(Length::Fill)
+                .on_press(Message::LanguageSelectComplete { canceled: false }),
+        ]
+        .spacing(SPACING)
+        .width(Length::Fill)
+        .height(Length::Fill),
+    ]
+    .spacing(SPACING)
     .height(Length::Fill)
     .into()
 }

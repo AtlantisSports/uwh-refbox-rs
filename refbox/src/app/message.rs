@@ -1,4 +1,4 @@
-use super::fl;
+use super::{fl, languages::Language};
 use crate::{
     sound_controller::RemoteId,
     tournament_manager::{TournamentManager, penalty::PenaltyKind},
@@ -90,6 +90,10 @@ pub enum Message {
     ParameterSelected(ListableParameter, String),
     ToggleBoolParameter(BoolGameParameter),
     CycleParameter(CyclingParameter),
+    SelectLanguage(Language),
+    LanguageSelectComplete {
+        canceled: bool,
+    },
     RequestRemoteId,
     GotRemoteId(RemoteId),
     DeleteRemote(usize),
@@ -110,6 +114,11 @@ pub enum Message {
     RecvTokenValid(bool),
     StopClock,
     StartClock,
+    AlarmPressed,
+    AlarmReleased,
+    SpacebarPressed,
+    SpacebarReleased,
+    AlarmDelayElapsed(u64),
     TimeUpdaterStarted(Sender<Arc<Mutex<TournamentManager>>>),
     NoAction,
 }
@@ -162,6 +171,8 @@ impl Message {
             | Self::SelectParameter(_)
             | Self::ParameterEditComplete { .. }
             | Self::ParameterSelected(_, _)
+            | Self::SelectLanguage(_)
+            | Self::LanguageSelectComplete { .. }
             | Self::RequestRemoteId
             | Self::GotRemoteId(_)
             | Self::DeleteRemote(_)
@@ -174,7 +185,12 @@ impl Message {
             | Self::ScoreConfirmation { .. }
             | Self::AutoConfirmScores(_)
             | Self::StopClock
-            | Self::StartClock => false,
+            | Self::StartClock
+            | Self::AlarmPressed
+            | Self::AlarmReleased
+            | Self::SpacebarPressed
+            | Self::SpacebarReleased
+            | Self::AlarmDelayElapsed(_) => false,
         }
     }
 }
@@ -196,7 +212,12 @@ impl PartialEq for Message {
             | (Self::EndTimeout, Self::EndTimeout)
             | (Self::StopClock, Self::StopClock)
             | (Self::StartClock, Self::StartClock)
+            | (Self::AlarmPressed, Self::AlarmPressed)
+            | (Self::AlarmReleased, Self::AlarmReleased)
+            | (Self::SpacebarPressed, Self::SpacebarPressed)
+            | (Self::SpacebarReleased, Self::SpacebarReleased)
             | (Self::NoAction, Self::NoAction) => true,
+            (Self::AlarmDelayElapsed(a), Self::AlarmDelayElapsed(b)) => a == b,
 
             (Self::NewSnapshot(a), Self::NewSnapshot(b)) => a == b,
             (
@@ -298,6 +319,11 @@ impl PartialEq for Message {
             (Self::ParameterSelected(a, b), Self::ParameterSelected(c, d)) => a == c && b == d,
             (Self::ToggleBoolParameter(a), Self::ToggleBoolParameter(b)) => a == b,
             (Self::CycleParameter(a), Self::CycleParameter(b)) => a == b,
+            (Self::SelectLanguage(a), Self::SelectLanguage(b)) => a == b,
+            (
+                Self::LanguageSelectComplete { canceled: a },
+                Self::LanguageSelectComplete { canceled: b },
+            ) => a == b,
             (Self::GotRemoteId(a), Self::GotRemoteId(b)) => a == b,
             (Self::DeleteRemote(a), Self::DeleteRemote(b)) => a == b,
             (Self::ConfirmationSelected(a), Self::ConfirmationSelected(b)) => a == b,
@@ -348,6 +374,8 @@ impl PartialEq for Message {
             | (Self::ParameterSelected(_, _), _)
             | (Self::ToggleBoolParameter(_), _)
             | (Self::CycleParameter(_), _)
+            | (Self::SelectLanguage(_), _)
+            | (Self::LanguageSelectComplete { .. }, _)
             | (Self::RequestRemoteId, _)
             | (Self::GotRemoteId(_), _)
             | (Self::DeleteRemote(_), _)
@@ -366,6 +394,11 @@ impl PartialEq for Message {
             | (Self::RecvTokenValid(_), _)
             | (Self::StopClock, _)
             | (Self::StartClock, _)
+            | (Self::AlarmPressed, _)
+            | (Self::AlarmReleased, _)
+            | (Self::SpacebarPressed, _)
+            | (Self::SpacebarReleased, _)
+            | (Self::AlarmDelayElapsed(_), _)
             | (Self::TimeUpdaterStarted(_), _)
             | (Self::NoAction, _) => false,
         }
@@ -380,6 +413,7 @@ pub enum ConfigPage {
     Display,
     App,
     Remotes(usize, bool),
+    Language,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -418,6 +452,7 @@ pub enum BoolGameParameter {
     TeamWarning,
     TimeoutsCountedPerHalf,
     ConfirmScore,
+    ManualAlarmEnabled,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -429,7 +464,6 @@ pub enum CyclingParameter {
     UnderWaterVol,
     Mode,
     Brightness,
-    Language,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

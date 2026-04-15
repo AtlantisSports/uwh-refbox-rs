@@ -99,6 +99,13 @@ underwater-volume = VOLUME
     SOUS L'EAU:
 auto-sound-stop-play = SON AUTOMATIQUE
     ARRÊT MATCH:
+alarm-button = BOUTON
+    D'ALARME:
+alarm = ALARME
+hold-to-test = MAINTENIR POUR TESTER
+or-press-spacebar = Ou Appuyez sur Espace
+or-hold-spacebar = Ou Maintenez Espace
+game-info = INFO PARTIE
 remotes = TÉLÉCOMMANDES
 default = DÉFAUT
 sound = SON: { $sound_text }

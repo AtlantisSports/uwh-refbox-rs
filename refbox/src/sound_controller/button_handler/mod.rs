@@ -20,6 +20,8 @@ impl From<u32> for RemoteId {
 pub(super) enum SoundMessage {
     TriggerBuzzer,
     TriggerWhistle,
+    StartManualBuzzer,
+    StopManualBuzzer,
     #[cfg(target_os = "linux")]
     StartWiredBuzzer,
     #[cfg(target_os = "linux")]

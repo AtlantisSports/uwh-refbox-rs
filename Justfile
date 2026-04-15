@@ -71,3 +71,8 @@ install-hooks:
     cp scripts/pre-commit .git/hooks/pre-commit
     chmod +x .git/hooks/pre-commit
     @echo "Pre-commit hook installed."
+
+# Install system fonts required for Mandarin language support (Raspberry Pi OS / Debian)
+install-rpi-fonts:
+    sudo apt-get install -y fonts-noto-cjk
+    @echo "CJK fonts installed. Mandarin language support is now available."

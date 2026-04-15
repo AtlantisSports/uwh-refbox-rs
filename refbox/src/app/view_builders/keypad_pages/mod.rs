@@ -1,12 +1,12 @@
 use super::{
-    theme::{LARGE_TEXT, MEDIUM_TEXT, MIN_BUTTON_SIZE, PADDING, SPACING},
+    theme::{MEDIUM_TEXT, MIN_BUTTON_SIZE, PADDING, SPACING},
     *,
 };
 use iced::{
-    Alignment, Length,
+    Length,
     alignment::{Horizontal, Vertical},
     widget::{
-        button,
+        Space, button,
         button::Button,
         column, container, row,
         svg::{self, Svg},
@@ -92,11 +92,7 @@ pub(in super::super) fn build_keypad_page<'a>(
         | KeypadPage::PortalLogin(_, _) => player_num.to_string(),
     };
 
-    let text_size = if text_displayed == "TEAM" || matches!(page, KeypadPage::PortalLogin(_, _)) {
-        MEDIUM_TEXT
-    } else {
-        LARGE_TEXT
-    };
+    let text_size = MEDIUM_TEXT;
 
     column![
         make_game_time_button(snapshot, false, false, mode, clock_running),
@@ -104,17 +100,10 @@ pub(in super::super) fn build_keypad_page<'a>(
             container(
                 column![
                     row![
-                        text(page.text())
-                            .align_x(Horizontal::Left)
-                            .align_y(Vertical::Center),
-                        text(text_displayed)
-                            .size(text_size)
-                            .width(Length::Fill)
-                            .align_x(Horizontal::Right)
-                            .align_y(Vertical::Center),
+                        text(page.text()).align_x(Horizontal::Left),
+                        Space::with_width(Length::Fill),
+                        text(text_displayed).size(text_size),
                     ]
-                    .align_y(Alignment::Center)
-                    .height(Length::Fill)
                     .width(Length::Fixed(3.0 * MIN_BUTTON_SIZE + 2.0 * SPACING)),
                     row![
                         setup_keypad_button(

@@ -27,6 +27,16 @@ The app will log all events to a folder called `uwh-refbox-logs`, which will be 
 4. Go to the [`refbox`](refbox) folder and `cargo run`
 5. Call the binary with the `-h` or `--help` flags to get the usage
 
+## Raspberry Pi deployment
+
+After deploying the binary to a Raspberry Pi, run the following once to enable Mandarin language support:
+
+```
+just install-rpi-fonts
+```
+
+This installs the Noto CJK font package (`fonts-noto-cjk`). Without it the app works normally but Mandarin characters will not render correctly.
+
 # Cross Compiling
 
 Builds for cargo targets other than the host target can be compiled using the `cross` tool:

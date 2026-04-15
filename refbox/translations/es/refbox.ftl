@@ -104,7 +104,9 @@ auto-sound-stop-play = SONIDO AUTOMÁTICO
 alarm-button = BOTÓN DE
     ALARMA:
 alarm = ALARMA
+hold-to-test = MANTÉN PARA PROBAR
 or-press-spacebar = O Presiona la Barra
+or-hold-spacebar = O Mantén la Barra
 game-info = INFO JUEGO
 remotes = REMOTOS
 default = POR DEFECTO

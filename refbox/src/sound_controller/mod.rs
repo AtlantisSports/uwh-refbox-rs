@@ -227,6 +227,7 @@ pub struct RemoteInfo {
 enum SoundId {
     AutoBuzzer,
     Whistle,
+    ManualAlarm,
     #[cfg(target_os = "linux")]
     WiredButton,
     #[cfg(target_os = "linux")]
@@ -349,6 +350,18 @@ impl SoundController {
                                             sound_queue.push_back(SoundId::Whistle);
                                         }
                                     }
+                                    SoundMessage::StartManualBuzzer => {
+                                        if !sound_queue.contains(&SoundId::ManualAlarm) {
+                                            // Push to front so the manual alarm immediately
+                                            // takes priority over any queued auto-buzzer.
+                                            sound_queue.push_front(SoundId::ManualAlarm);
+                                        }
+                                    }
+                                    SoundMessage::StopManualBuzzer => {
+                                        if sound_queue.contains(&SoundId::ManualAlarm) {
+                                            sound_queue.retain(|s| *s != SoundId::ManualAlarm);
+                                        }
+                                    }
                                     #[cfg(target_os = "linux")]
                                     SoundMessage::StartWiredBuzzer => {
                                         if !sound_queue.contains(&SoundId::WiredButton) {
@@ -431,6 +444,20 @@ impl SoundController {
                                 volumes,
                                 library.whistle().clone(),
                                 false,
+                                false,
+                            )
+                        }
+                        SoundId::ManualAlarm => {
+                            info!("Manual alarm buzzer started");
+                            let volumes = ChannelVolumes::new(&settings, false);
+                            if flash {
+                                trigger_flash().unwrap();
+                            }
+                            Sound::new(
+                                _context.clone(),
+                                volumes,
+                                library[settings.buzzer_sound].clone(),
+                                true,
                                 false,
                             )
                         }
@@ -548,6 +575,14 @@ impl SoundController {
 
     pub fn trigger_whistle(&self) {
         self.msg_tx.send(SoundMessage::TriggerWhistle).unwrap()
+    }
+
+    pub fn start_manual_buzzer(&self) {
+        self.msg_tx.send(SoundMessage::StartManualBuzzer).unwrap()
+    }
+
+    pub fn stop_manual_buzzer(&self) {
+        self.msg_tx.send(SoundMessage::StopManualBuzzer).unwrap()
     }
 
     pub fn trigger_buzzer(&self) {

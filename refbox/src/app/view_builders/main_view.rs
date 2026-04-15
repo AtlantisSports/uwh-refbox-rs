@@ -18,6 +18,7 @@ pub(in super::super) fn build_main_view<'a>(
     games: Option<&GameList>,
     track_fouls_and_warnings: bool,
     manual_alarm_enabled: bool,
+    alarm_held: bool,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -28,7 +29,10 @@ pub(in super::super) fn build_main_view<'a>(
 
     let time_button = make_game_time_button(snapshot, true, false, mode, clock_running);
 
-    let mut center_col = column![time_button].spacing(SPACING).width(Length::Fill);
+    let mut center_col = column![time_button]
+        .spacing(SPACING)
+        .width(Length::Fill)
+        .height(Length::Fill);
 
     let make_warn_button = || {
         make_button(fl!("add-warning"))
@@ -108,18 +112,10 @@ pub(in super::super) fn build_main_view<'a>(
         .unwrap();
 
     if manual_alarm_enabled {
-        // Compact GAME INFO button
         center_col = center_col.push(
-            button(
-                text(fl!("game-info"))
-                    .size(SMALL_TEXT)
-                    .align_y(Vertical::Center)
-                    .align_x(Horizontal::Center),
-            )
-            .padding(PADDING)
-            .style(light_gray_button)
-            .width(Length::Fill)
-            .on_press(Message::ShowGameDetails),
+            make_button(fl!("game-info"))
+                .style(light_gray_button)
+                .on_press(Message::ShowGameDetails),
         );
 
         // Determine whether alarm is interactive in the current state
@@ -135,39 +131,59 @@ pub(in super::super) fn build_main_view<'a>(
             ) | (GamePeriod::BetweenGames, _)
         );
 
-        // Build the alarm button (visual only — mouse_area handles press/release)
-        let mut alarm_btn = button(
+        // Build the alarm face. During BetweenGames: blue "Hold to Test" with a 1-second delay.
+        // During active play: red "Alarm" that fires immediately.
+        // mouse_area wraps only this inner face so only the button is interactive,
+        // not the surrounding light-gray padding zone.
+        let is_between_games = snapshot.current_period == GamePeriod::BetweenGames;
+        let alarm_label = if is_between_games {
+            fl!("hold-to-test")
+        } else {
+            fl!("alarm")
+        };
+        let spacebar_label = if is_between_games {
+            fl!("or-hold-spacebar")
+        } else {
+            fl!("or-press-spacebar")
+        };
+        let alarm_face_container = container(
             column![
-                text(fl!("alarm")).size(MEDIUM_TEXT),
-                text(fl!("or-press-spacebar")).size(SMALL_TEXT),
+                text(alarm_label)
+                    .size(SMALL_PLUS_TEXT)
+                    .align_x(Horizontal::Center)
+                    .width(Length::Fill),
+                text(spacebar_label)
+                    .size(SMALL_TEXT)
+                    .align_x(Horizontal::Center)
+                    .width(Length::Fill),
             ]
-            .align_x(Alignment::Center),
+            .align_x(Alignment::Center)
+            .width(Length::Fill),
         )
-        .style(red_button)
-        .width(Length::Fill);
+        .style(if !alarm_available {
+            disabled_container
+        } else if alarm_held && is_between_games {
+            blue_pressed_container
+        } else if alarm_held {
+            red_pressed_container
+        } else if is_between_games {
+            blue_container
+        } else {
+            red_container
+        })
+        .padding(PADDING)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .align_x(Horizontal::Center)
+        .align_y(Vertical::Center);
 
-        if alarm_available {
-            alarm_btn = alarm_btn.on_press(Message::NoAction);
-        }
-
-        // Alarm zone: padded container so the button doesn't fill edge-to-edge
-        let alarm_zone = {
-            let inner = container(alarm_btn)
-                .style(light_gray_container)
-                .padding([PADDING * 3.0, PADDING * 3.0])
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .align_x(Horizontal::Center)
-                .align_y(Vertical::Center);
-
-            let area = mouse_area(inner);
-
-            if alarm_available {
-                area.on_press(Message::AlarmPressed)
-                    .on_release(Message::AlarmReleased)
-            } else {
-                area
-            }
+        let alarm_face: Element<'a, Message> = if alarm_available {
+            mouse_area(alarm_face_container)
+                .on_press(Message::AlarmPressed)
+                .on_release(Message::AlarmReleased)
+                .into()
+        } else {
+            alarm_face_container.into()
         };
 
         if track_fouls_and_warnings {
@@ -201,12 +217,12 @@ pub(in super::super) fn build_main_view<'a>(
             .on_press(Message::ShowWarnings);
 
             center_col = center_col.push(
-                row![alarm_zone, warnings_zone]
+                row![alarm_face, warnings_zone]
                     .spacing(SPACING)
                     .height(Length::Fill),
             );
         } else {
-            center_col = center_col.push(alarm_zone);
+            center_col = center_col.push(alarm_face);
         }
     } else {
         // Original behavior: game info area + optional warnings panel

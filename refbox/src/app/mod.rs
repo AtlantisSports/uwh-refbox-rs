@@ -10,7 +10,9 @@ use futures_lite::Stream;
 use iced::{
     Element, Subscription, Task, Theme,
     application::Appearance,
+    event,
     keyboard::{self, Key, key::Named},
+    mouse,
     widget::column,
     window,
 };
@@ -23,7 +25,7 @@ use std::{
 };
 use tokio::{
     sync::mpsc,
-    time::{Duration, Instant, timeout_at},
+    time::{Duration, Instant, sleep, timeout_at},
 };
 use tokio_serial::SerialPortBuilder;
 use uwh_common::{
@@ -79,7 +81,9 @@ pub struct RefBoxApp {
     sound: SoundController,
     sim_child: Option<Child>,
     list_all_events: bool,
-    alarm_hold_generation: u32,
+    mouse_alarm_held: bool,
+    spacebar_held: bool,
+    alarm_delay_token: u64,
 }
 
 #[derive(Debug)]
@@ -536,7 +540,9 @@ impl RefBoxApp {
             sound,
             sim_child,
             list_all_events,
-            alarm_hold_generation: 0,
+            mouse_alarm_held: false,
+            spacebar_held: false,
+            alarm_delay_token: 0,
         };
 
         let task = Task::batch(vec![
@@ -2131,50 +2137,105 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::AlarmPressed => {
-                if self.config.sound.sound_enabled && self.config.sound.manual_alarm_enabled {
-                    match (self.snapshot.current_period, self.snapshot.timeout) {
+                // Mouse press on the alarm button.
+                let alarm_condition = self.config.sound.sound_enabled
+                    && self.config.sound.manual_alarm_enabled
+                    && matches!(
+                        (self.snapshot.current_period, self.snapshot.timeout),
                         (
                             GamePeriod::FirstHalf
-                            | GamePeriod::SecondHalf
-                            | GamePeriod::OvertimeFirstHalf
-                            | GamePeriod::OvertimeSecondHalf
-                            | GamePeriod::SuddenDeath,
+                                | GamePeriod::SecondHalf
+                                | GamePeriod::OvertimeFirstHalf
+                                | GamePeriod::OvertimeSecondHalf
+                                | GamePeriod::SuddenDeath,
                             None,
-                        ) => {
-                            info!("Manual alarm triggered during active play");
-                            self.sound.trigger_buzzer();
-                        }
-                        (GamePeriod::BetweenGames, _) => {
-                            // wrapping_add: overflow would require ~4 billion presses per second, impossible.
-                            self.alarm_hold_generation = self.alarm_hold_generation.wrapping_add(1);
-                            let generation = self.alarm_hold_generation;
+                        ) | (GamePeriod::BetweenGames, _)
+                    );
+                if !self.mouse_alarm_held && alarm_condition {
+                    let was_active = self.spacebar_held;
+                    self.mouse_alarm_held = true;
+                    if !was_active {
+                        if self.snapshot.current_period == GamePeriod::BetweenGames {
+                            self.alarm_delay_token += 1;
+                            let token = self.alarm_delay_token;
+                            info!("Test alarm delay started (mouse), token={token}");
                             return Task::future(async move {
-                                tokio::time::sleep(Duration::from_secs(1)).await;
-                                Message::AlarmFired(generation)
+                                sleep(Duration::from_secs(1)).await;
+                                Message::AlarmDelayElapsed(token)
                             });
+                        } else {
+                            info!("Manual alarm started (mouse)");
+                            self.sound.start_manual_buzzer();
                         }
-                        _ => {} // no alarm during non-play breaks (HalfTime, PreOvertime, etc.)
                     }
                 }
                 Task::none()
             }
             Message::AlarmReleased => {
-                // Only cancel a pending delayed-fire if we are in BetweenGames,
-                // since that is the only period where an async task was started.
-                if self.snapshot.current_period == GamePeriod::BetweenGames {
-                    self.alarm_hold_generation = self.alarm_hold_generation.wrapping_add(1);
+                // Mouse release — stop alarm only when spacebar is also not held.
+                if self.mouse_alarm_held {
+                    self.mouse_alarm_held = false;
+                    if !self.spacebar_held {
+                        info!("Manual alarm released (mouse)");
+                        self.sound.stop_manual_buzzer();
+                    }
                 }
                 Task::none()
             }
-            Message::AlarmFired(generation) => {
-                if generation == self.alarm_hold_generation
-                    && self.snapshot.current_period == GamePeriod::BetweenGames
-                    && self.snapshot.timeout.is_none()
-                    && self.config.sound.sound_enabled
+            Message::SpacebarPressed => {
+                // Keyboard press — spacebar_held guards against OS key-repeat.
+                let alarm_condition = self.config.sound.sound_enabled
                     && self.config.sound.manual_alarm_enabled
+                    && matches!(
+                        (self.snapshot.current_period, self.snapshot.timeout),
+                        (
+                            GamePeriod::FirstHalf
+                                | GamePeriod::SecondHalf
+                                | GamePeriod::OvertimeFirstHalf
+                                | GamePeriod::OvertimeSecondHalf
+                                | GamePeriod::SuddenDeath,
+                            None,
+                        ) | (GamePeriod::BetweenGames, _)
+                    );
+                if !self.spacebar_held && alarm_condition {
+                    let was_active = self.mouse_alarm_held;
+                    self.spacebar_held = true;
+                    if !was_active {
+                        if self.snapshot.current_period == GamePeriod::BetweenGames {
+                            self.alarm_delay_token += 1;
+                            let token = self.alarm_delay_token;
+                            info!("Test alarm delay started (spacebar), token={token}");
+                            return Task::future(async move {
+                                sleep(Duration::from_secs(1)).await;
+                                Message::AlarmDelayElapsed(token)
+                            });
+                        } else {
+                            info!("Manual alarm started (spacebar)");
+                            self.sound.start_manual_buzzer();
+                        }
+                    }
+                }
+                Task::none()
+            }
+            Message::SpacebarReleased => {
+                // Keyboard release — stop alarm only when mouse is also not held.
+                if self.spacebar_held {
+                    self.spacebar_held = false;
+                    if !self.mouse_alarm_held {
+                        info!("Manual alarm released (spacebar)");
+                        self.sound.stop_manual_buzzer();
+                    }
+                }
+                Task::none()
+            }
+            Message::AlarmDelayElapsed(token) => {
+                // Fires 1 second after a BetweenGames press. Only start the sound if the
+                // token still matches (no newer press has superseded this one) and at least
+                // one input is still held.
+                if token == self.alarm_delay_token && (self.mouse_alarm_held || self.spacebar_held)
                 {
-                    info!("Manual alarm triggered after hold during BetweenGames");
-                    self.sound.trigger_buzzer();
+                    info!("Test alarm started after delay, token={token}");
+                    self.sound.start_manual_buzzer();
                 }
                 Task::none()
             }
@@ -2219,6 +2280,7 @@ impl RefBoxApp {
                     self.schedule.as_ref().map(|s| &s.games),
                     self.config.track_fouls_and_warnings,
                     self.config.sound.sound_enabled && self.config.sound.manual_alarm_enabled,
+                    self.mouse_alarm_held || self.spacebar_held,
                 )
             }
             AppState::TimeEdit(_, time, timeout_time) =>
@@ -2299,19 +2361,28 @@ impl RefBoxApp {
         if self.config.sound.sound_enabled && self.config.sound.manual_alarm_enabled {
             let key_press = keyboard::on_key_press(|key, _modifiers| {
                 if matches!(key, Key::Named(Named::Space)) {
-                    Some(Message::AlarmPressed)
+                    Some(Message::SpacebarPressed)
                 } else {
                     None
                 }
             });
             let key_release = keyboard::on_key_release(|key, _modifiers| {
                 if matches!(key, Key::Named(Named::Space)) {
-                    Some(Message::AlarmReleased)
+                    Some(Message::SpacebarReleased)
                 } else {
                     None
                 }
             });
-            Subscription::batch([time_sub, key_press, key_release])
+            // mouse_area.on_release only fires when the cursor is still over the widget.
+            // This global subscription catches the release anywhere in the window, so
+            // alarm_held never gets stuck true if the user moves the mouse away first.
+            let mouse_release = event::listen_with(|ev, _status, _window| match ev {
+                iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+                    Some(Message::AlarmReleased)
+                }
+                _ => None,
+            });
+            Subscription::batch([time_sub, key_press, key_release, mouse_release])
         } else {
             time_sub
         }

@@ -394,43 +394,21 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         list_all_events: args.all_events,
     };
 
-    let fonts = vec![Cow::from(
-        &include_bytes!("../resources/Roboto-Medium.ttf")[..],
-    )];
-
-    // Use Noto Sans CJK SC as the default font if installed — it covers both Latin and
-    // Chinese characters, enabling Mandarin language support. On Raspberry Pi OS, install with:
-    //   sudo apt install fonts-noto-cjk
-    // Falls back to Roboto if not installed (Mandarin will not render correctly).
-    let noto_cjk_paths = [
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+    // Roboto covers Latin scripts. The CJK subset covers Japanese, Korean, and Chinese
+    // characters used in the translations. Both fonts are bundled — no system font install
+    // required. To regenerate the CJK subset after updating translations, run:
+    //   just regen-cjk-font
+    let fonts = vec![
+        Cow::from(&include_bytes!("../resources/Roboto-Medium.ttf")[..]),
+        Cow::from(&include_bytes!("../resources/NotoSansCJK-Subset.otf")[..]),
     ];
-    let use_noto_cjk = noto_cjk_paths
-        .iter()
-        .any(|p| std::path::Path::new(p).exists());
-    if use_noto_cjk {
-        info!("Noto Sans CJK SC found, using as default font");
-    } else {
-        warn!(
-            "Noto Sans CJK SC not found, falling back to Roboto (Mandarin will not render correctly)"
-        );
-    }
 
     let settings = Settings {
         id: Some(APP_NAME.into()),
         fonts,
         default_font: Font {
-            family: if use_noto_cjk {
-                iced_core::font::Family::Name("Noto Sans CJK SC")
-            } else {
-                iced_core::font::Family::Name("Roboto")
-            },
-            weight: if use_noto_cjk {
-                iced_core::font::Weight::Bold
-            } else {
-                iced_core::font::Weight::Medium
-            },
+            family: iced_core::font::Family::Name("Roboto"),
+            weight: iced_core::font::Weight::Medium,
             stretch: iced_core::font::Stretch::Normal,
             style: iced_core::font::Style::Normal,
         },

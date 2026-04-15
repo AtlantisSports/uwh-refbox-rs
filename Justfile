@@ -72,7 +72,7 @@ install-hooks:
     chmod +x .git/hooks/pre-commit
     @echo "Pre-commit hook installed."
 
-# Install system fonts required for Mandarin language support (Raspberry Pi OS / Debian)
-install-rpi-fonts:
-    sudo apt-get install -y fonts-noto-cjk
-    @echo "CJK fonts installed. Mandarin language support is now available."
+# Regenerate the bundled CJK font subset from the Japanese, Korean, and Chinese translation files.
+# Run this any time those translations change. Requires: sudo apt-get install python3-fonttools
+regen-cjk-font:
+    python3 scripts/regen-cjk-font.py

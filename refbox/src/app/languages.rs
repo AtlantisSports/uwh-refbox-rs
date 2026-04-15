@@ -14,6 +14,10 @@ pub enum Language {
     German,
     Tagalog,
     Indonesian,
+    Dutch,
+    Japanese,
+    Malay,
+    Portuguese,
 }
 
 impl Language {
@@ -28,6 +32,10 @@ impl Language {
             Self::German => LanguageIdentifier::from_bytes(b"de-DE").unwrap(),
             Self::Tagalog => LanguageIdentifier::from_bytes(b"tl-PH").unwrap(),
             Self::Indonesian => LanguageIdentifier::from_bytes(b"id-ID").unwrap(),
+            Self::Dutch => LanguageIdentifier::from_bytes(b"nl-NL").unwrap(),
+            Self::Japanese => LanguageIdentifier::from_bytes(b"ja-JP").unwrap(),
+            Self::Malay => LanguageIdentifier::from_bytes(b"ms-MY").unwrap(),
+            Self::Portuguese => LanguageIdentifier::from_bytes(b"pt-PT").unwrap(),
         }
     }
 
@@ -50,6 +58,14 @@ impl Language {
             Self::Tagalog
         } else if lang_id.matches(&"id".parse::<LanguageIdentifier>().unwrap(), false, true) {
             Self::Indonesian
+        } else if lang_id.matches(&"nl".parse::<LanguageIdentifier>().unwrap(), false, true) {
+            Self::Dutch
+        } else if lang_id.matches(&"ja".parse::<LanguageIdentifier>().unwrap(), false, true) {
+            Self::Japanese
+        } else if lang_id.matches(&"ms".parse::<LanguageIdentifier>().unwrap(), false, true) {
+            Self::Malay
+        } else if lang_id.matches(&"pt".parse::<LanguageIdentifier>().unwrap(), false, true) {
+            Self::Portuguese
         } else {
             error!("Unsupported language: {}", lang_id);
             Self::English // Default to English if unsupported
@@ -68,7 +84,11 @@ impl Cyclable for Language {
             Self::Italian => Self::German,
             Self::German => Self::Tagalog,
             Self::Tagalog => Self::Indonesian,
-            Self::Indonesian => Self::English,
+            Self::Indonesian => Self::Dutch,
+            Self::Dutch => Self::Japanese,
+            Self::Japanese => Self::Malay,
+            Self::Malay => Self::Portuguese,
+            Self::Portuguese => Self::English,
         }
     }
 }

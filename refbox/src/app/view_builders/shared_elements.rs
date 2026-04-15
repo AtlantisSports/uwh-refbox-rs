@@ -813,9 +813,18 @@ pub(super) fn make_multi_label_button<'a, Message: 'a + Clone, T: IntoFragment<'
     labels: (T, T),
 ) -> Button<'a, Message> {
     button(
-        column![centered_text(labels.0), centered_text(labels.1)]
-            .width(Length::Fill)
-            .height(Length::Fill),
+        container(
+            column![
+                text(labels.0)
+                    .align_x(Horizontal::Center)
+                    .width(Length::Fill),
+                text(labels.1)
+                    .align_x(Horizontal::Center)
+                    .width(Length::Fill),
+            ]
+            .width(Length::Fill),
+        )
+        .center(Length::Fill),
     )
     .padding(PADDING)
     .height(Length::Fixed(MIN_BUTTON_SIZE))

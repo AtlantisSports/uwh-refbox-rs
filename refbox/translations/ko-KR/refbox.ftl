@@ -277,6 +277,8 @@ ref-list = 수석 심판: { $chief_ref }
     수중 심판 1: { $water_ref_1 }
     수중 심판 2: { $water_ref_2 }
     수중 심판 3: { $water_ref_3 }
+team-ref-list = 심판: { $ref_team }
+    타임키퍼/스코어키퍼: { $ts_keeper_team }
 unknown = 알 수 없음
 ## Game time button
 next-game = 다음 경기

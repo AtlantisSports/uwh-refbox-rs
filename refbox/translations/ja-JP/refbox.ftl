@@ -277,6 +277,8 @@ ref-list = 主任審判: { $chief_ref }
     水中審判1: { $water_ref_1 }
     水中審判2: { $water_ref_2 }
     水中審判3: { $water_ref_3 }
+team-ref-list = 審判: { $ref_team }
+    タイムキーパー/スコアラー: { $ts_keeper_team }
 unknown = 不明
 ## Game time button
 next-game = 次の試合

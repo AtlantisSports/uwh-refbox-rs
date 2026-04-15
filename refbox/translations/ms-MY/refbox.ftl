@@ -277,6 +277,8 @@ ref-list = Pengadil Ketua: { $chief_ref }
     Pengadil Air 1: { $water_ref_1 }
     Pengadil Air 2: { $water_ref_2 }
     Pengadil Air 3: { $water_ref_3 }
+team-ref-list = Pengadil: { $ref_team }
+    Penjaga Masa/Markah: { $ts_keeper_team }
 unknown = Tidak Diketahui
 ## Game time button
 next-game = PERLAWANAN SETERUSNYA

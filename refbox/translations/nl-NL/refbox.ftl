@@ -277,6 +277,8 @@ ref-list = Hoofdscheidsrechter: { $chief_ref }
     Waterscheidsrechter 1: { $water_ref_1 }
     Waterscheidsrechter 2: { $water_ref_2 }
     Waterscheidsrechter 3: { $water_ref_3 }
+team-ref-list = Scheidsrechters: { $ref_team }
+    Tijdwaarnemer/Scorer: { $ts_keeper_team }
 unknown = Onbekend
 ## Game time button
 next-game = VOLGENDE WEDSTRIJD

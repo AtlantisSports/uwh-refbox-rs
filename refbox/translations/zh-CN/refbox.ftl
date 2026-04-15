@@ -276,6 +276,8 @@ ref-list = 首席裁判: { $chief_ref }
     水下裁判1: { $water_ref_1 }
     水下裁判2: { $water_ref_2 }
     水下裁判3: { $water_ref_3 }
+team-ref-list = 裁判员: { $ref_team }
+    计时员/记分员: { $ts_keeper_team }
 unknown = 未知
 ## Game time button
 next-game = 下一场

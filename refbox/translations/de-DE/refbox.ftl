@@ -277,6 +277,8 @@ ref-list = Hauptschiedsrichter: { $chief_ref }
     Wasserrichter 1: { $water_ref_1 }
     Wasserrichter 2: { $water_ref_2 }
     Wasserrichter 3: { $water_ref_3 }
+team-ref-list = Schiedsrichter: { $ref_team }
+    Zeitnehmer/Anschreiber: { $ts_keeper_team }
 unknown = Unbekannt
 ## Game time button
 next-game = NÄCHSTES SPIEL

@@ -277,6 +277,8 @@ ref-list = Wasit Kepala: { $chief_ref }
     Wasit Air 1: { $water_ref_1 }
     Wasit Air 2: { $water_ref_2 }
     Wasit Air 3: { $water_ref_3 }
+team-ref-list = Wasit: { $ref_team }
+    Penjaga Waktu/Skor: { $ts_keeper_team }
 unknown = Tidak Diketahui
 ## Game time button
 next-game = PERTANDINGAN BERIKUTNYA

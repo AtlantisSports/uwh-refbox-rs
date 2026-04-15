@@ -798,18 +798,22 @@ fn make_sound_config_page<'a>(
             )
         ]
         .spacing(SPACING),
-        row![make_value_button(
-            fl!("alarm-button"),
-            bool_string(sound.manual_alarm_enabled),
-            (false, true),
-            if sound.sound_enabled {
-                Some(Message::ToggleBoolParameter(
-                    BoolGameParameter::ManualAlarmEnabled,
-                ))
-            } else {
-                None
-            },
-        ),]
+        row![
+            make_value_button(
+                fl!("alarm-button"),
+                bool_string(sound.manual_alarm_enabled),
+                (false, true),
+                if sound.sound_enabled {
+                    Some(Message::ToggleBoolParameter(
+                        BoolGameParameter::ManualAlarmEnabled,
+                    ))
+                } else {
+                    None
+                },
+            ),
+            horizontal_space(),
+            horizontal_space(),
+        ]
         .spacing(SPACING),
         vertical_space(),
         row![

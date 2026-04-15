@@ -93,7 +93,10 @@ pub fn parse_csv(
 
     for (_, game) in games.iter_mut() {
         for team in [&mut game.light, &mut game.dark] {
-            if let Some(SeededBy { group, .. }) = team.seeded_by_mut() {
+            if let Some(SeededBy {
+                group: Some(group), ..
+            }) = team.seeded_by_mut()
+            {
                 if let Some(name) = group_name_map.get(group.as_str()) {
                     *group = name.clone();
                 }
@@ -115,7 +118,10 @@ pub fn parse_csv(
                 ..
             }) => {
                 for team in starting_ranks.iter_mut() {
-                    if let Some(SeededBy { group, .. }) = team.seeded_by_mut() {
+                    if let Some(SeededBy {
+                        group: Some(group), ..
+                    }) = team.seeded_by_mut()
+                    {
                         if let Some(name) = group_name_map.get(group.as_str()) {
                             *group = name.clone();
                         }
@@ -145,6 +151,7 @@ pub fn parse_csv(
         timing_rules,
         standings_order: None,
         final_results_order: None,
+        referees_by_game_number: None,
     })
 }
 
@@ -343,6 +350,7 @@ pub(crate) fn parse_games(
             light,
             start_time,
             description: None,
+            referee_assignments: None,
         };
         debug!("Parsed game: {}", game.number);
         trace!("    {game:?}");

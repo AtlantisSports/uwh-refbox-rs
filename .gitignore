@@ -10,3 +10,6 @@ uwh-matrix-drawing/state.json
 
 # Mac BS
 .DS_Store
+
+# Brainstorming session files
+.superpowers/

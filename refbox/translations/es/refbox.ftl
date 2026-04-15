@@ -281,6 +281,8 @@ ref-list = Árbitro principal: { $chief_ref }
     Árbitro de agua 1: { $water_ref_1 }
     Árbitro de agua 2: { $water_ref_2 }
     Árbitro de agua 3: { $water_ref_3 }
+team-ref-list = Árbitros: { $ref_team }
+    Cronometrador/Marcador: { $ts_keeper_team }
 unknown = Desconocido
 ## Game time button
 next-game = PRÓXIMO JUEGO

@@ -528,14 +528,14 @@ mod tests {
 
         let settings = SoundSettings::migrate(&old);
 
-        assert_eq!(settings.sound_enabled, false);
-        assert_eq!(settings.whistle_enabled, false);
+        assert!(!settings.sound_enabled);
+        assert!(!settings.whistle_enabled);
         assert_eq!(settings.buzzer_sound, BuzzerSound::Buzz);
         assert_eq!(settings.whistle_vol, Volume::Low);
         assert_eq!(settings.above_water_vol, Volume::Medium);
         assert_eq!(settings.under_water_vol, Volume::Medium);
-        assert_eq!(settings.auto_sound_start_play, false);
-        assert_eq!(settings.auto_sound_stop_play, false);
+        assert!(!settings.auto_sound_start_play);
+        assert!(!settings.auto_sound_stop_play);
         assert_eq!(
             settings.remotes,
             vec![

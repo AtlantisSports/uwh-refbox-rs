@@ -246,18 +246,34 @@ impl RefBoxApp {
 
     fn request_schedule(&self, event_id: EventId) -> Task<Message> {
         if let Some(ref client) = self.uwhportal_client {
-            let request = client.get_event_schedule_privileged(&event_id);
+            let schedule_req = client.get_event_schedule_privileged(&event_id);
+            let names_req = client.get_event_referee_name_map_from_referees(&event_id);
             Task::future(async move {
-                match request.await {
-                    Ok(schedule) => {
-                        info!("Got schedule");
-                        Message::RecvSchedule(event_id, schedule)
-                    }
+                let mut schedule = match schedule_req.await {
+                    Ok(s) => s,
                     Err(e) => {
                         error!("Failed to get schedule: {e}");
-                        Message::NoAction
+                        return Message::NoAction;
+                    }
+                };
+                // Fetch referee display names from the public /referees endpoint.
+                // If the call fails (e.g. no network), silently proceed without names.
+                let name_map = names_req.await.unwrap_or_default();
+                if !name_map.is_empty() {
+                    for game in schedule.games.values_mut() {
+                        if let Some(assignments) = &mut game.referee_assignments {
+                            for assignment in assignments.iter_mut() {
+                                if let Some(uid) = &assignment.user_id {
+                                    if let Some(name) = name_map.get(uid) {
+                                        assignment.display_name = Some(name.clone());
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
+                info!("Got schedule");
+                Message::RecvSchedule(event_id, schedule)
             })
         } else {
             Task::none()
@@ -2157,7 +2173,7 @@ impl RefBoxApp {
                     data,
                     game_config,
                     self.using_uwhportal,
-                    self.schedule.as_ref().map(|s| &s.games),
+                    self.schedule.as_ref(),
                     self.config.track_fouls_and_warnings,
                 )
             }
@@ -2190,7 +2206,7 @@ impl RefBoxApp {
                 &self.config.game,
                 self.using_uwhportal,
                 is_refreshing,
-                self.schedule.as_ref().map(|s| &s.games)
+                self.schedule.as_ref()
             ),
             AppState::WarningsSummaryPage => build_warnings_summary_page(data),
             AppState::EditGameConfig(page) => build_game_config_edit_page(

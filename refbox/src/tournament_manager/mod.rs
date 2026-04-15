@@ -2391,29 +2391,29 @@ mod test {
         let mut tm = TournamentManager::new(config);
         let start = Instant::now();
 
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(13)));
         tm.start_game_clock(start);
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(13)));
 
         let next_time = start + Duration::from_secs(2);
         assert_eq!(tm.game_clock_time(next_time), Some(Duration::from_secs(11)));
         tm.stop_game_clock(next_time).unwrap();
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         assert_eq!(tm.game_clock_time(next_time), Some(Duration::from_secs(11)));
 
         let next_time = next_time + Duration::from_secs(3);
         tm.set_period_and_game_clock_time(GamePeriod::SuddenDeath, Duration::from_secs(18));
         assert_eq!(tm.game_clock_time(next_time), Some(Duration::from_secs(18)));
         tm.start_game_clock(next_time);
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         assert_eq!(tm.game_clock_time(next_time), Some(Duration::from_secs(18)));
 
         let next_time = next_time + Duration::from_secs(5);
         assert_eq!(tm.game_clock_time(next_time), Some(Duration::from_secs(23)));
         tm.stop_game_clock(next_time).unwrap();
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         assert_eq!(tm.game_clock_time(next_time), Some(Duration::from_secs(23)));
     }
 
@@ -2436,15 +2436,15 @@ mod test {
             },
         )));
 
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
         assert_eq!(tm.timeout_clock_time(start), Some(Duration::from_secs(5)));
         tm.start_clock(start);
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
         assert_eq!(tm.timeout_clock_time(start), Some(Duration::from_secs(5)));
         tm.stop_clock(stop).unwrap();
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         assert_eq!(tm.game_clock_time(stop), Some(Duration::from_secs(18)));
         assert_eq!(tm.timeout_clock_time(stop), Some(Duration::from_secs(3)));
 
@@ -2455,15 +2455,15 @@ mod test {
             },
         )));
 
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
         assert_eq!(tm.timeout_clock_time(start), Some(Duration::from_secs(5)));
         tm.start_clock(start);
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
         assert_eq!(tm.timeout_clock_time(start), Some(Duration::from_secs(5)));
         tm.stop_clock(stop).unwrap();
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         assert_eq!(tm.game_clock_time(stop), Some(Duration::from_secs(18)));
         assert_eq!(tm.timeout_clock_time(stop), Some(Duration::from_secs(3)));
 
@@ -2471,15 +2471,15 @@ mod test {
             clock_time: Duration::from_secs(5),
         })));
 
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
         assert_eq!(tm.timeout_clock_time(start), Some(Duration::from_secs(5)));
         tm.start_clock(start);
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
         assert_eq!(tm.timeout_clock_time(start), Some(Duration::from_secs(5)));
         tm.stop_clock(stop).unwrap();
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         assert_eq!(tm.game_clock_time(stop), Some(Duration::from_secs(18)));
         assert_eq!(tm.timeout_clock_time(stop), Some(Duration::from_secs(7)));
 
@@ -2487,15 +2487,15 @@ mod test {
             clock_time: Duration::from_secs(5),
         })));
 
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
         assert_eq!(tm.timeout_clock_time(start), Some(Duration::from_secs(5)));
         tm.start_clock(start);
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         assert_eq!(tm.game_clock_time(start), Some(Duration::from_secs(18)));
         assert_eq!(tm.timeout_clock_time(start), Some(Duration::from_secs(5)));
         tm.stop_clock(stop).unwrap();
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         assert_eq!(tm.game_clock_time(stop), Some(Duration::from_secs(18)));
         assert_eq!(tm.timeout_clock_time(stop), Some(Duration::from_secs(7)));
     }
@@ -2591,12 +2591,12 @@ mod test {
         };
 
         // Test the internal automatic reset during the BetweenGame Period
-        assert_eq!(tm.has_reset, true);
+        assert!(tm.has_reset);
         tm.set_period_and_game_clock_time(GamePeriod::BetweenGames, Duration::from_secs(1));
         tm.start_clock(now);
         now += Duration::from_secs(2);
         tm.update(now).unwrap();
-        assert_eq!(tm.has_reset, false);
+        assert!(!tm.has_reset);
 
         tm.scores.black = 2;
         tm.scores.white = 3;
@@ -2611,7 +2611,7 @@ mod test {
         assert_eq!(tm.scores.white, 3);
         assert_eq!(tm.penalties.black, vec![b_pen.clone()]);
         assert_eq!(tm.penalties.white, vec![w_pen.clone()]);
-        assert_eq!(tm.has_reset, false);
+        assert!(!tm.has_reset);
 
         now += Duration::from_secs(1);
         tm.update(now).unwrap();
@@ -2620,7 +2620,7 @@ mod test {
         assert_eq!(tm.scores.white, 3);
         assert_eq!(tm.penalties.black, vec![b_pen.clone()]);
         assert_eq!(tm.penalties.white, vec![w_pen.clone()]);
-        assert_eq!(tm.has_reset, false);
+        assert!(!tm.has_reset);
 
         now += Duration::from_secs(2);
         tm.update(now).unwrap();
@@ -2629,7 +2629,7 @@ mod test {
         assert_eq!(tm.scores.white, 3);
         assert_eq!(tm.penalties.black, vec![b_pen.clone()]);
         assert_eq!(tm.penalties.white, vec![w_pen.clone()]);
-        assert_eq!(tm.has_reset, false);
+        assert!(!tm.has_reset);
         // 10s between games, 4s before reset
         assert_eq!(tm.reset_game_time, Duration::from_secs(6));
 
@@ -2640,7 +2640,7 @@ mod test {
         assert_eq!(tm.scores.white, 3);
         assert_eq!(tm.penalties.black, vec![b_pen.clone()]);
         assert_eq!(tm.penalties.white, vec![w_pen.clone()]);
-        assert_eq!(tm.has_reset, false);
+        assert!(!tm.has_reset);
 
         now += Duration::from_secs(5);
         tm.update(now).unwrap();
@@ -2649,7 +2649,7 @@ mod test {
         assert_eq!(tm.scores.white, 0);
         assert_eq!(tm.penalties.black, vec![]);
         assert_eq!(tm.penalties.white, vec![]);
-        assert_eq!(tm.has_reset, true);
+        assert!(tm.has_reset);
 
         // Test manual reset by the user
         tm.stop_clock(now).unwrap();
@@ -2662,13 +2662,13 @@ mod test {
 
         tm.reset_game(now);
         assert_eq!(tm.current_period, GamePeriod::BetweenGames);
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(3)));
         assert_eq!(tm.scores.black, 0);
         assert_eq!(tm.scores.white, 0);
         assert_eq!(tm.penalties.black, vec![]);
         assert_eq!(tm.penalties.white, vec![]);
-        assert_eq!(tm.has_reset, true);
+        assert!(tm.has_reset);
 
         tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(5));
         tm.scores.black = 2;
@@ -2683,13 +2683,13 @@ mod test {
 
         tm.reset_game(now);
         assert_eq!(tm.current_period, GamePeriod::BetweenGames);
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(3)));
         assert_eq!(tm.scores.black, 0);
         assert_eq!(tm.scores.white, 0);
         assert_eq!(tm.penalties.black, vec![]);
         assert_eq!(tm.penalties.white, vec![]);
-        assert_eq!(tm.has_reset, true);
+        assert!(tm.has_reset);
     }
 
     #[test]
@@ -3306,11 +3306,11 @@ mod test {
                 clock_time: two_secs,
             },
         )));
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         assert_eq!(tm.end_timeout(t_o_end), Ok(()));
         assert_eq!(tm.timeout_state, None);
         assert_eq!(tm.game_clock_time(t_o_end), Some(thirty_secs));
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
 
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
         tm.set_timeout_state(Some(TimeoutState::Team(
@@ -3319,41 +3319,41 @@ mod test {
                 clock_time: two_secs,
             },
         )));
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         assert_eq!(tm.end_timeout(t_o_end), Ok(()));
         assert_eq!(tm.timeout_state, None);
         assert_eq!(tm.game_clock_time(t_o_end), Some(thirty_secs));
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
 
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
         tm.set_timeout_state(Some(TimeoutState::Ref(ClockState::Stopped {
             clock_time: two_secs,
         })));
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         assert_eq!(tm.end_timeout(t_o_end), Ok(()));
         assert_eq!(tm.timeout_state, None);
         assert_eq!(tm.game_clock_time(t_o_end), Some(thirty_secs));
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
 
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
         tm.set_timeout_state(Some(TimeoutState::PenaltyShot(ClockState::Stopped {
             clock_time: two_secs,
         })));
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         assert_eq!(tm.end_timeout(t_o_end), Ok(()));
         assert_eq!(tm.timeout_state, None);
         assert_eq!(tm.game_clock_time(t_o_end), Some(thirty_secs));
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
 
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
         tm.set_timeout_state(Some(TimeoutState::RugbyPenaltyShot(ClockState::Stopped {
             clock_time: two_secs,
         })));
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         assert_eq!(tm.end_timeout(t_o_end), Ok(()));
         assert_eq!(tm.timeout_state, None);
         assert_eq!(tm.game_clock_time(t_o_end), Some(thirty_secs));
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
 
         // Test ending timeouts with the clock running
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
@@ -3364,11 +3364,11 @@ mod test {
                 time_remaining_at_start: ten_secs,
             },
         )));
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         assert_eq!(tm.end_timeout(t_o_end), Ok(()));
         assert_eq!(tm.timeout_state, None);
         assert_eq!(tm.game_clock_time(after_t_o), Some(twenty_secs));
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
 
         tm.stop_clock(after_t_o).unwrap();
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
@@ -3379,11 +3379,11 @@ mod test {
                 time_remaining_at_start: ten_secs,
             },
         )));
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         assert_eq!(tm.end_timeout(t_o_end), Ok(()));
         assert_eq!(tm.timeout_state, None);
         assert_eq!(tm.game_clock_time(after_t_o), Some(twenty_secs));
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
 
         tm.stop_clock(after_t_o).unwrap();
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
@@ -3391,11 +3391,11 @@ mod test {
             start_time: t_o_start,
             time_at_start: ten_secs,
         })));
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         assert_eq!(tm.end_timeout(t_o_end), Ok(()));
         assert_eq!(tm.timeout_state, None);
         assert_eq!(tm.game_clock_time(after_t_o), Some(twenty_secs));
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
 
         tm.stop_clock(after_t_o).unwrap();
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
@@ -3403,11 +3403,11 @@ mod test {
             start_time: t_o_start,
             time_at_start: ten_secs,
         })));
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         assert_eq!(tm.end_timeout(t_o_end), Ok(()));
         assert_eq!(tm.timeout_state, None);
         assert_eq!(tm.game_clock_time(after_t_o), Some(twenty_secs));
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
 
         tm.stop_clock(after_t_o).unwrap();
         tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, thirty_secs);
@@ -3415,11 +3415,11 @@ mod test {
             clock_time: ten_secs,
         })));
         tm.start_clock(start);
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         assert_eq!(tm.end_timeout(t_o_end), Ok(()));
         assert_eq!(tm.timeout_state, None);
         assert_eq!(tm.game_clock_time(after_t_o), Some(fifteen_secs));
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
     }
 
     #[test]
@@ -3856,9 +3856,9 @@ mod test {
 
         tm.set_period_and_game_clock_time(start_period, Duration::from_secs(remaining));
         tm.set_game_start(game_start);
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         tm.start_game_clock(start);
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         if let Some(scores) = score {
             tm.set_scores(scores, start);
         }
@@ -4380,19 +4380,19 @@ mod test {
 
         tm.set_period_and_game_clock_time(start_period, Duration::from_secs(remaining));
         tm.set_game_start(game_start);
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         tm.start_game_clock(start);
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         tm.start_rugby_penalty_shot(start_penalty_at).unwrap();
         tm.update(first_time).unwrap();
 
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         assert_eq!(tm.current_period, start_period);
         assert_eq!(tm.game_clock_time(first_time), Some(Duration::ZERO));
 
         tm.update(second_time).unwrap();
 
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         assert_eq!(tm.current_period, end_period);
         assert_eq!(
             tm.game_clock_time(second_time),
@@ -6260,9 +6260,9 @@ mod test {
         // Coming out of second half, with overtime and sd, pause_duration should be 4
         tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(30));
         tm.set_game_start(start);
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         tm.start_game_clock(start);
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         tm.set_scores(BlackWhiteBundle { black: 1, white: 2 }, start);
 
         assert_eq!(Ok(false), tm.could_end_game(pre_game_end));
@@ -6312,9 +6312,9 @@ mod test {
         // No overtime, only sd allowed, pause_duration should be 6
         tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(30));
         tm.set_game_start(start);
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         tm.start_game_clock(start);
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         tm.set_scores(BlackWhiteBundle { black: 1, white: 2 }, start);
 
         assert_eq!(Ok(false), tm.could_end_game(pre_game_end));
@@ -6366,9 +6366,9 @@ mod test {
         // No overtime or sd, pause_duration should be 10
         tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(30));
         tm.set_game_start(start);
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         tm.start_game_clock(start);
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         tm.set_scores(BlackWhiteBundle { black: 1, white: 2 }, start);
 
         assert_eq!(Ok(false), tm.could_end_game(pre_game_end));
@@ -6418,9 +6418,9 @@ mod test {
         // With OT and SD, between games is shortest period, pause_duration should be 2
         tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(30));
         tm.set_game_start(start);
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         tm.start_game_clock(start);
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         tm.set_scores(BlackWhiteBundle { black: 1, white: 2 }, start);
 
         assert_eq!(Ok(false), tm.could_end_game(pre_game_end));
@@ -6470,9 +6470,9 @@ mod test {
 
         // Coming out of OT, pause should be 6
         tm.set_period_and_game_clock_time(GamePeriod::OvertimeSecondHalf, Duration::from_secs(30));
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         tm.start_game_clock(start);
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         tm.set_scores(BlackWhiteBundle { black: 1, white: 2 }, start);
 
         assert_eq!(Ok(false), tm.could_end_game(pre_ot_end));
@@ -6521,9 +6521,9 @@ mod test {
 
         // Coming out of OT, pause should be 10
         tm.set_period_and_game_clock_time(GamePeriod::OvertimeSecondHalf, Duration::from_secs(30));
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         tm.start_game_clock(start);
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         tm.set_scores(BlackWhiteBundle { black: 1, white: 2 }, start);
 
         assert_eq!(Ok(false), tm.could_end_game(pre_ot_end));
@@ -6623,9 +6623,9 @@ mod test {
         // Coming out of second half, with overtime and sd, pause_duration should be 4
         tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(30));
         tm.set_game_start(start);
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         tm.start_game_clock(start);
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         tm.set_scores(BlackWhiteBundle { black: 2, white: 2 }, start);
 
         assert_eq!(Ok(false), tm.could_end_game(pre_game_end));
@@ -6675,9 +6675,9 @@ mod test {
         // No overtime, only sd allowed, pause_duration should be 6
         tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(30));
         tm.set_game_start(start);
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         tm.start_game_clock(start);
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         tm.set_scores(BlackWhiteBundle { black: 2, white: 2 }, start);
 
         assert_eq!(Ok(false), tm.could_end_game(pre_game_end));
@@ -6727,9 +6727,9 @@ mod test {
         // No overtime or sd, pause_duration should be 10
         tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(30));
         tm.set_game_start(start);
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         tm.start_game_clock(start);
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         tm.set_scores(BlackWhiteBundle { black: 2, white: 2 }, start);
 
         assert_eq!(Ok(false), tm.could_end_game(pre_game_end));
@@ -6780,9 +6780,9 @@ mod test {
         // Overtime into SD, pause_duration should be 6
         tm.set_period_and_game_clock_time(GamePeriod::OvertimeSecondHalf, Duration::from_secs(30));
         tm.set_game_start(start);
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         tm.start_game_clock(start);
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         tm.set_scores(BlackWhiteBundle { black: 2, white: 2 }, start);
 
         assert_eq!(Ok(false), tm.could_end_game(pre_game_end));
@@ -6832,9 +6832,9 @@ mod test {
         // Game into Overtime, pause_duration should be 4
         tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(30));
         tm.set_game_start(start);
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         tm.start_game_clock(start);
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         tm.set_scores(BlackWhiteBundle { black: 2, white: 2 }, start);
 
         assert_eq!(Ok(false), tm.could_end_game(pre_game_end));
@@ -6889,9 +6889,9 @@ mod test {
         // Overtime into SD, pause_duration should be 6
         tm.set_period_and_game_clock_time(GamePeriod::OvertimeSecondHalf, Duration::from_secs(30));
         tm.set_game_start(start);
-        assert_eq!(tm.clock_is_running(), false);
+        assert!(!tm.clock_is_running());
         tm.start_game_clock(start);
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
         tm.set_scores(BlackWhiteBundle { black: 2, white: 2 }, start);
 
         assert_eq!(Ok(false), tm.could_end_game(pre_game_end));
@@ -6944,7 +6944,7 @@ mod test {
         tm.set_period_and_game_clock_time(GamePeriod::SuddenDeath, Duration::from_secs(30));
         tm.set_scores(BlackWhiteBundle { black: 1, white: 1 }, start);
         tm.start_game_clock(start);
-        assert_eq!(tm.clock_is_running(), true);
+        assert!(tm.clock_is_running());
 
         assert_eq!(Ok(false), tm.could_end_game(next_time));
 

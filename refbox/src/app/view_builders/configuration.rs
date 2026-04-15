@@ -1030,7 +1030,7 @@ fn make_language_select_page<'a>(
     // Languages sorted alphabetically by romanized native name:
     // Bahasa Indonesia(B), Bahasa Melayu(B), Deutsch(D), English(E),
     // Español(E), Filipino(F), Français(F), Hangugeo/한국어(H), Italiano(I),
-    // Nederlands(N), Nihongo/日本語(N), Português(P), Zhōngwén/中文(Z)
+    // Nederlands(N), Nihongo/日本語(N), Português(P), Thai/ภาษาไทย(T), Zhōngwén/中文(Z)
     let bahasa_indonesia_style = if selected == Language::Indonesian {
         blue_selected_button
     } else {
@@ -1074,8 +1074,8 @@ fn make_language_select_page<'a>(
         .spacing(SPACING)
         .height(Length::Fill),
         row![
+            lang_btn(Language::Thai, "ภาษาไทย"),
             lang_btn(Language::Mandarin, "中文"),
-            horizontal_space(),
             horizontal_space(),
             horizontal_space(),
         ]

@@ -394,13 +394,14 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         list_all_events: args.all_events,
     };
 
-    // Roboto covers Latin scripts. The CJK subset covers Japanese, Korean, and Chinese
-    // characters used in the translations. Both fonts are bundled — no system font install
-    // required. To regenerate the CJK subset after updating translations, run:
+    // Roboto covers Latin scripts. The CJK and Thai subsets cover Japanese, Korean, Chinese,
+    // and Thai characters used in the translations. All fonts are bundled — no system font
+    // install required. To regenerate subsets after updating CJK/Thai translations, run:
     //   just regen-cjk-font
     let fonts = vec![
         Cow::from(&include_bytes!("../resources/Roboto-Medium.ttf")[..]),
         Cow::from(&include_bytes!("../resources/NotoSansCJK-Subset.otf")[..]),
+        Cow::from(&include_bytes!("../resources/NotoSansThai-Subset.ttf")[..]),
     ];
 
     let settings = Settings {

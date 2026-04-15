@@ -18,6 +18,7 @@ pub enum Language {
     Japanese,
     Malay,
     Portuguese,
+    Thai,
 }
 
 impl Language {
@@ -36,6 +37,7 @@ impl Language {
             Self::Japanese => LanguageIdentifier::from_bytes(b"ja-JP").unwrap(),
             Self::Malay => LanguageIdentifier::from_bytes(b"ms-MY").unwrap(),
             Self::Portuguese => LanguageIdentifier::from_bytes(b"pt-PT").unwrap(),
+            Self::Thai => LanguageIdentifier::from_bytes(b"th-TH").unwrap(),
         }
     }
 
@@ -66,6 +68,8 @@ impl Language {
             Self::Malay
         } else if lang_id.matches(&"pt".parse::<LanguageIdentifier>().unwrap(), false, true) {
             Self::Portuguese
+        } else if lang_id.matches(&"th".parse::<LanguageIdentifier>().unwrap(), false, true) {
+            Self::Thai
         } else {
             error!("Unsupported language: {}", lang_id);
             Self::English // Default to English if unsupported
@@ -88,7 +92,8 @@ impl Cyclable for Language {
             Self::Dutch => Self::Japanese,
             Self::Japanese => Self::Malay,
             Self::Malay => Self::Portuguese,
-            Self::Portuguese => Self::English,
+            Self::Portuguese => Self::Thai,
+            Self::Thai => Self::English,
         }
     }
 }

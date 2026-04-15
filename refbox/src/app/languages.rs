@@ -8,6 +8,7 @@ pub enum Language {
     English,
     French,
     Spanish,
+    Mandarin,
 }
 
 impl Language {
@@ -16,6 +17,7 @@ impl Language {
             Self::English => LanguageIdentifier::from_bytes(b"en").unwrap(),
             Self::French => LanguageIdentifier::from_bytes(b"fr").unwrap(),
             Self::Spanish => LanguageIdentifier::from_bytes(b"es").unwrap(),
+            Self::Mandarin => LanguageIdentifier::from_bytes(b"zh-CN").unwrap(),
         }
     }
 
@@ -26,6 +28,8 @@ impl Language {
             Self::French
         } else if lang_id.matches(&"es".parse::<LanguageIdentifier>().unwrap(), false, true) {
             Self::Spanish
+        } else if lang_id.matches(&"zh".parse::<LanguageIdentifier>().unwrap(), false, true) {
+            Self::Mandarin
         } else {
             error!("Unsupported language: {}", lang_id);
             Self::English // Default to English if unsupported
@@ -38,7 +42,8 @@ impl Cyclable for Language {
         match self {
             Self::English => Self::French,
             Self::French => Self::Spanish,
-            Self::Spanish => Self::English,
+            Self::Spanish => Self::Mandarin,
+            Self::Mandarin => Self::English,
         }
     }
 }

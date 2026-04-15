@@ -442,6 +442,7 @@ impl RefBoxApp {
             track_fouls_and_warnings,
             uwhportal_token_valid: _,
             confirm_score,
+            ..
         } = edited_settings;
 
         self.config.hardware.white_on_right = white_on_right;
@@ -1272,6 +1273,8 @@ impl RefBoxApp {
                     collect_scorer_cap_num: self.config.collect_scorer_cap_num,
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
                     confirm_score: self.config.confirm_score,
+                    pending_language: None,
+                    original_language: None,
                 };
 
                 self.edited_settings = Some(edited_settings);
@@ -1282,6 +1285,13 @@ impl RefBoxApp {
             }
             Message::ChangeConfigPage(new_page) => {
                 if let AppState::EditGameConfig(ref mut page) = self.app_state {
+                    if new_page == ConfigPage::Language {
+                        let current =
+                            Language::from_lang_id(&crate::LANGUAGE_LOADER.current_languages()[0]);
+                        let settings = self.edited_settings.as_mut().unwrap();
+                        settings.original_language = Some(current);
+                        settings.pending_language = Some(current);
+                    }
                     *page = new_page;
                 } else {
                     unreachable!();
@@ -1699,13 +1709,27 @@ impl RefBoxApp {
                     CyclingParameter::UnderWaterVol => settings.sound.under_water_vol.cycle(),
                     CyclingParameter::Mode => settings.mode.cycle(),
                     CyclingParameter::Brightness => settings.brightness.cycle(),
-                    CyclingParameter::Language => {
-                        let mut language =
-                            Language::from_lang_id(&crate::LANGUAGE_LOADER.current_languages()[0]);
-                        language.cycle();
-                        crate::request_language(&crate::LANGUAGE_LOADER, &[language.as_lang_id()]);
+                }
+                Task::none()
+            }
+            Message::SelectLanguage(lang) => {
+                crate::request_language(&crate::LANGUAGE_LOADER, &[lang.as_lang_id()]);
+                self.edited_settings.as_mut().unwrap().pending_language = Some(lang);
+                Task::none()
+            }
+            Message::LanguageSelectComplete { canceled } => {
+                let settings = self.edited_settings.as_mut().unwrap();
+                if canceled {
+                    if let Some(original) = settings.original_language {
+                        crate::request_language(&crate::LANGUAGE_LOADER, &[original.as_lang_id()]);
                     }
                 }
+                settings.pending_language = None;
+                settings.original_language = None;
+                if let AppState::EditGameConfig(ref mut page) = self.app_state {
+                    *page = ConfigPage::App;
+                }
+                trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
             Message::RequestRemoteId => {

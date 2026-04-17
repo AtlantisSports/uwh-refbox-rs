@@ -16,3 +16,6 @@ refbox/Troubleshooting/
 schedule-processor/Mock Schedules for testing/
 schedule-processor/Test Scoresheets/
 uwhportal-schedule-json.md
+
+# Superpowers session files (per-agent working state, not shared)
+.superpowers/

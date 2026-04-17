@@ -640,7 +640,8 @@ pub(super) fn get_team_name(team: &ScheduledTeam, teams: Option<&TeamList>) -> S
             ResultOf::Winner { game_number } => format!("W_{game_number}"),
         }
     } else if let Some(seed) = team.seeded_by() {
-        format!("Seed {} of {}", seed.number, seed.group)
+        let group = seed.group.as_deref().unwrap_or("Unknown");
+        format!("Seed {} of {}", seed.number, group)
     } else if let Some(s) = team.pending() {
         s.to_string()
     } else {

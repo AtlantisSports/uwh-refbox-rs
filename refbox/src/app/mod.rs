@@ -557,6 +557,20 @@ impl RefBoxApp {
         (new, task)
     }
 
+    fn manual_alarm_hold_duration(&self) -> Duration {
+        match (self.snapshot.current_period, self.snapshot.timeout) {
+            (
+                GamePeriod::FirstHalf
+                | GamePeriod::SecondHalf
+                | GamePeriod::OvertimeFirstHalf
+                | GamePeriod::OvertimeSecondHalf
+                | GamePeriod::SuddenDeath,
+                None,
+            ) => Duration::from_millis(250),
+            _ => Duration::from_secs(1),
+        }
+    }
+
     pub(super) fn update(&mut self, message: Message) -> Task<Message> {
         trace!("Handling message: {message:?}");
 
@@ -2138,38 +2152,28 @@ impl RefBoxApp {
             }
             Message::AlarmPressed => {
                 // Mouse press on the alarm button.
-                let alarm_condition = self.config.sound.sound_enabled
-                    && self.config.sound.manual_alarm_enabled
-                    && matches!(
-                        (self.snapshot.current_period, self.snapshot.timeout),
-                        (
-                            GamePeriod::FirstHalf
-                                | GamePeriod::SecondHalf
-                                | GamePeriod::OvertimeFirstHalf
-                                | GamePeriod::OvertimeSecondHalf
-                                | GamePeriod::SuddenDeath,
-                            None,
-                        ) | (GamePeriod::BetweenGames, _)
-                    );
-                if !self.mouse_alarm_held && alarm_condition {
-                    let was_active = self.spacebar_held;
-                    self.mouse_alarm_held = true;
-                    if !was_active {
-                        if self.snapshot.current_period == GamePeriod::BetweenGames {
-                            self.alarm_delay_token += 1;
-                            let token = self.alarm_delay_token;
-                            info!("Test alarm delay started (mouse), token={token}");
-                            return Task::future(async move {
-                                sleep(Duration::from_secs(1)).await;
-                                Message::AlarmDelayElapsed(token)
-                            });
-                        } else {
-                            info!("Manual alarm started (mouse)");
-                            self.sound.start_manual_buzzer();
-                        }
-                    }
+                // Uniform hold model: always schedule a delay; duration depends on game state.
+                if !(self.config.sound.sound_enabled && self.config.sound.manual_alarm_enabled) {
+                    return Task::none();
                 }
-                Task::none()
+                if self.mouse_alarm_held {
+                    return Task::none();
+                }
+                let was_active = self.spacebar_held;
+                self.mouse_alarm_held = true;
+                if was_active {
+                    return Task::none();
+                }
+                let hold_duration = self.manual_alarm_hold_duration();
+                self.alarm_delay_token += 1;
+                let token = self.alarm_delay_token;
+                info!(
+                    "Manual alarm delay started (mouse), duration={hold_duration:?}, token={token}"
+                );
+                Task::future(async move {
+                    sleep(hold_duration).await;
+                    Message::AlarmDelayElapsed(token)
+                })
             }
             Message::AlarmReleased => {
                 // Mouse release — stop alarm only when spacebar is also not held.
@@ -2184,38 +2188,27 @@ impl RefBoxApp {
             }
             Message::SpacebarPressed => {
                 // Keyboard press — spacebar_held guards against OS key-repeat.
-                let alarm_condition = self.config.sound.sound_enabled
-                    && self.config.sound.manual_alarm_enabled
-                    && matches!(
-                        (self.snapshot.current_period, self.snapshot.timeout),
-                        (
-                            GamePeriod::FirstHalf
-                                | GamePeriod::SecondHalf
-                                | GamePeriod::OvertimeFirstHalf
-                                | GamePeriod::OvertimeSecondHalf
-                                | GamePeriod::SuddenDeath,
-                            None,
-                        ) | (GamePeriod::BetweenGames, _)
-                    );
-                if !self.spacebar_held && alarm_condition {
-                    let was_active = self.mouse_alarm_held;
-                    self.spacebar_held = true;
-                    if !was_active {
-                        if self.snapshot.current_period == GamePeriod::BetweenGames {
-                            self.alarm_delay_token += 1;
-                            let token = self.alarm_delay_token;
-                            info!("Test alarm delay started (spacebar), token={token}");
-                            return Task::future(async move {
-                                sleep(Duration::from_secs(1)).await;
-                                Message::AlarmDelayElapsed(token)
-                            });
-                        } else {
-                            info!("Manual alarm started (spacebar)");
-                            self.sound.start_manual_buzzer();
-                        }
-                    }
+                if !(self.config.sound.sound_enabled && self.config.sound.manual_alarm_enabled) {
+                    return Task::none();
                 }
-                Task::none()
+                if self.spacebar_held {
+                    return Task::none();
+                }
+                let was_active = self.mouse_alarm_held;
+                self.spacebar_held = true;
+                if was_active {
+                    return Task::none();
+                }
+                let hold_duration = self.manual_alarm_hold_duration();
+                self.alarm_delay_token += 1;
+                let token = self.alarm_delay_token;
+                info!(
+                    "Manual alarm delay started (spacebar), duration={hold_duration:?}, token={token}"
+                );
+                Task::future(async move {
+                    sleep(hold_duration).await;
+                    Message::AlarmDelayElapsed(token)
+                })
             }
             Message::SpacebarReleased => {
                 // Keyboard release — stop alarm only when mouse is also not held.
@@ -2229,12 +2222,12 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::AlarmDelayElapsed(token) => {
-                // Fires 1 second after a BetweenGames press. Only start the sound if the
-                // token still matches (no newer press has superseded this one) and at least
-                // one input is still held.
+                // Fires after the per-state hold delay (250ms in active play, 1s otherwise).
+                // Only start the sound if the token still matches (no newer press has
+                // superseded this one) and at least one input is still held.
                 if token == self.alarm_delay_token && (self.mouse_alarm_held || self.spacebar_held)
                 {
-                    info!("Test alarm started after delay, token={token}");
+                    info!("Manual alarm started after delay, token={token}");
                     self.sound.start_manual_buzzer();
                 }
                 Task::none()

@@ -69,12 +69,12 @@ The minimum hold duration differs by state:
 
 | Game state | Minimum hold | Behavior |
 |---|---|---|
-| First Half, Second Half, Overtime halves, Sudden Death — clock running, no timeout | **250ms** | Hold button (or spacebar) for at least 250ms → alarm fires and continues while held |
+| First Half, Second Half, Overtime halves, Sudden Death — clock running, no timeout | **150ms** | Hold button (or spacebar) for at least 150ms → alarm fires and continues while held |
 | Any of the above — timeout active | **1 second** | Hold button (or spacebar) for at least 1 second → alarm fires and continues while held |
 | Between Games, Half Time, Pre-Overtime, Overtime Half Time, Pre-Sudden Death | **1 second** | Hold button (or spacebar) for at least 1 second → alarm fires and continues while held |
 | Any other screen (config, penalties, score edit, etc.) | — | Spacebar has no effect |
 
-The 250ms active-play minimum is a debounce to reject stray/accidental taps. 250ms still feels
+The 150ms active-play minimum is a debounce to reject stray/accidental taps. 150ms still feels
 like a normal button press to an operator deliberately pressing it; it is not a "long press".
 The value is a single constant and can be tuned based on real-world use.
 
@@ -117,7 +117,7 @@ value).
 - Track `alarm_hold_generation: u32` to cancel stale hold timers without needing task
   cancellation
 - On `AlarmPressed`:
-  - Determine minimum hold duration from current state: 250ms for active play with no timeout,
+  - Determine minimum hold duration from current state: 150ms for active play with no timeout,
     1000ms for everything else (break periods or timeouts in play periods)
   - Increment generation, spawn `Task::future(sleep(duration))` returning
     `Message::AlarmFired(generation)`

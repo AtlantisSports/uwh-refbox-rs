@@ -37,7 +37,12 @@ use web_audio_api::{
 const FADE_LEN: f64 = 0.05;
 const FADE_WAIT: Duration = Duration::from_nanos((FADE_LEN * 1_000_000_000.0) as u64);
 
-const SOUND_LEN: f64 = 2.0;
+// 2.15s rather than a round 2.0s: a round value aligned too closely with the
+// 0.5s cycle of Buzz/Whoop and 0.667s cycle of Crazy, placing the software
+// fade-out right at the start of a new loop cycle (within the sound's own
+// natural fade-in). 2.15s lands the fade-out safely in the full-amplitude
+// region of every bundled sound.
+const SOUND_LEN: f64 = 2.15;
 
 const TIMED_SOUND_LEN: f64 = SOUND_LEN + FADE_LEN * 2.0;
 const TIMED_SOUND_DURATION: Duration =
@@ -698,20 +703,30 @@ impl Sound {
     }
 
     async fn stop(mut self) {
-        let fade_end = self.context.current_time() + FADE_LEN;
+        // Timed sounds schedule their own fade-out via Web Audio API automation.
+        // If that scheduled end time has already passed, the gain is already at
+        // zero — resetting it to full volume here would cause a brief burst of
+        // audio (heard as a "tap" or click at the end of the buzzer). Only run
+        // the fade-out when the sound is being stopped early (interrupted).
+        let already_silent = self.end.map_or(false, |end| Instant::now() >= end);
 
-        // Set the gains so that the start of the fade is now, not when the sound started
-        self.gain_l.gain().set_value(self.volumes.left);
-        self.gain_r.gain().set_value(self.volumes.right);
+        if !already_silent {
+            let fade_end = self.context.current_time() + FADE_LEN;
 
-        self.gain_l
-            .gain()
-            .linear_ramp_to_value_at_time(0.0, fade_end);
-        self.gain_r
-            .gain()
-            .linear_ramp_to_value_at_time(0.0, fade_end);
+            // Set the gains so that the start of the fade is now, not when the sound started
+            self.gain_l.gain().set_value(self.volumes.left);
+            self.gain_r.gain().set_value(self.volumes.right);
 
-        sleep(FADE_WAIT).await;
+            self.gain_l
+                .gain()
+                .linear_ramp_to_value_at_time(0.0, fade_end);
+            self.gain_r
+                .gain()
+                .linear_ramp_to_value_at_time(0.0, fade_end);
+
+            sleep(FADE_WAIT).await;
+        }
+
         self.source.stop();
     }
 }

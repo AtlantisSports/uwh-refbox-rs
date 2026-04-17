@@ -1,20 +1,20 @@
-# Definitions for the translation file to use
--dark-team-name = Zwart
-dark-team-name-caps = ZWART
+# Definities voor het gebruik in het vertaalbestand
+-dark-team-name = Donker
+dark-team-name-caps = DONKER
 
--light-team-name = Wit
-light-team-name-caps = WIT
+-light-team-name = Licht
+light-team-name-caps = LICHT
 
-# Multipage
+# Meerdere pagina's
 done = KLAAR
-restart-to-apply = OPNIEUW STARTEN
+restart-to-apply = OPNIEUW STARTEN OM TOE TE PASSEN
 cancel = ANNULEREN
 delete = VERWIJDEREN
 back = TERUG
 new = NIEUW
 
-# Penalty Edit
-total-dismissal = TD
+# Uitsluiting bewerken
+total-dismissal = DEF
 penalty-kind = {$kind ->
     [thirty-seconds] 30s
     [one-minute] 1m
@@ -25,17 +25,17 @@ penalty-kind = {$kind ->
    *[other] {$kind}
 }
 
-# Team Timeout Edit
-timeout-length = DUUR
-    TIME-OUT
+# Team time-out bewerken
+timeout-length = TEAM TIME-OUT
+    DUUR
 
-# Warning Add
+# Waarschuwing toevoegen
 team-warning = TEAM-
     WAARSCHUWING
 team-warning-line-1 = TEAM-
 team-warning-line-2 = WAARSCHUWING
 
-# Configuration
+# Configuratie
 none-selected = Niets Geselecteerd
 loading = Laden...
 game-select = Wedstrijd:
@@ -51,7 +51,7 @@ player-display-brightness = HELDERHEID
     SPELERSSCHERM
 confirm-score-at-game-end = SCORE BEVESTIGEN
     BIJ WEDSTRIJDEINDE
-track-cap-number-of-scorer = MUTSSNUMMER
+track-cap-number-of-scorer = MUTSNUMMER
     DOELPUNTENMAKER
 event = EVENEMENT:
 track-fouls-and-warnings = OVERTREDINGEN
@@ -63,14 +63,14 @@ half-length-full = DUUR HELFT:
 game-length = WEDSTRIJDDUUR:
 overtime-allowed = VERLENGING
     TOEGESTAAN:
-sudden-death-allowed = SUDDEN DEATH
+sudden-death-allowed = PLOTSELINGE DOOD
     TOEGESTAAN:
 half-time-length = DUUR
     RUST:
 pre-ot-break-length = PAUZE VOOR
     VERLENGING:
 pre-sd-break-length = PAUZE VOOR
-    SUDDEN DEATH:
+    PLTS DOOD:
 nominal-break-between-games = NOMINALE PAUZE
     TUSSEN WEDSTR.:
 ot-half-length = DUUR HELFT
@@ -135,8 +135,8 @@ ot-half-len = DUUR HELFT VERL
 time-during-ot = De duur van een helft tijdens de verlenging
 ot-half-tm-len = RUST VERL DUUR
 len-of-overtime-halftime = De duur van de rust tijdens de verlenging
-pre-sd-break = PAUZE VOOR SD
-pre-sd-len = De duur van de pauze tussen het voorgaande speelgedeelte en Sudden Death
+pre-sd-break = PAUZE VOOR PLTS DOOD
+pre-sd-len = De duur van de pauze tussen het voorgaande speelgedeelte en Plotselinge Dood
 language = TAAL
 this-language = NEDERLANDS
 portal-login-code = CODE
@@ -148,7 +148,7 @@ portal-login-instructions = Ga naar het UWH-portaal >> Evenementbeheer >> Scheid
 
 help = HELP:
 
-# Confirmation
+# Bevestiging
 game-configuration-can-not-be-changed = De wedstrijdconfiguratie kan niet worden gewijzigd terwijl een wedstrijd bezig is.
 
     Wat wilt u doen?
@@ -167,16 +167,16 @@ ok = OK
 confirm-score = Is deze score correct?
     Bevestig met de hoofdscheidsrechter.
 
-    Zwart: { $score_black }        Wit: { $score_white }
+    Donker: { $score_black }        Licht: { $score_white }
 
     { confirmation-count-down }
 yes = JA
 no = NEE
 
-# Fouls
+# Overtredingen
 equal = GELIJK
 
-# Game Info
+# Wedstrijdinfo
 refresh = VERNIEUWEN
 refreshing = VERNIEUWEN...
 settings = INSTELLINGEN
@@ -185,48 +185,48 @@ game-number-error = Fout ({ $game_number })
 next-game-number-error = Fout ({ $next_game_number })
 last-game-next-game = Vorige Wedstrijd: { $prev_game },
     Volgende Wedstrijd: { $next_game }
-black-team-white-team = Zwart Team: { $black_team }
-    Wit Team: { $white_team }
+black-team-white-team = Donker Team: { $black_team }
+    Licht Team: { $white_team }
 game-length-ot-allowed = Duur Helft: { $half_length }
          Duur Rust: { $half_time_length }
          Verlenging Toegestaan: { $overtime }
 overtime-details = Duur Pauze Voor Verlenging: { $pre_overtime }
              Duur Helft Verlenging: { $overtime_len }
              Duur Rust Verlenging: { $overtime_half_time_len }
-sd-allowed = Sudden Death Toegestaan: { $sd }
-pre-sd = Duur Pauze Voor Sudden Death: { $pre_sd_len }
+sd-allowed = Plotselinge Dood Toegestaan: { $sd }
+pre-sd = Duur Pauze Voor Plotselinge Dood: { $pre_sd_len }
 team-to-len = Duur Team Time-out: { $to_len }
 time-btwn-games = Nominale Tijd Tussen Wedstrijden: { $time_btwn }
 min-brk-btwn-games = Minimale Tijd Tussen Wedstrijden: { $min_brk_time }
 
 
-# List Selecters
+# Lijstselecties
 select-event = EVENEMENT SELECTEREN
 select-court = BAAN SELECTEREN
 select-game = WEDSTRIJD SELECTEREN
 
-# Main View
+# Hoofdweergave
 add-warning = WAARSCHUWING TOEVOEGEN
 add-foul = OVERTREDING TOEVOEGEN
 start-now = NU STARTEN
 end-timeout = TIME-OUT BEËINDIGEN
 warnings = WAARSCHUWINGEN
-penalties = STRAFFEN
+penalties = UITSLUITINGEN
 dark-score-line-1 = SCORE
 dark-score-line-2 = { dark-team-name-caps }
 light-score-line-1 = SCORE
 light-score-line-2 = { light-team-name-caps }
 
-# Penalties
-black-penalties = STRAFFEN ZWART
-white-penalties = STRAFFEN WIT
+# Uitsluitingen
+black-penalties = UITSLUITINGEN DONKER
+white-penalties = UITSLUITINGEN LICHT
 
-# Score edit
+# Score bewerken
 final-score = Voer de eindstand in
 confirmation-count-down = Opmerking: De ongewijzigde score wordt automatisch bevestigd over { $countdown }
 
-# Shared Elements
-## Timeout ribbon
+# Gedeelde elementen
+## Time-out lint
 end-timeout-line-1 = TIME-OUT
 end-timeout-line-2 = BEËINDIGEN
 switch-to = OVERSCHAKELEN NAAR
@@ -238,14 +238,14 @@ dark-timeout-line-2 = { timeout }
 light-timeout-line-1 = { light-team-name-caps }
 light-timeout-line-2 = { timeout }
 penalty-shot-line-1 = STRAF-
-penalty-shot-line-2 = SCHOP
-pen-shot = STRAFSCHOP
-## Penalty string
+penalty-shot-line-2 = SCHOT
+pen-shot = STRAFSCHOT
+## Uitsluitingsreeks
 served = Uitgezeten
 penalty = #{$player_number} - {$time ->
-        [pending] In afwachting
+        [pending] In behandeling
         [served] Uitgezeten
-        [total-dismissal] Uitgesloten
+        [total-dismissal] Definitief uitgesloten
        *[number] {$time}
     } {$time ->
         [total-dismissal] {""}
@@ -262,14 +262,14 @@ warning = {$player_number ->
         *[number] #{$player_number} - {$infraction}
     }
 infraction = Overtreding: {$infraction}
-## Config String
+## Configuratiereeks
 error = Fout ({ $number })
 two-games = Vorige Wedstrijd: { $prev_game },  Volgende Wedstrijd: { $next_game }
 one-game = Wedstrijd: { $game }
 teams = { -dark-team-name } Team: { $dark_team }
     { -light-team-name } Team: { $light_team }
 game-config = Duur Helft: { $half_len },  Duur Rust: { $half_time_len }
-    Sudden Death Toegestaan: { $sd_allowed },  Verlenging Toegestaan: { $ot_allowed }
+    Plotselinge Dood Toegestaan: { $sd_allowed },  Verlenging Toegestaan: { $ot_allowed }
 team-timeouts-per-half = Team Time-outs Toegestaan Per Helft: { $team_timeouts }
 team-timeouts-per-game = Team Time-outs Toegestaan Per Wedstrijd: { $team_timeouts }
 stop-clock-last-2 = Klok Stoppen in Laatste 2 Minuten: { $stop_clock }
@@ -281,46 +281,46 @@ ref-list = Hoofdscheidsrechter: { $chief_ref }
 team-ref-list = Scheidsrechters: { $ref_team }
     Tijdwaarnemer/Scorer: { $ts_keeper_team }
 unknown = Onbekend
-## Game time button
+## Wedstrijdtijdknop
 next-game = VOLGENDE WEDSTRIJD
 first-half = EERSTE HELFT
 half-time = RUST
 second-half = TWEEDE HELFT
 pre-ot-break-full = PAUZE VOOR VERLENGING
-overtime-first-half = VERLENGING EERSTE HELFT
+overtime-first-half = EERSTE VERLENGINGSTIJD
 overtime-half-time = RUST VERLENGING
-overtime-second-half = VERLENGING TWEEDE HELFT
-pre-sudden-death-break = PAUZE VOOR SUDDEN DEATH
-sudden-death = SUDDEN DEATH
+overtime-second-half = TWEEDE VERLENGINGSTIJD
+pre-sudden-death-break = PAUZE VOOR PLOTSELINGE DOOD
+sudden-death = PLOTSELINGE DOOD
 ot-first-half = VERL EERSTE HELFT
 ot-half-time = VERL RUST
 ot-2nd-half = VERL TWEEDE HELFT
-white-timeout-short = WIT T/O
-white-timeout-full = TIME-OUT WIT
-black-timeout-short = ZWA T/O
-black-timeout-full = TIME-OUT ZWART
-ref-timeout-short = SCHEIDSRT/O
-penalty-shot-short = STRAFSCHOP
-## Make warning container
+white-timeout-short = LCH T/O
+white-timeout-full = TEAM TIME-OUT LICHT
+black-timeout-short = DNK T/O
+black-timeout-full = TEAM TIME-OUT DONKER
+ref-timeout-short = SR T/O
+penalty-shot-short = STRAFSCHOT
+## Waarschuwingscontainer maken
 team-warning-abreviation = T
-## Make time editor
+## Tijdeditor maken
 zero = NUL
 
-# Time edit
+# Tijd bewerken
 game-time = WEDSTRIJDTIJD
 timeout = TIME-OUT
 Note-Game-time-is-paused = Opmerking: De wedstrijdtijd is gepauzeerd op dit scherm
 
-# Warning Fouls Summary
+# Samenvatting overtredingen en waarschuwingen
 fouls = OVERTREDINGEN
 edit-warnings = WAARSCHUWINGEN BEWERKEN
 edit-fouls = OVERTREDINGEN BEWERKEN
 
-# Warnings
-black-warnings = WAARSCHUWINGEN ZWART
-white-warnings = WAARSCHUWINGEN WIT
+# Waarschuwingen
+black-warnings = WAARSCHUWINGEN DONKER
+white-warnings = WAARSCHUWINGEN LICHT
 
-# Message
+# Bericht
 player-number = SPELER-
     NUMMER:
 game-number = WEDSTRIJD-
@@ -330,27 +330,27 @@ num-tos-per-half = AANTAL T/O'S
 num-tos-per-game = AANTAL T/O'S
     PER WEDSTRIJD:
 
-# Sound Controller - mod
+# Geluidsregelaar - modus
 off = UIT
 low = LAAG
 medium = GEMIDDELD
 high = HOOG
 max = MAX
 
-# Config
-hockey6v6 = HOCKEY 6T6
-hockey3v3 = HOCKEY 3T3
+# Configuratie
+hockey6v6 = HOCKEY6V6
+hockey3v3 = HOCKEY3V3
 rugby = RUGBY
 
-# Infractions
-stick-foul = Stokovertreding
-illegal-advance = Ongeoorloofde Aanval
-sub-foul = Wisselovertreding
-illegal-stoppage = Ongeoorloofde Stop
-out-of-bounds = Buiten het Veld
-grabbing-the-wall = Muur Vastgrijpen
+# Overtredingen
+stick-foul = Stokfout
+illegal-advance = Onrechtmatig Voortbewegen
+sub-foul = Wisselfout
+illegal-stoppage = Onrechtmatige Onderbreking
+out-of-bounds = Buiten het Speelveld
+grabbing-the-wall = Vasthouden aan de Wand
 obstruction = Obstructie
-delay-of-game = Vertraging van Spel
+delay-of-game = Vertraging van het Spel
 unsportsmanlike = Onsportief Gedrag
 free-arm = Vrije Arm
-false-start = Valse Start
+false-start = Vals Vertrek

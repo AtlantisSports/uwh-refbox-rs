@@ -1,20 +1,20 @@
-# Definitions for the translation file to use
+# Takrifan untuk fail terjemahan digunakan
 -dark-team-name = Hitam
 dark-team-name-caps = HITAM
 
 -light-team-name = Putih
 light-team-name-caps = PUTIH
 
-# Multipage
+# Berbilang Halaman
 done = SELESAI
-restart-to-apply = MULAKAN SEMULA
+restart-to-apply = MULAKAN SEMULA UNTUK GUNA
 cancel = BATAL
 delete = PADAM
 back = KEMBALI
 new = BARU
 
-# Penalty Edit
-total-dismissal = TD
+# Edit Penalti
+total-dismissal = PT
 penalty-kind = {$kind ->
     [thirty-seconds] 30s
     [one-minute] 1m
@@ -25,33 +25,33 @@ penalty-kind = {$kind ->
    *[other] {$kind}
 }
 
-# Team Timeout Edit
+# Edit Masa Rehat Pasukan
 timeout-length = MASA REHAT
     PASUKAN
 
-# Warning Add
+# Tambah Amaran
 team-warning = AMARAN
     PASUKAN
 team-warning-line-1 = AMARAN
 team-warning-line-2 = PASUKAN
 
-# Configuration
+# Konfigurasi
 none-selected = Tiada Dipilih
 loading = Memuatkan...
 game-select = Perlawanan:
-game-options = OPSYEN PERLAWANAN
-app-options = OPSYEN APLIKASI
-display-options = OPSYEN PAPARAN
-sound-options = OPSYEN BUNYI
+game-options = PILIHAN PERLAWANAN
+app-options = PILIHAN APLIKASI
+display-options = PILIHAN PAPARAN
+sound-options = PILIHAN BUNYI
 app-mode = MOD
     APLIKASI
 hide-time-for-last-15-seconds = SEMBUNYIKAN MASA
     15 SAAT TERAKHIR
 player-display-brightness = KECERAHAN PAPARAN
     PEMAIN
-confirm-score-at-game-end = SAHKAN SKOR
+confirm-score-at-game-end = SAHKAN MARKAH
     AKHIR PERLAWANAN
-track-cap-number-of-scorer = REKOD NOMBOR
+track-cap-number-of-scorer = REKOD NOMBOR PEMAIN
     PENCETAK GOL
 event = ACARA:
 track-fouls-and-warnings = REKOD KESALAHAN
@@ -65,12 +65,12 @@ overtime-allowed = MASA TAMBAHAN
     DIBENARKAN:
 sudden-death-allowed = SUDDEN DEATH
     DIBENARKAN:
-half-time-length = PANJANG MASA
-    REHAT:
+half-time-length = PANJANG REHAT
+    SEPARUH MASA:
 pre-ot-break-length = PANJANG REHAT
     PRA-MASA TAMBAHAN:
 pre-sd-break-length = PANJANG REHAT
-    PRA-SD:
+    PRA-SUDDEN DEATH:
 nominal-break-between-games = REHAT NOMINAL
     ANTARA PERLAWANAN:
 ot-half-length = PANJANG SEPARUH
@@ -81,7 +81,7 @@ game = PERLAWANAN
 half = SEPARUH
 minimum-brk-btwn-games = REHAT MINIMUM
     ANTARA PERLAWANAN:
-ot-half-time-length = PANJANG MASA REHAT
+ot-half-time-length = PANJANG REHAT SEPARUH
     MASA TAMBAHAN
 using-uwh-portal = MENGGUNAKAN UWHPORTAL:
 starting-sides = SISI PERMULAAN
@@ -101,7 +101,7 @@ buzzer-sound = BUNYI
 underwater-volume = KELANTANGAN
     BAWAH AIR:
 auto-sound-stop-play = BUNYI AUTO
-    BERHENTI MAIN:
+    HENTI MAIN:
 alarm-button = BUTANG
     PENGGERA:
 alarm = PENGGERA
@@ -116,25 +116,25 @@ brightness = { $brightness ->
         *[Low] RENDAH
         [Medium] SEDERHANA
         [High] TINGGI
-        [Outdoor] LUAR
+        [Outdoor] LUAR RUMAH
     }
 
 waiting = MENUNGGU
 add = TAMBAH
 half-length = PANJANG SEPARUH
 length-of-half-during-regular-play = Panjang separuh semasa permainan biasa
-half-time-lenght = PANJANG MASA REHAT
-length-of-half-time-period = Panjang tempoh masa rehat
+half-time-lenght = PANJANG REHAT SEPARUH MASA
+length-of-half-time-period = Panjang tempoh rehat separuh masa
 nom-break = REHAT NOMINAL
-system-will-keep-game-times-spaced = Sistem akan cuba mengekalkan masa mula perlawanan secara sekata, dengan jumlah masa dari satu permulaan ke permulaan berikutnya ialah 2 × [Panjang Separuh] + [Panjang Masa Rehat] + [Masa Nominal Antara Perlawanan] (contoh: jika perlawanan mempunyai [Panjang Separuh] = 15m, [Panjang Masa Rehat] = 3m, dan [Masa Nominal Antara Perlawanan] = 12m, masa dari mula satu perlawanan ke perlawanan berikutnya ialah 45m. Sebarang masa rehat yang diambil, atau penghentian jam lain, akan mengurangkan 12m tersebut sehingga nilai masa minimum antara perlawanan dicapai).
+system-will-keep-game-times-spaced = Sistem akan cuba mengekalkan masa mula perlawanan secara sekata, dengan jumlah masa dari satu permulaan ke permulaan berikutnya ialah 2 × [Panjang Separuh] + [Panjang Rehat Separuh Masa] + [Masa Nominal Antara Perlawanan] (contoh: jika perlawanan mempunyai [Panjang Separuh] = 15m, [Panjang Rehat Separuh Masa] = 3m, dan [Masa Nominal Antara Perlawanan] = 12m, masa dari mula satu perlawanan ke perlawanan berikutnya ialah 45m. Sebarang masa rehat yang diambil, atau penghentian jam yang lain, akan mengurangkan masa 12m itu sehingga nilai masa minimum antara perlawanan dicapai).
 min-break = REHAT MINIMUM
 min-time-btwn-games = Jika perlawanan berjalan lebih lama daripada yang dijadualkan, ini adalah masa minimum antara perlawanan yang akan diperuntukkan oleh sistem. Jika perlawanan tertangguh, sistem akan cuba mengejar secara automatik selepas perlawanan seterusnya, sentiasa mematuhi masa minimum antara perlawanan ini.
 pre-ot-break-abreviated = REHAT PRA-MASA TAMBAHAN
 pre-sd-brk = Jika masa tambahan dibenarkan dan diperlukan, ini adalah panjang rehat antara Separuh Kedua dan Separuh Pertama Masa Tambahan
 ot-half-len = PANJANG SEPARUH MASA TAMBAHAN
 time-during-ot = Panjang separuh semasa masa tambahan
-ot-half-tm-len = PANJANG MASA REHAT MASA TAMBAHAN
-len-of-overtime-halftime = Panjang Masa Rehat Masa Tambahan
+ot-half-tm-len = PANJANG REHAT SEPARUH MASA TAMBAHAN
+len-of-overtime-halftime = Panjang rehat separuh masa tambahan
 pre-sd-break = REHAT PRA-SUDDEN DEATH
 pre-sd-len = Panjang rehat antara tempoh permainan sebelumnya dan Sudden Death
 language = BAHASA
@@ -143,12 +143,12 @@ portal-login-code = KOD
 portal-login-instructions = Sila pergi ke UWH Portal >> Pengurusan Acara >> Pengurusan Pengadil, klik butang + untuk menambah Refbox baharu, dan masukkan ID Refbox ini:
     { $id }
 
-    UWH Portal kemudian akan memberikan kod pengesahan untuk anda masukkan di sebelah kiri menggunakan pad nombor.
+    UWH Portal kemudiannya akan memberikan kod pengesahan untuk anda masukkan di sebelah kiri menggunakan pad nombor.
     Tekan selesai setelah anda memasukkan kod
 
 help = BANTUAN:
 
-# Confirmation
+# Pengesahan
 game-configuration-can-not-be-changed = Konfigurasi perlawanan tidak boleh diubah semasa perlawanan sedang berlangsung.
 
     Apakah yang anda ingin lakukan?
@@ -160,12 +160,12 @@ uwhportal-token-no-pending-link = Portal tidak menjangka sambungan.
     Sila cuba lagi.
 go-back-to-editor = KEMBALI KE EDITOR
 discard-changes = BUANG PERUBAHAN
-end-current-game-and-apply-changes = TAMATKAN PERLAWANAN SEMASA DAN TERAPKAN PERUBAHAN
-end-current-game-and-apply-change = TAMATKAN PERLAWANAN SEMASA DAN TERAPKAN PERUBAHAN
-keep-current-game-and-apply-change = KEKALKAN PERLAWANAN SEMASA DAN TERAPKAN PERUBAHAN
+end-current-game-and-apply-changes = TAMATKAN PERLAWANAN SEMASA DAN GUNA PERUBAHAN
+end-current-game-and-apply-change = TAMATKAN PERLAWANAN SEMASA DAN GUNA PERUBAHAN
+keep-current-game-and-apply-change = KEKALKAN PERLAWANAN SEMASA DAN GUNA PERUBAHAN
 ok = OK
-confirm-score = Adakah skor ini betul?
-    Sahkan dengan pengadil ketua.
+confirm-score = Adakah markah ini betul?
+    Sahkan dengan ketua pengadil.
 
     Hitam: { $score_black }        Putih: { $score_white }
 
@@ -173,10 +173,10 @@ confirm-score = Adakah skor ini betul?
 yes = YA
 no = TIDAK
 
-# Fouls
+# Kesalahan
 equal = SAMA
 
-# Game Info
+# Maklumat Perlawanan
 refresh = MUAT SEMULA
 refreshing = MEMUAT SEMULA...
 settings = TETAPAN
@@ -188,11 +188,11 @@ last-game-next-game = Perlawanan Lepas: { $prev_game },
 black-team-white-team = Pasukan Hitam: { $black_team }
     Pasukan Putih: { $white_team }
 game-length-ot-allowed = Panjang Separuh: { $half_length }
-         Panjang Masa Rehat: { $half_time_length }
+         Panjang Rehat Separuh Masa: { $half_time_length }
          Masa Tambahan Dibenarkan: { $overtime }
 overtime-details = Panjang Rehat Pra-Masa Tambahan: { $pre_overtime }
              Panjang Separuh Masa Tambahan: { $overtime_len }
-             Panjang Masa Rehat Masa Tambahan: { $overtime_half_time_len }
+             Panjang Rehat Separuh Masa Tambahan: { $overtime_half_time_len }
 sd-allowed = Sudden Death Dibenarkan: { $sd }
 pre-sd = Panjang Rehat Pra-Sudden Death: { $pre_sd_len }
 team-to-len = Tempoh Masa Rehat Pasukan: { $to_len }
@@ -200,33 +200,33 @@ time-btwn-games = Masa Nominal Antara Perlawanan: { $time_btwn }
 min-brk-btwn-games = Masa Minimum Antara Perlawanan: { $min_brk_time }
 
 
-# List Selecters
+# Pemilih Senarai
 select-event = PILIH ACARA
 select-court = PILIH GELANGGANG
 select-game = PILIH PERLAWANAN
 
-# Main View
+# Paparan Utama
 add-warning = TAMBAH AMARAN
 add-foul = TAMBAH KESALAHAN
 start-now = MULA SEKARANG
 end-timeout = TAMAT MASA REHAT
 warnings = AMARAN
 penalties = PENALTI
-dark-score-line-1 = SKOR
+dark-score-line-1 = MARKAH
 dark-score-line-2 = { dark-team-name-caps }
-light-score-line-1 = SKOR
+light-score-line-1 = MARKAH
 light-score-line-2 = { light-team-name-caps }
 
-# Penalties
+# Penalti
 black-penalties = PENALTI HITAM
 white-penalties = PENALTI PUTIH
 
-# Score edit
-final-score = Sila masukkan skor akhir
-confirmation-count-down = Nota: Skor yang tidak diubah akan disahkan secara automatik dalam { $countdown }
+# Edit Markah
+final-score = Sila masukkan markah akhir
+confirmation-count-down = Nota: Markah yang tidak diubah akan disahkan secara automatik dalam { $countdown }
 
-# Shared Elements
-## Timeout ribbon
+# Elemen Dikongsi
+## Reben masa rehat
 end-timeout-line-1 = TAMAT
 end-timeout-line-2 = { timeout }
 switch-to = TUKAR KE
@@ -237,15 +237,15 @@ dark-timeout-line-1 = { dark-team-name-caps }
 dark-timeout-line-2 = { timeout }
 light-timeout-line-1 = { light-team-name-caps }
 light-timeout-line-2 = { timeout }
-penalty-shot-line-1 = PENALTI
-penalty-shot-line-2 = SEPAKAN
-pen-shot = SEPAKAN PENALTI
-## Penalty string
+penalty-shot-line-1 = TEMBAKAN
+penalty-shot-line-2 = PENALTI
+pen-shot = TMBN PENALTI
+## Rentetan penalti
 served = Dilaksanakan
 penalty = #{$player_number} - {$time ->
         [pending] Menunggu
         [served] Dilaksanakan
-        [total-dismissal] Diusir
+        [total-dismissal] Disingkirkan
        *[number] {$time}
     } {$time ->
         [total-dismissal] {""}
@@ -262,65 +262,65 @@ warning = {$player_number ->
         *[number] #{$player_number} - {$infraction}
     }
 infraction = Pelanggaran: {$infraction}
-## Config String
+## Rentetan konfigurasi
 error = Ralat ({ $number })
 two-games = Perlawanan Lepas: { $prev_game },  Perlawanan Seterusnya: { $next_game }
 one-game = Perlawanan: { $game }
 teams = Pasukan { -dark-team-name }: { $dark_team }
     Pasukan { -light-team-name }: { $light_team }
-game-config = Panjang Separuh: { $half_len },  Panjang Masa Rehat: { $half_time_len }
+game-config = Panjang Separuh: { $half_len },  Panjang Rehat Separuh Masa: { $half_time_len }
     Sudden Death Dibenarkan: { $sd_allowed },  Masa Tambahan Dibenarkan: { $ot_allowed }
 team-timeouts-per-half = Masa Rehat Pasukan Dibenarkan Per Separuh: { $team_timeouts }
 team-timeouts-per-game = Masa Rehat Pasukan Dibenarkan Per Perlawanan: { $team_timeouts }
 stop-clock-last-2 = Hentikan Jam 2 Minit Terakhir: { $stop_clock }
-ref-list = Pengadil Ketua: { $chief_ref }
-    Pemasa: { $timer }
+ref-list = Ketua Pengadil: { $chief_ref }
+    Pencatat Masa: { $timer }
     Pengadil Air 1: { $water_ref_1 }
     Pengadil Air 2: { $water_ref_2 }
     Pengadil Air 3: { $water_ref_3 }
 team-ref-list = Pengadil: { $ref_team }
-    Penjaga Masa/Markah: { $ts_keeper_team }
+    Pencatat Masa/Markah: { $ts_keeper_team }
 unknown = Tidak Diketahui
-## Game time button
+## Butang masa perlawanan
 next-game = PERLAWANAN SETERUSNYA
 first-half = SEPARUH PERTAMA
-half-time = MASA REHAT
+half-time = REHAT SEPARUH MASA
 second-half = SEPARUH KEDUA
 pre-ot-break-full = REHAT PRA-MASA TAMBAHAN
 overtime-first-half = SEPARUH PERTAMA MASA TAMBAHAN
-overtime-half-time = MASA REHAT MASA TAMBAHAN
+overtime-half-time = REHAT SEPARUH MASA TAMBAHAN
 overtime-second-half = SEPARUH KEDUA MASA TAMBAHAN
 pre-sudden-death-break = REHAT PRA-SUDDEN DEATH
 sudden-death = SUDDEN DEATH
 ot-first-half = SEPARUH 1 MASA TAMBAHAN
-ot-half-time = MASA REHAT MASA TAMBAHAN
+ot-half-time = REHAT SEPARUH MASA TAMBAHAN
 ot-2nd-half = SEPARUH 2 MASA TAMBAHAN
 white-timeout-short = REHAT PTH
 white-timeout-full = MASA REHAT PUTIH
 black-timeout-short = REHAT HTM
 black-timeout-full = MASA REHAT HITAM
 ref-timeout-short = REHAT PENGADIL
-penalty-shot-short = SEPAKAN PENALTI
-## Make warning container
+penalty-shot-short = TMBN PENALTI
+## Buat bekas amaran
 team-warning-abreviation = P
-## Make time editor
+## Buat penyunting masa
 zero = SIFAR
 
-# Time edit
+# Edit Masa
 game-time = MASA PERLAWANAN
 timeout = MASA REHAT
 Note-Game-time-is-paused = Nota: Masa perlawanan dijeda semasa berada di skrin ini
 
-# Warning Fouls Summary
+# Ringkasan Amaran dan Kesalahan
 fouls = KESALAHAN
 edit-warnings = EDIT AMARAN
 edit-fouls = EDIT KESALAHAN
 
-# Warnings
+# Amaran
 black-warnings = AMARAN HITAM
 white-warnings = AMARAN PUTIH
 
-# Message
+# Mesej
 player-number = NOMBOR
     PEMAIN:
 game-number = NOMBOR
@@ -330,27 +330,27 @@ num-tos-per-half = BIL. MASA REHAT
 num-tos-per-game = BIL. MASA REHAT
     PASUKAN/PERLAWANAN:
 
-# Sound Controller - mod
+# Pengawal Bunyi - mod
 off = MATI
 low = RENDAH
 medium = SEDERHANA
 high = TINGGI
 max = MAKSIMUM
 
-# Config
+# Konfigurasi
 hockey6v6 = HOKI 6LWN6
 hockey3v3 = HOKI 3LWN3
 rugby = RAGBI
 
-# Infractions
+# Pelanggaran
 stick-foul = Kesalahan Kayu
 illegal-advance = Kemajuan Haram
-sub-foul = Kesalahan Penggantian
-illegal-stoppage = Pemberhentian Haram
-out-of-bounds = Luar Sempadan
-grabbing-the-wall = Pegang Dinding
+sub-foul = Kesalahan Pertukaran Pemain
+illegal-stoppage = Hentian Haram
+out-of-bounds = Di Luar Sempadan
+grabbing-the-wall = Memegang Dinding
 obstruction = Halangan
-delay-of-game = Melengah-lengahkan Perlawanan
-unsportsmanlike = Tidak Bersemangat Sukan
+delay-of-game = Melengahkan Permainan
+unsportsmanlike = Kelakuan Tidak Bersukan
 free-arm = Lengan Bebas
 false-start = Permulaan Palsu

@@ -8,7 +8,7 @@ Feature: Manual Alarm Button
   # tells operators about the spacebar shortcut.
   #
   # The button requires a minimum hold to fire, to prevent accidental taps:
-  # - during active play (clock running, no timeout): 250ms minimum
+  # - during active play (clock running, no timeout): 150ms minimum
   # - during any other state (break periods or timeouts): 1 second minimum
   # While held past the minimum, the alarm continues sounding. On release,
   # the current tone finishes its natural cycle and then stops.
@@ -96,10 +96,10 @@ Feature: Manual Alarm Button
 
   # --- Firing the alarm (button) ---------------------------------------------
 
-  Scenario: Holding the alarm button during active play fires the alarm after 250ms
+  Scenario: Holding the alarm button during active play fires the alarm after 150ms
     Given the manual alarm is turned on in sound settings
     And the game is in an active play period (FirstHalf, SecondHalf, OvertimeFirstHalf, OvertimeSecondHalf, or SuddenDeath) with no timeout
-    When the alarm button is pressed and held for 250ms
+    When the alarm button is pressed and held for 150ms
     Then the alarm sound plays
     And the alarm sound continues playing while the button is held
 
@@ -112,10 +112,10 @@ Feature: Manual Alarm Button
 
   # --- Firing the alarm (spacebar) -------------------------------------------
 
-  Scenario: Holding the spacebar during active play fires the alarm after 250ms
+  Scenario: Holding the spacebar during active play fires the alarm after 150ms
     Given the manual alarm is turned on in sound settings
     And the game is in an active play period (FirstHalf, SecondHalf, OvertimeFirstHalf, OvertimeSecondHalf, or SuddenDeath) with no timeout
-    When the spacebar is pressed and held for 250ms
+    When the spacebar is pressed and held for 150ms
     Then the alarm sound plays
     And the alarm sound continues playing while the spacebar is held
 
@@ -133,10 +133,10 @@ Feature: Manual Alarm Button
 
   # --- Cancelling a press before the minimum hold ----------------------------
 
-  Scenario: Releasing the alarm button before 250ms during active play cancels the press
+  Scenario: Releasing the alarm button before 150ms during active play cancels the press
     Given the manual alarm is turned on in sound settings
     And the game is in an active play period (FirstHalf, SecondHalf, OvertimeFirstHalf, OvertimeSecondHalf, or SuddenDeath) with no timeout
-    When the alarm button is pressed and released after less than 250ms
+    When the alarm button is pressed and released after less than 150ms
     Then the alarm sound does not play
 
   Scenario: Releasing the alarm button before 1 second during a break period or timeout cancels the press

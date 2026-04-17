@@ -566,7 +566,7 @@ impl RefBoxApp {
                 | GamePeriod::OvertimeSecondHalf
                 | GamePeriod::SuddenDeath,
                 None,
-            ) => Duration::from_millis(250),
+            ) => Duration::from_millis(150),
             _ => Duration::from_secs(1),
         }
     }
@@ -2222,7 +2222,7 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::AlarmDelayElapsed(token) => {
-                // Fires after the per-state hold delay (250ms in active play, 1s otherwise).
+                // Fires after the per-state hold delay (150ms in active play, 1s otherwise).
                 // Only start the sound if the token still matches (no newer press has
                 // superseded this one) and at least one input is still held.
                 if token == self.alarm_delay_token && (self.mouse_alarm_held || self.spacebar_held)

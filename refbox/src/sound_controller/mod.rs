@@ -708,7 +708,7 @@ impl Sound {
         // zero — resetting it to full volume here would cause a brief burst of
         // audio (heard as a "tap" or click at the end of the buzzer). Only run
         // the fade-out when the sound is being stopped early (interrupted).
-        let already_silent = self.end.map_or(false, |end| Instant::now() >= end);
+        let already_silent = self.end.is_some_and(|end| Instant::now() >= end);
 
         if !already_silent {
             let fade_end = self.context.current_time() + FADE_LEN;

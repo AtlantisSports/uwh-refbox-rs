@@ -118,8 +118,9 @@ pub(in super::super) fn build_main_view<'a>(
                 .on_press(Message::ShowGameDetails),
         );
 
-        // Determine whether alarm is interactive in the current state
-        let alarm_available = matches!(
+        // Red + tap prompt during active play with no timeout; blue + hold prompt everywhere else.
+        // The button is always interactive while the feature is enabled.
+        let is_active_play = matches!(
             (snapshot.current_period, snapshot.timeout),
             (
                 GamePeriod::FirstHalf
@@ -128,23 +129,17 @@ pub(in super::super) fn build_main_view<'a>(
                     | GamePeriod::OvertimeSecondHalf
                     | GamePeriod::SuddenDeath,
                 None,
-            ) | (GamePeriod::BetweenGames, _)
+            )
         );
-
-        // Build the alarm face. During BetweenGames: blue "Hold to Test" with a 1-second delay.
-        // During active play: red "Alarm" that fires immediately.
-        // mouse_area wraps only this inner face so only the button is interactive,
-        // not the surrounding light-gray padding zone.
-        let is_between_games = snapshot.current_period == GamePeriod::BetweenGames;
-        let alarm_label = if is_between_games {
-            fl!("hold-to-test")
-        } else {
+        let alarm_label = if is_active_play {
             fl!("alarm")
-        };
-        let spacebar_label = if is_between_games {
-            fl!("or-hold-spacebar")
         } else {
+            fl!("hold-to-test")
+        };
+        let spacebar_label = if is_active_play {
             fl!("or-press-spacebar")
+        } else {
+            fl!("or-hold-spacebar")
         };
         let alarm_face_container = container(
             column![
@@ -160,16 +155,11 @@ pub(in super::super) fn build_main_view<'a>(
             .align_x(Alignment::Center)
             .width(Length::Fill),
         )
-        .style(if !alarm_available {
-            disabled_container
-        } else if alarm_held && is_between_games {
-            blue_pressed_container
-        } else if alarm_held {
-            red_pressed_container
-        } else if is_between_games {
-            blue_container
-        } else {
-            red_container
+        .style(match (is_active_play, alarm_held) {
+            (true, true) => red_pressed_container,
+            (true, false) => red_container,
+            (false, true) => blue_pressed_container,
+            (false, false) => blue_container,
         })
         .padding(PADDING)
         .width(Length::Fill)
@@ -177,14 +167,10 @@ pub(in super::super) fn build_main_view<'a>(
         .align_x(Horizontal::Center)
         .align_y(Vertical::Center);
 
-        let alarm_face: Element<'a, Message> = if alarm_available {
-            mouse_area(alarm_face_container)
-                .on_press(Message::AlarmPressed)
-                .on_release(Message::AlarmReleased)
-                .into()
-        } else {
-            alarm_face_container.into()
-        };
+        let alarm_face: Element<'a, Message> = mouse_area(alarm_face_container)
+            .on_press(Message::AlarmPressed)
+            .on_release(Message::AlarmReleased)
+            .into();
 
         if track_fouls_and_warnings {
             // Split the lower area: alarm left, warnings right

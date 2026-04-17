@@ -1,5 +1,4 @@
 use derivative::Derivative;
-use log::*;
 use std::{cmp::Ordering, convert::TryInto};
 use thiserror::Error;
 use time::Duration as SignedDuration;

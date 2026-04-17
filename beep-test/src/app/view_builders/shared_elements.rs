@@ -8,10 +8,7 @@ use super::{
 use iced::{
     Alignment, Length,
     alignment::{Horizontal, Vertical},
-    widget::{
-        Button, Column, Container, Row, Text, button, column, container, horizontal_space, row,
-        text,
-    },
+    widget::{Button, Column, Container, Row, Text, button, container, horizontal_space, text},
 };
 use matrix_drawing::secs_to_long_time_string;
 use std::fmt::Write;

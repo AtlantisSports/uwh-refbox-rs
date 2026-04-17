@@ -1,9 +1,9 @@
-# Definitions for the translation file to use
--dark-team-name = Neri
-dark-team-name-caps = NERI
+# Definizioni per il file di traduzione
+-dark-team-name = Nero
+dark-team-name-caps = NERO
 
--light-team-name = Bianchi
-light-team-name-caps = BIANCHI
+-light-team-name = Bianco
+light-team-name-caps = BIANCO
 
 # Multipage
 done = FATTO
@@ -13,8 +13,8 @@ delete = ELIMINA
 back = INDIETRO
 new = NUOVO
 
-# Penalty Edit
-total-dismissal = TD
+# Modifica Penalità
+total-dismissal = ES.DEF.
 penalty-kind = {$kind ->
     [thirty-seconds] 30s
     [one-minute] 1m
@@ -25,17 +25,17 @@ penalty-kind = {$kind ->
    *[other] {$kind}
 }
 
-# Team Timeout Edit
-timeout-length = DURATA
-    TIMEOUT
-
-# Warning Add
-team-warning = AMMONIZIONE
+# Modifica Time-out di Squadra
+timeout-length = TIME-OUT DI
     SQUADRA
-team-warning-line-1 = AMMONIZIONE
-team-warning-line-2 = SQUADRA
 
-# Configuration
+# Aggiunta Ammonizione
+team-warning = AMMONIZIONE
+    DI SQUADRA
+team-warning-line-1 = AMMONIZIONE
+team-warning-line-2 = DI SQUADRA
+
+# Configurazione
 none-selected = Nessuno Selezionato
 loading = Caricamento...
 game-select = Partita:
@@ -52,7 +52,7 @@ player-display-brightness = LUMINOSITÀ
 confirm-score-at-game-end = CONFERMA PUNTEGGIO
     A FINE PARTITA
 track-cap-number-of-scorer = TRACCIA NUMERO
-    BERRETTO MARCATORE
+    CALOTTINA MARCATORE
 event = EVENTO:
 track-fouls-and-warnings = TRACCIA FALLI
     E AMMONIZIONI
@@ -61,28 +61,28 @@ single-half = SINGOLO
     TEMPO:
 half-length-full = DURATA TEMPO:
 game-length = DURATA PARTITA:
-overtime-allowed = OVERTIME
-    CONSENTITO:
-sudden-death-allowed = SUDDEN DEATH
-    CONSENTITO:
+overtime-allowed = TEMPI SUPPL.
+    CONSENTITI:
+sudden-death-allowed = MORTE IMPROVVISA
+    CONSENTITA:
 half-time-length = DURATA
     INTERVALLO:
 pre-ot-break-length = PAUSA PRE
-    OVERTIME:
+    SUPPLEMENTARI:
 pre-sd-break-length = PAUSA PRE
-    SUDDEN DEATH:
+    MORTE IMPROVVISA:
 nominal-break-between-games = PAUSA NOMINALE
     FRA PARTITE:
 ot-half-length = DURATA TEMPO
-    OVERTIME:
-timeouts-counted-per = TIMEOUT
+    SUPPLEMENTARE:
+timeouts-counted-per = TIME-OUT
     CONTATI PER:
 game = PARTITA
 half = TEMPO
 minimum-brk-btwn-games = PAUSA MIN
     FRA PARTITE:
 ot-half-time-length = INTERVALLO
-    OVERTIME
+    SUPPLEMENTARE
 using-uwh-portal = USA UWHPORTAL:
 starting-sides = LATI DI PARTENZA
 sound-enabled = AUDIO
@@ -93,7 +93,7 @@ manage-remotes = GESTISCI TELECOMANDI
 whistle-enabled = FISCHIO
     ATTIVATO:
 above-water-volume = VOLUME
-    SOPRA ACQUA:
+    FUORI ACQUA:
 auto-sound-start-play = AUDIO AUTO
     INIZIO GIOCO:
 buzzer-sound = SUONO
@@ -126,17 +126,17 @@ length-of-half-during-regular-play = La durata di un tempo durante il gioco rego
 half-time-lenght = DUR INTERVALLO
 length-of-half-time-period = La durata del periodo di intervallo
 nom-break = PAUSA NOM
-system-will-keep-game-times-spaced = Il sistema cercherà di mantenere i tempi di inizio partita equamente distanziati, con il tempo totale da un inizio all'altro pari a 2 × [Durata Tempo] + [Durata Intervallo] + [Tempo Nominale fra Partite] (esempio: se [Durata Tempo] = 15 min, [Durata Intervallo] = 3 min e [Tempo Nominale fra Partite] = 12 min, il tempo da inizio a inizio sarà 45 min. Eventuali timeout o altre interruzioni ridurranno i 12 min fino al raggiungimento del tempo minimo fra partite).
+system-will-keep-game-times-spaced = Il sistema cercherà di mantenere i tempi di inizio partita equamente distanziati, con il tempo totale da un inizio all'altro pari a 2 × [Durata Tempo] + [Durata Intervallo] + [Tempo Nominale fra Partite] (esempio: se [Durata Tempo] = 15 min, [Durata Intervallo] = 3 min e [Tempo Nominale fra Partite] = 12 min, il tempo da inizio a inizio sarà 45 min. Eventuali time-out o altre interruzioni ridurranno i 12 min fino al raggiungimento del tempo minimo fra partite).
 min-break = PAUSA MIN
 min-time-btwn-games = Se una partita dura più del previsto, questo è il tempo minimo fra le partite che il sistema assegnerà. Se le partite accumulano ritardo, il sistema cercherà di recuperare nelle partite successive, rispettando sempre questo tempo minimo.
-pre-ot-break-abreviated = PAUSA PRE OT
-pre-sd-brk = Se l'overtime è abilitato e necessario, questa è la durata della pausa fra il Secondo Tempo e il Primo Tempo degli Overtime
-ot-half-len = DUR TEMPO OT
-time-during-ot = La durata di un tempo durante l'overtime
-ot-half-tm-len = DUR INT OT
-len-of-overtime-halftime = La durata dell'intervallo degli overtime
-pre-sd-break = PAUSA PRE SD
-pre-sd-len = La durata della pausa fra il periodo di gioco precedente e il Sudden Death
+pre-ot-break-abreviated = PAUSA PRE SUPPL.
+pre-sd-brk = Se i tempi supplementari sono abilitati e necessari, questa è la durata della pausa fra il Secondo Tempo e il Primo Tempo Supplementare
+ot-half-len = DUR TEMPO SUPPL.
+time-during-ot = La durata di un tempo durante i tempi supplementari
+ot-half-tm-len = DUR INT SUPPL.
+len-of-overtime-halftime = La durata dell'intervallo supplementare
+pre-sd-break = PAUSA PRE MORTE IMM.
+pre-sd-len = La durata della pausa fra il periodo di gioco precedente e la Morte Improvvisa
 language = LINGUA
 this-language = ITALIANO
 portal-login-code = CODICE
@@ -148,7 +148,7 @@ portal-login-instructions = Vai su UWH Portal >> Gestione Evento >> Gestione Arb
 
 help = AIUTO:
 
-# Confirmation
+# Conferma
 game-configuration-can-not-be-changed = La configurazione della partita non può essere modificata mentre una partita è in corso.
 
     Cosa vuoi fare?
@@ -165,18 +165,18 @@ end-current-game-and-apply-change = TERMINA PARTITA E APPLICA MODIFICA
 keep-current-game-and-apply-change = MANTIENI PARTITA E APPLICA MODIFICA
 ok = OK
 confirm-score = Il punteggio è corretto?
-    Conferma con l'arbitro principale.
+    Conferma con il capo arbitro.
 
-    Neri: { $score_black }        Bianchi: { $score_white }
+    Nero: { $score_black }        Bianco: { $score_white }
 
     { confirmation-count-down }
 yes = SÌ
 no = NO
 
-# Fouls
+# Falli
 equal = PARI
 
-# Game Info
+# Info Partita
 refresh = AGGIORNA
 refreshing = AGGIORNAMENTO...
 settings = IMPOSTAZIONI
@@ -185,48 +185,48 @@ game-number-error = Errore ({ $game_number })
 next-game-number-error = Errore ({ $next_game_number })
 last-game-next-game = Ultima Partita: { $prev_game },
     Prossima Partita: { $next_game }
-black-team-white-team = Squadra Neri: { $black_team }
-    Squadra Bianchi: { $white_team }
+black-team-white-team = Squadra Nera: { $black_team }
+    Squadra Bianca: { $white_team }
 game-length-ot-allowed = Durata Tempo: { $half_length }
          Durata Intervallo: { $half_time_length }
-         Overtime Consentito: { $overtime }
-overtime-details = Durata Pausa Pre-Overtime: { $pre_overtime }
-             Durata Tempo Overtime: { $overtime_len }
-             Durata Intervallo Overtime: { $overtime_half_time_len }
-sd-allowed = Sudden Death Consentito: { $sd }
-pre-sd = Durata Pausa Pre-Sudden Death: { $pre_sd_len }
-team-to-len = Durata Timeout Squadra: { $to_len }
+         Tempi Suppl. Consentiti: { $overtime }
+overtime-details = Durata Pausa Pre-Supplementari: { $pre_overtime }
+             Durata Tempo Supplementare: { $overtime_len }
+             Durata Intervallo Supplementare: { $overtime_half_time_len }
+sd-allowed = Morte Improvvisa Consentita: { $sd }
+pre-sd = Durata Pausa Pre-Morte Improvvisa: { $pre_sd_len }
+team-to-len = Durata Time-out di Squadra: { $to_len }
 time-btwn-games = Tempo Nominale fra Partite: { $time_btwn }
 min-brk-btwn-games = Tempo Minimo fra Partite: { $min_brk_time }
 
 
-# List Selecters
+# Selettori Lista
 select-event = SELEZIONA EVENTO
 select-court = SELEZIONA CAMPO
 select-game = SELEZIONA PARTITA
 
-# Main View
+# Vista Principale
 add-warning = AGGIUNGI AMMONIZIONE
 add-foul = AGGIUNGI FALLO
 start-now = INIZIA ORA
-end-timeout = FINE TIMEOUT
+end-timeout = FINE TIME-OUT
 warnings = AMMONIZIONI
 penalties = PENALITÀ
-dark-score-line-1 = SEGNA
+dark-score-line-1 = PUNTEGGIO
 dark-score-line-2 = { dark-team-name-caps }
-light-score-line-1 = SEGNA
+light-score-line-1 = PUNTEGGIO
 light-score-line-2 = { light-team-name-caps }
 
-# Penalties
+# Penalità
 black-penalties = PENALITÀ NERI
 white-penalties = PENALITÀ BIANCHI
 
-# Score edit
+# Modifica Punteggio
 final-score = Inserisci il punteggio finale
 confirmation-count-down = Nota: Il punteggio invariato sarà confermato automaticamente tra { $countdown }
 
-# Shared Elements
-## Timeout ribbon
+# Elementi Condivisi
+## Nastro time-out
 end-timeout-line-1 = FINE
 end-timeout-line-2 = { timeout }
 switch-to = PASSA A
@@ -237,10 +237,10 @@ dark-timeout-line-1 = { dark-team-name-caps }
 dark-timeout-line-2 = { timeout }
 light-timeout-line-1 = { light-team-name-caps }
 light-timeout-line-2 = { timeout }
-penalty-shot-line-1 = TIRO
-penalty-shot-line-2 = PENALITÀ
-pen-shot = TIRO PEN
-## Penalty string
+penalty-shot-line-1 = TIRO DI
+penalty-shot-line-2 = RIGORE
+pen-shot = TIRO RIG.
+## Stringa penalità
 served = Scontata
 penalty = #{$player_number} - {$time ->
         [pending] In attesa
@@ -262,95 +262,95 @@ warning = {$player_number ->
         *[number] #{$player_number} - {$infraction}
     }
 infraction = Infrazione: {$infraction}
-## Config String
+## Stringa configurazione
 error = Errore ({ $number })
 two-games = Ultima Partita: { $prev_game },  Prossima Partita: { $next_game }
 one-game = Partita: { $game }
 teams = Squadra { -dark-team-name }: { $dark_team }
     Squadra { -light-team-name }: { $light_team }
 game-config = Durata Tempo: { $half_len },  Durata Intervallo: { $half_time_len }
-    Sudden Death Consentito: { $sd_allowed },  Overtime Consentito: { $ot_allowed }
-team-timeouts-per-half = Timeout Squadra Consentiti per Tempo: { $team_timeouts }
-team-timeouts-per-game = Timeout Squadra Consentiti per Partita: { $team_timeouts }
+    Morte Improvvisa Consentita: { $sd_allowed },  Tempi Suppl. Consentiti: { $ot_allowed }
+team-timeouts-per-half = Time-out di Squadra Consentiti per Tempo: { $team_timeouts }
+team-timeouts-per-game = Time-out di Squadra Consentiti per Partita: { $team_timeouts }
 stop-clock-last-2 = Ferma Orologio negli Ultimi 2 Minuti: { $stop_clock }
-ref-list = Arbitro Principale: { $chief_ref }
+ref-list = Capo Arbitro: { $chief_ref }
     Cronometrista: { $timer }
-    Arbitro Acqua 1: { $water_ref_1 }
-    Arbitro Acqua 2: { $water_ref_2 }
-    Arbitro Acqua 3: { $water_ref_3 }
+    Arbitro di Vasca 1: { $water_ref_1 }
+    Arbitro di Vasca 2: { $water_ref_2 }
+    Arbitro di Vasca 3: { $water_ref_3 }
 team-ref-list = Arbitri: { $ref_team }
     Cronometrista/Segnapunti: { $ts_keeper_team }
 unknown = Sconosciuto
-## Game time button
+## Pulsante tempo di gioco
 next-game = PROSSIMA PARTITA
 first-half = PRIMO TEMPO
 half-time = INTERVALLO
 second-half = SECONDO TEMPO
-pre-ot-break-full = PAUSA PRE OVERTIME
-overtime-first-half = PRIMO TEMPO OT
-overtime-half-time = INTERVALLO OT
-overtime-second-half = SECONDO TEMPO OT
-pre-sudden-death-break = PAUSA PRE SUDDEN DEATH
-sudden-death = SUDDEN DEATH
-ot-first-half = PRIMO TEMPO OT
-ot-half-time = INTERVALLO OT
-ot-2nd-half = SECONDO TEMPO OT
-white-timeout-short = TMP BCH
-white-timeout-full = TIMEOUT BIANCHI
-black-timeout-short = TMP NER
-black-timeout-full = TIMEOUT NERI
-ref-timeout-short = TMP ARB
-penalty-shot-short = TIRO PEN
-## Make warning container
+pre-ot-break-full = PAUSA PRE SUPPLEMENTARI
+overtime-first-half = PRIMO TEMPO SUPPLEMENTARE
+overtime-half-time = INTERVALLO SUPPLEMENTARE
+overtime-second-half = SECONDO TEMPO SUPPLEMENTARE
+pre-sudden-death-break = PAUSA PRE MORTE IMPROVVISA
+sudden-death = MORTE IMPROVVISA
+ot-first-half = 1° TEMPO SUPPL.
+ot-half-time = INT. SUPPL.
+ot-2nd-half = 2° TEMPO SUPPL.
+white-timeout-short = T/O BIA
+white-timeout-full = TIME-OUT BIANCHI
+black-timeout-short = T/O NER
+black-timeout-full = TIME-OUT NERI
+ref-timeout-short = T/O ARB
+penalty-shot-short = TIRO RIG.
+## Contenitore ammonizione di squadra
 team-warning-abreviation = S
-## Make time editor
+## Editor tempo
 zero = ZERO
 
-# Time edit
+# Modifica Tempo
 game-time = TEMPO DI GIOCO
-timeout = TIMEOUT
+timeout = TIME-OUT
 Note-Game-time-is-paused = Nota: Il tempo di gioco è in pausa su questa schermata
 
-# Warning Fouls Summary
+# Riepilogo Falli e Ammonizioni
 fouls = FALLI
 edit-warnings = MODIFICA AMMONIZIONI
 edit-fouls = MODIFICA FALLI
 
-# Warnings
+# Ammonizioni
 black-warnings = AMMONIZIONI NERI
 white-warnings = AMMONIZIONI BIANCHI
 
-# Message
+# Messaggio
 player-number = NUMERO
     GIOCATORE:
 game-number = NUMERO
     PARTITA:
-num-tos-per-half = TIMEOUT PER
-    TEMPO:
-num-tos-per-game = TIMEOUT PER
-    PARTITA:
+num-tos-per-half = N. TIME-OUT
+    PER TEMPO:
+num-tos-per-game = N. TIME-OUT
+    PER PARTITA:
 
-# Sound Controller - mod
+# Controllore Audio - mod
 off = OFF
 low = BASSO
 medium = MEDIO
 high = ALTO
 max = MAX
 
-# Config
-hockey6v6 = HOCKEY 6V6
-hockey3v3 = HOCKEY 3V3
+# Configurazione
+hockey6v6 = HOCKEY6V6
+hockey3v3 = HOCKEY3V3
 rugby = RUGBY
 
-# Infractions
-stick-foul = Fallo col Bastone
-illegal-advance = Avanzata Irregolare
-sub-foul = Fallo di Cambio
-illegal-stoppage = Stop Irregolare
-out-of-bounds = Fuori Campo
-grabbing-the-wall = Aggancio alla Parete
+# Infrazioni
+stick-foul = Fallo di Mazzetta
+illegal-advance = Avanzamento Illegale
+sub-foul = Fallo di Sostituzione
+illegal-stoppage = Arresto Irregolare
+out-of-bounds = Fuori dal Campo
+grabbing-the-wall = Aggrapparsi alla Parete
 obstruction = Ostruzione
-delay-of-game = Ritardo di Gioco
-unsportsmanlike = Comportamento non Sportivo
+delay-of-game = Perdita di Tempo
+unsportsmanlike = Comportamento Antisportivo
 free-arm = Braccio Libero
 false-start = Falsa Partenza

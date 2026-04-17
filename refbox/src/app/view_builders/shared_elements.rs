@@ -4,8 +4,8 @@ use iced::{
     Alignment, Background, Length, Theme,
     alignment::{Horizontal, Vertical},
     widget::{
-        Button, Container, Image, Row, Space, Text, button, column, container,
-        container::Style as ContainerStyle, horizontal_space, image, row, svg, svg::Svg, text,
+        Button, Container, Image, Row, Space, Text, button, container,
+        container::Style as ContainerStyle, horizontal_space, image, svg, svg::Svg, text,
         text::Style as TextStyle, vertical_space,
     },
 };

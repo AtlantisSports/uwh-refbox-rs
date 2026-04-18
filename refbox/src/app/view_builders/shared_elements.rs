@@ -807,11 +807,12 @@ pub(super) fn config_string(
                 for ref_assignment in refs {
                     if ref_assignment.user_id.is_some() {
                         has_individual_refs = true;
+                        // Fall back to the localized "Unknown" — not `identifier`,
+                        // which is a portal-assigned system code, not a human name.
                         let display = ref_assignment
                             .display_name
-                            .as_deref()
-                            .unwrap_or(&ref_assignment.identifier)
-                            .to_string();
+                            .clone()
+                            .unwrap_or_else(|| unknown.clone());
                         match ref_assignment.role.as_str() {
                             "Chief" => chief_ref = display,
                             "TimeOrScoreKeeper" => timer = display,

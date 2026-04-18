@@ -1,4 +1,5 @@
 use super::{ViewData, fl, message::*, shared_elements::*, theme::*};
+use crate::app::languages::Language;
 use crate::config::Mode;
 use crate::sound_controller::*;
 use collect_array::CollectArrayResult;
@@ -33,6 +34,8 @@ pub(in super::super) struct EditableSettings {
     pub collect_scorer_cap_num: bool,
     pub track_fouls_and_warnings: bool,
     pub confirm_score: bool,
+    pub pending_language: Option<Language>,
+    pub original_language: Option<Language>,
 }
 
 pub(in super::super) trait Cyclable
@@ -126,6 +129,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
         ConfigPage::Remotes(index, listening) => {
             make_remote_config_page(snapshot, settings, index, listening, mode, clock_running)
         }
+        ConfigPage::Language => make_language_select_page(snapshot, settings, mode, clock_running),
     }
 }
 
@@ -588,7 +592,7 @@ fn make_app_config_page<'a>(
                 fl!("language"),
                 fl!("this-language"),
                 (false, true),
-                Some(Message::CycleParameter(CyclingParameter::Language,)),
+                Some(Message::ChangeConfigPage(ConfigPage::Language)),
             ),
             horizontal_space(),
         ]
@@ -998,6 +1002,174 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
     .spacing(SPACING)
     .align_x(Alignment::Center)
     .width(Length::Fill)
+    .height(Length::Fill)
+    .into()
+}
+
+fn font_family_id(lang: Language) -> u8 {
+    match lang {
+        Language::Korean | Language::Japanese | Language::Mandarin => 1,
+        Language::Thai => 2,
+        _ => 0,
+    }
+}
+
+fn make_language_select_page<'a>(
+    snapshot: &GameSnapshot,
+    settings: &EditableSettings,
+    mode: Mode,
+    clock_running: bool,
+) -> Element<'a, Message> {
+    let selected = settings.pending_language.unwrap_or(Language::English);
+    let original = settings.original_language.unwrap_or(Language::English);
+
+    let cjk_font = iced_core::Font {
+        family: iced_core::font::Family::Name("Noto Sans CJK KR"),
+        weight: iced_core::font::Weight::Normal,
+        stretch: iced_core::font::Stretch::Normal,
+        style: iced_core::font::Style::Normal,
+    };
+
+    let thai_font = iced_core::Font {
+        family: iced_core::font::Family::Name("Noto Sans Thai"),
+        weight: iced_core::font::Weight::Normal,
+        stretch: iced_core::font::Stretch::Normal,
+        style: iced_core::font::Style::Normal,
+    };
+
+    // Font to apply to Cancel/Done/Restart text so they render in the currently selected script.
+    let selected_font: Option<iced_core::Font> = match selected {
+        Language::Korean | Language::Japanese | Language::Mandarin => Some(cjk_font),
+        Language::Thai => Some(thai_font),
+        _ => None,
+    };
+
+    // A restart is needed when switching between Latin and CJK font families.
+    let needs_restart = font_family_id(original) != font_family_id(selected);
+
+    let lang_btn = |lang: Language,
+                    label: &'static str,
+                    font: Option<iced_core::Font>|
+     -> Element<'a, Message> {
+        let style = if lang == selected {
+            blue_selected_button
+        } else {
+            light_gray_button
+        };
+        let label_widget = {
+            let t = centered_text(label);
+            if let Some(f) = font { t.font(f) } else { t }
+        };
+        button(label_widget)
+            .padding(PADDING)
+            .height(Length::Fixed(MIN_BUTTON_SIZE))
+            .style(style)
+            .width(Length::Fill)
+            .on_press(Message::SelectLanguage(lang))
+            .into()
+    };
+
+    // Languages sorted alphabetically by romanized native name:
+    // Bahasa Indonesia(B), Bahasa Melayu(B), Deutsch(D), English(E),
+    // Español(E), Filipino(F), Français(F), Hangugeo/한국어(H), Italiano(I),
+    // Nederlands(N), Nihongo/日本語(N), Português(P), Thai/ภาษาไทย(T), Zhōngwén/中文(Z)
+    let bahasa_indonesia_style = if selected == Language::Indonesian {
+        blue_selected_button
+    } else {
+        light_gray_button
+    };
+    let bahasa_melayu_style = if selected == Language::Malay {
+        blue_selected_button
+    } else {
+        light_gray_button
+    };
+    column![
+        make_game_time_button(snapshot, false, true, mode, clock_running),
+        row![
+            make_multi_label_button(("BAHASA", "INDONESIA"))
+                .style(bahasa_indonesia_style)
+                .width(Length::Fill)
+                .on_press(Message::SelectLanguage(Language::Indonesian)),
+            make_multi_label_button(("BAHASA", "MELAYU"))
+                .style(bahasa_melayu_style)
+                .width(Length::Fill)
+                .on_press(Message::SelectLanguage(Language::Malay)),
+            lang_btn(Language::German, "DEUTSCH", None),
+            lang_btn(Language::English, "ENGLISH", None),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill),
+        row![
+            lang_btn(Language::Spanish, "ESPAÑOL", None),
+            lang_btn(Language::Tagalog, "FILIPINO", None),
+            lang_btn(Language::French, "FRANÇAIS", None),
+            lang_btn(Language::Korean, "한국어", Some(cjk_font)),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill),
+        row![
+            lang_btn(Language::Italian, "ITALIANO", None),
+            lang_btn(Language::Dutch, "NEDERLANDS", None),
+            lang_btn(Language::Japanese, "日本語", Some(cjk_font)),
+            lang_btn(Language::Portuguese, "PORTUGUÊS", None),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill),
+        row![
+            lang_btn(Language::Thai, "ภาษาไทย", Some(thai_font)),
+            lang_btn(Language::Mandarin, "中文", Some(cjk_font)),
+            horizontal_space(),
+            horizontal_space(),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill),
+        {
+            // Use align_x(Left) + width(Shrink) + outer container centering for all
+            // dynamic text in these buttons. This ensures iced's damage tracking
+            // region starts from the text's left edge, so old glyph pixels are fully
+            // cleared when content changes on language switch.
+            let make_label = |content: &'static str, font: Option<iced_core::Font>| {
+                let t = text(content)
+                    .align_x(Horizontal::Left)
+                    .align_y(Vertical::Top)
+                    .width(Length::Shrink);
+                let t: iced::widget::Text<'a, _, _> =
+                    if let Some(f) = font { t.font(f) } else { t };
+                container(t).center(Length::Fill)
+            };
+
+            let cancel_btn = button(make_label(selected.cancel_text(), selected_font))
+                .padding(PADDING)
+                .height(Length::Fixed(MIN_BUTTON_SIZE))
+                .style(red_button)
+                .width(Length::Fill)
+                .on_press(Message::LanguageSelectComplete { canceled: true });
+
+            let confirm_btn: Element<'a, Message> = if needs_restart {
+                button(make_label(selected.restart_text(), selected_font))
+                    .padding(PADDING)
+                    .height(Length::Fixed(MIN_BUTTON_SIZE))
+                    .style(blue_button)
+                    .width(Length::Fill)
+                    .on_press(Message::LanguageSelectComplete { canceled: false })
+                    .into()
+            } else {
+                button(make_label(selected.done_text(), selected_font))
+                    .padding(PADDING)
+                    .height(Length::Fixed(MIN_BUTTON_SIZE))
+                    .style(green_button)
+                    .width(Length::Fill)
+                    .on_press(Message::LanguageSelectComplete { canceled: false })
+                    .into()
+            };
+
+            row![cancel_btn, horizontal_space(), confirm_btn]
+        }
+        .spacing(SPACING)
+        .width(Length::Fill)
+        .height(Length::Fill),
+    ]
+    .spacing(SPACING)
     .height(Length::Fill)
     .into()
 }

@@ -55,7 +55,7 @@ use theme::*;
 pub mod update_sender;
 use update_sender::*;
 
-mod languages;
+pub(crate) mod languages;
 use languages::*;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
@@ -442,6 +442,7 @@ impl RefBoxApp {
             track_fouls_and_warnings,
             uwhportal_token_valid: _,
             confirm_score,
+            ..
         } = edited_settings;
 
         self.config.hardware.white_on_right = white_on_right;
@@ -1286,6 +1287,8 @@ impl RefBoxApp {
                     collect_scorer_cap_num: self.config.collect_scorer_cap_num,
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
                     confirm_score: self.config.confirm_score,
+                    pending_language: None,
+                    original_language: None,
                 };
 
                 self.edited_settings = Some(edited_settings);
@@ -1296,6 +1299,13 @@ impl RefBoxApp {
             }
             Message::ChangeConfigPage(new_page) => {
                 if let AppState::EditGameConfig(ref mut page) = self.app_state {
+                    if new_page == ConfigPage::Language {
+                        let current =
+                            Language::from_lang_id(&crate::LANGUAGE_LOADER.current_languages()[0]);
+                        let settings = self.edited_settings.as_mut().unwrap();
+                        settings.original_language = Some(current);
+                        settings.pending_language = Some(current);
+                    }
                     *page = new_page;
                 } else {
                     unreachable!();
@@ -1713,13 +1723,43 @@ impl RefBoxApp {
                     CyclingParameter::UnderWaterVol => settings.sound.under_water_vol.cycle(),
                     CyclingParameter::Mode => settings.mode.cycle(),
                     CyclingParameter::Brightness => settings.brightness.cycle(),
-                    CyclingParameter::Language => {
-                        let mut language =
-                            Language::from_lang_id(&crate::LANGUAGE_LOADER.current_languages()[0]);
-                        language.cycle();
-                        crate::request_language(&crate::LANGUAGE_LOADER, &[language.as_lang_id()]);
+                }
+                Task::none()
+            }
+            Message::SelectLanguage(lang) => {
+                self.edited_settings.as_mut().unwrap().pending_language = Some(lang);
+                Task::none()
+            }
+            Message::LanguageSelectComplete { canceled } => {
+                let settings = self.edited_settings.as_mut().unwrap();
+                if !canceled {
+                    if let Some(lang) = settings.pending_language {
+                        let original = settings.original_language.unwrap_or(Language::English);
+                        let needs_restart = font_family_id(original) != font_family_id(lang);
+                        self.config.language = Some(lang);
+                        confy::store(crate::APP_NAME, None, &self.config).unwrap();
+                        if needs_restart {
+                            // Kill the simulator child before exiting so it doesn't linger.
+                            if let Some(mut child) = self.sim_child.take() {
+                                let _ = child.kill();
+                            }
+                            // Spawn a fresh copy of the app — it will read the saved language from
+                            // config and start with the correct default font.
+                            if let Ok(exe) = std::env::current_exe() {
+                                let _ = std::process::Command::new(exe).spawn();
+                            }
+                            std::process::exit(0);
+                        }
+                        // Apply the new language to the running UI (same font family, no restart needed).
+                        crate::request_language(&crate::LANGUAGE_LOADER, &[lang.as_lang_id()]);
                     }
                 }
+                settings.pending_language = None;
+                settings.original_language = None;
+                if let AppState::EditGameConfig(ref mut page) = self.app_state {
+                    *page = ConfigPage::App;
+                }
+                trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
             Message::RequestRemoteId => {
@@ -2386,6 +2426,14 @@ impl RefBoxApp {
             background_color: WINDOW_BACKGROUND,
             text_color: BLACK,
         }
+    }
+}
+
+fn font_family_id(lang: Language) -> u8 {
+    match lang {
+        Language::Korean | Language::Japanese | Language::Mandarin => 1,
+        Language::Thai => 2,
+        _ => 0,
     }
 }
 

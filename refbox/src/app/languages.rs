@@ -19,6 +19,7 @@ pub enum Language {
     Malay,
     Portuguese,
     Thai,
+    Turkish,
 }
 
 impl Language {
@@ -38,6 +39,7 @@ impl Language {
             Self::Malay => LanguageIdentifier::from_bytes(b"ms-MY").unwrap(),
             Self::Portuguese => LanguageIdentifier::from_bytes(b"pt-PT").unwrap(),
             Self::Thai => LanguageIdentifier::from_bytes(b"th-TH").unwrap(),
+            Self::Turkish => LanguageIdentifier::from_bytes(b"tr-TR").unwrap(),
         }
     }
 
@@ -70,6 +72,8 @@ impl Language {
             Self::Portuguese
         } else if lang_id.matches(&"th".parse::<LanguageIdentifier>().unwrap(), false, true) {
             Self::Thai
+        } else if lang_id.matches(&"tr".parse::<LanguageIdentifier>().unwrap(), false, true) {
+            Self::Turkish
         } else {
             error!("Unsupported language: {}", lang_id);
             Self::English // Default to English if unsupported
@@ -92,6 +96,7 @@ impl Language {
             Self::Malay => "BATAL",
             Self::Portuguese => "CANCELAR",
             Self::Thai => "ยกเลิก",
+            Self::Turkish => "İPTAL",
         }
     }
 
@@ -111,6 +116,7 @@ impl Language {
             Self::Malay => "SELESAI",
             Self::Portuguese => "CONCLUÍDO",
             Self::Thai => "เสร็จสิ้น",
+            Self::Turkish => "TAMAM",
         }
     }
 
@@ -130,6 +136,7 @@ impl Language {
             Self::Malay => "MULAKAN SEMULA",
             Self::Portuguese => "REINICIAR PARA APLICAR",
             Self::Thai => "รีสตาร์ทเพื่อใช้งาน",
+            Self::Turkish => "UYGULAMAK İÇİN YENİDEN BAŞLAT",
         }
     }
 }
@@ -150,7 +157,8 @@ impl Cyclable for Language {
             Self::Japanese => Self::Malay,
             Self::Malay => Self::Portuguese,
             Self::Portuguese => Self::Thai,
-            Self::Thai => Self::English,
+            Self::Thai => Self::Turkish,
+            Self::Turkish => Self::English,
         }
     }
 }

@@ -850,6 +850,51 @@ pub(super) fn make_multi_label_button<'a, Message: 'a + Clone, T: IntoFragment<'
     .width(Length::Fill)
 }
 
+pub(super) enum NameLines<T> {
+    /// Name at the app-default text size. Used for short names like "TÜRKÇE".
+    OneLine(T),
+    /// Name at SMALL_TEXT. Used for long names like "BAHASA INDONESIA" that don't
+    /// comfortably fit at the default size alongside the UNVERIFIED note below them.
+    OneLineSmall(T),
+}
+
+pub(super) fn make_lang_button_with_note<'a, Message, T>(
+    main: NameLines<T>,
+    note: T,
+    font: Option<iced_core::Font>,
+) -> Button<'a, Message>
+where
+    Message: 'a + Clone,
+    T: IntoFragment<'a>,
+{
+    let with_font = |t: Text<'a>| -> Text<'a> { if let Some(f) = font { t.font(f) } else { t } };
+    let note_text = with_font(
+        text(note)
+            .size(SMALL_TEXT)
+            .align_x(Horizontal::Left)
+            .width(Length::Shrink),
+    );
+    let name_text = match main {
+        NameLines::OneLine(name) => {
+            with_font(text(name).align_x(Horizontal::Left).width(Length::Shrink))
+        }
+        NameLines::OneLineSmall(name) => with_font(
+            text(name)
+                .size(SMALL_TEXT)
+                .align_x(Horizontal::Left)
+                .width(Length::Shrink),
+        ),
+    };
+    let name_column = column![
+        container(name_text).center_x(Length::Fill),
+        container(note_text).center_x(Length::Fill),
+    ];
+    button(container(name_column.width(Length::Fill)).center(Length::Fill))
+        .padding(PADDING)
+        .height(Length::Fixed(MIN_BUTTON_SIZE))
+        .width(Length::Fill)
+}
+
 pub fn centered_text<'a, T: IntoFragment<'a>>(label: T) -> Text<'a> {
     text(label)
         .align_y(Vertical::Center)

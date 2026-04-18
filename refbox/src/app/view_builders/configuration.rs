@@ -1037,11 +1037,20 @@ fn make_language_select_page<'a>(
         style: iced_core::font::Style::Normal,
     };
 
-    // Font to apply to Cancel/Done/Restart text so they render in the currently selected script.
+    let latin_font = iced_core::Font {
+        family: iced_core::font::Family::Name("Roboto"),
+        weight: iced_core::font::Weight::Medium,
+        stretch: iced_core::font::Stretch::Normal,
+        style: iced_core::font::Style::Normal,
+    };
+
+    // Font to apply to Cancel/Done/Restart text so they render in the target language's script
+    // regardless of the app's current default font. Without an explicit Latin arm, Turkish text
+    // like "İPTAL" or "BAŞLAT" renders as tofu when the app is currently in a CJK/Thai locale.
     let selected_font: Option<iced_core::Font> = match selected {
         Language::Korean | Language::Japanese | Language::Mandarin => Some(cjk_font),
         Language::Thai => Some(thai_font),
-        _ => None,
+        _ => Some(latin_font),
     };
 
     // A restart is needed when switching between Latin and CJK font families.
@@ -1069,56 +1078,126 @@ fn make_language_select_page<'a>(
             .into()
     };
 
+    // Button variant for unverified translations: shows native name plus a small
+    // "(UNVERIFIED)" note in that language's own script. The note text is hardcoded
+    // in each target language, not routed through fl!, because fl! always renders
+    // in the operator's current locale — but each button must label itself.
+    let lang_btn_note = |lang: Language,
+                         main: NameLines<&'static str>,
+                         note: &'static str,
+                         font: Option<iced_core::Font>|
+     -> Element<'a, Message> {
+        let style = if lang == selected {
+            blue_selected_button
+        } else {
+            light_gray_button
+        };
+        make_lang_button_with_note(main, note, font)
+            .style(style)
+            .width(Length::Fill)
+            .on_press(Message::SelectLanguage(lang))
+            .into()
+    };
+
     // Languages sorted alphabetically by romanized native name:
     // Bahasa Indonesia(B), Bahasa Melayu(B), Deutsch(D), English(E),
     // Español(E), Filipino(F), Français(F), Hangugeo/한국어(H), Italiano(I),
-    // Nederlands(N), Nihongo/日本語(N), Português(P), Thai/ภาษาไทย(T), Zhōngwén/中文(Z)
-    let bahasa_indonesia_style = if selected == Language::Indonesian {
-        blue_selected_button
-    } else {
-        light_gray_button
-    };
-    let bahasa_melayu_style = if selected == Language::Malay {
-        blue_selected_button
-    } else {
-        light_gray_button
-    };
+    // Nederlands(N), Nihongo/日本語(N), Português(P), Thai/ภาษาไทย(T),
+    // Türkçe(T), Zhōngwén/中文(Z)
+    //
+    // English, Spanish, and French are considered verified. Every other language
+    // gets a small "(UNVERIFIED)" note in its own language, signalling to operators
+    // that a native speaker has not yet reviewed the translation.
     column![
         make_game_time_button(snapshot, false, true, mode, clock_running),
         row![
-            make_multi_label_button(("BAHASA", "INDONESIA"))
-                .style(bahasa_indonesia_style)
-                .width(Length::Fill)
-                .on_press(Message::SelectLanguage(Language::Indonesian)),
-            make_multi_label_button(("BAHASA", "MELAYU"))
-                .style(bahasa_melayu_style)
-                .width(Length::Fill)
-                .on_press(Message::SelectLanguage(Language::Malay)),
-            lang_btn(Language::German, "DEUTSCH", None),
+            lang_btn_note(
+                Language::Indonesian,
+                NameLines::OneLineSmall("BAHASA INDONESIA"),
+                "(BELUM DIVERIFIKASI)",
+                Some(latin_font),
+            ),
+            lang_btn_note(
+                Language::Malay,
+                NameLines::OneLineSmall("BAHASA MELAYU"),
+                "(BELUM DISAHKAN)",
+                Some(latin_font),
+            ),
+            lang_btn_note(
+                Language::German,
+                NameLines::OneLine("DEUTSCH"),
+                "(NICHT VERIFIZIERT)",
+                Some(latin_font),
+            ),
             lang_btn(Language::English, "ENGLISH", None),
         ]
         .spacing(SPACING)
         .height(Length::Fill),
         row![
             lang_btn(Language::Spanish, "ESPAÑOL", None),
-            lang_btn(Language::Tagalog, "FILIPINO", None),
+            lang_btn_note(
+                Language::Tagalog,
+                NameLines::OneLine("FILIPINO"),
+                "(HINDI PA NA-VERIFY)",
+                Some(latin_font),
+            ),
             lang_btn(Language::French, "FRANÇAIS", None),
-            lang_btn(Language::Korean, "한국어", Some(cjk_font)),
+            lang_btn_note(
+                Language::Korean,
+                NameLines::OneLine("한국어"),
+                "(검증되지 않음)",
+                Some(cjk_font),
+            ),
         ]
         .spacing(SPACING)
         .height(Length::Fill),
         row![
-            lang_btn(Language::Italian, "ITALIANO", None),
-            lang_btn(Language::Dutch, "NEDERLANDS", None),
-            lang_btn(Language::Japanese, "日本語", Some(cjk_font)),
-            lang_btn(Language::Portuguese, "PORTUGUÊS", None),
+            lang_btn_note(
+                Language::Italian,
+                NameLines::OneLine("ITALIANO"),
+                "(NON VERIFICATO)",
+                Some(latin_font),
+            ),
+            lang_btn_note(
+                Language::Dutch,
+                NameLines::OneLine("NEDERLANDS"),
+                "(NIET GEVERIFIEERD)",
+                Some(latin_font),
+            ),
+            lang_btn_note(
+                Language::Japanese,
+                NameLines::OneLine("日本語"),
+                "(未検証)",
+                Some(cjk_font),
+            ),
+            lang_btn_note(
+                Language::Portuguese,
+                NameLines::OneLine("PORTUGUÊS"),
+                "(NÃO VERIFICADO)",
+                Some(latin_font),
+            ),
         ]
         .spacing(SPACING)
         .height(Length::Fill),
         row![
-            lang_btn(Language::Thai, "ภาษาไทย", Some(thai_font)),
-            lang_btn(Language::Mandarin, "中文", Some(cjk_font)),
-            horizontal_space(),
+            lang_btn_note(
+                Language::Thai,
+                NameLines::OneLine("ภาษาไทย"),
+                "(ยังไม่ได้ตรวจสอบ)",
+                Some(thai_font),
+            ),
+            lang_btn_note(
+                Language::Turkish,
+                NameLines::OneLine("TÜRKÇE"),
+                "(DOĞRULANMAMIŞ)",
+                Some(latin_font),
+            ),
+            lang_btn_note(
+                Language::Mandarin,
+                NameLines::OneLine("中文"),
+                "(未验证)",
+                Some(cjk_font),
+            ),
             horizontal_space(),
         ]
         .spacing(SPACING)

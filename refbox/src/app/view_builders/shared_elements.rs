@@ -23,7 +23,7 @@ use uwh_common::{
         GamePeriod, GameSnapshot, Infraction, InfractionSnapshot, PenaltySnapshot, PenaltyTime,
         TimeoutSnapshot,
     },
-    uwhportal::schedule::{Game, GameList, ResultOf, ScheduledTeam, TeamList},
+    uwhportal::schedule::{Game, GameList, ResultOf, Schedule, ScheduledTeam, TeamList},
 };
 
 macro_rules! column {
@@ -733,11 +733,11 @@ pub(super) fn config_string(
     snapshot: &GameSnapshot,
     config: &GameConfig,
     using_uwhportal: bool,
-    games: Option<&GameList>,
+    schedule: Option<&Schedule>,
     teams: Option<&TeamList>,
-    fouls_and_warnings: bool,
 ) -> String {
     const TEAM_NAME_LEN_LIMIT: usize = 40;
+    let games = schedule.map(|s| &s.games);
     let (result_string, _) = config_string_game_num(snapshot, using_uwhportal, games);
     let mut result = result_string;
     let (_, result_u32) = config_string_game_num(snapshot, using_uwhportal, games);
@@ -757,8 +757,6 @@ pub(super) fn config_string(
             }
         }
     }
-
-    let unknown = &fl!("unknown");
 
     result += &fl!(
         "game-config",
@@ -782,20 +780,90 @@ pub(super) fn config_string(
         );
     }
 
+    let stop_clock = if let Some(sched) = schedule {
+        if let Some(timing_rule) = sched.get_game_timing(&game_number) {
+            bool_string(timing_rule.last_2_min_stop_time)
+        } else {
+            fl!("unknown")
+        }
+    } else {
+        fl!("unknown")
+    };
     result += "\n";
-    result += &fl!("stop-clock-last-2", stop_clock = unknown);
+    result += &fl!("stop-clock-last-2", stop_clock = stop_clock);
     result += "\n";
 
-    if !fouls_and_warnings {
-        result += &fl!(
-            "ref-list",
-            chief_ref = unknown,
-            timer = unknown,
-            water_ref_1 = unknown,
-            water_ref_2 = unknown,
-            water_ref_3 = unknown
-        );
+    let unknown = fl!("unknown");
+    let mut chief_ref = unknown.clone();
+    let mut timer = unknown.clone();
+    let mut water_ref_1 = unknown.clone();
+    let mut water_ref_2 = unknown.clone();
+    let mut water_ref_3 = unknown.clone();
+    let mut has_individual_refs = false;
+
+    let simple_game_number = if let Some(games) = games {
+        if let Some(game) = games.get(&game_number) {
+            if let Some(refs) = &game.referee_assignments {
+                for ref_assignment in refs {
+                    if ref_assignment.user_id.is_some() {
+                        has_individual_refs = true;
+                        match ref_assignment.role.as_str() {
+                            "Chief Ref" => chief_ref = ref_assignment.identifier.clone(),
+                            "Timer" => timer = ref_assignment.identifier.clone(),
+                            "Water Ref 1" => water_ref_1 = ref_assignment.identifier.clone(),
+                            "Water Ref 2" => water_ref_2 = ref_assignment.identifier.clone(),
+                            "Water Ref 3" => water_ref_3 = ref_assignment.identifier.clone(),
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            Some(game.number.clone())
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    if !has_individual_refs {
+        if let Some(sched) = schedule {
+            if let Some(refs_by_game) = &sched.referees_by_game_number {
+                let lookup_key = simple_game_number.as_ref().unwrap_or(&game_number);
+                if let Some(game_refs) = refs_by_game.get(lookup_key) {
+                    let ref_team = game_refs
+                        .referees
+                        .as_ref()
+                        .and_then(|r| r.team.as_ref())
+                        .and_then(|t| t.name.clone())
+                        .unwrap_or_else(|| unknown.clone());
+
+                    let ts_keeper_team = game_refs
+                        .time_or_score_keeper
+                        .as_ref()
+                        .and_then(|r| r.team.as_ref())
+                        .and_then(|t| t.name.clone())
+                        .unwrap_or_else(|| unknown.clone());
+
+                    result += &fl!(
+                        "team-ref-list",
+                        ref_team = ref_team,
+                        ts_keeper_team = ts_keeper_team
+                    );
+                    return result;
+                }
+            }
+        }
     }
+
+    result += &fl!(
+        "ref-list",
+        chief_ref = chief_ref,
+        timer = timer,
+        water_ref_1 = water_ref_1,
+        water_ref_2 = water_ref_2,
+        water_ref_3 = water_ref_3
+    );
 
     result
 }

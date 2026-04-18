@@ -198,6 +198,48 @@ pub struct FinalPlacingSource {
 
 pub type GameNumber = String;
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RefereeAssignment {
+    pub identifier: String,
+    pub role: String,
+    #[serde(rename = "userId")]
+    pub user_id: Option<String>,
+    #[serde(rename = "teamId")]
+    pub team_id: Option<TeamId>,
+    pub comments: Option<String>,
+}
+
+/// Basic team info for team referee assignments
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TeamRefInfo {
+    #[serde(default)]
+    pub id: Option<TeamId>,
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+/// Team referee assignment — which team provides referees for a role
+#[serde_with::skip_serializing_none]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TeamRefAssignment {
+    #[serde(default)]
+    pub team: Option<TeamRefInfo>,
+}
+
+/// Per-game team referee assignments (used when teams fill referee roles)
+#[serde_with::skip_serializing_none]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GameReferees {
+    #[serde(default, rename = "timeOrScoreKeeper")]
+    pub time_or_score_keeper: Option<TeamRefAssignment>,
+    #[serde(default, rename = "timeOrScoreHelper")]
+    pub time_or_score_helper: Option<TeamRefAssignment>,
+    #[serde(default)]
+    pub referees: Option<TeamRefAssignment>,
+}
+
+pub type RefereesByGameNumber = IndexMap<GameNumber, GameReferees>;
+
 #[serde_with::skip_serializing_none]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Game {
@@ -209,6 +251,8 @@ pub struct Game {
     pub court: String,
     #[serde(with = "item_name", rename = "timingRule")]
     pub timing_rule: String,
+    #[serde(rename = "refereeAssignments")]
+    pub referee_assignments: Option<Vec<RefereeAssignment>>,
     pub description: Option<String>,
 }
 
@@ -223,6 +267,8 @@ pub struct TimingRule {
     pub overtime_allowed: bool,
     #[serde(rename = "suddenDeathAllowed")]
     pub sudden_death_allowed: bool,
+    #[serde(default, rename = "last2minStopTime")]
+    pub last_2_min_stop_time: bool,
     #[serde(with = "secs_only_duration", rename = "halfPlayDuration")]
     pub half_play_duration: Duration,
     #[serde(with = "secs_only_duration", rename = "halfTimeDuration")]
@@ -250,6 +296,7 @@ impl Into<GameConfig> for TimingRule {
             team_timeouts_counted_per_half,
             overtime_allowed,
             sudden_death_allowed,
+            last_2_min_stop_time: _,
             half_play_duration,
             half_time_duration,
             team_timeout_duration,
@@ -443,6 +490,8 @@ pub struct Schedule {
     pub standings_order: Option<Vec<usize>>,
     #[serde(rename = "finalResultsOrder")]
     pub final_results_order: Option<Vec<usize>>,
+    #[serde(default, rename = "refereesByGameNumber")]
+    pub referees_by_game_number: Option<RefereesByGameNumber>,
 }
 
 impl Schedule {
@@ -799,6 +848,7 @@ mod tests {
             court: "A".to_string(),
             description: None,
             timing_rule: "RR".to_string(),
+            referee_assignments: None,
         };
         let serialized = serde_json::to_string(&game).unwrap();
         assert_eq!(
@@ -821,6 +871,7 @@ mod tests {
                 court: "A".to_string(),
                 description: None,
                 timing_rule: "RR".to_string(),
+                referee_assignments: None,
             }
         );
     }
@@ -833,6 +884,7 @@ mod tests {
             team_timeouts_counted_per_half: true,
             overtime_allowed: true,
             sudden_death_allowed: true,
+            last_2_min_stop_time: false,
             half_play_duration: Duration::from_secs(900),
             half_time_duration: Duration::from_secs(180),
             team_timeout_duration: Duration::from_secs(60),
@@ -845,7 +897,7 @@ mod tests {
         let serialized = serde_json::to_string(&timing_rule).unwrap();
         assert_eq!(
             serialized,
-            r#"{"name":"RR","teamTimeoutCount":1,"teamTimeoutsCountedPerHalf":true,"overtimeAllowed":true,"suddenDeathAllowed":true,"halfPlayDuration":900,"halfTimeDuration":180,"teamTimeoutDuration":60,"overtimeHalfPlayDuration":300,"overtimeHalfTimeDuration":180,"preOvertimeBreak":180,"preSuddenDeathDuration":60,"minimumBreak":240}"#
+            r#"{"name":"RR","teamTimeoutCount":1,"teamTimeoutsCountedPerHalf":true,"overtimeAllowed":true,"suddenDeathAllowed":true,"last2minStopTime":false,"halfPlayDuration":900,"halfTimeDuration":180,"teamTimeoutDuration":60,"overtimeHalfPlayDuration":300,"overtimeHalfTimeDuration":180,"preOvertimeBreak":180,"preSuddenDeathDuration":60,"minimumBreak":240}"#
         );
     }
 
@@ -861,6 +913,7 @@ mod tests {
                 team_timeouts_counted_per_half: true,
                 overtime_allowed: true,
                 sudden_death_allowed: true,
+                last_2_min_stop_time: false,
                 half_play_duration: Duration::from_secs(900),
                 half_time_duration: Duration::from_secs(180),
                 team_timeout_duration: Duration::from_secs(60),
@@ -1049,6 +1102,7 @@ mod tests {
                     court: "A".to_string(),
                     description: None,
                     timing_rule: "RR".to_string(),
+                    referee_assignments: None,
                 },
                 Game {
                     number: "2".to_string(),
@@ -1058,6 +1112,7 @@ mod tests {
                     court: "A".to_string(),
                     description: None,
                     timing_rule: "RR".to_string(),
+                    referee_assignments: None,
                 },
                 Game {
                     number: "3".to_string(),
@@ -1067,6 +1122,7 @@ mod tests {
                     court: "A".to_string(),
                     description: None,
                     timing_rule: "RR".to_string(),
+                    referee_assignments: None,
                 },
                 Game {
                     number: "4".to_string(),
@@ -1076,6 +1132,7 @@ mod tests {
                     court: "A".to_string(),
                     description: None,
                     timing_rule: "RR".to_string(),
+                    referee_assignments: None,
                 },
             ]
             .into_iter()
@@ -1142,6 +1199,7 @@ mod tests {
                 team_timeouts_counted_per_half: true,
                 overtime_allowed: true,
                 sudden_death_allowed: true,
+                last_2_min_stop_time: false,
                 half_play_duration: Duration::from_secs(900),
                 half_time_duration: Duration::from_secs(180),
                 team_timeout_duration: Duration::from_secs(60),
@@ -1153,6 +1211,7 @@ mod tests {
             }],
             standings_order: None,
             final_results_order: None,
+            referees_by_game_number: None,
         };
         let serialized = serde_json::to_string(&schedule).unwrap();
         let deserialized: serde_json::Value = serde_json::from_str(&serialized).unwrap();

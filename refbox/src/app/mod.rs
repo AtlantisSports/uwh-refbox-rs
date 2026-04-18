@@ -2310,7 +2310,7 @@ impl RefBoxApp {
                     data,
                     game_config,
                     self.using_uwhportal,
-                    self.schedule.as_ref().map(|s| &s.games),
+                    self.schedule.as_ref(),
                     self.config.track_fouls_and_warnings,
                     self.config.sound.sound_enabled && self.config.sound.manual_alarm_enabled,
                     self.mouse_alarm_held || self.spacebar_held,
@@ -2345,7 +2345,7 @@ impl RefBoxApp {
                 &self.config.game,
                 self.using_uwhportal,
                 is_refreshing,
-                self.schedule.as_ref().map(|s| &s.games)
+                self.schedule.as_ref()
             ),
             AppState::WarningsSummaryPage => build_warnings_summary_page(data),
             AppState::EditGameConfig(page) => build_game_config_edit_page(

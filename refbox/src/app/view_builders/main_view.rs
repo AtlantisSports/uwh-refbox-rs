@@ -8,14 +8,14 @@ use uwh_common::{
     color::Color as GameColor,
     config::Game as GameConfig,
     game_snapshot::{GamePeriod, GameSnapshot, PenaltyTime},
-    uwhportal::schedule::GameList,
+    uwhportal::schedule::Schedule,
 };
 
 pub(in super::super) fn build_main_view<'a>(
     data: ViewData<'_, '_>,
     game_config: &GameConfig,
     using_uwhportal: bool,
-    games: Option<&GameList>,
+    schedule: Option<&Schedule>,
     track_fouls_and_warnings: bool,
     manual_alarm_enabled: bool,
     alarm_held: bool,
@@ -218,9 +218,8 @@ pub(in super::super) fn build_main_view<'a>(
                     snapshot,
                     game_config,
                     using_uwhportal,
-                    games,
+                    schedule,
                     teams,
-                    track_fouls_and_warnings,
                 ))
                 .size(SMALL_TEXT)
                 .align_y(Vertical::Center)
@@ -233,10 +232,12 @@ pub(in super::super) fn build_main_view<'a>(
             .on_press(Message::ShowGameDetails)
         } else {
             button(
-                text(config_string_game_num(snapshot, using_uwhportal, games).0)
-                    .size(SMALL_TEXT)
-                    .align_y(Vertical::Center)
-                    .align_x(Horizontal::Left),
+                text(
+                    config_string_game_num(snapshot, using_uwhportal, schedule.map(|s| &s.games)).0,
+                )
+                .size(SMALL_TEXT)
+                .align_y(Vertical::Center)
+                .align_x(Horizontal::Left),
             )
             .padding(PADDING)
             .style(light_gray_button)

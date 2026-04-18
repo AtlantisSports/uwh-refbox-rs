@@ -68,3 +68,4 @@ What constraints does this create for future work?
 | [007](007-help-text-layout.md) | Help text layout and overflow | 2026-04-18 | proposed |
 | [008](008-game-block.md) | Game Block | 2026-04-18 | proposed |
 | [009](009-settings-navigation-layout.md) | Settings navigation and layout | 2026-04-19 | proposed |
+| [010](010-display-modes.md) | Display modes: dark and high-contrast | 2026-04-19 | proposed |

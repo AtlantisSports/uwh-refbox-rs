@@ -64,3 +64,4 @@ What constraints does this create for future work?
 | [003](003-scoresheet-style-architecture.md) | Scoresheet style architecture | 2026-04-12 | accepted |
 | [004](004-xlsx-user-templates.md) | User-provided XLSX scoresheet templates | 2026-04-12 | accepted |
 | [005](005-v040-feature-audit.md) | v0.4.0 feature audit and scope decisions | 2026-04-17 | accepted |
+| [006](006-multi-remote-alarm-buttons.md) | Multi-remote alarm buttons | 2026-04-18 | proposed |

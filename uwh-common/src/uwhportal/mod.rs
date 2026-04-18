@@ -8,7 +8,10 @@ use reqwest::{
 };
 use schedule::{EventId, GameNumber, TeamId, TeamList};
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, error::Error};
+use std::{
+    collections::{BTreeMap, HashMap},
+    error::Error,
+};
 
 pub mod schedule;
 
@@ -284,6 +287,76 @@ impl UwhPortalClient {
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(body)))?
             }
+        }
+    }
+
+    /// Fetch the public `/referees` endpoint for an event and build a map from
+    /// portal user ID to a display name.
+    ///
+    /// Response shape (per portal source, `EventRefereesController.cs`):
+    /// ```json
+    /// {
+    ///   "tournamentReferee": { "user": { "id", "name", "username" }, "rosterName" },
+    ///   "referees": {
+    ///     "dedicated":         [ { "user": {...}, "rosterName" }, ... ],
+    ///     "hybrid":            {...} | [ ... ],
+    ///     "timeOrScoreKeeper": [ ... ]
+    ///   }
+    /// }
+    /// ```
+    ///
+    /// Display-name preference, per-entry: non-empty `rosterName`, else `user.username`.
+    /// `user.name` is intentionally skipped — it is the user's full real name (PII),
+    /// and a chosen handle is more appropriate for an operator UI.
+    pub fn get_event_referee_name_map_from_referees(
+        &self,
+        event_id: &EventId,
+    ) -> impl std::future::Future<Output = Result<HashMap<String, String>, Box<dyn Error>>> + use<>
+    {
+        let url = format!(
+            "{}/api/events/{}/referees",
+            self.base_url,
+            event_id.partial()
+        );
+        let request = self.client.get(&url).send();
+
+        async move {
+            let response = request.await?;
+            if response.status() != StatusCode::OK {
+                warn!("uwhportal /referees failed, response: {:?}", response);
+                let body = response.text().await?;
+                return Err(Box::new(ApiError::new(body)).into());
+            }
+            let body = response.json::<serde_json::Value>().await?;
+            let mut map = HashMap::new();
+
+            // Collect every referee-like object into a flat list regardless of category.
+            let mut all_items: Vec<&serde_json::Value> = Vec::new();
+            if body["tournamentReferee"].is_object() {
+                all_items.push(&body["tournamentReferee"]);
+            }
+            if let Some(cats) = body["referees"].as_object() {
+                for (_cat, val) in cats {
+                    if let Some(arr) = val.as_array() {
+                        all_items.extend(arr.iter());
+                    }
+                }
+            }
+
+            for item in all_items {
+                let uid = item["user"]["id"]
+                    .as_str()
+                    .or_else(|| item["userId"].as_str())
+                    .or_else(|| item["id"].as_str());
+                let name = item["rosterName"]
+                    .as_str()
+                    .filter(|s| !s.is_empty())
+                    .or_else(|| item["user"]["username"].as_str());
+                if let (Some(uid), Some(name)) = (uid, name) {
+                    map.insert(uid.to_string(), name.to_string());
+                }
+            }
+            Ok(map)
         }
     }
 

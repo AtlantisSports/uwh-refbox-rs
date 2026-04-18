@@ -6,6 +6,7 @@ light-team-name-caps = BLANC
 
 # Multipage 
 done = TERMINÉ
+restart-to-apply = REDÉMARRER POUR APPLIQUER
 cancel = ANNULER
 delete = SUPPRIMER
 back = RETOUR
@@ -279,6 +280,8 @@ ref-list = Arbitre en Chef: { $chief_ref }
     Arbitre Aquatique 1: { $water_ref_1 }
     Arbitre Aquatique 2: { $water_ref_2 }
     Arbitre Aquatique 3: { $water_ref_3 }
+team-ref-list = Arbitres: { $ref_team }
+    Chronométreur/Marqueur: { $ts_keeper_team }
 unknown = Inconnu
 ## Game time button
 next-game = MATCH SUIVANT

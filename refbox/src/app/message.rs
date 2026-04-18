@@ -1,4 +1,4 @@
-use super::fl;
+use super::{fl, languages::Language};
 use crate::{
     sound_controller::RemoteId,
     tournament_manager::{TournamentManager, penalty::PenaltyKind},
@@ -90,6 +90,10 @@ pub enum Message {
     ParameterSelected(ListableParameter, String),
     ToggleBoolParameter(BoolGameParameter),
     CycleParameter(CyclingParameter),
+    SelectLanguage(Language),
+    LanguageSelectComplete {
+        canceled: bool,
+    },
     RequestRemoteId,
     GotRemoteId(RemoteId),
     DeleteRemote(usize),
@@ -167,6 +171,8 @@ impl Message {
             | Self::SelectParameter(_)
             | Self::ParameterEditComplete { .. }
             | Self::ParameterSelected(_, _)
+            | Self::SelectLanguage(_)
+            | Self::LanguageSelectComplete { .. }
             | Self::RequestRemoteId
             | Self::GotRemoteId(_)
             | Self::DeleteRemote(_)
@@ -313,6 +319,11 @@ impl PartialEq for Message {
             (Self::ParameterSelected(a, b), Self::ParameterSelected(c, d)) => a == c && b == d,
             (Self::ToggleBoolParameter(a), Self::ToggleBoolParameter(b)) => a == b,
             (Self::CycleParameter(a), Self::CycleParameter(b)) => a == b,
+            (Self::SelectLanguage(a), Self::SelectLanguage(b)) => a == b,
+            (
+                Self::LanguageSelectComplete { canceled: a },
+                Self::LanguageSelectComplete { canceled: b },
+            ) => a == b,
             (Self::GotRemoteId(a), Self::GotRemoteId(b)) => a == b,
             (Self::DeleteRemote(a), Self::DeleteRemote(b)) => a == b,
             (Self::ConfirmationSelected(a), Self::ConfirmationSelected(b)) => a == b,
@@ -363,6 +374,8 @@ impl PartialEq for Message {
             | (Self::ParameterSelected(_, _), _)
             | (Self::ToggleBoolParameter(_), _)
             | (Self::CycleParameter(_), _)
+            | (Self::SelectLanguage(_), _)
+            | (Self::LanguageSelectComplete { .. }, _)
             | (Self::RequestRemoteId, _)
             | (Self::GotRemoteId(_), _)
             | (Self::DeleteRemote(_), _)
@@ -400,6 +413,7 @@ pub enum ConfigPage {
     Display,
     App,
     Remotes(usize, bool),
+    Language,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -450,7 +464,6 @@ pub enum CyclingParameter {
     UnderWaterVol,
     Mode,
     Brightness,
-    Language,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

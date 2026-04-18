@@ -42,6 +42,7 @@ mod sound_controller;
 mod tournament_manager;
 
 mod config;
+use app::languages::Language;
 use config::Config;
 
 const APP_NAME: &str = "refbox";
@@ -264,6 +265,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             } else {
                 sim_app::matrix_window_size(args.scale, spacing)
             },
+            position: window::Position::Specific(iced::Point::new(0.0, 40.0)),
             resizable: true,
             icon: Some(icon),
             ..Default::default()
@@ -383,6 +385,26 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         config.hardware.screen_y as f32,
     );
 
+    // If a language was saved from the previous session and no CLI override was given, apply it.
+    if LANGUAGE_OVERRIDE.lock().unwrap().is_none() {
+        if let Some(lang) = config.language {
+            *LANGUAGE_OVERRIDE.lock().unwrap() = Some(lang.as_lang_id());
+        }
+    }
+
+    // Choose the default font based on the active language. Iced sets the font once at startup
+    // and cannot change it at runtime, so a restart is required when switching between script
+    // families (e.g. Latin ↔ Korean). The language select screen uses explicit per-button fonts
+    // so all language names render correctly regardless of this default.
+    let saved_language = config.language.unwrap_or(Language::English);
+    let (default_font_family, default_font_weight) = match saved_language {
+        Language::Korean | Language::Japanese | Language::Mandarin => {
+            ("Noto Sans CJK KR", iced_core::font::Weight::Normal)
+        }
+        Language::Thai => ("Noto Sans Thai", iced_core::font::Weight::Normal),
+        _ => ("Roboto", iced_core::font::Weight::Medium),
+    };
+
     let flags = app::RefBoxAppFlags {
         config,
         serial_ports,
@@ -394,14 +416,22 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         list_all_events: args.all_events,
     };
 
+    // Roboto covers Latin scripts. The CJK subset covers Japanese, Korean, and Chinese
+    // characters, and the Thai subset covers Thai. All fonts are bundled — no system font
+    // install required. To regenerate subsets after updating translations, run:
+    //   just regen-cjk-font
+    let fonts = vec![
+        Cow::from(&include_bytes!("../resources/Roboto-Medium.ttf")[..]),
+        Cow::from(&include_bytes!("../resources/NotoSansCJK-Subset.otf")[..]),
+        Cow::from(&include_bytes!("../resources/NotoSansThai-Subset.ttf")[..]),
+    ];
+
     let settings = Settings {
         id: Some(APP_NAME.into()),
-        fonts: vec![Cow::from(
-            &include_bytes!("../resources/Roboto-Medium.ttf")[..],
-        )],
+        fonts,
         default_font: Font {
-            family: iced_core::font::Family::Name("Roboto"),
-            weight: iced_core::font::Weight::Medium,
+            family: iced_core::font::Family::Name(default_font_family),
+            weight: default_font_weight,
             stretch: iced_core::font::Stretch::Normal,
             style: iced_core::font::Style::Normal,
         },
@@ -411,6 +441,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     let window_settings = window::Settings {
         size: window_size,
+        position: window::Position::Centered,
         resizable: false,
         icon: Some(icon),
         ..Default::default()

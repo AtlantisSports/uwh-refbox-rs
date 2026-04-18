@@ -1,4 +1,5 @@
 use super::fl;
+use crate::app::languages::Language;
 use crate::sound_controller::SoundSettings;
 use derivative::Derivative;
 use enum_derive_2018::EnumFromStr;
@@ -97,6 +98,7 @@ pub struct Config {
     pub hardware: Hardware,
     pub uwhportal: UwhPortal,
     pub sound: SoundSettings,
+    pub language: Option<Language>,
 }
 
 impl Config {
@@ -111,6 +113,7 @@ impl Config {
             mut hardware,
             mut uwhportal,
             mut sound,
+            language,
         } = Default::default();
 
         if let Some(old_mode) = old.get("mode") {
@@ -158,6 +161,7 @@ impl Config {
             hardware,
             uwhportal,
             sound,
+            language,
         }
     }
 }

@@ -71,3 +71,13 @@ install-hooks:
     cp scripts/pre-commit .git/hooks/pre-commit
     chmod +x .git/hooks/pre-commit
     @echo "Pre-commit hook installed."
+
+# Regenerate the bundled CJK font subset from the Japanese, Korean, and Chinese translation files.
+# Run this any time those translations change. Requires: sudo apt-get install python3-fonttools
+regen-cjk-font:
+    python3 scripts/regen-cjk-font.py
+
+# Regenerate the bundled Thai font subset from the Thai translation file.
+# Run this any time the Thai translation changes. Requires: sudo apt-get install python3-fonttools
+regen-thai-font:
+    python3 scripts/regen-thai-font.py

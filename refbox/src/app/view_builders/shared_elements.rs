@@ -368,11 +368,19 @@ pub(super) fn make_game_time_button<'a>(
     }
 
     let make_time_view_row = |period_text, time_text, style: fn(&Theme) -> TextStyle| {
-        let per = text(period_text)
-            .style(style)
-            .width(Length::Fill)
-            .align_y(Vertical::Center)
-            .align_x(Horizontal::Right);
+        // Wrap period text in a right-aligned container so the text widget uses
+        // width(Shrink). This ensures iced's damage region starts from the text's
+        // actual left edge, preventing old glyph pixels from bleeding through when
+        // the period name changes (iced 0.13 damage tracking bug with aligned text).
+        let per = container(
+            text(period_text)
+                .style(style)
+                .width(Length::Shrink)
+                .align_y(Vertical::Center),
+        )
+        .width(Length::Fill)
+        .align_x(Horizontal::Right)
+        .align_y(Vertical::Center);
         let time = text(time_text)
             .style(style)
             .size(LARGE_TEXT)
@@ -792,19 +800,27 @@ pub(super) fn config_string(
     result
 }
 
-pub(super) fn make_button<'a, Message: Clone, T: IntoFragment<'a>>(
+pub(super) fn make_button<'a, Message: 'a + Clone, T: IntoFragment<'a>>(
     label: T,
 ) -> Button<'a, Message> {
-    button(centered_text(label))
+    let t = text(label)
+        .align_x(Horizontal::Left)
+        .align_y(Vertical::Center)
+        .width(Length::Shrink);
+    button(container(t).center(Length::Fill))
         .padding(PADDING)
         .height(Length::Fixed(MIN_BUTTON_SIZE))
         .width(Length::Fill)
 }
 
-pub(super) fn make_smaller_button<'a, Message: Clone, T: IntoFragment<'a>>(
+pub(super) fn make_smaller_button<'a, Message: 'a + Clone, T: IntoFragment<'a>>(
     label: T,
 ) -> Button<'a, Message> {
-    button(centered_text(label))
+    let t = text(label)
+        .align_x(Horizontal::Left)
+        .align_y(Vertical::Center)
+        .width(Length::Shrink);
+    button(container(t).center(Length::Fill))
         .padding(PADDING)
         .height(Length::Fixed(XS_BUTTON_SIZE))
         .width(Length::Fill)
@@ -813,15 +829,17 @@ pub(super) fn make_smaller_button<'a, Message: Clone, T: IntoFragment<'a>>(
 pub(super) fn make_multi_label_button<'a, Message: 'a + Clone, T: IntoFragment<'a>>(
     labels: (T, T),
 ) -> Button<'a, Message> {
+    let t0 = text(labels.0)
+        .align_x(Horizontal::Left)
+        .width(Length::Shrink);
+    let t1 = text(labels.1)
+        .align_x(Horizontal::Left)
+        .width(Length::Shrink);
     button(
         container(
             column![
-                text(labels.0)
-                    .align_x(Horizontal::Center)
-                    .width(Length::Fill),
-                text(labels.1)
-                    .align_x(Horizontal::Center)
-                    .width(Length::Fill),
+                container(t0).center_x(Length::Fill),
+                container(t1).center_x(Length::Fill),
             ]
             .width(Length::Fill),
         )
@@ -840,11 +858,16 @@ pub fn centered_text<'a, T: IntoFragment<'a>>(label: T) -> Text<'a> {
         .height(Length::Fill)
 }
 
-pub(super) fn make_small_button<'a, Message: Clone, T: IntoFragment<'a>>(
+pub(super) fn make_small_button<'a, Message: 'a + Clone, T: IntoFragment<'a>>(
     label: T,
     size: f32,
 ) -> Button<'a, Message> {
-    button(centered_text(label).size(size))
+    let t = text(label)
+        .align_x(Horizontal::Left)
+        .align_y(Vertical::Center)
+        .width(Length::Shrink)
+        .size(size);
+    button(container(t).center(Length::Fill))
         .width(Length::Fixed(MIN_BUTTON_SIZE))
         .height(Length::Fixed(MIN_BUTTON_SIZE))
 }

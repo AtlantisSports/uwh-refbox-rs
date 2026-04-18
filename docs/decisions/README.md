@@ -67,3 +67,4 @@ What constraints does this create for future work?
 | [006](006-multi-remote-alarm-buttons.md) | Multi-remote alarm buttons | 2026-04-18 | proposed |
 | [007](007-help-text-layout.md) | Help text layout and overflow | 2026-04-18 | proposed |
 | [008](008-game-block.md) | Game Block | 2026-04-18 | proposed |
+| [009](009-settings-navigation-layout.md) | Settings navigation and layout | 2026-04-19 | proposed |

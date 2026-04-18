@@ -270,12 +270,16 @@ fn details_strings(
                     for ref_assignment in refs {
                         if ref_assignment.user_id.is_some() {
                             has_individual_refs = true;
+                            let display = ref_assignment
+                                .display_name
+                                .clone()
+                                .unwrap_or_else(|| unknown.clone());
                             match ref_assignment.role.as_str() {
-                                "Chief Ref" => chief_ref = ref_assignment.identifier.clone(),
-                                "Timer" => timer = ref_assignment.identifier.clone(),
-                                "Water Ref 1" => water_ref_1 = ref_assignment.identifier.clone(),
-                                "Water Ref 2" => water_ref_2 = ref_assignment.identifier.clone(),
-                                "Water Ref 3" => water_ref_3 = ref_assignment.identifier.clone(),
+                                "Chief" => chief_ref = display,
+                                "TimeOrScoreKeeper" => timer = display,
+                                "Water1" => water_ref_1 = display,
+                                "Water2" => water_ref_2 = display,
+                                "Water3" => water_ref_3 = display,
                                 _ => {}
                             }
                         }

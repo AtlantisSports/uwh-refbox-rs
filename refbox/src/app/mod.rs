@@ -270,14 +270,12 @@ impl RefBoxApp {
                 // Fetch referee display names from the public /referees endpoint.
                 // If the call fails (e.g. no network), silently proceed without names.
                 let name_map = names_req.await.unwrap_or_default();
-                if !name_map.is_empty() {
-                    for game in schedule.games.values_mut() {
-                        if let Some(assignments) = &mut game.referee_assignments {
-                            for assignment in assignments.iter_mut() {
-                                if let Some(uid) = &assignment.user_id {
-                                    if let Some(name) = name_map.get(uid) {
-                                        assignment.display_name = Some(name.clone());
-                                    }
+                for game in schedule.games.values_mut() {
+                    if let Some(assignments) = &mut game.referee_assignments {
+                        for assignment in assignments.iter_mut() {
+                            if let Some(uid) = &assignment.user_id {
+                                if let Some(name) = name_map.get(uid) {
+                                    assignment.display_name = Some(name.clone());
                                 }
                             }
                         }

@@ -69,3 +69,5 @@ What constraints does this create for future work?
 | [008](008-game-block.md) | Game Block | 2026-04-18 | proposed |
 | [009](009-settings-navigation-layout.md) | Settings navigation and layout | 2026-04-19 | proposed |
 | [010](010-display-modes.md) | Display modes: dark and high-contrast | 2026-04-19 | proposed |
+| [011](011-portal-health-indicator.md) | Portal health indicator, per-game confirmation, retry queue | 2026-04-19 | proposed |
+| [013](013-cold-restart-state-recovery.md) | Cold-restart state recovery | 2026-04-19 | proposed |

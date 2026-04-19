@@ -40,17 +40,20 @@ proactively rather than waiting for it to bite.
 
 Design decisions made during brainstorming:
 
-- **Shape of the indicator.** A small coloured dot on the left side
-  of the top time banner. Not a UWH-Portal logo. The operator wanted
-  a simple "is it OK" signal, not branding.
+- **Shape of the indicator.** A square clickable tile on the left end
+  of the top time banner, containing the UWH Portal compact logo
+  above a coloured status dot. Tile background is `LIGHT_GRAY` so it
+  reads as a tappable panel against the banner's medium-gray
+  background.
 - **Colour meanings.** Green = last portal exchange succeeded.
   Yellow = a check is in flight or a recent call degraded. Red =
   a call failed and something needs attention (queued retry,
   rejected submission, or expired token).
 - **Per-event overlays.** A green checkmark briefly replaces the dot
-  for ~10 seconds after a successful submission. A red exclamation
-  mark persists on top of the dot as long as at least one item needs
-  attention. Tapping the dot/mark opens the detail page.
+  for ~10 seconds after a successful submission, then snaps back.
+  A red exclamation mark persists on top of the dot as long as at
+  least one item needs attention. Tapping the tile opens the detail
+  page.
 - **Detail-page layout.** Matches the Select Event scrollable page —
   4/5-width list on the left with scroll up/down arrows, 1/5-width
   side column with only a `BACK` button at the bottom. Each list row
@@ -71,16 +74,19 @@ Design decisions made during brainstorming:
 
 ## Decision
 
-Introduce a **Portal Health Indicator** — a dot + overlay icon on the
-time banner backed by a new `portal_manager` module that tracks
-submission state, retries failures from disk, and surfaces problems
-to the operator.
+Introduce a **Portal Health Indicator** — a clickable tile on the
+left end of the time banner (UWH Portal logo above a coloured status
+dot) backed by a new `portal_manager` module that tracks submission
+state, retries failures from disk, and surfaces problems to the
+operator.
 
 ### Status indicator
 
-- A small coloured circle ("dot") is rendered at the left side of the
-  top time banner on every page that already shows the time banner.
-- Three base colours:
+- A square clickable tile is rendered at the left end of the top
+  time banner on every page that already shows the banner. The tile
+  holds the UWH Portal compact logo above a coloured status dot, on
+  a `LIGHT_GRAY` background so the tile reads as tappable.
+- The dot's three base colours:
   - **Green** — last portal exchange succeeded, queue is empty, token
     is valid.
   - **Yellow** — a health check is currently in flight, or the most
@@ -90,12 +96,12 @@ to the operator.
     has expired.
 - Overlay icons:
   - **Green checkmark** replaces the dot for ~10 seconds immediately
-    after a successful score submission, then fades back to the plain
-    dot.
+    after a successful score submission, then snaps back to the
+    plain dot.
   - **Red exclamation mark** persists on top of the dot as long as the
     detail page would have anything in its "attention needed" list.
     It clears only when every attention item is resolved.
-- Tapping the dot (any state) opens the Detail Page.
+- Tapping the tile (any state) opens the Detail Page.
 
 ### Detail page
 
@@ -187,6 +193,11 @@ After this change:
 - No change to the wire format between refbox and overlay.
 
 ## Open design questions (to resolve during implementation)
+
+> **Status:** All five questions below have since been resolved
+> during spec-writing on 2026-04-19. The resolutions are captured in
+> `docs/superpowers/specs/2026-04-19-portal-health-indicator-design.md`.
+> The original question text is preserved here for historical context.
 
 - **Exact dot placement in the time banner.** Two options: (a) inject
   the dot into the existing `make_game_time_button` row, or (b) add a

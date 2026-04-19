@@ -5,13 +5,24 @@
 
 ## Context
 
-A tournament operator has reported games where the score appeared in
-the refbox but never reached the UWH Portal. The operator had no way
+At the 2026-04-18 tournament, a block of games was reported as
+missing from the UWH Portal — scores appeared in the refbox at the
+time of play but never reached the portal. The operator had no way
 to notice this during the tournament — submission is silent today.
 
-Investigation of `refbox/src/app/mod.rs` identified the cause. When a
-game ends, `handle_game_end()` calls `post_game_score()` and
-`post_game_stats()` as fire-and-forget tasks. Each of those tasks:
+A detailed log analysis (see ADR 013) later established that the
+immediate cause of those specific missing games was different from
+what was first suspected: the refbox cold-started mid-tournament
+and the operator replayed earlier games rather than advancing to
+the next scheduled one, so games 10-12 never reached
+`handle_game_end()` inside the refbox at all. That separate
+problem is addressed in ADR 013.
+
+The investigation did, however, surface a real architectural
+weakness in `refbox/src/app/mod.rs` that is worth fixing
+independently. When a game ends, `handle_game_end()` calls
+`post_game_score()` and `post_game_stats()` as fire-and-forget
+tasks. Each of those tasks:
 
 - logs the error if the HTTP call fails, and
 - returns `Message::NoAction` — the UI is never told that anything
@@ -19,24 +30,13 @@ game ends, `handle_game_end()` calls `post_game_score()` and
 
 There is no retry, no persistence across crashes, and no visible
 indicator of portal health. A transient network drop during the last
-30 seconds of a game silently discards that game's score. The only
-artefact is a line in the Windows log file at
+30 seconds of a game would silently discard that game's score. The
+only artefact is a line in the Windows log file at
 `%LOCALAPPDATA%\uwh-refbox-logs\refbox-log.txt` which the operator
-would never look at during play.
-
-Related confirmed non-issues (ruled out during investigation):
-
-- **"End game and apply" on a game-number change** was flagged as a
-  suspect but is working as designed. The confirmation dialog offers
-  "Keep current game" as a sibling option, so choosing "End" is an
-  explicit acknowledgement that the current game was started in
-  error.
-- **`using_uwhportal` starting `false` at launch** is real, but the
-  reporting operator knew about it and the game-config info confirmed
-  the portal was connected.
-
-So the remaining candidate cause — silent submission failure during
-or after the game — is what this ADR addresses.
+would never look at during play. A future incident — expired token,
+flaky network, portal outage mid-tournament — would hit exactly
+that silent-failure path. This ADR addresses that weakness
+proactively rather than waiting for it to bite.
 
 Design decisions made during brainstorming:
 

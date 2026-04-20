@@ -11,6 +11,8 @@ restart-to-apply = MULAI ULANG UNTUK MENERAPKAN
 cancel = BATAL
 delete = HAPUS
 back = KEMBALI
+apply = TERAPKAN
+user-options = OPSI PENGGUNA
 new = BARU
 
 # Edit Penalti

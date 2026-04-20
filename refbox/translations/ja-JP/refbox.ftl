@@ -11,6 +11,8 @@ restart-to-apply = 再起動して適用
 cancel = キャンセル
 delete = 削除
 back = 戻る
+apply = 適用
+user-options = ユーザー設定
 new = 新規
 
 # ペナルティ編集

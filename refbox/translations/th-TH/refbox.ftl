@@ -11,6 +11,8 @@ restart-to-apply = รีสตาร์ทเพื่อใช้งาน
 cancel = ยกเลิก
 delete = ลบ
 back = กลับ
+apply = ใช้
+user-options = ตัวเลือกผู้ใช้
 new = ใหม่
 
 # แก้ไขโทษ

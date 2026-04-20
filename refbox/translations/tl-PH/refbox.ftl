@@ -11,6 +11,8 @@ restart-to-apply = I-RESTART UPANG ILAPAT
 cancel = KANSELAHIN
 delete = BURAHIN
 back = BUMALIK
+apply = ILAPAT
+user-options = MGA OPSYON NG USER
 new = BAGO
 
 # Pag-edit ng Penalty

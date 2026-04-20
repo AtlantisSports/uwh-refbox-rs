@@ -11,6 +11,8 @@ restart-to-apply = NEU STARTEN ZUM ANWENDEN
 cancel = ABBRECHEN
 delete = LÖSCHEN
 back = ZURÜCK
+apply = ANWENDEN
+user-options = BENUTZEROPTIONEN
 new = NEU
 
 # Strafzeit-Bearbeitung

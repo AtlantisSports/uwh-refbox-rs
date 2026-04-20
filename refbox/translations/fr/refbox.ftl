@@ -4,12 +4,14 @@ dark-team-name-caps = NOIR
 -light-team-name = Blanc
 light-team-name-caps = BLANC
 
-# Multipage 
+# Multipage
 done = TERMINÉ
 restart-to-apply = REDÉMARRER POUR APPLIQUER
 cancel = ANNULER
 delete = SUPPRIMER
 back = RETOUR
+apply = APPLIQUER
+user-options = OPTIONS UTILISATEUR
 new = NOUVEAU
 
 # Penalty Edit

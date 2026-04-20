@@ -11,6 +11,8 @@ restart-to-apply = OPNIEUW STARTEN OM TOE TE PASSEN
 cancel = ANNULEREN
 delete = VERWIJDEREN
 back = TERUG
+apply = TOEPASSEN
+user-options = GEBRUIKERSOPTIES
 new = NIEUW
 
 # Uitsluiting bewerken

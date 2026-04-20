@@ -445,46 +445,55 @@ impl RefBoxApp {
     }
 
     fn apply_settings_change(&mut self) {
-        let edited_settings = self.edited_settings.take().unwrap();
+        self.apply_app_options();
+        self.apply_display_options();
+        self.apply_sound_options();
+        self.edited_settings = None;
+    }
 
-        let EditableSettings {
-            white_on_right,
-            brightness,
-            using_uwhportal,
-            current_event_id,
-            current_court: current_pool,
-            schedule: games,
-            sound,
-            mode,
-            collect_scorer_cap_num,
-            hide_time,
-            config: _config,
-            game_number: _game_number,
-            track_fouls_and_warnings,
-            uwhportal_token_valid: _,
-            confirm_score,
-            ..
-        } = edited_settings;
+    fn apply_app_options(&mut self) {
+        let Some(edited) = self.edited_settings.as_ref() else {
+            return;
+        };
+        self.using_uwhportal = edited.using_uwhportal;
+        self.current_event_id = edited.current_event_id.clone();
+        self.current_court = edited.current_court.clone();
+        self.schedule = edited.schedule.clone();
+        self.config.mode = edited.mode;
+        self.config.collect_scorer_cap_num = edited.collect_scorer_cap_num;
+        self.config.track_fouls_and_warnings = edited.track_fouls_and_warnings;
+        self.config.confirm_score = edited.confirm_score;
+    }
 
-        self.config.hardware.white_on_right = white_on_right;
-        self.config.hardware.brightness = brightness;
-        self.using_uwhportal = using_uwhportal;
-        self.current_event_id = current_event_id;
-        self.current_court = current_pool;
-        self.schedule = games;
-        self.config.sound = sound;
-        self.sound.update_settings(self.config.sound.clone());
-        self.config.mode = mode;
-        self.config.collect_scorer_cap_num = collect_scorer_cap_num;
-        self.config.track_fouls_and_warnings = track_fouls_and_warnings;
-        self.config.confirm_score = confirm_score;
-
-        if self.config.hide_time != hide_time {
-            self.config.hide_time = hide_time;
+    fn apply_display_options(&mut self) {
+        let Some(edited) = self.edited_settings.as_ref() else {
+            return;
+        };
+        self.config.hardware.white_on_right = edited.white_on_right;
+        self.config.hardware.brightness = edited.brightness;
+        if self.config.hide_time != edited.hide_time {
+            self.config.hide_time = edited.hide_time;
             self.update_sender
                 .set_hide_time(self.config.hide_time)
                 .unwrap();
         }
+    }
+
+    fn apply_sound_options(&mut self) {
+        let Some(edited) = self.edited_settings.as_ref() else {
+            return;
+        };
+        self.config.sound = edited.sound.clone();
+        self.sound.update_settings(self.config.sound.clone());
+    }
+
+    #[expect(dead_code)]
+    fn apply_remote_options(&mut self) {
+        let Some(edited) = self.edited_settings.as_ref() else {
+            return;
+        };
+        self.config.sound.remotes = edited.sound.remotes.clone();
+        self.sound.update_settings(self.config.sound.clone());
     }
 }
 

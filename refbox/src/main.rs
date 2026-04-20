@@ -37,6 +37,7 @@ use unic_langid::LanguageIdentifier;
 mod app;
 mod app_icon;
 mod penalty_editor;
+mod portal_manager;
 mod sim_app;
 mod sound_controller;
 mod tournament_manager;

@@ -90,24 +90,68 @@ Main settings page (2×2 grid)
   `manage-remotes` button inside Sound Options
   (`refbox/src/app/view_builders/configuration.rs:728`) is not moved;
   it matches the web refbox's current layout.
-- **Sub-page chrome is made uniform.** Every settings sub-page —
-  Main, Game, App, User, Display, View Mode preview, Sound, Remotes,
-  Language — renders with the same header (timer bar), the same
-  footer (`CANCEL` / `DONE`), and the same bottom timeout ribbon.
-  This matches the web standard.
+- **Each page carries chrome appropriate to what it does.** Every
+  settings page still renders the same header (timer bar) and the
+  same bottom timeout ribbon. Button chrome varies by page type:
+  - **Navigation-only pages** — Main settings and User Options —
+    carry a single `BACK` button. There is nothing to save or cancel
+    on these pages; they only route to other pages.
+  - **Editing pages** — Game Options, App Options, Display Options,
+    Sound Options, Manage Remotes, Language — carry `CANCEL` and
+    `APPLY`. Pressing `APPLY` writes that page's edits directly to
+    the saved config and returns to the parent page. Pressing
+    `CANCEL` discards that page's in-flight edits and returns to the
+    parent page. `CANCEL` is always enabled and labelled the same
+    regardless of whether the page has edits.
+  - **`APPLY` is disabled when no changes have been made on that
+    page.** The button is greyed out until at least one field on the
+    page has moved from the value it had when the page was entered.
+    This gives the operator immediate feedback that nothing would
+    happen if they tapped it.
 
-### One explicit deviation from the web
+  `BACK` on Main settings exits settings and returns to the main
+  game screen.
 
-The Language screen stays as it is today in Rust: a dedicated
-full-page list where every supported language is shown as its own row,
-reached by tapping the `LANGUAGE` tile on the main settings page.
+### Explicit deviations from the web
 
-The web refbox uses a cycle button for this choice. The Rust refbox
-has more languages installed than the web version currently presents,
-and a list is easier to use than a many-position cycle button. This
-deviation has been explicitly approved.
+The Rust refbox deviates from the web refbox's settings design in
+two places, each explicitly approved:
+
+1. **Language screen layout.** The Rust refbox keeps its dedicated
+   full-page list where every supported language is shown as its own
+   row, reached by tapping the `LANGUAGE` tile on the main settings
+   page. The web refbox uses a cycle button for this choice; the
+   Rust refbox has more languages installed than the web version
+   currently presents, and a list is easier to use than a
+   many-position cycle button.
+
+2. **Per-page save model.** The web refbox buffers every sub-page's
+   edits into a single session and commits them only at the end. The
+   Rust refbox commits each page's edits independently when its
+   `APPLY` is pressed. A page's `CANCEL` discards only that page's
+   in-flight edits; it does not roll back earlier pages. This makes
+   each screen's effect obvious ("I pressed Apply on Display
+   Options, so those changes are now live") and removes the
+   ambiguity of when edits get persisted. It also removes the need
+   for a global Cancel/Done pair on the settings entry page — which
+   reduces to a simple `BACK` once it has no commits to gate.
 
 Every other screen matches the web standard.
+
+### What is changing beyond navigation
+
+- **The save model moves from global to per-page.** Previously,
+  every edit across every sub-page was held in an in-memory buffer
+  (`EditableSettings`) and committed only when `DONE` was pressed
+  on Main settings. Now each page commits its own edits
+  independently when its `APPLY` is pressed. The operator loses
+  the ability to make changes across several pages and then
+  discard them all at once — once `APPLY` is pressed on a page,
+  those changes are persisted.
+- **Live side effects shift to per-page commits.** Today, updates
+  to the sound controller and the LED panel's hide-time signal
+  fire from a single global commit step. They now fire from each
+  relevant page's `APPLY`.
 
 ### What is **not** changing
 
@@ -115,8 +159,6 @@ Every other screen matches the web standard.
   is affected.
 - No existing settings are removed, hidden, or renamed — they are
   regrouped.
-- The save/cancel model is unchanged: edits live in `EditableSettings`
-  until `DONE` is pressed on the leaf page; `CANCEL` discards.
 - Translations for every button label already exist or will be added
   via the translation system (`translations/`); no hard-coded UI text.
 
@@ -142,6 +184,14 @@ Every other screen matches the web standard.
 - Any future divergence between the web refbox and the Rust refbox
   layout requires a new ADR and explicit user approval, per the
   back-port rule.
+- **Live preview of sound volumes and starting sides is not part of
+  this work.** Under today's model, a change to sound or display
+  settings only takes effect when the final commit runs. Under the
+  new per-page model, a change takes effect when that page's `APPLY`
+  is pressed — not while the operator is still editing. True live
+  preview (audibly testable volume changes, visibly swapped starting
+  sides before `APPLY`) is a distinct UX enhancement deferred to a
+  separate ADR.
 
 **Scope:**
 

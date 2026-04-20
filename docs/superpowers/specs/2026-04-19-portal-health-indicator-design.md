@@ -5,6 +5,17 @@
 **Branch type:** `feat/refbox/` (implementation branch to be cut from `master`)
 **Source of truth for "what and why":** [ADR 011](../../decisions/011-portal-health-indicator.md)
 
+> **Superseded in part — see [ADR 011 Amendment (2026-04-21)](../../decisions/011-portal-health-indicator.md#2026-04-21--conflict-handling-refined-after-api-verification).**
+> The conflict-resolution design in this spec (dedicated `Conflict` state, `KEEP REFBOX VALUE` /
+> `KEEP PORTAL VALUE` buttons, rows showing both portal and refbox values) was refined after
+> verifying the `uwh-common` API — the portal client collapses all failure modes into a single
+> generic error and does not return portal-side score values. The implemented design replaces
+> the conflict-specific flow with a single "attention" state and `FORCE THIS GAME RESULT` /
+> `DISCARD THIS SUBMISSION` buttons; pending rows are yellow rather than orange. See the
+> amendment for the full refined shape. The implementation plan at
+> `docs/superpowers/plans/2026-04-19-portal-health-indicator.md` reflects the refined design;
+> this spec remains as historical context for the original Option A direction.
+
 This spec is the "how" companion to ADR 011. The ADR decided the observable behaviour and module
 boundary. This spec captures the concrete visual design, module layout, queue schema,
 state-machine shape, and testing approach.

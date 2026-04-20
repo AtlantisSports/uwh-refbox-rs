@@ -294,3 +294,50 @@ After this change:
 - `memory/feedback_backport_web_is_standard.md` — if the web refbox
   ships an equivalent indicator, that becomes the authoritative
   source and this design is revisited.
+
+## Amendments
+
+### 2026-04-21 — Conflict handling refined after API verification
+
+After verifying `uwh-common`'s portal client code, we confirmed that
+`post_game_scores()` returns `Result<(), Box<dyn Error>>` and collapses
+every non-success HTTP response (409 Conflict, 401 Unauthorised, 500,
+network failure, etc.) into a single generic error. No portal-side
+score values come back on conflict. Distinguishing a conflict from
+any other failure would require modifying `uwh-common`, which is
+ruled out by the standing constraint not to change that crate.
+
+Given that, the conflict-resolution flow originally described above is
+refined as follows:
+
+- **No dedicated `Conflict` state.** All non-success submission
+  outcomes become `Pending` and auto-retry in the background.
+- **Yellow health state** replaces the word "orange" used earlier in
+  this ADR — the queue has items retrying; informational only. The
+  theme already defines a `YELLOW` colour constant, so no new colour
+  is needed.
+- **Red health state** — triggered by (a) token expired (detected by
+  the periodic `verify_token` health check, since the score-submission
+  error type cannot be introspected) or (b) a queued item has been
+  continuously retrying for 30 minutes without success. Both
+  indicate operator intervention is needed.
+- **Single "attention" action page** (replaces the separate conflict
+  and pending action pages) — offers `FORCE THIS GAME RESULT` (retry
+  with `force=true`, wins any portal-side disagreement) and
+  `DISCARD THIS SUBMISSION` (remove from queue; whatever the portal
+  currently has stands). No `KEEP REFBOX VALUE` / `KEEP PORTAL VALUE`
+  buttons; no portal-side values displayed.
+- **No changes to `uwh-common`.** The entire feature is built on the
+  existing portal-client API surface.
+
+The operator workflow under this refinement is: a conflict (real or
+apparent) just looks like a stuck pending item. After 30 minutes of
+continuous failure it escalates to red. The operator taps it, chooses
+`FORCE` to overwrite the portal or `DISCARD` to keep whatever the
+portal has. If they want to see the portal-side value before
+deciding, they look at it on the portal's web UI separately.
+
+The original design (Option A) is preserved as historical context
+in the companion spec. The implementation plan at
+`docs/superpowers/plans/2026-04-19-portal-health-indicator.md`
+reflects this refined design.

@@ -126,6 +126,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
         ConfigPage::Sound => make_sound_config_page(snapshot, settings, mode, clock_running),
         ConfigPage::Display => make_display_config_page(snapshot, settings, mode, clock_running),
         ConfigPage::App => make_app_config_page(mode, snapshot, settings, clock_running),
+        ConfigPage::User => make_main_config_page(snapshot, settings, mode, clock_running),
         ConfigPage::Remotes(index, listening) => {
             make_remote_config_page(snapshot, settings, index, listening, mode, clock_running)
         }

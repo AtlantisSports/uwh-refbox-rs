@@ -64,6 +64,7 @@ pub struct RefBoxApp {
     tm: Arc<Mutex<TournamentManager>>,
     config: Config,
     edited_settings: Option<EditableSettings>,
+    page_entry_snapshot: Option<PageEntrySnapshot>,
     snapshot: GameSnapshot,
     pen_edit: ListEditor<Penalty, Color>,
     warn_edit: ListEditor<InfractionDetails, Color>,
@@ -126,6 +127,39 @@ enum ConfirmationKind {
     Error(String),
     UwhPortalIncomplete,
     UwhPortalLinkFailed(PortalTokenResponse),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum PageEntrySnapshot {
+    Game {
+        config: GameConfig,
+        game_number: GameNumber,
+    },
+    App {
+        using_uwhportal: bool,
+        current_event_id: Option<EventId>,
+        current_court: Option<String>,
+        schedule: Option<Schedule>,
+        mode: Mode,
+        collect_scorer_cap_num: bool,
+        track_fouls_and_warnings: bool,
+        confirm_score: bool,
+    },
+    Display {
+        white_on_right: bool,
+        brightness: matrix_drawing::transmitted_data::Brightness,
+        hide_time: bool,
+    },
+    Sound {
+        sound: SoundSettings,
+    },
+    Remotes {
+        remotes: Vec<RemoteInfo>,
+    },
+    Language {
+        original_language: Option<Language>,
+        pending_language: Option<Language>,
+    },
 }
 
 impl RefBoxApp {
@@ -495,6 +529,106 @@ impl RefBoxApp {
         self.config.sound.remotes = edited.sound.remotes.clone();
         self.sound.update_settings(self.config.sound.clone());
     }
+
+    #[expect(dead_code)]
+    fn capture_snapshot_for(&mut self, page: ConfigPage) {
+        let Some(edited) = self.edited_settings.as_ref() else {
+            return;
+        };
+        let snapshot = match page {
+            ConfigPage::Game => PageEntrySnapshot::Game {
+                config: edited.config.clone(),
+                game_number: edited.game_number.clone(),
+            },
+            ConfigPage::App => PageEntrySnapshot::App {
+                using_uwhportal: edited.using_uwhportal,
+                current_event_id: edited.current_event_id.clone(),
+                current_court: edited.current_court.clone(),
+                schedule: edited.schedule.clone(),
+                mode: edited.mode,
+                collect_scorer_cap_num: edited.collect_scorer_cap_num,
+                track_fouls_and_warnings: edited.track_fouls_and_warnings,
+                confirm_score: edited.confirm_score,
+            },
+            ConfigPage::Display => PageEntrySnapshot::Display {
+                white_on_right: edited.white_on_right,
+                brightness: edited.brightness,
+                hide_time: edited.hide_time,
+            },
+            ConfigPage::Sound => PageEntrySnapshot::Sound {
+                sound: edited.sound.clone(),
+            },
+            ConfigPage::Remotes(_, _) => PageEntrySnapshot::Remotes {
+                remotes: edited.sound.remotes.clone(),
+            },
+            ConfigPage::Language => PageEntrySnapshot::Language {
+                original_language: edited.original_language,
+                pending_language: edited.pending_language,
+            },
+            ConfigPage::Main | ConfigPage::User => return,
+        };
+        self.page_entry_snapshot = Some(snapshot);
+    }
+
+    #[expect(dead_code)]
+    fn revert_from_snapshot(&mut self) {
+        let (Some(edited), Some(snapshot)) = (
+            self.edited_settings.as_mut(),
+            self.page_entry_snapshot.take(),
+        ) else {
+            return;
+        };
+        match snapshot {
+            PageEntrySnapshot::Game {
+                config,
+                game_number,
+            } => {
+                edited.config = config;
+                edited.game_number = game_number;
+            }
+            PageEntrySnapshot::App {
+                using_uwhportal,
+                current_event_id,
+                current_court,
+                schedule,
+                mode,
+                collect_scorer_cap_num,
+                track_fouls_and_warnings,
+                confirm_score,
+            } => {
+                edited.using_uwhportal = using_uwhportal;
+                edited.current_event_id = current_event_id;
+                edited.current_court = current_court;
+                edited.schedule = schedule;
+                edited.mode = mode;
+                edited.collect_scorer_cap_num = collect_scorer_cap_num;
+                edited.track_fouls_and_warnings = track_fouls_and_warnings;
+                edited.confirm_score = confirm_score;
+            }
+            PageEntrySnapshot::Display {
+                white_on_right,
+                brightness,
+                hide_time,
+            } => {
+                edited.white_on_right = white_on_right;
+                edited.brightness = brightness;
+                edited.hide_time = hide_time;
+            }
+            PageEntrySnapshot::Sound { sound } => {
+                edited.sound = sound;
+            }
+            PageEntrySnapshot::Remotes { remotes } => {
+                edited.sound.remotes = remotes;
+            }
+            PageEntrySnapshot::Language {
+                original_language,
+                pending_language,
+            } => {
+                edited.original_language = original_language;
+                edited.pending_language = pending_language;
+            }
+        }
+    }
 }
 
 impl Drop for RefBoxApp {
@@ -557,6 +691,7 @@ impl RefBoxApp {
             tm,
             config,
             edited_settings: Default::default(),
+            page_entry_snapshot: None,
             snapshot,
             app_state: AppState::MainPage,
             last_app_state: AppState::MainPage,

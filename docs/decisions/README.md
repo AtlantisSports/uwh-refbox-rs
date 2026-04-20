@@ -71,3 +71,4 @@ What constraints does this create for future work?
 | [010](010-display-modes.md) | Display modes: dark and high-contrast | 2026-04-19 | proposed |
 | [011](011-portal-health-indicator.md) | Portal health indicator, per-game confirmation, retry queue | 2026-04-19 | proposed |
 | [013](013-cold-restart-state-recovery.md) | Cold-restart state recovery | 2026-04-19 | proposed |
+| [014](014-live-settings-preview.md) | Live settings preview | 2026-04-20 | proposed |

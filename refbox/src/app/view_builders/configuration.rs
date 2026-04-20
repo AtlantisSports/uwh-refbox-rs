@@ -1,4 +1,5 @@
 use super::{ViewData, fl, message::*, shared_elements::*, theme::*};
+use crate::app::PageEntrySnapshot;
 use crate::app::languages::Language;
 use crate::config::Mode;
 use crate::sound_controller::*;
@@ -104,6 +105,75 @@ impl Cyclable for Brightness {
             Self::High => Self::Outdoor,
             Self::Outdoor => Self::Low,
         }
+    }
+}
+
+#[cfg_attr(not(test), expect(dead_code))]
+pub(in super::super) fn page_has_changes(
+    page: ConfigPage,
+    edited: &EditableSettings,
+    snapshot: Option<&PageEntrySnapshot>,
+) -> bool {
+    let Some(snapshot) = snapshot else {
+        return false;
+    };
+    match (page, snapshot) {
+        (
+            ConfigPage::Game,
+            PageEntrySnapshot::Game {
+                config,
+                game_number,
+            },
+        ) => edited.config != *config || edited.game_number != *game_number,
+        (
+            ConfigPage::App,
+            PageEntrySnapshot::App {
+                using_uwhportal,
+                current_event_id,
+                current_court,
+                schedule,
+                mode,
+                collect_scorer_cap_num,
+                track_fouls_and_warnings,
+                confirm_score,
+            },
+        ) => {
+            edited.using_uwhportal != *using_uwhportal
+                || edited.current_event_id != *current_event_id
+                || edited.current_court != *current_court
+                || edited.schedule != *schedule
+                || edited.mode != *mode
+                || edited.collect_scorer_cap_num != *collect_scorer_cap_num
+                || edited.track_fouls_and_warnings != *track_fouls_and_warnings
+                || edited.confirm_score != *confirm_score
+        }
+        (
+            ConfigPage::Display,
+            PageEntrySnapshot::Display {
+                white_on_right,
+                brightness,
+                hide_time,
+            },
+        ) => {
+            edited.white_on_right != *white_on_right
+                || edited.brightness != *brightness
+                || edited.hide_time != *hide_time
+        }
+        (ConfigPage::Sound, PageEntrySnapshot::Sound { sound }) => edited.sound != *sound,
+        (ConfigPage::Remotes(_, _), PageEntrySnapshot::Remotes { remotes }) => {
+            edited.sound.remotes != *remotes
+        }
+        (
+            ConfigPage::Language,
+            PageEntrySnapshot::Language {
+                original_language,
+                pending_language,
+            },
+        ) => {
+            edited.original_language != *original_language
+                || edited.pending_language != *pending_language
+        }
+        _ => false,
     }
 }
 
@@ -1245,4 +1315,49 @@ fn make_language_select_page<'a>(
     .spacing(SPACING)
     .height(Length::Fill)
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::PageEntrySnapshot;
+    use matrix_drawing::transmitted_data::Brightness;
+
+    #[test]
+    fn display_no_changes_when_buffer_equals_snapshot() {
+        let edited = EditableSettings {
+            white_on_right: false,
+            brightness: Brightness::Medium,
+            hide_time: false,
+            ..Default::default()
+        };
+        let snap = PageEntrySnapshot::Display {
+            white_on_right: false,
+            brightness: Brightness::Medium,
+            hide_time: false,
+        };
+        assert!(!page_has_changes(ConfigPage::Display, &edited, Some(&snap)));
+    }
+
+    #[test]
+    fn display_detects_brightness_change() {
+        let edited = EditableSettings {
+            white_on_right: false,
+            brightness: Brightness::High,
+            hide_time: false,
+            ..Default::default()
+        };
+        let snap = PageEntrySnapshot::Display {
+            white_on_right: false,
+            brightness: Brightness::Medium,
+            hide_time: false,
+        };
+        assert!(page_has_changes(ConfigPage::Display, &edited, Some(&snap)));
+    }
+
+    #[test]
+    fn page_without_snapshot_reports_no_changes() {
+        let edited = EditableSettings::default();
+        assert!(!page_has_changes(ConfigPage::Display, &edited, None));
+    }
 }

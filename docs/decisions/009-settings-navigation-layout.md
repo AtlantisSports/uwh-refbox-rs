@@ -90,6 +90,12 @@ Main settings page (2×2 grid)
   `manage-remotes` button inside Sound Options
   (`refbox/src/app/view_builders/configuration.rs:728`) is not moved;
   it matches the web refbox's current layout.
+- **The game-number picker moves from Main to Game Options.** The
+  Rust refbox currently shows the operator-editable game-number
+  picker on the Main settings page. The web refbox places this
+  control on Game Options. The Rust refbox matches the web: Main
+  becomes a pure navigation hub, and the picker moves to Game
+  Options alongside the other game parameters.
 - **Each page carries chrome appropriate to what it does.** Every
   settings page still renders the same header (timer bar) and the
   same bottom timeout ribbon. Button chrome varies by page type:

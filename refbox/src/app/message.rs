@@ -412,6 +412,8 @@ pub enum ConfigPage {
     Sound,
     Display,
     App,
+    #[expect(dead_code)]
+    User,
     Remotes(usize, bool),
     Language,
 }

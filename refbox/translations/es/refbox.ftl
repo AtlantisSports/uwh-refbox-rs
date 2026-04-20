@@ -10,6 +10,8 @@ restart-to-apply = REINICIAR PARA APLICAR
 cancel = CANCELAR
 delete = ELIMINAR
 back = ATRÁS
+apply = APLICAR
+user-options = OPCIONES DE USUARIO
 new = NUEVO
 
 # Penalty Edit

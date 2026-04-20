@@ -13,6 +13,8 @@ restart-to-apply = 재시작하여 적용
 cancel = 취소
 delete = 삭제
 back = 뒤로
+apply = 적용
+user-options = 사용자 옵션
 new = 새로
 
 # 페널티 편집

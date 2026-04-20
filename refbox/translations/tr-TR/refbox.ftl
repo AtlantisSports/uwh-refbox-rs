@@ -11,6 +11,8 @@ restart-to-apply = UYGULAMAK İÇİN YENİDEN BAŞLAT
 cancel = İPTAL
 delete = SİL
 back = GERİ
+apply = UYGULA
+user-options = KULLANICI SEÇENEKLERİ
 new = YENİ
 
 # Ceza Düzenleme

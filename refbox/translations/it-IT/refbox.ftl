@@ -11,6 +11,8 @@ restart-to-apply = RIAVVIA PER APPLICARE
 cancel = ANNULLA
 delete = ELIMINA
 back = INDIETRO
+apply = APPLICA
+user-options = OPZIONI UTENTE
 new = NUOVO
 
 # Modifica Penalità

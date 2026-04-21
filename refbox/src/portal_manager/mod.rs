@@ -19,11 +19,10 @@ use tokio::sync::mpsc;
 
 use crate::portal_manager::queue::{QueueFile, QueuedItem};
 
-/// Placeholder `PortalTaskIo` used until Task 12 wires the real `UwhPortalIo`.
-///
-/// This type is intentionally do-nothing — the background retry task spawned
-/// by `PortalManager::new` calls its methods but they always succeed without
-/// contacting any server.
+/// Placeholder `PortalTaskIo` used in tests and in the degraded-fallback
+/// startup path. This type is intentionally do-nothing — the background
+/// retry task spawned by `PortalManager::new` calls its methods but they
+/// always succeed without contacting any server.
 pub(crate) struct NullIo;
 
 #[async_trait::async_trait]
@@ -36,6 +35,169 @@ impl health::PortalTaskIo for NullIo {
     }
     async fn post_stats(&self, _: &QueuedItem) -> Result<(), health::PortalCallError> {
         Ok(())
+    }
+}
+
+/// Shared handle to the currently-selected event id. Written by the UI
+/// side of the app when the operator picks (or clears) an event; read by
+/// the background retry task via `UwhPortalIo::verify_token`.
+///
+/// Wrapped in `Arc<std::sync::Mutex<...>>` (not `tokio::sync::...`)
+/// because the `update()` entry point on iced's `RefBoxApp` is a
+/// synchronous function that runs on a tokio reactor thread —
+/// `tokio::sync::Mutex::blocking_lock` would panic there. We never hold
+/// the guard across an `.await`, so a plain `std::sync::Mutex` is
+/// correct.
+///
+/// The first wiring of the writer side lands in a later task; for
+/// Task 12 the value simply starts as `None`, which keeps `verify_token`
+/// a no-op until an event is selected.
+pub type SharedEventId =
+    std::sync::Arc<std::sync::Mutex<Option<uwh_common::uwhportal::schedule::EventId>>>;
+
+/// Shared handle to the `UwhPortalClient`. Used by both the UI thread
+/// (for one-shot requests such as login, schedule fetches, and score
+/// posts during the normal flow) and the background retry task (for
+/// queued-item retries and token health checks).
+///
+/// Wrapped in `Arc<std::sync::Mutex<...>>` because `UwhPortalClient`'s
+/// methods are infallible-sync request-builders that return a `+ use<>`
+/// future — we only hold the guard long enough to construct the request
+/// and drop it before awaiting the network round-trip. `std::sync` (not
+/// `tokio::sync`) so the UI thread's synchronous read paths (`id()`,
+/// `has_token()`, `set_token()`) don't need an async context.
+pub type SharedUwhPortalClient =
+    std::sync::Arc<std::sync::Mutex<uwh_common::uwhportal::UwhPortalClient>>;
+
+/// Production `PortalTaskIo` backed by a real `UwhPortalClient`.
+///
+/// Shares the same `UwhPortalClient` handle as the main app via
+/// `Arc<Mutex<_>>` so that operator-driven token mutations
+/// (set_token / clear_token) are immediately visible to the background
+/// retry task without having to restart anything. The lock is only held
+/// across the short synchronous portion of each portal call (URL building
+/// and request construction); the returned future is `+ use<>` on
+/// `UwhPortalClient`'s methods, so we drop the guard before awaiting the
+/// network round-trip.
+///
+/// The `event_id` is shared mutable state rather than a plain `EventId`
+/// because the operator chooses the event after startup. When the event
+/// id is `None`, `verify_token` is a no-op that reports success —
+/// there's nothing to validate against yet, and we don't want to flash
+/// the indicator red before the operator has set up the tournament.
+/// `post_scores` / `post_stats` ignore this field; they use the queued
+/// item's own event id.
+pub struct UwhPortalIo {
+    client: SharedUwhPortalClient,
+    event_id: SharedEventId,
+}
+
+impl UwhPortalIo {
+    pub fn new(client: SharedUwhPortalClient, event_id: SharedEventId) -> Self {
+        Self { client, event_id }
+    }
+}
+
+/// Collapse a portal-client error into `PortalCallError::Failed`. The
+/// uwh-common API does not distinguish token-expiry, conflict, server
+/// error, or network failure — they all come back as `Box<dyn Error>` —
+/// so the background task treats every failure the same way (retry later
+/// on its cadence). See ADR 011 amendment (2026-04-21).
+fn classify_error<E: std::fmt::Display>(e: E) -> health::PortalCallError {
+    health::PortalCallError::Failed(e.to_string())
+}
+
+/// Parse an `event_id` string (from a `QueuedItem`) into an `EventId`.
+/// Items entered the queue via `enqueue_game_end`, which accepts any
+/// string, so we defensively map parse failures to a portal call error
+/// instead of panicking. In practice the queued string is the full form
+/// produced by `EventId::full()`, so this will almost always succeed.
+fn parse_event_id(
+    raw: &str,
+) -> Result<uwh_common::uwhportal::schedule::EventId, health::PortalCallError> {
+    uwh_common::uwhportal::schedule::EventId::from_full(raw).map_err(|e| {
+        health::PortalCallError::Failed(format!("invalid queued event_id {raw:?}: {e}"))
+    })
+}
+
+/// Take a snapshot of the currently-selected event id for use by the
+/// background task. The guard is dropped before the function returns, so
+/// the caller can safely hold the returned `Option<EventId>` across an
+/// `.await`. The mutex is poisoned only if some other thread panicked
+/// while holding it; if that happens we treat it the same as "no event
+/// selected" so the retry task keeps running harmlessly.
+/// Poison cannot happen: panics here do not corrupt the guarded data.
+fn snapshot_event_id(shared: &SharedEventId) -> Option<uwh_common::uwhportal::schedule::EventId> {
+    // why this cannot panic: the guarded data is a plain `Option` and no
+    // writer panics while holding it; poisoning simply yields the last
+    // value, which we clone out.
+    shared
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+}
+
+#[async_trait::async_trait]
+impl health::PortalTaskIo for UwhPortalIo {
+    async fn verify_token(&self) -> Result<(), health::PortalCallError> {
+        let event_id = match snapshot_event_id(&self.event_id) {
+            Some(id) => id,
+            // No event selected yet — nothing to verify. Reporting success
+            // keeps the indicator green; reporting failure would flash red
+            // on a freshly-started refbox before the operator has even
+            // picked a tournament.
+            None => return Ok(()),
+        };
+
+        let fut = {
+            // why this cannot panic: the guarded data (`UwhPortalClient`)
+            // is only mutated via `set_token`/`clear_token`, which do not
+            // panic, so the mutex never gets poisoned in practice; we use
+            // `unwrap_or_else(into_inner)` defensively so even a poisoned
+            // mutex keeps the background task alive.
+            let guard = self
+                .client
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            guard.verify_token(&event_id)
+            // guard drops here so token mutations from the UI thread can
+            // land while the network call is in flight.
+        };
+        fut.await.map_err(classify_error)
+    }
+
+    async fn post_scores(&self, item: &QueuedItem) -> Result<(), health::PortalCallError> {
+        let event_id = parse_event_id(&item.id.event_id)?;
+        let scores = uwh_common::bundles::BlackWhiteBundle {
+            black: item.black_score,
+            white: item.white_score,
+        };
+        let game_number = item.id.game_number.clone();
+        let force = item.force;
+        let fut = {
+            // why this cannot panic: see `verify_token` above.
+            let guard = self
+                .client
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            guard.post_game_scores(&event_id, &game_number, scores, force)
+        };
+        fut.await.map_err(classify_error)
+    }
+
+    async fn post_stats(&self, item: &QueuedItem) -> Result<(), health::PortalCallError> {
+        let event_id = parse_event_id(&item.id.event_id)?;
+        let game_number = item.id.game_number.clone();
+        let stats = item.stats.clone();
+        let fut = {
+            // why this cannot panic: see `verify_token` above.
+            let guard = self
+                .client
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            guard.post_game_stats(&event_id, &game_number, stats)
+        };
+        fut.await.map_err(classify_error)
     }
 }
 

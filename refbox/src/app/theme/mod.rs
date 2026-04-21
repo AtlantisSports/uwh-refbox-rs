@@ -26,6 +26,11 @@ pub const PADDING: f32 = 8.0;
 pub const MIN_BUTTON_SIZE: f32 = 89.0;
 pub const XS_BUTTON_SIZE: f32 = 86.0;
 
+/// Outer size of the portal health tile shown at the left of the time banner.
+pub const HEALTH_TILE_SIZE: f32 = 130.0;
+/// Diameter of the coloured status dot inside the health tile.
+pub const HEALTH_DOT_SIZE: f32 = 50.0;
+
 pub const SMALL_TEXT: f32 = 19.0;
 pub const SMALL_PLUS_TEXT: f32 = 29.0;
 pub const MEDIUM_TEXT: f32 = 38.0;

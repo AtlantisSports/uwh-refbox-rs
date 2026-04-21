@@ -17,7 +17,6 @@ use std::time::{Duration, Instant};
 use time::{Duration as TimeDuration, OffsetDateTime};
 use tokio::sync::mpsc;
 
-use crate::portal_manager::queue as queue_module;
 use crate::portal_manager::queue::{QueueFile, QueuedItem};
 
 /// Overall health state of the portal connection.
@@ -188,7 +187,7 @@ impl PortalManager {
     pub fn new(
         config_dir: &std::path::Path,
     ) -> std::io::Result<(Self, mpsc::Receiver<PortalEvent>)> {
-        let queue = queue_module::load_or_empty(config_dir)?;
+        let queue = queue::load_or_empty(config_dir)?;
         let (_tx, rx) = mpsc::channel(EVENT_CHANNEL_BUFFER);
         let mut m = Self {
             queue,
@@ -228,7 +227,7 @@ impl PortalManager {
             force: false,
         };
         self.queue.items.push(item);
-        queue_module::save(&self.config_dir, &self.queue)?;
+        queue::save(&self.config_dir, &self.queue)?;
         self.recompute_indicator();
         Ok(())
     }
@@ -245,7 +244,7 @@ impl PortalManager {
             item.attempts = 0;
             item.last_attempt_at = None;
             item.queued_at = OffsetDateTime::now_utc();
-            queue_module::save(&self.config_dir, &self.queue)?;
+            queue::save(&self.config_dir, &self.queue)?;
         }
         self.recompute_indicator();
         Ok(())
@@ -256,7 +255,7 @@ impl PortalManager {
     /// portal currently has for that game stands.
     pub fn discard(&mut self, id: &ItemId) -> std::io::Result<()> {
         self.queue.items.retain(|it| it.id != *id);
-        queue_module::save(&self.config_dir, &self.queue)?;
+        queue::save(&self.config_dir, &self.queue)?;
         self.recompute_indicator();
         Ok(())
     }
@@ -271,7 +270,7 @@ impl PortalManager {
             item.attempts = 0;
             item.last_attempt_at = None;
         }
-        queue_module::save(&self.config_dir, &self.queue)?;
+        queue::save(&self.config_dir, &self.queue)?;
         self.recompute_indicator();
         Ok(())
     }

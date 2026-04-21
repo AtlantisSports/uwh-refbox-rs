@@ -2,7 +2,10 @@
 //!
 //! The decision logic (when to fire a health check, when to retry an item,
 //! what cadence to use) is encapsulated in `HealthDecisionState` and is
-//! unit-testable without any async runtime or I/O.
+//! unit-testable without any async runtime or I/O. The async side
+//! (`spawn`, `run_task`, `PortalTaskIo`) drives that decision logic from
+//! a Tokio task; see `BackgroundTaskHandle` for the UI-side integration
+//! surface.
 
 use std::time::{Duration, Instant};
 
@@ -16,6 +19,9 @@ use super::queue::QueuedItem;
 
 pub const GREEN_CADENCE: Duration = Duration::from_secs(5 * 60);
 pub const DEGRADED_CADENCE: Duration = Duration::from_secs(15);
+
+/// How often `run_task` wakes to re-evaluate cadence and drain commands.
+pub const POLL_INTERVAL: Duration = Duration::from_secs(2);
 
 pub fn is_item_retry_eligible(item: &QueuedItem, now: OffsetDateTime) -> bool {
     if is_item_stuck(item, now) {
@@ -106,16 +112,14 @@ async fn run_task(
     mut command_rx: mpsc::Receiver<PortalCommand>,
     event_tx: mpsc::Sender<PortalEvent>,
 ) {
-    use tokio::time::{Duration as TokioDuration, sleep};
+    use tokio::time::sleep;
 
     let mut last_success: Option<Instant> = None;
     let mut current_health = HealthState::Green;
 
     loop {
-        let sleep_for = TokioDuration::from_millis(2_000);
-
         tokio::select! {
-            _ = sleep(sleep_for) => {
+            _ = sleep(POLL_INTERVAL) => {
                 let state = HealthDecisionState {
                     last_successful_interaction: last_success,
                     current_health,
@@ -139,6 +143,10 @@ async fn run_task(
                 match cmd {
                     Some(PortalCommand::Shutdown) | None => break,
                     Some(PortalCommand::VerifyNow) => { last_success = None; }
+                    // Task 10 expands these arms to drain the queue via
+                    // post_scores / post_stats. For Task 9 we only clear
+                    // last_success so the next tick re-verifies the token
+                    // (an enqueue or manual retry signals something changed).
                     Some(PortalCommand::ItemEnqueued(_)) | Some(PortalCommand::RetryItem(_)) => {
                         last_success = None;
                     }
@@ -282,8 +290,15 @@ mod tests {
         }
     }
 
+    // Smoke test: confirms `spawn` starts a task that wakes on the poll
+    // interval, calls `verify_token`, and shuts down cleanly. Because the
+    // task starts with `last_success = None`, the very first tick is
+    // cadence-due regardless of whether `VerifyNow` was sent — so this
+    // test does NOT distinguish the `VerifyNow`-forced-check path from
+    // the first-tick path. That distinction requires injected initial
+    // state and lands in Task 10's test suite.
     #[tokio::test(flavor = "current_thread", start_paused = true)]
-    async fn verify_now_triggers_immediate_health_check() {
+    async fn background_task_performs_health_check_on_first_tick() {
         let count = Arc::new(std::sync::atomic::AtomicU32::new(0));
         let io = FakeIo {
             verify_results: Mutex::new(vec![Ok(())]),
@@ -297,13 +312,13 @@ mod tests {
             .await
             .unwrap();
 
-        // Let the task dequeue the command (yielding so its select loop
-        // gets a chance to run on this single-threaded runtime).
+        // Two rounds of (advance + yield) are needed: the first wakes the
+        // select's timer arm and lets `verify_token`'s future be polled;
+        // the second gives that future a chance to resolve before we read
+        // the counter.
         tokio::task::yield_now().await;
-        // Advance past the 2-second sleep so the select's timer arm fires.
         tokio::time::advance(Duration::from_secs(3)).await;
         tokio::task::yield_now().await;
-        // Advance again to give the task another chance to drain verify_token.
         tokio::time::advance(Duration::from_millis(500)).await;
         tokio::task::yield_now().await;
 

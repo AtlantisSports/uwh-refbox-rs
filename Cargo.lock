@@ -5486,6 +5486,7 @@ name = "refbox"
 version = "0.4.0"
 dependencies = [
  "arrayref",
+ "async-trait",
  "bs58",
  "clap",
  "collect_array",

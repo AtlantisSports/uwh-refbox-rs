@@ -15,7 +15,9 @@ pub mod queue;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 use time::{Duration as TimeDuration, OffsetDateTime};
+use tokio::sync::mpsc;
 
+use crate::portal_manager::queue as queue_module;
 use crate::portal_manager::queue::{QueueFile, QueuedItem};
 
 /// Overall health state of the portal connection.
@@ -87,6 +89,9 @@ pub fn is_item_stuck(item: &QueuedItem, now: OffsetDateTime) -> bool {
     (now - item.queued_at) >= STUCK_THRESHOLD
 }
 
+/// Channel buffer for `PortalEvent`s from the background task to the UI subscription.
+const EVENT_CHANNEL_BUFFER: usize = 64;
+
 pub struct PortalManager {
     queue: QueueFile,
     check_in_flight: bool,
@@ -96,6 +101,8 @@ pub struct PortalManager {
     token_known_problem: bool,
     recent_success_until: Option<Instant>,
     indicator_state: PortalIndicatorState,
+    _event_tx: mpsc::Sender<PortalEvent>,
+    config_dir: std::path::PathBuf,
 }
 
 impl PortalManager {
@@ -106,12 +113,15 @@ impl PortalManager {
         check_in_flight: bool,
         token_known_problem: bool,
     ) -> Self {
+        let (tx, _rx) = mpsc::channel(1);
         let mut m = Self {
             queue,
             check_in_flight,
             token_known_problem,
             recent_success_until: None,
             indicator_state: PortalIndicatorState::default(),
+            _event_tx: tx,
+            config_dir: std::env::temp_dir(),
         };
         m.recompute_indicator();
         m
@@ -161,6 +171,115 @@ impl PortalManager {
         };
 
         self.indicator_state = PortalIndicatorState { health, overlay };
+    }
+
+    fn find_mut(&mut self, id: &ItemId) -> Option<&mut QueuedItem> {
+        self.queue.items.iter_mut().find(|it| it.id == *id)
+    }
+}
+
+impl PortalManager {
+    /// Construct a new PortalManager. Loads the queue from `config_dir`
+    /// (starting fresh if the file is missing or corrupted) and prepares
+    /// the mpsc channel that the background task will send events on.
+    ///
+    /// Returns (manager, event_receiver). The receiver is fed into an iced
+    /// Subscription by the app.
+    pub fn new(
+        config_dir: &std::path::Path,
+    ) -> std::io::Result<(Self, mpsc::Receiver<PortalEvent>)> {
+        let queue = queue_module::load_or_empty(config_dir)?;
+        let (_tx, rx) = mpsc::channel(EVENT_CHANNEL_BUFFER);
+        let mut m = Self {
+            queue,
+            check_in_flight: false,
+            token_known_problem: false,
+            recent_success_until: None,
+            indicator_state: PortalIndicatorState::default(),
+            _event_tx: _tx,
+            config_dir: config_dir.to_path_buf(),
+        };
+        m.recompute_indicator();
+        Ok((m, rx))
+    }
+
+    /// Enqueue a game-end submission and trigger an immediate attempt.
+    /// Writes to disk *before* attempting the submit so a crash between
+    /// write and send does not lose the score.
+    pub fn enqueue_game_end(
+        &mut self,
+        event_id: String,
+        game_number: String,
+        black_score: u8,
+        white_score: u8,
+        stats: String,
+    ) -> std::io::Result<()> {
+        let item = QueuedItem {
+            id: ItemId {
+                event_id,
+                game_number,
+            },
+            black_score,
+            white_score,
+            stats,
+            queued_at: OffsetDateTime::now_utc(),
+            attempts: 0,
+            last_attempt_at: None,
+            force: false,
+        };
+        self.queue.items.push(item);
+        queue_module::save(&self.config_dir, &self.queue)?;
+        self.recompute_indicator();
+        Ok(())
+    }
+
+    /// Operator tapped FORCE THIS GAME RESULT on the attention action page.
+    /// Sets the item's `force` flag so the next submit sends `force=true`,
+    /// resets the attempt counter and the last-attempt timestamp so the
+    /// background task retries immediately, and resets `queued_at` to
+    /// "now" so the item is no longer considered stuck (the operator
+    /// has restarted its 30-minute clock by making a decision).
+    pub fn force_submit(&mut self, id: &ItemId) -> std::io::Result<()> {
+        if let Some(item) = self.find_mut(id) {
+            item.force = true;
+            item.attempts = 0;
+            item.last_attempt_at = None;
+            item.queued_at = OffsetDateTime::now_utc();
+            queue_module::save(&self.config_dir, &self.queue)?;
+        }
+        self.recompute_indicator();
+        Ok(())
+    }
+
+    /// Operator tapped DISCARD THIS SUBMISSION on the attention action page.
+    /// Removes the item from the queue without submitting. Whatever the
+    /// portal currently has for that game stands.
+    pub fn discard(&mut self, id: &ItemId) -> std::io::Result<()> {
+        self.queue.items.retain(|it| it.id != *id);
+        queue_module::save(&self.config_dir, &self.queue)?;
+        self.recompute_indicator();
+        Ok(())
+    }
+
+    /// Called after a successful portal re-login. Clears the global
+    /// token-problem flag and resets every queued item's attempt
+    /// counter and last-attempt timestamp so the background task
+    /// retries them immediately on its next tick.
+    pub fn token_refreshed(&mut self) -> std::io::Result<()> {
+        self.token_known_problem = false;
+        for item in &mut self.queue.items {
+            item.attempts = 0;
+            item.last_attempt_at = None;
+        }
+        queue_module::save(&self.config_dir, &self.queue)?;
+        self.recompute_indicator();
+        Ok(())
+    }
+
+    /// Force an immediate health check (fires verify_token out-of-band).
+    /// Implementation wired in Task 8.
+    pub fn verify_now(&mut self) {
+        // TODO(Task 8): send a request to the background task to verify now.
     }
 }
 
@@ -250,5 +369,71 @@ mod tests {
         let mut m = PortalManager::new_for_test(QueueFile::empty(), false, false);
         m.mark_recent_success();
         assert_eq!(m.indicator_state().overlay, OverlayState::RecentSuccess);
+    }
+
+    #[test]
+    fn enqueue_game_end_appends_item_and_turns_yellow() {
+        // Use a temp dir so the save succeeds.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path()).unwrap();
+
+        assert_eq!(m.indicator_state().health, HealthState::Green);
+
+        m.enqueue_game_end("event".into(), "G1".into(), 3, 2, "{}".into())
+            .unwrap();
+
+        // Fresh item: Yellow (retrying silently), not Red.
+        assert_eq!(m.indicator_state().health, HealthState::Yellow);
+        assert_eq!(m.queue.items.len(), 1);
+    }
+
+    #[test]
+    fn discard_removes_item_and_returns_to_green() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path()).unwrap();
+        m.enqueue_game_end("event".into(), "G1".into(), 0, 0, "{}".into())
+            .unwrap();
+
+        let id = m.queue.items[0].id.clone();
+        m.discard(&id).unwrap();
+
+        assert_eq!(m.indicator_state().health, HealthState::Green);
+        assert!(m.queue.items.is_empty());
+    }
+
+    #[test]
+    fn force_submit_flags_force_and_resets_attempt_counters() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path()).unwrap();
+        m.enqueue_game_end("event".into(), "G1".into(), 0, 0, "{}".into())
+            .unwrap();
+        let id = m.queue.items[0].id.clone();
+
+        // Pretend the item has been retrying for a while.
+        m.queue.items[0].attempts = 7;
+        m.queue.items[0].last_attempt_at = Some(OffsetDateTime::now_utc());
+
+        m.force_submit(&id).unwrap();
+
+        assert!(m.queue.items[0].force);
+        assert_eq!(m.queue.items[0].attempts, 0);
+        assert!(m.queue.items[0].last_attempt_at.is_none());
+    }
+
+    #[test]
+    fn token_refreshed_clears_flag_and_resets_queue_items() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path()).unwrap();
+        m.enqueue_game_end("event".into(), "G1".into(), 0, 0, "{}".into())
+            .unwrap();
+        m.token_known_problem = true;
+        m.queue.items[0].attempts = 4;
+        m.queue.items[0].last_attempt_at = Some(OffsetDateTime::now_utc());
+
+        m.token_refreshed().unwrap();
+
+        assert!(!m.token_known_problem);
+        assert_eq!(m.queue.items[0].attempts, 0);
+        assert!(m.queue.items[0].last_attempt_at.is_none());
     }
 }

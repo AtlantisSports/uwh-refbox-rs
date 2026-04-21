@@ -130,8 +130,9 @@ async fn run_task(
                 // Tick: try each eligible queued item, then health-check if due.
                 let now = OffsetDateTime::now_utc();
                 for item in &queue_snapshot.items {
-                    if is_item_retry_eligible(item, now) {
-                        attempt_item(&io, item, &event_tx).await;
+                    if is_item_retry_eligible(item, now)
+                        && attempt_item(&io, item, &event_tx).await
+                    {
                         last_success = Some(TokioInstant::now());
                     }
                 }
@@ -182,29 +183,36 @@ async fn run_task(
 /// identically: leave the item on the queue for the next retry tick,
 /// and emit `ItemUpdated` so the UI can refresh the row. Only a full
 /// success (both scores and stats posted) emits `ItemResolved`.
+///
+/// Returns `true` iff both portal calls succeeded. The caller uses this
+/// to decide whether to stamp `last_success`; advancing `last_success`
+/// on a failed attempt would suppress the cadence-driven
+/// `verify_token` health check and leave the indicator stuck at Green
+/// during a silent portal outage.
 async fn attempt_item(
     io: &impl PortalTaskIo,
     item: &QueuedItem,
     event_tx: &mpsc::Sender<PortalEvent>,
-) {
+) -> bool {
     let score_result = io.post_scores(item).await;
     if score_result.is_err() {
         let _ = event_tx
             .send(PortalEvent::ItemUpdated(item.id.clone()))
             .await;
-        return;
+        return false;
     }
-    let stats_result = io.post_stats(item).await;
-    match stats_result {
+    match io.post_stats(item).await {
         Ok(()) => {
             let _ = event_tx
                 .send(PortalEvent::ItemResolved(item.id.clone()))
                 .await;
+            true
         }
         Err(_) => {
             let _ = event_tx
                 .send(PortalEvent::ItemUpdated(item.id.clone()))
                 .await;
+            false
         }
     }
 }
@@ -314,6 +322,10 @@ mod tests {
     struct FakeIo {
         verify_results: Mutex<Vec<Result<(), PortalCallError>>>,
         verify_count: Arc<std::sync::atomic::AtomicU32>,
+        scores_results: Mutex<Vec<Result<(), PortalCallError>>>,
+        scores_count: Arc<std::sync::atomic::AtomicU32>,
+        stats_results: Mutex<Vec<Result<(), PortalCallError>>>,
+        stats_count: Arc<std::sync::atomic::AtomicU32>,
     }
 
     #[async_trait::async_trait]
@@ -325,11 +337,26 @@ mod tests {
             if v.is_empty() { Ok(()) } else { v.remove(0) }
         }
         async fn post_scores(&self, _: &QueuedItem) -> Result<(), PortalCallError> {
-            Ok(())
+            self.scores_count
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let mut v = self.scores_results.lock().unwrap();
+            if v.is_empty() { Ok(()) } else { v.remove(0) }
         }
         async fn post_stats(&self, _: &QueuedItem) -> Result<(), PortalCallError> {
-            Ok(())
+            self.stats_count
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let mut v = self.stats_results.lock().unwrap();
+            if v.is_empty() { Ok(()) } else { v.remove(0) }
         }
+    }
+
+    /// Drain all currently-queued events without blocking.
+    fn drain_events(rx: &mut mpsc::Receiver<PortalEvent>) -> Vec<PortalEvent> {
+        let mut out = Vec::new();
+        while let Ok(ev) = rx.try_recv() {
+            out.push(ev);
+        }
+        out
     }
 
     // Smoke test: confirms `spawn` starts a task that wakes on the poll
@@ -345,6 +372,10 @@ mod tests {
         let io = FakeIo {
             verify_results: Mutex::new(vec![Ok(())]),
             verify_count: count.clone(),
+            scores_results: Mutex::new(vec![]),
+            scores_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            stats_results: Mutex::new(vec![]),
+            stats_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
         };
         let handle = spawn(io);
 
@@ -365,6 +396,169 @@ mod tests {
         tokio::task::yield_now().await;
 
         assert!(count.load(std::sync::atomic::Ordering::SeqCst) >= 1);
+
+        handle
+            .command_tx
+            .send(PortalCommand::Shutdown)
+            .await
+            .unwrap();
+    }
+
+    /// Build a `QueueFile` with a single freshly-queued item (no prior
+    /// attempts), which makes that item immediately retry-eligible by
+    /// `is_item_retry_eligible`.
+    fn queue_with_one_eligible_item() -> QueueFile {
+        QueueFile {
+            version: QueueFile::CURRENT_VERSION,
+            items: vec![mk_queue_item(0)],
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn eligible_item_triggers_scores_then_stats_and_emits_resolved_on_success() {
+        let scores_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let stats_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        // Provide a successful `verify_token` in case the cadence-due
+        // health check also fires in this tick — we don't want the task
+        // to block on a missing result.
+        let io = FakeIo {
+            verify_results: Mutex::new(vec![Ok(())]),
+            verify_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_results: Mutex::new(vec![Ok(())]),
+            scores_count: scores_count.clone(),
+            stats_results: Mutex::new(vec![Ok(())]),
+            stats_count: stats_count.clone(),
+        };
+        let mut handle = spawn(io);
+
+        let queue = queue_with_one_eligible_item();
+        let expected_id = queue.items[0].id.clone();
+        handle
+            .command_tx
+            .send(PortalCommand::QueueUpdated(queue))
+            .await
+            .unwrap();
+
+        // Let the QueueUpdated command be received before the first tick.
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(3)).await;
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_millis(500)).await;
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        assert_eq!(scores_count.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(stats_count.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        let events = drain_events(&mut handle.event_rx);
+        assert!(
+            events
+                .iter()
+                .any(|ev| matches!(ev, PortalEvent::ItemResolved(id) if id == &expected_id)),
+            "expected ItemResolved event for {expected_id:?}, got {events:?}"
+        );
+
+        handle
+            .command_tx
+            .send(PortalCommand::Shutdown)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn scores_failure_emits_item_updated_and_skips_stats() {
+        let scores_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let stats_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let io = FakeIo {
+            verify_results: Mutex::new(vec![Ok(())]),
+            verify_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_results: Mutex::new(vec![Err(PortalCallError::Failed("boom".into()))]),
+            scores_count: scores_count.clone(),
+            stats_results: Mutex::new(vec![]),
+            stats_count: stats_count.clone(),
+        };
+        let mut handle = spawn(io);
+
+        let queue = queue_with_one_eligible_item();
+        let expected_id = queue.items[0].id.clone();
+        handle
+            .command_tx
+            .send(PortalCommand::QueueUpdated(queue))
+            .await
+            .unwrap();
+
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(3)).await;
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_millis(500)).await;
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        assert_eq!(scores_count.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(stats_count.load(std::sync::atomic::Ordering::SeqCst), 0);
+
+        let events = drain_events(&mut handle.event_rx);
+        assert!(
+            events
+                .iter()
+                .any(|ev| matches!(ev, PortalEvent::ItemUpdated(id) if id == &expected_id)),
+            "expected ItemUpdated event for {expected_id:?}, got {events:?}"
+        );
+
+        handle
+            .command_tx
+            .send(PortalCommand::Shutdown)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn queue_updated_command_replaces_snapshot_before_next_tick() {
+        let scores_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let stats_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let io = FakeIo {
+            verify_results: Mutex::new(vec![Ok(())]),
+            verify_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_results: Mutex::new(vec![Ok(())]),
+            scores_count: scores_count.clone(),
+            stats_results: Mutex::new(vec![Ok(())]),
+            stats_count: stats_count.clone(),
+        };
+        let handle = spawn(io);
+
+        // First: send an empty queue and advance past a tick. No
+        // retry-eligible item exists, so no scores/stats calls.
+        handle
+            .command_tx
+            .send(PortalCommand::QueueUpdated(QueueFile::empty()))
+            .await
+            .unwrap();
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(3)).await;
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_millis(500)).await;
+        tokio::task::yield_now().await;
+
+        assert_eq!(scores_count.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(stats_count.load(std::sync::atomic::Ordering::SeqCst), 0);
+
+        // Second: replace the snapshot with a queue containing one
+        // eligible item, advance past the next tick, and confirm the
+        // task saw the updated snapshot.
+        handle
+            .command_tx
+            .send(PortalCommand::QueueUpdated(queue_with_one_eligible_item()))
+            .await
+            .unwrap();
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(3)).await;
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_millis(500)).await;
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        assert_eq!(scores_count.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(stats_count.load(std::sync::atomic::Ordering::SeqCst), 1);
 
         handle
             .command_tx

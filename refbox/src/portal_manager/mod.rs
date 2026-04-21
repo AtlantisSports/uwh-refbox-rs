@@ -13,7 +13,10 @@ pub mod health;
 pub mod queue;
 
 use serde::{Deserialize, Serialize};
-use std::time::Instant;
+use std::time::{Duration, Instant};
+use time::{Duration as TimeDuration, OffsetDateTime};
+
+use crate::portal_manager::queue::{QueueFile, QueuedItem};
 
 /// Overall health state of the portal connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,15 +75,180 @@ pub enum PortalEvent {
     ItemUpdated(ItemId),
 }
 
-/// Stub for the manager struct — fleshed out in later tasks.
+/// How long the green-checkmark overlay remains visible after a successful submit.
+pub const RECENT_SUCCESS_DURATION: Duration = Duration::from_secs(10);
+
+/// How long an item may sit in the queue before it escalates from
+/// Yellow (silently retrying) to Red (operator needs to decide).
+/// See ADR 011 amendment (2026-04-21).
+pub const STUCK_THRESHOLD: TimeDuration = TimeDuration::minutes(30);
+
+pub fn is_item_stuck(item: &QueuedItem, now: OffsetDateTime) -> bool {
+    (now - item.queued_at) >= STUCK_THRESHOLD
+}
+
 pub struct PortalManager {
-    // Fields populated in Task 6.
+    queue: QueueFile,
+    check_in_flight: bool,
+    /// Set true when the last `verify_token` probe failed. Cleared on
+    /// the next successful probe or by `token_refreshed()` after the
+    /// operator re-logs-in.
+    token_known_problem: bool,
+    recent_success_until: Option<Instant>,
     indicator_state: PortalIndicatorState,
-    _recent_successes_instant: Option<Instant>, // silence unused-field warning
 }
 
 impl PortalManager {
+    /// Test-only constructor. The production constructor is introduced in Task 6.
+    #[cfg(test)]
+    pub(crate) fn new_for_test(
+        queue: QueueFile,
+        check_in_flight: bool,
+        token_known_problem: bool,
+    ) -> Self {
+        let mut m = Self {
+            queue,
+            check_in_flight,
+            token_known_problem,
+            recent_success_until: None,
+            indicator_state: PortalIndicatorState::default(),
+        };
+        m.recompute_indicator();
+        m
+    }
+
     pub fn indicator_state(&self) -> PortalIndicatorState {
         self.indicator_state
+    }
+
+    pub fn mark_recent_success(&mut self) {
+        self.recent_success_until = Some(Instant::now() + RECENT_SUCCESS_DURATION);
+        self.recompute_indicator();
+    }
+
+    fn has_stuck_items(&self) -> bool {
+        let now = OffsetDateTime::now_utc();
+        self.queue.items.iter().any(|it| is_item_stuck(it, now))
+    }
+
+    fn has_any_queue_items(&self) -> bool {
+        !self.queue.items.is_empty()
+    }
+
+    fn needs_attention(&self) -> bool {
+        self.token_known_problem || self.has_stuck_items()
+    }
+
+    fn recompute_indicator(&mut self) {
+        let health = if self.needs_attention() {
+            HealthState::Red
+        } else if self.check_in_flight || self.has_any_queue_items() {
+            HealthState::Yellow
+        } else {
+            HealthState::Green
+        };
+
+        let overlay = if self.needs_attention() {
+            OverlayState::AttentionNeeded
+        } else if self
+            .recent_success_until
+            .map(|t| Instant::now() < t)
+            .unwrap_or(false)
+        {
+            OverlayState::RecentSuccess
+        } else {
+            OverlayState::None
+        };
+
+        self.indicator_state = PortalIndicatorState { health, overlay };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::portal_manager::queue::{QueueFile, QueuedItem};
+    use time::{Duration as TimeDuration, OffsetDateTime};
+
+    fn mk_young_item() -> QueuedItem {
+        QueuedItem {
+            id: ItemId {
+                event_id: "e".into(),
+                game_number: "G1".into(),
+            },
+            black_score: 0,
+            white_score: 0,
+            stats: "{}".into(),
+            queued_at: OffsetDateTime::now_utc(),
+            attempts: 0,
+            last_attempt_at: None,
+            force: false,
+        }
+    }
+
+    fn mk_stuck_item() -> QueuedItem {
+        let mut it = mk_young_item();
+        it.queued_at = OffsetDateTime::now_utc() - TimeDuration::minutes(31);
+        it
+    }
+
+    #[test]
+    fn empty_queue_and_no_problems_is_green() {
+        let m = PortalManager::new_for_test(QueueFile::empty(), false, false);
+        assert_eq!(m.indicator_state().health, HealthState::Green);
+        assert_eq!(m.indicator_state().overlay, OverlayState::None);
+    }
+
+    #[test]
+    fn young_pending_item_is_yellow_no_overlay() {
+        let q = QueueFile {
+            version: 1,
+            items: vec![mk_young_item()],
+        };
+        let m = PortalManager::new_for_test(q, false, false);
+        assert_eq!(m.indicator_state().health, HealthState::Yellow);
+        assert_eq!(m.indicator_state().overlay, OverlayState::None);
+    }
+
+    #[test]
+    fn stuck_item_is_red_with_attention_overlay() {
+        let q = QueueFile {
+            version: 1,
+            items: vec![mk_stuck_item()],
+        };
+        let m = PortalManager::new_for_test(q, false, false);
+        assert_eq!(m.indicator_state().health, HealthState::Red);
+        assert_eq!(m.indicator_state().overlay, OverlayState::AttentionNeeded);
+    }
+
+    #[test]
+    fn token_known_problem_is_red_with_attention_overlay() {
+        let m = PortalManager::new_for_test(QueueFile::empty(), false, true);
+        assert_eq!(m.indicator_state().health, HealthState::Red);
+        assert_eq!(m.indicator_state().overlay, OverlayState::AttentionNeeded);
+    }
+
+    #[test]
+    fn health_check_in_flight_is_yellow() {
+        let m = PortalManager::new_for_test(QueueFile::empty(), true, false);
+        assert_eq!(m.indicator_state().health, HealthState::Yellow);
+    }
+
+    #[test]
+    fn recent_success_overlay_is_suppressed_by_stuck_item() {
+        let q = QueueFile {
+            version: 1,
+            items: vec![mk_stuck_item()],
+        };
+        let mut m = PortalManager::new_for_test(q, false, false);
+        m.mark_recent_success();
+        assert_eq!(m.indicator_state().overlay, OverlayState::AttentionNeeded);
+    }
+
+    #[test]
+    fn recent_success_shows_when_queue_empty() {
+        let mut m = PortalManager::new_for_test(QueueFile::empty(), false, false);
+        m.mark_recent_success();
+        assert_eq!(m.indicator_state().overlay, OverlayState::RecentSuccess);
     }
 }

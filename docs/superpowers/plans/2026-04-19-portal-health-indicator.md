@@ -153,6 +153,11 @@ touch refbox/src/portal_manager/health.rs
 //! See `docs/superpowers/specs/2026-04-19-portal-health-indicator-design.md`
 //! and `docs/decisions/011-portal-health-indicator.md`.
 
+// Scaffolding: types are defined up front and progressively wired up in Tasks
+// 3–14 of the portal health indicator plan. This attribute is removed in
+// Task 22 once all types have live callers.
+#![allow(dead_code)]
+
 pub mod health;
 pub mod queue;
 
@@ -254,7 +259,7 @@ impl PortalManager {
 just check
 ```
 
-Expected: all green. If clippy complains about unused fields, that's fine at this stage because the `PortalManager` is stubbed — the `_recent_successes_instant` prefix silences the warning.
+Expected: all green. Because `refbox` is a binary crate, `pub` types with no in-crate caller still trigger `dead_code` warnings, and CI runs with `-D warnings`. The module-level `#![allow(dead_code)]` at the top of `mod.rs` silences them collectively while the types are being wired up in later tasks; the comment next to the attribute is the "explicit discussion and justification" required by `.claude/rules/rust.md`. Task 22 removes the attribute once all types have live callers.
 
 - [ ] **Step 7: Commit**
 
@@ -3391,7 +3396,38 @@ EOF
 
 ### Task 22: End-to-end manual verification
 
-**Files:** none
+**Files:**
+- Modify: `refbox/src/portal_manager/mod.rs` (remove scaffolding attribute)
+
+- [ ] **Step 0: Remove the scaffolding `#![allow(dead_code)]`**
+
+By this point, every type introduced in Task 2 is reachable from live code. Remove the scaffolding attribute and its comment block at the top of `refbox/src/portal_manager/mod.rs`:
+
+```rust
+// DELETE these five lines:
+// Scaffolding: types are defined up front and progressively wired up in Tasks
+// 3–14 of the portal health indicator plan. This attribute is removed in
+// Task 22 once all types have live callers.
+#![allow(dead_code)]
+```
+
+Run `cargo clippy -p refbox --all-targets -- -D warnings` and confirm no new `dead_code` warnings appear. If any do, that means a type was never consumed — stop and report which type, because something in an earlier task is incomplete.
+
+Commit on its own:
+
+```bash
+git add refbox/src/portal_manager/mod.rs
+git commit -m "$(cat <<'EOF'
+chore(refbox): remove portal_manager scaffolding dead_code allow
+
+All public types introduced by the portal health indicator are now
+consumed by live code paths, so the blanket #[allow(dead_code)] added
+during Task 2 scaffolding is no longer needed.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+EOF
+)"
+```
 
 - [ ] **Step 1: `just check`**
 

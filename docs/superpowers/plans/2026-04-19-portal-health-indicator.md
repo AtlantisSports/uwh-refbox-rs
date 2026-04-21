@@ -1695,6 +1695,8 @@ EOF
 
 This task connects the retry eligibility logic from Task 8 with the async loop from Task 9. The loop maintains a snapshot of the queue it receives via a new command `PortalCommand::QueueUpdated(QueueFile)` and attempts eligible items in turn.
 
+**Test-coverage discipline:** any task that adds new behaviour to the async loop must include tests that exercise the new path. The implementer for this task should add async tests (using `#[tokio::test(flavor = "current_thread", start_paused = true)]`) that cover, at minimum: (a) a successful retry emits `ItemResolved` and drives `post_scores` then `post_stats`, (b) a `post_scores` failure emits `ItemUpdated` and skips `post_stats`, and (c) a `QueueUpdated` command replaces the snapshot before the next tick.
+
 Replace `run_task` with the expanded version that also attempts queue items:
 
 ```rust
@@ -1718,8 +1720,9 @@ async fn run_task(
                 // Tick: try each eligible queued item, then health-check if due.
                 let now = time::OffsetDateTime::now_utc();
                 for item in &queue_snapshot.items {
-                    if is_item_retry_eligible(item, now) {
-                        attempt_item(&io, item, &event_tx).await;
+                    if is_item_retry_eligible(item, now)
+                        && attempt_item(&io, item, &event_tx).await
+                    {
                         last_success = Some(Instant::now());
                     }
                 }
@@ -1767,11 +1770,17 @@ async fn run_task(
     }
 }
 
+/// Returns `true` iff both portal calls succeeded. The caller uses this
+/// to decide whether to stamp `last_success`; advancing `last_success`
+/// on a failed attempt would suppress the cadence-driven `verify_token`
+/// health check and leave the indicator stuck at Green during a silent
+/// portal outage — exactly the failure mode this feature is meant to
+/// surface.
 async fn attempt_item(
     io: &impl PortalTaskIo,
     item: &super::queue::QueuedItem,
     event_tx: &mpsc::Sender<PortalEvent>,
-) {
+) -> bool {
     // The portal API collapses all non-success outcomes (409 conflict,
     // 401 token expired, 5xx, network) into a single error, so we treat
     // any `Err` identically: leave the item on the queue for the next
@@ -1781,19 +1790,20 @@ async fn attempt_item(
         let _ = event_tx
             .send(PortalEvent::ItemUpdated(item.id.clone()))
             .await;
-        return;
+        return false;
     }
-    let stats_result = io.post_stats(item).await;
-    match stats_result {
+    match io.post_stats(item).await {
         Ok(()) => {
             let _ = event_tx
                 .send(PortalEvent::ItemResolved(item.id.clone()))
                 .await;
+            true
         }
         Err(_) => {
             let _ = event_tx
                 .send(PortalEvent::ItemUpdated(item.id.clone()))
                 .await;
+            false
         }
     }
 }

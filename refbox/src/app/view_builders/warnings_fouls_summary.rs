@@ -13,6 +13,7 @@ pub(in super::super) fn build_warnings_summary_page<'a>(
         snapshot,
         mode,
         clock_running,
+        portal_indicator,
         ..
     } = data;
 
@@ -85,7 +86,14 @@ pub(in super::super) fn build_warnings_summary_page<'a>(
     .width(Length::Fill);
 
     column![
-        make_game_time_button(snapshot, false, false, mode, clock_running),
+        make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+            portal_indicator
+        ),
         warnings_and_fouls_row.height(Length::Fill),
         row![
             make_button(fl!("back"))

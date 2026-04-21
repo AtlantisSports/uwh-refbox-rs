@@ -17,11 +17,19 @@ pub(in super::super) fn build_foul_overview_page<'a>(
         snapshot,
         mode,
         clock_running,
+        portal_indicator,
         ..
     } = data;
 
     column![
-        make_game_time_button(snapshot, false, false, mode, clock_running),
+        make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+            portal_indicator
+        ),
         row![
             make_foul_list(
                 warnings.black.into_iter().rev().collect(),

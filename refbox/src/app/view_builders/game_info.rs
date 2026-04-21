@@ -21,6 +21,7 @@ pub(in super::super) fn build_game_info_page<'a>(
         mode,
         clock_running,
         teams,
+        portal_indicator,
     } = data;
 
     let middle_item: Element<_> = if using_uwhportal {
@@ -43,7 +44,14 @@ pub(in super::super) fn build_game_info_page<'a>(
     let (left_details, right_details) =
         details_strings(snapshot, config, using_uwhportal, schedule, teams);
     column![
-        make_game_time_button(snapshot, false, false, mode, clock_running),
+        make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+            portal_indicator
+        ),
         row![
             text(left_details)
                 .size(SMALL_TEXT)

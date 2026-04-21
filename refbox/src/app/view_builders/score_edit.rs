@@ -16,6 +16,7 @@ pub(in super::super) fn build_score_edit_view<'a>(
         snapshot,
         mode,
         clock_running,
+        portal_indicator,
         ..
     } = data;
 
@@ -90,7 +91,14 @@ pub(in super::super) fn build_score_edit_view<'a>(
     .style(white_container);
 
     let mut main_col = column![
-        make_game_time_button(snapshot, false, is_confirmation, mode, clock_running),
+        make_game_time_button(
+            snapshot,
+            false,
+            is_confirmation,
+            mode,
+            clock_running,
+            portal_indicator
+        ),
         vertical_space()
     ]
     .spacing(SPACING)

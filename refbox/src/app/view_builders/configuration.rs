@@ -2,6 +2,7 @@ use super::{ViewData, fl, message::*, shared_elements::*, theme::*};
 use crate::app::PageEntrySnapshot;
 use crate::app::languages::Language;
 use crate::config::Mode;
+use crate::portal_manager::PortalIndicatorState;
 use crate::sound_controller::*;
 use collect_array::CollectArrayResult;
 use iced::{
@@ -242,11 +243,16 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
         snapshot,
         mode,
         clock_running,
+        portal_indicator,
         ..
     } = data;
 
+    // Param order convention: per-branch additions appended in chronological order
+    // — page_entry_snapshot (Unit 3) then portal_indicator (Unit 7).
     match page {
-        ConfigPage::Main => make_main_config_page(snapshot, settings, mode, clock_running),
+        ConfigPage::Main => {
+            make_main_config_page(snapshot, settings, mode, clock_running, portal_indicator)
+        }
         ConfigPage::Game => make_event_config_page(
             snapshot,
             settings,
@@ -254,17 +260,35 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
             mode,
             clock_running,
             page_entry_snapshot,
+            portal_indicator,
         ),
-        ConfigPage::Sound => {
-            make_sound_config_page(snapshot, settings, mode, clock_running, page_entry_snapshot)
+        ConfigPage::Sound => make_sound_config_page(
+            snapshot,
+            settings,
+            mode,
+            clock_running,
+            page_entry_snapshot,
+            portal_indicator,
+        ),
+        ConfigPage::Display => make_display_config_page(
+            snapshot,
+            settings,
+            mode,
+            clock_running,
+            page_entry_snapshot,
+            portal_indicator,
+        ),
+        ConfigPage::App => make_app_config_page(
+            mode,
+            snapshot,
+            settings,
+            clock_running,
+            page_entry_snapshot,
+            portal_indicator,
+        ),
+        ConfigPage::User => {
+            make_user_config_page(snapshot, settings, mode, clock_running, portal_indicator)
         }
-        ConfigPage::Display => {
-            make_display_config_page(snapshot, settings, mode, clock_running, page_entry_snapshot)
-        }
-        ConfigPage::App => {
-            make_app_config_page(mode, snapshot, settings, clock_running, page_entry_snapshot)
-        }
-        ConfigPage::User => make_user_config_page(snapshot, settings, mode, clock_running),
         ConfigPage::Remotes(index, listening) => make_remote_config_page(
             snapshot,
             settings,
@@ -273,10 +297,16 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
             mode,
             clock_running,
             page_entry_snapshot,
+            portal_indicator,
         ),
-        ConfigPage::Language => {
-            make_language_select_page(snapshot, settings, mode, clock_running, page_entry_snapshot)
-        }
+        ConfigPage::Language => make_language_select_page(
+            snapshot,
+            settings,
+            mode,
+            clock_running,
+            page_entry_snapshot,
+            portal_indicator,
+        ),
     }
 }
 
@@ -285,6 +315,7 @@ fn make_main_config_page<'a>(
     _settings: &EditableSettings,
     mode: Mode,
     clock_running: bool,
+    portal_indicator: PortalIndicatorState,
 ) -> Element<'a, Message> {
     let row_top = row![
         make_button(fl!("game-options"))
@@ -309,7 +340,7 @@ fn make_main_config_page<'a>(
     .height(Length::Fill);
 
     column![
-        make_game_time_button(snapshot, false, false, mode, clock_running),
+        make_game_time_button(snapshot, false, false, mode, clock_running, portal_indicator),
         row_top,
         row_bottom,
         row![horizontal_space()].height(Length::Fill),
@@ -370,6 +401,7 @@ fn make_user_config_page<'a>(
     _settings: &EditableSettings,
     mode: Mode,
     clock_running: bool,
+    portal_indicator: PortalIndicatorState,
 ) -> Element<'a, Message> {
     // Hidden spacer reserved for a future view-mode tile so the row keeps three equal columns.
     let view_mode_spacer = horizontal_space().width(Length::Fill);
@@ -387,7 +419,7 @@ fn make_user_config_page<'a>(
     .height(Length::Fill);
 
     column![
-        make_game_time_button(snapshot, false, false, mode, clock_running),
+        make_game_time_button(snapshot, false, false, mode, clock_running, portal_indicator),
         tiles,
         row![horizontal_space()].height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),
@@ -413,6 +445,7 @@ fn make_event_config_page<'a>(
     mode: Mode,
     clock_running: bool,
     page_entry_snapshot: Option<&PageEntrySnapshot>,
+    portal_indicator: PortalIndicatorState,
 ) -> Element<'a, Message> {
     let EditableSettings {
         config,
@@ -481,6 +514,7 @@ fn make_event_config_page<'a>(
         false,
         mode,
         clock_running,
+        portal_indicator,
     )]
     .spacing(SPACING)
     .height(Length::Fill);
@@ -755,12 +789,14 @@ fn make_event_config_page<'a>(
     col.into()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn make_app_config_page<'a>(
     mode: Mode,
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
     clock_running: bool,
     page_entry_snapshot: Option<&PageEntrySnapshot>,
+    portal_indicator: PortalIndicatorState,
 ) -> Element<'a, Message> {
     let EditableSettings {
         collect_scorer_cap_num,
@@ -770,7 +806,7 @@ fn make_app_config_page<'a>(
     } = settings;
 
     column![
-        make_game_time_button(snapshot, false, true, mode, clock_running),
+        make_game_time_button(snapshot, false, true, mode, clock_running, portal_indicator),
         row![
             make_value_button(
                 fl!("app-mode"),
@@ -818,12 +854,14 @@ fn make_app_config_page<'a>(
     .into()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn make_display_config_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
     mode: Mode,
     clock_running: bool,
     page_entry_snapshot: Option<&PageEntrySnapshot>,
+    portal_indicator: PortalIndicatorState,
 ) -> Element<'a, Message> {
     let EditableSettings {
         white_on_right,
@@ -867,7 +905,7 @@ fn make_display_config_page<'a>(
         ));
 
     column![
-        make_game_time_button(snapshot, false, false, mode, clock_running),
+        make_game_time_button(snapshot, false, false, mode, clock_running, portal_indicator),
         row![sides_btn].spacing(SPACING).height(Length::Fill),
         row![
             make_value_button(
@@ -894,17 +932,19 @@ fn make_display_config_page<'a>(
     .into()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn make_sound_config_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
     mode: Mode,
     clock_running: bool,
     page_entry_snapshot: Option<&PageEntrySnapshot>,
+    portal_indicator: PortalIndicatorState,
 ) -> Element<'a, Message> {
     let EditableSettings { sound, .. } = settings;
 
     column![
-        make_game_time_button(snapshot, false, true, mode, clock_running),
+        make_game_time_button(snapshot, false, true, mode, clock_running, portal_indicator),
         row![
             make_value_button(
                 fl!("sound-enabled"),
@@ -1039,6 +1079,7 @@ fn make_remote_config_page<'a>(
     mode: Mode,
     clock_running: bool,
     page_entry_snapshot: Option<&PageEntrySnapshot>,
+    portal_indicator: PortalIndicatorState,
 ) -> Element<'a, Message> {
     const REMOTES_LIST_LEN: usize = 4;
 
@@ -1112,7 +1153,7 @@ fn make_remote_config_page<'a>(
     .style(orange_button);
 
     column![
-        make_game_time_button(snapshot, false, false, mode, clock_running),
+        make_game_time_button(snapshot, false, false, mode, clock_running, portal_indicator),
         row![
             make_scroll_list(
                 buttons.unwrap(),
@@ -1152,6 +1193,7 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
         snapshot,
         mode,
         clock_running,
+        portal_indicator,
         ..
     } = data;
 
@@ -1174,7 +1216,7 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
     };
 
     column![
-        make_game_time_button(snapshot, false, false, mode, clock_running),
+        make_game_time_button(snapshot, false, false, mode, clock_running, portal_indicator),
         vertical_space(),
         make_time_editor(title, length, false),
         vertical_space(),
@@ -1210,12 +1252,14 @@ fn font_family_id(lang: Language) -> u8 {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn make_language_select_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
     mode: Mode,
     clock_running: bool,
     page_entry_snapshot: Option<&PageEntrySnapshot>,
+    portal_indicator: PortalIndicatorState,
 ) -> Element<'a, Message> {
     let selected = settings.pending_language.unwrap_or(Language::English);
     let original = settings.original_language.unwrap_or(Language::English);
@@ -1307,7 +1351,7 @@ fn make_language_select_page<'a>(
     // gets a small "(UNVERIFIED)" note in its own language, signalling to operators
     // that a native speaker has not yet reviewed the translation.
     column![
-        make_game_time_button(snapshot, false, true, mode, clock_running),
+        make_game_time_button(snapshot, false, true, mode, clock_running, portal_indicator),
         row![
             lang_btn_note(
                 Language::Indonesian,

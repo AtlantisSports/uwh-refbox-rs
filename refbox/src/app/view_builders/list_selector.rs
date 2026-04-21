@@ -21,6 +21,7 @@ pub(in super::super) fn build_list_selector_page<'a>(
         mode,
         clock_running,
         teams,
+        portal_indicator,
     } = data;
 
     let title = match param {
@@ -124,7 +125,14 @@ pub(in super::super) fn build_list_selector_page<'a>(
     .width(Length::FillPortion(4));
 
     column![
-        make_game_time_button(snapshot, false, false, mode, clock_running),
+        make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+            portal_indicator
+        ),
         row![
             scroll_list,
             column![

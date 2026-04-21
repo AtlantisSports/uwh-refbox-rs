@@ -17,6 +17,7 @@ pub(in super::super) fn build_penalty_overview_page<'a>(
         snapshot,
         mode,
         clock_running,
+        portal_indicator,
         ..
     } = data;
 
@@ -27,7 +28,14 @@ pub(in super::super) fn build_penalty_overview_page<'a>(
     };
 
     column![
-        make_game_time_button(snapshot, false, false, mode, clock_running),
+        make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+            portal_indicator
+        ),
         row![
             make_penalty_list(
                 penalties.black,

@@ -1,6 +1,7 @@
 use super::{ViewData, fl, message::*, shared_elements::*, theme::*};
 use crate::app::languages::Language;
 use crate::config::Mode;
+use crate::portal_manager::PortalIndicatorState;
 use crate::sound_controller::*;
 use collect_array::CollectArrayResult;
 use iced::{
@@ -117,19 +118,43 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
         snapshot,
         mode,
         clock_running,
+        portal_indicator,
         ..
     } = data;
 
     match page {
-        ConfigPage::Main => make_main_config_page(snapshot, settings, mode, clock_running),
-        ConfigPage::Game => make_event_config_page(snapshot, settings, events, mode, clock_running),
-        ConfigPage::Sound => make_sound_config_page(snapshot, settings, mode, clock_running),
-        ConfigPage::Display => make_display_config_page(snapshot, settings, mode, clock_running),
-        ConfigPage::App => make_app_config_page(mode, snapshot, settings, clock_running),
-        ConfigPage::Remotes(index, listening) => {
-            make_remote_config_page(snapshot, settings, index, listening, mode, clock_running)
+        ConfigPage::Main => {
+            make_main_config_page(snapshot, settings, mode, clock_running, portal_indicator)
         }
-        ConfigPage::Language => make_language_select_page(snapshot, settings, mode, clock_running),
+        ConfigPage::Game => make_event_config_page(
+            snapshot,
+            settings,
+            events,
+            mode,
+            clock_running,
+            portal_indicator,
+        ),
+        ConfigPage::Sound => {
+            make_sound_config_page(snapshot, settings, mode, clock_running, portal_indicator)
+        }
+        ConfigPage::Display => {
+            make_display_config_page(snapshot, settings, mode, clock_running, portal_indicator)
+        }
+        ConfigPage::App => {
+            make_app_config_page(mode, snapshot, settings, clock_running, portal_indicator)
+        }
+        ConfigPage::Remotes(index, listening) => make_remote_config_page(
+            snapshot,
+            settings,
+            index,
+            listening,
+            mode,
+            clock_running,
+            portal_indicator,
+        ),
+        ConfigPage::Language => {
+            make_language_select_page(snapshot, settings, mode, clock_running, portal_indicator)
+        }
     }
 }
 
@@ -138,6 +163,7 @@ fn make_main_config_page<'a>(
     settings: &EditableSettings,
     mode: Mode,
     clock_running: bool,
+    portal_indicator: PortalIndicatorState,
 ) -> Element<'a, Message> {
     let EditableSettings {
         game_number,
@@ -189,7 +215,14 @@ fn make_main_config_page<'a>(
     };
 
     column![
-        make_game_time_button(snapshot, false, false, mode, clock_running),
+        make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+            portal_indicator
+        ),
         make_value_button(
             fl!("game-select"),
             game_label,
@@ -245,6 +278,7 @@ fn make_event_config_page<'a>(
     events: Option<&BTreeMap<EventId, Event>>,
     mode: Mode,
     clock_running: bool,
+    portal_indicator: PortalIndicatorState,
 ) -> Element<'a, Message> {
     let EditableSettings {
         config,
@@ -495,7 +529,14 @@ fn make_event_config_page<'a>(
     };
 
     let mut col = column![
-        make_game_time_button(snapshot, false, false, mode, clock_running),
+        make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+            portal_indicator
+        ),
         row![
             if !using_uwhportal {
                 make_value_button(
@@ -539,6 +580,7 @@ fn make_app_config_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
     clock_running: bool,
+    portal_indicator: PortalIndicatorState,
 ) -> Element<'a, Message> {
     let EditableSettings {
         collect_scorer_cap_num,
@@ -548,7 +590,7 @@ fn make_app_config_page<'a>(
     } = settings;
 
     column![
-        make_game_time_button(snapshot, false, true, mode, clock_running),
+        make_game_time_button(snapshot, false, true, mode, clock_running, portal_indicator),
         row![
             make_value_button(
                 fl!("app-mode"),
@@ -620,6 +662,7 @@ fn make_display_config_page<'a>(
     settings: &EditableSettings,
     mode: Mode,
     clock_running: bool,
+    portal_indicator: PortalIndicatorState,
 ) -> Element<'a, Message> {
     let EditableSettings {
         white_on_right,
@@ -663,7 +706,14 @@ fn make_display_config_page<'a>(
         ));
 
     column![
-        make_game_time_button(snapshot, false, false, mode, clock_running),
+        make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+            portal_indicator
+        ),
         row![sides_btn].spacing(SPACING),
         row![
             make_value_button(
@@ -701,11 +751,12 @@ fn make_sound_config_page<'a>(
     settings: &EditableSettings,
     mode: Mode,
     clock_running: bool,
+    portal_indicator: PortalIndicatorState,
 ) -> Element<'a, Message> {
     let EditableSettings { sound, .. } = settings;
 
     column![
-        make_game_time_button(snapshot, false, true, mode, clock_running),
+        make_game_time_button(snapshot, false, true, mode, clock_running, portal_indicator),
         row![
             make_value_button(
                 fl!("sound-enabled"),
@@ -842,6 +893,7 @@ fn make_remote_config_page<'a>(
     listening: bool,
     mode: Mode,
     clock_running: bool,
+    portal_indicator: PortalIndicatorState,
 ) -> Element<'a, Message> {
     const REMOTES_LIST_LEN: usize = 4;
 
@@ -915,7 +967,14 @@ fn make_remote_config_page<'a>(
     .style(orange_button);
 
     column![
-        make_game_time_button(snapshot, false, false, mode, clock_running),
+        make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+            portal_indicator
+        ),
         row![
             make_scroll_list(
                 buttons.unwrap(),
@@ -956,6 +1015,7 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
         snapshot,
         mode,
         clock_running,
+        portal_indicator,
         ..
     } = data;
 
@@ -978,7 +1038,14 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
     };
 
     column![
-        make_game_time_button(snapshot, false, false, mode, clock_running),
+        make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+            portal_indicator
+        ),
         vertical_space(),
         make_time_editor(title, length, false),
         vertical_space(),
@@ -1019,6 +1086,7 @@ fn make_language_select_page<'a>(
     settings: &EditableSettings,
     mode: Mode,
     clock_running: bool,
+    portal_indicator: PortalIndicatorState,
 ) -> Element<'a, Message> {
     let selected = settings.pending_language.unwrap_or(Language::English);
     let original = settings.original_language.unwrap_or(Language::English);
@@ -1109,7 +1177,7 @@ fn make_language_select_page<'a>(
     // gets a small "(UNVERIFIED)" note in its own language, signalling to operators
     // that a native speaker has not yet reviewed the translation.
     column![
-        make_game_time_button(snapshot, false, true, mode, clock_running),
+        make_game_time_button(snapshot, false, true, mode, clock_running, portal_indicator),
         row![
             lang_btn_note(
                 Language::Indonesian,

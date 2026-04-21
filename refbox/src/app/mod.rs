@@ -3,6 +3,7 @@ use super::{APP_NAME, fl};
 use crate::{
     config::{Config, Mode},
     penalty_editor::*,
+    portal_manager::{NullIo, PortalEvent, PortalManager},
     sound_controller::*,
     tournament_manager::{penalty::*, *},
 };
@@ -84,11 +85,16 @@ pub struct RefBoxApp {
     mouse_alarm_held: bool,
     spacebar_held: bool,
     alarm_delay_token: u64,
+    portal_manager: PortalManager,
+    // TODO(Task 13): consume via iced Subscription.
+    #[allow(dead_code)]
+    portal_event_rx: Option<mpsc::Receiver<PortalEvent>>,
 }
 
 #[derive(Debug)]
 pub struct RefBoxAppFlags {
     pub config: Config,
+    pub config_dir: std::path::PathBuf,
     pub serial_ports: Vec<SerialPortBuilder>,
     pub binary_port: u16,
     pub json_port: u16,
@@ -494,6 +500,7 @@ impl RefBoxApp {
     pub(super) fn new(flags: RefBoxAppFlags) -> (Self, Task<Message>) {
         let RefBoxAppFlags {
             config,
+            config_dir,
             serial_ports,
             binary_port,
             json_port,
@@ -534,6 +541,30 @@ impl RefBoxApp {
 
         let snapshot = Default::default();
 
+        // `NullIo` is a placeholder adapter; the real `UwhPortalIo` wrapper
+        // around `UwhPortalClient` lands in Task 12. Task 12 will also
+        // replace this construction with the real one.
+        //
+        // If the queue file exists but is unreadable (rare — permission
+        // error on the refbox's own config dir), we log and fall back to
+        // a fresh in-memory queue under the system temp dir so the UI can
+        // still start. A failure of even the temp dir indicates a deeper
+        // environment problem; we panic with a clear message rather than
+        // attempting to paper over it.
+        let (portal_manager, portal_event_rx) = PortalManager::new(&config_dir, NullIo)
+            .or_else(|e| {
+                error!(
+                    "Failed to start PortalManager from {}: {e}. Using temporary directory.",
+                    config_dir.display()
+                );
+                PortalManager::new(&std::env::temp_dir(), NullIo)
+            })
+            .map(|(pm, rx)| (pm, Some(rx)))
+            // `expect` is load-bearing here: if even the system temp dir
+            // refuses I/O, the process has no reasonable fallback and
+            // should fail loudly at startup rather than silently.
+            .expect("Failed to start PortalManager (temp dir also rejected I/O)");
+
         let new = Self {
             pen_edit: ListEditor::new(tm.clone()),
             warn_edit: ListEditor::new(tm.clone()),
@@ -558,6 +589,8 @@ impl RefBoxApp {
             mouse_alarm_held: false,
             spacebar_held: false,
             alarm_delay_token: 0,
+            portal_manager,
+            portal_event_rx,
         };
 
         let task = Task::batch(vec![
@@ -2300,6 +2333,7 @@ impl RefBoxApp {
                     .as_ref()
                     .and_then(|events| events.get(id).and_then(|event| event.teams.as_ref()))
             }),
+            portal_indicator: self.portal_manager.indicator_state(),
         };
 
         let mut main_view = column![match self.app_state {

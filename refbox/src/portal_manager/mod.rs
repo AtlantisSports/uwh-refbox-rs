@@ -19,6 +19,28 @@ use tokio::sync::mpsc;
 
 use crate::portal_manager::queue::{QueueFile, QueuedItem};
 
+/// Placeholder `PortalTaskIo` used until Task 12 wires the real `UwhPortalIo`.
+///
+/// This type is intentionally do-nothing — the background retry task spawned
+/// by `PortalManager::new` calls its methods but they always succeed without
+/// contacting any server.
+// TODO(Task 12): replace with UwhPortalIo that wraps UwhPortalClient.
+#[allow(dead_code)]
+pub(crate) struct NullIo;
+
+#[async_trait::async_trait]
+impl health::PortalTaskIo for NullIo {
+    async fn verify_token(&self) -> Result<(), health::PortalCallError> {
+        Ok(())
+    }
+    async fn post_scores(&self, _: &QueuedItem) -> Result<(), health::PortalCallError> {
+        Ok(())
+    }
+    async fn post_stats(&self, _: &QueuedItem) -> Result<(), health::PortalCallError> {
+        Ok(())
+    }
+}
+
 /// Overall health state of the portal connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HealthState {
@@ -306,24 +328,6 @@ mod tests {
     use super::*;
     use crate::portal_manager::queue::{QueueFile, QueuedItem};
     use time::{Duration as TimeDuration, OffsetDateTime};
-
-    /// Do-nothing `PortalTaskIo` for tests that construct a real
-    /// `PortalManager` via `new()`. The background task is still
-    /// spawned but never reports failures.
-    struct NullIo;
-
-    #[async_trait::async_trait]
-    impl health::PortalTaskIo for NullIo {
-        async fn verify_token(&self) -> Result<(), health::PortalCallError> {
-            Ok(())
-        }
-        async fn post_scores(&self, _: &QueuedItem) -> Result<(), health::PortalCallError> {
-            Ok(())
-        }
-        async fn post_stats(&self, _: &QueuedItem) -> Result<(), health::PortalCallError> {
-            Ok(())
-        }
-    }
 
     fn mk_young_item() -> QueuedItem {
         QueuedItem {

@@ -25,9 +25,11 @@ pub(in super::super) fn build_main_view<'a>(
         mode,
         clock_running,
         teams,
+        portal_indicator,
     } = data;
 
-    let time_button = make_game_time_button(snapshot, true, false, mode, clock_running);
+    let time_button =
+        make_game_time_button(snapshot, true, false, mode, clock_running, portal_indicator);
 
     let mut center_col = column![time_button]
         .spacing(SPACING)

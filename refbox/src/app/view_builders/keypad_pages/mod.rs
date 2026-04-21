@@ -45,6 +45,7 @@ pub(in super::super) fn build_keypad_page<'a>(
         snapshot,
         mode,
         clock_running,
+        portal_indicator,
         ..
     } = data;
 
@@ -95,7 +96,14 @@ pub(in super::super) fn build_keypad_page<'a>(
     let text_size = MEDIUM_TEXT;
 
     column![
-        make_game_time_button(snapshot, false, false, mode, clock_running),
+        make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+            portal_indicator
+        ),
         row![
             container(
                 column![

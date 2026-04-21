@@ -358,7 +358,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         Ok(c) => c,
         Err(e) => {
             warn!("Failed to use config file. Error: {e}");
-            let config = match std::fs::read_to_string(config_path) {
+            let config = match std::fs::read_to_string(&config_path) {
                 Ok(file) => {
                     warn!("Found old config file, attempting migration");
                     match toml::from_str(&file) {
@@ -406,8 +406,17 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         _ => ("Roboto", iced_core::font::Weight::Medium),
     };
 
+    // The portal retry queue lives next to the config file. `config_path` is
+    // the file itself (see above where it was loaded), so its parent is the
+    // directory we want.
+    let config_dir = config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(std::env::temp_dir);
+
     let flags = app::RefBoxAppFlags {
         config,
+        config_dir,
         serial_ports,
         binary_port: args.binary_port,
         json_port: args.json_port,

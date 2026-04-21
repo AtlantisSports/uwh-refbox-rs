@@ -6,10 +6,24 @@
 
 use std::time::{Duration, Instant};
 
+use time::{Duration as TimeDuration, OffsetDateTime};
+
 use super::HealthState;
+use super::is_item_stuck;
+use super::queue::QueuedItem;
 
 pub const GREEN_CADENCE: Duration = Duration::from_secs(5 * 60);
 pub const DEGRADED_CADENCE: Duration = Duration::from_secs(15);
+
+pub fn is_item_retry_eligible(item: &QueuedItem, now: OffsetDateTime) -> bool {
+    if is_item_stuck(item, now) {
+        return false; // Stuck items wait for operator action.
+    }
+    match item.last_attempt_at {
+        None => true,
+        Some(last) => (now - last) >= TimeDuration::seconds(15),
+    }
+}
 
 /// What the background loop should do on its next wakeup.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,7 +61,24 @@ impl HealthDecisionState {
 
 #[cfg(test)]
 mod tests {
+    use super::super::ItemId;
     use super::*;
+
+    fn mk_queue_item(attempts: u32) -> QueuedItem {
+        QueuedItem {
+            id: ItemId {
+                event_id: "e".into(),
+                game_number: "G1".into(),
+            },
+            black_score: 0,
+            white_score: 0,
+            stats: "{}".into(),
+            queued_at: OffsetDateTime::now_utc(),
+            attempts,
+            last_attempt_at: None,
+            force: false,
+        }
+    }
 
     #[test]
     fn green_cadence_is_five_minutes() {
@@ -106,5 +137,36 @@ mod tests {
             current_health: HealthState::Red,
         };
         assert!(s.is_health_check_due(now + Duration::from_secs(15)));
+    }
+
+    #[test]
+    fn young_item_with_zero_attempts_is_eligible_for_retry() {
+        let item = mk_queue_item(0);
+        assert!(is_item_retry_eligible(&item, OffsetDateTime::now_utc()));
+    }
+
+    #[test]
+    fn stuck_item_is_not_eligible_for_auto_retry() {
+        let mut item = mk_queue_item(4);
+        // Queued 31 minutes ago — past the 30-minute stuck threshold.
+        item.queued_at = OffsetDateTime::now_utc() - TimeDuration::minutes(31);
+        assert!(!is_item_retry_eligible(&item, OffsetDateTime::now_utc()));
+    }
+
+    #[test]
+    fn item_with_recent_attempt_respects_cadence() {
+        let mut item = mk_queue_item(1);
+        let now = OffsetDateTime::now_utc();
+        item.last_attempt_at = Some(now);
+        // 5 seconds later — still within the 15s cadence.
+        assert!(!is_item_retry_eligible(
+            &item,
+            now + TimeDuration::seconds(5)
+        ));
+        // 15 seconds later — eligible again.
+        assert!(is_item_retry_eligible(
+            &item,
+            now + TimeDuration::seconds(15)
+        ));
     }
 }

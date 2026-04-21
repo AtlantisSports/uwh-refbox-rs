@@ -15,6 +15,7 @@ pub(in super::super) fn build_time_edit_view<'a>(
         snapshot,
         mode,
         clock_running,
+        portal_indicator,
         ..
     } = data;
 
@@ -38,7 +39,7 @@ pub(in super::super) fn build_time_edit_view<'a>(
     }
 
     column![
-        make_game_time_button(snapshot, false, true, mode, clock_running),
+        make_game_time_button(snapshot, false, true, mode, clock_running, portal_indicator),
         vertical_space(),
         text(fl!("Note-Game-time-is-paused"))
             .size(SMALL_TEXT)

@@ -1,4 +1,5 @@
 use super::*;
+use crate::portal_manager::PortalIndicatorState;
 use enum_iterator::all;
 use iced::{
     Alignment, Background, Length, Theme,
@@ -297,7 +298,10 @@ pub(super) fn make_game_time_button<'a>(
     editing_time: bool,
     mode: Mode,
     clock_running: bool,
+    portal_indicator: PortalIndicatorState,
 ) -> Row<'a, Message> {
+    // TODO(Task 12): render the portal health tile using this state.
+    let _ = portal_indicator;
     let make_red = if editing_time {
         false
     } else {

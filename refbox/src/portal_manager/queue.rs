@@ -1,7 +1,12 @@
 //! On-disk persistence for the portal retry queue.
 
+use log;
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use time::OffsetDateTime;
+use time::macros::format_description;
 
 use super::ItemId;
 
@@ -55,6 +60,69 @@ pub struct QueuedItem {
     pub force: bool,
 }
 
+const QUEUE_FILE_NAME: &str = "portal_queue.json";
+const TMP_FILE_NAME: &str = "portal_queue.json.tmp";
+
+fn queue_path(dir: &Path) -> PathBuf {
+    dir.join(QUEUE_FILE_NAME)
+}
+
+fn tmp_path(dir: &Path) -> PathBuf {
+    dir.join(TMP_FILE_NAME)
+}
+
+/// Load the queue file from `dir`. If missing, return an empty queue. If
+/// present but unparseable, rename to `portal_queue.corrupt.<ts>.json`,
+/// log an error, and return an empty queue.
+pub fn load_or_empty(dir: &Path) -> std::io::Result<QueueFile> {
+    let path = queue_path(dir);
+    if !path.exists() {
+        return Ok(QueueFile::empty());
+    }
+    let bytes = fs::read(&path)?;
+    match serde_json::from_slice::<QueueFile>(&bytes) {
+        Ok(q) if q.version == QueueFile::CURRENT_VERSION => Ok(q),
+        Ok(q) => {
+            log::error!(
+                "portal_queue.json has unknown version {}; renaming and starting fresh",
+                q.version
+            );
+            rename_corrupt(&path)?;
+            Ok(QueueFile::empty())
+        }
+        Err(e) => {
+            log::error!("portal_queue.json failed to parse ({e}); renaming and starting fresh");
+            rename_corrupt(&path)?;
+            Ok(QueueFile::empty())
+        }
+    }
+}
+
+fn rename_corrupt(path: &Path) -> std::io::Result<()> {
+    // Format: YYYYMMDDTHHMMSSZ, e.g. "20260419T142203Z".
+    let fmt = format_description!("[year][month][day]T[hour][minute][second]Z");
+    let ts = OffsetDateTime::now_utc()
+        .format(&fmt)
+        .unwrap_or_else(|_| "unknown-time".to_string());
+    let mut new_path = path.to_path_buf();
+    new_path.set_file_name(format!("portal_queue.corrupt.{ts}.json"));
+    fs::rename(path, &new_path)
+}
+
+/// Atomically write the queue file to `dir/portal_queue.json`.
+/// Writes to a temp file, fsyncs, then renames over the target.
+pub fn save(dir: &Path, q: &QueueFile) -> std::io::Result<()> {
+    let tmp = tmp_path(dir);
+    {
+        let mut f = fs::File::create(&tmp)?;
+        serde_json::to_writer(&f, q).map_err(std::io::Error::other)?;
+        f.flush()?;
+        f.sync_all()?;
+    }
+    fs::rename(&tmp, queue_path(dir))?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -91,5 +159,73 @@ mod tests {
         let s = serde_json::to_string_pretty(&q).unwrap();
         let back: QueueFile = serde_json::from_str(&s).unwrap();
         assert_eq!(q, back);
+    }
+
+    #[cfg(test)]
+    mod load_save_tests {
+        use super::*;
+        use tempfile::TempDir;
+
+        #[test]
+        fn loads_empty_when_file_missing() {
+            let tmp = TempDir::new().unwrap();
+            let q = load_or_empty(tmp.path()).unwrap();
+            assert_eq!(q, QueueFile::empty());
+        }
+
+        #[test]
+        fn save_then_load_round_trip() {
+            let tmp = TempDir::new().unwrap();
+            let q = QueueFile {
+                version: 1,
+                items: vec![QueuedItem {
+                    id: ItemId {
+                        event_id: "e1".into(),
+                        game_number: "G1".into(),
+                    },
+                    black_score: 0,
+                    white_score: 0,
+                    stats: "{}".into(),
+                    queued_at: OffsetDateTime::now_utc(),
+                    attempts: 0,
+                    last_attempt_at: None,
+                    force: false,
+                }],
+            };
+            save(tmp.path(), &q).unwrap();
+            let back = load_or_empty(tmp.path()).unwrap();
+            assert_eq!(back, q);
+        }
+
+        #[test]
+        fn corrupted_file_is_renamed_and_empty_returned() {
+            let tmp = TempDir::new().unwrap();
+            let queue_path = tmp.path().join("portal_queue.json");
+            std::fs::write(&queue_path, b"this is not json").unwrap();
+
+            let q = load_or_empty(tmp.path()).unwrap();
+            assert_eq!(q, QueueFile::empty());
+
+            // Original file should have been renamed.
+            assert!(!queue_path.exists());
+            let entries: Vec<_> = std::fs::read_dir(tmp.path())
+                .unwrap()
+                .map(|e| e.unwrap().file_name().into_string().unwrap())
+                .collect();
+            assert!(
+                entries
+                    .iter()
+                    .any(|n| n.starts_with("portal_queue.corrupt")),
+                "expected a corrupt backup; got {entries:?}"
+            );
+        }
+
+        #[test]
+        fn atomic_write_leaves_no_tmp_file_on_success() {
+            let tmp = TempDir::new().unwrap();
+            save(tmp.path(), &QueueFile::empty()).unwrap();
+            assert!(tmp.path().join("portal_queue.json").exists());
+            assert!(!tmp.path().join("portal_queue.json.tmp").exists());
+        }
     }
 }

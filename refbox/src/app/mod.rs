@@ -3,7 +3,7 @@ use super::{APP_NAME, fl};
 use crate::{
     config::{Config, Mode},
     penalty_editor::*,
-    portal_manager::{NullIo, PortalEvent, PortalManager},
+    portal_manager::{PortalEvent, PortalManager, SharedEventId, UwhPortalIo},
     sound_controller::*,
     tournament_manager::{penalty::*, *},
 };
@@ -73,7 +73,13 @@ pub struct RefBoxApp {
     last_app_state: AppState,
     last_message: Message,
     update_sender: UpdateSender,
-    uwhportal_client: Option<UwhPortalClient>,
+    uwhportal_client: Option<Arc<Mutex<UwhPortalClient>>>,
+    /// Shared handle the background portal task reads to learn the
+    /// currently-selected event for its periodic `verify_token` probe.
+    /// Starts `None` and is left `None` by Task 12 — a later task will
+    /// update it when the operator picks an event.
+    #[allow(dead_code)]
+    portal_event_id: SharedEventId,
     using_uwhportal: bool,
     events: Option<BTreeMap<EventId, Event>>,
     schedule: Option<Schedule>,
@@ -222,8 +228,14 @@ impl RefBoxApp {
     }
 
     fn request_event_list(&self) -> Task<Message> {
-        if let Some(ref client) = self.uwhportal_client {
-            let request = client.get_event_list(self.list_all_events, true);
+        if let Some(client) = &self.uwhportal_client {
+            // why this cannot panic: the `UwhPortalClient` is only mutated by
+            // `set_token`/`clear_token`, neither of which panics, so the
+            // mutex is never poisoned in practice.
+            let request = client
+                .lock()
+                .unwrap()
+                .get_event_list(self.list_all_events, true);
             Task::future(async move {
                 match request.await {
                     Ok(events) => {
@@ -242,8 +254,9 @@ impl RefBoxApp {
     }
 
     fn request_teams_list(&self, event_id: EventId) -> Task<Message> {
-        if let Some(ref client) = self.uwhportal_client {
-            let request = client.get_event_teams(&event_id);
+        if let Some(client) = &self.uwhportal_client {
+            // why this cannot panic: see `request_event_list` above.
+            let request = client.lock().unwrap().get_event_teams(&event_id);
             Task::future(async move {
                 match request.await {
                     Ok(teams) => {
@@ -262,9 +275,12 @@ impl RefBoxApp {
     }
 
     fn request_schedule(&self, event_id: EventId) -> Task<Message> {
-        if let Some(ref client) = self.uwhportal_client {
-            let schedule_req = client.get_event_schedule_privileged(&event_id);
-            let names_req = client.get_event_referee_name_map_from_referees(&event_id);
+        if let Some(client) = &self.uwhportal_client {
+            // why this cannot panic: see `request_event_list` above.
+            let guard = client.lock().unwrap();
+            let schedule_req = guard.get_event_schedule_privileged(&event_id);
+            let names_req = guard.get_event_referee_name_map_from_referees(&event_id);
+            drop(guard);
             Task::future(async move {
                 let mut schedule = match schedule_req.await {
                     Ok(s) => s,
@@ -301,8 +317,13 @@ impl RefBoxApp {
         game_number: &GameNumber,
         scores: BlackWhiteBundle<u8>,
     ) -> Task<Message> {
-        if let Some(ref client) = self.uwhportal_client {
-            let request = client.post_game_scores(event_id, game_number, scores, false);
+        if let Some(client) = &self.uwhportal_client {
+            // why this cannot panic: see `request_event_list` above.
+            let request =
+                client
+                    .lock()
+                    .unwrap()
+                    .post_game_scores(event_id, game_number, scores, false);
             Task::future(async move {
                 match request.await {
                     Ok(()) => {
@@ -320,8 +341,9 @@ impl RefBoxApp {
     }
 
     fn request_uwhportal_token(&self, event_id: &EventId, code: u32) -> Task<Message> {
-        if let Some(ref uwhportal_client) = self.uwhportal_client {
-            let request = uwhportal_client.login_to_portal(event_id, code);
+        if let Some(client) = &self.uwhportal_client {
+            // why this cannot panic: see `request_event_list` above.
+            let request = client.lock().unwrap().login_to_portal(event_id, code);
             Task::future(async move {
                 match request.await {
                     Ok(token) => {
@@ -340,8 +362,9 @@ impl RefBoxApp {
     }
 
     fn check_uwhportal_auth(&self, event_id: &EventId) -> Task<Message> {
-        if let Some(ref uwhportal_client) = self.uwhportal_client {
-            let request = uwhportal_client.verify_token(event_id);
+        if let Some(client) = &self.uwhportal_client {
+            // why this cannot panic: see `request_event_list` above.
+            let request = client.lock().unwrap().verify_token(event_id);
             Task::future(async move {
                 match request.await {
                     Ok(()) => {
@@ -365,8 +388,12 @@ impl RefBoxApp {
         game_number: &GameNumber,
         stats: String,
     ) -> Task<Message> {
-        if let Some(ref uwhportal_client) = self.uwhportal_client {
-            let request = uwhportal_client.post_game_stats(event_id, game_number, stats);
+        if let Some(client) = &self.uwhportal_client {
+            // why this cannot panic: see `request_event_list` above.
+            let request = client
+                .lock()
+                .unwrap()
+                .post_game_stats(event_id, game_number, stats);
             Task::future(async move {
                 match request.await {
                     Ok(()) => info!("Successfully posted game stats"),
@@ -524,12 +551,18 @@ impl RefBoxApp {
             require_https,
             REQUEST_TIMEOUT,
         ) {
-            Ok(c) => Some(c),
+            Ok(c) => Some(Arc::new(Mutex::new(c))),
             Err(e) => {
                 error!("Failed to start UWH Portal Client: {e}");
                 None
             }
         };
+
+        // Shared event id the background portal task consults for its
+        // periodic `verify_token` check. Starts `None`; a later task
+        // will wire the UI side to update it when the operator picks or
+        // clears an event.
+        let portal_event_id: SharedEventId = Arc::new(Mutex::new(None));
 
         let tm = Arc::new(Mutex::new(tm));
 
@@ -541,10 +574,6 @@ impl RefBoxApp {
 
         let snapshot = Default::default();
 
-        // `NullIo` is a placeholder adapter; the real `UwhPortalIo` wrapper
-        // around `UwhPortalClient` lands in Task 12. Task 12 will also
-        // replace this construction with the real one.
-        //
         // If the queue file exists but is unreadable (rare — permission
         // error on the refbox's own config dir), we log and fall back to
         // a fresh in-memory queue under the system temp dir so the UI can
@@ -553,16 +582,38 @@ impl RefBoxApp {
         // persistence and the portal indicator pinned Red so the operator
         // sees the problem — but the core game clock and scoring still
         // work, which is what matters at the pool.
+        //
+        // The production `UwhPortalIo` is built from a clone of the
+        // shared `UwhPortalClient` handle so that token mutations on the
+        // UI thread are immediately visible to the background retry task.
+        // If the client failed to construct (only possible on a bad
+        // https-only config), fall back to `NullIo` for the non-degraded
+        // path — no portal calls will be made, but the queue can still
+        // accept items and persist them for a later attempt.
         std::fs::create_dir_all(&config_dir).ok();
 
-        let (portal_manager, portal_event_rx) = match PortalManager::new(&config_dir, NullIo) {
+        // Try `config_dir` first, then `std::env::temp_dir()`, then fall
+        // back to degraded mode. Each attempt gets its own freshly-built
+        // `PortalTaskIo`: either the real `UwhPortalIo` (if we have a
+        // portal client) or `NullIo` (if client construction failed
+        // earlier). The I/O is generic in the `PortalTaskIo` impl so the
+        // retry helper is a closure that owns the attempt.
+        let try_new_manager = |dir: &std::path::Path| match &uwhportal_client {
+            Some(client) => PortalManager::new(
+                dir,
+                UwhPortalIo::new(Arc::clone(client), Arc::clone(&portal_event_id)),
+            ),
+            None => PortalManager::new(dir, crate::portal_manager::NullIo),
+        };
+
+        let (portal_manager, portal_event_rx) = match try_new_manager(&config_dir) {
             Ok(pair) => pair,
             Err(primary_err) => {
                 error!(
                     "portal manager startup failed on config dir ({}); falling back to temp dir",
                     primary_err
                 );
-                match PortalManager::new(&std::env::temp_dir(), NullIo) {
+                match try_new_manager(&std::env::temp_dir()) {
                     Ok(pair) => pair,
                     Err(secondary_err) => {
                         error!(
@@ -591,6 +642,7 @@ impl RefBoxApp {
             last_message: Message::NoAction,
             update_sender,
             uwhportal_client,
+            portal_event_id,
             using_uwhportal: false,
             events: None,
             schedule: None,
@@ -1206,7 +1258,10 @@ impl RefBoxApp {
                         .parse()
                         .unwrap_or(0),
                     KeypadPage::PortalLogin(ref mut id, _) => {
-                        *id = self.uwhportal_client.as_ref().unwrap().id();
+                        // why this cannot panic: this branch only runs when the
+                        // portal client was successfully constructed at startup,
+                        // and the guard is held only for a synchronous `id()` call.
+                        *id = self.uwhportal_client.as_ref().unwrap().lock().unwrap().id();
                         0
                     }
                 };
@@ -1294,6 +1349,10 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
+            Message::OpenPortalDetailPage => {
+                // TODO(Task 13): route to detail page.
+                Task::none()
+            }
             Message::RequestPortalRefresh => {
                 if let AppState::GameDetailsPage(ref mut is_refreshing) = self.app_state {
                     *is_refreshing = true;
@@ -1313,7 +1372,10 @@ impl RefBoxApp {
                 let mut task = Task::none();
 
                 let uwhportal_token_valid = if let Some(ref client) = self.uwhportal_client {
-                    if client.has_token() {
+                    // why this cannot panic: the guard is held only for a synchronous
+                    // `has_token()` call and dropped immediately.
+                    let has_token = client.lock().unwrap().has_token();
+                    if has_token {
                         if let Some(event_id) = self.current_event_id.as_ref() {
                             task = self.check_uwhportal_auth(event_id);
                             None
@@ -1642,7 +1704,10 @@ impl RefBoxApp {
                         edited_settings.current_event_id = Some(id.clone());
 
                         if let Some(ref client) = self.uwhportal_client {
-                            if client.has_token() {
+                            // why this cannot panic: the guard is held only for a
+                            // synchronous `has_token()` call and dropped immediately.
+                            let has_token = client.lock().unwrap().has_token();
+                            if has_token {
                                 edited_settings.uwhportal_token_valid = None;
                             } else {
                                 edited_settings.uwhportal_token_valid = Some(false);
@@ -1883,14 +1948,13 @@ impl RefBoxApp {
                             self.app_state,
                             AppState::ConfirmationPage(ConfirmationKind::UwhPortalLinkFailed(_))
                         ) {
+                            // why this cannot panic: this branch only runs after a
+                            // portal link attempt, which requires a successfully
+                            // constructed client; the guard is held only for `id()`.
+                            let portal_id =
+                                self.uwhportal_client.as_ref().unwrap().lock().unwrap().id();
                             (
-                                AppState::KeypadPage(
-                                    KeypadPage::PortalLogin(
-                                        self.uwhportal_client.as_ref().unwrap().id(),
-                                        false,
-                                    ),
-                                    0,
-                                ),
+                                AppState::KeypadPage(KeypadPage::PortalLogin(portal_id, false), 0),
                                 Task::none(),
                             )
                         } else {
@@ -2202,8 +2266,10 @@ impl RefBoxApp {
                 self.app_state = match token_response {
                     PortalTokenResponse::Success(token) => {
                         info!("Portal token request succeeded");
-                        if let Some(client) = self.uwhportal_client.as_mut() {
-                            client.set_token(&token);
+                        if let Some(client) = self.uwhportal_client.as_ref() {
+                            // why this cannot panic: the guard is held only for a
+                            // synchronous `set_token()` call and dropped immediately.
+                            client.lock().unwrap().set_token(&token);
                         }
                         self.config.uwhportal.token = token;
                         if let Some(ref mut settings) = self.edited_settings {

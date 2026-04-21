@@ -1,15 +1,16 @@
 use super::*;
-use crate::portal_manager::PortalIndicatorState;
+use crate::portal_manager::{HealthState, OverlayState, PortalIndicatorState};
 use enum_iterator::all;
 use iced::{
-    Alignment, Background, Length, Theme,
+    Alignment, Background, Border, Length, Theme,
     alignment::{Horizontal, Vertical},
     widget::{
-        Button, Container, Image, Row, Space, Text, button, container,
+        Button, Container, Image, Row, Space, Stack, Text, button, container,
         container::Style as ContainerStyle, horizontal_space, image, svg, svg::Svg, text,
         text::Style as TextStyle, vertical_space,
     },
 };
+use iced_core::border::Radius;
 use iced_core::text::IntoFragment;
 use matrix_drawing::{secs_to_long_time_string, secs_to_time_string};
 use std::{
@@ -292,6 +293,110 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
     row![black, referee, penalty, white].spacing(SPACING)
 }
 
+/// Build the portal-health tile shown at the left end of the time banner.
+///
+/// Size: 130x130 container, with the UWH Portal logo on top and a
+/// 50x50 coloured round dot beneath. The dot's colour reflects
+/// `state.health` (Green / Yellow / Red). When `state.overlay` is
+/// `RecentSuccess` or `AttentionNeeded`, an SVG icon (checkmark or
+/// exclamation) is stacked on top of the dot. The whole tile is a
+/// button that fires `Message::OpenPortalDetailPage` when tapped;
+/// Task 13 will route that message to the detail page.
+pub(super) fn make_health_tile<'a>(state: PortalIndicatorState) -> Element<'a, Message> {
+    let dot_color = match state.health {
+        HealthState::Green => GREEN,
+        HealthState::Yellow => YELLOW,
+        HealthState::Red => RED,
+    };
+
+    let dot_style = move |_theme: &Theme| ContainerStyle {
+        background: Some(Background::Color(dot_color)),
+        text_color: None,
+        border: Border {
+            color: iced::Color::TRANSPARENT,
+            width: 0.0,
+            radius: Radius::new(HEALTH_DOT_SIZE / 2.0),
+        },
+        shadow: Default::default(),
+    };
+
+    let dot = container(Space::new(Length::Fill, Length::Fill))
+        .width(Length::Fixed(HEALTH_DOT_SIZE))
+        .height(Length::Fixed(HEALTH_DOT_SIZE))
+        .style(dot_style);
+
+    let dot_with_overlay: Element<'a, Message> = match state.overlay {
+        OverlayState::None => dot.into(),
+        OverlayState::RecentSuccess => Stack::new()
+            .push(dot)
+            .push(
+                container(
+                    Svg::new(svg::Handle::from_memory(
+                        &include_bytes!("../../../resources/check_circle.svg")[..],
+                    ))
+                    .style(black_svg),
+                )
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
+                .padding(PADDING),
+            )
+            .width(Length::Fixed(HEALTH_DOT_SIZE))
+            .height(Length::Fixed(HEALTH_DOT_SIZE))
+            .into(),
+        OverlayState::AttentionNeeded => Stack::new()
+            .push(dot)
+            .push(
+                container(
+                    Svg::new(svg::Handle::from_memory(
+                        &include_bytes!("../../../resources/exclamation.svg")[..],
+                    ))
+                    .style(black_svg),
+                )
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
+                .padding(PADDING),
+            )
+            .width(Length::Fixed(HEALTH_DOT_SIZE))
+            .height(Length::Fixed(HEALTH_DOT_SIZE))
+            .into(),
+    };
+
+    let logo = Image::new(image::Handle::from_bytes(
+        &include_bytes!("../../../resources/UWH_Portal_Compact_Logo.png")[..],
+    ))
+    .width(Length::Fill)
+    .height(Length::Fill);
+
+    let tile_contents = column![
+        container(logo)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill),
+        container(dot_with_overlay)
+            .width(Length::Fill)
+            .center_x(Length::Fill),
+    ]
+    .spacing(SPACING / 2.0)
+    .align_x(Alignment::Center)
+    .width(Length::Fill);
+
+    button(
+        container(tile_contents)
+            .padding(PADDING)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill),
+    )
+    .width(Length::Fixed(HEALTH_TILE_SIZE))
+    .height(Length::Fixed(HEALTH_TILE_SIZE))
+    .padding(0)
+    .style(light_gray_button)
+    .on_press(Message::OpenPortalDetailPage)
+    .into()
+}
+
 pub(super) fn make_game_time_button<'a>(
     snapshot: &GameSnapshot,
     tall: bool,
@@ -300,8 +405,6 @@ pub(super) fn make_game_time_button<'a>(
     clock_running: bool,
     portal_indicator: PortalIndicatorState,
 ) -> Row<'a, Message> {
-    // TODO(Task 12): render the portal health tile using this state.
-    let _ = portal_indicator;
     let make_red = if editing_time {
         false
     } else {
@@ -456,9 +559,9 @@ pub(super) fn make_game_time_button<'a>(
     }
 
     let button_height = if tall {
-        Length::Fixed(MIN_BUTTON_SIZE + SMALL_PLUS_TEXT + PADDING)
+        Length::Fixed(HEALTH_TILE_SIZE + PADDING + SMALL_PLUS_TEXT)
     } else {
-        Length::Fixed(MIN_BUTTON_SIZE)
+        Length::Fixed(HEALTH_TILE_SIZE)
     };
 
     let button_style = if make_red { red_button } else { gray_button };
@@ -474,10 +577,11 @@ pub(super) fn make_game_time_button<'a>(
             Message::EditTime
         });
 
-    let mut time_row = row![time_button]
+    let mut time_row = row![make_health_tile(portal_indicator), time_button]
         .height(button_height)
         .width(Length::Fill)
-        .spacing(SPACING);
+        .spacing(SPACING)
+        .align_y(Alignment::Center);
 
     if mode == Mode::Rugby {
         let play_pause_icon = container(

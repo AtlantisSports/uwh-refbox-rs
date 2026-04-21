@@ -75,6 +75,7 @@ pub enum Message {
         canceled: bool,
     },
     ShowGameDetails,
+    OpenPortalDetailPage,
     RequestPortalRefresh,
     ShowWarnings,
     EditGameConfig,
@@ -162,6 +163,7 @@ impl Message {
             | Self::ChangeColor(_)
             | Self::AddScoreComplete { .. }
             | Self::ShowGameDetails
+            | Self::OpenPortalDetailPage
             | Self::RequestPortalRefresh
             | Self::ShowWarnings
             | Self::EditGameConfig
@@ -205,6 +207,7 @@ impl PartialEq for Message {
             | (Self::WarningOverview, Self::WarningOverview)
             | (Self::FoulOverview, Self::FoulOverview)
             | (Self::ShowGameDetails, Self::ShowGameDetails)
+            | (Self::OpenPortalDetailPage, Self::OpenPortalDetailPage)
             | (Self::RequestPortalRefresh, Self::RequestPortalRefresh)
             | (Self::ShowWarnings, Self::ShowWarnings)
             | (Self::EditGameConfig, Self::EditGameConfig)
@@ -363,6 +366,7 @@ impl PartialEq for Message {
             | (Self::ChangeColor(_), _)
             | (Self::AddScoreComplete { .. }, _)
             | (Self::ShowGameDetails, _)
+            | (Self::OpenPortalDetailPage, _)
             | (Self::RequestPortalRefresh, _)
             | (Self::ShowWarnings, _)
             | (Self::EditGameConfig, _)

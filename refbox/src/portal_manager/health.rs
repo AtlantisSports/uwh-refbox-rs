@@ -58,8 +58,8 @@ impl HealthDecisionState {
     }
 
     /// Is a new health check due given the time since the last successful
-    /// interaction? `None` means no successful interaction has ever happened —
-    /// always due.
+    /// interaction? `None` means no successful interaction has ever
+    /// happened — so a health check is always due.
     pub fn is_health_check_due(&self, elapsed_since_last: Option<Duration>) -> bool {
         match elapsed_since_last {
             None => true,

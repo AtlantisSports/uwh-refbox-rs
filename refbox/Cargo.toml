@@ -57,6 +57,9 @@ unic-langid = "0.9.6"
 uwh-common = { version = "0.4.0", path = "../uwh-common"}
 web-audio-api = { version = "1.2", default-features = false, features = ["cpal"] }
 
+[dev-dependencies]
+tempfile = "3"
+
 [build-dependencies]
 fluent-syntax = "0.12.0"
 winresource = "0.1.22"

@@ -1981,24 +1981,43 @@ pub(super) fn make_game_time_button<'a>(
 
 - [ ] **Step 2: Update every call site**
 
-Every call to `make_game_time_button(...)` must pass a `portal_indicator` argument. In each of the 12 view-builder files, the caller has access to `self` (the `App`). Add:
+Every call to `make_game_time_button(...)` must pass a `portal_indicator` argument.
+
+The view-builder files are free functions that receive a `ViewData<'a, 'b>` struct (defined in `refbox/src/app/view_data.rs`), not methods on `self`. The cleanest way to thread the indicator state is to add a field to `ViewData` and populate it once per frame in `view()`:
 
 ```rust
-let portal_indicator = self.portal_manager.indicator_state();
+// refbox/src/app/view_data.rs
+pub(super) struct ViewData<'a, 'b> {
+    // ... existing fields ...
+    pub(super) portal_indicator: PortalIndicatorState,
+}
 ```
 
-then pass it at the end of the existing `make_game_time_button` call:
+Populate it once in `view()` in `refbox/src/app/mod.rs`:
 
 ```rust
+let data = ViewData {
+    // ... existing fields ...
+    portal_indicator: self.portal_manager.indicator_state(),
+};
+```
+
+Then each of the 12 view-builder files destructures `portal_indicator` out of `data` and passes it as the last argument to `make_game_time_button`:
+
+```rust
+let ViewData { snapshot, mode, clock_running, portal_indicator, .. } = data;
+// ...
 make_game_time_button(
-    &self.snapshot,
+    snapshot,
     /* tall: */ true,
     /* editing_time: */ false,
-    self.mode,
-    self.clock_running,
-    self.portal_manager.indicator_state(),   // <-- new argument
+    mode,
+    clock_running,
+    portal_indicator,   // <-- new argument
 )
 ```
+
+Use this uniform pattern everywhere to keep the diff consistent and searchable.
 
 Do this for every call in every of these files (paths relative to `refbox/src`):
 

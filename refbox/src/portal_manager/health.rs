@@ -46,7 +46,6 @@ pub enum NextAction {
 
 #[derive(Debug, Clone)]
 pub struct HealthDecisionState {
-    pub last_successful_interaction: Option<Instant>,
     pub current_health: HealthState,
 }
 
@@ -58,11 +57,13 @@ impl HealthDecisionState {
         }
     }
 
-    /// Has the cadence elapsed since the last successful interaction?
-    pub fn is_health_check_due(&self, now: Instant) -> bool {
-        match self.last_successful_interaction {
-            None => true, // First ever check — fire immediately.
-            Some(last) => now.saturating_duration_since(last) >= self.next_cadence(),
+    /// Is a new health check due given the time since the last successful
+    /// interaction? `None` means no successful interaction has ever happened —
+    /// always due.
+    pub fn is_health_check_due(&self, elapsed_since_last: Option<Duration>) -> bool {
+        match elapsed_since_last {
+            None => true,
+            Some(elapsed) => elapsed >= self.next_cadence(),
         }
     }
 }
@@ -120,11 +121,9 @@ async fn run_task(
     loop {
         tokio::select! {
             _ = sleep(POLL_INTERVAL) => {
-                let state = HealthDecisionState {
-                    last_successful_interaction: last_success,
-                    current_health,
-                };
-                if state.is_health_check_due(Instant::now()) {
+                let elapsed = last_success.map(|t| Instant::now().saturating_duration_since(t));
+                let state = HealthDecisionState { current_health };
+                if state.is_health_check_due(elapsed) {
                     let _ = event_tx.send(PortalEvent::HealthChanged(HealthState::Yellow)).await;
                     match io.verify_token().await {
                         Ok(()) => {
@@ -180,7 +179,6 @@ mod tests {
     #[test]
     fn green_cadence_is_five_minutes() {
         let s = HealthDecisionState {
-            last_successful_interaction: Some(Instant::now()),
             current_health: HealthState::Green,
         };
         assert_eq!(s.next_cadence(), GREEN_CADENCE);
@@ -189,10 +187,7 @@ mod tests {
     #[test]
     fn yellow_and_red_cadence_is_fifteen_seconds() {
         for h in [HealthState::Yellow, HealthState::Red] {
-            let s = HealthDecisionState {
-                last_successful_interaction: Some(Instant::now()),
-                current_health: h,
-            };
+            let s = HealthDecisionState { current_health: h };
             assert_eq!(s.next_cadence(), DEGRADED_CADENCE);
         }
     }
@@ -200,40 +195,33 @@ mod tests {
     #[test]
     fn first_ever_check_is_due_immediately() {
         let s = HealthDecisionState {
-            last_successful_interaction: None,
             current_health: HealthState::Green,
         };
-        assert!(s.is_health_check_due(Instant::now()));
+        assert!(s.is_health_check_due(None));
     }
 
     #[test]
     fn green_check_not_due_if_cadence_not_elapsed() {
-        let now = Instant::now();
         let s = HealthDecisionState {
-            last_successful_interaction: Some(now),
             current_health: HealthState::Green,
         };
-        assert!(!s.is_health_check_due(now + Duration::from_secs(60)));
+        assert!(!s.is_health_check_due(Some(Duration::from_secs(60))));
     }
 
     #[test]
     fn green_check_due_after_cadence() {
-        let now = Instant::now();
         let s = HealthDecisionState {
-            last_successful_interaction: Some(now),
             current_health: HealthState::Green,
         };
-        assert!(s.is_health_check_due(now + GREEN_CADENCE));
+        assert!(s.is_health_check_due(Some(GREEN_CADENCE)));
     }
 
     #[test]
     fn degraded_check_due_after_fifteen_seconds() {
-        let now = Instant::now();
         let s = HealthDecisionState {
-            last_successful_interaction: Some(now),
             current_health: HealthState::Red,
         };
-        assert!(s.is_health_check_due(now + Duration::from_secs(15)));
+        assert!(s.is_health_check_due(Some(Duration::from_secs(15))));
     }
 
     #[test]

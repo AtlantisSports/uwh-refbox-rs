@@ -24,8 +24,6 @@ use crate::portal_manager::queue::{QueueFile, QueuedItem};
 /// This type is intentionally do-nothing — the background retry task spawned
 /// by `PortalManager::new` calls its methods but they always succeed without
 /// contacting any server.
-// TODO(Task 12): replace with UwhPortalIo that wraps UwhPortalClient.
-#[allow(dead_code)]
 pub(crate) struct NullIo;
 
 #[async_trait::async_trait]
@@ -222,6 +220,40 @@ impl PortalManager {
         m.recompute_indicator();
         m.push_queue_snapshot();
         Ok((m, handle.event_rx))
+    }
+
+    /// Constructs a `PortalManager` that does not attempt any disk or
+    /// network I/O. Used as a last-resort fallback when both the user
+    /// config dir and the system temp dir reject I/O — the refbox's
+    /// core game functions still work, and the portal indicator shows
+    /// Red so the operator sees there's a problem.
+    ///
+    /// No background task is spawned: there's nothing for it to do,
+    /// and spawning one with `NullIo` would cause `verify_token` to
+    /// succeed and clear the red state, hiding the problem.
+    ///
+    /// The returned receiver is a dummy that never emits events.
+    pub(crate) fn new_degraded() -> (Self, mpsc::Receiver<PortalEvent>) {
+        // Construct a (sender, receiver) pair so the caller has a
+        // receiver to hold onto; the sender is dropped immediately,
+        // so nothing can ever send to it.
+        let (tx, rx) = mpsc::channel(1);
+        // Similarly, build a command_tx that goes nowhere.
+        let (command_tx, _command_rx) = mpsc::channel(1);
+        drop(tx);
+
+        let mut m = Self {
+            queue: QueueFile::empty(),
+            check_in_flight: false,
+            // Key: indicator will show Red so the operator sees the problem.
+            token_known_problem: true,
+            recent_success_until: None,
+            indicator_state: PortalIndicatorState::default(),
+            command_tx,
+            config_dir: std::env::temp_dir(),
+        };
+        m.recompute_indicator();
+        (m, rx)
     }
 
     /// Send the current queue snapshot to the background task. Called
@@ -475,5 +507,39 @@ mod tests {
         assert!(!m.token_known_problem);
         assert_eq!(m.queue.items[0].attempts, 0);
         assert!(m.queue.items[0].last_attempt_at.is_none());
+    }
+
+    #[test]
+    fn new_degraded_indicator_has_token_known_problem_and_no_spawned_task() {
+        let (manager, mut rx) = PortalManager::new_degraded();
+
+        // The indicator should reflect token_known_problem (Red state).
+        let state = manager.indicator_state();
+        assert_eq!(
+            state.health,
+            HealthState::Red,
+            "degraded mode must surface the failure to the operator via a red dot"
+        );
+
+        // The queue should be empty (no persistence attempted).
+        assert_eq!(manager.queue.items.len(), 0);
+
+        // The returned receiver should not receive any events (no spawned task,
+        // and the sender half was dropped at construction).
+        // try_recv should return an Err (either Empty or Disconnected).
+        assert!(
+            rx.try_recv().is_err(),
+            "degraded mode must not produce portal events"
+        );
+    }
+
+    #[test]
+    fn new_degraded_does_not_touch_disk() {
+        // Smoke test: constructing a degraded manager must not perform
+        // any filesystem I/O. We can't easily intercept I/O, but we can
+        // verify the config_dir field points at temp_dir (a safe
+        // non-persistent default) rather than any user-supplied path.
+        let (manager, _rx) = PortalManager::new_degraded();
+        assert_eq!(manager.config_dir, std::env::temp_dir());
     }
 }

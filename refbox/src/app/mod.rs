@@ -548,22 +548,35 @@ impl RefBoxApp {
         // If the queue file exists but is unreadable (rare — permission
         // error on the refbox's own config dir), we log and fall back to
         // a fresh in-memory queue under the system temp dir so the UI can
-        // still start. A failure of even the temp dir indicates a deeper
-        // environment problem; we panic with a clear message rather than
-        // attempting to paper over it.
-        let (portal_manager, portal_event_rx) = PortalManager::new(&config_dir, NullIo)
-            .or_else(|e| {
+        // still start. If even the temp dir refuses I/O (e.g. a locked-
+        // down loaner laptop), we fall back to a degraded mode with no
+        // persistence and the portal indicator pinned Red so the operator
+        // sees the problem — but the core game clock and scoring still
+        // work, which is what matters at the pool.
+        std::fs::create_dir_all(&config_dir).ok();
+
+        let (portal_manager, portal_event_rx) = match PortalManager::new(&config_dir, NullIo) {
+            Ok(pair) => pair,
+            Err(primary_err) => {
                 error!(
-                    "Failed to start PortalManager from {}: {e}. Using temporary directory.",
-                    config_dir.display()
+                    "portal manager startup failed on config dir ({}); falling back to temp dir",
+                    primary_err
                 );
-                PortalManager::new(&std::env::temp_dir(), NullIo)
-            })
-            .map(|(pm, rx)| (pm, Some(rx)))
-            // `expect` is load-bearing here: if even the system temp dir
-            // refuses I/O, the process has no reasonable fallback and
-            // should fail loudly at startup rather than silently.
-            .expect("Failed to start PortalManager (temp dir also rejected I/O)");
+                match PortalManager::new(&std::env::temp_dir(), NullIo) {
+                    Ok(pair) => pair,
+                    Err(secondary_err) => {
+                        error!(
+                            "portal manager also failed on temp dir ({}); \
+                             continuing in degraded mode — retry queue will not persist, \
+                             portal indicator will show red",
+                            secondary_err
+                        );
+                        PortalManager::new_degraded()
+                    }
+                }
+            }
+        };
+        let portal_event_rx = Some(portal_event_rx);
 
         let new = Self {
             pen_edit: ListEditor::new(tm.clone()),

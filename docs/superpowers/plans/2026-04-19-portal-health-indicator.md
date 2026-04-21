@@ -12,7 +12,7 @@
 - Spec: `docs/superpowers/specs/2026-04-19-portal-health-indicator-design.md`
 - ADR: `docs/decisions/011-portal-health-indicator.md`
 
-**Tech Stack:** Rust 2024 (MSRV 1.85), iced 0.13, tokio async runtime, reqwest HTTP (via `uwh-common`), serde_json, chrono, Fluent `.ftl` translations.
+**Tech Stack:** Rust 2024 (MSRV 1.85), iced 0.13, tokio async runtime, reqwest HTTP (via `uwh-common`), serde_json, `time = "0.3"` (workspace-standard datetime crate; `chrono` is deliberately avoided — the refbox crate already uses `time`), Fluent `.ftl` translations.
 
 **Branch:** Implementation happens on a new branch `feat/refbox/portal-health-indicator` cut from `master`. This plan document lives on `docs/workspace/backlog-adrs` alongside the spec.
 
@@ -294,8 +294,8 @@ Replace the contents of `refbox/src/portal_manager/queue.rs` with:
 ```rust
 //! On-disk persistence for the portal retry queue.
 
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 
 use super::ItemId;
 
@@ -326,6 +326,10 @@ impl QueueFile {
 /// derived from `queued_at` (see `is_item_stuck` in Task 8), and
 /// token problems are tracked globally on the `PortalManager` via a
 /// separate `verify_token` probe.
+///
+/// Datetime fields use `time::OffsetDateTime` with serde's
+/// RFC 3339 representation (the `time` crate's `serde-human-readable`
+/// feature is already enabled workspace-wide).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct QueuedItem {
     #[serde(flatten)]
@@ -333,9 +337,11 @@ pub struct QueuedItem {
     pub black_score: u8,
     pub white_score: u8,
     pub stats: String,
-    pub queued_at: DateTime<Utc>,
+    #[serde(with = "time::serde::rfc3339")]
+    pub queued_at: OffsetDateTime,
     pub attempts: u32,
-    pub last_attempt_at: Option<DateTime<Utc>>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    pub last_attempt_at: Option<OffsetDateTime>,
     /// When true, the next submit sends `force=true` so the portal
     /// overwrites any existing server-side value. Set by the operator
     /// via the FORCE THIS GAME RESULT button on the attention action
@@ -346,6 +352,7 @@ pub struct QueuedItem {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use time::macros::datetime;
 
     #[test]
     fn round_trips_empty_queue() {
@@ -369,9 +376,9 @@ mod tests {
                 black_score: 3,
                 white_score: 2,
                 stats: "{\"stub\":true}".into(),
-                queued_at: "2026-04-19T14:22:03Z".parse().unwrap(),
+                queued_at: datetime!(2026-04-19 14:22:03 UTC),
                 attempts: 2,
-                last_attempt_at: Some("2026-04-19T14:23:15Z".parse().unwrap()),
+                last_attempt_at: Some(datetime!(2026-04-19 14:23:15 UTC)),
                 force: false,
             }],
         };
@@ -446,7 +453,7 @@ mod load_save_tests {
                 black_score: 0,
                 white_score: 0,
                 stats: "{}".into(),
-                queued_at: Utc::now(),
+                queued_at: OffsetDateTime::now_utc(),
                 attempts: 0,
                 last_attempt_at: None,
                 force: false,
@@ -515,6 +522,8 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use time::macros::format_description;
+
 const QUEUE_FILE_NAME: &str = "portal_queue.json";
 const TMP_FILE_NAME: &str = "portal_queue.json.tmp";
 
@@ -554,7 +563,13 @@ pub fn load_or_empty(dir: &Path) -> std::io::Result<QueueFile> {
 }
 
 fn rename_corrupt(path: &Path) -> std::io::Result<()> {
-    let ts = Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
+    // Format: YYYYMMDDTHHMMSSZ, e.g. "20260419T142203Z".
+    let fmt = format_description!(
+        "[year][month][day]T[hour][minute][second]Z"
+    );
+    let ts = OffsetDateTime::now_utc()
+        .format(&fmt)
+        .unwrap_or_else(|_| "unknown-time".to_string());
     let mut new_path = path.to_path_buf();
     new_path.set_file_name(format!("portal_queue.corrupt.{ts}.json"));
     fs::rename(path, &new_path)
@@ -624,7 +639,7 @@ Append to `refbox/src/portal_manager/mod.rs` (at the bottom):
 mod tests {
     use super::*;
     use crate::portal_manager::queue::{QueueFile, QueuedItem};
-    use chrono::{Duration as ChronoDuration, Utc};
+    use time::{Duration as TimeDuration, OffsetDateTime};
 
     fn mk_young_item() -> QueuedItem {
         QueuedItem {
@@ -635,7 +650,7 @@ mod tests {
             black_score: 0,
             white_score: 0,
             stats: "{}".into(),
-            queued_at: Utc::now(),
+            queued_at: OffsetDateTime::now_utc(),
             attempts: 0,
             last_attempt_at: None,
             force: false,
@@ -644,7 +659,7 @@ mod tests {
 
     fn mk_stuck_item() -> QueuedItem {
         let mut it = mk_young_item();
-        it.queued_at = Utc::now() - ChronoDuration::minutes(31);
+        it.queued_at = OffsetDateTime::now_utc() - TimeDuration::minutes(31);
         it
     }
 
@@ -725,7 +740,7 @@ Replace the existing `PortalManager` definition (and its `impl`) in `refbox/src/
 ```rust
 use std::time::{Duration, Instant};
 
-use chrono::{Duration as ChronoDuration, Utc};
+use time::{Duration as TimeDuration, OffsetDateTime};
 
 use crate::portal_manager::queue::{QueueFile, QueuedItem};
 
@@ -735,10 +750,10 @@ pub const RECENT_SUCCESS_DURATION: Duration = Duration::from_secs(10);
 /// How long an item may sit in the queue before it escalates from
 /// Yellow (silently retrying) to Red (operator needs to decide).
 /// See ADR 011 amendment (2026-04-21).
-pub const STUCK_THRESHOLD: ChronoDuration = ChronoDuration::minutes(30);
+pub const STUCK_THRESHOLD: TimeDuration = TimeDuration::minutes(30);
 
-pub fn is_item_stuck(item: &QueuedItem, now: chrono::DateTime<Utc>) -> bool {
-    now.signed_duration_since(item.queued_at) >= STUCK_THRESHOLD
+pub fn is_item_stuck(item: &QueuedItem, now: OffsetDateTime) -> bool {
+    (now - item.queued_at) >= STUCK_THRESHOLD
 }
 
 pub struct PortalManager {
@@ -781,7 +796,7 @@ impl PortalManager {
     }
 
     fn has_stuck_items(&self) -> bool {
-        let now = Utc::now();
+        let now = OffsetDateTime::now_utc();
         self.queue.items.iter().any(|it| is_item_stuck(it, now))
     }
 
@@ -916,7 +931,7 @@ impl PortalManager {
             black_score,
             white_score,
             stats,
-            queued_at: chrono::Utc::now(),
+            queued_at: OffsetDateTime::now_utc(),
             attempts: 0,
             last_attempt_at: None,
             force: false,
@@ -938,7 +953,7 @@ impl PortalManager {
             item.force = true;
             item.attempts = 0;
             item.last_attempt_at = None;
-            item.queued_at = chrono::Utc::now();
+            item.queued_at = OffsetDateTime::now_utc();
             queue::save(&self.config_dir, &self.queue)?;
         }
         self.recompute_indicator();
@@ -1072,7 +1087,7 @@ fn force_submit_flags_force_and_resets_attempt_counters() {
 
     // Pretend the item has been retrying for a while.
     m.queue.items[0].attempts = 7;
-    m.queue.items[0].last_attempt_at = Some(chrono::Utc::now());
+    m.queue.items[0].last_attempt_at = Some(OffsetDateTime::now_utc());
 
     m.force_submit(&id).unwrap();
 
@@ -1089,7 +1104,7 @@ fn token_refreshed_clears_flag_and_resets_queue_items() {
         .unwrap();
     m.token_known_problem = true;
     m.queue.items[0].attempts = 4;
-    m.queue.items[0].last_attempt_at = Some(chrono::Utc::now());
+    m.queue.items[0].last_attempt_at = Some(OffsetDateTime::now_utc());
 
     m.token_refreshed().unwrap();
 
@@ -1307,7 +1322,7 @@ Append to the `tests` module in `refbox/src/portal_manager/health.rs`:
 ```rust
 use super::super::queue::QueuedItem;
 use super::super::ItemId;
-use chrono::{Duration as ChronoDuration, Utc};
+use time::{Duration as TimeDuration, OffsetDateTime};
 
 fn mk_queue_item(attempts: u32) -> QueuedItem {
     QueuedItem {
@@ -1318,7 +1333,7 @@ fn mk_queue_item(attempts: u32) -> QueuedItem {
         black_score: 0,
         white_score: 0,
         stats: "{}".into(),
-        queued_at: Utc::now(),
+        queued_at: OffsetDateTime::now_utc(),
         attempts,
         last_attempt_at: None,
         force: false,
@@ -1328,26 +1343,26 @@ fn mk_queue_item(attempts: u32) -> QueuedItem {
 #[test]
 fn young_item_with_zero_attempts_is_eligible_for_retry() {
     let item = mk_queue_item(0);
-    assert!(is_item_retry_eligible(&item, Utc::now()));
+    assert!(is_item_retry_eligible(&item, OffsetDateTime::now_utc()));
 }
 
 #[test]
 fn stuck_item_is_not_eligible_for_auto_retry() {
     let mut item = mk_queue_item(4);
     // Queued 31 minutes ago — past the 30-minute stuck threshold.
-    item.queued_at = Utc::now() - ChronoDuration::minutes(31);
-    assert!(!is_item_retry_eligible(&item, Utc::now()));
+    item.queued_at = OffsetDateTime::now_utc() - TimeDuration::minutes(31);
+    assert!(!is_item_retry_eligible(&item, OffsetDateTime::now_utc()));
 }
 
 #[test]
 fn item_with_recent_attempt_respects_cadence() {
     let mut item = mk_queue_item(1);
-    let now = Utc::now();
+    let now = OffsetDateTime::now_utc();
     item.last_attempt_at = Some(now);
     // 5 seconds later — still within the 15s cadence.
-    assert!(!is_item_retry_eligible(&item, now + ChronoDuration::seconds(5)));
+    assert!(!is_item_retry_eligible(&item, now + TimeDuration::seconds(5)));
     // 15 seconds later — eligible again.
-    assert!(is_item_retry_eligible(&item, now + ChronoDuration::seconds(15)));
+    assert!(is_item_retry_eligible(&item, now + TimeDuration::seconds(15)));
 }
 ```
 
@@ -1356,18 +1371,18 @@ fn item_with_recent_attempt_respects_cadence() {
 Add to `refbox/src/portal_manager/health.rs` above the `tests` module:
 
 ```rust
-use chrono::{DateTime, Duration as ChronoDuration, Utc};
+use time::{Duration as TimeDuration, OffsetDateTime};
 
 use super::is_item_stuck;
 use super::queue::QueuedItem;
 
-pub fn is_item_retry_eligible(item: &QueuedItem, now: DateTime<Utc>) -> bool {
+pub fn is_item_retry_eligible(item: &QueuedItem, now: OffsetDateTime) -> bool {
     if is_item_stuck(item, now) {
         return false; // Stuck items wait for operator action.
     }
     match item.last_attempt_at {
         None => true,
-        Some(last) => now.signed_duration_since(last) >= ChronoDuration::seconds(15),
+        Some(last) => (now - last) >= TimeDuration::seconds(15),
     }
 }
 ```
@@ -1701,7 +1716,7 @@ async fn run_task(
         tokio::select! {
             _ = sleep(sleep_for) => {
                 // Tick: try each eligible queued item, then health-check if due.
-                let now = chrono::Utc::now();
+                let now = time::OffsetDateTime::now_utc();
                 for item in &queue_snapshot.items {
                     if is_item_retry_eligible(item, now) {
                         attempt_item(&io, item, &event_tx).await;
@@ -2458,7 +2473,7 @@ impl PortalManager {
         // (oldest first). The API does not surface a dedicated
         // "conflict" outcome — any item stuck past the 30-minute
         // threshold gets the red Stuck row.
-        let now = chrono::Utc::now();
+        let now = time::OffsetDateTime::now_utc();
         let mut items: Vec<_> = self.queue.items.iter().collect();
         items.sort_by_key(|it| it.queued_at);
         for it in &items {
@@ -2634,13 +2649,16 @@ async fn detail_rows_orders_token_then_stuck_then_pending_oldest_first() {
 
     // One stuck item: queued 40 min ago.
     m.enqueue_game_end("e".into(), "G3".into(), 3, 2, "{}".into()).unwrap();
-    m.queue.items[0].queued_at = chrono::Utc::now() - chrono::Duration::minutes(40);
+    m.queue.items[0].queued_at =
+        time::OffsetDateTime::now_utc() - time::Duration::minutes(40);
 
     // Two young pendings: queued 5 min apart but both recent.
     m.enqueue_game_end("e".into(), "G1".into(), 0, 0, "{}".into()).unwrap();
-    m.queue.items[1].queued_at = chrono::Utc::now() - chrono::Duration::minutes(5);
+    m.queue.items[1].queued_at =
+        time::OffsetDateTime::now_utc() - time::Duration::minutes(5);
     m.enqueue_game_end("e".into(), "G2".into(), 0, 0, "{}".into()).unwrap();
-    m.queue.items[2].queued_at = chrono::Utc::now() - chrono::Duration::minutes(2);
+    m.queue.items[2].queued_at =
+        time::OffsetDateTime::now_utc() - time::Duration::minutes(2);
 
     // Flag the token as having a known problem to exercise the
     // TokenExpired row.
@@ -2790,7 +2808,7 @@ pub fn find(&self, id: &ItemId) -> Option<&QueuedItem> {
 
 pub fn is_stuck(&self, id: &ItemId) -> bool {
     match self.find(id) {
-        Some(item) => health::is_item_stuck(item, chrono::Utc::now()),
+        Some(item) => health::is_item_stuck(item, time::OffsetDateTime::now_utc()),
         None => false,
     }
 }

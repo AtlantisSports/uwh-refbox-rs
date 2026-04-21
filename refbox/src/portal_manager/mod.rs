@@ -88,9 +88,6 @@ pub fn is_item_stuck(item: &QueuedItem, now: OffsetDateTime) -> bool {
     (now - item.queued_at) >= STUCK_THRESHOLD
 }
 
-/// Channel buffer for `PortalEvent`s from the background task to the UI subscription.
-const EVENT_CHANNEL_BUFFER: usize = 64;
-
 pub struct PortalManager {
     queue: QueueFile,
     check_in_flight: bool,
@@ -100,7 +97,7 @@ pub struct PortalManager {
     token_known_problem: bool,
     recent_success_until: Option<Instant>,
     indicator_state: PortalIndicatorState,
-    _event_tx: mpsc::Sender<PortalEvent>,
+    command_tx: mpsc::Sender<health::PortalCommand>,
     config_dir: std::path::PathBuf,
 }
 
@@ -119,7 +116,7 @@ impl PortalManager {
             token_known_problem,
             recent_success_until: None,
             indicator_state: PortalIndicatorState::default(),
-            _event_tx: tx,
+            command_tx: tx,
             config_dir: std::env::temp_dir(),
         };
         m.recompute_indicator();
@@ -179,27 +176,40 @@ impl PortalManager {
 
 impl PortalManager {
     /// Construct a new PortalManager. Loads the queue from `config_dir`
-    /// (starting fresh if the file is missing or corrupted) and prepares
-    /// the mpsc channel that the background task will send events on.
-    ///
-    /// Returns (manager, event_receiver). The receiver is fed into an iced
-    /// Subscription by the app.
+    /// (starting fresh if the file is missing or corrupted), spawns the
+    /// background retry task driven by the given `PortalTaskIo`, and
+    /// returns the receiver side of the event channel so the caller can
+    /// feed it into an iced Subscription.
     pub fn new(
         config_dir: &std::path::Path,
+        io: impl health::PortalTaskIo + Send + Sync + 'static,
     ) -> std::io::Result<(Self, mpsc::Receiver<PortalEvent>)> {
         let queue = queue::load_or_empty(config_dir)?;
-        let (_tx, rx) = mpsc::channel(EVENT_CHANNEL_BUFFER);
+        let handle = health::spawn(io);
+        let command_tx = handle.command_tx.clone();
+
         let mut m = Self {
             queue,
             check_in_flight: false,
             token_known_problem: false,
             recent_success_until: None,
             indicator_state: PortalIndicatorState::default(),
-            _event_tx: _tx,
+            command_tx,
             config_dir: config_dir.to_path_buf(),
         };
         m.recompute_indicator();
-        Ok((m, rx))
+        m.push_queue_snapshot();
+        Ok((m, handle.event_rx))
+    }
+
+    /// Send the current queue snapshot to the background task. Called
+    /// after every queue mutation so the task's view stays fresh.
+    fn push_queue_snapshot(&self) {
+        let tx = self.command_tx.clone();
+        let snap = self.queue.clone();
+        tokio::spawn(async move {
+            let _ = tx.send(health::PortalCommand::QueueUpdated(snap)).await;
+        });
     }
 
     /// Enqueue a game-end submission and trigger an immediate attempt.
@@ -229,6 +239,7 @@ impl PortalManager {
         self.queue.items.push(item);
         queue::save(&self.config_dir, &self.queue)?;
         self.recompute_indicator();
+        self.push_queue_snapshot();
         Ok(())
     }
 
@@ -247,6 +258,7 @@ impl PortalManager {
             queue::save(&self.config_dir, &self.queue)?;
         }
         self.recompute_indicator();
+        self.push_queue_snapshot();
         Ok(())
     }
 
@@ -257,6 +269,7 @@ impl PortalManager {
         self.queue.items.retain(|it| it.id != *id);
         queue::save(&self.config_dir, &self.queue)?;
         self.recompute_indicator();
+        self.push_queue_snapshot();
         Ok(())
     }
 
@@ -272,13 +285,19 @@ impl PortalManager {
         }
         queue::save(&self.config_dir, &self.queue)?;
         self.recompute_indicator();
+        self.push_queue_snapshot();
         Ok(())
     }
 
     /// Force an immediate health check (fires verify_token out-of-band).
-    /// Implementation wired in Task 8.
+    /// Sends a `VerifyNow` command to the background task; the task will
+    /// clear its last-success marker so the next tick treats the token
+    /// as cadence-due and re-verifies.
     pub fn verify_now(&mut self) {
-        // TODO(Task 8): send a request to the background task to verify now.
+        let tx = self.command_tx.clone();
+        tokio::spawn(async move {
+            let _ = tx.send(health::PortalCommand::VerifyNow).await;
+        });
     }
 }
 
@@ -287,6 +306,24 @@ mod tests {
     use super::*;
     use crate::portal_manager::queue::{QueueFile, QueuedItem};
     use time::{Duration as TimeDuration, OffsetDateTime};
+
+    /// Do-nothing `PortalTaskIo` for tests that construct a real
+    /// `PortalManager` via `new()`. The background task is still
+    /// spawned but never reports failures.
+    struct NullIo;
+
+    #[async_trait::async_trait]
+    impl health::PortalTaskIo for NullIo {
+        async fn verify_token(&self) -> Result<(), health::PortalCallError> {
+            Ok(())
+        }
+        async fn post_scores(&self, _: &QueuedItem) -> Result<(), health::PortalCallError> {
+            Ok(())
+        }
+        async fn post_stats(&self, _: &QueuedItem) -> Result<(), health::PortalCallError> {
+            Ok(())
+        }
+    }
 
     fn mk_young_item() -> QueuedItem {
         QueuedItem {
@@ -370,11 +407,11 @@ mod tests {
         assert_eq!(m.indicator_state().overlay, OverlayState::RecentSuccess);
     }
 
-    #[test]
-    fn enqueue_game_end_appends_item_and_turns_yellow() {
+    #[tokio::test]
+    async fn enqueue_game_end_appends_item_and_turns_yellow() {
         // Use a temp dir so the save succeeds.
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path()).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
 
         assert_eq!(m.indicator_state().health, HealthState::Green);
 
@@ -386,10 +423,10 @@ mod tests {
         assert_eq!(m.queue.items.len(), 1);
     }
 
-    #[test]
-    fn discard_removes_item_and_returns_to_green() {
+    #[tokio::test]
+    async fn discard_removes_item_and_returns_to_green() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path()).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
         m.enqueue_game_end("event".into(), "G1".into(), 0, 0, "{}".into())
             .unwrap();
 
@@ -400,10 +437,10 @@ mod tests {
         assert!(m.queue.items.is_empty());
     }
 
-    #[test]
-    fn force_submit_flags_force_and_resets_attempt_counters() {
+    #[tokio::test]
+    async fn force_submit_flags_force_and_resets_attempt_counters() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path()).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
         m.enqueue_game_end("event".into(), "G1".into(), 0, 0, "{}".into())
             .unwrap();
         let id = m.queue.items[0].id.clone();
@@ -419,10 +456,10 @@ mod tests {
         assert!(m.queue.items[0].last_attempt_at.is_none());
     }
 
-    #[test]
-    fn token_refreshed_clears_flag_and_resets_queue_items() {
+    #[tokio::test]
+    async fn token_refreshed_clears_flag_and_resets_queue_items() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path()).unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
         m.enqueue_game_end("event".into(), "G1".into(), 0, 0, "{}".into())
             .unwrap();
         m.token_known_problem = true;

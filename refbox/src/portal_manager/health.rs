@@ -15,7 +15,7 @@ use tokio::sync::mpsc;
 use super::HealthState;
 use super::PortalEvent;
 use super::is_item_stuck;
-use super::queue::QueuedItem;
+use super::queue::{QueueFile, QueuedItem};
 
 pub const GREEN_CADENCE: Duration = Duration::from_secs(5 * 60);
 pub const DEGRADED_CADENCE: Duration = Duration::from_secs(15);
@@ -74,6 +74,10 @@ pub enum PortalCommand {
     VerifyNow,
     ItemEnqueued(super::ItemId),
     RetryItem(super::ItemId),
+    /// Refresh the task's view of the queue. Sent by `PortalManager`
+    /// after every queue mutation so the task knows which items to
+    /// attempt on its next tick.
+    QueueUpdated(QueueFile),
     Shutdown,
 }
 
@@ -82,7 +86,7 @@ pub struct BackgroundTaskHandle {
     pub event_rx: mpsc::Receiver<PortalEvent>,
 }
 
-pub fn spawn(io: impl PortalTaskIo + Send + 'static) -> BackgroundTaskHandle {
+pub fn spawn(io: impl PortalTaskIo + Send + Sync + 'static) -> BackgroundTaskHandle {
     let (command_tx, command_rx) = mpsc::channel(64);
     let (event_tx, event_rx) = mpsc::channel(64);
     tokio::spawn(run_task(io, command_rx, event_tx));
@@ -113,27 +117,45 @@ async fn run_task(
     mut command_rx: mpsc::Receiver<PortalCommand>,
     event_tx: mpsc::Sender<PortalEvent>,
 ) {
+    use tokio::time::Instant as TokioInstant;
     use tokio::time::sleep;
 
-    let mut last_success: Option<Instant> = None;
+    let mut last_success: Option<TokioInstant> = None;
     let mut current_health = HealthState::Green;
+    let mut queue_snapshot = QueueFile::empty();
 
     loop {
         tokio::select! {
             _ = sleep(POLL_INTERVAL) => {
-                let elapsed = last_success.map(|t| Instant::now().saturating_duration_since(t));
+                // Tick: try each eligible queued item, then health-check if due.
+                let now = OffsetDateTime::now_utc();
+                for item in &queue_snapshot.items {
+                    if is_item_retry_eligible(item, now) {
+                        attempt_item(&io, item, &event_tx).await;
+                        last_success = Some(TokioInstant::now());
+                    }
+                }
+
+                let elapsed = last_success
+                    .map(|t| TokioInstant::now().saturating_duration_since(t));
                 let state = HealthDecisionState { current_health };
                 if state.is_health_check_due(elapsed) {
-                    let _ = event_tx.send(PortalEvent::HealthChanged(HealthState::Yellow)).await;
+                    let _ = event_tx
+                        .send(PortalEvent::HealthChanged(HealthState::Yellow))
+                        .await;
                     match io.verify_token().await {
                         Ok(()) => {
-                            last_success = Some(Instant::now());
+                            last_success = Some(TokioInstant::now());
                             current_health = HealthState::Green;
-                            let _ = event_tx.send(PortalEvent::HealthChanged(HealthState::Green)).await;
+                            let _ = event_tx
+                                .send(PortalEvent::HealthChanged(HealthState::Green))
+                                .await;
                         }
                         Err(_) => {
                             current_health = HealthState::Red;
-                            let _ = event_tx.send(PortalEvent::HealthChanged(HealthState::Red)).await;
+                            let _ = event_tx
+                                .send(PortalEvent::HealthChanged(HealthState::Red))
+                                .await;
                         }
                     }
                 }
@@ -142,15 +164,47 @@ async fn run_task(
                 match cmd {
                     Some(PortalCommand::Shutdown) | None => break,
                     Some(PortalCommand::VerifyNow) => { last_success = None; }
-                    // Task 10 expands these arms to drain the queue via
-                    // post_scores / post_stats. For Task 9 we only clear
-                    // last_success so the next tick re-verifies the token
-                    // (an enqueue or manual retry signals something changed).
                     Some(PortalCommand::ItemEnqueued(_)) | Some(PortalCommand::RetryItem(_)) => {
                         last_success = None;
                     }
+                    Some(PortalCommand::QueueUpdated(new_queue)) => {
+                        queue_snapshot = new_queue;
+                    }
                 }
             }
+        }
+    }
+}
+
+/// Attempt to submit a single queued item (scores + stats). The portal
+/// API collapses all non-success outcomes (409 conflict, 401 token
+/// expired, 5xx, network) into a single error, so we treat any `Err`
+/// identically: leave the item on the queue for the next retry tick,
+/// and emit `ItemUpdated` so the UI can refresh the row. Only a full
+/// success (both scores and stats posted) emits `ItemResolved`.
+async fn attempt_item(
+    io: &impl PortalTaskIo,
+    item: &QueuedItem,
+    event_tx: &mpsc::Sender<PortalEvent>,
+) {
+    let score_result = io.post_scores(item).await;
+    if score_result.is_err() {
+        let _ = event_tx
+            .send(PortalEvent::ItemUpdated(item.id.clone()))
+            .await;
+        return;
+    }
+    let stats_result = io.post_stats(item).await;
+    match stats_result {
+        Ok(()) => {
+            let _ = event_tx
+                .send(PortalEvent::ItemResolved(item.id.clone()))
+                .await;
+        }
+        Err(_) => {
+            let _ = event_tx
+                .send(PortalEvent::ItemUpdated(item.id.clone()))
+                .await;
         }
     }
 }

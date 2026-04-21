@@ -1,6 +1,5 @@
 //! On-disk persistence for the portal retry queue.
 
-use log;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;

@@ -3,7 +3,7 @@ use super::{APP_NAME, fl};
 use crate::{
     config::{Config, Mode},
     penalty_editor::*,
-    portal_manager::{PortalEvent, PortalManager, SharedEventId, UwhPortalIo},
+    portal_manager::{PortalEvent, PortalManager, SelectedEventId, UwhPortalIo},
     sound_controller::*,
     tournament_manager::{penalty::*, *},
 };
@@ -77,10 +77,11 @@ pub struct RefBoxApp {
     uwhportal_client: Option<Arc<Mutex<UwhPortalClient>>>,
     /// Shared handle the background portal task reads to learn the
     /// currently-selected event for its periodic `verify_token` probe.
-    /// Starts `None` and is left `None` by Task 12 — a later task will
-    /// update it when the operator picks an event.
-    #[allow(dead_code)]
-    portal_event_id: SharedEventId,
+    /// Kept in lockstep with `current_event_id` via
+    /// `set_current_event_id` — every write to `current_event_id` must
+    /// go through that helper so the background task sees the latest
+    /// selection.
+    portal_event_id: SelectedEventId,
     using_uwhportal: bool,
     events: Option<BTreeMap<EventId, Event>>,
     schedule: Option<Schedule>,
@@ -588,18 +589,50 @@ impl RefBoxApp {
         Task::batch(tasks)
     }
 
+    /// Update `current_event_id` and mirror the new value into the
+    /// `portal_event_id` shared handle so the background portal-health
+    /// task sees it on its next tick. Every per-page apply that writes
+    /// `current_event_id` should route through this so the tile's
+    /// `verify_token` leg reflects the operator's actual event selection
+    /// (ADR 011 amendment 2026-04-23, dormant-until-linked).
+    fn set_current_event_id(&mut self, new: Option<EventId>) {
+        self.current_event_id = new.clone();
+        // why this cannot panic: the guarded data is a plain `Option`
+        // and no writer panics while holding the guard; a poisoned
+        // mutex just returns the previous value, which we then
+        // overwrite.
+        *self
+            .portal_event_id
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = new;
+    }
+
     fn apply_app_options(&mut self) {
         let Some(edited) = self.edited_settings.as_ref() else {
             return;
         };
-        self.using_uwhportal = edited.using_uwhportal;
-        self.current_event_id = edited.current_event_id.clone();
-        self.current_court = edited.current_court.clone();
-        self.schedule = edited.schedule.clone();
-        self.config.mode = edited.mode;
-        self.config.collect_scorer_cap_num = edited.collect_scorer_cap_num;
-        self.config.track_fouls_and_warnings = edited.track_fouls_and_warnings;
-        self.config.confirm_score = edited.confirm_score;
+        // Snapshot the fields we need so the immutable borrow on
+        // `edited_settings` ends before we call `set_current_event_id`
+        // (which takes `&mut self`).
+        let using_uwhportal = edited.using_uwhportal;
+        let event_id = edited.current_event_id.clone();
+        let current_court = edited.current_court.clone();
+        let schedule = edited.schedule.clone();
+        let mode = edited.mode;
+        let collect_scorer_cap_num = edited.collect_scorer_cap_num;
+        let track_fouls_and_warnings = edited.track_fouls_and_warnings;
+        let confirm_score = edited.confirm_score;
+
+        self.using_uwhportal = using_uwhportal;
+        // Route through set_current_event_id so portal_event_id stays in
+        // sync (ADR 011 amendment 2026-04-23 dormant-until-linked).
+        self.set_current_event_id(event_id);
+        self.current_court = current_court;
+        self.schedule = schedule;
+        self.config.mode = mode;
+        self.config.collect_scorer_cap_num = collect_scorer_cap_num;
+        self.config.track_fouls_and_warnings = track_fouls_and_warnings;
+        self.config.confirm_score = confirm_score;
     }
 
     fn apply_display_options(&mut self) {
@@ -692,11 +725,21 @@ impl RefBoxApp {
             }
 
             std::mem::drop(tm);
+            // Snapshot the fields we need so the immutable borrow on
+            // `edited` ends before we call `set_current_event_id`
+            // (which takes `&mut self`).
+            let using_uwhportal = edited.using_uwhportal;
+            let event_id = edited.current_event_id.clone();
+            let current_court = edited.current_court.clone();
+            let schedule = edited.schedule.clone();
+
             self.config.game = new_config;
-            self.using_uwhportal = edited.using_uwhportal;
-            self.current_event_id = edited.current_event_id.clone();
-            self.current_court = edited.current_court.clone();
-            self.schedule = edited.schedule.clone();
+            self.using_uwhportal = using_uwhportal;
+            // Route through set_current_event_id so portal_event_id stays in
+            // sync (ADR 011 amendment 2026-04-23 dormant-until-linked).
+            self.set_current_event_id(event_id);
+            self.current_court = current_court;
+            self.schedule = schedule;
             return None;
         }
 
@@ -943,10 +986,10 @@ impl RefBoxApp {
         };
 
         // Shared event id the background portal task consults for its
-        // periodic `verify_token` check. Starts `None`; a later task
-        // will wire the UI side to update it when the operator picks or
-        // clears an event.
-        let portal_event_id: SharedEventId = Arc::new(Mutex::new(None));
+        // periodic `verify_token` check. Mirrors `current_event_id` on
+        // `RefBoxApp`; both start `None` here and are kept in sync via
+        // `set_current_event_id` on every subsequent write.
+        let portal_event_id: SelectedEventId = Arc::new(Mutex::new(None));
 
         let tm = Arc::new(Mutex::new(tm));
 

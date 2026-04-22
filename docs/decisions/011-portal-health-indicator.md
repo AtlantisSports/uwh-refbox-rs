@@ -341,3 +341,54 @@ The original design (Option A) is preserved as historical context
 in the companion spec. The implementation plan at
 `docs/superpowers/plans/2026-04-19-portal-health-indicator.md`
 reflects this refined design.
+
+### 2026-04-22 — Translation coverage and verification environment
+
+Two implementation questions surfaced during an audit of the in-flight
+plan. Both are recorded here so the plan can be updated to match.
+
+**Translation coverage.** Every user-visible string on the new portal
+detail page, the attention-action page, and the token-expired action
+page is translated through the Fluent (`refbox/translations/`) system.
+In addition to the keys listed in Task 21 of the implementation plan,
+two body-paragraph strings were missed and must be added:
+
+- the attention-action page body text
+  (`"This result has not been accepted by the UWH Portal after N
+  attempts. Refbox value: B-W"`), and
+- the token-expired page body text
+  (`"The UWH Portal login has expired. Queued scores cannot be sent
+  until you log in again. Tap GO TO LOGIN to re-authenticate."`).
+
+Fluent key parametrization must match what the code actually computes.
+Specifically, `portal-summary-issues` is the simple form
+`"PORTAL — ISSUES"`, with no `Last OK { $duration } ago` suffix — the
+code does not track that value, and adding it is out of scope for this
+ADR. All other plan keys are retained as listed.
+
+**Verification environment.** End-to-end manual verification (Task 22
+of the plan) runs against a local instance of the UWH Portal API as
+the primary environment, with `dev.uwhportal.com` retained as a
+fallback option. The local setup is the uwh-portal API process running
+on port 5000 against a local database, per the uwh-portal project's
+development guide, with a test event created in that local database.
+The operator points the refbox at this local instance with
+`UWH_PORTAL_URL_OVERRIDE=http://localhost:5000`.
+
+Localhost is preferred because it gives the operator full control over
+the test data: the Scenario 3 "forced conflict" test becomes trivial
+(the operator can edit the test event on the local web UI to induce a
+409 on the next submission), no cleanup of real portal data is
+required afterward, and the whole verification is fully deterministic.
+If the local setup proves impractical for any scenario, the hosted
+`dev.uwhportal.com` environment is used instead, following the same
+cleanup discipline (delete any test scores and the test event after
+the run).
+
+The implementation plan at
+`docs/superpowers/plans/2026-04-19-portal-health-indicator.md`
+will be updated to reflect both decisions — Task 21's key list is
+corrected for the two new body keys and the simplified
+`portal-summary-issues`, and Task 22's verification steps are rewritten
+around the local portal instance with a fallback note for
+`dev.uwhportal.com`.

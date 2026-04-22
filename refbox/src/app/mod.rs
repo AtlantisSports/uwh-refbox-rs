@@ -1802,6 +1802,11 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
+            Message::ClosePortalAttentionAction => {
+                self.app_state = AppState::PortalDetailPage;
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
             Message::PortalEvent(ev) => {
                 // The background portal task woke us with a state-change
                 // signal. Most variants are notifications whose effect on

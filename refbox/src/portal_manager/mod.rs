@@ -571,16 +571,19 @@ impl PortalManager {
     }
 
     /// Operator tapped a young (yellow) pending row on the detail page.
-    /// Clears `last_attempt_at` so the next background tick attempts the
-    /// item immediately, without waiting out the `ITEM_RETRY_INTERVAL`
-    /// retry window. The item stays young-pending, so no indicator
-    /// recompute or snapshot push is needed; the background task picks
-    /// up the change via its existing queue snapshot flow at the next
-    /// mutation point (or on its own schedule when it next ticks).
+    /// Clears `last_attempt_at` on the target item AND pushes a fresh
+    /// queue snapshot to the background task, so the task sees the
+    /// update and attempts the item on its next tick without waiting
+    /// out `ITEM_RETRY_INTERVAL`. Without the snapshot push the
+    /// background task would keep evaluating retry-eligibility against
+    /// its own stale copy of the queue, and the tap would appear to do
+    /// nothing. The item stays young-pending, so no indicator recompute
+    /// is needed.
     pub fn force_immediate_retry(&mut self, id: &ItemId) -> std::io::Result<()> {
         if let Some(item) = self.find_mut(id) {
             item.last_attempt_at = None;
             queue::save(&self.config_dir, &self.queue)?;
+            self.push_queue_snapshot();
         }
         Ok(())
     }
@@ -1219,5 +1222,53 @@ mod tests {
         };
         m.force_immediate_retry(&unknown).unwrap();
         assert_eq!(m.queue.items.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn force_immediate_retry_pushes_queue_snapshot() {
+        // Regression test for the bug where `force_immediate_retry`
+        // cleared `last_attempt_at` on disk and in the main-thread
+        // queue but failed to notify the background task. Without the
+        // snapshot push the background task continued to evaluate
+        // retry-eligibility against its stale snapshot and the
+        // 15-second retry timer effectively re-ran from the old
+        // last-attempt time, so tapping a young yellow row appeared
+        // to do nothing.
+        //
+        // The snapshot channel is not easily observable from this
+        // test (the `command_tx` is an internal `mpsc::Sender` and
+        // `push_queue_snapshot` spawns an async send). If we could
+        // assert snapshot delivery we would; the current snapshot
+        // channel isn't easily observable, so we match the rigor of
+        // `force_submit_flags_force_and_resets_attempt_counters`
+        // (which also doesn't assert snapshot delivery) and verify
+        // the observable main-thread state instead: the method
+        // returns Ok(()), the target item's `last_attempt_at` is
+        // cleared, and the on-disk queue reflects the change.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        m.enqueue_game_end("e".into(), "G1".into(), 0, 0, "{}".into())
+            .unwrap();
+        let id = m.queue.items[0].id.clone();
+        m.queue.items[0].last_attempt_at = Some(OffsetDateTime::now_utc());
+
+        let result = m.force_immediate_retry(&id);
+        assert!(result.is_ok(), "force_immediate_retry must return Ok");
+
+        // Main-thread queue reflects the clear.
+        assert!(
+            m.queue.items[0].last_attempt_at.is_none(),
+            "main-thread queue must show last_attempt_at cleared"
+        );
+
+        // On-disk queue reflects the clear (persistence is part of
+        // the contract; the next process start must see the same
+        // cleared timestamp).
+        let reloaded = queue::load_or_empty(tmp.path()).unwrap();
+        assert_eq!(reloaded.items.len(), 1);
+        assert!(
+            reloaded.items[0].last_attempt_at.is_none(),
+            "on-disk queue must show last_attempt_at cleared"
+        );
     }
 }

@@ -12,7 +12,9 @@ use iced::{
 /// amendment dated 2026-04-21 — so the operator is offered only two
 /// actions: FORCE THIS GAME RESULT (resubmit with force=true) and
 /// DISCARD THIS SUBMISSION (two-tap confirmation). BACK returns to the
-/// portal detail page.
+/// portal detail page (the list the operator came from), via
+/// `Message::ClosePortalAttentionAction` — not to the main application
+/// screen.
 pub(in super::super) fn build_portal_attention_action<'a>(
     data: ViewData<'_, '_>,
     id: ItemId,
@@ -68,7 +70,7 @@ pub(in super::super) fn build_portal_attention_action<'a>(
     };
 
     let back = button(text(fl!("back")).size(SMALL_PLUS_TEXT))
-        .on_press(Message::ClosePortalDetailPage)
+        .on_press(Message::ClosePortalAttentionAction)
         .style(gray_button)
         .padding(PADDING)
         .width(Length::Fill);

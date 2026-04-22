@@ -4,11 +4,6 @@
 //! See `docs/superpowers/specs/2026-04-19-portal-health-indicator-design.md`
 //! and `docs/decisions/011-portal-health-indicator.md`.
 
-// Scaffolding: types are defined up front and progressively wired up in Tasks
-// 3–14 of the portal health indicator plan. This attribute is removed in
-// Task 22 once all types have live callers.
-#![allow(dead_code)]
-
 pub mod health;
 pub mod queue;
 
@@ -255,11 +250,9 @@ pub struct ItemId {
 /// Subscription to convert into a `Message`.
 #[derive(Debug, Clone)]
 pub enum PortalEvent {
-    HealthChanged(HealthState),
-    OverlayChanged(OverlayState),
-    ItemAdded(ItemId),
+    HealthChanged,
     ItemResolved(ItemId),
-    ItemUpdated(ItemId),
+    ItemUpdated,
 }
 
 /// One row rendered on the portal detail page. The ordering of the
@@ -297,7 +290,6 @@ pub enum DetailRow {
     /// A recently-completed submission, shown as an informational
     /// green strip. Not tappable.
     RecentSuccess {
-        id: ItemId,
         game_number: String,
         submitted_mins_ago: u32,
     },
@@ -615,17 +607,6 @@ impl PortalManager {
         Ok(())
     }
 
-    /// Force an immediate health check (fires verify_token out-of-band).
-    /// Sends a `VerifyNow` command to the background task; the task will
-    /// clear its last-success marker so the next tick treats the token
-    /// as cadence-due and re-verifies.
-    pub fn verify_now(&mut self) {
-        let tx = self.command_tx.clone();
-        tokio::spawn(async move {
-            let _ = tx.send(health::PortalCommand::VerifyNow).await;
-        });
-    }
-
     /// Called from the UI thread after the background task reports that
     /// a queued item was successfully posted to the portal. Removes the
     /// item from the queue, records it in the recent-success ring
@@ -746,7 +727,6 @@ impl PortalManager {
                 .as_secs()
                 / 60;
             out.push(DetailRow::RecentSuccess {
-                id: rs.id.clone(),
                 game_number: rs.game_number.clone(),
                 submitted_mins_ago: mins as u32,
             });

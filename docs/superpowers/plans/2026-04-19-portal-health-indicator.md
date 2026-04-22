@@ -2549,6 +2549,50 @@ EOF
 )"
 ```
 
+#### Post-commit notes — Task 13 (added 2026-04-22)
+
+Task 13 shipped in a single commit: `8d5ddb3 feat(refbox): add portal detail page scaffolding`.
+
+Both reviewers (spec-compliance + code-quality) APPROVED. No correctness follow-up was needed.
+
+**Pre-authorized deviations from the written plan (noted here for traceability):**
+
+1. **`Message::PortalUiTick` added** — the plan's Step 1 listed six new Message variants but omitted the periodic-tick message required by the pure UI-layer 1 Hz refresh timer. Pre-authorized in the implementer brief; the tick exists to drive the 30-minute stuck→red escalation and the 10-second green-checkmark overlay expiry (both time-based, not event-based). The tick is a standalone `iced::time::every(Duration::from_secs(1))` subscription that does NOT share state, cadence, or channels with the game clock, the penalty clocks, or the background task's `POLL_INTERVAL`.
+
+2. **`PortalManager::ui_tick(&mut self)` added as a public wrapper over the private `recompute_indicator`** — gives the UI-driven refresh a purpose-named entry point rather than exposing the internal primitive. One-line delegate; exercised via the Task 13 subscription and via the `Message::PortalEvent(_)` handler.
+
+3. **View builder signature changed** from the plan's literal `build_portal_detail_page()` to `build_portal_detail_page(data: ViewData<'_, '_>)` — matches the existing convention across every other file in `refbox/src/app/view_builders/` and preserves the Task 11/12 architectural binding that view builders read from `data`, not from `self`. The time banner is composed *inside* the builder (via `make_game_time_button(snapshot, …, portal_indicator)` using `ViewData`'s fields) rather than in the `view()` match arm, so the match arm collapses to `build_portal_detail_page(data)`.
+
+4. **Subscription plumbing uses `Arc<Mutex<Option<Receiver>>>` with a stable subscription ID (`"portal-events"`)** rather than mirroring `time_updater`'s `iced::stream::channel` + handshake pattern. iced 0.13's `Subscription::run_with_id` deduplicates by ID, so the factory closure is invoked exactly once; the `Arc<Mutex<Option<_>>>` `.take()` is defense-in-depth for any future re-activation (second activation finds `None`, logs, and exits cleanly). The `Arc<Mutex<...>>` wrapper is not a new primitive — `refbox/src/app/mod.rs` already uses it for `TournamentManager`, `UwhPortalClient`, and `SelectedEventId`.
+
+5. **Six new `#[allow(dead_code)]` attributes** on the scaffolding variants the plan's Step 1 and Step 2 require introducing in Task 13 but whose constructors land in Task 14 (`Message::PortalRowTapped`, `PortalForceSubmit`, `PortalDiscardTapped`, `PortalGoToLogin`; `AppState::PortalAttentionAction`, `PortalTokenExpiredAction`). Both reviewers explicitly endorsed this as acceptable time-bounded scaffolding licensed by the plan. **Task 14 must remove every one of these six attributes** as part of the next commit, and the reviewer on that commit should verify the removal.
+
+6. **`portal_event_rx` storage shape changed** from `Option<mpsc::Receiver<PortalEvent>>` (with `#[allow(dead_code)]` + `TODO(Task 13)`) to `Arc<Mutex<Option<Receiver<PortalEvent>>>>`; the `#[allow(dead_code)]` and TODO are removed in this commit.
+
+**Reviewer polish items carried forward to Task 14 (not blocking):**
+
+- **Title text** at `refbox/src/app/view_builders/portal_detail.rs` renders `text("PORTAL")` but the plan's Step 4 literal was `text("PORTAL — (detail page)")`. Task 14 replaces the entire title area with the summary text derived from health state (`"PORTAL — CONNECTED · All clear"` / `"PORTAL — CHECKING…"` / `"PORTAL — ISSUES"`), so this deviation self-heals.
+
+- **`PartialEq` comment for `Message::PortalEvent(_)`** (message.rs around line 359) describes it as "not used for message deduplication," but the actual mechanism is that `is_repeatable()` returns `true` for `PortalEvent`, short-circuiting the dedup check before the equality branch. The comment's `false` return is defensive — a sentence clarifying that layering would help a future maintainer who might delete `PortalEvent` from `is_repeatable()`.
+
+- **`Message::PortalEvent(_ev)` handler** (app/mod.rs around line 1392) currently calls `self.portal_manager.ui_tick()` and discards the event payload. This is correct for Task 13 (the indicator is the only visible surface and it re-derives from PortalManager state). Task 14 Step 2 replaces this with per-variant handling: `PortalEvent::ItemResolved(id)` routes to the new `PortalManager::on_item_resolved(id)` (which removes the item from the queue AND pushes to the recent-success buffer); other variants may still reduce to `ui_tick()`. When Task 14 lands, also widen the handler comment to explain the per-variant reasoning.
+
+- **Subscription ID `"portal-events"`** is a bare string literal at one call site. Consider introducing `const PORTAL_EVENTS_SUB_ID: &str = "portal-events";` at module scope if/when Task 14 touches `subscription()` — makes the identity constraint grep-able.
+
+**Task 14 entry conditions — verified:**
+
+- Background task emits `PortalEvent::ItemResolved(id)` on successful post but does NOT mutate the main-thread queue (confirmed at `refbox/src/portal_manager/health.rs:180–217`). Main thread is the sole owner of the authoritative `QueueFile`. Task 14's plan Step 2 already scopes the solution: add `PortalManager::on_item_resolved(&mut self, id: ItemId)` that removes from queue AND pushes to the recent-success buffer.
+- `Message::PortalEvent(_)` handler in `update()` is ready to be replaced with per-variant routing — no restructuring needed.
+- The six `#[allow(dead_code)]` attributes listed above become natural cleanup as Task 14 wires row taps, FORCE/DISCARD buttons, and the token-expired banner to their constructors.
+
+**Architectural bindings still in force entering Task 14:**
+
+- `ViewData` carries `portal_indicator`; view builders read from `data`, not `self`.
+- `RefBoxApp::set_current_event_id` is the only sanctioned write path for `current_event_id`.
+- Degraded-mode startup is the production I/O-failure fallback; no panic path.
+- UI refresh timer must remain isolated from the game clock, penalty clocks, and `POLL_INTERVAL`.
+- `SelectedEventId` is the canonical type name.
+
 ---
 
 ### Task 14: Detail page — row rendering and ordering

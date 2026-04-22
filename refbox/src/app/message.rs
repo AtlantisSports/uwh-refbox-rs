@@ -80,15 +80,18 @@ pub enum Message {
     ClosePortalDetailPage,
     PortalEvent(PortalEvent),
     PortalUiTick,
-    // Scaffolding for the detail-page row renderer in Task 14.
-    // Removed once the view builder constructs them.
-    #[allow(dead_code)]
+    /// Emitted when the operator taps a queued-item row on the detail
+    /// page. `update()` routes stuck items to the attention action page
+    /// and young pending items to a forced retry.
     PortalRowTapped(ItemId),
+    // Scaffolding for the attention action page (Task 15/16).
+    // Removed once the detail-page actions emit them.
     #[allow(dead_code)]
     PortalForceSubmit(ItemId),
     #[allow(dead_code)]
     PortalDiscardTapped(ItemId),
-    #[allow(dead_code)]
+    /// Emitted when the operator taps the token-expired row on the
+    /// detail page. `update()` routes to the portal re-login flow.
     PortalGoToLogin,
     RequestPortalRefresh,
     ShowWarnings,

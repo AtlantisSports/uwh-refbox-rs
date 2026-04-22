@@ -78,6 +78,11 @@ pub enum Message {
     ShowGameDetails,
     OpenPortalDetailPage,
     ClosePortalDetailPage,
+    /// Emitted when the operator taps BACK on the portal attention
+    /// action page. `update()` returns to the portal detail page (the
+    /// list the operator came from), not all the way out to the main
+    /// application screen.
+    ClosePortalAttentionAction,
     PortalEvent(PortalEvent),
     PortalUiTick,
     /// Emitted when the operator taps a queued-item row on the detail
@@ -186,6 +191,7 @@ impl Message {
             | Self::ShowGameDetails
             | Self::OpenPortalDetailPage
             | Self::ClosePortalDetailPage
+            | Self::ClosePortalAttentionAction
             | Self::PortalRowTapped(_)
             | Self::PortalForceSubmit(_)
             | Self::PortalDiscardTapped(_)
@@ -237,6 +243,7 @@ impl PartialEq for Message {
             | (Self::ShowGameDetails, Self::ShowGameDetails)
             | (Self::OpenPortalDetailPage, Self::OpenPortalDetailPage)
             | (Self::ClosePortalDetailPage, Self::ClosePortalDetailPage)
+            | (Self::ClosePortalAttentionAction, Self::ClosePortalAttentionAction)
             | (Self::PortalUiTick, Self::PortalUiTick)
             | (Self::PortalGoToLogin, Self::PortalGoToLogin)
             | (Self::RequestPortalRefresh, Self::RequestPortalRefresh)
@@ -409,6 +416,7 @@ impl PartialEq for Message {
             | (Self::ShowGameDetails, _)
             | (Self::OpenPortalDetailPage, _)
             | (Self::ClosePortalDetailPage, _)
+            | (Self::ClosePortalAttentionAction, _)
             | (Self::PortalEvent(_), _)
             | (Self::PortalUiTick, _)
             | (Self::PortalRowTapped(_), _)

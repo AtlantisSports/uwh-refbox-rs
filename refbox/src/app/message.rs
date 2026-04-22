@@ -84,11 +84,13 @@ pub enum Message {
     /// page. `update()` routes stuck items to the attention action page
     /// and young pending items to a forced retry.
     PortalRowTapped(ItemId),
-    // Scaffolding for the attention action page (Task 15/16).
-    // Removed once the detail-page actions emit them.
-    #[allow(dead_code)]
+    /// Emitted when the operator taps FORCE THIS GAME RESULT on the
+    /// attention action page. `update()` calls
+    /// `PortalManager::force_submit` and returns to the detail page.
     PortalForceSubmit(ItemId),
-    #[allow(dead_code)]
+    /// Emitted when the operator taps DISCARD THIS SUBMISSION on the
+    /// attention action page. First tap arms the discard; second tap
+    /// for the same item confirms and removes it from the queue.
     PortalDiscardTapped(ItemId),
     /// Emitted when the operator taps the token-expired row on the
     /// detail page. `update()` routes to the portal re-login flow.

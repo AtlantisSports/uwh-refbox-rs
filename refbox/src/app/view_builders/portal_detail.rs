@@ -69,7 +69,7 @@ fn render_row<'a>(r: DetailRow) -> Element<'a, Message> {
     match r {
         DetailRow::TokenExpired => {
             button(text("Portal login expired — tap to re-login").size(SMALL_PLUS_TEXT))
-                .on_press(Message::PortalGoToLogin)
+                .on_press(Message::OpenPortalTokenExpiredAction)
                 .style(red_button)
                 .padding(PADDING)
                 .width(Length::Fill)

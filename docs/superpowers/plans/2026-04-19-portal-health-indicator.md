@@ -2994,7 +2994,7 @@ pub(super) fn build_portal_attention_action<'a>(
         .width(Length::Fill);
 
     let back = button(text("BACK"))
-        .on_press(Message::ClosePortalDetailPage)
+        .on_press(Message::ClosePortalAttentionAction)
         .style(gray_button)
         .padding(PADDING)
         .width(Length::Fill);
@@ -3098,9 +3098,22 @@ pub fn force_immediate_retry(&mut self, id: &ItemId) -> std::io::Result<()> {
     if let Some(item) = self.find_mut(id) {
         item.last_attempt_at = None;
         queue::save(&self.config_dir, &self.queue)?;
+        self.push_queue_snapshot();
     }
-    // No indicator recompute needed — the row stays young-pending.
+    // No indicator recompute needed — the row stays young-pending. The
+    // snapshot push is essential: the background task observes the
+    // queue via pushed snapshots only, not the on-disk file, so without
+    // it the cleared last_attempt_at would not reach the retry loop.
     Ok(())
+}
+```
+
+Also add a new `Message::ClosePortalAttentionAction` variant next to `Message::ClosePortalDetailPage` — used by the BACK button above so the operator returns to the portal detail page rather than to MainPage (which is where `ClosePortalDetailPage` takes them). Handler:
+
+```rust
+Message::ClosePortalAttentionAction => {
+    self.app_state = AppState::PortalDetailPage;
+    Task::none()
 }
 ```
 
@@ -3170,6 +3183,50 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
 EOF
 )"
 ```
+
+#### Post-commit notes — Task 15 (added 2026-04-22)
+
+Task 15 shipped in two commits on the feature branch: `bacd822 feat(refbox): add portal attention action page for stuck items` (primary) and `d0d0a1f fix(refbox): push snapshot on immediate retry and scope attention BACK` (review follow-up). Spec reviewer flagged the same Critical issue the code-quality reviewer did on the first pass; both approved after the follow-up.
+
+**Plan text updated in place (not just annotated):**
+
+1. **Step 1 — BACK button `on_press` changed** from `Message::ClosePortalDetailPage` to `Message::ClosePortalAttentionAction`. The plan's original sample used the detail-page close message for the attention-page BACK button, but `ClosePortalDetailPage`'s handler sets `app_state = MainPage` — which dumps the operator all the way out rather than returning them to the detail list they came from. The new message is a sibling to `ClosePortalDetailPage` and routes to `AppState::PortalDetailPage`. Task 16's token-expired action page will introduce its own `ClosePortalTokenExpiredAction` following the same pattern.
+2. **Step 4 — `force_immediate_retry` sample now includes `self.push_queue_snapshot();`** after the disk save. Without this, the method was a silent no-op: the background task reads the queue only via pushed snapshots (not the on-disk file), so clearing `last_attempt_at` in the main-thread queue and saving to disk never reached the retry loop. The plan's original comment "No indicator recompute needed — the row stays young-pending" remains correct but the sample now also explains why the snapshot push is essential.
+
+**Pre-authorized deviations from the dispatch (noted here for traceability):**
+
+1. **Multiple plan-specified methods already existed before Task 15** — `PortalManager::force_submit`, `PortalManager::discard`, and the private `fn find_mut`; plus `AppState::PortalAttentionAction`. Task 15 wires them rather than re-defines them. The net new additions on `PortalManager` were `pub fn find(&self, id)`, `pub fn is_stuck(&self, id)`, and `pub fn force_immediate_retry(&mut self, id)`.
+2. **View-builder signature** kept the Task 14 `(data: ViewData<'_, '_>, ...extras)` pattern with `pub(in super::super)` visibility rather than the plan's 6-positional-args `pub(super)` sample. Time-banner built inside the builder, not at the call site.
+3. **`is_item_stuck` is a free function, not `health::is_item_stuck`** as the plan sample showed. Called directly from `PortalManager::is_stuck`.
+4. **`Message::PortalDiscardTapped` handler** uses a snapshot-first borrow pattern (clone `item_id`, Copy `discard_armed` out of the match, then mutate `self.app_state`) to avoid a borrow-checker conflict with the plan's literal structure.
+5. **Three `#[allow(dead_code)]` attributes removed:** `Message::PortalForceSubmit`, `Message::PortalDiscardTapped`, `AppState::PortalAttentionAction`. Four remain post-Task-14 → one remaining: `AppState::PortalTokenExpiredAction` (Task 16). Plus the blanket `#![allow(dead_code)]` on `portal_manager/mod.rs:10` (Task 22).
+6. **BACK button uses `fl!("back")`** translation key rather than hard-coded `"BACK"` — matches the detail-page BACK button from Task 13.
+7. **ASCII hyphen `-` in title/info strings** rather than the plan's middle-dot `·`. Typography-only; no user-visible functional difference.
+8. **Doc comments added** to `Message::PortalForceSubmit`, `Message::PortalDiscardTapped`, `AppState::PortalAttentionAction` as their `#[allow(dead_code)]` attributes were removed. Describes the wired behaviour each now drives.
+9. **Orphan-item fallback in `view()`** reroutes to `build_portal_detail_page(data, self.portal_manager.detail_rows())` rather than rendering the plan's literal `text("Item no longer in queue")`. Better UX — the operator sees what state the queue is actually in. Known side effect: `self.app_state` remains `PortalAttentionAction` while the detail page renders; this is benign but slightly fragile (see carry-forward concerns below).
+10. **`error!` macro (from `use log::*;` glob-import)** rather than `log::error!` — matches house style in `app/mod.rs`.
+
+**Follow-up commit also introduced:**
+
+- **New `Message::ClosePortalAttentionAction`** variant, wired through `is_repeatable()` (false) and both `PartialEq` match arms.
+- **Regression test `force_immediate_retry_pushes_queue_snapshot`** in the `portal_manager/mod.rs` tests module. Explicitly comments that snapshot-channel delivery is not observable from the current test scaffolding (matching the rigor of `force_submit_flags_force_and_resets_attempt_counters`) — the test asserts the happy-path code path is entered and the observable main-thread / on-disk state is correct.
+- **Rewritten `force_immediate_retry` doc comment** that accurately describes the active snapshot push (removing the previously incorrect "the background task picks up the change via its existing queue snapshot flow at the next mutation point" language).
+
+**Carry-forward concerns for later tasks:**
+
+1. **Orphan-item fallback leaves `self.app_state` stale.** When the attention page observes `find(item_id)` returns `None`, the view reroutes to detail content but `self.app_state` remains `PortalAttentionAction { item_id, discard_armed }`. This is benign in practice (next `PortalRowTapped` overwrites; detail page has no Discard-emitting element), but a clean fix requires either interior mutability at the view site or a dispatched reset message from the main thread when `ItemResolved`/`discard` observes the armed id. Neither is one-line; left as a future refinement.
+2. **Snapshot-channel test observability is weak.** Neither `force_submit_flags_force_and_resets_attempt_counters` nor `force_immediate_retry_pushes_queue_snapshot` can assert a `PortalCommand::QueueUpdated` was actually sent to the background task — the tests verify the main-thread and on-disk effects only. If `PortalManager::new` exposed the `command_tx`'s receiver (in `#[cfg(test)]`) or returned the snapshot channel separately, both tests would be strengthened. Consider for a future fix task if a regression here is ever suspected.
+3. **Message surface now has two sibling "close" messages** (`ClosePortalDetailPage` → MainPage, `ClosePortalAttentionAction` → PortalDetailPage). Task 16 will likely add `ClosePortalTokenExpiredAction` → PortalDetailPage as a third. Consistency is the intended convention — one close-message per page, each scoped to its return-to destination. Don't preemptively generalize.
+4. **`last_attempt_at` is not currently stamped by the background task** in production code (`attempt_item` at `health.rs:197-223` does not set it). The retry-eligibility throttling therefore always returns true today — meaning `force_immediate_retry` is latently a no-op today too, because there's nothing to "force past" yet. When a future task wires the stamp (expected as part of retry backoff work), the snapshot-push fix here becomes load-bearing. Do not remove the push even if short-term tests appear unaffected.
+
+**Architectural bindings carried forward (all in force entering Task 16):**
+
+- `ViewData` is the view-builder input; view builders read from `data`, not `self`. Extra per-page arguments may follow `data` positionally.
+- `PortalManager::find`, `is_stuck`, `force_immediate_retry`, `force_submit`, `discard`, `on_item_resolved`, `detail_rows`, `token_refreshed` are all public API.
+- One close-message per action page, each routing to `PortalDetailPage`.
+- `push_queue_snapshot()` is the ONLY mechanism by which main-thread queue mutations reach the background task — any new mutation helper must push.
+- `ITEM_RETRY_INTERVAL` and `RECENT_SUCCESS_CAP` remain the authoritative constants.
+- `RefBoxApp::set_current_event_id` remains the only sanctioned write path for `current_event_id`.
 
 ---
 

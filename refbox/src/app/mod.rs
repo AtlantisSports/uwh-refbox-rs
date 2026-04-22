@@ -136,9 +136,10 @@ enum AppState {
     ConfirmationPage(ConfirmationKind),
     ConfirmScores(BlackWhiteBundle<u8>),
     PortalDetailPage,
-    // Scaffolding for per-row action pages added in Task 14.
-    // Removed once a transition constructs them.
-    #[allow(dead_code)]
+    /// Shown when the operator taps a red stuck row on the detail page.
+    /// `discard_armed` is the two-tap confirmation state for the
+    /// DISCARD button; it starts false and flips to true on the first
+    /// DISCARD tap (the second tap, for the same item, confirms).
     PortalAttentionAction {
         item_id: ItemId,
         discard_armed: bool,
@@ -1831,11 +1832,58 @@ impl RefBoxApp {
                 self.portal_manager.ui_tick();
                 Task::none()
             }
-            Message::PortalRowTapped(_id)
-            | Message::PortalForceSubmit(_id)
-            | Message::PortalDiscardTapped(_id) => {
-                // Row-level interactions land in later tasks once the
-                // detail page renders queue rows.
+            Message::PortalRowTapped(id) => {
+                if self.portal_manager.is_stuck(&id) {
+                    self.app_state = AppState::PortalAttentionAction {
+                        item_id: id,
+                        discard_armed: false,
+                    };
+                    trace!("AppState changed to {:?}", self.app_state);
+                } else {
+                    // Young pending row tapped — force an immediate retry.
+                    if let Err(e) = self.portal_manager.force_immediate_retry(&id) {
+                        error!("force_immediate_retry failed: {e}");
+                    }
+                }
+                Task::none()
+            }
+            Message::PortalForceSubmit(id) => {
+                if let Err(e) = self.portal_manager.force_submit(&id) {
+                    error!("force_submit failed: {e}");
+                }
+                self.app_state = AppState::PortalDetailPage;
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::PortalDiscardTapped(id) => {
+                // Snapshot the current attention-page state before any
+                // mutation so we don't fight the borrow checker when
+                // reassigning `self.app_state` below.
+                let current = if let AppState::PortalAttentionAction {
+                    item_id,
+                    discard_armed,
+                } = &self.app_state
+                {
+                    Some((item_id.clone(), *discard_armed))
+                } else {
+                    None
+                };
+                if let Some((item_id, discard_armed)) = current {
+                    if item_id == id {
+                        if discard_armed {
+                            if let Err(e) = self.portal_manager.discard(&id) {
+                                error!("discard failed: {e}");
+                            }
+                            self.app_state = AppState::PortalDetailPage;
+                        } else {
+                            self.app_state = AppState::PortalAttentionAction {
+                                item_id: id,
+                                discard_armed: true,
+                            };
+                        }
+                        trace!("AppState changed to {:?}", self.app_state);
+                    }
+                }
                 Task::none()
             }
             Message::PortalGoToLogin => {
@@ -2866,10 +2914,29 @@ impl RefBoxApp {
             }
             AppState::ConfirmScores(scores) =>
                 build_score_confirmation_page(data, scores, self.snapshot.conf_pause_time),
-            AppState::PortalDetailPage
-            | AppState::PortalAttentionAction { .. }
-            | AppState::PortalTokenExpiredAction =>
+            AppState::PortalDetailPage | AppState::PortalTokenExpiredAction =>
                 build_portal_detail_page(data, self.portal_manager.detail_rows()),
+            AppState::PortalAttentionAction {
+                ref item_id,
+                discard_armed,
+            } => {
+                if let Some(item) = self.portal_manager.find(item_id) {
+                    build_portal_attention_action(
+                        data,
+                        item_id.clone(),
+                        item.id.game_number.clone(),
+                        item.black_score,
+                        item.white_score,
+                        item.attempts,
+                        discard_armed,
+                    )
+                } else {
+                    // Item was resolved or discarded while the operator
+                    // was on this page. Fall back to the detail page so
+                    // the operator sees the actual queue state.
+                    build_portal_detail_page(data, self.portal_manager.detail_rows())
+                }
+            }
         }]
         .spacing(SPACING)
         .padding(PADDING);

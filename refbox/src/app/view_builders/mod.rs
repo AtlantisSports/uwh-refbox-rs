@@ -24,6 +24,9 @@ pub(super) use main_view::*;
 pub mod penalties;
 pub(super) use penalties::*;
 
+pub mod portal_attention_action;
+pub(super) use portal_attention_action::*;
+
 pub mod portal_detail;
 pub(super) use portal_detail::*;
 

@@ -425,6 +425,25 @@ impl PortalManager {
     fn find_mut(&mut self, id: &ItemId) -> Option<&mut QueuedItem> {
         self.queue.items.iter_mut().find(|it| it.id == *id)
     }
+
+    /// Look up a queued item by id. Returns `None` if the item is not in
+    /// the queue (e.g. it was resolved or discarded since the caller last
+    /// observed the queue). The view layer uses this to render the
+    /// attention-action page for a specific item.
+    pub fn find(&self, id: &ItemId) -> Option<&QueuedItem> {
+        self.queue.items.iter().find(|it| it.id == *id)
+    }
+
+    /// Returns true if the queued item with the given id has crossed the
+    /// stuck threshold. Returns false if the item is not in the queue —
+    /// callers routing a row-tap dispatch can treat "unknown id" the
+    /// same as "not stuck" without panicking.
+    pub fn is_stuck(&self, id: &ItemId) -> bool {
+        match self.find(id) {
+            Some(item) => is_item_stuck(item, OffsetDateTime::now_utc()),
+            None => false,
+        }
+    }
 }
 
 impl PortalManager {
@@ -548,6 +567,21 @@ impl PortalManager {
         }
         self.recompute_indicator();
         self.push_queue_snapshot();
+        Ok(())
+    }
+
+    /// Operator tapped a young (yellow) pending row on the detail page.
+    /// Clears `last_attempt_at` so the next background tick attempts the
+    /// item immediately, without waiting out the `ITEM_RETRY_INTERVAL`
+    /// retry window. The item stays young-pending, so no indicator
+    /// recompute or snapshot push is needed; the background task picks
+    /// up the change via its existing queue snapshot flow at the next
+    /// mutation point (or on its own schedule when it next ticks).
+    pub fn force_immediate_retry(&mut self, id: &ItemId) -> std::io::Result<()> {
+        if let Some(item) = self.find_mut(id) {
+            item.last_attempt_at = None;
+            queue::save(&self.config_dir, &self.queue)?;
+        }
         Ok(())
     }
 
@@ -1103,5 +1137,87 @@ mod tests {
         assert!(
             matches!(&rows[1], DetailRow::RecentSuccess { game_number, .. } if game_number == "G1")
         );
+    }
+
+    #[tokio::test]
+    async fn is_stuck_classifies_items_and_is_none_safe_for_unknown_ids() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+
+        // Stuck item: queued 40 minutes ago.
+        m.enqueue_game_end("e".into(), "G_STUCK".into(), 0, 0, "{}".into())
+            .unwrap();
+        m.queue.items[0].queued_at = OffsetDateTime::now_utc() - TimeDuration::minutes(40);
+        let stuck_id = m.queue.items[0].id.clone();
+
+        // Young item: queued 5 minutes ago.
+        m.enqueue_game_end("e".into(), "G_YOUNG".into(), 0, 0, "{}".into())
+            .unwrap();
+        m.queue.items[1].queued_at = OffsetDateTime::now_utc() - TimeDuration::minutes(5);
+        let young_id = m.queue.items[1].id.clone();
+
+        assert!(m.is_stuck(&stuck_id), "40-minute-old item should be stuck");
+        assert!(
+            !m.is_stuck(&young_id),
+            "5-minute-old item should not be stuck"
+        );
+
+        let unknown = ItemId {
+            event_id: "e".into(),
+            game_number: "G_NEVER_QUEUED".into(),
+        };
+        assert!(
+            !m.is_stuck(&unknown),
+            "unknown id must report not-stuck, not panic"
+        );
+    }
+
+    #[tokio::test]
+    async fn find_returns_item_or_none() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        m.enqueue_game_end("e".into(), "G1".into(), 3, 2, "{}".into())
+            .unwrap();
+        let id = m.queue.items[0].id.clone();
+
+        let found = m.find(&id);
+        assert!(found.is_some(), "find should return Some for queued id");
+        assert_eq!(found.unwrap().id, id);
+
+        let unknown = ItemId {
+            event_id: "e".into(),
+            game_number: "G_NEVER_QUEUED".into(),
+        };
+        assert!(
+            m.find(&unknown).is_none(),
+            "find should return None for unknown id"
+        );
+    }
+
+    #[tokio::test]
+    async fn force_immediate_retry_clears_last_attempt_at_and_is_noop_for_unknown() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        m.enqueue_game_end("e".into(), "G1".into(), 0, 0, "{}".into())
+            .unwrap();
+        let id = m.queue.items[0].id.clone();
+
+        // Stamp last_attempt_at so we can observe it being cleared.
+        m.queue.items[0].last_attempt_at = Some(OffsetDateTime::now_utc());
+
+        m.force_immediate_retry(&id).unwrap();
+        assert!(
+            m.queue.items[0].last_attempt_at.is_none(),
+            "force_immediate_retry must clear last_attempt_at"
+        );
+
+        // Unknown id is a silent no-op — must not panic, must not mutate
+        // the queue.
+        let unknown = ItemId {
+            event_id: "e".into(),
+            game_number: "G_NEVER_QUEUED".into(),
+        };
+        m.force_immediate_retry(&unknown).unwrap();
+        assert_eq!(m.queue.items.len(), 1);
     }
 }

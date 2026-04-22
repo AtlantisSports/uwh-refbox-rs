@@ -3582,6 +3582,39 @@ EOF
 )"
 ```
 
+#### Post-commit notes — Task 18 (added 2026-04-22)
+
+Task 18 shipped in a single commit: `964f742 feat(refbox): route game-end scores through portal_manager`. Both reviewers approved cleanly.
+
+This task is the **load-bearing wire-up** — after this commit, the Portal Health Indicator feature is live end-to-end for the first time. Every game end with `using_uwhportal = true` AND `current_event_id = Some(_)` now flows through `PortalManager::enqueue_game_end`, which persists the submission to disk, tracks its lifecycle via the background task, and updates the health indicator accordingly.
+
+**Pre-authorized deviations from the dispatch:**
+
+1. **Signature change `&self` → `&mut self`** on `handle_game_end` (required because `enqueue_game_end` takes `&mut self`). Caller chain already mutable; no cascade.
+2. **Used the existing `game_number: &GameNumber` parameter** — the plan's `self.current_game_number` doesn't exist.
+3. **Used `info.stats.as_json()`** (already `String`) — the plan's `self.game_stats()` doesn't exist; no additional `serde_json::to_string` needed.
+4. **Used `info.scores.black` / `.white`** rather than the plan's `self.snapshot.scores.*` — matches the existing pattern, reads the authoritative last-game state.
+5. **Kept `request_schedule(event_id.clone())`** — unrelated to portal submission; refreshes schedule after game end.
+6. **Deleted `post_game_score` and `post_game_stats` methods entirely** — no remaining callers. Net diff: +13 / -56.
+7. **Error-logged via `error!`, not propagated** — `enqueue_game_end` returns `io::Result<()>`; `?` would require changing the function's return type.
+8. **Hoisted `info.scores.black` / `.white` / `info.stats.as_json()` into local owned values** before the `&mut self.portal_manager.enqueue_game_end(...)` call. This was actually **necessary** (not merely defensive, as the implementer modestly framed it): `TournamentManager::last_game_info()` returns `Option<&LastGameInfo>` that borrows the `MutexGuard` from `self.tm.lock()`. Without the hoist, the `&mut self` borrow for `enqueue_game_end` would conflict with the outstanding shared borrow through `info`. The compiler would reject.
+
+**Reviewer observations (minor, not blocking):**
+
+- **Commit message could mention the dead-method deletions** (51 lines removed vs. 13 added); the body only describes the replacement. Cosmetic; the diff speaks for itself.
+- **No regression test for the wire-up itself** — acceptable per plan intent; existing `enqueue_game_end_appends_item_and_turns_yellow` test covers the downstream contract. A future refactor that silently drops the enqueue call wouldn't be caught by unit tests. Worth a handler-level integration test in a future hardening pass.
+- **Log-visibility narrowing (pre-existing).** The old `post_game_score` / `post_game_stats` emitted `info!("Successfully posted game score")` / `error!(...)` log lines on each attempt. Post-Task-18, those logs are gone — `health::attempt_item` does not emit `log::*` at success/failure. The behavioral contract is preserved (observability moved from logs to the visual indicator), but troubleshooting from log files alone is now harder. Noted for potential future observability task. Not introduced by Task 18's change — it's the pre-existing `health.rs` shape.
+
+**Carry-forward latent issue (pre-existing, still unresolved):**
+
+- **`NullIo::post_scores` / `post_stats` return `Ok(())` silently.** In degraded mode (`UwhPortalClient` construction failed at startup → `NullIo` fallback), every queued game-end will fake-succeed without hitting the network — the item moves to the recent-success ring as if it were actually submitted. Task 18 makes this more visible (since game-end now routes through the queue) but did not introduce it. Worth a separate fix task: make `NullIo::post_*` return an error in production (or gate behind `#[cfg(test)]`). The Task 22 manual-verification scenarios should include a "portal client construction fails → operator ends a game → verify NullIo doesn't silently drop the score" check.
+
+**Architectural bindings in force entering Task 19:**
+
+- Every game end with `using_uwhportal && current_event_id.is_some()` flows through `PortalManager::enqueue_game_end`.
+- `PortalManager::enqueue_game_end(&mut self, event_id: String, game_number: String, black_score: u8, white_score: u8, stats_json: String) -> io::Result<()>` is the canonical submission entry point.
+- All prior architectural bindings still hold (`ViewData` pattern, `push_queue_snapshot` as the only background-task-update mechanism, close-message-per-page convention, `ITEM_RETRY_INTERVAL`, `RECENT_SUCCESS_CAP`, etc.).
+
 ---
 
 ### Task 19: `UWH_PORTAL_URL_OVERRIDE` environment variable

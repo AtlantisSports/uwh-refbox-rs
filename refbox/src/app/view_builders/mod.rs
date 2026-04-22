@@ -24,6 +24,9 @@ pub(super) use main_view::*;
 pub mod penalties;
 pub(super) use penalties::*;
 
+pub mod portal_detail;
+pub(super) use portal_detail::*;
+
 pub mod warnings;
 pub(super) use warnings::*;
 

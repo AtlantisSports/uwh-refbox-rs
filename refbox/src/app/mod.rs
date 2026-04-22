@@ -3,7 +3,7 @@ use super::{APP_NAME, fl};
 use crate::{
     config::{Config, Mode},
     penalty_editor::*,
-    portal_manager::{PortalEvent, PortalManager, SelectedEventId, UwhPortalIo},
+    portal_manager::{ItemId, PortalEvent, PortalManager, SelectedEventId, UwhPortalIo},
     sound_controller::*,
     tournament_manager::{penalty::*, *},
 };
@@ -94,9 +94,13 @@ pub struct RefBoxApp {
     spacebar_held: bool,
     alarm_delay_token: u64,
     portal_manager: PortalManager,
-    // TODO(Task 13): consume via iced Subscription.
-    #[allow(dead_code)]
-    portal_event_rx: Option<mpsc::Receiver<PortalEvent>>,
+    /// Receiver half of the portal-manager background task's event
+    /// channel. Wrapped in `Arc<Mutex<Option<_>>>` so an iced
+    /// Subscription factory can clone the Arc, `.take()` the Receiver
+    /// out once on its first activation, and drive the channel from the
+    /// stream task without needing a `&mut` on `self` (which iced's
+    /// `subscription(&self)` entry point cannot provide).
+    portal_event_rx: Arc<Mutex<Option<mpsc::Receiver<PortalEvent>>>>,
 }
 
 #[derive(Debug)]
@@ -131,6 +135,16 @@ enum AppState {
     ParameterList(ListableParameter, usize),
     ConfirmationPage(ConfirmationKind),
     ConfirmScores(BlackWhiteBundle<u8>),
+    PortalDetailPage,
+    // Scaffolding for per-row action pages added in Task 14.
+    // Removed once a transition constructs them.
+    #[allow(dead_code)]
+    PortalAttentionAction {
+        item_id: ItemId,
+        discard_armed: bool,
+    },
+    #[allow(dead_code)]
+    PortalTokenExpiredAction,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1054,7 +1068,7 @@ impl RefBoxApp {
                 }
             }
         };
-        let portal_event_rx = Some(portal_event_rx);
+        let portal_event_rx = Arc::new(Mutex::new(Some(portal_event_rx)));
 
         let new = Self {
             pen_edit: ListEditor::new(tm.clone()),
@@ -1778,7 +1792,46 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::OpenPortalDetailPage => {
-                // TODO(Task 13): route to detail page.
+                self.app_state = AppState::PortalDetailPage;
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::ClosePortalDetailPage => {
+                self.app_state = AppState::MainPage;
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::PortalEvent(_ev) => {
+                // The background portal task woke us with a state-change
+                // signal. The main-thread `PortalManager` is the source
+                // of truth for indicator state and computes it from its
+                // own queue, recent-success marker, and token-problem
+                // flag — so a recompute is enough to pick up anything
+                // that might be affected by the event (e.g. a stuck item
+                // crossing the 30-minute threshold between frames). Row-
+                // level handling of `ItemAdded`/`ItemResolved`/
+                // `ItemUpdated` lands with the detail-page row renderer
+                // in later tasks.
+                self.portal_manager.ui_tick();
+                Task::none()
+            }
+            Message::PortalUiTick => {
+                // Pure UI-layer tick that lets time-based transitions
+                // (30-minute stuck escalation, 10-second recent-success
+                // overlay expiry) reach the screen without waiting for
+                // an unrelated re-render.
+                self.portal_manager.ui_tick();
+                Task::none()
+            }
+            Message::PortalRowTapped(_id)
+            | Message::PortalForceSubmit(_id)
+            | Message::PortalDiscardTapped(_id) => {
+                // Row-level interactions land in later tasks once the
+                // detail page renders queue rows.
+                Task::none()
+            }
+            Message::PortalGoToLogin => {
+                // Login-flow plumbing lands in a later task.
                 Task::none()
             }
             Message::RequestPortalRefresh => {
@@ -2805,6 +2858,9 @@ impl RefBoxApp {
             }
             AppState::ConfirmScores(scores) =>
                 build_score_confirmation_page(data, scores, self.snapshot.conf_pause_time),
+            AppState::PortalDetailPage
+            | AppState::PortalAttentionAction { .. }
+            | AppState::PortalTokenExpiredAction => build_portal_detail_page(data),
         }]
         .spacing(SPACING)
         .padding(PADDING);
@@ -2828,6 +2884,23 @@ impl RefBoxApp {
 
     pub(super) fn subscription(&self) -> Subscription<Message> {
         let time_sub = Subscription::run(time_updater);
+
+        // Portal event pump: forwards `PortalEvent`s from the
+        // background portal task into the iced message loop. Registered
+        // with a stable ID so iced 0.13 deduplicates it and we never
+        // end up with two consumers racing on the same `Receiver`.
+        let portal_rx_handle = self.portal_event_rx.clone();
+        let portal_events =
+            Subscription::run_with_id("portal-events", portal_event_stream(portal_rx_handle));
+
+        // Pure UI-layer tick (1 Hz) so time-driven portal indicator
+        // transitions — the 30-minute stuck-item escalation and the
+        // 10-second green-checkmark overlay expiry — reach the screen
+        // without waiting for an unrelated re-render. This is
+        // deliberately NOT derived from the game clock, the penalty
+        // clocks, or the background task's poll interval.
+        let portal_tick =
+            iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::PortalUiTick);
 
         if self.config.sound.sound_enabled && self.config.sound.manual_alarm_enabled {
             let key_press = keyboard::on_key_press(|key, _modifiers| {
@@ -2853,9 +2926,16 @@ impl RefBoxApp {
                 }
                 _ => None,
             });
-            Subscription::batch([time_sub, key_press, key_release, mouse_release])
+            Subscription::batch([
+                time_sub,
+                portal_events,
+                portal_tick,
+                key_press,
+                key_release,
+                mouse_release,
+            ])
         } else {
-            time_sub
+            Subscription::batch([time_sub, portal_events, portal_tick])
         }
     }
 
@@ -2967,6 +3047,40 @@ fn time_updater() -> impl Stream<Item = Message> {
             };
 
             msg_tx.send(msg_type(snapshot)).await.unwrap();
+        }
+    })
+}
+
+/// Build a stream that forwards every `PortalEvent` emitted by the
+/// background portal-manager task into the iced message loop. The
+/// `shared` handle is cloned once by `subscription()` and passed here;
+/// on first activation we `.take()` the Receiver out of the `Option`
+/// so the stream owns it for the rest of the process's lifetime. The
+/// subscription is registered with a stable ID, so iced 0.13 only
+/// activates this factory once — a re-activation would find the
+/// receiver already taken and emit nothing (which is safe but
+/// indicates a bug). If the channel is closed (degraded mode or task
+/// shutdown), we end the stream cleanly.
+fn portal_event_stream(
+    shared: Arc<Mutex<Option<mpsc::Receiver<PortalEvent>>>>,
+) -> impl Stream<Item = Message> {
+    use iced::futures::SinkExt;
+    iced::stream::channel(100, async move |mut msg_tx| {
+        // why this cannot panic: the guarded data is a plain Option and
+        // no writer panics while holding it; poisoning simply yields the
+        // last value, which we then `.take()` out.
+        let rx_opt = shared
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take();
+        let Some(mut rx) = rx_opt else {
+            debug!("portal_event_stream activated with no receiver; ending stream");
+            return;
+        };
+        while let Some(ev) = rx.recv().await {
+            if msg_tx.send(Message::PortalEvent(ev)).await.is_err() {
+                break;
+            }
         }
     })
 }

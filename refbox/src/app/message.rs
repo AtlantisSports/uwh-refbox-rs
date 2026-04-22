@@ -1,5 +1,6 @@
 use super::{fl, languages::Language};
 use crate::{
+    portal_manager::{ItemId, PortalEvent},
     sound_controller::RemoteId,
     tournament_manager::{TournamentManager, penalty::PenaltyKind},
 };
@@ -76,6 +77,19 @@ pub enum Message {
     },
     ShowGameDetails,
     OpenPortalDetailPage,
+    ClosePortalDetailPage,
+    PortalEvent(PortalEvent),
+    PortalUiTick,
+    // Scaffolding for the detail-page row renderer in Task 14.
+    // Removed once the view builder constructs them.
+    #[allow(dead_code)]
+    PortalRowTapped(ItemId),
+    #[allow(dead_code)]
+    PortalForceSubmit(ItemId),
+    #[allow(dead_code)]
+    PortalDiscardTapped(ItemId),
+    #[allow(dead_code)]
+    PortalGoToLogin,
     RequestPortalRefresh,
     ShowWarnings,
     EditGameConfig,
@@ -140,6 +154,8 @@ impl Message {
             | Self::RecvPortalToken(_)
             | Self::RecvTokenValid(_)
             | Self::TimeUpdaterStarted(_)
+            | Self::PortalEvent(_)
+            | Self::PortalUiTick
             | Self::NoAction => true,
 
             Self::EditTime
@@ -164,6 +180,11 @@ impl Message {
             | Self::AddScoreComplete { .. }
             | Self::ShowGameDetails
             | Self::OpenPortalDetailPage
+            | Self::ClosePortalDetailPage
+            | Self::PortalRowTapped(_)
+            | Self::PortalForceSubmit(_)
+            | Self::PortalDiscardTapped(_)
+            | Self::PortalGoToLogin
             | Self::RequestPortalRefresh
             | Self::ShowWarnings
             | Self::EditGameConfig
@@ -210,6 +231,9 @@ impl PartialEq for Message {
             | (Self::FoulOverview, Self::FoulOverview)
             | (Self::ShowGameDetails, Self::ShowGameDetails)
             | (Self::OpenPortalDetailPage, Self::OpenPortalDetailPage)
+            | (Self::ClosePortalDetailPage, Self::ClosePortalDetailPage)
+            | (Self::PortalUiTick, Self::PortalUiTick)
+            | (Self::PortalGoToLogin, Self::PortalGoToLogin)
             | (Self::RequestPortalRefresh, Self::RequestPortalRefresh)
             | (Self::ShowWarnings, Self::ShowWarnings)
             | (Self::EditGameConfig, Self::EditGameConfig)
@@ -334,6 +358,13 @@ impl PartialEq for Message {
             ) => a == b,
             (Self::GotRemoteId(a), Self::GotRemoteId(b)) => a == b,
             (Self::DeleteRemote(a), Self::DeleteRemote(b)) => a == b,
+            (Self::PortalRowTapped(a), Self::PortalRowTapped(b)) => a == b,
+            (Self::PortalForceSubmit(a), Self::PortalForceSubmit(b)) => a == b,
+            (Self::PortalDiscardTapped(a), Self::PortalDiscardTapped(b)) => a == b,
+            // `PortalEvent` is an incoming stream payload that is never
+            // used for message deduplication; treat two PortalEvents as
+            // unequal so every event is delivered to `update()`.
+            (Self::PortalEvent(_), Self::PortalEvent(_)) => false,
             (Self::ConfirmationSelected(a), Self::ConfirmationSelected(b)) => a == b,
             (Self::TeamTimeout(a, b), Self::TeamTimeout(c, d)) => a == c && b == d,
             (Self::RefTimeout(a), Self::RefTimeout(b)) => a == b,
@@ -372,6 +403,13 @@ impl PartialEq for Message {
             | (Self::AddScoreComplete { .. }, _)
             | (Self::ShowGameDetails, _)
             | (Self::OpenPortalDetailPage, _)
+            | (Self::ClosePortalDetailPage, _)
+            | (Self::PortalEvent(_), _)
+            | (Self::PortalUiTick, _)
+            | (Self::PortalRowTapped(_), _)
+            | (Self::PortalForceSubmit(_), _)
+            | (Self::PortalDiscardTapped(_), _)
+            | (Self::PortalGoToLogin, _)
             | (Self::RequestPortalRefresh, _)
             | (Self::ShowWarnings, _)
             | (Self::EditGameConfig, _)

@@ -3246,7 +3246,12 @@ use iced::{widget::{button, column, text, Space}, Length};
 use crate::app::message::Message;
 use crate::app::theme::*;
 
-pub(super) fn build_portal_token_expired_action<'a>() -> iced::Element<'a, Message> {
+pub(in super::super) fn build_portal_token_expired_action<'a>(
+    data: ViewData<'_, '_>,
+) -> iced::Element<'a, Message> {
+    let ViewData { snapshot, mode, clock_running, portal_indicator, .. } = data;
+    // banner built internally via make_game_time_button(...) — see sibling
+    // portal_attention_action.rs and portal_detail.rs for the pattern
     let title = text("Portal login expired").size(MEDIUM_TEXT);
     let body = text(
         "The UWH Portal login has expired. Queued scores cannot be sent until \
@@ -3259,7 +3264,7 @@ pub(super) fn build_portal_token_expired_action<'a>() -> iced::Element<'a, Messa
         .padding(PADDING)
         .width(Length::Fill);
     let back = button(text("BACK"))
-        .on_press(Message::ClosePortalDetailPage)
+        .on_press(Message::ClosePortalTokenExpiredAction)
         .style(red_button)
         .padding(PADDING)
         .width(Length::Fill);
@@ -3270,6 +3275,8 @@ pub(super) fn build_portal_token_expired_action<'a>() -> iced::Element<'a, Messa
         .into()
 }
 ```
+
+Also add two new `Message` variants so the action page is reachable and the BACK button scopes correctly: `Message::OpenPortalTokenExpiredAction` (emitted by the detail page's TokenExpired row — replaces the Task 14 row's direct `Message::PortalGoToLogin` emission) and `Message::ClosePortalTokenExpiredAction` (emitted by the BACK button above). Wire both through `is_repeatable()` (returns `false`) and both `PartialEq` match arms. Update `refbox/src/app/view_builders/portal_detail.rs`'s `render_row` for `DetailRow::TokenExpired` to use the new Open message.
 
 - [ ] **Step 2: Register the view builder**
 
@@ -3285,39 +3292,60 @@ pub(super) use portal_token_expired_action::build_portal_token_expired_action;
 In `refbox/src/app/mod.rs` `update()`:
 
 ```rust
+Message::OpenPortalTokenExpiredAction => {
+    self.app_state = AppState::PortalTokenExpiredAction;
+    Task::none()
+}
+Message::ClosePortalTokenExpiredAction => {
+    self.app_state = AppState::PortalDetailPage;
+    Task::none()
+}
 Message::PortalGoToLogin => {
-    // The existing portal-login screen is reached via AppState::LoginPortal
-    // (name may differ — check the existing login flow). Remember that we
-    // came from the portal detail page so we can return there on success.
+    // The existing portal-login screen is reached via
+    // AppState::KeypadPage(KeypadPage::PortalLogin(portal_id, false), 0).
+    // Remember that we came from the portal detail page so we can return
+    // there on successful login.
+    let Some(client) = self.uwhportal_client.as_ref() else {
+        log::warn!("PortalGoToLogin: no uwhportal client configured");
+        self.app_state = AppState::PortalDetailPage;
+        return Task::none();
+    };
+    // why this cannot panic: the guard is held only for a synchronous
+    // id() call and dropped immediately.
+    let portal_id = client.lock().unwrap().id();
     self.portal_login_return_to_detail = true;
-    self.app_state = AppState::LoginPortal;
+    self.app_state = AppState::KeypadPage(
+        KeypadPage::PortalLogin(portal_id, false),
+        0,
+    );
     Task::none()
 }
 ```
 
 Add the boolean field `portal_login_return_to_detail: bool` to `RefBoxApp`.
 
-Hook into the existing login-success handler: after `self.portal_manager.token_refreshed()` is called in the successful-login path, check the flag:
+Hook into the existing `Message::RecvPortalToken(PortalTokenResponse::Success(token))` handler in `refbox/src/app/mod.rs` (around line 2397 before Task 16). Insert a call to `self.portal_manager.token_refreshed()` (errors logged, not propagated) unconditionally on success, and consume the flag to choose the next state:
 
 ```rust
+if let Err(e) = self.portal_manager.token_refreshed() {
+    error!("token_refreshed failed: {e}");
+}
+// ...within the Success arm of the existing match...
 if self.portal_login_return_to_detail {
     self.portal_login_return_to_detail = false;
-    self.app_state = AppState::PortalDetailPage;
+    AppState::PortalDetailPage
 } else {
-    self.app_state = AppState::MainPage;
+    AppState::EditGameConfig(ConfigPage::Game)  // existing default
 }
 ```
 
 - [ ] **Step 4: Render in `view()`**
 
 ```rust
-AppState::PortalTokenExpiredAction => {
-    let banner = make_game_time_button(...);
-    column![banner, build_portal_token_expired_action()]
-        .spacing(SPACING)
-        .into()
-}
+AppState::PortalTokenExpiredAction => build_portal_token_expired_action(data),
 ```
+
+(The view builder takes `ViewData` and constructs its own banner internally — matching the Task 14/15 precedent.)
 
 - [ ] **Step 5: `just check` and visual verify**
 
@@ -3346,6 +3374,51 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
 EOF
 )"
 ```
+
+#### Post-commit notes — Task 16 (added 2026-04-22)
+
+Task 16 shipped in a single commit on the feature branch: `e961d9b feat(refbox): add portal token-expired action page`. Both reviewers approved cleanly; no correctness follow-up needed. Spec reviewer: ✅ spec compliant; code-quality reviewer: Approved with one cosmetic doc-comment polish nit (not blocking).
+
+**Plan text updated in place (not just annotated):**
+
+1. **Step 1 — view builder signature corrected** from the plan's zero-arg `pub(super) fn ...()` to `pub(in super::super) fn ...(data: ViewData<'_, '_>)`, matching the Task 14/15 precedent. This allows the builder to construct its own time banner internally (via `make_game_time_button`) and makes it a drop-in match for the sibling `portal_attention_action.rs`.
+2. **Step 1 — BACK button `on_press` changed** from `Message::ClosePortalDetailPage` (which dumps to MainPage) to `Message::ClosePortalTokenExpiredAction` (new — sibling of the Task 15 close message, routes to `PortalDetailPage`).
+3. **Step 3 — action-page reachability wired correctly.** The plan as originally written left the new `AppState::PortalTokenExpiredAction` unreachable: Task 14's TokenExpired row emitted `Message::PortalGoToLogin` directly, which would then navigate straight to the login keypad, skipping the action page. The plan now documents: (a) a new `Message::OpenPortalTokenExpiredAction` emitted by the TokenExpired row (replacing its direct `PortalGoToLogin` emission — a one-line change to `portal_detail.rs`), and (b) a new `Message::ClosePortalTokenExpiredAction` for the BACK button. Handlers for both are shown inline.
+4. **Step 3 — `PortalGoToLogin` handler reworked** to match the actual app state (`KeypadPage(KeypadPage::PortalLogin(portal_id, false), 0)`, not the placeholder `AppState::LoginPortal`) and to handle the degraded-mode case where `uwhportal_client` is `None` (log warning, fall back to `PortalDetailPage`). Panics are avoided; the `.unwrap()` on the mutex lock has the required "why this cannot panic" comment.
+5. **Step 3 — login-success hook rewritten** to match the existing `RecvPortalToken(Success)` match-assignment structure. `PortalManager::token_refreshed()` is called unconditionally on success (errors logged via `error!`, not propagated via `?`); the flag consumption happens inside the `Success` match arm to pick between `PortalDetailPage` and the existing default `EditGameConfig(ConfigPage::Game)`.
+6. **Step 4 — view arm simplified** since the builder now handles banner construction.
+
+**Scope expansion (beyond the plan's stated Files list):** Task 16 legitimately touches `refbox/src/app/message.rs` (two new variants + wiring through `is_repeatable()` and both `PartialEq` match arms) and `refbox/src/app/view_builders/portal_detail.rs` (one-line `on_press` change). Both are structurally required to make the action page reachable and to scope the BACK button correctly.
+
+**Pre-authorized deviations from the dispatch (all accepted by both reviewers):**
+
+1. **Two new Message variants + `portal_detail.rs` one-line change** — authorized per Reconciliation #1/#2; captured above.
+2. **`PortalGoToLogin` handler defensively handles `None` client** — more defensive than the existing `UwhPortalLinkFailed` `GoBack` precedent at ~line 2131-2144 of `mod.rs`, which uses `.unwrap()` without a None-branch. Code-quality reviewer flagged this as a legitimate improvement, not a deviation.
+3. **`token_refreshed()` fires on every login success** (including first-ever logins) — harmless no-op in the no-prior-problem case, with a small disk-write cost. Authorized by the dispatch; no degraded-mode guard added.
+4. **View-builder takes `ViewData<'_, '_>` with `pub(in super::super)`** visibility — matches Task 14/15 precedent, not the plan's original `pub(super)` zero-arg sample.
+5. **Flag re-armed on each `PortalGoToLogin`, consumed on success.** The field `portal_login_return_to_detail: bool` is set exclusively in the `PortalGoToLogin` handler and consumed (reset to false) exclusively in the `RecvPortalToken(Success)` handler. Stale-but-harmless if the operator abandons login — documented on the field.
+6. **Row text left intact** ("Portal login expired — tap to re-login") — still reads naturally even with an intermediate action page.
+7. **BACK label uses `fl!("back")`** translation key, consistent with Task 15.
+8. **Last remaining `#[allow(dead_code)]` removed** from `AppState::PortalTokenExpiredAction`; replaced with a doc comment describing the wired behaviour. The blanket `#![allow(dead_code)]` at `portal_manager/mod.rs:10` remains (Task 22 removes it).
+9. **No new unit tests.** The `portal_login_return_to_detail` lifecycle lives inside the iced `update()` match, which has no existing unit-test scaffolding. The dispatch permitted skipping tests at this complexity level. Existing `token_refreshed_clears_flag_and_resets_queue_items` in `portal_manager/mod.rs` already covers the PortalManager side; the message variants have no branching logic beyond the `app_state` assignment. Task 22 (manual verification) will cover end-to-end.
+
+**Reviewer's doc-comment nit (cosmetic, not blocking):** The `portal_login_return_to_detail` field's doc comment says *"the next successful login (from anywhere) would route to the detail page"* — slightly understates that the flag is ONLY set by `PortalGoToLogin`, not by any other login-entry point. Functionally identical; wording could be tightened in a future opportunity touch.
+
+**Carry-forward concerns for later tasks:**
+
+1. **Abandoned-login flag staleness.** If the operator enters the login keypad via the token-expired action page, then uses the keypad's own Cancel/Back (if any), the flag stays `true`. A subsequent successful login from a different entry point will route to `PortalDetailPage` — "harmless" per the dispatch, but worth watching if users report unexpected navigation after portal-settings logins.
+2. **All three action-page close-messages are now in place** (`ClosePortalDetailPage` → MainPage; `ClosePortalAttentionAction` → PortalDetailPage; `ClosePortalTokenExpiredAction` → PortalDetailPage). If a fourth action page ever appears, follow this pattern — one close-message per page, each named after the page it closes.
+3. **Three of six Task-13 `#[allow(dead_code)]` attributes were wired across Tasks 14/15/16** (Task 14: Message::PortalRowTapped, Message::PortalGoToLogin; Task 15: Message::PortalForceSubmit, Message::PortalDiscardTapped, AppState::PortalAttentionAction; Task 16: AppState::PortalTokenExpiredAction). All six from Task 13's scaffolding are now removed. The blanket `#![allow(dead_code)]` at `portal_manager/mod.rs:10` is the ONLY remaining scaffolding allow — removed in Task 22.
+
+**Architectural bindings carried forward (all in force entering Task 17):**
+
+- `ViewData` is the view-builder input; view builders read from `data`, not `self`. Extras may follow positionally.
+- One close-message per action page; each close-message names what it closes; each routes to its scoped return-to destination.
+- `PortalManager::token_refreshed()` is the canonical "token is valid again, reset queue items" operation. Called unconditionally on login success.
+- `push_queue_snapshot()` is the ONLY mechanism by which main-thread queue mutations reach the background task.
+- `ITEM_RETRY_INTERVAL` and `RECENT_SUCCESS_CAP` remain authoritative constants.
+- `RefBoxApp::set_current_event_id` remains the only sanctioned write path for `current_event_id`.
+- `portal_login_return_to_detail: bool` on `RefBoxApp` is set in `PortalGoToLogin`, consumed in `RecvPortalToken(Success)`.
 
 ---
 

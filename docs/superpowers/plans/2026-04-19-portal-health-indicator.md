@@ -3740,6 +3740,14 @@ EOF
 )"
 ```
 
+#### Post-commit notes — Task 20 (added 2026-04-22)
+
+Task 20 shipped in a single commit: `f98259b feat(refbox): add UWH_PORTAL_SCRAMBLE_TOKEN debug-only env var`. Both reviewers approved cleanly.
+
+**Pre-authorized reconciliation:** Used `Option<&str>` for `portal_token_override` to match the actual `UwhPortalClient::new` signature (plan sample had `String`). Used `cfg!(debug_assertions)` expression form (with `&&` short-circuit) rather than `#[cfg(debug_assertions)]` attribute — rustc const-folds the branch to zero at release opt levels, so the `"invalid-debug-token"` literal and `warn!` expansion are stripped from release binaries.
+
+**Reviewer's minor note (not blocking):** `std::env::var(...).is_ok()` accepts any value including empty string as "enabled" — matches Task 19's pattern. If stricter "1/0" parsing is ever desired, it can be added later.
+
 ---
 
 ### Task 21: Translation keys across all language files

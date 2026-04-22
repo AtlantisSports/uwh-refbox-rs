@@ -1813,10 +1813,7 @@ impl RefBoxApp {
                     PortalEvent::ItemResolved(id) => {
                         self.portal_manager.on_item_resolved(id);
                     }
-                    PortalEvent::HealthChanged(_)
-                    | PortalEvent::OverlayChanged(_)
-                    | PortalEvent::ItemAdded(_)
-                    | PortalEvent::ItemUpdated(_) => {
+                    PortalEvent::HealthChanged | PortalEvent::ItemUpdated => {
                         self.portal_manager.ui_tick();
                     }
                 }

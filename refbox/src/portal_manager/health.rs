@@ -7,7 +7,7 @@
 //! a Tokio task; see `BackgroundTaskHandle` for the UI-side integration
 //! surface.
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use time::{Duration as TimeDuration, OffsetDateTime};
 use tokio::sync::mpsc;
@@ -38,17 +38,6 @@ pub fn is_item_retry_eligible(item: &QueuedItem, now: OffsetDateTime) -> bool {
     }
 }
 
-/// What the background loop should do on its next wakeup.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NextAction {
-    /// Wait until `at` and then re-evaluate.
-    SleepUntil(Instant),
-    /// Fire a verify_token health check.
-    HealthCheck,
-    /// Retry a queued item (by index into the queue's `items` vec).
-    RetryItem(usize),
-}
-
 #[derive(Debug, Clone)]
 pub struct HealthDecisionState {
     pub current_health: HealthState,
@@ -76,14 +65,10 @@ impl HealthDecisionState {
 /// Commands from the UI side of PortalManager to the background task.
 #[derive(Debug, Clone)]
 pub enum PortalCommand {
-    VerifyNow,
-    ItemEnqueued(super::ItemId),
-    RetryItem(super::ItemId),
     /// Refresh the task's view of the queue. Sent by `PortalManager`
     /// after every queue mutation so the task knows which items to
     /// attempt on its next tick.
     QueueUpdated(QueueFile),
-    Shutdown,
 }
 
 pub struct BackgroundTaskHandle {
@@ -117,6 +102,14 @@ pub enum PortalCallError {
     Failed(String),
 }
 
+impl std::fmt::Display for PortalCallError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Failed(msg) => write!(f, "portal call failed: {msg}"),
+        }
+    }
+}
+
 async fn run_task(
     io: impl PortalTaskIo,
     mut command_rx: mpsc::Receiver<PortalCommand>,
@@ -146,33 +139,23 @@ async fn run_task(
                     .map(|t| TokioInstant::now().saturating_duration_since(t));
                 let state = HealthDecisionState { current_health };
                 if state.is_health_check_due(elapsed) {
-                    let _ = event_tx
-                        .send(PortalEvent::HealthChanged(HealthState::Yellow))
-                        .await;
+                    let _ = event_tx.send(PortalEvent::HealthChanged).await;
                     match io.verify_token().await {
                         Ok(()) => {
                             last_success = Some(TokioInstant::now());
                             current_health = HealthState::Green;
-                            let _ = event_tx
-                                .send(PortalEvent::HealthChanged(HealthState::Green))
-                                .await;
+                            let _ = event_tx.send(PortalEvent::HealthChanged).await;
                         }
                         Err(_) => {
                             current_health = HealthState::Red;
-                            let _ = event_tx
-                                .send(PortalEvent::HealthChanged(HealthState::Red))
-                                .await;
+                            let _ = event_tx.send(PortalEvent::HealthChanged).await;
                         }
                     }
                 }
             }
             cmd = command_rx.recv() => {
                 match cmd {
-                    Some(PortalCommand::Shutdown) | None => break,
-                    Some(PortalCommand::VerifyNow) => { last_success = None; }
-                    Some(PortalCommand::ItemEnqueued(_)) | Some(PortalCommand::RetryItem(_)) => {
-                        last_success = None;
-                    }
+                    None => break,
                     Some(PortalCommand::QueueUpdated(new_queue)) => {
                         queue_snapshot = new_queue;
                     }
@@ -201,9 +184,7 @@ async fn attempt_item(
 ) -> bool {
     let score_result = io.post_scores(item).await;
     if score_result.is_err() {
-        let _ = event_tx
-            .send(PortalEvent::ItemUpdated(item.id.clone()))
-            .await;
+        let _ = event_tx.send(PortalEvent::ItemUpdated).await;
         return false;
     }
     match io.post_stats(item).await {
@@ -214,9 +195,7 @@ async fn attempt_item(
             true
         }
         Err(_) => {
-            let _ = event_tx
-                .send(PortalEvent::ItemUpdated(item.id.clone()))
-                .await;
+            let _ = event_tx.send(PortalEvent::ItemUpdated).await;
             false
         }
     }
@@ -382,18 +361,13 @@ mod tests {
             stats_results: Mutex::new(vec![]),
             stats_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
         };
-        let handle = spawn(io);
-
-        handle
-            .command_tx
-            .send(PortalCommand::VerifyNow)
-            .await
-            .unwrap();
+        let _handle = spawn(io);
 
         // Two rounds of (advance + yield) are needed: the first wakes the
         // select's timer arm and lets `verify_token`'s future be polled;
         // the second gives that future a chance to resolve before we read
-        // the counter.
+        // the counter. With `last_success = None` at startup, the first
+        // cadence tick is immediately due and the health check fires.
         tokio::task::yield_now().await;
         tokio::time::advance(Duration::from_secs(3)).await;
         tokio::task::yield_now().await;
@@ -401,12 +375,6 @@ mod tests {
         tokio::task::yield_now().await;
 
         assert!(count.load(std::sync::atomic::Ordering::SeqCst) >= 1);
-
-        handle
-            .command_tx
-            .send(PortalCommand::Shutdown)
-            .await
-            .unwrap();
     }
 
     /// Build a `QueueFile` with a single freshly-queued item (no prior
@@ -463,11 +431,7 @@ mod tests {
             "expected ItemResolved event for {expected_id:?}, got {events:?}"
         );
 
-        handle
-            .command_tx
-            .send(PortalCommand::Shutdown)
-            .await
-            .unwrap();
+        drop(handle);
     }
 
     #[tokio::test(flavor = "current_thread", start_paused = true)]
@@ -485,7 +449,6 @@ mod tests {
         let mut handle = spawn(io);
 
         let queue = queue_with_one_eligible_item();
-        let expected_id = queue.items[0].id.clone();
         handle
             .command_tx
             .send(PortalCommand::QueueUpdated(queue))
@@ -506,15 +469,11 @@ mod tests {
         assert!(
             events
                 .iter()
-                .any(|ev| matches!(ev, PortalEvent::ItemUpdated(id) if id == &expected_id)),
-            "expected ItemUpdated event for {expected_id:?}, got {events:?}"
+                .any(|ev| matches!(ev, PortalEvent::ItemUpdated)),
+            "expected ItemUpdated event after failed scores, got {events:?}"
         );
 
-        handle
-            .command_tx
-            .send(PortalCommand::Shutdown)
-            .await
-            .unwrap();
+        drop(handle.command_tx);
     }
 
     #[tokio::test(flavor = "current_thread", start_paused = true)]
@@ -565,10 +524,6 @@ mod tests {
         assert_eq!(scores_count.load(std::sync::atomic::Ordering::SeqCst), 1);
         assert_eq!(stats_count.load(std::sync::atomic::Ordering::SeqCst), 1);
 
-        handle
-            .command_tx
-            .send(PortalCommand::Shutdown)
-            .await
-            .unwrap();
+        drop(handle);
     }
 }

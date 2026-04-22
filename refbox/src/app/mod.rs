@@ -1801,18 +1801,26 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
-            Message::PortalEvent(_ev) => {
+            Message::PortalEvent(ev) => {
                 // The background portal task woke us with a state-change
-                // signal. The main-thread `PortalManager` is the source
-                // of truth for indicator state and computes it from its
-                // own queue, recent-success marker, and token-problem
-                // flag — so a recompute is enough to pick up anything
-                // that might be affected by the event (e.g. a stuck item
-                // crossing the 30-minute threshold between frames). Row-
-                // level handling of `ItemAdded`/`ItemResolved`/
-                // `ItemUpdated` lands with the detail-page row renderer
-                // in later tasks.
-                self.portal_manager.ui_tick();
+                // signal. Most variants are notifications whose effect on
+                // indicator state is already covered by `ui_tick`'s
+                // recompute — the main-thread `PortalManager` is the
+                // source of truth. `ItemResolved` is the one variant
+                // where the main-thread queue needs a mutation: we
+                // remove the item and record it in the recent-success
+                // ring so it appears on the detail page.
+                match ev {
+                    PortalEvent::ItemResolved(id) => {
+                        self.portal_manager.on_item_resolved(id);
+                    }
+                    PortalEvent::HealthChanged(_)
+                    | PortalEvent::OverlayChanged(_)
+                    | PortalEvent::ItemAdded(_)
+                    | PortalEvent::ItemUpdated(_) => {
+                        self.portal_manager.ui_tick();
+                    }
+                }
                 Task::none()
             }
             Message::PortalUiTick => {
@@ -2860,7 +2868,8 @@ impl RefBoxApp {
                 build_score_confirmation_page(data, scores, self.snapshot.conf_pause_time),
             AppState::PortalDetailPage
             | AppState::PortalAttentionAction { .. }
-            | AppState::PortalTokenExpiredAction => build_portal_detail_page(data),
+            | AppState::PortalTokenExpiredAction =>
+                build_portal_detail_page(data, self.portal_manager.detail_rows()),
         }]
         .spacing(SPACING)
         .padding(PADDING);

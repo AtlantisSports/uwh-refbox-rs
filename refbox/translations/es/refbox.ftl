@@ -368,3 +368,23 @@ unsportsmanlike = Conducta antideportiva
 free-arm = Uso ilegal del brazo libre
 false-start = Saque nulo
 
+# Portal Health Indicator
+portal-summary-connected = PORTAL — CONECTADO · Todo bien
+portal-summary-checking = PORTAL — VERIFICANDO…
+portal-summary-issues = PORTAL — PROBLEMAS
+portal-row-token-expired = Sesión del portal expirada — toca para iniciar sesión
+portal-row-stuck = J{ $game } · Requiere atención · { $attempts } intentos
+portal-row-pending = J{ $game } · Pendiente · { $attempts } intentos · reintentar en 0:{ $secs }
+portal-row-pending-tap = J{ $game } · Pendiente · { $attempts } intentos · toca para reintentar
+portal-row-pending-stats-only = J{ $game } · Pendiente · solo estadísticas · reintentar en 0:{ $secs }
+portal-row-recent = J{ $game } · Enviado hace { $mins } min
+portal-action-force-submit = FORZAR ESTE RESULTADO
+portal-action-discard = DESCARTAR ESTE ENVÍO
+portal-action-discard-confirm = TOCA DE NUEVO PARA CONFIRMAR DESCARTE
+portal-action-go-to-login = IR A INICIAR SESIÓN
+portal-page-title-attention = Juego { $game } · Requiere atención
+portal-page-title-token-expired = Sesión del portal expirada
+portal-page-body-token-expired = La sesión del UWH Portal ha expirado. Los resultados en cola no se pueden enviar hasta que inicies sesión de nuevo. Toca IR A INICIAR SESIÓN para autenticarte.
+portal-page-attention-info = Este resultado no ha sido aceptado por el UWH Portal después de { $attempts } intentos. Valor del Refbox: { $black }-{ $white }
+portal-advisory-at-game-end = Problema del portal detectado. El resultado se encolará igualmente — busca a un administrador para resolverlo.
+

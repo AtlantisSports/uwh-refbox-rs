@@ -356,3 +356,23 @@ delay-of-game = Spielverzögerung
 unsportsmanlike = Unsportliches Verhalten
 free-arm = Freier Arm
 false-start = Fehlstart
+
+# Portal Health Indicator
+portal-summary-connected = PORTAL — VERBUNDEN · Alles in Ordnung
+portal-summary-checking = PORTAL — PRÜFUNG…
+portal-summary-issues = PORTAL — PROBLEME
+portal-row-token-expired = Portal-Anmeldung abgelaufen — zum erneuten Anmelden tippen
+portal-row-stuck = S{ $game } · Aufmerksamkeit nötig · { $attempts } Versuche
+portal-row-pending = S{ $game } · Ausstehend · { $attempts } Versuche · neuer Versuch in 0:{ $secs }
+portal-row-pending-tap = S{ $game } · Ausstehend · { $attempts } Versuche · zum erneuten Versuchen tippen
+portal-row-pending-stats-only = S{ $game } · Ausstehend · nur Statistik · neuer Versuch in 0:{ $secs }
+portal-row-recent = S{ $game } · Gesendet vor { $mins } Min
+portal-action-force-submit = DIESES SPIELERGEBNIS ERZWINGEN
+portal-action-discard = DIESE ÜBERMITTLUNG VERWERFEN
+portal-action-discard-confirm = ERNEUT TIPPEN ZUM VERWERFEN
+portal-action-go-to-login = ZUR ANMELDUNG
+portal-page-title-attention = Spiel { $game } · Aufmerksamkeit nötig
+portal-page-title-token-expired = Portal-Anmeldung abgelaufen
+portal-page-body-token-expired = Die UWH Portal-Anmeldung ist abgelaufen. Ergebnisse in der Warteschlange können erst gesendet werden, wenn du dich erneut anmeldest. Tippe auf ZUR ANMELDUNG zum erneuten Anmelden.
+portal-page-attention-info = Dieses Ergebnis wurde nach { $attempts } Versuchen nicht vom UWH Portal akzeptiert. Refbox-Wert: { $black }-{ $white }
+portal-advisory-at-game-end = Portal-Problem erkannt. Das Ergebnis wird trotzdem in die Warteschlange aufgenommen — wende dich an einen Administrator.

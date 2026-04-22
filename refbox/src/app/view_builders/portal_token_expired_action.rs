@@ -30,14 +30,10 @@ pub(in super::super) fn build_portal_token_expired_action<'a>(
         portal_indicator,
     );
 
-    let title = text("Portal login expired").size(MEDIUM_TEXT);
-    let body = text(
-        "The UWH Portal login has expired. Queued scores cannot be sent \
-         until you log in again. Tap GO TO LOGIN to re-authenticate.",
-    )
-    .size(SMALL_PLUS_TEXT);
+    let title = text(fl!("portal-page-title-token-expired")).size(MEDIUM_TEXT);
+    let body = text(fl!("portal-page-body-token-expired")).size(SMALL_PLUS_TEXT);
 
-    let login = button(text("GO TO LOGIN").size(SMALL_PLUS_TEXT))
+    let login = button(text(fl!("portal-action-go-to-login")).size(SMALL_PLUS_TEXT))
         .on_press(Message::PortalGoToLogin)
         .style(blue_button)
         .padding(PADDING)

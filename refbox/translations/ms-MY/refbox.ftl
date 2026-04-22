@@ -356,3 +356,23 @@ delay-of-game = Melengahkan Permainan
 unsportsmanlike = Kelakuan Tidak Bersukan
 free-arm = Lengan Bebas
 false-start = Permulaan Palsu
+
+# Portal Health Indicator
+portal-summary-connected = PORTAL — TERSAMBUNG · Semua baik
+portal-summary-checking = PORTAL — MENYEMAK…
+portal-summary-issues = PORTAL — MASALAH
+portal-row-token-expired = Sesi portal tamat — ketik untuk log masuk semula
+portal-row-stuck = P{ $game } · Perlu perhatian · { $attempts } percubaan
+portal-row-pending = P{ $game } · Menunggu · { $attempts } percubaan · cuba lagi dalam 0:{ $secs }
+portal-row-pending-tap = P{ $game } · Menunggu · { $attempts } percubaan · ketik untuk cuba lagi
+portal-row-pending-stats-only = P{ $game } · Menunggu · statistik sahaja · cuba lagi dalam 0:{ $secs }
+portal-row-recent = P{ $game } · Dihantar { $mins } minit lalu
+portal-action-force-submit = PAKSA KEPUTUSAN PERLAWANAN INI
+portal-action-discard = BUANG PENGHANTARAN INI
+portal-action-discard-confirm = KETIK LAGI UNTUK MENGESAHKAN BUANG
+portal-action-go-to-login = PERGI KE LOG MASUK
+portal-page-title-attention = Perlawanan { $game } · Perlu perhatian
+portal-page-title-token-expired = Sesi portal tamat
+portal-page-body-token-expired = Sesi UWH Portal telah tamat. Keputusan dalam baris tunggu tidak boleh dihantar sehingga anda log masuk semula. Ketik PERGI KE LOG MASUK untuk mengesahkan semula.
+portal-page-attention-info = Keputusan ini tidak diterima oleh UWH Portal selepas { $attempts } percubaan. Nilai Refbox: { $black }-{ $white }
+portal-advisory-at-game-end = Masalah portal dikesan. Keputusan tetap akan dibariskan — cari pentadbir untuk menyelesaikan.

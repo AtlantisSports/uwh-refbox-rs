@@ -358,3 +358,23 @@ delay-of-game = 경기 지연
 unsportsmanlike = 비신사적 행위
 free-arm = 자유 팔 반칙
 false-start = 부정 출발
+
+# Portal Health Indicator
+portal-summary-connected = PORTAL — 연결됨 · 모두 정상
+portal-summary-checking = PORTAL — 확인 중…
+portal-summary-issues = PORTAL — 문제 있음
+portal-row-token-expired = 포털 세션 만료 — 다시 로그인하려면 탭
+portal-row-stuck = G{ $game } · 주의 필요 · { $attempts }회 시도
+portal-row-pending = G{ $game } · 대기 중 · { $attempts }회 시도 · 0:{ $secs } 후 재시도
+portal-row-pending-tap = G{ $game } · 대기 중 · { $attempts }회 시도 · 재시도하려면 탭
+portal-row-pending-stats-only = G{ $game } · 대기 중 · 통계만 · 0:{ $secs } 후 재시도
+portal-row-recent = G{ $game } · { $mins }분 전 전송됨
+portal-action-force-submit = 이 경기 결과 강제 전송
+portal-action-discard = 이 전송 폐기
+portal-action-discard-confirm = 폐기를 확정하려면 다시 탭
+portal-action-go-to-login = 로그인으로 이동
+portal-page-title-attention = 경기 { $game } · 주의 필요
+portal-page-title-token-expired = 포털 세션 만료
+portal-page-body-token-expired = UWH Portal 세션이 만료되었습니다. 다시 로그인할 때까지 대기 중인 결과를 보낼 수 없습니다. 로그인으로 이동을 탭하여 다시 인증하세요.
+portal-page-attention-info = 이 결과는 { $attempts }회 시도 후에도 UWH Portal에서 받지 않았습니다. Refbox 값: { $black }-{ $white }
+portal-advisory-at-game-end = 포털 문제가 감지되었습니다. 결과는 여전히 대기열에 들어갑니다 — 해결하려면 관리자를 찾으세요.

@@ -41,27 +41,30 @@ pub(in super::super) fn build_portal_attention_action<'a>(
         portal_indicator,
     );
 
-    let title = text(format!("Game {game_number} - Needs attention")).size(MEDIUM_TEXT);
-    let info = text(format!(
-        "This result has not been accepted by the UWH Portal after {attempts} attempts.\nRefbox value: {black_score}-{white_score}"
+    let title = text(fl!("portal-page-title-attention", game = game_number)).size(MEDIUM_TEXT);
+    let info = text(fl!(
+        "portal-page-attention-info",
+        attempts = attempts,
+        black = black_score,
+        white = white_score
     ))
     .size(SMALL_PLUS_TEXT);
 
-    let force = button(text("FORCE THIS GAME RESULT").size(SMALL_PLUS_TEXT))
+    let force = button(text(fl!("portal-action-force-submit")).size(SMALL_PLUS_TEXT))
         .on_press(Message::PortalForceSubmit(id.clone()))
         .style(green_button)
         .padding(PADDING)
         .width(Length::Fill);
 
     let discard: Element<'a, Message> = if discard_armed {
-        button(text("TAP AGAIN TO CONFIRM DISCARD").size(SMALL_PLUS_TEXT))
+        button(text(fl!("portal-action-discard-confirm")).size(SMALL_PLUS_TEXT))
             .on_press(Message::PortalDiscardTapped(id.clone()))
             .style(yellow_button)
             .padding(PADDING)
             .width(Length::Fill)
             .into()
     } else {
-        button(text("DISCARD THIS SUBMISSION").size(SMALL_PLUS_TEXT))
+        button(text(fl!("portal-action-discard")).size(SMALL_PLUS_TEXT))
             .on_press(Message::PortalDiscardTapped(id.clone()))
             .style(red_button)
             .padding(PADDING)

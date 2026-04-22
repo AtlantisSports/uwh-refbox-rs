@@ -356,3 +356,23 @@ delay-of-game = Atraso de Jogo
 unsportsmanlike = Conduta Anti-Desportiva
 free-arm = Braço Livre
 false-start = Saída Falsa
+
+# Portal Health Indicator
+portal-summary-connected = PORTAL — LIGADO · Tudo bem
+portal-summary-checking = PORTAL — A VERIFICAR…
+portal-summary-issues = PORTAL — PROBLEMAS
+portal-row-token-expired = Sessão do portal expirada — toque para entrar novamente
+portal-row-stuck = J{ $game } · Requer atenção · { $attempts } tentativas
+portal-row-pending = J{ $game } · Pendente · { $attempts } tentativas · nova tentativa em 0:{ $secs }
+portal-row-pending-tap = J{ $game } · Pendente · { $attempts } tentativas · toque para tentar novamente
+portal-row-pending-stats-only = J{ $game } · Pendente · só estatísticas · nova tentativa em 0:{ $secs }
+portal-row-recent = J{ $game } · Enviado há { $mins } min
+portal-action-force-submit = FORÇAR ESTE RESULTADO
+portal-action-discard = DESCARTAR ESTE ENVIO
+portal-action-discard-confirm = TOQUE NOVAMENTE PARA CONFIRMAR O DESCARTE
+portal-action-go-to-login = IR PARA O LOGIN
+portal-page-title-attention = Jogo { $game } · Requer atenção
+portal-page-title-token-expired = Sessão do portal expirada
+portal-page-body-token-expired = A sessão do UWH Portal expirou. Os resultados em fila não podem ser enviados até que inicie sessão novamente. Toque em IR PARA O LOGIN para se autenticar.
+portal-page-attention-info = Este resultado não foi aceite pelo UWH Portal após { $attempts } tentativas. Valor do Refbox: { $black }-{ $white }
+portal-advisory-at-game-end = Problema do portal detetado. O resultado será colocado em fila na mesma — procure um administrador para resolver.

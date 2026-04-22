@@ -356,3 +356,23 @@ delay-of-game = Mengulur Waktu
 unsportsmanlike = Perilaku Tidak Sportif
 free-arm = Lengan Bebas
 false-start = Start Curang
+
+# Portal Health Indicator
+portal-summary-connected = PORTAL — TERHUBUNG · Semua baik
+portal-summary-checking = PORTAL — MEMERIKSA…
+portal-summary-issues = PORTAL — MASALAH
+portal-row-token-expired = Sesi portal berakhir — ketuk untuk masuk lagi
+portal-row-stuck = P{ $game } · Perlu perhatian · { $attempts } percobaan
+portal-row-pending = P{ $game } · Tertunda · { $attempts } percobaan · coba lagi dalam 0:{ $secs }
+portal-row-pending-tap = P{ $game } · Tertunda · { $attempts } percobaan · ketuk untuk coba lagi
+portal-row-pending-stats-only = P{ $game } · Tertunda · hanya statistik · coba lagi dalam 0:{ $secs }
+portal-row-recent = P{ $game } · Dikirim { $mins } menit lalu
+portal-action-force-submit = PAKSA HASIL PERTANDINGAN INI
+portal-action-discard = BUANG PENGIRIMAN INI
+portal-action-discard-confirm = KETUK LAGI UNTUK KONFIRMASI BUANG
+portal-action-go-to-login = KE HALAMAN MASUK
+portal-page-title-attention = Pertandingan { $game } · Perlu perhatian
+portal-page-title-token-expired = Sesi portal berakhir
+portal-page-body-token-expired = Sesi UWH Portal telah berakhir. Hasil yang tertunda tidak dapat dikirim sampai kamu masuk lagi. Ketuk KE HALAMAN MASUK untuk autentikasi ulang.
+portal-page-attention-info = Hasil ini belum diterima oleh UWH Portal setelah { $attempts } percobaan. Nilai Refbox: { $black }-{ $white }
+portal-advisory-at-game-end = Masalah portal terdeteksi. Hasil tetap akan diantrikan — cari admin untuk menyelesaikan.

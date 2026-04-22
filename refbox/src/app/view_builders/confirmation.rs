@@ -1,4 +1,5 @@
 use super::*;
+use crate::portal_manager::HealthState;
 use iced::{
     Alignment, Element, Length, Theme,
     alignment::Horizontal,
@@ -168,20 +169,31 @@ pub(in super::super) fn build_score_confirmation_page<'a>(
     .spacing(SPACING)
     .width(Length::Fill);
 
+    let mut body = column![].spacing(SPACING).width(Length::Fill);
+    if portal_indicator.health == HealthState::Red {
+        body = body.push(
+            container(
+                text(fl!("portal-advisory-at-game-end"))
+                    .style(white_text)
+                    .size(SMALL_TEXT),
+            )
+            .width(Length::Fill)
+            .padding(PADDING)
+            .style(red_container),
+        );
+    }
+    body = body.push(header);
+    body = body.push(options);
+
     column![
         make_game_time_button(snapshot, false, true, mode, clock_running, portal_indicator),
         vertical_space(),
         row![
             horizontal_space(),
-            container(
-                column![header, options]
-                    .spacing(SPACING)
-                    .width(Length::Fill)
-                    .align_x(Alignment::Center),
-            )
-            .width(Length::FillPortion(3))
-            .style(light_gray_container)
-            .padding(PADDING),
+            container(body.align_x(Alignment::Center))
+                .width(Length::FillPortion(3))
+                .style(light_gray_container)
+                .padding(PADDING),
             horizontal_space()
         ],
         vertical_space()

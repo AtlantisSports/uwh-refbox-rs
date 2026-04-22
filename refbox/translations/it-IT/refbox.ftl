@@ -356,3 +356,23 @@ delay-of-game = Perdita di Tempo
 unsportsmanlike = Comportamento Antisportivo
 free-arm = Braccio Libero
 false-start = Falsa Partenza
+
+# Portal Health Indicator
+portal-summary-connected = PORTAL — CONNESSO · Tutto a posto
+portal-summary-checking = PORTAL — VERIFICA…
+portal-summary-issues = PORTAL — PROBLEMI
+portal-row-token-expired = Sessione portale scaduta — tocca per accedere di nuovo
+portal-row-stuck = P{ $game } · Richiede attenzione · { $attempts } tentativi
+portal-row-pending = P{ $game } · In sospeso · { $attempts } tentativi · nuovo tentativo tra 0:{ $secs }
+portal-row-pending-tap = P{ $game } · In sospeso · { $attempts } tentativi · tocca per riprovare
+portal-row-pending-stats-only = P{ $game } · In sospeso · solo statistiche · nuovo tentativo tra 0:{ $secs }
+portal-row-recent = P{ $game } · Inviato { $mins } min fa
+portal-action-force-submit = FORZA QUESTO RISULTATO
+portal-action-discard = SCARTA QUESTO INVIO
+portal-action-discard-confirm = TOCCA ANCORA PER CONFERMARE LO SCARTO
+portal-action-go-to-login = VAI AL LOGIN
+portal-page-title-attention = Partita { $game } · Richiede attenzione
+portal-page-title-token-expired = Sessione portale scaduta
+portal-page-body-token-expired = La sessione del UWH Portal è scaduta. I risultati in coda non possono essere inviati finché non accedi di nuovo. Tocca VAI AL LOGIN per autenticarti.
+portal-page-attention-info = Questo risultato non è stato accettato dal UWH Portal dopo { $attempts } tentativi. Valore Refbox: { $black }-{ $white }
+portal-advisory-at-game-end = Problema al portale rilevato. Il risultato sarà comunque messo in coda — trova un amministratore per risolvere.

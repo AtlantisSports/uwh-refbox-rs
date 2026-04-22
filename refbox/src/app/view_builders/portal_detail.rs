@@ -23,9 +23,9 @@ pub(in super::super) fn build_portal_detail_page<'a>(
     } = data;
 
     let summary_text = match portal_indicator.health {
-        HealthState::Green => "PORTAL — CONNECTED · All clear",
-        HealthState::Yellow => "PORTAL — CHECKING…",
-        HealthState::Red => "PORTAL — ISSUES",
+        HealthState::Green => fl!("portal-summary-connected"),
+        HealthState::Yellow => fl!("portal-summary-checking"),
+        HealthState::Red => fl!("portal-summary-issues"),
     };
     let title_row = row![text(summary_text).size(SMALL_PLUS_TEXT)].spacing(SPACING);
 
@@ -68,7 +68,7 @@ pub(in super::super) fn build_portal_detail_page<'a>(
 fn render_row<'a>(r: DetailRow) -> Element<'a, Message> {
     match r {
         DetailRow::TokenExpired => {
-            button(text("Portal login expired — tap to re-login").size(SMALL_PLUS_TEXT))
+            button(text(fl!("portal-row-token-expired")).size(SMALL_PLUS_TEXT))
                 .on_press(Message::OpenPortalTokenExpiredAction)
                 .style(red_button)
                 .padding(PADDING)
@@ -80,8 +80,10 @@ fn render_row<'a>(r: DetailRow) -> Element<'a, Message> {
             game_number,
             attempts,
         } => button(
-            text(format!(
-                "G{game_number} · Needs attention · {attempts} attempts"
+            text(fl!(
+                "portal-row-stuck",
+                game = game_number,
+                attempts = attempts
             ))
             .size(SMALL_PLUS_TEXT),
         )
@@ -98,15 +100,22 @@ fn render_row<'a>(r: DetailRow) -> Element<'a, Message> {
             stats_only,
         } => {
             let label = match (retry_in_secs, stats_only) {
-                (Some(secs), false) => {
-                    format!("G{game_number} · Pending · {attempts} attempts · retry in 0:{secs:02}")
-                }
-                (None, _) => {
-                    format!("G{game_number} · Pending · {attempts} attempts · tap to retry")
-                }
-                (Some(secs), true) => {
-                    format!("G{game_number} · Pending · stats only · retry in 0:{secs:02}")
-                }
+                (Some(secs), false) => fl!(
+                    "portal-row-pending",
+                    game = game_number,
+                    attempts = attempts,
+                    secs = format!("{secs:02}")
+                ),
+                (None, _) => fl!(
+                    "portal-row-pending-tap",
+                    game = game_number,
+                    attempts = attempts
+                ),
+                (Some(secs), true) => fl!(
+                    "portal-row-pending-stats-only",
+                    game = game_number,
+                    secs = format!("{secs:02}")
+                ),
             };
             button(text(label).size(SMALL_PLUS_TEXT))
                 .on_press(Message::PortalRowTapped(id))
@@ -120,8 +129,10 @@ fn render_row<'a>(r: DetailRow) -> Element<'a, Message> {
             submitted_mins_ago,
             ..
         } => button(
-            text(format!(
-                "G{game_number} · Submitted {submitted_mins_ago} min ago"
+            text(fl!(
+                "portal-row-recent",
+                game = game_number,
+                mins = submitted_mins_ago
             ))
             .size(SMALL_PLUS_TEXT),
         )

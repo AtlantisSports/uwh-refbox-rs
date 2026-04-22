@@ -18,6 +18,27 @@
 
 ---
 
+## Process notes (added 2026-04-23, mid-execution)
+
+The remaining tasks (21 and 22) use the lean process from `.claude/rules/plan-execution.md`:
+
+1. **No per-task deviation commits.** Deviations go in the PR description or a "Deviations"
+   section appended to this plan. Do not create standalone `docs(workspace): record Task N
+   deviations` commits for the remaining tasks.
+2. **One code review at the end, not per task.** Run `superpowers:requesting-code-review` once
+   after Task 22 passes, before opening the PR.
+3. **Skip verification ceremony on Task 21.** Translation-key additions across 15 locales are
+   mechanical; `just check` passing is sufficient evidence. Keep the full verification
+   workflow for Task 22 (end-to-end manual walkthrough).
+4. **Do not amend ADR 011 mid-execution.** If anything in Task 21 or 22 reveals a gap, note it
+   here at the bottom of the plan and roll any ADR change into a single amendment after the
+   PR merges (or leave ADR 011 accurate-as-of-approval).
+
+This is a mid-flight process adjustment — earlier tasks followed the heavier process and that
+history is preserved in the git log.
+
+---
+
 ## File Map
 
 | Action | File | What changes |
@@ -3753,31 +3774,35 @@ Task 20 shipped in a single commit: `f98259b feat(refbox): add UWH_PORTAL_SCRAMB
 ### Task 21: Translation keys across all language files
 
 **Files:**
-- Modify: `refbox/translations/en/refbox.ftl` and 13 other `.ftl` files
+- Modify: `refbox/translations/en-US/refbox.ftl` and 14 other `.ftl` files
 
 - [ ] **Step 1: Add the new keys to the English file first**
 
-Append to `refbox/translations/en/refbox.ftl`:
+Append to `refbox/translations/en-US/refbox.ftl`:
 
 ```fluent
 # Portal Health Indicator
 portal-summary-connected = PORTAL — CONNECTED · All clear
 portal-summary-checking = PORTAL — CHECKING…
-portal-summary-issues = PORTAL — ISSUES · Last OK { $duration } ago
+portal-summary-issues = PORTAL — ISSUES
 portal-row-token-expired = Portal login expired — tap to re-login
 portal-row-stuck = G{ $game } · Needs attention · { $attempts } attempts
 portal-row-pending = G{ $game } · Pending · { $attempts } attempts · retry in 0:{ $secs }
 portal-row-pending-tap = G{ $game } · Pending · { $attempts } attempts · tap to retry
 portal-row-pending-stats-only = G{ $game } · Pending · stats only · retry in 0:{ $secs }
-portal-row-recent = G{ $game } · Submitted { $duration } ago
+portal-row-recent = G{ $game } · Submitted { $mins } min ago
 portal-action-force-submit = FORCE THIS GAME RESULT
 portal-action-discard = DISCARD THIS SUBMISSION
 portal-action-discard-confirm = TAP AGAIN TO CONFIRM DISCARD
 portal-action-go-to-login = GO TO LOGIN
 portal-page-title-attention = Game { $game } · Needs attention
 portal-page-title-token-expired = Portal login expired
+portal-page-body-token-expired = The UWH Portal login has expired. Queued scores cannot be sent until you log in again. Tap GO TO LOGIN to re-authenticate.
+portal-page-attention-info = This result has not been accepted by the UWH Portal after { $attempts } attempts. Refbox value: { $black }-{ $white }
 portal-advisory-at-game-end = Portal issue detected. Score will still be queued — find an admin to resolve.
 ```
+
+Also relocate the `portal-advisory-at-game-end` key from the Task-17-era mid-file placement (around line 179 in `en-US/refbox.ftl`, inside the `confirm-score` block) into this new section at the end of the file. This keeps all portal-health-indicator keys grouped and matches the structural choice used by the hand-written `es` and `fr` sections.
 
 - [ ] **Step 2: Replace any hard-coded English in view builders with `fl!(...)` calls**
 
@@ -3799,9 +3824,20 @@ portal-summary-issues = PORTAL — PROBLEMAS · Último OK hace { $duration }
 
 Append to `refbox/translations/fr/refbox.ftl`.
 
-- [ ] **Step 5: Add unverified-label stubs for the ~11 other languages**
+- [ ] **Step 5: Add real translations for the 12 other languages**
 
-For each of the non-English/Spanish/French language files, follow the existing "unverified-label" convention (check `docs/superpowers/specs/2026-04-17-turkish-language-and-unverified-label-design.md` for the pattern) and stub each new key with an English fallback + unverified marker.
+For each of the non-English/Spanish/French language files (`de-DE`, `id-ID`, `it-IT`, `ja-JP`, `ko-KR`, `ms-MY`, `nl-NL`, `pt-PT`, `th-TH`, `tl-PH`, `tr-TR`, `zh-CN`), append a `# Portal Health Indicator` section with real translated strings for each key. AI-translated quality is acceptable here.
+
+**Do NOT add `(UNVERIFIED)` markers inside individual keys.** The project's "unverified" convention operates at the language-selection button level (see `docs/superpowers/specs/2026-04-17-turkish-language-and-unverified-label-design.md`): buttons for languages other than English/Spanish/French already show an `(UNVERIFIED)` note under the language name. Per-key English fallbacks would duplicate that signalling and break the translation contract.
+
+Per-locale game-number prefix conventions (follow the existing `game-select` translation in each file — use a single-letter abbreviation of that word; default back to `G` for scripts where no single-letter abbreviation reads cleanly):
+
+- `de-DE`: `S` (Spiel)   · `id-ID`: `P` (Pertandingan)   · `it-IT`: `P` (Partita)
+- `ja-JP`: `G` (試合)   · `ko-KR`: `G` (경기)   · `ms-MY`: `P` (Perlawanan)
+- `nl-NL`: `W` (Wedstrijd)   · `pt-PT`: `J` (Jogo)   · `th-TH`: `G` (เกม)
+- `tl-PH`: `L` (Laro)   · `tr-TR`: `O` (Oyun)   · `zh-CN`: `G` (比赛)
+
+Variable names inside keys (`$game`, `$attempts`, `$secs`, `$mins`, `$black`, `$white`) must appear with identical spelling in every locale — their position in the sentence can change to suit the target language's grammar, their name cannot.
 
 - [ ] **Step 6: Run `just check`**
 
@@ -3957,3 +3993,40 @@ EOF
 - `just check` must pass after every task — do not defer lint/format fixes across tasks.
 - Any deviation from this plan (new field name, different struct shape) must be reflected in the spec; update the spec document before committing the deviation.
 - The queue file format is versioned (`version: 1`); any future change to `QueuedItem` must bump the version and add migration logic.
+
+---
+
+## Deviations log
+
+This section captures deviations between plan-literal text and the actual commits that shipped for each task. Under the lean process (see the Process notes section at the top of this file), per-task deviation commits are no longer produced; instead deviations are recorded here, in the PR description, or in task-scoped handover memory. Older tasks have their own `#### Post-commit notes — Task N` subsections inline with the task text — those are historical and were created before the process change.
+
+### Task 21 (2026-04-23)
+
+Task 21 shipped in a single commit: `66c7576 feat(refbox): externalize portal health indicator strings to translations`. Both reviewers approved. 18 files changed: the 3 portal view builders + all 15 locale files.
+
+**Scope reality check before dispatch:** a prior session had already performed the view-builder `fl!()` refactor plus the en-US / es / fr `.ftl` additions but never committed or ran `just fmt`. The controller verified the uncommitted work matched the (reconciled) spec and dispatched the implementer with "adopt and complete" rather than reset. Net remaining work for Task 21 was: add the 17-key section to the 12 untouched locales, run `just fmt` (which auto-fixed a long-line wrap regression at `portal_detail.rs:70`), run `just check`, and commit.
+
+**Pre-authorized reconciliations (the in-place edits to Task 21 Step 1 and Step 5 above capture these as plain plan corrections, not deviations):**
+
+1. **`refbox/translations/en/` → `refbox/translations/en-US/`.** The repo-actual directory name is `en-US`; the plan text said `en`. No `en/` directory exists.
+2. **15 locales total, not 14.** The plan said "13 other `.ftl` files"; actual peer count is 14 besides `en-US`.
+3. **`portal-summary-issues` simplified to `PORTAL — ISSUES`.** The plan sample appended `· Last OK { $duration } ago`, but `PortalIndicatorState` (shipped in Task 11) carries only `{ health, overlay }` — no `last_ok_at` field. Introducing a `$duration` variable with no backing state would either silently render nothing or require a type-surface change out of scope for Task 21. Simplification keeps the key renderable from existing state.
+4. **`portal-row-recent` uses `$mins`, not `$duration`.** The view builder at `portal_detail.rs:130` passes `submitted_mins_ago: u32` (a minute count). The plan text used `{ $duration }` which would have required a separate formatter. Key reads `Submitted { $mins } min ago`.
+5. **Three keys added beyond the plan's literal list:** `portal-row-recent` (above), `portal-page-body-token-expired`, `portal-page-attention-info`. These cover hard-coded English that actually landed in Tasks 14 (detail-page rows), 15 (attention page info banner), and 16 (token-expired page body) — strings that were never in the plan's literal key inventory but that the Tasks-14–16 view builders depend on. Total new keys in the new `# Portal Health Indicator` section: 17; plus the 1 relocated `portal-advisory-at-game-end` = 18 keys in the final section.
+6. **"Unverified" is a button-level convention, not a per-key prefix.** Step 5's original text called for "unverified-label stubs with English fallback"; actual project convention per the 2026-04-17 Turkish language design spec is that the `(UNVERIFIED)` note is rendered beneath the language-selection button for every language except English/Spanish/French. Adding per-key English fallbacks inside the `.ftl` files would (a) duplicate the button-level signalling, (b) silently override real translations if a native speaker ever adds them, and (c) break the translation contract for every key that already has a non-English rendering elsewhere in that locale. Real AI-translated strings were produced for all 12 non-en/es/fr locales.
+7. **Per-locale game-number letters chosen:** `S` (de-DE/Spiel) · `P` (id-ID/Pertandingan) · `P` (it-IT/Partita) · `G` (ja-JP/試合) · `G` (ko-KR/경기) · `P` (ms-MY/Perlawanan) · `W` (nl-NL/Wedstrijd) · `J` (pt-PT/Jogo) · `G` (th-TH/เกม) · `L` (tl-PH/Laro) · `O` (tr-TR/Oyun) · `G` (zh-CN/比赛). Four locales kept `G` because the local word for "game" has no meaningful single-letter Latin abbreviation.
+
+**Reviewer nits (not blocking, carry forward into Task 22's visual verification):**
+
+1. **Commit message undercounts by 1.** Body says "Adds 17 Fluent keys" but the new section contains 18 keys (17 new + 1 re-homed `portal-advisory-at-game-end`). Defensible either way; not worth rewriting history.
+2. **`portal-page-attention-info` dropped the original explicit `\n`.** Previous code used `format!("…{attempts} attempts.\nRefbox value: {black_score}-{white_score}")` — the `\n` deliberately wrapped the info line into two sentences. The new `fl!()` key is a single sentence and lets the iced `text` widget auto-wrap based on width. Whether auto-wrap looks as clean as the explicit break is a visual question — verify during Task 22's manual walkthrough of the attention-action page; if it looks awkward, a follow-up commit can restore the break in every locale using Fluent's multi-line value syntax.
+3. **Hard-coded `0:` prefix in `portal-row-pending` / `portal-row-pending-stats-only`.** Works fine for the 0–9-second retry-countdown domain; noted for future only.
+
+**Translation-quality flags from the implementer (native-speaker review at some future point, not blocking):**
+
+- **`ja-JP`** `portal-page-body-token-expired` — long sentence, used です/ます polite register; tone may want tuning.
+- **`th-TH`** — rendering of "Queued scores cannot be sent" is serviceable but not idiomatic.
+- **`ko-KR`** — `하십시오` polite level used consistently; not checked against refbox's existing Korean register.
+- **`tl-PH`** — `TAPON` (throw away) literal register chosen for DISCARD; a native speaker might prefer `KANSELA`.
+
+**Unrelated environmental issue surfaced during validation:** `cargo audit` started reporting a new vulnerability advisory `RUSTSEC-2026-0104` in `rustls-webpki 0.103.12` (a transitive dep), published 2026-04-22. This predates Task 21 and is not caused by any translation change. Needs a separate `fix/deps/rustls-webpki` or `chore/workspace/audit-allow` branch before the final PR — it will otherwise fail CI.

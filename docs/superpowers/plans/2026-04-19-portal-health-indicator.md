@@ -3672,6 +3672,16 @@ EOF
 )"
 ```
 
+#### Post-commit notes — Task 19 (added 2026-04-22)
+
+Task 19 shipped in a single commit: `1ebe081 feat(refbox): add UWH_PORTAL_URL_OVERRIDE env var for dev testing`. Both reviewers approved cleanly.
+
+**Pre-authorized deviation:** Stayed in `refbox`; did NOT add a `DEFAULT_BASE_URL` constant to `uwh_common`. The config file already carries the default URL, so the env var just overrides it at the `UwhPortalClient::new` call site in `refbox/src/app/mod.rs:~552`. This avoids touching the highest-impact crate in the workspace for a one-liner feature.
+
+**Implementation improvement over plan sample:** Single `std::env::var(...).ok()` call stored in `url_override: Option<String>`, then both consumers (the `unwrap_or` and the `is_some()` log guard) use the same `Option`. The plan's sample called `env::var` twice. Also uses captured-identifier interpolation `info!("... using {portal_url}")` which is idiomatic for Rust ≥ 1.58 (within MSRV 1.85).
+
+**Reviewer's minor suggestion (not blocking):** `UWH_PORTAL_URL_OVERRIDE=` (empty string) would currently pass through as `Some("")`, likely causing a cryptic connection failure. A `.filter(|s| !s.is_empty())` would treat empty as unset. Recommend as a small follow-up if developers hit it in practice.
+
 ---
 
 ### Task 20: `UWH_PORTAL_SCRAMBLE_TOKEN` debug-only env var

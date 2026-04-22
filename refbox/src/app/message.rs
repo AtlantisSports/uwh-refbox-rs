@@ -83,6 +83,15 @@ pub enum Message {
     /// list the operator came from), not all the way out to the main
     /// application screen.
     ClosePortalAttentionAction,
+    /// Emitted when the operator taps the "Portal login expired" row
+    /// on the detail page. `update()` routes to the dedicated
+    /// token-expired action page, which explains the situation and
+    /// offers GO TO LOGIN / BACK.
+    OpenPortalTokenExpiredAction,
+    /// Emitted when the operator taps BACK on the portal token-expired
+    /// action page. `update()` returns to the portal detail page — not
+    /// all the way out to the main application screen.
+    ClosePortalTokenExpiredAction,
     PortalEvent(PortalEvent),
     PortalUiTick,
     /// Emitted when the operator taps a queued-item row on the detail
@@ -97,8 +106,10 @@ pub enum Message {
     /// attention action page. First tap arms the discard; second tap
     /// for the same item confirms and removes it from the queue.
     PortalDiscardTapped(ItemId),
-    /// Emitted when the operator taps the token-expired row on the
-    /// detail page. `update()` routes to the portal re-login flow.
+    /// Emitted when the operator taps GO TO LOGIN on the token-expired
+    /// action page. `update()` navigates to the existing portal login
+    /// keypad and sets `portal_login_return_to_detail` so a successful
+    /// re-login returns the operator to the portal detail page.
     PortalGoToLogin,
     RequestPortalRefresh,
     ShowWarnings,
@@ -192,6 +203,8 @@ impl Message {
             | Self::OpenPortalDetailPage
             | Self::ClosePortalDetailPage
             | Self::ClosePortalAttentionAction
+            | Self::OpenPortalTokenExpiredAction
+            | Self::ClosePortalTokenExpiredAction
             | Self::PortalRowTapped(_)
             | Self::PortalForceSubmit(_)
             | Self::PortalDiscardTapped(_)
@@ -242,6 +255,8 @@ impl PartialEq for Message {
             | (Self::OpenPortalDetailPage, Self::OpenPortalDetailPage)
             | (Self::ClosePortalDetailPage, Self::ClosePortalDetailPage)
             | (Self::ClosePortalAttentionAction, Self::ClosePortalAttentionAction)
+            | (Self::OpenPortalTokenExpiredAction, Self::OpenPortalTokenExpiredAction)
+            | (Self::ClosePortalTokenExpiredAction, Self::ClosePortalTokenExpiredAction)
             | (Self::PortalUiTick, Self::PortalUiTick)
             | (Self::PortalGoToLogin, Self::PortalGoToLogin)
             | (Self::RequestPortalRefresh, Self::RequestPortalRefresh)
@@ -412,6 +427,8 @@ impl PartialEq for Message {
             | (Self::OpenPortalDetailPage, _)
             | (Self::ClosePortalDetailPage, _)
             | (Self::ClosePortalAttentionAction, _)
+            | (Self::OpenPortalTokenExpiredAction, _)
+            | (Self::ClosePortalTokenExpiredAction, _)
             | (Self::PortalEvent(_), _)
             | (Self::PortalUiTick, _)
             | (Self::PortalRowTapped(_), _)

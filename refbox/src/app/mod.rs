@@ -100,6 +100,15 @@ pub struct RefBoxApp {
     /// stream task without needing a `&mut` on `self` (which iced's
     /// `subscription(&self)` entry point cannot provide).
     portal_event_rx: Arc<Mutex<Option<mpsc::Receiver<PortalEvent>>>>,
+    /// Set when the operator initiates portal re-login from the
+    /// token-expired action page so a successful login returns them to
+    /// the portal detail page instead of the default edit-config
+    /// landing. Consumed (cleared) when the success handler reads it.
+    /// Re-armed each time `PortalGoToLogin` fires, so an aborted login
+    /// leaves the flag stale but harmless: the next successful login
+    /// (from anywhere) would route to the detail page, which matches
+    /// the operator's most recent intent.
+    portal_login_return_to_detail: bool,
 }
 
 #[derive(Debug)]
@@ -143,7 +152,11 @@ enum AppState {
         item_id: ItemId,
         discard_armed: bool,
     },
-    #[allow(dead_code)]
+    /// Shown when the operator taps the "Portal login expired" row on
+    /// the detail page. Explains the situation and offers GO TO LOGIN
+    /// (navigates to the portal login keypad, arming the flag that
+    /// routes the login success back to the detail page) and BACK
+    /// (returns to the detail page).
     PortalTokenExpiredAction,
 }
 
@@ -690,6 +703,7 @@ impl RefBoxApp {
             alarm_delay_token: 0,
             portal_manager,
             portal_event_rx,
+            portal_login_return_to_detail: false,
         };
 
         let task = Task::batch(vec![
@@ -1398,6 +1412,16 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
+            Message::OpenPortalTokenExpiredAction => {
+                self.app_state = AppState::PortalTokenExpiredAction;
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::ClosePortalTokenExpiredAction => {
+                self.app_state = AppState::PortalDetailPage;
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
             Message::PortalEvent(ev) => {
                 // The background portal task woke us with a state-change
                 // signal. Most variants are notifications whose effect on
@@ -1483,7 +1507,32 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::PortalGoToLogin => {
-                // Login-flow plumbing lands in a later task.
+                // Navigate to the existing portal login keypad, arming
+                // the return-to-detail flag so a successful re-login
+                // lands back on the detail page (mirroring the
+                // `UwhPortalLinkFailed` GoBack handler, which reuses
+                // the same client id-lookup pattern).
+                let portal_id = match self.uwhportal_client.as_ref() {
+                    Some(client) => {
+                        // why this cannot panic: the guard is held only
+                        // for a synchronous `id()` call and dropped
+                        // immediately.
+                        client.lock().unwrap().id()
+                    }
+                    None => {
+                        // No portal client configured — there is
+                        // nothing to log into. Fall back to the detail
+                        // page so the operator is not stranded on an
+                        // empty login screen.
+                        warn!("PortalGoToLogin with no portal client configured");
+                        self.app_state = AppState::PortalDetailPage;
+                        trace!("AppState changed to {:?}", self.app_state);
+                        return Task::none();
+                    }
+                };
+                self.portal_login_return_to_detail = true;
+                self.app_state = AppState::KeypadPage(KeypadPage::PortalLogin(portal_id, false), 0);
+                trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
             Message::RequestPortalRefresh => {
@@ -2409,6 +2458,18 @@ impl RefBoxApp {
                             settings.uwhportal_token_valid = Some(true);
                         }
 
+                        // Tell the portal manager the token is healthy
+                        // again: clears the token-known-problem flag and
+                        // resets queue-item attempt counters so pending
+                        // items resume retrying on the next background
+                        // tick. Errors here are logged but not
+                        // propagated — the in-memory state is already
+                        // correct and the operator has no actionable
+                        // recovery from an I/O failure at this point.
+                        if let Err(e) = self.portal_manager.token_refreshed() {
+                            error!("portal_manager.token_refreshed failed: {e}");
+                        }
+
                         if let Some(event_id) = self
                             .edited_settings
                             .as_ref()
@@ -2419,7 +2480,18 @@ impl RefBoxApp {
                             task = self.request_schedule(event_id.clone())
                         }
 
-                        AppState::EditGameConfig(ConfigPage::Game)
+                        // If the re-login was initiated from the
+                        // token-expired action page, return to the
+                        // portal detail page (where the operator left
+                        // off); otherwise land on the default
+                        // edit-config Game page. The flag is consumed
+                        // here so it does not leak into later logins.
+                        if self.portal_login_return_to_detail {
+                            self.portal_login_return_to_detail = false;
+                            AppState::PortalDetailPage
+                        } else {
+                            AppState::EditGameConfig(ConfigPage::Game)
+                        }
                     }
                     r @ PortalTokenResponse::NoPendingLink
                     | r @ PortalTokenResponse::InvalidCode => {
@@ -2627,8 +2699,9 @@ impl RefBoxApp {
             }
             AppState::ConfirmScores(scores) =>
                 build_score_confirmation_page(data, scores, self.snapshot.conf_pause_time),
-            AppState::PortalDetailPage | AppState::PortalTokenExpiredAction =>
+            AppState::PortalDetailPage =>
                 build_portal_detail_page(data, self.portal_manager.detail_rows()),
+            AppState::PortalTokenExpiredAction => build_portal_token_expired_action(data),
             AppState::PortalAttentionAction {
                 ref item_id,
                 discard_armed,

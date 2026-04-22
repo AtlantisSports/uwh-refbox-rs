@@ -2207,65 +2207,143 @@ Use `dot_with_overlay` in the `iced_col!` instead of `dot`.
 In `refbox/src/portal_manager/mod.rs`, add:
 
 ```rust
+/// Shared handle to the `UwhPortalClient`. The UI thread and the
+/// background retry task both hold clones so token mutations
+/// (set_token / clear_token) on the UI thread are immediately visible
+/// to the task without a restart. `std::sync::Mutex` (not tokio's) is
+/// safe here because `UwhPortalClient`'s request methods return
+/// `impl Future + use<>`: the guard builds the request, is dropped,
+/// and the network round-trip is awaited without any lock held.
+pub type SharedUwhPortalClient =
+    std::sync::Arc<std::sync::Mutex<uwh_common::uwhportal::UwhPortalClient>>;
+
+/// Currently-selected event id. `Option` because at app-startup time
+/// no event is chosen yet; `Arc<Mutex<_>>` so the UI thread can update
+/// it when the operator picks or switches an event and the background
+/// task picks up the change on its next tick. A write helper on
+/// `RefBoxApp` mirrors `current_event_id` into this field — see
+/// `set_current_event_id` in Step 6.
+pub type SelectedEventId =
+    std::sync::Arc<std::sync::Mutex<Option<uwh_common::uwhportal::schedule::EventId>>>;
+
 pub struct UwhPortalIo {
-    client: std::sync::Arc<uwh_common::uwhportal::UwhPortalClient>,
-    event_id: uwh_common::uwhportal::schedule::EventId,
+    client: SharedUwhPortalClient,
+    event_id: SelectedEventId,
 }
 
 impl UwhPortalIo {
-    pub fn new(
-        client: std::sync::Arc<uwh_common::uwhportal::UwhPortalClient>,
-        event_id: uwh_common::uwhportal::schedule::EventId,
-    ) -> Self {
+    pub fn new(client: SharedUwhPortalClient, event_id: SelectedEventId) -> Self {
         Self { client, event_id }
     }
+}
+
+/// Snapshot the currently-selected event id for use across an `.await`
+/// boundary. Drops the guard before returning, so the caller can hold
+/// the `Option<EventId>` safely. A poisoned mutex yields the last value
+/// (see the same pattern used in the writer helper in Step 6).
+fn snapshot_event_id(shared: &SelectedEventId) -> Option<uwh_common::uwhportal::schedule::EventId> {
+    shared
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+}
+
+/// `QueuedItem.event_id` is a `String` (items entered the queue via
+/// `enqueue_game_end`, which accepts any string). Defensively map
+/// parse failures to a portal call error instead of panicking.
+fn parse_event_id(
+    raw: &str,
+) -> Result<uwh_common::uwhportal::schedule::EventId, health::PortalCallError> {
+    uwh_common::uwhportal::schedule::EventId::from_full(raw).map_err(|e| {
+        health::PortalCallError::Failed(format!("invalid queued event_id {raw:?}: {e}"))
+    })
 }
 
 #[async_trait::async_trait]
 impl health::PortalTaskIo for UwhPortalIo {
     async fn verify_token(&self) -> Result<(), health::PortalCallError> {
-        self.client
-            .verify_token(&self.event_id)
-            .await
-            .map_err(|e| classify_error(&e))
+        let event_id = match snapshot_event_id(&self.event_id) {
+            Some(id) => id,
+            // No event selected yet — reporting success keeps the
+            // indicator green; reporting failure would flash red on a
+            // freshly-started refbox before the operator has picked a
+            // tournament. `post_scores` / `post_stats` use the queued
+            // item's own event id and are unaffected.
+            None => return Ok(()),
+        };
+        // Lock, build the request, drop the guard, then await.
+        let fut = self
+            .client
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .verify_token(&event_id);
+        fut.await.map_err(classify_error)
     }
+
     async fn post_scores(
         &self,
         item: &queue::QueuedItem,
     ) -> Result<(), health::PortalCallError> {
-        // ... call self.client.post_game_scores(...) and classify
-        unimplemented!("wire in production post_scores in this task")
+        let event_id = parse_event_id(&item.event_id)?;
+        let fut = self
+            .client
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .post_game_scores(&event_id, &item.game_number, item.scores.clone(), item.force);
+        fut.await.map_err(classify_error)
     }
+
     async fn post_stats(
         &self,
         item: &queue::QueuedItem,
     ) -> Result<(), health::PortalCallError> {
-        self.client
-            .post_game_stats(
-                &self.event_id,
-                &item.id.game_number.parse().unwrap(),
-                item.stats.clone(),
-            )
-            .await
-            .map_err(|e| classify_error(&e))
+        let event_id = parse_event_id(&item.event_id)?;
+        let fut = self
+            .client
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .post_game_stats(&event_id, &item.game_number, item.stats.clone());
+        fut.await.map_err(classify_error)
     }
 }
 
-fn classify_error(e: &Box<dyn std::error::Error>) -> health::PortalCallError {
-    // The uwh-common portal API collapses all failures (409, 401, 5xx,
-    // network) into a single Box<dyn Error>, so every error maps to the
-    // single `Failed(String)` variant. See ADR 011 amendment
-    // (2026-04-21). If a future uwh-common change exposes richer error
-    // detail, `PortalCallError` can gain structured variants then.
+/// Collapse any portal-client error (409, 401, 5xx, network) into
+/// `PortalCallError::Failed`. See ADR 011 amendment (2026-04-21).
+/// Generic over `Display` so callers don't have to re-box the error.
+fn classify_error<E: std::fmt::Display>(e: E) -> health::PortalCallError {
     health::PortalCallError::Failed(e.to_string())
 }
 ```
 
-Fully implement `post_scores` by calling `self.client.post_game_scores(&self.event_id, &game_number, scores_bundle, item.force)` and wrapping any `Err` with `classify_error`. We do not inspect HTTP status codes because they are not surfaced by the client — every failure collapses to `PortalCallError::Failed`.
+We do not inspect HTTP status codes because they are not surfaced by the client — every failure collapses to `PortalCallError::Failed`.
 
-- [ ] **Step 6: Replace the temporary `NullIo` in `App` construction with `UwhPortalIo`**
+- [ ] **Step 6: Wire `UwhPortalIo` into the app and add the writer helper**
 
-In `refbox/src/app/mod.rs`, replace the `NullIo` used in Task 11 with the production `UwhPortalIo`. Extract the `UwhPortalClient` the app already has for its portal interactions.
+In `refbox/src/app/mod.rs`:
+
+1. Add a `portal_event_id: SelectedEventId` field on `RefBoxApp`, initialised to `Arc::new(Mutex::new(None))` alongside `current_event_id: None` so the two start in sync.
+2. Convert the existing `Option<UwhPortalClient>` app field to `Option<SharedUwhPortalClient>` (wrap in `Arc<Mutex<_>>`). Every existing caller that reads the client now takes the lock, builds the request, drops the guard, and awaits — mirroring the pattern inside `UwhPortalIo`. Each `.unwrap()` on the mutex gets a `// why this cannot panic:` comment.
+3. Replace the temporary `NullIo` from Task 11 with `UwhPortalIo::new(client.clone(), portal_event_id.clone())` when the client is successfully constructed. If client construction fails, retain `NullIo` as a deliberate fallback (the queue can still accept and persist items; no portal calls are made until the client is re-established). The startup-I/O-failure path from Task 11 (degraded `PortalManager`) is unchanged.
+4. Add the writer helper:
+
+```rust
+/// Update `current_event_id` and mirror the new value into the
+/// `portal_event_id` shared handle so the background portal-health
+/// task sees it on its next tick. This is the only place that writes
+/// `current_event_id` after construction.
+fn set_current_event_id(&mut self, new: Option<EventId>) {
+    self.current_event_id = new.clone();
+    // why this cannot panic: the guarded data is a plain `Option`
+    // and no writer panics while holding the guard; a poisoned
+    // mutex just returns the previous value, which we overwrite.
+    *self
+        .portal_event_id
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = new;
+}
+```
+
+5. Route every write to `self.current_event_id` through `self.set_current_event_id(...)`. At the time of writing, the only such write is inside `apply_settings_change`. If a future task adds persisted-event-id startup seeding, that path must also call the helper.
 
 - [ ] **Step 7: Run `just check`**
 
@@ -2303,6 +2381,31 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
 EOF
 )"
 ```
+
+#### Post-commit notes — Task 12 (added 2026-04-22)
+
+Task 12 shipped in **two commits** on `feat/refbox/portal-health-indicator`:
+
+- `bb4f0b0` — the primary implementation (Steps 1–9 above).
+- `68503bb` — a review-driven follow-up that wired the missing `current_event_id` → `portal_event_id` writer, renamed the type alias `SharedEventId` → `SelectedEventId`, and folded in two readability nits. Without this follow-up, the tile's `verify_token` leg was non-functional: the shared field stayed permanently `None`, so the health check short-circuited as `Ok(())` and the tile could not detect an unreachable portal. See the review record in this plan's sibling session memory.
+
+**Pre-authorized deviations from the Task 12 spec** (decided before dispatch; reflected in the Step 5/6 rewrites above):
+
+1. **`Message::OpenPortalDetailPage` placeholder** — added to `refbox/src/app/message.rs` during Task 12 with a `Task::none()` stub handler in `update()` tagged `// TODO(Task 13): route to detail page.`. Task 13 owns the real routing and view builder. Keeping the variant in Task 12 lets the tile compile against its real `on_press` target instead of a dummy.
+2. **Client wrapped as `Option<SharedUwhPortalClient>` (`Arc<Mutex<UwhPortalClient>>`)** — the UI thread mutates the client's auth token at runtime (set_token / clear_token from Settings), so the background task must see those mutations without a restart. `std::sync::Mutex` rather than tokio's because `UwhPortalClient`'s methods return `impl Future + use<>`: the guard is dropped before any `.await`, so the sync mutex is safe and lets synchronous reactor paths (`id()`, `has_token()`, `set_token()`) stay sync. Every call site's `.unwrap()` has a `// why this cannot panic:` comment.
+
+**Post-hoc deviations introduced during implementation** (reflected in the Step 5/6 rewrites above; recorded here so the history is complete):
+
+1. **`SelectedEventId` shape** — the original plan was internally contradictory: the Step 5 struct showed `event_id: EventId` (always present) but other plan text treated `current_event_id` as `Option<EventId>` (because no event is selected at startup). The implementer resolved in favour of `Option` and used `Arc<Mutex<_>>` to allow runtime switching. Renamed from `SharedEventId` to `SelectedEventId` in the follow-up commit — the former described the Rust plumbing; the latter describes what the value actually is.
+2. **`parse_event_id` defensive helper** — `QueuedItem.event_id` is a `String`, so the production IO impl cannot assume it parses. Maps parse failures to `PortalCallError::Failed` rather than panicking.
+3. **`classify_error` made generic over `Display`** — lets call sites pass the error by value without re-boxing. Behaviour unchanged.
+4. **`set_current_event_id` writer helper** — added in the follow-up commit. The mirror invariant (shared mutex tracks `current_event_id`) is documented in the field's doc comment but not type-enforced; any future write site that bypasses the helper will silently desync the two fields. A future refactor could introduce a newtype wrapper to enforce this structurally.
+5. **`NullIo` retained as a production fallback** — Task 11's "move `NullIo` out of `#[cfg(test)]`" expectation stands: when `UwhPortalClient` construction fails (only possible on a bad https-only config), the app falls back to `NullIo` so the queue can still accept and persist items. The indicator still reflects queue-stuck state. When `enqueue_game_end` is later wired to game-end, items will silently "resolve" under `NullIo` — worth a comment at that call site in the task that lands that wiring.
+
+**Not done by Task 12, required by Task 13:**
+
+- No startup path currently seeds `current_event_id` from persisted config, so the writer helper alone is sufficient *today*. If a future task adds persistence of the last-used event id, that path must also call `set_current_event_id`.
+- The UI-layer periodic tick that drives time-based transitions (30-min stuck yellow→red, 10-sec green-overlay expiry) is a Task 13 responsibility — see Task 13's Subscription work. That tick must NOT share state with the game clock, penalty clocks, or the background task's `POLL_INTERVAL`; it is a pure UI-layer timer.
 
 ---
 

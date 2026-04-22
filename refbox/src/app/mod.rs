@@ -458,35 +458,6 @@ impl RefBoxApp {
         }
     }
 
-    fn post_game_score(
-        &self,
-        event_id: &EventId,
-        game_number: &GameNumber,
-        scores: BlackWhiteBundle<u8>,
-    ) -> Task<Message> {
-        if let Some(client) = &self.uwhportal_client {
-            // why this cannot panic: see `request_event_list` above.
-            let request =
-                client
-                    .lock()
-                    .unwrap()
-                    .post_game_scores(event_id, game_number, scores, false);
-            Task::future(async move {
-                match request.await {
-                    Ok(()) => {
-                        info!("Successfully posted game score");
-                    }
-                    Err(e) => {
-                        error!("Failed to post game score: {e}");
-                    }
-                }
-                Message::NoAction
-            })
-        } else {
-            Task::none()
-        }
-    }
-
     fn request_uwhportal_token(&self, event_id: &EventId, code: u32) -> Task<Message> {
         if let Some(client) = &self.uwhportal_client {
             // why this cannot panic: see `request_event_list` above.
@@ -523,30 +494,6 @@ impl RefBoxApp {
                         Message::RecvTokenValid(false)
                     }
                 }
-            })
-        } else {
-            Task::none()
-        }
-    }
-
-    fn post_game_stats(
-        &self,
-        event_id: &EventId,
-        game_number: &GameNumber,
-        stats: String,
-    ) -> Task<Message> {
-        if let Some(client) = &self.uwhportal_client {
-            // why this cannot panic: see `request_event_list` above.
-            let request = client
-                .lock()
-                .unwrap()
-                .post_game_stats(event_id, game_number, stats);
-            Task::future(async move {
-                match request.await {
-                    Ok(()) => info!("Successfully posted game stats"),
-                    Err(e) => error!("Failed to post game stats: {e}"),
-                }
-                Message::NoAction
             })
         } else {
             Task::none()
@@ -591,11 +538,13 @@ impl RefBoxApp {
         }
     }
 
-    fn handle_game_end(&self, game_number: &GameNumber) -> Task<Message> {
+    fn handle_game_end(&mut self, game_number: &GameNumber) -> Task<Message> {
         let mut tasks = vec![];
         if self.using_uwhportal {
             if let Some(info) = self.tm.lock().unwrap().last_game_info() {
                 let stats = info.stats.as_json();
+                let black_score = info.scores.black;
+                let white_score = info.scores.white;
 
                 info!(
                     "Game ended, scores: {:?} stats were: {:?}",
@@ -603,9 +552,17 @@ impl RefBoxApp {
                 );
 
                 if let Some(ref event_id) = self.current_event_id {
+                    let event_id_str = event_id.full().to_string();
                     tasks.push(self.request_schedule(event_id.clone()));
-                    tasks.push(self.post_game_score(event_id, game_number, info.scores));
-                    tasks.push(self.post_game_stats(event_id, game_number, stats));
+                    if let Err(e) = self.portal_manager.enqueue_game_end(
+                        event_id_str,
+                        game_number.to_string(),
+                        black_score,
+                        white_score,
+                        stats,
+                    ) {
+                        error!("portal_manager.enqueue_game_end failed: {e}");
+                    }
                 } else {
                     error!("Missing current event id to handle game end");
                 }

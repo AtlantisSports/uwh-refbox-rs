@@ -23,13 +23,18 @@ pub const DEGRADED_CADENCE: Duration = Duration::from_secs(15);
 /// How often `run_task` wakes to re-evaluate cadence and drain commands.
 pub const POLL_INTERVAL: Duration = Duration::from_secs(2);
 
+/// How long after a failed attempt the background task waits before
+/// retrying the same queued item. Exposed so the detail-page view can
+/// compute a live "retry in 0:NN" countdown from `last_attempt_at`.
+pub const ITEM_RETRY_INTERVAL: TimeDuration = TimeDuration::seconds(15);
+
 pub fn is_item_retry_eligible(item: &QueuedItem, now: OffsetDateTime) -> bool {
     if is_item_stuck(item, now) {
         return false; // Stuck items wait for operator action.
     }
     match item.last_attempt_at {
         None => true,
-        Some(last) => (now - last) >= TimeDuration::seconds(15),
+        Some(last) => (now - last) >= ITEM_RETRY_INTERVAL,
     }
 }
 

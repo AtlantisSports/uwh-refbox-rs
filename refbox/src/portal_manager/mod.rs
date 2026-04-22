@@ -600,15 +600,32 @@ impl PortalManager {
     /// successfully-posted item would be a worse failure mode than
     /// losing the on-disk reflection of an already-completed action.
     pub fn on_item_resolved(&mut self, id: ItemId) {
-        // Capture the game number before we drop the queue entry so the
-        // recent-success row can display it.
-        let game_number = self
+        // Idempotent: if we've already recorded this resolution in the
+        // recent-successes ring, do nothing. Duplicate delivery can
+        // happen if the background task retries a post before the main
+        // thread has processed the first `ItemResolved` event, or if a
+        // future action (e.g. FORCE from the attention page) resolves
+        // an item that was already removed from the queue. Without this
+        // guard, the same game would appear as two green rows on the
+        // detail page.
+        if self.recent_successes.iter().any(|rs| rs.id == id) {
+            return;
+        }
+
+        // Only record a recent success for items that were actually on
+        // the queue at the time of the call. An `on_item_resolved` for
+        // an unknown id (e.g. the background task reporting a resolve
+        // for an item the operator discarded moments earlier) should be
+        // a silent no-op — we never invent a phantom green row.
+        let Some(game_number) = self
             .queue
             .items
             .iter()
             .find(|it| it.id == id)
             .map(|it| it.id.game_number.clone())
-            .unwrap_or_else(|| id.game_number.clone());
+        else {
+            return;
+        };
 
         self.queue.items.retain(|it| it.id != id);
 
@@ -657,14 +674,29 @@ impl PortalManager {
         }
         for it in &items {
             if !is_item_stuck(it, now) {
+                // Compute seconds until the background task's next retry
+                // window opens for this item. `last_attempt_at == None`
+                // means no attempt has happened yet, so the item is
+                // already retry-eligible and the view shows "tap to
+                // retry". Once an attempt has happened, the retry
+                // window opens `ITEM_RETRY_INTERVAL` later, and we
+                // display the remaining gap as a countdown. We clamp
+                // at zero (saturating) so a tick that arrives slightly
+                // after the window opens doesn't produce a negative.
+                let retry_in_secs = it.last_attempt_at.and_then(|last| {
+                    let next = last + health::ITEM_RETRY_INTERVAL;
+                    if next <= now {
+                        None
+                    } else {
+                        let remaining = next - now;
+                        u32::try_from(remaining.whole_seconds()).ok()
+                    }
+                });
                 out.push(DetailRow::Pending {
                     id: it.id.clone(),
                     game_number: it.id.game_number.clone(),
                     attempts: it.attempts,
-                    // retry_in_secs is derived from last_attempt_at by
-                    // the view layer if needed; Task 14 renders it as
-                    // "tap to retry" when None.
-                    retry_in_secs: None,
+                    retry_in_secs,
                     stats_only: false,
                 });
             }
@@ -961,6 +993,88 @@ mod tests {
         assert!(
             !m.recent_successes.iter().any(|rs| rs.game_number == "G1"),
             "oldest entry G1 should have been evicted"
+        );
+    }
+
+    #[tokio::test]
+    async fn on_item_resolved_with_unknown_id_is_noop_and_does_not_duplicate() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+
+        // 1. Enqueue one item (id A).
+        m.enqueue_game_end("event".into(), "GA".into(), 1, 0, "{}".into())
+            .unwrap();
+        let id_a = m.queue.items[0].id.clone();
+
+        // 2. Resolve A — queue empty, one recent-success entry.
+        m.on_item_resolved(id_a.clone());
+        assert!(m.queue.items.is_empty());
+        assert_eq!(m.recent_successes.len(), 1);
+
+        // 3. Resolve A a second time — queue still empty, recent_successes
+        // STILL has exactly 1 entry (no duplicate row).
+        m.on_item_resolved(id_a.clone());
+        assert!(m.queue.items.is_empty());
+        assert_eq!(
+            m.recent_successes.len(),
+            1,
+            "second resolution of the same id must not duplicate the recent-success row"
+        );
+        assert_eq!(m.recent_successes[0].id, id_a);
+
+        // 4. Resolve B — an id that was never enqueued. Queue still empty,
+        // recent_successes still 1, no panic.
+        let id_b = ItemId {
+            event_id: "event".into(),
+            game_number: "GB-never-queued".into(),
+        };
+        m.on_item_resolved(id_b);
+        assert!(m.queue.items.is_empty());
+        assert_eq!(m.recent_successes.len(), 1);
+        assert_eq!(m.recent_successes[0].id, id_a);
+    }
+
+    #[tokio::test]
+    async fn detail_rows_pending_row_exposes_retry_in_secs_when_last_attempt_recorded() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+
+        // Enqueue a pending item, then simulate a recent failed attempt
+        // by stamping `last_attempt_at` ~5 seconds ago. The retry window
+        // opens `ITEM_RETRY_INTERVAL` (15s) after that, so the view
+        // should see roughly 10 seconds remaining.
+        m.enqueue_game_end("e".into(), "G1".into(), 0, 0, "{}".into())
+            .unwrap();
+        let now = OffsetDateTime::now_utc();
+        m.queue.items[0].last_attempt_at = Some(now - TimeDuration::seconds(5));
+
+        let rows = m.detail_rows();
+        let pending_secs = rows.iter().find_map(|r| match r {
+            DetailRow::Pending { retry_in_secs, .. } => Some(*retry_in_secs),
+            _ => None,
+        });
+        let secs = pending_secs
+            .expect("expected a Pending row")
+            .expect("retry_in_secs should be Some when last_attempt_at is recent");
+        // Allow a small window (8..=10) to absorb scheduler jitter
+        // between the timestamp stamp and `detail_rows`' own `now`.
+        assert!(
+            (8..=10).contains(&secs),
+            "retry_in_secs = {secs}, expected ~10"
+        );
+
+        // An item that has never been attempted still reports None
+        // (view renders "tap to retry").
+        m.queue.items[0].last_attempt_at = None;
+        let rows = m.detail_rows();
+        let pending_secs = rows.iter().find_map(|r| match r {
+            DetailRow::Pending { retry_in_secs, .. } => Some(*retry_in_secs),
+            _ => None,
+        });
+        assert_eq!(
+            pending_secs.expect("expected a Pending row"),
+            None,
+            "retry_in_secs should be None when last_attempt_at is not set"
         );
     }
 

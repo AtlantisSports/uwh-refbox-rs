@@ -1,14 +1,18 @@
 use super::*;
+use crate::portal_manager::{DetailRow, HealthState};
 use iced::{
     Alignment, Element, Length,
     widget::{Space, button, column, container, row, text},
 };
 
-/// Scaffolding view for the portal detail page. Task 13 ships this as
-/// a minimal title + BACK button; the row list, row ordering, and
-/// per-row action buttons land in Task 14.
+/// Render the portal detail page. The summary banner at the top of the
+/// list reflects the current overall health; the row list below it is
+/// produced by `PortalManager::detail_rows()` and contains (in order):
+/// the token-expired banner if present, stuck items, young pending
+/// items, and recent successes.
 pub(in super::super) fn build_portal_detail_page<'a>(
     data: ViewData<'_, '_>,
+    rows: Vec<DetailRow>,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -18,16 +22,28 @@ pub(in super::super) fn build_portal_detail_page<'a>(
         ..
     } = data;
 
-    let title = text("PORTAL").size(MEDIUM_TEXT);
+    let summary_text = match portal_indicator.health {
+        HealthState::Green => "PORTAL — CONNECTED · All clear",
+        HealthState::Yellow => "PORTAL — CHECKING…",
+        HealthState::Red => "PORTAL — ISSUES",
+    };
+    let title_row = row![text(summary_text).size(SMALL_PLUS_TEXT)].spacing(SPACING);
+
+    let mut rows_col = column![].spacing(SPACING);
+    for row_data in rows {
+        rows_col = rows_col.push(render_row(row_data));
+    }
+
+    let list_area = container(column![title_row, rows_col].spacing(SPACING))
+        .width(Length::FillPortion(4))
+        .height(Length::Fill)
+        .padding(PADDING)
+        .style(light_gray_container);
+
     let back = button(text(fl!("back")).size(SMALL_PLUS_TEXT))
         .on_press(Message::ClosePortalDetailPage)
         .padding(PADDING)
         .style(red_button);
-
-    let list_area = container(title)
-        .width(Length::FillPortion(4))
-        .height(Length::Fill)
-        .padding(PADDING);
 
     let side = column![Space::new(Length::Fill, Length::Fill), back]
         .align_x(Alignment::Center)
@@ -47,4 +63,71 @@ pub(in super::super) fn build_portal_detail_page<'a>(
     .spacing(SPACING)
     .height(Length::Fill)
     .into()
+}
+
+fn render_row<'a>(r: DetailRow) -> Element<'a, Message> {
+    match r {
+        DetailRow::TokenExpired => {
+            button(text("Portal login expired — tap to re-login").size(SMALL_PLUS_TEXT))
+                .on_press(Message::PortalGoToLogin)
+                .style(red_button)
+                .padding(PADDING)
+                .width(Length::Fill)
+                .into()
+        }
+        DetailRow::Stuck {
+            id,
+            game_number,
+            attempts,
+        } => button(
+            text(format!(
+                "G{game_number} · Needs attention · {attempts} attempts"
+            ))
+            .size(SMALL_PLUS_TEXT),
+        )
+        .on_press(Message::PortalRowTapped(id))
+        .style(red_button)
+        .padding(PADDING)
+        .width(Length::Fill)
+        .into(),
+        DetailRow::Pending {
+            id,
+            game_number,
+            attempts,
+            retry_in_secs,
+            stats_only,
+        } => {
+            let label = match (retry_in_secs, stats_only) {
+                (Some(secs), false) => {
+                    format!("G{game_number} · Pending · {attempts} attempts · retry in 0:{secs:02}")
+                }
+                (None, _) => {
+                    format!("G{game_number} · Pending · {attempts} attempts · tap to retry")
+                }
+                (Some(secs), true) => {
+                    format!("G{game_number} · Pending · stats only · retry in 0:{secs:02}")
+                }
+            };
+            button(text(label).size(SMALL_PLUS_TEXT))
+                .on_press(Message::PortalRowTapped(id))
+                .style(yellow_button)
+                .padding(PADDING)
+                .width(Length::Fill)
+                .into()
+        }
+        DetailRow::RecentSuccess {
+            game_number,
+            submitted_mins_ago,
+            ..
+        } => button(
+            text(format!(
+                "G{game_number} · Submitted {submitted_mins_ago} min ago"
+            ))
+            .size(SMALL_PLUS_TEXT),
+        )
+        .style(green_button)
+        .padding(PADDING)
+        .width(Length::Fill)
+        .into(),
+    }
 }

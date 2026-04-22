@@ -13,11 +13,16 @@ pub mod health;
 pub mod queue;
 
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 use time::{Duration as TimeDuration, OffsetDateTime};
 use tokio::sync::mpsc;
 
 use crate::portal_manager::queue::{QueueFile, QueuedItem};
+
+/// Maximum number of recent successes shown at the bottom of the
+/// detail page. When a sixth success lands, the oldest is evicted.
+pub const RECENT_SUCCESS_CAP: usize = 5;
 
 /// Placeholder `PortalTaskIo` used in tests and in the degraded-fallback
 /// startup path. This type is intentionally do-nothing — the background
@@ -257,6 +262,56 @@ pub enum PortalEvent {
     ItemUpdated(ItemId),
 }
 
+/// One row rendered on the portal detail page. The ordering of the
+/// returned `Vec<DetailRow>` is the on-screen order: token-expired
+/// banner first (if present), then stuck items (oldest first), then
+/// young pending items (oldest first), then recent successes (newest
+/// first, capped at `RECENT_SUCCESS_CAP`).
+#[derive(Debug, Clone)]
+pub enum DetailRow {
+    /// Shown at the top when `token_known_problem` is true. Tapping
+    /// drives the operator through the portal re-login flow.
+    TokenExpired,
+    /// A queued item that has crossed the 30-minute stuck threshold.
+    /// Tapping opens the attention action page (FORCE / DISCARD).
+    Stuck {
+        id: ItemId,
+        game_number: String,
+        attempts: u32,
+    },
+    /// A queued item that is still in the auto-retry window
+    /// (< 30 min since it was queued). Informational. Tapping forces
+    /// an immediate retry attempt.
+    Pending {
+        id: ItemId,
+        game_number: String,
+        attempts: u32,
+        /// Seconds until the next scheduled automatic retry, if known.
+        /// None means "tap to retry" (no scheduled retry).
+        retry_in_secs: Option<u32>,
+        /// True if only the stats portion of this item is still pending
+        /// (score was already accepted). Reserved for future use; the
+        /// current implementation always returns false.
+        stats_only: bool,
+    },
+    /// A recently-completed submission, shown as an informational
+    /// green strip. Not tappable.
+    RecentSuccess {
+        id: ItemId,
+        game_number: String,
+        submitted_mins_ago: u32,
+    },
+}
+
+/// In-memory record of a successful portal submission. Lives only for
+/// as long as the process is running — on restart, the list is empty.
+#[derive(Debug, Clone)]
+struct RecentSuccess {
+    id: ItemId,
+    game_number: String,
+    submitted_at: Instant,
+}
+
 /// How long the green-checkmark overlay remains visible after a successful submit.
 pub const RECENT_SUCCESS_DURATION: Duration = Duration::from_secs(10);
 
@@ -280,6 +335,10 @@ pub struct PortalManager {
     indicator_state: PortalIndicatorState,
     command_tx: mpsc::Sender<health::PortalCommand>,
     config_dir: std::path::PathBuf,
+    /// In-memory ring of the most recent successful submissions,
+    /// newest at the front, capped at `RECENT_SUCCESS_CAP`. Used only
+    /// for the detail-page strip; not persisted across restarts.
+    recent_successes: VecDeque<RecentSuccess>,
 }
 
 impl PortalManager {
@@ -299,6 +358,7 @@ impl PortalManager {
             indicator_state: PortalIndicatorState::default(),
             command_tx: tx,
             config_dir: std::env::temp_dir(),
+            recent_successes: VecDeque::new(),
         };
         m.recompute_indicator();
         m
@@ -389,6 +449,7 @@ impl PortalManager {
             indicator_state: PortalIndicatorState::default(),
             command_tx,
             config_dir: config_dir.to_path_buf(),
+            recent_successes: VecDeque::new(),
         };
         m.recompute_indicator();
         m.push_queue_snapshot();
@@ -424,6 +485,7 @@ impl PortalManager {
             indicator_state: PortalIndicatorState::default(),
             command_tx,
             config_dir: std::env::temp_dir(),
+            recent_successes: VecDeque::new(),
         };
         m.recompute_indicator();
         (m, rx)
@@ -525,6 +587,103 @@ impl PortalManager {
         tokio::spawn(async move {
             let _ = tx.send(health::PortalCommand::VerifyNow).await;
         });
+    }
+
+    /// Called from the UI thread after the background task reports that
+    /// a queued item was successfully posted to the portal. Removes the
+    /// item from the queue, records it in the recent-success ring
+    /// (newest first, capped at `RECENT_SUCCESS_CAP`), and persists the
+    /// shrunken queue so a restart does not re-send the item.
+    ///
+    /// I/O errors on the queue save are logged and otherwise ignored:
+    /// the in-memory state is already correct, and re-sending a
+    /// successfully-posted item would be a worse failure mode than
+    /// losing the on-disk reflection of an already-completed action.
+    pub fn on_item_resolved(&mut self, id: ItemId) {
+        // Capture the game number before we drop the queue entry so the
+        // recent-success row can display it.
+        let game_number = self
+            .queue
+            .items
+            .iter()
+            .find(|it| it.id == id)
+            .map(|it| it.id.game_number.clone())
+            .unwrap_or_else(|| id.game_number.clone());
+
+        self.queue.items.retain(|it| it.id != id);
+
+        self.recent_successes.push_front(RecentSuccess {
+            id,
+            game_number,
+            submitted_at: Instant::now(),
+        });
+        while self.recent_successes.len() > RECENT_SUCCESS_CAP {
+            self.recent_successes.pop_back();
+        }
+
+        if let Err(e) = queue::save(&self.config_dir, &self.queue) {
+            log::warn!("portal queue save after item resolution failed: {e}");
+        }
+        self.mark_recent_success();
+        self.push_queue_snapshot();
+    }
+
+    /// Compute the ordered list of rows displayed on the portal detail
+    /// page. Ordering:
+    /// 1. `TokenExpired` banner, if a token problem is flagged.
+    /// 2. `Stuck` items (queued ≥ 30 min ago), oldest first.
+    /// 3. `Pending` items (queued < 30 min ago), oldest first.
+    /// 4. `RecentSuccess` rows, newest first, capped at
+    ///    `RECENT_SUCCESS_CAP`.
+    pub fn detail_rows(&self) -> Vec<DetailRow> {
+        let mut out: Vec<DetailRow> = Vec::new();
+
+        if self.token_known_problem {
+            out.push(DetailRow::TokenExpired);
+        }
+
+        let now = OffsetDateTime::now_utc();
+        let mut items: Vec<&QueuedItem> = self.queue.items.iter().collect();
+        items.sort_by_key(|it| it.queued_at);
+
+        for it in &items {
+            if is_item_stuck(it, now) {
+                out.push(DetailRow::Stuck {
+                    id: it.id.clone(),
+                    game_number: it.id.game_number.clone(),
+                    attempts: it.attempts,
+                });
+            }
+        }
+        for it in &items {
+            if !is_item_stuck(it, now) {
+                out.push(DetailRow::Pending {
+                    id: it.id.clone(),
+                    game_number: it.id.game_number.clone(),
+                    attempts: it.attempts,
+                    // retry_in_secs is derived from last_attempt_at by
+                    // the view layer if needed; Task 14 renders it as
+                    // "tap to retry" when None.
+                    retry_in_secs: None,
+                    stats_only: false,
+                });
+            }
+        }
+
+        let now_instant = Instant::now();
+        for rs in &self.recent_successes {
+            let mins = now_instant
+                .saturating_duration_since(rs.submitted_at)
+                .as_secs()
+                / 60;
+            out.push(DetailRow::RecentSuccess {
+                id: rs.id.clone(),
+                game_number: rs.game_number.clone(),
+                submitted_mins_ago: mins as u32,
+            });
+        }
+
+        out
     }
 }
 
@@ -714,5 +873,121 @@ mod tests {
         // non-persistent default) rather than any user-supplied path.
         let (manager, _rx) = PortalManager::new_degraded();
         assert_eq!(manager.config_dir, std::env::temp_dir());
+    }
+
+    #[tokio::test]
+    async fn detail_rows_orders_token_then_stuck_then_pending_oldest_first() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+
+        // One stuck item: queued 40 min ago.
+        m.enqueue_game_end("e".into(), "G3".into(), 3, 2, "{}".into())
+            .unwrap();
+        m.queue.items[0].queued_at = OffsetDateTime::now_utc() - TimeDuration::minutes(40);
+
+        // Two young pendings: queued at different recent times.
+        m.enqueue_game_end("e".into(), "G1".into(), 0, 0, "{}".into())
+            .unwrap();
+        m.queue.items[1].queued_at = OffsetDateTime::now_utc() - TimeDuration::minutes(5);
+        m.enqueue_game_end("e".into(), "G2".into(), 0, 0, "{}".into())
+            .unwrap();
+        m.queue.items[2].queued_at = OffsetDateTime::now_utc() - TimeDuration::minutes(2);
+
+        // Flag the token as having a known problem to exercise the
+        // TokenExpired row.
+        m.token_known_problem = true;
+
+        let rows = m.detail_rows();
+        assert!(matches!(rows[0], DetailRow::TokenExpired));
+        assert!(
+            matches!(rows[1], DetailRow::Stuck { ref game_number, .. } if game_number == "G3"),
+            "expected Stuck G3 at row[1], got {:?}",
+            rows[1]
+        );
+        assert!(
+            matches!(rows[2], DetailRow::Pending { ref game_number, .. } if game_number == "G1"),
+            "expected Pending G1 at row[2], got {:?}",
+            rows[2]
+        );
+        assert!(
+            matches!(rows[3], DetailRow::Pending { ref game_number, .. } if game_number == "G2"),
+            "expected Pending G2 at row[3], got {:?}",
+            rows[3]
+        );
+        assert_eq!(rows.len(), 4);
+    }
+
+    #[tokio::test]
+    async fn on_item_resolved_removes_queue_item_and_adds_recent_success() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        m.enqueue_game_end("event".into(), "G1".into(), 3, 2, "{}".into())
+            .unwrap();
+
+        let id = m.queue.items[0].id.clone();
+        assert_eq!(m.queue.items.len(), 1);
+
+        m.on_item_resolved(id.clone());
+
+        assert!(
+            m.queue.items.is_empty(),
+            "queue should be empty after resolve"
+        );
+        assert_eq!(m.recent_successes.len(), 1);
+        assert_eq!(m.recent_successes[0].id, id);
+        assert_eq!(m.recent_successes[0].game_number, "G1");
+    }
+
+    #[tokio::test]
+    async fn recent_successes_caps_at_five_and_evicts_oldest() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+
+        // Push six resolutions, numbered G1..G6.
+        for n in 1..=6u32 {
+            let game = format!("G{n}");
+            m.enqueue_game_end("e".into(), game.clone(), 0, 0, "{}".into())
+                .unwrap();
+            let id = m.queue.items[0].id.clone();
+            m.on_item_resolved(id);
+        }
+
+        // Newest (G6) at front, oldest retained is G2 at back.
+        assert_eq!(m.recent_successes.len(), RECENT_SUCCESS_CAP);
+        assert_eq!(m.recent_successes.front().unwrap().game_number, "G6");
+        assert_eq!(m.recent_successes.back().unwrap().game_number, "G2");
+
+        // G1 was evicted.
+        assert!(
+            !m.recent_successes.iter().any(|rs| rs.game_number == "G1"),
+            "oldest entry G1 should have been evicted"
+        );
+    }
+
+    #[tokio::test]
+    async fn detail_rows_appends_recent_successes_newest_first() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+
+        // Resolve two items, G1 then G2.
+        m.enqueue_game_end("e".into(), "G1".into(), 0, 0, "{}".into())
+            .unwrap();
+        let id1 = m.queue.items[0].id.clone();
+        m.on_item_resolved(id1);
+
+        m.enqueue_game_end("e".into(), "G2".into(), 0, 0, "{}".into())
+            .unwrap();
+        let id2 = m.queue.items[0].id.clone();
+        m.on_item_resolved(id2);
+
+        let rows = m.detail_rows();
+        // Queue is empty, token ok → only recent-success rows, newest first.
+        assert_eq!(rows.len(), 2);
+        assert!(
+            matches!(&rows[0], DetailRow::RecentSuccess { game_number, .. } if game_number == "G2")
+        );
+        assert!(
+            matches!(&rows[1], DetailRow::RecentSuccess { game_number, .. } if game_number == "G1")
+        );
     }
 }

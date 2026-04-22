@@ -957,18 +957,19 @@ impl RefBoxApp {
         } else {
             None
         };
-        let uwhportal_client = match UwhPortalClient::new(
-            &config.uwhportal.url,
-            portal_token,
-            require_https,
-            REQUEST_TIMEOUT,
-        ) {
-            Ok(c) => Some(Arc::new(Mutex::new(c))),
-            Err(e) => {
-                error!("Failed to start UWH Portal Client: {e}");
-                None
-            }
-        };
+        let url_override = std::env::var("UWH_PORTAL_URL_OVERRIDE").ok();
+        let portal_url: &str = url_override.as_deref().unwrap_or(&config.uwhportal.url);
+        if url_override.is_some() {
+            info!("UWH_PORTAL_URL_OVERRIDE active: using {portal_url}");
+        }
+        let uwhportal_client =
+            match UwhPortalClient::new(portal_url, portal_token, require_https, REQUEST_TIMEOUT) {
+                Ok(c) => Some(Arc::new(Mutex::new(c))),
+                Err(e) => {
+                    error!("Failed to start UWH Portal Client: {e}");
+                    None
+                }
+            };
 
         // Shared event id the background portal task consults for its
         // periodic `verify_token` check. Mirrors `current_event_id` on

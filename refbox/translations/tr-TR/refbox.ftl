@@ -354,3 +354,23 @@ delay-of-game = Oyunu Geciktirme
 unsportsmanlike = Sportmenlik Dışı Davranış
 free-arm = Serbest Kol
 false-start = Hatalı Başlangıç
+
+# Portal Health Indicator
+portal-summary-connected = PORTAL — BAĞLI · Her şey yolunda
+portal-summary-checking = PORTAL — KONTROL EDİLİYOR…
+portal-summary-issues = PORTAL — SORUNLAR
+portal-row-token-expired = Portal oturumu süresi doldu — yeniden giriş için dokun
+portal-row-stuck = O{ $game } · Dikkat gerekli · { $attempts } deneme
+portal-row-pending = O{ $game } · Beklemede · { $attempts } deneme · 0:{ $secs } sonra yeniden denenecek
+portal-row-pending-tap = O{ $game } · Beklemede · { $attempts } deneme · yeniden denemek için dokun
+portal-row-pending-stats-only = O{ $game } · Beklemede · yalnızca istatistik · 0:{ $secs } sonra yeniden denenecek
+portal-row-recent = O{ $game } · { $mins } dk önce gönderildi
+portal-action-force-submit = BU OYUN SONUCUNU ZORLA GÖNDER
+portal-action-discard = BU GÖNDERİMİ AT
+portal-action-discard-confirm = ATMAYI ONAYLAMAK İÇİN TEKRAR DOKUN
+portal-action-go-to-login = GİRİŞE GİT
+portal-page-title-attention = Oyun { $game } · Dikkat gerekli
+portal-page-title-token-expired = Portal oturumu süresi doldu
+portal-page-body-token-expired = UWH Portal oturumunun süresi doldu. Tekrar giriş yapana kadar kuyruktaki sonuçlar gönderilemez. Yeniden kimlik doğrulamak için GİRİŞE GİT'e dokun.
+portal-page-attention-info = Bu sonuç { $attempts } denemeden sonra UWH Portal tarafından kabul edilmedi. Refbox değeri: { $black }-{ $white }
+portal-advisory-at-game-end = Portal sorunu tespit edildi. Sonuç yine de kuyruğa alınacak — çözmek için bir yöneticiye başvurun.

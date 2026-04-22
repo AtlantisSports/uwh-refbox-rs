@@ -179,7 +179,6 @@ confirm-score = Is this score correct?
     Black: { $score_black }        White: { $score_white }
 
     { confirmation-count-down }
-portal-advisory-at-game-end = Portal issue detected. Score will still be queued — find an admin to resolve.
 yes = YES
 no = NO
 
@@ -364,3 +363,23 @@ delay-of-game = Delay Of Game
 unsportsmanlike = Unsportsmanlike
 free-arm = Free Arm
 false-start = False Start
+
+# Portal Health Indicator
+portal-summary-connected = PORTAL — CONNECTED · All clear
+portal-summary-checking = PORTAL — CHECKING…
+portal-summary-issues = PORTAL — ISSUES
+portal-row-token-expired = Portal login expired — tap to re-login
+portal-row-stuck = G{ $game } · Needs attention · { $attempts } attempts
+portal-row-pending = G{ $game } · Pending · { $attempts } attempts · retry in 0:{ $secs }
+portal-row-pending-tap = G{ $game } · Pending · { $attempts } attempts · tap to retry
+portal-row-pending-stats-only = G{ $game } · Pending · stats only · retry in 0:{ $secs }
+portal-row-recent = G{ $game } · Submitted { $mins } min ago
+portal-action-force-submit = FORCE THIS GAME RESULT
+portal-action-discard = DISCARD THIS SUBMISSION
+portal-action-discard-confirm = TAP AGAIN TO CONFIRM DISCARD
+portal-action-go-to-login = GO TO LOGIN
+portal-page-title-attention = Game { $game } · Needs attention
+portal-page-title-token-expired = Portal login expired
+portal-page-body-token-expired = The UWH Portal login has expired. Queued scores cannot be sent until you log in again. Tap GO TO LOGIN to re-authenticate.
+portal-page-attention-info = This result has not been accepted by the UWH Portal after { $attempts } attempts. Refbox value: { $black }-{ $white }
+portal-advisory-at-game-end = Portal issue detected. Score will still be queued — find an admin to resolve.

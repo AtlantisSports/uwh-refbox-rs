@@ -354,3 +354,23 @@ delay-of-game = 遅延行為
 unsportsmanlike = 非紳士的行為
 free-arm = フリーハンド反則
 false-start = 不正スタート
+
+# Portal Health Indicator
+portal-summary-connected = PORTAL — 接続中 · すべて正常
+portal-summary-checking = PORTAL — 確認中…
+portal-summary-issues = PORTAL — 問題あり
+portal-row-token-expired = ポータルのセッションが期限切れ — タップして再ログイン
+portal-row-stuck = G{ $game } · 要対応 · { $attempts }回試行
+portal-row-pending = G{ $game } · 保留中 · { $attempts }回試行 · 0:{ $secs }後に再試行
+portal-row-pending-tap = G{ $game } · 保留中 · { $attempts }回試行 · タップして再試行
+portal-row-pending-stats-only = G{ $game } · 保留中 · 統計のみ · 0:{ $secs }後に再試行
+portal-row-recent = G{ $game } · { $mins }分前に送信
+portal-action-force-submit = この試合結果を強制送信
+portal-action-discard = この送信を破棄
+portal-action-discard-confirm = もう一度タップして破棄を確定
+portal-action-go-to-login = ログイン画面へ
+portal-page-title-attention = 試合 { $game } · 要対応
+portal-page-title-token-expired = ポータルのセッションが期限切れ
+portal-page-body-token-expired = UWH Portalのセッションが期限切れになりました。再ログインするまで、キューに入っている結果を送信できません。ログイン画面へをタップして再認証してください。
+portal-page-attention-info = この結果は{ $attempts }回試行してもUWH Portalに受け付けられていません。Refboxの値: { $black }-{ $white }
+portal-advisory-at-game-end = ポータルの問題を検出しました。結果はそのままキューに入ります — 管理者に連絡して解決してください。

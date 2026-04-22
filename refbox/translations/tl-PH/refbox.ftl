@@ -354,3 +354,23 @@ delay-of-game = Pagkaantala ng Laro
 unsportsmanlike = Hindi Sportsmanlike
 free-arm = Libreng Braso
 false-start = Maling Simula
+
+# Portal Health Indicator
+portal-summary-connected = PORTAL — NAKA-CONNECT · Walang problema
+portal-summary-checking = PORTAL — SINUSURI…
+portal-summary-issues = PORTAL — MGA ISYU
+portal-row-token-expired = Nag-expire ang portal session — i-tap para mag-login muli
+portal-row-stuck = L{ $game } · Kailangan ng pansin · { $attempts } pagsubok
+portal-row-pending = L{ $game } · Nakabinbin · { $attempts } pagsubok · susubukan muli sa 0:{ $secs }
+portal-row-pending-tap = L{ $game } · Nakabinbin · { $attempts } pagsubok · i-tap para subukan muli
+portal-row-pending-stats-only = L{ $game } · Nakabinbin · stats lang · susubukan muli sa 0:{ $secs }
+portal-row-recent = L{ $game } · Ipinadala { $mins } min na nakalipas
+portal-action-force-submit = PUWERSAHING IPADALA ANG RESULTA
+portal-action-discard = ITAPON ANG PAGPAPADALA NA ITO
+portal-action-discard-confirm = I-TAP ULIT PARA KUMPIRMAHIN ANG PAGTAPON
+portal-action-go-to-login = PUMUNTA SA LOGIN
+portal-page-title-attention = Laro { $game } · Kailangan ng pansin
+portal-page-title-token-expired = Nag-expire ang portal session
+portal-page-body-token-expired = Nag-expire na ang UWH Portal session. Hindi maipapadala ang mga naka-queue na resulta hanggang mag-login ka muli. I-tap ang PUMUNTA SA LOGIN para muling mag-authenticate.
+portal-page-attention-info = Hindi tinanggap ng UWH Portal ang resultang ito matapos ang { $attempts } pagsubok. Halaga ng Refbox: { $black }-{ $white }
+portal-advisory-at-game-end = May problema sa portal. I-queue pa rin ang resulta — maghanap ng admin para lutasin.

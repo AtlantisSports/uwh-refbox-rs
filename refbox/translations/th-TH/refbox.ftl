@@ -354,3 +354,23 @@ delay-of-game = การประวิงเวลา
 unsportsmanlike = การประพฤติผิดน้ำใจนักกีฬา
 free-arm = แขนอิสระ
 false-start = การออกตัวผิด
+
+# Portal Health Indicator
+portal-summary-connected = PORTAL — เชื่อมต่อแล้ว · ทุกอย่างปกติ
+portal-summary-checking = PORTAL — กำลังตรวจสอบ…
+portal-summary-issues = PORTAL — มีปัญหา
+portal-row-token-expired = เซสชันพอร์ทัลหมดอายุ — แตะเพื่อเข้าสู่ระบบใหม่
+portal-row-stuck = G{ $game } · ต้องการความสนใจ · พยายาม { $attempts } ครั้ง
+portal-row-pending = G{ $game } · รอดำเนินการ · พยายาม { $attempts } ครั้ง · ลองใหม่ใน 0:{ $secs }
+portal-row-pending-tap = G{ $game } · รอดำเนินการ · พยายาม { $attempts } ครั้ง · แตะเพื่อลองใหม่
+portal-row-pending-stats-only = G{ $game } · รอดำเนินการ · เฉพาะสถิติ · ลองใหม่ใน 0:{ $secs }
+portal-row-recent = G{ $game } · ส่งเมื่อ { $mins } นาทีที่แล้ว
+portal-action-force-submit = บังคับส่งผลเกมนี้
+portal-action-discard = ทิ้งการส่งนี้
+portal-action-discard-confirm = แตะอีกครั้งเพื่อยืนยันการทิ้ง
+portal-action-go-to-login = ไปที่หน้าเข้าสู่ระบบ
+portal-page-title-attention = เกม { $game } · ต้องการความสนใจ
+portal-page-title-token-expired = เซสชันพอร์ทัลหมดอายุ
+portal-page-body-token-expired = เซสชัน UWH Portal หมดอายุแล้ว ไม่สามารถส่งผลที่อยู่ในคิวได้จนกว่าคุณจะเข้าสู่ระบบใหม่ แตะ ไปที่หน้าเข้าสู่ระบบ เพื่อยืนยันตัวตนอีกครั้ง
+portal-page-attention-info = ผลนี้ยังไม่ได้รับการยอมรับจาก UWH Portal หลังจากพยายาม { $attempts } ครั้ง ค่า Refbox: { $black }-{ $white }
+portal-advisory-at-game-end = ตรวจพบปัญหาพอร์ทัล ผลจะยังถูกเก็บเข้าคิว — โปรดหาผู้ดูแลระบบเพื่อแก้ไข

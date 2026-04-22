@@ -354,3 +354,23 @@ delay-of-game = 延误比赛
 unsportsmanlike = 不体育行为
 free-arm = 自由臂犯规
 false-start = 抢跑
+
+# Portal Health Indicator
+portal-summary-connected = PORTAL — 已连接 · 一切正常
+portal-summary-checking = PORTAL — 检查中…
+portal-summary-issues = PORTAL — 存在问题
+portal-row-token-expired = 门户会话已过期 — 点击重新登录
+portal-row-stuck = G{ $game } · 需要处理 · { $attempts } 次尝试
+portal-row-pending = G{ $game } · 待处理 · { $attempts } 次尝试 · 0:{ $secs } 后重试
+portal-row-pending-tap = G{ $game } · 待处理 · { $attempts } 次尝试 · 点击重试
+portal-row-pending-stats-only = G{ $game } · 待处理 · 仅统计 · 0:{ $secs } 后重试
+portal-row-recent = G{ $game } · { $mins } 分钟前已提交
+portal-action-force-submit = 强制提交此比赛结果
+portal-action-discard = 放弃此次提交
+portal-action-discard-confirm = 再次点击以确认放弃
+portal-action-go-to-login = 前往登录
+portal-page-title-attention = 比赛 { $game } · 需要处理
+portal-page-title-token-expired = 门户会话已过期
+portal-page-body-token-expired = UWH Portal 会话已过期。排队中的结果在你重新登录前无法发送。点击前往登录以重新认证。
+portal-page-attention-info = 经过 { $attempts } 次尝试后,UWH Portal 仍未接受此结果。Refbox 值: { $black }-{ $white }
+portal-advisory-at-game-end = 检测到门户问题。结果仍会排队 — 请找管理员解决。

@@ -356,3 +356,23 @@ delay-of-game = Faute pour ralentir le jeu
 unsportsmanlike = Conduite anti sportive
 free-arm = Usage irrégulier du bras libre
 false-start = Faux départs
+
+# Portal Health Indicator
+portal-summary-connected = PORTAL — CONNECTÉ · Tout va bien
+portal-summary-checking = PORTAL — VÉRIFICATION…
+portal-summary-issues = PORTAL — PROBLÈMES
+portal-row-token-expired = Session portail expirée — toucher pour se reconnecter
+portal-row-stuck = M{ $game } · Attention requise · { $attempts } tentatives
+portal-row-pending = M{ $game } · En attente · { $attempts } tentatives · nouvel essai dans 0:{ $secs }
+portal-row-pending-tap = M{ $game } · En attente · { $attempts } tentatives · toucher pour réessayer
+portal-row-pending-stats-only = M{ $game } · En attente · stats seules · nouvel essai dans 0:{ $secs }
+portal-row-recent = M{ $game } · Envoyé il y a { $mins } min
+portal-action-force-submit = FORCER CE RÉSULTAT
+portal-action-discard = ABANDONNER CET ENVOI
+portal-action-discard-confirm = TOUCHER ENCORE POUR CONFIRMER L'ABANDON
+portal-action-go-to-login = ALLER À LA CONNEXION
+portal-page-title-attention = Match { $game } · Attention requise
+portal-page-title-token-expired = Session portail expirée
+portal-page-body-token-expired = La session du UWH Portal a expiré. Les résultats en file d'attente ne peuvent pas être envoyés tant que vous ne vous reconnectez pas. Touchez ALLER À LA CONNEXION pour vous authentifier.
+portal-page-attention-info = Ce résultat n'a pas été accepté par le UWH Portal après { $attempts } tentatives. Valeur du Refbox : { $black }-{ $white }
+portal-advisory-at-game-end = Problème de portail détecté. Le résultat sera quand même mis en file d'attente — trouvez un administrateur pour le résoudre.

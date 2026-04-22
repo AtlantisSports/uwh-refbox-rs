@@ -354,3 +354,23 @@ delay-of-game = Vertraging van het Spel
 unsportsmanlike = Onsportief Gedrag
 free-arm = Vrije Arm
 false-start = Vals Vertrek
+
+# Portal Health Indicator
+portal-summary-connected = PORTAL — VERBONDEN · Alles in orde
+portal-summary-checking = PORTAL — CONTROLEREN…
+portal-summary-issues = PORTAL — PROBLEMEN
+portal-row-token-expired = Portal-sessie verlopen — tik om opnieuw in te loggen
+portal-row-stuck = W{ $game } · Aandacht nodig · { $attempts } pogingen
+portal-row-pending = W{ $game } · In behandeling · { $attempts } pogingen · opnieuw proberen in 0:{ $secs }
+portal-row-pending-tap = W{ $game } · In behandeling · { $attempts } pogingen · tik om opnieuw te proberen
+portal-row-pending-stats-only = W{ $game } · In behandeling · alleen statistieken · opnieuw proberen in 0:{ $secs }
+portal-row-recent = W{ $game } · { $mins } min geleden verzonden
+portal-action-force-submit = FORCEER DIT WEDSTRIJDRESULTAAT
+portal-action-discard = DEZE INZENDING VERWERPEN
+portal-action-discard-confirm = TIK NOGMAALS OM VERWERPEN TE BEVESTIGEN
+portal-action-go-to-login = NAAR INLOGGEN
+portal-page-title-attention = Wedstrijd { $game } · Aandacht nodig
+portal-page-title-token-expired = Portal-sessie verlopen
+portal-page-body-token-expired = De UWH Portal-sessie is verlopen. Resultaten in de wachtrij kunnen niet worden verzonden totdat je opnieuw inlogt. Tik op NAAR INLOGGEN om opnieuw te verifiëren.
+portal-page-attention-info = Dit resultaat is na { $attempts } pogingen niet geaccepteerd door de UWH Portal. Refbox-waarde: { $black }-{ $white }
+portal-advisory-at-game-end = Portal-probleem gedetecteerd. Het resultaat wordt toch in de wachtrij geplaatst — zoek een beheerder om het op te lossen.

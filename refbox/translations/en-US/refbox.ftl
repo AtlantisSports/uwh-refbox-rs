@@ -179,6 +179,7 @@ confirm-score = Is this score correct?
     Black: { $score_black }        White: { $score_white }
 
     { confirmation-count-down }
+portal-advisory-at-game-end = Portal issue detected. Score will still be queued — find an admin to resolve.
 yes = YES
 no = NO
 

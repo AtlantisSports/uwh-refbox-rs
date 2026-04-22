@@ -49,10 +49,10 @@ impl health::PortalTaskIo for NullIo {
 /// the guard across an `.await`, so a plain `std::sync::Mutex` is
 /// correct.
 ///
-/// The first wiring of the writer side lands in a later task; for
-/// Task 12 the value simply starts as `None`, which keeps `verify_token`
-/// a no-op until an event is selected.
-pub type SharedEventId =
+/// The UI mirrors `RefBoxApp::current_event_id` into this shared handle
+/// on every write, so the background task always sees the latest value
+/// without holding the UI lock across a network round-trip.
+pub type SelectedEventId =
     std::sync::Arc<std::sync::Mutex<Option<uwh_common::uwhportal::schedule::EventId>>>;
 
 /// Shared handle to the `UwhPortalClient`. Used by both the UI thread
@@ -89,11 +89,11 @@ pub type SharedUwhPortalClient =
 /// item's own event id.
 pub struct UwhPortalIo {
     client: SharedUwhPortalClient,
-    event_id: SharedEventId,
+    event_id: SelectedEventId,
 }
 
 impl UwhPortalIo {
-    pub fn new(client: SharedUwhPortalClient, event_id: SharedEventId) -> Self {
+    pub fn new(client: SharedUwhPortalClient, event_id: SelectedEventId) -> Self {
         Self { client, event_id }
     }
 }
@@ -126,8 +126,7 @@ fn parse_event_id(
 /// `.await`. The mutex is poisoned only if some other thread panicked
 /// while holding it; if that happens we treat it the same as "no event
 /// selected" so the retry task keeps running harmlessly.
-/// Poison cannot happen: panics here do not corrupt the guarded data.
-fn snapshot_event_id(shared: &SharedEventId) -> Option<uwh_common::uwhportal::schedule::EventId> {
+fn snapshot_event_id(shared: &SelectedEventId) -> Option<uwh_common::uwhportal::schedule::EventId> {
     // why this cannot panic: the guarded data is a plain `Option` and no
     // writer panics while holding it; poisoning simply yields the last
     // value, which we clone out.
@@ -396,13 +395,13 @@ impl PortalManager {
     ///
     /// The returned receiver is a dummy that never emits events.
     pub(crate) fn new_degraded() -> (Self, mpsc::Receiver<PortalEvent>) {
-        // Construct a (sender, receiver) pair so the caller has a
-        // receiver to hold onto; the sender is dropped immediately,
-        // so nothing can ever send to it.
-        let (tx, rx) = mpsc::channel(1);
-        // Similarly, build a command_tx that goes nowhere.
+        // Build (sender, receiver) pairs where the senders go nowhere:
+        // the event-channel sender is discarded so the returned receiver
+        // never emits, and the command-channel sender is kept on the
+        // manager only because its type demands it — no background task
+        // exists to receive from it.
+        let (_, rx) = mpsc::channel(1);
         let (command_tx, _command_rx) = mpsc::channel(1);
-        drop(tx);
 
         let mut m = Self {
             queue: QueueFile::empty(),

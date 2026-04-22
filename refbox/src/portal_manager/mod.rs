@@ -308,6 +308,18 @@ impl PortalManager {
         self.indicator_state
     }
 
+    /// Recompute the cached indicator state from current inputs.
+    /// Called from the iced UI layer:
+    /// - on every pure UI-layer tick so time-based transitions (the
+    ///   30-minute stuck escalation, the 10-second green-checkmark
+    ///   expiry) reach the screen,
+    /// - when the background retry task emits a `PortalEvent` so the
+    ///   indicator picks up anything that might have changed between
+    ///   frames.
+    pub fn ui_tick(&mut self) {
+        self.recompute_indicator();
+    }
+
     pub fn mark_recent_success(&mut self) {
         self.recent_success_until = Some(Instant::now() + RECENT_SUCCESS_DURATION);
         self.recompute_indicator();

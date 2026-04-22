@@ -2882,6 +2882,55 @@ EOF
 )"
 ```
 
+#### Post-commit notes — Task 14 (added 2026-04-22)
+
+Task 14 shipped in two commits: `4ff1930 feat(refbox): render detail-page rows with correct ordering` (primary) and `e4a5c81 fix(refbox): idempotent on_item_resolved and live retry_in_secs` (review follow-up). Spec reviewer approved the primary commit with no gaps; code-quality reviewer approved with two Important issues (both addressed in the follow-up) and re-approved the follow-up.
+
+**Pre-authorized deviations from the written plan (noted here for traceability):**
+
+1. **View-builder signature reconciliation.** Plan Steps 3–4 showed `build_portal_detail_page<'a>(portal_manager: &'a PortalManager)` and `build_portal_detail_page(&self.portal_manager)` at the call site. This conflicted with the Task 13 architectural binding that view builders read from `ViewData<'_, '_>`, not from a borrowed `&self` reference. The reconciled signature is `build_portal_detail_page(data: ViewData<'_, '_>, rows: Vec<DetailRow>) -> Element<'_, Message>`. The `rows` positional argument mirrors how `build_main_view` takes `game_config` and other extras beyond `data`. At the caller in `app/mod.rs`, the `PortalDetailPage` arm computes `self.portal_manager.detail_rows()` inline and passes it. `ViewData` itself is unchanged; the summary-banner text reads `data.portal_indicator.health` (already carried).
+
+2. **`RECENT_SUCCESS_CAP: usize = 5`** is exposed as a module-level `pub const` rather than being inlined as a magic number. Tests reference the same constant (`assert_eq!(m.recent_successes.len(), RECENT_SUCCESS_CAP)`), making the cap grep-able and the intent self-documenting.
+
+3. **`on_item_resolved` additionally calls `mark_recent_success()`** to light the 10-second green-checkmark overlay. The plan did not explicitly require this. Rationale: `ItemResolved` is the only signal the portal background task emits for a successful submit, and the existing `mark_recent_success` method was built for exactly this flash. Without this call, the overlay would only appear for happy-path resolutions that never hit the queue — which is a bug, not a feature. Code-quality reviewer confirmed this is a sensible consolidation and that no duplicate-flash hazard exists (this is the ONLY non-test site that calls `mark_recent_success`).
+
+4. **`ITEM_RETRY_INTERVAL: TimeDuration = TimeDuration::seconds(15)`** extracted as a public constant in `refbox/src/portal_manager/health.rs`. A hard-coded 15-second literal previously lived inside `is_item_retry_eligible()`; extracting it gives `detail_rows()` a single source of truth for the countdown derivation, so changing the retry cadence now propagates to both the background retry loop and the Pending-row countdown simultaneously. The retry-loop behavior is byte-for-byte preserved.
+
+5. **`retry_in_secs` computed live in `detail_rows()`**, not deferred to a later task as an earlier interpretation suggested. The plan's inline comment `retry_in_secs: None, // computed at render time from last_attempt_at` was originally ambiguous; Task 14 resolves it to "computed inside `detail_rows()` from `last_attempt_at + ITEM_RETRY_INTERVAL - now`, with a `<= now` guard returning `None` (rendered as 'tap to retry')". Because the interval is 15s, `retry_in_secs` can only be in `1..=15` when `Some`, which the view's `"retry in 0:{:02}"` format renders cleanly without a ceiling bug.
+
+6. **`on_item_resolved` is idempotent under two edge cases:** duplicate delivery (id already in `recent_successes`) and unknown id (id not in queue). Both short-circuit before any queue mutation, save, overlay flash, or snapshot push. This closes the main-thread-queue gap flagged during Task 13 review AND hardens against future Task 15 FORCE-path races where the background task might resolve an item already removed by the operator. Code-quality reviewer verified both guards short-circuit before the mutation chain; the duplicate-after-ring-eviction case (first copy evicted past the 5-entry cap before a duplicate arrives) is caught by the second guard.
+
+7. **`stats_only: bool` field on `DetailRow::Pending`** is plumbed through the enum and view match but always set to `false` by `detail_rows()`. The queued-item type does not currently carry a score-only-vs-stats-only flag; the field is reserved for a future task that distinguishes the two submission modes. The `(Some(secs), true)` and `(None, true)` arms of the view match are dead code until then.
+
+**Reviewer polish items folded in during Task 14:**
+
+- **Title text** in `portal_detail.rs` — `text("PORTAL").size(MEDIUM_TEXT)` from Task 13 scaffolding replaced by the health-derived summary text (`"PORTAL — CONNECTED · All clear"` / `"PORTAL — CHECKING…"` / `"PORTAL — ISSUES"`), as the Task 13 amendment noted would self-heal.
+- **`Message::PortalEvent(_)` handler** in `app/mod.rs` widened from a Task-13 stub discarding the payload to a variant match: `PortalEvent::ItemResolved(id)` routes to `PortalManager::on_item_resolved(id)`; other variants (including `HealthProbeTick`) reduce to `ui_tick()`.
+- **Two of six scaffolding `#[allow(dead_code)]` attributes removed** (on `Message::PortalRowTapped` and `Message::PortalGoToLogin`, both now constructed by the detail-page row buttons). Four remain pending on `Message::PortalForceSubmit`, `Message::PortalDiscardTapped`, `AppState::PortalAttentionAction`, and `AppState::PortalTokenExpiredAction` — all wired by Tasks 15/16.
+
+**Not folded in (still pending from Task 13 review):**
+
+- **`PartialEq` comment clarification for `Message::PortalEvent`** (message.rs around line 359) — Task 14 did not touch that file's `PartialEq` impl, so the comment remains as Task 13 left it. Carry forward for whichever later task next edits that area.
+- **Module-level `const PORTAL_EVENTS_SUB_ID: &str = "portal-events"`** — Task 14 did not touch `subscription()`, so the bare string literal remains. Carry forward.
+
+**Carry-forward notes for Tasks 15/16 from the Task 14 code-quality re-review:**
+
+1. **CI-flake risk in `detail_rows_pending_row_exposes_retry_in_secs_when_last_attempt_recorded`.** The test expects `retry_in_secs` in `8..=10` based on `last_attempt_at = now - 5s` and a 15s interval. Under heavy CI load, >2s of elapsed wall time between the test's `now` and `detail_rows()`' own `now` could land at 7 and fail. Widen to `6..=10` or mock the clock if this test ever flakes.
+2. **Silent unknown-id return in `on_item_resolved`.** If a future task needs to diagnose "why didn't my resolution land", the silent return is invisible. Consider `log::debug!("on_item_resolved for unknown id {id:?}")` later. Not required now; silence is consistent with the "never invent a phantom row" intent.
+3. **`ITEM_RETRY_INTERVAL` is now shared** between the retry loop and the countdown display. Any change to the retry cadence changes both simultaneously — intended behavior, but worth knowing.
+4. **`retry_in_secs` and `stats_only` semantics for Pending rows** — Task 14 treats `retry_in_secs` as live-computed from `last_attempt_at`, and `stats_only` as reserved-always-false. Tasks 15/16 should continue both conventions unless explicitly changing them.
+
+**Architectural bindings carried forward (all in force entering Task 15):**
+
+- `ViewData` carries `portal_indicator`; view builders read from `data`, not `self`. Extra per-page arguments (like Task 14's `rows: Vec<DetailRow>`) may follow `data` positionally.
+- `PortalManager::detail_rows()` and `PortalManager::on_item_resolved()` are public API.
+- `ITEM_RETRY_INTERVAL` is the authoritative retry cadence.
+- `RECENT_SUCCESS_CAP` is the authoritative ring size.
+- `RefBoxApp::set_current_event_id` remains the only sanctioned write path for `current_event_id`.
+- Degraded-mode startup is the production I/O-failure fallback.
+- UI refresh timer (1 Hz `PortalUiTick`) remains isolated from the game clock, penalty clocks, and `POLL_INTERVAL`.
+- `SelectedEventId` is the canonical type name.
+
 ---
 
 ### Task 15: Attention action page (stuck items) and row-tap dispatch

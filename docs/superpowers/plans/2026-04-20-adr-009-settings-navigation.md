@@ -18,6 +18,29 @@
 
 ---
 
+## Process notes (added 2026-04-23, before execution)
+
+This plan executes under the lean process from `.claude/rules/plan-execution.md`. All 15 tasks
+are inside `refbox` — a lower-blast-radius crate — so the ceremony is dialled down:
+
+1. **No per-task deviation commits.** If a task deviates from what is written here, note it in
+   the PR description or append to a "Deviations" section at the bottom of this plan. Do not
+   create `docs(workspace): record Task N deviations` commits during execution.
+2. **One code review at the end of the feature, not per task.** Run
+   `superpowers:requesting-code-review` once after Task 15 (full regression walkthrough) is
+   complete, before opening the PR.
+3. **Skip `verification-before-completion` ceremony on mechanical tasks.** Task 1 (English
+   translation keys), Task 2 (enum variant + routing), Task 5 (per-page Apply/Cancel message
+   variants), and Task 14 (non-English translations) are wire-up/translation only. For those,
+   `just check` passing is sufficient evidence of correctness. Keep the full verification
+   workflow for tasks that change user-visible behaviour (Tasks 6, 7, 8, 9, 10, 11, 12, 13) and
+   for Task 15 (end-to-end regression walkthrough).
+4. **Do not amend ADR 009 mid-execution.** If execution reveals a gap in ADR 009, note it at
+   the bottom of this plan and address the ADR in a single amendment at the end — or leave
+   ADR 009 accurate-as-of-approval and describe any drift in the PR.
+
+---
+
 ## File Structure
 
 Files to touch:
@@ -96,27 +119,19 @@ Expected: PASS. If it does not pass on `master`, stop and escalate — the refac
 
 ---
 
-## Phase 1 — Translation scaffolding
+## Phase 1 — English translation scaffolding
 
-### Task 1: Add `apply` and `user-options` translation keys to all 15 locales
+### Task 1: Add `apply` and `user-options` translation keys to the English locale only
+
+Only `en-US/refbox.ftl` is touched here. The 14 non-English locales are deliberately deferred to Task 14 (new phase 5), so that any English wording we iterate on during Tasks 2–13 does not force re-translation across every language.
+
+**Why this is safe at compile time:** `refbox/i18n.toml` sets `fallback_language = "en-US"`, and the `i18n_embed_fl::fl!` macro only verifies keys at compile time against the fallback locale. `just check` will pass for Tasks 2–13 with keys present only in `en-US`. Missing keys in the other 14 locales do **not** fail compilation or tests — they fall back silently to the English string at runtime when a non-English language is selected.
+
+**Why this is a known risk:** because there is no automated check for non-English coverage, skipping Task 14 would ship a release where the 14 non-English locales show English text for `apply` and `user-options`. Task 14 is therefore load-bearing for release-readiness and must not be skipped.
 
 **Files:**
 
-- Modify: `refbox/translations/de-DE/refbox.ftl`
 - Modify: `refbox/translations/en-US/refbox.ftl`
-- Modify: `refbox/translations/es/refbox.ftl`
-- Modify: `refbox/translations/fr/refbox.ftl`
-- Modify: `refbox/translations/id-ID/refbox.ftl`
-- Modify: `refbox/translations/it-IT/refbox.ftl`
-- Modify: `refbox/translations/ja-JP/refbox.ftl`
-- Modify: `refbox/translations/ko-KR/refbox.ftl`
-- Modify: `refbox/translations/ms-MY/refbox.ftl`
-- Modify: `refbox/translations/nl-NL/refbox.ftl`
-- Modify: `refbox/translations/pt-PT/refbox.ftl`
-- Modify: `refbox/translations/th-TH/refbox.ftl`
-- Modify: `refbox/translations/tl-PH/refbox.ftl`
-- Modify: `refbox/translations/tr-TR/refbox.ftl`
-- Modify: `refbox/translations/zh-CN/refbox.ftl`
 
 - [ ] **Step 1: Add the two new keys in English.**
 
@@ -127,39 +142,18 @@ apply = APPLY
 user-options = USER OPTIONS
 ```
 
-- [ ] **Step 2: Add each key to every other locale.**
-
-For each of the remaining 14 locales, add `apply` and `user-options` with localised uppercase values. Reasonable defaults (an operator who reads the language will want to verify these; the author is the accepted translator for now — escalate to the user for any they want a native speaker to validate):
-
-| locale | apply | user-options |
-|--------|-------|--------------|
-| de-DE  | ANWENDEN | BENUTZEROPTIONEN |
-| es     | APLICAR | OPCIONES DE USUARIO |
-| fr     | APPLIQUER | OPTIONS UTILISATEUR |
-| id-ID  | TERAPKAN | OPSI PENGGUNA |
-| it-IT  | APPLICA | OPZIONI UTENTE |
-| ja-JP  | 適用 | ユーザー設定 |
-| ko-KR  | 적용 | 사용자 옵션 |
-| ms-MY  | GUNA | PILIHAN PENGGUNA |
-| nl-NL  | TOEPASSEN | GEBRUIKERSOPTIES |
-| pt-PT  | APLICAR | OPÇÕES DO UTILIZADOR |
-| th-TH  | ใช้ | ตัวเลือกผู้ใช้ |
-| tl-PH  | ILAPAT | MGA OPSYON NG USER |
-| tr-TR  | UYGULA | KULLANICI SEÇENEKLERİ |
-| zh-CN  | 应用 | 用户选项 |
-
-- [ ] **Step 3: Format-check.**
+- [ ] **Step 2: Format-check.**
 
 Run: `just fmt-check && just lint`
 
 Expected: PASS. Translation files are not lint-checked, but this confirms no unrelated breakage.
 
-- [ ] **Step 4: Commit.**
+- [ ] **Step 3: Commit.**
 
 Pause for user approval, then:
 ```bash
-git add refbox/translations/
-git commit -m "chore(refbox): add apply and user-options translation keys"
+git add refbox/translations/en-US/refbox.ftl
+git commit -m "chore(refbox): add apply and user-options English translation keys"
 ```
 
 ---
@@ -830,7 +824,7 @@ After this step, the picker is only on Game Options (where it belongs per ADR 00
 
 - [ ] **Step 3: Confirm translation keys exist.**
 
-Grep the English locale for `game-options`, `app-options`, `language`. If any are missing, add them in all 15 locales (mirror the Task 1 translation table pattern).
+Grep the English locale for `game-options`, `app-options`, `language`. If any are missing, add them to `en-US/refbox.ftl` only — the non-English translations will be handled together in Task 14. Pause and flag any missing key to the user before continuing.
 
 - [ ] **Step 4: `cargo check` + `just lint`.**
 
@@ -1053,9 +1047,87 @@ git commit -m "feat(refbox): align Language chrome and retire global settings co
 
 ---
 
-## Phase 5 — Validation
+## Phase 5 — Non-English translations (post-UI-verification)
 
-### Task 14: Full regression walkthrough
+### Task 14: Add non-English translations for `apply` and `user-options`
+
+**Prerequisite:** Tasks 2–13 are complete and the human has walked through the English UI and confirmed the wording for `apply` and `user-options` is final. Translations below assume `APPLY` and `USER OPTIONS` — if the English wording changed during earlier tasks, the table below must be re-confirmed against `en-US/refbox.ftl` before translating.
+
+**Files:**
+
+- Modify: `refbox/translations/de-DE/refbox.ftl`
+- Modify: `refbox/translations/es/refbox.ftl`
+- Modify: `refbox/translations/fr/refbox.ftl`
+- Modify: `refbox/translations/id-ID/refbox.ftl`
+- Modify: `refbox/translations/it-IT/refbox.ftl`
+- Modify: `refbox/translations/ja-JP/refbox.ftl`
+- Modify: `refbox/translations/ko-KR/refbox.ftl`
+- Modify: `refbox/translations/ms-MY/refbox.ftl`
+- Modify: `refbox/translations/nl-NL/refbox.ftl`
+- Modify: `refbox/translations/pt-PT/refbox.ftl`
+- Modify: `refbox/translations/th-TH/refbox.ftl`
+- Modify: `refbox/translations/tl-PH/refbox.ftl`
+- Modify: `refbox/translations/tr-TR/refbox.ftl`
+- Modify: `refbox/translations/zh-CN/refbox.ftl`
+
+- [ ] **Step 1: Confirm the English values are final.**
+
+Read `refbox/translations/en-US/refbox.ftl` and confirm the current values of `apply` and `user-options`. Pause and ask the user to confirm these are final before translating. If they have changed from `APPLY` / `USER OPTIONS` during earlier tasks, propose updated translations in the user's chat before editing any file.
+
+- [ ] **Step 2: Add any additional deferred-English keys surfaced during Tasks 2–13.**
+
+If Task 7 Step 3 (or any other task) flagged a missing key as needing deferred translation, include those keys in this task as well. Otherwise skip to Step 3.
+
+- [ ] **Step 3: Add each key to every other locale.**
+
+For each of the 14 non-English locales, add `apply` and `user-options` with localised uppercase values. Use the project's existing unverified-label convention (see `docs/superpowers/specs/2026-04-17-turkish-language-and-unverified-label-design.md`) for any values the human wants a native speaker to validate later. Reasonable defaults (assuming English remains `APPLY` / `USER OPTIONS`):
+
+| locale | apply | user-options |
+|--------|-------|--------------|
+| de-DE  | ANWENDEN | BENUTZEROPTIONEN |
+| es     | APLICAR | OPCIONES DE USUARIO |
+| fr     | APPLIQUER | OPTIONS UTILISATEUR |
+| id-ID  | TERAPKAN | OPSI PENGGUNA |
+| it-IT  | APPLICA | OPZIONI UTENTE |
+| ja-JP  | 適用 | ユーザー設定 |
+| ko-KR  | 적용 | 사용자 옵션 |
+| ms-MY  | GUNA | PILIHAN PENGGUNA |
+| nl-NL  | TOEPASSEN | GEBRUIKERSOPTIES |
+| pt-PT  | APLICAR | OPÇÕES DO UTILIZADOR |
+| th-TH  | ใช้ | ตัวเลือกผู้ใช้ |
+| tl-PH  | ILAPAT | MGA OPSYON NG USER |
+| tr-TR  | UYGULA | KULLANICI SEÇENEKLERİ |
+| zh-CN  | 应用 | 用户选项 |
+
+- [ ] **Step 4: Run `just check`.**
+
+Expected: PASS. Note that `just check` will pass even if a locale is missing a key (the fallback silently applies) — this step confirms no unrelated breakage, not translation coverage.
+
+- [ ] **Step 5: Verify coverage by hand.**
+
+For each of the 14 non-English locales, grep the file for the added keys:
+
+```bash
+for f in refbox/translations/*/refbox.ftl; do
+  echo "=== $f ==="
+  grep -c "^apply\b\|^user-options\b" "$f"
+done
+```
+
+Expected: every non-English locale reports `2` (both keys present). Any locale reporting `0` or `1` is missing a key and must be fixed before commit.
+
+- [ ] **Step 6: Commit.**
+
+```bash
+git add refbox/translations/
+git commit -m "chore(refbox): add non-English translations for apply and user-options"
+```
+
+---
+
+## Phase 6 — Validation
+
+### Task 15: Full regression walkthrough
 
 **Files:** none
 

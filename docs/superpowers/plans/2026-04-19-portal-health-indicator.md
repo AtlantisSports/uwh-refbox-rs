@@ -3498,6 +3498,24 @@ EOF
 )"
 ```
 
+#### Post-commit notes — Task 17 (added 2026-04-22)
+
+Task 17 shipped in a single commit: `5989eb3 feat(refbox): show portal advisory on confirm-score when red`. Both reviewers approved cleanly — spec reviewer ✅ spec compliant; code-quality reviewer Approved with one minor cosmetic finding.
+
+**Pre-authorized deviations from the dispatch:**
+
+1. **Used existing `ViewData.portal_indicator` field** instead of adding a new `portal_health: HealthState` parameter — matches the established Task 14/15/16 convention.
+2. **English translation key added in Task 17** (not Task 21) to keep the build functional between Task 17 and Task 21. Key landed at `refbox/translations/en-US/refbox.ftl:182`, grouped with other confirm-screen keys. The commit message's "Translation key portal-advisory-at-game-end added in Task 21" is technically wrong in scope (the EN copy landed now; the other locales land in Task 21); accept as-is since the intent is clear.
+3. **Modified only `build_score_confirmation_page`** at `confirmation.rs:136` (the ConfirmScores-reachable function). The other `build_confirmation_page` at line 12 (general confirmation dialog) was untouched.
+
+**Reviewer's minor cosmetic finding:** The commit message says "13 missing-locale build-script warnings" — actual count is **14** (`de-DE`, `es`, `fr`, `id-ID`, `it-IT`, `ja-JP`, `ko-KR`, `ms-MY`, `nl-NL`, `pt-PT`, `th-TH`, `tl-PH`, `tr-TR`, `zh-CN`). These `cargo:warning=` build-script messages do NOT trip clippy `-D warnings` (that flag only hardens rustc lints), so `just check` is clean on Task 17's commit. **Task 21 must backfill the key in all 14 locales, not 13.**
+
+**Carry-forward for Task 21:**
+- 14 locale FTL files need `portal-advisory-at-game-end` backfilled (one more than the commit message says).
+- All other user-visible strings on the detail page, attention-action page, and token-expired action page from Tasks 14/15/16 are also hard-coded English and will need translation keys — Task 21's scope is larger than just this one key.
+
+**Architectural bindings unchanged** entering Task 18 (the load-bearing wire-up where `handle_game_end()` actually starts routing through `PortalManager`, making the feature live end-to-end for the first time).
+
 ---
 
 ### Task 18: Route `handle_game_end()` through `PortalManager`

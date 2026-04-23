@@ -544,6 +544,7 @@ pub enum ScrollOption {
     White,
     Equal,
     GameParameter,
+    PortalDetail,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

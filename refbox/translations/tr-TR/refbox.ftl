@@ -355,22 +355,21 @@ unsportsmanlike = Sportmenlik Dışı Davranış
 free-arm = Serbest Kol
 false-start = Hatalı Başlangıç
 
+
 # Portal Health Indicator
-portal-summary-connected = PORTAL — BAĞLI · Her şey yolunda
-portal-summary-checking = PORTAL — KONTROL EDİLİYOR…
-portal-summary-issues = PORTAL — SORUNLAR
-portal-row-token-expired = Portal oturumu süresi doldu — yeniden giriş için dokun
-portal-row-stuck = O{ $game } · Dikkat gerekli · { $attempts } deneme
-portal-row-pending = O{ $game } · Beklemede · { $attempts } deneme · 0:{ $secs } sonra yeniden denenecek
-portal-row-pending-tap = O{ $game } · Beklemede · { $attempts } deneme · yeniden denemek için dokun
-portal-row-pending-stats-only = O{ $game } · Beklemede · yalnızca istatistik · 0:{ $secs } sonra yeniden denenecek
-portal-row-recent = O{ $game } · { $mins } dk önce gönderildi
-portal-action-force-submit = BU OYUN SONUCUNU ZORLA GÖNDER
-portal-action-discard = BU GÖNDERİMİ AT
-portal-action-discard-confirm = ATMAYI ONAYLAMAK İÇİN TEKRAR DOKUN
-portal-action-go-to-login = GİRİŞE GİT
-portal-page-title-attention = Oyun { $game } · Dikkat gerekli
-portal-page-title-token-expired = Portal oturumu süresi doldu
-portal-page-body-token-expired = UWH Portal oturumunun süresi doldu. Tekrar giriş yapana kadar kuyruktaki sonuçlar gönderilemez. Yeniden kimlik doğrulamak için GİRİŞE GİT'e dokun.
-portal-page-attention-info = Bu sonuç { $attempts } denemeden sonra UWH Portal tarafından kabul edilmedi. Refbox değeri: { $black }-{ $white }
-portal-advisory-at-game-end = Portal sorunu tespit edildi. Sonuç yine de kuyruğa alınacak — çözmek için bir yöneticiye başvurun.
+# NOTE: Awaiting native-speaker translation; English placeholders for now.
+portal-summary-title = UWH PORTAL STATUS
+portal-row-token-expired = Portal login expired — tap to re-login
+portal-row-stuck = Game { $game } Score send error, tap to fix
+portal-row-pending = Game { $game } Score not sent, tap to retry
+portal-row-recent = Game { $game } · Submitted { $mins } min ago
+portal-action-force-submit = Retry this game result
+portal-action-discard = Discard this game result
+portal-action-discard-confirm = TAP AGAIN TO CONFIRM DISCARD
+portal-action-go-to-login = GO TO LOGIN
+portal-page-title-attention = Game { $game } score submission error
+portal-page-title-token-expired = Portal login expired
+portal-page-body-token-expired = The UWH Portal login has expired. Queued scores cannot be sent until you log in again. Tap GO TO LOGIN to re-authenticate.
+portal-page-attention-info = Likely due to a connection error, the game result has not been accepted on UWH Portal
+portal-page-attention-score = Stored game result: Light { $white } - Dark { $black }
+portal-advisory-at-game-end = Portal issue detected. Score will still be queued — find an admin to resolve.

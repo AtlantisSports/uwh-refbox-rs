@@ -355,22 +355,21 @@ unsportsmanlike = 不体育行为
 free-arm = 自由臂犯规
 false-start = 抢跑
 
+
 # Portal Health Indicator
-portal-summary-connected = PORTAL — 已连接 · 一切正常
-portal-summary-checking = PORTAL — 检查中…
-portal-summary-issues = PORTAL — 存在问题
-portal-row-token-expired = 门户会话已过期 — 点击重新登录
-portal-row-stuck = G{ $game } · 需要处理 · { $attempts } 次尝试
-portal-row-pending = G{ $game } · 待处理 · { $attempts } 次尝试 · 0:{ $secs } 后重试
-portal-row-pending-tap = G{ $game } · 待处理 · { $attempts } 次尝试 · 点击重试
-portal-row-pending-stats-only = G{ $game } · 待处理 · 仅统计 · 0:{ $secs } 后重试
-portal-row-recent = G{ $game } · { $mins } 分钟前已提交
-portal-action-force-submit = 强制提交此比赛结果
-portal-action-discard = 放弃此次提交
-portal-action-discard-confirm = 再次点击以确认放弃
-portal-action-go-to-login = 前往登录
-portal-page-title-attention = 比赛 { $game } · 需要处理
-portal-page-title-token-expired = 门户会话已过期
-portal-page-body-token-expired = UWH Portal 会话已过期。排队中的结果在你重新登录前无法发送。点击前往登录以重新认证。
-portal-page-attention-info = 经过 { $attempts } 次尝试后,UWH Portal 仍未接受此结果。Refbox 值: { $black }-{ $white }
-portal-advisory-at-game-end = 检测到门户问题。结果仍会排队 — 请找管理员解决。
+# NOTE: Awaiting native-speaker translation; English placeholders for now.
+portal-summary-title = UWH PORTAL STATUS
+portal-row-token-expired = Portal login expired — tap to re-login
+portal-row-stuck = Game { $game } Score send error, tap to fix
+portal-row-pending = Game { $game } Score not sent, tap to retry
+portal-row-recent = Game { $game } · Submitted { $mins } min ago
+portal-action-force-submit = Retry this game result
+portal-action-discard = Discard this game result
+portal-action-discard-confirm = TAP AGAIN TO CONFIRM DISCARD
+portal-action-go-to-login = GO TO LOGIN
+portal-page-title-attention = Game { $game } score submission error
+portal-page-title-token-expired = Portal login expired
+portal-page-body-token-expired = The UWH Portal login has expired. Queued scores cannot be sent until you log in again. Tap GO TO LOGIN to re-authenticate.
+portal-page-attention-info = Likely due to a connection error, the game result has not been accepted on UWH Portal
+portal-page-attention-score = Stored game result: Light { $white } - Dark { $black }
+portal-advisory-at-game-end = Portal issue detected. Score will still be queued — find an admin to resolve.

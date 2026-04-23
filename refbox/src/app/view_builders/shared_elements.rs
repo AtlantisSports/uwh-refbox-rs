@@ -1,11 +1,11 @@
 use super::*;
-use crate::portal_manager::{HealthState, OverlayState, PortalIndicatorState};
+use crate::portal_manager::{HealthState, PortalIndicatorState};
 use enum_iterator::all;
 use iced::{
     Alignment, Background, Border, Length, Theme,
     alignment::{Horizontal, Vertical},
     widget::{
-        Button, Container, Image, Row, Space, Stack, Text, button, container,
+        Button, Container, Image, Row, Space, Text, button, container,
         container::Style as ContainerStyle, horizontal_space, image, svg, svg::Svg, text,
         text::Style as TextStyle, vertical_space,
     },
@@ -301,10 +301,8 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
 /// from `HEALTH_DOT_SIZE / HEALTH_TILE_SIZE`.
 ///
 /// The UWH Portal logo sits above the coloured dot. The dot's colour
-/// reflects `state.health` (Green / Yellow / Red). When `state.overlay`
-/// is `AttentionNeeded`, a red exclamation SVG is stacked on top of
-/// the dot. The whole tile is a button that fires
-/// `Message::OpenPortalDetailPage` when tapped.
+/// reflects `state.health` (Green / Yellow / Red). The whole tile is
+/// a button that fires `Message::OpenPortalDetailPage` when tapped.
 pub(super) fn make_health_tile<'a>(
     state: PortalIndicatorState,
     tile_size: f32,
@@ -333,25 +331,7 @@ pub(super) fn make_health_tile<'a>(
         .height(Length::Fixed(dot_size))
         .style(dot_style);
 
-    let dot_with_overlay: Element<'a, Message> = match state.overlay {
-        OverlayState::None => dot.into(),
-        OverlayState::AttentionNeeded => Stack::new()
-            .push(dot)
-            .push(
-                container(
-                    Svg::new(svg::Handle::from_memory(
-                        &include_bytes!("../../../resources/exclamation.svg")[..],
-                    ))
-                    .style(black_svg),
-                )
-                .center_x(Length::Fill)
-                .center_y(Length::Fill)
-                .padding(PADDING),
-            )
-            .width(Length::Fixed(dot_size))
-            .height(Length::Fixed(dot_size))
-            .into(),
-    };
+    let dot_with_overlay: Element<'a, Message> = dot.into();
 
     let logo = Image::new(image::Handle::from_bytes(
         &include_bytes!("../../../resources/UWH_Portal_Compact_Logo.png")[..],

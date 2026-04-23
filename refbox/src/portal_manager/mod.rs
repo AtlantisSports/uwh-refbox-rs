@@ -211,27 +211,16 @@ pub enum HealthState {
     Red,
 }
 
-/// Overlay icon currently showing on top of the status dot.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OverlayState {
-    /// Plain dot, no overlay.
-    None,
-    /// Red exclamation mark (persists while any item needs attention).
-    AttentionNeeded,
-}
-
 /// Combined state consumed by the time-banner helper.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PortalIndicatorState {
     pub health: HealthState,
-    pub overlay: OverlayState,
 }
 
 impl Default for PortalIndicatorState {
     fn default() -> Self {
         Self {
             health: HealthState::Green,
-            overlay: OverlayState::None,
         }
     }
 }
@@ -371,13 +360,7 @@ impl PortalManager {
             HealthState::Green
         };
 
-        let overlay = if self.needs_attention() {
-            OverlayState::AttentionNeeded
-        } else {
-            OverlayState::None
-        };
-
-        self.indicator_state = PortalIndicatorState { health, overlay };
+        self.indicator_state = PortalIndicatorState { health };
     }
 
     fn find_mut(&mut self, id: &ItemId) -> Option<&mut QueuedItem> {
@@ -710,36 +693,32 @@ mod tests {
     fn empty_queue_and_no_problems_is_green() {
         let m = PortalManager::new_for_test(QueueFile::empty(), false, false);
         assert_eq!(m.indicator_state().health, HealthState::Green);
-        assert_eq!(m.indicator_state().overlay, OverlayState::None);
     }
 
     #[test]
-    fn young_pending_item_is_yellow_no_overlay() {
+    fn young_pending_item_is_yellow() {
         let q = QueueFile {
             version: 1,
             items: vec![mk_young_item()],
         };
         let m = PortalManager::new_for_test(q, false, false);
         assert_eq!(m.indicator_state().health, HealthState::Yellow);
-        assert_eq!(m.indicator_state().overlay, OverlayState::None);
     }
 
     #[test]
-    fn stuck_item_is_red_with_attention_overlay() {
+    fn stuck_item_is_red() {
         let q = QueueFile {
             version: 1,
             items: vec![mk_stuck_item()],
         };
         let m = PortalManager::new_for_test(q, false, false);
         assert_eq!(m.indicator_state().health, HealthState::Red);
-        assert_eq!(m.indicator_state().overlay, OverlayState::AttentionNeeded);
     }
 
     #[test]
-    fn token_known_problem_is_red_with_attention_overlay() {
+    fn token_known_problem_is_red() {
         let m = PortalManager::new_for_test(QueueFile::empty(), false, true);
         assert_eq!(m.indicator_state().health, HealthState::Red);
-        assert_eq!(m.indicator_state().overlay, OverlayState::AttentionNeeded);
     }
 
     #[test]

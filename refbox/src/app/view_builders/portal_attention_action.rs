@@ -5,7 +5,7 @@ use iced::{
     alignment::Horizontal,
     widget::{
         button::{Status, Style},
-        column, container, horizontal_space, row, text, vertical_space,
+        column, container, row, text, vertical_space,
     },
 };
 
@@ -23,9 +23,8 @@ use iced::{
 /// Layout:
 /// - Game time banner at top
 /// - Title (MEDIUM_TEXT)
-/// - Two-line informational note with the stored score
-/// - Action row: Discard (1/3, yellow → red on confirm) | gap | Retry (1/3, green)
-/// - Back row: BACK (1/3, red, bottom-left) | gap | gap
+/// - Three-line informational note: problem, stored score, remediation
+/// - Button row: BACK (red) | Discard (yellow → red on confirm) | Retry (green)
 pub(in super::super) fn build_portal_attention_action<'a>(
     data: ViewData<'_, '_>,
     id: ItemId,
@@ -65,6 +64,7 @@ pub(in super::super) fn build_portal_attention_action<'a>(
                 black = black_score
             ))
             .size(SMALL_PLUS_TEXT),
+            text(fl!("portal-page-attention-remediation")).size(SMALL_PLUS_TEXT),
         ]
         .spacing(SPACING)
         .width(Length::Fill),
@@ -97,15 +97,11 @@ pub(in super::super) fn build_portal_attention_action<'a>(
         .on_press(Message::ClosePortalAttentionAction)
         .style(red_button);
 
-    let action_row = row![discard, horizontal_space(), retry,]
+    let button_row = row![back, discard, retry,]
         .spacing(SPACING)
         .width(Length::Fill);
 
-    let back_row = row![back, horizontal_space(), horizontal_space(),]
-        .spacing(SPACING)
-        .width(Length::Fill);
-
-    column![banner, title, note, vertical_space(), action_row, back_row,]
+    column![banner, title, note, vertical_space(), button_row,]
         .spacing(SPACING)
         .padding(PADDING)
         .align_x(Alignment::Center)

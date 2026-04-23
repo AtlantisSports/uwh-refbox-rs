@@ -359,7 +359,7 @@ false-start = Faux départs
 
 
 # Portal Health Indicator
-portal-summary-title = STATUT UWH PORTAL
+portal-summary-title = STATUT { $portal } PORTAL
 portal-row-token-expired = Session du portail expirée — touchez pour vous reconnecter
 portal-row-stuck = Match { $game } · Erreur d'envoi du résultat, touchez pour corriger
 portal-row-pending = Match { $game } · Résultat non envoyé, touchez pour réessayer
@@ -370,8 +370,8 @@ portal-action-discard-confirm = TOUCHEZ À NOUVEAU POUR CONFIRMER LA SUPPRESSION
 portal-action-go-to-login = ALLER À LA CONNEXION
 portal-page-title-attention = Match { $game } · Erreur d'envoi
 portal-page-title-token-expired = Session du portail expirée
-portal-page-body-token-expired = La session UWH Portal a expiré. Les résultats en file d'attente ne peuvent pas être envoyés tant que vous ne vous reconnectez pas. Touchez ALLER À LA CONNEXION pour vous authentifier.
-portal-page-attention-info = Le résultat du match n'a pas été accepté par UWH Portal
+portal-page-body-token-expired = La session { $portal } Portal a expiré. Les résultats en file d.attente ne peuvent pas être envoyés tant que vous ne vous reconnectez pas. Touchez ALLER À LA CONNEXION pour vous authentifier.
+portal-page-attention-info = Le résultat du match n.a pas été accepté par { $portal } Portal
 portal-page-attention-score = Résultat stocké : Clair { $white } - Foncé { $black }
 portal-page-attention-remediation = Vous pouvez Réessayer si la connexion est vérifiée, ou supprimer pour effacer l'erreur
 portal-advisory-at-game-end = Problème du portail détecté. Le résultat sera tout de même mis en file d'attente — trouvez un administrateur pour le résoudre.

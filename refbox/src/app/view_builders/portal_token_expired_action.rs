@@ -31,7 +31,11 @@ pub(in super::super) fn build_portal_token_expired_action<'a>(
     );
 
     let title = text(fl!("portal-page-title-token-expired")).size(MEDIUM_TEXT);
-    let body = text(fl!("portal-page-body-token-expired")).size(SMALL_PLUS_TEXT);
+    let body = text(fl!(
+        "portal-page-body-token-expired",
+        portal = portal_name_for_mode(mode)
+    ))
+    .size(SMALL_PLUS_TEXT);
 
     let login = button(text(fl!("portal-action-go-to-login")).size(SMALL_PLUS_TEXT))
         .on_press(Message::PortalGoToLogin)

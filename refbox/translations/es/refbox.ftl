@@ -368,7 +368,7 @@ false-start = Saque nulo
 
 
 # Portal Health Indicator
-portal-summary-title = ESTADO DE UWH PORTAL
+portal-summary-title = ESTADO DE { $portal } PORTAL
 portal-row-token-expired = Sesión del portal expirada — toca para iniciar sesión
 portal-row-stuck = Juego { $game } · Error al enviar resultado, toca para corregir
 portal-row-pending = Juego { $game } · Resultado no enviado, toca para reintentar
@@ -379,8 +379,8 @@ portal-action-discard-confirm = TOCA DE NUEVO PARA CONFIRMAR DESCARTE
 portal-action-go-to-login = IR A INICIAR SESIÓN
 portal-page-title-attention = Juego { $game } · Error de envío
 portal-page-title-token-expired = Sesión del portal expirada
-portal-page-body-token-expired = La sesión del UWH Portal ha expirado. Los resultados en cola no se pueden enviar hasta que inicies sesión de nuevo. Toca IR A INICIAR SESIÓN para autenticarte.
-portal-page-attention-info = El resultado del juego no ha sido aceptado por UWH Portal
+portal-page-body-token-expired = La sesión del { $portal } Portal ha expirado. Los resultados en cola no se pueden enviar hasta que inicies sesión de nuevo. Toca IR A INICIAR SESIÓN para autenticarte.
+portal-page-attention-info = El resultado del juego no ha sido aceptado por { $portal } Portal
 portal-page-attention-score = Resultado almacenado: Claro { $white } - Oscuro { $black }
 portal-page-attention-remediation = Puedes Reintentar si la conexión está verificada, o descartar para borrar el error
 portal-advisory-at-game-end = Problema del portal detectado. El resultado se encolará igualmente — busca a un administrador para resolverlo.

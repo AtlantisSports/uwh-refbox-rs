@@ -262,28 +262,13 @@ pub enum DetailRow {
     /// Shown at the top when `token_known_problem` is true. Tapping
     /// drives the operator through the portal re-login flow.
     TokenExpired,
-    /// A queued item that has crossed the 30-minute stuck threshold.
-    /// Tapping opens the attention action page (FORCE / DISCARD).
-    Stuck {
-        id: ItemId,
-        game_number: String,
-        attempts: u32,
-    },
+    /// A queued item that has crossed the stuck threshold.
+    /// Tapping opens the attention action page (Retry / Discard).
+    Stuck { id: ItemId, game_number: String },
     /// A queued item that is still in the auto-retry window
-    /// (< 30 min since it was queued). Informational. Tapping forces
-    /// an immediate retry attempt.
-    Pending {
-        id: ItemId,
-        game_number: String,
-        attempts: u32,
-        /// Seconds until the next scheduled automatic retry, if known.
-        /// None means "tap to retry" (no scheduled retry).
-        retry_in_secs: Option<u32>,
-        /// True if only the stats portion of this item is still pending
-        /// (score was already accepted). Reserved for future use; the
-        /// current implementation always returns false.
-        stats_only: bool,
-    },
+    /// (< stuck threshold since it was queued). Informational.
+    /// Tapping forces an immediate retry attempt.
+    Pending { id: ItemId, game_number: String },
     /// A recently-completed submission, shown as an informational
     /// green strip. Not tappable.
     RecentSuccess {
@@ -665,36 +650,14 @@ impl PortalManager {
                 out.push(DetailRow::Stuck {
                     id: it.id.clone(),
                     game_number: it.id.game_number.clone(),
-                    attempts: it.attempts,
                 });
             }
         }
         for it in &items {
             if !is_item_stuck(it, now) {
-                // Compute seconds until the background task's next retry
-                // window opens for this item. `last_attempt_at == None`
-                // means no attempt has happened yet, so the item is
-                // already retry-eligible and the view shows "tap to
-                // retry". Once an attempt has happened, the retry
-                // window opens `ITEM_RETRY_INTERVAL` later, and we
-                // display the remaining gap as a countdown. We clamp
-                // at zero (saturating) so a tick that arrives slightly
-                // after the window opens doesn't produce a negative.
-                let retry_in_secs = it.last_attempt_at.and_then(|last| {
-                    let next = last + health::ITEM_RETRY_INTERVAL;
-                    if next <= now {
-                        None
-                    } else {
-                        let remaining = next - now;
-                        u32::try_from(remaining.whole_seconds()).ok()
-                    }
-                });
                 out.push(DetailRow::Pending {
                     id: it.id.clone(),
                     game_number: it.id.game_number.clone(),
-                    attempts: it.attempts,
-                    retry_in_secs,
-                    stats_only: false,
                 });
             }
         }
@@ -1010,50 +973,6 @@ mod tests {
         assert!(m.queue.items.is_empty());
         assert_eq!(m.recent_successes.len(), 1);
         assert_eq!(m.recent_successes[0].id, id_a);
-    }
-
-    #[tokio::test]
-    async fn detail_rows_pending_row_exposes_retry_in_secs_when_last_attempt_recorded() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
-
-        // Enqueue a pending item, then simulate a recent failed attempt
-        // by stamping `last_attempt_at` ~5 seconds ago. The retry window
-        // opens `ITEM_RETRY_INTERVAL` (15s) after that, so the view
-        // should see roughly 10 seconds remaining.
-        m.enqueue_game_end("e".into(), "G1".into(), 0, 0, "{}".into())
-            .unwrap();
-        let now = OffsetDateTime::now_utc();
-        m.queue.items[0].last_attempt_at = Some(now - TimeDuration::seconds(5));
-
-        let rows = m.detail_rows();
-        let pending_secs = rows.iter().find_map(|r| match r {
-            DetailRow::Pending { retry_in_secs, .. } => Some(*retry_in_secs),
-            _ => None,
-        });
-        let secs = pending_secs
-            .expect("expected a Pending row")
-            .expect("retry_in_secs should be Some when last_attempt_at is recent");
-        // Allow a small window (8..=10) to absorb scheduler jitter
-        // between the timestamp stamp and `detail_rows`' own `now`.
-        assert!(
-            (8..=10).contains(&secs),
-            "retry_in_secs = {secs}, expected ~10"
-        );
-
-        // An item that has never been attempted still reports None
-        // (view renders "tap to retry").
-        m.queue.items[0].last_attempt_at = None;
-        let rows = m.detail_rows();
-        let pending_secs = rows.iter().find_map(|r| match r {
-            DetailRow::Pending { retry_in_secs, .. } => Some(*retry_in_secs),
-            _ => None,
-        });
-        assert_eq!(
-            pending_secs.expect("expected a Pending row"),
-            None,
-            "retry_in_secs should be None when last_attempt_at is not set"
-        );
     }
 
     #[tokio::test]

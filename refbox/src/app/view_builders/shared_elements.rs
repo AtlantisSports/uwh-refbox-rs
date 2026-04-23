@@ -403,7 +403,7 @@ pub(super) fn make_game_time_button<'a>(
     editing_time: bool,
     mode: Mode,
     clock_running: bool,
-    portal_indicator: PortalIndicatorState,
+    portal_indicator: Option<PortalIndicatorState>,
 ) -> Row<'a, Message> {
     let make_red = if editing_time {
         false
@@ -577,11 +577,18 @@ pub(super) fn make_game_time_button<'a>(
             Message::EditTime
         });
 
-    let mut time_row = row![make_health_tile(portal_indicator), time_button]
-        .height(button_height)
-        .width(Length::Fill)
-        .spacing(SPACING)
-        .align_y(Alignment::Center);
+    // When no portal event is linked, the health tile is not rendered
+    // and the banner falls back to the pre-feature layout. See
+    // `ViewData.portal_indicator` and ADR 011 amendment 2026-04-23.
+    let mut time_row = if let Some(state) = portal_indicator {
+        row![make_health_tile(state), time_button]
+    } else {
+        row![time_button]
+    }
+    .height(button_height)
+    .width(Length::Fill)
+    .spacing(SPACING)
+    .align_y(Alignment::Center);
 
     if mode == Mode::Rugby {
         let play_pause_icon = container(

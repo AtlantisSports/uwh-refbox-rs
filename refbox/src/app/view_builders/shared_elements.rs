@@ -295,14 +295,22 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
 
 /// Build the portal-health tile shown at the left end of the time banner.
 ///
-/// Size: 130x130 container, with the UWH Portal logo on top and a
-/// 50x50 coloured round dot beneath. The dot's colour reflects
-/// `state.health` (Green / Yellow / Red). When `state.overlay` is
-/// `RecentSuccess` or `AttentionNeeded`, an SVG icon (checkmark or
+/// The tile is a `tile_size x tile_size` square. Callers pass the
+/// banner's outer height so the tile fills the banner vertically on
+/// both "tall" and "short" pages; the status dot scales proportionally
+/// from `HEALTH_DOT_SIZE / HEALTH_TILE_SIZE`.
+///
+/// The UWH Portal logo sits above the coloured dot. The dot's colour
+/// reflects `state.health` (Green / Yellow / Red). When `state.overlay`
+/// is `RecentSuccess` or `AttentionNeeded`, an SVG icon (checkmark or
 /// exclamation) is stacked on top of the dot. The whole tile is a
-/// button that fires `Message::OpenPortalDetailPage` when tapped;
-/// Task 13 will route that message to the detail page.
-pub(super) fn make_health_tile<'a>(state: PortalIndicatorState) -> Element<'a, Message> {
+/// button that fires `Message::OpenPortalDetailPage` when tapped.
+pub(super) fn make_health_tile<'a>(
+    state: PortalIndicatorState,
+    tile_size: f32,
+) -> Element<'a, Message> {
+    let dot_size = tile_size * HEALTH_DOT_SIZE / HEALTH_TILE_SIZE;
+
     let dot_color = match state.health {
         HealthState::Green => GREEN,
         HealthState::Yellow => YELLOW,
@@ -315,14 +323,14 @@ pub(super) fn make_health_tile<'a>(state: PortalIndicatorState) -> Element<'a, M
         border: Border {
             color: iced::Color::TRANSPARENT,
             width: 0.0,
-            radius: Radius::new(HEALTH_DOT_SIZE / 2.0),
+            radius: Radius::new(dot_size / 2.0),
         },
         shadow: Default::default(),
     };
 
     let dot = container(Space::new(Length::Fill, Length::Fill))
-        .width(Length::Fixed(HEALTH_DOT_SIZE))
-        .height(Length::Fixed(HEALTH_DOT_SIZE))
+        .width(Length::Fixed(dot_size))
+        .height(Length::Fixed(dot_size))
         .style(dot_style);
 
     let dot_with_overlay: Element<'a, Message> = match state.overlay {
@@ -340,8 +348,8 @@ pub(super) fn make_health_tile<'a>(state: PortalIndicatorState) -> Element<'a, M
                 .center_y(Length::Fill)
                 .padding(PADDING),
             )
-            .width(Length::Fixed(HEALTH_DOT_SIZE))
-            .height(Length::Fixed(HEALTH_DOT_SIZE))
+            .width(Length::Fixed(dot_size))
+            .height(Length::Fixed(dot_size))
             .into(),
         OverlayState::AttentionNeeded => Stack::new()
             .push(dot)
@@ -356,8 +364,8 @@ pub(super) fn make_health_tile<'a>(state: PortalIndicatorState) -> Element<'a, M
                 .center_y(Length::Fill)
                 .padding(PADDING),
             )
-            .width(Length::Fixed(HEALTH_DOT_SIZE))
-            .height(Length::Fixed(HEALTH_DOT_SIZE))
+            .width(Length::Fixed(dot_size))
+            .height(Length::Fixed(dot_size))
             .into(),
     };
 
@@ -389,8 +397,8 @@ pub(super) fn make_health_tile<'a>(state: PortalIndicatorState) -> Element<'a, M
             .center_x(Length::Fill)
             .center_y(Length::Fill),
     )
-    .width(Length::Fixed(HEALTH_TILE_SIZE))
-    .height(Length::Fixed(HEALTH_TILE_SIZE))
+    .width(Length::Fixed(tile_size))
+    .height(Length::Fixed(tile_size))
     .padding(0)
     .style(light_gray_button)
     .on_press(Message::OpenPortalDetailPage)
@@ -558,11 +566,16 @@ pub(super) fn make_game_time_button<'a>(
         }
     }
 
-    let button_height = if tall {
-        Length::Fixed(HEALTH_TILE_SIZE + PADDING + SMALL_PLUS_TEXT)
+    // The tile fills the banner height so it looks visually balanced on
+    // both tall (Main page, with a "NEXT GAME" label above the clock)
+    // and short banners. On short banners the tile is MIN_BUTTON_SIZE
+    // square; on tall banners it grows to match the taller banner.
+    let tile_size = if tall {
+        HEALTH_TILE_SIZE + PADDING + SMALL_PLUS_TEXT
     } else {
-        Length::Fixed(HEALTH_TILE_SIZE)
+        HEALTH_TILE_SIZE
     };
+    let button_height = Length::Fixed(tile_size);
 
     let button_style = if make_red { red_button } else { gray_button };
 
@@ -581,7 +594,7 @@ pub(super) fn make_game_time_button<'a>(
     // and the banner falls back to the pre-feature layout. See
     // `ViewData.portal_indicator` and ADR 011 amendment 2026-04-23.
     let mut time_row = if let Some(state) = portal_indicator {
-        row![make_health_tile(state), time_button]
+        row![make_health_tile(state, tile_size), time_button]
     } else {
         row![time_button]
     }

@@ -168,7 +168,9 @@ pub(in super::super) fn build_score_confirmation_page<'a>(
     .width(Length::Fill);
 
     let mut body = column![].spacing(SPACING).width(Length::Fill);
-    if portal_indicator.health == HealthState::Red {
+    // When no portal event is linked, no submission-path advisory can
+    // meaningfully apply, so the banner is suppressed entirely.
+    if portal_indicator.is_some_and(|s| s.health == HealthState::Red) {
         body = body.push(
             container(
                 text(fl!("portal-advisory-at-game-end"))

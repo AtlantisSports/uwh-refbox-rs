@@ -163,7 +163,7 @@ fn make_main_config_page<'a>(
     settings: &EditableSettings,
     mode: Mode,
     clock_running: bool,
-    portal_indicator: PortalIndicatorState,
+    portal_indicator: Option<PortalIndicatorState>,
 ) -> Element<'a, Message> {
     let EditableSettings {
         game_number,
@@ -278,7 +278,7 @@ fn make_event_config_page<'a>(
     events: Option<&BTreeMap<EventId, Event>>,
     mode: Mode,
     clock_running: bool,
-    portal_indicator: PortalIndicatorState,
+    portal_indicator: Option<PortalIndicatorState>,
 ) -> Element<'a, Message> {
     let EditableSettings {
         config,
@@ -580,7 +580,7 @@ fn make_app_config_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
     clock_running: bool,
-    portal_indicator: PortalIndicatorState,
+    portal_indicator: Option<PortalIndicatorState>,
 ) -> Element<'a, Message> {
     let EditableSettings {
         collect_scorer_cap_num,
@@ -662,7 +662,7 @@ fn make_display_config_page<'a>(
     settings: &EditableSettings,
     mode: Mode,
     clock_running: bool,
-    portal_indicator: PortalIndicatorState,
+    portal_indicator: Option<PortalIndicatorState>,
 ) -> Element<'a, Message> {
     let EditableSettings {
         white_on_right,
@@ -751,7 +751,7 @@ fn make_sound_config_page<'a>(
     settings: &EditableSettings,
     mode: Mode,
     clock_running: bool,
-    portal_indicator: PortalIndicatorState,
+    portal_indicator: Option<PortalIndicatorState>,
 ) -> Element<'a, Message> {
     let EditableSettings { sound, .. } = settings;
 
@@ -893,7 +893,7 @@ fn make_remote_config_page<'a>(
     listening: bool,
     mode: Mode,
     clock_running: bool,
-    portal_indicator: PortalIndicatorState,
+    portal_indicator: Option<PortalIndicatorState>,
 ) -> Element<'a, Message> {
     const REMOTES_LIST_LEN: usize = 4;
 
@@ -1086,7 +1086,7 @@ fn make_language_select_page<'a>(
     settings: &EditableSettings,
     mode: Mode,
     clock_running: bool,
-    portal_indicator: PortalIndicatorState,
+    portal_indicator: Option<PortalIndicatorState>,
 ) -> Element<'a, Message> {
     let selected = settings.pending_language.unwrap_or(Language::English);
     let original = settings.original_language.unwrap_or(Language::English);

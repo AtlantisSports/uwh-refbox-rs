@@ -2583,7 +2583,14 @@ impl RefBoxApp {
                     .as_ref()
                     .and_then(|events| events.get(id).and_then(|event| event.teams.as_ref()))
             }),
-            portal_indicator: self.portal_manager.indicator_state(),
+            // The portal health indicator is dormant until an event is
+            // linked: `Some` when the tile and its state are live,
+            // `None` when the time banner falls back to the pre-feature
+            // layout. See ADR 011 amendment 2026-04-23.
+            portal_indicator: self
+                .current_event_id
+                .as_ref()
+                .map(|_| self.portal_manager.indicator_state()),
         };
 
         let mut main_view = column![match self.app_state {

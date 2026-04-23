@@ -360,7 +360,7 @@ false-start = การออกตัวผิด
 
 # Portal Health Indicator
 # NOTE: Awaiting native-speaker translation; English placeholders for now.
-portal-summary-title = UWH PORTAL STATUS
+portal-summary-title = { $portal } PORTAL STATUS
 portal-row-token-expired = Portal login expired — tap to re-login
 portal-row-stuck = Game { $game } Score send error, tap to fix
 portal-row-pending = Game { $game } Score not sent, tap to retry
@@ -371,8 +371,8 @@ portal-action-discard-confirm = TAP AGAIN TO CONFIRM DISCARD
 portal-action-go-to-login = GO TO LOGIN
 portal-page-title-attention = Game { $game } submission error
 portal-page-title-token-expired = Portal login expired
-portal-page-body-token-expired = The UWH Portal login has expired. Queued scores cannot be sent until you log in again. Tap GO TO LOGIN to re-authenticate.
-portal-page-attention-info = The game result has not been accepted on UWH Portal
+portal-page-body-token-expired = The { $portal } Portal login has expired. Queued scores cannot be sent until you log in again. Tap GO TO LOGIN to re-authenticate.
+portal-page-attention-info = The game result has not been accepted on { $portal } Portal
 portal-page-attention-score = Stored game result: Light { $white } - Dark { $black }
 portal-page-attention-remediation = You can Retry if connection is verified, or discard to clear the error
 portal-advisory-at-game-end = Portal issue detected. Score will still be queued — find an admin to resolve.

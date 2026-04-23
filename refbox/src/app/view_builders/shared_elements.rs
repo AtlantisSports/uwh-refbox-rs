@@ -303,9 +303,20 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
 /// The UWH Portal logo sits above the coloured dot. The dot's colour
 /// reflects `state.health` (Green / Yellow / Red). The whole tile is
 /// a button that fires `Message::OpenPortalDetailPage` when tapped.
+/// Returns the operator-facing sport prefix for portal strings.
+/// "UWH" for underwater hockey modes; "UWR" for underwater rugby.
+/// View builders pass this into fl!() for keys that say `{ $portal }`.
+pub(super) fn portal_name_for_mode(mode: Mode) -> &'static str {
+    match mode {
+        Mode::Rugby => "UWR",
+        Mode::Hockey6V6 | Mode::Hockey3V3 => "UWH",
+    }
+}
+
 pub(super) fn make_health_tile<'a>(
     state: PortalIndicatorState,
     tile_size: f32,
+    mode: Mode,
 ) -> Element<'a, Message> {
     let dot_size = tile_size * HEALTH_DOT_SIZE / HEALTH_TILE_SIZE;
 
@@ -333,11 +344,20 @@ pub(super) fn make_health_tile<'a>(
 
     let dot_with_overlay: Element<'a, Message> = dot.into();
 
-    let logo = Image::new(image::Handle::from_bytes(
-        &include_bytes!("../../../resources/UWH_Portal_Compact_Logo.png")[..],
-    ))
-    .width(Length::Fill)
-    .height(Length::Fill);
+    // Logo picks the sport's portal emblem: UWR Compact Logo in Rugby
+    // mode, otherwise the UWH Portal Compact Logo. See ADR 016 for the
+    // broader UWR mode portal-routing work (pre-existing issue where
+    // the URL itself is not mode-aware; this file handles the visual
+    // side only).
+    let logo_bytes: &[u8] = match mode {
+        Mode::Rugby => &include_bytes!("../../../resources/UWR_Compact_Logo.png")[..],
+        Mode::Hockey6V6 | Mode::Hockey3V3 => {
+            &include_bytes!("../../../resources/UWH_Portal_Compact_Logo.png")[..]
+        }
+    };
+    let logo = Image::new(image::Handle::from_bytes(logo_bytes))
+        .width(Length::Fill)
+        .height(Length::Fill);
 
     let tile_contents = column![
         container(logo)
@@ -558,7 +578,7 @@ pub(super) fn make_game_time_button<'a>(
     // and the banner falls back to the pre-feature layout. See
     // `ViewData.portal_indicator` and ADR 011 amendment 2026-04-23.
     let mut time_row = if let Some(state) = portal_indicator {
-        row![make_health_tile(state, tile_size), time_button]
+        row![make_health_tile(state, tile_size, mode), time_button]
     } else {
         row![time_button]
     }

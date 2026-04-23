@@ -57,7 +57,11 @@ pub(in super::super) fn build_portal_attention_action<'a>(
 
     let note = container(
         column![
-            text(fl!("portal-page-attention-info")).size(SMALL_PLUS_TEXT),
+            text(fl!(
+                "portal-page-attention-info",
+                portal = portal_name_for_mode(mode)
+            ))
+            .size(SMALL_PLUS_TEXT),
             text(fl!(
                 "portal-page-attention-score",
                 white = white_score,

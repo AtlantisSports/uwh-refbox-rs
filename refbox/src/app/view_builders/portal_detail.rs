@@ -34,12 +34,15 @@ pub(in super::super) fn build_portal_detail_page<'a>(
         ..
     } = data;
 
-    let title = text(fl!("portal-summary-title"))
-        .height(Length::Fill)
-        .width(Length::Fill)
-        .align_x(Horizontal::Center)
-        .align_y(Vertical::Center)
-        .size(MEDIUM_TEXT);
+    let title = text(fl!(
+        "portal-summary-title",
+        portal = portal_name_for_mode(mode)
+    ))
+    .height(Length::Fill)
+    .width(Length::Fill)
+    .align_x(Horizontal::Center)
+    .align_y(Vertical::Center)
+    .size(MEDIUM_TEXT);
 
     let num_items = rows.len();
 

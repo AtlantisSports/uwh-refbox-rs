@@ -392,3 +392,56 @@ corrected for the two new body keys and the simplified
 `portal-summary-issues`, and Task 22's verification steps are rewritten
 around the local portal instance with a fallback note for
 `dev.uwhportal.com`.
+
+### 2026-04-23 — Dormant until event linked
+
+During Task 22 walkthrough prep, operator review surfaced that the
+health tile was rendering even before any portal event had been
+linked. The tile served no purpose in that state: no submission
+path, no retry queue traffic, no token to check. Worse, the
+background `verify_token` loop's URL construction with a stale
+saved event_id from a previous session would return a 404 response
+against the dev portal, cluttering the log without any
+user-actionable signal.
+
+This amendment refines the tile-visibility rule originally stated
+in the Decision section's "Status indicator" block:
+
+- **The tile is only rendered when a portal event is currently
+  linked** (that is, the operator has selected an event through
+  the refbox's portal-login flow and the selection is live in
+  `current_event_id`). When no event is linked, the time banner
+  falls back to its pre-feature layout — identical to what the
+  operator saw before this feature existed.
+- **The feature activates** when an event is picked through the
+  refbox's portal-login flow, and **deactivates** when the operator
+  unlinks or changes event. The round-trip through unlink-and-relink
+  is supported without restarting the app.
+- **The background health-check task already short-circuits**
+  `verify_token` when no event id is set (returning `Ok` without
+  making a network call), so no further changes to the background
+  side are required by this amendment.
+- **The confirm-score "portal red" advisory banner** is also
+  suppressed when no event is linked — without a submission path
+  there is no meaningful advisory to show.
+
+The original phrasing in the Decision section's "Status indicator"
+bullet — *"a square clickable tile is rendered at the left end of
+the top time banner on every page that already shows the banner"*
+— is superseded by this amendment: read it with the added
+qualifier *"on every banner-bearing page **once a portal event has
+been linked**"*.
+
+**Out of scope for this amendment:** behaviour when the retry
+queue has items but no event is linked (e.g. after a
+mid-tournament restart without re-linking). The queue persists
+each item with its own `event_id` so the retry loop can still
+fire for those items; the tile, however, stays hidden under this
+rule, so any stuck-item attention would only surface after the
+operator relinks to an event. This edge case is rare in practice
+and the operator's next re-link restores tile visibility.
+
+Code change lands on `feat/refbox/portal-health-indicator` at
+commit `34b0b17` — `feat(refbox): make portal health feature
+dormant until event linked`. The Deviations log entry for
+Task 22 captures the same change on the plan side.

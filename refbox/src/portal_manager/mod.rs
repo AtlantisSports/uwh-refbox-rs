@@ -9,7 +9,7 @@ pub mod queue;
 
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use time::{Duration as TimeDuration, OffsetDateTime};
 use tokio::sync::mpsc;
 
@@ -216,9 +216,6 @@ pub enum HealthState {
 pub enum OverlayState {
     /// Plain dot, no overlay.
     None,
-    /// Green checkmark shown until `deadline` (instant).
-    /// The view layer compares against `Instant::now()` to decide visibility.
-    RecentSuccess,
     /// Red exclamation mark (persists while any item needs attention).
     AttentionNeeded,
 }
@@ -304,9 +301,6 @@ struct RecentSuccess {
     submitted_at: Instant,
 }
 
-/// How long the green-checkmark overlay remains visible after a successful submit.
-pub const RECENT_SUCCESS_DURATION: Duration = Duration::from_secs(10);
-
 /// How long an item may sit in the queue before it escalates from
 /// Yellow (silently retrying) to Red (operator needs to decide).
 /// See ADR 011 amendment (2026-04-21).
@@ -323,7 +317,6 @@ pub struct PortalManager {
     /// the next successful probe or by `token_refreshed()` after the
     /// operator re-logs-in.
     token_known_problem: bool,
-    recent_success_until: Option<Instant>,
     indicator_state: PortalIndicatorState,
     command_tx: mpsc::Sender<health::PortalCommand>,
     config_dir: std::path::PathBuf,
@@ -346,7 +339,6 @@ impl PortalManager {
             queue,
             check_in_flight,
             token_known_problem,
-            recent_success_until: None,
             indicator_state: PortalIndicatorState::default(),
             command_tx: tx,
             config_dir: std::env::temp_dir(),
@@ -369,11 +361,6 @@ impl PortalManager {
     ///   indicator picks up anything that might have changed between
     ///   frames.
     pub fn ui_tick(&mut self) {
-        self.recompute_indicator();
-    }
-
-    pub fn mark_recent_success(&mut self) {
-        self.recent_success_until = Some(Instant::now() + RECENT_SUCCESS_DURATION);
         self.recompute_indicator();
     }
 
@@ -401,12 +388,6 @@ impl PortalManager {
 
         let overlay = if self.needs_attention() {
             OverlayState::AttentionNeeded
-        } else if self
-            .recent_success_until
-            .map(|t| Instant::now() < t)
-            .unwrap_or(false)
-        {
-            OverlayState::RecentSuccess
         } else {
             OverlayState::None
         };
@@ -456,7 +437,6 @@ impl PortalManager {
             queue,
             check_in_flight: false,
             token_known_problem: false,
-            recent_success_until: None,
             indicator_state: PortalIndicatorState::default(),
             command_tx,
             config_dir: config_dir.to_path_buf(),
@@ -492,7 +472,6 @@ impl PortalManager {
             check_in_flight: false,
             // Key: indicator will show Red so the operator sees the problem.
             token_known_problem: true,
-            recent_success_until: None,
             indicator_state: PortalIndicatorState::default(),
             command_tx,
             config_dir: std::env::temp_dir(),
@@ -659,7 +638,7 @@ impl PortalManager {
         if let Err(e) = queue::save(&self.config_dir, &self.queue) {
             log::warn!("portal queue save after item resolution failed: {e}");
         }
-        self.mark_recent_success();
+        self.recompute_indicator();
         self.push_queue_snapshot();
     }
 
@@ -804,24 +783,6 @@ mod tests {
     fn health_check_in_flight_is_yellow() {
         let m = PortalManager::new_for_test(QueueFile::empty(), true, false);
         assert_eq!(m.indicator_state().health, HealthState::Yellow);
-    }
-
-    #[test]
-    fn recent_success_overlay_is_suppressed_by_stuck_item() {
-        let q = QueueFile {
-            version: 1,
-            items: vec![mk_stuck_item()],
-        };
-        let mut m = PortalManager::new_for_test(q, false, false);
-        m.mark_recent_success();
-        assert_eq!(m.indicator_state().overlay, OverlayState::AttentionNeeded);
-    }
-
-    #[test]
-    fn recent_success_shows_when_queue_empty() {
-        let mut m = PortalManager::new_for_test(QueueFile::empty(), false, false);
-        m.mark_recent_success();
-        assert_eq!(m.indicator_state().overlay, OverlayState::RecentSuccess);
     }
 
     #[tokio::test]

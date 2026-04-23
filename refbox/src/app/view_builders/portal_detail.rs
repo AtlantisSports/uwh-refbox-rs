@@ -22,7 +22,12 @@ pub(in super::super) fn build_portal_detail_page<'a>(
         ..
     } = data;
 
-    let summary_text = match portal_indicator.health {
+    // The detail page is unreachable when no event is linked (the tile
+    // that opens it isn't rendered), so a dormant `portal_indicator`
+    // here would indicate a navigation bug. Fall back to the default
+    // indicator rather than panicking.
+    let health = portal_indicator.unwrap_or_default().health;
+    let summary_text = match health {
         HealthState::Green => fl!("portal-summary-connected"),
         HealthState::Yellow => fl!("portal-summary-checking"),
         HealthState::Red => fl!("portal-summary-issues"),

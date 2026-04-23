@@ -302,9 +302,9 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
 ///
 /// The UWH Portal logo sits above the coloured dot. The dot's colour
 /// reflects `state.health` (Green / Yellow / Red). When `state.overlay`
-/// is `RecentSuccess` or `AttentionNeeded`, an SVG icon (checkmark or
-/// exclamation) is stacked on top of the dot. The whole tile is a
-/// button that fires `Message::OpenPortalDetailPage` when tapped.
+/// is `AttentionNeeded`, a red exclamation SVG is stacked on top of
+/// the dot. The whole tile is a button that fires
+/// `Message::OpenPortalDetailPage` when tapped.
 pub(super) fn make_health_tile<'a>(
     state: PortalIndicatorState,
     tile_size: f32,
@@ -335,22 +335,6 @@ pub(super) fn make_health_tile<'a>(
 
     let dot_with_overlay: Element<'a, Message> = match state.overlay {
         OverlayState::None => dot.into(),
-        OverlayState::RecentSuccess => Stack::new()
-            .push(dot)
-            .push(
-                container(
-                    Svg::new(svg::Handle::from_memory(
-                        &include_bytes!("../../../resources/check_circle.svg")[..],
-                    ))
-                    .style(black_svg),
-                )
-                .center_x(Length::Fill)
-                .center_y(Length::Fill)
-                .padding(PADDING),
-            )
-            .width(Length::Fixed(dot_size))
-            .height(Length::Fixed(dot_size))
-            .into(),
         OverlayState::AttentionNeeded => Stack::new()
             .push(dot)
             .push(

@@ -4030,3 +4030,31 @@ Task 21 shipped in a single commit: `66c7576 feat(refbox): externalize portal he
 - **`tl-PH`** — `TAPON` (throw away) literal register chosen for DISCARD; a native speaker might prefer `KANSELA`.
 
 **Unrelated environmental issue surfaced during validation:** `cargo audit` started reporting a new vulnerability advisory `RUSTSEC-2026-0104` in `rustls-webpki 0.103.12` (a transitive dep), published 2026-04-22. This predates Task 21 and is not caused by any translation change. Needs a separate `fix/deps/rustls-webpki` or `chore/workspace/audit-allow` branch before the final PR — it will otherwise fail CI.
+
+### Task 22 (2026-04-23)
+
+Task 22 Step 0 (remove the Task-2 `#![allow(dead_code)]` scaffolding) shipped in commit `145c0ba` on the feature branch. The removal surfaced eight legitimately-dead items — residue of the design evolving through Tasks 7–14 — all cleaned up in the same commit:
+
+1. `PortalEvent::OverlayChanged` and `ItemAdded` variants — never emitted (obsoleted by Task 9's simplification to main-thread recomputation each tick).
+2. `PortalEvent::HealthChanged` and `ItemUpdated` payloads — matched only with `_` by the only consumer (the main thread's `ui_tick()` already recomputes state from scratch). Both became unit variants. Tests that asserted on the `ItemUpdated` id now assert only that the event was emitted.
+3. `PortalManager::verify_now` method — no caller; ADR 011's brainstorming explicitly dropped the global Verify Now button.
+4. `health::NextAction` enum — orphaned by Task 9's duration-based refactor.
+5. `PortalCommand::VerifyNow` / `ItemEnqueued` / `RetryItem` variants — never constructed in production. `Shutdown` removed too — tests now rely on channel close (dropping the sender) to terminate the background task, which is how production already behaves.
+6. `DetailRow::RecentSuccess.id` — never read (green rows are not tappable per spec).
+7. `PortalCallError`'s inner `String` retained with an explicit `Display` impl so the diagnostic message is not dead weight.
+
+No behaviour change. `just lint` and `just test` both pass.
+
+**Design refinement surfaced during walkthrough prep (shipped in commit `34b0b17`):** the health tile was rendering on every banner-bearing page unconditionally — even before any portal event had been linked. This misrepresented the feature as always-on and produced no-op log noise when the background task fired `verify_token` with a stale saved event_id from a previous session. Under the refinement:
+
+- `ViewData.portal_indicator` is now `Option<PortalIndicatorState>` — `Some` only when `current_event_id.is_some()`, `None` otherwise.
+- `make_game_time_button` renders the health tile when `Some(state)` and falls back to the pre-feature layout when `None`.
+- The confirm-score red advisory banner is also suppressed when no event is linked.
+
+ADR 011 amended separately with a new `### 2026-04-23 — Dormant until event linked` subsection documenting the design refinement; the original "Status indicator" bullet is now read with the qualifier "once a portal event has been linked".
+
+**Pre-existing CI-blocker carried forward:** `cargo audit` continues to flag `RUSTSEC-2026-0104` (rustls-webpki panic in CRL parsing). Unrelated to Task 22 but blocks CI on this workspace. Per the sequencing addendum recorded in `project_portal_health_session.md` on 2026-04-23, this is handled on a separate `fix/deps/rustls-webpki` branch AFTER Task 22 walkthrough completes and BEFORE the portal health PR is opened.
+
+**Pre-existing test-lint noise carried forward:** ~88 `bool_assert_comparison` errors in refbox tests (`config.rs` and friends) surface under Task 22 Step 0's stricter `cargo clippy -p refbox --all-targets` command. Not a Task 22 blocker — CI uses `cargo clippy --all -- -D warnings` without `--all-targets`, so they don't trip `just check`'s lint gate. Candidate for a separate `chore/refbox/test-assert-cleanup` branch someday.
+
+**Stale saved event_id note for future walkthroughs:** when `UWH_PORTAL_URL_OVERRIDE` points to a portal instance (e.g. dev) that does not contain the event_id persisted in the operator's config, the background `verify_token` call logs a 404 response body. This is a config-sync issue, not a feature bug. Operators doing cross-environment testing should either (a) clear the saved event_id via the refbox's unlink flow before pointing at a different portal, or (b) create an event on the target portal with the exact same id as the one in their config.

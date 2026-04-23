@@ -144,7 +144,11 @@ enum AppState {
     ParameterList(ListableParameter, usize),
     ConfirmationPage(ConfirmationKind),
     ConfirmScores(BlackWhiteBundle<u8>),
-    PortalDetailPage,
+    /// `scroll_index` is the current scroll offset into the detail-row
+    /// list (see `make_scroll_list` in `shared_elements.rs`).
+    PortalDetailPage {
+        scroll_index: usize,
+    },
     /// Shown when the operator taps a red stuck row on the detail page.
     /// `discard_armed` is the two-tap confirmation state for the
     /// DISCARD button; it starts false and flips to true on the first
@@ -1338,7 +1342,9 @@ impl RefBoxApp {
                         let idx = match which {
                             ScrollOption::Black => &mut indices.black,
                             ScrollOption::White => &mut indices.white,
-                            ScrollOption::GameParameter | ScrollOption::Equal => unreachable!(),
+                            ScrollOption::GameParameter
+                            | ScrollOption::Equal
+                            | ScrollOption::PortalDetail => unreachable!(),
                         };
                         if up {
                             *idx = idx.saturating_sub(1);
@@ -1351,7 +1357,9 @@ impl RefBoxApp {
                             ScrollOption::Black => &mut indices.black,
                             ScrollOption::Equal => &mut indices.equal,
                             ScrollOption::White => &mut indices.white,
-                            ScrollOption::GameParameter => unreachable!(),
+                            ScrollOption::GameParameter | ScrollOption::PortalDetail => {
+                                unreachable!()
+                            }
                         };
                         if up {
                             *idx = idx.saturating_sub(1);
@@ -1365,6 +1373,16 @@ impl RefBoxApp {
                             *idx = idx.saturating_sub(1);
                         } else {
                             *idx = idx.saturating_add(1);
+                        }
+                    }
+                    AppState::PortalDetailPage {
+                        ref mut scroll_index,
+                    } => {
+                        debug_assert_eq!(which, ScrollOption::PortalDetail);
+                        if up {
+                            *scroll_index = scroll_index.saturating_sub(1);
+                        } else {
+                            *scroll_index = scroll_index.saturating_add(1);
                         }
                     }
                     _ => {
@@ -1776,7 +1794,7 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::OpenPortalDetailPage => {
-                self.app_state = AppState::PortalDetailPage;
+                self.app_state = AppState::PortalDetailPage { scroll_index: 0 };
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
@@ -1786,7 +1804,7 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::ClosePortalAttentionAction => {
-                self.app_state = AppState::PortalDetailPage;
+                self.app_state = AppState::PortalDetailPage { scroll_index: 0 };
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
@@ -1796,7 +1814,7 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::ClosePortalTokenExpiredAction => {
-                self.app_state = AppState::PortalDetailPage;
+                self.app_state = AppState::PortalDetailPage { scroll_index: 0 };
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
@@ -1846,7 +1864,7 @@ impl RefBoxApp {
                 if let Err(e) = self.portal_manager.force_submit(&id) {
                     error!("force_submit failed: {e}");
                 }
-                self.app_state = AppState::PortalDetailPage;
+                self.app_state = AppState::PortalDetailPage { scroll_index: 0 };
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
@@ -1869,7 +1887,7 @@ impl RefBoxApp {
                             if let Err(e) = self.portal_manager.discard(&id) {
                                 error!("discard failed: {e}");
                             }
-                            self.app_state = AppState::PortalDetailPage;
+                            self.app_state = AppState::PortalDetailPage { scroll_index: 0 };
                         } else {
                             self.app_state = AppState::PortalAttentionAction {
                                 item_id: id,
@@ -1900,7 +1918,7 @@ impl RefBoxApp {
                         // page so the operator is not stranded on an
                         // empty login screen.
                         warn!("PortalGoToLogin with no portal client configured");
-                        self.app_state = AppState::PortalDetailPage;
+                        self.app_state = AppState::PortalDetailPage { scroll_index: 0 };
                         trace!("AppState changed to {:?}", self.app_state);
                         return Task::none();
                     }
@@ -2739,7 +2757,7 @@ impl RefBoxApp {
                         // here so it does not leak into later logins.
                         if self.portal_login_return_to_detail {
                             self.portal_login_return_to_detail = false;
-                            AppState::PortalDetailPage
+                            AppState::PortalDetailPage { scroll_index: 0 }
                         } else {
                             AppState::EditGameConfig(ConfigPage::Game)
                         }
@@ -2964,8 +2982,8 @@ impl RefBoxApp {
             }
             AppState::ConfirmScores(scores) =>
                 build_score_confirmation_page(data, scores, self.snapshot.conf_pause_time),
-            AppState::PortalDetailPage =>
-                build_portal_detail_page(data, self.portal_manager.detail_rows()),
+            AppState::PortalDetailPage { scroll_index } =>
+                build_portal_detail_page(data, self.portal_manager.detail_rows(), scroll_index,),
             AppState::PortalTokenExpiredAction => build_portal_token_expired_action(data),
             AppState::PortalAttentionAction {
                 ref item_id,
@@ -2978,14 +2996,13 @@ impl RefBoxApp {
                         item.id.game_number.clone(),
                         item.black_score,
                         item.white_score,
-                        item.attempts,
                         discard_armed,
                     )
                 } else {
                     // Item was resolved or discarded while the operator
                     // was on this page. Fall back to the detail page so
                     // the operator sees the actual queue state.
-                    build_portal_detail_page(data, self.portal_manager.detail_rows())
+                    build_portal_detail_page(data, self.portal_manager.detail_rows(), 0)
                 }
             }
         }]

@@ -445,3 +445,44 @@ Code change lands on `feat/refbox/portal-health-indicator` at
 commit `34b0b17` — `feat(refbox): make portal health feature
 dormant until event linked`. The Deviations log entry for
 Task 22 captures the same change on the plan side.
+
+### 2026-04-23 — Remove the 10-second green-checkmark overlay
+
+During Task 22 walkthrough prep, after directly witnessing the
+overlay behaviour, operator review concluded the
+green-checkmark-on-dot flash is redundant: the portal detail page
+already lists each recent submission as a green "Submitted N min
+ago" row, accessible with a single tap on the tile. A transient
+10-second overlay on the tile communicates the same "a submission
+just landed" signal, but in a weaker and more ephemeral form, and
+costs additional state (a deadline timestamp, a periodic tick that
+re-renders the tile when the deadline expires).
+
+This amendment supersedes the following bullet from the Decision
+section's "Overlay icons" block:
+
+> *Green checkmark replaces the dot for ~10 seconds immediately
+> after a successful score submission, then snaps back to the plain
+> dot.*
+
+The green-checkmark overlay is removed. The operator's confirmation
+path for "did my score land?" is now exclusively the detail page,
+which the tile already opens on tap. The tile's three base colours
+(Green / Yellow / Red) still convey current health at a glance —
+after a successful submission, the tile simply returns to Green.
+
+The **red exclamation overlay** on top of the red base dot (the
+`AttentionNeeded` overlay) is retained — it surfaces a persistent
+"needs attention" state that has no other at-a-glance equivalent.
+Only the transient success overlay is removed.
+
+The in-memory `recent_successes` ring that populates the detail
+page's green rows is unchanged. Only the overlay-timer machinery
+and its variant on `OverlayState` are removed.
+
+Code change lands on `feat/refbox/portal-health-indicator` at
+commit `5038231` — `refactor(refbox): remove 10-second
+green-checkmark overlay on successful submit` — which also removes
+the orphaned `check_circle.svg` asset and two now-moot unit tests.
+The Deviations log entry for Task 22 captures the same change on
+the plan side.

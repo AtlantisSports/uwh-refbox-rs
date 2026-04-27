@@ -96,32 +96,37 @@ pub(in super::super) fn build_portal_detail_page<'a>(
     .into()
 }
 
+/// Build a row's text with the centering pattern that avoids iced 0.13's
+/// stale paragraph-position cache. See commit 8a8d018 — pairing
+/// `align_y(Center)` with `height(Fill)` on a `text` widget caches an
+/// anchor that bleeds across renders, so we wrap the text in a
+/// container whose `center(Length::Fill)` does the centering instead.
+fn row_text_centered<'a>(label: String) -> Element<'a, Message> {
+    container(
+        text(label)
+            .size(SMALL_PLUS_TEXT)
+            .align_x(Horizontal::Center)
+            .width(Length::Fill),
+    )
+    .center(Length::Fill)
+    .into()
+}
+
 fn render_row<'a>(r: DetailRow) -> Element<'a, Message> {
     match r {
-        DetailRow::TokenExpired => button(
-            text(fl!("portal-row-token-expired"))
-                .size(SMALL_PLUS_TEXT)
-                .align_x(Horizontal::Center)
-                .align_y(Vertical::Center)
-                .width(Length::Fill)
-                .height(Length::Fill),
-        )
-        .on_press(Message::OpenPortalTokenExpiredAction)
-        .style(red_button)
-        .padding(PADDING)
-        .width(Length::Fill)
-        .height(Length::Fixed(MIN_BUTTON_SIZE))
-        .into(),
+        DetailRow::TokenExpired => button(row_text_centered(fl!("portal-row-token-expired")))
+            .on_press(Message::OpenPortalTokenExpiredAction)
+            .style(red_button)
+            .padding(PADDING)
+            .width(Length::Fill)
+            .height(Length::Fixed(MIN_BUTTON_SIZE))
+            .into(),
         DetailRow::Stuck {
             id, game_number, ..
-        } => button(
-            text(fl!("portal-row-stuck", game = game_number))
-                .size(SMALL_PLUS_TEXT)
-                .align_x(Horizontal::Center)
-                .align_y(Vertical::Center)
-                .width(Length::Fill)
-                .height(Length::Fill),
-        )
+        } => button(row_text_centered(fl!(
+            "portal-row-stuck",
+            game = game_number
+        )))
         .on_press(Message::PortalRowTapped(id))
         .style(red_button)
         .padding(PADDING)
@@ -130,14 +135,10 @@ fn render_row<'a>(r: DetailRow) -> Element<'a, Message> {
         .into(),
         DetailRow::Pending {
             id, game_number, ..
-        } => button(
-            text(fl!("portal-row-pending", game = game_number))
-                .size(SMALL_PLUS_TEXT)
-                .align_x(Horizontal::Center)
-                .align_y(Vertical::Center)
-                .width(Length::Fill)
-                .height(Length::Fill),
-        )
+        } => button(row_text_centered(fl!(
+            "portal-row-pending",
+            game = game_number
+        )))
         .on_press(Message::PortalRowTapped(id))
         .style(yellow_button)
         .padding(PADDING)
@@ -148,18 +149,11 @@ fn render_row<'a>(r: DetailRow) -> Element<'a, Message> {
             game_number,
             submitted_mins_ago,
             ..
-        } => container(
-            text(fl!(
-                "portal-row-recent",
-                game = game_number,
-                mins = submitted_mins_ago
-            ))
-            .size(SMALL_PLUS_TEXT)
-            .align_x(Horizontal::Center)
-            .align_y(Vertical::Center)
-            .width(Length::Fill)
-            .height(Length::Fill),
-        )
+        } => container(row_text_centered(fl!(
+            "portal-row-recent",
+            game = game_number,
+            mins = submitted_mins_ago
+        )))
         .style(green_container)
         .padding(PADDING)
         .width(Length::Fill)

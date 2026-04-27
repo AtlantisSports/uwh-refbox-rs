@@ -214,18 +214,25 @@ pub(in super::super) fn build_main_view<'a>(
         }
     } else {
         // Original behavior: game info area + optional warnings panel
+        // Centering via container wrapper rather than text.align_y avoids
+        // the iced 0.13 paragraph-cache stale-position bug; same fix
+        // applied in commit 8a8d018 for make_multi_label_button.
         center_col = center_col.push(if max_num_warns < 4 {
             button(
-                text(config_string(
-                    snapshot,
-                    game_config,
-                    using_uwhportal,
-                    schedule,
-                    teams,
-                ))
-                .size(SMALL_TEXT)
-                .align_y(Vertical::Center)
-                .align_x(Horizontal::Left),
+                container(
+                    text(config_string(
+                        snapshot,
+                        game_config,
+                        using_uwhportal,
+                        schedule,
+                        teams,
+                    ))
+                    .size(SMALL_TEXT)
+                    .align_x(Horizontal::Left)
+                    .width(Length::Fill),
+                )
+                .center_y(Length::Fill)
+                .width(Length::Fill),
             )
             .padding(PADDING)
             .style(light_gray_button)
@@ -234,12 +241,21 @@ pub(in super::super) fn build_main_view<'a>(
             .on_press(Message::ShowGameDetails)
         } else {
             button(
-                text(
-                    config_string_game_num(snapshot, using_uwhportal, schedule.map(|s| &s.games)).0,
+                container(
+                    text(
+                        config_string_game_num(
+                            snapshot,
+                            using_uwhportal,
+                            schedule.map(|s| &s.games),
+                        )
+                        .0,
+                    )
+                    .size(SMALL_TEXT)
+                    .align_x(Horizontal::Left)
+                    .width(Length::Fill),
                 )
-                .size(SMALL_TEXT)
-                .align_y(Vertical::Center)
-                .align_x(Horizontal::Left),
+                .center_y(Length::Fill)
+                .width(Length::Fill),
             )
             .padding(PADDING)
             .style(light_gray_button)

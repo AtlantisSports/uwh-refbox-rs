@@ -1,11 +1,11 @@
 use super::*;
 use crate::portal_manager::ItemId;
 use iced::{
-    Alignment, Element, Length, Theme,
+    Element, Length, Theme,
     alignment::Horizontal,
     widget::{
         button::{Status, Style},
-        column, container, row, text, vertical_space,
+        column, container, row, text,
     },
 };
 
@@ -75,7 +75,8 @@ pub(in super::super) fn build_portal_attention_action<'a>(
     )
     .style(light_gray_container)
     .padding(PADDING)
-    .width(Length::Fill);
+    .width(Length::Fill)
+    .height(Length::Fill);
 
     // Discard starts yellow (caution: irreversible local delete) and
     // turns red once armed (second tap confirms the discard).
@@ -105,10 +106,8 @@ pub(in super::super) fn build_portal_attention_action<'a>(
         .spacing(SPACING)
         .width(Length::Fill);
 
-    column![banner, title, note, vertical_space(), button_row,]
+    column![banner, title, note, button_row,]
         .spacing(SPACING)
-        .padding(PADDING)
-        .align_x(Alignment::Center)
         .height(Length::Fill)
         .into()
 }

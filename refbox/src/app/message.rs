@@ -83,15 +83,6 @@ pub enum Message {
     /// list the operator came from), not all the way out to the main
     /// application screen.
     ClosePortalAttentionAction,
-    /// Emitted when the operator taps the "Portal login expired" row
-    /// on the detail page. `update()` routes to the dedicated
-    /// token-expired action page, which explains the situation and
-    /// offers GO TO LOGIN / BACK.
-    OpenPortalTokenExpiredAction,
-    /// Emitted when the operator taps BACK on the portal token-expired
-    /// action page. `update()` returns to the portal detail page — not
-    /// all the way out to the main application screen.
-    ClosePortalTokenExpiredAction,
     PortalEvent(PortalEvent),
     PortalUiTick,
     /// Emitted when the operator taps a queued-item row on the detail
@@ -203,8 +194,6 @@ impl Message {
             | Self::OpenPortalDetailPage
             | Self::ClosePortalDetailPage
             | Self::ClosePortalAttentionAction
-            | Self::OpenPortalTokenExpiredAction
-            | Self::ClosePortalTokenExpiredAction
             | Self::PortalRowTapped(_)
             | Self::PortalForceSubmit(_)
             | Self::PortalDiscardTapped(_)
@@ -255,8 +244,6 @@ impl PartialEq for Message {
             | (Self::OpenPortalDetailPage, Self::OpenPortalDetailPage)
             | (Self::ClosePortalDetailPage, Self::ClosePortalDetailPage)
             | (Self::ClosePortalAttentionAction, Self::ClosePortalAttentionAction)
-            | (Self::OpenPortalTokenExpiredAction, Self::OpenPortalTokenExpiredAction)
-            | (Self::ClosePortalTokenExpiredAction, Self::ClosePortalTokenExpiredAction)
             | (Self::PortalUiTick, Self::PortalUiTick)
             | (Self::PortalGoToLogin, Self::PortalGoToLogin)
             | (Self::RequestPortalRefresh, Self::RequestPortalRefresh)
@@ -427,8 +414,6 @@ impl PartialEq for Message {
             | (Self::OpenPortalDetailPage, _)
             | (Self::ClosePortalDetailPage, _)
             | (Self::ClosePortalAttentionAction, _)
-            | (Self::OpenPortalTokenExpiredAction, _)
-            | (Self::ClosePortalTokenExpiredAction, _)
             | (Self::PortalEvent(_), _)
             | (Self::PortalUiTick, _)
             | (Self::PortalRowTapped(_), _)

@@ -30,9 +30,6 @@ pub(super) use portal_attention_action::*;
 pub mod portal_detail;
 pub(super) use portal_detail::*;
 
-pub mod portal_token_expired_action;
-pub(super) use portal_token_expired_action::*;
-
 pub mod warnings;
 pub(super) use warnings::*;
 

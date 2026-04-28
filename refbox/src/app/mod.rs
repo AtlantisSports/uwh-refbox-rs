@@ -164,12 +164,6 @@ enum AppState {
         item_id: ItemId,
         discard_armed: bool,
     },
-    /// Shown when the operator taps the "Portal login expired" row on
-    /// the detail page. Explains the situation and offers GO TO LOGIN
-    /// (navigates to the portal login keypad, arming the flag that
-    /// routes the login success back to the detail page) and BACK
-    /// (returns to the detail page).
-    PortalTokenExpiredAction,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1824,16 +1818,6 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
-            Message::OpenPortalTokenExpiredAction => {
-                self.app_state = AppState::PortalTokenExpiredAction;
-                trace!("AppState changed to {:?}", self.app_state);
-                Task::none()
-            }
-            Message::ClosePortalTokenExpiredAction => {
-                self.app_state = AppState::PortalDetailPage { scroll_index: 0 };
-                trace!("AppState changed to {:?}", self.app_state);
-                Task::none()
-            }
             Message::PortalEvent(ev) => {
                 // The background portal task woke us with a state-change
                 // signal. Most variants are notifications whose effect on
@@ -3038,7 +3022,6 @@ impl RefBoxApp {
                 build_score_confirmation_page(data, scores, self.snapshot.conf_pause_time),
             AppState::PortalDetailPage { scroll_index } =>
                 build_portal_detail_page(data, self.portal_manager.detail_rows(), scroll_index,),
-            AppState::PortalTokenExpiredAction => build_portal_token_expired_action(data),
             AppState::PortalAttentionAction {
                 ref item_id,
                 discard_armed,

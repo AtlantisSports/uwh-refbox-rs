@@ -79,6 +79,10 @@ pub enum Message {
     ShowWarnings,
     EditGameConfig,
     ChangeConfigPage(ConfigPage),
+    #[expect(dead_code)]
+    ApplyConfigPage(ConfigPage),
+    #[expect(dead_code)]
+    CancelConfigPage(ConfigPage),
     ConfigEditComplete {
         canceled: bool,
     },
@@ -166,6 +170,8 @@ impl Message {
             | Self::ShowWarnings
             | Self::EditGameConfig
             | Self::ChangeConfigPage(_)
+            | Self::ApplyConfigPage(_)
+            | Self::CancelConfigPage(_)
             | Self::ConfigEditComplete { .. }
             | Self::EditParameter(_)
             | Self::SelectParameter(_)
@@ -319,6 +325,8 @@ impl PartialEq for Message {
             (Self::ParameterSelected(a, b), Self::ParameterSelected(c, d)) => a == c && b == d,
             (Self::ToggleBoolParameter(a), Self::ToggleBoolParameter(b)) => a == b,
             (Self::CycleParameter(a), Self::CycleParameter(b)) => a == b,
+            (Self::ApplyConfigPage(a), Self::ApplyConfigPage(b)) => a == b,
+            (Self::CancelConfigPage(a), Self::CancelConfigPage(b)) => a == b,
             (Self::SelectLanguage(a), Self::SelectLanguage(b)) => a == b,
             (
                 Self::LanguageSelectComplete { canceled: a },
@@ -367,6 +375,8 @@ impl PartialEq for Message {
             | (Self::ShowWarnings, _)
             | (Self::EditGameConfig, _)
             | (Self::ChangeConfigPage(_), _)
+            | (Self::ApplyConfigPage(_), _)
+            | (Self::CancelConfigPage(_), _)
             | (Self::ConfigEditComplete { .. }, _)
             | (Self::EditParameter(_), _)
             | (Self::SelectParameter(_), _)
@@ -412,7 +422,6 @@ pub enum ConfigPage {
     Sound,
     Display,
     App,
-    #[expect(dead_code)]
     User,
     Remotes(usize, bool),
     Language,

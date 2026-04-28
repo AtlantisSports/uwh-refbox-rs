@@ -521,7 +521,6 @@ impl RefBoxApp {
         self.sound.update_settings(self.config.sound.clone());
     }
 
-    #[expect(dead_code)]
     fn apply_remote_options(&mut self) {
         let Some(edited) = self.edited_settings.as_ref() else {
             return;
@@ -530,7 +529,6 @@ impl RefBoxApp {
         self.sound.update_settings(self.config.sound.clone());
     }
 
-    #[expect(dead_code)]
     fn capture_snapshot_for(&mut self, page: ConfigPage) {
         let Some(edited) = self.edited_settings.as_ref() else {
             return;
@@ -570,7 +568,6 @@ impl RefBoxApp {
         self.page_entry_snapshot = Some(snapshot);
     }
 
-    #[expect(dead_code)]
     fn revert_from_snapshot(&mut self) {
         let (Some(edited), Some(snapshot)) = (
             self.edited_settings.as_mut(),
@@ -628,6 +625,22 @@ impl RefBoxApp {
                 edited.pending_language = pending_language;
             }
         }
+    }
+
+    fn persist_config(&self) {
+        confy::store(APP_NAME, None, &self.config).unwrap();
+    }
+
+    fn navigate_to_parent(&mut self, page: ConfigPage) {
+        let parent = match page {
+            ConfigPage::Game | ConfigPage::App | ConfigPage::User | ConfigPage::Language => {
+                ConfigPage::Main
+            }
+            ConfigPage::Display | ConfigPage::Sound => ConfigPage::User,
+            ConfigPage::Remotes(_, _) => ConfigPage::Sound,
+            ConfigPage::Main => ConfigPage::Main,
+        };
+        self.app_state = AppState::EditGameConfig(parent);
     }
 }
 
@@ -1475,7 +1488,36 @@ impl RefBoxApp {
                 } else {
                     unreachable!();
                 }
+                self.capture_snapshot_for(new_page);
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::ApplyConfigPage(page) => {
+                match page {
+                    ConfigPage::App => self.apply_app_options(),
+                    ConfigPage::Display => self.apply_display_options(),
+                    ConfigPage::Sound => self.apply_sound_options(),
+                    ConfigPage::Remotes(_, _) => self.apply_remote_options(),
+                    ConfigPage::Game
+                    | ConfigPage::Language
+                    | ConfigPage::Main
+                    | ConfigPage::User => {
+                        // Game has no slice-apply yet, so its edits remain in
+                        // `edited_settings` until ConfigEditComplete commits
+                        // them. Language uses its own LanguageSelectComplete
+                        // path. Main and User are navigation-only and should
+                        // never receive Apply.
+                        return Task::none();
+                    }
+                }
+                self.page_entry_snapshot = None;
+                self.persist_config();
+                self.navigate_to_parent(page);
+                Task::none()
+            }
+            Message::CancelConfigPage(page) => {
+                self.revert_from_snapshot();
+                self.navigate_to_parent(page);
                 Task::none()
             }
             Message::ConfigEditComplete { canceled } => {

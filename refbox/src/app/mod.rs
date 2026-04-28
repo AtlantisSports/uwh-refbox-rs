@@ -2166,19 +2166,24 @@ impl RefBoxApp {
                             code,
                         ) => {
                             // Reachable two ways: the legacy edit-config flow
-                            // (edited_settings is Some) and the portal-detail
-                            // GO TO LOGIN flow (edited_settings is None).
-                            // Update the form state if it exists, but read the
-                            // event id from the running app — the canonical
-                            // source in both paths.
+                            // (edited_settings is Some, with the just-picked
+                            // event held there) and the portal-detail GO TO
+                            // LOGIN flow (edited_settings is None, the
+                            // previously-linked event lives on the running
+                            // app). Update the form state if it exists; read
+                            // the event id from edited settings first and
+                            // fall back to the running app — mirrors the
+                            // RecvPortalToken path below.
                             *requested = true;
                             if let Some(ref mut settings) = self.edited_settings {
                                 settings.uwhportal_token_valid = None;
                             }
                             let event_id = self
-                                .current_event_id
-                                .clone()
-                                .expect("PortalLogin keypad requires a linked event");
+                                .edited_settings
+                                .as_ref()
+                                .and_then(|s| s.current_event_id.clone())
+                                .or_else(|| self.current_event_id.clone())
+                                .expect("PortalLogin keypad reachable only with a linked event");
                             task = self.request_uwhportal_token(&event_id, code);
                         }
                         _ => unreachable!(),

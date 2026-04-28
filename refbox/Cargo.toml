@@ -51,7 +51,7 @@ serde_json = "1"
 skip_error = "3"
 thiserror = "2"
 time = { version = "0.3", features = ["local-offset", "macros", "serde", "serde-human-readable"] }
-tokio = { version = "1", features = ["io-util", "macros", "net", "rt", "sync", "test-util", "time"] }
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt", "sync", "time"] }
 tokio-serial = "5"
 toml = "0.9"
 unic-langid = "0.9.6"
@@ -60,6 +60,7 @@ web-audio-api = { version = "1.2", default-features = false, features = ["cpal"]
 
 [dev-dependencies]
 tempfile = "3"
+tokio = { version = "1", features = ["test-util"] }
 
 [build-dependencies]
 fluent-syntax = "0.12.0"

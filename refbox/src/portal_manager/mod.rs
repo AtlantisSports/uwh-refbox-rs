@@ -333,9 +333,9 @@ impl PortalManager {
 
     /// Recompute the cached indicator state from current inputs.
     /// Called from the iced UI layer:
-    /// - on every pure UI-layer tick so time-based transitions (the
-    ///   30-minute stuck escalation, the 10-second green-checkmark
-    ///   expiry) reach the screen,
+    /// - on every pure UI-layer tick so the 30-minute stuck-item
+    ///   escalation reaches the screen without waiting for an
+    ///   unrelated re-render,
     /// - when the background retry task emits a `PortalEvent` so the
     ///   indicator picks up anything that might have changed between
     ///   frames.
@@ -465,8 +465,12 @@ impl PortalManager {
     }
 
     /// Enqueue a game-end submission and trigger an immediate attempt.
-    /// Writes to disk *before* attempting the submit so a crash between
-    /// write and send does not lose the score.
+    /// Persistence is best-effort: the in-memory queue is updated
+    /// before disk write, so an I/O failure leaves the score queued in
+    /// memory for the rest of the session but not on disk. The corrupt-
+    /// or-missing-file rotation in `queue::load` is the recovery path
+    /// across restarts; subsequent successful mutations will re-persist
+    /// the queue including this item.
     pub fn enqueue_game_end(
         &mut self,
         event_id: String,

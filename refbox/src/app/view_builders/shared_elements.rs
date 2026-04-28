@@ -342,8 +342,6 @@ pub(super) fn make_health_tile<'a>(
         .height(Length::Fixed(dot_size))
         .style(dot_style);
 
-    let dot_with_overlay: Element<'a, Message> = dot.into();
-
     // Logo picks the sport's portal emblem: UWR Compact Logo in Rugby
     // mode, otherwise the UWH Portal Compact Logo. See ADR 016 for the
     // broader UWR mode portal-routing work (pre-existing issue where
@@ -365,9 +363,7 @@ pub(super) fn make_health_tile<'a>(
             .height(Length::Fill)
             .center_x(Length::Fill)
             .center_y(Length::Fill),
-        container(dot_with_overlay)
-            .width(Length::Fill)
-            .center_x(Length::Fill),
+        container(dot).width(Length::Fill).center_x(Length::Fill),
     ]
     .spacing(SPACING / 2.0)
     .align_x(Alignment::Center)

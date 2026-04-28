@@ -1432,10 +1432,9 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::PortalUiTick => {
-                // Pure UI-layer tick that lets time-based transitions
-                // (30-minute stuck escalation, 10-second recent-success
-                // overlay expiry) reach the screen without waiting for
-                // an unrelated re-render.
+                // Pure UI-layer tick that lets the 30-minute stuck-item
+                // escalation reach the screen without waiting for an
+                // unrelated re-render.
                 self.portal_manager.ui_tick();
                 Task::none()
             }
@@ -2785,12 +2784,11 @@ impl RefBoxApp {
         let portal_events =
             Subscription::run_with_id("portal-events", portal_event_stream(portal_rx_handle));
 
-        // Pure UI-layer tick (1 Hz) so time-driven portal indicator
-        // transitions — the 30-minute stuck-item escalation and the
-        // 10-second green-checkmark overlay expiry — reach the screen
-        // without waiting for an unrelated re-render. This is
-        // deliberately NOT derived from the game clock, the penalty
-        // clocks, or the background task's poll interval.
+        // Pure UI-layer tick (1 Hz) so the 30-minute stuck-item
+        // escalation reaches the screen without waiting for an
+        // unrelated re-render. This is deliberately NOT derived from
+        // the game clock, the penalty clocks, or the background task's
+        // poll interval.
         let portal_tick =
             iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::PortalUiTick);
 

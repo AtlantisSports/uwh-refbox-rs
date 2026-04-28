@@ -239,6 +239,11 @@ pub enum PortalEvent {
     HealthChanged,
     ItemResolved(ItemId),
     ItemUpdated,
+    /// Result of the latest periodic `verify_token` probe.
+    /// `true` = portal accepted the token, `false` = rejected. The
+    /// main-thread handler maps this onto `token_known_problem` so the
+    /// indicator and detail-page row reflect the current token state.
+    TokenStatus(bool),
 }
 
 /// One row rendered on the portal detail page. The ordering of the
@@ -536,6 +541,17 @@ impl PortalManager {
         self.recompute_indicator();
         self.push_queue_snapshot();
         Ok(())
+    }
+
+    /// Apply the result of a periodic `verify_token` probe. `true` = the
+    /// portal accepted the token, `false` = it rejected. Sets the global
+    /// `token_known_problem` flag accordingly and recomputes the
+    /// indicator so a token failure paints the time-banner red and a
+    /// recovery clears it. This is the path that lets the operator
+    /// notice a silent token expiration without having to open Settings.
+    pub fn on_token_status(&mut self, valid: bool) {
+        self.token_known_problem = !valid;
+        self.recompute_indicator();
     }
 
     /// Called after a successful portal re-login. Clears the global

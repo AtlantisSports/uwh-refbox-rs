@@ -110,6 +110,13 @@ pub struct RefBoxApp {
     /// (from anywhere) would route to the detail page, which matches
     /// the operator's most recent intent.
     portal_login_return_to_detail: bool,
+    /// Debug-only one-shot: when `UWH_PORTAL_SCRAMBLE_TOKEN` is set in a
+    /// debug build, this starts `true` and is cleared the first time
+    /// `set_current_event_id` is called with `Some(_)`. At that point
+    /// the in-memory portal token is replaced with garbage so the next
+    /// `verify_token` tick fails and the token-expired flow can be
+    /// exercised end-to-end. The on-disk token is never touched.
+    scramble_token_pending: bool,
 }
 
 #[derive(Debug)]
@@ -585,6 +592,7 @@ impl RefBoxApp {
     /// `verify_token` leg reflects the operator's actual event selection
     /// (ADR 011 amendment 2026-04-23, dormant-until-linked).
     fn set_current_event_id(&mut self, new: Option<EventId>) {
+        let new_is_some = new.is_some();
         self.current_event_id = new.clone();
         // why this cannot panic: the guarded data is a plain `Option`
         // and no writer panics while holding the guard; a poisoned
@@ -594,6 +602,17 @@ impl RefBoxApp {
             .portal_event_id
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = new;
+
+        if self.scramble_token_pending && new_is_some {
+            if let Some(client) = self.uwhportal_client.as_ref() {
+                let mut guard = client
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                guard.set_token("invalid-debug-token");
+                warn!("UWH_PORTAL_SCRAMBLE_TOKEN: in-memory token replaced after event linked");
+            }
+            self.scramble_token_pending = false;
+        }
     }
 
     fn apply_app_options(&mut self) {
@@ -966,25 +985,21 @@ impl RefBoxApp {
         if url_override.is_some() {
             info!("UWH_PORTAL_URL_OVERRIDE active: using {portal_url}");
         }
-        let portal_token_override: Option<&str> =
-            if cfg!(debug_assertions) && std::env::var("UWH_PORTAL_SCRAMBLE_TOKEN").is_ok() {
-                warn!("UWH_PORTAL_SCRAMBLE_TOKEN active: portal client will use an invalid token");
-                Some("invalid-debug-token")
-            } else {
-                portal_token
+        let scramble_token_pending =
+            cfg!(debug_assertions) && std::env::var("UWH_PORTAL_SCRAMBLE_TOKEN").is_ok();
+        if scramble_token_pending {
+            warn!(
+                "UWH_PORTAL_SCRAMBLE_TOKEN armed: in-memory token will be invalidated after first event link"
+            );
+        }
+        let uwhportal_client =
+            match UwhPortalClient::new(portal_url, portal_token, require_https, REQUEST_TIMEOUT) {
+                Ok(c) => Some(Arc::new(Mutex::new(c))),
+                Err(e) => {
+                    error!("Failed to start UWH Portal Client: {e}");
+                    None
+                }
             };
-        let uwhportal_client = match UwhPortalClient::new(
-            portal_url,
-            portal_token_override,
-            require_https,
-            REQUEST_TIMEOUT,
-        ) {
-            Ok(c) => Some(Arc::new(Mutex::new(c))),
-            Err(e) => {
-                error!("Failed to start UWH Portal Client: {e}");
-                None
-            }
-        };
 
         // Shared event id the background portal task consults for its
         // periodic `verify_token` check. Mirrors `current_event_id` on
@@ -1086,6 +1101,7 @@ impl RefBoxApp {
             portal_manager,
             portal_event_rx,
             portal_login_return_to_detail: false,
+            scramble_token_pending,
         };
 
         let task = Task::batch(vec![
@@ -1834,6 +1850,9 @@ impl RefBoxApp {
                     PortalEvent::HealthChanged | PortalEvent::ItemUpdated => {
                         self.portal_manager.ui_tick();
                     }
+                    PortalEvent::TokenStatus(valid) => {
+                        self.portal_manager.on_token_status(valid);
+                    }
                 }
                 Task::none()
             }
@@ -2118,38 +2137,42 @@ impl RefBoxApp {
             Message::ParameterEditComplete { canceled } => {
                 let mut task = Task::none();
                 if !canceled {
-                    let edited_settings = self.edited_settings.as_mut().unwrap();
                     match self.app_state {
-                        AppState::ParameterEditor(param, dur) => match param {
-                            LengthParameter::Half => {
-                                edited_settings.config.half_play_duration = dur
+                        AppState::ParameterEditor(param, dur) => {
+                            let edited_settings = self.edited_settings.as_mut().unwrap();
+                            match param {
+                                LengthParameter::Half => {
+                                    edited_settings.config.half_play_duration = dur
+                                }
+                                LengthParameter::HalfTime => {
+                                    edited_settings.config.half_time_duration = dur
+                                }
+                                LengthParameter::NominalBetweenGame => {
+                                    edited_settings.config.nominal_break = dur
+                                }
+                                LengthParameter::MinimumBetweenGame => {
+                                    edited_settings.config.minimum_break = dur
+                                }
+                                LengthParameter::PreOvertime => {
+                                    edited_settings.config.pre_overtime_break = dur
+                                }
+                                LengthParameter::OvertimeHalf => {
+                                    edited_settings.config.ot_half_play_duration = dur
+                                }
+                                LengthParameter::OvertimeHalfTime => {
+                                    edited_settings.config.ot_half_time_duration = dur
+                                }
+                                LengthParameter::PreSuddenDeath => {
+                                    edited_settings.config.pre_sudden_death_duration = dur
+                                }
                             }
-                            LengthParameter::HalfTime => {
-                                edited_settings.config.half_time_duration = dur
-                            }
-                            LengthParameter::NominalBetweenGame => {
-                                edited_settings.config.nominal_break = dur
-                            }
-                            LengthParameter::MinimumBetweenGame => {
-                                edited_settings.config.minimum_break = dur
-                            }
-                            LengthParameter::PreOvertime => {
-                                edited_settings.config.pre_overtime_break = dur
-                            }
-                            LengthParameter::OvertimeHalf => {
-                                edited_settings.config.ot_half_play_duration = dur
-                            }
-                            LengthParameter::OvertimeHalfTime => {
-                                edited_settings.config.ot_half_time_duration = dur
-                            }
-                            LengthParameter::PreSuddenDeath => {
-                                edited_settings.config.pre_sudden_death_duration = dur
-                            }
-                        },
+                        }
                         AppState::KeypadPage(KeypadPage::GameNumber, num) => {
+                            let edited_settings = self.edited_settings.as_mut().unwrap();
                             edited_settings.game_number = num.to_string();
                         }
                         AppState::KeypadPage(KeypadPage::TeamTimeouts(len, per_half), num) => {
+                            let edited_settings = self.edited_settings.as_mut().unwrap();
                             edited_settings.config.team_timeout_duration = len;
                             edited_settings.config.num_team_timeouts_allowed = num as u16;
                             edited_settings.config.timeouts_counted_per_half = per_half;
@@ -2158,28 +2181,59 @@ impl RefBoxApp {
                             KeypadPage::PortalLogin(_, ref mut requested),
                             code,
                         ) => {
+                            // Reachable two ways: the legacy edit-config flow
+                            // (edited_settings is Some) and the portal-detail
+                            // GO TO LOGIN flow (edited_settings is None).
+                            // Update the form state if it exists, but read the
+                            // event id from the running app — the canonical
+                            // source in both paths.
                             *requested = true;
-                            edited_settings.uwhportal_token_valid = None;
-                            let event_id = edited_settings.current_event_id.clone().unwrap();
+                            if let Some(ref mut settings) = self.edited_settings {
+                                settings.uwhportal_token_valid = None;
+                            }
+                            let event_id = self
+                                .current_event_id
+                                .clone()
+                                .expect("PortalLogin keypad requires a linked event");
                             task = self.request_uwhportal_token(&event_id, code);
                         }
                         _ => unreachable!(),
                     }
                 }
 
-                let next_page = match self.app_state {
-                    AppState::ParameterEditor(_, _) => ConfigPage::Game,
-                    AppState::KeypadPage(KeypadPage::GameNumber, _) => ConfigPage::Game,
-                    AppState::KeypadPage(KeypadPage::TeamTimeouts(_, _), _)
-                    | AppState::KeypadPage(KeypadPage::PortalLogin(_, _), _) => ConfigPage::Game,
+                // Where to land after Done depends on which path the operator
+                // took to the keypad. The PortalLogin keypad reached from the
+                // portal-detail flow has no edit-config session to return to,
+                // so we route back to the detail page directly (Unit 7's
+                // new branch). The RecvPortalToken handler will replace
+                // this once the network request completes. All in-settings
+                // routes return to Game Options per ADR 009 (Unit 3's
+                // redesign of the post-keypad landing).
+                let next_state = match self.app_state {
+                    AppState::ParameterEditor(_, _) => AppState::EditGameConfig(ConfigPage::Game),
+                    AppState::KeypadPage(KeypadPage::GameNumber, _) => {
+                        AppState::EditGameConfig(ConfigPage::Game)
+                    }
+                    AppState::KeypadPage(KeypadPage::TeamTimeouts(_, _), _) => {
+                        AppState::EditGameConfig(ConfigPage::Game)
+                    }
+                    AppState::KeypadPage(KeypadPage::PortalLogin(_, _), _) => {
+                        if self.edited_settings.is_some() {
+                            AppState::EditGameConfig(ConfigPage::Game)
+                        } else {
+                            AppState::PortalDetailPage { scroll_index: 0 }
+                        }
+                    }
                     AppState::ParameterList(param, _) => match param {
-                        ListableParameter::Game => ConfigPage::Game,
-                        ListableParameter::Event | ListableParameter::Court => ConfigPage::Game,
+                        ListableParameter::Game => AppState::EditGameConfig(ConfigPage::Game),
+                        ListableParameter::Event | ListableParameter::Court => {
+                            AppState::EditGameConfig(ConfigPage::Game)
+                        }
                     },
                     _ => unreachable!(),
                 };
 
-                self.app_state = AppState::EditGameConfig(next_page);
+                self.app_state = next_state;
                 trace!("AppState changed to {:?}", self.app_state);
                 task
             }

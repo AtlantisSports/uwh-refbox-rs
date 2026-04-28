@@ -119,6 +119,13 @@ async fn run_task(
     use tokio::time::sleep;
 
     let mut last_success: Option<TokioInstant> = None;
+    // Stamped on every `verify_token` attempt regardless of outcome.
+    // Used as the cadence reference once the indicator is degraded
+    // (Yellow/Red), where "wait 15 seconds between probes" is the
+    // intended behaviour — without this, a long-running outage would
+    // re-fire `verify_token` on every 2-second poll because
+    // `last_success` never advances.
+    let mut last_check_at: Option<TokioInstant> = None;
     let mut current_health = HealthState::Green;
     let mut queue_snapshot = QueueFile::empty();
 
@@ -135,20 +142,25 @@ async fn run_task(
                     }
                 }
 
-                let elapsed = last_success
-                    .map(|t| TokioInstant::now().saturating_duration_since(t));
+                let elapsed = match current_health {
+                    HealthState::Green => last_success
+                        .map(|t| TokioInstant::now().saturating_duration_since(t)),
+                    HealthState::Yellow | HealthState::Red => last_check_at
+                        .map(|t| TokioInstant::now().saturating_duration_since(t)),
+                };
                 let state = HealthDecisionState { current_health };
                 if state.is_health_check_due(elapsed) {
                     let _ = event_tx.send(PortalEvent::HealthChanged).await;
+                    last_check_at = Some(TokioInstant::now());
                     match io.verify_token().await {
                         Ok(()) => {
                             last_success = Some(TokioInstant::now());
                             current_health = HealthState::Green;
-                            let _ = event_tx.send(PortalEvent::HealthChanged).await;
+                            let _ = event_tx.send(PortalEvent::TokenStatus(true)).await;
                         }
                         Err(_) => {
                             current_health = HealthState::Red;
-                            let _ = event_tx.send(PortalEvent::HealthChanged).await;
+                            let _ = event_tx.send(PortalEvent::TokenStatus(false)).await;
                         }
                     }
                 }

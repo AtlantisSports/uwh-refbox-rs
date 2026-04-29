@@ -206,11 +206,100 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
 
 fn make_main_config_page<'a>(
     snapshot: &GameSnapshot,
+    _settings: &EditableSettings,
+    mode: Mode,
+    clock_running: bool,
+) -> Element<'a, Message> {
+    let row_top = row![
+        make_button(fl!("game-options"))
+            .style(light_gray_button)
+            .on_press(Message::ChangeConfigPage(ConfigPage::Game)),
+        make_button(fl!("app-options"))
+            .style(light_gray_button)
+            .on_press(Message::ChangeConfigPage(ConfigPage::App)),
+    ]
+    .spacing(SPACING);
+
+    let row_bottom = row![
+        make_button(fl!("user-options"))
+            .style(light_gray_button)
+            .on_press(Message::ChangeConfigPage(ConfigPage::User)),
+        make_button(fl!("language"))
+            .style(light_gray_button)
+            .on_press(Message::ChangeConfigPage(ConfigPage::Language)),
+    ]
+    .spacing(SPACING);
+
+    column![
+        make_game_time_button(snapshot, false, false, mode, clock_running),
+        row_top,
+        row_bottom,
+        vertical_space(),
+        row![
+            make_back_button(Message::ConfigEditComplete { canceled: true }),
+            horizontal_space(),
+            horizontal_space(),
+        ]
+        .spacing(SPACING),
+    ]
+    .spacing(SPACING)
+    .height(Length::Fill)
+    .into()
+}
+
+fn make_back_button<'a>(destination: Message) -> Element<'a, Message> {
+    make_button(fl!("back"))
+        .style(red_button)
+        .on_press(destination)
+        .into()
+}
+
+fn make_user_config_page<'a>(
+    snapshot: &GameSnapshot,
+    _settings: &EditableSettings,
+    mode: Mode,
+    clock_running: bool,
+) -> Element<'a, Message> {
+    // Hidden spacer reserved for a future view-mode tile so the row keeps three equal columns.
+    let view_mode_spacer = horizontal_space().width(Length::Fill);
+
+    let tiles = row![
+        make_button(fl!("display-options"))
+            .style(light_gray_button)
+            .on_press(Message::ChangeConfigPage(ConfigPage::Display)),
+        view_mode_spacer,
+        make_button(fl!("sound-options"))
+            .style(light_gray_button)
+            .on_press(Message::ChangeConfigPage(ConfigPage::Sound)),
+    ]
+    .spacing(SPACING);
+
+    column![
+        make_game_time_button(snapshot, false, false, mode, clock_running),
+        tiles,
+        vertical_space(),
+        row![
+            make_back_button(Message::ChangeConfigPage(ConfigPage::Main)),
+            horizontal_space(),
+            horizontal_space(),
+        ]
+        .spacing(SPACING),
+    ]
+    .spacing(SPACING)
+    .height(Length::Fill)
+    .into()
+}
+
+#[allow(clippy::too_many_arguments)]
+fn make_event_config_page<'a>(
+    snapshot: &GameSnapshot,
     settings: &EditableSettings,
+    events: Option<&BTreeMap<EventId, Event>>,
     mode: Mode,
     clock_running: bool,
 ) -> Element<'a, Message> {
     let EditableSettings {
+        config,
         game_number,
         using_uwhportal,
         current_event_id,
@@ -251,126 +340,6 @@ fn make_main_config_page<'a>(
     } else {
         game_number.to_string()
     };
-
-    column![
-        make_game_time_button(snapshot, false, false, mode, clock_running),
-        make_value_button(
-            fl!("game-select"),
-            game_label,
-            (true, game_large_text),
-            game_btn_msg,
-        ),
-        row![
-            make_button(fl!("game-options"))
-                .on_press(Message::ChangeConfigPage(ConfigPage::Game),)
-                .style(light_gray_button),
-            make_button(fl!("app-options"))
-                .on_press(Message::ChangeConfigPage(ConfigPage::App),)
-                .style(light_gray_button),
-        ]
-        .spacing(SPACING)
-        .width(Length::Fill)
-        .height(Length::Fill),
-        row![
-            make_button(fl!("display-options"))
-                .on_press(Message::ChangeConfigPage(ConfigPage::Display),)
-                .style(light_gray_button),
-            make_button(fl!("sound-options"))
-                .on_press(Message::ChangeConfigPage(ConfigPage::Sound),)
-                .style(light_gray_button),
-        ]
-        .spacing(SPACING)
-        .width(Length::Fill)
-        .height(Length::Fill),
-        vertical_space(),
-        row![
-            make_button(fl!("cancel"))
-                .style(red_button)
-                .width(Length::Fill)
-                .on_press(Message::ConfigEditComplete { canceled: true }),
-            horizontal_space(),
-            make_button(fl!("done"))
-                .style(green_button)
-                .width(Length::Fill)
-                .on_press(Message::ConfigEditComplete { canceled: false }),
-        ]
-        .spacing(SPACING)
-        .width(Length::Fill),
-    ]
-    .spacing(SPACING)
-    .height(Length::Fill)
-    .into()
-}
-
-fn make_back_button<'a>(destination: Message) -> Element<'a, Message> {
-    make_button(fl!("back"))
-        .style(gray_button)
-        .on_press(destination)
-        .into()
-}
-
-fn make_user_config_page<'a>(
-    snapshot: &GameSnapshot,
-    _settings: &EditableSettings,
-    mode: Mode,
-    clock_running: bool,
-) -> Element<'a, Message> {
-    let display_btn = button(
-        text(fl!("display-options"))
-            .size(LARGE_TEXT)
-            .align_x(Horizontal::Center)
-            .width(Length::Fill),
-    )
-    .width(Length::Fill)
-    .height(Length::FillPortion(2))
-    .style(light_gray_button)
-    .on_press(Message::ChangeConfigPage(ConfigPage::Display));
-
-    // Hidden spacer reserved for a future view-mode tile so the row keeps three equal columns.
-    let view_mode_spacer = horizontal_space().width(Length::Fill);
-
-    let sound_btn = button(
-        text(fl!("sound-options"))
-            .size(LARGE_TEXT)
-            .align_x(Horizontal::Center)
-            .width(Length::Fill),
-    )
-    .width(Length::Fill)
-    .height(Length::FillPortion(2))
-    .style(light_gray_button)
-    .on_press(Message::ChangeConfigPage(ConfigPage::Sound));
-
-    let tiles = row![display_btn, view_mode_spacer, sound_btn]
-        .spacing(SPACING)
-        .height(Length::Fill);
-
-    column![
-        make_game_time_button(snapshot, false, false, mode, clock_running),
-        tiles,
-        make_back_button(Message::ChangeConfigPage(ConfigPage::Main)),
-    ]
-    .spacing(SPACING)
-    .height(Length::Fill)
-    .into()
-}
-
-#[allow(clippy::too_many_arguments)]
-fn make_event_config_page<'a>(
-    snapshot: &GameSnapshot,
-    settings: &EditableSettings,
-    events: Option<&BTreeMap<EventId, Event>>,
-    mode: Mode,
-    clock_running: bool,
-) -> Element<'a, Message> {
-    let EditableSettings {
-        config,
-        using_uwhportal,
-        current_event_id,
-        current_court,
-        ..
-    } = settings;
-
-    let using_uwhportal = *using_uwhportal;
 
     let rows: [Element<Message>; 4] = if using_uwhportal {
         let event_label = if let Some(events) = events {
@@ -625,9 +594,12 @@ fn make_event_config_page<'a>(
                     .style(light_gray_button)
                     .on_press(Message::NoAction)
             },
-            make_button("")
-                .style(light_gray_button)
-                .on_press(Message::NoAction),
+            make_value_button(
+                fl!("game-select"),
+                game_label,
+                (false, game_large_text),
+                game_btn_msg,
+            ),
             make_value_button(
                 fl!("using-uwh-portal"),
                 bool_string(using_uwhportal),

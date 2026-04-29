@@ -1964,7 +1964,7 @@ impl RefBoxApp {
                 settings.pending_language = None;
                 settings.original_language = None;
                 if let AppState::EditGameConfig(ref mut page) = self.app_state {
-                    *page = ConfigPage::App;
+                    *page = ConfigPage::Main;
                 }
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()

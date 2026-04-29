@@ -196,7 +196,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
         ConfigPage::Sound => make_sound_config_page(snapshot, settings, mode, clock_running),
         ConfigPage::Display => make_display_config_page(snapshot, settings, mode, clock_running),
         ConfigPage::App => make_app_config_page(mode, snapshot, settings, clock_running),
-        ConfigPage::User => make_main_config_page(snapshot, settings, mode, clock_running),
+        ConfigPage::User => make_user_config_page(snapshot, settings, mode, clock_running),
         ConfigPage::Remotes(index, listening) => {
             make_remote_config_page(snapshot, settings, index, listening, mode, clock_running)
         }
@@ -296,6 +296,58 @@ fn make_main_config_page<'a>(
         ]
         .spacing(SPACING)
         .width(Length::Fill),
+    ]
+    .spacing(SPACING)
+    .height(Length::Fill)
+    .into()
+}
+
+fn make_back_button<'a>(destination: Message) -> Element<'a, Message> {
+    make_button(fl!("back"))
+        .style(gray_button)
+        .on_press(destination)
+        .into()
+}
+
+fn make_user_config_page<'a>(
+    snapshot: &GameSnapshot,
+    _settings: &EditableSettings,
+    mode: Mode,
+    clock_running: bool,
+) -> Element<'a, Message> {
+    let display_btn = button(
+        text(fl!("display-options"))
+            .size(LARGE_TEXT)
+            .align_x(Horizontal::Center)
+            .width(Length::Fill),
+    )
+    .width(Length::Fill)
+    .height(Length::FillPortion(2))
+    .style(light_gray_button)
+    .on_press(Message::ChangeConfigPage(ConfigPage::Display));
+
+    // Hidden spacer reserved for a future view-mode tile so the row keeps three equal columns.
+    let view_mode_spacer = horizontal_space().width(Length::Fill);
+
+    let sound_btn = button(
+        text(fl!("sound-options"))
+            .size(LARGE_TEXT)
+            .align_x(Horizontal::Center)
+            .width(Length::Fill),
+    )
+    .width(Length::Fill)
+    .height(Length::FillPortion(2))
+    .style(light_gray_button)
+    .on_press(Message::ChangeConfigPage(ConfigPage::Sound));
+
+    let tiles = row![display_btn, view_mode_spacer, sound_btn]
+        .spacing(SPACING)
+        .height(Length::Fill);
+
+    column![
+        make_game_time_button(snapshot, false, false, mode, clock_running),
+        tiles,
+        make_back_button(Message::ChangeConfigPage(ConfigPage::Main)),
     ]
     .spacing(SPACING)
     .height(Length::Fill)

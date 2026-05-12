@@ -127,13 +127,28 @@ enum ConfirmationKind {
     Error(String),
     UwhPortalIncomplete,
     UwhPortalLinkFailed(PortalTokenResponse),
+    // From-Apply variants are raised by per-page Apply on Game Options. They use the
+    // same UI as their global-Done counterparts but commit only the Game slice and
+    // navigate back to settings (not out to MainPage).
+    GameNumberChangedFromApply,
+    GameConfigChangedFromApply(GameConfig),
+    UwhPortalIncompleteFromApply,
 }
 
+// PageEntrySnapshot is a singleton — `RefBoxApp.page_entry_snapshot` holds at most
+// one variant at a time. The variant-size disparity from inline `Schedule` doesn't
+// compound, so boxing fields purely to satisfy `large_enum_variant` is not worth the
+// cascading churn through capture/revert/page_has_changes/apply.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum PageEntrySnapshot {
     Game {
         config: GameConfig,
         game_number: GameNumber,
+        using_uwhportal: bool,
+        current_event_id: Option<EventId>,
+        current_court: Option<String>,
+        schedule: Option<Schedule>,
     },
     App {
         using_uwhportal: bool,
@@ -529,6 +544,185 @@ impl RefBoxApp {
         self.sound.update_settings(self.config.sound.clone());
     }
 
+    /// Commit the Game-Options slice (game config + game number) to the live state.
+    ///
+    /// Returns `Some(ConfirmationKind)` when a safety gate fires (uwhportal-incomplete,
+    /// game-config change mid-game, or game-number change mid-game) — the caller must
+    /// route into a ConfirmationPage. Returns `None` when the commit happened directly
+    /// (or there was nothing to commit).
+    ///
+    /// Unlike `apply_settings_change`, this does NOT clear `edited_settings` and does
+    /// NOT touch other slices — the user is still inside settings and may have unrelated
+    /// edits to commit on other pages.
+    fn apply_game_options(&mut self) -> Option<ConfirmationKind> {
+        let edited = self.edited_settings.as_ref()?;
+
+        if edited.uwhportal_incomplete() {
+            return Some(ConfirmationKind::UwhPortalIncompleteFromApply);
+        }
+
+        let mut tm = self.tm.lock().unwrap();
+
+        let new_config = if edited.using_uwhportal {
+            edited
+                .schedule
+                .as_ref()
+                .and_then(|schedule| schedule.get_game_timing(&edited.game_number))
+                .cloned()
+                .map(|tr| tr.into())
+                .unwrap_or_else(|| tm.config().clone())
+        } else {
+            edited.config.clone()
+        };
+
+        if new_config != *tm.config() {
+            if tm.current_period() != GamePeriod::BetweenGames {
+                return Some(ConfirmationKind::GameConfigChangedFromApply(new_config));
+            }
+            tm.set_config(new_config.clone()).unwrap();
+
+            let (game, timing) = edited
+                .schedule
+                .as_ref()
+                .map(|schedule| schedule.get_game_and_timing(&edited.game_number))
+                .unwrap_or((None, None));
+            let start_time = game.map(|g| g.start_time);
+
+            tm.set_next_game(NextGameInfo {
+                number: edited.game_number.clone(),
+                timing: timing.cloned(),
+                start_time,
+            });
+
+            if edited.using_uwhportal {
+                tm.apply_next_game_start(Instant::now()).unwrap();
+            } else {
+                tm.clear_scheduled_game_start();
+            }
+
+            std::mem::drop(tm);
+            self.config.game = new_config;
+            self.using_uwhportal = edited.using_uwhportal;
+            self.current_event_id = edited.current_event_id.clone();
+            self.current_court = edited.current_court.clone();
+            self.schedule = edited.schedule.clone();
+            return None;
+        }
+
+        if edited.game_number != self.snapshot.game_number {
+            if tm.current_period() != GamePeriod::BetweenGames {
+                return Some(ConfirmationKind::GameNumberChangedFromApply);
+            }
+            let next_game_info = if edited.using_uwhportal {
+                let (game, timing) = edited
+                    .schedule
+                    .as_ref()
+                    .map(|schedule| schedule.get_game_and_timing(&edited.game_number))
+                    .unwrap_or((None, None));
+                NextGameInfo {
+                    number: edited.game_number.clone(),
+                    timing: timing.cloned(),
+                    start_time: game.map(|g| g.start_time),
+                }
+            } else {
+                NextGameInfo {
+                    number: edited.game_number.clone(),
+                    timing: None,
+                    start_time: None,
+                }
+            };
+
+            tm.set_next_game(next_game_info);
+
+            if edited.using_uwhportal {
+                tm.apply_next_game_start(Instant::now()).unwrap();
+            }
+        }
+
+        std::mem::drop(tm);
+        self.using_uwhportal = edited.using_uwhportal;
+        self.current_event_id = edited.current_event_id.clone();
+        self.current_court = edited.current_court.clone();
+        self.schedule = edited.schedule.clone();
+
+        None
+    }
+
+    /// Handle the user's selection on a `*FromApply` ConfirmationPage. Mirrors the
+    /// logic of `Message::ConfirmationSelected` for the global-Done variants, but
+    /// commits only the Game slice and routes back into settings (not out to MainPage).
+    fn apply_game_confirmation(&mut self, selection: ConfirmationOption) -> Task<Message> {
+        let new_config = if let AppState::ConfirmationPage(
+            ConfirmationKind::GameConfigChangedFromApply(ref config),
+        ) = self.app_state
+        {
+            Some(config.clone())
+        } else {
+            None
+        };
+
+        let mut task = Task::none();
+        let app_state = match selection {
+            ConfirmationOption::DiscardChanges => {
+                self.revert_from_snapshot();
+                AppState::EditGameConfig(ConfigPage::Main)
+            }
+            ConfirmationOption::GoBack => AppState::EditGameConfig(ConfigPage::Game),
+            ConfirmationOption::EndGameAndApply => {
+                let edited = self.edited_settings.as_ref().unwrap();
+                let mut tm = self.tm.lock().unwrap();
+                let now = Instant::now();
+                tm.reset_game(now);
+                if let Some(ref config) = new_config {
+                    tm.set_config(config.clone()).unwrap();
+                }
+
+                let (game, timing) = edited
+                    .schedule
+                    .as_ref()
+                    .map(|schedule| schedule.get_game_and_timing(&edited.game_number))
+                    .unwrap_or((None, None));
+                let start_time = game.map(|g| g.start_time);
+
+                tm.set_next_game(NextGameInfo {
+                    number: edited.game_number.clone(),
+                    timing: timing.cloned(),
+                    start_time,
+                });
+
+                if edited.using_uwhportal {
+                    tm.apply_next_game_start(now).unwrap();
+                } else {
+                    tm.clear_scheduled_game_start();
+                }
+
+                std::mem::drop(tm);
+                if let Some(config) = new_config {
+                    self.config.game = config;
+                }
+                self.page_entry_snapshot = None;
+                self.persist_config();
+                let new_snapshot = self.tm.lock().unwrap().generate_snapshot(now).unwrap();
+                task = self.apply_snapshot(new_snapshot);
+                AppState::EditGameConfig(ConfigPage::Main)
+            }
+            ConfirmationOption::KeepGameAndApply => {
+                let edited = self.edited_settings.as_ref().unwrap();
+                let mut tm = self.tm.lock().unwrap();
+                tm.set_game_number(&edited.game_number);
+                let new_snapshot = tm.generate_snapshot(Instant::now()).unwrap();
+                std::mem::drop(tm);
+                self.page_entry_snapshot = None;
+                self.persist_config();
+                task = self.apply_snapshot(new_snapshot);
+                AppState::EditGameConfig(ConfigPage::Main)
+            }
+        };
+        self.app_state = app_state;
+        trace!("AppState changed to {:?}", self.app_state);
+        task
+    }
+
     fn capture_snapshot_for(&mut self, page: ConfigPage) {
         let Some(edited) = self.edited_settings.as_ref() else {
             return;
@@ -537,6 +731,10 @@ impl RefBoxApp {
             ConfigPage::Game => PageEntrySnapshot::Game {
                 config: edited.config.clone(),
                 game_number: edited.game_number.clone(),
+                using_uwhportal: edited.using_uwhportal,
+                current_event_id: edited.current_event_id.clone(),
+                current_court: edited.current_court.clone(),
+                schedule: edited.schedule.clone(),
             },
             ConfigPage::App => PageEntrySnapshot::App {
                 using_uwhportal: edited.using_uwhportal,
@@ -579,9 +777,17 @@ impl RefBoxApp {
             PageEntrySnapshot::Game {
                 config,
                 game_number,
+                using_uwhportal,
+                current_event_id,
+                current_court,
+                schedule,
             } => {
                 edited.config = config;
                 edited.game_number = game_number;
+                edited.using_uwhportal = using_uwhportal;
+                edited.current_event_id = current_event_id;
+                edited.current_court = current_court;
+                edited.schedule = schedule;
             }
             PageEntrySnapshot::App {
                 using_uwhportal,
@@ -1498,15 +1704,17 @@ impl RefBoxApp {
                     ConfigPage::Display => self.apply_display_options(),
                     ConfigPage::Sound => self.apply_sound_options(),
                     ConfigPage::Remotes(_, _) => self.apply_remote_options(),
-                    ConfigPage::Game
-                    | ConfigPage::Language
-                    | ConfigPage::Main
-                    | ConfigPage::User => {
-                        // Game has no slice-apply yet, so its edits remain in
-                        // `edited_settings` until ConfigEditComplete commits
-                        // them. Language uses its own LanguageSelectComplete
-                        // path. Main and User are navigation-only and should
-                        // never receive Apply.
+                    ConfigPage::Game => {
+                        if let Some(kind) = self.apply_game_options() {
+                            self.app_state = AppState::ConfirmationPage(kind);
+                            trace!("AppState changed to {:?}", self.app_state);
+                            return Task::none();
+                        }
+                    }
+                    ConfigPage::Language | ConfigPage::Main | ConfigPage::User => {
+                        // Language uses its own LanguageSelectComplete path. Main
+                        // and User are navigation-only and should never receive
+                        // Apply.
                         return Task::none();
                     }
                 }
@@ -1767,11 +1975,11 @@ impl RefBoxApp {
 
                 let next_page = match self.app_state {
                     AppState::ParameterEditor(_, _) => ConfigPage::Game,
-                    AppState::KeypadPage(KeypadPage::GameNumber, _) => ConfigPage::Main,
+                    AppState::KeypadPage(KeypadPage::GameNumber, _) => ConfigPage::Game,
                     AppState::KeypadPage(KeypadPage::TeamTimeouts(_, _), _)
                     | AppState::KeypadPage(KeypadPage::PortalLogin(_, _), _) => ConfigPage::Game,
                     AppState::ParameterList(param, _) => match param {
-                        ListableParameter::Game => ConfigPage::Main,
+                        ListableParameter::Game => ConfigPage::Game,
                         ListableParameter::Event | ListableParameter::Court => ConfigPage::Game,
                     },
                     _ => unreachable!(),
@@ -1787,6 +1995,11 @@ impl RefBoxApp {
                     ListableParameter::Event => {
                         let id = EventId::from_full(val).unwrap();
                         edited_settings.current_event_id = Some(id.clone());
+                        // Court and game number were filtered by the previous event;
+                        // clear them so the user re-picks against the new event's schedule.
+                        edited_settings.current_court = None;
+                        edited_settings.game_number = String::new();
+                        edited_settings.schedule = None;
 
                         if let Some(ref client) = self.uwhportal_client {
                             if client.has_token() {
@@ -1805,9 +2018,7 @@ impl RefBoxApp {
                         {
                             if pools.len() == 1 {
                                 if let Some(ref mut edits) = self.edited_settings {
-                                    if edits.current_court.is_none() {
-                                        edits.current_court = Some(pools[0].clone());
-                                    }
+                                    edits.current_court = Some(pools[0].clone());
                                 }
                             }
                         }
@@ -1818,6 +2029,9 @@ impl RefBoxApp {
                     }
                     ListableParameter::Court => {
                         edited_settings.current_court = Some(val);
+                        // Game number was filtered by the previous court; clear it so the
+                        // user re-picks from the new court's filtered list.
+                        edited_settings.game_number = String::new();
                         Task::none()
                     }
                     ListableParameter::Game => {
@@ -1827,8 +2041,9 @@ impl RefBoxApp {
                 };
 
                 let next_page = match param {
-                    ListableParameter::Event | ListableParameter::Court => ConfigPage::Game,
-                    ListableParameter::Game => ConfigPage::Main,
+                    ListableParameter::Event
+                    | ListableParameter::Court
+                    | ListableParameter::Game => ConfigPage::Game,
                 };
 
                 self.app_state = AppState::EditGameConfig(next_page);
@@ -2014,6 +2229,17 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::ConfirmationSelected(selection) => {
+                if matches!(
+                    self.app_state,
+                    AppState::ConfirmationPage(
+                        ConfirmationKind::GameConfigChangedFromApply(_)
+                            | ConfirmationKind::GameNumberChangedFromApply
+                            | ConfirmationKind::UwhPortalIncompleteFromApply
+                    )
+                ) {
+                    return self.apply_game_confirmation(selection);
+                }
+
                 let new_config = if let AppState::ConfirmationPage(
                     ConfirmationKind::GameConfigChanged(ref config),
                 ) = self.app_state
@@ -2564,6 +2790,7 @@ impl RefBoxApp {
                 self.edited_settings.as_ref().unwrap(),
                 self.events.as_ref(),
                 page,
+                self.page_entry_snapshot.as_ref(),
             ),
             AppState::ParameterEditor(param, dur) => build_game_parameter_editor(data, param, dur),
             AppState::ParameterList(param, index) => build_list_selector_page(

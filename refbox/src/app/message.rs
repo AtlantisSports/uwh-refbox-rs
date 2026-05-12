@@ -79,9 +79,7 @@ pub enum Message {
     ShowWarnings,
     EditGameConfig,
     ChangeConfigPage(ConfigPage),
-    #[expect(dead_code)]
     ApplyConfigPage(ConfigPage),
-    #[expect(dead_code)]
     CancelConfigPage(ConfigPage),
     ConfigEditComplete {
         canceled: bool,

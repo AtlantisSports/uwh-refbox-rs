@@ -1922,6 +1922,8 @@ impl RefBoxApp {
                 } else {
                     let mut tm = self.tm.lock().unwrap();
                     let now = Instant::now();
+                    // Safe: end_confirm_pause's only Err is NotPaused, which can't occur here —
+                    // Message::ConfirmScores is only dispatched while a confirm-pause is active.
                     tm.end_confirm_pause(now).unwrap();
                     tm.start_clock(now);
                     tm.update(now + Duration::from_millis(2)).unwrap(); // Need to update after game ends
@@ -1938,6 +1940,8 @@ impl RefBoxApp {
                         let mut tm = self.tm.lock().unwrap();
 
                         tm.set_scores(scores, now);
+                        // Safe: end_confirm_pause's only Err is NotPaused, which can't occur here —
+                        // Message::ScoreConfirmation is only dispatched while a confirm-pause is active.
                         tm.end_confirm_pause(now).unwrap();
                         AppState::MainPage
                     } else {

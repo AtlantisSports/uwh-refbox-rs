@@ -63,7 +63,7 @@ pub(in super::super) fn build_game_info_page<'a>(
             make_button(fl!("back"))
                 .style(red_button)
                 .width(Length::Fill)
-                .on_press(Message::ConfigEditComplete { canceled: true }),
+                .on_press(Message::ConfigEditComplete),
             middle_item,
             make_button(fl!("settings"))
                 .style(gray_button)

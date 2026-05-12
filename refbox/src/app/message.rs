@@ -81,9 +81,7 @@ pub enum Message {
     ChangeConfigPage(ConfigPage),
     ApplyConfigPage(ConfigPage),
     CancelConfigPage(ConfigPage),
-    ConfigEditComplete {
-        canceled: bool,
-    },
+    ConfigEditComplete,
     EditParameter(LengthParameter),
     SelectParameter(ListableParameter),
     ParameterEditComplete {
@@ -170,7 +168,7 @@ impl Message {
             | Self::ChangeConfigPage(_)
             | Self::ApplyConfigPage(_)
             | Self::CancelConfigPage(_)
-            | Self::ConfigEditComplete { .. }
+            | Self::ConfigEditComplete
             | Self::EditParameter(_)
             | Self::SelectParameter(_)
             | Self::ParameterEditComplete { .. }
@@ -212,6 +210,7 @@ impl PartialEq for Message {
             | (Self::RequestPortalRefresh, Self::RequestPortalRefresh)
             | (Self::ShowWarnings, Self::ShowWarnings)
             | (Self::EditGameConfig, Self::EditGameConfig)
+            | (Self::ConfigEditComplete, Self::ConfigEditComplete)
             | (Self::RequestRemoteId, Self::RequestRemoteId)
             | (Self::EndTimeout, Self::EndTimeout)
             | (Self::StopClock, Self::StopClock)
@@ -375,7 +374,7 @@ impl PartialEq for Message {
             | (Self::ChangeConfigPage(_), _)
             | (Self::ApplyConfigPage(_), _)
             | (Self::CancelConfigPage(_), _)
-            | (Self::ConfigEditComplete { .. }, _)
+            | (Self::ConfigEditComplete, _)
             | (Self::EditParameter(_), _)
             | (Self::SelectParameter(_), _)
             | (Self::ParameterEditComplete { .. }, _)

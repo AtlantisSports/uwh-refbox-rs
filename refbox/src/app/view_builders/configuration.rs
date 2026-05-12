@@ -237,14 +237,28 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
             clock_running,
             page_entry_snapshot,
         ),
-        ConfigPage::Sound => make_sound_config_page(snapshot, settings, mode, clock_running),
-        ConfigPage::Display => make_display_config_page(snapshot, settings, mode, clock_running),
-        ConfigPage::App => make_app_config_page(mode, snapshot, settings, clock_running),
-        ConfigPage::User => make_user_config_page(snapshot, settings, mode, clock_running),
-        ConfigPage::Remotes(index, listening) => {
-            make_remote_config_page(snapshot, settings, index, listening, mode, clock_running)
+        ConfigPage::Sound => {
+            make_sound_config_page(snapshot, settings, mode, clock_running, page_entry_snapshot)
         }
-        ConfigPage::Language => make_language_select_page(snapshot, settings, mode, clock_running),
+        ConfigPage::Display => {
+            make_display_config_page(snapshot, settings, mode, clock_running, page_entry_snapshot)
+        }
+        ConfigPage::App => {
+            make_app_config_page(mode, snapshot, settings, clock_running, page_entry_snapshot)
+        }
+        ConfigPage::User => make_user_config_page(snapshot, settings, mode, clock_running),
+        ConfigPage::Remotes(index, listening) => make_remote_config_page(
+            snapshot,
+            settings,
+            index,
+            listening,
+            mode,
+            clock_running,
+            page_entry_snapshot,
+        ),
+        ConfigPage::Language => {
+            make_language_select_page(snapshot, settings, mode, clock_running, page_entry_snapshot)
+        }
     }
 }
 
@@ -280,7 +294,7 @@ fn make_main_config_page<'a>(
         row_bottom,
         vertical_space(),
         row![
-            make_back_button(Message::ConfigEditComplete { canceled: true }),
+            make_back_button(Message::ConfigEditComplete),
             horizontal_space(),
             horizontal_space(),
         ]
@@ -696,6 +710,7 @@ fn make_app_config_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
     clock_running: bool,
+    page_entry_snapshot: Option<&PageEntrySnapshot>,
 ) -> Element<'a, Message> {
     let EditableSettings {
         collect_scorer_cap_num,
@@ -722,8 +737,7 @@ fn make_app_config_page<'a>(
                 )),
             ),
         ]
-        .spacing(SPACING)
-        .height(Length::Fill),
+        .spacing(SPACING),
         row![
             make_value_button(
                 fl!("track-fouls-and-warnings"),
@@ -742,30 +756,9 @@ fn make_app_config_page<'a>(
                 )),
             ),
         ]
-        .spacing(SPACING)
-        .height(Length::Fill),
-        row![
-            make_value_button(
-                fl!("language"),
-                fl!("this-language"),
-                (false, true),
-                Some(Message::ChangeConfigPage(ConfigPage::Language)),
-            ),
-            horizontal_space(),
-        ]
-        .spacing(SPACING)
-        .height(Length::Fill),
+        .spacing(SPACING),
         vertical_space(),
-        row![
-            horizontal_space(),
-            horizontal_space(),
-            make_button(fl!("done"))
-                .style(green_button)
-                .width(Length::Fill)
-                .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
-        ]
-        .spacing(SPACING)
-        .height(Length::Fill)
+        make_cancel_apply_footer(ConfigPage::App, settings, page_entry_snapshot),
     ]
     .spacing(SPACING)
     .height(Length::Fill)
@@ -777,6 +770,7 @@ fn make_display_config_page<'a>(
     settings: &EditableSettings,
     mode: Mode,
     clock_running: bool,
+    page_entry_snapshot: Option<&PageEntrySnapshot>,
 ) -> Element<'a, Message> {
     let EditableSettings {
         white_on_right,
@@ -838,15 +832,7 @@ fn make_display_config_page<'a>(
         ]
         .spacing(SPACING),
         vertical_space(),
-        row![
-            horizontal_space(),
-            horizontal_space(),
-            make_button(fl!("done"))
-                .style(green_button)
-                .width(Length::Fill)
-                .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
-        ]
-        .spacing(SPACING)
+        make_cancel_apply_footer(ConfigPage::Display, settings, page_entry_snapshot),
     ]
     .spacing(SPACING)
     .height(Length::Fill)
@@ -858,6 +844,7 @@ fn make_sound_config_page<'a>(
     settings: &EditableSettings,
     mode: Mode,
     clock_running: bool,
+    page_entry_snapshot: Option<&PageEntrySnapshot>,
 ) -> Element<'a, Message> {
     let EditableSettings { sound, .. } = settings;
 
@@ -977,21 +964,14 @@ fn make_sound_config_page<'a>(
         ]
         .spacing(SPACING),
         vertical_space(),
-        row![
-            horizontal_space(),
-            horizontal_space(),
-            make_button(fl!("done"))
-                .style(green_button)
-                .width(Length::Fill)
-                .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
-        ]
-        .spacing(SPACING),
+        make_cancel_apply_footer(ConfigPage::Sound, settings, page_entry_snapshot),
     ]
     .spacing(SPACING)
     .height(Length::Fill)
     .into()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn make_remote_config_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
@@ -999,6 +979,7 @@ fn make_remote_config_page<'a>(
     listening: bool,
     mode: Mode,
     clock_running: bool,
+    page_entry_snapshot: Option<&PageEntrySnapshot>,
 ) -> Element<'a, Message> {
     const REMOTES_LIST_LEN: usize = 4;
 
@@ -1084,20 +1065,19 @@ fn make_remote_config_page<'a>(
             )
             .height(Length::Fill)
             .width(Length::FillPortion(5)),
-            column![
-                vertical_space(),
-                add_btn,
-                make_button(fl!("done"))
-                    .on_press(Message::ChangeConfigPage(ConfigPage::Sound),)
-                    .style(green_button),
-            ]
-            .spacing(SPACING)
-            .height(Length::Fill)
-            .width(Length::Fill),
+            column![vertical_space(), add_btn,]
+                .spacing(SPACING)
+                .height(Length::Fill)
+                .width(Length::Fill),
         ]
         .spacing(SPACING)
         .height(Length::Fill)
         .width(Length::Fill),
+        make_cancel_apply_footer(
+            ConfigPage::Remotes(index, listening),
+            settings,
+            page_entry_snapshot,
+        ),
     ]
     .spacing(SPACING)
     .height(Length::Fill)
@@ -1176,9 +1156,11 @@ fn make_language_select_page<'a>(
     settings: &EditableSettings,
     mode: Mode,
     clock_running: bool,
+    page_entry_snapshot: Option<&PageEntrySnapshot>,
 ) -> Element<'a, Message> {
     let selected = settings.pending_language.unwrap_or(Language::English);
     let original = settings.original_language.unwrap_or(Language::English);
+    let apply_enabled = page_has_changes(ConfigPage::Language, settings, page_entry_snapshot);
 
     let cjk_font = iced_core::Font {
         family: iced_core::font::Family::Name("Noto Sans CJK KR"),
@@ -1381,13 +1363,15 @@ fn make_language_select_page<'a>(
                 .width(Length::Fill)
                 .on_press(Message::LanguageSelectComplete { canceled: true });
 
+            let confirm_msg =
+                apply_enabled.then_some(Message::LanguageSelectComplete { canceled: false });
             let confirm_btn: Element<'a, Message> = if needs_restart {
                 button(make_label(selected.restart_text(), selected_font))
                     .padding(PADDING)
                     .height(Length::Fixed(MIN_BUTTON_SIZE))
                     .style(blue_button)
                     .width(Length::Fill)
-                    .on_press(Message::LanguageSelectComplete { canceled: false })
+                    .on_press_maybe(confirm_msg)
                     .into()
             } else {
                 button(make_label(selected.done_text(), selected_font))
@@ -1395,15 +1379,13 @@ fn make_language_select_page<'a>(
                     .height(Length::Fixed(MIN_BUTTON_SIZE))
                     .style(green_button)
                     .width(Length::Fill)
-                    .on_press(Message::LanguageSelectComplete { canceled: false })
+                    .on_press_maybe(confirm_msg)
                     .into()
             };
 
             row![cancel_btn, horizontal_space(), confirm_btn]
         }
-        .spacing(SPACING)
-        .width(Length::Fill)
-        .height(Length::Fill),
+        .spacing(SPACING),
     ]
     .spacing(SPACING)
     .height(Length::Fill)

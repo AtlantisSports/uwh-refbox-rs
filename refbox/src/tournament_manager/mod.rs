@@ -6973,4 +6973,44 @@ mod test {
         assert!(!tm.in_score_confirm_pause());
         assert_eq!(tm.time_pause_confirmation, None);
     }
+
+    #[test]
+    fn test_end_confirm_pause_recovers_gracefully_from_unexpected_period() {
+        // Regression test for the confirm-score timing fix (commit 0d895ca).
+        //
+        // Before the fix in app/mod.rs Message::ConfirmScores, the confirm-pause
+        // state was left dangling: start_clock advanced the period to BetweenGames
+        // while time_pause_confirmation remained Some. ~90 seconds later, the
+        // async "pause over?" loop in app/mod.rs called end_confirm_pause from
+        // GamePeriod::BetweenGames - a case the function's match did not cover.
+        // The unreachable!() branch panicked, poisoning the tm mutex and making
+        // the refbox unusable until restart.
+        //
+        // The defensive fix (B1.2 in the audit) replaces unreachable!() with a
+        // warn + graceful state-clear. This test constructs the regression
+        // precondition (BetweenGames + stale pause) and calls end_confirm_pause
+        // directly, mirroring what the async loop does. Pre-fix this panicked;
+        // post-fix it returns Ok and clears the stale state.
+        initialize();
+        let config = GameConfig::default();
+        let mut tm = TournamentManager::new(config);
+
+        let start = Instant::now();
+
+        // Broken precondition: period has advanced to BetweenGames while a
+        // confirm-pause is still pending.
+        tm.set_period_and_game_clock_time(GamePeriod::BetweenGames, Duration::from_secs(60));
+        tm.time_pause_confirmation = Some(ConfirmPause {
+            pause_began: start,
+            duration_of_pause: Duration::from_secs(5),
+            clock_time: Duration::ZERO,
+        });
+
+        // Pre-fix: unreachable!() panic. Post-fix (B1.2): warn + Ok.
+        tm.end_confirm_pause(start + Duration::from_secs(10))
+            .unwrap();
+
+        // Recovery must clear the stale pause state.
+        assert_eq!(tm.time_pause_confirmation, None);
+    }
 }

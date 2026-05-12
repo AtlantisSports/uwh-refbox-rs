@@ -1059,6 +1059,72 @@ mod tests {
     }
 
     #[test]
+    fn test_serialize_list_of_placements_final_results() {
+        let final_results = FinalResults::ListOfPlacements {
+            list_of_placements: vec![
+                FinalPlacingSource {
+                    result_of: Some(ResultOf::Winner {
+                        game_number: "5".to_string(),
+                    }),
+                    seeded_by: None,
+                },
+                FinalPlacingSource {
+                    result_of: None,
+                    seeded_by: Some(SeededBy {
+                        number: 1,
+                        group: Some("A Group".to_string()),
+                    }),
+                },
+                FinalPlacingSource {
+                    result_of: None,
+                    seeded_by: Some(SeededBy {
+                        number: 2,
+                        group: None,
+                    }),
+                },
+            ],
+        };
+        let serialized = serde_json::to_string(&final_results).unwrap();
+        assert_eq!(
+            serialized,
+            r#"{"type":"ListOfPlacements","listOfPlacements":[{"resultOf":{"type":"Winner","gameNumber":"5"}},{"seededBy":{"number":1,"group":{"name":"A Group"}}},{"seededBy":{"number":2}}]}"#
+        );
+    }
+
+    #[test]
+    fn test_deserialize_list_of_placements_final_results() {
+        let json = r#"{"type":"ListOfPlacements","listOfPlacements":[{"resultOf":{"type":"Winner","gameNumber":"5"}},{"seededBy":{"number":1,"group":{"name":"A Group"}}},{"seededBy":{"number":2}}]}"#;
+        let deserialized: FinalResults = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            deserialized,
+            FinalResults::ListOfPlacements {
+                list_of_placements: vec![
+                    FinalPlacingSource {
+                        result_of: Some(ResultOf::Winner {
+                            game_number: "5".to_string(),
+                        }),
+                        seeded_by: None,
+                    },
+                    FinalPlacingSource {
+                        result_of: None,
+                        seeded_by: Some(SeededBy {
+                            number: 1,
+                            group: Some("A Group".to_string()),
+                        }),
+                    },
+                    FinalPlacingSource {
+                        result_of: None,
+                        seeded_by: Some(SeededBy {
+                            number: 2,
+                            group: None,
+                        }),
+                    },
+                ],
+            }
+        );
+    }
+
+    #[test]
     fn test_serialize_group() {
         let group = Group {
             name: "A Group".to_string(),

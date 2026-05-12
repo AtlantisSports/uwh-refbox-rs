@@ -276,7 +276,8 @@ fn make_main_config_page<'a>(
             .style(light_gray_button)
             .on_press(Message::ChangeConfigPage(ConfigPage::App)),
     ]
-    .spacing(SPACING);
+    .spacing(SPACING)
+    .height(Length::Fill);
 
     let row_bottom = row![
         make_button(fl!("user-options"))
@@ -286,13 +287,15 @@ fn make_main_config_page<'a>(
             .style(light_gray_button)
             .on_press(Message::ChangeConfigPage(ConfigPage::Language)),
     ]
-    .spacing(SPACING);
+    .spacing(SPACING)
+    .height(Length::Fill);
 
     column![
         make_game_time_button(snapshot, false, false, mode, clock_running),
         row_top,
         row_bottom,
-        vertical_space(),
+        row![horizontal_space()].height(Length::Fill),
+        row![horizontal_space()].height(Length::Fill),
         row![
             make_back_button(Message::ConfigEditComplete),
             horizontal_space(),
@@ -362,12 +365,15 @@ fn make_user_config_page<'a>(
             .style(light_gray_button)
             .on_press(Message::ChangeConfigPage(ConfigPage::Sound)),
     ]
-    .spacing(SPACING);
+    .spacing(SPACING)
+    .height(Length::Fill);
 
     column![
         make_game_time_button(snapshot, false, false, mode, clock_running),
         tiles,
-        vertical_space(),
+        row![horizontal_space()].height(Length::Fill),
+        row![horizontal_space()].height(Length::Fill),
+        row![horizontal_space()].height(Length::Fill),
         row![
             make_back_button(Message::ChangeConfigPage(ConfigPage::Main)),
             horizontal_space(),
@@ -401,6 +407,8 @@ fn make_event_config_page<'a>(
 
     let using_uwhportal = *using_uwhportal;
 
+    // Game-number picker — placed in the centre cell of the action row
+    // (Cancel | Game | Apply) in both portal modes per ADR-009 Task 14 layout.
     let game_btn_msg = if using_uwhportal {
         if current_event_id.is_some() && current_court.is_some() && schedule.is_some() {
             Some(Message::SelectParameter(ListableParameter::Game))
@@ -432,7 +440,35 @@ fn make_event_config_page<'a>(
         game_number.to_string()
     };
 
-    let rows: Vec<Element<Message>> = if using_uwhportal {
+    // Using UWH Portal toggle — row 1 left cell in both portal modes.
+    let using_uwh_portal_btn = make_value_button(
+        fl!("using-uwh-portal"),
+        bool_string(using_uwhportal),
+        (false, true),
+        Some(Message::ToggleBoolParameter(
+            BoolGameParameter::UsingUwhPortal,
+        )),
+    );
+
+    // Column layout: page_content fills available height between the top
+    // game-time button and the bottom timeout ribbon. Data rows take Fill
+    // height so they each absorb an equal share of the leftover vertical
+    // space, giving uniform inter-row gaps with the action row sitting just
+    // above the timeout ribbon. Action row stays at MIN_BUTTON_SIZE so the
+    // Cancel/Game/Apply chrome reads at a consistent size across pages.
+    let mut col = column![make_game_time_button(
+        snapshot,
+        false,
+        false,
+        mode,
+        clock_running,
+    )]
+    .spacing(SPACING)
+    .height(Length::Fill);
+
+    if using_uwhportal {
+        // Portal mode ON: row 1 = UWH Portal + 2 blanks; rows 2–4 = full-width
+        // Event / Token / Court single-button rows.
         let event_label = if let Some(events) = events {
             if let Some(event_id) = current_event_id {
                 match events.get(event_id) {
@@ -514,193 +550,188 @@ fn make_event_config_page<'a>(
             .width(Length::Fill)
             .height(Length::Fill),
         )
-        .height(Length::Fixed(MIN_BUTTON_SIZE))
+        .height(Length::Fill)
         .width(Length::Fill)
         .padding(0)
         .style(light_gray_button)
         .on_press_maybe(auth_state_message);
 
-        vec![
-            make_value_button(fl!("event"), event_label, (true, true), event_btn_msg)
-                .height(Length::Fill)
-                .into(),
-            auth_state_button.into(),
-            make_value_button(fl!("court"), pool_label, (true, true), pool_btn_msg)
-                .height(Length::Fill)
-                .into(),
-        ]
-    } else {
-        vec![
-            row![
-                make_value_button(
-                    if config.single_half {
-                        fl!("game-length")
-                    } else {
-                        fl!("half-length-full")
-                    },
-                    time_string(config.half_play_duration),
-                    (false, true),
-                    Some(Message::EditParameter(LengthParameter::Half)),
-                ),
-                make_value_button(
-                    fl!("overtime-allowed"),
-                    bool_string(config.overtime_allowed),
-                    (false, true),
-                    Some(Message::ToggleBoolParameter(
-                        BoolGameParameter::OvertimeAllowed,
-                    )),
-                ),
-                make_value_button(
-                    fl!("sudden-death-allowed"),
-                    bool_string(config.sudden_death_allowed),
-                    (false, true),
-                    Some(Message::ToggleBoolParameter(
-                        BoolGameParameter::SuddenDeathAllowed,
-                    )),
-                )
-            ]
-            .spacing(SPACING)
-            .height(Length::Fill)
-            .into(),
-            row![
-                make_value_button(
-                    fl!("half-time-length"),
-                    time_string(config.half_time_duration),
-                    (false, true),
-                    if !config.single_half {
-                        Some(Message::EditParameter(LengthParameter::HalfTime))
-                    } else {
-                        None
-                    },
-                ),
-                make_value_button(
-                    fl!("pre-ot-break-length"),
-                    time_string(config.pre_overtime_break),
-                    (false, true),
-                    if config.overtime_allowed {
-                        Some(Message::EditParameter(LengthParameter::PreOvertime))
-                    } else {
-                        None
-                    },
-                ),
-                make_value_button(
-                    fl!("pre-sd-break-length"),
-                    time_string(config.pre_sudden_death_duration),
-                    (false, true),
-                    if config.sudden_death_allowed {
-                        Some(Message::EditParameter(LengthParameter::PreSuddenDeath))
-                    } else {
-                        None
-                    },
-                )
-            ]
-            .spacing(SPACING)
-            .height(Length::Fill)
-            .into(),
-            row![
-                make_value_button(
-                    fl!("nominal-break-between-games"),
-                    time_string(config.nominal_break),
-                    (false, true),
-                    Some(Message::EditParameter(LengthParameter::NominalBetweenGame)),
-                ),
-                make_value_button(
-                    fl!("ot-half-length"),
-                    time_string(config.ot_half_play_duration),
-                    (false, true),
-                    if config.overtime_allowed {
-                        Some(Message::EditParameter(LengthParameter::OvertimeHalf))
-                    } else {
-                        None
-                    },
-                ),
-                make_value_button(
-                    if config.timeouts_counted_per_half {
-                        fl!("num-tos-per-half")
-                    } else {
-                        fl!("num-tos-per-game")
-                    },
-                    config.num_team_timeouts_allowed.to_string(),
-                    (false, true),
-                    Some(Message::KeypadPage(KeypadPage::TeamTimeouts(
-                        config.team_timeout_duration,
-                        config.timeouts_counted_per_half,
-                    ))),
-                )
-            ]
-            .spacing(SPACING)
-            .height(Length::Fill)
-            .into(),
-            row![
-                make_value_button(
-                    fl!("minimum-brk-btwn-games"),
-                    time_string(config.minimum_break),
-                    (false, true),
-                    Some(Message::EditParameter(LengthParameter::MinimumBetweenGame)),
-                ),
-                make_value_button(
-                    fl!("ot-half-time-length"),
-                    time_string(config.ot_half_time_duration),
-                    (false, true),
-                    if config.overtime_allowed {
-                        Some(Message::EditParameter(LengthParameter::OvertimeHalfTime))
-                    } else {
-                        None
-                    },
-                ),
-                horizontal_space(),
-            ]
-            .spacing(SPACING)
-            .height(Length::Fill)
-            .into(),
-        ]
-    };
-
-    let mut col = column![
-        make_game_time_button(snapshot, false, false, mode, clock_running),
-        row![
-            if !using_uwhportal {
-                make_value_button(
-                    fl!("single-half"),
-                    bool_string(settings.config.single_half),
-                    (false, true),
-                    Some(Message::ToggleBoolParameter(BoolGameParameter::SingleHalf)),
-                )
-            } else {
-                make_button("")
-                    .style(light_gray_button)
-                    .on_press(Message::NoAction)
-            },
-            make_value_button(
-                fl!("game-select"),
-                game_label,
-                (false, game_large_text),
-                game_btn_msg,
-            ),
-            make_value_button(
-                fl!("using-uwh-portal"),
-                bool_string(using_uwhportal),
-                (false, true),
-                Some(Message::ToggleBoolParameter(
-                    BoolGameParameter::UsingUwhPortal,
-                )),
+        col = col
+            .push(
+                row![using_uwh_portal_btn, horizontal_space(), horizontal_space()]
+                    .spacing(SPACING)
+                    .height(Length::Fill),
             )
-        ]
-        .spacing(SPACING)
-        .height(Length::Fill),
-    ]
-    .spacing(SPACING)
-    .height(Length::Fill);
-
-    for row in rows {
-        col = col.push(row);
+            .push(
+                make_value_button(fl!("event"), event_label, (true, true), event_btn_msg)
+                    .height(Length::Fill),
+            )
+            .push(auth_state_button)
+            .push(
+                make_value_button(fl!("court"), pool_label, (true, true), pool_btn_msg)
+                    .height(Length::Fill),
+            );
+    } else {
+        // Portal mode OFF: 4 data rows × 3 cells each.
+        col = col
+            .push(
+                row![
+                    using_uwh_portal_btn,
+                    make_value_button(
+                        fl!("overtime-allowed"),
+                        bool_string(config.overtime_allowed),
+                        (false, true),
+                        Some(Message::ToggleBoolParameter(
+                            BoolGameParameter::OvertimeAllowed,
+                        )),
+                    ),
+                    make_value_button(
+                        fl!("sudden-death-allowed"),
+                        bool_string(config.sudden_death_allowed),
+                        (false, true),
+                        Some(Message::ToggleBoolParameter(
+                            BoolGameParameter::SuddenDeathAllowed,
+                        )),
+                    )
+                ]
+                .spacing(SPACING)
+                .height(Length::Fill),
+            )
+            .push(
+                row![
+                    make_value_button(
+                        if config.single_half {
+                            fl!("game-length")
+                        } else {
+                            fl!("half-length-full")
+                        },
+                        time_string(config.half_play_duration),
+                        (false, true),
+                        Some(Message::EditParameter(LengthParameter::Half)),
+                    ),
+                    make_value_button(
+                        fl!("pre-ot-break-length"),
+                        time_string(config.pre_overtime_break),
+                        (false, true),
+                        if config.overtime_allowed {
+                            Some(Message::EditParameter(LengthParameter::PreOvertime))
+                        } else {
+                            None
+                        },
+                    ),
+                    make_value_button(
+                        fl!("pre-sd-break-length"),
+                        time_string(config.pre_sudden_death_duration),
+                        (false, true),
+                        if config.sudden_death_allowed {
+                            Some(Message::EditParameter(LengthParameter::PreSuddenDeath))
+                        } else {
+                            None
+                        },
+                    )
+                ]
+                .spacing(SPACING)
+                .height(Length::Fill),
+            )
+            .push(
+                row![
+                    make_value_button(
+                        fl!("half-time-length"),
+                        time_string(config.half_time_duration),
+                        (false, true),
+                        if !config.single_half {
+                            Some(Message::EditParameter(LengthParameter::HalfTime))
+                        } else {
+                            None
+                        },
+                    ),
+                    make_value_button(
+                        fl!("ot-half-length"),
+                        time_string(config.ot_half_play_duration),
+                        (false, true),
+                        if config.overtime_allowed {
+                            Some(Message::EditParameter(LengthParameter::OvertimeHalf))
+                        } else {
+                            None
+                        },
+                    ),
+                    make_value_button(
+                        fl!("minimum-brk-btwn-games"),
+                        time_string(config.minimum_break),
+                        (false, true),
+                        Some(Message::EditParameter(LengthParameter::MinimumBetweenGame)),
+                    )
+                ]
+                .spacing(SPACING)
+                .height(Length::Fill),
+            )
+            .push(
+                row![
+                    make_value_button(
+                        if config.timeouts_counted_per_half {
+                            fl!("num-tos-per-half")
+                        } else {
+                            fl!("num-tos-per-game")
+                        },
+                        config.num_team_timeouts_allowed.to_string(),
+                        (false, true),
+                        Some(Message::KeypadPage(KeypadPage::TeamTimeouts(
+                            config.team_timeout_duration,
+                            config.timeouts_counted_per_half,
+                        ))),
+                    ),
+                    make_value_button(
+                        fl!("ot-half-time-length"),
+                        time_string(config.ot_half_time_duration),
+                        (false, true),
+                        if config.overtime_allowed {
+                            Some(Message::EditParameter(LengthParameter::OvertimeHalfTime))
+                        } else {
+                            None
+                        },
+                    ),
+                    make_value_button(
+                        fl!("nominal-break-between-games"),
+                        time_string(config.nominal_break),
+                        (false, true),
+                        Some(Message::EditParameter(LengthParameter::NominalBetweenGame)),
+                    )
+                ]
+                .spacing(SPACING)
+                .height(Length::Fill),
+            );
     }
 
-    col = col.push(make_cancel_apply_footer(
-        ConfigPage::Game,
-        settings,
-        page_entry_snapshot,
-    ));
+    // Action row: Cancel | Game-number picker | Apply.
+    // Apply is blocked when the portal state is incomplete (carried over from
+    // make_cancel_apply_footer's gate so a click on Apply can't reach a
+    // wasteful confirmation dialog).
+    let apply_blocked = settings.uwhportal_incomplete();
+    let apply_enabled =
+        page_has_changes(ConfigPage::Game, settings, page_entry_snapshot) && !apply_blocked;
+
+    let cancel_btn = make_button(fl!("cancel"))
+        .style(red_button)
+        .width(Length::Fill)
+        .on_press(Message::CancelConfigPage(ConfigPage::Game));
+
+    let game_picker_btn = make_value_button(
+        fl!("game-select"),
+        game_label,
+        (false, game_large_text),
+        game_btn_msg,
+    );
+
+    let apply_btn = make_button(fl!("apply"))
+        .style(green_button)
+        .width(Length::Fill);
+    let apply_btn = if apply_enabled {
+        apply_btn.on_press(Message::ApplyConfigPage(ConfigPage::Game))
+    } else {
+        apply_btn
+    };
+
+    col = col.push(row![cancel_btn, game_picker_btn, apply_btn].spacing(SPACING));
 
     col.into()
 }
@@ -737,7 +768,8 @@ fn make_app_config_page<'a>(
                 )),
             ),
         ]
-        .spacing(SPACING),
+        .spacing(SPACING)
+        .height(Length::Fill),
         row![
             make_value_button(
                 fl!("track-fouls-and-warnings"),
@@ -756,8 +788,10 @@ fn make_app_config_page<'a>(
                 )),
             ),
         ]
-        .spacing(SPACING),
-        vertical_space(),
+        .spacing(SPACING)
+        .height(Length::Fill),
+        row![horizontal_space()].height(Length::Fill),
+        row![horizontal_space()].height(Length::Fill),
         make_cancel_apply_footer(ConfigPage::App, settings, page_entry_snapshot),
     ]
     .spacing(SPACING)
@@ -815,7 +849,7 @@ fn make_display_config_page<'a>(
 
     column![
         make_game_time_button(snapshot, false, false, mode, clock_running),
-        row![sides_btn].spacing(SPACING),
+        row![sides_btn].spacing(SPACING).height(Length::Fill),
         row![
             make_value_button(
                 fl!("hide-time-for-last-15-seconds"),
@@ -830,8 +864,10 @@ fn make_display_config_page<'a>(
                 Some(Message::CycleParameter(CyclingParameter::Brightness))
             )
         ]
-        .spacing(SPACING),
-        vertical_space(),
+        .spacing(SPACING)
+        .height(Length::Fill),
+        row![horizontal_space()].height(Length::Fill),
+        row![horizontal_space()].height(Length::Fill),
         make_cancel_apply_footer(ConfigPage::Display, settings, page_entry_snapshot),
     ]
     .spacing(SPACING)
@@ -873,7 +909,8 @@ fn make_sound_config_page<'a>(
                 .on_press(Message::ChangeConfigPage(ConfigPage::Remotes(0, false)),)
                 .style(light_gray_button),
         ]
-        .spacing(SPACING),
+        .spacing(SPACING)
+        .height(Length::Fill),
         row![
             make_value_button(
                 fl!("whistle-enabled"),
@@ -910,7 +947,8 @@ fn make_sound_config_page<'a>(
                 },
             )
         ]
-        .spacing(SPACING),
+        .spacing(SPACING)
+        .height(Length::Fill),
         row![
             make_value_button(
                 fl!("buzzer-sound"),
@@ -945,7 +983,8 @@ fn make_sound_config_page<'a>(
                 },
             )
         ]
-        .spacing(SPACING),
+        .spacing(SPACING)
+        .height(Length::Fill),
         row![
             make_value_button(
                 fl!("alarm-button"),
@@ -962,8 +1001,8 @@ fn make_sound_config_page<'a>(
             horizontal_space(),
             horizontal_space(),
         ]
-        .spacing(SPACING),
-        vertical_space(),
+        .spacing(SPACING)
+        .height(Length::Fill),
         make_cancel_apply_footer(ConfigPage::Sound, settings, page_entry_snapshot),
     ]
     .spacing(SPACING)

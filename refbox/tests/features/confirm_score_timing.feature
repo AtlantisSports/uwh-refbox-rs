@@ -9,9 +9,17 @@ Feature: Confirm-score timing fix
   # retroactive design record.
   #
   # Test sessions:
-  # (filled during Step 6.2 / 6.3 execution)
+  # 2026-05-12 - Audit Unit 1 Task 6.3 - S1.1 pass.
+  #   Confirm Score Required set to OFF; half shortened to ~5s for the test
+  #   (Black 0, White 1 at end of second half). Operator dismissed the
+  #   score-confirmation prompt; refbox transitioned cleanly to BetweenGames,
+  #   stayed responsive through the full 120-second confirm-pause window and
+  #   beyond (normal "Resetting game" at +2m11s). No panic, no mutex poison.
+  #   The "end_confirm_pause called while in unexpected period" warning did
+  #   NOT appear, confirming B1.1 cleared the pause state cleanly before
+  #   start_clock - B1.2's defensive recovery did not need to fire.
 
-  @user_verified
+  @user_verified @tested_pass
   Scenario: Clock starts cleanly after the second half ends with confirm-score off
     Given the operator has "Confirm Score Required" set to OFF in Game Settings
     And a game has been configured and started

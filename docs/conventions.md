@@ -20,6 +20,7 @@ When in doubt, check here first.
 | `docs` | Documentation only changes |
 | `hotfix` | Urgent fix for a production or legacy deployment |
 | `wip` | Work in progress — not intended for a PR yet |
+| `audit` | Auditing existing code (AI-assisted or otherwise) to catalog, prune, and document behaviour |
 
 ### Scopes
 

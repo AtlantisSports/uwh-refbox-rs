@@ -20,10 +20,17 @@ pub(in super::super) fn build_confirmation_page<'a>(
     } = data;
 
     let header_text: String = match kind {
-        ConfirmationKind::GameConfigChanged(_) => fl!("game-configuration-can-not-be-changed"),
-        ConfirmationKind::GameNumberChanged => fl!("apply-this-game-number-change"),
+        ConfirmationKind::GameConfigChanged(_)
+        | ConfirmationKind::GameConfigChangedFromApply(_) => {
+            fl!("game-configuration-can-not-be-changed")
+        }
+        ConfirmationKind::GameNumberChanged | ConfirmationKind::GameNumberChangedFromApply => {
+            fl!("apply-this-game-number-change")
+        }
         ConfirmationKind::Error(string) => string.clone(),
-        ConfirmationKind::UwhPortalIncomplete => fl!("UWHPortal-enabled"),
+        ConfirmationKind::UwhPortalIncomplete | ConfirmationKind::UwhPortalIncompleteFromApply => {
+            fl!("UWHPortal-enabled")
+        }
         ConfirmationKind::UwhPortalLinkFailed(PortalTokenResponse::InvalidCode) => {
             fl!("uwhportal-token-invalid-code")
         }
@@ -36,7 +43,8 @@ pub(in super::super) fn build_confirmation_page<'a>(
     type ButtonStyleFn = fn(&Theme, Status) -> Style;
 
     let buttons: Vec<(_, ButtonStyleFn, _)> = match kind {
-        ConfirmationKind::GameConfigChanged(_) => vec![
+        ConfirmationKind::GameConfigChanged(_)
+        | ConfirmationKind::GameConfigChangedFromApply(_) => vec![
             (
                 fl!("go-back-to-editor"),
                 green_button,
@@ -53,7 +61,7 @@ pub(in super::super) fn build_confirmation_page<'a>(
                 ConfirmationOption::EndGameAndApply,
             ),
         ],
-        ConfirmationKind::GameNumberChanged => vec![
+        ConfirmationKind::GameNumberChanged | ConfirmationKind::GameNumberChangedFromApply => vec![
             (
                 fl!("go-back-to-editor"),
                 green_button,
@@ -78,18 +86,20 @@ pub(in super::super) fn build_confirmation_page<'a>(
         ConfirmationKind::Error(_) => {
             vec![(fl!("ok"), green_button, ConfirmationOption::DiscardChanges)]
         }
-        ConfirmationKind::UwhPortalIncomplete => vec![
-            (
-                fl!("go-back-to-editor"),
-                green_button,
-                ConfirmationOption::GoBack,
-            ),
-            (
-                fl!("discard-changes"),
-                yellow_button,
-                ConfirmationOption::DiscardChanges,
-            ),
-        ],
+        ConfirmationKind::UwhPortalIncomplete | ConfirmationKind::UwhPortalIncompleteFromApply => {
+            vec![
+                (
+                    fl!("go-back-to-editor"),
+                    green_button,
+                    ConfirmationOption::GoBack,
+                ),
+                (
+                    fl!("discard-changes"),
+                    yellow_button,
+                    ConfirmationOption::DiscardChanges,
+                ),
+            ]
+        }
         ConfirmationKind::UwhPortalLinkFailed(_) => {
             vec![(fl!("ok"), green_button, ConfirmationOption::GoBack)]
         }

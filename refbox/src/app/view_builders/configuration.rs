@@ -39,6 +39,32 @@ pub(in super::super) struct EditableSettings {
     pub original_language: Option<Language>,
 }
 
+impl EditableSettings {
+    /// Returns `true` when portal mode is engaged but the configuration is not
+    /// yet committable: event/court/schedule still missing, the chosen game number
+    /// isn't in the schedule, or the chosen game's court doesn't match the
+    /// currently-selected court.
+    ///
+    /// Both `apply_game_options` (gating the actual commit) and
+    /// `make_cancel_apply_footer` (disabling Apply when nothing is committable)
+    /// rely on this predicate, so they stay in sync.
+    pub(in super::super) fn uwhportal_incomplete(&self) -> bool {
+        if !self.using_uwhportal {
+            return false;
+        }
+        if self.current_event_id.is_none()
+            || self.current_court.is_none()
+            || self.schedule.is_none()
+        {
+            return true;
+        }
+        match self.schedule.as_ref().unwrap().games.get(&self.game_number) {
+            Some(g) => g.court != *self.current_court.as_ref().unwrap(),
+            None => true,
+        }
+    }
+}
+
 pub(in super::super) trait Cyclable
 where
     Self: Sized,
@@ -108,7 +134,6 @@ impl Cyclable for Brightness {
     }
 }
 
-#[cfg_attr(not(test), expect(dead_code))]
 pub(in super::super) fn page_has_changes(
     page: ConfigPage,
     edited: &EditableSettings,
@@ -123,8 +148,19 @@ pub(in super::super) fn page_has_changes(
             PageEntrySnapshot::Game {
                 config,
                 game_number,
+                using_uwhportal,
+                current_event_id,
+                current_court,
+                schedule,
             },
-        ) => edited.config != *config || edited.game_number != *game_number,
+        ) => {
+            edited.config != *config
+                || edited.game_number != *game_number
+                || edited.using_uwhportal != *using_uwhportal
+                || edited.current_event_id != *current_event_id
+                || edited.current_court != *current_court
+                || edited.schedule != *schedule
+        }
         (
             ConfigPage::App,
             PageEntrySnapshot::App {
@@ -182,6 +218,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
     settings: &EditableSettings,
     events: Option<&BTreeMap<EventId, Event>>,
     page: ConfigPage,
+    page_entry_snapshot: Option<&PageEntrySnapshot>,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -192,7 +229,14 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
 
     match page {
         ConfigPage::Main => make_main_config_page(snapshot, settings, mode, clock_running),
-        ConfigPage::Game => make_event_config_page(snapshot, settings, events, mode, clock_running),
+        ConfigPage::Game => make_event_config_page(
+            snapshot,
+            settings,
+            events,
+            mode,
+            clock_running,
+            page_entry_snapshot,
+        ),
         ConfigPage::Sound => make_sound_config_page(snapshot, settings, mode, clock_running),
         ConfigPage::Display => make_display_config_page(snapshot, settings, mode, clock_running),
         ConfigPage::App => make_app_config_page(mode, snapshot, settings, clock_running),
@@ -254,6 +298,38 @@ fn make_back_button<'a>(destination: Message) -> Element<'a, Message> {
         .into()
 }
 
+fn make_cancel_apply_footer<'a>(
+    page: ConfigPage,
+    edited: &EditableSettings,
+    snapshot: Option<&PageEntrySnapshot>,
+) -> Element<'a, Message> {
+    // Apply is enabled when there are pending changes AND the resulting state is
+    // committable. For Game Options in portal mode, "committable" requires a
+    // complete portal selection (event + court + schedule + game-in-schedule);
+    // otherwise pressing Apply would only open a wasteful "fix something and try
+    // again" dialog. Other pages have no committability gate.
+    let apply_blocked = matches!(page, ConfigPage::Game) && edited.uwhportal_incomplete();
+    let apply_enabled = page_has_changes(page, edited, snapshot) && !apply_blocked;
+
+    let cancel = make_button(fl!("cancel"))
+        .style(red_button)
+        .width(Length::Fill)
+        .on_press(Message::CancelConfigPage(page));
+
+    let apply = make_button(fl!("apply"))
+        .style(green_button)
+        .width(Length::Fill);
+    let apply = if apply_enabled {
+        apply.on_press(Message::ApplyConfigPage(page))
+    } else {
+        apply
+    };
+
+    row![cancel, horizontal_space(), apply]
+        .spacing(SPACING)
+        .into()
+}
+
 fn make_user_config_page<'a>(
     snapshot: &GameSnapshot,
     _settings: &EditableSettings,
@@ -297,6 +373,7 @@ fn make_event_config_page<'a>(
     events: Option<&BTreeMap<EventId, Event>>,
     mode: Mode,
     clock_running: bool,
+    page_entry_snapshot: Option<&PageEntrySnapshot>,
 ) -> Element<'a, Message> {
     let EditableSettings {
         config,
@@ -341,7 +418,7 @@ fn make_event_config_page<'a>(
         game_number.to_string()
     };
 
-    let rows: [Element<Message>; 4] = if using_uwhportal {
+    let rows: Vec<Element<Message>> = if using_uwhportal {
         let event_label = if let Some(events) = events {
             if let Some(event_id) = current_event_id {
                 match events.get(event_id) {
@@ -429,7 +506,7 @@ fn make_event_config_page<'a>(
         .style(light_gray_button)
         .on_press_maybe(auth_state_message);
 
-        [
+        vec![
             make_value_button(fl!("event"), event_label, (true, true), event_btn_msg)
                 .height(Length::Fill)
                 .into(),
@@ -437,20 +514,9 @@ fn make_event_config_page<'a>(
             make_value_button(fl!("court"), pool_label, (true, true), pool_btn_msg)
                 .height(Length::Fill)
                 .into(),
-            row![
-                horizontal_space(),
-                horizontal_space(),
-                make_button(fl!("done"))
-                    .style(green_button)
-                    .width(Length::Fill)
-                    .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
-            ]
-            .spacing(SPACING)
-            .height(Length::Fill)
-            .into(),
         ]
     } else {
-        [
+        vec![
             row![
                 make_value_button(
                     if config.single_half {
@@ -568,10 +634,7 @@ fn make_event_config_page<'a>(
                         None
                     },
                 ),
-                make_button(fl!("done"))
-                    .style(green_button)
-                    .width(Length::Fill)
-                    .on_press(Message::ChangeConfigPage(ConfigPage::Main)),
+                horizontal_space(),
             ]
             .spacing(SPACING)
             .height(Length::Fill)
@@ -618,6 +681,12 @@ fn make_event_config_page<'a>(
     for row in rows {
         col = col.push(row);
     }
+
+    col = col.push(make_cancel_apply_footer(
+        ConfigPage::Game,
+        settings,
+        page_entry_snapshot,
+    ));
 
     col.into()
 }

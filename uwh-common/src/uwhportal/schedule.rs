@@ -1125,6 +1125,59 @@ mod tests {
     }
 
     #[test]
+    fn test_timing_rule_single_half_when_no_halftime_break() {
+        // Regression test for the bug fixed in commit 6907ef8:
+        // a TimingRule with halftime_duration == ZERO is the signal for a single-half game.
+        // The pre-fix check (half_play_duration == ZERO) was impossible to be true.
+        let rule = TimingRule {
+            name: "Test".to_string(),
+            team_timeout_count: 0,
+            team_timeouts_counted_per_half: false,
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            last_2_min_stop_time: false,
+            half_play_duration: Duration::from_secs(900),
+            half_time_duration: Duration::ZERO,
+            team_timeout_duration: Duration::ZERO,
+            ot_half_play_duration: Duration::ZERO,
+            ot_half_time_duration: Duration::ZERO,
+            pre_overtime_break: Duration::ZERO,
+            pre_sudden_death_duration: Duration::ZERO,
+            minimum_break: Duration::ZERO,
+        };
+        let config: GameConfig = rule.into();
+        assert!(
+            config.single_half,
+            "TimingRule with halftime_duration == ZERO should produce single_half == true"
+        );
+    }
+
+    #[test]
+    fn test_timing_rule_two_halves_when_halftime_break_present() {
+        let rule = TimingRule {
+            name: "Test".to_string(),
+            team_timeout_count: 0,
+            team_timeouts_counted_per_half: false,
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            last_2_min_stop_time: false,
+            half_play_duration: Duration::from_secs(900),
+            half_time_duration: Duration::from_secs(120),
+            team_timeout_duration: Duration::ZERO,
+            ot_half_play_duration: Duration::ZERO,
+            ot_half_time_duration: Duration::ZERO,
+            pre_overtime_break: Duration::ZERO,
+            pre_sudden_death_duration: Duration::ZERO,
+            minimum_break: Duration::ZERO,
+        };
+        let config: GameConfig = rule.into();
+        assert!(
+            !config.single_half,
+            "TimingRule with halftime_duration > ZERO should produce single_half == false"
+        );
+    }
+
+    #[test]
     fn test_serialize_group() {
         let group = Group {
             name: "A Group".to_string(),

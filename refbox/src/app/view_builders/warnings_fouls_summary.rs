@@ -91,7 +91,7 @@ pub(in super::super) fn build_warnings_summary_page<'a>(
             make_button(fl!("back"))
                 .style(red_button)
                 .width(Length::Fill)
-                .on_press(Message::ConfigEditComplete { canceled: true }),
+                .on_press(Message::ConfigEditComplete),
             make_button(fl!("edit-warnings"))
                 .style(blue_button)
                 .width(Length::Fill)

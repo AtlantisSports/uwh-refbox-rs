@@ -122,14 +122,10 @@ enum AppState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ConfirmationKind {
-    GameNumberChanged,
-    GameConfigChanged(GameConfig),
     Error(String),
-    UwhPortalIncomplete,
     UwhPortalLinkFailed(PortalTokenResponse),
-    // From-Apply variants are raised by per-page Apply on Game Options. They use the
-    // same UI as their global-Done counterparts but commit only the Game slice and
-    // navigate back to settings (not out to MainPage).
+    // The *FromApply variants are raised by per-page Apply on Game Options. They
+    // commit only the Game slice and navigate back to settings (not out to MainPage).
     GameNumberChangedFromApply,
     GameConfigChangedFromApply(GameConfig),
     UwhPortalIncompleteFromApply,
@@ -491,13 +487,6 @@ impl RefBoxApp {
         }
 
         Task::batch(tasks)
-    }
-
-    fn apply_settings_change(&mut self) {
-        self.apply_app_options();
-        self.apply_display_options();
-        self.apply_sound_options();
-        self.edited_settings = None;
     }
 
     fn apply_app_options(&mut self) {
@@ -1728,132 +1717,13 @@ impl RefBoxApp {
                 self.navigate_to_parent(page);
                 Task::none()
             }
-            Message::ConfigEditComplete { canceled } => {
-                self.app_state = if !canceled {
-                    let mut tm = self.tm.lock().unwrap();
-
-                    let edited_settings = self.edited_settings.as_mut().unwrap();
-
-                    let mut uwhportal_incomplete = edited_settings.using_uwhportal
-                        && (edited_settings.current_event_id.is_none()
-                            || edited_settings.current_court.is_none()
-                            || edited_settings.schedule.is_none());
-                    if edited_settings.using_uwhportal && !uwhportal_incomplete {
-                        match edited_settings
-                            .schedule
-                            .as_ref()
-                            .unwrap()
-                            .games
-                            .get(&edited_settings.game_number)
-                        {
-                            Some(g) => {
-                                uwhportal_incomplete =
-                                    g.court != *edited_settings.current_court.as_ref().unwrap()
-                            }
-                            None => uwhportal_incomplete = true,
-                        };
-                    }
-
-                    let new_config = if edited_settings.using_uwhportal && !uwhportal_incomplete {
-                        edited_settings
-                            .schedule
-                            .as_ref()
-                            .and_then(|schedule| {
-                                schedule.get_game_timing(&edited_settings.game_number)
-                            })
-                            .cloned()
-                            .map(|tr| tr.into())
-                            .unwrap_or_else(|| tm.config().clone())
-                    } else {
-                        edited_settings.config.clone()
-                    };
-
-                    if uwhportal_incomplete {
-                        AppState::ConfirmationPage(ConfirmationKind::UwhPortalIncomplete)
-                    } else if new_config != *tm.config() {
-                        if tm.current_period() != GamePeriod::BetweenGames {
-                            AppState::ConfirmationPage(ConfirmationKind::GameConfigChanged(
-                                new_config,
-                            ))
-                        } else {
-                            tm.set_config(new_config.clone()).unwrap();
-                            self.config.game = new_config;
-
-                            let (game, timing) = edited_settings
-                                .schedule
-                                .as_ref()
-                                .map(|schedule| {
-                                    schedule.get_game_and_timing(&edited_settings.game_number)
-                                })
-                                .unwrap_or((None, None));
-                            let start_time = game.map(|g| g.start_time);
-
-                            tm.set_next_game(NextGameInfo {
-                                number: edited_settings.game_number.clone(),
-                                timing: timing.cloned(),
-                                start_time,
-                            });
-
-                            if edited_settings.using_uwhportal {
-                                tm.apply_next_game_start(Instant::now()).unwrap();
-                            } else {
-                                tm.clear_scheduled_game_start();
-                            }
-
-                            drop(tm);
-                            self.apply_settings_change();
-
-                            confy::store(APP_NAME, None, &self.config).unwrap();
-                            AppState::MainPage
-                        }
-                    } else if edited_settings.game_number != self.snapshot.game_number {
-                        if tm.current_period() != GamePeriod::BetweenGames {
-                            AppState::ConfirmationPage(ConfirmationKind::GameNumberChanged)
-                        } else {
-                            let next_game_info = if edited_settings.using_uwhportal {
-                                let (game, timing) = edited_settings
-                                    .schedule
-                                    .as_ref()
-                                    .map(|schedule| {
-                                        schedule.get_game_and_timing(&edited_settings.game_number)
-                                    })
-                                    .unwrap_or((None, None));
-                                NextGameInfo {
-                                    number: edited_settings.game_number.clone(),
-                                    timing: timing.cloned(),
-                                    start_time: game.map(|g| g.start_time),
-                                }
-                            } else {
-                                NextGameInfo {
-                                    number: edited_settings.game_number.clone(),
-                                    timing: None,
-                                    start_time: None,
-                                }
-                            };
-
-                            tm.set_next_game(next_game_info);
-
-                            if edited_settings.using_uwhportal {
-                                tm.apply_next_game_start(Instant::now()).unwrap();
-                            }
-
-                            drop(tm);
-                            self.apply_settings_change();
-
-                            confy::store(APP_NAME, None, &self.config).unwrap();
-
-                            AppState::MainPage
-                        }
-                    } else {
-                        drop(tm);
-                        self.apply_settings_change();
-
-                        confy::store(APP_NAME, None, &self.config).unwrap();
-                        AppState::MainPage
-                    }
-                } else {
-                    AppState::MainPage
-                };
+            Message::ConfigEditComplete => {
+                // Per-page Apply/Cancel chrome is the only commit path after ADR 009
+                // Tasks 8-13. ConfigEditComplete only fires `canceled: true` now (from
+                // the Settings Main back button and other escape paths); it just exits
+                // settings to MainPage and drops the in-flight edit buffer.
+                self.edited_settings = None;
+                self.app_state = AppState::MainPage;
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
@@ -2240,90 +2110,30 @@ impl RefBoxApp {
                     return self.apply_game_confirmation(selection);
                 }
 
-                let new_config = if let AppState::ConfirmationPage(
-                    ConfirmationKind::GameConfigChanged(ref config),
-                ) = self.app_state
-                {
-                    Some(config.clone())
-                } else {
-                    None
-                };
-
-                let (app_state, task) = match selection {
-                    ConfirmationOption::DiscardChanges => (AppState::MainPage, Task::none()),
-                    ConfirmationOption::GoBack => {
-                        if matches!(
-                            self.app_state,
-                            AppState::ConfirmationPage(ConfirmationKind::UwhPortalLinkFailed(_))
-                        ) {
-                            (
-                                AppState::KeypadPage(
-                                    KeypadPage::PortalLogin(
-                                        self.uwhportal_client.as_ref().unwrap().id(),
-                                        false,
-                                    ),
-                                    0,
-                                ),
-                                Task::none(),
-                            )
-                        } else {
-                            (AppState::EditGameConfig(ConfigPage::Main), Task::none())
-                        }
-                    }
-                    ConfirmationOption::EndGameAndApply => {
-                        let edited_settings = self.edited_settings.as_ref().unwrap();
-                        let mut tm = self.tm.lock().unwrap();
-                        let now = Instant::now();
-                        tm.reset_game(now);
-                        if let Some(config) = new_config {
-                            tm.set_config(config.clone()).unwrap();
-                            self.config.game = config;
-                        }
-
-                        let (game, timing) = edited_settings
-                            .schedule
-                            .as_ref()
-                            .map(|schedule| {
-                                schedule.get_game_and_timing(&edited_settings.game_number)
-                            })
-                            .unwrap_or((None, None));
-                        let start_time = game.map(|g| g.start_time);
-
-                        tm.set_next_game(NextGameInfo {
-                            number: edited_settings.game_number.clone(),
-                            timing: timing.cloned(),
-                            start_time,
-                        });
-
-                        if edited_settings.using_uwhportal {
-                            tm.apply_next_game_start(now).unwrap();
-                        } else {
-                            tm.clear_scheduled_game_start();
-                        }
-
-                        std::mem::drop(tm);
-                        self.apply_settings_change();
-
-                        confy::store(APP_NAME, None, &self.config).unwrap();
-                        let snapshot = self.tm.lock().unwrap().generate_snapshot(now).unwrap(); // TODO: Remove this unwrap
-                        (AppState::MainPage, self.apply_snapshot(snapshot))
-                    }
-                    ConfirmationOption::KeepGameAndApply => {
-                        let edited_settings = self.edited_settings.as_ref().unwrap();
-                        let mut tm = self.tm.lock().unwrap();
-                        tm.set_game_number(&edited_settings.game_number);
-                        let snapshot = tm.generate_snapshot(Instant::now()).unwrap();
-                        std::mem::drop(tm);
-
-                        self.apply_settings_change();
-
-                        confy::store(APP_NAME, None, &self.config).unwrap();
-                        (AppState::MainPage, self.apply_snapshot(snapshot))
+                // After ADR 009 Task 13 retired the global apply path, only
+                // `ConfirmationKind::Error` (which offers DiscardChanges) and
+                // `ConfirmationKind::UwhPortalLinkFailed` (which offers GoBack)
+                // reach this match. The Game-related confirmations are dispatched
+                // to apply_game_confirmation above.
+                self.app_state = match selection {
+                    ConfirmationOption::DiscardChanges => AppState::MainPage,
+                    ConfirmationOption::GoBack => AppState::KeypadPage(
+                        KeypadPage::PortalLogin(
+                            self.uwhportal_client.as_ref().unwrap().id(),
+                            false,
+                        ),
+                        0,
+                    ),
+                    ConfirmationOption::EndGameAndApply | ConfirmationOption::KeepGameAndApply => {
+                        unreachable!(
+                            "EndGameAndApply / KeepGameAndApply are only offered by *FromApply \
+                             ConfirmationKind variants, which are dispatched above to \
+                             apply_game_confirmation."
+                        )
                     }
                 };
-                self.app_state = app_state;
                 trace!("AppState changed to {:?}", self.app_state);
-                task
+                Task::none()
             }
             Message::ConfirmScores(snapshot) => {
                 let mut task = Task::none();

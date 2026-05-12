@@ -75,6 +75,7 @@ See `docs/workspace-map.md` for full details on each crate.
 | `docs` — documentation | `wireless-remote` |
 | `hotfix` — urgent fix | `beep-test` |
 | `wip` — work in progress | `ci`, `deps`, `workspace` |
+| `audit` — auditing existing code | |
 
 **Examples:**
 ```
@@ -82,6 +83,7 @@ fix/refbox/confirm-score-timing
 feat/schedule-processor/list-of-placements
 hotfix/uwh-common/wire-format-version
 chore/deps/update-iced-0-14
+audit/refbox/confirm-score-timing
 ```
 
 **Exempt:** `master`, `staging`, `pr/*` (grandfathered legacy branches)

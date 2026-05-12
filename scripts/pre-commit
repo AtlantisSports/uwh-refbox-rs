@@ -18,7 +18,7 @@ EXEMPT="^(master|staging)$"
 LEGACY="^pr/"
 
 if [[ ! "$BRANCH" =~ $EXEMPT && ! "$BRANCH" =~ $LEGACY ]]; then
-  VALID="^(fix|feat|chore|refactor|docs|hotfix|wip)/(refbox|schedule-processor|uwh-common|overlay|wireless-remote|beep-test|alphagen|fonts|led-panel-sim|matrix-drawing|wireless-modes|ci|deps|workspace)/[a-z0-9][a-z0-9-]{0,39}$"
+  VALID="^(fix|feat|chore|refactor|docs|hotfix|wip|audit)/(refbox|schedule-processor|uwh-common|overlay|wireless-remote|beep-test|alphagen|fonts|led-panel-sim|matrix-drawing|wireless-modes|ci|deps|workspace)/[a-z0-9][a-z0-9-]{0,39}$"
   if [[ ! "$BRANCH" =~ $VALID ]]; then
     echo ""
     echo "ERROR: Branch name '$BRANCH' does not follow the naming convention."
@@ -26,7 +26,7 @@ if [[ ! "$BRANCH" =~ $EXEMPT && ! "$BRANCH" =~ $LEGACY ]]; then
     echo "  Format:  type/scope/description"
     echo "  Example: fix/refbox/confirm-score-timing"
     echo ""
-    echo "  Valid types:  fix, feat, chore, refactor, docs, hotfix, wip"
+    echo "  Valid types:  fix, feat, chore, refactor, docs, hotfix, wip, audit"
     echo "  Valid scopes: refbox, schedule-processor, uwh-common, overlay,"
     echo "                wireless-remote, beep-test, alphagen, fonts,"
     echo "                led-panel-sim, matrix-drawing, wireless-modes,"

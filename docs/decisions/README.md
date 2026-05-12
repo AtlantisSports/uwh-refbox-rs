@@ -72,3 +72,7 @@ What constraints does this create for future work?
 | [011](011-portal-health-indicator.md) | Portal health indicator, per-game confirmation, retry queue | 2026-04-19 | proposed |
 | [013](013-cold-restart-state-recovery.md) | Cold-restart state recovery | 2026-04-19 | proposed |
 | [014](014-live-settings-preview.md) | Live settings preview | 2026-04-20 | proposed |
+| [015](015-refbox-stats-endpoint-handling.md) | Refbox stats-endpoint posting and 400 handling | 2026-04-23 | proposed |
+| [016](016-uwr-mode-portal-routing.md) | UWR mode portal routing | 2026-04-23 | proposed |
+| [017](017-portal-data-lifecycle.md) | Portal data lifecycle (lazy fetch and refresh) | 2026-05-12 | proposed — behavior definition required |
+| [018](018-event-picker-sort-order.md) | Event picker sort order | 2026-05-12 | proposed — behavior definition required |

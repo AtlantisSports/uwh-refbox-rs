@@ -793,24 +793,23 @@ pub(super) fn config_string(
     result += &fl!("stop-clock-last-2", stop_clock = stop_clock);
     result += "\n";
 
-    let unknown = fl!("unknown");
-    let mut chief_ref = unknown.clone();
-    let mut timer = unknown.clone();
-    let mut water_ref_1 = unknown.clone();
-    let mut water_ref_2 = unknown.clone();
-    let mut water_ref_3 = unknown.clone();
+    let mut chief_ref = "-".to_string();
+    let mut timer = "-".to_string();
+    let mut water_ref_1 = "-".to_string();
+    let mut water_ref_2 = "-".to_string();
+    let mut water_ref_3 = "-".to_string();
 
     if let Some(games) = games {
         if let Some(game) = games.get(&game_number) {
             if let Some(refs) = &game.referee_assignments {
                 for ref_assignment in refs {
                     if ref_assignment.user_id.is_some() {
-                        // Fall back to the localized "Unknown" — not `identifier`,
-                        // which is a portal-assigned system code, not a human name.
+                        // Fall back to '-' for unassigned slots — language-neutral,
+                        // visually distinct from real names.
                         let display = ref_assignment
                             .display_name
                             .clone()
-                            .unwrap_or_else(|| unknown.clone());
+                            .unwrap_or_else(|| "-".to_string());
                         match ref_assignment.role.as_str() {
                             "Chief" => chief_ref = display,
                             "TimeOrScoreKeeper" => timer = display,

@@ -857,6 +857,11 @@ impl RefBoxApp {
             ConfigPage::Main => ConfigPage::Main,
         };
         self.app_state = AppState::EditGameConfig(parent);
+        // Re-capture the parent's snapshot so its Apply gate works after returning
+        // from a sub-page (Cancel/Apply on a sub-page consumes or clears the snapshot).
+        // capture_snapshot_for early-returns for Main and User, so this is a no-op
+        // for navigation-only parents.
+        self.capture_snapshot_for(parent);
     }
 }
 

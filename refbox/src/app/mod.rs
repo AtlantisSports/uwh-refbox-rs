@@ -550,6 +550,7 @@ impl RefBoxApp {
             return Some(ConfirmationKind::UwhPortalIncompleteFromApply);
         }
 
+        // Safety: Mutex poison only occurs if another thread already panicked; the refbox treats that as fatal (matches the 20+ identical sites in this file).
         let mut tm = self.tm.lock().unwrap();
 
         let new_config = if edited.using_uwhportal {
@@ -568,6 +569,7 @@ impl RefBoxApp {
             if tm.current_period() != GamePeriod::BetweenGames {
                 return Some(ConfirmationKind::GameConfigChangedFromApply(new_config));
             }
+            // Safety: precondition checked above (period != BetweenGames / next-game info just set); error path is unreachable in this control flow.
             tm.set_config(new_config.clone()).unwrap();
 
             let (game, timing) = edited
@@ -584,6 +586,7 @@ impl RefBoxApp {
             });
 
             if edited.using_uwhportal {
+                // Safety: precondition checked above (period != BetweenGames / next-game info just set); error path is unreachable in this control flow.
                 tm.apply_next_game_start(Instant::now()).unwrap();
             } else {
                 tm.clear_scheduled_game_start();
@@ -624,6 +627,7 @@ impl RefBoxApp {
             tm.set_next_game(next_game_info);
 
             if edited.using_uwhportal {
+                // Safety: precondition checked above (period != BetweenGames / next-game info just set); error path is unreachable in this control flow.
                 tm.apply_next_game_start(Instant::now()).unwrap();
             }
         }
@@ -658,11 +662,14 @@ impl RefBoxApp {
             }
             ConfirmationOption::GoBack => AppState::EditGameConfig(ConfigPage::Game),
             ConfirmationOption::EndGameAndApply => {
+                // Safety: *FromApply confirmations are only raised while edited_settings is Some; the invariant is enforced by apply_game_options.
                 let edited = self.edited_settings.as_ref().unwrap();
+                // Safety: Mutex poison only occurs if another thread already panicked; the refbox treats that as fatal (matches the 20+ identical sites in this file).
                 let mut tm = self.tm.lock().unwrap();
                 let now = Instant::now();
                 tm.reset_game(now);
                 if let Some(ref config) = new_config {
+                    // Safety: precondition checked above (period != BetweenGames / next-game info just set); error path is unreachable in this control flow.
                     tm.set_config(config.clone()).unwrap();
                 }
 
@@ -680,6 +687,7 @@ impl RefBoxApp {
                 });
 
                 if edited.using_uwhportal {
+                    // Safety: precondition checked above (period != BetweenGames / next-game info just set); error path is unreachable in this control flow.
                     tm.apply_next_game_start(now).unwrap();
                 } else {
                     tm.clear_scheduled_game_start();
@@ -691,14 +699,18 @@ impl RefBoxApp {
                 }
                 self.page_entry_snapshot = None;
                 self.persist_config();
+                // Safety: snapshot generation only fails before the tournament manager is initialised, which happens in RefBoxApp::new().
                 let new_snapshot = self.tm.lock().unwrap().generate_snapshot(now).unwrap();
                 task = self.apply_snapshot(new_snapshot);
                 AppState::EditGameConfig(ConfigPage::Main)
             }
             ConfirmationOption::KeepGameAndApply => {
+                // Safety: *FromApply confirmations are only raised while edited_settings is Some; the invariant is enforced by apply_game_options.
                 let edited = self.edited_settings.as_ref().unwrap();
+                // Safety: Mutex poison only occurs if another thread already panicked; the refbox treats that as fatal (matches the 20+ identical sites in this file).
                 let mut tm = self.tm.lock().unwrap();
                 tm.set_game_number(&edited.game_number);
+                // Safety: snapshot generation only fails before the tournament manager is initialised, which happens in RefBoxApp::new().
                 let new_snapshot = tm.generate_snapshot(Instant::now()).unwrap();
                 std::mem::drop(tm);
                 self.page_entry_snapshot = None;
@@ -1519,6 +1531,7 @@ impl RefBoxApp {
                         .parse()
                         .unwrap_or(0),
                     KeypadPage::PortalLogin(ref mut id, _) => {
+                        // Safety: portal-login states are only reachable when the portal client is present.
                         *id = self.uwhportal_client.as_ref().unwrap().id();
                         0
                     }
@@ -2119,6 +2132,7 @@ impl RefBoxApp {
                     ConfirmationOption::DiscardChanges => AppState::MainPage,
                     ConfirmationOption::GoBack => AppState::KeypadPage(
                         KeypadPage::PortalLogin(
+                            // Safety: portal-login states are only reachable when the portal client is present.
                             self.uwhportal_client.as_ref().unwrap().id(),
                             false,
                         ),

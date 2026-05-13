@@ -58,6 +58,7 @@ impl EditableSettings {
         {
             return true;
         }
+        // Safety: guarded by the is_none() check on lines 55-58 above; reachable only when both schedule and current_court are Some.
         match self.schedule.as_ref().unwrap().games.get(&self.game_number) {
             Some(g) => g.court != *self.current_court.as_ref().unwrap(),
             None => true,
@@ -386,6 +387,7 @@ fn make_user_config_page<'a>(
     .into()
 }
 
+// View builder takes app-state slices; grouping into a context struct is a separate refactor across all view_builders. Filed as a Findings-Backlog item in AUDIT-PLAN.md (Unit 3, 2026-05-13).
 #[allow(clippy::too_many_arguments)]
 fn make_event_config_page<'a>(
     snapshot: &GameSnapshot,
@@ -1010,6 +1012,7 @@ fn make_sound_config_page<'a>(
     .into()
 }
 
+// Same situation as make_event_config_page — view builder accumulates app-state slices. Context-struct refactor filed as Findings-Backlog.
 #[allow(clippy::too_many_arguments)]
 fn make_remote_config_page<'a>(
     snapshot: &GameSnapshot,

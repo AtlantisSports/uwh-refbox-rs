@@ -2504,6 +2504,12 @@ impl RefBoxApp {
                 if !(self.config.sound.sound_enabled && self.config.sound.manual_alarm_enabled) {
                     return Task::none();
                 }
+                // Spec: spacebar has no effect on screens other than the main game screen.
+                // The subscription captures spacebar globally; this gate enforces the spec
+                // restriction in the handler so text inputs and other screens are unaffected.
+                if !matches!(self.app_state, AppState::MainPage) {
+                    return Task::none();
+                }
                 if self.spacebar_held {
                     return Task::none();
                 }

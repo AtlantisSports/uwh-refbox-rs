@@ -299,11 +299,15 @@ impl UwhPortalClient {
     ///   "tournamentReferee": { "user": { "id", "name", "username" }, "rosterName" },
     ///   "referees": {
     ///     "dedicated":         [ { "user": {...}, "rosterName" }, ... ],
-    ///     "hybrid":            {...} | [ ... ],
+    ///     "hybrid":            [ { "user": {...}, "rosterName" }, ... ],
     ///     "timeOrScoreKeeper": [ ... ]
     ///   }
     /// }
     /// ```
+    ///
+    /// `hybrid` is an array of referee entries; the portal's TypeScript type is
+    /// `EventRefereeModelWithPhotos[] | null` (verified via uwh-portal source
+    /// `js/@underwater-base/types/EventReferee.ts:155`).
     ///
     /// Display-name preference, per-entry: non-empty `rosterName`, else `user.username`.
     /// `user.name` is intentionally skipped — it is the user's full real name (PII),

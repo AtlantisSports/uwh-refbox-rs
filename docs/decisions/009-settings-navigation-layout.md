@@ -1,7 +1,7 @@
 # 009 — Settings Navigation and Layout
 
 **Date:** 2026-04-19
-**Status:** proposed
+**Status:** accepted
 
 ## Context
 
@@ -168,6 +168,57 @@ Every other screen matches the web standard.
 - Translations for every button label already exist or will be added
   via the translation system (`translations/`); no hard-coded UI text.
 
+### Decisions added during audit (2026-05-13)
+
+The following decisions describe behaviour that the shipped implementation
+adopted beyond what the original Decision section above specified. Each was
+exercised under Unit 3 of the AI Code Audit and marked `@user_verified`. They
+are folded in here so the ADR reflects shipped reality.
+
+- **Apply on Game Options is disabled when portal state is incomplete.**
+  When `using_uwhportal` is on and event/court/schedule is missing — or the
+  current game is not in the active schedule for the current court — Apply
+  stays disabled even if other edits exist. This prevents pressing Apply
+  only to land on a dialog with no actionable choice.
+  (`uwhportal_incomplete()` helper on `EditableSettings`.) [B3.9, B3.37]
+- **Cancel on Game Options reverts portal-related App-slice fields too.**
+  `PageEntrySnapshot::Game` captures `using_uwhportal`, `current_event_id`,
+  `current_court`, and `schedule` in addition to `config` and `game_number`.
+  Cancel reverts all of these. Without this expansion, edits to event/court/
+  portal toggle on Game Options would survive Cancel silently. [B3.10]
+- **Picking a game from the picker returns to Game Options.** Previously
+  the picker's complete-message routed back to Main. The audit-shipped
+  routing returns to Game Options so the operator can continue editing
+  without re-navigating. Applies to both portal-mode (game list) and
+  non-portal-mode (keypad). [B3.14]
+- **Picking a new event auto-clears court, game number, and cached
+  schedule.** Picker-driven field clearing prevents the stale-state path
+  where game_number retains a value from a previous event's filtered
+  list. [B3.15]
+- **Picking a new court auto-clears the game number.** Same family as the
+  event-clearing rule. [B3.16]
+- **Game Options' picker lives in the action row.** The action row reads
+  `CANCEL | Game: N | APPLY` (picker between the two buttons in the middle
+  slot). Final placement after the layout sweep in commit `ce6cfeb`.
+  [B3.21]
+- **Game Options' "Using UWH Portal" toggle is in the left-hand column of
+  the first content row.** Layout-sweep change. [B3.19]
+- **Game Options uses the canonical 5-row layout** (time bar + 4
+  Fill-height content rows + fixed action row at bottom) shared with all
+  other Editing pages. [B3.20]
+- **The Single Half tile is temporarily absent from Game Options.** The
+  `BoolGameParameter::SingleHalf` variant is retained with
+  `#[expect(dead_code)]` so re-wiring it raises a compile-time alert. A
+  planned follow-up branch will reintroduce single-half toggling inside
+  the Half Length parameter editor. Until then, single-half cannot be
+  enabled from the UI — accepted as a transitional state. [B3.18, B3.39]
+- **Mid-game Apply on Game Options raises the existing Keep/End/Discard
+  confirmation.** New `*FromApply` ConfirmationKind variants
+  (`GameConfigChangedFromApply`, `GameNumberChangedFromApply`,
+  `UwhPortalIncompleteFromApply`) share the dialog UI with the prior
+  global-Done flow but commit only the Game slice and route back to
+  settings. Mid-game safety preserved. [B3.12, B3.36]
+
 ## Consequences
 
 **Becomes easier:**
@@ -215,6 +266,61 @@ Every other screen matches the web standard.
 - `uwh-common`, `overlay`, `schedule-processor`, `wireless-remote` —
   no change.
 
+## Verified by Unit 3 audit
+
+This ADR's design was implemented in the 10 commits ending at `ce6cfeb` on
+`refactor/refbox/settings-navigation` and audited under Unit 3 of the AI Code
+Audit. The audit's catalog of operator-observable behaviours, the keep/delete
+decisions, the manual-walkthrough record, and the Findings backlog are in
+`AUDIT-PLAN.md`'s Unit 3 section.
+
+**Outcome:** 39 of 40 catalog entries marked `@user_verified`; 1 entry
+(B3.13 — end-game-and-apply landing page) marked `@redesign-followup` and
+deferred to a separate branch; 0 deletions. Audit branch
+`audit/refbox/adr-009-settings` carries 4 additional commits beyond the
+original 10:
+
+- `4eba8b6` — justify new unwraps and clippy allows (B3.40, B3.41)
+- `0b6af14` — lock per-page Apply state invariants (12 regression tests)
+- `f9a32f4` — restore parent snapshot after sub-page Apply/Cancel (operator-
+  surfaced bug during S3.15 walkthrough; `navigate_to_parent` now re-captures
+  the parent's snapshot when returning from a sub-page; regression test
+  `sound_apply_requires_snapshot_present` documents the predicate)
+- `4750acf` — record manual-walkthrough results in
+  `refbox/tests/features/adr_009_settings.feature`
+
+Status flipped from `proposed` to `accepted` on 2026-05-13.
+
+### What was not verified
+
+- **Mid-game Apply gate variant selection (B3.12 / B3.36).** `apply_game_options`
+  selects between `GameConfigChangedFromApply`, `GameNumberChangedFromApply`,
+  and `UwhPortalIncompleteFromApply` based on `current_period() != BetweenGames`
+  plus per-edit comparisons. The supporting predicate (`uwhportal_incomplete`)
+  is unit-tested exhaustively (7 tests). The variant-selection logic itself
+  was not directly unit-tested because constructing a `RefBoxApp` in a test
+  requires mocking tokio channels, the sound subsystem, and the portal
+  client — out of audit scope per the "do not fake-test with mocks" rule.
+  Verified by manual walkthrough only (S3.7).
+- **Manual walkthrough of portal-incomplete Apply-disable (S3.5).** The
+  operator skipped the manual walk because the 7 `uwhportal_incomplete_*`
+  regression tests cover the predicate exhaustively and the manual walk
+  would require setting up portal-incomplete state without adding
+  predicate coverage.
+- **Manual walkthrough of picker-driven field clearing (S3.10, S3.11).**
+  Same rationale — the regression tests `select_event_sets_event_and_clears_*`
+  and `select_court_sets_court_and_clears_*` lock the field-clearing
+  behaviour; manual walk would require portal multi-event/multi-court
+  test data and adds no new coverage.
+- **End-game-and-apply landing page (B3.13).** The operator-observable
+  behaviour was confirmed (mid-game Apply raises the three-option
+  confirmation), but the destination after "End game and apply" was
+  flagged for redesign: ending a game is a high-magnitude action and
+  the operator should land on the main game screen (exit settings),
+  not on Main settings. Deferred to branch
+  `fix/refbox/end-game-and-apply-landing` per operator decision
+  2026-05-13.
+
 ## References
 
 - `refbox/src/app/message.rs:409` — `ConfigPage` enum where the new
@@ -230,3 +336,16 @@ Every other screen matches the web standard.
   web's User Options grouping page (authoritative layout).
 - ADR 010 — defines the View Mode cycle button's content and
   behaviour.
+- `refbox/src/app/mod.rs` — `PageEntrySnapshot` enum (per-page snapshot
+  used by Cancel) and `capture_snapshot_for` / `navigate_to_parent`
+  helpers that drive the snapshot/restore flow added during the audit.
+- `refbox/src/app/view_builders/configuration.rs` —
+  `EditableSettings::uwhportal_incomplete()` (Apply-gate predicate),
+  `page_has_changes`, and `make_cancel_apply_footer` (per-page footer
+  rendering with Apply enable/disable state).
+- `refbox/tests/features/adr_009_settings.feature` — Gherkin scenarios
+  recording the Unit 3 manual-walkthrough results.
+- `AUDIT-PLAN.md` (Unit 3) — gitignored audit working file with the
+  full catalog of operator-observable behaviours, keep/delete
+  decisions, and Findings backlog for this ADR's shipped
+  implementation.

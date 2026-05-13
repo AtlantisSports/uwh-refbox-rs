@@ -213,37 +213,6 @@ pub struct RefereeAssignment {
     pub display_name: Option<String>,
 }
 
-/// Basic team info for team referee assignments
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TeamRefInfo {
-    #[serde(default)]
-    pub id: Option<TeamId>,
-    #[serde(default)]
-    pub name: Option<String>,
-}
-
-/// Team referee assignment — which team provides referees for a role
-#[serde_with::skip_serializing_none]
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TeamRefAssignment {
-    #[serde(default)]
-    pub team: Option<TeamRefInfo>,
-}
-
-/// Per-game team referee assignments (used when teams fill referee roles)
-#[serde_with::skip_serializing_none]
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GameReferees {
-    #[serde(default, rename = "timeOrScoreKeeper")]
-    pub time_or_score_keeper: Option<TeamRefAssignment>,
-    #[serde(default, rename = "timeOrScoreHelper")]
-    pub time_or_score_helper: Option<TeamRefAssignment>,
-    #[serde(default)]
-    pub referees: Option<TeamRefAssignment>,
-}
-
-pub type RefereesByGameNumber = IndexMap<GameNumber, GameReferees>;
-
 #[serde_with::skip_serializing_none]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Game {
@@ -494,8 +463,6 @@ pub struct Schedule {
     pub standings_order: Option<Vec<usize>>,
     #[serde(rename = "finalResultsOrder")]
     pub final_results_order: Option<Vec<usize>>,
-    #[serde(default, rename = "refereesByGameNumber")]
-    pub referees_by_game_number: Option<RefereesByGameNumber>,
 }
 
 impl Schedule {
@@ -1334,7 +1301,6 @@ mod tests {
             }],
             standings_order: None,
             final_results_order: None,
-            referees_by_game_number: None,
         };
         let serialized = serde_json::to_string(&schedule).unwrap();
         let deserialized: serde_json::Value = serde_json::from_str(&serialized).unwrap();

@@ -173,6 +173,72 @@ pub(crate) enum PageEntrySnapshot {
     },
 }
 
+impl PageEntrySnapshot {
+    /// Restore the snapshotted fields back onto `edited`. Touches only the
+    /// fields owned by this snapshot's page; other slices are left as the user
+    /// last edited them.
+    pub(in crate::app) fn revert_into(self, edited: &mut EditableSettings) {
+        match self {
+            PageEntrySnapshot::Game {
+                config,
+                game_number,
+                using_uwhportal,
+                current_event_id,
+                current_court,
+                schedule,
+            } => {
+                edited.config = config;
+                edited.game_number = game_number;
+                edited.using_uwhportal = using_uwhportal;
+                edited.current_event_id = current_event_id;
+                edited.current_court = current_court;
+                edited.schedule = schedule;
+            }
+            PageEntrySnapshot::App {
+                using_uwhportal,
+                current_event_id,
+                current_court,
+                schedule,
+                mode,
+                collect_scorer_cap_num,
+                track_fouls_and_warnings,
+                confirm_score,
+            } => {
+                edited.using_uwhportal = using_uwhportal;
+                edited.current_event_id = current_event_id;
+                edited.current_court = current_court;
+                edited.schedule = schedule;
+                edited.mode = mode;
+                edited.collect_scorer_cap_num = collect_scorer_cap_num;
+                edited.track_fouls_and_warnings = track_fouls_and_warnings;
+                edited.confirm_score = confirm_score;
+            }
+            PageEntrySnapshot::Display {
+                white_on_right,
+                brightness,
+                hide_time,
+            } => {
+                edited.white_on_right = white_on_right;
+                edited.brightness = brightness;
+                edited.hide_time = hide_time;
+            }
+            PageEntrySnapshot::Sound { sound } => {
+                edited.sound = sound;
+            }
+            PageEntrySnapshot::Remotes { remotes } => {
+                edited.sound.remotes = remotes;
+            }
+            PageEntrySnapshot::Language {
+                original_language,
+                pending_language,
+            } => {
+                edited.original_language = original_language;
+                edited.pending_language = pending_language;
+            }
+        }
+    }
+}
+
 impl RefBoxApp {
     fn apply_snapshot(&mut self, mut new_snapshot: GameSnapshot) -> Task<Message> {
         let mut task = Task::none();
@@ -774,64 +840,7 @@ impl RefBoxApp {
         ) else {
             return;
         };
-        match snapshot {
-            PageEntrySnapshot::Game {
-                config,
-                game_number,
-                using_uwhportal,
-                current_event_id,
-                current_court,
-                schedule,
-            } => {
-                edited.config = config;
-                edited.game_number = game_number;
-                edited.using_uwhportal = using_uwhportal;
-                edited.current_event_id = current_event_id;
-                edited.current_court = current_court;
-                edited.schedule = schedule;
-            }
-            PageEntrySnapshot::App {
-                using_uwhportal,
-                current_event_id,
-                current_court,
-                schedule,
-                mode,
-                collect_scorer_cap_num,
-                track_fouls_and_warnings,
-                confirm_score,
-            } => {
-                edited.using_uwhportal = using_uwhportal;
-                edited.current_event_id = current_event_id;
-                edited.current_court = current_court;
-                edited.schedule = schedule;
-                edited.mode = mode;
-                edited.collect_scorer_cap_num = collect_scorer_cap_num;
-                edited.track_fouls_and_warnings = track_fouls_and_warnings;
-                edited.confirm_score = confirm_score;
-            }
-            PageEntrySnapshot::Display {
-                white_on_right,
-                brightness,
-                hide_time,
-            } => {
-                edited.white_on_right = white_on_right;
-                edited.brightness = brightness;
-                edited.hide_time = hide_time;
-            }
-            PageEntrySnapshot::Sound { sound } => {
-                edited.sound = sound;
-            }
-            PageEntrySnapshot::Remotes { remotes } => {
-                edited.sound.remotes = remotes;
-            }
-            PageEntrySnapshot::Language {
-                original_language,
-                pending_language,
-            } => {
-                edited.original_language = original_language;
-                edited.pending_language = pending_language;
-            }
-        }
+        snapshot.revert_into(edited);
     }
 
     fn persist_config(&self) {
@@ -1877,12 +1886,10 @@ impl RefBoxApp {
                 let task = match param {
                     ListableParameter::Event => {
                         let id = EventId::from_full(val).unwrap();
-                        edited_settings.current_event_id = Some(id.clone());
-                        // Court and game number were filtered by the previous event;
-                        // clear them so the user re-picks against the new event's schedule.
-                        edited_settings.current_court = None;
-                        edited_settings.game_number = String::new();
-                        edited_settings.schedule = None;
+                        // Set the new event id and clear court / game number / schedule
+                        // that were filtered by the previous event so the user re-picks
+                        // against the new event's data.
+                        edited_settings.select_event(id.clone());
 
                         if let Some(ref client) = self.uwhportal_client {
                             if client.has_token() {
@@ -1911,10 +1918,10 @@ impl RefBoxApp {
                         ])
                     }
                     ListableParameter::Court => {
-                        edited_settings.current_court = Some(val);
-                        // Game number was filtered by the previous court; clear it so the
-                        // user re-picks from the new court's filtered list.
-                        edited_settings.game_number = String::new();
+                        // Set the new court and clear the game number that was filtered
+                        // by the previous court so the user re-picks from the new
+                        // court's filtered list.
+                        edited_settings.select_court(val);
                         Task::none()
                     }
                     ListableParameter::Game => {

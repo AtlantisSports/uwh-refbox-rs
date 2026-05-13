@@ -64,6 +64,23 @@ impl EditableSettings {
             None => true,
         }
     }
+
+    /// Record an event-picker selection. Sets the new event id and clears any
+    /// court / game-number / schedule that was filtered by the previous event so
+    /// the user re-picks against the new event's data.
+    pub(in super::super) fn select_event(&mut self, id: EventId) {
+        self.current_event_id = Some(id);
+        self.current_court = None;
+        self.game_number = String::new();
+        self.schedule = None;
+    }
+
+    /// Record a court-picker selection. Sets the new court and clears the
+    /// game number so the user re-picks from the new court's filtered list.
+    pub(in super::super) fn select_court(&mut self, court: String) {
+        self.current_court = Some(court);
+        self.game_number = String::new();
+    }
 }
 
 pub(in super::super) trait Cyclable
@@ -1438,7 +1455,33 @@ fn make_language_select_page<'a>(
 mod tests {
     use super::*;
     use crate::app::PageEntrySnapshot;
+    use crate::config::Mode;
     use matrix_drawing::transmitted_data::Brightness;
+    use time::macros::datetime;
+    use uwh_common::uwhportal::schedule::{Game, ScheduledTeam, TeamId};
+
+    fn make_schedule_with_one_game(event_id: EventId, game_number: &str, court: &str) -> Schedule {
+        let game = Game {
+            number: game_number.to_string(),
+            dark: ScheduledTeam::new_team_id(TeamId::from_partial("dark")),
+            light: ScheduledTeam::new_team_id(TeamId::from_partial("light")),
+            start_time: datetime!(2026-01-01 0:00 UTC),
+            court: court.to_string(),
+            timing_rule: "RR".to_string(),
+            referee_assignments: None,
+            description: None,
+        };
+        Schedule {
+            event_id,
+            games: std::iter::once((game.number.clone(), game)).collect(),
+            non_game_entries: vec![],
+            groups: vec![],
+            timing_rules: vec![],
+            standings_order: None,
+            final_results_order: None,
+            referees_by_game_number: None,
+        }
+    }
 
     #[test]
     fn display_no_changes_when_buffer_equals_snapshot() {
@@ -1476,5 +1519,315 @@ mod tests {
     fn page_without_snapshot_reports_no_changes() {
         let edited = EditableSettings::default();
         assert!(!page_has_changes(ConfigPage::Display, &edited, None));
+    }
+
+    // ---------------------------------------------------------------------
+    // Invariant 1: per-page snapshot capture-and-revert (B3.10, B3.33)
+    //
+    // The Game-slice snapshot must restore every Game-slice field on Cancel,
+    // while leaving fields owned by other pages alone.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn game_snapshot_revert_restores_all_game_slice_fields() {
+        let event_id = EventId::from_partial("evt-A");
+        let original_config = GameConfig::default();
+        let mut bumped_config = GameConfig::default();
+        bumped_config.team_timeout_duration += Duration::from_secs(15);
+
+        // Entry-time state: snapshot captures this.
+        let mut edited = EditableSettings {
+            config: original_config.clone(),
+            game_number: "1".to_string(),
+            using_uwhportal: true,
+            current_event_id: Some(event_id.clone()),
+            current_court: Some("CourtA".to_string()),
+            schedule: Some(make_schedule_with_one_game(event_id.clone(), "1", "CourtA")),
+            ..Default::default()
+        };
+        let snap = PageEntrySnapshot::Game {
+            config: edited.config.clone(),
+            game_number: edited.game_number.clone(),
+            using_uwhportal: edited.using_uwhportal,
+            current_event_id: edited.current_event_id.clone(),
+            current_court: edited.current_court.clone(),
+            schedule: edited.schedule.clone(),
+        };
+
+        // Operator mutates every Game-slice field after entering Game Options.
+        edited.config = bumped_config;
+        edited.game_number = "99".to_string();
+        edited.using_uwhportal = false;
+        edited.current_event_id = Some(EventId::from_partial("evt-B"));
+        edited.current_court = Some("CourtB".to_string());
+        edited.schedule = None;
+
+        snap.revert_into(&mut edited);
+
+        assert_eq!(edited.config, original_config);
+        assert_eq!(edited.game_number, "1");
+        assert!(edited.using_uwhportal);
+        assert_eq!(edited.current_event_id, Some(event_id.clone()));
+        assert_eq!(edited.current_court.as_deref(), Some("CourtA"));
+        assert!(edited.schedule.is_some());
+        assert_eq!(edited.schedule.as_ref().unwrap().event_id, event_id,);
+    }
+
+    #[test]
+    fn game_snapshot_revert_leaves_other_page_slices_untouched() {
+        // Entry-time Game-slice values get captured.
+        let mut edited = EditableSettings {
+            game_number: "1".to_string(),
+            ..Default::default()
+        };
+        let snap = PageEntrySnapshot::Game {
+            config: edited.config.clone(),
+            game_number: edited.game_number.clone(),
+            using_uwhportal: edited.using_uwhportal,
+            current_event_id: edited.current_event_id.clone(),
+            current_court: edited.current_court.clone(),
+            schedule: edited.schedule.clone(),
+        };
+
+        // Operator edits non-Game-slice fields between entering and cancelling
+        // Game Options: those belong to other pages and must NOT be reverted.
+        edited.mode = Mode::Rugby;
+        edited.confirm_score = true;
+        edited.track_fouls_and_warnings = true;
+        edited.collect_scorer_cap_num = true;
+        edited.white_on_right = true;
+        edited.brightness = Brightness::High;
+        edited.hide_time = true;
+
+        // Also mutate a Game-slice field so we can prove the Game-slice revert
+        // still happened on this same call.
+        edited.game_number = "99".to_string();
+
+        snap.revert_into(&mut edited);
+
+        // Game-slice field was reverted.
+        assert_eq!(edited.game_number, "1");
+
+        // Other-page-slice fields are untouched.
+        assert_eq!(edited.mode, Mode::Rugby);
+        assert!(edited.confirm_score);
+        assert!(edited.track_fouls_and_warnings);
+        assert!(edited.collect_scorer_cap_num);
+        assert!(edited.white_on_right);
+        assert_eq!(edited.brightness, Brightness::High);
+        assert!(edited.hide_time);
+    }
+
+    #[test]
+    fn app_snapshot_revert_restores_only_app_slice_fields() {
+        // Per ADR 009 the App page owns the portal trio plus the four App-slice
+        // booleans. This test mirrors Invariant 1's assertions for App.
+        let original_event = EventId::from_partial("evt-A");
+
+        let mut edited = EditableSettings {
+            using_uwhportal: true,
+            current_event_id: Some(original_event.clone()),
+            current_court: Some("CourtA".to_string()),
+            mode: Mode::Hockey6V6,
+            collect_scorer_cap_num: false,
+            track_fouls_and_warnings: false,
+            confirm_score: false,
+            // A Game-slice field we'll mutate to prove App revert ignores it.
+            game_number: "1".to_string(),
+            ..Default::default()
+        };
+        let snap = PageEntrySnapshot::App {
+            using_uwhportal: edited.using_uwhportal,
+            current_event_id: edited.current_event_id.clone(),
+            current_court: edited.current_court.clone(),
+            schedule: edited.schedule.clone(),
+            mode: edited.mode,
+            collect_scorer_cap_num: edited.collect_scorer_cap_num,
+            track_fouls_and_warnings: edited.track_fouls_and_warnings,
+            confirm_score: edited.confirm_score,
+        };
+
+        edited.using_uwhportal = false;
+        edited.current_event_id = Some(EventId::from_partial("evt-B"));
+        edited.current_court = Some("CourtB".to_string());
+        edited.mode = Mode::Rugby;
+        edited.collect_scorer_cap_num = true;
+        edited.track_fouls_and_warnings = true;
+        edited.confirm_score = true;
+        edited.game_number = "99".to_string();
+
+        snap.revert_into(&mut edited);
+
+        // App-slice fields restored.
+        assert!(edited.using_uwhportal);
+        assert_eq!(edited.current_event_id, Some(original_event));
+        assert_eq!(edited.current_court.as_deref(), Some("CourtA"));
+        assert_eq!(edited.mode, Mode::Hockey6V6);
+        assert!(!edited.collect_scorer_cap_num);
+        assert!(!edited.track_fouls_and_warnings);
+        assert!(!edited.confirm_score);
+
+        // Game-slice field NOT restored by the App snapshot.
+        assert_eq!(edited.game_number, "99");
+    }
+
+    // ---------------------------------------------------------------------
+    // Invariant 2: uwhportal_incomplete() Apply-disable predicate (B3.9, B3.37)
+    //
+    // The same helper backs both the Apply-button enable state in the footer
+    // and the gate check at the top of apply_game_options. The two consumers
+    // must stay in sync because uwhportal_incomplete() is the only source of
+    // truth — these tests lock its branches.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn uwhportal_incomplete_false_when_portal_off() {
+        let edited = EditableSettings {
+            using_uwhportal: false,
+            current_event_id: None,
+            current_court: None,
+            schedule: None,
+            ..Default::default()
+        };
+        assert!(!edited.uwhportal_incomplete());
+    }
+
+    #[test]
+    fn uwhportal_incomplete_true_when_event_missing() {
+        let edited = EditableSettings {
+            using_uwhportal: true,
+            current_event_id: None,
+            current_court: Some("CourtA".to_string()),
+            schedule: Some(make_schedule_with_one_game(
+                EventId::from_partial("evt-A"),
+                "1",
+                "CourtA",
+            )),
+            game_number: "1".to_string(),
+            ..Default::default()
+        };
+        assert!(edited.uwhportal_incomplete());
+    }
+
+    #[test]
+    fn uwhportal_incomplete_true_when_court_missing() {
+        let event_id = EventId::from_partial("evt-A");
+        let edited = EditableSettings {
+            using_uwhportal: true,
+            current_event_id: Some(event_id.clone()),
+            current_court: None,
+            schedule: Some(make_schedule_with_one_game(event_id, "1", "CourtA")),
+            game_number: "1".to_string(),
+            ..Default::default()
+        };
+        assert!(edited.uwhportal_incomplete());
+    }
+
+    #[test]
+    fn uwhportal_incomplete_true_when_schedule_missing() {
+        let edited = EditableSettings {
+            using_uwhportal: true,
+            current_event_id: Some(EventId::from_partial("evt-A")),
+            current_court: Some("CourtA".to_string()),
+            schedule: None,
+            game_number: "1".to_string(),
+            ..Default::default()
+        };
+        assert!(edited.uwhportal_incomplete());
+    }
+
+    #[test]
+    fn uwhportal_incomplete_true_when_game_not_in_schedule() {
+        let event_id = EventId::from_partial("evt-A");
+        let edited = EditableSettings {
+            using_uwhportal: true,
+            current_event_id: Some(event_id.clone()),
+            current_court: Some("CourtA".to_string()),
+            schedule: Some(make_schedule_with_one_game(event_id, "1", "CourtA")),
+            game_number: "does-not-exist".to_string(),
+            ..Default::default()
+        };
+        assert!(edited.uwhportal_incomplete());
+    }
+
+    #[test]
+    fn uwhportal_incomplete_true_when_game_court_mismatches_current_court() {
+        let event_id = EventId::from_partial("evt-A");
+        let edited = EditableSettings {
+            using_uwhportal: true,
+            current_event_id: Some(event_id.clone()),
+            current_court: Some("CourtB".to_string()),
+            schedule: Some(make_schedule_with_one_game(event_id, "1", "CourtA")),
+            game_number: "1".to_string(),
+            ..Default::default()
+        };
+        assert!(edited.uwhportal_incomplete());
+    }
+
+    #[test]
+    fn uwhportal_incomplete_false_when_all_present_and_matching() {
+        let event_id = EventId::from_partial("evt-A");
+        let edited = EditableSettings {
+            using_uwhportal: true,
+            current_event_id: Some(event_id.clone()),
+            current_court: Some("CourtA".to_string()),
+            schedule: Some(make_schedule_with_one_game(event_id, "1", "CourtA")),
+            game_number: "1".to_string(),
+            ..Default::default()
+        };
+        assert!(!edited.uwhportal_incomplete());
+    }
+
+    // ---------------------------------------------------------------------
+    // Invariant 4: picker-driven field clearing on event/court change
+    // (B3.15, B3.16)
+    //
+    // select_event/select_court are the helpers used by the
+    // Message::ParameterSelected handler. Locking them in tests preserves the
+    // documented behaviour that switching events clears court / game number /
+    // schedule, and switching courts clears game number.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn select_event_sets_event_and_clears_court_game_schedule() {
+        let event_id = EventId::from_partial("evt-A");
+        let mut edited = EditableSettings {
+            current_event_id: Some(EventId::from_partial("old-evt")),
+            current_court: Some("OldCourt".to_string()),
+            game_number: "42".to_string(),
+            schedule: Some(make_schedule_with_one_game(
+                EventId::from_partial("old-evt"),
+                "42",
+                "OldCourt",
+            )),
+            ..Default::default()
+        };
+
+        edited.select_event(event_id.clone());
+
+        assert_eq!(edited.current_event_id, Some(event_id));
+        assert_eq!(edited.current_court, None);
+        assert_eq!(edited.game_number, "");
+        assert!(edited.schedule.is_none());
+    }
+
+    #[test]
+    fn select_court_sets_court_and_clears_game_number() {
+        let event_id = EventId::from_partial("evt-A");
+        let mut edited = EditableSettings {
+            current_event_id: Some(event_id.clone()),
+            current_court: Some("OldCourt".to_string()),
+            game_number: "42".to_string(),
+            schedule: Some(make_schedule_with_one_game(event_id, "42", "OldCourt")),
+            ..Default::default()
+        };
+
+        edited.select_court("NewCourt".to_string());
+
+        assert_eq!(edited.current_court.as_deref(), Some("NewCourt"));
+        assert_eq!(edited.game_number, "");
+        // Event id and schedule are NOT touched by a court change.
+        assert!(edited.current_event_id.is_some());
+        assert!(edited.schedule.is_some());
     }
 }

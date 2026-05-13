@@ -151,7 +151,6 @@ pub fn parse_csv(
         timing_rules,
         standings_order: None,
         final_results_order: None,
-        referees_by_game_number: None,
     })
 }
 

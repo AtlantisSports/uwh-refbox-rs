@@ -21,7 +21,7 @@ This spec is the input to the per-unit plan that will be written next via `super
 
 ### In scope
 
-The 9 manual-alarm commits between `bc66e1e` (2026-04-14) and `ff6018b` (2026-04-17). Files touched:
+The 16 manual-alarm commits between `bc66e1e` (2026-04-14) and `ff6018b` (2026-04-17), inclusive (`git rev-list bc66e1e^..ff6018b --count` = 16). Files touched:
 
 - `refbox/src/sound_controller/mod.rs` — `manual_alarm_enabled: bool` field, migration support
 - `refbox/src/app/message.rs` — `AlarmPressed`, `AlarmReleased`, `AlarmDelayElapsed`, `SpacebarPressed`, `SpacebarReleased`; `BoolGameParameter::ManualAlarmEnabled`
@@ -46,7 +46,7 @@ The spec at `docs/superpowers/specs/2026-04-14-manual-alarm-button-design.md` is
 
 ## Audit approach
 
-**Diff-led catalog with spec as oracle (Unit 3 pattern).** This matches how all prior units operated. The catalog is built from the 9 commits' diff; per-operator-observable-behaviour decomposition; the spec is the oracle for each entry.
+**Diff-led catalog with spec as oracle (Unit 3 pattern).** This matches how all prior units operated. The catalog is built from the 16 commits' diff; per-operator-observable-behaviour decomposition; the spec is the oracle for each entry.
 
 1. Walk the diff. Write one B-entry per distinct operator-observable behaviour or backend touchpoint.
 2. For each B-entry, mark spec-status: **matches spec**, **diverges from spec**, or **not in spec**.
@@ -137,7 +137,7 @@ Migration default and `BoolGameParameter` toggle wiring are covered by existing 
 - The companion delta plan at `docs/superpowers/plans/2026-04-17-manual-alarm-uniform-hold-delta.md`
 - The original (retconned) plan at `docs/superpowers/plans/2026-04-14-manual-alarm-button.md`
 - ADR 006 (proposed successor — explicit note that ADR 006 is gated on the findings recorded here)
-- The 9 original commits by SHA
+- The 16 original commits by SHA
 
 **"What was not verified"** section if any catalog entry ends `@tested_inconclusive` or is testable-only-with-hardware. Likely empty for this unit.
 

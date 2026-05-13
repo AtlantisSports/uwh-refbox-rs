@@ -4,11 +4,21 @@
 # The audit deliberately omits `Background:` blocks so each scenario is
 # reviewable in isolation during the per-unit review session and the test
 # session walkthrough.
+#
+# Test session 1 — 2026-05-13 — Sound Options page — S4.8 pass, S4.9 pass
+# Test session 2 — 2026-05-13 — Main game screen across states — S4.1 pass,
+#   S4.2 pass, S4.5 pass, S4.10 pass, S4.11 pass, S4.12 pass, S4.13 pass,
+#   S4.14 pass, S4.15 pass (release processed; no audio for natural-cycle audibility)
+# Test session 3 — 2026-05-13 — Spacebar non-main-screen + cross-covered —
+#   S4.16 pass (verified B4.11 fix in commit bf2f7b6 — log shows zero
+#   "Manual alarm delay started" lines while holding spacebar on Sound Options page);
+#   S4.3, S4.4, S4.6, S4.7, S4.17 cross-covered via shared code paths and
+#   log evidence — no separate walkthrough needed (per operator decision).
 
-@user_verified
+@user_verified @tested_pass
 Feature: Manual alarm button
 
-  @user_verified
+  @user_verified @tested_pass
   Scenario: Mouse hold past 150ms during active play fires the alarm
     Given the manual alarm is turned on in sound settings
     And sound is enabled
@@ -17,7 +27,7 @@ Feature: Manual alarm button
     Then the alarm sound plays
     And the alarm sound continues playing while the button is held
 
-  @user_verified
+  @user_verified @tested_pass
   Scenario: Mouse tap under 150ms during active play does not fire
     Given the manual alarm is turned on in sound settings
     And sound is enabled
@@ -25,7 +35,7 @@ Feature: Manual alarm button
     When the operator presses and releases the alarm button in under 100 milliseconds
     Then the alarm sound does not play
 
-  @user_verified
+  @user_verified @tested_pass
   Scenario Outline: Active-play parity across periods
     Given the manual alarm is turned on in sound settings
     And sound is enabled
@@ -40,7 +50,7 @@ Feature: Manual alarm button
       | Overtime Second Half |
       | Sudden Death         |
 
-  @user_verified
+  @user_verified @tested_pass
   Scenario: Spacebar parity with mouse during active play
     Given the manual alarm is turned on in sound settings
     And sound is enabled
@@ -49,7 +59,7 @@ Feature: Manual alarm button
     Then the alarm sound plays
     And the alarm sound continues playing while the spacebar is held
 
-  @user_verified
+  @user_verified @tested_pass
   Scenario: Active play with timeout active uses 1-second hold
     Given the manual alarm is turned on in sound settings
     And sound is enabled
@@ -59,7 +69,7 @@ Feature: Manual alarm button
     When the operator presses and holds the alarm button for 1.1 seconds
     Then the alarm sound plays
 
-  @user_verified
+  @user_verified @tested_pass
   Scenario: Between Games requires 1-second hold
     Given the manual alarm is turned on in sound settings
     And sound is enabled
@@ -69,7 +79,7 @@ Feature: Manual alarm button
     When the operator presses and holds the alarm button for 1.1 seconds
     Then the alarm sound plays
 
-  @user_verified
+  @user_verified @tested_pass
   Scenario Outline: Break-period parity uses 1-second hold
     Given the manual alarm is turned on in sound settings
     And sound is enabled
@@ -84,7 +94,7 @@ Feature: Manual alarm button
       | Overtime Half Time |
       | Pre-Sudden Death   |
 
-  @user_verified
+  @user_verified @tested_pass
   Scenario: Settings toggle defaults to Off and enables the layout when turned on
     Given a fresh install with no saved sound settings
     When the operator opens the Sound settings page
@@ -94,14 +104,14 @@ Feature: Manual alarm button
     And returns to the main game screen
     Then the main game screen shows the GAME INFO button and the alarm button
 
-  @user_verified
+  @user_verified @tested_pass
   Scenario: Alarm Button toggle is greyed when Sound Enabled is Off
     Given the operator is on the Sound settings page
     And the "Sound Enabled" toggle is Off
     Then the "Alarm Button" toggle is non-interactive
     And tapping it does not change its value
 
-  @user_verified
+  @user_verified @tested_pass
   Scenario: Lower area splits vertically when fouls-and-warnings tracking is on
     Given the manual alarm is turned on in sound settings
     And fouls-and-warnings tracking is on
@@ -110,7 +120,7 @@ Feature: Manual alarm button
     And the warnings summary panel is shown on the right side of the lower area
     And both halves are of equal width
 
-  @user_verified
+  @user_verified @tested_pass
   Scenario: Lower area is full-width when fouls-and-warnings tracking is off
     Given the manual alarm is turned on in sound settings
     And fouls-and-warnings tracking is off
@@ -118,7 +128,7 @@ Feature: Manual alarm button
     Then the alarm button fills the full width of the lower area
     And no warnings summary panel is shown alongside the alarm button
 
-  @user_verified
+  @user_verified @tested_pass
   Scenario: Button is red with the tap prompt during active play with no timeout
     Given the manual alarm is turned on in sound settings
     And the game is in First Half with the clock running and no timeout
@@ -127,7 +137,7 @@ Feature: Manual alarm button
     And the alarm button displays the large label "Alarm"
     And the alarm button displays the small label "Or Press Spacebar"
 
-  @user_verified
+  @user_verified @tested_pass
   Scenario Outline: Button is blue with the hold prompt outside active-play-no-timeout
     Given the manual alarm is turned on in sound settings
     And the game state is <state>
@@ -145,7 +155,7 @@ Feature: Manual alarm button
       | Pre-Sudden Death                       |
       | First Half with a team timeout active  |
 
-  @user_verified
+  @user_verified @tested_pass
   Scenario: Pressed-state container visible while button is held
     Given the manual alarm is turned on in sound settings
     And the game is in First Half with the clock running and no timeout
@@ -154,7 +164,7 @@ Feature: Manual alarm button
     When the operator releases the alarm button
     Then the alarm button container background returns to red
 
-  @user_verified
+  @user_verified @tested_pass
   Scenario: Release lets the currently playing tone finish naturally
     Given the manual alarm is turned on in sound settings
     And the alarm sound is currently playing because the alarm button is held
@@ -163,7 +173,7 @@ Feature: Manual alarm button
     And the currently playing tone finishes its natural cycle
     And the alarm sound then stops
 
-  @user_verified
+  @user_verified @tested_pass
   Scenario Outline: Spacebar has no effect on non-main screens
     Given the manual alarm is turned on in sound settings
     And sound is enabled
@@ -177,7 +187,7 @@ Feature: Manual alarm button
       | Penalty edit screen |
       | Score edit screen   |
 
-  @user_verified
+  @user_verified @tested_pass
   Scenario: Disabling the alarm button restores the original main screen
     Given the manual alarm was turned on in sound settings
     And the main game screen shows the GAME INFO button and the alarm button

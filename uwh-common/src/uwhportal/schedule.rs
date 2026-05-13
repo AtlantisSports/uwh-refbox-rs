@@ -1309,6 +1309,83 @@ mod tests {
     }
 
     #[test]
+    fn test_serialize_referee_assignment_skips_display_name() {
+        use serde_json::json;
+        let ra = RefereeAssignment {
+            role: "Chief".to_string(),
+            user_id: Some("u123".to_string()),
+            display_name: Some("Alice".to_string()),
+        };
+        let serialized = serde_json::to_value(&ra).unwrap();
+        // display_name has #[serde(skip)] — must NOT appear in JSON
+        assert_eq!(serialized, json!({"role": "Chief", "userId": "u123"}));
+    }
+
+    #[test]
+    fn test_deserialize_referee_assignment_ignores_unknown_fields() {
+        use serde_json::json;
+        // Portal may still send the now-removed `identifier`, `teamId`, `comments`
+        // (or a hypothetical future `displayName`). Serde must accept them silently.
+        let input = json!({
+            "role": "Water1",
+            "userId": "u456",
+            "identifier": "ABC123",
+            "teamId": "t789",
+            "comments": "captain",
+            "displayName": "will-be-ignored"
+        });
+        let ra: RefereeAssignment = serde_json::from_value(input).unwrap();
+        assert_eq!(ra.role, "Water1");
+        assert_eq!(ra.user_id, Some("u456".to_string()));
+        // display_name not deserialized from JSON despite "displayName" key in input
+        assert_eq!(ra.display_name, None);
+    }
+
+    #[test]
+    fn test_timing_rule_last_2_min_stop_time_default_false() {
+        // Portal may omit last2minStopTime in older exports; serde default must be false.
+        let json_without_field = r#"{
+            "name": "Test",
+            "teamTimeoutCount": 1,
+            "teamTimeoutsCountedPerHalf": true,
+            "overtimeAllowed": false,
+            "suddenDeathAllowed": false,
+            "halfPlayDuration": 600,
+            "halfTimeDuration": 300,
+            "teamTimeoutDuration": 60,
+            "overtimeHalfPlayDuration": 300,
+            "overtimeHalfTimeDuration": 180,
+            "preOvertimeBreak": 180,
+            "preSuddenDeathDuration": 60,
+            "minimumBreak": 60
+        }"#;
+        let rule: TimingRule = serde_json::from_str(json_without_field).unwrap();
+        assert!(!rule.last_2_min_stop_time);
+    }
+
+    #[test]
+    fn test_timing_rule_last_2_min_stop_time_explicit_true() {
+        let json_with_field = r#"{
+            "name": "Test",
+            "teamTimeoutCount": 1,
+            "teamTimeoutsCountedPerHalf": true,
+            "overtimeAllowed": false,
+            "suddenDeathAllowed": false,
+            "last2minStopTime": true,
+            "halfPlayDuration": 600,
+            "halfTimeDuration": 300,
+            "teamTimeoutDuration": 60,
+            "overtimeHalfPlayDuration": 300,
+            "overtimeHalfTimeDuration": 180,
+            "preOvertimeBreak": 180,
+            "preSuddenDeathDuration": 60,
+            "minimumBreak": 60
+        }"#;
+        let rule: TimingRule = serde_json::from_str(json_with_field).unwrap();
+        assert!(rule.last_2_min_stop_time);
+    }
+
+    #[test]
     #[ignore]
     fn check_postman_example_is_updated() {
         const UWHPORTAL_REPO_PATH: &str = "../../uwhscores";

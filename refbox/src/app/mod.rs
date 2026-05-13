@@ -268,8 +268,15 @@ impl RefBoxApp {
                     }
                 };
                 // Fetch referee display names from the public /referees endpoint.
-                // If the call fails (e.g. no network), silently proceed without names.
-                let name_map = names_req.await.unwrap_or_default();
+                // If the call fails (e.g. no network), log at warn level and proceed
+                // without names — the schedule still loads and refs show "-".
+                let name_map = match names_req.await {
+                    Ok(map) => map,
+                    Err(e) => {
+                        warn!("Failed to fetch referee names: {e}");
+                        Default::default()
+                    }
+                };
                 for game in schedule.games.values_mut() {
                     if let Some(assignments) = &mut game.referee_assignments {
                         for assignment in assignments.iter_mut() {

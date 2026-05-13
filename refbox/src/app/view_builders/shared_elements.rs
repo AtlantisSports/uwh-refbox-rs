@@ -799,14 +799,12 @@ pub(super) fn config_string(
     let mut water_ref_1 = unknown.clone();
     let mut water_ref_2 = unknown.clone();
     let mut water_ref_3 = unknown.clone();
-    let mut has_individual_refs = false;
 
-    let simple_game_number = if let Some(games) = games {
+    if let Some(games) = games {
         if let Some(game) = games.get(&game_number) {
             if let Some(refs) = &game.referee_assignments {
                 for ref_assignment in refs {
                     if ref_assignment.user_id.is_some() {
-                        has_individual_refs = true;
                         // Fall back to the localized "Unknown" — not `identifier`,
                         // which is a portal-assigned system code, not a human name.
                         let display = ref_assignment
@@ -822,41 +820,6 @@ pub(super) fn config_string(
                             _ => {}
                         }
                     }
-                }
-            }
-            Some(game.number.clone())
-        } else {
-            None
-        }
-    } else {
-        None
-    };
-
-    if !has_individual_refs {
-        if let Some(sched) = schedule {
-            if let Some(refs_by_game) = &sched.referees_by_game_number {
-                let lookup_key = simple_game_number.as_ref().unwrap_or(&game_number);
-                if let Some(game_refs) = refs_by_game.get(lookup_key) {
-                    let ref_team = game_refs
-                        .referees
-                        .as_ref()
-                        .and_then(|r| r.team.as_ref())
-                        .and_then(|t| t.name.clone())
-                        .unwrap_or_else(|| unknown.clone());
-
-                    let ts_keeper_team = game_refs
-                        .time_or_score_keeper
-                        .as_ref()
-                        .and_then(|r| r.team.as_ref())
-                        .and_then(|t| t.name.clone())
-                        .unwrap_or_else(|| unknown.clone());
-
-                    result += &fl!(
-                        "team-ref-list",
-                        ref_team = ref_team,
-                        ts_keeper_team = ts_keeper_team
-                    );
-                    return result;
                 }
             }
         }

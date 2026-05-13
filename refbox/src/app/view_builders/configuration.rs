@@ -1830,4 +1830,44 @@ mod tests {
         assert!(edited.current_event_id.is_some());
         assert!(edited.schedule.is_some());
     }
+
+    // ---------------------------------------------------------------------
+    // Regression: Sound Options Apply gate after returning from Manage
+    // Remotes (Unit 3 audit, S3.15 manual walkthrough, 2026-05-13).
+    //
+    // Previously, taking the Cancel or Apply path on the Remotes sub-page
+    // consumed/cleared the page entry snapshot and never re-captured it
+    // for the parent Sound page. With no snapshot, page_has_changes
+    // returned false even after real sound edits, so the Sound Apply
+    // button stayed permanently disabled.
+    //
+    // The fix re-captures the parent's snapshot inside navigate_to_parent.
+    // This test documents the predicate's expected behaviour at the
+    // snapshot level: with a Sound snapshot present the predicate must
+    // correctly detect (or not detect) edits, and with no snapshot it
+    // conservatively reports no changes (which is what disables Apply —
+    // the very bug the fix prevents from occurring on the Sound page).
+    // ---------------------------------------------------------------------
+    #[test]
+    fn sound_apply_requires_snapshot_present() {
+        let mut edited = EditableSettings::default();
+        let snap = PageEntrySnapshot::Sound {
+            sound: edited.sound.clone(),
+        };
+
+        // 1. No edits yet -> Apply must stay disabled.
+        assert!(!page_has_changes(ConfigPage::Sound, &edited, Some(&snap)));
+
+        // 2. Operator toggles a sound field -> Apply must enable.
+        edited.sound.sound_enabled ^= true;
+        assert!(page_has_changes(ConfigPage::Sound, &edited, Some(&snap)));
+
+        // 3. If the snapshot is missing (the pre-fix bug condition after
+        //    returning from Manage Remotes), the predicate reports no
+        //    changes regardless of edits, which leaves Apply disabled.
+        //    The fix ensures this branch is not reached on Sound after a
+        //    sub-page navigation; this assertion documents the predicate's
+        //    conservative behaviour under None.
+        assert!(!page_has_changes(ConfigPage::Sound, &edited, None));
+    }
 }

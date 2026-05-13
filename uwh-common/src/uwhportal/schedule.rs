@@ -200,13 +200,9 @@ pub type GameNumber = String;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RefereeAssignment {
-    pub identifier: String,
     pub role: String,
     #[serde(rename = "userId")]
     pub user_id: Option<String>,
-    #[serde(rename = "teamId")]
-    pub team_id: Option<TeamId>,
-    pub comments: Option<String>,
     /// Human-readable display name, resolved from the portal after fetching.
     /// Not present in the portal JSON; populated locally via name-map lookup.
     #[serde(skip)]

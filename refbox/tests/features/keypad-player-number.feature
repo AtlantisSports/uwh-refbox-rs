@@ -12,9 +12,9 @@ Feature: Keypad player number display
     And the digit string does not vanish (the rendering bug pre-fix
       manifested as an empty render for short strings)
 
-    # Session notes (filled by Task 7):
-    # @tested_pass | @tested_fail | @tested_inconclusive
-    # walkthrough: YYYY-MM-DD HH:MM
+    # Session notes:
+    # @tested_pass — operator confirmed short digit strings render reliably across keypad variants
+    # walkthrough: 2026-05-15 00:12
 
   @user_verified
   Scenario: Digit text size is consistent across keypad variants
@@ -23,6 +23,6 @@ Feature: Keypad player number display
       foul, penalty, portal-login)
     Then the digit text renders at MEDIUM_TEXT size in all variants
 
-    # Session notes (filled by Task 7):
-    # @tested_pass | @tested_fail | @tested_inconclusive
-    # walkthrough: YYYY-MM-DD HH:MM
+    # Session notes:
+    # @tested_pass — operator confirmed digit text size is consistent across keypad variants
+    # walkthrough: 2026-05-15 00:12

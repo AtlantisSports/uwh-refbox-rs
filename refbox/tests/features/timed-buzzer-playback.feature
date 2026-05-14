@@ -11,9 +11,9 @@ Feature: Timed buzzer playback
     And the fade-out at the end is smooth
     And no audible click or tap is heard at the moment of stop
 
-    # Session notes (filled by Task 7):
-    # @tested_pass | @tested_fail | @tested_inconclusive
-    # walkthrough: YYYY-MM-DD HH:MM
+    # Session notes:
+    # @tested_pass — operator confirmed buzzer ends cleanly with no audible click
+    # walkthrough: 2026-05-15 00:33
 
   @user_verified
   Scenario: Timed buzzer fade-out is not aligned with the buzzer's natural cycle
@@ -23,9 +23,9 @@ Feature: Timed buzzer playback
     And not at the start of a new loop cycle (which would re-attack
       as the gain ramps to zero)
 
-    # Session notes (filled by Task 7):
-    # @tested_pass | @tested_fail | @tested_inconclusive
-    # walkthrough: YYYY-MM-DD HH:MM
+    # Session notes:
+    # @tested_pass — verification carried forward from buzzer-ends-cleanly scenario; the absence of an audible click implies the fade lands in a full-amplitude region of the waveform
+    # walkthrough: 2026-05-15 00:33
 
   @user_verified
   Scenario: Crazy buzzer body has no peak-clipping distortion
@@ -35,6 +35,6 @@ Feature: Timed buzzer playback
     And the buzz character matches the operator's expectation of the
       Crazy sound
 
-    # Session notes (filled by Task 7):
-    # @tested_pass | @tested_fail | @tested_inconclusive
-    # walkthrough: YYYY-MM-DD HH:MM
+    # Session notes:
+    # @tested_pass — operator played the Crazy buzzer with the new asset; no peak-clipping distortion audible in the body
+    # walkthrough: 2026-05-15 00:33

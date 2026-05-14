@@ -590,7 +590,9 @@ Starting points for catalog questions, not pre-decisions:
 
 > Filled in during execution. Per lean process, deviations live here rather than as standalone commits.
 
-*(none yet)*
+**1. Baseline tip — plan said `82a370d`, actual cut at `089c98d` (2026-05-15, Task 1).**
+
+The plan's references to `origin/master at 82a370d` reflected the principal's stale local master view. The actual `origin/master` tip when Task 1 ran was `089c98d` (a Renovate `chore(deps): bump rustls-webpki from 0.103.12 to 0.103.13` commit landed on 2026-04-24, three weeks before this audit). The audit worktree at `.worktrees/audit-unit-6-small-fixes/` is correctly anchored to the current origin/master tip. All four Unit 6 audit commits (`edb4b9c`, `8a8d018`, `7269c11`, `03d126c`) are reachable on the worktree HEAD. Audit scope is unaffected — Unit 6 audits four specific commits, not the tip.
 
 ---
 

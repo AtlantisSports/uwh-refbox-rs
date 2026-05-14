@@ -134,17 +134,27 @@ fn render_row<'a>(r: DetailRow) -> Element<'a, Message> {
         .height(Length::Fixed(MIN_BUTTON_SIZE))
         .into(),
         DetailRow::Pending {
-            id, game_number, ..
-        } => button(row_text_centered(fl!(
-            "portal-row-pending",
-            game = game_number
-        )))
-        .on_press(Message::PortalRowTapped(id))
-        .style(yellow_button)
-        .padding(PADDING)
-        .width(Length::Fill)
-        .height(Length::Fixed(MIN_BUTTON_SIZE))
-        .into(),
+            id,
+            game_number,
+            attempts,
+        } => {
+            // Concatenate the localized "(attempt N)" suffix onto the
+            // base pending label. Kept as a separate translation key so
+            // RTL/CJK locales can reposition it without rewriting the
+            // base "not sent, tap to retry" message.
+            let label = format!(
+                "{} {}",
+                fl!("portal-row-pending", game = game_number),
+                fl!("portal-row-attempt-suffix", attempts = attempts),
+            );
+            button(row_text_centered(label))
+                .on_press(Message::PortalRowTapped(id))
+                .style(yellow_button)
+                .padding(PADDING)
+                .width(Length::Fill)
+                .height(Length::Fixed(MIN_BUTTON_SIZE))
+                .into()
+        }
         DetailRow::RecentSuccess {
             game_number,
             submitted_mins_ago,

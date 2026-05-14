@@ -262,7 +262,16 @@ pub enum DetailRow {
     /// A queued item that is still in the auto-retry window
     /// (< stuck threshold since it was queued). Informational.
     /// Tapping forces an immediate retry attempt.
-    Pending { id: ItemId, game_number: String },
+    ///
+    /// `attempts` is the number of background retry attempts made so
+    /// far. Surfaced in the row label as "(attempt N)" so the operator
+    /// can see at a glance that the background retry loop is alive,
+    /// without exposing the retry timer (per Unit 7 audit decision).
+    Pending {
+        id: ItemId,
+        game_number: String,
+        attempts: u32,
+    },
     /// A recently-completed submission, shown as an informational
     /// green strip. Not tappable.
     RecentSuccess {
@@ -661,6 +670,7 @@ impl PortalManager {
                 out.push(DetailRow::Pending {
                     id: it.id.clone(),
                     game_number: it.id.game_number.clone(),
+                    attempts: it.attempts,
                 });
             }
         }

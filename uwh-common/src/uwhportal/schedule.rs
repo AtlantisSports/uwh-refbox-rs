@@ -198,6 +198,14 @@ pub struct FinalPlacingSource {
 
 pub type GameNumber = String;
 
+/// Reference to a group by name. The portal resolves the server-side identifier
+/// from `name` server-side (`IReferenceWithNameAsPrimaryKey.TryFillIdentifier`),
+/// so clients only need to provide the group's name.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupReference {
+    pub name: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RefereeAssignment {
     pub role: String,
@@ -456,9 +464,9 @@ pub struct Schedule {
     #[serde(rename = "timingRules")]
     pub timing_rules: Vec<TimingRule>,
     #[serde(rename = "standingsOrder")]
-    pub standings_order: Option<Vec<usize>>,
+    pub standings_order: Option<Vec<GroupReference>>,
     #[serde(rename = "finalResultsOrder")]
-    pub final_results_order: Option<Vec<usize>>,
+    pub final_results_order: Option<Vec<GroupReference>>,
 }
 
 impl Schedule {
@@ -489,9 +497,9 @@ pub struct SendableSchedule {
     #[serde(rename = "timingRules")]
     pub timing_rules: Vec<TimingRule>,
     #[serde(rename = "standingsOrder")]
-    pub standings_order: Option<Vec<usize>>,
+    pub standings_order: Option<Vec<GroupReference>>,
     #[serde(rename = "finalResultsOrder")]
-    pub final_results_order: Option<Vec<usize>>,
+    pub final_results_order: Option<Vec<GroupReference>>,
 }
 
 impl From<Schedule> for SendableSchedule {

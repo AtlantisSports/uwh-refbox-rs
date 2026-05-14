@@ -116,6 +116,11 @@ pub struct RefBoxApp {
     /// the in-memory portal token is replaced with garbage so the next
     /// `verify_token` tick fails and the token-expired flow can be
     /// exercised end-to-end. The on-disk token is never touched.
+    ///
+    /// Compile-time gated to debug builds so the field, the env-var
+    /// name string, and the `std::env::var` call are absent from
+    /// release binaries.
+    #[cfg(debug_assertions)]
     scramble_token_pending: bool,
 }
 
@@ -586,6 +591,7 @@ impl RefBoxApp {
     /// `verify_token` leg reflects the operator's actual event selection
     /// (ADR 011 amendment 2026-04-23, dormant-until-linked).
     fn set_current_event_id(&mut self, new: Option<EventId>) {
+        #[cfg(debug_assertions)]
         let new_is_some = new.is_some();
         self.current_event_id = new.clone();
         // why this cannot panic: the guarded data is a plain `Option`
@@ -597,6 +603,7 @@ impl RefBoxApp {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner()) = new;
 
+        #[cfg(debug_assertions)]
         if self.scramble_token_pending && new_is_some {
             if let Some(client) = self.uwhportal_client.as_ref() {
                 let mut guard = client
@@ -979,8 +986,9 @@ impl RefBoxApp {
         if url_override.is_some() {
             info!("UWH_PORTAL_URL_OVERRIDE active: using {portal_url}");
         }
-        let scramble_token_pending =
-            cfg!(debug_assertions) && std::env::var("UWH_PORTAL_SCRAMBLE_TOKEN").is_ok();
+        #[cfg(debug_assertions)]
+        let scramble_token_pending = std::env::var("UWH_PORTAL_SCRAMBLE_TOKEN").is_ok();
+        #[cfg(debug_assertions)]
         if scramble_token_pending {
             warn!(
                 "UWH_PORTAL_SCRAMBLE_TOKEN armed: in-memory token will be invalidated after first event link"
@@ -1095,6 +1103,7 @@ impl RefBoxApp {
             portal_manager,
             portal_event_rx,
             portal_login_return_to_detail: false,
+            #[cfg(debug_assertions)]
             scramble_token_pending,
         };
 

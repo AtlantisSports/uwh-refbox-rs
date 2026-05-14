@@ -255,6 +255,21 @@ which keeps each widget's paragraph anchor within its own bounds.
 **Concern level: LOW**
 Both are targeted workarounds for known iced 0.13 rendering limitations. No logic changed.
 
+**Verified by Unit 6 audit (2026-05-15):**
+
+Post-rebase commits on master are `edb4b9c` (keypad) and `8a8d018` (multi-label). The pre-rebase commit hashes referenced in this entry's header (`cd577b2`, `2749104`) are the originals on `feat/workspace/desktop-build`; both branches reach the same surviving state. Unit 6 audited the post-rebase versions.
+
+Catalog entries (in `AUDIT-PLAN.md` Unit 6 → Behaviour catalog):
+- **B6.1** — Space-widget swap fixes short-string display on keypad digit (matches Bug 1 in this entry's text).
+- **B6.2** — Font-size simplification: `LARGE_TEXT` branch removed; all keypad digit displays render at `MEDIUM_TEXT`. **Disclosed in `edb4b9c`'s commit message ("Also simplify digit font size to MEDIUM_TEXT for all cases") but not described in this entry's original text.** Operator decision 2026-05-15 (recorded in AUDIT-PLAN.md Unit 6 Decisions): keep the font-size simplification and record it here. Operator-visible effect: digit text on the player-number, foul, and penalty keypads is slightly smaller than v0.4.0-era (now matches the TEAM and PortalLogin variants which already used `MEDIUM_TEXT`).
+- **B6.3** — Multi-label button outer container wrap (matches Bug 2 in this entry's text). Cross-unit note: commit `848138c` (Unit 8 territory: language / CJK support) later added per-line `container(text).center_x(Length::Fill)` refinements on top of B6.3's outer wrap. Both layers coexist in the current code; B6.3's outer wrap remains the iced paragraph-cache workaround this entry describes.
+
+Gherkin scenarios seeded on the audit branch:
+- `refbox/tests/features/keypad-player-number.feature` — Scenarios for B6.1 and B6.2, both `@user_verified @tested_pass` (walkthrough 2026-05-15 00:12).
+- `refbox/tests/features/multi-label-button-text.feature` — Scenario for B6.3, `@user_verified @tested_pass` (walkthrough 2026-05-15 00:10).
+
+Walkthrough verified on `audit/refbox/small-fixes-cluster` 2026-05-15. Operator confirmed: digit strings render reliably across keypad variants (the iced-0.13 short-string rendering bug is fixed); digit text size is consistent at MEDIUM_TEXT across variants; multi-label button labels remain fully visible across game-state transitions.
+
 ---
 
 ### 8. Language Support (10 Languages + CJK and Thai Fonts)
@@ -403,6 +418,21 @@ Two audio glitches in the timed buzzer:
 
 **Concern level: LOW**
 All three issues were well-understood, verified manually, and the fixes are straightforward.
+
+**Verified by Unit 6 audit (2026-05-15):**
+
+Post-rebase commits on master are `7269c11` (sound artifacts) and `03d126c` (a one-line `is_some_and` clippy refactor on the `already_silent` line `7269c11` introduced). The pre-rebase commit hash referenced in this entry's header (`701d12d`) is the original on `feat/workspace/desktop-build`; both branches reach the same surviving state. Unit 6 audited the post-rebase versions.
+
+Catalog entries (in `AUDIT-PLAN.md` Unit 6 → Behaviour catalog):
+- **B6.4** — `SOUND_LEN` 2.0 → 2.15s with cycle-alignment rationale comment (matches Bug 1 in this entry's text).
+- **B6.5** — `Sound::stop()` adds `already_silent` early-exit so the stop-fade doesn't burst the gain back to full after a scheduled end (matches Bug 2 in this entry's text).
+- **B6.6** — `crazy.raw` binary asset replaced (matches Bug 3 in this entry's text: pre-fix peak amplitude 2.03, replacement peak amplitude 1.0). Asset file grew from 117 404 bytes to 117 720 bytes (+316).
+- **B6.7** — `is_some_and` clippy refactor on B6.5's added line. Not in this entry's original text because the commit (`03d126c`) is a post-spec stylistic cleanup of the line `7269c11` introduced. Verification inherits from B6.5: the line is semantically identical (`Option::map_or(false, …)` → `Option::is_some_and(…)`).
+
+Gherkin scenarios seeded on the audit branch:
+- `refbox/tests/features/timed-buzzer-playback.feature` — Three scenarios for B6.4 / B6.5 / B6.6, all `@user_verified @tested_pass` (walkthrough 2026-05-15 00:33).
+
+Walkthrough verified on `audit/refbox/small-fixes-cluster` 2026-05-15. Operator confirmed: timed buzzer ends cleanly with no audible click (the fade-out lands in a full-amplitude region of the waveform); buzzer duration feels right (~2 seconds + fade); Crazy buzzer body has no peak-clipping distortion (the new asset is clean).
 
 ---
 

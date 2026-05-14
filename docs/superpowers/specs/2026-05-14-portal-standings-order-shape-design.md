@@ -1,5 +1,9 @@
 # Portal Standings-Order Shape — Design Spec
 
+> **STATUS: SUPERSEDED (2026-05-14).** This design was written before discovering that an equivalent fix already exists on the local branch `feat/schedule-processor/csv-display-order` (commits `19aa3b4`, `dd01718`, `0c0b87c`, `41cca0a`, `079f3c1`, `165a803`). The existing implementation uses a narrower `GroupReference { name: String }` (name-only, with the comment that the portal server-side resolves identifier from name via `IReferenceWithNameAsPrimaryKey.TryFillIdentifier`) instead of the `{identifier, name}` shape proposed below. The existing branch also covers schedule-processor CSV parsing, which this design does not. **Refer to that branch for the actual implementation.** This document is preserved as a record of the parallel brainstorm.
+
+---
+
 **Date:** 2026-05-14
 **Scope:** `uwh-common/src/uwhportal/schedule.rs` (wire-format types)
 **Origin:** Surfaced during Unit 5 audit (referee names display) walkthrough on 2026-05-13/14, when refbox crashed deserializing the production schedule.

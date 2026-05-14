@@ -11,6 +11,6 @@ Feature: Multi-label button text
     Then both lines of button text remain fully visible
     And no character is clipped against the button's edge
 
-    # Session notes (filled by Task 7):
-    # @tested_pass | @tested_fail | @tested_inconclusive
-    # walkthrough: YYYY-MM-DD HH:MM
+    # Session notes:
+    # @tested_pass — operator confirmed both lines render without clipping across state transitions
+    # walkthrough: 2026-05-15 00:10

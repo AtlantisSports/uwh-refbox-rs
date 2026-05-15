@@ -44,7 +44,7 @@ mod tournament_manager;
 
 mod config;
 use app::languages::Language;
-use config::Config;
+use config::{Config, Mode};
 
 const APP_NAME: &str = "refbox";
 
@@ -414,6 +414,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         .map(std::path::Path::to_path_buf)
         .unwrap_or_else(std::env::temp_dir);
 
+    let mode = config.mode;
     let flags = app::RefBoxAppFlags {
         config,
         config_dir,
@@ -458,7 +459,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     };
 
     info!("Starting UI");
-    iced::application("UWH Ref Box", app::RefBoxApp::update, app::RefBoxApp::view)
+    let title = match mode {
+        Mode::Rugby => "UWR Ref Box",
+        Mode::Hockey6V6 | Mode::Hockey3V3 => "UWH Ref Box",
+    };
+    iced::application(title, app::RefBoxApp::update, app::RefBoxApp::view)
         .subscription(app::RefBoxApp::subscription)
         .settings(settings)
         .window(window_settings)

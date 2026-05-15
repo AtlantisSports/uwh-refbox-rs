@@ -6,6 +6,20 @@ use iced::{
     widget::{Space, button, column, row, text, vertical_space},
 };
 
+// Not yet wired into the view; used in the next commit that replaces `list.values().rev()`.
+#[allow(dead_code)]
+fn sorted_events_for_picker(events: &BTreeMap<EventId, Event>) -> Vec<&Event> {
+    let mut sorted: Vec<&Event> = events.values().collect();
+    sorted.sort_by(|a, b| {
+        a.date_range
+            .start
+            .cmp(&b.date_range.start)
+            .then(a.date_range.end.cmp(&b.date_range.end))
+            .then(a.id.cmp(&b.id))
+    });
+    sorted
+}
+
 pub(in super::super) fn build_list_selector_page<'a>(
     data: ViewData<'_, '_>,
     param: ListableParameter,
@@ -152,4 +166,91 @@ pub(in super::super) fn build_list_selector_page<'a>(
     .spacing(SPACING)
     .height(Length::Fill)
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::macros::datetime;
+    use uwh_common::uwhportal::schedule::DateRange;
+
+    fn test_event(
+        partial_id: &str,
+        start: time::OffsetDateTime,
+        end: time::OffsetDateTime,
+    ) -> Event {
+        Event {
+            id: EventId::from_partial(partial_id),
+            name: format!("Event {partial_id}"),
+            slug: partial_id.to_string(),
+            date_range: DateRange { start, end },
+            teams: None,
+            schedule: None,
+            courts: None,
+        }
+    }
+
+    #[test]
+    fn sorts_events_by_start_date_ascending() {
+        let mut events = BTreeMap::new();
+        let later = test_event(
+            "later",
+            datetime!(2026-06-01 0:00 UTC),
+            datetime!(2026-06-03 0:00 UTC),
+        );
+        let sooner = test_event(
+            "sooner",
+            datetime!(2026-05-15 0:00 UTC),
+            datetime!(2026-05-17 0:00 UTC),
+        );
+        events.insert(later.id.clone(), later);
+        events.insert(sooner.id.clone(), sooner);
+
+        let sorted = sorted_events_for_picker(&events);
+        assert_eq!(sorted[0].slug, "sooner");
+        assert_eq!(sorted[1].slug, "later");
+    }
+
+    #[test]
+    fn breaks_ties_on_end_date_ascending() {
+        let mut events = BTreeMap::new();
+        let longer = test_event(
+            "longer",
+            datetime!(2026-05-15 0:00 UTC),
+            datetime!(2026-05-20 0:00 UTC),
+        );
+        let shorter = test_event(
+            "shorter",
+            datetime!(2026-05-15 0:00 UTC),
+            datetime!(2026-05-16 0:00 UTC),
+        );
+        events.insert(longer.id.clone(), longer);
+        events.insert(shorter.id.clone(), shorter);
+
+        let sorted = sorted_events_for_picker(&events);
+        assert_eq!(sorted[0].slug, "shorter");
+        assert_eq!(sorted[1].slug, "longer");
+    }
+
+    #[test]
+    fn breaks_ties_on_event_id() {
+        let mut events = BTreeMap::new();
+        let aaa = test_event(
+            "aaa",
+            datetime!(2026-05-15 0:00 UTC),
+            datetime!(2026-05-17 0:00 UTC),
+        );
+        let bbb = test_event(
+            "bbb",
+            datetime!(2026-05-15 0:00 UTC),
+            datetime!(2026-05-17 0:00 UTC),
+        );
+        events.insert(aaa.id.clone(), aaa);
+        events.insert(bbb.id.clone(), bbb);
+
+        let sorted = sorted_events_for_picker(&events);
+        // EventId Ord is lexicographic on the full id ("events/aaa" < "events/bbb")
+        assert_eq!(sorted[0].slug, "aaa");
+        assert_eq!(sorted[1].slug, "bbb");
+    }
 }

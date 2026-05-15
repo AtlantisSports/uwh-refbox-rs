@@ -357,7 +357,7 @@ where
             }
         }
 
-        modified_pens.sort_by(|a, b| a.0.index.cmp(&b.0.index));
+        modified_pens.sort_by_key(|a| a.0.index);
 
         let mut tm = self.tm.lock()?;
 

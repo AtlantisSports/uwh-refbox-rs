@@ -260,7 +260,7 @@ fn check_game_overlap(schedule: &Schedule) -> Result<(), Box<dyn std::error::Err
     }
 
     for games in court_games.values_mut() {
-        games.sort_by(|a, b| a.0.start_time.cmp(&b.0.start_time));
+        games.sort_by_key(|a| a.0.start_time);
     }
 
     let mut games_overlap = false;

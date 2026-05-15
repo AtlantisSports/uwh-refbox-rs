@@ -306,7 +306,7 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
 /// Returns the operator-facing sport prefix for portal strings.
 /// "UWH" for underwater hockey modes; "UWR" for underwater rugby.
 /// View builders pass this into fl!() for keys that say `{ $portal }`.
-pub(super) fn portal_name_for_mode(mode: Mode) -> &'static str {
+pub(crate) fn portal_name_for_mode(mode: Mode) -> &'static str {
     match mode {
         Mode::Rugby => "UWR",
         Mode::Hockey6V6 | Mode::Hockey3V3 => "UWH",

@@ -340,7 +340,14 @@ fn make_main_config_page<'a>(
     .height(Length::Fill);
 
     column![
-        make_game_time_button(snapshot, false, false, mode, clock_running, portal_indicator),
+        make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+            portal_indicator
+        ),
         row_top,
         row_bottom,
         row![horizontal_space()].height(Length::Fill),
@@ -419,7 +426,14 @@ fn make_user_config_page<'a>(
     .height(Length::Fill);
 
     column![
-        make_game_time_button(snapshot, false, false, mode, clock_running, portal_indicator),
+        make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+            portal_indicator
+        ),
         tiles,
         row![horizontal_space()].height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),
@@ -905,7 +919,14 @@ fn make_display_config_page<'a>(
         ));
 
     column![
-        make_game_time_button(snapshot, false, false, mode, clock_running, portal_indicator),
+        make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+            portal_indicator
+        ),
         row![sides_btn].spacing(SPACING).height(Length::Fill),
         row![
             make_value_button(
@@ -1153,7 +1174,14 @@ fn make_remote_config_page<'a>(
     .style(orange_button);
 
     column![
-        make_game_time_button(snapshot, false, false, mode, clock_running, portal_indicator),
+        make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+            portal_indicator
+        ),
         row![
             make_scroll_list(
                 buttons.unwrap(),
@@ -1216,7 +1244,14 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
     };
 
     column![
-        make_game_time_button(snapshot, false, false, mode, clock_running, portal_indicator),
+        make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+            portal_indicator
+        ),
         vertical_space(),
         make_time_editor(title, length, false),
         vertical_space(),

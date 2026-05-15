@@ -72,7 +72,7 @@ impl From<GameSnapshot> for GameSnapshotNoHeap {
                         true
                     }
                 });
-                orig.sort_by(|a, b| a.time.cmp(&b.time));
+                orig.sort_by_key(|a| a.time);
                 (c, orig.into_iter().take(3).collect())
             })
             .collect();

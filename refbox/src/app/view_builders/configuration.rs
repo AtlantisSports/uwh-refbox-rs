@@ -165,15 +165,8 @@ fn make_main_config_page<'a>(
         if let (Some(_), Some(cur_court)) = (current_event_id, current_court) {
             if let Some(schedule) = schedule {
                 match schedule.games.get(game_number) {
-                    Some(game) => {
-                        if game.court == *cur_court {
-                            game.number.to_string()
-                        } else {
-                            game_large_text = false;
-                            fl!("none-selected")
-                        }
-                    }
-                    None => {
+                    Some(game) if game.court == *cur_court => game.number.to_string(),
+                    _ => {
                         game_large_text = false;
                         fl!("none-selected")
                     }

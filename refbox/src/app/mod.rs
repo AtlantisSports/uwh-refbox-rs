@@ -828,8 +828,18 @@ impl RefBoxApp {
         let mut task = Task::none();
         let app_state = match selection {
             ConfirmationOption::DiscardChanges => {
+                // When cancelling a PortalTenantSwitch confirmation the operator was
+                // on the App Options sub-page — return them there, not to Main.
+                let landing = if matches!(
+                    self.app_state,
+                    AppState::ConfirmationPage(ConfirmationKind::PortalTenantSwitch { .. })
+                ) {
+                    ConfigPage::App
+                } else {
+                    ConfigPage::Main
+                };
                 self.revert_from_snapshot();
-                AppState::EditGameConfig(ConfigPage::Main)
+                AppState::EditGameConfig(landing)
             }
             ConfirmationOption::GoBack => AppState::EditGameConfig(ConfigPage::Game),
             ConfirmationOption::EndGameAndApply => {

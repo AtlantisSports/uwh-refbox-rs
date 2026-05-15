@@ -621,7 +621,6 @@ pub enum ConfirmationOption {
     EndGameAndApply,
     KeepGameAndApply,
     // Offered by ConfirmationKind::PortalTenantSwitch — restarts the app on the
-    // new Mode/portal. Real handler lands in Task 8.
-    #[allow(dead_code)] // construction site added in Task 7 (view builder)
+    // new Mode/portal. Raised by apply_app_options (Task 9); handled in Task 8.
     RestartAndApply,
 }

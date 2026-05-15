@@ -37,6 +37,7 @@ pub(in super::super) fn build_confirmation_page<'a>(
             fl!("uwhportal-token-no-pending-link")
         }
         ConfirmationKind::UwhPortalLinkFailed(PortalTokenResponse::Success(_)) => unreachable!(),
+        ConfirmationKind::PortalTenantSwitch { .. } => unreachable!("wired in Task 7"),
     };
 
     type ButtonStyleFn = fn(&Theme, Status) -> Style;
@@ -99,6 +100,7 @@ pub(in super::super) fn build_confirmation_page<'a>(
         ConfirmationKind::UwhPortalLinkFailed(_) => {
             vec![(fl!("ok"), green_button, ConfirmationOption::GoBack)]
         }
+        ConfirmationKind::PortalTenantSwitch { .. } => unreachable!("wired in Task 7"),
     };
 
     let buttons = buttons.into_iter().map(|(text, style, option)| {

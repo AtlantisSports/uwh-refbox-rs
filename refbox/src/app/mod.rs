@@ -879,7 +879,58 @@ impl RefBoxApp {
                 AppState::EditGameConfig(ConfigPage::Main)
             }
             ConfirmationOption::RestartAndApply => {
-                unreachable!("wired in Task 8")
+                // Extract the proposed mode from the in-flight PortalTenantSwitch state.
+                // This arm is only reachable when the app_state is PortalTenantSwitch
+                // (the view builder only offers RestartAndApply for that kind).
+                let to_mode =
+                    if let AppState::ConfirmationPage(ConfirmationKind::PortalTenantSwitch {
+                        to_mode,
+                        ..
+                    }) = self.app_state
+                    {
+                        to_mode
+                    } else {
+                        unreachable!("RestartAndApply is only offered by PortalTenantSwitch pages")
+                    };
+
+                // Commit the new mode. The proposed mode was held only in the
+                // ConfirmationKind variant and was never written to self.config, so
+                // this is the first and only write.
+                self.config.mode = to_mode;
+
+                // Clear the current event id. This unpins the portal-health background
+                // task from the old tenant's event so it stops probing after restart.
+                self.set_current_event_id(None);
+
+                // Flush the portal retry queue. Items queued under the old portal
+                // tenant cannot be delivered to the new tenant — discard them so the
+                // restarted app starts with a clean queue.
+                if let Err(e) = crate::portal_manager::queue::save(
+                    self.portal_manager.queue_dir(),
+                    &crate::portal_manager::queue::QueueFile::empty(),
+                ) {
+                    error!("Failed to flush portal queue before restart: {e}");
+                    // Continue with restart — the operator pressed Restart and we
+                    // must not block. The queue will be treated as stale items for
+                    // the new tenant, which the retry logic will eventually discard.
+                }
+
+                // Persist the new mode to disk so the restarted exe reads it.
+                if let Err(e) = confy::store(APP_NAME, None, &self.config) {
+                    error!("Failed to persist config before restart: {e}");
+                    // Continue with restart anyway — the operator pressed Restart.
+                }
+
+                // Restart pattern mirrored from the existing language-switch path
+                // (see Message::LanguageSelectComplete). Kill the simulator child
+                // first so it does not linger as an orphan.
+                if let Some(mut child) = self.sim_child.take() {
+                    let _ = child.kill();
+                }
+                if let Ok(exe) = std::env::current_exe() {
+                    let _ = std::process::Command::new(exe).spawn();
+                }
+                std::process::exit(0);
             }
         };
         self.app_state = app_state;
@@ -2506,6 +2557,7 @@ impl RefBoxApp {
                         ConfirmationKind::GameConfigChangedFromApply(_)
                             | ConfirmationKind::GameNumberChangedFromApply
                             | ConfirmationKind::UwhPortalIncompleteFromApply
+                            | ConfirmationKind::PortalTenantSwitch { .. }
                     )
                 ) {
                     return self.apply_game_confirmation(selection);
@@ -2514,8 +2566,8 @@ impl RefBoxApp {
                 // After ADR 009 Task 13 retired the global apply path, only
                 // `ConfirmationKind::Error` (which offers DiscardChanges) and
                 // `ConfirmationKind::UwhPortalLinkFailed` (which offers GoBack)
-                // reach this match. The Game-related confirmations are dispatched
-                // to apply_game_confirmation above.
+                // reach this match. The Game-related and PortalTenantSwitch
+                // confirmations are dispatched to apply_game_confirmation above.
                 self.app_state = match selection {
                     ConfirmationOption::DiscardChanges => AppState::MainPage,
                     ConfirmationOption::GoBack => AppState::KeypadPage(
@@ -2536,7 +2588,10 @@ impl RefBoxApp {
                         )
                     }
                     ConfirmationOption::RestartAndApply => {
-                        unreachable!("wired in Task 8")
+                        unreachable!(
+                            "RestartAndApply is only offered by PortalTenantSwitch pages, \
+                             which are dispatched above to apply_game_confirmation."
+                        )
                     }
                 };
                 trace!("AppState changed to {:?}", self.app_state);

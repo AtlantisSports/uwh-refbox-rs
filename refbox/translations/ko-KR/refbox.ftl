@@ -87,7 +87,7 @@ minimum-brk-btwn-games = 최소 경기 간
     휴식:
 ot-half-time-length = 연장 하프타임
     시간
-using-uwh-portal = UWHPORTAL 사용:
+using-portal = { $portal }PORTAL 사용:
 starting-sides = 시작 진영
 sound-enabled = 소리
     사용:
@@ -144,10 +144,10 @@ pre-sd-len = 이전 경기 기간과 서든 데스 사이의 휴식 시간
 language = 언어
 this-language = 한국어
 portal-login-code = 코드
-portal-login-instructions = UWH Portal >> 대회 관리 >> 심판 관리로 이동하여 + 버튼을 클릭해 새 Refbox를 추가하고 이 Refbox ID를 입력하세요:
+portal-login-instructions = { $portal } Portal >> 대회 관리 >> 심판 관리로 이동하여 + 버튼을 클릭해 새 Refbox를 추가하고 이 Refbox ID를 입력하세요:
     { $id }
 
-    그러면 UWH Portal에서 확인 코드를 제공합니다. 왼쪽 숫자 패드로 코드를 입력하세요.
+    그러면 { $portal } Portal에서 확인 코드를 제공합니다. 왼쪽 숫자 패드로 코드를 입력하세요.
     코드를 입력한 후 완료를 누르세요
 
 help = 도움말:
@@ -157,7 +157,8 @@ game-configuration-can-not-be-changed = 경기 진행 중에는 경기 설정을
 
     어떻게 하시겠습니까?
 apply-this-game-number-change = 이 경기 번호 변경을 어떻게 적용하시겠습니까?
-UWHPortal-enabled = UWHPortal이 활성화된 경우 모든 필드를 입력해야 합니다.
+portal-enabled = { $portal }PORTAL이 활성화된 경우 모든 필드를 입력해야 합니다.
+mode-switch-portal-tenant = 모드를 { $from_mode }에서 { $to_mode }로 변경하면 { $from_portal }PORTAL 연결이 끊어지며 { $to_portal }PORTAL에 다시 연결해야 합니다.
 uwhportal-token-invalid-code = 잘못된 코드가 입력되었습니다.
     다시 시도하세요.
 uwhportal-token-no-pending-link = Portal이 연결을 기다리지 않습니다.

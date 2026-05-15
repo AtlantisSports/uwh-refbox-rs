@@ -85,7 +85,7 @@ minimum-brk-btwn-games = DESCANSO MÍNIMO
     ENTRE JUEGOS:
 ot-half-time-length = DUR. MEDIO
     TIEMPO DEL T/E
-using-uwh-portal = USANDO UWHPORTAL:
+using-portal = USANDO { $portal }PORTAL:
 starting-sides = LADOS INICIALES
 sound-enabled = SONIDO
     HABILITADO:
@@ -150,10 +150,10 @@ this-language = ESPAÑOL
 ### Check
 portal-login-code = Código de inicio de sesión
 ### Check
-portal-login-instructions = Por favor, vaya a UWH Portal >> Gestión de Eventos >> Gestión de Árbitros, haga clic en el botón + para añadir un nuevo Refbox, e introduzca este ID de Refbox:
+portal-login-instructions = Por favor, vaya a { $portal } Portal >> Gestión de Eventos >> Gestión de Árbitros, haga clic en el botón + para añadir un nuevo Refbox, e introduzca este ID de Refbox:
     { $id }
-    
-    El UWH Portal proporcionará un código de confirmación que deberá introducir a la izquierda utilizando el teclado numérico.
+
+    El { $portal } Portal proporcionará un código de confirmación que deberá introducir a la izquierda utilizando el teclado numérico.
     Presione HECHO una vez que haya introducido el código.
 
 help = AYUDA:
@@ -163,7 +163,8 @@ game-configuration-can-not-be-changed = La configuración del juego no se puede 
 
     ¿Qué te gustaría hacer?
 apply-this-game-number-change = ¿Cómo te gustaría aplicar este cambio de número de juego?
-UWHPortal-enabled = Cuando UWHPortal está habilitado, todos los campos deben ser completados.
+portal-enabled = Cuando { $portal }PORTAL está habilitado, todos los campos deben ser completados.
+mode-switch-portal-tenant = Cambiar el modo de { $from_mode } a { $to_mode } desactivará el enlace a { $from_portal }PORTAL y deberás volver a conectarte a { $to_portal }PORTAL.
 ### Check
 uwhportal-token-invalid-code = Código inválido.
     Por favor, inténtelo de nuevo.

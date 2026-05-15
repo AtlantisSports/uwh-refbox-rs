@@ -219,7 +219,9 @@ pub(in super::super) fn build_keypad_page<'a>(
                     ret_to_overview,
                 } =>
                     make_warning_add_page(origin, color, infraction, team_warning, ret_to_overview),
-                KeypadPage::PortalLogin(id, requested) => make_portal_login_page(id, requested),
+                KeypadPage::PortalLogin(id, requested) => {
+                    make_portal_login_page(id, requested, mode)
+                }
             }
         ]
         .spacing(SPACING)

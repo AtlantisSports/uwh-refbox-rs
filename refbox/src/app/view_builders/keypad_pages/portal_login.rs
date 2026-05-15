@@ -1,12 +1,22 @@
 use super::*;
+use crate::config::Mode;
 use iced::{
     Length,
     widget::{column, row, vertical_space},
 };
 
-pub(super) fn make_portal_login_page<'a>(id: u32, requested: bool) -> Element<'a, Message> {
+pub(super) fn make_portal_login_page<'a>(
+    id: u32,
+    requested: bool,
+    mode: Mode,
+) -> Element<'a, Message> {
     column![
-        text(fl!("portal-login-instructions", id = id)).width(Length::Fill),
+        text(fl!(
+            "portal-login-instructions",
+            id = id,
+            portal = portal_name_for_mode(mode)
+        ))
+        .width(Length::Fill),
         vertical_space(),
         row![
             make_button(fl!("cancel"))

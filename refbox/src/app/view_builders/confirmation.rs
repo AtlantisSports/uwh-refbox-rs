@@ -27,7 +27,9 @@ pub(in super::super) fn build_confirmation_page<'a>(
         }
         ConfirmationKind::GameNumberChangedFromApply => fl!("apply-this-game-number-change"),
         ConfirmationKind::Error(string) => string.clone(),
-        ConfirmationKind::UwhPortalIncompleteFromApply => fl!("UWHPortal-enabled"),
+        ConfirmationKind::UwhPortalIncompleteFromApply => {
+            fl!("portal-enabled", portal = portal_name_for_mode(mode))
+        }
         ConfirmationKind::UwhPortalLinkFailed(PortalTokenResponse::InvalidCode) => {
             fl!("uwhportal-token-invalid-code")
         }

@@ -85,7 +85,7 @@ minimum-brk-btwn-games = MIN PAUZE
     TUSSEN WEDSTR.:
 ot-half-time-length = RUST
     VERLENGING
-using-uwh-portal = UWHPORTAL GEBRUIKEN:
+using-portal = { $portal }PORTAL GEBRUIKEN:
 starting-sides = STARTZIJDEN
 sound-enabled = GELUID
     INGESCHAKELD:
@@ -142,10 +142,10 @@ pre-sd-len = De duur van de pauze tussen het voorgaande speelgedeelte en Plotsel
 language = TAAL
 this-language = NEDERLANDS
 portal-login-code = CODE
-portal-login-instructions = Ga naar het UWH-portaal >> Evenementbeheer >> Scheidsrechterbeheer, klik op de + knop om een nieuwe Refbox toe te voegen en voer dit Refbox-ID in:
+portal-login-instructions = Ga naar het { $portal }-portaal >> Evenementbeheer >> Scheidsrechterbeheer, klik op de + knop om een nieuwe Refbox toe te voegen en voer dit Refbox-ID in:
     { $id }
 
-    Het UWH-portaal geeft vervolgens een bevestigingscode die u links via het nummerveld kunt invoeren.
+    Het { $portal }-portaal geeft vervolgens een bevestigingscode die u links via het nummerveld kunt invoeren.
     Druk op Klaar nadat u de code hebt ingevoerd
 
 help = HELP:
@@ -155,7 +155,8 @@ game-configuration-can-not-be-changed = De wedstrijdconfiguratie kan niet worden
 
     Wat wilt u doen?
 apply-this-game-number-change = Hoe wilt u deze wijziging van het wedstrijdnummer toepassen?
-UWHPortal-enabled = Als UWHPortal is ingeschakeld, moeten alle velden worden ingevuld.
+portal-enabled = Als { $portal }PORTAL is ingeschakeld, moeten alle velden worden ingevuld.
+mode-switch-portal-tenant = Het wijzigen van de modus van { $from_mode } naar { $to_mode } verbreekt de verbinding met { $from_portal }PORTAL en u moet opnieuw verbinding maken met { $to_portal }PORTAL.
 uwhportal-token-invalid-code = Ongeldige code ingevoerd.
     Probeer het opnieuw.
 uwhportal-token-no-pending-link = Portaal verwacht geen verbinding.

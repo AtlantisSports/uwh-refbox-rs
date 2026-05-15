@@ -506,9 +506,9 @@ fn make_event_config_page<'a>(
         game_number.to_string()
     };
 
-    // Using UWH Portal toggle — row 1 left cell in both portal modes.
+    // Using portal toggle — row 1 left cell in both portal modes.
     let using_uwh_portal_btn = make_value_button(
-        fl!("using-uwh-portal"),
+        fl!("using-portal", portal = portal_name_for_mode(mode)),
         bool_string(using_uwhportal),
         (false, true),
         Some(Message::ToggleBoolParameter(

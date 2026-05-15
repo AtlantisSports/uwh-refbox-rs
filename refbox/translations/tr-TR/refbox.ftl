@@ -85,7 +85,7 @@ minimum-brk-btwn-games = OYUNLAR ARASI
     MİNİMUM ARA:
 ot-half-time-length = UZATMA DEVRE
     ARASI SÜRESİ
-using-uwh-portal = UWHPORTAL KULLANILIYOR:
+using-portal = { $portal }PORTAL KULLANILIYOR:
 starting-sides = BAŞLANGIÇ TARAFLARI
 sound-enabled = SES
     AKTİF:
@@ -142,10 +142,10 @@ pre-sd-len = Önceki oyun dönemi ile Ani Ölüm arasındaki ara süresinin uzun
 language = DİL
 this-language = TÜRKÇE
 portal-login-code = KOD
-portal-login-instructions = Lütfen UWH Portal >> Event Management >> Referee Management bölümüne gidin, yeni bir Refbox eklemek için + düğmesine tıklayın ve bu Refbox kimliğini girin:
+portal-login-instructions = Lütfen { $portal } Portal >> Event Management >> Referee Management bölümüne gidin, yeni bir Refbox eklemek için + düğmesine tıklayın ve bu Refbox kimliğini girin:
     { $id }
 
-    UWH Portal bunun üzerine sol taraftaki sayı tuş takımını kullanarak girmeniz için bir onay kodu sağlayacaktır.
+    { $portal } Portal bunun üzerine sol taraftaki sayı tuş takımını kullanarak girmeniz için bir onay kodu sağlayacaktır.
     Kodu girdikten sonra Tamam'a basın
 
 help = YARDIM:
@@ -155,7 +155,8 @@ game-configuration-can-not-be-changed = Oyun yapılandırması, bir oyun devam e
 
     Ne yapmak istersiniz?
 apply-this-game-number-change = Bu oyun numarası değişikliğini nasıl uygulamak istersiniz?
-UWHPortal-enabled = UWHPortal etkinleştirildiğinde, tüm alanlar doldurulmalıdır.
+portal-enabled = { $portal }PORTAL etkinleştirildiğinde, tüm alanlar doldurulmalıdır.
+mode-switch-portal-tenant = Modu { $from_mode } yerine { $to_mode } olarak değiştirmek { $from_portal }PORTAL bağlantısını devre dışı bırakacak ve { $to_portal }PORTAL'a yeniden bağlanmanız gerekecektir.
 uwhportal-token-invalid-code = Geçersiz kod girildi.
     Lütfen tekrar deneyin.
 uwhportal-token-no-pending-link = Portal bir bağlantı beklemiyordur.

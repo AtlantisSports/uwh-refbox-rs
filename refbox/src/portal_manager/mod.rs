@@ -340,6 +340,13 @@ impl PortalManager {
         self.indicator_state
     }
 
+    /// Return the directory used for the on-disk queue file.
+    /// Used by the portal-tenant-switch restart handler to flush the queue
+    /// (items queued for the old tenant cannot be delivered to the new one).
+    pub fn queue_dir(&self) -> &std::path::Path {
+        &self.config_dir
+    }
+
     /// Recompute the cached indicator state from current inputs.
     /// Called from the iced UI layer:
     /// - on every pure UI-layer tick so the 30-minute stuck-item

@@ -180,6 +180,14 @@ enum ConfirmationKind {
     GameNumberChangedFromApply,
     GameConfigChangedFromApply(GameConfig),
     UwhPortalIncompleteFromApply,
+    // Raised when the operator changes Mode across the portal boundary (Hockey ↔
+    // Rugby). Carries the current and proposed modes so the confirmation page can
+    // describe what will change. Real rendering and handler land in Tasks 7–8.
+    #[allow(dead_code)] // construction site added in Task 7
+    PortalTenantSwitch {
+        from_mode: Mode,
+        to_mode: Mode,
+    },
 }
 
 // PageEntrySnapshot is a singleton — `RefBoxApp.page_entry_snapshot` holds at most
@@ -869,6 +877,9 @@ impl RefBoxApp {
                 self.persist_config();
                 task = self.apply_snapshot(new_snapshot);
                 AppState::EditGameConfig(ConfigPage::Main)
+            }
+            ConfirmationOption::RestartAndApply => {
+                unreachable!("wired in Task 8")
             }
         };
         self.app_state = app_state;
@@ -2523,6 +2534,9 @@ impl RefBoxApp {
                              ConfirmationKind variants, which are dispatched above to \
                              apply_game_confirmation."
                         )
+                    }
+                    ConfirmationOption::RestartAndApply => {
+                        unreachable!("wired in Task 8")
                     }
                 };
                 trace!("AppState changed to {:?}", self.app_state);

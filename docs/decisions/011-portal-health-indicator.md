@@ -1,7 +1,7 @@
 # 011 — Portal Health Indicator, Per-Game Confirmation, Retry Queue
 
 **Date:** 2026-04-19
-**Status:** proposed
+**Status:** accepted (verified by Unit 7 audit 2026-05-15)
 
 ## Context
 
@@ -486,3 +486,183 @@ green-checkmark overlay on successful submit` — which also removes
 the orphaned `check_circle.svg` asset and two now-moot unit tests.
 The Deviations log entry for Task 22 captures the same change on
 the plan side.
+
+## Verified by Unit 7 audit (2026-05-15)
+
+### Audit scope
+
+- **AUDIT-PLAN.md section:** Unit 7 — PR #761 portal health indicator
+- **Audit branch:** `audit/refbox/portal-health` (local-only; cut from
+  `feat/refbox/portal-health-indicator` HEAD at `0a5cc2e`, not from
+  master). 5 audit commits ahead of the feature branch tip.
+- **Commit range audited:** `3ce6bdd..0a5cc2e` on
+  `feat/refbox/portal-health-indicator` (46 in-scope commits; the
+  Renovate bump `089c98d` was out of scope).
+- **Walkthrough date:** 2026-05-15
+- **Walkthrough environment:** `https://api.dev.uwhportal.com` (the
+  correct dev API URL — separate `api.` subdomain from the
+  web frontend; see "What was not verified" below for the URL
+  discovery process).
+
+### Verified decisions
+
+For each ADR section and amendment, the catalog entries that
+realise and verify it. Catalog detail in `AUDIT-PLAN.md` Unit 7
+"Behaviour catalog" subsection.
+
+- **Status indicator (Decision section):** verified by B7.A9 (Yellow
+  rule), B7.A10 (Green rule), B7.C1 (`PortalIndicatorState` threaded
+  into `make_game_time_button`), B7.C2 (tile renders on time banner),
+  B7.C5 + B7.C6 (sizing fixes for standard and tall banners),
+  B7.D1 (compact UWH Portal logo asset).
+- **Detail page (Decision section):** verified by B7.A20 (page row
+  ordering: token, stuck-oldest-first, pending-oldest-first,
+  successes-newest-first), B7.C7 (view-builder), B7.C8 (action-routing
+  message variants), B7.C18 (`make_scroll_list` + `PORTAL_DETAIL_LIST_LEN`
+  of 4), B7.D6 (public-API tests).
+- **Per-item action pages (Decision section, refined by amendment
+  2026-04-21):** verified by B7.A13 (public mutation API — `enqueue`,
+  `force_submit`, `discard`, `token_refreshed`), B7.C9
+  (`ClosePortalAttentionAction` BACK scope), B7.C10 (attention action
+  page view-builder), B7.C27 (standard-layout alignment).
+- **`portal_manager` module (Decision section):** verified by Group A
+  entries B7.A1 (module scaffold) through B7.A25 (background task
+  with `PortalTaskIo` trait + `spawn` + `run_task` + `attempt_item`).
+- **Conflict resolution (Decision section, refined by amendment
+  2026-04-21):** verified by B7.A8 (Red rule when token-problem or
+  stuck), B7.A13 (force/discard public API), B7.A24 (retry eligibility:
+  not stuck AND ≥15s since last attempt).
+- **Amendment 2026-04-21 (single attention page; Yellow replaces
+  Orange):** verified by B7.A4 (`QueuedItem` shape with force flag),
+  B7.A7 (`is_item_stuck` and 30-minute STUCK_THRESHOLD), B7.A24
+  (retry-eligibility), B7.C10 (attention page).
+- **Amendment 2026-04-22 (translation coverage and verification
+  environment):** verified by B7.C13 (Fluent externalization of
+  indicator + detail + attention strings), B7.C23 (mode-aware sport
+  prefix in portal strings), B7.E1 (`UWH_PORTAL_URL_OVERRIDE` env
+  var). Walkthrough environment was `https://api.dev.uwhportal.com`
+  per the URL discovery — see "What was not verified" below.
+- **Amendment 2026-04-23 (dormant until event linked):** verified by
+  B7.A19 (`on_token_status(valid)` handler), B7.B6 (dormant gate at
+  view-data construction), B7.C14 (detail-page suppression when no
+  event linked), B7.C15 (confirm-score advisory suppression when no
+  event linked). Walkthrough Scenario 5 live-confirmed the tile-hidden
+  assertion.
+- **Amendment 2026-04-23 (remove 10-second green-checkmark overlay):**
+  verified by B7.A21 (dead-code removal pass dropping 8 items when
+  the scaffolding `#[allow(dead_code)]` was lifted, including the
+  overlay-timer machinery and `OverlayState::RecentSuccess`),
+  B7.C16 (UI side removal). Note: the amendment's intent to *retain*
+  the red exclamation overlay was contradicted by audit-window
+  commit `0fb9ed2`; see Supersessions below.
+
+### Supersessions
+
+Operator-decided in Task 5 (2026-05-15) review:
+
+- **C11 supersedes the implied single-tap discard.** Amendment
+  2026-04-21 names the `DISCARD THIS SUBMISSION` button but does not
+  mandate a tap pattern. The audit-window code requires two taps
+  (the first changes the button text to "TAP AGAIN TO CONFIRM
+  DISCARD"; the second fires the discard). Operator confirmed the
+  two-tap safety in walkthrough Scenario 4. Read the amendment's
+  single button name as compatible with the two-tap gesture.
+- **C17 supersedes amendment 2026-04-22's per-state title
+  expectation.** Amendment 2026-04-22 simplified `portal-summary-issues`
+  to `PORTAL — ISSUES` with no `Last OK …` suffix, but per-state
+  distinctions (different titles for green/yellow/red) were implied
+  in ADR 011's "Detail page" Decision section ("e.g. `PORTAL — RECENT
+  ISSUES · Last OK 4 min ago`"). The audit-window UX pass collapsed
+  the title to a single static string regardless of state. Operator
+  confirmed the simplification — the dot color on the tile conveys
+  state at-a-glance, so the detail-page title can be neutral.
+- **C20 supersedes amendment 2026-04-21's literal button text.**
+  Amendment 2026-04-21 named the action buttons `FORCE THIS GAME
+  RESULT` and `DISCARD THIS SUBMISSION` (all-caps). The audit-window
+  UX pass renamed them to `Retry this game result` and `Discard this
+  game result` (sentence case) and added a stored-score display the
+  ADR does not mention. Operator confirmed the renamed buttons and
+  the stored-score display in Task 5.
+- **C26 supersedes amendment 2026-04-23-overlay's "the red exclamation
+  overlay is retained" sentence.** The amendment removed the
+  10-second green-checkmark overlay but explicitly retained the red
+  exclamation overlay ("the AttentionNeeded overlay … is retained").
+  Audit-window commit `0fb9ed2` ("simplify portal attention page and
+  retire overlay indicator") removed the red exclamation overlay
+  anyway. Operator confirmed in Task 5 that the solid red dot is
+  sufficient as the at-a-glance attention signal; the red exclamation
+  overlay is retired and not restored. Read amendment 2026-04-23's
+  "retained" sentence as superseded.
+
+### What was removed during audit
+
+None. The audit produced two surgical fixes (commits `5d2d318` and
+`38482fd`) rather than deletions:
+
+- **B7.E2 + B7.B9 — compile-time gate `UWH_PORTAL_SCRAMBLE_TOKEN`**
+  (commit `5d2d318`). The runtime gate `cfg!(debug_assertions)` left
+  the env-var name string in release binaries; the surgical fix wraps
+  the field, the env-var read, and the trigger in
+  `#[cfg(debug_assertions)]` so release binaries contain no trace.
+  `UWH_PORTAL_URL_OVERRIDE` (B7.E1) was operator-confirmed to stay
+  ungated for dev/staging workflows.
+- **B7.C19 hybrid partial revert — restore `(attempt N)` suffix**
+  (commit `38482fd`). The audit-window UX pass had stripped per-row
+  attempts, retry-timer, and stats-only suffixes from the detail page
+  along with the underlying `DetailRow::Pending::attempts` field.
+  The hybrid revert restores the `attempts` field and the
+  `(attempt N)` suffix (operator-actionable info); does NOT restore
+  the per-second retry timer (deemed visual noise); does NOT restore
+  the stats-only suffix (discovered to be pre-existing dead code —
+  the field was always hardcoded `false` even before the strip).
+
+### What was not verified
+
+- **Walkthrough Scenario 3 (induced 409 conflict resolution) is
+  `@tested_deferred`.** Operator chose to close walkthrough at 7-of-8
+  scenarios on 2026-05-15. The 409 induction requires manually
+  editing the score on the dev portal web UI between submissions —
+  more involved than the other scenarios. The conflict-resolution
+  mechanics are exercised indirectly by Scenario 4 (two-tap discard)
+  and the FORCE-button code path (B7.A13 + amendment 2026-04-21).
+- **Scenario 2's 30-minute red-escalation threshold was verified at
+  a temporary 1-minute substitute, not the 30-minute production
+  value.** During walkthrough, the `STUCK_THRESHOLD` constant in
+  `refbox/src/portal_manager/mod.rs` was temporarily reduced from
+  30 minutes to 1 minute via a working-tree-only edit (reverted before
+  any commit; git diff clean post-walkthrough). The same code path is
+  exercised at both values; only the wall-clock duration differs.
+  The 30-minute value is verified by the existing unit tests under
+  `refbox/src/portal_manager/health.rs`.
+- **Scenario 5's "no background 404s when unlinked" sub-assertion is
+  `@tested_inconclusive`.** The original walkthrough attempt (against
+  `https://dev.uwhportal.com` — the web frontend, not the API)
+  produced log noise from HTML 404 responses, which conflicted with
+  amendment 2026-04-23-dormant's "background task short-circuits
+  `verify_token` when no event id is set" claim. With the corrected
+  override URL (`https://api.dev.uwhportal.com`), the unlinked state
+  was not retested in isolation, so the sub-assertion's verification
+  status remains inconclusive. The dormant tile-hidden + relink-
+  restores-tile assertions are both `@tested_pass`.
+- **Scenario 8's UWR-mode logo is `@tested_deferred`.** Operator was
+  in UWH mode throughout the 2026-05-15 walkthrough. The UWR-mode
+  logo (B7.C22) is half-finished — the logo asset switches based on
+  mode but the URL routing stays UWH-only. Carved out as
+  `@redesign-followup` in Task 5 with suggested follow-up branch
+  `feat/refbox/uwr-portal-support`.
+
+### Audit reference
+
+- **Per-unit plan:** `docs/superpowers/plans/2026-05-15-audit-unit-7-portal-health.md`
+- **Audit-design spec:** `docs/superpowers/specs/2026-05-15-audit-unit-7-portal-health-design.md`
+- **Gherkin scenarios:** `refbox/tests/features/portal-health.feature` on `audit/refbox/portal-health` — 8 scenarios, 7 `@tested_pass` + 1 `@tested_deferred`.
+- **Cross-branch dependencies:** none. Unit 7 is self-contained — no
+  hand-applied commits from other branches (contrast with Unit 5's
+  `ed94287`).
+- **Findings filed:** 7 entries in `AUDIT-PLAN.md` → Findings backlog
+  → From Unit 7 (2026-05-15) covering the degraded-startup semantics
+  (A15/A16), the unwired `check_in_flight` flag (A22),
+  the `retry_in_secs` test realignment (D12), the catalog-noise
+  refactor (D10), the UWR portal support follow-up (C22),
+  pre-existing `bool_assert_comparison` test-code clippy errors
+  (master-state), and the dev portal API URL documentation.

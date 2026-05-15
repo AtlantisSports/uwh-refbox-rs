@@ -833,3 +833,73 @@ Plan complete. Two execution options after approval:
 2. **Inline Execution.** Execute tasks 1–10 in this session using `superpowers:executing-plans`, with checkpoints between each task for operator review.
 
 The work is lean-process tier, but it touches `apply_app_options` and `apply_game_confirmation` (two dispatchers in `app/mod.rs`) plus a new restart flow. Operator preference governs.
+
+---
+
+## Deviations (recorded during execution)
+
+The plan was executed via subagent-driven-development on 2026-05-15. These are the points where execution diverged from the plan or from the spec, with the reason and the resolution. None alter operator-visible behaviour from the spec; one was a spec-compliance fix that was caught by the final code review before the walkthrough.
+
+### Sound structural deviations (cleaner than the plan)
+
+1. **Task 2 — `portal_name_for_mode` visibility.** Plan asked Task 2 to call `portal_name_for_mode(config.mode)` from `app/mod.rs`. The helper was `pub(super)` and inaccessible at that path. Task 2's implementer inlined a two-arm match instead (functionally identical). Task 4 then relaxed the helper's visibility to `pub(crate)` as a pre-task setup so subsequent tasks (4, 5, 9) could call it directly. Net: one inlined match in the URL-derivation block remained for Task 2; everywhere else uses the helper.
+
+2. **Task 4 — async-borrow lifetime.** Plan suggested `portal_name_for_mode(self.config.mode)` directly inside an `async move` block in `request_uwhportal_token`. That triggers E0521 (`self` doesn't outlive `'static`). The implementer bound `let portal_name = portal_name_for_mode(self.config.mode);` to a `&'static str` *before* the async block and captured the local; identical log output, lifetime-correct.
+
+3. **Task 8 — restart-flow lives under `RestartAndApply`, not `PortalTenantSwitch`.** Plan asked for a `ConfirmationKind::PortalTenantSwitch { from_mode, to_mode } => match selection { ... }` arm in `apply_game_confirmation`. The implementer instead put the restart flow under the `ConfirmationOption::RestartAndApply` arm and extracts `to_mode` from `self.app_state` via `if let AppState::ConfirmationPage(ConfirmationKind::PortalTenantSwitch { .. })`. The `else` branch is `unreachable!()` because `RestartAndApply` is only ever offered by `PortalTenantSwitch` pages (per Task 7's button construction). Structurally sound and arguably cleaner — there is exactly one `RestartAndApply` arm rather than a duplicated handler under every `ConfirmationKind` that ever offered it.
+
+4. **Task 8 — `queue_dir()` accessor on `PortalManager`.** Plan referenced `self.portal_queue_dir` on `RefBoxApp`. That field doesn't exist; `RefBoxApp` discards `config_dir` after init. The implementer added `pub fn queue_dir(&self) -> &Path` on `PortalManager` (which does keep `config_dir`) and called `self.portal_manager.queue_dir()` from the restart handler. Minimal surface-area addition.
+
+5. **Task 8 — `QueueFile::empty()` rather than `QueueFile::default()`.** The `empty()` associated function already existed in `queue.rs`. The implementer reused it instead of adding a `Default` impl.
+
+6. **Task 9 — `apply_app_options` returns `Option<ConfirmationKind>`.** Plan asked for direct mutation of `self.app_state` inside `apply_app_options` with an early `return`. That approach would have been overwritten by the caller's `persist_config + navigate_to_parent` after the function returned. The implementer changed the function signature to `fn apply_app_options(&mut self) -> Option<ConfirmationKind>` (mirroring the existing `apply_game_options` pattern), routing `Some(kind)` to `AppState::ConfirmationPage(kind)` at the call site and falling through to the normal commit path on `None`. Keeps the function pure (no `app_state` side-effects) and mirrors a pattern the codebase already uses.
+
+### Required clippy-driven adjustments
+
+7. **Task 2 — `UwhPortal::Default` derived.** Clippy's `derivable_impls` fired once the `url` field was removed, since the remaining `Default` impl was now trivial. Switched to `#[derive(Default)]` on the struct.
+
+8. **Task 2 — two `url`-field test assertions removed.** Direct consequence of dropping the field; the legacy `url` entry was left in the test-fixture table to demonstrate confy's silent-ignore behaviour on load.
+
+### Spec-compliance fix surfaced by the final code review
+
+9. **Post-Task-9 fix (commit `587ba4f`) — Cancel returns to App Options, not Settings Main.** The final code review caught that Cancel on the `PortalTenantSwitch` page was routing through the generic `DiscardChanges` arm (calling `revert_from_snapshot()` and landing on `AppState::EditGameConfig(ConfigPage::Main)`), violating the spec's explicit "Returns to App Options with Mode unchanged" line. Fix: a `matches!` guard inside the existing `DiscardChanges` arm picks `ConfigPage::App` for `PortalTenantSwitch` and keeps `ConfigPage::Main` for the other variants. ~12 lines, no other variants affected.
+
+### Walkthrough-time observations (2026-05-15)
+
+Operator drove a Rugby → Hockey-6v6 walkthrough (the reverse direction of the spec's example, exercising the symmetric case). The 11-step script was not followed verbatim, but the four critical observable behaviours were exercised end-to-end:
+
+- ✅ **Confirmation page renders.** Operator-supplied screenshot showed the page correctly localized: *"Changing mode from RUGBY to HOCKEY6V6 will disable the link to UWRPORTAL and you must re-connect to UWHPORTAL."* (Aside: the rendered mode names came out as `RUGBY` / `HOCKEY6V6` rather than the human-readable forms the spec example used. That's because the Fluent `mode-*` keys are uppercase-styled — pre-existing behaviour, out of scope for this branch.)
+- ✅ **Restart to Apply triggers a real restart.** Log shows two `Starting RefBox App` events on the same refbox launch — the second one is the spawned-fresh-exe from the user's button press at 22:45:16, with no controller-initiated relaunch in between.
+- ✅ **URL routing follows the new Mode after restart.** Post-restart portal calls go to `https://api.uwrportal.com/api/events/.../access-keys/verify` and `.../schedule/privileged` (logged at 22:45:27). The 401 responses are the expected post-switch behaviour — the previous UWH token no longer authenticates against the UWR tenant, which is exactly what the confirmation page warned the operator about.
+- ✅ **Neutralized uwh-common log strings.** "portal token validation successful" / "portal token validation failed" appear in the log (rather than "uwhportal token validation..."). Confirms Task 4's neutralization landed correctly.
+
+Two walkthrough-time corrections were applied:
+
+- **Restart to Apply button colour** was originally red (matching Cancel). Operator preferred blue for affirmative actions. Fixed in commit `846ef02` mid-walkthrough.
+- **Cancel landing page** had already been fixed pre-walkthrough by commit `587ba4f` (caught by the final code review). Operator flagged it during walkthrough as a thing to verify; the fix was in place in the binary they were testing.
+
+Not exercised in this walkthrough (deferred to a later session if needed):
+
+- Cancel-on-confirmation actually being pressed and returning to App Options (operator either skipped this step or it happened silently). The fix is in place per code inspection; future smoke-tests will exercise it.
+- Within-Hockey mode cycle (6v6 ↔ 3v3) without restart-confirmation. Hockey-only flow is the project's default code path and was implicitly exercised at the start of the session (refbox started in Hockey 6v6 and the first `portal token validation successful` was against UWH).
+- The `UWR_PORTAL_URL_OVERRIDE` env-var override path (not exercised; would require a staging UWR portal URL).
+
+---
+
+## Commit Log
+
+| Commit | Task | Description |
+|--------|------|-------------|
+| `27f6f2d` | (pre-plan) | docs(refbox): add design spec for UWR mode portal routing |
+| `ed93a7a` | Plan commit | docs(refbox): add UWR mode portal routing implementation plan |
+| `8dec766` | Task 1 | feat(refbox): mode-aware translations for portal strings |
+| `8001a75` | Task 2 | feat(refbox): derive portal URL from Mode with symmetric env override |
+| `e9aa7fd` | Task 3 | feat(refbox): mode-aware window title |
+| `4580c7c` | Task 4 | feat(refbox): mode-aware portal name in log messages |
+| `b3d84da` | Task 5 | feat(refbox): add crosses_portal helper with tests |
+| `a10d71a` | Task 6 | feat(refbox): add PortalTenantSwitch and RestartAndApply variants |
+| `354c4a6` | Task 7 | feat(refbox): render PortalTenantSwitch confirmation page |
+| `162d668` | Task 8 | feat(refbox): restart-flow handler for portal tenant switch |
+| `fa59b8a` | Task 9 | feat(refbox): intercept cross-portal mode change with confirmation |
+| `587ba4f` | post-review fix | fix(refbox): return to App Options when cancelling portal switch |
+| `846ef02` | walkthrough fix | fix(refbox): blue restart button on portal switch confirmation |

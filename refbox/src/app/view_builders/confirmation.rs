@@ -37,7 +37,13 @@ pub(in super::super) fn build_confirmation_page<'a>(
             fl!("uwhportal-token-no-pending-link")
         }
         ConfirmationKind::UwhPortalLinkFailed(PortalTokenResponse::Success(_)) => unreachable!(),
-        ConfirmationKind::PortalTenantSwitch { .. } => unreachable!("wired in Task 7"),
+        ConfirmationKind::PortalTenantSwitch { from_mode, to_mode } => fl!(
+            "mode-switch-portal-tenant",
+            from_mode = format!("{from_mode}"),
+            to_mode = format!("{to_mode}"),
+            from_portal = portal_name_for_mode(*from_mode),
+            to_portal = portal_name_for_mode(*to_mode)
+        ),
     };
 
     type ButtonStyleFn = fn(&Theme, Status) -> Style;
@@ -100,7 +106,18 @@ pub(in super::super) fn build_confirmation_page<'a>(
         ConfirmationKind::UwhPortalLinkFailed(_) => {
             vec![(fl!("ok"), green_button, ConfirmationOption::GoBack)]
         }
-        ConfirmationKind::PortalTenantSwitch { .. } => unreachable!("wired in Task 7"),
+        ConfirmationKind::PortalTenantSwitch { .. } => vec![
+            (
+                fl!("cancel"),
+                red_button,
+                ConfirmationOption::DiscardChanges,
+            ),
+            (
+                fl!("restart-to-apply"),
+                red_button,
+                ConfirmationOption::RestartAndApply,
+            ),
+        ],
     };
 
     let buttons = buttons.into_iter().map(|(text, style, option)| {

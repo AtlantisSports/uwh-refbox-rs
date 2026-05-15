@@ -85,7 +85,7 @@ minimum-brk-btwn-games = PAUSA MIN
     FRA PARTITE:
 ot-half-time-length = INTERVALLO
     SUPPLEMENTARE
-using-uwh-portal = USA UWHPORTAL:
+using-portal = USA { $portal }PORTAL:
 starting-sides = LATI DI PARTENZA
 sound-enabled = AUDIO
     ATTIVATO:
@@ -142,10 +142,10 @@ pre-sd-len = La durata della pausa fra il periodo di gioco precedente e la Morte
 language = LINGUA
 this-language = ITALIANO
 portal-login-code = CODICE
-portal-login-instructions = Vai su UWH Portal >> Gestione Evento >> Gestione Arbitri, clicca sul pulsante + per aggiungere un nuovo Refbox e inserisci questo ID Refbox:
+portal-login-instructions = Vai su { $portal } Portal >> Gestione Evento >> Gestione Arbitri, clicca sul pulsante + per aggiungere un nuovo Refbox e inserisci questo ID Refbox:
     { $id }
 
-    Il Portale UWH fornirà quindi un codice di conferma da inserire a sinistra usando il tastierino numerico.
+    Il Portale { $portal } fornirà quindi un codice di conferma da inserire a sinistra usando il tastierino numerico.
     Premi Fine una volta inserito il codice
 
 help = AIUTO:
@@ -155,7 +155,8 @@ game-configuration-can-not-be-changed = La configurazione della partita non può
 
     Cosa vuoi fare?
 apply-this-game-number-change = Come vuoi applicare questa modifica al numero di partita?
-UWHPortal-enabled = Quando UWHPortal è abilitato, tutti i campi devono essere compilati.
+portal-enabled = Quando { $portal }PORTAL è abilitato, tutti i campi devono essere compilati.
+mode-switch-portal-tenant = Cambiare modalità da { $from_mode } a { $to_mode } disabiliterà il collegamento a { $from_portal }PORTAL e sarà necessario ricollegarsi a { $to_portal }PORTAL.
 uwhportal-token-invalid-code = Codice inserito non valido.
     Riprova.
 uwhportal-token-no-pending-link = Il portale non si aspetta una connessione.

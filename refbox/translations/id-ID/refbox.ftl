@@ -85,7 +85,7 @@ minimum-brk-btwn-games = JEDA MINIMUM
     ANTAR PERTANDINGAN:
 ot-half-time-length = DURASI JEDA
     PERPANJANGAN WAKTU
-using-uwh-portal = MENGGUNAKAN UWHPORTAL:
+using-portal = MENGGUNAKAN { $portal }PORTAL:
 starting-sides = SISI AWAL
 sound-enabled = SUARA
     DIAKTIFKAN:
@@ -142,10 +142,10 @@ pre-sd-len = Durasi jeda antara periode permainan sebelumnya dan Sudden Death
 language = BAHASA
 this-language = INDONESIA
 portal-login-code = KODE
-portal-login-instructions = Silakan buka UWH Portal >> Manajemen Acara >> Manajemen Wasit, klik tombol + untuk menambahkan Refbox baru, dan masukkan ID Refbox ini:
+portal-login-instructions = Silakan buka { $portal } Portal >> Manajemen Acara >> Manajemen Wasit, klik tombol + untuk menambahkan Refbox baru, dan masukkan ID Refbox ini:
     { $id }
 
-    UWH Portal kemudian akan memberikan kode konfirmasi untuk dimasukkan di sebelah kiri menggunakan papan angka.
+    { $portal } Portal kemudian akan memberikan kode konfirmasi untuk dimasukkan di sebelah kiri menggunakan papan angka.
     Tekan Selesai setelah Anda memasukkan kode
 
 help = BANTUAN:
@@ -155,7 +155,8 @@ game-configuration-can-not-be-changed = Konfigurasi pertandingan tidak dapat diu
 
     Apa yang ingin Anda lakukan?
 apply-this-game-number-change = Bagaimana Anda ingin menerapkan perubahan nomor pertandingan ini?
-UWHPortal-enabled = Saat UWHPortal diaktifkan, semua kolom harus diisi.
+portal-enabled = Saat { $portal }PORTAL diaktifkan, semua kolom harus diisi.
+mode-switch-portal-tenant = Mengubah mode dari { $from_mode } ke { $to_mode } akan menonaktifkan tautan ke { $from_portal }PORTAL dan Anda harus menghubungkan kembali ke { $to_portal }PORTAL.
 uwhportal-token-invalid-code = Kode yang dimasukkan tidak valid.
     Silakan coba lagi.
 uwhportal-token-no-pending-link = Portal tidak mengharapkan koneksi.

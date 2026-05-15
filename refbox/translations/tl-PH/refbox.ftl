@@ -85,7 +85,7 @@ minimum-brk-btwn-games = PINAKAMALIIT NA PAHINGA
     SA PAGITAN NG MGA LARO:
 ot-half-time-length = HABA NG PAHINGA
     SA OVERTIME
-using-uwh-portal = GUMAGAMIT NG UWHPORTAL:
+using-portal = GUMAGAMIT NG { $portal }PORTAL:
 starting-sides = MGA PANIG SA SIMULA
 sound-enabled = TUNOG
     PINAGANA:
@@ -142,10 +142,10 @@ pre-sd-len = Ang haba ng pahinga sa pagitan ng nakaraang panahon ng laro at Sudd
 language = WIKA
 this-language = FILIPINO
 portal-login-code = CODE
-portal-login-instructions = Pumunta sa UWH Portal >> Pamamahala ng Kaganapan >> Pamamahala ng Referee, i-click ang + na pindutan upang magdagdag ng bagong Refbox, at ilagay ang Refbox ID na ito:
+portal-login-instructions = Pumunta sa { $portal } Portal >> Pamamahala ng Kaganapan >> Pamamahala ng Referee, i-click ang + na pindutan upang magdagdag ng bagong Refbox, at ilagay ang Refbox ID na ito:
     { $id }
 
-    Ang UWH Portal ay magbibigay ng confirmation code na ilalagay sa kaliwa gamit ang number pad.
+    Ang { $portal } Portal ay magbibigay ng confirmation code na ilalagay sa kaliwa gamit ang number pad.
     Pindutin ang Tapos kapag naipasok mo na ang code
 
 help = TULONG:
@@ -155,7 +155,8 @@ game-configuration-can-not-be-changed = Hindi mababago ang configuration ng laro
 
     Ano ang nais mong gawin?
 apply-this-game-number-change = Paano mo nais ilapat ang pagbabago ng numero ng larong ito?
-UWHPortal-enabled = Kapag pinagana ang UWHPortal, dapat mapunan ang lahat ng field.
+portal-enabled = Kapag pinagana ang { $portal }PORTAL, dapat mapunan ang lahat ng field.
+mode-switch-portal-tenant = Ang pagbabago ng mode mula { $from_mode } patungong { $to_mode } ay magpapatay ng koneksyon sa { $from_portal }PORTAL at kailangan mong muling kumonekta sa { $to_portal }PORTAL.
 uwhportal-token-invalid-code = Maling code ang naipasok.
     Pakisubukan muli.
 uwhportal-token-no-pending-link = Hindi inaasahan ng Portal ang isang koneksyon.

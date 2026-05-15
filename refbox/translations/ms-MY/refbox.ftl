@@ -85,7 +85,7 @@ minimum-brk-btwn-games = REHAT MINIMUM
     ANTARA PERLAWANAN:
 ot-half-time-length = PANJANG REHAT SEPARUH
     MASA TAMBAHAN
-using-uwh-portal = MENGGUNAKAN UWHPORTAL:
+using-portal = MENGGUNAKAN { $portal }PORTAL:
 starting-sides = SISI PERMULAAN
 sound-enabled = BUNYI
     DIAKTIFKAN:
@@ -142,10 +142,10 @@ pre-sd-len = Panjang rehat antara tempoh permainan sebelumnya dan Sudden Death
 language = BAHASA
 this-language = BAHASA MELAYU
 portal-login-code = KOD
-portal-login-instructions = Sila pergi ke UWH Portal >> Pengurusan Acara >> Pengurusan Pengadil, klik butang + untuk menambah Refbox baharu, dan masukkan ID Refbox ini:
+portal-login-instructions = Sila pergi ke { $portal } Portal >> Pengurusan Acara >> Pengurusan Pengadil, klik butang + untuk menambah Refbox baharu, dan masukkan ID Refbox ini:
     { $id }
 
-    UWH Portal kemudiannya akan memberikan kod pengesahan untuk anda masukkan di sebelah kiri menggunakan pad nombor.
+    { $portal } Portal kemudiannya akan memberikan kod pengesahan untuk anda masukkan di sebelah kiri menggunakan pad nombor.
     Tekan selesai setelah anda memasukkan kod
 
 help = BANTUAN:
@@ -155,7 +155,8 @@ game-configuration-can-not-be-changed = Konfigurasi perlawanan tidak boleh diuba
 
     Apakah yang anda ingin lakukan?
 apply-this-game-number-change = Bagaimana anda ingin menerapkan perubahan nombor perlawanan ini?
-UWHPortal-enabled = Apabila UWHPortal diaktifkan, semua medan mesti diisi.
+portal-enabled = Apabila { $portal }PORTAL diaktifkan, semua medan mesti diisi.
+mode-switch-portal-tenant = Menukar mod daripada { $from_mode } kepada { $to_mode } akan menyahaktifkan pautan ke { $from_portal }PORTAL dan anda perlu menyambung semula ke { $to_portal }PORTAL.
 uwhportal-token-invalid-code = Kod yang dimasukkan tidak sah.
     Sila cuba lagi.
 uwhportal-token-no-pending-link = Portal tidak menjangka sambungan.

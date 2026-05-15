@@ -85,7 +85,7 @@ minimum-brk-btwn-games = MIN. PAUSE
     ZWISCHEN SPIELEN:
 ot-half-time-length = VERLÄNGERUNGS-
     PAUSENDAUER
-using-uwh-portal = UWHPORTAL VERWENDEN:
+using-portal = { $portal }PORTAL VERWENDEN:
 starting-sides = STARTSEITEN
 sound-enabled = TON
     AKTIVIERT:
@@ -142,10 +142,10 @@ pre-sd-len = Die Dauer der Pause zwischen dem vorherigen Spielabschnitt und dem 
 language = SPRACHE
 this-language = DEUTSCH
 portal-login-code = CODE
-portal-login-instructions = Gehen Sie zu UWH Portal >> Veranstaltungsverwaltung >> Schiedsrichterverwaltung, klicken Sie auf die + Schaltfläche, um eine neue Refbox hinzuzufügen, und geben Sie diese Refbox-ID ein:
+portal-login-instructions = Gehen Sie zu { $portal } Portal >> Veranstaltungsverwaltung >> Schiedsrichterverwaltung, klicken Sie auf die + Schaltfläche, um eine neue Refbox hinzuzufügen, und geben Sie diese Refbox-ID ein:
     { $id }
 
-    Das UWH Portal stellt Ihnen dann einen Bestätigungscode bereit, den Sie links über das Nummernfeld eingeben.
+    Das { $portal } Portal stellt Ihnen dann einen Bestätigungscode bereit, den Sie links über das Nummernfeld eingeben.
     Drücken Sie Fertig, sobald Sie den Code eingegeben haben
 
 help = HILFE:
@@ -155,7 +155,8 @@ game-configuration-can-not-be-changed = Die Spielkonfiguration kann während ein
 
     Was möchten Sie tun?
 apply-this-game-number-change = Wie möchten Sie diese Spielnummernänderung anwenden?
-UWHPortal-enabled = Wenn UWHPortal aktiviert ist, müssen alle Felder ausgefüllt werden.
+portal-enabled = Wenn { $portal }PORTAL aktiviert ist, müssen alle Felder ausgefüllt werden.
+mode-switch-portal-tenant = Wenn Sie den Modus von { $from_mode } zu { $to_mode } wechseln, wird die Verbindung zu { $from_portal }PORTAL getrennt und Sie müssen sich erneut mit { $to_portal }PORTAL verbinden.
 uwhportal-token-invalid-code = Ungültiger Code eingegeben.
     Bitte erneut versuchen.
 uwhportal-token-no-pending-link = Portal erwartet keine Verbindung.

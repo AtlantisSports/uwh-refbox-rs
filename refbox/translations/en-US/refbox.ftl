@@ -84,7 +84,7 @@ minimum-brk-btwn-games = MINIMUM BRK
     BTWN GAMES:
 ot-half-time-length = OT HALF
     TIME LENGTH
-using-uwh-portal = USING UWHPORTAL:
+using-portal = USING { $portal }PORTAL:
 starting-sides = STARTING SIDES 
 sound-enabled = SOUND
     ENABLED:
@@ -151,10 +151,10 @@ pre-sd-len = The length of the break between the preceeding play period and Sudd
 language = LANGUAGE
 this-language = ENGLISH
 portal-login-code = CODE
-portal-login-instructions = Please go to the UWH Portal >> Event Management >> Referee Management, click on the + button to add a new Refbox, and enter this Refbox ID:
+portal-login-instructions = Please go to the { $portal } Portal >> Event Management >> Referee Management, click on the + button to add a new Refbox, and enter this Refbox ID:
     { $id }
-    
-    The UWH Portal will then provide a confirmation code for you to enter to the left using the number pad.
+
+    The { $portal } Portal will then provide a confirmation code for you to enter to the left using the number pad.
     Press done once you have entered the code
 
 help = HELP: 
@@ -164,7 +164,8 @@ game-configuration-can-not-be-changed = The game configuration can not be change
     
     What would you like to do?
 apply-this-game-number-change = How would you like to apply this game number change?
-UWHPortal-enabled = When UWHPortal is enabled, all fields must be filled out.
+portal-enabled = When { $portal }PORTAL is enabled, all fields must be filled out.
+mode-switch-portal-tenant = Changing mode from { $from_mode } to { $to_mode } will disable the link to { $from_portal }PORTAL and you must re-connect to { $to_portal }PORTAL.
 uwhportal-token-invalid-code = Invalid code entered.
     Please try again.
 uwhportal-token-no-pending-link = Portal not expecting a connection.

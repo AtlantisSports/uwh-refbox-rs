@@ -59,27 +59,16 @@ impl Hardware {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UwhPortal {
-    pub url: String,
     pub token: String,
-}
-
-impl Default for UwhPortal {
-    fn default() -> Self {
-        Self {
-            url: "https://api.uwhportal.com".to_string(),
-            token: String::new(),
-        }
-    }
 }
 
 impl UwhPortal {
     pub fn migrate(old: &Table) -> Self {
-        let Self { mut url, mut token } = Default::default();
-        get_string_value(old, "url", &mut url);
+        let Self { mut token } = Default::default();
         get_string_value(old, "token", &mut token);
-        Self { url, token }
+        Self { token }
     }
 }
 
@@ -267,8 +256,8 @@ mod test {
             "token".to_string(),
             toml::Value::String("token".to_string()),
         );
+        // url field is no longer persisted; migrate should silently ignore it
         let u = UwhPortal::migrate(&old);
-        assert_eq!(u.url, "https://localhost/api/v1/");
         assert_eq!(u.token, "token");
     }
 
@@ -314,7 +303,6 @@ mod test {
         assert_eq!(config.hardware.screen_x, 123);
         assert_eq!(config.hardware.screen_y, 456);
         assert_eq!(config.hardware.white_on_right, true);
-        assert_eq!(config.uwhportal.url, "https://localhost/api/v1/");
         assert_eq!(config.uwhportal.token, "token");
         assert_eq!(config.sound.sound_enabled, false);
         assert_eq!(config.sound.whistle_vol, Volume::Max);

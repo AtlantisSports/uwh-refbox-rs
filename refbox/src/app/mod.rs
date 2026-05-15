@@ -981,10 +981,20 @@ impl RefBoxApp {
         } else {
             None
         };
-        let url_override = std::env::var("UWH_PORTAL_URL_OVERRIDE").ok();
-        let portal_url: &str = url_override.as_deref().unwrap_or(&config.uwhportal.url);
+        let (default_url, override_var) = match config.mode {
+            Mode::Rugby => ("https://api.uwrportal.com", "UWR_PORTAL_URL_OVERRIDE"),
+            Mode::Hockey6V6 | Mode::Hockey3V3 => {
+                ("https://api.uwhportal.com", "UWH_PORTAL_URL_OVERRIDE")
+            }
+        };
+        let url_override = std::env::var(override_var).ok();
+        let portal_url = url_override.as_deref().unwrap_or(default_url).to_string();
         if url_override.is_some() {
-            info!("UWH_PORTAL_URL_OVERRIDE active: using {portal_url}");
+            let portal_name = match config.mode {
+                Mode::Rugby => "UWR",
+                Mode::Hockey6V6 | Mode::Hockey3V3 => "UWH",
+            };
+            info!("{override_var} active for {portal_name} Portal: using {portal_url}");
         }
         #[cfg(debug_assertions)]
         let scramble_token_pending = std::env::var("UWH_PORTAL_SCRAMBLE_TOKEN").is_ok();
@@ -995,7 +1005,7 @@ impl RefBoxApp {
             );
         }
         let uwhportal_client =
-            match UwhPortalClient::new(portal_url, portal_token, require_https, REQUEST_TIMEOUT) {
+            match UwhPortalClient::new(&portal_url, portal_token, require_https, REQUEST_TIMEOUT) {
                 Ok(c) => Some(Arc::new(Mutex::new(c))),
                 Err(e) => {
                     error!("Failed to start UWH Portal Client: {e}");

@@ -45,7 +45,10 @@ mod view_data;
 use view_data::ViewData;
 
 mod view_builders;
-use view_builders::{shared_elements::portal_name_for_mode, *};
+use view_builders::{
+    shared_elements::{crosses_portal, portal_name_for_mode},
+    *,
+};
 
 mod message;
 use message::*;
@@ -182,12 +185,9 @@ enum ConfirmationKind {
     UwhPortalIncompleteFromApply,
     // Raised when the operator changes Mode across the portal boundary (Hockey ↔
     // Rugby). Carries the current and proposed modes so the confirmation page can
-    // describe what will change. Real rendering and handler land in Tasks 7–8.
-    #[allow(dead_code)] // construction site added in Task 7
-    PortalTenantSwitch {
-        from_mode: Mode,
-        to_mode: Mode,
-    },
+    // describe what will change. Raised in apply_app_options (Task 9); rendered
+    // in Task 7 view builder; committed via RestartAndApply handler (Task 8).
+    PortalTenantSwitch { from_mode: Mode, to_mode: Mode },
 }
 
 // PageEntrySnapshot is a singleton — `RefBoxApp.page_entry_snapshot` holds at most
@@ -625,10 +625,8 @@ impl RefBoxApp {
         }
     }
 
-    fn apply_app_options(&mut self) {
-        let Some(edited) = self.edited_settings.as_ref() else {
-            return;
-        };
+    fn apply_app_options(&mut self) -> Option<ConfirmationKind> {
+        let edited = self.edited_settings.as_ref()?;
         // Snapshot the fields we need so the immutable borrow on
         // `edited_settings` ends before we call `set_current_event_id`
         // (which takes `&mut self`).
@@ -641,6 +639,18 @@ impl RefBoxApp {
         let track_fouls_and_warnings = edited.track_fouls_and_warnings;
         let confirm_score = edited.confirm_score;
 
+        // Cross-portal Mode change requires explicit confirmation and an app
+        // restart. Raise the confirmation before committing any fields so that
+        // cancelling rolls back the entire Apply (Option A semantics, matching
+        // GameConfigChangedFromApply). The commit happens in the RestartAndApply
+        // branch of the confirmation handler (Task 8 path).
+        if crosses_portal(self.config.mode, mode) {
+            return Some(ConfirmationKind::PortalTenantSwitch {
+                from_mode: self.config.mode,
+                to_mode: mode,
+            });
+        }
+
         self.using_uwhportal = using_uwhportal;
         // Route through set_current_event_id so portal_event_id stays in
         // sync (ADR 011 amendment 2026-04-23 dormant-until-linked).
@@ -651,6 +661,7 @@ impl RefBoxApp {
         self.config.collect_scorer_cap_num = collect_scorer_cap_num;
         self.config.track_fouls_and_warnings = track_fouls_and_warnings;
         self.config.confirm_score = confirm_score;
+        None
     }
 
     fn apply_display_options(&mut self) {
@@ -2100,7 +2111,13 @@ impl RefBoxApp {
             }
             Message::ApplyConfigPage(page) => {
                 match page {
-                    ConfigPage::App => self.apply_app_options(),
+                    ConfigPage::App => {
+                        if let Some(kind) = self.apply_app_options() {
+                            self.app_state = AppState::ConfirmationPage(kind);
+                            trace!("AppState changed to {:?}", self.app_state);
+                            return Task::none();
+                        }
+                    }
                     ConfigPage::Display => self.apply_display_options(),
                     ConfigPage::Sound => self.apply_sound_options(),
                     ConfigPage::Remotes(_, _) => self.apply_remote_options(),

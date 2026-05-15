@@ -313,8 +313,6 @@ pub(crate) fn portal_name_for_mode(mode: Mode) -> &'static str {
     }
 }
 
-// wired in Task 9
-#[allow(dead_code)]
 pub(crate) fn crosses_portal(old: Mode, new: Mode) -> bool {
     portal_name_for_mode(old) != portal_name_for_mode(new)
 }

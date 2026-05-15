@@ -313,6 +313,12 @@ pub(crate) fn portal_name_for_mode(mode: Mode) -> &'static str {
     }
 }
 
+// wired in Task 9
+#[allow(dead_code)]
+pub(crate) fn crosses_portal(old: Mode, new: Mode) -> bool {
+    portal_name_for_mode(old) != portal_name_for_mode(new)
+}
+
 pub(super) fn make_health_tile<'a>(
     state: PortalIndicatorState,
     tile_size: f32,
@@ -1223,5 +1229,32 @@ pub fn inf_short_name(inf: Infraction) -> String {
         Infraction::UnsportsmanlikeConduct => fl!("unsportsmanlike"),
         Infraction::FreeArm => fl!("free-arm"),
         Infraction::FalseStart => fl!("false-start"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Mode;
+
+    #[test]
+    fn crosses_portal_within_hockey_is_false() {
+        assert!(!crosses_portal(Mode::Hockey6V6, Mode::Hockey3V3));
+        assert!(!crosses_portal(Mode::Hockey3V3, Mode::Hockey6V6));
+        assert!(!crosses_portal(Mode::Hockey6V6, Mode::Hockey6V6));
+        assert!(!crosses_portal(Mode::Hockey3V3, Mode::Hockey3V3));
+        assert!(!crosses_portal(Mode::Rugby, Mode::Rugby));
+    }
+
+    #[test]
+    fn crosses_portal_hockey_to_rugby_is_true() {
+        assert!(crosses_portal(Mode::Hockey6V6, Mode::Rugby));
+        assert!(crosses_portal(Mode::Hockey3V3, Mode::Rugby));
+    }
+
+    #[test]
+    fn crosses_portal_rugby_to_hockey_is_true() {
+        assert!(crosses_portal(Mode::Rugby, Mode::Hockey6V6));
+        assert!(crosses_portal(Mode::Rugby, Mode::Hockey3V3));
     }
 }

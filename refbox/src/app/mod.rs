@@ -45,7 +45,7 @@ mod view_data;
 use view_data::ViewData;
 
 mod view_builders;
-use view_builders::*;
+use view_builders::{shared_elements::portal_name_for_mode, *};
 
 mod message;
 use message::*;
@@ -472,14 +472,15 @@ impl RefBoxApp {
         if let Some(client) = &self.uwhportal_client {
             // why this cannot panic: see `request_event_list` above.
             let request = client.lock().unwrap().login_to_portal(event_id, code);
+            let portal_name = portal_name_for_mode(self.config.mode);
             Task::future(async move {
                 match request.await {
                     Ok(token) => {
-                        info!("Got a response from UWH Portal token request");
+                        info!("Got a response from {portal_name} Portal token request");
                         Message::RecvPortalToken(token)
                     }
                     Err(e) => {
-                        error!("Failed to get uwhportal token: {e}");
+                        error!("Failed to get {portal_name} portal token: {e}");
                         Message::NoAction
                     }
                 }
@@ -1008,7 +1009,10 @@ impl RefBoxApp {
             match UwhPortalClient::new(&portal_url, portal_token, require_https, REQUEST_TIMEOUT) {
                 Ok(c) => Some(Arc::new(Mutex::new(c))),
                 Err(e) => {
-                    error!("Failed to start UWH Portal Client: {e}");
+                    error!(
+                        "Failed to start {} Portal Client: {e}",
+                        portal_name_for_mode(config.mode)
+                    );
                     None
                 }
             };

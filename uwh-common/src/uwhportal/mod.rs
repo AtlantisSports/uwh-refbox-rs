@@ -87,7 +87,7 @@ impl UwhPortalClient {
             let response = request.send().await?;
 
             if response.status() == StatusCode::OK {
-                info!("uwhportal login successful");
+                info!("portal login successful");
                 let body = response.json::<serde_json::Value>().await?;
                 if let Some(token) = body["accessKey"].as_str() {
                     Ok(PortalTokenResponse::Success(token.to_string()))
@@ -97,7 +97,7 @@ impl UwhPortalClient {
                     )))?
                 }
             } else if response.status() == StatusCode::BAD_REQUEST {
-                warn!("uwhportal login failed, response: {:?}", response);
+                warn!("portal login failed, response: {:?}", response);
                 let body = response.json::<serde_json::Value>().await?;
                 if let Some(reason) = body["reason"].as_str() {
                     match reason {
@@ -114,7 +114,7 @@ impl UwhPortalClient {
                     )))?
                 }
             } else {
-                warn!("uwhportal login failed, response: {:?}", response);
+                warn!("portal login failed, response: {:?}", response);
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(body)))?
             }
@@ -140,7 +140,7 @@ impl UwhPortalClient {
             let response = request.send().await?;
 
             if response.status() == StatusCode::OK {
-                info!("uwhportal login successful");
+                info!("portal login successful");
                 let body = response.json::<serde_json::Value>().await?;
                 if let Some(token) = body["accessToken"].as_str() {
                     Ok(token.to_string())
@@ -150,7 +150,7 @@ impl UwhPortalClient {
                     )))?
                 }
             } else {
-                warn!("uwhportal login failed, response: {:?}", response);
+                warn!("portal login failed, response: {:?}", response);
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(body)))?
             }
@@ -172,10 +172,10 @@ impl UwhPortalClient {
             let response = request.send().await?;
 
             if response.status() == StatusCode::OK {
-                info!("uwhportal token validation successful");
+                info!("portal token validation successful");
                 Ok(())
             } else {
-                warn!("uwhportal token validation failed, response: {response:?}");
+                warn!("portal token validation failed, response: {response:?}");
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(body)))?
             }
@@ -200,10 +200,10 @@ impl UwhPortalClient {
             let response = request.await?;
 
             if response.status() == StatusCode::OK {
-                info!("uwhportal post game stats successful");
+                info!("portal post game stats successful");
                 Ok(())
             } else {
-                warn!("uwhportal post game stats failed, response: {:?}", response);
+                warn!("portal post game stats failed, response: {:?}", response);
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(body)))?
             }
@@ -238,7 +238,7 @@ impl UwhPortalClient {
 
         async move {
             let request = request.build()?;
-            debug!("Posting game scores to uwhportal: {request:?}");
+            debug!("Posting game scores to portal: {request:?}");
             debug!(
                 "Post body: {:?}",
                 std::str::from_utf8(request.body().unwrap().as_bytes().unwrap())
@@ -246,13 +246,10 @@ impl UwhPortalClient {
             let response = client_.execute(request).await?;
 
             if response.status() == StatusCode::OK {
-                info!("uwhportal post game scores successful");
+                info!("portal post game scores successful");
                 Ok(())
             } else {
-                warn!(
-                    "uwhportal post game scores failed, response: {:?}",
-                    response
-                );
+                warn!("portal post game scores failed, response: {:?}", response);
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(body)))?
             }
@@ -280,10 +277,7 @@ impl UwhPortalClient {
                 let schedule: schedule::Schedule = serde_json::from_str(&body)?;
                 Ok(schedule)
             } else {
-                warn!(
-                    "uwhportal get event schedule failed, response: {:?}",
-                    response
-                );
+                warn!("portal get event schedule failed, response: {:?}", response);
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(body)))?
             }
@@ -327,7 +321,7 @@ impl UwhPortalClient {
         async move {
             let response = request.await?;
             if response.status() != StatusCode::OK {
-                warn!("uwhportal /referees failed, response: {:?}", response);
+                warn!("portal /referees failed, response: {:?}", response);
                 let body = response.text().await?;
                 return Err(Box::new(ApiError::new(body)).into());
             }
@@ -393,10 +387,7 @@ impl UwhPortalClient {
                 }
                 Ok(team_map)
             } else {
-                warn!(
-                    "uwhportal get event schedule failed, response: {:?}",
-                    response
-                );
+                warn!("portal get event schedule failed, response: {:?}", response);
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(body)))?
             }
@@ -439,7 +430,7 @@ impl UwhPortalClient {
                 let parsed_response: ResponseWrapper = serde_json::from_str(&body)?;
                 Ok(parsed_response.items)
             } else {
-                warn!("uwhportal get events list failed, response: {:?}", response);
+                warn!("portal get events list failed, response: {:?}", response);
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(body)))?
             }
@@ -466,11 +457,11 @@ impl UwhPortalClient {
             let response = request.send().await?;
 
             if response.status() == StatusCode::OK {
-                info!("uwhportal push event schedule successful");
+                info!("portal push event schedule successful");
                 Ok(())
             } else {
                 warn!(
-                    "uwhportal push event schedule failed, response: {:?}",
+                    "portal push event schedule failed, response: {:?}",
                     response
                 );
                 let body = response.text().await?;
@@ -497,10 +488,10 @@ impl UwhPortalClient {
             let response = request.send().await?;
 
             if response.status() == StatusCode::OK {
-                info!("uwhportal push team map successful");
+                info!("portal push team map successful");
                 Ok(())
             } else {
-                warn!("uwhportal push team map failed, response: {:?}", response);
+                warn!("portal push team map failed, response: {:?}", response);
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(body)))?
             }

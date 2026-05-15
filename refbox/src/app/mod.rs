@@ -2186,16 +2186,7 @@ impl RefBoxApp {
             }
             Message::SelectParameter(param) => {
                 let index = match param {
-                    ListableParameter::Event => {
-                        self.current_event_id.as_ref().and_then(|cur_event_id| {
-                            self.events
-                                .as_ref()?
-                                .iter()
-                                .enumerate()
-                                .find(|(_, (event_id, _))| **event_id == *cur_event_id)
-                                .map(|(i, _)| i)
-                        })
-                    }
+                    ListableParameter::Event => Some(0),
                     ListableParameter::Court => self.current_court.as_ref().and_then(|cur_court| {
                         self.events
                             .as_ref()?

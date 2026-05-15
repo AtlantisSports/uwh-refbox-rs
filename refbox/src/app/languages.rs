@@ -1,8 +1,6 @@
 use log::error;
 use unic_langid::LanguageIdentifier;
 
-use super::Cyclable;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Language {
     English,
@@ -137,28 +135,6 @@ impl Language {
             Self::Portuguese => "REINICIAR PARA APLICAR",
             Self::Thai => "รีสตาร์ทเพื่อใช้งาน",
             Self::Turkish => "UYGULAMAK İÇİN YENİDEN BAŞLAT",
-        }
-    }
-}
-
-impl Cyclable for Language {
-    fn next(&self) -> Self {
-        match self {
-            Self::English => Self::French,
-            Self::French => Self::Spanish,
-            Self::Spanish => Self::Mandarin,
-            Self::Mandarin => Self::Korean,
-            Self::Korean => Self::Italian,
-            Self::Italian => Self::German,
-            Self::German => Self::Tagalog,
-            Self::Tagalog => Self::Indonesian,
-            Self::Indonesian => Self::Dutch,
-            Self::Dutch => Self::Japanese,
-            Self::Japanese => Self::Malay,
-            Self::Malay => Self::Portuguese,
-            Self::Portuguese => Self::Thai,
-            Self::Thai => Self::Turkish,
-            Self::Turkish => Self::English,
         }
     }
 }

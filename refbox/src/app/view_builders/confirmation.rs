@@ -114,7 +114,7 @@ pub(in super::super) fn build_confirmation_page<'a>(
             ),
             (
                 fl!("restart-to-apply"),
-                red_button,
+                blue_button,
                 ConfirmationOption::RestartAndApply,
             ),
         ],

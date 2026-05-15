@@ -1,5 +1,19 @@
 # Audit Unit 8 — Language UI chrome: Implementation Plan
 
+> **STALE SECTION NOTE (added post-execution 2026-05-15):** This plan's
+> Step 7.2 and Task 7 generally describe a **single combined .feature file**
+> with four `Feature:` blocks. That is **wrong** — Gherkin syntax allows only
+> one `Feature:` block per `.feature` file, and the IDE Gherkin linter
+> flagged the initial seed commit `d056439` as a syntax error. The Unit 8
+> execution split the seed into **four separate per-Feature files** in commit
+> `69187cb`: `language-selection-page.feature`, `language-restart-flow.feature`,
+> `language-unverified-marker.feature`, `button-damage-tracking.feature`.
+> See AUDIT-PLAN.md Process refinements From-Unit-8 #1 for the full lesson
+> and playbook amendment. Future per-unit plans for multi-Feature audit units
+> must call for one .feature file per Feature, matching the Unit 6 pattern
+> (`timed-buzzer-playback.feature` / `keypad-player-number.feature` /
+> `multi-label-button-text.feature`).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Audit the operator-facing UI chrome introduced by commits `848138c` (11 languages + CJK/Thai fonts + grid-selection page) and `ea151ac` (Turkish + UNVERIFIED marker on language buttons). Catalog every distinct behaviour, walk each one with the operator, surgically prune anything that's not wanted, write a retroactive ADR 023 capturing what survives, and hold the branch local until Final Integration. Translation file content and font binaries are out of scope per the playbook's 2026-05-12 scope reduction.

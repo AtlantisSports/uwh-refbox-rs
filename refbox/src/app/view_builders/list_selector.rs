@@ -6,8 +6,6 @@ use iced::{
     widget::{Space, button, column, row, text, vertical_space},
 };
 
-// Not yet wired into the view; used in the next commit that replaces `list.values().rev()`.
-#[allow(dead_code)]
 fn sorted_events_for_picker(events: &BTreeMap<EventId, Event>) -> Vec<&Event> {
     let mut sorted: Vec<&Event> = events.values().collect();
     sorted.sort_by(|a, b| {
@@ -90,7 +88,8 @@ pub(in super::super) fn build_list_selector_page<'a>(
         ListableParameter::Event => {
             let list = events.as_ref().unwrap();
             let num_items = list.len();
-            let iter = list.values().rev();
+            let sorted = sorted_events_for_picker(list);
+            let iter = sorted.into_iter();
             let transform = |e: &Event| (e.name.clone(), e.id.full().to_string());
             (num_items, make_buttons!(iter, transform))
         }

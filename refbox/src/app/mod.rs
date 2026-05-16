@@ -3025,11 +3025,21 @@ impl RefBoxApp {
     }
 
     pub(super) fn view(&self) -> Element<'_, Message> {
+        // During Game Config edit, the operator may have picked a new event whose
+        // teams have already loaded into `self.events[new_id].teams` but whose
+        // commit is still pending Apply. Resolve teams against the in-edit
+        // event id (when present) so the picker shows real team names during edit;
+        // fall back to the committed `current_event_id` outside of edit.
+        let active_event_id = self
+            .edited_settings
+            .as_ref()
+            .and_then(|edits| edits.current_event_id.as_ref())
+            .or(self.current_event_id.as_ref());
         let data = ViewData {
             snapshot: &self.snapshot,
             mode: self.config.mode,
             clock_running: self.tm.lock().unwrap().clock_is_running(),
-            teams: self.current_event_id.as_ref().and_then(|id| {
+            teams: active_event_id.and_then(|id| {
                 self.events
                     .as_ref()
                     .and_then(|events| events.get(id).and_then(|event| event.teams.as_ref()))

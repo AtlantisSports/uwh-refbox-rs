@@ -463,11 +463,23 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         Mode::Rugby => "UWR Ref Box",
         Mode::Hockey6V6 | Mode::Hockey3V3 => "UWH Ref Box",
     };
-    iced::application(title, app::RefBoxApp::update, app::RefBoxApp::view)
+    let result = iced::application(title, app::RefBoxApp::update, app::RefBoxApp::view)
         .subscription(app::RefBoxApp::subscription)
         .settings(settings)
         .window(window_settings)
         .style(app::RefBoxApp::application_style)
-        .run_with(|| app::RefBoxApp::new(flags))
-        .map_err(|e| e.into())
+        .run_with(|| app::RefBoxApp::new(flags));
+
+    // If an in-app "Restart to Apply" path requested a restart, the iced
+    // runtime has just finished closing all windows. Spawn a fresh copy of
+    // the exe NOW (after the windows are gone) so the new instance opens on
+    // a clean slate without overlapping the old windows. See
+    // `app::RESTART_PENDING` for the trigger sites.
+    if app::RESTART_PENDING.load(std::sync::atomic::Ordering::Relaxed) {
+        if let Ok(exe) = std::env::current_exe() {
+            let _ = std::process::Command::new(exe).spawn();
+        }
+    }
+
+    result.map_err(|e| e.into())
 }

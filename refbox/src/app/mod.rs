@@ -22,7 +22,10 @@ use std::{
     cmp::min,
     collections::{BTreeMap, BTreeSet},
     process::Child,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use tokio::{
     sync::mpsc,
@@ -63,6 +66,14 @@ pub(crate) mod languages;
 use languages::*;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Set to `true` by the in-app restart paths (`RestartAndApply` confirmation
+/// for a Mode change, `LanguageSelectComplete` with a font-family change).
+/// After the iced runtime exits gracefully — closing all windows — `main()`
+/// checks this flag and spawns a fresh copy of the executable. This pattern
+/// avoids the brief overlap of old + new windows that `std::process::exit(0)`
+/// would otherwise produce.
+pub static RESTART_PENDING: AtomicBool = AtomicBool::new(false);
 
 pub struct RefBoxApp {
     tm: Arc<Mutex<TournamentManager>>,
@@ -942,16 +953,19 @@ impl RefBoxApp {
                     // Continue with restart anyway — the operator pressed Restart.
                 }
 
-                // Restart pattern mirrored from the existing language-switch path
-                // (see Message::LanguageSelectComplete). Kill the simulator child
-                // first so it does not linger as an orphan.
+                // Kill the simulator child so it does not linger as an orphan
+                // after the iced runtime closes its windows.
                 if let Some(mut child) = self.sim_child.take() {
                     let _ = child.kill();
                 }
-                if let Ok(exe) = std::env::current_exe() {
-                    let _ = std::process::Command::new(exe).spawn();
-                }
-                std::process::exit(0);
+                // Mark the restart and let iced gracefully close its windows.
+                // `main()` will spawn a fresh copy of the exe after the iced
+                // runtime returns — this avoids the brief overlap of old and
+                // new windows that a synchronous `std::process::exit(0)` would
+                // otherwise produce. Mirrored in `Message::LanguageSelectComplete`.
+                RESTART_PENDING.store(true, Ordering::Relaxed);
+                task = iced::exit();
+                AppState::MainPage
             }
         };
         self.app_state = app_state;
@@ -2507,16 +2521,18 @@ impl RefBoxApp {
                         self.config.language = Some(lang);
                         confy::store(crate::APP_NAME, None, &self.config).unwrap();
                         if needs_restart {
-                            // Kill the simulator child before exiting so it doesn't linger.
+                            // Kill the simulator child so it does not linger as
+                            // an orphan after the iced runtime closes its windows.
                             if let Some(mut child) = self.sim_child.take() {
                                 let _ = child.kill();
                             }
-                            // Spawn a fresh copy of the app — it will read the saved language from
-                            // config and start with the correct default font.
-                            if let Ok(exe) = std::env::current_exe() {
-                                let _ = std::process::Command::new(exe).spawn();
-                            }
-                            std::process::exit(0);
+                            // Mark the restart and let iced gracefully close its
+                            // windows. `main()` will spawn a fresh copy of the
+                            // exe after the iced runtime returns — this avoids
+                            // the brief overlap of old and new windows that a
+                            // synchronous `std::process::exit(0)` would produce.
+                            RESTART_PENDING.store(true, Ordering::Relaxed);
+                            return iced::exit();
                         }
                         // Apply the new language to the running UI (same font family, no restart needed).
                         crate::request_language(&crate::LANGUAGE_LOADER, &[lang.as_lang_id()]);

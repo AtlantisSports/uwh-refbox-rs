@@ -2427,7 +2427,23 @@ impl RefBoxApp {
                                 edited_settings.white_on_right ^= true
                             }
                             BoolGameParameter::UsingUwhPortal => {
-                                edited_settings.using_uwhportal ^= true
+                                let was_using = edited_settings.using_uwhportal;
+                                edited_settings.using_uwhportal ^= true;
+                                // When the operator toggles Using-UWH-Portal ON, the
+                                // event / court / game / schedule pickers start from
+                                // a blank slate (don't pre-fill with the last-known
+                                // values from a previous session or toggle). The
+                                // token credential itself is kept in
+                                // `config.uwhportal.token`; only its validity cache
+                                // is reset so the portal re-verifies on next
+                                // interaction.
+                                if !was_using && edited_settings.using_uwhportal {
+                                    edited_settings.current_event_id = None;
+                                    edited_settings.current_court = None;
+                                    edited_settings.schedule = None;
+                                    edited_settings.game_number = String::new();
+                                    edited_settings.uwhportal_token_valid = None;
+                                }
                             }
                             BoolGameParameter::SoundEnabled => {
                                 edited_settings.sound.sound_enabled ^= true

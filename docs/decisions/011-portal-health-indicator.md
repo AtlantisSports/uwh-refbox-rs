@@ -487,6 +487,37 @@ the orphaned `check_circle.svg` asset and two now-moot unit tests.
 The Deviations log entry for Task 22 captures the same change on
 the plan side.
 
+### 2026-05-16 — Indicator dormant when Using-UWH-Portal is off
+
+Operator review on 2026-05-16 surfaced that the portal health
+indicator stayed visible even when the operator had set
+"Using UWH Portal" to NO (provided an `current_event_id` was
+still linked from a prior session). This contradicts the spirit
+of "use of the UWH Portal feature is gated by the operator toggle".
+
+The 2026-04-23-dormant amendment established the rule "indicator
+hidden when no event is linked" (`current_event_id == None`). This
+2026-05-16 amendment adds a second necessary condition:
+
+**Indicator visibility now requires both:**
+- `self.using_uwhportal == true` (the operator has the feature on), AND
+- `self.current_event_id.is_some()` (an event is linked)
+
+When either condition fails, `portal_indicator: None` flows to the
+view builders and the time banner falls back to the pre-feature
+layout — same behaviour as the 2026-04-23-dormant amendment, just
+triggered by a broader gate.
+
+Code change lands on `feat/refbox/portal-subsystem-dormancy`:
+the conditional in `app/mod.rs::view()` (around line 3055) is
+extended from `self.current_event_id.as_ref().map(...)` to
+`if self.using_uwhportal { self.current_event_id.as_ref().map(...) } else { None }`.
+
+The pairing with ADR 017's dormancy contract (no fetches when
+toggle is off) makes the indicator's behaviour internally
+consistent: portal subsystem is invisible AND idle whenever the
+operator has not opted in.
+
 ## Verified by Unit 7 audit (2026-05-15)
 
 ### Audit scope

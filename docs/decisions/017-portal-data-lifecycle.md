@@ -1,10 +1,7 @@
 # 017 — Portal Data Lifecycle (Lazy Fetch and Refresh)
 
-**Date:** 2026-05-12
-**Status:** proposed
-**Behavior definition required:** before any planning or implementation, the
-operator must define the desired lifecycle semantics. The Open Design Questions
-section is a checklist of decisions needed.
+**Date:** 2026-05-12 (proposed); accepted 2026-05-16
+**Status:** accepted (verified by `feat/refbox/portal-subsystem-dormancy` 2026-05-16)
 
 ## Context
 
@@ -82,7 +79,89 @@ it crosses architectural boundaries and ADR-011 territory.
 
 ## Decision
 
-**TBD — pending operator-defined behavior for the questions above.**
+The portal subsystem is **dormant** whenever `self.using_uwhportal == false`.
+Dormant means no new fetches are dispatched, the health indicator is hidden,
+and no portal-side activity is observable to the operator. The toggle is the
+single authoritative gate.
+
+### Answers to the six open questions
+
+1. **When should event-list fetch fire?**
+   - **At startup,** only if the runtime `self.using_uwhportal` is true at the
+     moment `RefBoxApp::new()` returns. The unconditional fetch in
+     `RefBoxApp::new()` is replaced with a conditional push to the startup-task
+     batch.
+   - **On toggle ON,** the moment the operator taps the Using-UWH-Portal toggle
+     button (handled in `BoolGameParameter::UsingUwhPortal` arm of
+     `Message::ToggleBoolParameter`). The fetch fires immediately — operators
+     do not wait for Apply to commit the toggle before seeing the picker populate.
+   - **Never** while `using_uwhportal == false`. There is no other entry point
+     for the event-list fetch.
+
+2. **When should teams-list fetch fire for each event?**
+   - **No structural change.** Teams-list fetches continue to fire in batch
+     from the `RecvEventList` handler. Because the event-list fetch is now
+     gated upstream by the dormancy contract, the teams-list burst only happens
+     when the operator has opted in.
+   - The "loading…" affordance for the picker, and the "fetch only for events
+     the operator selects" optimisation, are out of scope for this ADR. They
+     can land as follow-up branches if operator review surfaces a concrete need.
+
+3. **How should mid-session changes on the portal be handled?**
+   - **Manual refresh via `Message::RequestPortalRefresh` only.** No periodic
+     auto-refresh, no server-sent events. The operator-facing refresh path
+     is unchanged from today.
+   - If the operator turns the toggle OFF and back ON in one session, the
+     toggle-on path re-fires the event-list fetch (fresh data on each
+     re-engagement). This is an intentional consequence of question 1's
+     toggle-time fetch.
+
+4. **What does the operator see while data is loading?**
+   - **No change in this ADR.** The "1 - Unknown vs Unknown" placeholder
+     issue is real but separable from the dormancy contract. Recommended
+     follow-up branch:
+     `feat/refbox/portal-loading-affordance` — replaces the placeholder
+     with an explicit "loading…" row in the picker and disables Apply
+     until teams data lands. Out of scope here.
+
+5. **How does this interact with ADR 011 (portal health indicator)?**
+   - **ADR 011 is amended.** A 2026-05-16 amendment to ADR 011 ties the
+     indicator's visibility to `self.using_uwhportal && self.current_event_id.is_some()`,
+     so the indicator is hidden whenever the subsystem is dormant. The
+     previous 2026-04-23 amendment's "dormant until event linked" rule
+     remains in force — both gates must pass for the tile to render.
+   - Lazy-fetch failures continue to surface in the health tile the same
+     way they do today (Yellow during retry, Red after escalation). No
+     new failure surface is introduced.
+
+6. **What is the credential / privacy story for unauthenticated requests?**
+   - **`UwhPortalClient` is still constructed at startup** regardless of the
+     toggle, because the client itself is cheap (no network I/O at
+     construction time) and is referenced by other code paths (token
+     verification, manual refresh). The dormancy contract gates *what
+     requests fire*, not *whether the client exists*.
+   - With this ADR's contract enforced, an operator running offline with
+     `using_uwhportal == false` makes **no portal HTTP requests at any point
+     in the session**, eliminating the leak/fingerprint concern raised in the
+     original Context.
+
+### Cached data on toggle transitions
+
+- **OFF → ON:** fetch immediately (per Q1).
+- **ON → OFF:** cached `self.events` / `self.schedule` / `current_event_id`
+  are preserved in memory. The indicator hides immediately on the next
+  snapshot. Toggling back to ON re-runs the event-list fetch (fresh data).
+  No proactive clearing — keeps the toggle as a UI-level switch rather than
+  a destructive state purge.
+
+### What is not in scope for this ADR
+
+- Persisting `using_uwhportal` across sessions in `config.toml` (currently
+  hardcoded to `false` at startup in `RefBoxApp::new()`). If operator review
+  later prefers session-persisted toggle state, that is a follow-up.
+- Loading affordance for the picker (deferred per Q4).
+- Per-event teams-list fetching (deferred per Q2).
+- Push notifications / server-sent events (rejected as out-of-scope future work).
 
 ## Sequencing
 

@@ -820,7 +820,14 @@ fn make_app_config_page<'a>(
     } = settings;
 
     column![
-        make_game_time_button(snapshot, false, true, mode, clock_running, portal_indicator),
+        make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+            portal_indicator
+        ),
         row![
             make_value_button(
                 fl!("app-mode"),
@@ -965,7 +972,14 @@ fn make_sound_config_page<'a>(
     let EditableSettings { sound, .. } = settings;
 
     column![
-        make_game_time_button(snapshot, false, true, mode, clock_running, portal_indicator),
+        make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+            portal_indicator
+        ),
         row![
             make_value_button(
                 fl!("sound-enabled"),
@@ -1386,7 +1400,14 @@ fn make_language_select_page<'a>(
     // gets a small "(UNVERIFIED)" note in its own language, signalling to operators
     // that a native speaker has not yet reviewed the translation.
     column![
-        make_game_time_button(snapshot, false, true, mode, clock_running, portal_indicator),
+        make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+            portal_indicator
+        ),
         row![
             lang_btn_note(
                 Language::Indonesian,

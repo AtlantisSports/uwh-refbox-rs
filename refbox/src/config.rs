@@ -79,7 +79,6 @@ pub struct Config {
     pub hide_time: bool,
     #[derivative(Default(value = "true"))]
     pub collect_scorer_cap_num: bool,
-    #[derivative(Default(value = "true"))]
     pub track_fouls_and_warnings: bool,
     #[derivative(Default(value = "true"))]
     pub confirm_score: bool,

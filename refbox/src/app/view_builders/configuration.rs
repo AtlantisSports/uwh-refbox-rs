@@ -410,14 +410,10 @@ fn make_user_config_page<'a>(
     clock_running: bool,
     portal_indicator: Option<PortalIndicatorState>,
 ) -> Element<'a, Message> {
-    // Hidden spacer reserved for a future view-mode tile so the row keeps three equal columns.
-    let view_mode_spacer = horizontal_space().width(Length::Fill);
-
     let tiles = row![
         make_button(fl!("display-options"))
             .style(light_gray_button)
             .on_press(Message::ChangeConfigPage(ConfigPage::Display)),
-        view_mode_spacer,
         make_button(fl!("sound-options"))
             .style(light_gray_button)
             .on_press(Message::ChangeConfigPage(ConfigPage::Sound)),

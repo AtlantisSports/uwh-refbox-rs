@@ -307,7 +307,7 @@ penalty-shot-short = TIRO RIG.
 ## Contenitore ammonizione di squadra
 team-warning-abreviation = S
 ## Editor tempo
-zero = ZERO
+zero = = 0
 
 # Modifica Tempo
 game-time = TEMPO DI GIOCO

@@ -307,7 +307,7 @@ penalty-shot-short = STRAFSTOSS
 ## Verwarnungscontainer erstellen
 team-warning-abreviation = T
 ## Zeiteditor erstellen
-zero = NULL
+zero = = 0
 
 # Zeitbearbeitung
 game-time = SPIELZEIT

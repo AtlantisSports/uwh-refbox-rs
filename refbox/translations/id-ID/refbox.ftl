@@ -307,7 +307,7 @@ penalty-shot-short = TBK PEN
 ## Kontainer peringatan tim
 team-warning-abreviation = T
 ## Editor waktu
-zero = NOL
+zero = = 0
 
 # Edit Waktu
 game-time = WAKTU PERTANDINGAN

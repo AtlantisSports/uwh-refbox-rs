@@ -307,7 +307,7 @@ penalty-shot-short = CZA ATŞ
 ## Uyarı konteyneri oluştur
 team-warning-abreviation = T
 ## Zaman düzenleyici oluştur
-zero = SIFIR
+zero = = 0
 
 # Zaman Düzenleme
 game-time = OYUN SAATİ

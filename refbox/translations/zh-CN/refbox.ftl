@@ -307,7 +307,7 @@ penalty-shot-short = 罚球
 ## 警告容器
 team-warning-abreviation = 队
 ## 时间编辑器
-zero = 零
+zero = = 0
 
 # 时间编辑
 game-time = 比赛时间

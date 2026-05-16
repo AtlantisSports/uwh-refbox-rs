@@ -1204,14 +1204,18 @@ impl RefBoxApp {
             scramble_token_pending,
         };
 
-        let task = Task::batch(vec![
-            new.request_event_list(),
-            if fullscreen {
-                window::get_latest().and_then(|w| window::change_mode(w, window::Mode::Fullscreen))
-            } else {
-                Task::none()
-            },
-        ]);
+        // Portal subsystem stays dormant until the operator turns Using-UWH-Portal
+        // ON: no event-list fetch fires at startup unless the runtime flag is true.
+        // See ADR 017 (Portal Data Lifecycle) for the dormancy contract.
+        let mut startup_tasks = vec![if fullscreen {
+            window::get_latest().and_then(|w| window::change_mode(w, window::Mode::Fullscreen))
+        } else {
+            Task::none()
+        }];
+        if new.using_uwhportal {
+            startup_tasks.push(new.request_event_list());
+        }
+        let task = Task::batch(startup_tasks);
 
         (new, task)
     }
@@ -2381,6 +2385,7 @@ impl RefBoxApp {
                 task
             }
             Message::ToggleBoolParameter(param) => {
+                let mut trigger_event_list_fetch = false;
                 match param {
                     BoolGameParameter::TeamWarning => {
                         if let AppState::KeypadPage(
@@ -2429,20 +2434,23 @@ impl RefBoxApp {
                             BoolGameParameter::UsingUwhPortal => {
                                 let was_using = edited_settings.using_uwhportal;
                                 edited_settings.using_uwhportal ^= true;
-                                // When the operator toggles Using-UWH-Portal ON, the
-                                // event / court / game / schedule pickers start from
-                                // a blank slate (don't pre-fill with the last-known
-                                // values from a previous session or toggle). The
-                                // token credential itself is kept in
-                                // `config.uwhportal.token`; only its validity cache
-                                // is reset so the portal re-verifies on next
-                                // interaction.
+                                // Per ADR 017 (Portal Data Lifecycle): on OFF -> ON,
+                                // start the event / court / game / schedule pickers
+                                // from a blank slate (don't pre-fill with the
+                                // last-known values from a previous session or
+                                // toggle) and kick off the event-list fetch
+                                // immediately so the picker has data ready when the
+                                // operator navigates to it. The token credential
+                                // itself is kept in `config.uwhportal.token`; only
+                                // its validity cache is reset so the portal
+                                // re-verifies on next interaction.
                                 if !was_using && edited_settings.using_uwhportal {
                                     edited_settings.current_event_id = None;
                                     edited_settings.current_court = None;
                                     edited_settings.schedule = None;
                                     edited_settings.game_number = String::new();
                                     edited_settings.uwhportal_token_valid = None;
+                                    trigger_event_list_fetch = true;
                                 }
                             }
                             BoolGameParameter::SoundEnabled => {
@@ -2477,7 +2485,11 @@ impl RefBoxApp {
                         }
                     }
                 };
-                Task::none()
+                if trigger_event_list_fetch {
+                    self.request_event_list()
+                } else {
+                    Task::none()
+                }
             }
             Message::CycleParameter(param) => {
                 let settings = &mut self.edited_settings.as_mut().unwrap();
@@ -3060,14 +3072,18 @@ impl RefBoxApp {
                     .as_ref()
                     .and_then(|events| events.get(id).and_then(|event| event.teams.as_ref()))
             }),
-            // The portal health indicator is dormant until an event is
-            // linked: `Some` when the tile and its state are live,
-            // `None` when the time banner falls back to the pre-feature
-            // layout. See ADR 011 amendment 2026-04-23.
-            portal_indicator: self
-                .current_event_id
-                .as_ref()
-                .map(|_| self.portal_manager.indicator_state()),
+            // The portal health indicator is dormant whenever Using-UWH-Portal
+            // is off OR no event is linked. `Some` only when the feature is on
+            // AND an event is linked; otherwise `None` and the time banner
+            // falls back to the pre-feature layout. See ADR 011 amendments
+            // 2026-04-23 (event-linked gate) and 2026-05-16 (using-uwh-portal gate).
+            portal_indicator: if self.using_uwhportal {
+                self.current_event_id
+                    .as_ref()
+                    .map(|_| self.portal_manager.indicator_state())
+            } else {
+                None
+            },
         };
 
         let mut main_view = column![match self.app_state {

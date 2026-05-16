@@ -357,12 +357,13 @@ impl Server {
         &mut self,
         send_type: SendType,
         sender: T,
-    ) {
+    ) -> usize {
         let (tx, rx) = mpsc::channel(WORKER_CHANNEL_LEN);
         let join = task::spawn(worker_loop(rx, sender));
 
+        let new_id = self.next_id;
         self.senders.insert(
-            self.next_id,
+            new_id,
             match send_type {
                 SendType::Binary => WorkerHandle::new_binary(tx, join),
                 SendType::Json => WorkerHandle::new_json(tx, join),
@@ -374,6 +375,8 @@ impl Server {
             SendType::Binary => self.has_binary = true,
             SendType::Json => self.has_json = true,
         };
+
+        new_id
     }
 
     fn add_serial_sender(&mut self, sender: SerialStream) {
@@ -495,8 +498,30 @@ impl Server {
                 msg = self.rx.recv() => {
                     match msg {
                         Some(ServerMessage::NewConnection(send_type, stream)) => {
-                            self.add_sender(send_type, stream);
+                            let new_id = self.add_sender(send_type, stream);
                             self.check_types();
+                            // Replay the most recent buffered state to the new
+                            // client so it has data to render immediately, instead
+                            // of waiting for the next snapshot tick from the
+                            // tournament manager. Fixes the "Panel Simulator
+                            // stays black after Restart-to-Apply" bug, where the
+                            // newly-spawned simulator connects but had no data
+                            // until a tick arrived.
+                            if !self.binary.is_empty() || !self.json.is_empty() {
+                                if let Some(handle) = self.senders.get(&new_id) {
+                                    if let Err(e) = handle.send(
+                                        &self.binary,
+                                        &self.json,
+                                        &self.snapshot,
+                                        self.white_on_right,
+                                        self.brightness,
+                                    ) {
+                                        error!(
+                                            "Error replaying latest snapshot to new client {new_id}: {e:?}"
+                                        );
+                                    }
+                                }
+                            }
                         }
                         Some(ServerMessage::NewSnapshot(snapshot, white_on_right, brightness)) => {
                             self.white_on_right = white_on_right;

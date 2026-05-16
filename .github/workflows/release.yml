@@ -60,11 +60,30 @@ jobs:
         name: refbox-macos-x86
         path: target/x86_64-apple-darwin/release/bundle/osx/refbox.app
 
+  build-rpi:
+    name: Build release on linux for aarch64 (Raspberry Pi)
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v5
+    - uses: Swatinem/rust-cache@v2
+    - name: Install cross from crates.io
+      uses: baptiste0928/cargo-install@v3
+      with:
+        crate: cross
+    - name: Versions
+      run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version && cross --version
+    - run: cross build --release --target aarch64-unknown-linux-gnu -p refbox
+    - uses: actions/upload-artifact@v4
+      with:
+        name: refbox-rpi
+        path: target/aarch64-unknown-linux-gnu/release/refbox
+
   upload-release:
     name: Upload release artifacts
     runs-on: ubuntu-latest
 
-    needs: [build-windows, build-macos-arm, build-macos-x86]
+    needs: [build-windows, build-macos-arm, build-macos-x86, build-rpi]
 
     steps:
     - uses: actions/download-artifact@v5
@@ -79,6 +98,10 @@ jobs:
       with:
         name: refbox-macos-x86
         path: release/Mac\ (Intel processor)/refbox.app
+    - uses: actions/download-artifact@v5
+      with:
+        name: refbox-rpi
+        path: release/Raspberry\ Pi
     - name: Download PDFs from Google Drive
       run: |
         curl -L "https://drive.usercontent.google.com/download?id=1Momxds_2oyPTEZHgcuSxnTxI_HbGeaN8&export=download" -o "release/Getting Started Guide - English.pdf"

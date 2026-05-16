@@ -660,15 +660,11 @@ pub(super) fn make_time_editor<'a, T: IntoFragment<'a>>(
     ]
     .spacing(SPACING);
 
-    let mut time_col = column![text(time_string(time)).size(LARGE_TEXT),]
-        .align_x(Horizontal::Center)
-        .width(Length::Fixed(if wide { 300.0 } else { 200.0 }))
-        .spacing(SPACING);
-
-    if wide {
-        time_col = time_col.push(row![
+    let time_col = column![
+        text(time_string(time)).size(LARGE_TEXT),
+        row![
             horizontal_space(),
-            make_smaller_button(fl!("zero"))
+            make_small_button(fl!("zero"), MEDIUM_TEXT)
                 .style(blue_button)
                 .on_press(Message::ChangeTime {
                     increase: false,
@@ -676,8 +672,11 @@ pub(super) fn make_time_editor<'a, T: IntoFragment<'a>>(
                     timeout,
                 }),
             horizontal_space(),
-        ]);
-    }
+        ],
+    ]
+    .align_x(Horizontal::Center)
+    .width(Length::Fixed(if wide { 300.0 } else { 200.0 }))
+    .spacing(SPACING);
 
     let time_edit = row![min_edits, time_col, sec_edits]
         .spacing(SPACING)

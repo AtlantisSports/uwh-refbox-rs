@@ -307,7 +307,7 @@ penalty-shot-short = STRAFSCHOT
 ## Waarschuwingscontainer maken
 team-warning-abreviation = T
 ## Tijdeditor maken
-zero = NUL
+zero = = 0
 
 # Tijd bewerken
 game-time = WEDSTRIJDTIJD

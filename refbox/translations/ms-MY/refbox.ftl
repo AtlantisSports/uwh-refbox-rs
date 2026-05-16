@@ -307,7 +307,7 @@ penalty-shot-short = TMBN PENALTI
 ## Buat bekas amaran
 team-warning-abreviation = P
 ## Buat penyunting masa
-zero = SIFAR
+zero = = 0
 
 # Edit Masa
 game-time = MASA PERLAWANAN

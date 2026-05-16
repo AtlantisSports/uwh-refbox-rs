@@ -309,7 +309,7 @@ penalty-shot-short = TIR DE PÉN.
 ## Make warning container
 team-warning-abreviation = É
 ## Make time editor
-zero = ZÉRO
+zero = = 0
 
 # Time edit
 game-time = TEMPS DE MATCH

@@ -307,7 +307,7 @@ penalty-shot-short = PENALTY SHT
 ## Gawing warning container
 team-warning-abreviation = K
 ## Gawing time editor
-zero = SERO
+zero = = 0
 
 # Pag-edit ng Oras
 game-time = ORAS NG LARO

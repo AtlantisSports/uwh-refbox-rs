@@ -307,7 +307,7 @@ penalty-shot-short = PEN SHT
 ## 警告コンテナ
 team-warning-abreviation = 警
 ## 時間編集
-zero = ゼロ
+zero = = 0
 
 # 時間編集
 game-time = 試合時間

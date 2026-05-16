@@ -309,7 +309,7 @@ penalty-shot-short = 페널티 샷
 ## 경고 컨테이너 생성
 team-warning-abreviation = 팀
 ## 시간 편집기 생성
-zero = 영
+zero = = 0
 
 # 시간 편집
 game-time = 경기 시간

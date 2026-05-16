@@ -307,7 +307,7 @@ penalty-shot-short = TIRO PENAL
 ## Contentor de aviso de equipa
 team-warning-abreviation = A
 ## Editor de tempo
-zero = ZERO
+zero = = 0
 
 # Edição de Tempo
 game-time = TEMPO DE JOGO

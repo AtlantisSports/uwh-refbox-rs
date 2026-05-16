@@ -307,7 +307,7 @@ penalty-shot-short = ยิงโทษ
 ## สร้างกล่องการเตือน
 team-warning-abreviation = ท
 ## สร้างตัวแก้ไขเวลา
-zero = ศูนย์
+zero = = 0
 
 # แก้ไขเวลา
 game-time = เวลาเกม

@@ -83,6 +83,7 @@ jobs:
       run: |
         curl -L "https://drive.usercontent.google.com/download?id=1Momxds_2oyPTEZHgcuSxnTxI_HbGeaN8&export=download" -o "release/Getting Started Guide - English.pdf"
         curl -L "https://drive.usercontent.google.com/download?id=13eHCCmBH-IEUwIODaqpbbz_LiZQBBh0p&export=download" -o "release/Getting Started Guide - Spanish (Guía de Inicio).pdf"
+        curl -L "https://drive.usercontent.google.com/download?id=1sJTdKHKjul6Pa7eV44APEQBFaxwQSvYy&export=download" -o "release/Providing App Credentials - English.pdf"
         curl -L "https://drive.usercontent.google.com/download?id=1skrUYTEYBgHs4T-dl3AobwklfJR3ZGE1&export=download" -o "release/Refbox User Manual.pdf"
         curl -L "https://drive.usercontent.google.com/download?id=1FLtJwc8gb5vuSRVPUNLxKhT1ufcOSa-w&export=download" -o "release/Refbox User Manual with Fouls.pdf"
     - name: Zip release

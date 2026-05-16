@@ -400,7 +400,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let saved_language = config.language.unwrap_or(Language::English);
     let (default_font_family, default_font_weight) = match saved_language {
         Language::Korean | Language::Japanese | Language::Mandarin => {
-            ("Noto Sans CJK KR", iced_core::font::Weight::Normal)
+            ("WenQuanYi Zen Hei", iced_core::font::Weight::Normal)
         }
         Language::Thai => ("Noto Sans Thai", iced_core::font::Weight::Normal),
         _ => ("Roboto", iced_core::font::Weight::Medium),
@@ -433,7 +433,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     //   just regen-cjk-font
     let fonts = vec![
         Cow::from(&include_bytes!("../resources/Roboto-Medium.ttf")[..]),
-        Cow::from(&include_bytes!("../resources/NotoSansCJK-Subset.otf")[..]),
+        Cow::from(&include_bytes!("../resources/WqyZenHei-Subset.ttf")[..]),
         Cow::from(&include_bytes!("../resources/NotoSansThai-Subset.ttf")[..]),
     ];
 

@@ -1301,7 +1301,7 @@ fn make_language_select_page<'a>(
     let apply_enabled = page_has_changes(ConfigPage::Language, settings, page_entry_snapshot);
 
     let cjk_font = iced_core::Font {
-        family: iced_core::font::Family::Name("Noto Sans CJK KR"),
+        family: iced_core::font::Family::Name("WenQuanYi Zen Hei"),
         weight: iced_core::font::Weight::Normal,
         stretch: iced_core::font::Stretch::Normal,
         style: iced_core::font::Style::Normal,

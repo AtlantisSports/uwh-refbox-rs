@@ -347,6 +347,18 @@ max = 최대
 hockey6v6 = 하키 6대6
 hockey3v3 = 하키 3대3
 rugby = 럭비
+beep-test = BEEP TEST
+
+# Beep-test screen
+beep-test-pre = PRE
+beep-test-level = LEVEL { $level }
+beep-test-laps = LAPS: { $laps }
+beep-test-start = START
+beep-test-stop = STOP
+beep-test-reset = RESET
+beep-test-column-level = LEVEL
+beep-test-column-count = COUNT
+beep-test-column-duration = DURATION
 
 # 위반 항목
 stick-foul = 스틱 반칙

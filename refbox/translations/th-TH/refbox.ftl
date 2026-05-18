@@ -345,6 +345,18 @@ max = สูงสุด
 hockey6v6 = ฮอกกี้ 6ต่อ6
 hockey3v3 = ฮอกกี้ 3ต่อ3
 rugby = รักบี้
+beep-test = BEEP TEST
+
+# Beep-test screen
+beep-test-pre = PRE
+beep-test-level = LEVEL { $level }
+beep-test-laps = LAPS: { $laps }
+beep-test-start = START
+beep-test-stop = STOP
+beep-test-reset = RESET
+beep-test-column-level = LEVEL
+beep-test-column-count = COUNT
+beep-test-column-duration = DURATION
 
 # การฝ่าฝืน
 stick-foul = ฟาวล์ด้วยไม้

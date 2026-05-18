@@ -345,6 +345,18 @@ max = MAKS
 hockey6v6 = HOKEY6V6
 hockey3v3 = HOKEY3V3
 rugby = RAGBİ
+beep-test = BEEP TEST
+
+# Beep-test screen
+beep-test-pre = PRE
+beep-test-level = LEVEL { $level }
+beep-test-laps = LAPS: { $laps }
+beep-test-start = START
+beep-test-stop = STOP
+beep-test-reset = RESET
+beep-test-column-level = LEVEL
+beep-test-column-count = COUNT
+beep-test-column-duration = DURATION
 
 # İhlaller
 stick-foul = Sopa Faulü

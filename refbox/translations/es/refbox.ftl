@@ -356,6 +356,18 @@ max = MÁX
 hockey6v6 = HOCKEY 6vs6
 hockey3v3 = HOCKEY 3vs3
 rugby = RUGBY
+beep-test = PRUEBA DE PITIDOS
+
+# Pantalla de prueba de pitidos
+beep-test-pre = PRE
+beep-test-level = NIVEL { $level }
+beep-test-laps = VUELTAS: { $laps }
+beep-test-start = INICIAR
+beep-test-stop = PARAR
+beep-test-reset = REINICIAR
+beep-test-column-level = NIVEL
+beep-test-column-count = CANTIDAD
+beep-test-column-duration = DURACIÓN
 
 # Infractions
 stick-foul = Infracción con el palo

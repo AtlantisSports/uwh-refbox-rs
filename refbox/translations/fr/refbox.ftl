@@ -347,6 +347,18 @@ max = MAX
 hockey6v6 = Hockey6V6
 hockey3v3 = Hockey3V3
 rugby = Rugby
+beep-test = TEST DE BIP
+
+# Écran de test de bip
+beep-test-pre = PRÉ
+beep-test-level = NIVEAU { $level }
+beep-test-laps = TOURS: { $laps }
+beep-test-start = DÉMARRER
+beep-test-stop = ARRÊTER
+beep-test-reset = RÉINITIALISER
+beep-test-column-level = NIVEAU
+beep-test-column-count = NOMBRE
+beep-test-column-duration = DURÉE
 
 # Infractions
 stick-foul = Faute de crosse

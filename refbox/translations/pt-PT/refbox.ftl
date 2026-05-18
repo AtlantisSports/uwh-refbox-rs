@@ -345,6 +345,18 @@ max = MÁX
 hockey6v6 = HÓQUEI 6C6
 hockey3v3 = HÓQUEI 3C3
 rugby = RÂGUEBI
+beep-test = BEEP TEST
+
+# Beep-test screen
+beep-test-pre = PRE
+beep-test-level = LEVEL { $level }
+beep-test-laps = LAPS: { $laps }
+beep-test-start = START
+beep-test-stop = STOP
+beep-test-reset = RESET
+beep-test-column-level = LEVEL
+beep-test-column-count = COUNT
+beep-test-column-duration = DURATION
 
 # Infrações
 stick-foul = Falta de Taco

@@ -386,6 +386,115 @@ impl std::default::Default for ClockState {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{BeepTest as BeepTestConfig, Level};
+
+    /// A minimal two-level config used by most tests.
+    /// pre = 5 s, two levels each with count=2 and duration=10 s / 8 s.
+    fn test_config() -> BeepTestConfig {
+        BeepTestConfig {
+            pre: Duration::from_secs(5),
+            levels: vec![
+                Level {
+                    count: 2,
+                    duration: Duration::from_secs(10),
+                },
+                Level {
+                    count: 2,
+                    duration: Duration::from_secs(8),
+                },
+            ],
+        }
+    }
+
+    /// A tiny single-level config used for end-of-test traversal.
+    /// pre = 1 s, one level with count=1 and duration=1 s.
+    /// After the single lap the engine wraps back to Pre and stops.
+    fn tiny_config() -> BeepTestConfig {
+        BeepTestConfig {
+            pre: Duration::from_secs(1),
+            levels: vec![Level {
+                count: 1,
+                duration: Duration::from_secs(1),
+            }],
+        }
+    }
+
+    // Test 1 — a freshly constructed engine is not running.
+    #[test]
+    fn starts_stopped() {
+        let tm = TournamentManager::new(test_config());
+        assert!(!tm.clock_is_running());
+    }
+
+    // Test 2 — calling start_clock marks the engine as running.
+    #[test]
+    fn start_clock_marks_running() {
+        let mut tm = TournamentManager::new(test_config());
+        let now = Instant::now();
+        tm.start_clock(now);
+        assert!(tm.clock_is_running());
+    }
+
+    // Test 3 — calling stop_clock after start_clock marks the engine as stopped.
+    #[test]
+    fn stop_clock_marks_stopped() {
+        let mut tm = TournamentManager::new(test_config());
+        let now = Instant::now();
+        tm.start_clock(now);
+        tm.stop_clock(now + Duration::from_secs(1)).unwrap();
+        assert!(!tm.clock_is_running());
+    }
+
+    // Test 4 — start_beep_test_now immediately transitions the engine from Pre to Level(0).
+    //
+    // `start_beep_test_now` is the intended entry point for beginning the beep test.
+    // It calls `start_game` internally, which sets current_period to Level(0) and starts
+    // the Level(0) countdown (whose duration equals config.pre).
+    // There is no need to drive time forward — the transition is instantaneous.
+    #[test]
+    fn start_beep_test_transitions_pre_to_level_0() {
+        let mut tm = TournamentManager::new(test_config());
+        let now = Instant::now();
+        tm.start_beep_test_now(now).unwrap();
+        assert_eq!(tm.current_period(), BeepTestPeriod::Level(0));
+    }
+
+    // Test 5 — driving the engine through all levels via update() eventually ends the test.
+    //
+    // After the single lap in tiny_config() completes, `start_next_lap` wraps the period
+    // back to Pre and calls `send_clock_running(false)`, leaving the engine stopped.
+    // The engine does NOT stay in a "Finished" state — it resets to Pre and waits for the
+    // next `start_beep_test_now` call.  This is the engine's designed terminal behaviour.
+    #[test]
+    fn full_run_ends_stopped() {
+        let mut tm = TournamentManager::new(tiny_config());
+        let t0 = Instant::now();
+
+        // Enter the test: Pre → Level(0), clock counting down for config.pre = 1 s.
+        tm.start_beep_test_now(t0).unwrap();
+        assert_eq!(tm.current_period(), BeepTestPeriod::Level(0));
+        assert!(tm.clock_is_running());
+
+        // Advance past the Level(0) pre-period (1 s).
+        // update() sees elapsed >= time_remaining_at_start and calls start_next_lap,
+        // which transitions Level(0) → Level(1) (the first real level).
+        tm.update(t0 + Duration::from_secs(2)).unwrap();
+        assert_eq!(tm.current_period(), BeepTestPeriod::Level(1));
+        assert!(tm.clock_is_running());
+
+        // Advance past Level(1)'s single lap (1 s).
+        // count == 1, which equals p.count(&config) == 1, so start_next_lap advances
+        // to the next period.  With only one level, next_period(config) returns Pre,
+        // the clock is stopped, and send_clock_running(false) is sent.
+        tm.update(t0 + Duration::from_secs(4)).unwrap();
+        assert_eq!(tm.current_period(), BeepTestPeriod::Pre);
+        assert!(!tm.clock_is_running());
+    }
+}
+
 impl ClockState {
     fn is_running(&self) -> bool {
         match self {

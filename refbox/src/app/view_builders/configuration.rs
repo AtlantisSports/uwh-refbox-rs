@@ -244,11 +244,12 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
         mode,
         clock_running,
         portal_indicator,
+        has_led_panel,
         ..
     } = data;
 
     // Param order convention: per-branch additions appended in chronological order
-    // — page_entry_snapshot (Unit 3) then portal_indicator (Unit 7).
+    // — page_entry_snapshot (Unit 3) then portal_indicator (Unit 7) then has_led_panel (open-new-display gate).
     match page {
         ConfigPage::Main => {
             make_main_config_page(snapshot, settings, mode, clock_running, portal_indicator)
@@ -277,6 +278,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
             clock_running,
             page_entry_snapshot,
             portal_indicator,
+            has_led_panel,
         ),
         ConfigPage::App => make_app_config_page(
             mode,
@@ -879,6 +881,7 @@ fn make_display_config_page<'a>(
     clock_running: bool,
     page_entry_snapshot: Option<&PageEntrySnapshot>,
     portal_indicator: Option<PortalIndicatorState>,
+    has_led_panel: bool,
 ) -> Element<'a, Message> {
     let EditableSettings {
         white_on_right,
@@ -947,11 +950,17 @@ fn make_display_config_page<'a>(
         ]
         .spacing(SPACING)
         .height(Length::Fill),
-        row![
-            make_button(fl!("open-new-display"))
-                .style(light_gray_button)
-                .on_press(Message::OpenNewDisplay),
-        ]
+        row![{
+            // The button is grayed out (no `on_press`) when a real LED panel
+            // is connected (`--serial-port`). Opening a sim window in that
+            // configuration would compete with the physical display.
+            let btn = make_button(fl!("open-new-display")).style(light_gray_button);
+            if has_led_panel {
+                btn
+            } else {
+                btn.on_press(Message::OpenNewDisplay)
+            }
+        }]
         .spacing(SPACING)
         .height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),

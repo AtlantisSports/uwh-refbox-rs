@@ -19,10 +19,6 @@ const TABLE_CELL_WIDTH: f32 = 80.0;
 /// Spacing between cells in the read-only levels table.
 const TABLE_CELL_SPACING: f32 = 2.0;
 
-// `build_beep_test_page` is wired into `view()` by Task 9 of the
-// beep-test-absorption work. Until then it is dead code; `#[expect]`
-// flags the day Task 9 lands and the dead_code lint flips off.
-#[expect(dead_code)]
 pub(in super::super) fn build_beep_test_page<'a>(
     snapshot: &BeepTestSnapshot,
     config: &'a BeepTest,

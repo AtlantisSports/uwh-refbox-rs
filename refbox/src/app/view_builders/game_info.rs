@@ -22,6 +22,7 @@ pub(in super::super) fn build_game_info_page<'a>(
         clock_running,
         teams,
         portal_indicator,
+        has_led_panel: _,
     } = data;
 
     let middle_item: Element<_> = if using_uwhportal {

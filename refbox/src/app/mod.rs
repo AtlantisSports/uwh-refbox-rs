@@ -104,6 +104,11 @@ pub struct RefBoxApp {
     sound: SoundController,
     sim_children: Vec<Child>,
     sim_spawn_config: crate::SimSpawnConfig,
+    /// `true` when the refbox was started with `--serial-port`, meaning a
+    /// real LED panel is connected. The "Open New Display" button is
+    /// disabled in this state so the operator can't fork the panel feed
+    /// into a window that competes with the physical display.
+    has_led_panel: bool,
     list_all_events: bool,
     mouse_alarm_held: bool,
     spacebar_held: bool,
@@ -1125,6 +1130,8 @@ impl RefBoxApp {
 
         let tm = Arc::new(Mutex::new(tm));
 
+        let has_led_panel = !serial_ports.is_empty();
+
         let update_sender =
             UpdateSender::new(serial_ports, binary_port, json_port, config.hide_time);
 
@@ -1211,6 +1218,7 @@ impl RefBoxApp {
             sound,
             sim_children,
             sim_spawn_config,
+            has_led_panel,
             list_all_events,
             mouse_alarm_held: false,
             spacebar_held: false,
@@ -1932,6 +1940,16 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::OpenNewDisplay => {
+                if self.has_led_panel {
+                    // Defense in depth — the UI grays the button out when an
+                    // LED panel is connected, so this branch should be
+                    // unreachable via normal interaction. Log if it ever fires.
+                    warn!(
+                        "Ignoring OpenNewDisplay: a serial LED panel is connected; \
+                         simulator windows are disabled in this configuration"
+                    );
+                    return Task::none();
+                }
                 match crate::spawn_sim_child(&self.sim_spawn_config) {
                     Ok(child) => {
                         info!(
@@ -3119,6 +3137,7 @@ impl RefBoxApp {
             } else {
                 None
             },
+            has_led_panel: self.has_led_panel,
         };
 
         let mut main_view = column![match self.app_state {

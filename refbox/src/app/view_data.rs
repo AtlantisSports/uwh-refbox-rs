@@ -14,4 +14,8 @@ pub(super) struct ViewData<'a, 'b> {
     /// unlinked); the feature is dormant, the tile is not rendered, and
     /// the time banner falls back to the pre-feature layout.
     pub(super) portal_indicator: Option<PortalIndicatorState>,
+    /// `true` when the refbox was launched with `--serial-port` (real LED
+    /// panel connected). Used to gray out controls that only make sense
+    /// without a real panel — currently just "Open New Display".
+    pub(super) has_led_panel: bool,
 }

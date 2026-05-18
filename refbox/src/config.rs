@@ -72,6 +72,139 @@ impl UwhPortal {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct Level {
+    pub count: u8,
+    #[serde(with = "secs_only_duration")]
+    pub duration: std::time::Duration,
+}
+
+impl Level {
+    pub fn migrate(old: &Table) -> Self {
+        let Self {
+            mut count,
+            mut duration,
+        } = Default::default();
+
+        if let Some(value) = old.get("count") {
+            if let Some(value) = value.as_integer().and_then(|i| i.try_into().ok()) {
+                count = value;
+            }
+        }
+
+        if let Some(value) = old.get("duration") {
+            if let Some(value) = value.as_integer().and_then(|i| i.try_into().ok()) {
+                duration = std::time::Duration::from_secs(value);
+            }
+        }
+
+        Self { count, duration }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BeepTest {
+    #[serde(with = "secs_only_duration")]
+    pub pre: std::time::Duration,
+    pub levels: Vec<Level>,
+}
+
+impl Default for BeepTest {
+    fn default() -> Self {
+        Self {
+            pre: std::time::Duration::from_secs(10),
+            levels: vec![
+                Level {
+                    count: 3,
+                    duration: std::time::Duration::from_secs(36),
+                },
+                Level {
+                    count: 3,
+                    duration: std::time::Duration::from_secs(34),
+                },
+                Level {
+                    count: 3,
+                    duration: std::time::Duration::from_secs(32),
+                },
+                Level {
+                    count: 4,
+                    duration: std::time::Duration::from_secs(30),
+                },
+                Level {
+                    count: 4,
+                    duration: std::time::Duration::from_secs(28),
+                },
+                Level {
+                    count: 4,
+                    duration: std::time::Duration::from_secs(26),
+                },
+                Level {
+                    count: 4,
+                    duration: std::time::Duration::from_secs(24),
+                },
+                Level {
+                    count: 4,
+                    duration: std::time::Duration::from_secs(22),
+                },
+                Level {
+                    count: 5,
+                    duration: std::time::Duration::from_secs(20),
+                },
+                Level {
+                    count: 4,
+                    duration: std::time::Duration::from_secs(18),
+                },
+            ],
+        }
+    }
+}
+
+impl BeepTest {
+    pub fn migrate(old: &Table) -> Self {
+        let Self {
+            mut pre,
+            mut levels,
+        } = Default::default();
+
+        if let Some(value) = old.get("pre") {
+            if let Some(value) = value.as_integer().and_then(|i| i.try_into().ok()) {
+                pre = std::time::Duration::from_secs(value);
+            }
+        }
+
+        if let Some(values) = old.get("levels") {
+            if let Some(values) = values.as_array() {
+                for value in values {
+                    if let Some(table) = value.as_table() {
+                        levels.push(Level::migrate(table))
+                    }
+                }
+            }
+        }
+
+        Self { pre, levels }
+    }
+}
+
+mod secs_only_duration {
+    use serde::{self, Deserialize, Deserializer, Serializer};
+    use std::time::Duration;
+
+    pub fn serialize<S>(dur: &Duration, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u64(dur.as_secs())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Duration, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(Duration::from_secs(u64::deserialize(deserializer)?))
+    }
+}
+
 #[derive(Derivative, Serialize, Deserialize)]
 #[derivative(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Config {
@@ -83,6 +216,7 @@ pub struct Config {
     #[derivative(Default(value = "true"))]
     pub confirm_score: bool,
     pub game: Game,
+    pub beep_test: BeepTest,
     pub hardware: Hardware,
     pub uwhportal: UwhPortal,
     pub sound: SoundSettings,
@@ -98,6 +232,7 @@ impl Config {
             mut track_fouls_and_warnings,
             confirm_score,
             mut game,
+            mut beep_test,
             mut hardware,
             mut uwhportal,
             mut sound,
@@ -123,6 +258,11 @@ impl Config {
                 game = Game::migrate(old_game);
             }
         }
+        if let Some(old_beep_test) = old.get("beep_test") {
+            if let Some(old_beep_test) = old_beep_test.as_table() {
+                beep_test = BeepTest::migrate(old_beep_test);
+            }
+        }
         if let Some(old_hardware) = old.get("hardware") {
             if let Some(old_hardware) = old_hardware.as_table() {
                 hardware = Hardware::migrate(old_hardware);
@@ -146,6 +286,7 @@ impl Config {
             track_fouls_and_warnings,
             confirm_score,
             game,
+            beep_test,
             hardware,
             uwhportal,
             sound,
@@ -232,6 +373,45 @@ mod test {
         let serialized = toml::to_string(&config).unwrap();
         let deser = toml::from_str(&serialized);
         assert_eq!(deser, Ok(config));
+    }
+
+    #[test]
+    fn test_ser_beep_test() {
+        let bt: BeepTest = Default::default();
+        let serialized = toml::to_string(&bt).unwrap();
+        let deser = toml::from_str(&serialized);
+        assert_eq!(deser, Ok(bt));
+    }
+
+    #[test]
+    fn test_migrate_beep_test_absent() {
+        let old: Table = Default::default();
+        let config = Config::migrate(&old);
+        assert_eq!(config.beep_test, BeepTest::default());
+    }
+
+    #[test]
+    fn test_migrate_beep_test_present() {
+        let mut old: Table = Default::default();
+        let mut bt: Table = Default::default();
+        bt.insert("pre".to_string(), toml::Value::Integer(20));
+        let mut levels: Vec<toml::Value> = Vec::new();
+        let mut level: Table = Default::default();
+        level.insert("count".to_string(), toml::Value::Integer(2));
+        level.insert("duration".to_string(), toml::Value::Integer(15));
+        levels.push(toml::Value::Table(level));
+        bt.insert("levels".to_string(), toml::Value::Array(levels));
+        old.insert("beep_test".to_string(), toml::Value::Table(bt));
+        let config = Config::migrate(&old);
+        assert_eq!(config.beep_test.pre, std::time::Duration::from_secs(20));
+        // The migrate implementation appends to the default levels, so we expect
+        // the default 10 levels plus the 1 new level = 11.
+        assert_eq!(config.beep_test.levels.len(), 11);
+        assert_eq!(config.beep_test.levels[10].count, 2);
+        assert_eq!(
+            config.beep_test.levels[10].duration,
+            std::time::Duration::from_secs(15)
+        );
     }
 
     #[test]

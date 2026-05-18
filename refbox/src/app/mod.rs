@@ -1,6 +1,7 @@
 use self::infraction::InfractionDetails;
 use super::{APP_NAME, fl};
 use crate::{
+    beep_test::{cadence::TournamentManager as BeepTestManager, snapshot::BeepTestSnapshot},
     config::{Config, Mode},
     penalty_editor::*,
     portal_manager::{ItemId, PortalEvent, PortalManager, SelectedEventId, UwhPortalIo},
@@ -77,6 +78,15 @@ pub static RESTART_PENDING: AtomicBool = AtomicBool::new(false);
 
 pub struct RefBoxApp {
     tm: Arc<Mutex<TournamentManager>>,
+    /// Cadence engine for BeepTest mode. `Some(_)` only when
+    /// `config.mode == Mode::BeepTest`; `None` in Hockey/Rugby modes.
+    /// Driven by the `BeepTestTick` subscription, not by the game-clock
+    /// `time_updater` stream.
+    beep_test_tm: Option<BeepTestManager>,
+    /// Most-recent BeepTest snapshot. Held alongside `snapshot` so the
+    /// tick handler can compare before/after for sound-trigger decisions
+    /// (mirrors `maybe_play_sound`'s use of `self.snapshot`).
+    beep_test_snapshot: BeepTestSnapshot,
     config: Config,
     edited_settings: Option<EditableSettings>,
     page_entry_snapshot: Option<PageEntrySnapshot>,
@@ -392,6 +402,43 @@ impl RefBoxApp {
                     prereqs && is_buzz_period && new_snapshot.secs_in_period == 0,
                 )
             }
+        };
+
+        if play_whistle {
+            info!("Triggering whistle");
+            self.sound.trigger_whistle();
+        } else if play_buzzer {
+            info!("Triggering buzzer");
+            self.sound.trigger_buzzer();
+        }
+    }
+
+    /// Beep-test variant of `maybe_play_sound`. Compares a freshly-generated
+    /// `BeepTestSnapshot` against `self.beep_test_snapshot` and fires the
+    /// whistle (5 s before lap end) or the buzzer (at lap end, gated by
+    /// the operator's auto-start/stop sound settings). Ported verbatim
+    /// from `beep-test/src/app/mod.rs::maybe_play_sound`.
+    fn maybe_play_beep_test_sound(&self, new_snapshot: &BeepTestSnapshot) {
+        use crate::beep_test::snapshot::BeepTestPeriod;
+
+        let (play_whistle, play_buzzer) = {
+            let prereqs = new_snapshot.current_period != BeepTestPeriod::Pre
+                && new_snapshot.secs_in_period != self.beep_test_snapshot.secs_in_period;
+
+            let is_whistle_period = match new_snapshot.current_period {
+                BeepTestPeriod::Level(_) => true,
+                BeepTestPeriod::Pre => false,
+            };
+
+            let (end_starts_play, end_stops_play) = (true, false);
+
+            let is_buzz_period = end_starts_play && self.config.sound.auto_sound_start_play
+                || end_stops_play && self.config.sound.auto_sound_stop_play;
+
+            (
+                prereqs && is_whistle_period && new_snapshot.secs_in_period == 5,
+                prereqs && is_buzz_period && new_snapshot.secs_in_period == 0,
+            )
         };
 
         if play_whistle {
@@ -1085,6 +1132,15 @@ impl RefBoxApp {
         let mut tm = TournamentManager::new(config.game.clone());
         tm.start_clock(Instant::now());
 
+        // In BeepTest mode, also build a cadence engine. `None` for the
+        // ordinary Hockey/Rugby modes — the game `tm` above remains the
+        // single source of truth there.
+        let beep_test_tm = if config.mode == Mode::BeepTest {
+            Some(BeepTestManager::new(config.beep_test.clone()))
+        } else {
+            None
+        };
+
         let portal_token = if !config.uwhportal.token.is_empty() {
             Some(config.uwhportal.token.as_str())
         } else {
@@ -1205,6 +1261,8 @@ impl RefBoxApp {
             warn_edit: ListEditor::new(tm.clone()),
             foul_edit: ListEditor::new(tm.clone()),
             tm,
+            beep_test_tm,
+            beep_test_snapshot: BeepTestSnapshot::default(),
             config,
             edited_settings: Default::default(),
             page_entry_snapshot: None,
@@ -3106,6 +3164,83 @@ impl RefBoxApp {
                 }
                 Task::none()
             }
+            Message::BeepTestStart => {
+                // Mirrors `beep-test/src/app/mod.rs`'s Start handler:
+                // from Pre the engine enters via `start_beep_test_now`;
+                // from a Level it resumes via `start_clock`. Anything
+                // unexpected from the engine is logged so the operator
+                // still gets a responsive UI rather than a panic.
+                if let Some(ref mut bt_tm) = self.beep_test_tm {
+                    let now = Instant::now();
+                    use crate::beep_test::snapshot::BeepTestPeriod;
+                    match bt_tm.current_period() {
+                        BeepTestPeriod::Pre => {
+                            if let Err(e) = bt_tm.start_beep_test_now(now) {
+                                error!("Failed to start beep test: {e}");
+                            }
+                        }
+                        BeepTestPeriod::Level(_) => bt_tm.start_clock(now),
+                    }
+                }
+                Task::none()
+            }
+            Message::BeepTestStop => {
+                if let Some(ref mut bt_tm) = self.beep_test_tm {
+                    if let Err(e) = bt_tm.stop_clock(Instant::now()) {
+                        error!("Failed to stop beep-test clock: {e}");
+                    }
+                }
+                Task::none()
+            }
+            Message::BeepTestReset => {
+                if let Some(ref mut bt_tm) = self.beep_test_tm {
+                    bt_tm.reset_beep_test_now(Instant::now());
+                }
+                self.beep_test_snapshot = BeepTestSnapshot::default();
+                Task::none()
+            }
+            Message::BeepTestTick => {
+                // Drives the cadence engine forward, ships the snapshot
+                // to the LED panel, and triggers any whistles/buzzers at
+                // the same boundaries the standalone beep-test would.
+                if let Some(ref mut bt_tm) = self.beep_test_tm {
+                    let now = Instant::now();
+                    if let Err(e) = bt_tm.update(now) {
+                        error!("Beep-test engine update failed: {e}");
+                    }
+                    let Some(new_snapshot) = bt_tm.generate_snapshot(now) else {
+                        // generate_snapshot returns None when the clock
+                        // time would be negative; nothing to ship this
+                        // tick. The next tick will recover.
+                        return Task::none();
+                    };
+                    self.maybe_play_beep_test_sound(&new_snapshot);
+                    // The LED panel pipeline accepts the full GameSnapshot;
+                    // synthesize one from the beep-test snapshot the same
+                    // way the existing `BeepTestSnapshot -> GameSnapshotNoHeap`
+                    // conversion does (BetweenGames + lap_count as white score).
+                    let game_snap = GameSnapshot {
+                        current_period: GamePeriod::BetweenGames,
+                        secs_in_period: new_snapshot.secs_in_period,
+                        scores: BlackWhiteBundle {
+                            black: 0,
+                            white: new_snapshot.lap_count,
+                        },
+                        ..Default::default()
+                    };
+                    if let Err(e) = self.update_sender.send_snapshot(
+                        game_snap,
+                        self.config.hardware.white_on_right,
+                        self.config.hardware.brightness,
+                    ) {
+                        // Channel-full or closed: the next tick re-sends
+                        // a fresh snapshot, so dropping one is acceptable.
+                        warn!("Failed to send beep-test snapshot to LED panel: {e:?}");
+                    }
+                    self.beep_test_snapshot = new_snapshot;
+                }
+                Task::none()
+            }
             Message::NoAction => Task::none(),
         }
     }
@@ -3287,6 +3422,24 @@ impl RefBoxApp {
         let portal_tick =
             iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::PortalUiTick);
 
+        // BeepTest tick (10 Hz) — drives the cadence engine forward
+        // and ships snapshots to the LED panel. Only active when the
+        // app is running in BeepTest mode; in Hockey/Rugby it would
+        // generate noise messages that the update arm would ignore.
+        let beep_test_tick = if self.config.mode == Mode::BeepTest {
+            Some(
+                iced::time::every(std::time::Duration::from_millis(100))
+                    .map(|_| Message::BeepTestTick),
+            )
+        } else {
+            None
+        };
+
+        let mut subs = vec![time_sub, portal_events, portal_tick];
+        if let Some(tick) = beep_test_tick {
+            subs.push(tick);
+        }
+
         if self.config.sound.sound_enabled && self.config.sound.manual_alarm_enabled {
             let key_press = keyboard::on_key_press(|key, _modifiers| {
                 if matches!(key, Key::Named(Named::Space)) {
@@ -3311,17 +3464,12 @@ impl RefBoxApp {
                 }
                 _ => None,
             });
-            Subscription::batch([
-                time_sub,
-                portal_events,
-                portal_tick,
-                key_press,
-                key_release,
-                mouse_release,
-            ])
-        } else {
-            Subscription::batch([time_sub, portal_events, portal_tick])
+            subs.push(key_press);
+            subs.push(key_release);
+            subs.push(mouse_release);
         }
+
+        Subscription::batch(subs)
     }
 
     pub fn application_style(&self, _theme: &Theme) -> Appearance {

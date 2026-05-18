@@ -145,6 +145,20 @@ pub enum Message {
     RecvTokenValid(bool),
     StopClock,
     StartClock,
+    // Constructed by the BeepTest view buttons added in Task 8; the
+    // `update()` handler arms already exist (Task 7), so `#[expect]`
+    // flags the day Task 8 lands and the dead_code lint flips off.
+    /// Operator pressed Start in BeepTest mode.
+    #[expect(dead_code)]
+    BeepTestStart,
+    /// Operator pressed Stop in BeepTest mode.
+    #[expect(dead_code)]
+    BeepTestStop,
+    /// Operator pressed Reset in BeepTest mode.
+    #[expect(dead_code)]
+    BeepTestReset,
+    /// Tick from the timer subscription; advances the cadence engine.
+    BeepTestTick,
     AlarmPressed,
     AlarmReleased,
     SpacebarPressed,
@@ -172,6 +186,7 @@ impl Message {
             | Self::TimeUpdaterStarted(_)
             | Self::PortalEvent(_)
             | Self::PortalUiTick
+            | Self::BeepTestTick
             | Self::NoAction
             | Self::OpenNewDisplay => true,
 
@@ -229,6 +244,9 @@ impl Message {
             | Self::AutoConfirmScores(_)
             | Self::StopClock
             | Self::StartClock
+            | Self::BeepTestStart
+            | Self::BeepTestStop
+            | Self::BeepTestReset
             | Self::AlarmPressed
             | Self::AlarmReleased
             | Self::SpacebarPressed
@@ -262,6 +280,10 @@ impl PartialEq for Message {
             | (Self::EndTimeout, Self::EndTimeout)
             | (Self::StopClock, Self::StopClock)
             | (Self::StartClock, Self::StartClock)
+            | (Self::BeepTestStart, Self::BeepTestStart)
+            | (Self::BeepTestStop, Self::BeepTestStop)
+            | (Self::BeepTestReset, Self::BeepTestReset)
+            | (Self::BeepTestTick, Self::BeepTestTick)
             | (Self::AlarmPressed, Self::AlarmPressed)
             | (Self::AlarmReleased, Self::AlarmReleased)
             | (Self::SpacebarPressed, Self::SpacebarPressed)
@@ -465,6 +487,10 @@ impl PartialEq for Message {
             | (Self::RecvTokenValid(_), _)
             | (Self::StopClock, _)
             | (Self::StartClock, _)
+            | (Self::BeepTestStart, _)
+            | (Self::BeepTestStop, _)
+            | (Self::BeepTestReset, _)
+            | (Self::BeepTestTick, _)
             | (Self::AlarmPressed, _)
             | (Self::AlarmReleased, _)
             | (Self::SpacebarPressed, _)

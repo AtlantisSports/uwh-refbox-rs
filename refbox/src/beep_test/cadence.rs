@@ -244,7 +244,7 @@ impl TournamentManager {
         self.lap_count = 0;
     }
 
-    pub(super) fn update(&mut self, now: Instant) -> Result<()> {
+    pub fn update(&mut self, now: Instant) -> Result<()> {
         // Case of clock running, with no timeout and not SD
         if let ClockState::CountingDown {
             start_time,

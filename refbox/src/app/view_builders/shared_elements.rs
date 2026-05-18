@@ -310,6 +310,7 @@ pub(crate) fn portal_name_for_mode(mode: Mode) -> &'static str {
     match mode {
         Mode::Rugby => "UWR",
         Mode::Hockey6V6 | Mode::Hockey3V3 => "UWH",
+        Mode::BeepTest => "",
     }
 }
 
@@ -356,6 +357,7 @@ pub(super) fn make_health_tile<'a>(
         Mode::Hockey6V6 | Mode::Hockey3V3 => {
             &include_bytes!("../../../resources/UWH_Portal_Compact_Logo.png")[..]
         }
+        Mode::BeepTest => &include_bytes!("../../../resources/UWH_Portal_Compact_Logo.png")[..],
     };
     let logo = Image::new(image::Handle::from_bytes(logo_bytes))
         .width(Length::Fill)

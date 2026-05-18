@@ -102,7 +102,8 @@ pub struct RefBoxApp {
     current_event_id: Option<EventId>,
     current_court: Option<String>,
     sound: SoundController,
-    sim_child: Option<Child>,
+    sim_children: Vec<Child>,
+    sim_spawn_config: crate::SimSpawnConfig,
     list_all_events: bool,
     mouse_alarm_held: bool,
     spacebar_held: bool,
@@ -145,7 +146,8 @@ pub struct RefBoxAppFlags {
     pub serial_ports: Vec<SerialPortBuilder>,
     pub binary_port: u16,
     pub json_port: u16,
-    pub sim_child: Option<Child>,
+    pub sim_children: Vec<Child>,
+    pub sim_spawn_config: crate::SimSpawnConfig,
     pub require_https: bool,
     pub fullscreen: bool,
     pub list_all_events: bool,
@@ -953,9 +955,9 @@ impl RefBoxApp {
                     // Continue with restart anyway — the operator pressed Restart.
                 }
 
-                // Kill the simulator child so it does not linger as an orphan
+                // Kill every simulator child so they do not linger as orphans
                 // after the iced runtime closes its windows.
-                if let Some(mut child) = self.sim_child.take() {
+                for mut child in self.sim_children.drain(..) {
                     let _ = child.kill();
                 }
                 // Mark the restart and let iced gracefully close its windows.
@@ -1050,8 +1052,8 @@ impl RefBoxApp {
 
 impl Drop for RefBoxApp {
     fn drop(&mut self) {
-        if let Some(mut child) = self.sim_child.take() {
-            info!("Waiting for child");
+        for mut child in self.sim_children.drain(..) {
+            info!("Waiting for sim child");
             child.wait().unwrap();
         }
     }
@@ -1065,7 +1067,8 @@ impl RefBoxApp {
             serial_ports,
             binary_port,
             json_port,
-            sim_child,
+            sim_children,
+            sim_spawn_config,
             require_https,
             fullscreen,
             list_all_events,
@@ -1206,7 +1209,8 @@ impl RefBoxApp {
             current_event_id: None,
             current_court: None,
             sound,
-            sim_child,
+            sim_children,
+            sim_spawn_config,
             list_all_events,
             mouse_alarm_held: false,
             spacebar_held: false,
@@ -1927,6 +1931,21 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
+            Message::OpenNewDisplay => {
+                match crate::spawn_sim_child(&self.sim_spawn_config) {
+                    Ok(child) => {
+                        info!(
+                            "Opened new sim window; total now {}",
+                            self.sim_children.len() + 1
+                        );
+                        self.sim_children.push(child);
+                    }
+                    Err(e) => {
+                        error!("Failed to spawn new sim window: {e:?}");
+                    }
+                }
+                Task::none()
+            }
             Message::OpenPortalDetailPage => {
                 self.app_state = AppState::PortalDetailPage { scroll_index: 0 };
                 trace!("AppState changed to {:?}", self.app_state);
@@ -2533,9 +2552,9 @@ impl RefBoxApp {
                         self.config.language = Some(lang);
                         confy::store(crate::APP_NAME, None, &self.config).unwrap();
                         if needs_restart {
-                            // Kill the simulator child so it does not linger as
-                            // an orphan after the iced runtime closes its windows.
-                            if let Some(mut child) = self.sim_child.take() {
+                            // Kill every simulator child so they do not linger as
+                            // orphans after the iced runtime closes its windows.
+                            for mut child in self.sim_children.drain(..) {
                                 let _ = child.kill();
                             }
                             // Mark the restart and let iced gracefully close its

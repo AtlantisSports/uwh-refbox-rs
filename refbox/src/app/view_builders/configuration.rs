@@ -947,7 +947,13 @@ fn make_display_config_page<'a>(
         ]
         .spacing(SPACING)
         .height(Length::Fill),
-        row![horizontal_space()].height(Length::Fill),
+        row![
+            make_button(fl!("open-new-display"))
+                .style(light_gray_button)
+                .on_press(Message::OpenNewDisplay),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),
         make_cancel_apply_footer(ConfigPage::Display, settings, page_entry_snapshot),
     ]

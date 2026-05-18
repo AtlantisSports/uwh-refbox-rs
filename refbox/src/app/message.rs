@@ -76,6 +76,10 @@ pub enum Message {
         canceled: bool,
     },
     ShowGameDetails,
+    /// Spawns a new panel-simulator window (in addition to any already
+    /// open). Triggered by the "Open New Display" button on the Display
+    /// Options tab. See [`crate::spawn_sim_child`] for the spawn details.
+    OpenNewDisplay,
     OpenPortalDetailPage,
     ClosePortalDetailPage,
     /// Emitted when the operator taps BACK on the portal attention
@@ -168,7 +172,8 @@ impl Message {
             | Self::TimeUpdaterStarted(_)
             | Self::PortalEvent(_)
             | Self::PortalUiTick
-            | Self::NoAction => true,
+            | Self::NoAction
+            | Self::OpenNewDisplay => true,
 
             Self::EditTime
             | Self::TimeEditComplete { .. }
@@ -243,6 +248,7 @@ impl PartialEq for Message {
             | (Self::WarningOverview, Self::WarningOverview)
             | (Self::FoulOverview, Self::FoulOverview)
             | (Self::ShowGameDetails, Self::ShowGameDetails)
+            | (Self::OpenNewDisplay, Self::OpenNewDisplay)
             | (Self::OpenPortalDetailPage, Self::OpenPortalDetailPage)
             | (Self::ClosePortalDetailPage, Self::ClosePortalDetailPage)
             | (Self::ClosePortalAttentionAction, Self::ClosePortalAttentionAction)
@@ -416,6 +422,7 @@ impl PartialEq for Message {
             | (Self::ChangeColor(_), _)
             | (Self::AddScoreComplete { .. }, _)
             | (Self::ShowGameDetails, _)
+            | (Self::OpenNewDisplay, _)
             | (Self::OpenPortalDetailPage, _)
             | (Self::ClosePortalDetailPage, _)
             | (Self::ClosePortalAttentionAction, _)

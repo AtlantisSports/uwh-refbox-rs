@@ -50,6 +50,7 @@ use view_data::ViewData;
 
 mod view_builders;
 use view_builders::{
+    beep_test::build_beep_test_page,
     shared_elements::{crosses_portal, portal_name_for_mode},
     *,
 };
@@ -200,6 +201,9 @@ enum AppState {
         item_id: ItemId,
         discard_armed: bool,
     },
+    /// Shown when `config.mode == Mode::BeepTest`. The cadence engine and
+    /// its snapshot live on the running app (`beep_test_tm` / `beep_test_snapshot`).
+    BeepTestPage,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1256,6 +1260,14 @@ impl RefBoxApp {
         };
         let portal_event_rx = Arc::new(Mutex::new(Some(portal_event_rx)));
 
+        // BeepTest mode boots straight into the beep-test screen. Hockey and
+        // Rugby modes keep the historic MainPage landing.
+        let initial_app_state = if config.mode == Mode::BeepTest {
+            AppState::BeepTestPage
+        } else {
+            AppState::MainPage
+        };
+
         let new = Self {
             pen_edit: ListEditor::new(tm.clone()),
             warn_edit: ListEditor::new(tm.clone()),
@@ -1267,8 +1279,8 @@ impl RefBoxApp {
             edited_settings: Default::default(),
             page_entry_snapshot: None,
             snapshot,
-            app_state: AppState::MainPage,
-            last_app_state: AppState::MainPage,
+            app_state: initial_app_state.clone(),
+            last_app_state: initial_app_state,
             last_message: Message::NoAction,
             update_sender,
             uwhportal_client,
@@ -3381,6 +3393,22 @@ impl RefBoxApp {
                     // the operator sees the actual queue state.
                     build_portal_detail_page(data, self.portal_manager.detail_rows(), 0)
                 }
+            }
+            AppState::BeepTestPage => {
+                // Invariant (Task 6 of beep-test absorption): `beep_test_tm`
+                // is `Some` exactly when `config.mode == Mode::BeepTest`, and
+                // `AppState::BeepTestPage` is only ever reached in that mode.
+                // A panic here would indicate that invariant was violated —
+                // a programming error, not a runtime condition.
+                let bt_tm = self
+                    .beep_test_tm
+                    .as_ref()
+                    .expect("beep_test_tm must be Some when AppState is BeepTestPage");
+                build_beep_test_page(
+                    &self.beep_test_snapshot,
+                    &self.config.beep_test,
+                    bt_tm.clock_is_running(),
+                )
             }
         }]
         .spacing(SPACING)

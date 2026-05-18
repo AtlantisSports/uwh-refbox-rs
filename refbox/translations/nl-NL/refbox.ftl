@@ -44,6 +44,7 @@ game-select = Wedstrijd:
 game-options = WEDSTRIJDOPTIES
 app-options = APP-OPTIES
 display-options = WEERGAVEOPTIES
+open-new-display = NIEUWE WEERGAVE OPENEN
 sound-options = GELUIDSOPTIES
 app-mode = APP-
     MODUS

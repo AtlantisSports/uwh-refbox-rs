@@ -44,6 +44,7 @@ game-select = 試合:
 game-options = 試合オプション
 app-options = アプリオプション
 display-options = 表示オプション
+open-new-display = 新しい表示を開く
 sound-options = サウンドオプション
 app-mode = アプリ
     モード

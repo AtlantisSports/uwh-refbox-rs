@@ -44,6 +44,7 @@ game-select = Oyun:
 game-options = OYUN SEÇENEKLERİ
 app-options = UYGULAMA SEÇENEKLERİ
 display-options = GÖRÜNTÜ SEÇENEKLERİ
+open-new-display = YENİ GÖRÜNTÜ AÇ
 sound-options = SES SEÇENEKLERİ
 app-mode = UYGULAMA
     MODU

@@ -44,6 +44,7 @@ game-select = Laro:
 game-options = MGA OPSYON SA LARO
 app-options = MGA OPSYON SA APP
 display-options = MGA OPSYON SA DISPLAY
+open-new-display = BUKSAN ANG BAGONG DISPLAY
 sound-options = MGA OPSYON SA TUNOG
 app-mode = MODE NG
     APP

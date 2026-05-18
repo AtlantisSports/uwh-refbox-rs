@@ -43,6 +43,7 @@ game-select = Game:
 game-options = GAME OPTIONS
 app-options = APP OPTIONS
 display-options = DISPLAY OPTIONS
+open-new-display = OPEN NEW DISPLAY
 sound-options = SOUND OPTIONS
 app-mode = APP
     MODE

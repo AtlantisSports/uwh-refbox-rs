@@ -44,6 +44,7 @@ game-select = Pertandingan:
 game-options = OPSI PERTANDINGAN
 app-options = OPSI APLIKASI
 display-options = OPSI TAMPILAN
+open-new-display = BUKA TAMPILAN BARU
 sound-options = OPSI SUARA
 app-mode = MODE
     APLIKASI

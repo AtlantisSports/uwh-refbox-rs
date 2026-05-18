@@ -46,6 +46,7 @@ game-select = 경기:
 game-options = 경기 옵션
 app-options = 앱 옵션
 display-options = 화면 옵션
+open-new-display = 새 화면 열기
 sound-options = 소리 옵션
 app-mode = 앱
     모드

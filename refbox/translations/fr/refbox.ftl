@@ -41,6 +41,7 @@ game-select = MATCH:
 game-options = OPTIONS DU MATCH
 app-options = OPTIONS DE L'APPLICATION
 display-options = OPTIONS D'AFFICHAGE
+open-new-display = OUVRIR NOUVEL AFFICHAGE
 sound-options = OPTIONS SONORES
 app-mode = MODE
 hide-time-for-last-15-seconds = CACHER LE TEMPS POUR

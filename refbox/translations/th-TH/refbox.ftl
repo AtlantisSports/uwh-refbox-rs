@@ -44,6 +44,7 @@ game-select = เกม:
 game-options = ตัวเลือกเกม
 app-options = ตัวเลือกแอป
 display-options = ตัวเลือกการแสดงผล
+open-new-display = เปิดการแสดงผลใหม่
 sound-options = ตัวเลือกเสียง
 app-mode = โหมด
     แอป

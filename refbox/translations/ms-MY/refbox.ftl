@@ -44,6 +44,7 @@ game-select = Perlawanan:
 game-options = PILIHAN PERLAWANAN
 app-options = PILIHAN APLIKASI
 display-options = PILIHAN PAPARAN
+open-new-display = BUKA PAPARAN BARU
 sound-options = PILIHAN BUNYI
 app-mode = MOD
     APLIKASI

@@ -44,6 +44,7 @@ game-select = 比赛：
 game-options = 比赛选项
 app-options = 应用选项
 display-options = 显示选项
+open-new-display = 打开新显示
 sound-options = 声音选项
 app-mode = 应用
     模式

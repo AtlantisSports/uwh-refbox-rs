@@ -500,6 +500,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let title = match mode {
         Mode::Rugby => "UWR Ref Box",
         Mode::Hockey6V6 | Mode::Hockey3V3 => "UWH Ref Box",
+        Mode::BeepTest => "Beep Test",
     };
     let result = iced::application(title, app::RefBoxApp::update, app::RefBoxApp::view)
         .subscription(app::RefBoxApp::subscription)

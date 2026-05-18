@@ -354,6 +354,7 @@ max = MAX
 hockey6v6 = HOCKEY6V6
 hockey3v3 = HOCKEY3V3
 rugby = RUGBY
+beep-test = BEEP TEST
 
 # Infractions
 stick-foul = Stick Foul

@@ -137,7 +137,8 @@ impl Cyclable for Mode {
         match self {
             Self::Hockey6V6 => Self::Hockey3V3,
             Self::Hockey3V3 => Self::Rugby,
-            Self::Rugby => Self::Hockey6V6,
+            Self::Rugby => Self::BeepTest,
+            Self::BeepTest => Self::Hockey6V6,
         }
     }
 }

@@ -41,6 +41,8 @@ pub(super) fn make_penalty_edit_page<'a>(
             PenaltyKind::FourMinute,
             PenaltyKind::FiveMinute,
         ),
+
+        Mode::BeepTest => unreachable!("BeepTest mode does not edit penalties"),
     };
 
     let (green_style, yellow_style, orange_style, td_style): (StyleFn, StyleFn, StyleFn, StyleFn) =

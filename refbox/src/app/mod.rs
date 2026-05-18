@@ -1095,6 +1095,7 @@ impl RefBoxApp {
             Mode::Hockey6V6 | Mode::Hockey3V3 => {
                 ("https://api.uwhportal.com", "UWH_PORTAL_URL_OVERRIDE")
             }
+            Mode::BeepTest => unreachable!("BeepTest has no portal"),
         };
         let url_override = std::env::var(override_var).ok();
         let portal_url = url_override.as_deref().unwrap_or(default_url).to_string();
@@ -1102,6 +1103,7 @@ impl RefBoxApp {
             let portal_name = match config.mode {
                 Mode::Rugby => "UWR",
                 Mode::Hockey6V6 | Mode::Hockey3V3 => "UWH",
+                Mode::BeepTest => unreachable!("BeepTest has no portal"),
             };
             info!("{override_var} active for {portal_name} Portal: using {portal_url}");
         }

@@ -3,6 +3,8 @@ use super::*;
 pub mod keypad_pages;
 pub(super) use keypad_pages::*;
 
+pub mod beep_test;
+
 pub mod configuration;
 pub(super) use configuration::*;
 

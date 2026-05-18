@@ -145,17 +145,11 @@ pub enum Message {
     RecvTokenValid(bool),
     StopClock,
     StartClock,
-    // Constructed by the BeepTest view buttons added in Task 8; the
-    // `update()` handler arms already exist (Task 7), so `#[expect]`
-    // flags the day Task 8 lands and the dead_code lint flips off.
     /// Operator pressed Start in BeepTest mode.
-    #[expect(dead_code)]
     BeepTestStart,
     /// Operator pressed Stop in BeepTest mode.
-    #[expect(dead_code)]
     BeepTestStop,
     /// Operator pressed Reset in BeepTest mode.
-    #[expect(dead_code)]
     BeepTestReset,
     /// Tick from the timer subscription; advances the cadence engine.
     BeepTestTick,

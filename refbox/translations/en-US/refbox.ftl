@@ -356,6 +356,17 @@ hockey3v3 = HOCKEY3V3
 rugby = RUGBY
 beep-test = BEEP TEST
 
+# Beep-test screen
+beep-test-pre = PRE
+beep-test-level = LEVEL { $level }
+beep-test-laps = LAPS: { $laps }
+beep-test-start = START
+beep-test-stop = STOP
+beep-test-reset = RESET
+beep-test-column-level = LEVEL
+beep-test-column-count = COUNT
+beep-test-column-duration = DURATION
+
 # Infractions
 stick-foul = Stick Foul
 illegal-advance = Illegal Advance

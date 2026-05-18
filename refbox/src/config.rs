@@ -174,6 +174,8 @@ impl BeepTest {
 
         if let Some(values) = old.get("levels") {
             if let Some(values) = values.as_array() {
+                // An override in the config file replaces the default levels entirely.
+                levels.clear();
                 for value in values {
                     if let Some(table) = value.as_table() {
                         levels.push(Level::migrate(table))
@@ -404,12 +406,11 @@ mod test {
         old.insert("beep_test".to_string(), toml::Value::Table(bt));
         let config = Config::migrate(&old);
         assert_eq!(config.beep_test.pre, std::time::Duration::from_secs(20));
-        // The migrate implementation appends to the default levels, so we expect
-        // the default 10 levels plus the 1 new level = 11.
-        assert_eq!(config.beep_test.levels.len(), 11);
-        assert_eq!(config.beep_test.levels[10].count, 2);
+        // An override in the config file replaces the default levels entirely.
+        assert_eq!(config.beep_test.levels.len(), 1);
+        assert_eq!(config.beep_test.levels[0].count, 2);
         assert_eq!(
-            config.beep_test.levels[10].duration,
+            config.beep_test.levels[0].duration,
             std::time::Duration::from_secs(15)
         );
     }

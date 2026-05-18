@@ -162,6 +162,64 @@ struct Cli {
     simulate_sunlight_display: bool,
 }
 
+/// All arguments needed to launch a panel-simulator child process. Built once
+/// in `main()` from the parsed CLI, then reused for every sim window we spawn
+/// (the startup one, and any opened later via the Display Options button).
+#[derive(Debug, Clone)]
+pub struct SimSpawnConfig {
+    pub binary_port: u16,
+    pub json_port: u16,
+    pub scale: f32,
+    pub spacing: f32,
+    pub sunlight_mode: bool,
+    pub verbose: u8,
+    pub log_location: PathBuf,
+    pub log_max_file_size: u64,
+    pub num_old_logs: u32,
+}
+
+/// Build the argv that `spawn_sim_child` passes to the spawned process.
+/// Factored out as a pure function so its construction can be unit-tested
+/// without spawning.
+pub fn build_sim_argv(config: &SimSpawnConfig) -> Vec<String> {
+    let mut args = vec![
+        "--is-simulator".to_string(),
+        "--binary-port".to_string(),
+        config.binary_port.to_string(),
+        "--json-port".to_string(),
+        config.json_port.to_string(),
+        "--scale".to_string(),
+        config.scale.to_string(),
+        "--spacing".to_string(),
+        config.spacing.to_string(),
+        "--log-location".to_string(),
+        // Matches the original main.rs behaviour. A non-UTF-8 log path would
+        // already have panicked at startup before we got here.
+        config.log_location.to_str().unwrap().to_string(),
+        "--log-max-file-size".to_string(),
+        config.log_max_file_size.to_string(),
+        "--num-old-logs".to_string(),
+        config.num_old_logs.to_string(),
+    ];
+    for _ in 0..config.verbose {
+        args.push("--verbose".to_string());
+    }
+    if config.sunlight_mode {
+        args.push("--simulate-sunlight-display".to_string());
+    }
+    args
+}
+
+pub(crate) fn spawn_sim_child(config: &SimSpawnConfig) -> std::io::Result<std::process::Child> {
+    let bin_name = std::env::current_exe()?.into_os_string();
+    let argv = build_sim_argv(config);
+    info!("Spawning sim child, bin_name: {bin_name:?}, args: {argv:?}");
+    Command::new(bin_name)
+        .args(&argv)
+        .stdin(Stdio::null())
+        .spawn()
+}
+
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let args = Cli::parse();
 
@@ -287,53 +345,32 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         info!("Starting RefBox App");
     }
 
+    let sim_spawn_config = SimSpawnConfig {
+        binary_port: args.binary_port,
+        json_port: args.json_port,
+        scale: args.scale,
+        spacing,
+        sunlight_mode: args.simulate_sunlight_display,
+        verbose: args.verbose,
+        log_location: log_base_path.clone(),
+        log_max_file_size: args.log_max_file_size,
+        num_old_logs: args.num_old_logs,
+    };
+
     let child = if args.no_simulate {
         None
     } else {
-        let bin_name = std::env::current_exe()?.into_os_string();
-        info!("Current bin_name: {bin_name:?}");
-
-        let binary_port = args.binary_port.to_string();
-        let json_port = args.json_port.to_string();
-        let scale = args.scale.to_string();
-        let spacing = spacing.to_string();
-        let log_location = log_base_path.to_str().unwrap().to_string();
-        let log_max_file_size = args.log_max_file_size.to_string();
-        let num_old_logs = args.num_old_logs.to_string();
-
-        let mut child_args = vec![
-            "--is-simulator",
-            "--binary-port",
-            &binary_port,
-            "--json-port",
-            &json_port,
-            "--scale",
-            &scale,
-            "--spacing",
-            &spacing,
-            "--log-location",
-            &log_location,
-            "--log-max-file-size",
-            &log_max_file_size,
-            "--num-old-logs",
-            &num_old_logs,
-        ];
-
-        child_args.resize(child_args.len() + args.verbose as usize, "--verbose");
-
-        if args.simulate_sunlight_display {
-            child_args.push("--simulate-sunlight-display");
+        info!(
+            "Starting startup sim child with binary port {}",
+            args.binary_port
+        );
+        match spawn_sim_child(&sim_spawn_config) {
+            Ok(child) => Some(child),
+            Err(e) => {
+                error!("Failed to spawn startup simulator: {e:?}");
+                None
+            }
         }
-
-        debug!("Child args: {child_args:?}");
-
-        info!("Starting child with birany port {binary_port}");
-        let child = Command::new(bin_name)
-            .args(child_args)
-            .stdin(Stdio::null())
-            .spawn()?;
-
-        Some(child)
     };
 
     let serial_ports = if let Some(port) = args.serial_port {
@@ -482,4 +519,48 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     }
 
     result.map_err(|e| e.into())
+}
+
+#[cfg(test)]
+mod sim_spawn_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn make_test_config(verbose: u8, sunlight: bool) -> SimSpawnConfig {
+        SimSpawnConfig {
+            binary_port: 8001,
+            json_port: 8000,
+            scale: 4.0,
+            spacing: 1.0,
+            sunlight_mode: sunlight,
+            verbose,
+            log_location: PathBuf::from("/tmp/logs"),
+            log_max_file_size: 5_000_000,
+            num_old_logs: 3,
+        }
+    }
+
+    #[test]
+    fn argv_includes_required_flags() {
+        let config = make_test_config(0, false);
+        let argv = build_sim_argv(&config);
+        assert!(argv.contains(&"--is-simulator".to_string()));
+        assert!(argv.contains(&"--binary-port".to_string()));
+        assert!(argv.contains(&"8001".to_string()));
+    }
+
+    #[test]
+    fn argv_repeats_verbose_per_count() {
+        let config = make_test_config(3, false);
+        let argv = build_sim_argv(&config);
+        assert_eq!(argv.iter().filter(|a| a.as_str() == "--verbose").count(), 3);
+    }
+
+    #[test]
+    fn argv_includes_sunlight_flag_only_when_enabled() {
+        let off = build_sim_argv(&make_test_config(0, false));
+        let on = build_sim_argv(&make_test_config(0, true));
+        assert!(!off.contains(&"--simulate-sunlight-display".to_string()));
+        assert!(on.contains(&"--simulate-sunlight-display".to_string()));
+    }
 }

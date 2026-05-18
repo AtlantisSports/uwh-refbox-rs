@@ -1059,7 +1059,10 @@ impl Drop for RefBoxApp {
     fn drop(&mut self) {
         for mut child in self.sim_children.drain(..) {
             info!("Waiting for sim child");
-            child.wait().unwrap();
+            // Best-effort: a wait() failure here (e.g. the child was
+            // already reaped) must not panic inside Drop, which would
+            // mask the real shutdown reason.
+            let _ = child.wait();
         }
     }
 }

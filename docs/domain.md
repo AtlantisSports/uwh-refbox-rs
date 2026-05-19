@@ -116,11 +116,10 @@ Technical terms used in the codebase that have specific meanings in this project
 | `led-panel` | RTL design for the physical LED scoreboard hardware |
 | `matrix-drawing` | Code for rendering graphics on the LED panel display |
 | `alphagen` | Utility for processing image assets used by the overlay |
-| `beep-test` | Tool for testing audio/buzzer sounds independently of a game |
 | `uwh-common` | The shared Rust library containing core game types used by all other crates |
 | `MSRV` | Minimum Supported Rust Version — the oldest Rust version this code must compile on (1.85) |
 | `no_std` | Rust code that works without the standard library — required for embedded targets |
-| `iced` | The GUI framework used to build the refbox and beep-test user interfaces |
+| `iced` | The GUI framework used to build the refbox user interface |
 | `Embassy` | The async framework used in the wireless-remote embedded firmware |
 | `RP2040` | The microcontroller chip inside the wireless remote (Raspberry Pi Pico) |
 | `LoRa` | The radio protocol used for communication between the wireless remote and the refbox |

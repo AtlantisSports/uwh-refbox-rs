@@ -52,7 +52,7 @@ When adding dependencies to these crates:
 
 ## Iced (GUI Framework)
 
-Used in `refbox` and `beep-test`. Version: 0.13.
+Used in `refbox`. Version: 0.13.
 
 - Use the existing theme and style patterns in `refbox/src/app/theme/` — do not introduce new
   styling approaches without discussion

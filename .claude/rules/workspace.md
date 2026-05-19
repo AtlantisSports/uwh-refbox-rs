@@ -43,12 +43,6 @@ Touch `overlay` for:
 - How the overlay connects to the refbox
 - Overlay visual layout changes
 
-### `beep-test` — Audio testing tool
-
-Touch `beep-test` for:
-- Changes to how the beep/sound test tool works
-- Audio system changes unrelated to the main refbox
-
 ### `wireless-remote` — Embedded firmware
 
 **Do not touch without explicit discussion.** See `embedded.md` for full rules.

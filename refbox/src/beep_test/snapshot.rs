@@ -45,34 +45,32 @@ impl From<BeepTestSnapshot> for GameSnapshotNoHeap {
 #[derivative(Debug, Default, Clone, Copy)]
 pub enum BeepTestPeriod {
     #[derivative(Default)]
-    Pre,
     Level(usize),
 }
 
 impl BeepTestPeriod {
     pub fn duration(self, config: &BeepTest) -> Option<Duration> {
         match self {
-            Self::Pre => Some(Duration::from_secs(10)),
-            Self::Level(0) => Some(config.pre),
-            Self::Level(i) => config.levels.get(i - 1).map(|l| l.duration),
+            Self::Level(i) => config.levels.get(i).map(|l| l.duration),
         }
     }
 
     pub fn count(self, config: &BeepTest) -> Option<u8> {
         match self {
-            Self::Pre | Self::Level(0) => Some(1),
-            Self::Level(i) => config.levels.get(i - 1).map(|l| l.count),
+            Self::Level(i) => config.levels.get(i).map(|l| l.count),
         }
     }
 
     pub fn next_period(self, config: &BeepTest) -> BeepTestPeriod {
         match self {
-            Self::Pre => Self::Level(0),
             Self::Level(i) => {
-                if i < config.levels.len() {
-                    Self::Level(i + 1)
+                let next = i + 1;
+                if next < config.levels.len() {
+                    Self::Level(next)
                 } else {
-                    Self::Pre
+                    // Wrap back to Level(0); the cadence engine stops the
+                    // clock in start_next_lap when it detects the wrap.
+                    Self::Level(0)
                 }
             }
         }
@@ -86,7 +84,6 @@ impl BeepTestPeriod {
 impl Display for BeepTestPeriod {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Pre => write!(f, "Pre"),
             Self::Level(i) => write!(f, "Level {i}"),
         }
     }

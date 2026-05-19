@@ -49,11 +49,16 @@ pub struct TournamentManager {
 impl TournamentManager {
     pub fn new(config: BeepTestConfig) -> Self {
         let (start_stop_tx, start_stop_rx) = watch::channel(false);
+        let initial_clock = config
+            .levels
+            .first()
+            .map(|l| l.duration)
+            .unwrap_or_default();
         Self {
-            time_in_next_lap: config.levels[0].duration,
-            current_period: BeepTestPeriod::Pre,
+            time_in_next_lap: config.levels.get(1).map(|l| l.duration).unwrap_or_default(),
+            current_period: BeepTestPeriod::Level(0),
             clock_state: ClockState::Stopped {
-                clock_time: Duration::from_secs(10),
+                clock_time: initial_clock,
             },
             config,
             time_state: TimeState::None,
@@ -144,29 +149,28 @@ impl TournamentManager {
             ));
         }
 
+        // Only allowed to start from Level(0) (the stopped/reset state). Any
+        // other Level means the test is already running.
         match self.current_period {
-            BeepTestPeriod::Pre | BeepTestPeriod::Level(0) => {
+            BeepTestPeriod::Level(0) => {
                 self.start_game(now);
             }
             BeepTestPeriod::Level(_) => return Err(TournamentManagerError::AlreadyInPlayPeriod),
         }
 
-        self.clock_state = match self.current_period {
-            p @ BeepTestPeriod::Level(_) => ClockState::CountingDown {
-                start_time: now,
-                time_remaining_at_start: p.duration(&self.config).unwrap(),
-            },
-            p @ BeepTestPeriod::Pre => ClockState::Stopped {
-                clock_time: p.duration(&self.config).unwrap(),
-            },
+        // After start_game, current_period is Level(0) — start the countdown.
+        // SAFETY: start_game just set current_period to Level(0), which always
+        // has a valid duration when config.levels is non-empty. The cadence engine
+        // is only constructed with non-empty configs.
+        self.clock_state = ClockState::CountingDown {
+            start_time: now,
+            time_remaining_at_start: self
+                .current_period
+                .duration(&self.config)
+                .expect("Level(0) must have a duration — config.levels is non-empty"),
         };
 
-        println!("Setting clock state to: {:?}", self.clock_state);
-        println!("Sending clock running status: true");
-
         self.send_clock_running(true);
-
-        println!("Period: {:?}", self.current_period);
 
         Ok(())
     }
@@ -174,13 +178,25 @@ impl TournamentManager {
     pub fn reset_beep_test_now(&mut self, now: Instant) {
         info!("{} Resetting Beep Test", self.status_string(now));
 
-        self.current_period = BeepTestPeriod::Pre;
+        self.current_period = BeepTestPeriod::Level(0);
+        // SAFETY: Level(0) is always valid when config.levels is non-empty.
+        let initial_clock = self
+            .config
+            .levels
+            .first()
+            .map(|l| l.duration)
+            .unwrap_or_default();
         self.clock_state = ClockState::Stopped {
-            clock_time: Duration::from_secs(10),
+            clock_time: initial_clock,
         };
         self.count = 1;
         self.lap_count = 0;
-        self.time_in_next_lap = self.config.pre;
+        self.time_in_next_lap = self
+            .config
+            .levels
+            .get(1)
+            .map(|l| l.duration)
+            .unwrap_or_default();
 
         self.send_clock_running(false);
     }
@@ -257,9 +273,6 @@ impl TournamentManager {
 
             if time >= time_remaining_at_start {
                 match self.current_period {
-                    BeepTestPeriod::Pre => {
-                        self.start_game(start_time + time_remaining_at_start);
-                    }
                     BeepTestPeriod::Level(_) => {
                         self.start_next_lap(now);
                     }
@@ -270,83 +283,83 @@ impl TournamentManager {
     }
 
     fn start_next_lap(&mut self, now: Instant) {
-        match self.current_period {
-            BeepTestPeriod::Pre => {
+        // Was the last level completed (i.e., will next_period wrap to Level(0))?
+        // We detect the wrap by comparing next_period to Level(0) after the
+        // final lap of the final level. If it wraps, the test is complete:
+        // stop the clock and reset to Level(0) ready for a new run.
+        let p @ BeepTestPeriod::Level(_) = self.current_period;
+
+        self.lap_count += 1;
+
+        if self.count >= p.count(&self.config).unwrap() {
+            self.count = 1;
+            let next = self.current_period.next_period(&self.config);
+            self.current_period = next;
+            info!(
+                "{} Entering next period: {}",
+                self.status_string(now),
+                self.current_period
+            );
+
+            // Detect wrap: next_period wraps to Level(0) when all levels are done.
+            // In that case, stop the clock — the test is complete.
+            if next == BeepTestPeriod::Level(0) {
+                // Test complete — reset to the initial stopped state at Level(0).
                 self.lap_count = 0;
-                let next_period = self.current_period.next_period(&self.config);
-                self.time_in_next_lap = next_period.next_test_period_dur(&self.config).unwrap();
-                self.current_period = next_period;
-                info!(
-                    "{} Entering next period: {next_period:?}",
-                    self.status_string(now)
-                );
+                self.clock_state = ClockState::Stopped {
+                    clock_time: self
+                        .current_period
+                        .duration(&self.config)
+                        .unwrap_or_default(),
+                };
+                self.send_clock_running(false);
+                return;
             }
 
-            p @ BeepTestPeriod::Level(_) => {
-                self.lap_count += 1;
-
-                if self.count >= p.count(&self.config).unwrap() {
-                    self.count = 1;
-                    self.current_period = self.current_period.next_period(&self.config);
-                    info!(
-                        "{} Entering next period: {}",
-                        self.status_string(now),
-                        self.current_period
-                    );
-                    if self.current_period.count(&self.config) == Some(1) {
-                        self.time_in_next_lap = self
-                            .current_period
-                            .next_test_period_dur(&self.config)
-                            .unwrap();
-                    }
-                    if self.current_period == BeepTestPeriod::Pre {
-                        self.lap_count = 0
-                    }
-                } else {
-                    if self.count == p.count(&self.config).unwrap() - 1 {
-                        self.time_in_next_lap = self
-                            .current_period
-                            .next_test_period_dur(&self.config)
-                            .unwrap();
-                    }
-                    self.count += 1;
-                    info!(
-                        "{} Repeating period: {}",
-                        self.status_string(now),
-                        self.current_period
-                    );
-                }
-            }
-        }
-        if self.current_period != BeepTestPeriod::Pre {
-            match self.clock_state {
-                ClockState::CountingDown {
-                    start_time,
-                    time_remaining_at_start,
-                } => {
-                    self.clock_state = ClockState::CountingDown {
-                        start_time: start_time + time_remaining_at_start,
-                        time_remaining_at_start: self
-                            .current_period
-                            .duration(&self.config)
-                            .unwrap(),
-                    };
-                }
-                ClockState::Stopped { .. } => {
-                    self.clock_state = ClockState::CountingDown {
-                        start_time: now,
-                        time_remaining_at_start: self
-                            .current_period
-                            .duration(&self.config)
-                            .unwrap(),
-                    }
-                }
+            if self.current_period.count(&self.config) == Some(1) {
+                self.time_in_next_lap = self
+                    .current_period
+                    .next_test_period_dur(&self.config)
+                    .unwrap_or_default();
             }
         } else {
-            self.clock_state = ClockState::Stopped {
-                clock_time: self.current_period.duration(&self.config).unwrap(),
-            };
-            self.send_clock_running(false);
+            if self.count == p.count(&self.config).unwrap() - 1 {
+                self.time_in_next_lap = self
+                    .current_period
+                    .next_test_period_dur(&self.config)
+                    .unwrap_or_default();
+            }
+            self.count += 1;
+            info!(
+                "{} Repeating period: {}",
+                self.status_string(now),
+                self.current_period
+            );
+        }
+
+        // Continue counting down for the next lap/period.
+        match self.clock_state {
+            ClockState::CountingDown {
+                start_time,
+                time_remaining_at_start,
+            } => {
+                self.clock_state = ClockState::CountingDown {
+                    start_time: start_time + time_remaining_at_start,
+                    time_remaining_at_start: self
+                        .current_period
+                        .duration(&self.config)
+                        .unwrap_or_default(),
+                };
+            }
+            ClockState::Stopped { .. } => {
+                self.clock_state = ClockState::CountingDown {
+                    start_time: now,
+                    time_remaining_at_start: self
+                        .current_period
+                        .duration(&self.config)
+                        .unwrap_or_default(),
+                };
+            }
         }
     }
 
@@ -392,10 +405,9 @@ mod tests {
     use crate::config::{BeepTest as BeepTestConfig, Level};
 
     /// A minimal two-level config used by most tests.
-    /// pre = 5 s, two levels each with count=2 and duration=10 s / 8 s.
+    /// Two levels: Level(0) count=2 duration=10 s, Level(1) count=2 duration=8 s.
     fn test_config() -> BeepTestConfig {
         BeepTestConfig {
-            pre: Duration::from_secs(5),
             levels: vec![
                 Level {
                     count: 2,
@@ -410,11 +422,10 @@ mod tests {
     }
 
     /// A tiny single-level config used for end-of-test traversal.
-    /// pre = 1 s, one level with count=1 and duration=1 s.
-    /// After the single lap the engine wraps back to Pre and stops.
+    /// One level: count=1, duration=1 s.
+    /// After the single lap the engine wraps back to Level(0) and stops.
     fn tiny_config() -> BeepTestConfig {
         BeepTestConfig {
-            pre: Duration::from_secs(1),
             levels: vec![Level {
                 count: 1,
                 duration: Duration::from_secs(1),
@@ -427,6 +438,8 @@ mod tests {
     fn starts_stopped() {
         let tm = TournamentManager::new(test_config());
         assert!(!tm.clock_is_running());
+        // New engine starts at Level(0), which is the first real level.
+        assert_eq!(tm.current_period(), BeepTestPeriod::Level(0));
     }
 
     // Test 2 — calling start_clock marks the engine as running.
@@ -448,49 +461,43 @@ mod tests {
         assert!(!tm.clock_is_running());
     }
 
-    // Test 4 — start_beep_test_now immediately transitions the engine from Pre to Level(0).
+    // Test 4 — start_beep_test_now starts immediately at Level(0) with the clock running.
     //
     // `start_beep_test_now` is the intended entry point for beginning the beep test.
-    // It calls `start_game` internally, which sets current_period to Level(0) and starts
-    // the Level(0) countdown (whose duration equals config.pre).
-    // There is no need to drive time forward — the transition is instantaneous.
+    // It sets current_period to Level(0) and starts the Level(0) countdown.
+    // There is no Pre warm-up period — the test starts immediately.
     #[test]
-    fn start_beep_test_transitions_pre_to_level_0() {
+    fn start_beep_test_starts_at_level_0() {
         let mut tm = TournamentManager::new(test_config());
         let now = Instant::now();
         tm.start_beep_test_now(now).unwrap();
         assert_eq!(tm.current_period(), BeepTestPeriod::Level(0));
+        assert!(tm.clock_is_running());
     }
 
     // Test 5 — driving the engine through all levels via update() eventually ends the test.
     //
-    // After the single lap in tiny_config() completes, `start_next_lap` wraps the period
-    // back to Pre and calls `send_clock_running(false)`, leaving the engine stopped.
-    // The engine does NOT stay in a "Finished" state — it resets to Pre and waits for the
-    // next `start_beep_test_now` call.  This is the engine's designed terminal behaviour.
+    // With tiny_config (one level, count=1, duration=1 s): start_beep_test_now begins
+    // Level(0) immediately. After 1 s the single lap completes; next_period wraps to
+    // Level(0), the engine detects the wrap, stops the clock, and resets lap_count to 0.
+    // The engine does NOT stay in a "Finished" state — it resets to Level(0) stopped,
+    // ready for the next start_beep_test_now call.
     #[test]
     fn full_run_ends_stopped() {
         let mut tm = TournamentManager::new(tiny_config());
         let t0 = Instant::now();
 
-        // Enter the test: Pre → Level(0), clock counting down for config.pre = 1 s.
+        // Enter the test: stopped → Level(0), clock counting down for 1 s.
         tm.start_beep_test_now(t0).unwrap();
         assert_eq!(tm.current_period(), BeepTestPeriod::Level(0));
         assert!(tm.clock_is_running());
 
-        // Advance past the Level(0) pre-period (1 s).
-        // update() sees elapsed >= time_remaining_at_start and calls start_next_lap,
-        // which transitions Level(0) → Level(1) (the first real level).
+        // Advance past Level(0)'s single lap (1 s).
+        // count == 1, which equals p.count(&config) == 1, so start_next_lap
+        // advances to next_period, which wraps to Level(0). The engine detects
+        // the wrap, stops the clock, and resets to the idle state.
         tm.update(t0 + Duration::from_secs(2)).unwrap();
-        assert_eq!(tm.current_period(), BeepTestPeriod::Level(1));
-        assert!(tm.clock_is_running());
-
-        // Advance past Level(1)'s single lap (1 s).
-        // count == 1, which equals p.count(&config) == 1, so start_next_lap advances
-        // to the next period.  With only one level, next_period(config) returns Pre,
-        // the clock is stopped, and send_clock_running(false) is sent.
-        tm.update(t0 + Duration::from_secs(4)).unwrap();
-        assert_eq!(tm.current_period(), BeepTestPeriod::Pre);
+        assert_eq!(tm.current_period(), BeepTestPeriod::Level(0));
         assert!(!tm.clock_is_running());
     }
 }

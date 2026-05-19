@@ -104,12 +104,18 @@ impl Level {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BeepTest {
+    /// Duration of the warm-up period shown on the display as "Level 0".
+    /// After the warm-up, the schedule proceeds through `levels`
+    /// (Level 1, Level 2, ...).
+    #[serde(with = "secs_only_duration")]
+    pub pre: std::time::Duration,
     pub levels: Vec<Level>,
 }
 
 impl Default for BeepTest {
     fn default() -> Self {
         Self {
+            pre: std::time::Duration::from_secs(10),
             levels: vec![
                 Level {
                     count: 3,
@@ -158,11 +164,16 @@ impl Default for BeepTest {
 
 impl BeepTest {
     pub fn migrate(old: &Table) -> Self {
-        let Self { mut levels } = Default::default();
+        let Self {
+            mut pre,
+            mut levels,
+        } = Default::default();
 
-        // Old configs may have a `pre` field; it is intentionally ignored here
-        // because the Pre cadence state has been removed. The `pre` duration was
-        // the Level(0) warm-up period and is no longer part of the schedule.
+        if let Some(value) = old.get("pre") {
+            if let Some(value) = value.as_integer().and_then(|i| i.try_into().ok()) {
+                pre = std::time::Duration::from_secs(value);
+            }
+        }
 
         if let Some(values) = old.get("levels") {
             if let Some(values) = values.as_array() {
@@ -176,7 +187,7 @@ impl BeepTest {
             }
         }
 
-        Self { levels }
+        Self { pre, levels }
     }
 }
 
@@ -388,7 +399,6 @@ mod test {
     fn test_migrate_beep_test_present() {
         let mut old: Table = Default::default();
         let mut bt: Table = Default::default();
-        // Old configs may include a `pre` field; migrate should silently ignore it.
         bt.insert("pre".to_string(), toml::Value::Integer(20));
         let mut levels: Vec<toml::Value> = Vec::new();
         let mut level: Table = Default::default();
@@ -398,6 +408,7 @@ mod test {
         bt.insert("levels".to_string(), toml::Value::Array(levels));
         old.insert("beep_test".to_string(), toml::Value::Table(bt));
         let config = Config::migrate(&old);
+        assert_eq!(config.beep_test.pre, std::time::Duration::from_secs(20));
         // An override in the config file replaces the default levels entirely.
         assert_eq!(config.beep_test.levels.len(), 1);
         assert_eq!(config.beep_test.levels[0].count, 2);

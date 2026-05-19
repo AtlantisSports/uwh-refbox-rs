@@ -51,13 +51,17 @@ pub enum BeepTestPeriod {
 impl BeepTestPeriod {
     pub fn duration(self, config: &BeepTest) -> Option<Duration> {
         match self {
-            Self::Level(i) => config.levels.get(i).map(|l| l.duration),
+            // Level(0) is the warm-up shown on the display as "Level 0".
+            Self::Level(0) => Some(config.pre),
+            // Level(i) for i in 1..=levels.len() maps to config.levels[i-1].
+            Self::Level(i) => config.levels.get(i - 1).map(|l| l.duration),
         }
     }
 
     pub fn count(self, config: &BeepTest) -> Option<u8> {
         match self {
-            Self::Level(i) => config.levels.get(i).map(|l| l.count),
+            Self::Level(0) => Some(1),
+            Self::Level(i) => config.levels.get(i - 1).map(|l| l.count),
         }
     }
 
@@ -65,11 +69,12 @@ impl BeepTestPeriod {
         match self {
             Self::Level(i) => {
                 let next = i + 1;
-                if next < config.levels.len() {
+                if next <= config.levels.len() {
                     Self::Level(next)
                 } else {
-                    // Wrap back to Level(0); the cadence engine stops the
-                    // clock in start_next_lap when it detects the wrap.
+                    // After the last real level, wrap back to Level(0) (the
+                    // warm-up). The cadence engine stops the clock in
+                    // start_next_lap when it detects the wrap.
                     Self::Level(0)
                 }
             }

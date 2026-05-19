@@ -3893,7 +3893,9 @@ impl RefBoxApp {
             // is a hockey/rugby concept and does not belong here.
             AppState::BeepTestPage => {}
             // BeepTest Settings pages also live inside the BeepTest hierarchy
-            // and have no concept of timeouts.
+            // and have no concept of timeouts. (Each sub-page renders its own
+            // bottom filler that mimics the ribbon's vertical footprint, to
+            // keep Fill-share proportions consistent with Hockey/Rugby.)
             AppState::BeepTestSettings(_) => {}
             _ => {
                 main_view = main_view.push(build_timeout_ribbon(

@@ -3433,8 +3433,6 @@ impl RefBoxApp {
     }
 
     pub(super) fn subscription(&self) -> Subscription<Message> {
-        let time_sub = Subscription::run(time_updater);
-
         // Portal event pump: forwards `PortalEvent`s from the
         // background portal task into the iced message loop. Registered
         // with a stable ID so iced 0.13 deduplicates it and we never
@@ -3451,22 +3449,20 @@ impl RefBoxApp {
         let portal_tick =
             iced::time::every(std::time::Duration::from_secs(1)).map(|_| Message::PortalUiTick);
 
-        // BeepTest tick (10 Hz) — drives the cadence engine forward
-        // and ships snapshots to the LED panel. Only active when the
-        // app is running in BeepTest mode; in Hockey/Rugby it would
-        // generate noise messages that the update arm would ignore.
-        let beep_test_tick = if self.config.mode == Mode::BeepTest {
-            Some(
+        let mut subs = vec![portal_events, portal_tick];
+
+        // Game-clock stream is only relevant in game modes. In BeepTest
+        // mode it would race with the BeepTest tick and overwrite our
+        // cadence snapshot on the LED panel.
+        if self.config.mode != Mode::BeepTest {
+            subs.push(Subscription::run(time_updater));
+        } else {
+            // BeepTest tick (10 Hz) — drives the cadence engine forward
+            // and ships snapshots to the LED panel.
+            subs.push(
                 iced::time::every(std::time::Duration::from_millis(100))
                     .map(|_| Message::BeepTestTick),
-            )
-        } else {
-            None
-        };
-
-        let mut subs = vec![time_sub, portal_events, portal_tick];
-        if let Some(tick) = beep_test_tick {
-            subs.push(tick);
+            );
         }
 
         if self.config.sound.sound_enabled && self.config.sound.manual_alarm_enabled {

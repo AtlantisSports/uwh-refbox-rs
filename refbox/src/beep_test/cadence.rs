@@ -179,12 +179,10 @@ impl TournamentManager {
         info!("{} Resetting Beep Test", self.status_string(now));
 
         self.current_period = BeepTestPeriod::Level(0);
-        // SAFETY: Level(0) is always valid when config.levels is non-empty.
+        // Level(0) is the warm-up; its duration comes from config.pre.
         let initial_clock = self
-            .config
-            .levels
-            .first()
-            .map(|l| l.duration)
+            .current_period
+            .duration(&self.config)
             .unwrap_or_default();
         self.clock_state = ClockState::Stopped {
             clock_time: initial_clock,
@@ -405,9 +403,11 @@ mod tests {
     use crate::config::{BeepTest as BeepTestConfig, Level};
 
     /// A minimal two-level config used by most tests.
-    /// Two levels: Level(0) count=2 duration=10 s, Level(1) count=2 duration=8 s.
+    /// Level(0) is the 1-second warm-up (`pre`). Level(1) count=2 duration=10 s.
+    /// Level(2) count=2 duration=8 s.
     fn test_config() -> BeepTestConfig {
         BeepTestConfig {
+            pre: Duration::from_secs(1),
             levels: vec![
                 Level {
                     count: 2,
@@ -422,10 +422,11 @@ mod tests {
     }
 
     /// A tiny single-level config used for end-of-test traversal.
-    /// One level: count=1, duration=1 s.
-    /// After the single lap the engine wraps back to Level(0) and stops.
+    /// Level(0) is the 1-second warm-up; Level(1) count=1 duration=1 s.
+    /// After Level(1) the engine wraps back to Level(0) and stops.
     fn tiny_config() -> BeepTestConfig {
         BeepTestConfig {
+            pre: Duration::from_secs(1),
             levels: vec![Level {
                 count: 1,
                 duration: Duration::from_secs(1),
@@ -461,11 +462,11 @@ mod tests {
         assert!(!tm.clock_is_running());
     }
 
-    // Test 4 — start_beep_test_now starts immediately at Level(0) with the clock running.
+    // Test 4 — start_beep_test_now starts at Level(0) (the warm-up) with the clock running.
     //
     // `start_beep_test_now` is the intended entry point for beginning the beep test.
-    // It sets current_period to Level(0) and starts the Level(0) countdown.
-    // There is no Pre warm-up period — the test starts immediately.
+    // It sets current_period to Level(0) (the warm-up shown as "Level 0" on the display)
+    // and starts the countdown using `config.pre` as the warm-up duration.
     #[test]
     fn start_beep_test_starts_at_level_0() {
         let mut tm = TournamentManager::new(test_config());
@@ -477,26 +478,30 @@ mod tests {
 
     // Test 5 — driving the engine through all levels via update() eventually ends the test.
     //
-    // With tiny_config (one level, count=1, duration=1 s): start_beep_test_now begins
-    // Level(0) immediately. After 1 s the single lap completes; next_period wraps to
-    // Level(0), the engine detects the wrap, stops the clock, and resets lap_count to 0.
-    // The engine does NOT stay in a "Finished" state — it resets to Level(0) stopped,
-    // ready for the next start_beep_test_now call.
+    // With tiny_config (pre=1 s, one level count=1 duration=1 s): start_beep_test_now
+    // begins Level(0) (the warm-up). After 1 s the warm-up completes and the engine
+    // advances to Level(1). After another 1 s the single Level(1) lap completes;
+    // next_period wraps to Level(0), the engine detects the wrap, stops the clock, and
+    // resets lap_count to 0. The engine does NOT stay in a "Finished" state — it
+    // resets to Level(0) stopped, ready for the next start_beep_test_now call.
     #[test]
     fn full_run_ends_stopped() {
         let mut tm = TournamentManager::new(tiny_config());
         let t0 = Instant::now();
 
-        // Enter the test: stopped → Level(0), clock counting down for 1 s.
+        // Enter the test: stopped → Level(0) (warm-up), clock counting down for 1 s.
         tm.start_beep_test_now(t0).unwrap();
         assert_eq!(tm.current_period(), BeepTestPeriod::Level(0));
         assert!(tm.clock_is_running());
 
-        // Advance past Level(0)'s single lap (1 s).
-        // count == 1, which equals p.count(&config) == 1, so start_next_lap
-        // advances to next_period, which wraps to Level(0). The engine detects
-        // the wrap, stops the clock, and resets to the idle state.
+        // Advance past Level(0) (warm-up). Engine advances to Level(1).
         tm.update(t0 + Duration::from_secs(2)).unwrap();
+        assert_eq!(tm.current_period(), BeepTestPeriod::Level(1));
+        assert!(tm.clock_is_running());
+
+        // Advance past Level(1)'s single lap. next_period wraps to Level(0),
+        // the engine detects the wrap, stops the clock, and resets to idle.
+        tm.update(t0 + Duration::from_secs(4)).unwrap();
         assert_eq!(tm.current_period(), BeepTestPeriod::Level(0));
         assert!(!tm.clock_is_running());
     }

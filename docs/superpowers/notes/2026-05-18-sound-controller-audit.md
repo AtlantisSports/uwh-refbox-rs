@@ -97,3 +97,50 @@ The absorbed cadence engine running inside refbox will call `trigger_whistle()` 
 and identical internal semantics. `update_settings()` is also present and identical. All public
 types the call sites use (`SoundSettings`, `Volume`, `BuzzerSound`) are present in refbox with
 matching variants, serialization, and behaviour.
+
+---
+
+## Walkthrough verification (Task 11)
+
+**Date:** 2026-05-19
+**Driver:** Operator (refbox running in WSLg under X11 fallback, sim window connected via TCP)
+
+| Scenario | Result | Notes |
+|----------|--------|-------|
+| A: Mode selector shows four options | PASS | Configuration page mode selector cycles Hockey6V6 → Hockey3V3 → Rugby → BeepTest |
+| B: Switch into BeepTest | PASS | Cycle to Beep Test + Apply → exe restart → lands on beep-test screen |
+| C: Cadence engine drives display | PASS | Press Start → timer counts down; level indicator advances; lap counter increments; whistle/buzzer sound at the configured boundaries |
+| D: Stop and Reset | PASS | Reset and Stop confirmed via log lines (`Resetting Beep Test`) |
+| E: Simulator mirrors panel | PASS | After the snapshot-race fix, the simulator window displays the cadence state without flashing |
+| F: Switch back to Hockey/Rugby/Language | PASS | Settings (new bottom-row button) → Configuration page → change setting → Apply → exe restart → lands in new mode/language |
+| G: Config persists across restarts | PASS | Quit and relaunch picks up the persisted mode/language |
+
+### Fixes that landed during the walkthrough
+
+| Fix | Commit | Why |
+|-----|--------|-----|
+| Don't panic in portal init when mode is BeepTest | `f8c3abb` | Persisted `mode = "BeepTest"` caused `unreachable!()` on startup |
+| Don't run game-clock stream in BeepTest mode | `9ea8a37` | Game clock's snapshot send raced with the BeepTest tick; LED panel flashed every second |
+| Add Settings button and reposition controls | `dee8af6` | Without a Settings button, the operator could not switch out of BeepTest mode |
+
+### Deferred for follow-up branches
+
+The walkthrough surfaced UI/display improvements the operator wants. These are scope-expansions
+beyond the absorption work and are queued as follow-up branches:
+
+**Branch 2 (`feat/refbox/beep-test-redesign`, refbox-only):**
+- Wider levels table, narrower controls column
+- Reset disabled until at least one Start has been pressed
+- Drop the PRE state — cadence engine starts directly at Level 0
+- Dedicated Settings sub-page (Sound Options, Edit Levels, App Mode) instead of opening the full Configuration page
+
+**Branch 3 (`feat/uwh-common/beep-test-led-display`, cross-crate, heavy process):**
+- New `GamePeriod::BeepTest` variant in `uwh-common`
+- LED panel renders "LEAVE IN" instead of "NEXT GAME IN" for BeepTest snapshots
+- LED panel leaves the black-side score panel blank (currently shows "0")
+
+### Deferred for real-hardware testing
+
+- Real LED panel rendering of BeepTest snapshots (verified only against the simulator)
+- Real LoRa wireless-remote behaviour in BeepTest mode (expected: silently ignored)
+- Serial cable behaviour across the mode-switch restart

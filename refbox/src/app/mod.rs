@@ -1150,20 +1150,21 @@ impl RefBoxApp {
         } else {
             None
         };
+        // BeepTest mode reuses the UWH defaults: the portal client is constructed
+        // unconditionally during startup, but the BeepTest UI never triggers any
+        // portal calls, so the client sits idle. Picking UWH here is harmless.
         let (default_url, override_var) = match config.mode {
             Mode::Rugby => ("https://api.uwrportal.com", "UWR_PORTAL_URL_OVERRIDE"),
-            Mode::Hockey6V6 | Mode::Hockey3V3 => {
+            Mode::Hockey6V6 | Mode::Hockey3V3 | Mode::BeepTest => {
                 ("https://api.uwhportal.com", "UWH_PORTAL_URL_OVERRIDE")
             }
-            Mode::BeepTest => unreachable!("BeepTest has no portal"),
         };
         let url_override = std::env::var(override_var).ok();
         let portal_url = url_override.as_deref().unwrap_or(default_url).to_string();
         if url_override.is_some() {
             let portal_name = match config.mode {
                 Mode::Rugby => "UWR",
-                Mode::Hockey6V6 | Mode::Hockey3V3 => "UWH",
-                Mode::BeepTest => unreachable!("BeepTest has no portal"),
+                Mode::Hockey6V6 | Mode::Hockey3V3 | Mode::BeepTest => "UWH",
             };
             info!("{override_var} active for {portal_name} Portal: using {portal_url}");
         }

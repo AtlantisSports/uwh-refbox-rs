@@ -165,6 +165,20 @@ pub enum Message {
     /// `edited_settings` and routes into the existing
     /// `EditGameConfig(ConfigPage::Language)` flow.
     BeepTestOpenLanguageSettings,
+    /// Operator pressed Sound Settings on the BeepTest Settings landing.
+    /// Seeds `edited_settings` with a clone of the current sound settings
+    /// so the existing `ToggleBoolParameter` / `CycleParameter` handlers
+    /// (which mutate `edited_settings`) can be reused, then navigates to
+    /// the BeepTest Sound Settings sub-page.
+    BeepTestEditOpenSound,
+    /// Operator pressed Save on the BeepTest Sound Settings sub-page.
+    /// Commits the staged sound edits to live config, persists to disk,
+    /// and returns to the BeepTest Settings landing.
+    BeepTestSoundSettingsSave,
+    /// Operator pressed Cancel on the BeepTest Sound Settings sub-page.
+    /// Discards staged sound edits and returns to the BeepTest Settings
+    /// landing.
+    BeepTestSoundSettingsCancel,
     AlarmPressed,
     AlarmReleased,
     SpacebarPressed,
@@ -257,6 +271,9 @@ impl Message {
             | Self::BeepTestCloseSettings
             | Self::BeepTestNavigateTo(_)
             | Self::BeepTestOpenLanguageSettings
+            | Self::BeepTestEditOpenSound
+            | Self::BeepTestSoundSettingsSave
+            | Self::BeepTestSoundSettingsCancel
             | Self::AlarmPressed
             | Self::AlarmReleased
             | Self::SpacebarPressed
@@ -297,6 +314,9 @@ impl PartialEq for Message {
             | (Self::BeepTestOpenSettings, Self::BeepTestOpenSettings)
             | (Self::BeepTestCloseSettings, Self::BeepTestCloseSettings)
             | (Self::BeepTestOpenLanguageSettings, Self::BeepTestOpenLanguageSettings)
+            | (Self::BeepTestEditOpenSound, Self::BeepTestEditOpenSound)
+            | (Self::BeepTestSoundSettingsSave, Self::BeepTestSoundSettingsSave)
+            | (Self::BeepTestSoundSettingsCancel, Self::BeepTestSoundSettingsCancel)
             | (Self::AlarmPressed, Self::AlarmPressed)
             | (Self::AlarmReleased, Self::AlarmReleased)
             | (Self::SpacebarPressed, Self::SpacebarPressed)
@@ -509,6 +529,9 @@ impl PartialEq for Message {
             | (Self::BeepTestCloseSettings, _)
             | (Self::BeepTestNavigateTo(_), _)
             | (Self::BeepTestOpenLanguageSettings, _)
+            | (Self::BeepTestEditOpenSound, _)
+            | (Self::BeepTestSoundSettingsSave, _)
+            | (Self::BeepTestSoundSettingsCancel, _)
             | (Self::AlarmPressed, _)
             | (Self::AlarmReleased, _)
             | (Self::SpacebarPressed, _)

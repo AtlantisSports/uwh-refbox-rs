@@ -3350,6 +3350,62 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
+            Message::BeepTestEditOpenSound => {
+                // Seed `edited_settings` with a clone of the current sound
+                // settings so the existing `ToggleBoolParameter` /
+                // `CycleParameter` handlers (which mutate
+                // `edited_settings.sound`) can be reused unchanged. Other
+                // fields are filled with defaults / current-state mirrors
+                // matching `BeepTestOpenLanguageSettings`; the sub-page only
+                // reads `sound`, so the rest is inert.
+                let current_language =
+                    Language::from_lang_id(&crate::LANGUAGE_LOADER.current_languages()[0]);
+                let edited_settings = EditableSettings {
+                    config: self.tm.lock().unwrap().config().clone(),
+                    game_number: if self.snapshot.current_period == GamePeriod::BetweenGames {
+                        self.snapshot.next_game_number.clone()
+                    } else {
+                        self.snapshot.game_number.clone()
+                    },
+                    white_on_right: self.config.hardware.white_on_right,
+                    brightness: self.config.hardware.brightness,
+                    using_uwhportal: self.using_uwhportal,
+                    uwhportal_token_valid: None,
+                    current_event_id: self.current_event_id.clone(),
+                    current_court: self.current_court.clone(),
+                    schedule: self.schedule.clone(),
+                    sound: self.config.sound.clone(),
+                    mode: self.config.mode,
+                    hide_time: self.config.hide_time,
+                    collect_scorer_cap_num: self.config.collect_scorer_cap_num,
+                    track_fouls_and_warnings: self.config.track_fouls_and_warnings,
+                    confirm_score: self.config.confirm_score,
+                    pending_language: Some(current_language),
+                    original_language: Some(current_language),
+                };
+                self.edited_settings = Some(edited_settings);
+                self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Sound);
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::BeepTestSoundSettingsSave => {
+                // Commit staged sound edits to live config, push them to the
+                // sound controller, and persist to disk — mirroring the
+                // ConfigPage::Sound Apply path used by the hockey-mode Sound
+                // sub-page.
+                self.apply_sound_options();
+                self.persist_config();
+                self.edited_settings = None;
+                self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Main);
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::BeepTestSoundSettingsCancel => {
+                self.edited_settings = None;
+                self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Main);
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
             Message::NoAction => Task::none(),
         }
     }
@@ -3510,7 +3566,19 @@ impl RefBoxApp {
             }
             AppState::BeepTestSettings(page) => match page {
                 BeepTestConfigPage::Main => build_beep_test_settings_landing(),
-                BeepTestConfigPage::Sound => build_beep_test_sound_settings_page(),
+                BeepTestConfigPage::Sound => {
+                    // Invariant (Task 5 of beep-test redesign):
+                    // `BeepTestEditOpenSound` seeds `edited_settings` before
+                    // navigating to the Sound sub-page, and every exit path
+                    // (Save / Cancel) clears it on its way back to the
+                    // landing. Reaching this arm with `edited_settings ==
+                    // None` would indicate that invariant was violated —
+                    // a programming error, not a runtime condition.
+                    let edited = self.edited_settings.as_ref().expect(
+                        "edited_settings must be Some when AppState is BeepTestSettings(Sound)",
+                    );
+                    build_beep_test_sound_settings_page(&edited.sound)
+                }
                 BeepTestConfigPage::EditLevels => build_beep_test_edit_levels_page(),
                 BeepTestConfigPage::AppMode => build_beep_test_app_mode_page(),
             },

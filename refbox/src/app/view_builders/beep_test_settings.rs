@@ -1,9 +1,8 @@
 //! View_builders for the BeepTest Settings sub-pages.
 //!
 //! Reachable when `app_state == AppState::BeepTestSettings(_)`. Each
-//! function builds one sub-page: the 2x2 landing (this file's only fully
-//! implemented page in Task 4 of the redesign), and stubs for Sound
-//! Settings (Task 5), Edit Levels (Task 6), and App Mode (Task 7).
+//! function builds one sub-page: the 2x2 landing, the Sound Settings
+//! page, the Edit Levels page, and the App Mode page.
 //!
 //! The Language sub-page is not modelled here — the landing's Language
 //! button routes the operator into the existing
@@ -11,7 +10,6 @@
 //! `Message::BeepTestOpenLanguageSettings`.
 
 use super::*;
-use crate::app::BeepTestConfigPage;
 use crate::config::Level;
 use iced::{
     Element, Length,
@@ -41,7 +39,7 @@ pub(in super::super) fn build_beep_test_settings_landing<'a>() -> Element<'a, Me
 
     let app_mode_button = make_button(fl!("app-mode"))
         .style(light_gray_button)
-        .on_press(Message::BeepTestNavigateTo(BeepTestConfigPage::AppMode));
+        .on_press(Message::BeepTestEditOpenAppMode);
 
     let language_button = make_button(fl!("language"))
         .style(light_gray_button)
@@ -597,24 +595,48 @@ fn build_edit_panel(levels: &[Level], selected: usize) -> Element<'_, Message> {
         .into()
 }
 
-/// Stub for the App Mode sub-page. Implemented in Task 7.
-pub(in super::super) fn build_beep_test_app_mode_page<'a>() -> Element<'a, Message> {
-    placeholder_page("TODO: App Mode (Task 7)")
-}
+/// App Mode sub-page.
+///
+/// A single page that lets the operator cycle the app mode between
+/// Hockey 6v6, Hockey 3v3, Rugby, and Beep Test. The staged value lives
+/// in `edited_settings.mode` (seeded by `BeepTestEditOpenAppMode`) and
+/// is cycled by the existing `Message::CycleParameter(CyclingParameter::Mode)`
+/// handler shared with the hockey-mode App config page.
+///
+/// Apply commits the staged mode; when it differs from the current mode
+/// the app restarts (mirroring the existing PortalTenantSwitch
+/// RestartAndApply path). Cancel discards the staged mode and returns to
+/// the BeepTest Settings landing.
+pub(in super::super) fn build_beep_test_app_mode_page<'a>(
+    staged_mode: crate::config::Mode,
+) -> Element<'a, Message> {
+    let title = text(fl!("app-mode")).size(MEDIUM_TEXT).width(Length::Fill);
 
-/// Shared shell for the sub-page stubs: shows the placeholder text and a
-/// Back button so the operator is never trapped.
-fn placeholder_page(label: &str) -> Element<'_, Message> {
-    let back_button = make_button(fl!("back"))
+    let cycle_button = make_value_button(
+        fl!("app-mode"),
+        staged_mode.to_string(),
+        (false, true),
+        Some(Message::CycleParameter(CyclingParameter::Mode)),
+    );
+
+    let cancel_button = make_button(fl!("cancel"))
         .style(red_button)
-        .on_press(Message::BeepTestNavigateTo(BeepTestConfigPage::Main));
+        .on_press(Message::BeepTestEditAppModeCancel);
+
+    let apply_button = make_button(fl!("apply"))
+        .style(green_button)
+        .on_press(Message::BeepTestEditAppModeApply);
+
+    let bottom_row = row![cancel_button, horizontal_space(), apply_button].spacing(SPACING);
 
     column![
-        text(label).size(MEDIUM_TEXT),
-        row![back_button, horizontal_space(), horizontal_space()].spacing(SPACING),
+        title,
+        Space::with_height(Length::Fill),
+        cycle_button,
+        Space::with_height(Length::Fill),
+        bottom_row,
     ]
     .spacing(SPACING)
-    .padding(PADDING)
     .height(Length::Fill)
     .into()
 }

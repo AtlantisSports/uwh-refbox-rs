@@ -1,4 +1,4 @@
-use super::{BeepTestConfigPage, fl, languages::Language};
+use super::{fl, languages::Language};
 use crate::{
     portal_manager::{ItemId, PortalEvent},
     sound_controller::RemoteId,
@@ -159,8 +159,6 @@ pub enum Message {
     /// Operator pressed Back/Done on the BeepTest Settings landing.
     /// Returns to the BeepTest main view.
     BeepTestCloseSettings,
-    /// Navigate to a sub-page within BeepTest Settings.
-    BeepTestNavigateTo(BeepTestConfigPage),
     /// Operator pressed Language on the BeepTest Settings landing. Sets up
     /// `edited_settings` and routes into the existing
     /// `EditGameConfig(ConfigPage::Language)` flow.
@@ -209,6 +207,19 @@ pub enum Message {
     /// Operator pressed Cancel on the Edit Levels page. Discards staged
     /// level edits and returns to the BeepTest Settings landing.
     BeepTestEditLevelsCancel,
+    /// Operator pressed App Mode on the BeepTest Settings landing. Seeds
+    /// `edited_settings.mode` with the current mode so the existing
+    /// `CycleParameter(Mode)` handler can cycle the staged value, then
+    /// navigates to the BeepTest App Mode sub-page.
+    BeepTestEditOpenAppMode,
+    /// Operator pressed Apply on the BeepTest App Mode sub-page. Commits
+    /// the staged mode. When the mode differs from the current mode, the
+    /// app restarts (mirroring the existing mode-change exe-restart flow
+    /// used by the hockey-mode PortalTenantSwitch confirmation).
+    BeepTestEditAppModeApply,
+    /// Operator pressed Cancel on the BeepTest App Mode sub-page. Discards
+    /// the staged mode and returns to the BeepTest Settings landing.
+    BeepTestEditAppModeCancel,
     AlarmPressed,
     AlarmReleased,
     SpacebarPressed,
@@ -299,7 +310,6 @@ impl Message {
             | Self::BeepTestReset
             | Self::BeepTestOpenSettings
             | Self::BeepTestCloseSettings
-            | Self::BeepTestNavigateTo(_)
             | Self::BeepTestOpenLanguageSettings
             | Self::BeepTestEditOpenSound
             | Self::BeepTestSoundSettingsSave
@@ -314,6 +324,9 @@ impl Message {
             | Self::BeepTestEditRemoveLevel
             | Self::BeepTestEditLevelsSave
             | Self::BeepTestEditLevelsCancel
+            | Self::BeepTestEditOpenAppMode
+            | Self::BeepTestEditAppModeApply
+            | Self::BeepTestEditAppModeCancel
             | Self::AlarmPressed
             | Self::AlarmReleased
             | Self::SpacebarPressed
@@ -366,6 +379,9 @@ impl PartialEq for Message {
             | (Self::BeepTestEditRemoveLevel, Self::BeepTestEditRemoveLevel)
             | (Self::BeepTestEditLevelsSave, Self::BeepTestEditLevelsSave)
             | (Self::BeepTestEditLevelsCancel, Self::BeepTestEditLevelsCancel)
+            | (Self::BeepTestEditOpenAppMode, Self::BeepTestEditOpenAppMode)
+            | (Self::BeepTestEditAppModeApply, Self::BeepTestEditAppModeApply)
+            | (Self::BeepTestEditAppModeCancel, Self::BeepTestEditAppModeCancel)
             | (Self::AlarmPressed, Self::AlarmPressed)
             | (Self::AlarmReleased, Self::AlarmReleased)
             | (Self::SpacebarPressed, Self::SpacebarPressed)
@@ -490,7 +506,6 @@ impl PartialEq for Message {
             // unequal so every event is delivered to `update()`.
             (Self::PortalEvent(_), Self::PortalEvent(_)) => false,
             (Self::ConfirmationSelected(a), Self::ConfirmationSelected(b)) => a == b,
-            (Self::BeepTestNavigateTo(a), Self::BeepTestNavigateTo(b)) => a == b,
             (Self::BeepTestEditSelectLevel(a), Self::BeepTestEditSelectLevel(b)) => a == b,
             (Self::TeamTimeout(a, b), Self::TeamTimeout(c, d)) => a == c && b == d,
             (Self::RefTimeout(a), Self::RefTimeout(b)) => a == b,
@@ -577,7 +592,6 @@ impl PartialEq for Message {
             | (Self::BeepTestTick, _)
             | (Self::BeepTestOpenSettings, _)
             | (Self::BeepTestCloseSettings, _)
-            | (Self::BeepTestNavigateTo(_), _)
             | (Self::BeepTestOpenLanguageSettings, _)
             | (Self::BeepTestEditOpenSound, _)
             | (Self::BeepTestSoundSettingsSave, _)
@@ -592,6 +606,9 @@ impl PartialEq for Message {
             | (Self::BeepTestEditRemoveLevel, _)
             | (Self::BeepTestEditLevelsSave, _)
             | (Self::BeepTestEditLevelsCancel, _)
+            | (Self::BeepTestEditOpenAppMode, _)
+            | (Self::BeepTestEditAppModeApply, _)
+            | (Self::BeepTestEditAppModeCancel, _)
             | (Self::AlarmPressed, _)
             | (Self::AlarmReleased, _)
             | (Self::SpacebarPressed, _)

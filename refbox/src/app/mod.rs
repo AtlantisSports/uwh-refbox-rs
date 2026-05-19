@@ -3298,11 +3298,6 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
-            Message::BeepTestNavigateTo(page) => {
-                self.app_state = AppState::BeepTestSettings(page);
-                trace!("AppState changed to {:?}", self.app_state);
-                Task::none()
-            }
             Message::BeepTestOpenLanguageSettings => {
                 // Route into the existing Language sub-page by reusing the
                 // same `EditableSettings` setup that `Message::EditGameConfig`
@@ -3555,6 +3550,93 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
+            Message::BeepTestEditOpenAppMode => {
+                // Seed `edited_settings` with a clone of the live state so the
+                // existing `CycleParameter(Mode)` handler (which mutates
+                // `edited_settings.mode`) can be reused unchanged. Other
+                // fields are filled with defaults / current-state mirrors
+                // matching `BeepTestEditOpenSound`; the sub-page only reads
+                // `mode`, so the rest is inert.
+                let current_language =
+                    Language::from_lang_id(&crate::LANGUAGE_LOADER.current_languages()[0]);
+                let edited_settings = EditableSettings {
+                    config: self.tm.lock().unwrap().config().clone(),
+                    game_number: if self.snapshot.current_period == GamePeriod::BetweenGames {
+                        self.snapshot.next_game_number.clone()
+                    } else {
+                        self.snapshot.game_number.clone()
+                    },
+                    white_on_right: self.config.hardware.white_on_right,
+                    brightness: self.config.hardware.brightness,
+                    using_uwhportal: self.using_uwhportal,
+                    uwhportal_token_valid: None,
+                    current_event_id: self.current_event_id.clone(),
+                    current_court: self.current_court.clone(),
+                    schedule: self.schedule.clone(),
+                    sound: self.config.sound.clone(),
+                    mode: self.config.mode,
+                    hide_time: self.config.hide_time,
+                    collect_scorer_cap_num: self.config.collect_scorer_cap_num,
+                    track_fouls_and_warnings: self.config.track_fouls_and_warnings,
+                    confirm_score: self.config.confirm_score,
+                    pending_language: Some(current_language),
+                    original_language: Some(current_language),
+                    beep_test_levels: None,
+                    selected_level: 0,
+                };
+                self.edited_settings = Some(edited_settings);
+                self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::AppMode);
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::BeepTestEditAppModeApply => {
+                // Commit the staged mode. When it differs from the current
+                // mode, follow the same exec-restart sequence used by the
+                // hockey-mode PortalTenantSwitch RestartAndApply arm: clear
+                // the linked event (so the portal-health task stops probing
+                // the old tenant), flush the portal retry queue (items
+                // queued under the old tenant cannot be delivered to the
+                // new one), persist the config to disk, kill simulator
+                // children, mark the restart, and exit iced. `main()`
+                // spawns a fresh copy of the exe after the runtime
+                // returns, avoiding the brief overlap of old + new windows
+                // that a synchronous `std::process::exit(0)` would produce.
+                let new_mode = self
+                    .edited_settings
+                    .as_ref()
+                    .map(|e| e.mode)
+                    .unwrap_or(self.config.mode);
+                self.edited_settings = None;
+                if new_mode != self.config.mode {
+                    self.config.mode = new_mode;
+                    self.set_current_event_id(None);
+                    if let Err(e) = crate::portal_manager::queue::save(
+                        self.portal_manager.queue_dir(),
+                        &crate::portal_manager::queue::QueueFile::empty(),
+                    ) {
+                        error!("Failed to flush portal queue before restart: {e}");
+                    }
+                    if let Err(e) = confy::store(APP_NAME, None, &self.config) {
+                        error!("Failed to persist config before restart: {e}");
+                    }
+                    for mut child in self.sim_children.drain(..) {
+                        let _ = child.kill();
+                    }
+                    RESTART_PENDING.store(true, Ordering::Relaxed);
+                    self.app_state = AppState::MainPage;
+                    trace!("AppState changed to {:?}", self.app_state);
+                    return iced::exit();
+                }
+                self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Main);
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::BeepTestEditAppModeCancel => {
+                self.edited_settings = None;
+                self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Main);
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
             Message::NoAction => Task::none(),
         }
     }
@@ -3746,7 +3828,20 @@ impl RefBoxApp {
                     );
                     build_beep_test_edit_levels_page(levels, edited.selected_level)
                 }
-                BeepTestConfigPage::AppMode => build_beep_test_app_mode_page(),
+                BeepTestConfigPage::AppMode => {
+                    // Invariant (Task 7 of beep-test redesign):
+                    // `BeepTestEditOpenAppMode` seeds `edited_settings` with
+                    // `mode = self.config.mode` before navigating to this
+                    // sub-page, and every exit path (Apply / Cancel) clears
+                    // `edited_settings` on its way back to the landing.
+                    // Reaching this arm with `edited_settings == None` would
+                    // indicate that invariant was violated — a programming
+                    // error, not a runtime condition.
+                    let edited = self.edited_settings.as_ref().expect(
+                        "edited_settings must be Some when AppState is BeepTestSettings(AppMode)",
+                    );
+                    build_beep_test_app_mode_page(edited.mode)
+                }
             },
         }]
         .spacing(SPACING)

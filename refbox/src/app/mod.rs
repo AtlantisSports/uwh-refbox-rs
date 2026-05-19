@@ -2699,7 +2699,17 @@ impl RefBoxApp {
                 }
                 settings.pending_language = None;
                 settings.original_language = None;
-                if let AppState::EditGameConfig(ref mut page) = self.app_state {
+                // In BeepTest mode the operator entered the Language page from
+                // the BeepTest Settings landing (via `BeepTestOpenLanguageSettings`),
+                // so returning to that landing matches the operator's mental
+                // model ("Done with Language goes back where I came from").
+                // Also drop `edited_settings`: the Language flow's borrow of
+                // `edited_settings` is finished here, and the BeepTest Settings
+                // landing does not read it.
+                if self.config.mode == Mode::BeepTest {
+                    self.edited_settings = None;
+                    self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Main);
+                } else if let AppState::EditGameConfig(ref mut page) = self.app_state {
                     *page = ConfigPage::Main;
                 }
                 trace!("AppState changed to {:?}", self.app_state);
@@ -3796,7 +3806,12 @@ impl RefBoxApp {
                 )
             }
             AppState::BeepTestSettings(page) => match page {
-                BeepTestConfigPage::Main => build_beep_test_settings_landing(),
+                BeepTestConfigPage::Main => build_beep_test_settings_landing(
+                    data.snapshot,
+                    data.mode,
+                    data.clock_running,
+                    data.portal_indicator,
+                ),
                 BeepTestConfigPage::Sound => {
                     // Invariant (Task 5 of beep-test redesign):
                     // `BeepTestEditOpenSound` seeds `edited_settings` before
@@ -3808,7 +3823,14 @@ impl RefBoxApp {
                     let edited = self.edited_settings.as_ref().expect(
                         "edited_settings must be Some when AppState is BeepTestSettings(Sound)",
                     );
-                    build_beep_test_sound_settings_page(&edited.sound)
+                    build_beep_test_sound_settings_page(
+                        data.snapshot,
+                        data.mode,
+                        data.clock_running,
+                        data.portal_indicator,
+                        &self.config,
+                        &edited.sound,
+                    )
                 }
                 BeepTestConfigPage::EditLevels => {
                     // Invariant (Task 6 of beep-test redesign):
@@ -3826,7 +3848,15 @@ impl RefBoxApp {
                     let levels = edited.beep_test_levels.as_ref().expect(
                         "beep_test_levels must be Some when AppState is BeepTestSettings(EditLevels)",
                     );
-                    build_beep_test_edit_levels_page(levels, edited.selected_level)
+                    build_beep_test_edit_levels_page(
+                        data.snapshot,
+                        data.mode,
+                        data.clock_running,
+                        data.portal_indicator,
+                        &self.config,
+                        levels,
+                        edited.selected_level,
+                    )
                 }
                 BeepTestConfigPage::AppMode => {
                     // Invariant (Task 7 of beep-test redesign):
@@ -3840,7 +3870,14 @@ impl RefBoxApp {
                     let edited = self.edited_settings.as_ref().expect(
                         "edited_settings must be Some when AppState is BeepTestSettings(AppMode)",
                     );
-                    build_beep_test_app_mode_page(edited.mode)
+                    build_beep_test_app_mode_page(
+                        data.snapshot,
+                        data.mode,
+                        data.clock_running,
+                        data.portal_indicator,
+                        &self.config,
+                        edited.mode,
+                    )
                 }
             },
         }]

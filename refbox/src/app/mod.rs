@@ -2290,9 +2290,16 @@ impl RefBoxApp {
                 // Per-page Apply/Cancel chrome is the only commit path after ADR 009
                 // Tasks 8-13. ConfigEditComplete only fires `canceled: true` now (from
                 // the Settings Main back button and other escape paths); it just exits
-                // settings to MainPage and drops the in-flight edit buffer.
+                // settings and drops the in-flight edit buffer.
+                //
+                // In BeepTest mode, return to BeepTestPage rather than MainPage so
+                // the operator lands back on the correct screen.
                 self.edited_settings = None;
-                self.app_state = AppState::MainPage;
+                self.app_state = if self.config.mode == Mode::BeepTest {
+                    AppState::BeepTestPage
+                } else {
+                    AppState::MainPage
+                };
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
@@ -3420,6 +3427,9 @@ impl RefBoxApp {
                 is_confirmation, ..
             } if is_confirmation => {}
             AppState::ConfirmScores(_) => {}
+            // BeepTest mode has its own bottom action row; the timeout ribbon
+            // is a hockey/rugby concept and does not belong here.
+            AppState::BeepTestPage => {}
             _ => {
                 main_view = main_view.push(build_timeout_ribbon(
                     &self.snapshot,

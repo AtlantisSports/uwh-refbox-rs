@@ -8,7 +8,7 @@ use super::*;
 use crate::beep_test::snapshot::{BeepTestPeriod, BeepTestSnapshot};
 use crate::config::BeepTest;
 use iced::{
-    Alignment, Element, Length,
+    Element, Length,
     alignment::Horizontal,
     widget::{Column, Container, Row, Text, button, column, container, row, text},
 };
@@ -62,6 +62,12 @@ pub(in super::super) fn build_beep_test_page<'a>(
     .style(light_gray_container)
     .padding(PADDING);
 
+    let right_col = column![time_display, level_display, lap_display,]
+        .spacing(SPACING)
+        .width(Length::Fill);
+
+    let levels_table = build_levels_table(&config.levels);
+
     // Single toggle button: shows START (green) when stopped, STOP (orange)
     // when running. Matches the standalone beep-test's one-button pattern,
     // which is the operator-friendly choice — one click always does the
@@ -80,19 +86,25 @@ pub(in super::super) fn build_beep_test_page<'a>(
         .style(red_button)
         .on_press(Message::BeepTestReset);
 
-    let right_col = column![time_display, level_display, lap_display, start_stop, reset,]
-        .spacing(SPACING)
-        .width(Length::Fill);
+    let settings = make_button(fl!("settings"))
+        .style(light_gray_button)
+        .on_press(Message::EditGameConfig);
 
-    let levels_table = build_levels_table(&config.levels);
+    // Bottom action row: [RESET] [SETTINGS] [START/STOP] — mirrors the
+    // Cancel | (middle) | Apply convention used throughout the refbox UI.
+    let bottom_row = row![reset, settings, start_stop].spacing(SPACING);
 
-    row![levels_table, right_col]
-        .spacing(SPACING)
-        .padding(PADDING)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .align_y(Alignment::Start)
-        .into()
+    column![
+        row![levels_table, right_col]
+            .spacing(SPACING)
+            .height(Length::Fill),
+        bottom_row,
+    ]
+    .spacing(SPACING)
+    .padding(PADDING)
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .into()
 }
 
 /// Build the read-only levels table.

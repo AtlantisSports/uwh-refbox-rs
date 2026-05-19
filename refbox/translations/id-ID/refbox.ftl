@@ -12,6 +12,7 @@ cancel = BATAL
 delete = HAPUS
 back = KEMBALI
 apply = TERAPKAN
+save = SAVE
 user-options = OPSI PENGGUNA
 new = BARU
 
@@ -46,6 +47,8 @@ app-options = OPSI APLIKASI
 display-options = OPSI TAMPILAN
 open-new-display = BUKA TAMPILAN BARU
 sound-options = OPSI SUARA
+sound-settings = SOUND SETTINGS
+beep-test-edit-levels = EDIT LEVELS
 app-mode = MODE
     APLIKASI
 hide-time-for-last-15-seconds = SEMBUNYIKAN WAKTU
@@ -357,6 +360,11 @@ beep-test-reset = RESET
 beep-test-column-level = LEVEL
 beep-test-column-count = COUNT
 beep-test-column-duration = DURATION
+beep-test-edit-selected = Selected: Level { $level }
+beep-test-edit-time = TIME
+beep-test-edit-count = COUNT
+beep-test-edit-new = + NEW
+beep-test-edit-remove = REMOVE LEVEL
 
 # Pelanggaran
 stick-foul = Pelanggaran Stik

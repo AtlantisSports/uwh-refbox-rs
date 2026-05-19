@@ -12,6 +12,7 @@ cancel = BATAL
 delete = PADAM
 back = KEMBALI
 apply = GUNA
+save = SAVE
 user-options = PILIHAN PENGGUNA
 new = BARU
 
@@ -46,6 +47,8 @@ app-options = PILIHAN APLIKASI
 display-options = PILIHAN PAPARAN
 open-new-display = BUKA PAPARAN BARU
 sound-options = PILIHAN BUNYI
+sound-settings = SOUND SETTINGS
+beep-test-edit-levels = EDIT LEVELS
 app-mode = MOD
     APLIKASI
 hide-time-for-last-15-seconds = SEMBUNYIKAN MASA
@@ -357,6 +360,11 @@ beep-test-reset = RESET
 beep-test-column-level = LEVEL
 beep-test-column-count = COUNT
 beep-test-column-duration = DURATION
+beep-test-edit-selected = Selected: Level { $level }
+beep-test-edit-time = TIME
+beep-test-edit-count = COUNT
+beep-test-edit-new = + NEW
+beep-test-edit-remove = REMOVE LEVEL
 
 # Pelanggaran
 stick-foul = Kesalahan Kayu

@@ -11,6 +11,7 @@ cancel = ANNULER
 delete = SUPPRIMER
 back = RETOUR
 apply = APPLIQUER
+save = ENREGISTRER
 user-options = OPTIONS UTILISATEUR
 new = NOUVEAU
 
@@ -43,6 +44,8 @@ app-options = OPTIONS DE L'APPLICATION
 display-options = OPTIONS D'AFFICHAGE
 open-new-display = OUVRIR NOUVEL AFFICHAGE
 sound-options = OPTIONS SONORES
+sound-settings = RÉGLAGES DU SON
+beep-test-edit-levels = MODIFIER LES NIVEAUX
 app-mode = MODE
 hide-time-for-last-15-seconds = CACHER LE TEMPS POUR
     LES 15 DERNIÈRES SECONDES
@@ -359,6 +362,11 @@ beep-test-reset = RÉINITIALISER
 beep-test-column-level = NIVEAU
 beep-test-column-count = NOMBRE
 beep-test-column-duration = DURÉE
+beep-test-edit-selected = Sélectionné : Niveau { $level }
+beep-test-edit-time = TEMPS
+beep-test-edit-count = NOMBRE
+beep-test-edit-new = + NOUVEAU
+beep-test-edit-remove = SUPPRIMER NIVEAU
 
 # Infractions
 stick-foul = Faute de crosse

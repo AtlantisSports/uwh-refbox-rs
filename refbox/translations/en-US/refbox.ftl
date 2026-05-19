@@ -11,6 +11,7 @@ cancel = CANCEL
 delete = DELETE
 back = BACK
 apply = APPLY
+save = SAVE
 user-options = USER OPTIONS
 new = NEW
 

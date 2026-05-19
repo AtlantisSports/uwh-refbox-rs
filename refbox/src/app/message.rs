@@ -179,6 +179,36 @@ pub enum Message {
     /// Discards staged sound edits and returns to the BeepTest Settings
     /// landing.
     BeepTestSoundSettingsCancel,
+    /// Operator pressed Edit Levels on the BeepTest Settings landing.
+    /// Seeds `edited_settings.beep_test_levels` with a clone of the
+    /// current level list and `edited_settings.selected_level = 0`,
+    /// then navigates to the Edit Levels sub-page.
+    BeepTestEditOpenLevels,
+    /// Operator tapped a column header or cell on the Edit Levels page.
+    /// Sets `edited_settings.selected_level` to the tapped column's
+    /// 0-based index.
+    BeepTestEditSelectLevel(usize),
+    /// Operator pressed `[+]` next to Count on the Edit Levels page.
+    BeepTestEditCountInc,
+    /// Operator pressed `[-]` next to Count on the Edit Levels page.
+    BeepTestEditCountDec,
+    /// Operator pressed `[+]` next to Time on the Edit Levels page.
+    BeepTestEditDurationInc,
+    /// Operator pressed `[-]` next to Time on the Edit Levels page.
+    BeepTestEditDurationDec,
+    /// Operator pressed `[+NEW]` on the Edit Levels page; appends a new
+    /// level with default values and selects it.
+    BeepTestEditAddLevel,
+    /// Operator pressed `[REMOVE LEVEL]` on the Edit Levels page; removes
+    /// the currently-selected level. No-op when only one level remains.
+    BeepTestEditRemoveLevel,
+    /// Operator pressed Save on the Edit Levels page. Commits the staged
+    /// level list to live config, persists to disk, and returns to the
+    /// BeepTest Settings landing.
+    BeepTestEditLevelsSave,
+    /// Operator pressed Cancel on the Edit Levels page. Discards staged
+    /// level edits and returns to the BeepTest Settings landing.
+    BeepTestEditLevelsCancel,
     AlarmPressed,
     AlarmReleased,
     SpacebarPressed,
@@ -274,6 +304,16 @@ impl Message {
             | Self::BeepTestEditOpenSound
             | Self::BeepTestSoundSettingsSave
             | Self::BeepTestSoundSettingsCancel
+            | Self::BeepTestEditOpenLevels
+            | Self::BeepTestEditSelectLevel(_)
+            | Self::BeepTestEditCountInc
+            | Self::BeepTestEditCountDec
+            | Self::BeepTestEditDurationInc
+            | Self::BeepTestEditDurationDec
+            | Self::BeepTestEditAddLevel
+            | Self::BeepTestEditRemoveLevel
+            | Self::BeepTestEditLevelsSave
+            | Self::BeepTestEditLevelsCancel
             | Self::AlarmPressed
             | Self::AlarmReleased
             | Self::SpacebarPressed
@@ -317,6 +357,15 @@ impl PartialEq for Message {
             | (Self::BeepTestEditOpenSound, Self::BeepTestEditOpenSound)
             | (Self::BeepTestSoundSettingsSave, Self::BeepTestSoundSettingsSave)
             | (Self::BeepTestSoundSettingsCancel, Self::BeepTestSoundSettingsCancel)
+            | (Self::BeepTestEditOpenLevels, Self::BeepTestEditOpenLevels)
+            | (Self::BeepTestEditCountInc, Self::BeepTestEditCountInc)
+            | (Self::BeepTestEditCountDec, Self::BeepTestEditCountDec)
+            | (Self::BeepTestEditDurationInc, Self::BeepTestEditDurationInc)
+            | (Self::BeepTestEditDurationDec, Self::BeepTestEditDurationDec)
+            | (Self::BeepTestEditAddLevel, Self::BeepTestEditAddLevel)
+            | (Self::BeepTestEditRemoveLevel, Self::BeepTestEditRemoveLevel)
+            | (Self::BeepTestEditLevelsSave, Self::BeepTestEditLevelsSave)
+            | (Self::BeepTestEditLevelsCancel, Self::BeepTestEditLevelsCancel)
             | (Self::AlarmPressed, Self::AlarmPressed)
             | (Self::AlarmReleased, Self::AlarmReleased)
             | (Self::SpacebarPressed, Self::SpacebarPressed)
@@ -442,6 +491,7 @@ impl PartialEq for Message {
             (Self::PortalEvent(_), Self::PortalEvent(_)) => false,
             (Self::ConfirmationSelected(a), Self::ConfirmationSelected(b)) => a == b,
             (Self::BeepTestNavigateTo(a), Self::BeepTestNavigateTo(b)) => a == b,
+            (Self::BeepTestEditSelectLevel(a), Self::BeepTestEditSelectLevel(b)) => a == b,
             (Self::TeamTimeout(a, b), Self::TeamTimeout(c, d)) => a == c && b == d,
             (Self::RefTimeout(a), Self::RefTimeout(b)) => a == b,
             (Self::PenaltyShot(a), Self::PenaltyShot(b)) => a == b,
@@ -532,6 +582,16 @@ impl PartialEq for Message {
             | (Self::BeepTestEditOpenSound, _)
             | (Self::BeepTestSoundSettingsSave, _)
             | (Self::BeepTestSoundSettingsCancel, _)
+            | (Self::BeepTestEditOpenLevels, _)
+            | (Self::BeepTestEditSelectLevel(_), _)
+            | (Self::BeepTestEditCountInc, _)
+            | (Self::BeepTestEditCountDec, _)
+            | (Self::BeepTestEditDurationInc, _)
+            | (Self::BeepTestEditDurationDec, _)
+            | (Self::BeepTestEditAddLevel, _)
+            | (Self::BeepTestEditRemoveLevel, _)
+            | (Self::BeepTestEditLevelsSave, _)
+            | (Self::BeepTestEditLevelsCancel, _)
             | (Self::AlarmPressed, _)
             | (Self::AlarmReleased, _)
             | (Self::SpacebarPressed, _)

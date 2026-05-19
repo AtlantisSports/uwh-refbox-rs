@@ -2248,6 +2248,8 @@ impl RefBoxApp {
                     confirm_score: self.config.confirm_score,
                     pending_language: None,
                     original_language: None,
+                    beep_test_levels: None,
+                    selected_level: 0,
                 };
 
                 self.edited_settings = Some(edited_settings);
@@ -3343,6 +3345,8 @@ impl RefBoxApp {
                     confirm_score: self.config.confirm_score,
                     pending_language: Some(current_language),
                     original_language: Some(current_language),
+                    beep_test_levels: None,
+                    selected_level: 0,
                 };
                 self.edited_settings = Some(edited_settings);
                 self.capture_snapshot_for(ConfigPage::Language);
@@ -3382,6 +3386,8 @@ impl RefBoxApp {
                     confirm_score: self.config.confirm_score,
                     pending_language: Some(current_language),
                     original_language: Some(current_language),
+                    beep_test_levels: None,
+                    selected_level: 0,
                 };
                 self.edited_settings = Some(edited_settings);
                 self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Sound);
@@ -3401,6 +3407,149 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::BeepTestSoundSettingsCancel => {
+                self.edited_settings = None;
+                self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Main);
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::BeepTestEditOpenLevels => {
+                // Seed `edited_settings` with a clone of the live level list
+                // and `selected_level = 0` so the Edit Levels page can mutate
+                // the staged copy in isolation. Other fields are filled with
+                // defaults / current-state mirrors mirroring
+                // `BeepTestEditOpenSound`; the sub-page only reads
+                // `beep_test_levels` and `selected_level`, so the rest is inert.
+                let current_language =
+                    Language::from_lang_id(&crate::LANGUAGE_LOADER.current_languages()[0]);
+                let edited_settings = EditableSettings {
+                    config: self.tm.lock().unwrap().config().clone(),
+                    game_number: if self.snapshot.current_period == GamePeriod::BetweenGames {
+                        self.snapshot.next_game_number.clone()
+                    } else {
+                        self.snapshot.game_number.clone()
+                    },
+                    white_on_right: self.config.hardware.white_on_right,
+                    brightness: self.config.hardware.brightness,
+                    using_uwhportal: self.using_uwhportal,
+                    uwhportal_token_valid: None,
+                    current_event_id: self.current_event_id.clone(),
+                    current_court: self.current_court.clone(),
+                    schedule: self.schedule.clone(),
+                    sound: self.config.sound.clone(),
+                    mode: self.config.mode,
+                    hide_time: self.config.hide_time,
+                    collect_scorer_cap_num: self.config.collect_scorer_cap_num,
+                    track_fouls_and_warnings: self.config.track_fouls_and_warnings,
+                    confirm_score: self.config.confirm_score,
+                    pending_language: Some(current_language),
+                    original_language: Some(current_language),
+                    beep_test_levels: Some(self.config.beep_test.levels.clone()),
+                    selected_level: 0,
+                };
+                self.edited_settings = Some(edited_settings);
+                self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::EditLevels);
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::BeepTestEditSelectLevel(idx) => {
+                if let Some(ref mut edited) = self.edited_settings {
+                    if let Some(ref levels) = edited.beep_test_levels {
+                        if idx < levels.len() {
+                            edited.selected_level = idx;
+                        }
+                    }
+                }
+                Task::none()
+            }
+            Message::BeepTestEditCountInc => {
+                if let Some(ref mut edited) = self.edited_settings {
+                    let sel = edited.selected_level;
+                    if let Some(ref mut levels) = edited.beep_test_levels {
+                        if let Some(level) = levels.get_mut(sel) {
+                            level.count = level.count.saturating_add(1);
+                        }
+                    }
+                }
+                Task::none()
+            }
+            Message::BeepTestEditCountDec => {
+                if let Some(ref mut edited) = self.edited_settings {
+                    let sel = edited.selected_level;
+                    if let Some(ref mut levels) = edited.beep_test_levels {
+                        if let Some(level) = levels.get_mut(sel) {
+                            if level.count > 1 {
+                                level.count -= 1;
+                            }
+                        }
+                    }
+                }
+                Task::none()
+            }
+            Message::BeepTestEditDurationInc => {
+                if let Some(ref mut edited) = self.edited_settings {
+                    let sel = edited.selected_level;
+                    if let Some(ref mut levels) = edited.beep_test_levels {
+                        if let Some(level) = levels.get_mut(sel) {
+                            level.duration = level
+                                .duration
+                                .saturating_add(std::time::Duration::from_secs(1));
+                        }
+                    }
+                }
+                Task::none()
+            }
+            Message::BeepTestEditDurationDec => {
+                if let Some(ref mut edited) = self.edited_settings {
+                    let sel = edited.selected_level;
+                    if let Some(ref mut levels) = edited.beep_test_levels {
+                        if let Some(level) = levels.get_mut(sel) {
+                            if level.duration > std::time::Duration::from_secs(1) {
+                                level.duration -= std::time::Duration::from_secs(1);
+                            }
+                        }
+                    }
+                }
+                Task::none()
+            }
+            Message::BeepTestEditAddLevel => {
+                if let Some(ref mut edited) = self.edited_settings {
+                    if let Some(ref mut levels) = edited.beep_test_levels {
+                        levels.push(crate::config::Level {
+                            count: 4,
+                            duration: std::time::Duration::from_secs(20),
+                        });
+                        edited.selected_level = levels.len() - 1;
+                    }
+                }
+                Task::none()
+            }
+            Message::BeepTestEditRemoveLevel => {
+                if let Some(ref mut edited) = self.edited_settings {
+                    let sel = edited.selected_level;
+                    if let Some(ref mut levels) = edited.beep_test_levels {
+                        if levels.len() > 1 && sel < levels.len() {
+                            levels.remove(sel);
+                            if edited.selected_level >= levels.len() {
+                                edited.selected_level = levels.len() - 1;
+                            }
+                        }
+                    }
+                }
+                Task::none()
+            }
+            Message::BeepTestEditLevelsSave => {
+                if let Some(ref edited) = self.edited_settings {
+                    if let Some(ref levels) = edited.beep_test_levels {
+                        self.config.beep_test.levels = levels.clone();
+                    }
+                }
+                self.persist_config();
+                self.edited_settings = None;
+                self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Main);
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::BeepTestEditLevelsCancel => {
                 self.edited_settings = None;
                 self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Main);
                 trace!("AppState changed to {:?}", self.app_state);
@@ -3579,7 +3728,24 @@ impl RefBoxApp {
                     );
                     build_beep_test_sound_settings_page(&edited.sound)
                 }
-                BeepTestConfigPage::EditLevels => build_beep_test_edit_levels_page(),
+                BeepTestConfigPage::EditLevels => {
+                    // Invariant (Task 6 of beep-test redesign):
+                    // `BeepTestEditOpenLevels` seeds `edited_settings` with a
+                    // staged `beep_test_levels` before navigating to this
+                    // sub-page, and every exit path (Save / Cancel) clears
+                    // `edited_settings` on its way back to the landing.
+                    // Reaching this arm with `edited_settings == None` or
+                    // `beep_test_levels == None` would indicate that invariant
+                    // was violated — a programming error, not a runtime
+                    // condition.
+                    let edited = self.edited_settings.as_ref().expect(
+                        "edited_settings must be Some when AppState is BeepTestSettings(EditLevels)",
+                    );
+                    let levels = edited.beep_test_levels.as_ref().expect(
+                        "beep_test_levels must be Some when AppState is BeepTestSettings(EditLevels)",
+                    );
+                    build_beep_test_edit_levels_page(levels, edited.selected_level)
+                }
                 BeepTestConfigPage::AppMode => build_beep_test_app_mode_page(),
             },
         }]

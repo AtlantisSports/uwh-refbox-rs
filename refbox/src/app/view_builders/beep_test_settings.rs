@@ -4,31 +4,48 @@
 //! function builds one sub-page: the 2x2 landing, the Sound Settings
 //! page, the Edit Levels page, and the App Mode page.
 //!
+//! All sub-pages follow the refbox UI standard: a `make_game_time_button`
+//! anchors the top, controls below it use `make_value_button`, and editor
+//! sub-pages end in a Cancel / Apply footer that disables Apply when the
+//! staged edits match the live config. This parallels `configuration.rs`'s
+//! `make_user_config_page`, `make_sound_config_page`, and
+//! `make_app_config_page` patterns.
+//!
 //! The Language sub-page is not modelled here — the landing's Language
 //! button routes the operator into the existing
 //! `AppState::EditGameConfig(ConfigPage::Language)` flow via
 //! `Message::BeepTestOpenLanguageSettings`.
 
 use super::*;
-use crate::config::Level;
+use crate::{
+    config::{Config, Level},
+    portal_manager::PortalIndicatorState,
+};
 use iced::{
     Element, Length,
     alignment::Horizontal,
     widget::{Column, Row, Space, button, column, container, horizontal_space, row, text},
 };
+use uwh_common::game_snapshot::GameSnapshot;
 
 /// 2x2 landing page for the BeepTest Settings hierarchy.
 ///
 /// Layout (top to bottom):
+/// - Game time banner (refbox standard)
 /// - Row 1: [SOUND SETTINGS] [EDIT LEVELS]
 /// - Row 2: [APP MODE]       [LANGUAGE]
-/// - Filler
-/// - Bottom row: [BACK]      [DONE]
+/// - Filler rows
+/// - Bottom row: [BACK] + two filler cells
 ///
-/// Both `BACK` and `DONE` close the Settings hierarchy and return to the
-/// BeepTest main view; they exist as two visually-distinct affordances
-/// in the same position as the Hockey Settings page.
-pub(in super::super) fn build_beep_test_settings_landing<'a>() -> Element<'a, Message> {
+/// `BACK` closes the Settings hierarchy and returns to the BeepTest main
+/// view, matching the standard set by `make_user_config_page` in
+/// `configuration.rs`.
+pub(in super::super) fn build_beep_test_settings_landing<'a>(
+    snapshot: &GameSnapshot,
+    mode: Mode,
+    clock_running: bool,
+    portal_indicator: Option<PortalIndicatorState>,
+) -> Element<'a, Message> {
     let sound_button = make_button(fl!("sound-settings"))
         .style(light_gray_button)
         .on_press(Message::BeepTestEditOpenSound);
@@ -57,29 +74,32 @@ pub(in super::super) fn build_beep_test_settings_landing<'a>() -> Element<'a, Me
         .style(red_button)
         .on_press(Message::BeepTestCloseSettings);
 
-    let done_button = make_button(fl!("done"))
-        .style(green_button)
-        .on_press(Message::BeepTestCloseSettings);
-
-    let bottom_row = row![back_button, horizontal_space(), done_button].spacing(SPACING);
-
-    column![row_top, row_bottom, bottom_row]
-        .spacing(SPACING)
-        .height(Length::Fill)
-        .into()
+    column![
+        make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+            portal_indicator
+        ),
+        row_top,
+        row_bottom,
+        row![horizontal_space()].height(Length::Fill),
+        row![horizontal_space()].height(Length::Fill),
+        row![back_button, horizontal_space(), horizontal_space()].spacing(SPACING),
+    ]
+    .spacing(SPACING)
+    .height(Length::Fill)
+    .into()
 }
 
 /// Sound Settings sub-page for the BeepTest hierarchy.
 ///
-/// Layout (3 columns × 2 rows of controls, plus a title row and a
-/// Cancel/Save action row at the bottom):
-///
-/// ```text
-/// [ SOUND SETTINGS                                          ]
-/// [ SOUND ENABLED  | ABOVE WATER VOL | WHISTLE ENABLED      ]
-/// [ BUZZER SOUND   | BELOW WATER VOL | WHISTLE VOL          ]
-/// [ CANCEL                                            SAVE  ]
-/// ```
+/// Mirrors `make_sound_config_page` in `configuration.rs`: game time
+/// banner at top, rows of `make_value_button` controls, and a
+/// Cancel / Apply footer at the bottom. Apply disables when staged sound
+/// settings match the live config.
 ///
 /// Disabled-gating:
 /// - SOUND ENABLED is always interactive.
@@ -93,10 +113,16 @@ pub(in super::super) fn build_beep_test_settings_landing<'a>() -> Element<'a, Me
 /// page; those handlers mutate `edited_settings.sound`, which is seeded
 /// by `Message::BeepTestEditOpenSound` before this page is reached.
 pub(in super::super) fn build_beep_test_sound_settings_page<'a>(
+    snapshot: &GameSnapshot,
+    mode: Mode,
+    clock_running: bool,
+    portal_indicator: Option<PortalIndicatorState>,
+    config: &Config,
     sound: &SoundSettings,
 ) -> Element<'a, Message> {
     let sound_enabled = sound.sound_enabled;
     let whistle_vol_enabled = sound_enabled && sound.whistle_enabled;
+    let has_changes = config.sound != *sound;
 
     // SOUND ENABLED — always interactive.
     let sound_enabled_btn = make_value_button(
@@ -172,10 +198,6 @@ pub(in super::super) fn build_beep_test_sound_settings_page<'a>(
         },
     );
 
-    let title = text(fl!("sound-settings"))
-        .size(MEDIUM_TEXT)
-        .width(Length::Fill);
-
     let row_top = row![sound_enabled_btn, above_water_vol_btn, whistle_enabled_btn]
         .spacing(SPACING)
         .height(Length::Fill);
@@ -184,20 +206,27 @@ pub(in super::super) fn build_beep_test_sound_settings_page<'a>(
         .spacing(SPACING)
         .height(Length::Fill);
 
-    let cancel_button = make_button(fl!("cancel"))
-        .style(red_button)
-        .on_press(Message::BeepTestSoundSettingsCancel);
-
-    let save_button = make_button(fl!("save"))
-        .style(green_button)
-        .on_press(Message::BeepTestSoundSettingsSave);
-
-    let bottom_row = row![cancel_button, horizontal_space(), save_button].spacing(SPACING);
-
-    column![title, row_top, row_bottom, bottom_row]
-        .spacing(SPACING)
-        .height(Length::Fill)
-        .into()
+    column![
+        make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+            portal_indicator
+        ),
+        row_top,
+        row_bottom,
+        row![horizontal_space()].height(Length::Fill),
+        make_beep_test_cancel_apply_footer(
+            Message::BeepTestSoundSettingsCancel,
+            Message::BeepTestSoundSettingsSave,
+            has_changes,
+        ),
+    ]
+    .spacing(SPACING)
+    .height(Length::Fill)
+    .into()
 }
 
 /// Maximum number of level columns in a single horizontal band of the
@@ -211,28 +240,36 @@ const EDIT_TABLE_CELL_SPACING: f32 = 2.0;
 
 /// Edit Levels sub-page.
 ///
-/// Top half: the same transposed level table from the main view, plus
+/// Standard refbox column layout: game time banner at top, the
+/// transposed levels table + per-level edit panel in the middle (sized
+/// proportionally), and a Cancel / Apply footer at the bottom. Apply
+/// disables when the staged levels match the live config.
+///
+/// Top middle: the same transposed level table from the main view, plus
 /// an extra `[+NEW]` header at the end. Every header and every cell is
 /// tappable: tapping any element in a column selects that level. The
 /// selected column is highlighted with a distinct (blue) style to
 /// distinguish it from the main view's yellow "active lap" highlight.
 ///
-/// Bottom half: a per-level edit panel showing the selected level's
+/// Bottom middle: a per-level edit panel showing the selected level's
 /// duration and count, each with `[-]` `[+]` buttons, and a `REMOVE
 /// LEVEL` button (disabled when only one level remains).
-///
-/// Save commits the staged levels to live config and persists; Cancel
-/// discards the staged edits. Both navigate back to the Settings
-/// landing.
-pub(in super::super) fn build_beep_test_edit_levels_page(
-    levels: &[Level],
+pub(in super::super) fn build_beep_test_edit_levels_page<'a>(
+    snapshot: &GameSnapshot,
+    mode: Mode,
+    clock_running: bool,
+    portal_indicator: Option<PortalIndicatorState>,
+    config: &Config,
+    levels: &'a [Level],
     selected: usize,
-) -> Element<'_, Message> {
+) -> Element<'a, Message> {
     // Clamp the selected index defensively. The handlers in update()
     // already prevent out-of-range writes, but a render pass that
     // happens to see a stale snapshot (e.g. between Remove and the next
     // tick) should still produce a sane view.
     let selected = selected.min(levels.len().saturating_sub(1));
+
+    let has_changes = config.beep_test.levels.as_slice() != levels;
 
     // ----- Transposed table with tappable headers + cells -----
     let table = build_editor_levels_table(levels, selected);
@@ -240,25 +277,26 @@ pub(in super::super) fn build_beep_test_edit_levels_page(
     // ----- Per-level edit panel -----
     let edit_panel = build_edit_panel(levels, selected);
 
-    // ----- Save / Cancel bottom row -----
-    let cancel_button = make_button(fl!("cancel"))
-        .style(red_button)
-        .on_press(Message::BeepTestEditLevelsCancel);
-
-    let save_button = make_button(fl!("save"))
-        .style(green_button)
-        .on_press(Message::BeepTestEditLevelsSave);
-
-    let bottom_row = row![cancel_button, horizontal_space(), save_button].spacing(SPACING);
-
     column![
+        make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+            portal_indicator
+        ),
         container(table)
             .width(Length::Fill)
             .height(Length::FillPortion(3)),
         container(edit_panel)
             .width(Length::Fill)
             .height(Length::FillPortion(2)),
-        bottom_row,
+        make_beep_test_cancel_apply_footer(
+            Message::BeepTestEditLevelsCancel,
+            Message::BeepTestEditLevelsSave,
+            has_changes,
+        ),
     ]
     .spacing(SPACING)
     .height(Length::Fill)
@@ -597,20 +635,30 @@ fn build_edit_panel(levels: &[Level], selected: usize) -> Element<'_, Message> {
 
 /// App Mode sub-page.
 ///
-/// A single page that lets the operator cycle the app mode between
-/// Hockey 6v6, Hockey 3v3, Rugby, and Beep Test. The staged value lives
-/// in `edited_settings.mode` (seeded by `BeepTestEditOpenAppMode`) and
-/// is cycled by the existing `Message::CycleParameter(CyclingParameter::Mode)`
-/// handler shared with the hockey-mode App config page.
+/// Standard refbox column layout matching `make_app_config_page` in
+/// `configuration.rs`: game time banner at top, a row containing the
+/// `APP MODE` cycle button as one cell (with filler cells beside it),
+/// fill rows below, and a Cancel / Apply footer at the bottom. Apply
+/// disables when the staged mode matches the live config.
+///
+/// The staged value lives in `edited_settings.mode` (seeded by
+/// `BeepTestEditOpenAppMode`) and is cycled by the existing
+/// `Message::CycleParameter(CyclingParameter::Mode)` handler shared with
+/// the hockey-mode App config page.
 ///
 /// Apply commits the staged mode; when it differs from the current mode
 /// the app restarts (mirroring the existing PortalTenantSwitch
 /// RestartAndApply path). Cancel discards the staged mode and returns to
 /// the BeepTest Settings landing.
 pub(in super::super) fn build_beep_test_app_mode_page<'a>(
+    snapshot: &GameSnapshot,
+    mode: Mode,
+    clock_running: bool,
+    portal_indicator: Option<PortalIndicatorState>,
+    config: &Config,
     staged_mode: crate::config::Mode,
 ) -> Element<'a, Message> {
-    let title = text(fl!("app-mode")).size(MEDIUM_TEXT).width(Length::Fill);
+    let has_changes = config.mode != staged_mode;
 
     let cycle_button = make_value_button(
         fl!("app-mode"),
@@ -619,24 +667,59 @@ pub(in super::super) fn build_beep_test_app_mode_page<'a>(
         Some(Message::CycleParameter(CyclingParameter::Mode)),
     );
 
-    let cancel_button = make_button(fl!("cancel"))
-        .style(red_button)
-        .on_press(Message::BeepTestEditAppModeCancel);
-
-    let apply_button = make_button(fl!("apply"))
-        .style(green_button)
-        .on_press(Message::BeepTestEditAppModeApply);
-
-    let bottom_row = row![cancel_button, horizontal_space(), apply_button].spacing(SPACING);
-
     column![
-        title,
-        Space::with_height(Length::Fill),
-        cycle_button,
-        Space::with_height(Length::Fill),
-        bottom_row,
+        make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+            portal_indicator
+        ),
+        row![cycle_button, horizontal_space()]
+            .spacing(SPACING)
+            .height(Length::Fill),
+        row![horizontal_space()].height(Length::Fill),
+        row![horizontal_space()].height(Length::Fill),
+        row![horizontal_space()].height(Length::Fill),
+        make_beep_test_cancel_apply_footer(
+            Message::BeepTestEditAppModeCancel,
+            Message::BeepTestEditAppModeApply,
+            has_changes,
+        ),
     ]
     .spacing(SPACING)
     .height(Length::Fill)
     .into()
+}
+
+/// Cancel / Apply footer for BeepTest Settings editor sub-pages.
+///
+/// Mirrors `make_cancel_apply_footer` in `configuration.rs`: red Cancel
+/// on the left, green Apply on the right (using the existing `apply`
+/// translation key — the same label the game-mode editor sub-pages
+/// show). Apply omits its `on_press` when `has_changes` is false, which
+/// produces the disabled / grayed-out appearance per refbox convention.
+fn make_beep_test_cancel_apply_footer<'a>(
+    cancel_message: Message,
+    apply_message: Message,
+    has_changes: bool,
+) -> Element<'a, Message> {
+    let cancel = make_button(fl!("cancel"))
+        .style(red_button)
+        .width(Length::Fill)
+        .on_press(cancel_message);
+
+    let apply = make_button(fl!("apply"))
+        .style(green_button)
+        .width(Length::Fill);
+    let apply = if has_changes {
+        apply.on_press(apply_message)
+    } else {
+        apply
+    };
+
+    row![cancel, horizontal_space(), apply]
+        .spacing(SPACING)
+        .into()
 }

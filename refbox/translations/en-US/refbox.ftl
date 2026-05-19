@@ -369,6 +369,11 @@ beep-test-reset = RESET
 beep-test-column-level = LEVEL
 beep-test-column-count = COUNT
 beep-test-column-duration = DURATION
+beep-test-edit-selected = Selected: Level { $level }
+beep-test-edit-time = TIME
+beep-test-edit-count = COUNT
+beep-test-edit-new = + NEW
+beep-test-edit-remove = REMOVE LEVEL
 
 # Infractions
 stick-foul = Stick Foul

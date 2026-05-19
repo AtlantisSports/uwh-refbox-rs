@@ -1,7 +1,7 @@
 use super::{ViewData, fl, message::*, shared_elements::*, theme::*};
 use crate::app::PageEntrySnapshot;
 use crate::app::languages::Language;
-use crate::config::Mode;
+use crate::config::{Level, Mode};
 use crate::portal_manager::PortalIndicatorState;
 use crate::sound_controller::*;
 use collect_array::CollectArrayResult;
@@ -38,6 +38,13 @@ pub(in super::super) struct EditableSettings {
     pub confirm_score: bool,
     pub pending_language: Option<Language>,
     pub original_language: Option<Language>,
+    /// Staged copy of `config.beep_test.levels` used by the BeepTest
+    /// Edit Levels sub-page. `Some(_)` only while that page is open;
+    /// `None` everywhere else.
+    pub beep_test_levels: Option<Vec<Level>>,
+    /// Index into `beep_test_levels` of the currently-selected level
+    /// in the BeepTest Edit Levels sub-page. Defaults to 0 on entry.
+    pub selected_level: usize,
 }
 
 impl EditableSettings {

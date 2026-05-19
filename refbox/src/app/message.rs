@@ -1,4 +1,4 @@
-use super::{fl, languages::Language};
+use super::{BeepTestConfigPage, fl, languages::Language};
 use crate::{
     portal_manager::{ItemId, PortalEvent},
     sound_controller::RemoteId,
@@ -153,6 +153,18 @@ pub enum Message {
     BeepTestReset,
     /// Tick from the timer subscription; advances the cadence engine.
     BeepTestTick,
+    /// Operator pressed Settings on the BeepTest main view. Opens the
+    /// BeepTest-specific Settings landing page.
+    BeepTestOpenSettings,
+    /// Operator pressed Back/Done on the BeepTest Settings landing.
+    /// Returns to the BeepTest main view.
+    BeepTestCloseSettings,
+    /// Navigate to a sub-page within BeepTest Settings.
+    BeepTestNavigateTo(BeepTestConfigPage),
+    /// Operator pressed Language on the BeepTest Settings landing. Sets up
+    /// `edited_settings` and routes into the existing
+    /// `EditGameConfig(ConfigPage::Language)` flow.
+    BeepTestOpenLanguageSettings,
     AlarmPressed,
     AlarmReleased,
     SpacebarPressed,
@@ -241,6 +253,10 @@ impl Message {
             | Self::BeepTestStart
             | Self::BeepTestStop
             | Self::BeepTestReset
+            | Self::BeepTestOpenSettings
+            | Self::BeepTestCloseSettings
+            | Self::BeepTestNavigateTo(_)
+            | Self::BeepTestOpenLanguageSettings
             | Self::AlarmPressed
             | Self::AlarmReleased
             | Self::SpacebarPressed
@@ -278,6 +294,9 @@ impl PartialEq for Message {
             | (Self::BeepTestStop, Self::BeepTestStop)
             | (Self::BeepTestReset, Self::BeepTestReset)
             | (Self::BeepTestTick, Self::BeepTestTick)
+            | (Self::BeepTestOpenSettings, Self::BeepTestOpenSettings)
+            | (Self::BeepTestCloseSettings, Self::BeepTestCloseSettings)
+            | (Self::BeepTestOpenLanguageSettings, Self::BeepTestOpenLanguageSettings)
             | (Self::AlarmPressed, Self::AlarmPressed)
             | (Self::AlarmReleased, Self::AlarmReleased)
             | (Self::SpacebarPressed, Self::SpacebarPressed)
@@ -402,6 +421,7 @@ impl PartialEq for Message {
             // unequal so every event is delivered to `update()`.
             (Self::PortalEvent(_), Self::PortalEvent(_)) => false,
             (Self::ConfirmationSelected(a), Self::ConfirmationSelected(b)) => a == b,
+            (Self::BeepTestNavigateTo(a), Self::BeepTestNavigateTo(b)) => a == b,
             (Self::TeamTimeout(a, b), Self::TeamTimeout(c, d)) => a == c && b == d,
             (Self::RefTimeout(a), Self::RefTimeout(b)) => a == b,
             (Self::PenaltyShot(a), Self::PenaltyShot(b)) => a == b,
@@ -485,6 +505,10 @@ impl PartialEq for Message {
             | (Self::BeepTestStop, _)
             | (Self::BeepTestReset, _)
             | (Self::BeepTestTick, _)
+            | (Self::BeepTestOpenSettings, _)
+            | (Self::BeepTestCloseSettings, _)
+            | (Self::BeepTestNavigateTo(_), _)
+            | (Self::BeepTestOpenLanguageSettings, _)
             | (Self::AlarmPressed, _)
             | (Self::AlarmReleased, _)
             | (Self::SpacebarPressed, _)

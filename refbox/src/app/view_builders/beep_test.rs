@@ -23,6 +23,7 @@ pub(in super::super) fn build_beep_test_page<'a>(
     snapshot: &BeepTestSnapshot,
     config: &'a BeepTest,
     clock_running: bool,
+    has_run: bool,
 ) -> Element<'a, Message> {
     // Big MM:SS countdown.
     let time_text = secs_to_long_time_string(snapshot.secs_in_period)
@@ -81,9 +82,16 @@ pub(in super::super) fn build_beep_test_page<'a>(
             .on_press(Message::BeepTestStart)
     };
 
-    let reset = make_button(fl!("beep-test-reset"))
-        .style(red_button)
-        .on_press(Message::BeepTestReset);
+    // Reset is disabled until the operator has pressed Start at least once
+    // in this session. A gray, non-interactive button signals that there is
+    // nothing to reset yet. The flag is never cleared once set.
+    let reset = if has_run {
+        make_button(fl!("beep-test-reset"))
+            .style(red_button)
+            .on_press(Message::BeepTestReset)
+    } else {
+        make_button(fl!("beep-test-reset")).style(gray_button)
+    };
 
     let settings = make_button(fl!("settings"))
         .style(light_gray_button)

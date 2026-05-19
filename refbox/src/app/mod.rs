@@ -120,6 +120,11 @@ pub struct RefBoxApp {
     /// disabled in this state so the operator can't fork the panel feed
     /// into a window that competes with the physical display.
     has_led_panel: bool,
+    /// Set to `true` the first time the operator presses Start in a
+    /// BeepTest session. Gates the Reset button: Reset renders disabled
+    /// until this flag is set. The flag is never cleared — Stop and Reset
+    /// do not unset it — so it persists for the lifetime of the process.
+    beep_test_has_run: bool,
     list_all_events: bool,
     mouse_alarm_held: bool,
     spacebar_held: bool,
@@ -1294,6 +1299,7 @@ impl RefBoxApp {
             sim_children,
             sim_spawn_config,
             has_led_panel,
+            beep_test_has_run: false,
             list_all_events,
             mouse_alarm_held: false,
             spacebar_held: false,
@@ -3184,6 +3190,7 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::BeepTestStart => {
+                self.beep_test_has_run = true;
                 // From Level(0) (idle/reset) the engine enters via
                 // `start_beep_test_now`; from any other Level it resumes via
                 // `start_clock`. Anything unexpected from the engine is logged
@@ -3414,6 +3421,7 @@ impl RefBoxApp {
                     &self.beep_test_snapshot,
                     &self.config.beep_test,
                     bt_tm.clock_is_running(),
+                    self.beep_test_has_run,
                 )
             }
         }]

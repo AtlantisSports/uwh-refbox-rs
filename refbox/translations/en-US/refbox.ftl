@@ -45,6 +45,8 @@ app-options = APP OPTIONS
 display-options = DISPLAY OPTIONS
 open-new-display = OPEN NEW DISPLAY
 sound-options = SOUND OPTIONS
+sound-settings = SOUND SETTINGS
+beep-test-edit-levels = EDIT LEVELS
 app-mode = APP
     MODE
 hide-time-for-last-15-seconds = HIDE TIME FOR

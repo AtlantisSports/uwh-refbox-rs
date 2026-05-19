@@ -5,6 +5,9 @@ pub(super) use keypad_pages::*;
 
 pub mod beep_test;
 
+pub mod beep_test_settings;
+pub(super) use beep_test_settings::*;
+
 pub mod configuration;
 pub(super) use configuration::*;
 

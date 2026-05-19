@@ -209,6 +209,24 @@ enum AppState {
     /// Shown when `config.mode == Mode::BeepTest`. The cadence engine and
     /// its snapshot live on the running app (`beep_test_tm` / `beep_test_snapshot`).
     BeepTestPage,
+    /// BeepTest Settings hierarchy. Reached via the Settings button on the
+    /// BeepTest main view. Mirrors the `EditGameConfig(ConfigPage)` pattern.
+    BeepTestSettings(BeepTestConfigPage),
+}
+
+/// Sub-pages inside `AppState::BeepTestSettings`.
+///
+/// `Main` is the 2x2 landing page (Sound, Edit Levels, App Mode, Language).
+/// `Sound`, `EditLevels`, `AppMode` are dedicated BeepTest sub-pages.
+/// The Language sub-page is not modelled here — the landing's Language
+/// button routes the operator into the existing
+/// `AppState::EditGameConfig(ConfigPage::Language)` flow.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BeepTestConfigPage {
+    Main,
+    Sound,
+    EditLevels,
+    AppMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2297,11 +2315,13 @@ impl RefBoxApp {
                 // the Settings Main back button and other escape paths); it just exits
                 // settings and drops the in-flight edit buffer.
                 //
-                // In BeepTest mode, return to BeepTestPage rather than MainPage so
-                // the operator lands back on the correct screen.
+                // In BeepTest mode, the operator reached EditGameConfig only via
+                // the Language sub-page on the BeepTest Settings landing. Returning
+                // to the Settings landing matches the operator's mental model
+                // ("Back from Language means back to where I clicked Language").
                 self.edited_settings = None;
                 self.app_state = if self.config.mode == Mode::BeepTest {
-                    AppState::BeepTestPage
+                    AppState::BeepTestSettings(BeepTestConfigPage::Main)
                 } else {
                     AppState::MainPage
                 };
@@ -3266,6 +3286,70 @@ impl RefBoxApp {
                 }
                 Task::none()
             }
+            Message::BeepTestOpenSettings => {
+                self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Main);
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::BeepTestCloseSettings => {
+                self.app_state = AppState::BeepTestPage;
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::BeepTestNavigateTo(page) => {
+                self.app_state = AppState::BeepTestSettings(page);
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::BeepTestOpenLanguageSettings => {
+                // Route into the existing Language sub-page by reusing the
+                // same `EditableSettings` setup that `Message::EditGameConfig`
+                // would use, then jumping directly to the Language page.
+                // Returning via the Language page's `LanguageSelectComplete`
+                // lands on `EditGameConfig(ConfigPage::Main)`, after which
+                // `ConfigEditComplete` routes back to BeepTest Settings
+                // landing (see the BeepTest arm in `ConfigEditComplete`).
+                let uwhportal_token_valid = if let Some(ref client) = self.uwhportal_client {
+                    // why this cannot panic: the guard is held only for a synchronous
+                    // `has_token()` call and dropped immediately.
+                    let has_token = client.lock().unwrap().has_token();
+                    if has_token { None } else { Some(false) }
+                } else {
+                    Some(false)
+                };
+
+                let current_language =
+                    Language::from_lang_id(&crate::LANGUAGE_LOADER.current_languages()[0]);
+
+                let edited_settings = EditableSettings {
+                    config: self.tm.lock().unwrap().config().clone(),
+                    game_number: if self.snapshot.current_period == GamePeriod::BetweenGames {
+                        self.snapshot.next_game_number.clone()
+                    } else {
+                        self.snapshot.game_number.clone()
+                    },
+                    white_on_right: self.config.hardware.white_on_right,
+                    brightness: self.config.hardware.brightness,
+                    using_uwhportal: self.using_uwhportal,
+                    uwhportal_token_valid,
+                    current_event_id: self.current_event_id.clone(),
+                    current_court: self.current_court.clone(),
+                    schedule: self.schedule.clone(),
+                    sound: self.config.sound.clone(),
+                    mode: self.config.mode,
+                    hide_time: self.config.hide_time,
+                    collect_scorer_cap_num: self.config.collect_scorer_cap_num,
+                    track_fouls_and_warnings: self.config.track_fouls_and_warnings,
+                    confirm_score: self.config.confirm_score,
+                    pending_language: Some(current_language),
+                    original_language: Some(current_language),
+                };
+                self.edited_settings = Some(edited_settings);
+                self.capture_snapshot_for(ConfigPage::Language);
+                self.app_state = AppState::EditGameConfig(ConfigPage::Language);
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
             Message::NoAction => Task::none(),
         }
     }
@@ -3424,6 +3508,12 @@ impl RefBoxApp {
                     self.beep_test_has_run,
                 )
             }
+            AppState::BeepTestSettings(page) => match page {
+                BeepTestConfigPage::Main => build_beep_test_settings_landing(),
+                BeepTestConfigPage::Sound => build_beep_test_sound_settings_page(),
+                BeepTestConfigPage::EditLevels => build_beep_test_edit_levels_page(),
+                BeepTestConfigPage::AppMode => build_beep_test_app_mode_page(),
+            },
         }]
         .spacing(SPACING)
         .padding(PADDING);
@@ -3436,6 +3526,9 @@ impl RefBoxApp {
             // BeepTest mode has its own bottom action row; the timeout ribbon
             // is a hockey/rugby concept and does not belong here.
             AppState::BeepTestPage => {}
+            // BeepTest Settings pages also live inside the BeepTest hierarchy
+            // and have no concept of timeouts.
+            AppState::BeepTestSettings(_) => {}
             _ => {
                 main_view = main_view.push(build_timeout_ribbon(
                     &self.snapshot,

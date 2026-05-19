@@ -134,7 +134,7 @@ pub(in super::super) fn build_beep_test_page<'a>(
 
     let settings = make_button(fl!("settings"))
         .style(light_gray_button)
-        .on_press(Message::EditGameConfig);
+        .on_press(Message::BeepTestOpenSettings);
 
     let bottom_row = row![reset, settings, start_stop].spacing(SPACING);
 

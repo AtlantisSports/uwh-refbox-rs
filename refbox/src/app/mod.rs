@@ -426,13 +426,12 @@ impl RefBoxApp {
         use crate::beep_test::snapshot::BeepTestPeriod;
 
         let (play_whistle, play_buzzer) = {
-            let prereqs = new_snapshot.current_period != BeepTestPeriod::Pre
-                && new_snapshot.secs_in_period != self.beep_test_snapshot.secs_in_period;
+            let prereqs = new_snapshot.secs_in_period != self.beep_test_snapshot.secs_in_period;
 
-            let is_whistle_period = match new_snapshot.current_period {
-                BeepTestPeriod::Level(_) => true,
-                BeepTestPeriod::Pre => false,
-            };
+            // Pre is gone — the only period variant is Level(_), which always
+            // warrants whistle/buzzer triggers. Keeping the explicit match makes
+            // the intent clear and stays correct if a new variant is added later.
+            let is_whistle_period = matches!(new_snapshot.current_period, BeepTestPeriod::Level(_));
 
             let (end_starts_play, end_stops_play) = (true, false);
 
@@ -3185,16 +3184,15 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::BeepTestStart => {
-                // Mirrors `beep-test/src/app/mod.rs`'s Start handler:
-                // from Pre the engine enters via `start_beep_test_now`;
-                // from a Level it resumes via `start_clock`. Anything
-                // unexpected from the engine is logged so the operator
-                // still gets a responsive UI rather than a panic.
+                // From Level(0) (idle/reset) the engine enters via
+                // `start_beep_test_now`; from any other Level it resumes via
+                // `start_clock`. Anything unexpected from the engine is logged
+                // so the operator still gets a responsive UI rather than a panic.
                 if let Some(ref mut bt_tm) = self.beep_test_tm {
                     let now = Instant::now();
                     use crate::beep_test::snapshot::BeepTestPeriod;
                     match bt_tm.current_period() {
-                        BeepTestPeriod::Pre => {
+                        BeepTestPeriod::Level(0) => {
                             if let Err(e) = bt_tm.start_beep_test_now(now) {
                                 error!("Failed to start beep test: {e}");
                             }

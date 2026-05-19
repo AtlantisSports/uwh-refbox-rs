@@ -38,9 +38,8 @@ pub(in super::super) fn build_beep_test_page<'a>(
     .style(gray_button)
     .padding(PADDING);
 
-    // Level indicator: "PRE" or "LEVEL N".
+    // Level indicator: "LEVEL N".
     let level_label = match snapshot.current_period {
-        BeepTestPeriod::Pre => fl!("beep-test-pre"),
         BeepTestPeriod::Level(i) => fl!("beep-test-level", level = i.to_string()),
     };
     let level_display = container(text(level_label).size(MEDIUM_TEXT))

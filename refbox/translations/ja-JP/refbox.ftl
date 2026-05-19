@@ -12,6 +12,7 @@ cancel = キャンセル
 delete = 削除
 back = 戻る
 apply = 適用
+save = SAVE
 user-options = ユーザー設定
 new = 新規
 
@@ -46,6 +47,8 @@ app-options = アプリオプション
 display-options = 表示オプション
 open-new-display = 新しい表示を開く
 sound-options = サウンドオプション
+sound-settings = SOUND SETTINGS
+beep-test-edit-levels = EDIT LEVELS
 app-mode = アプリ
     モード
 hide-time-for-last-15-seconds = 残り15秒
@@ -357,6 +360,11 @@ beep-test-reset = RESET
 beep-test-column-level = LEVEL
 beep-test-column-count = COUNT
 beep-test-column-duration = DURATION
+beep-test-edit-selected = Selected: Level { $level }
+beep-test-edit-time = TIME
+beep-test-edit-count = COUNT
+beep-test-edit-new = + NEW
+beep-test-edit-remove = REMOVE LEVEL
 
 # 反則種別
 stick-foul = スティック反則

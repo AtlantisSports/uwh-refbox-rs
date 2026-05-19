@@ -12,6 +12,7 @@ cancel = 取消
 delete = 删除
 back = 返回
 apply = 应用
+save = SAVE
 user-options = 用户选项
 new = 新建
 
@@ -46,6 +47,8 @@ app-options = 应用选项
 display-options = 显示选项
 open-new-display = 打开新显示
 sound-options = 声音选项
+sound-settings = SOUND SETTINGS
+beep-test-edit-levels = EDIT LEVELS
 app-mode = 应用
     模式
 hide-time-for-last-15-seconds = 最后15秒
@@ -357,6 +360,11 @@ beep-test-reset = RESET
 beep-test-column-level = LEVEL
 beep-test-column-count = COUNT
 beep-test-column-duration = DURATION
+beep-test-edit-selected = Selected: Level { $level }
+beep-test-edit-time = TIME
+beep-test-edit-count = COUNT
+beep-test-edit-new = + NEW
+beep-test-edit-remove = REMOVE LEVEL
 
 # 违规类型
 stick-foul = 球棍犯规

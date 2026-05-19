@@ -14,6 +14,7 @@ cancel = 취소
 delete = 삭제
 back = 뒤로
 apply = 적용
+save = SAVE
 user-options = 사용자 옵션
 new = 새로
 
@@ -48,6 +49,8 @@ app-options = 앱 옵션
 display-options = 화면 옵션
 open-new-display = 새 화면 열기
 sound-options = 소리 옵션
+sound-settings = SOUND SETTINGS
+beep-test-edit-levels = EDIT LEVELS
 app-mode = 앱
     모드
 hide-time-for-last-15-seconds = 마지막 15초
@@ -359,6 +362,11 @@ beep-test-reset = RESET
 beep-test-column-level = LEVEL
 beep-test-column-count = COUNT
 beep-test-column-duration = DURATION
+beep-test-edit-selected = Selected: Level { $level }
+beep-test-edit-time = TIME
+beep-test-edit-count = COUNT
+beep-test-edit-new = + NEW
+beep-test-edit-remove = REMOVE LEVEL
 
 # 위반 항목
 stick-foul = 스틱 반칙

@@ -12,6 +12,7 @@ cancel = ANNULEREN
 delete = VERWIJDEREN
 back = TERUG
 apply = TOEPASSEN
+save = SAVE
 user-options = GEBRUIKERSOPTIES
 new = NIEUW
 
@@ -46,6 +47,8 @@ app-options = APP-OPTIES
 display-options = WEERGAVEOPTIES
 open-new-display = NIEUWE WEERGAVE OPENEN
 sound-options = GELUIDSOPTIES
+sound-settings = SOUND SETTINGS
+beep-test-edit-levels = EDIT LEVELS
 app-mode = APP-
     MODUS
 hide-time-for-last-15-seconds = TIJD VERBERGEN
@@ -357,6 +360,11 @@ beep-test-reset = RESET
 beep-test-column-level = LEVEL
 beep-test-column-count = COUNT
 beep-test-column-duration = DURATION
+beep-test-edit-selected = Selected: Level { $level }
+beep-test-edit-time = TIME
+beep-test-edit-count = COUNT
+beep-test-edit-new = + NEW
+beep-test-edit-remove = REMOVE LEVEL
 
 # Overtredingen
 stick-foul = Stokfout

@@ -12,6 +12,7 @@ cancel = KANSELAHIN
 delete = BURAHIN
 back = BUMALIK
 apply = ILAPAT
+save = SAVE
 user-options = MGA OPSYON NG USER
 new = BAGO
 
@@ -46,6 +47,8 @@ app-options = MGA OPSYON SA APP
 display-options = MGA OPSYON SA DISPLAY
 open-new-display = BUKSAN ANG BAGONG DISPLAY
 sound-options = MGA OPSYON SA TUNOG
+sound-settings = SOUND SETTINGS
+beep-test-edit-levels = EDIT LEVELS
 app-mode = MODE NG
     APP
 hide-time-for-last-15-seconds = ITAGO ANG ORAS SA
@@ -357,6 +360,11 @@ beep-test-reset = RESET
 beep-test-column-level = LEVEL
 beep-test-column-count = COUNT
 beep-test-column-duration = DURATION
+beep-test-edit-selected = Selected: Level { $level }
+beep-test-edit-time = TIME
+beep-test-edit-count = COUNT
+beep-test-edit-new = + NEW
+beep-test-edit-remove = REMOVE LEVEL
 
 # Mga Paglabag
 stick-foul = Poul sa Stick

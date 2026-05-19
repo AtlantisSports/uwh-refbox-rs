@@ -12,6 +12,7 @@ cancel = İPTAL
 delete = SİL
 back = GERİ
 apply = UYGULA
+save = SAVE
 user-options = KULLANICI SEÇENEKLERİ
 new = YENİ
 
@@ -46,6 +47,8 @@ app-options = UYGULAMA SEÇENEKLERİ
 display-options = GÖRÜNTÜ SEÇENEKLERİ
 open-new-display = YENİ GÖRÜNTÜ AÇ
 sound-options = SES SEÇENEKLERİ
+sound-settings = SOUND SETTINGS
+beep-test-edit-levels = EDIT LEVELS
 app-mode = UYGULAMA
     MODU
 hide-time-for-last-15-seconds = SON 15 SANİYE
@@ -357,6 +360,11 @@ beep-test-reset = RESET
 beep-test-column-level = LEVEL
 beep-test-column-count = COUNT
 beep-test-column-duration = DURATION
+beep-test-edit-selected = Selected: Level { $level }
+beep-test-edit-time = TIME
+beep-test-edit-count = COUNT
+beep-test-edit-new = + NEW
+beep-test-edit-remove = REMOVE LEVEL
 
 # İhlaller
 stick-foul = Sopa Faulü

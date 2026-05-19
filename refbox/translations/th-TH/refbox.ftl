@@ -12,6 +12,7 @@ cancel = ยกเลิก
 delete = ลบ
 back = กลับ
 apply = ใช้
+save = SAVE
 user-options = ตัวเลือกผู้ใช้
 new = ใหม่
 
@@ -46,6 +47,8 @@ app-options = ตัวเลือกแอป
 display-options = ตัวเลือกการแสดงผล
 open-new-display = เปิดการแสดงผลใหม่
 sound-options = ตัวเลือกเสียง
+sound-settings = SOUND SETTINGS
+beep-test-edit-levels = EDIT LEVELS
 app-mode = โหมด
     แอป
 hide-time-for-last-15-seconds = ซ่อนเวลา
@@ -357,6 +360,11 @@ beep-test-reset = RESET
 beep-test-column-level = LEVEL
 beep-test-column-count = COUNT
 beep-test-column-duration = DURATION
+beep-test-edit-selected = Selected: Level { $level }
+beep-test-edit-time = TIME
+beep-test-edit-count = COUNT
+beep-test-edit-new = + NEW
+beep-test-edit-remove = REMOVE LEVEL
 
 # การฝ่าฝืน
 stick-foul = ฟาวล์ด้วยไม้

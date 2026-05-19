@@ -74,6 +74,11 @@ pub(in super::super) fn build_beep_test_settings_landing<'a>(
         .style(red_button)
         .on_press(Message::BeepTestCloseSettings);
 
+    // 2 tile rows + 3 spacer rows = 5 Fill shares. The back row sits at the
+    // very bottom (where the timeout ribbon would be in Hockey/Rugby), with
+    // an extra Fill spacer replacing its old slot — this keeps each Fill
+    // share close to button height (no inner-row whitespace) without leaving
+    // dead space below the back row.
     column![
         make_game_time_button(
             snapshot,
@@ -85,6 +90,7 @@ pub(in super::super) fn build_beep_test_settings_landing<'a>(
         ),
         row_top,
         row_bottom,
+        row![horizontal_space()].height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),
         row![back_button, horizontal_space(), horizontal_space()].spacing(SPACING),
@@ -217,6 +223,8 @@ pub(in super::super) fn build_beep_test_sound_settings_page<'a>(
         ),
         row_top,
         row_bottom,
+        row![horizontal_space()].height(Length::Fill),
+        row![horizontal_space()].height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),
         make_beep_test_cancel_apply_footer(
             Message::BeepTestSoundSettingsCancel,
@@ -679,6 +687,7 @@ pub(in super::super) fn build_beep_test_app_mode_page<'a>(
         row![cycle_button, horizontal_space()]
             .spacing(SPACING)
             .height(Length::Fill),
+        row![horizontal_space()].height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),

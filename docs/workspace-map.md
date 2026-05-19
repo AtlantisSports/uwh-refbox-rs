@@ -102,18 +102,6 @@ management.
 
 ---
 
-### `beep-test`
-
-**What it is:** A standalone tool for testing the buzzer/audio system independently of a game.
-Useful for checking that sounds work correctly on a given hardware setup.
-
-**Tech:** Built with `iced`, similar architecture to `refbox`.
-
-**Changes belong here when:** fixing audio playback issues or adjusting how sounds are triggered
-in test mode.
-
----
-
 ## Utility Crates
 
 These crates are smaller and more self-contained. Changes here are usually narrow in scope.

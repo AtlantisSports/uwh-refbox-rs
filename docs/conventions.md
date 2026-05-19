@@ -31,7 +31,6 @@ When in doubt, check here first.
 | `uwh-common` | The shared types and game logic library |
 | `overlay` | The stream overlay application |
 | `wireless-remote` | The embedded remote firmware |
-| `beep-test` | The audio testing tool |
 | `alphagen` | The image processing utility |
 | `fonts` | The embedded font definitions |
 | `led-panel-sim` | The LED panel simulator |

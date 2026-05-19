@@ -576,51 +576,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "beep-test"
-version = "0.4.0"
-dependencies = [
- "arrayref",
- "clap",
- "collect_array",
- "confy",
- "conquer-once",
- "derivative",
- "directories",
- "embedded-graphics",
- "enum-derive-2018",
- "enum-iterator",
- "env_logger 0.11.8",
- "futures-lite",
- "iced",
- "iced_core",
- "iced_futures",
- "iced_graphics",
- "iced_renderer",
- "iced_runtime",
- "led-panel-sim",
- "log",
- "log-panics",
- "log4rs",
- "macro-attr-2018",
- "matrix-drawing",
- "more-asserts",
- "paste",
- "reqwest",
- "serde",
- "serde_derive",
- "serde_json",
- "skip_error",
- "thiserror 2.0.17",
- "time",
- "tokio",
- "tokio-serial",
- "toml 0.9.7",
- "uwh-common",
- "web-audio-api",
- "winres",
-]
-
-[[package]]
 name = "bindgen"
 version = "0.72.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8312,15 +8267,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "21a0236b59786fed61e2a80582dd500fe61f18b5dca67a4a067d0bc9039339cf"
 dependencies = [
  "memchr",
-]
-
-[[package]]
-name = "winres"
-version = "0.1.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b68db261ef59e9e52806f688020631e987592bd83619edccda9c47d42cde4f6c"
-dependencies = [
- "toml 0.5.11",
 ]
 
 [[package]]

@@ -194,7 +194,7 @@ fn build_levels_table(
         // Header row: level numbers (1-indexed). Past columns are grayed
         // out (disabled look); active and future columns use green headers.
         // Padding cells fill any gap so the band's columns stay the same width.
-        let mut header_row = Row::new().spacing(TABLE_CELL_SPACING);
+        let mut header_row = Row::new().spacing(SPACING);
         for (col_idx, _level) in band_levels.iter().enumerate() {
             let level_number = level_index_offset + col_idx + 1; // 1-indexed
             header_row = header_row.push(header_cell(
@@ -213,7 +213,7 @@ fn build_levels_table(
         // the second, etc. A column has `level.count` cells; rows
         // beyond a column's count are empty space.
         for row_idx in 0..max_count {
-            let mut cell_row = Row::new().spacing(TABLE_CELL_SPACING);
+            let mut cell_row = Row::new().spacing(SPACING);
             for (col_idx, level) in band_levels.iter().enumerate() {
                 if row_idx < level.count as usize {
                     let column_state = column_states[col_idx];
@@ -244,7 +244,7 @@ fn build_levels_table(
         // if that's odd, append one more blank row to make it even.)
         let layer_count = 1 + max_count;
         if layer_count % 2 == 1 {
-            let mut blank_row = Row::new().spacing(TABLE_CELL_SPACING);
+            let mut blank_row = Row::new().spacing(SPACING);
             for _ in 0..BAND_WIDTH {
                 blank_row = blank_row.push(filler_cell());
             }
@@ -255,9 +255,7 @@ fn build_levels_table(
     container(bands)
         .padding(TABLE_CELL_SPACING)
         .width(Length::Fill)
-        .height(Length::Fill)
         .center_x(Length::Fill)
-        .center_y(Length::Fill)
         .into()
 }
 

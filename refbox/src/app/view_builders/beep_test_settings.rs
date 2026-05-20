@@ -321,12 +321,10 @@ pub(in super::super) fn build_beep_test_edit_levels_page<'a>(
             clock_running,
             portal_indicator
         ),
-        container(table)
-            .width(Length::Fill)
-            .height(Length::FillPortion(3)),
+        container(table).width(Length::Fill).height(Length::Fill),
         container(edit_panel)
             .width(Length::Fill)
-            .height(Length::FillPortion(2)),
+            .height(Length::Fill),
         make_beep_test_cancel_apply_footer(
             Message::BeepTestEditLevelsCancel,
             Message::BeepTestEditLevelsSave,

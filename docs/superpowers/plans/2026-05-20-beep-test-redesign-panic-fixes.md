@@ -335,3 +335,67 @@ No commit needed — Tasks 1 and 2 already committed their fixes.
 | Placeholder scan | No TBDs. Step 6 (debugging fallback) is conditional but its method (systematic-debugging skill) is concrete. |
 | Type consistency | All Message variant names checked against current `message.rs`. |
 | Bite-sized tasks | Each task has ≤ 7 steps, each step ≤ 5 min. |
+
+---
+
+## Deviations (recorded post-execution, 2026-05-20)
+
+### Task 1 — landed as planned
+Six-line removal in `refbox/src/app/mod.rs`. APP MODE cycle after sub-page
+round-trip verified by operator. No surprises. Commit `ebd25d6`.
+
+### Task 2 — FillPortion theory was wrong; fix is structural
+
+**What the plan predicted:** Swapping `FillPortion(3)` / `FillPortion(2)` for
+equal `Length::Fill` on the table and panel container wrappers would eliminate
+the `Quad with non-normal height!` panic.
+
+**What actually happened:** The swap still panicked with the same backtrace.
+The plan's fallback (Step 6 — `superpowers:systematic-debugging`) was invoked
+and the layout tree was bisected:
+
+1. Replace table + edit_panel with un-styled `Space` widgets → renders ✓
+2. Add table back, edit_panel still `Space` → renders ✓
+3. Add stripped edit_panel = just selected_label → renders ✓
+4. Stripped edit_panel = label + time_row + count_row (no remove_button) → renders ✓
+5. Stripped edit_panel = label + remove_button only → renders ✓
+6. Full edit_panel (label + time_row + count_row + remove_button) → panics ✗
+
+**Root cause:** Each individual sub-tree was fine. The panic was a vertical
+space overflow that only triggered when all four panel children were present.
+With the operator's window size (945×691), the panel's allocated height after
+banner / footer / outer-column spacing came out to ~244 px, but the panel's
+own four fixed-height children (label ~30 + time_row 86 + count_row 86 +
+remove_button 86 + 3× SPACING = ~312) overflowed by ~68 px. iced 0.13
+propagated that overflow as a non-normal computed height somewhere in the
+quad-drawing path, triggering the `is_normal()` `debug_assert` in
+`iced_tiny_skia::engine::draw_quad`.
+
+**Fix that landed (operator-suggested):** Restructure the panel into a
+compact three-row layout where `[+NEW]`, the `Selected: Level N` indicator,
+and `[REMOVE LEVEL]` share a single top management row, with `[+NEW]` also
+removed from the table since it now lives in the panel. The panel content
+fits within the allocated space. Side benefit: the table is one row shorter
+and the level-mutation actions are grouped together. Commit `3d1a167`.
+
+The FillPortion → Fill swap from the original Task 2 plan remained
+committed (`b33c2de`) even though it wasn't sufficient on its own — it
+slightly increased the panel's allocated space (50/50 vs. the original
+60/40 in favour of the table), and the redesigned panel is happier with
+the equal split.
+
+### Task 3 — passed
+All 12 walkthrough scenarios confirmed by operator. Branch held for
+stacked PR with Branch 3 (LED panel cross-crate, not yet started).
+
+### Other gotchas hit this session (worth flagging)
+
+- **Bash cwd reset bit hard:** running `cargo run -p refbox` after a fresh
+  Bash invocation reset cwd back to the main repo and ran the *master*
+  refbox binary. That binary's `Config` struct doesn't have a `beep_test`
+  field, so it wrote a config file missing `[beep_test]` — which the
+  worktree refbox then failed to load with "Bad TOML data", falling into
+  a migration path that silently produced more breakage. Always
+  `cd /home/estraily/projects/uwh-refbox-rs/.worktrees/feat-refbox-beep-test-redesign && cargo …`
+  or invoke `./target/debug/refbox` directly after building. (Already
+  captured in the operator's memory entry `feedback_cd_worktree_before_cargo`.)

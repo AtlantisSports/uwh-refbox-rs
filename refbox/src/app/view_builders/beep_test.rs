@@ -176,14 +176,14 @@ fn build_levels_table(
             .max()
             .unwrap_or(0);
 
-        // Header row: level numbers (1-indexed). The active level's
-        // header is highlighted yellow; padding cells fill any gap so
-        // the band's columns stay the same width.
+        // Header row: level numbers (1-indexed). Past columns are grayed
+        // out (disabled look); active and future columns use green headers.
+        // Padding cells fill any gap so the band's columns stay the same width.
         let mut header_row = Row::new().spacing(TABLE_CELL_SPACING);
         for (col_idx, _level) in band_levels.iter().enumerate() {
             let level_number = level_index_offset + col_idx + 1; // 1-indexed
-            let is_active_column = active_level == Some(level_number);
-            header_row = header_row.push(header_cell(level_number.to_string(), is_active_column));
+            let column_state = compute_column_state(active_level, level_number);
+            header_row = header_row.push(header_cell(level_number.to_string(), column_state));
         }
         // Right-pad the header so partially-filled bands align with full
         // bands above them.
@@ -200,15 +200,15 @@ fn build_levels_table(
             for (col_idx, level) in band_levels.iter().enumerate() {
                 let level_number = level_index_offset + col_idx + 1;
                 if row_idx < level.count as usize {
-                    let is_active_column = active_level == Some(level_number);
-                    let cell_state = if is_active_column {
-                        match active_within_lap {
+                    let column_state = compute_column_state(active_level, level_number);
+                    let cell_state = match column_state {
+                        ColumnState::Past => CellState::Completed,
+                        ColumnState::Active => match active_within_lap {
                             Some(within) if (within as usize) == row_idx + 1 => CellState::Active,
                             Some(within) if (within as usize) > row_idx + 1 => CellState::Completed,
                             _ => CellState::Default,
-                        }
-                    } else {
-                        CellState::Default
+                        },
+                        ColumnState::Future => CellState::Default,
                     };
                     cell_row =
                         cell_row.push(value_cell(level.duration.as_secs().to_string(), cell_state));
@@ -243,31 +243,56 @@ enum CellState {
     Completed,
 }
 
+/// Whether a level column is in the past, currently active, or in the future.
+#[derive(Clone, Copy)]
+enum ColumnState {
+    /// This level has already been completed — render in the disabled look.
+    Past,
+    /// This is the currently-running level.
+    Active,
+    /// This level has not been reached yet — render in the default (green) look.
+    Future,
+}
+
+/// Compute the column state for a given 1-based level number.
+///
+/// - `active_level == None` means the engine is in warmup (Level 0); every
+///   column is treated as Future.
+/// - A column whose 1-based index is less than the active level is Past.
+/// - A column whose index equals the active level is Active.
+/// - All other columns (index greater than active level) are Future.
+fn compute_column_state(active_level: Option<usize>, column_one_based: usize) -> ColumnState {
+    match active_level {
+        None => ColumnState::Future,
+        Some(active) if column_one_based < active => ColumnState::Past,
+        Some(active) if column_one_based == active => ColumnState::Active,
+        _ => ColumnState::Future,
+    }
+}
+
 /// A column-header cell showing a level number.
-fn header_cell<'a>(label: String, is_active: bool) -> Element<'a, Message> {
+fn header_cell<'a>(label: String, state: ColumnState) -> Element<'a, Message> {
     let inner = text(label)
         .size(SMALL_TEXT)
         .align_x(Horizontal::Center)
         .width(Length::Fill);
-    if is_active {
-        // No `on_press` — the button is purely a styled rectangle.
-        button(
-            container(inner)
-                .center_x(Length::Fill)
-                .center_y(Length::Fill),
-        )
-        .style(yellow_button)
-        .padding(TABLE_CELL_SPACING)
-        .width(Length::Fill)
-        .into()
-    } else {
-        container(inner)
-            .style(light_gray_container)
+    match state {
+        ColumnState::Past => container(inner)
+            .style(disabled_container)
             .padding(TABLE_CELL_SPACING)
             .width(Length::Fill)
             .center_x(Length::Fill)
             .center_y(Length::Fill)
-            .into()
+            .into(),
+        ColumnState::Active | ColumnState::Future => button(
+            container(inner)
+                .center_x(Length::Fill)
+                .center_y(Length::Fill),
+        )
+        .style(green_button)
+        .padding(TABLE_CELL_SPACING)
+        .width(Length::Fill)
+        .into(),
     }
 }
 
@@ -392,5 +417,33 @@ mod tests {
         // After Level(1)'s third lap, lap_count = 4, period = Level(2).
         assert_eq!(within_level_lap(4, 2, &c), 1);
         assert_eq!(within_level_lap(5, 2, &c), 2);
+    }
+
+    #[test]
+    fn column_state_no_active_level_is_all_future() {
+        // When the engine is in warmup (Level 0), `active_level` is None and
+        // every column should render as Future.
+        assert!(matches!(compute_column_state(None, 1), ColumnState::Future));
+        assert!(matches!(compute_column_state(None, 5), ColumnState::Future));
+    }
+
+    #[test]
+    fn column_state_active_marks_only_active_column() {
+        assert!(matches!(
+            compute_column_state(Some(3), 1),
+            ColumnState::Past
+        ));
+        assert!(matches!(
+            compute_column_state(Some(3), 2),
+            ColumnState::Past
+        ));
+        assert!(matches!(
+            compute_column_state(Some(3), 3),
+            ColumnState::Active
+        ));
+        assert!(matches!(
+            compute_column_state(Some(3), 4),
+            ColumnState::Future
+        ));
     }
 }

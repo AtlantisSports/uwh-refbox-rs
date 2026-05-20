@@ -242,6 +242,11 @@ const EDIT_BAND_WIDTH: usize = 10;
 /// main view's TABLE_CELL_SPACING so the editor reads as a tight grid.
 const EDIT_TABLE_CELL_SPACING: f32 = 2.0;
 
+/// Height of one editor-table cell layer (header or lap row). Sized so
+/// that two stacked layers plus the standard SPACING between them equal
+/// one MIN_BUTTON_SIZE row, matching the main view's TABLE_CELL_HEIGHT.
+const EDIT_TABLE_CELL_HEIGHT: f32 = (MIN_BUTTON_SIZE - SPACING) / 2.0;
+
 /// Edit Levels sub-page.
 ///
 /// Standard refbox column layout: the transposed levels table + per-level
@@ -278,7 +283,7 @@ pub(in super::super) fn build_beep_test_edit_levels_page<'a>(
     let edit_panel = build_edit_panel(levels, selected);
 
     column![
-        container(table).width(Length::Fill).height(Length::Fill),
+        container(table).width(Length::Fill),
         container(edit_panel)
             .width(Length::Fill)
             .height(Length::Fill),
@@ -311,7 +316,7 @@ fn build_editor_levels_table(levels: &[Level], selected: usize) -> Element<'_, M
             .unwrap_or(0);
 
         // Header row: column headers (1-indexed for the operator).
-        let mut header_row = Row::new().spacing(EDIT_TABLE_CELL_SPACING);
+        let mut header_row = Row::new().spacing(SPACING);
         for (col_idx, _level) in band_levels.iter().enumerate() {
             let level_number = level_index_offset + col_idx + 1;
             let zero_based = level_index_offset + col_idx;
@@ -334,7 +339,7 @@ fn build_editor_levels_table(levels: &[Level], selected: usize) -> Element<'_, M
         // that selects the column it belongs to. Empty rows beyond a
         // column's count render as filler.
         for row_idx in 0..max_count {
-            let mut cell_row = Row::new().spacing(EDIT_TABLE_CELL_SPACING);
+            let mut cell_row = Row::new().spacing(SPACING);
             for (col_idx, level) in band_levels.iter().enumerate() {
                 let zero_based = level_index_offset + col_idx;
                 if row_idx < level.count as usize {
@@ -353,14 +358,24 @@ fn build_editor_levels_table(levels: &[Level], selected: usize) -> Element<'_, M
             }
             bands = bands.push(cell_row);
         }
+
+        // Pad odd-layer bands with one blank row so every band's rendered
+        // height is an exact multiple of MIN_BUTTON_SIZE. Mirrors the main
+        // view's band-sizing behavior.
+        let layer_count = 1 + max_count;
+        if layer_count % 2 == 1 {
+            let mut blank_row = Row::new().spacing(SPACING);
+            for _ in 0..EDIT_BAND_WIDTH {
+                blank_row = blank_row.push(filler_cell());
+            }
+            bands = bands.push(blank_row);
+        }
     }
 
     container(bands)
         .padding(EDIT_TABLE_CELL_SPACING)
         .width(Length::Fill)
-        .height(Length::Fill)
         .center_x(Length::Fill)
-        .center_y(Length::Fill)
         .into()
 }
 
@@ -389,6 +404,7 @@ fn editor_header_cell<'a>(
     .style(style)
     .padding(EDIT_TABLE_CELL_SPACING)
     .width(Length::Fill)
+    .height(Length::Fixed(EDIT_TABLE_CELL_HEIGHT))
     .on_press(Message::BeepTestEditSelectLevel(zero_based))
     .into()
 }
@@ -417,6 +433,7 @@ fn editor_value_cell<'a>(
     .style(style)
     .padding(EDIT_TABLE_CELL_SPACING)
     .width(Length::Fill)
+    .height(Length::Fixed(EDIT_TABLE_CELL_HEIGHT))
     .on_press(Message::BeepTestEditSelectLevel(zero_based))
     .into()
 }
@@ -425,7 +442,7 @@ fn editor_value_cell<'a>(
 /// partially filled or a column's count is shorter than the band's
 /// tallest column.
 fn filler_cell<'a>() -> Element<'a, Message> {
-    Space::with_width(Length::Fill).into()
+    Space::new(Length::Fill, Length::Fixed(EDIT_TABLE_CELL_HEIGHT)).into()
 }
 
 /// Build the per-level edit panel: a top management row with

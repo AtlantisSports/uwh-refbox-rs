@@ -493,8 +493,8 @@ fn build_edit_panel(levels: &[Level], selected: usize) -> Element<'_, Message> {
     .padding(PADDING)
     .width(Length::Fill)
     .height(Length::Fixed(XS_BUTTON_SIZE))
-    .center_x(Length::Fill)
-    .center_y(Length::Fill);
+    .align_x(Horizontal::Center)
+    .align_y(Vertical::Center);
 
     let management_row = row![add_button, selected_label, remove_button].spacing(SPACING);
 

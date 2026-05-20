@@ -546,6 +546,12 @@ Report walkthrough results. Do not push. Do not open a PR — per memory `projec
 
 The plan and spec both name `make_value_button` for the three top-row tiles. During implementation (commit `050d818`), `make_value_button(..., None)` rendered the cells with iced's disabled style (gray text on washed-out background) because iced 0.13 puts any `Button` without `on_press` into `Status::Disabled`. The fix-up commit (`5b4ccb1`) replaced the three calls with a local `top_row_tile` helper that mirrors `make_value_button`'s internal layout (label / `horizontal_space` / value, `MEDIUM_TEXT`, `MIN_BUTTON_SIZE` tall) but is built as a `Container` styled with `light_gray_container`. Visually equivalent to a non-disabled `make_value_button`, no new `Message` variant needed.
 
+### Task 3 — `header_cell` and `value_cell::Active` use containers, not buttons; added `yellow_container` style
+
+Same iced-disabled-button pitfall as Task 2 hit again. The plan prescribed `button(...).style(green_button)` for the `Active | Future` arm of `header_cell` and the existing code used `button(...).style(yellow_button)` for the `CellState::Active` arm of `value_cell`. Both render gray under `Status::Disabled` (no `on_press`). The fix-up commit (`d682a03`) replaced both with `container(...).style(<color>_container)` patterns. `green_container` already existed in `refbox/src/app/theme/container.rs`; `yellow_container` was added there (six lines, mirroring the existing `green_container` definition) and re-exported from `theme/mod.rs`. This expands the file scope of the change beyond what the spec listed (theme files were originally out of scope), but the addition is mechanical and follows established patterns.
+
+The `value_cell::Active` fix also corrects a pre-existing bug from Branch 2 of the redesign (active lap rendered gray instead of yellow). This was not previously caught because Branch 2's walkthrough didn't run the cadence engine far enough for the operator to notice the active lap colour.
+
 ---
 
 ## Self-review notes

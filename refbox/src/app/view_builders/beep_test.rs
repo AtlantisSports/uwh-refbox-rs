@@ -40,6 +40,11 @@ const BAND_WIDTH: usize = 10;
 /// `SPACING` so the table reads as a tight grid.
 const TABLE_CELL_SPACING: f32 = 2.0;
 
+/// Height of one table-cell layer (header or lap row). Sized so that two
+/// stacked layers plus the standard SPACING between them equal one
+/// MIN_BUTTON_SIZE row, matching the rest of refbox's row rhythm.
+const TABLE_CELL_HEIGHT: f32 = (MIN_BUTTON_SIZE - SPACING) / 2.0;
+
 pub(in super::super) fn build_beep_test_page<'a>(
     snapshot: &BeepTestSnapshot,
     config: &'a BeepTest,
@@ -232,6 +237,19 @@ fn build_levels_table(
             }
             bands = bands.push(cell_row);
         }
+
+        // Pad odd-layer bands with one blank row so each band's total height
+        // resolves to a whole number of MIN_BUTTON_SIZE rows when combined
+        // with SPACING. (1 header + max_count lap rows = layer_count layers;
+        // if that's odd, append one more blank row to make it even.)
+        let layer_count = 1 + max_count;
+        if layer_count % 2 == 1 {
+            let mut blank_row = Row::new().spacing(TABLE_CELL_SPACING);
+            for _ in 0..BAND_WIDTH {
+                blank_row = blank_row.push(filler_cell());
+            }
+            bands = bands.push(blank_row);
+        }
     }
 
     container(bands)
@@ -292,6 +310,7 @@ fn header_cell<'a>(label: String, state: ColumnState) -> Element<'a, Message> {
             .style(disabled_container)
             .padding(TABLE_CELL_SPACING)
             .width(Length::Fill)
+            .height(Length::Fixed(TABLE_CELL_HEIGHT))
             .center_x(Length::Fill)
             .center_y(Length::Fill)
             .into(),
@@ -299,6 +318,7 @@ fn header_cell<'a>(label: String, state: ColumnState) -> Element<'a, Message> {
             .style(green_container)
             .padding(TABLE_CELL_SPACING)
             .width(Length::Fill)
+            .height(Length::Fixed(TABLE_CELL_HEIGHT))
             .center_x(Length::Fill)
             .center_y(Length::Fill)
             .into(),
@@ -316,6 +336,7 @@ fn value_cell<'a>(value: String, state: CellState) -> Element<'a, Message> {
             .style(light_gray_container)
             .padding(TABLE_CELL_SPACING)
             .width(Length::Fill)
+            .height(Length::Fixed(TABLE_CELL_HEIGHT))
             .center_x(Length::Fill)
             .center_y(Length::Fill)
             .into(),
@@ -323,6 +344,7 @@ fn value_cell<'a>(value: String, state: CellState) -> Element<'a, Message> {
             .style(yellow_container)
             .padding(TABLE_CELL_SPACING)
             .width(Length::Fill)
+            .height(Length::Fixed(TABLE_CELL_HEIGHT))
             .center_x(Length::Fill)
             .center_y(Length::Fill)
             .into(),
@@ -330,6 +352,7 @@ fn value_cell<'a>(value: String, state: CellState) -> Element<'a, Message> {
             .style(disabled_container)
             .padding(TABLE_CELL_SPACING)
             .width(Length::Fill)
+            .height(Length::Fixed(TABLE_CELL_HEIGHT))
             .center_x(Length::Fill)
             .center_y(Length::Fill)
             .into(),
@@ -340,7 +363,7 @@ fn value_cell<'a>(value: String, state: CellState) -> Element<'a, Message> {
 /// partially filled or a column's count is shorter than the band's
 /// tallest column.
 fn filler_cell<'a>() -> Element<'a, Message> {
-    Space::with_width(Length::Fill).into()
+    Space::new(Length::Fill, Length::Fixed(TABLE_CELL_HEIGHT)).into()
 }
 
 /// Compute the within-level lap (1-indexed) given the snapshot's

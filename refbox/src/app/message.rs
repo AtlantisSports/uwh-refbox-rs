@@ -159,10 +159,20 @@ pub enum Message {
     /// Operator pressed Back/Done on the BeepTest Settings landing.
     /// Returns to the BeepTest main view.
     BeepTestCloseSettings,
-    /// Operator pressed Language on the BeepTest Settings landing. Sets up
-    /// `edited_settings` and routes into the existing
-    /// `EditGameConfig(ConfigPage::Language)` flow.
-    BeepTestOpenLanguageSettings,
+    /// Operator pressed Language on the BeepTest Settings landing. Seeds
+    /// `edited_settings.pending_language` / `original_language` with the
+    /// current language and navigates to the BeepTest-specific Language
+    /// picker sub-page (no timeout ribbon, BeepTest layout).
+    BeepTestEditOpenLanguage,
+    /// Operator pressed Cancel on the BeepTest Language picker. Discards
+    /// the staged language and returns to the BeepTest Settings landing.
+    BeepTestLanguageCancel,
+    /// Operator pressed Done/Restart on the BeepTest Language picker.
+    /// Commits the staged language to disk; if the font family changed,
+    /// the app restarts (mirroring `LanguageSelectComplete`'s restart
+    /// branch). Otherwise applies the new language to the running UI and
+    /// returns to the BeepTest Settings landing.
+    BeepTestLanguageApply,
     /// Operator pressed Sound Settings on the BeepTest Settings landing.
     /// Seeds `edited_settings` with a clone of the current sound settings
     /// so the existing `ToggleBoolParameter` / `CycleParameter` handlers
@@ -207,19 +217,12 @@ pub enum Message {
     /// Operator pressed Cancel on the Edit Levels page. Discards staged
     /// level edits and returns to the BeepTest Settings landing.
     BeepTestEditLevelsCancel,
-    /// Operator pressed App Mode on the BeepTest Settings landing. Seeds
-    /// `edited_settings.mode` with the current mode so the existing
-    /// `CycleParameter(Mode)` handler can cycle the staged value, then
-    /// navigates to the BeepTest App Mode sub-page.
-    BeepTestEditOpenAppMode,
-    /// Operator pressed Apply on the BeepTest App Mode sub-page. Commits
-    /// the staged mode. When the mode differs from the current mode, the
-    /// app restarts (mirroring the existing mode-change exe-restart flow
-    /// used by the hockey-mode PortalTenantSwitch confirmation).
-    BeepTestEditAppModeApply,
-    /// Operator pressed Cancel on the BeepTest App Mode sub-page. Discards
-    /// the staged mode and returns to the BeepTest Settings landing.
-    BeepTestEditAppModeCancel,
+    /// Operator pressed RESTART TO APPLY on the BeepTest Settings landing
+    /// after cycling the App Mode. Commits the staged mode. When the mode
+    /// differs from the current mode, the app restarts (mirroring the
+    /// existing mode-change exe-restart flow used by the hockey-mode
+    /// PortalTenantSwitch confirmation).
+    BeepTestRestartToApply,
     AlarmPressed,
     AlarmReleased,
     SpacebarPressed,
@@ -310,7 +313,9 @@ impl Message {
             | Self::BeepTestReset
             | Self::BeepTestOpenSettings
             | Self::BeepTestCloseSettings
-            | Self::BeepTestOpenLanguageSettings
+            | Self::BeepTestEditOpenLanguage
+            | Self::BeepTestLanguageCancel
+            | Self::BeepTestLanguageApply
             | Self::BeepTestEditOpenSound
             | Self::BeepTestSoundSettingsSave
             | Self::BeepTestSoundSettingsCancel
@@ -324,9 +329,7 @@ impl Message {
             | Self::BeepTestEditRemoveLevel
             | Self::BeepTestEditLevelsSave
             | Self::BeepTestEditLevelsCancel
-            | Self::BeepTestEditOpenAppMode
-            | Self::BeepTestEditAppModeApply
-            | Self::BeepTestEditAppModeCancel
+            | Self::BeepTestRestartToApply
             | Self::AlarmPressed
             | Self::AlarmReleased
             | Self::SpacebarPressed
@@ -366,7 +369,9 @@ impl PartialEq for Message {
             | (Self::BeepTestTick, Self::BeepTestTick)
             | (Self::BeepTestOpenSettings, Self::BeepTestOpenSettings)
             | (Self::BeepTestCloseSettings, Self::BeepTestCloseSettings)
-            | (Self::BeepTestOpenLanguageSettings, Self::BeepTestOpenLanguageSettings)
+            | (Self::BeepTestEditOpenLanguage, Self::BeepTestEditOpenLanguage)
+            | (Self::BeepTestLanguageCancel, Self::BeepTestLanguageCancel)
+            | (Self::BeepTestLanguageApply, Self::BeepTestLanguageApply)
             | (Self::BeepTestEditOpenSound, Self::BeepTestEditOpenSound)
             | (Self::BeepTestSoundSettingsSave, Self::BeepTestSoundSettingsSave)
             | (Self::BeepTestSoundSettingsCancel, Self::BeepTestSoundSettingsCancel)
@@ -379,9 +384,7 @@ impl PartialEq for Message {
             | (Self::BeepTestEditRemoveLevel, Self::BeepTestEditRemoveLevel)
             | (Self::BeepTestEditLevelsSave, Self::BeepTestEditLevelsSave)
             | (Self::BeepTestEditLevelsCancel, Self::BeepTestEditLevelsCancel)
-            | (Self::BeepTestEditOpenAppMode, Self::BeepTestEditOpenAppMode)
-            | (Self::BeepTestEditAppModeApply, Self::BeepTestEditAppModeApply)
-            | (Self::BeepTestEditAppModeCancel, Self::BeepTestEditAppModeCancel)
+            | (Self::BeepTestRestartToApply, Self::BeepTestRestartToApply)
             | (Self::AlarmPressed, Self::AlarmPressed)
             | (Self::AlarmReleased, Self::AlarmReleased)
             | (Self::SpacebarPressed, Self::SpacebarPressed)
@@ -592,7 +595,9 @@ impl PartialEq for Message {
             | (Self::BeepTestTick, _)
             | (Self::BeepTestOpenSettings, _)
             | (Self::BeepTestCloseSettings, _)
-            | (Self::BeepTestOpenLanguageSettings, _)
+            | (Self::BeepTestEditOpenLanguage, _)
+            | (Self::BeepTestLanguageCancel, _)
+            | (Self::BeepTestLanguageApply, _)
             | (Self::BeepTestEditOpenSound, _)
             | (Self::BeepTestSoundSettingsSave, _)
             | (Self::BeepTestSoundSettingsCancel, _)
@@ -606,9 +611,7 @@ impl PartialEq for Message {
             | (Self::BeepTestEditRemoveLevel, _)
             | (Self::BeepTestEditLevelsSave, _)
             | (Self::BeepTestEditLevelsCancel, _)
-            | (Self::BeepTestEditOpenAppMode, _)
-            | (Self::BeepTestEditAppModeApply, _)
-            | (Self::BeepTestEditAppModeCancel, _)
+            | (Self::BeepTestRestartToApply, _)
             | (Self::AlarmPressed, _)
             | (Self::AlarmReleased, _)
             | (Self::SpacebarPressed, _)

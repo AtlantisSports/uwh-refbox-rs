@@ -217,16 +217,14 @@ enum AppState {
 /// Sub-pages inside `AppState::BeepTestSettings`.
 ///
 /// `Main` is the 2x2 landing page (Sound, Edit Levels, App Mode, Language).
-/// `Sound`, `EditLevels`, `AppMode` are dedicated BeepTest sub-pages.
-/// The Language sub-page is not modelled here — the landing's Language
-/// button routes the operator into the existing
-/// `AppState::EditGameConfig(ConfigPage::Language)` flow.
+/// App Mode is cycled directly on the landing (not its own sub-page).
+/// `Sound`, `EditLevels`, `Language` are dedicated BeepTest sub-pages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BeepTestConfigPage {
     Main,
     Sound,
     EditLevels,
-    AppMode,
+    Language,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2317,16 +2315,10 @@ impl RefBoxApp {
                 // the Settings Main back button and other escape paths); it just exits
                 // settings and drops the in-flight edit buffer.
                 //
-                // In BeepTest mode, the operator reached EditGameConfig only via
-                // the Language sub-page on the BeepTest Settings landing. Returning
-                // to the Settings landing matches the operator's mental model
-                // ("Back from Language means back to where I clicked Language").
+                // BeepTest mode no longer routes through EditGameConfig (it has its
+                // own Settings hierarchy), so this exit path always returns to MainPage.
                 self.edited_settings = None;
-                self.app_state = if self.config.mode == Mode::BeepTest {
-                    AppState::BeepTestSettings(BeepTestConfigPage::Main)
-                } else {
-                    AppState::MainPage
-                };
+                self.app_state = AppState::MainPage;
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
@@ -2699,17 +2691,11 @@ impl RefBoxApp {
                 }
                 settings.pending_language = None;
                 settings.original_language = None;
-                // In BeepTest mode the operator entered the Language page from
-                // the BeepTest Settings landing (via `BeepTestOpenLanguageSettings`),
-                // so returning to that landing matches the operator's mental
-                // model ("Done with Language goes back where I came from").
-                // Also drop `edited_settings`: the Language flow's borrow of
-                // `edited_settings` is finished here, and the BeepTest Settings
-                // landing does not read it.
-                if self.config.mode == Mode::BeepTest {
-                    self.edited_settings = None;
-                    self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Main);
-                } else if let AppState::EditGameConfig(ref mut page) = self.app_state {
+                // This path is only reachable from the hockey/rugby Language
+                // sub-page inside EditGameConfig. BeepTest has its own
+                // language picker (`BeepTestLanguageApply` /
+                // `BeepTestLanguageCancel`) so it never lands here.
+                if let AppState::EditGameConfig(ref mut page) = self.app_state {
                     *page = ConfigPage::Main;
                 }
                 trace!("AppState changed to {:?}", self.app_state);
@@ -3299,35 +3285,13 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::BeepTestOpenSettings => {
-                self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Main);
-                trace!("AppState changed to {:?}", self.app_state);
-                Task::none()
-            }
-            Message::BeepTestCloseSettings => {
-                self.app_state = AppState::BeepTestPage;
-                trace!("AppState changed to {:?}", self.app_state);
-                Task::none()
-            }
-            Message::BeepTestOpenLanguageSettings => {
-                // Route into the existing Language sub-page by reusing the
-                // same `EditableSettings` setup that `Message::EditGameConfig`
-                // would use, then jumping directly to the Language page.
-                // Returning via the Language page's `LanguageSelectComplete`
-                // lands on `EditGameConfig(ConfigPage::Main)`, after which
-                // `ConfigEditComplete` routes back to BeepTest Settings
-                // landing (see the BeepTest arm in `ConfigEditComplete`).
-                let uwhportal_token_valid = if let Some(ref client) = self.uwhportal_client {
-                    // why this cannot panic: the guard is held only for a synchronous
-                    // `has_token()` call and dropped immediately.
-                    let has_token = client.lock().unwrap().has_token();
-                    if has_token { None } else { Some(false) }
-                } else {
-                    Some(false)
-                };
-
+                // Seed `edited_settings.mode` with the current mode so the
+                // App Mode cycle button on the Settings landing has a value
+                // to read/mutate. Other sub-pages (Sound, Edit Levels,
+                // Language) overwrite `edited_settings` on their own entry,
+                // so this seeding is safe.
                 let current_language =
                     Language::from_lang_id(&crate::LANGUAGE_LOADER.current_languages()[0]);
-
                 let edited_settings = EditableSettings {
                     config: self.tm.lock().unwrap().config().clone(),
                     game_number: if self.snapshot.current_period == GamePeriod::BetweenGames {
@@ -3338,7 +3302,7 @@ impl RefBoxApp {
                     white_on_right: self.config.hardware.white_on_right,
                     brightness: self.config.hardware.brightness,
                     using_uwhportal: self.using_uwhportal,
-                    uwhportal_token_valid,
+                    uwhportal_token_valid: None,
                     current_event_id: self.current_event_id.clone(),
                     current_court: self.current_court.clone(),
                     schedule: self.schedule.clone(),
@@ -3354,8 +3318,99 @@ impl RefBoxApp {
                     selected_level: 0,
                 };
                 self.edited_settings = Some(edited_settings);
-                self.capture_snapshot_for(ConfigPage::Language);
-                self.app_state = AppState::EditGameConfig(ConfigPage::Language);
+                self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Main);
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::BeepTestCloseSettings => {
+                // Discard any staged edits (including the seeded mode) and
+                // return to the BeepTest main view.
+                self.edited_settings = None;
+                self.app_state = AppState::BeepTestPage;
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::BeepTestEditOpenLanguage => {
+                // Seed `edited_settings` with current language fields so the
+                // BeepTest Language picker can stage a selection. Other
+                // fields are filled with defaults / current-state mirrors;
+                // the sub-page only reads `pending_language` and
+                // `original_language`, so the rest is inert.
+                let current_language =
+                    Language::from_lang_id(&crate::LANGUAGE_LOADER.current_languages()[0]);
+                let edited_settings = EditableSettings {
+                    config: self.tm.lock().unwrap().config().clone(),
+                    game_number: if self.snapshot.current_period == GamePeriod::BetweenGames {
+                        self.snapshot.next_game_number.clone()
+                    } else {
+                        self.snapshot.game_number.clone()
+                    },
+                    white_on_right: self.config.hardware.white_on_right,
+                    brightness: self.config.hardware.brightness,
+                    using_uwhportal: self.using_uwhportal,
+                    uwhportal_token_valid: None,
+                    current_event_id: self.current_event_id.clone(),
+                    current_court: self.current_court.clone(),
+                    schedule: self.schedule.clone(),
+                    sound: self.config.sound.clone(),
+                    mode: self.config.mode,
+                    hide_time: self.config.hide_time,
+                    collect_scorer_cap_num: self.config.collect_scorer_cap_num,
+                    track_fouls_and_warnings: self.config.track_fouls_and_warnings,
+                    confirm_score: self.config.confirm_score,
+                    pending_language: Some(current_language),
+                    original_language: Some(current_language),
+                    beep_test_levels: None,
+                    selected_level: 0,
+                };
+                self.edited_settings = Some(edited_settings);
+                self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Language);
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::BeepTestLanguageCancel => {
+                self.edited_settings = None;
+                self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Main);
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::BeepTestLanguageApply => {
+                // Commit the staged language. Mirrors
+                // `LanguageSelectComplete { canceled: false }`: when the
+                // font family changes, the app restarts; otherwise we
+                // apply the new language to the running UI in place.
+                let lang_opt = self
+                    .edited_settings
+                    .as_ref()
+                    .and_then(|e| e.pending_language);
+                let original = self
+                    .edited_settings
+                    .as_ref()
+                    .and_then(|e| e.original_language)
+                    .unwrap_or(Language::English);
+                self.edited_settings = None;
+                if let Some(lang) = lang_opt {
+                    let needs_restart = font_family_id(original) != font_family_id(lang);
+                    self.config.language = Some(lang);
+                    confy::store(crate::APP_NAME, None, &self.config).unwrap();
+                    if needs_restart {
+                        // Kill every simulator child so they do not linger as
+                        // orphans after the iced runtime closes its windows.
+                        for mut child in self.sim_children.drain(..) {
+                            let _ = child.kill();
+                        }
+                        // Mark the restart and let iced gracefully close its
+                        // windows. `main()` will spawn a fresh copy of the
+                        // exe after the iced runtime returns.
+                        RESTART_PENDING.store(true, Ordering::Relaxed);
+                        self.app_state = AppState::MainPage;
+                        trace!("AppState changed to {:?}", self.app_state);
+                        return iced::exit();
+                    }
+                    // Apply the new language to the running UI (same font family).
+                    crate::request_language(&crate::LANGUAGE_LOADER, &[lang.as_lang_id()]);
+                }
+                self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Main);
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
@@ -3364,9 +3419,8 @@ impl RefBoxApp {
                 // settings so the existing `ToggleBoolParameter` /
                 // `CycleParameter` handlers (which mutate
                 // `edited_settings.sound`) can be reused unchanged. Other
-                // fields are filled with defaults / current-state mirrors
-                // matching `BeepTestOpenLanguageSettings`; the sub-page only
-                // reads `sound`, so the rest is inert.
+                // fields are filled with defaults / current-state mirrors;
+                // the sub-page only reads `sound`, so the rest is inert.
                 let current_language =
                     Language::from_lang_id(&crate::LANGUAGE_LOADER.current_languages()[0]);
                 let edited_settings = EditableSettings {
@@ -3560,53 +3614,15 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
-            Message::BeepTestEditOpenAppMode => {
-                // Seed `edited_settings` with a clone of the live state so the
-                // existing `CycleParameter(Mode)` handler (which mutates
-                // `edited_settings.mode`) can be reused unchanged. Other
-                // fields are filled with defaults / current-state mirrors
-                // matching `BeepTestEditOpenSound`; the sub-page only reads
-                // `mode`, so the rest is inert.
-                let current_language =
-                    Language::from_lang_id(&crate::LANGUAGE_LOADER.current_languages()[0]);
-                let edited_settings = EditableSettings {
-                    config: self.tm.lock().unwrap().config().clone(),
-                    game_number: if self.snapshot.current_period == GamePeriod::BetweenGames {
-                        self.snapshot.next_game_number.clone()
-                    } else {
-                        self.snapshot.game_number.clone()
-                    },
-                    white_on_right: self.config.hardware.white_on_right,
-                    brightness: self.config.hardware.brightness,
-                    using_uwhportal: self.using_uwhportal,
-                    uwhportal_token_valid: None,
-                    current_event_id: self.current_event_id.clone(),
-                    current_court: self.current_court.clone(),
-                    schedule: self.schedule.clone(),
-                    sound: self.config.sound.clone(),
-                    mode: self.config.mode,
-                    hide_time: self.config.hide_time,
-                    collect_scorer_cap_num: self.config.collect_scorer_cap_num,
-                    track_fouls_and_warnings: self.config.track_fouls_and_warnings,
-                    confirm_score: self.config.confirm_score,
-                    pending_language: Some(current_language),
-                    original_language: Some(current_language),
-                    beep_test_levels: None,
-                    selected_level: 0,
-                };
-                self.edited_settings = Some(edited_settings);
-                self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::AppMode);
-                trace!("AppState changed to {:?}", self.app_state);
-                Task::none()
-            }
-            Message::BeepTestEditAppModeApply => {
-                // Commit the staged mode. When it differs from the current
-                // mode, follow the same exec-restart sequence used by the
-                // hockey-mode PortalTenantSwitch RestartAndApply arm: clear
-                // the linked event (so the portal-health task stops probing
-                // the old tenant), flush the portal retry queue (items
-                // queued under the old tenant cannot be delivered to the
-                // new one), persist the config to disk, kill simulator
+            Message::BeepTestRestartToApply => {
+                // Commit the staged mode (cycled directly on the Settings
+                // landing). When it differs from the current mode, follow
+                // the same exec-restart sequence used by the hockey-mode
+                // PortalTenantSwitch RestartAndApply arm: clear the linked
+                // event (so the portal-health task stops probing the old
+                // tenant), flush the portal retry queue (items queued
+                // under the old tenant cannot be delivered to the new
+                // one), persist the config to disk, kill simulator
                 // children, mark the restart, and exit iced. `main()`
                 // spawns a fresh copy of the exe after the runtime
                 // returns, avoiding the brief overlap of old + new windows
@@ -3637,12 +3653,6 @@ impl RefBoxApp {
                     trace!("AppState changed to {:?}", self.app_state);
                     return iced::exit();
                 }
-                self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Main);
-                trace!("AppState changed to {:?}", self.app_state);
-                Task::none()
-            }
-            Message::BeepTestEditAppModeCancel => {
-                self.edited_settings = None;
                 self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Main);
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
@@ -3806,12 +3816,26 @@ impl RefBoxApp {
                 )
             }
             AppState::BeepTestSettings(page) => match page {
-                BeepTestConfigPage::Main => build_beep_test_settings_landing(
-                    data.snapshot,
-                    data.mode,
-                    data.clock_running,
-                    data.portal_indicator,
-                ),
+                BeepTestConfigPage::Main => {
+                    // App Mode is cycled directly on the landing. The
+                    // staged mode lives in `edited_settings.mode` (seeded
+                    // by `BeepTestOpenSettings`); a missing `edited_settings`
+                    // here falls back to the current mode, which renders
+                    // identically.
+                    let staged_mode = self
+                        .edited_settings
+                        .as_ref()
+                        .map(|e| e.mode)
+                        .unwrap_or(self.config.mode);
+                    build_beep_test_settings_landing(
+                        data.snapshot,
+                        data.mode,
+                        data.clock_running,
+                        data.portal_indicator,
+                        &self.config,
+                        staged_mode,
+                    )
+                }
                 BeepTestConfigPage::Sound => {
                     // Invariant (Task 5 of beep-test redesign):
                     // `BeepTestEditOpenSound` seeds `edited_settings` before
@@ -3858,25 +3882,23 @@ impl RefBoxApp {
                         edited.selected_level,
                     )
                 }
-                BeepTestConfigPage::AppMode => {
-                    // Invariant (Task 7 of beep-test redesign):
-                    // `BeepTestEditOpenAppMode` seeds `edited_settings` with
-                    // `mode = self.config.mode` before navigating to this
+                BeepTestConfigPage::Language => {
+                    // Invariant: `BeepTestEditOpenLanguage` seeds
+                    // `edited_settings` before navigating to the Language
                     // sub-page, and every exit path (Apply / Cancel) clears
                     // `edited_settings` on its way back to the landing.
                     // Reaching this arm with `edited_settings == None` would
                     // indicate that invariant was violated — a programming
                     // error, not a runtime condition.
                     let edited = self.edited_settings.as_ref().expect(
-                        "edited_settings must be Some when AppState is BeepTestSettings(AppMode)",
+                        "edited_settings must be Some when AppState is BeepTestSettings(Language)",
                     );
-                    build_beep_test_app_mode_page(
+                    build_beep_test_language_picker(
                         data.snapshot,
+                        edited,
                         data.mode,
                         data.clock_running,
                         data.portal_indicator,
-                        &self.config,
-                        edited.mode,
                     )
                 }
             },

@@ -27,7 +27,7 @@ use crate::config::BeepTest;
 use iced::{
     Element, Length,
     alignment::Horizontal,
-    widget::{Column, Container, Row, Space, button, column, container, row, text},
+    widget::{Column, Row, Space, button, column, container, horizontal_space, row, text},
 };
 use matrix_drawing::secs_to_long_time_string;
 
@@ -35,11 +35,6 @@ use matrix_drawing::secs_to_long_time_string;
 /// levels table. When `config.levels.len()` exceeds this, the table wraps
 /// onto additional bands stacked vertically.
 const BAND_WIDTH: usize = 10;
-
-/// Threshold (number of bands) above which the timer bar and widget row
-/// collapse into a single combined row to free up vertical space for the
-/// table.
-const BAND_COUNT_COLLAPSE_THRESHOLD: usize = 2;
 
 /// Spacing between cells in the levels table. Smaller than the global
 /// `SPACING` so the table reads as a tight grid.
@@ -64,52 +59,47 @@ pub(in super::super) fn build_beep_test_page<'a>(
         }
     };
 
-    // ----- Widget content -----
-    let time_text = secs_to_long_time_string(snapshot.secs_in_period)
+    // ----- Top row -----
+    let time_value = secs_to_long_time_string(snapshot.secs_in_period)
         .trim()
         .to_owned();
 
-    // Level label uses the existing `BeepTestPeriod::Display` impl
-    // ("Level 0", "Level 1", ...) via the existing translation key.
-    let level_label = match snapshot.current_period {
-        BeepTestPeriod::Level(i) => fl!("beep-test-level", level = i.to_string()),
+    let level_value: String = match snapshot.current_period {
+        BeepTestPeriod::Level(i) => i.to_string(),
     };
 
-    // Laps shown is the within-level lap. For the warmup (Level 0) this
-    // is always 1 since the warmup is one lap; for `Level(i >= 1)` it is
-    // derived from the cumulative `lap_count`.
-    let laps_value: u32 = match snapshot.current_period {
-        BeepTestPeriod::Level(0) => 1,
-        BeepTestPeriod::Level(_) => active_within_lap.unwrap_or(1),
+    let lap_value: String = match snapshot.current_period {
+        BeepTestPeriod::Level(0) => 1.to_string(),
+        BeepTestPeriod::Level(_) => active_within_lap.unwrap_or(1).to_string(),
     };
-    let laps_label = fl!("beep-test-laps", laps = laps_value.to_string());
+
+    let top_row = row![
+        make_value_button(
+            fl!("beep-test-top-time-label"),
+            time_value,
+            (true, true),
+            None
+        )
+        .width(Length::Fill),
+        make_value_button(
+            fl!("beep-test-top-level-label"),
+            level_value,
+            (true, true),
+            None
+        )
+        .width(Length::Fill),
+        make_value_button(
+            fl!("beep-test-top-lap-label"),
+            lap_value,
+            (true, true),
+            None
+        )
+        .width(Length::Fill),
+    ]
+    .spacing(SPACING);
 
     // ----- Table -----
     let levels_table = build_levels_table(&config.levels, active_level, active_within_lap);
-    let band_count = config.levels.len().div_ceil(BAND_WIDTH).max(1);
-
-    // ----- Header rows -----
-    //
-    // When the table needs more than two bands, collapse the timer and
-    // info widgets into a single horizontal row to free up vertical
-    // space for the table.
-    let header: Element<'a, Message> = if band_count > BAND_COUNT_COLLAPSE_THRESHOLD {
-        row![
-            time_bar(time_text),
-            info_widget(level_label),
-            info_widget(laps_label),
-        ]
-        .spacing(SPACING)
-        .height(Length::Fixed(MIN_BUTTON_SIZE))
-        .into()
-    } else {
-        column![
-            time_bar(time_text),
-            row![info_widget(level_label), info_widget(laps_label),].spacing(SPACING),
-        ]
-        .spacing(SPACING)
-        .into()
-    };
 
     // ----- Bottom action row (preserved from the absorption branch) -----
     let start_stop = if clock_running {
@@ -139,10 +129,9 @@ pub(in super::super) fn build_beep_test_page<'a>(
     let bottom_row = row![reset, settings, start_stop].spacing(SPACING);
 
     column![
-        header,
-        container(levels_table)
-            .width(Length::Fill)
-            .height(Length::Fill),
+        top_row,
+        container(levels_table).width(Length::Fill),
+        row![horizontal_space()].height(Length::Fill),
         bottom_row,
     ]
     .spacing(SPACING)
@@ -150,42 +139,6 @@ pub(in super::super) fn build_beep_test_page<'a>(
     .width(Length::Fill)
     .height(Length::Fill)
     .into()
-}
-
-/// Refbox-standard time banner: yellow large digits centered on a
-/// light-gray button face, matching the game-mode time button.
-fn time_bar<'a>(time_text: String) -> Container<'a, Message> {
-    container(
-        text(time_text)
-            .size(LARGE_TEXT)
-            .style(yellow_text)
-            .align_x(Horizontal::Center)
-            .width(Length::Fill),
-    )
-    .style(light_gray_container)
-    .padding(PADDING)
-    .width(Length::Fill)
-    .height(Length::Fixed(MIN_BUTTON_SIZE))
-    .center_x(Length::Fill)
-    .center_y(Length::Fill)
-}
-
-/// One info widget in the row between the time bar and the table (e.g.
-/// `[LEVEL: 1]`, `[LAPS: 5]`). Light-gray container matching the
-/// refbox-standard info-tile styling used elsewhere.
-fn info_widget<'a>(label: String) -> Container<'a, Message> {
-    container(
-        text(label)
-            .size(MEDIUM_TEXT)
-            .align_x(Horizontal::Center)
-            .width(Length::Fill),
-    )
-    .style(light_gray_container)
-    .padding(PADDING)
-    .width(Length::Fill)
-    .height(Length::Fixed(MIN_BUTTON_SIZE))
-    .center_x(Length::Fill)
-    .center_y(Length::Fill)
 }
 
 /// Build the transposed levels table.

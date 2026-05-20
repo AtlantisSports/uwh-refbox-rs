@@ -354,8 +354,9 @@ beep-test = TEST DE BIP
 
 # Écran de test de bip
 beep-test-pre = PRÉ
-beep-test-level = NIVEAU { $level }
-beep-test-laps = TOURS: { $laps }
+beep-test-top-time-label = TEMPS
+beep-test-top-level-label = NIVEAU
+beep-test-top-lap-label = TOUR
 beep-test-start = DÉMARRER
 beep-test-stop = ARRÊTER
 beep-test-reset = RÉINITIALISER

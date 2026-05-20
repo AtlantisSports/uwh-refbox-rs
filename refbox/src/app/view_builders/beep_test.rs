@@ -27,9 +27,7 @@ use crate::config::BeepTest;
 use iced::{
     Alignment, Element, Length,
     alignment::{Horizontal, Vertical},
-    widget::{
-        Column, Container, Row, Space, button, column, container, horizontal_space, row, text,
-    },
+    widget::{Column, Container, Row, Space, column, container, horizontal_space, row, text},
 };
 use matrix_drawing::secs_to_long_time_string;
 
@@ -176,14 +174,28 @@ fn build_levels_table(
             .max()
             .unwrap_or(0);
 
+        // Pre-compute the column state for each level in this band so we
+        // don't call `compute_column_state` repeatedly in both the header
+        // loop and the inner cell-row loop.
+        let column_states: Vec<ColumnState> = band_levels
+            .iter()
+            .enumerate()
+            .map(|(col_idx, _)| {
+                let level_number = level_index_offset + col_idx + 1;
+                compute_column_state(active_level, level_number)
+            })
+            .collect();
+
         // Header row: level numbers (1-indexed). Past columns are grayed
         // out (disabled look); active and future columns use green headers.
         // Padding cells fill any gap so the band's columns stay the same width.
         let mut header_row = Row::new().spacing(TABLE_CELL_SPACING);
         for (col_idx, _level) in band_levels.iter().enumerate() {
             let level_number = level_index_offset + col_idx + 1; // 1-indexed
-            let column_state = compute_column_state(active_level, level_number);
-            header_row = header_row.push(header_cell(level_number.to_string(), column_state));
+            header_row = header_row.push(header_cell(
+                level_number.to_string(),
+                column_states[col_idx],
+            ));
         }
         // Right-pad the header so partially-filled bands align with full
         // bands above them.
@@ -198,9 +210,8 @@ fn build_levels_table(
         for row_idx in 0..max_count {
             let mut cell_row = Row::new().spacing(TABLE_CELL_SPACING);
             for (col_idx, level) in band_levels.iter().enumerate() {
-                let level_number = level_index_offset + col_idx + 1;
                 if row_idx < level.count as usize {
-                    let column_state = compute_column_state(active_level, level_number);
+                    let column_state = column_states[col_idx];
                     let cell_state = match column_state {
                         ColumnState::Past => CellState::Completed,
                         ColumnState::Active => match active_within_lap {
@@ -284,15 +295,13 @@ fn header_cell<'a>(label: String, state: ColumnState) -> Element<'a, Message> {
             .center_x(Length::Fill)
             .center_y(Length::Fill)
             .into(),
-        ColumnState::Active | ColumnState::Future => button(
-            container(inner)
-                .center_x(Length::Fill)
-                .center_y(Length::Fill),
-        )
-        .style(green_button)
-        .padding(TABLE_CELL_SPACING)
-        .width(Length::Fill)
-        .into(),
+        ColumnState::Active | ColumnState::Future => container(inner)
+            .style(green_container)
+            .padding(TABLE_CELL_SPACING)
+            .width(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .into(),
     }
 }
 
@@ -310,15 +319,13 @@ fn value_cell<'a>(value: String, state: CellState) -> Element<'a, Message> {
             .center_x(Length::Fill)
             .center_y(Length::Fill)
             .into(),
-        CellState::Active => button(
-            container(inner)
-                .center_x(Length::Fill)
-                .center_y(Length::Fill),
-        )
-        .style(yellow_button)
-        .padding(TABLE_CELL_SPACING)
-        .width(Length::Fill)
-        .into(),
+        CellState::Active => container(inner)
+            .style(yellow_container)
+            .padding(TABLE_CELL_SPACING)
+            .width(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .into(),
         CellState::Completed => container(inner)
             .style(disabled_container)
             .padding(TABLE_CELL_SPACING)

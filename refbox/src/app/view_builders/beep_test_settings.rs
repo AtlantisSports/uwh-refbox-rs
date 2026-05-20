@@ -91,14 +91,13 @@ pub(in super::super) fn build_beep_test_settings_landing<'a>(
             .into()
     };
 
-    // 2 tile rows + 3 spacer rows = 5 Fill shares. The back row sits at the
-    // very bottom (where the timeout ribbon would be in Hockey/Rugby), with
-    // an extra Fill spacer replacing its old slot — this keeps each Fill
-    // share close to button height (no inner-row whitespace) without leaving
-    // dead space below the back row.
+    // 2 tile rows + 4 spacer rows = 6 Fill shares. The extra spacer row
+    // compensates for the removed time banner (Task 5), keeping each Fill
+    // share close to button height so content rows don't render too tall.
     column![
         row_top,
         row_bottom,
+        row![horizontal_space()].height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),
@@ -222,6 +221,7 @@ pub(in super::super) fn build_beep_test_sound_settings_page<'a>(
         row![horizontal_space()].height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),
+        row![horizontal_space()].height(Length::Fill),
         make_beep_test_cancel_apply_footer(
             Message::BeepTestSoundSettingsCancel,
             Message::BeepTestSoundSettingsSave,
@@ -282,6 +282,7 @@ pub(in super::super) fn build_beep_test_edit_levels_page<'a>(
         container(edit_panel)
             .width(Length::Fill)
             .height(Length::Fill),
+        row![horizontal_space()].height(Length::Fill),
         make_beep_test_cancel_apply_footer(
             Message::BeepTestEditLevelsCancel,
             Message::BeepTestEditLevelsSave,
@@ -805,6 +806,7 @@ pub(in super::super) fn build_beep_test_language_picker<'a>(
         ]
         .spacing(SPACING)
         .height(Length::Fill),
+        row![horizontal_space()].height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),
         row![cancel_btn, horizontal_space(), confirm_btn].spacing(SPACING),
     ]

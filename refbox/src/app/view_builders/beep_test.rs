@@ -1,21 +1,21 @@
 //! View_builder for the beep-test screen.
 //!
-//! Shows a refbox-standard time bar, a `[LEVEL: N]` / `[LAPS: N]` widget
-//! row, the transposed levels table (one column per user level, with a
-//! cell per lap), and the [RESET] [SETTINGS] [START/STOP] bottom row.
+//! Shows a three-cell info row (TIME / LEVEL / LAP) at the top, then the
+//! transposed levels table (one column per user level, with a cell per
+//! lap), then the [RESET] [SETTINGS] [START/STOP] bottom action row.
 //!
 //! Reachable when `config.mode == Mode::BeepTest`.
 //!
 //! ## Cadence semantics
 //!
 //! - `BeepTestPeriod::Level(0)` is the 10-second warmup (1 lap). The
-//!   `[LEVEL: N]` widget reads "Level 0"; the `[LAPS: N]` widget reads
-//!   "LAPS: 1"; the table has no highlighted cell.
+//!   TIME tile shows the countdown; LEVEL shows "0"; LAP shows "1". The
+//!   table has no highlighted cell.
 //! - `BeepTestPeriod::Level(i)` for `i in 1..=config.levels.len()` is the
-//!   i-th user-defined level (reading `config.levels[i-1]`). The widget
-//!   row reads the level number and the within-level lap; column `i` of
-//!   the table is the active column, and the cell at row
-//!   `(within_level_lap - 1)` is highlighted as active.
+//!   i-th user-defined level (reading `config.levels[i-1]`). LEVEL shows
+//!   `i`; LAP shows the within-level lap; column `i` of the table is the
+//!   active column, and the cell at row `(within_level_lap - 1)` is
+//!   highlighted as active.
 //!
 //! The snapshot's `lap_count` field is cumulative across the whole run
 //! (it counts laps completed by the engine, including the warmup). The
@@ -26,8 +26,10 @@ use crate::beep_test::snapshot::{BeepTestPeriod, BeepTestSnapshot};
 use crate::config::BeepTest;
 use iced::{
     Element, Length,
-    alignment::Horizontal,
-    widget::{Column, Row, Space, button, column, container, horizontal_space, row, text},
+    alignment::{Horizontal, Vertical},
+    widget::{
+        Column, Container, Row, Space, button, column, container, horizontal_space, row, text,
+    },
 };
 use matrix_drawing::secs_to_long_time_string;
 
@@ -74,27 +76,9 @@ pub(in super::super) fn build_beep_test_page<'a>(
     };
 
     let top_row = row![
-        make_value_button(
-            fl!("beep-test-top-time-label"),
-            time_value,
-            (true, true),
-            None
-        )
-        .width(Length::Fill),
-        make_value_button(
-            fl!("beep-test-top-level-label"),
-            level_value,
-            (true, true),
-            None
-        )
-        .width(Length::Fill),
-        make_value_button(
-            fl!("beep-test-top-lap-label"),
-            lap_value,
-            (true, true),
-            None
-        )
-        .width(Length::Fill),
+        top_row_tile(fl!("beep-test-top-time-label"), time_value),
+        top_row_tile(fl!("beep-test-top-level-label"), level_value),
+        top_row_tile(fl!("beep-test-top-lap-label"), lap_value),
     ]
     .spacing(SPACING);
 
@@ -139,6 +123,34 @@ pub(in super::super) fn build_beep_test_page<'a>(
     .width(Length::Fill)
     .height(Length::Fill)
     .into()
+}
+
+/// Non-interactive info tile for the top row.
+///
+/// Renders a small label on the left and a value on the right, using
+/// `light_gray_container` styling. This deliberately avoids
+/// `make_value_button` with `message: None`, which iced renders in the
+/// disabled (gray-on-gray) style.
+fn top_row_tile<'a>(label: String, value: String) -> Container<'a, Message> {
+    container(
+        row![
+            text(label)
+                .size(MEDIUM_TEXT)
+                .height(Length::Fill)
+                .align_y(Vertical::Center),
+            horizontal_space(),
+            text(value)
+                .size(MEDIUM_TEXT)
+                .height(Length::Fill)
+                .align_y(Vertical::Center),
+        ]
+        .spacing(SPACING)
+        .align_y(iced::Alignment::Center)
+        .padding(PADDING),
+    )
+    .style(light_gray_container)
+    .height(Length::Fixed(MIN_BUTTON_SIZE))
+    .width(Length::Fill)
 }
 
 /// Build the transposed levels table.

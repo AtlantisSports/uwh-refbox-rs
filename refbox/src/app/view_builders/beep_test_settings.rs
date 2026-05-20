@@ -4,8 +4,7 @@
 //! function builds one sub-page: the 2x2 landing, the Sound Settings
 //! page, the Edit Levels page, and the Language picker.
 //!
-//! All sub-pages follow the refbox UI standard: a `make_game_time_button`
-//! anchors the top, controls below it use `make_value_button`, and editor
+//! All sub-pages use `make_value_button` for controls, and editor
 //! sub-pages end in a Cancel / Apply footer that disables Apply when the
 //! staged edits match the live config. This parallels `configuration.rs`'s
 //! `make_user_config_page`, `make_sound_config_page`, and
@@ -16,21 +15,16 @@
 //! staged mode differs from the live mode.
 
 use super::*;
-use crate::{
-    config::{Config, Level},
-    portal_manager::PortalIndicatorState,
-};
+use crate::config::{Config, Level};
 use iced::{
     Element, Length,
     alignment::{Horizontal, Vertical},
     widget::{Column, Row, Space, button, column, container, horizontal_space, row, text},
 };
-use uwh_common::game_snapshot::GameSnapshot;
 
 /// 2x2 landing page for the BeepTest Settings hierarchy.
 ///
 /// Layout (top to bottom):
-/// - Game time banner (refbox standard)
 /// - Row 1: [SOUND SETTINGS] [EDIT LEVELS]
 /// - Row 2: [APP MODE = <staged>] [LANGUAGE]
 /// - Filler rows
@@ -45,10 +39,6 @@ use uwh_common::game_snapshot::GameSnapshot;
 /// view, matching the standard set by `make_user_config_page` in
 /// `configuration.rs`.
 pub(in super::super) fn build_beep_test_settings_landing<'a>(
-    snapshot: &GameSnapshot,
-    mode: Mode,
-    clock_running: bool,
-    portal_indicator: Option<PortalIndicatorState>,
     config: &Config,
     staged_mode: Mode,
 ) -> Element<'a, Message> {
@@ -107,14 +97,6 @@ pub(in super::super) fn build_beep_test_settings_landing<'a>(
     // share close to button height (no inner-row whitespace) without leaving
     // dead space below the back row.
     column![
-        make_game_time_button(
-            snapshot,
-            false,
-            false,
-            mode,
-            clock_running,
-            portal_indicator
-        ),
         row_top,
         row_bottom,
         row![horizontal_space()].height(Length::Fill),
@@ -129,10 +111,9 @@ pub(in super::super) fn build_beep_test_settings_landing<'a>(
 
 /// Sound Settings sub-page for the BeepTest hierarchy.
 ///
-/// Mirrors `make_sound_config_page` in `configuration.rs`: game time
-/// banner at top, rows of `make_value_button` controls, and a
-/// Cancel / Apply footer at the bottom. Apply disables when staged sound
-/// settings match the live config.
+/// Mirrors `make_sound_config_page` in `configuration.rs`: rows of
+/// `make_value_button` controls and a Cancel / Apply footer at the bottom.
+/// Apply disables when staged sound settings match the live config.
 ///
 /// Disabled-gating:
 /// - SOUND ENABLED is always interactive.
@@ -146,10 +127,6 @@ pub(in super::super) fn build_beep_test_settings_landing<'a>(
 /// page; those handlers mutate `edited_settings.sound`, which is seeded
 /// by `Message::BeepTestEditOpenSound` before this page is reached.
 pub(in super::super) fn build_beep_test_sound_settings_page<'a>(
-    snapshot: &GameSnapshot,
-    mode: Mode,
-    clock_running: bool,
-    portal_indicator: Option<PortalIndicatorState>,
     config: &Config,
     sound: &SoundSettings,
 ) -> Element<'a, Message> {
@@ -240,14 +217,6 @@ pub(in super::super) fn build_beep_test_sound_settings_page<'a>(
         .height(Length::Fill);
 
     column![
-        make_game_time_button(
-            snapshot,
-            false,
-            false,
-            mode,
-            clock_running,
-            portal_indicator
-        ),
         row_top,
         row_bottom,
         row![horizontal_space()].height(Length::Fill),
@@ -275,10 +244,10 @@ const EDIT_TABLE_CELL_SPACING: f32 = 2.0;
 
 /// Edit Levels sub-page.
 ///
-/// Standard refbox column layout: game time banner at top, the
-/// transposed levels table + per-level edit panel in the middle (sized
-/// proportionally), and a Cancel / Apply footer at the bottom. Apply
-/// disables when the staged levels match the live config.
+/// Standard refbox column layout: the transposed levels table + per-level
+/// edit panel in the middle (sized proportionally), and a Cancel / Apply
+/// footer at the bottom. Apply disables when the staged levels match the
+/// live config.
 ///
 /// Top middle: the same transposed level table from the main view, plus
 /// an extra `[+NEW]` header at the end. Every header and every cell is
@@ -290,10 +259,6 @@ const EDIT_TABLE_CELL_SPACING: f32 = 2.0;
 /// duration and count, each with `[-]` `[+]` buttons, and a `REMOVE
 /// LEVEL` button (disabled when only one level remains).
 pub(in super::super) fn build_beep_test_edit_levels_page<'a>(
-    snapshot: &GameSnapshot,
-    mode: Mode,
-    clock_running: bool,
-    portal_indicator: Option<PortalIndicatorState>,
     config: &Config,
     levels: &'a [Level],
     selected: usize,
@@ -313,14 +278,6 @@ pub(in super::super) fn build_beep_test_edit_levels_page<'a>(
     let edit_panel = build_edit_panel(levels, selected);
 
     column![
-        make_game_time_button(
-            snapshot,
-            false,
-            false,
-            mode,
-            clock_running,
-            portal_indicator
-        ),
         container(table).width(Length::Fill).height(Length::Fill),
         container(edit_panel)
             .width(Length::Fill)
@@ -624,10 +581,10 @@ fn build_edit_panel(levels: &[Level], selected: usize) -> Element<'_, Message> {
 ///
 /// Mirrors `make_language_select_page` in `configuration.rs` (same 15
 /// languages, same selected-state highlighting, same font/script
-/// handling for CJK/Thai/Latin) but uses the BeepTest 7-row layout: game
-/// time banner at top, four rows of language buttons, and the Cancel /
-/// Apply footer at the very bottom. There is no timeout ribbon (BeepTest
-/// has no concept of timeouts).
+/// handling for CJK/Thai/Latin) but uses the BeepTest layout: four rows
+/// of language buttons, a filler row, and the Cancel / Apply footer at
+/// the very bottom. There is no timeout ribbon (BeepTest has no concept
+/// of timeouts).
 ///
 /// The selected language lives in `settings.pending_language` (seeded by
 /// `BeepTestEditOpenLanguage`) and the original language lives in
@@ -636,11 +593,7 @@ fn build_edit_panel(levels: &[Level], selected: usize) -> Element<'_, Message> {
 /// Thai), the Apply button label and style reflect a restart-required
 /// commit; otherwise it is a normal "Done" green button.
 pub(in super::super) fn build_beep_test_language_picker<'a>(
-    snapshot: &GameSnapshot,
     settings: &EditableSettings,
-    mode: Mode,
-    clock_running: bool,
-    portal_indicator: Option<PortalIndicatorState>,
 ) -> Element<'a, Message> {
     let selected = settings.pending_language.unwrap_or(Language::English);
     let original = settings.original_language.unwrap_or(Language::English);
@@ -760,14 +713,6 @@ pub(in super::super) fn build_beep_test_language_picker<'a>(
     // Languages sorted alphabetically by romanized native name (same order
     // as `make_language_select_page` in `configuration.rs`).
     column![
-        make_game_time_button(
-            snapshot,
-            false,
-            false,
-            mode,
-            clock_running,
-            portal_indicator
-        ),
         row![
             lang_btn_note(
                 Language::Indonesian,

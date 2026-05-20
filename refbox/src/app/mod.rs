@@ -3822,10 +3822,6 @@ impl RefBoxApp {
                         .map(|e| e.mode)
                         .unwrap_or(self.config.mode);
                     build_beep_test_settings_landing(
-                        data.snapshot,
-                        data.mode,
-                        data.clock_running,
-                        data.portal_indicator,
                         &self.config,
                         staged_mode,
                     )
@@ -3842,10 +3838,6 @@ impl RefBoxApp {
                         "edited_settings must be Some when AppState is BeepTestSettings(Sound)",
                     );
                     build_beep_test_sound_settings_page(
-                        data.snapshot,
-                        data.mode,
-                        data.clock_running,
-                        data.portal_indicator,
                         &self.config,
                         &edited.sound,
                     )
@@ -3867,10 +3859,6 @@ impl RefBoxApp {
                         "beep_test_levels must be Some when AppState is BeepTestSettings(EditLevels)",
                     );
                     build_beep_test_edit_levels_page(
-                        data.snapshot,
-                        data.mode,
-                        data.clock_running,
-                        data.portal_indicator,
                         &self.config,
                         levels,
                         edited.selected_level,
@@ -3888,11 +3876,7 @@ impl RefBoxApp {
                         "edited_settings must be Some when AppState is BeepTestSettings(Language)",
                     );
                     build_beep_test_language_picker(
-                        data.snapshot,
                         edited,
-                        data.mode,
-                        data.clock_running,
-                        data.portal_indicator,
                     )
                 }
             },

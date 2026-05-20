@@ -76,11 +76,11 @@ pub(in super::super) fn build_beep_test_settings_landing<'a>(
         .on_press(Message::BeepTestCloseSettings);
 
     // Bottom row keeps a stable 3-cell layout. When the staged mode differs
-    // from the live mode, the right cell becomes a green RESTART TO APPLY
+    // from the live mode, the right cell becomes a blue RESTART TO APPLY
     // button; otherwise it stays a filler so the BACK button doesn't shift.
     let bottom_row: Element<'a, Message> = if staged_mode != config.mode {
         let restart_button = make_button(fl!("restart-to-apply"))
-            .style(green_button)
+            .style(blue_button)
             .on_press(Message::BeepTestRestartToApply);
         row![back_button, horizontal_space(), restart_button]
             .spacing(SPACING)

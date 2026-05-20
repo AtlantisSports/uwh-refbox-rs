@@ -2,7 +2,7 @@
 //!
 //! Reachable when `app_state == AppState::BeepTestSettings(_)`. Each
 //! function builds one sub-page: the 2x2 landing, the Sound Settings
-//! page, the Edit Levels page, and the App Mode page.
+//! page, the Edit Levels page, and the Language picker.
 //!
 //! All sub-pages follow the refbox UI standard: a `make_game_time_button`
 //! anchors the top, controls below it use `make_value_button`, and editor
@@ -11,10 +11,9 @@
 //! `make_user_config_page`, `make_sound_config_page`, and
 //! `make_app_config_page` patterns.
 //!
-//! The Language sub-page is not modelled here — the landing's Language
-//! button routes the operator into the existing
-//! `AppState::EditGameConfig(ConfigPage::Language)` flow via
-//! `Message::BeepTestOpenLanguageSettings`.
+//! App Mode is cycled directly on the landing tile (no separate sub-page);
+//! a RESTART TO APPLY button appears on the landing's bottom row when the
+//! staged mode differs from the live mode.
 
 use super::*;
 use crate::{
@@ -23,7 +22,7 @@ use crate::{
 };
 use iced::{
     Element, Length,
-    alignment::Horizontal,
+    alignment::{Horizontal, Vertical},
     widget::{Column, Row, Space, button, column, container, horizontal_space, row, text},
 };
 use uwh_common::game_snapshot::GameSnapshot;
@@ -33,11 +32,16 @@ use uwh_common::game_snapshot::GameSnapshot;
 /// Layout (top to bottom):
 /// - Game time banner (refbox standard)
 /// - Row 1: [SOUND SETTINGS] [EDIT LEVELS]
-/// - Row 2: [APP MODE]       [LANGUAGE]
+/// - Row 2: [APP MODE = <staged>] [LANGUAGE]
 /// - Filler rows
-/// - Bottom row: [BACK] + two filler cells
+/// - Bottom row: [BACK]   [horizontal_space]   [RESTART TO APPLY (when staged mode != live)]
 ///
-/// `BACK` closes the Settings hierarchy and returns to the BeepTest main
+/// The APP MODE tile cycles the staged mode in place (no navigation). When
+/// the staged mode differs from the live mode, a green RESTART TO APPLY
+/// button appears at the right end of the bottom row; pressing it commits
+/// the mode change and restarts the app.
+///
+/// `BACK` discards any staged mode change and returns to the BeepTest main
 /// view, matching the standard set by `make_user_config_page` in
 /// `configuration.rs`.
 pub(in super::super) fn build_beep_test_settings_landing<'a>(
@@ -45,6 +49,8 @@ pub(in super::super) fn build_beep_test_settings_landing<'a>(
     mode: Mode,
     clock_running: bool,
     portal_indicator: Option<PortalIndicatorState>,
+    config: &Config,
+    staged_mode: Mode,
 ) -> Element<'a, Message> {
     let sound_button = make_button(fl!("sound-settings"))
         .style(light_gray_button)
@@ -54,13 +60,18 @@ pub(in super::super) fn build_beep_test_settings_landing<'a>(
         .style(light_gray_button)
         .on_press(Message::BeepTestEditOpenLevels);
 
-    let app_mode_button = make_button(fl!("app-mode"))
-        .style(light_gray_button)
-        .on_press(Message::BeepTestEditOpenAppMode);
+    // APP MODE cycles in place — no sub-page navigation. Uses the same
+    // CycleParameter(Mode) handler the hockey-mode App config page uses.
+    let app_mode_button = make_value_button(
+        fl!("app-mode"),
+        staged_mode.to_string(),
+        (false, true),
+        Some(Message::CycleParameter(CyclingParameter::Mode)),
+    );
 
     let language_button = make_button(fl!("language"))
         .style(light_gray_button)
-        .on_press(Message::BeepTestOpenLanguageSettings);
+        .on_press(Message::BeepTestEditOpenLanguage);
 
     let row_top = row![sound_button, edit_levels_button]
         .spacing(SPACING)
@@ -73,6 +84,22 @@ pub(in super::super) fn build_beep_test_settings_landing<'a>(
     let back_button = make_button(fl!("back"))
         .style(red_button)
         .on_press(Message::BeepTestCloseSettings);
+
+    // Bottom row keeps a stable 3-cell layout. When the staged mode differs
+    // from the live mode, the right cell becomes a green RESTART TO APPLY
+    // button; otherwise it stays a filler so the BACK button doesn't shift.
+    let bottom_row: Element<'a, Message> = if staged_mode != config.mode {
+        let restart_button = make_button(fl!("restart-to-apply"))
+            .style(green_button)
+            .on_press(Message::BeepTestRestartToApply);
+        row![back_button, horizontal_space(), restart_button]
+            .spacing(SPACING)
+            .into()
+    } else {
+        row![back_button, horizontal_space(), horizontal_space()]
+            .spacing(SPACING)
+            .into()
+    };
 
     // 2 tile rows + 3 spacer rows = 5 Fill shares. The back row sits at the
     // very bottom (where the timeout ribbon would be in Hockey/Rugby), with
@@ -93,7 +120,7 @@ pub(in super::super) fn build_beep_test_settings_landing<'a>(
         row![horizontal_space()].height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),
-        row![back_button, horizontal_space(), horizontal_space()].spacing(SPACING),
+        bottom_row,
     ]
     .spacing(SPACING)
     .height(Length::Fill)
@@ -641,40 +668,145 @@ fn build_edit_panel(levels: &[Level], selected: usize) -> Element<'_, Message> {
         .into()
 }
 
-/// App Mode sub-page.
+/// Language picker sub-page for the BeepTest hierarchy.
 ///
-/// Standard refbox column layout matching `make_app_config_page` in
-/// `configuration.rs`: game time banner at top, a row containing the
-/// `APP MODE` cycle button as one cell (with filler cells beside it),
-/// fill rows below, and a Cancel / Apply footer at the bottom. Apply
-/// disables when the staged mode matches the live config.
+/// Mirrors `make_language_select_page` in `configuration.rs` (same 15
+/// languages, same selected-state highlighting, same font/script
+/// handling for CJK/Thai/Latin) but uses the BeepTest 7-row layout: game
+/// time banner at top, four rows of language buttons, and the Cancel /
+/// Apply footer at the very bottom. There is no timeout ribbon (BeepTest
+/// has no concept of timeouts).
 ///
-/// The staged value lives in `edited_settings.mode` (seeded by
-/// `BeepTestEditOpenAppMode`) and is cycled by the existing
-/// `Message::CycleParameter(CyclingParameter::Mode)` handler shared with
-/// the hockey-mode App config page.
-///
-/// Apply commits the staged mode; when it differs from the current mode
-/// the app restarts (mirroring the existing PortalTenantSwitch
-/// RestartAndApply path). Cancel discards the staged mode and returns to
-/// the BeepTest Settings landing.
-pub(in super::super) fn build_beep_test_app_mode_page<'a>(
+/// The selected language lives in `settings.pending_language` (seeded by
+/// `BeepTestEditOpenLanguage`) and the original language lives in
+/// `settings.original_language`. Apply enables when these differ. When
+/// the font family changes between original and selected (Latin ↔ CJK ↔
+/// Thai), the Apply button label and style reflect a restart-required
+/// commit; otherwise it is a normal "Done" green button.
+pub(in super::super) fn build_beep_test_language_picker<'a>(
     snapshot: &GameSnapshot,
+    settings: &EditableSettings,
     mode: Mode,
     clock_running: bool,
     portal_indicator: Option<PortalIndicatorState>,
-    config: &Config,
-    staged_mode: crate::config::Mode,
 ) -> Element<'a, Message> {
-    let has_changes = config.mode != staged_mode;
+    let selected = settings.pending_language.unwrap_or(Language::English);
+    let original = settings.original_language.unwrap_or(Language::English);
+    let has_changes = settings.pending_language != settings.original_language;
 
-    let cycle_button = make_value_button(
-        fl!("app-mode"),
-        staged_mode.to_string(),
-        (false, true),
-        Some(Message::CycleParameter(CyclingParameter::Mode)),
-    );
+    let cjk_font = iced_core::Font {
+        family: iced_core::font::Family::Name("WenQuanYi Zen Hei"),
+        weight: iced_core::font::Weight::Normal,
+        stretch: iced_core::font::Stretch::Normal,
+        style: iced_core::font::Style::Normal,
+    };
 
+    let thai_font = iced_core::Font {
+        family: iced_core::font::Family::Name("Noto Sans Thai"),
+        weight: iced_core::font::Weight::Normal,
+        stretch: iced_core::font::Stretch::Normal,
+        style: iced_core::font::Style::Normal,
+    };
+
+    let latin_font = iced_core::Font {
+        family: iced_core::font::Family::Name("Roboto"),
+        weight: iced_core::font::Weight::Medium,
+        stretch: iced_core::font::Stretch::Normal,
+        style: iced_core::font::Style::Normal,
+    };
+
+    // Font for Cancel/Done/Restart text so they render in the target
+    // language's script regardless of the app's current default font.
+    let selected_font: Option<iced_core::Font> = match selected {
+        Language::Korean | Language::Japanese | Language::Mandarin => Some(cjk_font),
+        Language::Thai => Some(thai_font),
+        _ => Some(latin_font),
+    };
+
+    // A restart is needed when switching between Latin and CJK / Thai font families.
+    let needs_restart = font_family_id(original) != font_family_id(selected);
+
+    let lang_btn = |lang: Language,
+                    label: &'static str,
+                    font: Option<iced_core::Font>|
+     -> Element<'a, Message> {
+        let style = if lang == selected {
+            blue_selected_button
+        } else {
+            light_gray_button
+        };
+        let label_widget = {
+            let t = centered_text(label);
+            if let Some(f) = font { t.font(f) } else { t }
+        };
+        button(label_widget)
+            .padding(PADDING)
+            .height(Length::Fixed(MIN_BUTTON_SIZE))
+            .style(style)
+            .width(Length::Fill)
+            .on_press(Message::SelectLanguage(lang))
+            .into()
+    };
+
+    // Button variant for unverified translations: shows native name plus a
+    // small "(UNVERIFIED)" note in that language's own script.
+    let lang_btn_note = |lang: Language,
+                         main: NameLines<&'static str>,
+                         note: &'static str,
+                         font: Option<iced_core::Font>|
+     -> Element<'a, Message> {
+        let style = if lang == selected {
+            blue_selected_button
+        } else {
+            light_gray_button
+        };
+        make_lang_button_with_note(main, note, font)
+            .style(style)
+            .width(Length::Fill)
+            .on_press(Message::SelectLanguage(lang))
+            .into()
+    };
+
+    // Cancel / Done(Restart) footer. The labels use the selected language's
+    // own translation of CANCEL / DONE / RESTART (so a user mid-switch can
+    // read them) and the appropriate font for the selected script.
+    let make_label = |content: &'static str, font: Option<iced_core::Font>| {
+        let t = text(content)
+            .align_x(Horizontal::Left)
+            .align_y(Vertical::Top)
+            .width(Length::Shrink);
+        let t: iced::widget::Text<'a, _, _> = if let Some(f) = font { t.font(f) } else { t };
+        container(t).center(Length::Fill)
+    };
+
+    let cancel_btn = button(make_label(selected.cancel_text(), selected_font))
+        .padding(PADDING)
+        .height(Length::Fixed(MIN_BUTTON_SIZE))
+        .style(red_button)
+        .width(Length::Fill)
+        .on_press(Message::BeepTestLanguageCancel);
+
+    let confirm_msg = has_changes.then_some(Message::BeepTestLanguageApply);
+    let confirm_btn: Element<'a, Message> = if needs_restart {
+        button(make_label(selected.restart_text(), selected_font))
+            .padding(PADDING)
+            .height(Length::Fixed(MIN_BUTTON_SIZE))
+            .style(blue_button)
+            .width(Length::Fill)
+            .on_press_maybe(confirm_msg)
+            .into()
+    } else {
+        button(make_label(selected.done_text(), selected_font))
+            .padding(PADDING)
+            .height(Length::Fixed(MIN_BUTTON_SIZE))
+            .style(green_button)
+            .width(Length::Fill)
+            .on_press_maybe(confirm_msg)
+            .into()
+    };
+
+    // Languages sorted alphabetically by romanized native name (same order
+    // as `make_language_select_page` in `configuration.rs`).
     column![
         make_game_time_button(
             snapshot,
@@ -684,22 +816,115 @@ pub(in super::super) fn build_beep_test_app_mode_page<'a>(
             clock_running,
             portal_indicator
         ),
-        row![cycle_button, horizontal_space()]
-            .spacing(SPACING)
-            .height(Length::Fill),
+        row![
+            lang_btn_note(
+                Language::Indonesian,
+                NameLines::OneLineSmall("BAHASA INDONESIA"),
+                "(BELUM DIVERIFIKASI)",
+                Some(latin_font),
+            ),
+            lang_btn_note(
+                Language::Malay,
+                NameLines::OneLineSmall("BAHASA MELAYU"),
+                "(BELUM DISAHKAN)",
+                Some(latin_font),
+            ),
+            lang_btn_note(
+                Language::German,
+                NameLines::OneLine("DEUTSCH"),
+                "(NICHT VERIFIZIERT)",
+                Some(latin_font),
+            ),
+            lang_btn(Language::English, "ENGLISH", None),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill),
+        row![
+            lang_btn(Language::Spanish, "ESPAÑOL", None),
+            lang_btn_note(
+                Language::Tagalog,
+                NameLines::OneLine("FILIPINO"),
+                "(HINDI PA NA-VERIFY)",
+                Some(latin_font),
+            ),
+            lang_btn(Language::French, "FRANÇAIS", None),
+            lang_btn_note(
+                Language::Korean,
+                NameLines::OneLine("한국어"),
+                "(검증되지 않음)",
+                Some(cjk_font),
+            ),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill),
+        row![
+            lang_btn_note(
+                Language::Italian,
+                NameLines::OneLine("ITALIANO"),
+                "(NON VERIFICATO)",
+                Some(latin_font),
+            ),
+            lang_btn_note(
+                Language::Dutch,
+                NameLines::OneLine("NEDERLANDS"),
+                "(NIET GEVERIFIEERD)",
+                Some(latin_font),
+            ),
+            lang_btn_note(
+                Language::Japanese,
+                NameLines::OneLine("日本語"),
+                "(未検証)",
+                Some(cjk_font),
+            ),
+            lang_btn_note(
+                Language::Portuguese,
+                NameLines::OneLine("PORTUGUÊS"),
+                "(NÃO VERIFICADO)",
+                Some(latin_font),
+            ),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill),
+        row![
+            lang_btn_note(
+                Language::Thai,
+                NameLines::OneLine("ภาษาไทย"),
+                "(ยังไม่ได้ตรวจสอบ)",
+                Some(thai_font),
+            ),
+            lang_btn_note(
+                Language::Turkish,
+                NameLines::OneLine("TÜRKÇE"),
+                "(DOĞRULANMAMIŞ)",
+                Some(latin_font),
+            ),
+            lang_btn_note(
+                Language::Mandarin,
+                NameLines::OneLine("中文"),
+                "(未验证)",
+                Some(cjk_font),
+            ),
+            horizontal_space(),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),
-        row![horizontal_space()].height(Length::Fill),
-        row![horizontal_space()].height(Length::Fill),
-        row![horizontal_space()].height(Length::Fill),
-        make_beep_test_cancel_apply_footer(
-            Message::BeepTestEditAppModeCancel,
-            Message::BeepTestEditAppModeApply,
-            has_changes,
-        ),
+        row![cancel_btn, horizontal_space(), confirm_btn].spacing(SPACING),
     ]
     .spacing(SPACING)
     .height(Length::Fill)
     .into()
+}
+
+/// Same as `font_family_id` in `configuration.rs` / `mod.rs`. Kept inline
+/// here to avoid widening the visibility of either definition just to share
+/// a 5-line mapping; the alternative is an unnecessary cross-module export.
+fn font_family_id(lang: Language) -> u8 {
+    match lang {
+        Language::Korean | Language::Japanese | Language::Mandarin => 1,
+        Language::Thai => 2,
+        _ => 0,
+    }
 }
 
 /// Cancel / Apply footer for BeepTest Settings editor sub-pages.

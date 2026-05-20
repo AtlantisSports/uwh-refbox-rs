@@ -86,7 +86,7 @@ pub mod container;
 pub use container::{
     black_container, blue_container, blue_pressed_container, disabled_container, gray_container,
     green_container, light_gray_container, red_container, red_pressed_container,
-    scroll_bar_container, transparent_container, white_container,
+    scroll_bar_container, transparent_container, white_container, yellow_container,
 };
 
 pub mod text;

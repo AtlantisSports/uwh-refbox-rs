@@ -344,13 +344,7 @@ pub(in super::super) fn build_beep_test_edit_levels_page<'a>(
 fn build_editor_levels_table(levels: &[Level], selected: usize) -> Element<'_, Message> {
     let mut bands = Column::new().spacing(SPACING);
 
-    // Number of bands the populated columns occupy. When levels.len() is
-    // an exact multiple of EDIT_BAND_WIDTH, the [+NEW] header lives in a
-    // new partial band by itself; otherwise it shares the last band.
-    let populated_band_count = levels.len().div_ceil(EDIT_BAND_WIDTH).max(1);
-
     for (band_idx, band_levels) in levels.chunks(EDIT_BAND_WIDTH).enumerate() {
-        let is_last_band = band_idx + 1 == populated_band_count;
         let level_index_offset = band_idx * EDIT_BAND_WIDTH;
         let max_count = band_levels
             .iter()
@@ -370,20 +364,11 @@ fn build_editor_levels_table(levels: &[Level], selected: usize) -> Element<'_, M
                 is_selected,
             ));
         }
-        // Pad with filler cells on bands that aren't fully populated.
+        // Pad with filler cells on partially-populated bands so columns
+        // stay aligned with full bands above.
         let cols_used_in_band = band_levels.len();
-        let cols_padding = if is_last_band && cols_used_in_band < EDIT_BAND_WIDTH {
-            // Reserve one cell at the end of the last band for [+NEW].
-            EDIT_BAND_WIDTH - cols_used_in_band - 1
-        } else {
-            EDIT_BAND_WIDTH.saturating_sub(cols_used_in_band)
-        };
-        for _ in 0..cols_padding {
+        for _ in cols_used_in_band..EDIT_BAND_WIDTH {
             header_row = header_row.push(filler_cell());
-        }
-        // Add the [+NEW] header at the end of the last band (if there's room).
-        if is_last_band && cols_used_in_band < EDIT_BAND_WIDTH {
-            header_row = header_row.push(editor_new_cell());
         }
         bands = bands.push(header_row);
 
@@ -405,37 +390,11 @@ fn build_editor_levels_table(levels: &[Level], selected: usize) -> Element<'_, M
                     cell_row = cell_row.push(filler_cell());
                 }
             }
-            // Pad with filler cells to keep band widths consistent. The
-            // [+NEW] column's body is always empty.
-            let body_padding = EDIT_BAND_WIDTH.saturating_sub(cols_used_in_band);
-            for _ in 0..body_padding {
+            for _ in cols_used_in_band..EDIT_BAND_WIDTH {
                 cell_row = cell_row.push(filler_cell());
             }
             bands = bands.push(cell_row);
         }
-
-        // If the band is fully populated AND it's the last band, the
-        // [+NEW] header needs its own header row to live on (a new
-        // partial band by itself). Add that here.
-        if is_last_band && cols_used_in_band == EDIT_BAND_WIDTH {
-            let mut new_band = Row::new().spacing(EDIT_TABLE_CELL_SPACING);
-            new_band = new_band.push(editor_new_cell());
-            for _ in 1..EDIT_BAND_WIDTH {
-                new_band = new_band.push(filler_cell());
-            }
-            bands = bands.push(new_band);
-        }
-    }
-
-    // Edge case: empty levels list (shouldn't happen — handlers prevent
-    // it — but render a usable [+NEW] anyway).
-    if levels.is_empty() {
-        let mut new_band = Row::new().spacing(EDIT_TABLE_CELL_SPACING);
-        new_band = new_band.push(editor_new_cell());
-        for _ in 1..EDIT_BAND_WIDTH {
-            new_band = new_band.push(filler_cell());
-        }
-        bands = bands.push(new_band);
     }
 
     container(bands)
@@ -504,25 +463,6 @@ fn editor_value_cell<'a>(
     .into()
 }
 
-/// The `[+NEW]` header at the end of the last band. Appends a new
-/// level when tapped.
-fn editor_new_cell<'a>() -> Element<'a, Message> {
-    let inner = text(fl!("beep-test-edit-new"))
-        .size(SMALL_TEXT)
-        .align_x(Horizontal::Center)
-        .width(Length::Fill);
-    button(
-        container(inner)
-            .center_x(Length::Fill)
-            .center_y(Length::Fill),
-    )
-    .style(green_button)
-    .padding(EDIT_TABLE_CELL_SPACING)
-    .width(Length::Fill)
-    .on_press(Message::BeepTestEditAddLevel)
-    .into()
-}
-
 /// Empty filler cell — keeps column widths consistent when a band is
 /// partially filled or a column's count is shorter than the band's
 /// tallest column.
@@ -530,33 +470,58 @@ fn filler_cell<'a>() -> Element<'a, Message> {
     Space::with_width(Length::Fill).into()
 }
 
-/// Build the per-level edit panel: the `Selected: Level N` label, the
-/// Time and Count rows (each with current value and `[-]` `[+]`), and
-/// the `REMOVE LEVEL` button.
+/// Build the per-level edit panel: a top management row with
+/// `[+NEW]`, the `Selected: Level N` indicator, and `[REMOVE LEVEL]`,
+/// followed by the Time and Count rows (each with current value and
+/// `[-]` `[+]`).
 fn build_edit_panel(levels: &[Level], selected: usize) -> Element<'_, Message> {
     // Safe to index because the caller already clamped `selected` to be
-    // in range. If the list is empty we fall through to a placeholder.
+    // in range. If the list is empty we fall through to a placeholder
+    // with just a `[+NEW]` button.
     let Some(level) = levels.get(selected) else {
-        return container(
-            text(fl!("beep-test-edit-new"))
-                .size(MEDIUM_TEXT)
-                .align_x(Horizontal::Center)
-                .width(Length::Fill),
-        )
-        .style(light_gray_container)
-        .padding(PADDING)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into();
+        let add_button = make_smaller_button(fl!("beep-test-edit-new"))
+            .style(green_button)
+            .on_press(Message::BeepTestEditAddLevel);
+        return container(add_button)
+            .padding(PADDING)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .into();
     };
 
-    let selected_label = text(fl!(
-        "beep-test-edit-selected",
-        level = (selected + 1).to_string()
-    ))
-    .size(MEDIUM_TEXT)
-    .align_x(Horizontal::Center)
-    .width(Length::Fill);
+    // Top management row: [+NEW] | Selected: Level N | [REMOVE LEVEL]
+    let add_button = make_smaller_button(fl!("beep-test-edit-new"))
+        .style(green_button)
+        .on_press(Message::BeepTestEditAddLevel);
+
+    let remove_disabled = levels.len() <= 1;
+    let remove_button = if remove_disabled {
+        make_smaller_button(fl!("beep-test-edit-remove")).style(gray_button)
+    } else {
+        make_smaller_button(fl!("beep-test-edit-remove"))
+            .style(red_button)
+            .on_press(Message::BeepTestEditRemoveLevel)
+    };
+
+    let selected_label = container(
+        text(fl!(
+            "beep-test-edit-selected",
+            level = (selected + 1).to_string()
+        ))
+        .size(MEDIUM_TEXT)
+        .align_x(Horizontal::Center)
+        .width(Length::Fill),
+    )
+    .style(light_gray_container)
+    .padding(PADDING)
+    .width(Length::Fill)
+    .height(Length::Fixed(XS_BUTTON_SIZE))
+    .center_x(Length::Fill)
+    .center_y(Length::Fill);
+
+    let management_row = row![add_button, selected_label, remove_button].spacing(SPACING);
 
     // Time row: label, value, [-] [+]
     let duration_secs = level.duration.as_secs();
@@ -649,18 +614,7 @@ fn build_edit_panel(levels: &[Level], selected: usize) -> Element<'_, Message> {
     ]
     .spacing(SPACING);
 
-    // Remove row: a single wide REMOVE LEVEL button, disabled when
-    // only one level remains.
-    let remove_disabled = levels.len() <= 1;
-    let remove_button = if remove_disabled {
-        make_smaller_button(fl!("beep-test-edit-remove")).style(gray_button)
-    } else {
-        make_smaller_button(fl!("beep-test-edit-remove"))
-            .style(red_button)
-            .on_press(Message::BeepTestEditRemoveLevel)
-    };
-
-    column![selected_label, time_row, count_row, remove_button,]
+    column![management_row, time_row, count_row]
         .spacing(SPACING)
         .height(Length::Fill)
         .into()

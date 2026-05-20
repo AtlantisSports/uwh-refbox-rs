@@ -25,7 +25,7 @@ use super::*;
 use crate::beep_test::snapshot::{BeepTestPeriod, BeepTestSnapshot};
 use crate::config::BeepTest;
 use iced::{
-    Element, Length,
+    Alignment, Element, Length,
     alignment::{Horizontal, Vertical},
     widget::{
         Column, Container, Row, Space, button, column, container, horizontal_space, row, text,
@@ -145,7 +145,7 @@ fn top_row_tile<'a>(label: String, value: String) -> Container<'a, Message> {
                 .align_y(Vertical::Center),
         ]
         .spacing(SPACING)
-        .align_y(iced::Alignment::Center)
+        .align_y(Alignment::Center)
         .padding(PADDING),
     )
     .style(light_gray_container)

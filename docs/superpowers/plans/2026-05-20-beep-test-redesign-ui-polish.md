@@ -542,6 +542,10 @@ Report walkthrough results. Do not push. Do not open a PR — per memory `projec
 
 (Append notes here if execution deviates from the plan. Per `.claude/rules/plan-execution.md`, no per-task deviation commits — single note per deviation, with rationale.)
 
+### Task 2 — top-row tiles use a local `top_row_tile` helper instead of `make_value_button`
+
+The plan and spec both name `make_value_button` for the three top-row tiles. During implementation (commit `050d818`), `make_value_button(..., None)` rendered the cells with iced's disabled style (gray text on washed-out background) because iced 0.13 puts any `Button` without `on_press` into `Status::Disabled`. The fix-up commit (`5b4ccb1`) replaced the three calls with a local `top_row_tile` helper that mirrors `make_value_button`'s internal layout (label / `horizontal_space` / value, `MEDIUM_TEXT`, `MIN_BUTTON_SIZE` tall) but is built as a `Container` styled with `light_gray_container`. Visually equivalent to a non-disabled `make_value_button`, no new `Message` variant needed.
+
 ---
 
 ## Self-review notes

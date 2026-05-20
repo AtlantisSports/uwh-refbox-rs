@@ -122,8 +122,6 @@ pub(in super::super) fn build_beep_test_page<'a>(
         bottom_row,
     ]
     .spacing(SPACING)
-    .padding(PADDING)
-    .width(Length::Fill)
     .height(Length::Fill)
     .into()
 }

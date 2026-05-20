@@ -363,8 +363,9 @@ beep-test = PRUEBA DE PITIDOS
 
 # Pantalla de prueba de pitidos
 beep-test-pre = PRE
-beep-test-level = NIVEL { $level }
-beep-test-laps = VUELTAS: { $laps }
+beep-test-top-time-label = TIEMPO
+beep-test-top-level-label = NIVEL
+beep-test-top-lap-label = VUELTA
 beep-test-start = INICIAR
 beep-test-stop = PARAR
 beep-test-reset = REINICIAR

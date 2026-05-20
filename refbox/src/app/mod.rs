@@ -3521,7 +3521,9 @@ impl RefBoxApp {
                     let sel = edited.selected_level;
                     if let Some(ref mut levels) = edited.beep_test_levels {
                         if let Some(level) = levels.get_mut(sel) {
-                            level.count = level.count.saturating_add(1);
+                            if level.count < 5 {
+                                level.count = level.count.saturating_add(1);
+                            }
                         }
                     }
                 }

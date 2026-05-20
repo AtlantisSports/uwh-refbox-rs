@@ -557,9 +557,18 @@ fn build_edit_panel(levels: &[Level], selected: usize) -> Element<'_, Message> {
         }
         b
     };
-    let count_inc = make_smaller_button("+")
-        .style(blue_button)
-        .on_press(Message::BeepTestEditCountInc);
+    let count_inc_disabled = level.count >= 5;
+    let count_inc = {
+        let mut b = make_smaller_button("+").style(if count_inc_disabled {
+            gray_button
+        } else {
+            blue_button
+        });
+        if !count_inc_disabled {
+            b = b.on_press(Message::BeepTestEditCountInc);
+        }
+        b
+    };
     let count_row = row![
         container(
             text(fl!("beep-test-edit-count"))

@@ -3369,7 +3369,6 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::BeepTestLanguageCancel => {
-                self.edited_settings = None;
                 self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Main);
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
@@ -3388,7 +3387,6 @@ impl RefBoxApp {
                     .as_ref()
                     .and_then(|e| e.original_language)
                     .unwrap_or(Language::English);
-                self.edited_settings = None;
                 if let Some(lang) = lang_opt {
                     let needs_restart = font_family_id(original) != font_family_id(lang);
                     self.config.language = Some(lang);
@@ -3460,13 +3458,11 @@ impl RefBoxApp {
                 // sub-page.
                 self.apply_sound_options();
                 self.persist_config();
-                self.edited_settings = None;
                 self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Main);
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
             Message::BeepTestSoundSettingsCancel => {
-                self.edited_settings = None;
                 self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Main);
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
@@ -3603,13 +3599,11 @@ impl RefBoxApp {
                     }
                 }
                 self.persist_config();
-                self.edited_settings = None;
                 self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Main);
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
             Message::BeepTestEditLevelsCancel => {
-                self.edited_settings = None;
                 self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Main);
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()

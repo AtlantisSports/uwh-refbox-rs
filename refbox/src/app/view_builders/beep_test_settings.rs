@@ -255,11 +255,6 @@ pub(in super::super) fn build_beep_test_sound_settings_page<'a>(
     .into()
 }
 
-/// Maximum number of level columns in a single horizontal band of the
-/// editor's transposed table. Mirrors the main view's BAND_WIDTH so the
-/// editor reads as the same table the operator already knows.
-const EDIT_BAND_WIDTH: usize = 10;
-
 /// Spacing between cells in the editor's transposed table. Matches the
 /// main view's TABLE_CELL_SPACING so the editor reads as a tight grid.
 const EDIT_TABLE_CELL_SPACING: f32 = 2.0;
@@ -327,74 +322,43 @@ pub(in super::super) fn build_beep_test_edit_levels_page<'a>(
 /// blue highlight, and an extra `[+NEW]` header at the end of the last
 /// band appends a new level.
 fn build_editor_levels_table(levels: &[Level], selected: usize) -> Element<'_, Message> {
-    let mut bands = Column::new().spacing(SPACING);
+    let max_count = levels.iter().map(|l| l.count as usize).max().unwrap_or(0);
 
-    for (band_idx, band_levels) in levels.chunks(EDIT_BAND_WIDTH).enumerate() {
-        let level_index_offset = band_idx * EDIT_BAND_WIDTH;
-        let max_count = band_levels
-            .iter()
-            .map(|l| l.count as usize)
-            .max()
-            .unwrap_or(0);
+    let mut rows = Column::new().spacing(SPACING);
 
-        // Header row: column headers (1-indexed for the operator).
-        let mut header_row = Row::new().spacing(SPACING);
-        for (col_idx, _level) in band_levels.iter().enumerate() {
-            let level_number = level_index_offset + col_idx + 1;
-            let zero_based = level_index_offset + col_idx;
-            let is_selected = zero_based == selected;
-            header_row = header_row.push(editor_header_cell(
-                level_number.to_string(),
-                zero_based,
-                is_selected,
-            ));
-        }
-        // Pad with filler cells on partially-populated bands so columns
-        // stay aligned with full bands above.
-        let cols_used_in_band = band_levels.len();
-        for _ in cols_used_in_band..EDIT_BAND_WIDTH {
-            header_row = header_row.push(filler_cell());
-        }
-        bands = bands.push(header_row);
+    // Header row: column headers (1-indexed for the operator).
+    let mut header_row = Row::new().spacing(SPACING);
+    for (col_idx, _level) in levels.iter().enumerate() {
+        let is_selected = col_idx == selected;
+        header_row = header_row.push(editor_header_cell(
+            (col_idx + 1).to_string(),
+            col_idx,
+            is_selected,
+        ));
+    }
+    rows = rows.push(header_row);
 
-        // Cell rows: stacked vertically. Each cell is a tappable button
-        // that selects the column it belongs to. Empty rows beyond a
-        // column's count render as filler.
-        for row_idx in 0..max_count {
-            let mut cell_row = Row::new().spacing(SPACING);
-            for (col_idx, level) in band_levels.iter().enumerate() {
-                let zero_based = level_index_offset + col_idx;
-                if row_idx < level.count as usize {
-                    let is_selected = zero_based == selected;
-                    cell_row = cell_row.push(editor_value_cell(
-                        level.duration.as_secs().to_string(),
-                        zero_based,
-                        is_selected,
-                    ));
-                } else {
-                    cell_row = cell_row.push(filler_cell());
-                }
-            }
-            for _ in cols_used_in_band..EDIT_BAND_WIDTH {
+    // Cell rows: stacked vertically. Each cell is a tappable button that
+    // selects the column it belongs to. Empty rows beyond a column's count
+    // render as filler.
+    for row_idx in 0..max_count {
+        let mut cell_row = Row::new().spacing(SPACING);
+        for (col_idx, level) in levels.iter().enumerate() {
+            if row_idx < level.count as usize {
+                let is_selected = col_idx == selected;
+                cell_row = cell_row.push(editor_value_cell(
+                    level.duration.as_secs().to_string(),
+                    col_idx,
+                    is_selected,
+                ));
+            } else {
                 cell_row = cell_row.push(filler_cell());
             }
-            bands = bands.push(cell_row);
         }
-
-        // Pad odd-layer bands with one blank row so every band's rendered
-        // height is an exact multiple of MIN_BUTTON_SIZE. Mirrors the main
-        // view's band-sizing behavior.
-        let layer_count = 1 + max_count;
-        if layer_count % 2 == 1 {
-            let mut blank_row = Row::new().spacing(SPACING);
-            for _ in 0..EDIT_BAND_WIDTH {
-                blank_row = blank_row.push(filler_cell());
-            }
-            bands = bands.push(blank_row);
-        }
+        rows = rows.push(cell_row);
     }
 
-    container(bands)
+    container(rows)
         .padding(EDIT_TABLE_CELL_SPACING)
         .width(Length::Fill)
         .center_x(Length::Fill)

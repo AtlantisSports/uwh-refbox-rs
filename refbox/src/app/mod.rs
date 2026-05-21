@@ -3208,21 +3208,24 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::BeepTestStart => {
+                // Distinguish "fresh start" from "resume from pause" using
+                // beep_test_has_run, not current_period. During the warm-up
+                // (current_period == Level(0)), both the fresh state AND the
+                // paused state have the same period, so keying off the period
+                // would clobber the paused remaining time. The has_run flag
+                // is the right signal: false → operator pressing START for
+                // the first time (fresh-start the warmup countdown), true →
+                // operator pressing RESUME (preserve clock_state).
+                let was_run_already = self.beep_test_has_run;
                 self.beep_test_has_run = true;
-                // From Level(0) (idle/reset) the engine enters via
-                // `start_beep_test_now`; from any other Level it resumes via
-                // `start_clock`. Anything unexpected from the engine is logged
-                // so the operator still gets a responsive UI rather than a panic.
                 if let Some(ref mut bt_tm) = self.beep_test_tm {
                     let now = Instant::now();
-                    use crate::beep_test::snapshot::BeepTestPeriod;
-                    match bt_tm.current_period() {
-                        BeepTestPeriod::Level(0) => {
-                            if let Err(e) = bt_tm.start_beep_test_now(now) {
-                                error!("Failed to start beep test: {e}");
-                            }
-                        }
-                        BeepTestPeriod::Level(_) => bt_tm.start_clock(now),
+                    if was_run_already {
+                        // Resume — start_clock preserves the Stopped
+                        // clock_time (the paused remaining time).
+                        bt_tm.start_clock(now);
+                    } else if let Err(e) = bt_tm.start_beep_test_now(now) {
+                        error!("Failed to start beep test: {e}");
                     }
                 }
                 Task::none()

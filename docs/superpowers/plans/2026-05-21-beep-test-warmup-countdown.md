@@ -280,6 +280,16 @@ Report walkthrough results. Do not push — branch held for stacked PR.
 
 (Append notes here if execution deviates from the plan. Per `.claude/rules/plan-execution.md`, fold deviation notes into the code commit that introduced the deviation; no standalone doc-only deviation commits.)
 
+### Walkthrough fix-up: RESUME from warmup pause was resetting the clock
+
+Spec scenario 5 (RESUME during warmup → countdown continues from held value) failed during the walkthrough. The clock reset to the full warmup duration instead of resuming.
+
+Root cause was in `refbox/src/app/mod.rs`'s `Message::BeepTestStart` handler. It dispatched between `start_beep_test_now` (which resets the clock to `Level(0).duration()`) and `start_clock` (which preserves `clock_state`) based on `current_period`. During the warmup, `current_period == Level(0)` in BOTH the fresh state AND the paused state, so the handler always took the "fresh-start" branch and clobbered the paused time.
+
+The correct distinguisher is `beep_test_has_run`. The dispatcher now snapshots `was_run_already = self.beep_test_has_run` before setting `has_run = true`, and uses that value to decide: `false` → first-ever press of START in this session, call `start_beep_test_now`; `true` → resuming from a pause, call `start_clock`.
+
+Fix scope was in `mod.rs` only (no cadence engine change), so the heavy-process state-machine ceremony from Tasks 1+2 was not re-applied. Walkthrough verification covers it.
+
 ---
 
 ## Self-review notes

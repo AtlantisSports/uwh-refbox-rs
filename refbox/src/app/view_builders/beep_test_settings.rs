@@ -41,27 +41,46 @@ use iced::{
 pub(in super::super) fn build_beep_test_settings_landing<'a>(
     config: &Config,
     staged_mode: Mode,
+    has_run: bool,
 ) -> Element<'a, Message> {
+    // SOUND SETTINGS is the only "dangerous" control that stays pressable
+    // while a beep test is in progress — the operator wants to adjust
+    // volume / mute mid-run if needed. EDIT LEVELS, APP MODE, LANGUAGE,
+    // and RESTART TO APPLY are gated on `!has_run` (ready state only).
     let sound_button = make_button(fl!("sound-settings"))
         .style(light_gray_button)
         .on_press(Message::BeepTestEditOpenSound);
 
-    let edit_levels_button = make_button(fl!("beep-test-edit-levels"))
-        .style(light_gray_button)
-        .on_press(Message::BeepTestEditOpenLevels);
+    let edit_levels_button = if has_run {
+        make_button(fl!("beep-test-edit-levels")).style(gray_button)
+    } else {
+        make_button(fl!("beep-test-edit-levels"))
+            .style(light_gray_button)
+            .on_press(Message::BeepTestEditOpenLevels)
+    };
 
     // APP MODE cycles in place — no sub-page navigation. Uses the same
     // CycleParameter(Mode) handler the hockey-mode App config page uses.
+    // Passing `None` for the message uses iced's disabled-style rendering
+    // when `has_run` is true.
     let app_mode_button = make_value_button(
         fl!("app-mode"),
         staged_mode.to_string(),
         (false, true),
-        Some(Message::CycleParameter(CyclingParameter::Mode)),
+        if has_run {
+            None
+        } else {
+            Some(Message::CycleParameter(CyclingParameter::Mode))
+        },
     );
 
-    let language_button = make_button(fl!("language"))
-        .style(light_gray_button)
-        .on_press(Message::BeepTestEditOpenLanguage);
+    let language_button = if has_run {
+        make_button(fl!("language")).style(gray_button)
+    } else {
+        make_button(fl!("language"))
+            .style(light_gray_button)
+            .on_press(Message::BeepTestEditOpenLanguage)
+    };
 
     let row_top = row![sound_button, edit_levels_button]
         .spacing(SPACING)
@@ -76,9 +95,12 @@ pub(in super::super) fn build_beep_test_settings_landing<'a>(
         .on_press(Message::BeepTestCloseSettings);
 
     // Bottom row keeps a stable 3-cell layout. When the staged mode differs
-    // from the live mode, the right cell becomes a blue RESTART TO APPLY
-    // button; otherwise it stays a filler so the BACK button doesn't shift.
-    let bottom_row: Element<'a, Message> = if staged_mode != config.mode {
+    // from the live mode AND the operator is in the ready state (no run
+    // started yet, or post-Reset), the right cell becomes a blue RESTART TO
+    // APPLY button; otherwise it stays a filler so the BACK button doesn't
+    // shift. Hiding restart-to-apply during a run avoids losing an
+    // in-progress beep test to an accidental restart.
+    let bottom_row: Element<'a, Message> = if staged_mode != config.mode && !has_run {
         let restart_button = make_button(fl!("restart-to-apply"))
             .style(blue_button)
             .on_press(Message::BeepTestRestartToApply);

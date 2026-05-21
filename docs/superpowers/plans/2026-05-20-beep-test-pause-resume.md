@@ -231,6 +231,12 @@ Report walkthrough results. Do not push. Do not open a PR — branch held for st
 
 (Append notes here if execution deviates from the plan. Per `.claude/rules/plan-execution.md`, fold deviation notes into the code commit that introduced the deviation; no standalone doc-only deviation commits.)
 
+### Walkthrough fix-up: `CellState::ActivePaused` (commit `edcb916`)
+
+After Task 3's walkthrough, the operator asked that the active lap cell in the levels table change color from yellow to blue when the engine is paused (matching the RESUME button color). Added a new `CellState::ActivePaused` variant to `beep_test.rs`, threaded `clock_running` into `build_levels_table`, and routed the running-state active lap to `Active` (yellow) and the paused-state active lap to `ActivePaused` (blue → `blue_container`). Original spec only specified the bottom-row button colors; this extends the same scheme to the table.
+
+(Deviation note appended late and bundled into the Chunk 3 Task 1 commit, per the lean-process rule against standalone doc-only deviation commits.)
+
 ---
 
 ## Self-review notes

@@ -3827,6 +3827,7 @@ impl RefBoxApp {
                     build_beep_test_settings_landing(
                         &self.config,
                         staged_mode,
+                        self.beep_test_has_run,
                     )
                 }
                 BeepTestConfigPage::Sound => {

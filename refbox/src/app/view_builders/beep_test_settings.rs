@@ -336,6 +336,9 @@ fn build_editor_levels_table(levels: &[Level], selected: usize) -> Element<'_, M
             is_selected,
         ));
     }
+    for _ in levels.len()..15 {
+        header_row = header_row.push(filler_cell());
+    }
     rows = rows.push(header_row);
 
     // Cell rows: stacked vertically. Each cell is a tappable button that
@@ -354,6 +357,9 @@ fn build_editor_levels_table(levels: &[Level], selected: usize) -> Element<'_, M
             } else {
                 cell_row = cell_row.push(filler_cell());
             }
+        }
+        for _ in levels.len()..15 {
+            cell_row = cell_row.push(filler_cell());
         }
         rows = rows.push(cell_row);
     }

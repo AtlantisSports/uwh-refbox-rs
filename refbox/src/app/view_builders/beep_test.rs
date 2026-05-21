@@ -199,6 +199,9 @@ fn build_levels_table(
             column_states[col_idx],
         ));
     }
+    for _ in levels.len()..15 {
+        header_row = header_row.push(filler_cell());
+    }
     rows = rows.push(header_row);
 
     // Cell rows: stacked vertically. Row 0 is the first lap, row 1 the
@@ -228,6 +231,9 @@ fn build_levels_table(
             } else {
                 cell_row = cell_row.push(filler_cell());
             }
+        }
+        for _ in levels.len()..15 {
+            cell_row = cell_row.push(filler_cell());
         }
         rows = rows.push(cell_row);
     }

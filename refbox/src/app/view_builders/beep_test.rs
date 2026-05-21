@@ -86,7 +86,12 @@ pub(in super::super) fn build_beep_test_page<'a>(
     .spacing(SPACING);
 
     // ----- Table -----
-    let levels_table = build_levels_table(&config.levels, active_level, active_within_lap);
+    let levels_table = build_levels_table(
+        &config.levels,
+        active_level,
+        active_within_lap,
+        clock_running,
+    );
 
     // ----- Bottom action row -----
     //
@@ -178,6 +183,7 @@ fn build_levels_table(
     levels: &[crate::config::Level],
     active_level: Option<usize>,
     active_within_lap: Option<u32>,
+    clock_running: bool,
 ) -> Element<'_, Message> {
     let mut bands = Column::new().spacing(SPACING);
 
@@ -228,10 +234,15 @@ fn build_levels_table(
             for (col_idx, level) in band_levels.iter().enumerate() {
                 if row_idx < level.count as usize {
                     let column_state = column_states[col_idx];
+                    let active_now = if clock_running {
+                        CellState::Active
+                    } else {
+                        CellState::ActivePaused
+                    };
                     let cell_state = match column_state {
                         ColumnState::Past => CellState::Completed,
                         ColumnState::Active => match active_within_lap {
-                            Some(within) if (within as usize) == row_idx + 1 => CellState::Active,
+                            Some(within) if (within as usize) == row_idx + 1 => active_now,
                             Some(within) if (within as usize) > row_idx + 1 => CellState::Completed,
                             _ => CellState::Default,
                         },
@@ -275,8 +286,11 @@ fn build_levels_table(
 enum CellState {
     /// Future or stopped — render in the default cell style.
     Default,
-    /// The currently-running lap within the active level.
+    /// The currently-running lap within the active level (clock ticking).
     Active,
+    /// The active lap while the clock is paused mid-run. Same position as
+    /// `Active` would occupy; rendered blue to match the RESUME button.
+    ActivePaused,
     /// A lap within the active level that has already completed.
     Completed,
 }
@@ -351,6 +365,14 @@ fn value_cell<'a>(value: String, state: CellState) -> Element<'a, Message> {
             .into(),
         CellState::Active => container(inner)
             .style(yellow_container)
+            .padding(TABLE_CELL_SPACING)
+            .width(Length::Fill)
+            .height(Length::Fixed(TABLE_CELL_HEIGHT))
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .into(),
+        CellState::ActivePaused => container(inner)
+            .style(blue_container)
             .padding(TABLE_CELL_SPACING)
             .width(Length::Fill)
             .height(Length::Fixed(TABLE_CELL_HEIGHT))

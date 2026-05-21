@@ -367,7 +367,7 @@ beep-test-column-duration = DURÉE
 beep-test-edit-selected = Niveau { $level }
 beep-test-edit-time = TEMPS
 beep-test-edit-count = NOMBRE
-beep-test-edit-new = + NOUVEAU
+beep-test-edit-new = AJOUTER NIVEAU
 beep-test-edit-remove = SUPPRIMER NIVEAU
 
 # Infractions

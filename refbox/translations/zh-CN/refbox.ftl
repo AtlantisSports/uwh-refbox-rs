@@ -365,8 +365,8 @@ beep-test-column-duration = DURATION
 beep-test-edit-selected = Level { $level }
 beep-test-edit-time = TIME
 beep-test-edit-count = COUNT
-beep-test-edit-new = + NEW
-beep-test-edit-remove = REMOVE LEVEL
+beep-test-edit-new = 添加级别
+beep-test-edit-remove = 删除级别
 
 # 违规类型
 stick-foul = 球棍犯规

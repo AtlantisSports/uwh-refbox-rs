@@ -367,8 +367,8 @@ beep-test-column-duration = DURATION
 beep-test-edit-selected = 레벨 { $level }
 beep-test-edit-time = TIME
 beep-test-edit-count = COUNT
-beep-test-edit-new = + NEW
-beep-test-edit-remove = REMOVE LEVEL
+beep-test-edit-new = 레벨 추가
+beep-test-edit-remove = 레벨 제거
 
 # 위반 항목
 stick-foul = 스틱 반칙

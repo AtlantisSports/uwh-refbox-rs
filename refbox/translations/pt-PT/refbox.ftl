@@ -365,8 +365,8 @@ beep-test-column-duration = DURATION
 beep-test-edit-selected = Level { $level }
 beep-test-edit-time = TIME
 beep-test-edit-count = COUNT
-beep-test-edit-new = + NEW
-beep-test-edit-remove = REMOVE LEVEL
+beep-test-edit-new = ADICIONAR NÍVEL
+beep-test-edit-remove = REMOVER NÍVEL
 
 # Infrações
 stick-foul = Falta de Taco

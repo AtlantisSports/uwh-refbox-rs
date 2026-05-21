@@ -73,10 +73,7 @@ pub(in super::super) fn build_beep_test_page<'a>(
         BeepTestPeriod::Level(i) => i.to_string(),
     };
 
-    let lap_value: String = match snapshot.current_period {
-        BeepTestPeriod::Level(0) => 1.to_string(),
-        BeepTestPeriod::Level(_) => active_within_lap.unwrap_or(1).to_string(),
-    };
+    let lap_value: String = snapshot.lap_count.to_string();
 
     let top_row = row![
         top_row_tile(fl!("beep-test-top-time-label"), time_value),

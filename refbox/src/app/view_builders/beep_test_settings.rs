@@ -472,13 +472,23 @@ fn filler_cell<'a>() -> Element<'a, Message> {
 /// followed by the Time and Count rows (each with current value and
 /// `[-]` `[+]`).
 fn build_edit_panel(levels: &[Level], selected: usize) -> Element<'_, Message> {
+    // The ADD LEVEL button is disabled when the number of staged levels is
+    // already at the cap. Mirrors the existing remove_disabled +
+    // count_inc_disabled patterns; defense-in-depth in the handler at
+    // Message::BeepTestEditAddLevel.
+    let add_disabled = levels.len() >= 10;
+
     // Safe to index because the caller already clamped `selected` to be
     // in range. If the list is empty we fall through to a placeholder
-    // with just a `[+NEW]` button.
+    // with just an [ADD LEVEL] button.
     let Some(level) = levels.get(selected) else {
-        let add_button = make_smaller_button(fl!("beep-test-edit-new"))
-            .style(green_button)
-            .on_press(Message::BeepTestEditAddLevel);
+        let add_button = if add_disabled {
+            make_smaller_button(fl!("beep-test-edit-new")).style(gray_button)
+        } else {
+            make_smaller_button(fl!("beep-test-edit-new"))
+                .style(green_button)
+                .on_press(Message::BeepTestEditAddLevel)
+        };
         return container(add_button)
             .padding(PADDING)
             .width(Length::Fill)
@@ -488,10 +498,14 @@ fn build_edit_panel(levels: &[Level], selected: usize) -> Element<'_, Message> {
             .into();
     };
 
-    // Top management row: [+NEW] | Selected: Level N | [REMOVE LEVEL]
-    let add_button = make_smaller_button(fl!("beep-test-edit-new"))
-        .style(green_button)
-        .on_press(Message::BeepTestEditAddLevel);
+    // Top management row: [ADD LEVEL] | Selected: Level N | [REMOVE LEVEL]
+    let add_button = if add_disabled {
+        make_smaller_button(fl!("beep-test-edit-new")).style(gray_button)
+    } else {
+        make_smaller_button(fl!("beep-test-edit-new"))
+            .style(green_button)
+            .on_press(Message::BeepTestEditAddLevel)
+    };
 
     let remove_disabled = levels.len() <= 1;
     let remove_button = if remove_disabled {

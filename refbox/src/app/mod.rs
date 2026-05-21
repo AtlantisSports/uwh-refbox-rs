@@ -3581,14 +3581,15 @@ impl RefBoxApp {
                 if let Some(ref mut edited) = self.edited_settings {
                     if let Some(ref mut levels) = edited.beep_test_levels {
                         if levels.len() < 15 {
-                            let insert_at = (edited.selected_level + 1).min(levels.len());
-                            levels.insert(
-                                insert_at,
-                                crate::config::Level {
+                            let new_level = levels
+                                .get(edited.selected_level)
+                                .cloned()
+                                .unwrap_or_else(|| crate::config::Level {
                                     count: 4,
                                     duration: std::time::Duration::from_secs(20),
-                                },
-                            );
+                                });
+                            let insert_at = (edited.selected_level + 1).min(levels.len());
+                            levels.insert(insert_at, new_level);
                             edited.selected_level = insert_at;
                         }
                     }

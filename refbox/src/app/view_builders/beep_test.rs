@@ -31,11 +31,6 @@ use iced::{
 };
 use matrix_drawing::secs_to_long_time_string;
 
-/// Maximum number of level columns in a single horizontal band of the
-/// levels table. When `config.levels.len()` exceeds this, the table wraps
-/// onto additional bands stacked vertically.
-const BAND_WIDTH: usize = 10;
-
 /// Spacing between cells in the levels table. Smaller than the global
 /// `SPACING` so the table reads as a tight grid.
 const TABLE_CELL_SPACING: f32 = 2.0;
@@ -173,105 +168,71 @@ fn top_row_tile<'a>(label: String, value: String) -> Container<'a, Message> {
 ///
 /// One column per user level (1-indexed for the operator). Each column
 /// has a header showing the level number and `count[i]` cells stacked
-/// vertically, each showing the duration in seconds. Bands of up to
-/// `BAND_WIDTH` columns wrap onto additional rows when there are more
-/// user levels than `BAND_WIDTH`.
+/// vertically, each showing the duration in seconds. The level cap
+/// (enforced at the editor's ADD LEVEL gate) keeps the table to a
+/// single horizontal row of up to 10 columns; no wrapping.
 fn build_levels_table(
     levels: &[crate::config::Level],
     active_level: Option<usize>,
     active_within_lap: Option<u32>,
     clock_running: bool,
 ) -> Element<'_, Message> {
-    let mut bands = Column::new().spacing(SPACING);
+    let max_count = levels.iter().map(|l| l.count as usize).max().unwrap_or(0);
 
-    for band_chunk in levels.chunks(BAND_WIDTH).enumerate() {
-        let (band_idx, band_levels) = band_chunk;
-        let level_index_offset = band_idx * BAND_WIDTH; // 0-based config index of first level in this band
-        let max_count = band_levels
-            .iter()
-            .map(|l| l.count as usize)
-            .max()
-            .unwrap_or(0);
+    // Pre-compute the column state for each level so we don't call
+    // `compute_column_state` repeatedly in both the header loop and the
+    // inner cell-row loop.
+    let column_states: Vec<ColumnState> = levels
+        .iter()
+        .enumerate()
+        .map(|(col_idx, _)| compute_column_state(active_level, col_idx + 1))
+        .collect();
 
-        // Pre-compute the column state for each level in this band so we
-        // don't call `compute_column_state` repeatedly in both the header
-        // loop and the inner cell-row loop.
-        let column_states: Vec<ColumnState> = band_levels
-            .iter()
-            .enumerate()
-            .map(|(col_idx, _)| {
-                let level_number = level_index_offset + col_idx + 1;
-                compute_column_state(active_level, level_number)
-            })
-            .collect();
+    let mut rows = Column::new().spacing(SPACING);
 
-        // Header row: level numbers (1-indexed). Past columns are grayed
-        // out (disabled look); active and future columns use green headers.
-        // Padding cells fill any gap so the band's columns stay the same width.
-        let mut header_row = Row::new().spacing(SPACING);
-        for (col_idx, _level) in band_levels.iter().enumerate() {
-            let level_number = level_index_offset + col_idx + 1; // 1-indexed
-            header_row = header_row.push(header_cell(
-                level_number.to_string(),
-                column_states[col_idx],
-            ));
-        }
-        // Right-pad the header so partially-filled bands align with full
-        // bands above them.
-        for _ in band_levels.len()..BAND_WIDTH {
-            header_row = header_row.push(filler_cell());
-        }
-        bands = bands.push(header_row);
+    // Header row: level numbers (1-indexed). Past columns are grayed
+    // out (disabled look); active and future columns use green headers.
+    let mut header_row = Row::new().spacing(SPACING);
+    for (col_idx, _level) in levels.iter().enumerate() {
+        header_row = header_row.push(header_cell(
+            (col_idx + 1).to_string(),
+            column_states[col_idx],
+        ));
+    }
+    rows = rows.push(header_row);
 
-        // Cell rows: stacked vertically. Row 0 is the first lap, row 1
-        // the second, etc. A column has `level.count` cells; rows
-        // beyond a column's count are empty space.
-        for row_idx in 0..max_count {
-            let mut cell_row = Row::new().spacing(SPACING);
-            for (col_idx, level) in band_levels.iter().enumerate() {
-                if row_idx < level.count as usize {
-                    let column_state = column_states[col_idx];
-                    let active_now = if clock_running {
-                        CellState::Active
-                    } else {
-                        CellState::ActivePaused
-                    };
-                    let cell_state = match column_state {
-                        ColumnState::Past => CellState::Completed,
-                        ColumnState::Active => match active_within_lap {
-                            Some(within) if (within as usize) == row_idx + 1 => active_now,
-                            Some(within) if (within as usize) > row_idx + 1 => CellState::Completed,
-                            _ => CellState::Default,
-                        },
-                        ColumnState::Future => CellState::Default,
-                    };
-                    cell_row =
-                        cell_row.push(value_cell(level.duration.as_secs().to_string(), cell_state));
+    // Cell rows: stacked vertically. Row 0 is the first lap, row 1 the
+    // second, etc. A column has `level.count` cells; rows beyond a
+    // column's count are empty space.
+    for row_idx in 0..max_count {
+        let mut cell_row = Row::new().spacing(SPACING);
+        for (col_idx, level) in levels.iter().enumerate() {
+            if row_idx < level.count as usize {
+                let column_state = column_states[col_idx];
+                let active_now = if clock_running {
+                    CellState::Active
                 } else {
-                    cell_row = cell_row.push(filler_cell());
-                }
-            }
-            for _ in band_levels.len()..BAND_WIDTH {
+                    CellState::ActivePaused
+                };
+                let cell_state = match column_state {
+                    ColumnState::Past => CellState::Completed,
+                    ColumnState::Active => match active_within_lap {
+                        Some(within) if (within as usize) == row_idx + 1 => active_now,
+                        Some(within) if (within as usize) > row_idx + 1 => CellState::Completed,
+                        _ => CellState::Default,
+                    },
+                    ColumnState::Future => CellState::Default,
+                };
+                cell_row =
+                    cell_row.push(value_cell(level.duration.as_secs().to_string(), cell_state));
+            } else {
                 cell_row = cell_row.push(filler_cell());
             }
-            bands = bands.push(cell_row);
         }
-
-        // Pad odd-layer bands with one blank row so each band's total height
-        // resolves to a whole number of MIN_BUTTON_SIZE rows when combined
-        // with SPACING. (1 header + max_count lap rows = layer_count layers;
-        // if that's odd, append one more blank row to make it even.)
-        let layer_count = 1 + max_count;
-        if layer_count % 2 == 1 {
-            let mut blank_row = Row::new().spacing(SPACING);
-            for _ in 0..BAND_WIDTH {
-                blank_row = blank_row.push(filler_cell());
-            }
-            bands = bands.push(blank_row);
-        }
+        rows = rows.push(cell_row);
     }
 
-    container(bands)
+    container(rows)
         .padding(TABLE_CELL_SPACING)
         .width(Length::Fill)
         .center_x(Length::Fill)

@@ -88,20 +88,33 @@ pub(in super::super) fn build_beep_test_page<'a>(
     // ----- Table -----
     let levels_table = build_levels_table(&config.levels, active_level, active_within_lap);
 
-    // ----- Bottom action row (preserved from the absorption branch) -----
+    // ----- Bottom action row -----
+    //
+    // Four states drive the START/PAUSE/RESUME button and whether RESET is
+    // pressable:
+    //   (clock_running, has_run)
+    //   (false, false) → START (green)    + RESET disabled
+    //   (true,  true)  → PAUSE (yellow)   + RESET disabled
+    //   (false, true)  → RESUME (blue)    + RESET enabled
+    //   (true,  false) is unreachable: BeepTestStart sets has_run=true
+    //                    before starting the engine.
     let start_stop = if clock_running {
-        make_button(fl!("beep-test-stop"))
-            .style(orange_button)
+        make_button(fl!("beep-test-pause"))
+            .style(yellow_button)
             .on_press(Message::BeepTestStop)
+    } else if has_run {
+        make_button(fl!("beep-test-resume"))
+            .style(blue_button)
+            .on_press(Message::BeepTestStart)
     } else {
         make_button(fl!("beep-test-start"))
             .style(green_button)
             .on_press(Message::BeepTestStart)
     };
 
-    // Reset is disabled until the operator has pressed Start at least
-    // once in this session.
-    let reset = if has_run {
+    // Reset is disabled both before any run AND while the engine is running.
+    // It is only pressable when `has_run` is true and the clock is stopped.
+    let reset = if has_run && !clock_running {
         make_button(fl!("beep-test-reset"))
             .style(red_button)
             .on_press(Message::BeepTestReset)

@@ -49,14 +49,12 @@ pub struct TournamentManager {
 impl TournamentManager {
     pub fn new(config: BeepTestConfig) -> Self {
         let (start_stop_tx, start_stop_rx) = watch::channel(false);
-        let initial_clock = config
-            .levels
-            .first()
-            .map(|l| l.duration)
-            .unwrap_or_default();
+        let warmup = BeepTestPeriod::Level(0);
+        let initial_clock = warmup.duration(&config).unwrap_or_default();
+        let time_in_next_lap = warmup.next_test_period_dur(&config).unwrap_or_default();
         Self {
-            time_in_next_lap: config.levels.get(1).map(|l| l.duration).unwrap_or_default(),
-            current_period: BeepTestPeriod::Level(0),
+            time_in_next_lap,
+            current_period: warmup,
             clock_state: ClockState::Stopped {
                 clock_time: initial_clock,
             },
@@ -504,6 +502,28 @@ mod tests {
         tm.update(t0 + Duration::from_secs(4)).unwrap();
         assert_eq!(tm.current_period(), BeepTestPeriod::Level(0));
         assert!(!tm.clock_is_running());
+    }
+
+    // Test — a freshly constructed engine's clock is set to the warm-up
+    // duration (config.pre), not the first user level's duration. The
+    // stopped clock_time is what the TIME tile displays before the operator
+    // presses START.
+    #[test]
+    fn new_initializes_clock_to_warmup_duration() {
+        let tm = TournamentManager::new(test_config());
+        let now = Instant::now();
+        // test_config(): pre = 1s, levels[0].duration = 10s
+        assert_eq!(tm.clock_state.clock_time(now), Some(Duration::from_secs(1)));
+    }
+
+    // Test — a freshly constructed engine's `time_in_next_lap` is the
+    // duration of the period that follows the warm-up (Level(1), which maps
+    // to config.levels[0]), not config.levels[1].
+    #[test]
+    fn new_initializes_time_in_next_lap_to_first_user_level() {
+        let tm = TournamentManager::new(test_config());
+        // test_config(): levels[0].duration = 10s (this is Level(1)'s duration)
+        assert_eq!(tm.time_in_next_lap, Duration::from_secs(10));
     }
 }
 

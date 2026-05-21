@@ -952,10 +952,7 @@ pub(super) fn config_string(
 pub(super) fn make_button<'a, Message: 'a + Clone, T: IntoFragment<'a>>(
     label: T,
 ) -> Button<'a, Message> {
-    let t = text(label)
-        .align_x(Horizontal::Left)
-        .align_y(Vertical::Center)
-        .width(Length::Shrink);
+    let t = text(label).width(Length::Shrink);
     button(container(t).center(Length::Fill))
         .padding(PADDING)
         .height(Length::Fixed(MIN_BUTTON_SIZE))
@@ -965,10 +962,7 @@ pub(super) fn make_button<'a, Message: 'a + Clone, T: IntoFragment<'a>>(
 pub(super) fn make_smaller_button<'a, Message: 'a + Clone, T: IntoFragment<'a>>(
     label: T,
 ) -> Button<'a, Message> {
-    let t = text(label)
-        .align_x(Horizontal::Left)
-        .align_y(Vertical::Center)
-        .width(Length::Shrink);
+    let t = text(label).width(Length::Shrink);
     button(container(t).center(Length::Fill))
         .padding(PADDING)
         .height(Length::Fixed(XS_BUTTON_SIZE))

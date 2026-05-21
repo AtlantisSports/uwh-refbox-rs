@@ -3240,6 +3240,7 @@ impl RefBoxApp {
                     bt_tm.reset_beep_test_now(Instant::now());
                 }
                 self.beep_test_snapshot = BeepTestSnapshot::default();
+                self.beep_test_has_run = false;
                 Task::none()
             }
             Message::BeepTestTick => {

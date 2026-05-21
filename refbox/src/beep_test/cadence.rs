@@ -188,10 +188,8 @@ impl TournamentManager {
         self.count = 1;
         self.lap_count = 0;
         self.time_in_next_lap = self
-            .config
-            .levels
-            .get(1)
-            .map(|l| l.duration)
+            .current_period
+            .next_test_period_dur(&self.config)
             .unwrap_or_default();
 
         self.send_clock_running(false);
@@ -523,6 +521,22 @@ mod tests {
     fn new_initializes_time_in_next_lap_to_first_user_level() {
         let tm = TournamentManager::new(test_config());
         // test_config(): levels[0].duration = 10s (this is Level(1)'s duration)
+        assert_eq!(tm.time_in_next_lap, Duration::from_secs(10));
+    }
+
+    // Test — after reset_beep_test_now(), time_in_next_lap is the duration
+    // of the period that follows the warm-up (Level(1), which maps to
+    // config.levels[0]). Mirrors the `new()` invariant — Reset returns the
+    // engine to a state functionally identical to `new()`.
+    #[test]
+    fn reset_initializes_time_in_next_lap_to_first_user_level() {
+        let mut tm = TournamentManager::new(test_config());
+        let now = Instant::now();
+        // Move the engine away from the fresh state so the reset has work to
+        // do beyond "no-op" — start a beep test, advance partway.
+        tm.start_beep_test_now(now).unwrap();
+        tm.reset_beep_test_now(now + Duration::from_millis(500));
+        // After reset, time_in_next_lap should be levels[0].duration = 10s.
         assert_eq!(tm.time_in_next_lap, Duration::from_secs(10));
     }
 }

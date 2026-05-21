@@ -3580,7 +3580,7 @@ impl RefBoxApp {
             Message::BeepTestEditAddLevel => {
                 if let Some(ref mut edited) = self.edited_settings {
                     if let Some(ref mut levels) = edited.beep_test_levels {
-                        if levels.len() < 10 {
+                        if levels.len() < 15 {
                             levels.push(crate::config::Level {
                                 count: 4,
                                 duration: std::time::Duration::from_secs(20),

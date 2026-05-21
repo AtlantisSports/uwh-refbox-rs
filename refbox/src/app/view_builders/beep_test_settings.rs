@@ -440,7 +440,7 @@ fn build_edit_panel(levels: &[Level], selected: usize) -> Element<'_, Message> {
     // already at the cap. Mirrors the existing remove_disabled +
     // count_inc_disabled patterns; defense-in-depth in the handler at
     // Message::BeepTestEditAddLevel.
-    let add_disabled = levels.len() >= 10;
+    let add_disabled = levels.len() >= 15;
 
     // Safe to index because the caller already clamped `selected` to be
     // in range. If the list is empty we fall through to a placeholder

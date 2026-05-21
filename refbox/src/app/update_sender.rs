@@ -40,6 +40,7 @@ impl UpdateSender {
         binary_port: u16,
         json_port: u16,
         hide_time: bool,
+        beep_test: bool,
     ) -> Self {
         let (tx, rx) = mpsc::channel(8);
 
@@ -48,7 +49,7 @@ impl UpdateSender {
             .map(|builder| builder.open_native_async().unwrap())
             .collect();
 
-        let server_join = task::spawn(Server::new(rx, initial, hide_time).run_loop());
+        let server_join = task::spawn(Server::new(rx, initial, hide_time, beep_test).run_loop());
 
         let listener_join = task::spawn(listener_loop(tx.clone(), binary_port, json_port));
 
@@ -154,6 +155,7 @@ enum SerialWorkerMessage {
 async fn serial_worker_loop(
     mut rx: mpsc::Receiver<SerialWorkerMessage>,
     mut write: SerialStream,
+    beep_test: bool,
 ) -> Result<(), WorkerError> {
     let msg = rx.recv().await.ok_or(WorkerError::ChannelClosed)?;
     let (snapshot, white_on_right, brightness) = match msg {
@@ -168,7 +170,7 @@ async fn serial_worker_loop(
     let mut data = TransmittedData {
         snapshot,
         flash: false,
-        beep_test: false,
+        beep_test,
         brightness,
         white_on_right,
     };
@@ -323,6 +325,7 @@ struct Server {
     binary: Vec<u8>,
     json: Vec<u8>,
     hide_time: bool,
+    beep_test: bool,
 }
 
 impl Server {
@@ -330,6 +333,7 @@ impl Server {
         rx: mpsc::Receiver<ServerMessage>,
         initial: Vec<SerialStream>,
         hide_time: bool,
+        beep_test: bool,
     ) -> Self {
         let mut server = Server {
             next_id: 0,
@@ -344,6 +348,7 @@ impl Server {
             binary: Vec::new(),
             json: Vec::new(),
             hide_time,
+            beep_test,
         };
 
         for stream in initial {
@@ -381,7 +386,7 @@ impl Server {
 
     fn add_serial_sender(&mut self, sender: SerialStream) {
         let (tx, rx) = mpsc::channel(WORKER_CHANNEL_LEN);
-        let join = task::spawn(serial_worker_loop(rx, sender));
+        let join = task::spawn(serial_worker_loop(rx, sender, self.beep_test));
 
         self.senders
             .insert(self.next_id, WorkerHandle::new_serial(tx, join));
@@ -438,7 +443,7 @@ impl Server {
                 TransmittedData {
                     white_on_right: self.white_on_right,
                     flash: self.flash,
-                    beep_test: false,
+                    beep_test: self.beep_test,
                     brightness: self.brightness,
                     snapshot: self.snapshot.clone(),
                 }
@@ -668,7 +673,7 @@ mod test {
 
     #[tokio::test]
     async fn test_update_sender() {
-        let update_sender = UpdateSender::new(vec![], BINARY_PORT, JSON_PORT, false);
+        let update_sender = UpdateSender::new(vec![], BINARY_PORT, JSON_PORT, false, false);
 
         let mut binary_conn;
         let mut fail_count = 0;
@@ -864,6 +869,122 @@ mod test {
 
         assert_eq!(expected_json_bytes, json_read_so_far);
         assert_eq!(json_expected, json_result);
+
+        assert_eq!(expected_binary_bytes, binary_read_so_far);
+        assert_eq!(binary_expected, binary_result);
+    }
+
+    // When UpdateSender is constructed with beep_test=true, the binary frames
+    // it emits carry `beep_test == true` so the LED panel renderer hides one
+    // score column. See
+    // docs/superpowers/specs/2026-05-21-beep-test-led-panel-score-hiding-design.md.
+    #[tokio::test]
+    async fn binary_port_emits_beep_test_flag_when_constructed_in_beep_test_mode() {
+        const BT_BINARY_PORT: u16 = 12347;
+        const BT_JSON_PORT: u16 = 12348;
+
+        let update_sender = UpdateSender::new(
+            vec![],
+            BT_BINARY_PORT,
+            BT_JSON_PORT,
+            false,
+            /* beep_test */ true,
+        );
+
+        let mut binary_conn;
+        let mut fail_count = 0;
+        loop {
+            match TcpStream::connect(("localhost", BT_BINARY_PORT)).await {
+                Ok(stream) => {
+                    binary_conn = stream;
+                    break;
+                }
+                Err(e) => {
+                    if e.kind() == ErrorKind::ConnectionRefused {
+                        assert_le!(fail_count, MAX_CONN_FAILS);
+                        fail_count += 1;
+                    } else {
+                        panic!("Unexpected connection error: {e:?}");
+                    }
+                }
+            };
+        }
+
+        // Sync barrier — mirrors the existing test. Opens a second binary
+        // connection (then drops it) so the server has demonstrably
+        // processed the first NewConnection message before we call
+        // send_snapshot. Without this, send_snapshot can arrive while
+        // has_binary == false and the server emits an empty binary frame.
+        let mut fail_count = 0;
+        loop {
+            match TcpStream::connect(("localhost", BT_BINARY_PORT)).await {
+                Ok(_) => break,
+                Err(e) => {
+                    if e.kind() == ErrorKind::ConnectionRefused {
+                        assert_le!(fail_count, MAX_CONN_FAILS);
+                        fail_count += 1;
+                    } else {
+                        panic!("Unexpected connection error: {e:?}");
+                    }
+                }
+            };
+        }
+
+        let snapshot = GameSnapshot {
+            current_period: GamePeriod::FirstHalf,
+            secs_in_period: 30,
+            timeout: None,
+            scores: BlackWhiteBundle { black: 0, white: 0 },
+            penalties: BlackWhiteBundle {
+                black: vec![],
+                white: vec![],
+            },
+            warnings: BlackWhiteBundle {
+                black: vec![],
+                white: vec![],
+            },
+            fouls: OptColorBundle {
+                black: vec![],
+                white: vec![],
+                equal: vec![],
+            },
+            is_old_game: false,
+            game_number: "1".to_string(),
+            next_game_number: "2".to_string(),
+            event_id: None,
+            recent_goal: None,
+            next_period_len_secs: None,
+            conf_pause_time: None,
+        };
+
+        let binary_expected = Vec::from(
+            TransmittedData {
+                white_on_right: false,
+                brightness: Brightness::Low,
+                flash: false,
+                beep_test: true,
+                snapshot: snapshot.clone().into(),
+            }
+            .encode()
+            .unwrap(),
+        );
+
+        update_sender
+            .send_snapshot(snapshot, false, Brightness::Low)
+            .unwrap();
+
+        let expected_binary_bytes = binary_expected.len();
+        let mut binary_result = vec![0u8; expected_binary_bytes];
+        let mut binary_read_so_far = 0;
+
+        while binary_read_so_far < expected_binary_bytes {
+            let n = binary_conn
+                .read(&mut binary_result[binary_read_so_far..])
+                .await
+                .unwrap();
+            assert_ne!(n, 0, "binary port closed unexpectedly");
+            binary_read_so_far += n;
+        }
 
         assert_eq!(expected_binary_bytes, binary_read_so_far);
         assert_eq!(binary_expected, binary_result);

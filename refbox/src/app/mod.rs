@@ -1218,8 +1218,13 @@ impl RefBoxApp {
 
         let has_led_panel = !serial_ports.is_empty();
 
-        let update_sender =
-            UpdateSender::new(serial_ports, binary_port, json_port, config.hide_time);
+        let update_sender = UpdateSender::new(
+            serial_ports,
+            binary_port,
+            json_port,
+            config.hide_time,
+            config.mode == Mode::BeepTest,
+        );
 
         let sound =
             SoundController::new(config.sound.clone(), update_sender.get_trigger_flash_fn());

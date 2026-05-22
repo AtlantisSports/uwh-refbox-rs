@@ -12,7 +12,7 @@ cancel = 取消
 delete = 删除
 back = 返回
 apply = 应用
-save = SAVE
+save = 保存
 user-options = 用户选项
 new = 新建
 
@@ -47,8 +47,8 @@ app-options = 应用选项
 display-options = 显示选项
 open-new-display = 打开新显示
 sound-options = 声音选项
-sound-settings = SOUND SETTINGS
-beep-test-edit-levels = EDIT LEVELS
+sound-settings = 声音设置
+beep-test-edit-levels = 编辑级别
 app-mode = 应用
     模式
 hide-time-for-last-15-seconds = 最后15秒
@@ -348,23 +348,23 @@ max = 最大
 hockey6v6 = 六对六水下曲棍球
 hockey3v3 = 三对三水下曲棍球
 rugby = 橄榄球
-beep-test = BEEP TEST
+beep-test = 蜂鸣测试
 
 # Beep-test screen
-beep-test-pre = PRE
-beep-test-top-time-label = TIME
-beep-test-top-level-label = LEVEL
-beep-test-top-lap-label = LAP
-beep-test-start = START
-beep-test-pause = PAUSE
-beep-test-resume = RESUME
-beep-test-reset = RESET
-beep-test-column-level = LEVEL
-beep-test-column-count = COUNT
-beep-test-column-duration = DURATION
-beep-test-edit-selected = Level { $level }
-beep-test-edit-time = TIME
-beep-test-edit-count = COUNT
+beep-test-pre = 准备
+beep-test-top-time-label = 时间
+beep-test-top-level-label = 级别
+beep-test-top-lap-label = 圈数
+beep-test-start = 开始
+beep-test-pause = 暂停
+beep-test-resume = 继续
+beep-test-reset = 重置
+beep-test-column-level = 级别
+beep-test-column-count = 次数
+beep-test-column-duration = 时长
+beep-test-edit-selected = 级别 { $level }
+beep-test-edit-time = 时间
+beep-test-edit-count = 次数
 beep-test-edit-new = 添加级别
 beep-test-edit-remove = 删除级别
 
@@ -383,17 +383,17 @@ false-start = 抢跑
 
 
 # Portal Health Indicator
-# NOTE: Awaiting native-speaker translation; English placeholders for now.
-portal-summary-title = { $portal } PORTAL STATUS
-portal-row-token-expired = Portal login expired — tap to re-login
-portal-row-stuck = Game { $game } Score send error, tap to fix
-portal-row-pending = Game { $game } Score not sent, tap to retry
-portal-row-recent = Game { $game } · Submitted { $mins } min ago
-portal-action-force-submit = Retry this game result
-portal-action-discard = Discard this game result
-portal-action-discard-confirm = TAP AGAIN TO CONFIRM DISCARD
-portal-page-title-attention = Game { $game } submission error
-portal-page-attention-info = The game result has not been accepted on { $portal } Portal
-portal-page-attention-score = Stored game result: Light { $white } - Dark { $black }
-portal-page-attention-remediation = You can Retry if connection is verified, or discard to clear the error
-portal-advisory-at-game-end = Portal issue detected. Score will still be queued — find an admin to resolve.
+portal-summary-title = { $portal } PORTAL 状态
+portal-row-token-expired = Portal 登录已过期 — 点击重新登录
+portal-row-stuck = 比赛 { $game } 比分发送错误，点击修复
+portal-row-pending = 比赛 { $game } 比分未发送，点击重试
+portal-row-attempt-suffix = （尝试 { $attempts } 次）
+portal-row-recent = 比赛 { $game } · { $mins } 分钟前已提交
+portal-action-force-submit = 重试此比赛结果
+portal-action-discard = 放弃此比赛结果
+portal-action-discard-confirm = 再次点击以确认放弃
+portal-page-title-attention = 比赛 { $game } 提交错误
+portal-page-attention-info = 比赛结果尚未被 { $portal } Portal 接受
+portal-page-attention-score = 已存储比赛结果：白队 { $white } - 黑队 { $black }
+portal-page-attention-remediation = 若连接已确认，可重试；或放弃以清除错误
+portal-advisory-at-game-end = 检测到 Portal 问题。比分仍会排队 — 请联系管理员解决。

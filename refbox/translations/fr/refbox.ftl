@@ -389,6 +389,7 @@ portal-summary-title = STATUT { $portal } PORTAL
 portal-row-token-expired = Session du portail expirée — touchez pour vous reconnecter
 portal-row-stuck = Match { $game } · Erreur d'envoi du résultat, touchez pour corriger
 portal-row-pending = Match { $game } · Résultat non envoyé, touchez pour réessayer
+portal-row-attempt-suffix = (tentative { $attempts })
 portal-row-recent = Match { $game } · Envoyé il y a { $mins } min
 portal-action-force-submit = Réessayer ce résultat
 portal-action-discard = Supprimer ce résultat

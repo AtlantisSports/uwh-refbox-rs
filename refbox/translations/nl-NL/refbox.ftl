@@ -12,7 +12,7 @@ cancel = ANNULEREN
 delete = VERWIJDEREN
 back = TERUG
 apply = TOEPASSEN
-save = SAVE
+save = OPSLAAN
 user-options = GEBRUIKERSOPTIES
 new = NIEUW
 
@@ -47,8 +47,8 @@ app-options = APP-OPTIES
 display-options = WEERGAVEOPTIES
 open-new-display = NIEUWE WEERGAVE OPENEN
 sound-options = GELUIDSOPTIES
-sound-settings = SOUND SETTINGS
-beep-test-edit-levels = EDIT LEVELS
+sound-settings = GELUIDSINSTELLINGEN
+beep-test-edit-levels = NIVEAUS BEWERKEN
 app-mode = APP-
     MODUS
 hide-time-for-last-15-seconds = TIJD VERBERGEN
@@ -348,23 +348,23 @@ max = MAX
 hockey6v6 = HOCKEY6V6
 hockey3v3 = HOCKEY3V3
 rugby = RUGBY
-beep-test = BEEP TEST
+beep-test = PIEPTEST
 
 # Beep-test screen
 beep-test-pre = PRE
-beep-test-top-time-label = TIME
-beep-test-top-level-label = LEVEL
-beep-test-top-lap-label = LAP
+beep-test-top-time-label = TIJD
+beep-test-top-level-label = NIVEAU
+beep-test-top-lap-label = RONDE
 beep-test-start = START
-beep-test-pause = PAUSE
-beep-test-resume = RESUME
+beep-test-pause = PAUZE
+beep-test-resume = HERVATTEN
 beep-test-reset = RESET
-beep-test-column-level = LEVEL
-beep-test-column-count = COUNT
-beep-test-column-duration = DURATION
-beep-test-edit-selected = Level { $level }
-beep-test-edit-time = TIME
-beep-test-edit-count = COUNT
+beep-test-column-level = NIVEAU
+beep-test-column-count = AANTAL
+beep-test-column-duration = DUUR
+beep-test-edit-selected = Niveau { $level }
+beep-test-edit-time = TIJD
+beep-test-edit-count = AANTAL
 beep-test-edit-new = NIVEAU TOEVOEGEN
 beep-test-edit-remove = NIVEAU VERWIJDEREN
 
@@ -383,17 +383,17 @@ false-start = Vals Vertrek
 
 
 # Portal Health Indicator
-# NOTE: Awaiting native-speaker translation; English placeholders for now.
-portal-summary-title = { $portal } PORTAL STATUS
-portal-row-token-expired = Portal login expired — tap to re-login
-portal-row-stuck = Game { $game } Score send error, tap to fix
-portal-row-pending = Game { $game } Score not sent, tap to retry
-portal-row-recent = Game { $game } · Submitted { $mins } min ago
-portal-action-force-submit = Retry this game result
-portal-action-discard = Discard this game result
-portal-action-discard-confirm = TAP AGAIN TO CONFIRM DISCARD
-portal-page-title-attention = Game { $game } submission error
-portal-page-attention-info = The game result has not been accepted on { $portal } Portal
-portal-page-attention-score = Stored game result: Light { $white } - Dark { $black }
-portal-page-attention-remediation = You can Retry if connection is verified, or discard to clear the error
-portal-advisory-at-game-end = Portal issue detected. Score will still be queued — find an admin to resolve.
+portal-summary-title = { $portal } PORTAALSTATUS
+portal-row-token-expired = Portaal-login verlopen — tik om opnieuw in te loggen
+portal-row-stuck = Wedstrijd { $game } Fout bij verzenden score, tik om te herstellen
+portal-row-pending = Wedstrijd { $game } Score niet verzonden, tik om opnieuw te proberen
+portal-row-recent = Wedstrijd { $game } · Verzonden { $mins } min geleden
+portal-row-attempt-suffix = (poging { $attempts })
+portal-action-force-submit = Deze wedstrijduitslag opnieuw proberen
+portal-action-discard = Deze wedstrijduitslag verwerpen
+portal-action-discard-confirm = TIK NOGMAALS OM VERWERPEN TE BEVESTIGEN
+portal-page-title-attention = Wedstrijd { $game } verzendfout
+portal-page-attention-info = De wedstrijduitslag is niet geaccepteerd op { $portal } Portaal
+portal-page-attention-score = Opgeslagen wedstrijduitslag: Licht { $white } - Donker { $black }
+portal-page-attention-remediation = U kunt Opnieuw proberen als de verbinding is geverifieerd, of verwerpen om de fout te wissen
+portal-advisory-at-game-end = Portaalprobleem gedetecteerd. Score blijft in wachtrij — zoek een beheerder om het op te lossen.

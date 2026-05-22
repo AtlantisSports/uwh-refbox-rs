@@ -12,7 +12,7 @@ cancel = BATAL
 delete = HAPUS
 back = KEMBALI
 apply = TERAPKAN
-save = SAVE
+save = SIMPAN
 user-options = OPSI PENGGUNA
 new = BARU
 
@@ -47,8 +47,8 @@ app-options = OPSI APLIKASI
 display-options = OPSI TAMPILAN
 open-new-display = BUKA TAMPILAN BARU
 sound-options = OPSI SUARA
-sound-settings = SOUND SETTINGS
-beep-test-edit-levels = EDIT LEVELS
+sound-settings = PENGATURAN SUARA
+beep-test-edit-levels = UBAH LEVEL
 app-mode = MODE
     APLIKASI
 hide-time-for-last-15-seconds = SEMBUNYIKAN WAKTU
@@ -351,20 +351,20 @@ rugby = RUGBY
 beep-test = BEEP TEST
 
 # Beep-test screen
-beep-test-pre = PRE
-beep-test-top-time-label = TIME
+beep-test-pre = PRA
+beep-test-top-time-label = WAKTU
 beep-test-top-level-label = LEVEL
-beep-test-top-lap-label = LAP
-beep-test-start = START
-beep-test-pause = PAUSE
-beep-test-resume = RESUME
-beep-test-reset = RESET
+beep-test-top-lap-label = PUTARAN
+beep-test-start = MULAI
+beep-test-pause = JEDA
+beep-test-resume = LANJUTKAN
+beep-test-reset = ATUR ULANG
 beep-test-column-level = LEVEL
-beep-test-column-count = COUNT
-beep-test-column-duration = DURATION
+beep-test-column-count = JUMLAH
+beep-test-column-duration = DURASI
 beep-test-edit-selected = Level { $level }
-beep-test-edit-time = TIME
-beep-test-edit-count = COUNT
+beep-test-edit-time = WAKTU
+beep-test-edit-count = JUMLAH
 beep-test-edit-new = TAMBAH LEVEL
 beep-test-edit-remove = HAPUS LEVEL
 
@@ -383,17 +383,17 @@ false-start = Start Curang
 
 
 # Portal Health Indicator
-# NOTE: Awaiting native-speaker translation; English placeholders for now.
-portal-summary-title = { $portal } PORTAL STATUS
-portal-row-token-expired = Portal login expired — tap to re-login
-portal-row-stuck = Game { $game } Score send error, tap to fix
-portal-row-pending = Game { $game } Score not sent, tap to retry
-portal-row-recent = Game { $game } · Submitted { $mins } min ago
-portal-action-force-submit = Retry this game result
-portal-action-discard = Discard this game result
-portal-action-discard-confirm = TAP AGAIN TO CONFIRM DISCARD
-portal-page-title-attention = Game { $game } submission error
-portal-page-attention-info = The game result has not been accepted on { $portal } Portal
-portal-page-attention-score = Stored game result: Light { $white } - Dark { $black }
-portal-page-attention-remediation = You can Retry if connection is verified, or discard to clear the error
-portal-advisory-at-game-end = Portal issue detected. Score will still be queued — find an admin to resolve.
+portal-summary-title = STATUS { $portal } PORTAL
+portal-row-token-expired = Login Portal kedaluwarsa — ketuk untuk login ulang
+portal-row-stuck = Pertandingan { $game } Galat kirim skor, ketuk untuk perbaiki
+portal-row-pending = Pertandingan { $game } Skor belum terkirim, ketuk untuk coba lagi
+portal-row-attempt-suffix = (percobaan { $attempts })
+portal-row-recent = Pertandingan { $game } · Dikirim { $mins } mnt lalu
+portal-action-force-submit = Coba lagi kirim hasil pertandingan ini
+portal-action-discard = Buang hasil pertandingan ini
+portal-action-discard-confirm = KETUK LAGI UNTUK KONFIRMASI BUANG
+portal-page-title-attention = Galat pengiriman Pertandingan { $game }
+portal-page-attention-info = Hasil pertandingan belum diterima oleh { $portal } Portal
+portal-page-attention-score = Hasil pertandingan tersimpan: Putih { $white } - Hitam { $black }
+portal-page-attention-remediation = Anda dapat Coba Lagi jika koneksi sudah terverifikasi, atau buang untuk menghapus galat
+portal-advisory-at-game-end = Masalah Portal terdeteksi. Skor tetap akan diantrekan — temui admin untuk menyelesaikan.

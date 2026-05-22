@@ -14,7 +14,7 @@ cancel = 취소
 delete = 삭제
 back = 뒤로
 apply = 적용
-save = SAVE
+save = 저장
 user-options = 사용자 옵션
 new = 새로
 
@@ -49,8 +49,8 @@ app-options = 앱 옵션
 display-options = 화면 옵션
 open-new-display = 새 화면 열기
 sound-options = 소리 옵션
-sound-settings = SOUND SETTINGS
-beep-test-edit-levels = EDIT LEVELS
+sound-settings = 소리 설정
+beep-test-edit-levels = 레벨 편집
 app-mode = 앱
     모드
 hide-time-for-last-15-seconds = 마지막 15초
@@ -350,23 +350,23 @@ max = 최대
 hockey6v6 = 하키 6대6
 hockey3v3 = 하키 3대3
 rugby = 럭비
-beep-test = BEEP TEST
+beep-test = 비프 테스트
 
 # Beep-test screen
-beep-test-pre = PRE
-beep-test-top-time-label = TIME
-beep-test-top-level-label = LEVEL
-beep-test-top-lap-label = LAP
-beep-test-start = START
-beep-test-pause = PAUSE
-beep-test-resume = RESUME
-beep-test-reset = RESET
-beep-test-column-level = LEVEL
-beep-test-column-count = COUNT
-beep-test-column-duration = DURATION
+beep-test-pre = 준비
+beep-test-top-time-label = 시간
+beep-test-top-level-label = 레벨
+beep-test-top-lap-label = 랩
+beep-test-start = 시작
+beep-test-pause = 일시정지
+beep-test-resume = 재개
+beep-test-reset = 리셋
+beep-test-column-level = 레벨
+beep-test-column-count = 카운트
+beep-test-column-duration = 시간
 beep-test-edit-selected = 레벨 { $level }
-beep-test-edit-time = TIME
-beep-test-edit-count = COUNT
+beep-test-edit-time = 시간
+beep-test-edit-count = 카운트
 beep-test-edit-new = 레벨 추가
 beep-test-edit-remove = 레벨 제거
 
@@ -385,17 +385,17 @@ false-start = 부정 출발
 
 
 # Portal Health Indicator
-# NOTE: Awaiting native-speaker translation; English placeholders for now.
-portal-summary-title = { $portal } PORTAL STATUS
-portal-row-token-expired = Portal login expired — tap to re-login
-portal-row-stuck = Game { $game } Score send error, tap to fix
-portal-row-pending = Game { $game } Score not sent, tap to retry
-portal-row-recent = Game { $game } · Submitted { $mins } min ago
-portal-action-force-submit = Retry this game result
-portal-action-discard = Discard this game result
-portal-action-discard-confirm = TAP AGAIN TO CONFIRM DISCARD
-portal-page-title-attention = Game { $game } submission error
-portal-page-attention-info = The game result has not been accepted on { $portal } Portal
-portal-page-attention-score = Stored game result: Light { $white } - Dark { $black }
-portal-page-attention-remediation = You can Retry if connection is verified, or discard to clear the error
-portal-advisory-at-game-end = Portal issue detected. Score will still be queued — find an admin to resolve.
+portal-summary-title = { $portal } PORTAL 상태
+portal-row-token-expired = Portal 로그인 만료됨 — 탭하여 다시 로그인
+portal-row-stuck = 경기 { $game } 점수 전송 오류, 탭하여 수정
+portal-row-pending = 경기 { $game } 점수 전송 안 됨, 탭하여 재시도
+portal-row-attempt-suffix = (시도 { $attempts }회)
+portal-row-recent = 경기 { $game } · { $mins }분 전 전송됨
+portal-action-force-submit = 이 경기 결과 재시도
+portal-action-discard = 이 경기 결과 버리기
+portal-action-discard-confirm = 버리기 확인을 위해 다시 탭하세요
+portal-page-title-attention = 경기 { $game } 전송 오류
+portal-page-attention-info = 경기 결과가 { $portal } Portal에서 수락되지 않았습니다
+portal-page-attention-score = 저장된 경기 결과: 흰 { $white } - 검정 { $black }
+portal-page-attention-remediation = 연결이 확인되면 재시도하거나, 오류를 지우려면 버리기를 선택하세요
+portal-advisory-at-game-end = Portal 문제가 감지되었습니다. 점수는 계속 대기열에 있습니다 — 관리자에게 문의하세요.

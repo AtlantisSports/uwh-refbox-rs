@@ -12,7 +12,7 @@ cancel = ANNULLA
 delete = ELIMINA
 back = INDIETRO
 apply = APPLICA
-save = SAVE
+save = SALVA
 user-options = OPZIONI UTENTE
 new = NUOVO
 
@@ -47,8 +47,8 @@ app-options = OPZIONI APP
 display-options = OPZIONI DISPLAY
 open-new-display = APRI NUOVO DISPLAY
 sound-options = OPZIONI AUDIO
-sound-settings = SOUND SETTINGS
-beep-test-edit-levels = EDIT LEVELS
+sound-settings = IMPOSTAZIONI AUDIO
+beep-test-edit-levels = MODIFICA LIVELLI
 app-mode = MODALITÀ
     APP
 hide-time-for-last-15-seconds = NASCONDI TEMPO
@@ -352,19 +352,19 @@ beep-test = BEEP TEST
 
 # Beep-test screen
 beep-test-pre = PRE
-beep-test-top-time-label = TIME
-beep-test-top-level-label = LEVEL
-beep-test-top-lap-label = LAP
-beep-test-start = START
-beep-test-pause = PAUSE
-beep-test-resume = RESUME
-beep-test-reset = RESET
-beep-test-column-level = LEVEL
-beep-test-column-count = COUNT
-beep-test-column-duration = DURATION
-beep-test-edit-selected = Level { $level }
-beep-test-edit-time = TIME
-beep-test-edit-count = COUNT
+beep-test-top-time-label = TEMPO
+beep-test-top-level-label = LIVELLO
+beep-test-top-lap-label = GIRO
+beep-test-start = AVVIA
+beep-test-pause = PAUSA
+beep-test-resume = RIPRENDI
+beep-test-reset = AZZERA
+beep-test-column-level = LIVELLO
+beep-test-column-count = NUMERO
+beep-test-column-duration = DURATA
+beep-test-edit-selected = Livello { $level }
+beep-test-edit-time = TEMPO
+beep-test-edit-count = NUMERO
 beep-test-edit-new = AGGIUNGI LIVELLO
 beep-test-edit-remove = RIMUOVI LIVELLO
 
@@ -383,17 +383,17 @@ false-start = Falsa Partenza
 
 
 # Portal Health Indicator
-# NOTE: Awaiting native-speaker translation; English placeholders for now.
-portal-summary-title = { $portal } PORTAL STATUS
-portal-row-token-expired = Portal login expired — tap to re-login
-portal-row-stuck = Game { $game } Score send error, tap to fix
-portal-row-pending = Game { $game } Score not sent, tap to retry
-portal-row-recent = Game { $game } · Submitted { $mins } min ago
-portal-action-force-submit = Retry this game result
-portal-action-discard = Discard this game result
-portal-action-discard-confirm = TAP AGAIN TO CONFIRM DISCARD
-portal-page-title-attention = Game { $game } submission error
-portal-page-attention-info = The game result has not been accepted on { $portal } Portal
-portal-page-attention-score = Stored game result: Light { $white } - Dark { $black }
-portal-page-attention-remediation = You can Retry if connection is verified, or discard to clear the error
-portal-advisory-at-game-end = Portal issue detected. Score will still be queued — find an admin to resolve.
+portal-summary-title = STATO PORTALE { $portal }
+portal-row-token-expired = Sessione Portale scaduta — tocca per accedere di nuovo
+portal-row-stuck = Partita { $game } Errore invio punteggio, tocca per correggere
+portal-row-pending = Partita { $game } Punteggio non inviato, tocca per riprovare
+portal-row-attempt-suffix = (tentativo { $attempts })
+portal-row-recent = Partita { $game } · Inviato { $mins } min fa
+portal-action-force-submit = Riprova questo risultato
+portal-action-discard = Scarta questo risultato
+portal-action-discard-confirm = TOCCA DI NUOVO PER CONFERMARE LO SCARTO
+portal-page-title-attention = Errore invio Partita { $game }
+portal-page-attention-info = Il risultato della partita non è stato accettato dal Portale { $portal }
+portal-page-attention-score = Risultato memorizzato: Bianco { $white } - Nero { $black }
+portal-page-attention-remediation = Puoi Riprovare se la connessione è verificata, oppure scartare per annullare l'errore
+portal-advisory-at-game-end = Rilevato problema con il Portale. Il punteggio sarà comunque accodato — contatta un amministratore.

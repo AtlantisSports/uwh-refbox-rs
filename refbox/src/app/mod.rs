@@ -3602,9 +3602,7 @@ impl RefBoxApp {
                     if let Some(ref mut levels) = edited.beep_test_levels {
                         if levels.len() > 1 && sel < levels.len() {
                             levels.remove(sel);
-                            if edited.selected_level >= levels.len() {
-                                edited.selected_level = levels.len() - 1;
-                            }
+                            edited.selected_level = sel.saturating_sub(1);
                         }
                     }
                 }

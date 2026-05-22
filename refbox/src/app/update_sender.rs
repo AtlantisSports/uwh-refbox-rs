@@ -296,9 +296,15 @@ impl WorkerHandle {
 }
 
 fn error_formatter<T: Debug>(old: TrySendError<T>) -> TrySendError<String> {
+    // Preserve the Full vs Closed distinction. A Full channel is a
+    // transient back-pressure signal — the worker is briefly busy and
+    // the next snapshot will get through. A Closed channel is terminal
+    // — the worker has exited and the client connection is gone.
+    // Conflating the two would close live connections under temporary
+    // load (the v0.4.1 Windows + BeepTest panel-sim regression).
     match old {
         TrySendError::Closed(o) => TrySendError::Closed(format!("{o:?}")),
-        TrySendError::Full(o) => TrySendError::Closed(format!("{o:?}")),
+        TrySendError::Full(o) => TrySendError::Full(format!("{o:?}")),
     }
 }
 
@@ -473,11 +479,19 @@ impl Server {
                 self.white_on_right,
                 self.brightness,
             ) {
-                if matches!(e, TrySendError::Closed(_)) {
-                    info!("Worker channel closed");
-                    to_drop.push(*id);
-                } else {
-                    error!("Error sending to worker: {e:?}");
+                match e {
+                    TrySendError::Closed(_) => {
+                        info!("Worker channel closed");
+                        to_drop.push(*id);
+                    }
+                    TrySendError::Full(_) => {
+                        // Back-pressure: the worker hasn't drained yet
+                        // (e.g. the sim is still initialising). Drop
+                        // this snapshot; the next tick re-sends fresh
+                        // state. Keep the handle — the connection is
+                        // still alive.
+                        warn!("Worker channel full, dropping snapshot");
+                    }
                 }
             }
         }
@@ -988,5 +1002,16 @@ mod test {
 
         assert_eq!(expected_binary_bytes, binary_read_so_far);
         assert_eq!(binary_expected, binary_result);
+    }
+
+    #[test]
+    fn error_formatter_preserves_full_vs_closed_variant() {
+        // Treating Full as Closed tears down a live panel-sim TCP
+        // connection whenever the worker briefly can't keep up — root
+        // cause of the v0.4.1 Windows + BeepTest sim regression.
+        let full: TrySendError<i32> = TrySendError::Full(42);
+        let closed: TrySendError<i32> = TrySendError::Closed(99);
+        assert!(matches!(error_formatter(full), TrySendError::Full(_)));
+        assert!(matches!(error_formatter(closed), TrySendError::Closed(_)));
     }
 }

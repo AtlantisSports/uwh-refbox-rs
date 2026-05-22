@@ -1,4 +1,3 @@
-use arrayref::array_ref;
 use iced::{
     Element, Length, Point, Rectangle, Renderer, Size, Subscription, Task, Theme,
     application::Appearance,
@@ -247,19 +246,19 @@ fn snapshot_listener() -> impl futures_lite::Stream<Item = Message> {
 
         if let Some(mut stream) = stream {
             loop {
-                // Make the buffer longer than needed so that we can detect messages that are too long
-                let mut buffer = [0u8; TransmittedData::ENCODED_LEN + 1];
+                // TCP is a byte stream, so a single `read` call may return a
+                // partial message (fragmentation) or part of two messages
+                // (coalescing — observed on Windows under BeepTest's 10 Hz
+                // send rate). `read_exact` over a buffer sized to exactly one
+                // frame waits for the right number of bytes before decoding.
+                let mut buffer = [0u8; TransmittedData::ENCODED_LEN];
 
-                match stream.read(&mut buffer).await {
-                    Ok(val) if val == TransmittedData::ENCODED_LEN => {}
-                    Ok(0) => {
+                match stream.read_exact(&mut buffer).await {
+                    Ok(_) => {}
+                    Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                         error!("Sim: TCP connection closed, stopping");
                         msg_tx.send(Message::Stop).await.unwrap();
                         break;
-                    }
-                    Ok(val) => {
-                        warn!("Sim: Received message of wrong length: {val}");
-                        continue;
                     }
                     Err(e) => {
                         error!("Sim: TCP error: {e:?}");
@@ -269,11 +268,7 @@ fn snapshot_listener() -> impl futures_lite::Stream<Item = Message> {
                     }
                 }
 
-                let data = match TransmittedData::decode(array_ref![
-                    buffer,
-                    0,
-                    TransmittedData::ENCODED_LEN
-                ]) {
+                let data = match TransmittedData::decode(&buffer) {
                     Ok(val) => val,
                     Err(e) => {
                         warn!("Sim: Decoding error: {e:?}");

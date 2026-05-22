@@ -12,7 +12,7 @@ cancel = キャンセル
 delete = 削除
 back = 戻る
 apply = 適用
-save = SAVE
+save = 保存
 user-options = ユーザー設定
 new = 新規
 
@@ -47,8 +47,8 @@ app-options = アプリオプション
 display-options = 表示オプション
 open-new-display = 新しい表示を開く
 sound-options = サウンドオプション
-sound-settings = SOUND SETTINGS
-beep-test-edit-levels = EDIT LEVELS
+sound-settings = サウンド設定
+beep-test-edit-levels = レベル編集
 app-mode = アプリ
     モード
 hide-time-for-last-15-seconds = 残り15秒
@@ -348,23 +348,23 @@ max = 最大
 hockey6v6 = ホッケー6対6
 hockey3v3 = ホッケー3対3
 rugby = ラグビー
-beep-test = BEEP TEST
+beep-test = ビープテスト
 
 # Beep-test screen
-beep-test-pre = PRE
-beep-test-top-time-label = TIME
-beep-test-top-level-label = LEVEL
-beep-test-top-lap-label = LAP
-beep-test-start = START
-beep-test-pause = PAUSE
-beep-test-resume = RESUME
-beep-test-reset = RESET
-beep-test-column-level = LEVEL
-beep-test-column-count = COUNT
-beep-test-column-duration = DURATION
-beep-test-edit-selected = Level { $level }
-beep-test-edit-time = TIME
-beep-test-edit-count = COUNT
+beep-test-pre = 準備
+beep-test-top-time-label = 時間
+beep-test-top-level-label = レベル
+beep-test-top-lap-label = 周回
+beep-test-start = スタート
+beep-test-pause = 一時停止
+beep-test-resume = 再開
+beep-test-reset = リセット
+beep-test-column-level = レベル
+beep-test-column-count = 回数
+beep-test-column-duration = 時間
+beep-test-edit-selected = レベル { $level }
+beep-test-edit-time = 時間
+beep-test-edit-count = 回数
 beep-test-edit-new = レベル追加
 beep-test-edit-remove = レベル削除
 
@@ -383,17 +383,17 @@ false-start = 不正スタート
 
 
 # Portal Health Indicator
-# NOTE: Awaiting native-speaker translation; English placeholders for now.
-portal-summary-title = { $portal } PORTAL STATUS
-portal-row-token-expired = Portal login expired — tap to re-login
-portal-row-stuck = Game { $game } Score send error, tap to fix
-portal-row-pending = Game { $game } Score not sent, tap to retry
-portal-row-recent = Game { $game } · Submitted { $mins } min ago
-portal-action-force-submit = Retry this game result
-portal-action-discard = Discard this game result
-portal-action-discard-confirm = TAP AGAIN TO CONFIRM DISCARD
-portal-page-title-attention = Game { $game } submission error
-portal-page-attention-info = The game result has not been accepted on { $portal } Portal
-portal-page-attention-score = Stored game result: Light { $white } - Dark { $black }
-portal-page-attention-remediation = You can Retry if connection is verified, or discard to clear the error
-portal-advisory-at-game-end = Portal issue detected. Score will still be queued — find an admin to resolve.
+portal-summary-title = { $portal } PORTAL 状態
+portal-row-token-expired = ポータルのログインが期限切れです — タップして再ログイン
+portal-row-stuck = 試合 { $game } のスコア送信エラー、タップして修正
+portal-row-pending = 試合 { $game } のスコアが未送信、タップして再試行
+portal-row-recent = 試合 { $game } · { $mins } 分前に送信済み
+portal-row-attempt-suffix = (試行 { $attempts })
+portal-action-force-submit = この試合結果を再送信
+portal-action-discard = この試合結果を破棄
+portal-action-discard-confirm = もう一度タップして破棄を確定
+portal-page-title-attention = 試合 { $game } の送信エラー
+portal-page-attention-info = 試合結果が { $portal } ポータルに受理されていません
+portal-page-attention-score = 保存された試合結果: 白 { $white } - 黒 { $black }
+portal-page-attention-remediation = 接続が確認できれば再送信、またはエラーをクリアするには破棄してください
+portal-advisory-at-game-end = ポータルの問題を検出しました。スコアはキューに残ります — 管理者に解決を依頼してください。

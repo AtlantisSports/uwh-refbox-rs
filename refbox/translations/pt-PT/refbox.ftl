@@ -12,7 +12,7 @@ cancel = CANCELAR
 delete = ELIMINAR
 back = VOLTAR
 apply = APLICAR
-save = SAVE
+save = GUARDAR
 user-options = OPÇÕES DO UTILIZADOR
 new = NOVO
 
@@ -47,8 +47,8 @@ app-options = OPÇÕES DA APP
 display-options = OPÇÕES DE ECRÃ
 open-new-display = ABRIR NOVO ECRÃ
 sound-options = OPÇÕES DE SOM
-sound-settings = SOUND SETTINGS
-beep-test-edit-levels = EDIT LEVELS
+sound-settings = DEFINIÇÕES DE SOM
+beep-test-edit-levels = EDITAR NÍVEIS
 app-mode = MODO DA
     APP
 hide-time-for-last-15-seconds = OCULTAR TEMPO NOS
@@ -351,20 +351,20 @@ rugby = RÂGUEBI
 beep-test = BEEP TEST
 
 # Beep-test screen
-beep-test-pre = PRE
-beep-test-top-time-label = TIME
-beep-test-top-level-label = LEVEL
-beep-test-top-lap-label = LAP
-beep-test-start = START
-beep-test-pause = PAUSE
-beep-test-resume = RESUME
-beep-test-reset = RESET
-beep-test-column-level = LEVEL
-beep-test-column-count = COUNT
-beep-test-column-duration = DURATION
-beep-test-edit-selected = Level { $level }
-beep-test-edit-time = TIME
-beep-test-edit-count = COUNT
+beep-test-pre = PRÉ
+beep-test-top-time-label = TEMPO
+beep-test-top-level-label = NÍVEL
+beep-test-top-lap-label = VOLTA
+beep-test-start = INICIAR
+beep-test-pause = PAUSA
+beep-test-resume = RETOMAR
+beep-test-reset = REINICIAR
+beep-test-column-level = NÍVEL
+beep-test-column-count = CONT
+beep-test-column-duration = DURAÇÃO
+beep-test-edit-selected = Nível { $level }
+beep-test-edit-time = TEMPO
+beep-test-edit-count = CONT
 beep-test-edit-new = ADICIONAR NÍVEL
 beep-test-edit-remove = REMOVER NÍVEL
 
@@ -383,17 +383,17 @@ false-start = Saída Falsa
 
 
 # Portal Health Indicator
-# NOTE: Awaiting native-speaker translation; English placeholders for now.
-portal-summary-title = { $portal } PORTAL STATUS
-portal-row-token-expired = Portal login expired — tap to re-login
-portal-row-stuck = Game { $game } Score send error, tap to fix
-portal-row-pending = Game { $game } Score not sent, tap to retry
-portal-row-recent = Game { $game } · Submitted { $mins } min ago
-portal-action-force-submit = Retry this game result
-portal-action-discard = Discard this game result
-portal-action-discard-confirm = TAP AGAIN TO CONFIRM DISCARD
-portal-page-title-attention = Game { $game } submission error
-portal-page-attention-info = The game result has not been accepted on { $portal } Portal
-portal-page-attention-score = Stored game result: Light { $white } - Dark { $black }
-portal-page-attention-remediation = You can Retry if connection is verified, or discard to clear the error
-portal-advisory-at-game-end = Portal issue detected. Score will still be queued — find an admin to resolve.
+portal-summary-title = ESTADO DO PORTAL { $portal }
+portal-row-token-expired = Sessão do portal expirou — toque para iniciar sessão novamente
+portal-row-stuck = Jogo { $game } Erro no envio do resultado, toque para corrigir
+portal-row-pending = Jogo { $game } Resultado não enviado, toque para tentar novamente
+portal-row-recent = Jogo { $game } · Enviado há { $mins } min
+portal-row-attempt-suffix = (tentativa { $attempts })
+portal-action-force-submit = Tentar novamente este resultado
+portal-action-discard = Descartar este resultado
+portal-action-discard-confirm = TOQUE NOVAMENTE PARA CONFIRMAR DESCARTE
+portal-page-title-attention = Erro no envio do Jogo { $game }
+portal-page-attention-info = O resultado do jogo não foi aceite no Portal { $portal }
+portal-page-attention-score = Resultado guardado: Branca { $white } - Preta { $black }
+portal-page-attention-remediation = Pode Tentar Novamente se a ligação estiver verificada, ou descartar para limpar o erro
+portal-advisory-at-game-end = Problema detetado no portal. O resultado será mantido em fila — contacte um administrador para resolver.

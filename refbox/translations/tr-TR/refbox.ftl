@@ -12,7 +12,7 @@ cancel = İPTAL
 delete = SİL
 back = GERİ
 apply = UYGULA
-save = SAVE
+save = KAYDET
 user-options = KULLANICI SEÇENEKLERİ
 new = YENİ
 
@@ -47,8 +47,8 @@ app-options = UYGULAMA SEÇENEKLERİ
 display-options = GÖRÜNTÜ SEÇENEKLERİ
 open-new-display = YENİ GÖRÜNTÜ AÇ
 sound-options = SES SEÇENEKLERİ
-sound-settings = SOUND SETTINGS
-beep-test-edit-levels = EDIT LEVELS
+sound-settings = SES AYARLARI
+beep-test-edit-levels = SEVİYELERİ DÜZENLE
 app-mode = UYGULAMA
     MODU
 hide-time-for-last-15-seconds = SON 15 SANİYE
@@ -351,20 +351,20 @@ rugby = RAGBİ
 beep-test = BEEP TEST
 
 # Beep-test screen
-beep-test-pre = PRE
-beep-test-top-time-label = TIME
-beep-test-top-level-label = LEVEL
-beep-test-top-lap-label = LAP
-beep-test-start = START
-beep-test-pause = PAUSE
-beep-test-resume = RESUME
-beep-test-reset = RESET
-beep-test-column-level = LEVEL
-beep-test-column-count = COUNT
-beep-test-column-duration = DURATION
-beep-test-edit-selected = Level { $level }
-beep-test-edit-time = TIME
-beep-test-edit-count = COUNT
+beep-test-pre = ÖN
+beep-test-top-time-label = SÜRE
+beep-test-top-level-label = SEVİYE
+beep-test-top-lap-label = TUR
+beep-test-start = BAŞLAT
+beep-test-pause = DURAKLAT
+beep-test-resume = DEVAM ET
+beep-test-reset = SIFIRLA
+beep-test-column-level = SEVİYE
+beep-test-column-count = ADET
+beep-test-column-duration = SÜRE
+beep-test-edit-selected = Seviye { $level }
+beep-test-edit-time = SÜRE
+beep-test-edit-count = ADET
 beep-test-edit-new = SEVİYE EKLE
 beep-test-edit-remove = SEVİYE KALDIR
 
@@ -383,17 +383,17 @@ false-start = Hatalı Başlangıç
 
 
 # Portal Health Indicator
-# NOTE: Awaiting native-speaker translation; English placeholders for now.
-portal-summary-title = { $portal } PORTAL STATUS
-portal-row-token-expired = Portal login expired — tap to re-login
-portal-row-stuck = Game { $game } Score send error, tap to fix
-portal-row-pending = Game { $game } Score not sent, tap to retry
-portal-row-recent = Game { $game } · Submitted { $mins } min ago
-portal-action-force-submit = Retry this game result
-portal-action-discard = Discard this game result
-portal-action-discard-confirm = TAP AGAIN TO CONFIRM DISCARD
-portal-page-title-attention = Game { $game } submission error
-portal-page-attention-info = The game result has not been accepted on { $portal } Portal
-portal-page-attention-score = Stored game result: Light { $white } - Dark { $black }
-portal-page-attention-remediation = You can Retry if connection is verified, or discard to clear the error
-portal-advisory-at-game-end = Portal issue detected. Score will still be queued — find an admin to resolve.
+portal-summary-title = { $portal } PORTAL DURUMU
+portal-row-token-expired = Portal oturumu sona erdi — yeniden giriş için dokunun
+portal-row-stuck = Oyun { $game } Skor gönderme hatası, düzeltmek için dokunun
+portal-row-pending = Oyun { $game } Skor gönderilmedi, tekrar denemek için dokunun
+portal-row-recent = Oyun { $game } · { $mins } dk önce gönderildi
+portal-row-attempt-suffix = (deneme { $attempts })
+portal-action-force-submit = Bu oyun sonucunu tekrar dene
+portal-action-discard = Bu oyun sonucunu iptal et
+portal-action-discard-confirm = İPTALİ ONAYLAMAK İÇİN TEKRAR DOKUN
+portal-page-title-attention = Oyun { $game } gönderim hatası
+portal-page-attention-info = Oyun sonucu { $portal } Portal'da kabul edilmedi
+portal-page-attention-score = Saklanan oyun sonucu: Beyaz { $white } - Siyah { $black }
+portal-page-attention-remediation = Bağlantı doğrulandıysa Tekrar Dene'yi seçebilir veya hatayı temizlemek için iptal edebilirsiniz
+portal-advisory-at-game-end = Portal sorunu algılandı. Skor yine de sıraya alınacak — çözmek için bir yöneticiye başvurun.

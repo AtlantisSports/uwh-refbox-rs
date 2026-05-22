@@ -12,12 +12,12 @@ cancel = KANSELAHIN
 delete = BURAHIN
 back = BUMALIK
 apply = ILAPAT
-save = SAVE
+save = ITAGO
 user-options = MGA OPSYON NG USER
 new = BAGO
 
 # Pag-edit ng Penalty
-total-dismissal = TD
+total-dismissal = LP
 penalty-kind = {$kind ->
     [thirty-seconds] 30s
     [one-minute] 1m
@@ -47,8 +47,8 @@ app-options = MGA OPSYON SA APP
 display-options = MGA OPSYON SA DISPLAY
 open-new-display = BUKSAN ANG BAGONG DISPLAY
 sound-options = MGA OPSYON SA TUNOG
-sound-settings = SOUND SETTINGS
-beep-test-edit-levels = EDIT LEVELS
+sound-settings = MGA SETTING NG TUNOG
+beep-test-edit-levels = I-EDIT ANG MGA ANTAS
 app-mode = MODE NG
     APP
 hide-time-for-last-15-seconds = ITAGO ANG ORAS SA
@@ -116,7 +116,7 @@ or-press-spacebar = O Pindutin ang Spacebar
 or-hold-spacebar = O Pindutin Nang Matagal ang Spacebar
 game-info = IMPORMASYON NG LARO
 remotes = MGA REMOTE
-default = DEFAULT
+default = KARANIWAN
 sound = TUNOG: { $sound_text }
 brightness = { $brightness ->
         *[Low] MABABA
@@ -145,7 +145,7 @@ pre-sd-break = PAHINGA BAGO SD
 pre-sd-len = Ang haba ng pahinga sa pagitan ng nakaraang panahon ng laro at Sudden Death
 language = WIKA
 this-language = FILIPINO
-portal-login-code = CODE
+portal-login-code = KODIGO
 portal-login-instructions = Pumunta sa { $portal } Portal >> Pamamahala ng Kaganapan >> Pamamahala ng Referee, i-click ang + na pindutan upang magdagdag ng bagong Refbox, at ilagay ang Refbox ID na ito:
     { $id }
 
@@ -188,8 +188,8 @@ refresh = I-REFRESH
 refreshing = NIRI-REFRESH...
 settings = MGA SETTING
 none = Wala
-game-number-error = Error ({ $game_number })
-next-game-number-error = Error ({ $next_game_number })
+game-number-error = Mali ({ $game_number })
+next-game-number-error = Mali ({ $next_game_number })
 last-game-next-game = Huling Laro: { $prev_game },
     Susunod na Laro: { $next_game }
 black-team-white-team = Koponan ng Itim: { $black_team }
@@ -237,15 +237,15 @@ confirmation-count-down = Tandaan: Ang hindi nabagong puntos ay awtomatikong mak
 end-timeout-line-1 = TAPUSIN ANG
 end-timeout-line-2 = { timeout }
 switch-to = LUMIPAT SA
-ref = REF
+ref = REP
 ref-timeout-line-1 = { ref }
 ref-timeout-line-2 = { timeout }
 dark-timeout-line-1 = { dark-team-name-caps }
 dark-timeout-line-2 = { timeout }
 light-timeout-line-1 = { light-team-name-caps }
 light-timeout-line-2 = { timeout }
-penalty-shot-line-1 = PENALTY
-penalty-shot-line-2 = SHOT
+penalty-shot-line-1 = PARUSANG
+penalty-shot-line-2 = TIRO
 pen-shot = PENALTY SHOT
 ## String ng parusa
 served = Naisilbi
@@ -270,7 +270,7 @@ warning = {$player_number ->
     }
 infraction = Paglabag: {$infraction}
 ## Config String
-error = Error ({ $number })
+error = Mali ({ $number })
 two-games = Huling Laro: { $prev_game },  Susunod na Laro: { $next_game }
 one-game = Laro: { $game }
 teams = Koponan ng { -dark-team-name }: { $dark_team }
@@ -298,7 +298,7 @@ overtime-first-half = UNANG KALAHATI NG OT
 overtime-half-time = PAHINGA SA OVERTIME
 overtime-second-half = IKALAWANG KALAHATI NG OT
 pre-sudden-death-break = PAHINGA BAGO SUDDEN DEATH
-sudden-death = SUDDEN DEATH
+sudden-death = BIGLAANG KAMATAYAN
 ot-first-half = UNANG KALAHATI NG OT
 ot-half-time = PAHINGA SA OT
 ot-2nd-half = IKALAWANG KALAHATI NG OT
@@ -315,7 +315,7 @@ zero = = 0
 
 # Pag-edit ng Oras
 game-time = ORAS NG LARO
-timeout = TIMEOUT
+timeout = PAHINTO
 Note-Game-time-is-paused = Tandaan: Ang oras ng laro ay nakaka-pause habang nasa screen na ito
 
 # Buod ng Babala at Poul
@@ -345,26 +345,26 @@ high = MATAAS
 max = MAX
 
 # Config
-hockey6v6 = HOCKEY6V6
-hockey3v3 = HOCKEY3V3
+hockey6v6 = HOKI6V6
+hockey3v3 = HOKI3V3
 rugby = RUGBY
 beep-test = BEEP TEST
 
 # Beep-test screen
-beep-test-pre = PRE
-beep-test-top-time-label = TIME
-beep-test-top-level-label = LEVEL
-beep-test-top-lap-label = LAP
-beep-test-start = START
-beep-test-pause = PAUSE
-beep-test-resume = RESUME
-beep-test-reset = RESET
-beep-test-column-level = LEVEL
-beep-test-column-count = COUNT
-beep-test-column-duration = DURATION
-beep-test-edit-selected = Level { $level }
-beep-test-edit-time = TIME
-beep-test-edit-count = COUNT
+beep-test-pre = PAUNA
+beep-test-top-time-label = ORAS
+beep-test-top-level-label = ANTAS
+beep-test-top-lap-label = IKOT
+beep-test-start = SIMULAN
+beep-test-pause = IHINTO
+beep-test-resume = IPAGPATULOY
+beep-test-reset = IBALIK
+beep-test-column-level = ANTAS
+beep-test-column-count = BILANG
+beep-test-column-duration = TAGAL
+beep-test-edit-selected = Antas { $level }
+beep-test-edit-time = ORAS
+beep-test-edit-count = BILANG
 beep-test-edit-new = MAGDAGDAG NG ANTAS
 beep-test-edit-remove = ALISIN ANG ANTAS
 
@@ -383,17 +383,17 @@ false-start = Maling Simula
 
 
 # Portal Health Indicator
-# NOTE: Awaiting native-speaker translation; English placeholders for now.
-portal-summary-title = { $portal } PORTAL STATUS
-portal-row-token-expired = Portal login expired — tap to re-login
-portal-row-stuck = Game { $game } Score send error, tap to fix
-portal-row-pending = Game { $game } Score not sent, tap to retry
-portal-row-recent = Game { $game } · Submitted { $mins } min ago
-portal-action-force-submit = Retry this game result
-portal-action-discard = Discard this game result
-portal-action-discard-confirm = TAP AGAIN TO CONFIRM DISCARD
-portal-page-title-attention = Game { $game } submission error
-portal-page-attention-info = The game result has not been accepted on { $portal } Portal
-portal-page-attention-score = Stored game result: Light { $white } - Dark { $black }
-portal-page-attention-remediation = You can Retry if connection is verified, or discard to clear the error
-portal-advisory-at-game-end = Portal issue detected. Score will still be queued — find an admin to resolve.
+portal-summary-title = STATUS NG { $portal } PORTAL
+portal-row-token-expired = Nag-expire ang Portal login — pindutin para mag-login muli
+portal-row-stuck = Laro { $game } Error sa pagpapadala ng puntos, pindutin para ayusin
+portal-row-pending = Laro { $game } Hindi naipadala ang puntos, pindutin para subukan muli
+portal-row-recent = Laro { $game } · Naipadala { $mins } min na ang nakalipas
+portal-row-attempt-suffix = (pagsubok { $attempts })
+portal-action-force-submit = Subukang muli ang resulta ng larong ito
+portal-action-discard = Itapon ang resulta ng larong ito
+portal-action-discard-confirm = PINDUTIN MULI UPANG KUMPIRMAHIN ANG PAGTAPON
+portal-page-title-attention = Error sa pagsumite ng Laro { $game }
+portal-page-attention-info = Hindi pa tinatanggap ang resulta ng laro sa { $portal } Portal
+portal-page-attention-score = Naka-imbak na resulta: Puti { $white } - Itim { $black }
+portal-page-attention-remediation = Maaari kang Subukang Muli kung naberipika ang koneksyon, o itapon upang alisin ang error
+portal-advisory-at-game-end = May problema sa Portal. Ipipila pa rin ang puntos — humanap ng admin para ayusin.

@@ -12,7 +12,7 @@ cancel = ยกเลิก
 delete = ลบ
 back = กลับ
 apply = ใช้
-save = SAVE
+save = บันทึก
 user-options = ตัวเลือกผู้ใช้
 new = ใหม่
 
@@ -47,8 +47,8 @@ app-options = ตัวเลือกแอป
 display-options = ตัวเลือกการแสดงผล
 open-new-display = เปิดการแสดงผลใหม่
 sound-options = ตัวเลือกเสียง
-sound-settings = SOUND SETTINGS
-beep-test-edit-levels = EDIT LEVELS
+sound-settings = ตั้งค่าเสียง
+beep-test-edit-levels = แก้ไขระดับ
 app-mode = โหมด
     แอป
 hide-time-for-last-15-seconds = ซ่อนเวลา
@@ -348,23 +348,23 @@ max = สูงสุด
 hockey6v6 = ฮอกกี้ 6ต่อ6
 hockey3v3 = ฮอกกี้ 3ต่อ3
 rugby = รักบี้
-beep-test = BEEP TEST
+beep-test = ทดสอบบี๊พ
 
 # Beep-test screen
-beep-test-pre = PRE
-beep-test-top-time-label = TIME
-beep-test-top-level-label = LEVEL
-beep-test-top-lap-label = LAP
-beep-test-start = START
-beep-test-pause = PAUSE
-beep-test-resume = RESUME
-beep-test-reset = RESET
-beep-test-column-level = LEVEL
-beep-test-column-count = COUNT
-beep-test-column-duration = DURATION
-beep-test-edit-selected = Level { $level }
-beep-test-edit-time = TIME
-beep-test-edit-count = COUNT
+beep-test-pre = เตรียม
+beep-test-top-time-label = เวลา
+beep-test-top-level-label = ระดับ
+beep-test-top-lap-label = รอบ
+beep-test-start = เริ่ม
+beep-test-pause = หยุดชั่วคราว
+beep-test-resume = เล่นต่อ
+beep-test-reset = รีเซ็ต
+beep-test-column-level = ระดับ
+beep-test-column-count = จำนวน
+beep-test-column-duration = ระยะเวลา
+beep-test-edit-selected = ระดับ { $level }
+beep-test-edit-time = เวลา
+beep-test-edit-count = จำนวน
 beep-test-edit-new = เพิ่มระดับ
 beep-test-edit-remove = ลบระดับ
 
@@ -383,17 +383,17 @@ false-start = การออกตัวผิด
 
 
 # Portal Health Indicator
-# NOTE: Awaiting native-speaker translation; English placeholders for now.
-portal-summary-title = { $portal } PORTAL STATUS
-portal-row-token-expired = Portal login expired — tap to re-login
-portal-row-stuck = Game { $game } Score send error, tap to fix
-portal-row-pending = Game { $game } Score not sent, tap to retry
-portal-row-recent = Game { $game } · Submitted { $mins } min ago
-portal-action-force-submit = Retry this game result
-portal-action-discard = Discard this game result
-portal-action-discard-confirm = TAP AGAIN TO CONFIRM DISCARD
-portal-page-title-attention = Game { $game } submission error
-portal-page-attention-info = The game result has not been accepted on { $portal } Portal
-portal-page-attention-score = Stored game result: Light { $white } - Dark { $black }
-portal-page-attention-remediation = You can Retry if connection is verified, or discard to clear the error
-portal-advisory-at-game-end = Portal issue detected. Score will still be queued — find an admin to resolve.
+portal-summary-title = สถานะ { $portal } PORTAL
+portal-row-token-expired = การเข้าสู่ระบบพอร์ทัลหมดอายุ — แตะเพื่อเข้าสู่ระบบใหม่
+portal-row-stuck = เกม { $game } ส่งคะแนนผิดพลาด แตะเพื่อแก้ไข
+portal-row-pending = เกม { $game } ยังไม่ส่งคะแนน แตะเพื่อลองอีกครั้ง
+portal-row-attempt-suffix = (ครั้งที่ { $attempts })
+portal-row-recent = เกม { $game } · ส่งเมื่อ { $mins } นาทีที่แล้ว
+portal-action-force-submit = ลองส่งผลเกมอีกครั้ง
+portal-action-discard = ทิ้งผลเกมนี้
+portal-action-discard-confirm = แตะอีกครั้งเพื่อยืนยันการทิ้ง
+portal-page-title-attention = ข้อผิดพลาดในการส่งเกม { $game }
+portal-page-attention-info = ผลเกมยังไม่ได้รับการยอมรับบน { $portal } Portal
+portal-page-attention-score = ผลเกมที่จัดเก็บไว้: ขาว { $white } - ดำ { $black }
+portal-page-attention-remediation = คุณสามารถลองอีกครั้งหากการเชื่อมต่อได้รับการยืนยัน หรือทิ้งเพื่อล้างข้อผิดพลาด
+portal-advisory-at-game-end = ตรวจพบปัญหาพอร์ทัล คะแนนจะยังคงอยู่ในคิว — ติดต่อผู้ดูแลเพื่อแก้ไข

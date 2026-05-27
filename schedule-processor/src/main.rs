@@ -19,6 +19,8 @@ use uwh_common::uwhportal::{UwhPortalClient, schedule::*};
 mod csv_parser;
 use csv_parser::parse_csv;
 
+mod json_loader;
+
 mod schedule_checks;
 use schedule_checks::run_schedule_checks;
 

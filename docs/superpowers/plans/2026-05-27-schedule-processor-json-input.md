@@ -635,3 +635,21 @@ At this point the feature is complete. Per `.claude/rules/communication.md`, ask
 - **Translations not affected.** No `fl!()` keys added or changed; no `.ftl` files touched.
 
 If anything in this plan turns out to be wrong (e.g. a `Game` field name differs, the `#[path]` include trick conflicts with something), append a note under a **Deviations** heading at the bottom of this file as you implement, per the lean-process rule in `.claude/rules/plan-execution.md` — do NOT create a standalone deviations commit.
+
+---
+
+## Deviations
+
+### 2026-05-27 — No test JSON fixtures committed (Tasks 2 and 5 dropped)
+
+While executing Task 2 we discovered that `schedule-processor/Mock Schedules for testing/` is listed in `.gitignore` — by design, mock schedules in that folder are local-only working copies, not tracked. The user confirmed the intent: no test JSON fixtures should be committed to the repo (neither the supplied Australian Nationals JSON nor a synthetic alternative).
+
+**Resulting changes:**
+
+- **Task 2 (save Australian Nationals fixture) — dropped.** The user-supplied JSON stays in the local `Mock Schedules for testing/` directory for manual smoke testing but is not added to git.
+- **Task 5 (integration test that loads the committed fixture and runs `run_schedule_checks`) — dropped.** Without a committed fixture, the integration test could not run in CI. Task 3's three unit tests remain the durable CI coverage for `parse_json`. The structural correctness of the conversion is additionally covered by the round-trip test added in Task 1 (`schedule_roundtrips_through_sendable_via_from_tuple`).
+- **Real-world verification moves to Task 6, Step 2 (manual smoke).** The operator picks the local-only Australian Nationals JSON in the file dialog and confirms the schedule summary, `run_schedule_checks` result, and the team-mapping menu work as expected. The spec's acceptance criteria #2–#5 are verified there.
+
+**Reasoning:** This branch's purpose is to teach `schedule-processor` to read JSON; it does not need a permanent test that guards one specific tournament's data. The type system guarantees JSON-parsed and CSV-parsed schedules go through the same `run_schedule_checks` pipeline (both yield a `Schedule`), so existing CSV-side coverage already exercises the validators.
+
+**Spec impact:** The spec's "Files touched" and "Testing strategy" sections mention the mock fixture and integration test. Per `.claude/rules/plan-execution.md`, the spec is left accurate-as-of-approval and the change is recorded here; the PR description will note the deviation.

@@ -515,6 +515,26 @@ impl From<Schedule> for SendableSchedule {
     }
 }
 
+impl From<(SendableSchedule, EventId)> for Schedule {
+    fn from((sendable, event_id): (SendableSchedule, EventId)) -> Self {
+        let games = sendable
+            .games
+            .into_iter()
+            // g.number is the map key; clone before g moves into the value position
+            .map(|g| (g.number.clone(), g))
+            .collect();
+        Schedule {
+            event_id,
+            games,
+            non_game_entries: sendable.non_game_entries,
+            groups: sendable.groups,
+            timing_rules: sendable.timing_rules,
+            standings_order: sendable.standings_order,
+            final_results_order: sendable.final_results_order,
+        }
+    }
+}
+
 mod secs_only_duration {
     use serde::{self, Deserialize, Deserializer, Serializer};
     use std::time::Duration;
@@ -1509,5 +1529,65 @@ mod tests {
         let current: serde_json::Value = serde_json::from_reader(reader).unwrap();
 
         assert_eq!(updated, current);
+    }
+
+    #[test]
+    fn schedule_roundtrips_through_sendable_via_from_tuple() {
+        use std::time::Duration;
+        let event_id = EventId::from_partial("test-event");
+        let game1 = Game {
+            number: "1".to_string(),
+            light: ScheduledTeam::new_team_id(TeamId::from_partial("1-A")),
+            dark: ScheduledTeam::new_team_id(TeamId::from_partial("2-A")),
+            start_time: datetime!(2023-08-07 0:00 UTC),
+            court: "A".to_string(),
+            description: None,
+            timing_rule: "RR".to_string(),
+            referee_assignments: None,
+        };
+        let game2 = Game {
+            number: "2".to_string(),
+            light: ScheduledTeam::new_team_id(TeamId::from_partial("3-A")),
+            dark: ScheduledTeam::new_team_id(TeamId::from_partial("4-A")),
+            start_time: datetime!(2023-08-07 1:00 UTC),
+            court: "A".to_string(),
+            description: None,
+            timing_rule: "RR".to_string(),
+            referee_assignments: None,
+        };
+        let original = Schedule {
+            event_id: event_id.clone(),
+            games: [game1, game2]
+                .into_iter()
+                .map(|g| (g.number.clone(), g))
+                .collect(),
+            non_game_entries: vec![],
+            groups: vec![],
+            timing_rules: vec![TimingRule {
+                name: "RR".to_string(),
+                team_timeout_count: 1,
+                team_timeouts_counted_per_half: true,
+                overtime_allowed: false,
+                sudden_death_allowed: false,
+                last_2_min_stop_time: false,
+                half_play_duration: Duration::from_secs(600),
+                half_time_duration: Duration::from_secs(120),
+                team_timeout_duration: Duration::from_secs(60),
+                ot_half_play_duration: Duration::from_secs(0),
+                ot_half_time_duration: Duration::from_secs(0),
+                pre_overtime_break: Duration::from_secs(0),
+                pre_sudden_death_duration: Duration::from_secs(0),
+                minimum_break: Duration::from_secs(180),
+            }],
+            standings_order: None,
+            final_results_order: None,
+        };
+        let sendable: SendableSchedule = original.clone().into();
+        let round_tripped: Schedule = (sendable, event_id).into();
+        assert_eq!(original, round_tripped);
+        // Verify games are keyed by Game.number, not by another field
+        assert_eq!(round_tripped.games.len(), 2);
+        assert!(round_tripped.games.get("1").is_some());
+        assert!(round_tripped.games.get("2").is_some());
     }
 }

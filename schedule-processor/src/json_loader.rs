@@ -1,8 +1,6 @@
 use time::UtcOffset;
 use uwh_common::uwhportal::schedule::*;
 
-// TODO(Task 4): remove this allow once the call site in main.rs is wired up.
-#[allow(dead_code)]
 pub fn parse_json(
     json: &str,
     // Not used for JSON input — portal-format JSON timestamps are already

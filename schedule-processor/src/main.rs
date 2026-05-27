@@ -20,6 +20,7 @@ mod csv_parser;
 use csv_parser::parse_csv;
 
 mod json_loader;
+use json_loader::parse_json;
 
 mod schedule_checks;
 use schedule_checks::run_schedule_checks;
@@ -76,13 +77,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         log_panics::init();
     }
 
-    info!("Please select a CSV schedule to process in the file dialog.");
-    let csv_path = FileDialog::new()
-        .add_filter("CSV files", &["csv"])
-        .set_title("Select Schedule CSV File")
+    info!("Please select a schedule file (.csv or .json) to process in the file dialog.");
+    let schedule_path = FileDialog::new()
+        .add_filter("Schedule files", &["csv", "json"])
+        .set_title("Select Schedule File")
         .pick_file();
 
-    let csv_path = if let Some(path) = csv_path {
+    let schedule_path = if let Some(path) = schedule_path {
         path
     } else {
         error!("No file selected. Exiting.");
@@ -148,12 +149,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let offset = event.date_range.start.offset();
     info!("Using timezone offset: {offset}");
 
-    info!("Reading csv file: {}", csv_path.display());
-    let csv = std::fs::read_to_string(&csv_path)?;
-    let schedule = match parse_csv(&csv, offset, event.id.clone()) {
+    info!("Reading schedule file: {}", schedule_path.display());
+    let contents = std::fs::read_to_string(&schedule_path)?;
+    let ext = schedule_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase());
+    let parse_result = match ext.as_deref() {
+        Some("csv") => parse_csv(&contents, offset, event.id.clone()),
+        Some("json") => parse_json(&contents, offset, event.id.clone()),
+        _ => Err("Unsupported file type (must be .csv or .json)".into()),
+    };
+    let schedule = match parse_result {
         Ok(schedule) => schedule,
         Err(e) => {
-            error!("Failed to parse CSV file: {e}");
+            error!("Failed to parse schedule file: {e}");
             Text::new("Press any key close the app")
                 .with_placeholder("Press Enter to proceed")
                 .prompt()

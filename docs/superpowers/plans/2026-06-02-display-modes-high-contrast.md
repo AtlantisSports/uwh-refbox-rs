@@ -343,6 +343,7 @@ pub fn gray_container(theme: &Theme) -> Style {
 | `blue_container` | `blue()` | `Some(Background::Color(black()))` |
 | `blue_pressed_container` | `blue()` | `Some(Background::Color(black()))` |
 | `green_container` | `green()` | `Some(Background::Color(black()))` |
+| `yellow_container` | `yellow()` | `Some(Background::Color(black()))` |
 | `red_container` | `red()` | `Some(Background::Color(black()))` |
 | `red_pressed_container` | `red()` | `Some(Background::Color(black()))` |
 

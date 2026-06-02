@@ -41,6 +41,7 @@ impl UpdateSender {
         json_port: u16,
         hide_time: bool,
         beep_test: bool,
+        initial_layout: crate::sim_frame::FrontDisplayLayout,
     ) -> Self {
         let (tx, rx) = mpsc::channel(8);
 
@@ -49,7 +50,8 @@ impl UpdateSender {
             .map(|builder| builder.open_native_async().unwrap())
             .collect();
 
-        let server_join = task::spawn(Server::new(rx, initial, hide_time, beep_test).run_loop());
+        let server_join =
+            task::spawn(Server::new(rx, initial, hide_time, beep_test, initial_layout).run_loop());
 
         let listener_join = task::spawn(listener_loop(tx.clone(), binary_port, json_port));
 
@@ -99,6 +101,21 @@ impl UpdateSender {
                 }
                 TrySendError::Closed(ServerMessage::SetHideTime(hide_time)) => {
                     TrySendError::Closed(hide_time)
+                }
+                _ => unreachable!(),
+            })
+    }
+
+    pub fn set_layout(
+        &self,
+        layout: crate::sim_frame::FrontDisplayLayout,
+    ) -> Result<(), TrySendError<crate::sim_frame::FrontDisplayLayout>> {
+        self.tx
+            .try_send(ServerMessage::SetLayout(layout))
+            .map_err(|e| match e {
+                TrySendError::Full(ServerMessage::SetLayout(layout)) => TrySendError::Full(layout),
+                TrySendError::Closed(ServerMessage::SetLayout(layout)) => {
+                    TrySendError::Closed(layout)
                 }
                 _ => unreachable!(),
             })
@@ -315,6 +332,7 @@ pub enum ServerMessage {
     TriggerFlash,
     Stop,
     SetHideTime(bool),
+    SetLayout(crate::sim_frame::FrontDisplayLayout),
 }
 
 #[derive(Debug)]
@@ -332,6 +350,7 @@ struct Server {
     json: Vec<u8>,
     hide_time: bool,
     beep_test: bool,
+    layout: crate::sim_frame::FrontDisplayLayout,
 }
 
 impl Server {
@@ -340,6 +359,7 @@ impl Server {
         initial: Vec<SerialStream>,
         hide_time: bool,
         beep_test: bool,
+        initial_layout: crate::sim_frame::FrontDisplayLayout,
     ) -> Self {
         let mut server = Server {
             next_id: 0,
@@ -355,6 +375,7 @@ impl Server {
             json: Vec::new(),
             hide_time,
             beep_test,
+            layout: initial_layout,
         };
 
         for stream in initial {
@@ -446,12 +467,15 @@ impl Server {
     fn encode_flash(&mut self) {
         self.binary = if self.has_binary {
             Vec::from(
-                TransmittedData {
-                    white_on_right: self.white_on_right,
-                    flash: self.flash,
-                    beep_test: self.beep_test,
-                    brightness: self.brightness,
-                    snapshot: self.snapshot.clone(),
+                crate::sim_frame::SimFrame {
+                    layout: self.layout,
+                    data: TransmittedData {
+                        white_on_right: self.white_on_right,
+                        flash: self.flash,
+                        beep_test: self.beep_test,
+                        brightness: self.brightness,
+                        snapshot: self.snapshot.clone(),
+                    },
                 }
                 .encode()
                 .unwrap(),
@@ -567,6 +591,11 @@ impl Server {
                         Some(ServerMessage::SetHideTime(hide_time)) => {
                             self.hide_time = hide_time
                         }
+                        Some(ServerMessage::SetLayout(layout)) => {
+                            self.layout = layout;
+                            self.encode_flash();
+                            self.send_to_workers(true);
+                        }
                         None => {
                             break;
                         }
@@ -672,6 +701,7 @@ impl Future for FlashEnd {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::sim_frame::{FrontDisplayLayout, SimFrame};
     use more_asserts::*;
     use std::io::ErrorKind;
     use tokio::io::AsyncReadExt;
@@ -687,7 +717,14 @@ mod test {
 
     #[tokio::test]
     async fn test_update_sender() {
-        let update_sender = UpdateSender::new(vec![], BINARY_PORT, JSON_PORT, false, false);
+        let update_sender = UpdateSender::new(
+            vec![],
+            BINARY_PORT,
+            JSON_PORT,
+            false,
+            false,
+            FrontDisplayLayout::Default,
+        );
 
         let mut binary_conn;
         let mut fail_count = 0;
@@ -847,12 +884,15 @@ mod test {
         let json_expected = serde_json::to_string(&snapshot).unwrap().into_bytes();
 
         let binary_expected = Vec::from(
-            TransmittedData {
-                white_on_right,
-                brightness,
-                flash,
-                beep_test,
-                snapshot: snapshot.clone().into(),
+            SimFrame {
+                layout: FrontDisplayLayout::Default,
+                data: TransmittedData {
+                    white_on_right,
+                    brightness,
+                    flash,
+                    beep_test,
+                    snapshot: snapshot.clone().into(),
+                },
             }
             .encode()
             .unwrap(),
@@ -903,6 +943,7 @@ mod test {
             BT_JSON_PORT,
             false,
             /* beep_test */ true,
+            FrontDisplayLayout::Default,
         );
 
         let mut binary_conn;
@@ -972,12 +1013,15 @@ mod test {
         };
 
         let binary_expected = Vec::from(
-            TransmittedData {
-                white_on_right: false,
-                brightness: Brightness::Low,
-                flash: false,
-                beep_test: true,
-                snapshot: snapshot.clone().into(),
+            SimFrame {
+                layout: FrontDisplayLayout::Default,
+                data: TransmittedData {
+                    white_on_right: false,
+                    brightness: Brightness::Low,
+                    flash: false,
+                    beep_test: true,
+                    snapshot: snapshot.clone().into(),
+                },
             }
             .encode()
             .unwrap(),

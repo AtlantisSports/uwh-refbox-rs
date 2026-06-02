@@ -1227,6 +1227,11 @@ impl RefBoxApp {
             json_port,
             config.hide_time,
             config.mode == Mode::BeepTest,
+            if has_led_panel {
+                crate::sim_frame::FrontDisplayLayout::Default
+            } else {
+                config.front_display_layout
+            },
         );
 
         let sound =
@@ -2268,6 +2273,13 @@ impl RefBoxApp {
                 let next = self.config.display_mode.next();
                 self.config.display_mode = next;
                 crate::app::theme::set_display_mode(next);
+                self.persist_config();
+                Task::none()
+            }
+            Message::CycleFrontDisplayLayout => {
+                let next = self.config.front_display_layout.next();
+                self.config.front_display_layout = next;
+                self.update_sender.set_layout(next).unwrap();
                 self.persist_config();
                 Task::none()
             }

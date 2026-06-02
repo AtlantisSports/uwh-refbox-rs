@@ -400,6 +400,12 @@ pub fn scrollable_style(_theme: &Theme, _status: scrollable::Status) -> scrollab
     }
 }
 
+/// Serializes tests that mutate the process-wide `ACTIVE_DISPLAY_MODE`
+/// (the test harness runs tests in parallel). Acquire it at the top of any
+/// test that calls `set_display_mode`.
+#[cfg(test)]
+pub(crate) static DISPLAY_MODE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(test)]
 mod display_mode_tests {
     use super::*;
@@ -442,6 +448,9 @@ mod display_mode_tests {
 
     #[test]
     fn active_mode_round_trips_through_atomic() {
+        let _guard = DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         set_display_mode(DisplayMode::Dark);
         assert_eq!(display_mode(), DisplayMode::Dark);
         assert_eq!(active_palette().window_background, rgb8(45, 45, 45));

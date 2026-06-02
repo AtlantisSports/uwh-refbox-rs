@@ -1,3 +1,4 @@
+use core::sync::atomic::{AtomicU8, Ordering};
 use iced::{
     Border, Color, Shadow, Theme,
     widget::{
@@ -7,6 +8,7 @@ use iced::{
 };
 use iced_core::border::Radius;
 use paste::paste;
+use serde::{Deserialize, Serialize};
 
 pub const BORDER_RADIUS: Radius = Radius {
     top_left: 9.0,
@@ -73,6 +75,308 @@ pub const WINDOW_BACKGROUND: Color = Color::from_rgb(0.82, 0.82, 0.82);
 
 pub const SCROLLBAR_COLOR: Color = Color::from_rgba(0.0, 0.0, 0.0, 0.7);
 
+// Allow dead_code for this block: rgb8, dim, make_palette, the palette consts, DisplayMode
+// methods, the atomic accessor, and the mode-aware colour fns are all forward-looking APIs
+// introduced in Task 1. Tasks 2–8 wire them into the styling functions. Until then they are
+// intentionally unused by the rest of the crate.
+#[allow(dead_code)]
+/// Convert 8-bit sRGB channels (matching the web `refbox-theme.scss`) to an
+/// iced `Color`. `const fn` so palettes can be `const`.
+const fn rgb8(r: u8, g: u8, b: u8) -> Color {
+    Color::from_rgb(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0)
+}
+
+/// Derive a "pressed" shade by darkening ×0.85, matching the `make_color!`
+/// macro used for the Light palette. The web's Dark pressed values equal this
+/// ×0.85 derivation; its High-Contrast pressed values differ by a few percent,
+/// which is within the "match on screen" tolerance recorded in the spec.
+#[allow(dead_code)]
+const fn dim(c: Color) -> Color {
+    Color {
+        r: c.r * 0.85,
+        g: c.g * 0.85,
+        b: c.b * 0.85,
+        a: c.a,
+    }
+}
+
+/// All mode-dependent colour roles. Sizes/borders/radii are NOT here — they do
+/// not change with display mode.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Palette {
+    pub white: Color,
+    pub white_pressed: Color,
+    pub black: Color,
+    pub black_pressed: Color,
+    pub red: Color,
+    pub red_pressed: Color,
+    pub orange: Color,
+    pub orange_pressed: Color,
+    pub yellow: Color,
+    pub yellow_pressed: Color,
+    pub green: Color,
+    pub green_pressed: Color,
+    pub blue: Color,
+    pub blue_pressed: Color,
+    pub gray: Color,
+    pub gray_pressed: Color,
+    pub light_gray: Color,
+    pub light_gray_pressed: Color,
+    pub border_color: Color,
+    pub disabled_color: Color,
+    pub window_background: Color,
+}
+
+/// Build a palette from its base colours. `*_pressed` shades derive from the
+/// base via `dim`, except `black_pressed`, which is a fixed dark-grey so a
+/// pressed black button is visible (matches today's `BLACK_PRESSED`).
+// 12 arguments are needed because `Palette` has 12 independent base colours and
+// `const fn` cannot yet take a struct literal that refers to other `const fn`s.
+#[allow(dead_code, clippy::too_many_arguments)]
+const fn make_palette(
+    white: Color,
+    black: Color,
+    red: Color,
+    orange: Color,
+    yellow: Color,
+    green: Color,
+    blue: Color,
+    gray: Color,
+    light_gray: Color,
+    border_color: Color,
+    disabled_color: Color,
+    window_background: Color,
+) -> Palette {
+    Palette {
+        white,
+        white_pressed: dim(white),
+        black,
+        black_pressed: BLACK_PRESSED,
+        red,
+        red_pressed: dim(red),
+        orange,
+        orange_pressed: dim(orange),
+        yellow,
+        yellow_pressed: dim(yellow),
+        green,
+        green_pressed: dim(green),
+        blue,
+        blue_pressed: dim(blue),
+        gray,
+        gray_pressed: dim(gray),
+        light_gray,
+        light_gray_pressed: dim(light_gray),
+        border_color,
+        disabled_color,
+        window_background,
+    }
+}
+
+/// Light = today's palette exactly (built from the existing colour `const`s).
+#[allow(dead_code)]
+pub const LIGHT_PALETTE: Palette = make_palette(
+    WHITE,
+    BLACK,
+    RED,
+    ORANGE,
+    YELLOW,
+    GREEN,
+    BLUE,
+    GRAY,
+    LIGHT_GRAY,
+    BORDER_COLOR,
+    DISABLED_COLOR,
+    WINDOW_BACKGROUND,
+);
+
+/// Dark = muted palette. Values copied from web `refbox-theme.scss`
+/// `[data-refbox-theme='dark']`.
+#[allow(dead_code)]
+pub const DARK_PALETTE: Palette = make_palette(
+    rgb8(207, 207, 207), // white  (#cfcfcf)
+    rgb8(0, 0, 0),       // black
+    rgb8(200, 80, 80),   // red
+    rgb8(200, 130, 70),  // orange
+    rgb8(200, 180, 80),  // yellow
+    rgb8(80, 200, 80),   // green
+    rgb8(80, 120, 200),  // blue
+    rgb8(128, 128, 128), // gray
+    rgb8(100, 100, 100), // light_gray (button light-gray; see spec note on split role)
+    rgb8(100, 140, 200), // border_color
+    rgb8(150, 150, 150), // disabled_color
+    rgb8(45, 45, 45),    // window_background
+);
+
+/// High Contrast = neon palette. Values copied from web `refbox-theme.scss`
+/// `[data-refbox-theme='high-contrast']`.
+#[allow(dead_code)]
+pub const HIGH_CONTRAST_PALETTE: Palette = make_palette(
+    rgb8(255, 255, 255), // white
+    rgb8(0, 0, 0),       // black
+    rgb8(255, 0, 102),   // red
+    rgb8(255, 165, 0),   // orange
+    rgb8(255, 255, 0),   // yellow
+    rgb8(0, 255, 0),     // green
+    rgb8(0, 170, 255),   // blue
+    rgb8(128, 128, 128), // gray
+    rgb8(180, 180, 180), // light_gray
+    rgb8(255, 255, 0),   // border_color (neon yellow)
+    rgb8(100, 100, 100), // disabled_color
+    rgb8(10, 10, 10),    // window_background
+);
+
+/// The on-screen colour scheme. Persisted per user in `Config`.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum DisplayMode {
+    #[default]
+    Light,
+    Dark,
+    HighContrast,
+}
+
+impl DisplayMode {
+    /// Cycle forward: Light → Dark → High Contrast → Light.
+    #[allow(dead_code)]
+    pub const fn next(self) -> Self {
+        match self {
+            Self::Light => Self::Dark,
+            Self::Dark => Self::HighContrast,
+            Self::HighContrast => Self::Light,
+        }
+    }
+
+    pub const fn palette(self) -> Palette {
+        match self {
+            Self::Light => LIGHT_PALETTE,
+            Self::Dark => DARK_PALETTE,
+            Self::HighContrast => HIGH_CONTRAST_PALETTE,
+        }
+    }
+
+    const fn from_u8(v: u8) -> Self {
+        match v {
+            1 => Self::Dark,
+            2 => Self::HighContrast,
+            _ => Self::Light,
+        }
+    }
+}
+
+/// Process-wide active display mode. Read on every style resolution; written at
+/// startup and when the VIEW MODE button is pressed. A single GUI window with
+/// change-only-on-tap semantics makes this ambient value safe.
+#[allow(dead_code)]
+static ACTIVE_DISPLAY_MODE: AtomicU8 = AtomicU8::new(DisplayMode::Light as u8);
+
+#[allow(dead_code)]
+pub fn set_display_mode(mode: DisplayMode) {
+    ACTIVE_DISPLAY_MODE.store(mode as u8, Ordering::Relaxed);
+}
+
+#[allow(dead_code)]
+pub fn display_mode() -> DisplayMode {
+    DisplayMode::from_u8(ACTIVE_DISPLAY_MODE.load(Ordering::Relaxed))
+}
+
+#[allow(dead_code)]
+pub fn active_palette() -> Palette {
+    display_mode().palette()
+}
+
+// --- Mode-aware colour accessors. Styling functions call these instead of the
+// raw colour `const`s so colour follows the active display mode.
+// Tasks 2–8 will switch the styling functions to these — until then they are
+// intentionally unused. ---
+//
+// CLEANUP: the #[allow(dead_code)] markers below are temporary — remove each as
+// Tasks 2–8 of the display-modes plan wire the corresponding accessor into a
+// styling function. Once all accessors are used, none should remain.
+#[allow(dead_code)]
+pub fn white() -> Color {
+    active_palette().white
+}
+#[allow(dead_code)]
+pub fn white_pressed() -> Color {
+    active_palette().white_pressed
+}
+#[allow(dead_code)]
+pub fn black() -> Color {
+    active_palette().black
+}
+#[allow(dead_code)]
+pub fn black_pressed() -> Color {
+    active_palette().black_pressed
+}
+#[allow(dead_code)]
+pub fn red() -> Color {
+    active_palette().red
+}
+#[allow(dead_code)]
+pub fn red_pressed() -> Color {
+    active_palette().red_pressed
+}
+#[allow(dead_code)]
+pub fn orange() -> Color {
+    active_palette().orange
+}
+#[allow(dead_code)]
+pub fn orange_pressed() -> Color {
+    active_palette().orange_pressed
+}
+#[allow(dead_code)]
+pub fn yellow() -> Color {
+    active_palette().yellow
+}
+#[allow(dead_code)]
+pub fn yellow_pressed() -> Color {
+    active_palette().yellow_pressed
+}
+#[allow(dead_code)]
+pub fn green() -> Color {
+    active_palette().green
+}
+#[allow(dead_code)]
+pub fn green_pressed() -> Color {
+    active_palette().green_pressed
+}
+#[allow(dead_code)]
+pub fn blue() -> Color {
+    active_palette().blue
+}
+#[allow(dead_code)]
+pub fn blue_pressed() -> Color {
+    active_palette().blue_pressed
+}
+#[allow(dead_code)]
+pub fn gray() -> Color {
+    active_palette().gray
+}
+#[allow(dead_code)]
+pub fn gray_pressed() -> Color {
+    active_palette().gray_pressed
+}
+#[allow(dead_code)]
+pub fn light_gray() -> Color {
+    active_palette().light_gray
+}
+#[allow(dead_code)]
+pub fn light_gray_pressed() -> Color {
+    active_palette().light_gray_pressed
+}
+#[allow(dead_code)]
+pub fn border_color() -> Color {
+    active_palette().border_color
+}
+#[allow(dead_code)]
+pub fn disabled_color() -> Color {
+    active_palette().disabled_color
+}
+#[allow(dead_code)]
+pub fn window_background() -> Color {
+    active_palette().window_background
+}
+
 pub mod button;
 pub use button::{
     black_button, black_selected_button, blue_button, blue_selected_button,
@@ -129,5 +433,55 @@ pub fn scrollable_style(_theme: &Theme, _status: scrollable::Status) -> scrollab
         vertical_rail: rail,
         horizontal_rail: rail,
         gap: None,
+    }
+}
+
+#[cfg(test)]
+mod display_mode_tests {
+    use super::*;
+
+    #[test]
+    fn cycle_wraps_light_dark_high_contrast() {
+        assert_eq!(DisplayMode::Light.next(), DisplayMode::Dark);
+        assert_eq!(DisplayMode::Dark.next(), DisplayMode::HighContrast);
+        assert_eq!(DisplayMode::HighContrast.next(), DisplayMode::Light);
+    }
+
+    #[test]
+    fn default_mode_is_light() {
+        assert_eq!(DisplayMode::default(), DisplayMode::Light);
+    }
+
+    #[test]
+    fn light_palette_matches_todays_constants() {
+        let p = DisplayMode::Light.palette();
+        assert_eq!(p.white, WHITE);
+        assert_eq!(p.window_background, WINDOW_BACKGROUND);
+        assert_eq!(p.border_color, BORDER_COLOR);
+        assert_eq!(p.black_pressed, BLACK_PRESSED);
+        assert_eq!(p.white_pressed, WHITE_PRESSED);
+        assert_eq!(p.red, RED);
+        assert_eq!(p.red_pressed, RED_PRESSED);
+    }
+
+    #[test]
+    fn dark_and_high_contrast_window_backgrounds_differ() {
+        assert_eq!(
+            DisplayMode::Dark.palette().window_background,
+            rgb8(45, 45, 45)
+        );
+        assert_eq!(
+            DisplayMode::HighContrast.palette().window_background,
+            rgb8(10, 10, 10)
+        );
+    }
+
+    #[test]
+    fn active_mode_round_trips_through_atomic() {
+        set_display_mode(DisplayMode::Dark);
+        assert_eq!(display_mode(), DisplayMode::Dark);
+        assert_eq!(active_palette().window_background, rgb8(45, 45, 45));
+        set_display_mode(DisplayMode::Light);
+        assert_eq!(display_mode(), DisplayMode::Light);
     }
 }

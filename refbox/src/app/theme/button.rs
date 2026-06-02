@@ -259,6 +259,9 @@ mod high_contrast_tests {
 
     #[test]
     fn high_contrast_red_button_is_outlined() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         set_display_mode(DisplayMode::HighContrast);
         let s = red_button(&Theme::default(), Status::Active);
         assert_eq!(s.background, Some(Background::Color(black())));
@@ -270,6 +273,9 @@ mod high_contrast_tests {
 
     #[test]
     fn high_contrast_white_button_uses_dark_grey_fill() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         set_display_mode(DisplayMode::HighContrast);
         let s = white_button(&Theme::default(), Status::Active);
         assert_eq!(s.background, Some(Background::Color(HC_DARK_GREY)));
@@ -280,6 +286,9 @@ mod high_contrast_tests {
 
     #[test]
     fn high_contrast_disabled_button_is_not_outlined() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         set_display_mode(DisplayMode::HighContrast);
         let s = blue_button(&Theme::default(), Status::Disabled);
         assert_eq!(s.background, Some(Background::Color(window_background())));
@@ -288,6 +297,9 @@ mod high_contrast_tests {
 
     #[test]
     fn light_mode_red_button_unchanged() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         set_display_mode(DisplayMode::Light);
         let s = red_button(&Theme::default(), Status::Active);
         assert_eq!(s.background, Some(Background::Color(red())));

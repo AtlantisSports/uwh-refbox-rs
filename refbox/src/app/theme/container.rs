@@ -161,6 +161,9 @@ mod high_contrast_container_tests {
 
     #[test]
     fn high_contrast_red_container_is_outlined() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         set_display_mode(DisplayMode::HighContrast);
         let s = red_container(&Theme::default());
         assert_eq!(s.background, Some(Background::Color(black())));
@@ -171,6 +174,9 @@ mod high_contrast_container_tests {
 
     #[test]
     fn high_contrast_gray_panel_has_dark_fill_and_grey_border() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         set_display_mode(DisplayMode::HighContrast);
         let s = gray_container(&Theme::default());
         assert_eq!(s.background, Some(Background::Color(window_background())));
@@ -181,6 +187,9 @@ mod high_contrast_container_tests {
 
     #[test]
     fn high_contrast_transparent_container_stays_borderless() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         set_display_mode(DisplayMode::HighContrast);
         let s = transparent_container(&Theme::default());
         assert_eq!(s.background, None);
@@ -190,6 +199,9 @@ mod high_contrast_container_tests {
 
     #[test]
     fn high_contrast_yellow_container_is_outlined() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         set_display_mode(DisplayMode::HighContrast);
         let s = yellow_container(&Theme::default());
         assert_eq!(s.background, Some(Background::Color(black())));
@@ -200,6 +212,9 @@ mod high_contrast_container_tests {
 
     #[test]
     fn light_mode_gray_container_unchanged() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         set_display_mode(DisplayMode::Light);
         let s = gray_container(&Theme::default());
         assert_eq!(s.background, Some(Background::Color(gray())));

@@ -4002,9 +4002,14 @@ impl RefBoxApp {
     }
 
     pub fn application_style(&self, _theme: &Theme) -> Appearance {
+        let text_color = if display_mode() == DisplayMode::HighContrast {
+            white()
+        } else {
+            black()
+        };
         Appearance {
             background_color: window_background(),
-            text_color: black(),
+            text_color,
         }
     }
 }

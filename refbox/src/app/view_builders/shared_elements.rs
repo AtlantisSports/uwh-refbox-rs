@@ -1111,23 +1111,36 @@ pub(super) fn make_penalty_dropdown<'a>(
 ) -> Element<'a, Message> {
     const ROW_LEN: usize = 6;
     let foul_buttons = all::<Infraction>().map(|button_infraction| {
-        button(
+        // The Unknown infraction's icon is a black "?" PNG, invisible on the
+        // black High-Contrast tile. In High Contrast only, render a themed white
+        // "?" instead so the Unknown option follows the display mode; Light and
+        // Dark keep the original image.
+        let inner: Element<'a, Message> = if button_infraction == Infraction::Unknown
+            && display_mode() == DisplayMode::HighContrast
+        {
+            container(text("?").size(LARGE_TEXT).style(white_text))
+                .center(Length::Fill)
+                .style(transparent_container)
+                .into()
+        } else {
             container(
                 Image::new(image::Handle::from_bytes(button_infraction.get_image()))
                     .width(Length::Fill)
                     .height(Length::Fixed(MIN_BUTTON_SIZE)),
             )
-            .style(transparent_container),
-        )
-        .padding(0)
-        .height(Length::Fixed(MIN_BUTTON_SIZE))
-        .width(Length::Fill)
-        .style(if infraction == button_infraction {
-            light_gray_selected_button
-        } else {
-            light_gray_button
-        })
-        .on_press(Message::ChangeInfraction(button_infraction))
+            .style(transparent_container)
+            .into()
+        };
+        button(inner)
+            .padding(0)
+            .height(Length::Fixed(MIN_BUTTON_SIZE))
+            .width(Length::Fill)
+            .style(if infraction == button_infraction {
+                light_gray_selected_button
+            } else {
+                light_gray_button
+            })
+            .on_press(Message::ChangeInfraction(button_infraction))
     });
 
     let name: Container<'_, Message> = container(

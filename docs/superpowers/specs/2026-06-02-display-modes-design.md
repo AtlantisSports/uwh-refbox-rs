@@ -319,3 +319,12 @@ text colour). Light and Dark remain byte-identical.
      so any text inheriting a transformed panel's colour is visible.
    - `black_text()` resolves to `white()` in High Contrast (`black()` otherwise).
    Touches `theme/container.rs` and `theme/text.rs`. Light/Dark unchanged.
+
+5. **The Unknown infraction "?" icon stayed black.** The foul/penalty grid's
+   first tile (`Infraction::Unknown`) uses a black "?" PNG (`get_image()` in
+   `uwh-common` — out of scope, and a no_std core type that should not know
+   about display modes), which is invisible on the black High-Contrast tile.
+   Fix, refbox-only in `make_penalty_dropdown` (`shared_elements.rs`): in High
+   Contrast only, render a themed white "?" (`text("?")` with `white_text`)
+   centered in the tile instead of the image; Light and Dark keep the original
+   PNG, so they are unchanged.

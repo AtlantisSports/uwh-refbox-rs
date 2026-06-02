@@ -1,16 +1,16 @@
 use super::{
-    BLACK, BLUE, BLUE_PRESSED, BORDER_COLOR, BORDER_RADIUS, BORDER_WIDTH, DISABLED_COLOR, GRAY,
-    GREEN, LIGHT_GRAY, RED, RED_PRESSED, WHITE, WINDOW_BACKGROUND, YELLOW,
+    BORDER_RADIUS, BORDER_WIDTH, black, blue, blue_pressed, border_color, disabled_color, gray,
+    green, light_gray, red, red_pressed, white, window_background, yellow,
 };
 use iced::{Background, Border, Theme, widget::container::Style};
 
 pub fn gray_container(_theme: &Theme) -> Style {
     Style {
-        background: Some(Background::Color(GRAY)),
-        text_color: Some(BLACK),
+        background: Some(Background::Color(gray())),
+        text_color: Some(black()),
         border: Border {
             width: 0.0,
-            color: BORDER_COLOR,
+            color: border_color(),
             radius: BORDER_RADIUS,
         },
         shadow: Default::default(),
@@ -19,73 +19,73 @@ pub fn gray_container(_theme: &Theme) -> Style {
 
 pub fn light_gray_container(theme: &Theme) -> Style {
     Style {
-        background: Some(Background::Color(LIGHT_GRAY)),
+        background: Some(Background::Color(light_gray())),
         ..gray_container(theme)
     }
 }
 
 pub fn black_container(theme: &Theme) -> Style {
     Style {
-        background: Some(Background::Color(BLACK)),
-        text_color: Some(WHITE),
+        background: Some(Background::Color(black())),
+        text_color: Some(white()),
         ..gray_container(theme)
     }
 }
 
 pub fn white_container(theme: &Theme) -> Style {
     Style {
-        background: Some(Background::Color(WHITE)),
+        background: Some(Background::Color(white())),
         ..gray_container(theme)
     }
 }
 
 pub fn blue_container(theme: &Theme) -> Style {
     Style {
-        background: Some(Background::Color(BLUE)),
-        text_color: Some(WHITE),
+        background: Some(Background::Color(blue())),
+        text_color: Some(white()),
         ..gray_container(theme)
     }
 }
 
 pub fn green_container(theme: &Theme) -> Style {
     Style {
-        background: Some(Background::Color(GREEN)),
+        background: Some(Background::Color(green())),
         ..gray_container(theme)
     }
 }
 
 pub fn yellow_container(theme: &Theme) -> Style {
     Style {
-        background: Some(Background::Color(YELLOW)),
+        background: Some(Background::Color(yellow())),
         ..gray_container(theme)
     }
 }
 
 pub fn red_container(theme: &Theme) -> Style {
     Style {
-        background: Some(Background::Color(RED)),
+        background: Some(Background::Color(red())),
         ..gray_container(theme)
     }
 }
 
 pub fn red_pressed_container(theme: &Theme) -> Style {
     Style {
-        background: Some(Background::Color(RED_PRESSED)),
+        background: Some(Background::Color(red_pressed())),
         ..gray_container(theme)
     }
 }
 
 pub fn blue_pressed_container(theme: &Theme) -> Style {
     Style {
-        background: Some(Background::Color(BLUE_PRESSED)),
-        text_color: Some(WHITE),
+        background: Some(Background::Color(blue_pressed())),
+        text_color: Some(white()),
         ..gray_container(theme)
     }
 }
 
 pub fn scroll_bar_container(theme: &Theme) -> Style {
     Style {
-        background: Some(Background::Color(WINDOW_BACKGROUND)),
+        background: Some(Background::Color(window_background())),
         ..gray_container(theme)
     }
 }
@@ -93,10 +93,10 @@ pub fn scroll_bar_container(theme: &Theme) -> Style {
 pub fn disabled_container(_theme: &Theme) -> Style {
     Style {
         background: None,
-        text_color: Some(DISABLED_COLOR),
+        text_color: Some(disabled_color()),
         border: Border {
             width: BORDER_WIDTH,
-            color: DISABLED_COLOR,
+            color: disabled_color(),
             radius: BORDER_RADIUS,
         },
         shadow: Default::default(),

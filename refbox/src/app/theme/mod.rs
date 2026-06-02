@@ -47,6 +47,8 @@ macro_rules! make_color {
     ($name:ident, $r:literal, $g:literal, $b:literal) => {
         paste! {
             pub const $name: iced::Color = iced::Color::from_rgb($r, $g, $b);
+            // _PRESSED kept for the Light palette test assertions in display_mode_tests.
+            #[allow(dead_code)]
             pub const [<$name _PRESSED>]: iced::Color = iced::Color::from_rgb(
                 $r * 0.85,
                 $g * 0.85,
@@ -75,11 +77,6 @@ pub const WINDOW_BACKGROUND: Color = Color::from_rgb(0.82, 0.82, 0.82);
 
 pub const SCROLLBAR_COLOR: Color = Color::from_rgba(0.0, 0.0, 0.0, 0.7);
 
-// Allow dead_code for this block: rgb8, dim, make_palette, the palette consts, DisplayMode
-// methods, the atomic accessor, and the mode-aware colour fns are all forward-looking APIs
-// introduced in Task 1. Tasks 2–8 wire them into the styling functions. Until then they are
-// intentionally unused by the rest of the crate.
-#[allow(dead_code)]
 /// Convert 8-bit sRGB channels (matching the web `refbox-theme.scss`) to an
 /// iced `Color`. `const fn` so palettes can be `const`.
 const fn rgb8(r: u8, g: u8, b: u8) -> Color {
@@ -90,7 +87,6 @@ const fn rgb8(r: u8, g: u8, b: u8) -> Color {
 /// macro used for the Light palette. The web's Dark pressed values equal this
 /// ×0.85 derivation; its High-Contrast pressed values differ by a few percent,
 /// which is within the "match on screen" tolerance recorded in the spec.
-#[allow(dead_code)]
 const fn dim(c: Color) -> Color {
     Color {
         r: c.r * 0.85,
@@ -132,7 +128,7 @@ pub struct Palette {
 /// pressed black button is visible (matches today's `BLACK_PRESSED`).
 // 12 arguments are needed because `Palette` has 12 independent base colours and
 // `const fn` cannot yet take a struct literal that refers to other `const fn`s.
-#[allow(dead_code, clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 const fn make_palette(
     white: Color,
     black: Color,
@@ -173,7 +169,6 @@ const fn make_palette(
 }
 
 /// Light = today's palette exactly (built from the existing colour `const`s).
-#[allow(dead_code)]
 pub const LIGHT_PALETTE: Palette = make_palette(
     WHITE,
     BLACK,
@@ -191,7 +186,6 @@ pub const LIGHT_PALETTE: Palette = make_palette(
 
 /// Dark = muted palette. Values copied from web `refbox-theme.scss`
 /// `[data-refbox-theme='dark']`.
-#[allow(dead_code)]
 pub const DARK_PALETTE: Palette = make_palette(
     rgb8(207, 207, 207), // white  (#cfcfcf)
     rgb8(0, 0, 0),       // black
@@ -209,7 +203,6 @@ pub const DARK_PALETTE: Palette = make_palette(
 
 /// High Contrast = neon palette. Values copied from web `refbox-theme.scss`
 /// `[data-refbox-theme='high-contrast']`.
-#[allow(dead_code)]
 pub const HIGH_CONTRAST_PALETTE: Palette = make_palette(
     rgb8(255, 255, 255), // white
     rgb8(0, 0, 0),       // black
@@ -226,7 +219,6 @@ pub const HIGH_CONTRAST_PALETTE: Palette = make_palette(
 );
 
 /// The on-screen colour scheme. Persisted per user in `Config`.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum DisplayMode {
     #[default]
@@ -266,7 +258,6 @@ impl DisplayMode {
 /// Process-wide active display mode. Read on every style resolution; written at
 /// startup and when the VIEW MODE button is pressed. A single GUI window with
 /// change-only-on-tap semantics makes this ambient value safe.
-#[allow(dead_code)]
 static ACTIVE_DISPLAY_MODE: AtomicU8 = AtomicU8::new(DisplayMode::Light as u8);
 
 #[allow(dead_code)]
@@ -274,105 +265,76 @@ pub fn set_display_mode(mode: DisplayMode) {
     ACTIVE_DISPLAY_MODE.store(mode as u8, Ordering::Relaxed);
 }
 
-#[allow(dead_code)]
 pub fn display_mode() -> DisplayMode {
     DisplayMode::from_u8(ACTIVE_DISPLAY_MODE.load(Ordering::Relaxed))
 }
 
-#[allow(dead_code)]
 pub fn active_palette() -> Palette {
     display_mode().palette()
 }
 
 // --- Mode-aware colour accessors. Styling functions call these instead of the
-// raw colour `const`s so colour follows the active display mode.
-// Tasks 2–8 will switch the styling functions to these — until then they are
-// intentionally unused. ---
-//
-// CLEANUP: the #[allow(dead_code)] markers below are temporary — remove each as
-// Tasks 2–8 of the display-modes plan wire the corresponding accessor into a
-// styling function. Once all accessors are used, none should remain.
-#[allow(dead_code)]
+// raw colour `const`s so colour follows the active display mode. ---
 pub fn white() -> Color {
     active_palette().white
 }
-#[allow(dead_code)]
 pub fn white_pressed() -> Color {
     active_palette().white_pressed
 }
-#[allow(dead_code)]
 pub fn black() -> Color {
     active_palette().black
 }
-#[allow(dead_code)]
 pub fn black_pressed() -> Color {
     active_palette().black_pressed
 }
-#[allow(dead_code)]
 pub fn red() -> Color {
     active_palette().red
 }
-#[allow(dead_code)]
 pub fn red_pressed() -> Color {
     active_palette().red_pressed
 }
-#[allow(dead_code)]
 pub fn orange() -> Color {
     active_palette().orange
 }
-#[allow(dead_code)]
 pub fn orange_pressed() -> Color {
     active_palette().orange_pressed
 }
-#[allow(dead_code)]
 pub fn yellow() -> Color {
     active_palette().yellow
 }
-#[allow(dead_code)]
 pub fn yellow_pressed() -> Color {
     active_palette().yellow_pressed
 }
-#[allow(dead_code)]
 pub fn green() -> Color {
     active_palette().green
 }
-#[allow(dead_code)]
 pub fn green_pressed() -> Color {
     active_palette().green_pressed
 }
-#[allow(dead_code)]
 pub fn blue() -> Color {
     active_palette().blue
 }
-#[allow(dead_code)]
 pub fn blue_pressed() -> Color {
     active_palette().blue_pressed
 }
-#[allow(dead_code)]
 pub fn gray() -> Color {
     active_palette().gray
 }
-#[allow(dead_code)]
 pub fn gray_pressed() -> Color {
     active_palette().gray_pressed
 }
-#[allow(dead_code)]
 pub fn light_gray() -> Color {
     active_palette().light_gray
 }
-#[allow(dead_code)]
 pub fn light_gray_pressed() -> Color {
     active_palette().light_gray_pressed
 }
-#[allow(dead_code)]
 pub fn border_color() -> Color {
     active_palette().border_color
 }
-#[allow(dead_code)]
 pub fn disabled_color() -> Color {
     active_palette().disabled_color
 }
-#[allow(dead_code)]
 pub fn window_background() -> Color {
     active_palette().window_background
 }

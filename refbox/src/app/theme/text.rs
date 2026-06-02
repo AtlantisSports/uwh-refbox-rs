@@ -1,30 +1,36 @@
-use super::{BLACK, GREEN, ORANGE, RED, WHITE, YELLOW};
+use super::{black, green, orange, red, white, yellow};
 use iced::{Theme, widget::text::Style};
 
 pub fn black_text(_theme: &Theme) -> Style {
-    Style { color: Some(BLACK) }
+    Style {
+        color: Some(black()),
+    }
 }
 
 pub fn white_text(_theme: &Theme) -> Style {
-    Style { color: Some(WHITE) }
+    Style {
+        color: Some(white()),
+    }
 }
 
 pub fn green_text(_theme: &Theme) -> Style {
-    Style { color: Some(GREEN) }
+    Style {
+        color: Some(green()),
+    }
 }
 
 pub fn yellow_text(_theme: &Theme) -> Style {
     Style {
-        color: Some(YELLOW),
+        color: Some(yellow()),
     }
 }
 
 pub fn orange_text(_theme: &Theme) -> Style {
     Style {
-        color: Some(ORANGE),
+        color: Some(orange()),
     }
 }
 
 pub fn red_text(_theme: &Theme) -> Style {
-    Style { color: Some(RED) }
+    Style { color: Some(red()) }
 }

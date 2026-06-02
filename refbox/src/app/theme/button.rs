@@ -1,8 +1,8 @@
 use super::{
-    BLACK, BLACK_PRESSED, BLUE, BLUE_PRESSED, BORDER_COLOR, BORDER_RADIUS, BORDER_WIDTH,
-    DISABLED_COLOR, GRAY, GRAY_PRESSED, GREEN, GREEN_PRESSED, LIGHT_GRAY, LIGHT_GRAY_PRESSED,
-    ORANGE, ORANGE_PRESSED, RED, RED_PRESSED, WHITE, WHITE_PRESSED, WINDOW_BACKGROUND, YELLOW,
-    YELLOW_PRESSED,
+    BORDER_RADIUS, BORDER_WIDTH, black, black_pressed, blue, blue_pressed, border_color,
+    disabled_color, gray, gray_pressed, green, green_pressed, light_gray, light_gray_pressed,
+    orange, orange_pressed, red, red_pressed, white, white_pressed, window_background, yellow,
+    yellow_pressed,
 };
 use iced::{
     Background, Border, Shadow, Theme,
@@ -11,20 +11,20 @@ use iced::{
 
 pub fn gray_button(_theme: &Theme, status: Status) -> Style {
     let background = match status {
-        Status::Disabled => Some(Background::Color(WINDOW_BACKGROUND)),
-        Status::Pressed => Some(Background::Color(GRAY_PRESSED)),
-        Status::Active | Status::Hovered => Some(Background::Color(GRAY)),
+        Status::Disabled => Some(Background::Color(window_background())),
+        Status::Pressed => Some(Background::Color(gray_pressed())),
+        Status::Active | Status::Hovered => Some(Background::Color(gray())),
     };
 
     let text_color = if matches!(status, Status::Disabled) {
-        DISABLED_COLOR
+        disabled_color()
     } else {
-        BLACK
+        black()
     };
 
-    let border_color = match status {
-        Status::Disabled => DISABLED_COLOR,
-        Status::Pressed | Status::Active | Status::Hovered => BORDER_COLOR,
+    let border_color_val = match status {
+        Status::Disabled => disabled_color(),
+        Status::Pressed | Status::Active | Status::Hovered => border_color(),
     };
 
     let border_width = match status {
@@ -34,7 +34,7 @@ pub fn gray_button(_theme: &Theme, status: Status) -> Style {
 
     let border = Border {
         width: border_width,
-        color: border_color,
+        color: border_color_val,
         radius: BORDER_RADIUS,
     };
 
@@ -48,9 +48,9 @@ pub fn gray_button(_theme: &Theme, status: Status) -> Style {
 
 pub fn light_gray_button(theme: &Theme, status: Status) -> Style {
     let background = match status {
-        Status::Disabled => Some(Background::Color(WINDOW_BACKGROUND)),
-        Status::Pressed => Some(Background::Color(LIGHT_GRAY_PRESSED)),
-        Status::Active | Status::Hovered => Some(Background::Color(LIGHT_GRAY)),
+        Status::Disabled => Some(Background::Color(window_background())),
+        Status::Pressed => Some(Background::Color(light_gray_pressed())),
+        Status::Active | Status::Hovered => Some(Background::Color(light_gray())),
     };
 
     Style {
@@ -67,9 +67,9 @@ pub fn light_gray_selected_button(theme: &Theme, status: Status) -> Style {
 
 pub fn white_button(theme: &Theme, status: Status) -> Style {
     let background = match status {
-        Status::Disabled => Some(Background::Color(WINDOW_BACKGROUND)),
-        Status::Pressed => Some(Background::Color(WHITE_PRESSED)),
-        Status::Active | Status::Hovered => Some(Background::Color(WHITE)),
+        Status::Disabled => Some(Background::Color(window_background())),
+        Status::Pressed => Some(Background::Color(white_pressed())),
+        Status::Active | Status::Hovered => Some(Background::Color(white())),
     };
 
     Style {
@@ -86,15 +86,15 @@ pub fn white_selected_button(theme: &Theme, status: Status) -> Style {
 
 pub fn black_button(theme: &Theme, status: Status) -> Style {
     let background = match status {
-        Status::Disabled => Some(Background::Color(WINDOW_BACKGROUND)),
-        Status::Pressed => Some(Background::Color(BLACK_PRESSED)),
-        Status::Active | Status::Hovered => Some(Background::Color(BLACK)),
+        Status::Disabled => Some(Background::Color(window_background())),
+        Status::Pressed => Some(Background::Color(black_pressed())),
+        Status::Active | Status::Hovered => Some(Background::Color(black())),
     };
 
     let text_color = if matches!(status, Status::Disabled) {
-        DISABLED_COLOR
+        disabled_color()
     } else {
-        WHITE
+        white()
     };
 
     Style {
@@ -112,9 +112,9 @@ pub fn black_selected_button(theme: &Theme, status: Status) -> Style {
 
 pub fn red_button(theme: &Theme, status: Status) -> Style {
     let background = match status {
-        Status::Disabled => Some(Background::Color(WINDOW_BACKGROUND)),
-        Status::Pressed => Some(Background::Color(RED_PRESSED)),
-        Status::Active | Status::Hovered => Some(Background::Color(RED)),
+        Status::Disabled => Some(Background::Color(window_background())),
+        Status::Pressed => Some(Background::Color(red_pressed())),
+        Status::Active | Status::Hovered => Some(Background::Color(red())),
     };
 
     Style {
@@ -131,9 +131,9 @@ pub fn red_selected_button(theme: &Theme, status: Status) -> Style {
 
 pub fn orange_button(theme: &Theme, status: Status) -> Style {
     let background = match status {
-        Status::Disabled => Some(Background::Color(WINDOW_BACKGROUND)),
-        Status::Pressed => Some(Background::Color(ORANGE_PRESSED)),
-        Status::Active | Status::Hovered => Some(Background::Color(ORANGE)),
+        Status::Disabled => Some(Background::Color(window_background())),
+        Status::Pressed => Some(Background::Color(orange_pressed())),
+        Status::Active | Status::Hovered => Some(Background::Color(orange())),
     };
 
     Style {
@@ -150,9 +150,9 @@ pub fn orange_selected_button(theme: &Theme, status: Status) -> Style {
 
 pub fn yellow_button(theme: &Theme, status: Status) -> Style {
     let background = match status {
-        Status::Disabled => Some(Background::Color(WINDOW_BACKGROUND)),
-        Status::Pressed => Some(Background::Color(YELLOW_PRESSED)),
-        Status::Active | Status::Hovered => Some(Background::Color(YELLOW)),
+        Status::Disabled => Some(Background::Color(window_background())),
+        Status::Pressed => Some(Background::Color(yellow_pressed())),
+        Status::Active | Status::Hovered => Some(Background::Color(yellow())),
     };
 
     Style {
@@ -169,9 +169,9 @@ pub fn yellow_selected_button(theme: &Theme, status: Status) -> Style {
 
 pub fn green_button(theme: &Theme, status: Status) -> Style {
     let background = match status {
-        Status::Disabled => Some(Background::Color(WINDOW_BACKGROUND)),
-        Status::Pressed => Some(Background::Color(GREEN_PRESSED)),
-        Status::Active | Status::Hovered => Some(Background::Color(GREEN)),
+        Status::Disabled => Some(Background::Color(window_background())),
+        Status::Pressed => Some(Background::Color(green_pressed())),
+        Status::Active | Status::Hovered => Some(Background::Color(green())),
     };
 
     Style {
@@ -188,15 +188,15 @@ pub fn green_selected_button(theme: &Theme, status: Status) -> Style {
 
 pub fn blue_button(theme: &Theme, status: Status) -> Style {
     let background = match status {
-        Status::Disabled => Some(Background::Color(WINDOW_BACKGROUND)),
-        Status::Pressed => Some(Background::Color(BLUE_PRESSED)),
-        Status::Active | Status::Hovered => Some(Background::Color(BLUE)),
+        Status::Disabled => Some(Background::Color(window_background())),
+        Status::Pressed => Some(Background::Color(blue_pressed())),
+        Status::Active | Status::Hovered => Some(Background::Color(blue())),
     };
 
     let text_color = if matches!(status, Status::Disabled) {
-        DISABLED_COLOR
+        disabled_color()
     } else {
-        WHITE
+        white()
     };
 
     Style {
@@ -215,7 +215,7 @@ pub fn blue_selected_button(theme: &Theme, status: Status) -> Style {
 pub fn blue_with_border_button(theme: &Theme, status: Status) -> Style {
     let mut style = blue_button(theme, status);
     style.border.width = BORDER_WIDTH;
-    style.border.color = GRAY;
+    style.border.color = gray();
     style
 }
 

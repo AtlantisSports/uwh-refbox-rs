@@ -431,6 +431,18 @@ fn make_user_config_page<'a>(
     .spacing(SPACING)
     .height(Length::Fill);
 
+    let view_mode_label = match display_mode() {
+        DisplayMode::Light => fl!("display-mode-light"),
+        DisplayMode::Dark => fl!("display-mode-dark"),
+        DisplayMode::HighContrast => fl!("display-mode-high-contrast"),
+    };
+    let view_mode_button = make_value_button(
+        fl!("view-mode"),
+        view_mode_label,
+        (false, false),
+        Some(Message::CycleDisplayMode),
+    );
+
     column![
         make_game_time_button(
             snapshot,
@@ -441,7 +453,7 @@ fn make_user_config_page<'a>(
             portal_indicator
         ),
         tiles,
-        row![horizontal_space()].height(Length::Fill),
+        row![view_mode_button].height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),
         row![

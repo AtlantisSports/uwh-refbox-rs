@@ -123,8 +123,6 @@ pub enum Message {
     CycleParameter(CyclingParameter),
     /// Advance the on-screen display mode (Light → Dark → High Contrast → …).
     /// Commits immediately; not part of the DONE/Apply settings round-trip.
-    // Task 7 will wire this to a button; #[expect] removed then.
-    #[expect(dead_code)]
     CycleDisplayMode,
     SelectLanguage(Language),
     LanguageSelectComplete {

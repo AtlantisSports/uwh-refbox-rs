@@ -1,3 +1,4 @@
+use matrix_drawing::transmitted_data::TransmittedData;
 use serde::{Deserialize, Serialize};
 
 /// Which front-display layout the player-facing display window renders.
@@ -13,7 +14,7 @@ pub enum FrontDisplayLayout {
     ScoresOnly,
 }
 
-#[allow(dead_code)]
+#[allow(dead_code)] // dead_code allow is interim; removed once the server/simulator wire this up
 impl FrontDisplayLayout {
     /// Cycle order for the picker (wraps).
     pub const fn next(self) -> Self {
@@ -47,9 +48,46 @@ impl FrontDisplayLayout {
     }
 }
 
+/// A display-feed frame: the existing panel payload plus a one-byte layout
+/// selector. Used ONLY on the binary/TCP path to the display window. The
+/// serial/hardware path keeps sending bare `TransmittedData`, so the panel
+/// wire format is unchanged.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SimFrame {
+    pub layout: FrontDisplayLayout,
+    pub data: TransmittedData,
+}
+
+#[allow(dead_code)] // dead_code allow is interim; removed once the server/simulator wire this up
+impl SimFrame {
+    pub const ENCODED_LEN: usize = TransmittedData::ENCODED_LEN + 1;
+
+    pub fn encode(
+        &self,
+    ) -> Result<[u8; Self::ENCODED_LEN], uwh_common::game_snapshot::EncodingError> {
+        let mut out = [0u8; Self::ENCODED_LEN];
+        out[0] = self.layout.to_u8();
+        out[1..].copy_from_slice(&self.data.encode()?);
+        Ok(out)
+    }
+
+    pub fn decode(
+        bytes: &[u8; Self::ENCODED_LEN],
+    ) -> Result<Self, uwh_common::game_snapshot::DecodingError> {
+        let mut buf = [0u8; TransmittedData::ENCODED_LEN];
+        buf.copy_from_slice(&bytes[1..]);
+        Ok(Self {
+            layout: FrontDisplayLayout::from_u8(bytes[0]),
+            data: TransmittedData::decode(&buf)?,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use matrix_drawing::transmitted_data::Brightness;
+    use uwh_common::game_snapshot::GameSnapshotNoHeap;
 
     #[test]
     fn cycle_order_wraps() {
@@ -88,5 +126,26 @@ mod tests {
     #[test]
     fn unknown_u8_falls_back_to_default() {
         assert_eq!(FrontDisplayLayout::from_u8(99), FrontDisplayLayout::Default);
+    }
+
+    #[test]
+    fn sim_frame_round_trips_and_is_one_byte_longer() {
+        // Proves the serial/hardware format is untouched: SimFrame is exactly
+        // one byte longer than TransmittedData, and that extra byte is layout.
+        assert_eq!(SimFrame::ENCODED_LEN, TransmittedData::ENCODED_LEN + 1);
+
+        let frame = SimFrame {
+            layout: FrontDisplayLayout::Corners,
+            data: TransmittedData {
+                white_on_right: false,
+                flash: false,
+                beep_test: false,
+                brightness: Brightness::Low,
+                snapshot: GameSnapshotNoHeap::default(),
+            },
+        };
+        let bytes = frame.encode().unwrap();
+        assert_eq!(bytes[0], FrontDisplayLayout::Corners.to_u8());
+        assert_eq!(SimFrame::decode(&bytes).unwrap(), frame);
     }
 }

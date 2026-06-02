@@ -200,3 +200,82 @@ colours, match on screen" decision (criterion 7) rather than over-specified here
 - `js/@underwater-web/components/refbox/pages/UserOptionsPage.tsx` — web
   `VIEW MODE` cycle button and labels.
 - `refbox/src/app/theme/` — where `DisplayMode` and palette resolution live.
+
+---
+
+## Addendum — 2026-06-02 — High-Contrast outline styling
+
+**Status:** approved (follow-on increment to the above)
+
+### Why
+
+Manual walkthrough of the shipped feature revealed that **High Contrast**
+renders buttons and panels as **solid neon fills**, which is wrong. In the web
+refbox, Light and Dark use solid fills (Dark merely mutes the colours — these
+two modes are correct), but **High Contrast is an outline style**: each control
+is a dark fill with a *coloured border and coloured text*, with an always-visible
+border and no hover/pressed darkening. The original Approach B (palette swap
+only) changes colour *values* but not the **fill-vs-outline structure**, so the
+High-Contrast structure was missing. Authoritative source:
+`js/@underwater-web/components/refbox/game/RefboxButton.module.scss` and the
+per-component `[data-refbox-theme='high-contrast']` rules.
+
+### Decision
+
+The refbox button/container styles already carry both a fill (`background`) and
+an outline (`border` with `width`+`color`) plus `text_color`; in Light/Dark the
+active-button border width is `0`, so only the fill shows. High Contrast is
+achieved by **setting those existing fields differently when High Contrast is
+active** — not by restructuring. Chosen approach: **a centralized transform
+helper** (Approach A), matching the existing `*_selected_button`
+mutate-and-return idiom. The High-Contrast rule lives in one place.
+
+**Buttons** — `outline_in_high_contrast(style, accent, hc_fill, status)` in
+`button.rs`, applied at the end of each colour button function. When the active
+mode is `HighContrast` and `status != Disabled`, it rewrites the style to:
+`background = hc_fill`, `text_color = accent`, `border.color = accent`,
+`border.width = BORDER_WIDTH`, and flattens hover/pressed so the fill does not
+darken. In Light/Dark it returns the style unchanged.
+
+Per-button accent + fill (copied from the web scss):
+
+| Button | accent (border + text) | hc_fill |
+|--------|------------------------|---------|
+| red / orange / yellow / green / blue / light-gray | its own colour | black |
+| black, gray | white | black |
+| white | white | dark grey `rgb(64, 64, 64)` |
+
+The dark-grey white-team fill is the one new value, added as a High-Contrast-only
+constant in the theme module (web: `rgb(64,64,64)` for the white timeout button).
+
+**Panels / areas** — a sibling transform in `container.rs` applies the same idea
+to the generic container styles: in High Contrast, fill → the near-black window
+background with a **visible border** — coloured for colour-coded containers (e.g.
+the red penalty highlight → dark fill + red border), and a neutral grey border
+for the plain panel backgrounds (warnings panel, tables) so their edges read
+against the near-black screen. Light/Dark unchanged.
+
+### Edge cases (deliberate)
+
+- **Disabled buttons:** the transform is skipped when `status == Disabled`, so
+  disabled controls keep their existing distinct dark-fill + grey treatment and
+  do not masquerade as active outlined buttons.
+- **`*_selected_button`:** already force a `BORDER_WIDTH` border; in High
+  Contrast the base is already outlined at that width, so selection still reads
+  correctly.
+- **`blue_with_border_button`:** keeps its existing grey-border behaviour (a
+  visible grey outline in High Contrast) — acceptable, recorded.
+
+### Scope
+
+- `refbox` only: `refbox/src/app/theme/button.rs` and
+  `refbox/src/app/theme/container.rs` (+ the one new High-Contrast fill constant
+  in `theme/mod.rs`).
+- **Not** changing: Light or Dark appearance; the `VIEW MODE` button, persistence,
+  or palettes; LED panel; overlay; wire format; game logic; `uwh-common`.
+
+### Acceptance (operator-observable)
+
+In High Contrast: every button shows a dark fill with a coloured outline and
+matching coloured text (no solid neon fills); panels/tables show dark fills with
+visible borders; Light and Dark look exactly as before. `just check` green.

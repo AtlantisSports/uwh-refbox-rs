@@ -226,6 +226,8 @@ pub struct Config {
     pub uwhportal: UwhPortal,
     pub sound: SoundSettings,
     pub language: Option<Language>,
+    #[serde(default)]
+    pub display_mode: crate::app::theme::DisplayMode,
 }
 
 impl Config {
@@ -242,6 +244,7 @@ impl Config {
             mut uwhportal,
             mut sound,
             language,
+            display_mode,
         } = Default::default();
 
         if let Some(old_mode) = old.get("mode") {
@@ -296,6 +299,7 @@ impl Config {
             uwhportal,
             sound,
             language,
+            display_mode,
         }
     }
 }
@@ -444,6 +448,31 @@ mod test {
         // url field is no longer persisted; migrate should silently ignore it
         let u = UwhPortal::migrate(&old);
         assert_eq!(u.token, "token");
+    }
+
+    #[test]
+    fn config_missing_display_mode_defaults_to_light() {
+        // A config TOML written before this field existed must still load.
+        let toml_without_field = toml::to_string(&Config::default())
+            .unwrap()
+            .lines()
+            .filter(|l| !l.starts_with("display_mode"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let parsed: Config = toml::from_str(&toml_without_field).unwrap();
+        assert_eq!(parsed.display_mode, crate::app::theme::DisplayMode::Light);
+    }
+
+    #[test]
+    fn config_display_mode_round_trips() {
+        let mut config = Config::default();
+        config.display_mode = crate::app::theme::DisplayMode::HighContrast;
+        let serialized = toml::to_string(&config).unwrap();
+        let deser: Config = toml::from_str(&serialized).unwrap();
+        assert_eq!(
+            deser.display_mode,
+            crate::app::theme::DisplayMode::HighContrast
+        );
     }
 
     #[test]

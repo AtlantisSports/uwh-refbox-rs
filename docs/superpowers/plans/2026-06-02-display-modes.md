@@ -12,6 +12,8 @@
 
 **Process:** Lean (refbox UI feature). One code review at the end; `just check` green before PR. No per-task deviation commits — note any deviation in the Deviations section at the bottom.
 
+**Verification command notes (important):** `refbox` is a **binary-only crate** (no lib target) — use `cargo test -p refbox …` (NOT `--lib`). For clippy, match CI/`just lint`: `cargo clippy -p refbox -- -D warnings` (NOT `--all-targets`). Under the local 1.85.0 toolchain, `--all-targets` surfaces ~90 pre-existing test-code lints in untouched files (`tournament_manager/mod.rs`, etc.) that CI does not run — ignore them; they are out of scope. The authoritative gate is `just check`.
+
 **Scope guard — do NOT touch:** LED panel output, `overlay`, wire format, game logic, `uwh-common`. This is `refbox`-only.
 
 ---
@@ -92,7 +94,7 @@ mod display_mode_tests {
 
 - [ ] **Step 2: Run tests to verify they fail to compile**
 
-Run: `cargo test -p refbox --lib display_mode_tests 2>&1 | head -30`
+Run: `cargo test -p refbox display_mode_tests 2>&1 | head -30`
 Expected: compile errors — `DisplayMode`, `Palette`, `rgb8`, `set_display_mode`, `display_mode`, `active_palette` not found.
 
 - [ ] **Step 3: Add the serde import** at the top of `mod.rs` (after the existing `use` block)
@@ -318,7 +320,7 @@ pub fn window_background() -> Color { active_palette().window_background }
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cargo test -p refbox --lib display_mode_tests 2>&1 | tail -20`
+Run: `cargo test -p refbox display_mode_tests 2>&1 | tail -20`
 Expected: all 5 tests PASS. If `dim` fails to compile as `const fn`, confirm toolchain ≥ 1.85 (float arithmetic in `const fn` is stable since 1.82).
 
 - [ ] **Step 6: Confirm whole crate still builds (consts are now used by both old style fns and the Light palette)**
@@ -494,12 +496,12 @@ Apply the same `()` conversion to the rest of the functions (`light_gray_button`
 
 - [ ] **Step 5: Build and run the full theme test set**
 
-Run: `cargo build -p refbox 2>&1 | tail -20 && cargo test -p refbox --lib display_mode_tests 2>&1 | tail -5`
+Run: `cargo build -p refbox 2>&1 | tail -20 && cargo test -p refbox display_mode_tests 2>&1 | tail -5`
 Expected: clean build, tests still PASS. Fix any "expected function, found …" or unused-import errors the compiler reports.
 
 - [ ] **Step 6: Lint (zero warnings required)**
 
-Run: `cargo clippy -p refbox --all-targets -- -D warnings 2>&1 | tail -20`
+Run: `cargo clippy -p refbox -- -D warnings 2>&1 | tail -20`
 Expected: no warnings. (Watch for "function `WHITE` never used" style dead-code if any const was orphaned — all colour consts should still be referenced by `LIGHT_PALETTE`.)
 
 - [ ] **Step 7: Commit**
@@ -546,7 +548,7 @@ Change `Some(Background::Color(BLUE))` to `Some(Background::Color(blue()))`.
 
 - [ ] **Step 3: Build + clippy**
 
-Run: `cargo build -p refbox 2>&1 | tail -10 && cargo clippy -p refbox --all-targets -- -D warnings 2>&1 | tail -10`
+Run: `cargo build -p refbox 2>&1 | tail -10 && cargo clippy -p refbox -- -D warnings 2>&1 | tail -10`
 Expected: clean. If the compiler reports `GREEN`/`YELLOW`/`RED`/`BLUE` still imported-but-unused, remove them from the `use` list (they are now accessed as functions via `theme::*`).
 
 - [ ] **Step 4: Commit**
@@ -594,7 +596,7 @@ git commit -m "refactor(refbox): route health-dot colours through display mode"
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cargo test -p refbox --lib config::test::config_ 2>&1 | head -20`
+Run: `cargo test -p refbox config::test::config_ 2>&1 | head -20`
 Expected: compile error — no field `display_mode` on `Config`.
 
 - [ ] **Step 3: Add the field** to the `Config` struct (after `language`):
@@ -630,7 +632,7 @@ and the final constructor gains `display_mode,`. (Match the exact current field 
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cargo test -p refbox --lib config::test 2>&1 | tail -20`
+Run: `cargo test -p refbox config::test 2>&1 | tail -20`
 Expected: the two new tests PASS and the existing `test_ser_config` still PASSES.
 
 - [ ] **Step 6: Commit**
@@ -771,7 +773,7 @@ to:
 
 - [ ] **Step 4: Build + clippy + tests**
 
-Run: `cargo build -p refbox 2>&1 | tail -10 && cargo clippy -p refbox --all-targets -- -D warnings 2>&1 | tail -10 && cargo test -p refbox --lib 2>&1 | tail -10`
+Run: `cargo build -p refbox 2>&1 | tail -10 && cargo clippy -p refbox -- -D warnings 2>&1 | tail -10 && cargo test -p refbox 2>&1 | tail -10`
 Expected: clean build, no warnings, all tests pass.
 
 - [ ] **Step 5: Commit**

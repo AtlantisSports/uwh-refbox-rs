@@ -121,6 +121,11 @@ pub enum Message {
     ParameterSelected(ListableParameter, String),
     ToggleBoolParameter(BoolGameParameter),
     CycleParameter(CyclingParameter),
+    /// Advance the on-screen display mode (Light → Dark → High Contrast → …).
+    /// Commits immediately; not part of the DONE/Apply settings round-trip.
+    // Task 7 will wire this to a button; #[expect] removed then.
+    #[expect(dead_code)]
+    CycleDisplayMode,
     SelectLanguage(Language),
     LanguageSelectComplete {
         canceled: bool,
@@ -293,6 +298,7 @@ impl Message {
             | Self::SelectParameter(_)
             | Self::ParameterEditComplete { .. }
             | Self::ParameterSelected(_, _)
+            | Self::CycleDisplayMode
             | Self::SelectLanguage(_)
             | Self::LanguageSelectComplete { .. }
             | Self::RequestRemoteId
@@ -385,6 +391,7 @@ impl PartialEq for Message {
             | (Self::BeepTestEditLevelsSave, Self::BeepTestEditLevelsSave)
             | (Self::BeepTestEditLevelsCancel, Self::BeepTestEditLevelsCancel)
             | (Self::BeepTestRestartToApply, Self::BeepTestRestartToApply)
+            | (Self::CycleDisplayMode, Self::CycleDisplayMode)
             | (Self::AlarmPressed, Self::AlarmPressed)
             | (Self::AlarmReleased, Self::AlarmReleased)
             | (Self::SpacebarPressed, Self::SpacebarPressed)
@@ -612,6 +619,7 @@ impl PartialEq for Message {
             | (Self::BeepTestEditLevelsSave, _)
             | (Self::BeepTestEditLevelsCancel, _)
             | (Self::BeepTestRestartToApply, _)
+            | (Self::CycleDisplayMode, _)
             | (Self::AlarmPressed, _)
             | (Self::AlarmReleased, _)
             | (Self::SpacebarPressed, _)

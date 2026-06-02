@@ -229,7 +229,6 @@ pub enum DisplayMode {
 
 impl DisplayMode {
     /// Cycle forward: Light → Dark → High Contrast → Light.
-    #[allow(dead_code)]
     pub const fn next(self) -> Self {
         match self {
             Self::Light => Self::Dark,

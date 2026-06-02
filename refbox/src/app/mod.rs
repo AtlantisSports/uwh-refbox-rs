@@ -1153,6 +1153,9 @@ impl RefBoxApp {
             list_all_events,
         } = flags;
 
+        // Paint in the saved display mode from the first frame.
+        crate::app::theme::set_display_mode(config.display_mode);
+
         let mut tm = TournamentManager::new(config.game.clone());
         tm.start_clock(Instant::now());
 

@@ -260,7 +260,6 @@ impl DisplayMode {
 /// change-only-on-tap semantics makes this ambient value safe.
 static ACTIVE_DISPLAY_MODE: AtomicU8 = AtomicU8::new(DisplayMode::Light as u8);
 
-#[allow(dead_code)]
 pub fn set_display_mode(mode: DisplayMode) {
     ACTIVE_DISPLAY_MODE.store(mode as u8, Ordering::Relaxed);
 }

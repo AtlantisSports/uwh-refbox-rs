@@ -88,7 +88,7 @@ pub(super) fn make_scroll_list<'a, const LIST_LEN: usize>(
     };
 
     let scroll_btn_style =
-        if cont_style(&Theme::default()).background == Some(Background::Color(BLUE)) {
+        if cont_style(&Theme::default()).background == Some(Background::Color(blue())) {
             blue_with_border_button
         } else {
             blue_button
@@ -326,9 +326,9 @@ pub(super) fn make_health_tile<'a>(
     let dot_size = tile_size * HEALTH_DOT_SIZE / HEALTH_TILE_SIZE;
 
     let dot_color = match state.health {
-        HealthState::Green => GREEN,
-        HealthState::Yellow => YELLOW,
-        HealthState::Red => RED,
+        HealthState::Green => green(),
+        HealthState::Yellow => yellow(),
+        HealthState::Red => red(),
     };
 
     let dot_style = move |_theme: &Theme| ContainerStyle {

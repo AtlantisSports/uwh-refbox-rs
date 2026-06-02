@@ -40,6 +40,7 @@ mod beep_test;
 mod penalty_editor;
 mod portal_manager;
 mod sim_app;
+mod sim_frame;
 mod sound_controller;
 mod tournament_manager;
 

@@ -228,6 +228,8 @@ pub struct Config {
     pub language: Option<Language>,
     #[serde(default)]
     pub display_mode: crate::app::theme::DisplayMode,
+    #[serde(default)]
+    pub front_display_layout: crate::sim_frame::FrontDisplayLayout,
 }
 
 impl Config {
@@ -245,6 +247,7 @@ impl Config {
             mut sound,
             language,
             display_mode,
+            front_display_layout,
         } = Default::default();
 
         if let Some(old_mode) = old.get("mode") {
@@ -300,6 +303,7 @@ impl Config {
             sound,
             language,
             display_mode,
+            front_display_layout,
         }
     }
 }

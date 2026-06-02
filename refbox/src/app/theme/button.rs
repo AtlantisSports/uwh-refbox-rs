@@ -1,13 +1,32 @@
 use super::{
-    BORDER_RADIUS, BORDER_WIDTH, black, black_pressed, blue, blue_pressed, border_color,
-    disabled_color, gray, gray_pressed, green, green_pressed, light_gray, light_gray_pressed,
-    orange, orange_pressed, red, red_pressed, white, white_pressed, window_background, yellow,
-    yellow_pressed,
+    BORDER_RADIUS, BORDER_WIDTH, DisplayMode, HC_DARK_GREY, black, black_pressed, blue,
+    blue_pressed, border_color, disabled_color, display_mode, gray, gray_pressed, green,
+    green_pressed, light_gray, light_gray_pressed, orange, orange_pressed, red, red_pressed, white,
+    white_pressed, window_background, yellow, yellow_pressed,
 };
 use iced::{
-    Background, Border, Shadow, Theme,
+    Background, Border, Color, Shadow, Theme,
     widget::button::{Status, Style},
 };
+
+/// In High Contrast only, restyle a filled button as an outline: dark `hc_fill`,
+/// the `accent` colour on the border + text, an always-visible `BORDER_WIDTH`
+/// border, and no hover/pressed darkening. Disabled buttons are left untouched.
+/// In Light/Dark the style is returned unchanged.
+fn outline_in_high_contrast(
+    mut style: Style,
+    accent: Color,
+    hc_fill: Color,
+    status: Status,
+) -> Style {
+    if display_mode() == DisplayMode::HighContrast && !matches!(status, Status::Disabled) {
+        style.background = Some(Background::Color(hc_fill));
+        style.text_color = accent;
+        style.border.color = accent;
+        style.border.width = BORDER_WIDTH;
+    }
+    style
+}
 
 pub fn gray_button(_theme: &Theme, status: Status) -> Style {
     let background = match status {
@@ -38,12 +57,13 @@ pub fn gray_button(_theme: &Theme, status: Status) -> Style {
         radius: BORDER_RADIUS,
     };
 
-    Style {
+    let style = Style {
         background,
         text_color,
         border,
         shadow: Shadow::default(),
-    }
+    };
+    outline_in_high_contrast(style, white(), black(), status)
 }
 
 pub fn light_gray_button(theme: &Theme, status: Status) -> Style {
@@ -53,10 +73,11 @@ pub fn light_gray_button(theme: &Theme, status: Status) -> Style {
         Status::Active | Status::Hovered => Some(Background::Color(light_gray())),
     };
 
-    Style {
+    let style = Style {
         background,
         ..gray_button(theme, status)
-    }
+    };
+    outline_in_high_contrast(style, light_gray(), black(), status)
 }
 
 pub fn light_gray_selected_button(theme: &Theme, status: Status) -> Style {
@@ -72,10 +93,11 @@ pub fn white_button(theme: &Theme, status: Status) -> Style {
         Status::Active | Status::Hovered => Some(Background::Color(white())),
     };
 
-    Style {
+    let style = Style {
         background,
         ..gray_button(theme, status)
-    }
+    };
+    outline_in_high_contrast(style, white(), HC_DARK_GREY, status)
 }
 
 pub fn white_selected_button(theme: &Theme, status: Status) -> Style {
@@ -97,11 +119,12 @@ pub fn black_button(theme: &Theme, status: Status) -> Style {
         white()
     };
 
-    Style {
+    let style = Style {
         background,
         text_color,
         ..gray_button(theme, status)
-    }
+    };
+    outline_in_high_contrast(style, white(), black(), status)
 }
 
 pub fn black_selected_button(theme: &Theme, status: Status) -> Style {
@@ -117,10 +140,11 @@ pub fn red_button(theme: &Theme, status: Status) -> Style {
         Status::Active | Status::Hovered => Some(Background::Color(red())),
     };
 
-    Style {
+    let style = Style {
         background,
         ..gray_button(theme, status)
-    }
+    };
+    outline_in_high_contrast(style, red(), black(), status)
 }
 
 pub fn red_selected_button(theme: &Theme, status: Status) -> Style {
@@ -136,10 +160,11 @@ pub fn orange_button(theme: &Theme, status: Status) -> Style {
         Status::Active | Status::Hovered => Some(Background::Color(orange())),
     };
 
-    Style {
+    let style = Style {
         background,
         ..gray_button(theme, status)
-    }
+    };
+    outline_in_high_contrast(style, orange(), black(), status)
 }
 
 pub fn orange_selected_button(theme: &Theme, status: Status) -> Style {
@@ -155,10 +180,11 @@ pub fn yellow_button(theme: &Theme, status: Status) -> Style {
         Status::Active | Status::Hovered => Some(Background::Color(yellow())),
     };
 
-    Style {
+    let style = Style {
         background,
         ..gray_button(theme, status)
-    }
+    };
+    outline_in_high_contrast(style, yellow(), black(), status)
 }
 
 pub fn yellow_selected_button(theme: &Theme, status: Status) -> Style {
@@ -174,10 +200,11 @@ pub fn green_button(theme: &Theme, status: Status) -> Style {
         Status::Active | Status::Hovered => Some(Background::Color(green())),
     };
 
-    Style {
+    let style = Style {
         background,
         ..gray_button(theme, status)
-    }
+    };
+    outline_in_high_contrast(style, green(), black(), status)
 }
 
 pub fn green_selected_button(theme: &Theme, status: Status) -> Style {
@@ -199,11 +226,12 @@ pub fn blue_button(theme: &Theme, status: Status) -> Style {
         white()
     };
 
-    Style {
+    let style = Style {
         background,
         text_color,
         ..gray_button(theme, status)
-    }
+    };
+    outline_in_high_contrast(style, blue(), black(), status)
 }
 
 pub fn blue_selected_button(theme: &Theme, status: Status) -> Style {
@@ -217,6 +245,54 @@ pub fn blue_with_border_button(theme: &Theme, status: Status) -> Style {
     style.border.width = BORDER_WIDTH;
     style.border.color = gray();
     style
+}
+
+#[cfg(test)]
+mod high_contrast_tests {
+    use super::*;
+    use crate::app::theme::{
+        BORDER_WIDTH, DisplayMode, HC_DARK_GREY, black, red, set_display_mode, white,
+        window_background,
+    };
+    use iced::widget::button::Status;
+    use iced::{Background, Theme};
+
+    #[test]
+    fn high_contrast_red_button_is_outlined() {
+        set_display_mode(DisplayMode::HighContrast);
+        let s = red_button(&Theme::default(), Status::Active);
+        assert_eq!(s.background, Some(Background::Color(black())));
+        assert_eq!(s.text_color, red());
+        assert_eq!(s.border.color, red());
+        assert_eq!(s.border.width, BORDER_WIDTH);
+        set_display_mode(DisplayMode::Light);
+    }
+
+    #[test]
+    fn high_contrast_white_button_uses_dark_grey_fill() {
+        set_display_mode(DisplayMode::HighContrast);
+        let s = white_button(&Theme::default(), Status::Active);
+        assert_eq!(s.background, Some(Background::Color(HC_DARK_GREY)));
+        assert_eq!(s.text_color, white());
+        assert_eq!(s.border.color, white());
+        set_display_mode(DisplayMode::Light);
+    }
+
+    #[test]
+    fn high_contrast_disabled_button_is_not_outlined() {
+        set_display_mode(DisplayMode::HighContrast);
+        let s = blue_button(&Theme::default(), Status::Disabled);
+        assert_eq!(s.background, Some(Background::Color(window_background())));
+        set_display_mode(DisplayMode::Light);
+    }
+
+    #[test]
+    fn light_mode_red_button_unchanged() {
+        set_display_mode(DisplayMode::Light);
+        let s = red_button(&Theme::default(), Status::Active);
+        assert_eq!(s.background, Some(Background::Color(red())));
+        assert_eq!(s.border.width, 0.0);
+    }
 }
 
 // impl button::Catalog for Theme {

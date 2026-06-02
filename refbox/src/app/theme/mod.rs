@@ -201,6 +201,10 @@ pub const DARK_PALETTE: Palette = make_palette(
     rgb8(45, 45, 45),    // window_background
 );
 
+/// Dark grey used only in High Contrast: the white-team button/panel fill and
+/// neutral panel borders (web `refbox-theme.scss` uses rgb(64,64,64) here).
+pub const HC_DARK_GREY: Color = rgb8(64, 64, 64);
+
 /// High Contrast = neon palette. Values copied from web `refbox-theme.scss`
 /// `[data-refbox-theme='high-contrast']`.
 pub const HIGH_CONTRAST_PALETTE: Palette = make_palette(

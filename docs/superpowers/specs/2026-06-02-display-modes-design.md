@@ -279,3 +279,32 @@ against the near-black screen. Light/Dark unchanged.
 In High Contrast: every button shows a dark fill with a coloured outline and
 matching coloured text (no solid neon fills); panels/tables show dark fills with
 visible borders; Light and Dark look exactly as before. `just check` green.
+
+### Refinements (post-walkthrough, 2026-06-02)
+
+Manual High-Contrast review surfaced three appearance fixes:
+
+1. **Disabled white vs disabled black were indistinguishable.** The outline
+   transform skips disabled buttons, so both fell back to the same near-black
+   disabled fill. Fix: in High Contrast the **white** button uses a distinct
+   mid-grey disabled fill, `HC_WHITE_DISABLED = rgb8(40, 40, 40)` (between the
+   white button's `HC_DARK_GREY` fill and the near-black disabled fill), so
+   disabled-white reads differently from disabled-black.
+
+2. **Default/body text was invisible in High Contrast.** The app's
+   application-level default text colour was `black()`, which is pure black in
+   High Contrast — so any text relying on the default colour (the game-info
+   config block, the time-edit digits) rendered black on the near-black
+   background. Fix: `RefBoxApp::application_style` resolves its `text_color` to
+   **`white()` in High Contrast** and `black()` otherwise. Light/Dark unchanged.
+
+3. **The light-gray buttons looked disabled.** Their High-Contrast accent was
+   `light_gray()` (dim grey). Fix: give the light-gray button the **same
+   `white()` outline + text as the black button** in High Contrast. This is a
+   deliberate, user-approved deviation from the web (which keeps `lightGray`
+   dim), because these are the primary menu/option tiles and must read as
+   active.
+
+These touch `theme/mod.rs` (one new `HC_WHITE_DISABLED` const), `theme/button.rs`
+(white-disabled fill + light-gray accent), and `app/mod.rs` (`application_style`
+text colour). Light and Dark remain byte-identical.

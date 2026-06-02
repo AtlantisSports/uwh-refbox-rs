@@ -4003,8 +4003,8 @@ impl RefBoxApp {
 
     pub fn application_style(&self, _theme: &Theme) -> Appearance {
         Appearance {
-            background_color: WINDOW_BACKGROUND,
-            text_color: BLACK,
+            background_color: window_background(),
+            text_color: black(),
         }
     }
 }

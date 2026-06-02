@@ -16,6 +16,10 @@ fn outline_container_in_high_contrast(
         style.background = fill;
         style.border.color = accent;
         style.border.width = BORDER_WIDTH;
+        // Panels carry a dark fill in High Contrast, so any text that inherits
+        // the container colour (e.g. the time-edit digits, keypad labels) must
+        // be light to stay visible.
+        style.text_color = Some(white());
     }
     style
 }
@@ -154,7 +158,7 @@ pub fn transparent_container(theme: &Theme) -> Style {
 mod high_contrast_container_tests {
     use super::*;
     use crate::app::theme::{
-        BORDER_WIDTH, DisplayMode, HC_DARK_GREY, black, gray, red, set_display_mode,
+        BORDER_WIDTH, DisplayMode, HC_DARK_GREY, black, gray, red, set_display_mode, white,
         window_background, yellow,
     };
     use iced::{Background, Theme};
@@ -182,6 +186,8 @@ mod high_contrast_container_tests {
         assert_eq!(s.background, Some(Background::Color(window_background())));
         assert_eq!(s.border.color, HC_DARK_GREY);
         assert_eq!(s.border.width, BORDER_WIDTH);
+        // Inherited panel text must be light so nested labels/digits stay visible.
+        assert_eq!(s.text_color, Some(white()));
         set_display_mode(DisplayMode::Light);
     }
 

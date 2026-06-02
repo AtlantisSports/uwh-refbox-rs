@@ -308,3 +308,14 @@ Manual High-Contrast review surfaced three appearance fixes:
 These touch `theme/mod.rs` (one new `HC_WHITE_DISABLED` const), `theme/button.rs`
 (white-disabled fill + light-gray accent), and `app/mod.rs` (`application_style`
 text colour). Light and Dark remain byte-identical.
+
+4. **Container-inherited and explicit dark text were still invisible.** Setting
+   the app *default* text colour was not enough: text that inherits a
+   **container's** `text_color` (the time-edit "GAME TIME" digits, the keypad
+   "PLAYER NUMBER:" label and entered value — all inside `light_gray_container`)
+   and text using the explicit **`black_text`** style (timeout/penalty labels)
+   stayed `black()`. Fix, both inverting dark→light only in High Contrast:
+   - `outline_container_in_high_contrast` also sets `text_color = Some(white())`,
+     so any text inheriting a transformed panel's colour is visible.
+   - `black_text()` resolves to `white()` in High Contrast (`black()` otherwise).
+   Touches `theme/container.rs` and `theme/text.rs`. Light/Dark unchanged.

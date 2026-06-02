@@ -205,6 +205,11 @@ pub const DARK_PALETTE: Palette = make_palette(
 /// neutral panel borders (web `refbox-theme.scss` uses rgb(64,64,64) here).
 pub const HC_DARK_GREY: Color = rgb8(64, 64, 64);
 
+/// High-Contrast disabled-white button fill: mid-grey between HC_DARK_GREY and
+/// the near-black disabled fill, so a disabled white button is distinguishable
+/// from a disabled black one.
+pub const HC_WHITE_DISABLED: Color = rgb8(40, 40, 40);
+
 /// High Contrast = neon palette. Values copied from web `refbox-theme.scss`
 /// `[data-refbox-theme='high-contrast']`.
 pub const HIGH_CONTRAST_PALETTE: Palette = make_palette(

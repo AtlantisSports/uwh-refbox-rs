@@ -1,8 +1,8 @@
 use super::{
-    BORDER_RADIUS, BORDER_WIDTH, DisplayMode, HC_DARK_GREY, black, black_pressed, blue,
-    blue_pressed, border_color, disabled_color, display_mode, gray, gray_pressed, green,
-    green_pressed, light_gray, light_gray_pressed, orange, orange_pressed, red, red_pressed, white,
-    white_pressed, window_background, yellow, yellow_pressed,
+    BORDER_RADIUS, BORDER_WIDTH, DisplayMode, HC_DARK_GREY, HC_WHITE_DISABLED, black,
+    black_pressed, blue, blue_pressed, border_color, disabled_color, display_mode, gray,
+    gray_pressed, green, green_pressed, light_gray, light_gray_pressed, orange, orange_pressed,
+    red, red_pressed, white, white_pressed, window_background, yellow, yellow_pressed,
 };
 use iced::{
     Background, Border, Color, Shadow, Theme,
@@ -77,7 +77,7 @@ pub fn light_gray_button(theme: &Theme, status: Status) -> Style {
         background,
         ..gray_button(theme, status)
     };
-    outline_in_high_contrast(style, light_gray(), black(), status)
+    outline_in_high_contrast(style, white(), black(), status)
 }
 
 pub fn light_gray_selected_button(theme: &Theme, status: Status) -> Style {
@@ -88,7 +88,13 @@ pub fn light_gray_selected_button(theme: &Theme, status: Status) -> Style {
 
 pub fn white_button(theme: &Theme, status: Status) -> Style {
     let background = match status {
-        Status::Disabled => Some(Background::Color(window_background())),
+        Status::Disabled => Some(Background::Color(
+            if display_mode() == DisplayMode::HighContrast {
+                HC_WHITE_DISABLED
+            } else {
+                window_background()
+            },
+        )),
         Status::Pressed => Some(Background::Color(white_pressed())),
         Status::Active | Status::Hovered => Some(Background::Color(white())),
     };
@@ -251,8 +257,8 @@ pub fn blue_with_border_button(theme: &Theme, status: Status) -> Style {
 mod high_contrast_tests {
     use super::*;
     use crate::app::theme::{
-        BORDER_WIDTH, DisplayMode, HC_DARK_GREY, black, red, set_display_mode, white,
-        window_background,
+        BORDER_WIDTH, DisplayMode, HC_DARK_GREY, HC_WHITE_DISABLED, black, light_gray_button, red,
+        set_display_mode, white, window_background,
     };
     use iced::widget::button::Status;
     use iced::{Background, Theme};
@@ -304,6 +310,30 @@ mod high_contrast_tests {
         let s = red_button(&Theme::default(), Status::Active);
         assert_eq!(s.background, Some(Background::Color(red())));
         assert_eq!(s.border.width, 0.0);
+    }
+
+    #[test]
+    fn high_contrast_light_gray_button_uses_white_accent() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        set_display_mode(DisplayMode::HighContrast);
+        let s = light_gray_button(&Theme::default(), Status::Active);
+        assert_eq!(s.background, Some(Background::Color(black())));
+        assert_eq!(s.text_color, white());
+        assert_eq!(s.border.color, white());
+        set_display_mode(DisplayMode::Light);
+    }
+
+    #[test]
+    fn high_contrast_disabled_white_button_has_distinct_fill() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        set_display_mode(DisplayMode::HighContrast);
+        let s = white_button(&Theme::default(), Status::Disabled);
+        assert_eq!(s.background, Some(Background::Color(HC_WHITE_DISABLED)));
+        set_display_mode(DisplayMode::Light);
     }
 }
 

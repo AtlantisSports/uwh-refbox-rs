@@ -2264,6 +2264,13 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 task
             }
+            Message::CycleDisplayMode => {
+                let next = self.config.display_mode.next();
+                self.config.display_mode = next;
+                crate::app::theme::set_display_mode(next);
+                self.persist_config();
+                Task::none()
+            }
             Message::ChangeConfigPage(new_page) => {
                 if let AppState::EditGameConfig(ref mut page) = self.app_state {
                     if new_page == ConfigPage::Language {

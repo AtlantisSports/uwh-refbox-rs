@@ -14,7 +14,6 @@ pub enum FrontDisplayLayout {
     ScoresOnly,
 }
 
-#[allow(dead_code)] // dead_code allow is interim; removed once the server/simulator wire this up
 impl FrontDisplayLayout {
     /// Cycle order for the picker (wraps).
     pub const fn next(self) -> Self {
@@ -58,7 +57,6 @@ pub struct SimFrame {
     pub data: TransmittedData,
 }
 
-#[allow(dead_code)] // dead_code allow is interim; removed once the server/simulator wire this up
 impl SimFrame {
     pub const ENCODED_LEN: usize = TransmittedData::ENCODED_LEN + 1;
 

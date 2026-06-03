@@ -6,40 +6,24 @@ use iced::{
 use iced_core::text::{LineHeight, Shaping};
 use iced_graphics::geometry::Text;
 use matrix_drawing::{secs_to_time_string, transmitted_data::TransmittedData};
-use uwh_common::game_snapshot::{GamePeriod, TimeoutSnapshot};
+use uwh_common::game_snapshot::TimeoutSnapshot;
 
 const BG: Color = Color::BLACK;
 const CLOCK_YELLOW: Color = Color::from_rgb(1.0, 1.0, 0.0);
 const WHITE_BOX: Color = Color::WHITE;
 const BLACK_BOX: Color = Color::from_rgb(0.05, 0.05, 0.05);
 const BLACK_BOX_OUTLINE: Color = Color::from_rgb(0.5, 0.5, 0.5);
-const GREEN: Color = Color::from_rgb(0.0, 0.6, 0.0);
-const YELLOW: Color = Color::from_rgb(0.8, 0.7, 0.0);
-const RED: Color = Color::from_rgb(0.8, 0.0, 0.0);
-
-fn period_color(p: GamePeriod) -> Color {
-    match p {
-        GamePeriod::FirstHalf
-        | GamePeriod::SecondHalf
-        | GamePeriod::OvertimeFirstHalf
-        | GamePeriod::OvertimeSecondHalf => GREEN,
-        GamePeriod::SuddenDeath => RED,
-        _ => YELLOW,
-    }
-}
-
-/// The centre badge content: a timeout type label (during a timeout) or the
-/// current period name, plus the colour to render it in.
-fn badge(data: &TransmittedData) -> (String, Color) {
+/// The centre game-state text: a timeout type label during a timeout, otherwise
+/// the current period name (uppercased). Always rendered in yellow by callers
+/// (the new layouts use a single yellow throughout; the Default panel keeps its
+/// own colours unchanged).
+fn badge_text(data: &TransmittedData) -> String {
     match data.snapshot.timeout {
-        Some(TimeoutSnapshot::White(_)) => ("WHITE T/O".to_string(), YELLOW),
-        Some(TimeoutSnapshot::Black(_)) => ("BLACK T/O".to_string(), YELLOW),
-        Some(TimeoutSnapshot::Ref(_)) => ("REF T/O".to_string(), YELLOW),
-        Some(TimeoutSnapshot::PenaltyShot(_)) => ("PENALTY SHOT".to_string(), RED),
-        None => (
-            data.snapshot.current_period.to_string().to_uppercase(),
-            period_color(data.snapshot.current_period),
-        ),
+        Some(TimeoutSnapshot::White(_)) => "WHITE T/O".to_string(),
+        Some(TimeoutSnapshot::Black(_)) => "BLACK T/O".to_string(),
+        Some(TimeoutSnapshot::Ref(_)) => "REF T/O".to_string(),
+        Some(TimeoutSnapshot::PenaltyShot(_)) => "PENALTY SHOT".to_string(),
+        None => data.snapshot.current_period.to_string().to_uppercase(),
     }
 }
 
@@ -104,7 +88,8 @@ fn draw_team_block(
     frame.fill_rectangle(Point::new(x, y), Size::new(box_w, box_h), Fill::from(fill));
 
     if !is_white {
-        let t = 3.0;
+        // Outline thickness scales with the box so it reads at any window size.
+        let t = (box_h * 0.02).max(2.0);
         frame.fill_rectangle(
             Point::new(x, y),
             Size::new(box_w, t),
@@ -128,39 +113,42 @@ fn draw_team_block(
     }
 
     let score_color = if is_white { Color::BLACK } else { Color::WHITE };
+    // Size so a two-digit score (10-99) always fits the fixed box width; single
+    // digits render at the same size, centred. The width cap (0.68 * box_w)
+    // leaves margin for two Roboto digits inside the box.
+    let score_size = (box_h * 0.8).min(box_w * 0.68);
     frame.fill_text(label(
         score.to_string(),
         x + box_w / 2.0,
         y + box_h / 2.0,
-        box_h * 0.8,
+        score_size,
         score_color,
         Horizontal::Center,
     ));
 }
 
-/// Draw the centre badge pill (period or timeout label) with white text.
+/// Draw the centre game-state label (period name, or timeout type) as borderless
+/// yellow text — no filled pill — matching the Big Time layout. The font shrinks
+/// if the text would exceed `max_w` (the room before the score boxes).
 fn draw_badge(
     frame: &mut Frame,
     cx: f32,
     cy: f32,
-    badge_w: f32,
+    max_w: f32,
     badge_h: f32,
     data: &TransmittedData,
 ) {
-    let (badge_text, badge_color) = badge(data);
-    frame.fill_rectangle(
-        Point::new(cx - badge_w / 2.0, cy - badge_h / 2.0),
-        Size::new(badge_w, badge_h),
-        Fill::from(badge_color),
-    );
-    frame.fill_text(label(
-        badge_text,
-        cx,
-        cy,
-        badge_h * 0.5,
-        Color::WHITE,
-        Horizontal::Center,
-    ));
+    const CHAR_W: f32 = 0.66; // approx Roboto uppercase advance per char, in em
+    let text = badge_text(data);
+    let chars = text.chars().count() as f32;
+
+    let mut font = badge_h * 0.6;
+    let needed = chars * font * CHAR_W;
+    if needed > max_w {
+        font *= max_w / needed;
+    }
+
+    frame.fill_text(label(text, cx, cy, font, CLOCK_YELLOW, Horizontal::Center));
 }
 
 pub fn draw_classic(frame: &mut Frame, bounds: Size, data: &TransmittedData) {
@@ -229,21 +217,25 @@ pub fn draw_classic(frame: &mut Frame, bounds: Size, data: &TransmittedData) {
     }
 
     let cx = w / 2.0;
-    let badge_w = w * 0.30;
     let badge_h = h * 0.12;
+    // Room between the two score boxes for the game-state text.
+    let badge_max_w = w * 0.46;
     draw_badge(
         frame,
         cx,
         box_y - h * 0.02 + badge_h / 2.0,
-        badge_w,
+        badge_max_w,
         badge_h,
         data,
     );
+    // Cap the clock by width so it never overruns into the score boxes at wide /
+    // full-screen aspect ratios (height alone makes it too wide there).
+    let clock_size = (h * 0.34).min(w * 0.16);
     frame.fill_text(label(
         clock_string(data),
         cx,
         h * 0.62,
-        h * 0.34,
+        clock_size,
         CLOCK_YELLOW,
         Horizontal::Center,
     ));
@@ -253,22 +245,21 @@ pub fn draw_big_time(frame: &mut Frame, bounds: Size, data: &TransmittedData) {
     let (w, h) = (bounds.width, bounds.height);
     frame.fill_rectangle(Point::ORIGIN, bounds, Fill::from(BG));
 
-    if data.snapshot.timeout.is_some() {
-        let (badge_text, badge_color) = badge(data);
-        frame.fill_text(label(
-            badge_text,
-            w / 2.0,
-            h * 0.18,
-            h * 0.08,
-            badge_color,
-            Horizontal::Center,
-        ));
-    }
+    // Always show the game state across the top: the period name, or the
+    // timeout type ("WHITE T/O", "PENALTY SHOT", …) while a timeout runs.
+    frame.fill_text(label(
+        badge_text(data),
+        w / 2.0,
+        h * 0.12,
+        h * 0.09,
+        CLOCK_YELLOW,
+        Horizontal::Center,
+    ));
 
     frame.fill_text(label(
         clock_string(data),
         w / 2.0,
-        h / 2.0,
+        h * 0.56,
         h * 0.6,
         CLOCK_YELLOW,
         Horizontal::Center,
@@ -282,11 +273,13 @@ pub fn draw_corners(frame: &mut Frame, bounds: Size, data: &TransmittedData) {
     let white_left = !data.white_on_right;
     let box_w = w * 0.14;
     let box_h = h * 0.30;
-    let box_y = h * 0.06;
+    // Pushed down from the very top so the team labels above the boxes are not
+    // clipped off the top edge.
+    let box_y = h * 0.13;
     let left_x = w * 0.03;
     let right_x = w - box_w - w * 0.03;
     let label_size = h * 0.06;
-    let label_gap = h * 0.05;
+    let label_gap = h * 0.06;
 
     if white_left {
         draw_team_block(
@@ -341,9 +334,10 @@ pub fn draw_corners(frame: &mut Frame, bounds: Size, data: &TransmittedData) {
     }
 
     let cx = w / 2.0;
-    let badge_w = w * 0.30;
     let badge_h = h * 0.12;
-    draw_badge(frame, cx, h * 0.30, badge_w, badge_h, data);
+    // Corner score boxes sit at the edges, so the centre has generous room.
+    let badge_max_w = w * 0.60;
+    draw_badge(frame, cx, h * 0.30, badge_max_w, badge_h, data);
     frame.fill_text(label(
         clock_string(data),
         cx,
@@ -359,11 +353,13 @@ pub fn draw_scores_only(frame: &mut Frame, bounds: Size, data: &TransmittedData)
     frame.fill_rectangle(Point::ORIGIN, bounds, Fill::from(BG));
 
     let white_left = !data.white_on_right;
-    let box_w = w * 0.26;
-    let box_h = h * 0.5;
+    // Large fixed-size boxes (room for two digits) that fill most of the screen,
+    // with a margin from the edges and a gap between them.
+    let box_w = w * 0.42;
+    let box_h = h * 0.78;
     let box_y = (h - box_h) / 2.0;
-    let left_x = w * 0.08;
-    let right_x = w - box_w - w * 0.08;
+    let left_x = w * 0.05;
+    let right_x = w - box_w - w * 0.05;
 
     if white_left {
         draw_team_block(

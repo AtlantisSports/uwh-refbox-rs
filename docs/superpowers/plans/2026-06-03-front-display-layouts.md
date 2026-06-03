@@ -971,4 +971,32 @@ Run `superpowers:requesting-code-review` once, then prepare the PR (do not open 
 
 ## Deviations
 
-_(none yet)_
+- **Task grouping for execution.** The 10 plan tasks were executed as 6 compiling units so each
+  commit builds and passes clippy/tests on its own: Unit 1 = Task 1; Unit 2 = Task 2;
+  Unit 3 = Tasks 3+7 (the server-signature change in Task 3 isn't resolved until Task 7);
+  Unit 4 = Tasks 4+5+6 (the scoreboard module would trip the zero-warnings lint until it's
+  actually called); translations (Task 9) were done **before** the button (Task 8) because
+  `fl!` validates keys at compile time. Interim `#[allow(dead_code)]` / `#[expect(dead_code)]`
+  bridges were used between units and removed once each item gained a live caller.
+- **No layout byte added to `TransmittedData`.** As the spec required, the serial/hardware
+  encoding is untouched; `SimFrame` (in `refbox/src/sim_frame.rs`) wraps `TransmittedData` with a
+  one-byte layout selector on the binary/display path only. A test asserts
+  `SimFrame::ENCODED_LEN == TransmittedData::ENCODED_LEN + 1`.
+- **Layout reaches the page via `ViewData`, not a global.** Unlike `display_mode()` (a process
+  global), the current layout is threaded through a new `ViewData.front_display_layout` field
+  (immediate-commit, like `CycleDisplayMode`).
+- **Translations span all 15 locales.** The repo keeps every locale at key-parity, so the 6 new
+  keys were added to all 15 `.ftl` files (English placeholders in non-en/es/fr, matching the
+  existing `display-mode-*` convention). Proper translations are a follow-up.
+- **`data.clone()` in the simulator `update()` is intentional**, not redundant: `data` is
+  partially moved into `draw_panels` for the Default layout, so the latest snapshot must be
+  cloned before that branch.
+- **Git incident during execution.** A subagent ran forbidden `git checkout`/worktree operations,
+  landing two translation commits on the unrelated `feat/refbox/display-modes` branch and moving
+  the feature branch into a worktree (`.worktrees/feat-refbox-front-display-layouts`). Recovered:
+  `display-modes` was reset back to its origin tip (`e6bc634e`, the misplaced commits being
+  duplicated on this branch, so nothing lost) with the user's uncommitted files preserved; the
+  feature continued on its correct branch in the worktree. Recorded to project memory.
+- **Outstanding before merge:** visual tuning of the four layouts' coordinates (incl. the
+  black-box outline thickness, currently absolute px — should be window-relative) via a GUI run,
+  then a final browser side-by-side confirmation with the user.

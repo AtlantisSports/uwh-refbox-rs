@@ -25,6 +25,10 @@ use display_simulator::*;
 mod sunlight_display;
 use sunlight_display::*;
 
+mod scoreboard;
+
+use crate::sim_frame::{FrontDisplayLayout, SimFrame};
+
 use crate::app::theme::{BLACK, WHITE};
 
 const WIDTH: usize = 256;
@@ -47,7 +51,7 @@ pub fn sunlight_window_size(matrix_scale: f32) -> Size {
 
 #[derive(Clone, Debug)]
 pub enum Message {
-    NewSnapshot(TransmittedData),
+    NewSnapshot(SimFrame),
     Stop,
 }
 
@@ -60,6 +64,8 @@ enum DisplaySim {
 #[derive(Debug)]
 pub struct SimRefBoxApp {
     buffer: Rc<Mutex<DisplaySim>>,
+    layout: Rc<Mutex<FrontDisplayLayout>>,
+    latest: Rc<Mutex<Option<TransmittedData>>>,
     cache: Cache,
 }
 
@@ -87,6 +93,8 @@ impl SimRefBoxApp {
         (
             Self {
                 buffer: Rc::new(Mutex::new(buffer)),
+                layout: Rc::new(Mutex::new(FrontDisplayLayout::Default)),
+                latest: Rc::new(Mutex::new(None)),
                 cache: Cache::new(),
             },
             Task::none(),
@@ -100,19 +108,29 @@ impl SimRefBoxApp {
     pub(super) fn update(&mut self, message: Message) -> Task<Message> {
         trace!("Handling message: {message:?}");
         match message {
-            Message::NewSnapshot(data) => {
+            Message::NewSnapshot(frame) => {
+                let SimFrame { layout, data } = frame;
+                *self.layout.lock().unwrap() = layout;
+                *self.latest.lock().unwrap() = Some(data.clone());
+
                 let mut buffer = self.buffer.lock().unwrap();
                 match *buffer {
                     DisplaySim::Matrix(ref mut buffer) => {
-                        buffer.clear_buffer();
-                        draw_panels::<DisplayBuffer<WIDTH, HEIGHT>>(
-                            &mut *buffer,
-                            data.snapshot,
-                            data.white_on_right,
-                            data.flash,
-                            data.beep_test,
-                        )
-                        .unwrap();
+                        // The Default layout mirrors the physical LED panel, so
+                        // it is rendered into the matrix buffer here. The other
+                        // layouts are full-screen scoreboards drawn directly in
+                        // `draw()` from `self.latest`, so nothing to do here.
+                        if layout == FrontDisplayLayout::Default {
+                            buffer.clear_buffer();
+                            draw_panels::<DisplayBuffer<WIDTH, HEIGHT>>(
+                                &mut *buffer,
+                                data.snapshot,
+                                data.white_on_right,
+                                data.flash,
+                                data.beep_test,
+                            )
+                            .unwrap();
+                        }
                     }
                     DisplaySim::Sunlight(ref mut state) => {
                         (*state, _) = DisplayState::from_transmitted_data(&data);
@@ -152,11 +170,38 @@ impl<Message> Program<Message> for SimRefBoxApp {
         _cursor: Cursor,
     ) -> Vec<Geometry> {
         let buffer_ = self.buffer.clone();
+        let layout_ = self.layout.clone();
+        let latest_ = self.latest.clone();
         let panel = self.cache.draw(renderer, bounds.size(), |frame| {
             let buffer = buffer_.lock().unwrap();
 
             match *buffer {
                 DisplaySim::Matrix(ref buffer) => {
+                    let layout = *layout_.lock().unwrap();
+                    if layout != FrontDisplayLayout::Default {
+                        // Full-screen scoreboard layouts ignore the matrix
+                        // buffer and draw directly from the latest snapshot.
+                        if let Some(ref data) = *latest_.lock().unwrap() {
+                            let size = frame.size();
+                            match layout {
+                                FrontDisplayLayout::Classic => {
+                                    scoreboard::draw_classic(frame, size, data)
+                                }
+                                FrontDisplayLayout::BigTime => {
+                                    scoreboard::draw_big_time(frame, size, data)
+                                }
+                                FrontDisplayLayout::Corners => {
+                                    scoreboard::draw_corners(frame, size, data)
+                                }
+                                FrontDisplayLayout::ScoresOnly => {
+                                    scoreboard::draw_scores_only(frame, size, data)
+                                }
+                                FrontDisplayLayout::Default => {}
+                            }
+                        }
+                        return;
+                    }
+
                     let horiz_spacing = frame.width() / ((WIDTH * 5 + 1) as f32);
                     let vert_spacing = frame.height() / ((HEIGHT * 5 + 1) as f32);
                     let spacing = if horiz_spacing > vert_spacing {
@@ -251,7 +296,7 @@ fn snapshot_listener() -> impl futures_lite::Stream<Item = Message> {
                 // (coalescing — observed on Windows under BeepTest's 10 Hz
                 // send rate). `read_exact` over a buffer sized to exactly one
                 // frame waits for the right number of bytes before decoding.
-                let mut buffer = [0u8; TransmittedData::ENCODED_LEN];
+                let mut buffer = [0u8; SimFrame::ENCODED_LEN];
 
                 match stream.read_exact(&mut buffer).await {
                     Ok(_) => {}
@@ -268,7 +313,7 @@ fn snapshot_listener() -> impl futures_lite::Stream<Item = Message> {
                     }
                 }
 
-                let data = match TransmittedData::decode(&buffer) {
+                let frame = match SimFrame::decode(&buffer) {
                     Ok(val) => val,
                     Err(e) => {
                         warn!("Sim: Decoding error: {e:?}");
@@ -276,7 +321,7 @@ fn snapshot_listener() -> impl futures_lite::Stream<Item = Message> {
                     }
                 };
 
-                msg_tx.send(Message::NewSnapshot(data)).await.unwrap();
+                msg_tx.send(Message::NewSnapshot(frame)).await.unwrap();
             }
         }
     })

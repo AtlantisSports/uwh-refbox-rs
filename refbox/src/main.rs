@@ -341,6 +341,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         .subscription(sim_app::SimRefBoxApp::subscription)
         .window(window_settings)
         .style(sim_app::SimRefBoxApp::application_style)
+        .font(include_bytes!("../resources/Roboto-Medium.ttf").as_slice())
         .run_with(|| sim_app::SimRefBoxApp::new(flags))
         .map_err(|e| e.into());
     } else {

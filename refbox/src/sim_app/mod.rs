@@ -173,6 +173,9 @@ impl<Message> Program<Message> for SimRefBoxApp {
         let layout_ = self.layout.clone();
         let latest_ = self.latest.clone();
         let panel = self.cache.draw(renderer, bounds.size(), |frame| {
+            // `update()` and `draw()` take these locks in opposite orders, but both
+            // run on iced's single GUI thread (the state is `Rc`, never `Send`), so
+            // they are never held concurrently and cannot deadlock.
             let buffer = buffer_.lock().unwrap();
 
             match *buffer {

@@ -1,5 +1,6 @@
 use matrix_drawing::transmitted_data::TransmittedData;
 use serde::{Deserialize, Serialize};
+use uwh_common::game_snapshot::{DecodingError, EncodingError};
 
 /// Which front-display layout the player-facing display window renders.
 /// `Default` is the existing 256x64 LED-panel mirror; the others are
@@ -60,18 +61,14 @@ pub struct SimFrame {
 impl SimFrame {
     pub const ENCODED_LEN: usize = TransmittedData::ENCODED_LEN + 1;
 
-    pub fn encode(
-        &self,
-    ) -> Result<[u8; Self::ENCODED_LEN], uwh_common::game_snapshot::EncodingError> {
+    pub fn encode(&self) -> Result<[u8; Self::ENCODED_LEN], EncodingError> {
         let mut out = [0u8; Self::ENCODED_LEN];
         out[0] = self.layout.to_u8();
         out[1..].copy_from_slice(&self.data.encode()?);
         Ok(out)
     }
 
-    pub fn decode(
-        bytes: &[u8; Self::ENCODED_LEN],
-    ) -> Result<Self, uwh_common::game_snapshot::DecodingError> {
+    pub fn decode(bytes: &[u8; Self::ENCODED_LEN]) -> Result<Self, DecodingError> {
         let mut buf = [0u8; TransmittedData::ENCODED_LEN];
         buf.copy_from_slice(&bytes[1..]);
         Ok(Self {

@@ -2279,6 +2279,10 @@ impl RefBoxApp {
             Message::CycleFrontDisplayLayout => {
                 let next = self.config.front_display_layout.next();
                 self.config.front_display_layout = next;
+                // Sends on the same bounded channel as `send_snapshot`/`set_hide_time`:
+                // one message per button press from the GUI event loop, so the channel
+                // cannot be full; a Closed error means the update-server task is gone
+                // (application-fatal). Unwrapping matches those existing call sites.
                 self.update_sender.set_layout(next).unwrap();
                 self.persist_config();
                 Task::none()

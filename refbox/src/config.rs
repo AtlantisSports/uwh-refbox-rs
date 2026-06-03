@@ -480,6 +480,34 @@ mod test {
     }
 
     #[test]
+    fn config_missing_front_display_layout_defaults_to_default() {
+        // A config TOML written before this field existed must still load.
+        let toml_without_field = toml::to_string(&Config::default())
+            .unwrap()
+            .lines()
+            .filter(|l| !l.starts_with("front_display_layout"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let parsed: Config = toml::from_str(&toml_without_field).unwrap();
+        assert_eq!(
+            parsed.front_display_layout,
+            crate::sim_frame::FrontDisplayLayout::Default
+        );
+    }
+
+    #[test]
+    fn config_front_display_layout_round_trips() {
+        let mut config = Config::default();
+        config.front_display_layout = crate::sim_frame::FrontDisplayLayout::Corners;
+        let serialized = toml::to_string(&config).unwrap();
+        let deser: Config = toml::from_str(&serialized).unwrap();
+        assert_eq!(
+            deser.front_display_layout,
+            crate::sim_frame::FrontDisplayLayout::Corners
+        );
+    }
+
+    #[test]
     fn test_migrate_config() {
         let mut old: Table = Default::default();
         old.insert("mode".to_string(), toml::Value::String("Rugby".to_string()));

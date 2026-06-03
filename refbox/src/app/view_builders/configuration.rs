@@ -3,6 +3,7 @@ use crate::app::PageEntrySnapshot;
 use crate::app::languages::Language;
 use crate::config::{Level, Mode};
 use crate::portal_manager::PortalIndicatorState;
+use crate::sim_frame::FrontDisplayLayout;
 use crate::sound_controller::*;
 use collect_array::CollectArrayResult;
 use iced::{
@@ -258,7 +259,8 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
     } = data;
 
     // Param order convention: per-branch additions appended in chronological order
-    // — page_entry_snapshot (Unit 3) then portal_indicator (Unit 7) then has_led_panel (open-new-display gate).
+    // — page_entry_snapshot (Unit 3) then portal_indicator (Unit 7) then has_led_panel
+    //   (open-new-display gate) then front_display_layout (layout picker).
     match page {
         ConfigPage::Main => {
             make_main_config_page(snapshot, settings, mode, clock_running, portal_indicator)
@@ -904,10 +906,8 @@ fn make_display_config_page<'a>(
     page_entry_snapshot: Option<&PageEntrySnapshot>,
     portal_indicator: Option<PortalIndicatorState>,
     has_led_panel: bool,
-    front_display_layout: crate::sim_frame::FrontDisplayLayout,
+    front_display_layout: FrontDisplayLayout,
 ) -> Element<'a, Message> {
-    use crate::sim_frame::FrontDisplayLayout;
-
     let EditableSettings {
         white_on_right,
         hide_time,

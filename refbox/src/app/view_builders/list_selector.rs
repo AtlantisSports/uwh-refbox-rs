@@ -35,6 +35,7 @@ pub(in super::super) fn build_list_selector_page<'a>(
         teams,
         portal_indicator,
         has_led_panel: _,
+        ..
     } = data;
 
     let title = match param {

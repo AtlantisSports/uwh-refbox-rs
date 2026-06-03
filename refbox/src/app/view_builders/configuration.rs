@@ -253,6 +253,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
         clock_running,
         portal_indicator,
         has_led_panel,
+        front_display_layout,
         ..
     } = data;
 
@@ -287,6 +288,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
             page_entry_snapshot,
             portal_indicator,
             has_led_panel,
+            front_display_layout,
         ),
         ConfigPage::App => make_app_config_page(
             mode,
@@ -902,7 +904,10 @@ fn make_display_config_page<'a>(
     page_entry_snapshot: Option<&PageEntrySnapshot>,
     portal_indicator: Option<PortalIndicatorState>,
     has_led_panel: bool,
+    front_display_layout: crate::sim_frame::FrontDisplayLayout,
 ) -> Element<'a, Message> {
+    use crate::sim_frame::FrontDisplayLayout;
+
     let EditableSettings {
         white_on_right,
         hide_time,
@@ -972,6 +977,33 @@ fn make_display_config_page<'a>(
         .height(Length::Fill),
         row![
             {
+                // When a real LED panel is connected the layout picker is grayed
+                // out (no `on_press`) and its label is forced to DEFAULT, because
+                // the physical panel always renders the Default layout.
+                let effective_layout = if has_led_panel {
+                    FrontDisplayLayout::Default
+                } else {
+                    front_display_layout
+                };
+                let layout_label = match effective_layout {
+                    FrontDisplayLayout::Default => fl!("layout-default"),
+                    FrontDisplayLayout::Classic => fl!("layout-classic"),
+                    FrontDisplayLayout::BigTime => fl!("layout-big-time"),
+                    FrontDisplayLayout::Corners => fl!("layout-corners"),
+                    FrontDisplayLayout::ScoresOnly => fl!("layout-scores-only"),
+                };
+                make_value_button(
+                    fl!("front-display-layout"),
+                    layout_label,
+                    (false, true),
+                    if has_led_panel {
+                        None
+                    } else {
+                        Some(Message::CycleFrontDisplayLayout)
+                    },
+                )
+            },
+            {
                 // The button is grayed out (no `on_press`) when a real LED panel
                 // is connected (`--serial-port`). Opening a sim window in that
                 // configuration would compete with the physical display.
@@ -982,7 +1014,6 @@ fn make_display_config_page<'a>(
                     btn.on_press(Message::OpenNewDisplay)
                 }
             },
-            horizontal_space(),
         ]
         .spacing(SPACING)
         .height(Length::Fill),

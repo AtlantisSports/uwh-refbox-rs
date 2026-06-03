@@ -126,9 +126,6 @@ pub enum Message {
     CycleDisplayMode,
     /// Advance the front-display layout (Default -> Classic -> ...). Commits
     /// immediately, like CycleDisplayMode; not part of the Apply round-trip.
-    /// The UI button wiring is added in the next unit; keep dead_code quiet
-    /// until then.
-    #[expect(dead_code)]
     CycleFrontDisplayLayout,
     SelectLanguage(Language),
     LanguageSelectComplete {

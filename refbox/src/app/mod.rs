@@ -3726,6 +3726,7 @@ impl RefBoxApp {
                 None
             },
             has_led_panel: self.has_led_panel,
+            front_display_layout: self.config.front_display_layout,
         };
 
         let mut main_view = column![match self.app_state {

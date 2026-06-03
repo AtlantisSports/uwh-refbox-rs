@@ -60,6 +60,8 @@ fn label(content: String, x: f32, y: f32, size: f32, color: Color, h: Horizontal
 /// Draw one team block: a label centred above a filled score box with a large
 /// number inside. The BLACK box gets a thin outline so it reads against the
 /// black background. Shared by Classic / Corners / ScoresOnly.
+// Each parameter is an independent layout dimension with no natural grouping, so
+// a params struct would add noise without improving clarity.
 #[allow(clippy::too_many_arguments)]
 fn draw_team_block(
     frame: &mut Frame,

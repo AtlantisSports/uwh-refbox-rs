@@ -9,7 +9,9 @@ use collect_array::CollectArrayResult;
 use iced::{
     Alignment, Element, Length,
     alignment::{Horizontal, Vertical},
-    widget::{button, column, container, horizontal_space, row, text, vertical_space},
+    widget::{
+        Image, button, column, container, horizontal_space, image, row, text, vertical_space,
+    },
 };
 use matrix_drawing::transmitted_data::Brightness;
 use std::collections::BTreeMap;
@@ -907,6 +909,35 @@ fn make_app_config_page<'a>(
     .into()
 }
 
+/// The embedded preview picture matching a staged layout + starting-side.
+/// The exhaustive match means every `FrontDisplayLayout` must have a picture:
+/// adding a new variant won't compile until its PNG is added here and generated
+/// via `just capture-previews`.
+fn layout_preview_handle(layout: FrontDisplayLayout, white_on_right: bool) -> image::Handle {
+    macro_rules! preview {
+        ($stem:literal) => {
+            &include_bytes!(concat!(
+                "../../../resources/layout-previews/",
+                $stem,
+                ".png"
+            ))[..]
+        };
+    }
+    let bytes: &'static [u8] = match (layout, white_on_right) {
+        (FrontDisplayLayout::Default, false) => preview!("default-white-left"),
+        (FrontDisplayLayout::Default, true) => preview!("default-white-right"),
+        (FrontDisplayLayout::Classic, false) => preview!("classic-white-left"),
+        (FrontDisplayLayout::Classic, true) => preview!("classic-white-right"),
+        (FrontDisplayLayout::BigTime, false) => preview!("big-time-white-left"),
+        (FrontDisplayLayout::BigTime, true) => preview!("big-time-white-right"),
+        (FrontDisplayLayout::Corners, false) => preview!("corners-white-left"),
+        (FrontDisplayLayout::Corners, true) => preview!("corners-white-right"),
+        (FrontDisplayLayout::ScoresOnly, false) => preview!("scores-only-white-left"),
+        (FrontDisplayLayout::ScoresOnly, true) => preview!("scores-only-white-right"),
+    };
+    image::Handle::from_bytes(bytes)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn make_display_config_page<'a>(
     snapshot: &GameSnapshot,
@@ -959,6 +990,72 @@ fn make_display_config_page<'a>(
             BoolGameParameter::WhiteOnRight,
         ));
 
+    // When a real LED panel is connected the layout picker is grayed out (no
+    // `on_press`) and its label is forced to DEFAULT, because the physical panel
+    // always renders the Default layout. The preview follows the same effective
+    // layout so it matches what the picker shows.
+    let effective_layout = if has_led_panel {
+        FrontDisplayLayout::Default
+    } else {
+        *front_display_layout
+    };
+    let layout_label = match effective_layout {
+        FrontDisplayLayout::Default => fl!("layout-default"),
+        FrontDisplayLayout::Classic => fl!("layout-classic"),
+        FrontDisplayLayout::BigTime => fl!("layout-big-time"),
+        FrontDisplayLayout::Corners => fl!("layout-corners"),
+        FrontDisplayLayout::ScoresOnly => fl!("layout-scores-only"),
+    };
+    let layout_btn = make_value_button(
+        fl!("front-display-layout"),
+        layout_label,
+        (false, true),
+        if has_led_panel {
+            None
+        } else {
+            Some(Message::CycleParameter(
+                CyclingParameter::FrontDisplayLayout,
+            ))
+        },
+    );
+
+    let hide_time_btn = make_value_button(
+        fl!("hide-time-for-last-15-seconds"),
+        bool_string(*hide_time),
+        (false, true),
+        Some(Message::ToggleBoolParameter(BoolGameParameter::HideTime)),
+    );
+
+    let brightness_btn = make_value_button(
+        fl!("player-display-brightness"),
+        fl!("brightness", brightness = brightness.to_string()),
+        (false, true),
+        Some(Message::CycleParameter(CyclingParameter::Brightness)),
+    );
+
+    // The button is grayed out (no `on_press`) when a real LED panel is connected
+    // (`--serial-port`); opening a sim window then would compete with the panel.
+    let open_display_btn = {
+        let btn = make_button(fl!("open-new-display")).style(light_gray_button);
+        if has_led_panel {
+            btn
+        } else {
+            btn.on_press(Message::OpenNewDisplay)
+        }
+    };
+
+    // Static preview of the staged layout, shown via a plain Image (NOT a live
+    // canvas, which crashes the Linux/tiny-skia renderer — see design Decision D).
+    let preview = container(
+        Image::new(layout_preview_handle(effective_layout, *white_on_right))
+            .width(Length::Fill)
+            .height(Length::Fill),
+    )
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .center_x(Length::Fill)
+    .center_y(Length::Fill);
+
     column![
         make_game_time_button(
             snapshot,
@@ -969,67 +1066,17 @@ fn make_display_config_page<'a>(
             portal_indicator
         ),
         row![sides_btn].spacing(SPACING).height(Length::Fill),
+        row![hide_time_btn, layout_btn]
+            .spacing(SPACING)
+            .height(Length::Fill),
         row![
-            make_value_button(
-                fl!("hide-time-for-last-15-seconds"),
-                bool_string(*hide_time),
-                (false, true),
-                Some(Message::ToggleBoolParameter(BoolGameParameter::HideTime))
-            ),
-            make_value_button(
-                fl!("player-display-brightness"),
-                fl!("brightness", brightness = brightness.to_string()),
-                (false, true),
-                Some(Message::CycleParameter(CyclingParameter::Brightness))
-            )
+            column![open_display_btn, brightness_btn]
+                .spacing(SPACING)
+                .width(Length::Fill),
+            preview,
         ]
         .spacing(SPACING)
-        .height(Length::Fill),
-        row![
-            {
-                // When a real LED panel is connected the layout picker is grayed
-                // out (no `on_press`) and its label is forced to DEFAULT, because
-                // the physical panel always renders the Default layout.
-                let effective_layout = if has_led_panel {
-                    FrontDisplayLayout::Default
-                } else {
-                    *front_display_layout
-                };
-                let layout_label = match effective_layout {
-                    FrontDisplayLayout::Default => fl!("layout-default"),
-                    FrontDisplayLayout::Classic => fl!("layout-classic"),
-                    FrontDisplayLayout::BigTime => fl!("layout-big-time"),
-                    FrontDisplayLayout::Corners => fl!("layout-corners"),
-                    FrontDisplayLayout::ScoresOnly => fl!("layout-scores-only"),
-                };
-                make_value_button(
-                    fl!("front-display-layout"),
-                    layout_label,
-                    (false, true),
-                    if has_led_panel {
-                        None
-                    } else {
-                        Some(Message::CycleParameter(
-                            CyclingParameter::FrontDisplayLayout,
-                        ))
-                    },
-                )
-            },
-            {
-                // The button is grayed out (no `on_press`) when a real LED panel
-                // is connected (`--serial-port`). Opening a sim window in that
-                // configuration would compete with the physical display.
-                let btn = make_button(fl!("open-new-display")).style(light_gray_button);
-                if has_led_panel {
-                    btn
-                } else {
-                    btn.on_press(Message::OpenNewDisplay)
-                }
-            },
-        ]
-        .spacing(SPACING)
-        .height(Length::Fill),
-        row![horizontal_space()].height(Length::Fill),
+        .height(Length::FillPortion(2)),
         make_cancel_apply_footer(ConfigPage::Display, settings, page_entry_snapshot),
     ]
     .spacing(SPACING)

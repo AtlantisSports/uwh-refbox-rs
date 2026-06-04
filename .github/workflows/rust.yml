@@ -58,6 +58,35 @@ jobs:
         workingDirectory: wireless-remote
         file: Cargo.lock
 
+  preview-drift:
+    name: Layout previews up to date
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v5
+    - uses: awalsh128/cache-apt-pkgs-action@latest
+      with:
+        # xvfb provides a virtual display so the capture window can render;
+        # libxkbcommon-x11-0 is the winit X11 runtime dep iced needs headless.
+        packages: libssl-dev pkg-config libasound2-dev xvfb libxkbcommon-x11-0
+        version: latest
+    - uses: Swatinem/rust-cache@v2
+    - name: Versions
+      run: cargo --version && rustc --version
+    # Re-render the front-display layout previews and fail if they differ from
+    # the committed PNGs (mirrors `just check-previews`, run under a virtual
+    # display because the capture needs a window). If a layout's look changes,
+    # run `just capture-previews` locally and commit the refreshed PNGs.
+    - name: Check front-display layout previews are up to date
+      run: |
+        tmp="$(mktemp -d)"
+        xvfb-run -a cargo run -p refbox -- --capture-previews "$tmp"
+        if ! diff -rq "$tmp" refbox/resources/layout-previews; then
+          echo "::error::Layout preview PNGs are stale. Run 'just capture-previews' locally and commit the result."
+          exit 1
+        fi
+        echo "Layout previews are up to date."
+
   check-for-msrv:
     name: Check for MSRV
     runs-on: ubuntu-latest

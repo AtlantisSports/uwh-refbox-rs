@@ -467,7 +467,9 @@ fn make_user_config_page<'a>(
             portal_indicator
         ),
         tiles,
-        row![view_mode_button].height(Length::Fill),
+        row![view_mode_button, horizontal_space()]
+            .spacing(SPACING)
+            .height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),
         row![

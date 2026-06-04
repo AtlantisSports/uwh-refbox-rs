@@ -160,6 +160,10 @@ struct Cli {
     #[clap(long, hide = true)]
     is_simulator: bool,
 
+    #[clap(long, hide = true, value_name = "DIR")]
+    /// Dev-time: render every front-display layout preview PNG into DIR, then exit.
+    capture_previews: Option<PathBuf>,
+
     #[clap(long, hide = true)]
     simulate_sunlight_display: bool,
 }
@@ -313,6 +317,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
     let icon =
         icon::from_rgba(Vec::from(app_icon::DATA), app_icon::WIDTH, app_icon::HEIGHT).unwrap();
+
+    if let Some(dir) = args.capture_previews {
+        info!("Capturing front-display layout previews to {dir:?}");
+        return sim_app::capture::run_capture(dir).map_err(|e| e.into());
+    }
 
     if args.is_simulator {
         let flags = sim_app::SimRefBoxAppFlags {

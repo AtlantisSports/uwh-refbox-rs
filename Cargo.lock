@@ -5468,6 +5468,7 @@ dependencies = [
  "iced_renderer",
  "iced_runtime",
  "iced_winit",
+ "image 0.25.8",
  "led-panel-sim",
  "log",
  "log-panics",

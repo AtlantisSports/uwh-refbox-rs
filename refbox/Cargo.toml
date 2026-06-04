@@ -28,6 +28,9 @@ env_logger = "0.11"
 futures-lite = "2"
 i18n-embed = { version = "0.16.0", features = ["fluent-system", "desktop-requester"] }
 i18n-embed-fl = "0.10.0"
+# Used only by the dev-time `--capture-previews` command to write preview PNGs.
+# Already present transitively via iced; pinned to the same major to avoid a new version.
+image = { version = "0.25", default-features = false, features = ["png"] }
 iced_core = "0.13"
 iced_futures = { version = "0.13", features = ["async-std"] }
 iced_graphics = "0.13"

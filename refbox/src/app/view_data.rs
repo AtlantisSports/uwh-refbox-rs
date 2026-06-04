@@ -1,6 +1,5 @@
 use super::Mode;
 use crate::portal_manager::PortalIndicatorState;
-use crate::sim_frame::FrontDisplayLayout;
 use uwh_common::{game_snapshot::GameSnapshot, uwhportal::schedule::TeamList};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,8 +18,4 @@ pub(super) struct ViewData<'a, 'b> {
     /// panel connected). Used to gray out controls that only make sense
     /// without a real panel — currently just "Open New Display".
     pub(super) has_led_panel: bool,
-    /// Current front-display layout selection. Used by the Display Options
-    /// page to label the layout picker button. When `has_led_panel` is true
-    /// the button is greyed out and the label is forced to Default.
-    pub(super) front_display_layout: FrontDisplayLayout,
 }

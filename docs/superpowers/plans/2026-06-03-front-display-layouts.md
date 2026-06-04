@@ -999,4 +999,53 @@ Run `superpowers:requesting-code-review` once, then prepare the PR (do not open 
   feature continued on its correct branch in the worktree. Recorded to project memory.
 - **Outstanding before merge:** visual tuning of the four layouts' coordinates (incl. the
   black-box outline thickness, currently absolute px — should be window-relative) via a GUI run,
-  then a final browser side-by-side confirmation with the user.
+  then a final browser side-by-side confirmation with the user. (Visual tuning DONE 2026-06-03,
+  commit `4624046b`; PR #949 opened at `60127e26`.)
+
+## Pending redesign — NOT yet implemented (decided 2026-06-03, folds into PR #949)
+
+After PR #949 was opened, the user revised two design decisions during the Display-Options visual
+review. **None of this is coded yet** — the branch/PR still has the *live* behaviour. Do this in a
+fresh session: **(1) update the spec** (`docs/superpowers/specs/2026-06-03-front-display-layouts-design.md`)
+to record the change, **(2) run `superpowers:writing-plans`** for it, **(3) implement, re-review,
+and push** (updates PR #949).
+
+**Decision A — layout becomes STAGED, not live (reverses "Approach A").** Picking a layout no
+longer updates the display instantly; it changes only on **APPLY**, and **CANCEL reverts** it —
+consistent with brightness/white-on-right/hide-time on the same page. (This also *supersedes* the
+"Back instead of Cancel" backlog item: we keep **CANCEL/APPLY**, not "Back", and gain consistency
+by staging the layout.) Mirror exactly how `brightness` works. Sites:
+  - `EditableSettings` struct (configuration.rs) — add `front_display_layout: FrontDisplayLayout`;
+    set it in all 5 initializers in mod.rs (next to `brightness: self.config.hardware.brightness,`
+    at ~2248/3338/3384/3467/3522) from `self.config.front_display_layout`.
+  - `PageEntrySnapshot::Display` (mod.rs: enum def ~271, `revert_into` ~328, construction ~1077) —
+    add the field; and `page_has_changes` Display arm (configuration.rs ~58) — add the comparison.
+  - `CyclingParameter` enum (message.rs ~695) — add `FrontDisplayLayout`; handle in the
+    `CycleParameter` arm (mod.rs ~2689) as `settings.front_display_layout.cycle()`; add
+    `impl Cyclable for FrontDisplayLayout` (configuration.rs near the other impls ~154) delegating
+    to the inherent `FrontDisplayLayout::next(*self)`.
+  - `apply_display_options` (mod.rs ~756) — set `self.config.front_display_layout =
+    edited.front_display_layout` and push via `update_sender.set_layout(effective)`, forcing
+    `Default` when `has_led_panel`.
+  - Button (configuration.rs ~1002) — switch from `Message::CycleFrontDisplayLayout` to
+    `Message::CycleParameter(CyclingParameter::FrontDisplayLayout)`, read the value from the edited
+    settings; keep the has-led-panel gating.
+  - REMOVE `Message::CycleFrontDisplayLayout` (message.rs def ~129 + list ~303 + PartialEq arms
+    ~397 & ~626) and its immediate handler (mod.rs ~2279). The generic `CycleParameter(_)` already
+    covers repeat/equality, so no new arms are needed.
+
+**Decision B — add an in-UI layout preview on the Display Options page.** A small 16:9 canvas that
+renders the *currently-selected (staged)* layout using the real draw code with sample data
+(e.g. White 5 – Black 3, FirstHalf, 8:42), updating as you cycle; APPLY then pushes it. Sites:
+  - Make `mod scoreboard` **pub** in `sim_app/mod.rs` so the main app can call
+    `crate::sim_app::scoreboard::draw_{classic,big_time,corners,scores_only}`.
+  - Add a `Canvas` preview widget to `make_display_config_page` (the page has an empty middle band).
+    The main refbox app already registers the Roboto font, so text renders.
+  - **Default** preview = a mini 256×64 panel: reuse `matrix_drawing::draw_panels` into a
+    `DisplayBuffer<256,64>` then paint the cells (mirror the sim's Matrix paint loop in
+    `sim_app/mod.rs`). Build a small representative `TransmittedData` for sample data; honour the
+    edited `white_on_right`.
+
+**Also pending (SEPARATE branch off `master`, not this one):** VIEW MODE button → half-width on the
+User Options page — see memory `backlog_view_mode_button_half_width`. It matches the existing
+`OPEN NEW DISPLAY` half-width idiom (`row![btn, horizontal_space()]`).

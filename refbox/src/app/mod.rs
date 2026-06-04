@@ -272,6 +272,7 @@ pub(crate) enum PageEntrySnapshot {
         white_on_right: bool,
         brightness: matrix_drawing::transmitted_data::Brightness,
         hide_time: bool,
+        front_display_layout: crate::sim_frame::FrontDisplayLayout,
     },
     Sound {
         sound: SoundSettings,
@@ -329,10 +330,12 @@ impl PageEntrySnapshot {
                 white_on_right,
                 brightness,
                 hide_time,
+                front_display_layout,
             } => {
                 edited.white_on_right = white_on_right;
                 edited.brightness = brightness;
                 edited.hide_time = hide_time;
+                edited.front_display_layout = front_display_layout;
             }
             PageEntrySnapshot::Sound { sound } => {
                 edited.sound = sound;
@@ -765,6 +768,18 @@ impl RefBoxApp {
                 .set_hide_time(self.config.hide_time)
                 .unwrap();
         }
+        self.config.front_display_layout = edited.front_display_layout;
+        // A real LED panel always renders Default; mirror the button's gating so
+        // Apply never pushes a full-screen layout to the hardware path.
+        let effective = if self.has_led_panel {
+            crate::sim_frame::FrontDisplayLayout::Default
+        } else {
+            edited.front_display_layout
+        };
+        // Same bounded channel as set_hide_time: one message per Apply from the
+        // GUI loop, so it cannot be full; Closed means the update-server task is
+        // gone (application-fatal), matching the existing unwrap at that site.
+        self.update_sender.set_layout(effective).unwrap();
     }
 
     fn apply_sound_options(&mut self) {
@@ -1078,6 +1093,7 @@ impl RefBoxApp {
                 white_on_right: edited.white_on_right,
                 brightness: edited.brightness,
                 hide_time: edited.hide_time,
+                front_display_layout: edited.front_display_layout,
             },
             ConfigPage::Sound => PageEntrySnapshot::Sound {
                 sound: edited.sound.clone(),
@@ -2246,6 +2262,7 @@ impl RefBoxApp {
                     },
                     white_on_right: self.config.hardware.white_on_right,
                     brightness: self.config.hardware.brightness,
+                    front_display_layout: self.config.front_display_layout,
                     using_uwhportal: self.using_uwhportal,
                     uwhportal_token_valid,
                     current_event_id: self.current_event_id.clone(),
@@ -2273,17 +2290,6 @@ impl RefBoxApp {
                 let next = self.config.display_mode.next();
                 self.config.display_mode = next;
                 crate::app::theme::set_display_mode(next);
-                self.persist_config();
-                Task::none()
-            }
-            Message::CycleFrontDisplayLayout => {
-                let next = self.config.front_display_layout.next();
-                self.config.front_display_layout = next;
-                // Sends on the same bounded channel as `send_snapshot`/`set_hide_time`:
-                // one message per button press from the GUI event loop, so the channel
-                // cannot be full; a Closed error means the update-server task is gone
-                // (application-fatal). Unwrapping matches those existing call sites.
-                self.update_sender.set_layout(next).unwrap();
                 self.persist_config();
                 Task::none()
             }
@@ -2687,6 +2693,7 @@ impl RefBoxApp {
                     CyclingParameter::UnderWaterVol => settings.sound.under_water_vol.cycle(),
                     CyclingParameter::Mode => settings.mode.cycle(),
                     CyclingParameter::Brightness => settings.brightness.cycle(),
+                    CyclingParameter::FrontDisplayLayout => settings.front_display_layout.cycle(),
                 }
                 Task::none()
             }
@@ -3336,6 +3343,7 @@ impl RefBoxApp {
                     },
                     white_on_right: self.config.hardware.white_on_right,
                     brightness: self.config.hardware.brightness,
+                    front_display_layout: self.config.front_display_layout,
                     using_uwhportal: self.using_uwhportal,
                     uwhportal_token_valid: None,
                     current_event_id: self.current_event_id.clone(),
@@ -3382,6 +3390,7 @@ impl RefBoxApp {
                     },
                     white_on_right: self.config.hardware.white_on_right,
                     brightness: self.config.hardware.brightness,
+                    front_display_layout: self.config.front_display_layout,
                     using_uwhportal: self.using_uwhportal,
                     uwhportal_token_valid: None,
                     current_event_id: self.current_event_id.clone(),
@@ -3465,6 +3474,7 @@ impl RefBoxApp {
                     },
                     white_on_right: self.config.hardware.white_on_right,
                     brightness: self.config.hardware.brightness,
+                    front_display_layout: self.config.front_display_layout,
                     using_uwhportal: self.using_uwhportal,
                     uwhportal_token_valid: None,
                     current_event_id: self.current_event_id.clone(),
@@ -3520,6 +3530,7 @@ impl RefBoxApp {
                     },
                     white_on_right: self.config.hardware.white_on_right,
                     brightness: self.config.hardware.brightness,
+                    front_display_layout: self.config.front_display_layout,
                     using_uwhportal: self.using_uwhportal,
                     uwhportal_token_valid: None,
                     current_event_id: self.current_event_id.clone(),
@@ -3730,7 +3741,6 @@ impl RefBoxApp {
                 None
             },
             has_led_panel: self.has_led_panel,
-            front_display_layout: self.config.front_display_layout,
         };
 
         let mut main_view = column![match self.app_state {

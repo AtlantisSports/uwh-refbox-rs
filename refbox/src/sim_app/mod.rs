@@ -27,6 +27,8 @@ use sunlight_display::*;
 
 mod scoreboard;
 
+pub(crate) mod capture;
+
 use crate::sim_frame::{FrontDisplayLayout, SimFrame};
 
 use crate::app::theme::{BLACK, WHITE};

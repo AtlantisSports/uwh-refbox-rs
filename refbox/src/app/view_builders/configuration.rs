@@ -26,6 +26,7 @@ pub(in super::super) struct EditableSettings {
     pub game_number: GameNumber,
     pub white_on_right: bool,
     pub brightness: Brightness,
+    pub front_display_layout: FrontDisplayLayout,
     pub using_uwhportal: bool,
     pub uwhportal_token_valid: Option<bool>,
     pub current_event_id: Option<EventId>,
@@ -162,6 +163,15 @@ impl Cyclable for Brightness {
     }
 }
 
+impl Cyclable for FrontDisplayLayout {
+    fn next(&self) -> Self {
+        // Call the inherent `FrontDisplayLayout::next` explicitly. Writing
+        // `self.next()` here would resolve back to this trait method and
+        // recurse forever.
+        FrontDisplayLayout::next(*self)
+    }
+}
+
 pub(in super::super) fn page_has_changes(
     page: ConfigPage,
     edited: &EditableSettings,
@@ -217,11 +227,13 @@ pub(in super::super) fn page_has_changes(
                 white_on_right,
                 brightness,
                 hide_time,
+                front_display_layout,
             },
         ) => {
             edited.white_on_right != *white_on_right
                 || edited.brightness != *brightness
                 || edited.hide_time != *hide_time
+                || edited.front_display_layout != *front_display_layout
         }
         (ConfigPage::Sound, PageEntrySnapshot::Sound { sound }) => edited.sound != *sound,
         (ConfigPage::Remotes(_, _), PageEntrySnapshot::Remotes { remotes }) => {
@@ -254,13 +266,12 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
         clock_running,
         portal_indicator,
         has_led_panel,
-        front_display_layout,
         ..
     } = data;
 
     // Param order convention: per-branch additions appended in chronological order
     // — page_entry_snapshot (Unit 3) then portal_indicator (Unit 7) then has_led_panel
-    //   (open-new-display gate) then front_display_layout (layout picker).
+    //   (open-new-display gate).
     match page {
         ConfigPage::Main => {
             make_main_config_page(snapshot, settings, mode, clock_running, portal_indicator)
@@ -290,7 +301,6 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
             page_entry_snapshot,
             portal_indicator,
             has_led_panel,
-            front_display_layout,
         ),
         ConfigPage::App => make_app_config_page(
             mode,
@@ -906,12 +916,12 @@ fn make_display_config_page<'a>(
     page_entry_snapshot: Option<&PageEntrySnapshot>,
     portal_indicator: Option<PortalIndicatorState>,
     has_led_panel: bool,
-    front_display_layout: FrontDisplayLayout,
 ) -> Element<'a, Message> {
     let EditableSettings {
         white_on_right,
         hide_time,
         brightness,
+        front_display_layout,
         ..
     } = settings;
 
@@ -983,7 +993,7 @@ fn make_display_config_page<'a>(
                 let effective_layout = if has_led_panel {
                     FrontDisplayLayout::Default
                 } else {
-                    front_display_layout
+                    *front_display_layout
                 };
                 let layout_label = match effective_layout {
                     FrontDisplayLayout::Default => fl!("layout-default"),
@@ -999,7 +1009,9 @@ fn make_display_config_page<'a>(
                     if has_led_panel {
                         None
                     } else {
-                        Some(Message::CycleFrontDisplayLayout)
+                        Some(Message::CycleParameter(
+                            CyclingParameter::FrontDisplayLayout,
+                        ))
                     },
                 )
             },
@@ -1659,6 +1671,7 @@ mod tests {
             white_on_right: false,
             brightness: Brightness::Medium,
             hide_time: false,
+            front_display_layout: FrontDisplayLayout::Default,
         };
         assert!(!page_has_changes(ConfigPage::Display, &edited, Some(&snap)));
     }
@@ -1675,6 +1688,25 @@ mod tests {
             white_on_right: false,
             brightness: Brightness::Medium,
             hide_time: false,
+            front_display_layout: FrontDisplayLayout::Default,
+        };
+        assert!(page_has_changes(ConfigPage::Display, &edited, Some(&snap)));
+    }
+
+    #[test]
+    fn display_detects_layout_change() {
+        let edited = EditableSettings {
+            white_on_right: false,
+            brightness: Brightness::Medium,
+            hide_time: false,
+            front_display_layout: FrontDisplayLayout::Corners,
+            ..Default::default()
+        };
+        let snap = PageEntrySnapshot::Display {
+            white_on_right: false,
+            brightness: Brightness::Medium,
+            hide_time: false,
+            front_display_layout: FrontDisplayLayout::Default,
         };
         assert!(page_has_changes(ConfigPage::Display, &edited, Some(&snap)));
     }

@@ -1,7 +1,7 @@
 # Front Display Layouts — Design Spec
 
 **Date:** 2026-06-03
-**Status:** Approved (design), pending implementation plan
+**Status:** Implemented (live version, PR #949); **redesign approved** (staged + preview), pending plan
 **Crate scope:** `refbox` only
 
 ---
@@ -145,6 +145,98 @@ sudden death. Side placement follows the existing white-on-right setting.
 7. Hardware gating (force `Default`, disable button).
 8. Translations for new strings (en-US plus existing locales).
 9. `cargo test -p refbox`, `just check`, manual walkthrough, browser visual confirmation.
+
+## Redesign (2026-06-03) — supersedes the *trigger* in Approach A
+
+After PR #949 was opened, the user revised two decisions during the Display-Options visual review.
+The live version above shipped on the branch; this redesign folds into the **same PR #949**.
+
+### Decision A — the layout becomes a STAGED setting (APPLY / CANCEL), not live
+
+Picking a layout no longer changes any open display window instantly. Instead it behaves exactly
+like the other settings on the Display Options page (brightness, white-on-right, hide-time):
+
+- Cycling the **DISPLAY LAYOUT** button changes only the *staged* (uncommitted) choice.
+- **APPLY** commits the choice: it is saved to config and pushed to the display window.
+- **CANCEL** reverts the staged choice; no display window ever changed, so nothing to undo.
+
+This *supersedes* the old "Back instead of Cancel" backlog idea: we keep **CANCEL / APPLY** and gain
+consistency by staging the layout rather than renaming the button.
+
+The display-feed transport from Approach A is unchanged — the layout still travels to the window via
+the one-byte `SimFrame` selector on the TCP path, and the serial/hardware format is still untouched.
+Only the *moment* the layout is pushed changes: on APPLY instead of on every button press.
+
+Revised acceptance criterion (replaces criterion 2): *Selecting a layout updates the open display
+window only after **APPLY**; **CANCEL** discards the selection and the window is unaffected.*
+
+### Decision B — an in-UI layout preview on the Display Options page
+
+The Display Options page shows a small preview (roughly 16:9) of the **currently-staged** layout,
+drawn with the real layout-rendering code and representative sample data
+(**WHITE 5 – BLACK 3, First Half, 8:42**), honouring the staged white-on-right setting. The preview
+updates as the user cycles the button, before APPLY. The `Default` choice previews as a miniature
+256×64 LED-panel mirror (the same `draw_panels` rendering the physical panel uses).
+
+New acceptance criterion: *The Display Options page shows a live preview of the staged layout that
+updates as the button is cycled, including a mini panel render for `Default`.*
+
+### Decision C (2026-06-03) — preview stability via a cached canvas + the rearranged row
+
+Live testing of Decision B revealed a crash/blanking bug. The preview canvas, as first built,
+re-rendered on **every** `view()` — including every game-clock tick. That constant per-frame
+canvas redraw repeatedly tripped a known `iced_graphics 0.13` defect in `damage::group` (a
+sort whose comparator isn't a total order), which on Rust 1.85 **panics** (`'user-provided
+comparison function does not correctly implement a total order'`). Symptoms: the app crashed,
+or the DISPLAY LAYOUT button + preview vanished (the unstable preview collapsed their shared
+row), and the WHITE score box failed to composite. The real full-screen display never hits this
+because it renders through a persistent `canvas::Cache` and only redraws on new data.
+
+**Fix — cache the preview, the same way the live display does:**
+- A `canvas::Cache` lives on `RefBoxApp` (`display_preview_cache`). It is handed to the preview
+  via a parameter threaded `build_game_config_edit_page → make_display_config_page →
+  layout_preview` (NOT through `ViewData`, which derives `Eq` that `Cache` doesn't implement).
+- `LayoutPreview` draws through `self.cache.draw(...)` instead of a fresh `Frame` each call, so
+  it reuses cached geometry until explicitly cleared.
+- The cache is cleared (→ preview re-renders) on exactly the actions that change the preview:
+  cycling the layout (`CycleParameter`), flipping starting-sides (`ToggleBoolParameter`),
+  entering the Display page (`ChangeConfigPage`), and Cancel (`CancelConfigPage`). Clock ticks
+  do **not** clear it, so they produce no preview damage.
+- The preview shows fixed sample data and does not tick with the live clock — this is intended
+  and is what makes caching valid.
+
+**Rearranged row (folded in):** the Display page's layout row becomes a left column with
+DISPLAY LAYOUT stacked above OPEN NEW DISPLAY, and the cached preview filling the right half.
+The earlier disappearing-button behaviour was a symptom of the same redraw bug; with the preview
+cached and stable, the shared row no longer collapses.
+
+Scope guard: still `refbox`-only. No `iced` upgrade, no change to the shared `scoreboard::draw_*`
+routines or the sim display window, no serial/hardware change.
+
+### Decision D (2026-06-04) — the in-UI preview is DROPPED
+
+The caching fix from Decision C did **not** stop the crash. Live testing showed the
+`iced_graphics::damage::group` total-order panic fires the instant the Display Options page is
+opened (deterministic on navigation, not time-based) — caching reduces redraws but the canvas is
+still drawn when the page first composites, which is enough to trip the bug on the Linux/tiny-skia
+renderer (which is also what the Raspberry-Pi deployment uses). The preview shows fixed sample
+data, but it is *drawn live on a canvas* (reusing the real `scoreboard::draw_*` code), and that
+canvas is the trigger.
+
+Decision: **remove the in-UI preview entirely** (revert Decision B + the Decision C caching/
+rearrangement commits). What ships:
+- The **staged APPLY/CANCEL layout picker** (Decision A) — solid, no canvas, unaffected.
+- **OPEN NEW DISPLAY**, which already lets the operator see the real chosen layout in its own
+  (stable) window.
+
+The three reverted commits were `162c8a0b` (preview), `f62a3004` (cache attempt), `f4dd7f2e`
+(rearrangement). The `scoreboard::draw_*` routines and the simulator display window are untouched
+— only the Display-Options *preview tile* is removed.
+
+A genuine **static-image** preview (pre-rendered picture per layout, shown via a plain `Image`
+widget — no canvas, no damage bug) remains a possible *future, separate* task if the preview is
+wanted back. It was not pursued here because it is its own piece of work (generating/bundling
+images, side-flip variants, keeping them in sync with layout changes).
 
 ## Process
 

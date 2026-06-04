@@ -124,9 +124,6 @@ pub enum Message {
     /// Advance the on-screen display mode (Light → Dark → High Contrast → …).
     /// Commits immediately; not part of the DONE/Apply settings round-trip.
     CycleDisplayMode,
-    /// Advance the front-display layout (Default -> Classic -> ...). Commits
-    /// immediately, like CycleDisplayMode; not part of the Apply round-trip.
-    CycleFrontDisplayLayout,
     SelectLanguage(Language),
     LanguageSelectComplete {
         canceled: bool,
@@ -300,7 +297,6 @@ impl Message {
             | Self::ParameterEditComplete { .. }
             | Self::ParameterSelected(_, _)
             | Self::CycleDisplayMode
-            | Self::CycleFrontDisplayLayout
             | Self::SelectLanguage(_)
             | Self::LanguageSelectComplete { .. }
             | Self::RequestRemoteId
@@ -394,7 +390,6 @@ impl PartialEq for Message {
             | (Self::BeepTestEditLevelsCancel, Self::BeepTestEditLevelsCancel)
             | (Self::BeepTestRestartToApply, Self::BeepTestRestartToApply)
             | (Self::CycleDisplayMode, Self::CycleDisplayMode)
-            | (Self::CycleFrontDisplayLayout, Self::CycleFrontDisplayLayout)
             | (Self::AlarmPressed, Self::AlarmPressed)
             | (Self::AlarmReleased, Self::AlarmReleased)
             | (Self::SpacebarPressed, Self::SpacebarPressed)
@@ -623,7 +618,6 @@ impl PartialEq for Message {
             | (Self::BeepTestEditLevelsCancel, _)
             | (Self::BeepTestRestartToApply, _)
             | (Self::CycleDisplayMode, _)
-            | (Self::CycleFrontDisplayLayout, _)
             | (Self::AlarmPressed, _)
             | (Self::AlarmReleased, _)
             | (Self::SpacebarPressed, _)
@@ -700,6 +694,7 @@ pub enum CyclingParameter {
     UnderWaterVol,
     Mode,
     Brightness,
+    FrontDisplayLayout,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

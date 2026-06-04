@@ -81,3 +81,24 @@ regen-cjk-font:
 # Run this any time the Thai translation changes. Requires: sudo apt-get install python3-fonttools
 regen-thai-font:
     python3 scripts/regen-thai-font.py
+
+# ── Layout previews ─────────────────────────────────────────────────────────────
+
+# Regenerate the bundled front-display layout preview PNGs (shown on Display Options).
+# Run this any time a layout's on-screen appearance changes, then commit the result.
+# (WAYLAND_DISPLAY= forces X11 so the capture window renders correctly on WSLg.)
+capture-previews:
+    WAYLAND_DISPLAY= cargo run -p refbox -- --capture-previews refbox/resources/layout-previews
+
+# Fail if the committed layout preview PNGs are out of date with the layout code.
+# Regenerates into a temp dir and compares. CI runs this under a virtual display (xvfb).
+check-previews:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp=$(mktemp -d)
+    WAYLAND_DISPLAY= cargo run -p refbox -- --capture-previews "$tmp"
+    if ! diff -rq "$tmp" refbox/resources/layout-previews; then
+        echo "Layout preview PNGs are stale. Run 'just capture-previews' and commit the result." >&2
+        exit 1
+    fi
+    echo "Layout previews are up to date."

@@ -371,4 +371,17 @@ Ensure `xvfb` is installed on the runner (add to the existing apt step, or `sudo
 
 ## Deviations
 
-_(record spike findings and any mid-execution changes here)_
+- **Task 1 spike merged with Task 2.** The capture mechanism was proven and generalized to all 10
+  variants in one pass. Confirmed API: `window::get_latest()` for the window id, a `window::frames()`
+  subscription driving continuous redraws, a 3-frame settle counter before each `window::screenshot()`,
+  and an `awaiting_shot` guard against overlapping captures. All 10 PNGs were eyeballed correct
+  (right layout, sample data, side flip) with no stale/off-by-one frames.
+- **Task 3 was a no-op.** The simulator already renders `Default` top-justified with black fill in a
+  16:9 window, satisfying D5 with no code.
+- **PNG encoding** uses the `image` crate (user-approved, already transitive via iced), not tiny_skia.
+- **Code-review fixes (Task 6):** pinned the capture window's UI `scale_factor` to 1.0 and documented
+  the scale-1.0 assumption for the drift guard. The exact-vs-tolerant diff decision (Task 5 Step 4)
+  is deferred until/unless CI shows cross-machine flakiness (spec Risk 2).
+- **Task 7 (CI drift check) deferred** pending explicit user approval — it edits `.github/workflows`
+  (shared infrastructure). Until then, `just check-previews` is a manual/local guard only, so
+  acceptance criterion 7 is not yet met.

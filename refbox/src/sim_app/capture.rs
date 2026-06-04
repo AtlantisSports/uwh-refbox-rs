@@ -7,6 +7,14 @@
 //! It drives the real `SimRefBoxApp` rendering, so the pictures are faithful by
 //! construction. Nothing here ships behaviour to end-user devices — it only
 //! writes the committed PNGs that get embedded into the app.
+//!
+//! The `expect()` calls below are intentional dev-time-only panics (this binary
+//! path never runs on a referee device); do not "fix" them into the app path.
+//! The capture renders at scale factor 1.0 (pinned in `run_capture`) so the
+//! committed PNGs are reproducible; the `just check-previews` drift guard assumes
+//! a consistent render environment (CI runs at scale 1.0). If that ever proves
+//! flaky across machines, switch `check-previews` to a tolerant pixel compare
+//! (design spec Risk 2 / plan Task 5).
 
 use std::path::{Path, PathBuf};
 
@@ -31,6 +39,8 @@ const PREVIEW_H: u32 = 720;
 
 /// Number of rendered frames to wait after switching layouts before capturing,
 /// so the new content is fully composited before the screenshot is taken.
+/// 3 was confirmed sufficient during the capture spike (each variant captured
+/// its own content, with no stale frames — verified by eye across all 10 PNGs).
 const SETTLE_FRAMES: u8 = 3;
 
 /// Sample game state shown in every preview: WHITE 5 – BLACK 3, First Half, 8:42.
@@ -210,11 +220,16 @@ pub fn run_capture(out_dir: PathBuf) -> iced::Result {
     iced::application("Preview Capture", CaptureApp::update, CaptureApp::view)
         .subscription(CaptureApp::subscription)
         .style(CaptureApp::style)
+        // Pin the UI scale to 1.0 so the capture doesn't pick up a non-1.0 app
+        // scale; keeps the committed PNGs reproducible for the drift check.
+        .scale_factor(|_| 1.0)
         .window(window::Settings {
             size: Size::new(PREVIEW_W as f32, PREVIEW_H as f32),
             resizable: false,
             ..Default::default()
         })
+        // Only Roboto is needed: the sample data is digits + Latin team labels.
+        // (The real display also loads CJK/Thai subsets; not needed for previews.)
         .font(include_bytes!("../../resources/Roboto-Medium.ttf").as_slice())
         .run_with(move || CaptureApp::new(out_dir.clone()))
 }

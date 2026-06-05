@@ -147,7 +147,20 @@ impl Game {
         process_duration(old, "post_game_duration", &mut post_game_duration);
         process_duration(old, "nominal_break", &mut nominal_break);
         process_duration(old, "minimum_break", &mut minimum_break);
+        let had_game_block = old
+            .get("game_block")
+            .and_then(toml::Value::as_integer)
+            .is_some();
         process_duration(old, "game_block", &mut game_block);
+        if !had_game_block {
+            // Preserve the prior scheduling cadence: derive from this config's play durations.
+            let regulation = if single_half {
+                half_play_duration
+            } else {
+                2 * half_play_duration + half_time_duration
+            };
+            game_block = regulation + nominal_break;
+        }
 
         Self {
             num_team_timeouts_allowed,
@@ -289,6 +302,40 @@ pub mod test {
         assert_eq!(gm.post_game_duration, Duration::from_secs(12));
         assert_eq!(gm.nominal_break, Duration::from_secs(345));
         assert_eq!(gm.minimum_break, Duration::from_secs(111));
+    }
+
+    #[test]
+    fn test_migrate_game_block_derived_when_absent() {
+        let mut old: Table = Default::default();
+        old.insert("half_play_duration".to_string(), toml::Value::Integer(900));
+        old.insert("half_time_duration".to_string(), toml::Value::Integer(180));
+        old.insert("nominal_break".to_string(), toml::Value::Integer(900));
+        old.insert("minimum_break".to_string(), toml::Value::Integer(240));
+        let gm = Game::migrate(&old);
+        assert_eq!(gm.game_block, Duration::from_secs(2880)); // 1980 + 900
+    }
+
+    #[test]
+    fn test_migrate_game_block_kept_when_present() {
+        let mut old: Table = Default::default();
+        old.insert("half_play_duration".to_string(), toml::Value::Integer(900));
+        old.insert("half_time_duration".to_string(), toml::Value::Integer(180));
+        old.insert("nominal_break".to_string(), toml::Value::Integer(900));
+        old.insert("minimum_break".to_string(), toml::Value::Integer(240));
+        old.insert("game_block".to_string(), toml::Value::Integer(1500));
+        let gm = Game::migrate(&old);
+        assert_eq!(gm.game_block, Duration::from_secs(1500));
+    }
+
+    #[test]
+    fn test_migrate_game_block_derived_single_half() {
+        let mut old: Table = Default::default();
+        old.insert("single_half".to_string(), toml::Value::Boolean(true));
+        old.insert("half_play_duration".to_string(), toml::Value::Integer(600));
+        old.insert("half_time_duration".to_string(), toml::Value::Integer(180));
+        old.insert("nominal_break".to_string(), toml::Value::Integer(120));
+        let gm = Game::migrate(&old);
+        assert_eq!(gm.game_block, Duration::from_secs(720)); // single period 600 + 120
     }
 
     #[test]

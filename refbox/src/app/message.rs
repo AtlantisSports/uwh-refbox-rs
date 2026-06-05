@@ -664,11 +664,9 @@ pub enum ListableParameter {
 pub enum BoolGameParameter {
     OvertimeAllowed,
     SuddenDeathAllowed,
-    // Single Half toggle was removed from Game Options in ADR-009 Task 14;
-    // TODO #1 will surface it from inside the Half Length parameter editor.
-    // Keep the variant so the toggle handler in mod.rs and the EditableSettings
-    // field stay live; #[expect] flags the day the variant is wired up again.
-    #[expect(dead_code)]
+    // Emitted by the 2 Halves / 1 Period selector in the Half Length parameter
+    // editor (surfaced per the former ADR-009 Task 14 TODO). Toggles the staged
+    // `single_half` choice held in AppState::ParameterEditor.
     SingleHalf,
     WhiteOnRight,
     UsingUwhPortal,

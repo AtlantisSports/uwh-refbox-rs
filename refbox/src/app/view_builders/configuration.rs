@@ -1401,6 +1401,9 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
     // the inactive segment is gray and emits the SingleHalf toggle, which flips
     // the staged choice. Other length parameters have no selector.
     let format_selector: Option<Element<'a, Message>> = if matches!(param, LengthParameter::Half) {
+        // Both segments stay pressable so the active one renders in the full
+        // blue "selected" style (a button with no on_press is drawn disabled).
+        // The active segment's press is a no-op; the inactive one toggles.
         let two_halves = {
             let b = make_button(fl!("two-halves"))
                 .width(Length::Fill)
@@ -1412,7 +1415,7 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
             if single_half {
                 b.on_press(Message::ToggleBoolParameter(BoolGameParameter::SingleHalf))
             } else {
-                b
+                b.on_press(Message::NoAction)
             }
         };
         let one_period = {
@@ -1424,7 +1427,7 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
                     light_gray_button
                 });
             if single_half {
-                b
+                b.on_press(Message::NoAction)
             } else {
                 b.on_press(Message::ToggleBoolParameter(BoolGameParameter::SingleHalf))
             }

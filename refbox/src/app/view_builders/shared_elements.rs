@@ -871,13 +871,23 @@ pub(super) fn config_string(
         }
     }
 
-    result += &fl!(
-        "game-config",
-        half_len = time_string(config.half_play_duration),
-        half_time_len = time_string(config.half_time_duration),
-        sd_allowed = bool_string(config.sudden_death_allowed),
-        ot_allowed = bool_string(config.overtime_allowed)
-    );
+    result += &if config.single_half {
+        // Single-period game: show "Game Length" and omit the half-time line.
+        fl!(
+            "game-config-single-half",
+            half_len = time_string(config.half_play_duration),
+            sd_allowed = bool_string(config.sudden_death_allowed),
+            ot_allowed = bool_string(config.overtime_allowed)
+        )
+    } else {
+        fl!(
+            "game-config",
+            half_len = time_string(config.half_play_duration),
+            half_time_len = time_string(config.half_time_duration),
+            sd_allowed = bool_string(config.sudden_death_allowed),
+            ot_allowed = bool_string(config.overtime_allowed)
+        )
+    };
 
     if config.timeouts_counted_per_half {
         result += "\n";

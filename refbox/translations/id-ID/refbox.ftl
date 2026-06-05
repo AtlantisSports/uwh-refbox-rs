@@ -413,3 +413,9 @@ two-halves = 2 BABAK
 one-period = 1 PERIODE
 game-len = DURASI PERTANDINGAN
 length-of-game-during-regular-play = Durasi permainan selama pertandingan reguler
+
+# Single-period (1 Period) info variants — Game Length, no half-time line
+game-config-single-half = Durasi Pertandingan: { $half_len }
+    Sudden Death Diizinkan: { $sd_allowed },  Perpanjangan Waktu Diizinkan: { $ot_allowed }
+game-length-ot-allowed-single-half = Durasi Pertandingan: { $half_length }
+         Perpanjangan Waktu Diizinkan: { $overtime }

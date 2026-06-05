@@ -413,3 +413,9 @@ two-halves = 2 DEVRE
 one-period = 1 PERİYOT
 game-len = OYUN SÜRESİ
 length-of-game-during-regular-play = Normal oyun sırasında oyunun süresi
+
+# Single-period (1 Period) info variants — Game Length, no half-time line
+game-config-single-half = Oyun Süresi: { $half_len }
+    Ani Ölüm İzin Verildi: { $sd_allowed },  Uzatma İzin Verildi: { $ot_allowed }
+game-length-ot-allowed-single-half = Oyun Süresi: { $half_length }
+         Uzatma İzin Verildi: { $overtime }

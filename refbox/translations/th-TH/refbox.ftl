@@ -413,3 +413,9 @@ two-halves = 2 ครึ่ง
 one-period = 1 พีเรียด
 game-len = ความยาวเกม
 length-of-game-during-regular-play = ความยาวของเกมระหว่างการเล่นปกติ
+
+# Single-period (1 Period) info variants — Game Length, no half-time line
+game-config-single-half = ความยาวเกม: { $half_len }
+    อนุญาตตายกะทันหัน: { $sd_allowed },  อนุญาตต่อเวลาพิเศษ: { $ot_allowed }
+game-length-ot-allowed-single-half = ความยาวเกม: { $half_length }
+         อนุญาตต่อเวลาพิเศษ: { $overtime }

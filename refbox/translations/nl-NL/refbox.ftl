@@ -413,3 +413,9 @@ two-halves = 2 HELFTEN
 one-period = 1 PERIODE
 game-len = WEDSTRIJDDUUR
 length-of-game-during-regular-play = De duur van de wedstrijd tijdens regulier spel
+
+# Single-period (1 Period) info variants — Game Length, no half-time line
+game-config-single-half = Wedstrijdduur: { $half_len }
+    Plotselinge Dood Toegestaan: { $sd_allowed },  Verlenging Toegestaan: { $ot_allowed }
+game-length-ot-allowed-single-half = Wedstrijdduur: { $half_length }
+         Verlenging Toegestaan: { $overtime }

@@ -191,12 +191,21 @@ fn details_strings(
         }
     }
 
-    left_string += &fl!(
-        "game-length-ot-allowed",
-        half_length = time_string(config.half_play_duration),
-        half_time_length = time_string(config.half_time_duration),
-        overtime = bool_string(config.overtime_allowed)
-    );
+    left_string += &if config.single_half {
+        // Single-period game: show "Game Length" and omit the half-time line.
+        fl!(
+            "game-length-ot-allowed-single-half",
+            half_length = time_string(config.half_play_duration),
+            overtime = bool_string(config.overtime_allowed)
+        )
+    } else {
+        fl!(
+            "game-length-ot-allowed",
+            half_length = time_string(config.half_play_duration),
+            half_time_length = time_string(config.half_time_duration),
+            overtime = bool_string(config.overtime_allowed)
+        )
+    };
     left_string += "\n";
 
     if config.overtime_allowed {

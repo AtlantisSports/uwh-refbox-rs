@@ -413,3 +413,9 @@ two-halves = 2 TEMPOS
 one-period = 1 PERÍODO
 game-len = DURAÇÃO DO JOGO
 length-of-game-during-regular-play = A duração total do jogo durante o jogo regular
+
+# Single-period (1 Period) info variants — Game Length, no half-time line
+game-config-single-half = Duração do Jogo: { $half_len }
+    Morte Súbita Permitida: { $sd_allowed },  Prorrogação Permitida: { $ot_allowed }
+game-length-ot-allowed-single-half = Duração do Jogo: { $half_length }
+         Prorrogação Permitida: { $overtime }

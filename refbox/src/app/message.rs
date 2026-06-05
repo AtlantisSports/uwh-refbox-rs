@@ -645,7 +645,7 @@ pub enum ConfigPage {
 pub enum LengthParameter {
     Half,
     HalfTime,
-    NominalBetweenGame,
+    GameBlock,
     MinimumBetweenGame,
     PreOvertime,
     OvertimeHalf,

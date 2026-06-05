@@ -2373,7 +2373,7 @@ impl RefBoxApp {
                     match param {
                         LengthParameter::Half => self.config.game.half_play_duration,
                         LengthParameter::HalfTime => self.config.game.half_time_duration,
-                        LengthParameter::NominalBetweenGame => self.config.game.nominal_break,
+                        LengthParameter::GameBlock => self.config.game.game_block,
                         LengthParameter::MinimumBetweenGame => self.config.game.minimum_break,
                         LengthParameter::PreOvertime => self.config.game.pre_overtime_break,
                         LengthParameter::OvertimeHalf => self.config.game.ot_half_play_duration,
@@ -2427,8 +2427,8 @@ impl RefBoxApp {
                                 LengthParameter::HalfTime => {
                                     edited_settings.config.half_time_duration = dur
                                 }
-                                LengthParameter::NominalBetweenGame => {
-                                    edited_settings.config.nominal_break = dur
+                                LengthParameter::GameBlock => {
+                                    edited_settings.config.game_block = dur
                                 }
                                 LengthParameter::MinimumBetweenGame => {
                                     edited_settings.config.minimum_break = dur

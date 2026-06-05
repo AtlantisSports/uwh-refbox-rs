@@ -142,6 +142,8 @@ length-of-half-during-regular-play = Normal oyun sırasında bir devrenin süres
 half-time-lenght = DEVRE ARASI SÜRESİ
 length-of-half-time-period = Devre arası süresinin uzunluğu
 nom-break = NOMİNAL ARA
+game-block = OYUN BLOĞU
+game-block-help = Bir oyunun başlangıcından bir sonraki oyunun başlangıcına kadar geçen süre
 system-will-keep-game-times-spaced = Sistem, oyun başlangıç zamanlarını eşit aralıklı tutmaya çalışır. Bir başlangıçtan diğerine toplam süre 2 × [Devre Uzunluğu] + [Devre Arası Uzunluğu] + [Oyunlar Arası Nominal Süre] şeklindedir (örnek: [Devre Uzunluğu] = 15dk, [Devre Arası Uzunluğu] = 3dk ve [Oyunlar Arası Nominal Süre] = 12dk ise, bir oyunun başlangıcından diğerine kadar geçen süre 45dk olacaktır. Alınan molalar veya diğer saat duraklamaları, oyunlar arası minimum süreye ulaşılana kadar 12dk'yı kısaltacaktır).
 min-break = MİNİMUM ARA
 min-time-btwn-games = Bir oyun planlanandan uzun sürerse, bu sistemin izin vereceği oyunlar arasındaki minimum süredir. Oyunlar geride kalırsa sistem, her zaman bu minimum süreye saygı göstererek sonraki oyunlarda yakalamaya otomatik olarak çalışacaktır.

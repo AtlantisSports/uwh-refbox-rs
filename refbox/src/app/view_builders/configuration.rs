@@ -794,10 +794,10 @@ fn make_event_config_page<'a>(
                         },
                     ),
                     make_value_button(
-                        fl!("nominal-break-between-games"),
-                        time_string(config.nominal_break),
+                        fl!("game-block"),
+                        time_string(config.game_block),
                         (false, true),
-                        Some(Message::EditParameter(LengthParameter::NominalBetweenGame)),
+                        Some(Message::EditParameter(LengthParameter::GameBlock)),
                     )
                 ]
                 .spacing(SPACING)
@@ -1384,9 +1384,7 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
             },
         ),
         LengthParameter::HalfTime => (fl!("half-time-lenght"), fl!("length-of-half-time-period")),
-        LengthParameter::NominalBetweenGame => {
-            (fl!("nom-break"), fl!("system-will-keep-game-times-spaced"))
-        }
+        LengthParameter::GameBlock => (fl!("game-block"), fl!("game-block-help")),
         LengthParameter::MinimumBetweenGame => (fl!("min-break"), fl!("min-time-btwn-games")),
         LengthParameter::PreOvertime => (fl!("pre-ot-break-abreviated"), fl!("pre-sd-brk")),
         LengthParameter::OvertimeHalf => (fl!("ot-half-len"), fl!("time-during-ot")),

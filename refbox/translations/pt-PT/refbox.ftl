@@ -142,6 +142,8 @@ length-of-half-during-regular-play = A duração de um tempo durante o jogo regu
 half-time-lenght = DUR INTERVALO
 length-of-half-time-period = A duração do período de intervalo
 nom-break = PAUSA NOM
+game-block = BLOCO DE JOGO
+game-block-help = Tempo desde o início de um jogo até ao início do seguinte
 system-will-keep-game-times-spaced = O sistema tentará manter os horários de início dos jogos espaçados de forma uniforme, sendo o tempo total de um início ao seguinte igual a 2 × [Duração do Tempo] + [Duração do Intervalo] + [Tempo Nominal Entre Jogos] (exemplo: se [Duração do Tempo] = 15 min, [Duração do Intervalo] = 3 min e [Tempo Nominal Entre Jogos] = 12 min, o tempo de início a início será de 45 min. Os tempos de equipa ou outras paragens reduzirão os 12 min até ser atingido o tempo mínimo entre jogos).
 min-break = PAUSA MÍN
 min-time-btwn-games = Se um jogo durar mais do que o previsto, este é o tempo mínimo entre jogos que o sistema atribuirá. Se os jogos ficarem atrasados, o sistema tentará recuperar nos jogos seguintes, respeitando sempre este tempo mínimo.

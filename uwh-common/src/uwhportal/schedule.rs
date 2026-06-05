@@ -288,6 +288,7 @@ impl Into<GameConfig> for TimingRule {
             penalty_shot_duration,
             nominal_break,
             post_game_duration,
+            game_block,
             ..
         } = Default::default();
 
@@ -308,6 +309,7 @@ impl Into<GameConfig> for TimingRule {
             post_game_duration,
             nominal_break,
             minimum_break,
+            game_block,
         }
     }
 }

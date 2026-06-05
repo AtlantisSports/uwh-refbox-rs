@@ -142,6 +142,8 @@ length-of-half-during-regular-play = Ang haba ng isang kalahati sa panahon ng re
 half-time-lenght = HABA NG PAHINGA
 length-of-half-time-period = Ang haba ng panahon ng pahinga
 nom-break = NOMINAL NA PAHINGA
+game-block = BLOKE NG LARO
+game-block-help = Oras mula sa simula ng isang laro hanggang sa simula ng susunod
 system-will-keep-game-times-spaced = Susubukan ng sistema na panatilihing pantay ang mga oras ng simula ng laro, na ang kabuuang oras mula sa isang simula hanggang sa susunod ay 2 × [Haba ng Kalahati] + [Haba ng Pahinga] + [Nominal na Oras sa Pagitan ng mga Laro] (halimbawa: kung ang [Haba ng Kalahati] = 15 min, [Haba ng Pahinga] = 3 min at [Nominal na Oras sa Pagitan ng mga Laro] = 12 min, ang oras mula simula hanggang simula ay magiging 45 min. Ang anumang mga timeout o iba pang paghinto ng orasan ay magbabawas ng 12 min hanggang maabot ang pinakamaliit na oras sa pagitan ng mga laro).
 min-break = PINAKAMALIIT NA PAHINGA
 min-time-btwn-games = Kung ang isang laro ay mas matagal kaysa sa nakatakda, ito ang pinakamaliit na oras sa pagitan ng mga larong itatalaga ng sistema. Kung nahuhuli ang mga laro, awtomatikong susubukan ng sistema na makahabol sa mga susunod na laro, palaging iginagalang ang pinakamaliit na oras na ito sa pagitan ng mga laro.

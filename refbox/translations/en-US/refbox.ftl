@@ -141,6 +141,8 @@ length-of-half-during-regular-play = The length of a half during regular play
 half-time-lenght = HALF TIME LEN
 length-of-half-time-period = The length of the Half Time period
 nom-break = NOM BREAK
+game-block = GAME BLOCK
+game-block-help = Time from the start of one game to the start of the next
 system-will-keep-game-times-spaced = The system will try to keep the game start times evenly spaced, with the
     total time from one start to the next being 2 * [Half Length] + [Half Time
     Length] + [Nominal Time Between Games] (example: if games have [Half

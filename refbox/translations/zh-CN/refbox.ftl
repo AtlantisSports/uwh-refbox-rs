@@ -407,3 +407,9 @@ portal-page-attention-info = 比赛结果尚未被 { $portal } Portal 接受
 portal-page-attention-score = 已存储比赛结果：白队 { $white } - 黑队 { $black }
 portal-page-attention-remediation = 若连接已确认，可重试；或放弃以清除错误
 portal-advisory-at-game-end = 检测到 Portal 问题。比分仍会排队 — 请联系管理员解决。
+
+# 2 Halves / 1 Period selector (Half Length editor)
+two-halves = 2 个半场
+one-period = 1 节
+game-len = 比赛时长
+length-of-game-during-regular-play = 常规比赛中整场比赛的时长

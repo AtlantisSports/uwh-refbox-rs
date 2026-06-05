@@ -407,3 +407,9 @@ portal-page-attention-info = ผลเกมยังไม่ได้รับ
 portal-page-attention-score = ผลเกมที่จัดเก็บไว้: ขาว { $white } - ดำ { $black }
 portal-page-attention-remediation = คุณสามารถลองอีกครั้งหากการเชื่อมต่อได้รับการยืนยัน หรือทิ้งเพื่อล้างข้อผิดพลาด
 portal-advisory-at-game-end = ตรวจพบปัญหาพอร์ทัล คะแนนจะยังคงอยู่ในคิว — ติดต่อผู้ดูแลเพื่อแก้ไข
+
+# 2 Halves / 1 Period selector (Half Length editor)
+two-halves = 2 ครึ่ง
+one-period = 1 พีเรียด
+game-len = ความยาวเกม
+length-of-game-during-regular-play = ความยาวของเกมระหว่างการเล่นปกติ

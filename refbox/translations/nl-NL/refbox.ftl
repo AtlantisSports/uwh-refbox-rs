@@ -407,3 +407,9 @@ portal-page-attention-info = De wedstrijduitslag is niet geaccepteerd op { $port
 portal-page-attention-score = Opgeslagen wedstrijduitslag: Licht { $white } - Donker { $black }
 portal-page-attention-remediation = U kunt Opnieuw proberen als de verbinding is geverifieerd, of verwerpen om de fout te wissen
 portal-advisory-at-game-end = Portaalprobleem gedetecteerd. Score blijft in wachtrij — zoek een beheerder om het op te lossen.
+
+# 2 Halves / 1 Period selector (Half Length editor)
+two-halves = 2 HELFTEN
+one-period = 1 PERIODE
+game-len = WEDSTRIJDDUUR
+length-of-game-during-regular-play = De duur van de wedstrijd tijdens regulier spel

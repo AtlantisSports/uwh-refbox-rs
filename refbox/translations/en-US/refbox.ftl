@@ -415,3 +415,9 @@ portal-page-attention-info = The game result has not been accepted on { $portal 
 portal-page-attention-score = Stored game result: Light { $white } - Dark { $black }
 portal-page-attention-remediation = You can Retry if connection is verified, or discard to clear the error
 portal-advisory-at-game-end = Portal issue detected. Score will still be queued — find an admin to resolve.
+
+# 2 Halves / 1 Period selector (Half Length editor)
+two-halves = 2 HALVES
+one-period = 1 PERIOD
+game-len = GAME LEN
+length-of-game-during-regular-play = The length of the game during regular play

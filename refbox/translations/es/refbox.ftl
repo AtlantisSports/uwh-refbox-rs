@@ -418,3 +418,9 @@ portal-page-attention-info = El resultado del juego no ha sido aceptado por { $p
 portal-page-attention-score = Resultado almacenado: Claro { $white } - Oscuro { $black }
 portal-page-attention-remediation = Puedes Reintentar si la conexión está verificada, o descartar para borrar el error
 portal-advisory-at-game-end = Problema del portal detectado. El resultado se encolará igualmente — busca a un administrador para resolverlo.
+
+# 2 Halves / 1 Period selector (Half Length editor)
+two-halves = 2 MITADES
+one-period = 1 PERIODO
+game-len = DURACIÓN DEL JUEGO
+length-of-game-during-regular-play = La duración del juego durante el juego regular

@@ -407,3 +407,9 @@ portal-page-attention-info = Hindi pa tinatanggap ang resulta ng laro sa { $port
 portal-page-attention-score = Naka-imbak na resulta: Puti { $white } - Itim { $black }
 portal-page-attention-remediation = Maaari kang Subukang Muli kung naberipika ang koneksyon, o itapon upang alisin ang error
 portal-advisory-at-game-end = May problema sa Portal. Ipipila pa rin ang puntos — humanap ng admin para ayusin.
+
+# 2 Halves / 1 Period selector (Half Length editor)
+two-halves = 2 KALAHATI
+one-period = 1 YUGTO
+game-len = HABA NG LARO
+length-of-game-during-regular-play = Ang haba ng buong laro sa panahon ng regular na laro

@@ -34,6 +34,8 @@ pub struct Game {
     pub nominal_break: Duration,
     #[serde(with = "secs_only_duration")]
     pub minimum_break: Duration,
+    #[serde(with = "secs_only_duration")]
+    pub game_block: Duration,
 }
 
 impl Default for Game {
@@ -55,6 +57,7 @@ impl Default for Game {
             post_game_duration: Duration::from_secs(120),
             nominal_break: Duration::from_secs(900),
             minimum_break: Duration::from_secs(240),
+            game_block: Duration::from_secs(2880),
         }
     }
 }
@@ -78,6 +81,7 @@ impl Game {
             mut post_game_duration,
             mut nominal_break,
             mut minimum_break,
+            mut game_block,
         } = Default::default();
 
         let process_duration = |old: &Table, name: &str, save: &mut Duration| {
@@ -143,6 +147,7 @@ impl Game {
         process_duration(old, "post_game_duration", &mut post_game_duration);
         process_duration(old, "nominal_break", &mut nominal_break);
         process_duration(old, "minimum_break", &mut minimum_break);
+        process_duration(old, "game_block", &mut game_block);
 
         Self {
             num_team_timeouts_allowed,
@@ -161,7 +166,41 @@ impl Game {
             post_game_duration,
             nominal_break,
             minimum_break,
+            game_block,
         }
+    }
+}
+
+impl Game {
+    /// Playing time excluding overtime: two halves + half-time, or a single period.
+    pub fn regulation_play(&self) -> Duration {
+        if self.single_half {
+            self.half_play_duration
+        } else {
+            2 * self.half_play_duration + self.half_time_duration
+        }
+    }
+
+    /// Smallest Game Block that fits the game plus the minimum break.
+    pub fn game_block_minimum(&self) -> Duration {
+        self.regulation_play() + self.minimum_break
+    }
+
+    /// Total team-timeout time both teams could use in a game (referee timeouts excluded).
+    pub fn team_timeout_allotment(&self) -> Duration {
+        let periods: u32 = if self.timeouts_counted_per_half && !self.single_half {
+            2
+        } else {
+            1
+        };
+        // num_team_timeouts_allowed is u16; compute in u32 to avoid overflow, then scale Duration.
+        let count = 2 * periods * u32::from(self.num_team_timeouts_allowed);
+        count * self.team_timeout_duration
+    }
+
+    /// Slack between the Game Block and the math minimum (saturating at zero).
+    pub fn game_block_buffer(&self) -> Duration {
+        self.game_block.saturating_sub(self.game_block_minimum())
     }
 }
 
@@ -250,5 +289,45 @@ pub mod test {
         assert_eq!(gm.post_game_duration, Duration::from_secs(12));
         assert_eq!(gm.nominal_break, Duration::from_secs(345));
         assert_eq!(gm.minimum_break, Duration::from_secs(111));
+    }
+
+    #[test]
+    fn test_game_block_helpers_two_period() {
+        let g = Game {
+            single_half: false,
+            half_play_duration: Duration::from_secs(900),
+            half_time_duration: Duration::from_secs(180),
+            minimum_break: Duration::from_secs(240),
+            num_team_timeouts_allowed: 1,
+            team_timeout_duration: Duration::from_secs(60),
+            timeouts_counted_per_half: false,
+            game_block: Duration::from_secs(2880),
+            ..Default::default()
+        };
+        assert_eq!(g.regulation_play(), Duration::from_secs(1980)); // 2*900+180
+        assert_eq!(g.game_block_minimum(), Duration::from_secs(2220)); // 1980+240
+        // per-game, both teams, 1 each * 60s = 120s
+        assert_eq!(g.team_timeout_allotment(), Duration::from_secs(120));
+        assert_eq!(g.game_block_buffer(), Duration::from_secs(660)); // 2880-2220
+    }
+
+    #[test]
+    fn test_game_block_helpers_single_period_and_per_half() {
+        let g = Game {
+            single_half: true,
+            half_play_duration: Duration::from_secs(600),
+            half_time_duration: Duration::from_secs(180), // ignored when single_half
+            minimum_break: Duration::from_secs(120),
+            num_team_timeouts_allowed: 2,
+            team_timeout_duration: Duration::from_secs(60),
+            timeouts_counted_per_half: true, // single period => counted once
+            game_block: Duration::from_secs(800),
+            ..Default::default()
+        };
+        assert_eq!(g.regulation_play(), Duration::from_secs(600)); // single period
+        assert_eq!(g.game_block_minimum(), Duration::from_secs(720)); // 600+120
+        // per-half but single period => 1 period; 2 teams * 2 * 60 = 240
+        assert_eq!(g.team_timeout_allotment(), Duration::from_secs(240));
+        assert_eq!(g.game_block_buffer(), Duration::from_secs(80)); // 800-720
     }
 }

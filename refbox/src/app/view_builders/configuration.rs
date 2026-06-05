@@ -1032,7 +1032,11 @@ fn make_display_config_page<'a>(
         fl!("player-display-brightness"),
         fl!("brightness", brightness = brightness.to_string()),
         (false, true),
-        Some(Message::CycleParameter(CyclingParameter::Brightness)),
+        if has_led_panel {
+            Some(Message::CycleParameter(CyclingParameter::Brightness))
+        } else {
+            None
+        },
     );
 
     // The button is grayed out (no `on_press`) when a real LED panel is connected

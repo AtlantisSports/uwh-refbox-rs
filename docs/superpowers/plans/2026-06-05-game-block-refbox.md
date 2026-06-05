@@ -422,3 +422,25 @@ unpinned location (the time-bar widget in E1) names the search target and the in
 `team_timeout_allotment`, `game_block_buffer` (defined A1) are used consistently in D2/E1.
 `LengthParameter::GameBlock` (D1) replaces `NominalBetweenGame` everywhere. `accumulated_overrun`
 (C2) feeds E1. Default `game_block = 2880s` matches the derived-migration formula (1980 + 900).
+
+---
+
+## Deviations
+
+- **Task C1 — between-games clock seeds/fallback left on `nominal_break` (NOT switched to
+  `game_block`).** The plan's C1 Step 3 said to change the constructor seeds (`mod.rs` lines ~68/81,
+  `clock_time`/`reset_game_time`) and implied the no-schedule cadence should use `game_block`.
+  During execution this was found to be a semantic error: those values represent the *break shown
+  on the between-games clock* (≈15 min), not the start-to-start *slot* (`game_block`, ≈48 min).
+  Seeding a between-games countdown with the full slot would display the wrong number. `nominal_break`
+  is intentionally retained as a legacy field (default 900s) precisely for these break-placeholder
+  uses, and the spec itself says `calc_time_to_next_game` is "otherwise unchanged". So C1 changed
+  ONLY the two scheduling expressions (`start_game` and the `set_game_start` test helper) to
+  `sched_start + game_block`; the constructor seeds (68/81) and the `calc_time_to_next_game`
+  fallback (~906) were left exactly as-is. Net effect matches the spec's intent (next start =
+  this start + Game Block) without breaking the break display.
+- **Task C1 — 8 existing tournament-manager tests updated.** Switching the `set_game_start` test
+  helper to `game_block` made 8 tests that assert the between-games clock derive their slot from the
+  default `game_block` (2880s) instead of `regulation + nominal_break`. Each was given an explicit
+  `game_block` equal to the start-to-start slot already documented in that test's own comment
+  (e.g. `2*9 + 2 + 5 = 25` → `game_block: 25`). No assertions were changed.

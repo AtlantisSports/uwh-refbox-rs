@@ -1360,6 +1360,7 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
     data: ViewData<'_, '_>,
     param: LengthParameter,
     length: Duration,
+    single_half: bool,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -1371,8 +1372,16 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
 
     let (title, hint) = match param {
         LengthParameter::Half => (
-            fl!("half-length"),
-            fl!("length-of-half-during-regular-play"),
+            if single_half {
+                fl!("game-len")
+            } else {
+                fl!("half-length")
+            },
+            if single_half {
+                fl!("length-of-game-during-regular-play")
+            } else {
+                fl!("length-of-half-during-regular-play")
+            },
         ),
         LengthParameter::HalfTime => (fl!("half-time-lenght"), fl!("length-of-half-time-period")),
         LengthParameter::NominalBetweenGame => {
@@ -1387,40 +1396,85 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
         LengthParameter::PreSuddenDeath => (fl!("pre-sd-break"), fl!("pre-sd-len")),
     };
 
-    column![
-        make_game_time_button(
-            snapshot,
-            false,
-            false,
-            mode,
-            clock_running,
-            portal_indicator
-        ),
-        vertical_space(),
-        make_time_editor(title, length, false),
-        vertical_space(),
-        text(fl!("help") + &hint)
-            .size(SMALL_TEXT)
-            .align_x(Horizontal::Center),
-        vertical_space(),
-        row![
-            make_button(fl!("cancel"))
-                .style(red_button)
+    // For the Half Length editor, offer a 2 Halves / 1 Period selector above the
+    // time keypad. The active segment is highlighted (blue) and not pressable;
+    // the inactive segment is gray and emits the SingleHalf toggle, which flips
+    // the staged choice. Other length parameters have no selector.
+    let format_selector: Option<Element<'a, Message>> = if matches!(param, LengthParameter::Half) {
+        let two_halves = {
+            let b = make_button(fl!("two-halves"))
                 .width(Length::Fill)
-                .on_press(Message::ParameterEditComplete { canceled: true }),
-            horizontal_space(),
-            make_button(fl!("done"))
-                .style(green_button)
+                .style(if single_half {
+                    light_gray_button
+                } else {
+                    blue_selected_button
+                });
+            if single_half {
+                b.on_press(Message::ToggleBoolParameter(BoolGameParameter::SingleHalf))
+            } else {
+                b
+            }
+        };
+        let one_period = {
+            let b = make_button(fl!("one-period"))
                 .width(Length::Fill)
-                .on_press(Message::ParameterEditComplete { canceled: false }),
-        ]
-        .spacing(SPACING),
-    ]
+                .style(if single_half {
+                    blue_selected_button
+                } else {
+                    light_gray_button
+                });
+            if single_half {
+                b
+            } else {
+                b.on_press(Message::ToggleBoolParameter(BoolGameParameter::SingleHalf))
+            }
+        };
+        Some(row![two_halves, one_period].spacing(SPACING).into())
+    } else {
+        None
+    };
+
+    let mut col = column![make_game_time_button(
+        snapshot,
+        false,
+        false,
+        mode,
+        clock_running,
+        portal_indicator
+    )]
     .spacing(SPACING)
     .align_x(Alignment::Center)
     .width(Length::Fill)
-    .height(Length::Fill)
-    .into()
+    .height(Length::Fill);
+
+    if let Some(selector) = format_selector {
+        col = col.push(selector);
+    }
+
+    col.push(vertical_space())
+        .push(make_time_editor(title, length, false))
+        .push(vertical_space())
+        .push(
+            text(fl!("help") + &hint)
+                .size(SMALL_TEXT)
+                .align_x(Horizontal::Center),
+        )
+        .push(vertical_space())
+        .push(
+            row![
+                make_button(fl!("cancel"))
+                    .style(red_button)
+                    .width(Length::Fill)
+                    .on_press(Message::ParameterEditComplete { canceled: true }),
+                horizontal_space(),
+                make_button(fl!("done"))
+                    .style(green_button)
+                    .width(Length::Fill)
+                    .on_press(Message::ParameterEditComplete { canceled: false }),
+            ]
+            .spacing(SPACING),
+        )
+        .into()
 }
 
 fn font_family_id(lang: Language) -> u8 {

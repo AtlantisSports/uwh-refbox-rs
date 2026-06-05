@@ -1039,15 +1039,9 @@ impl TournamentManager {
         self.has_reset = false;
 
         let sched_start = self.next_scheduled_start.unwrap_or(start_time);
-        // A single-period game is one period with no half-time and no second
-        // half, so its slot is just one play period; a two-period game is two
-        // halves plus the half-time between them.
-        let regulation_play = if self.config.single_half {
-            self.config.half_play_duration
-        } else {
-            2 * self.config.half_play_duration + self.config.half_time_duration
-        };
-        self.next_scheduled_start = Some(sched_start + regulation_play + self.config.nominal_break);
+        // The next game starts one Game Block (the authoritative start-to-start
+        // slot duration) after this game's scheduled start.
+        self.next_scheduled_start = Some(sched_start + self.config.game_block);
     }
 
     pub fn could_end_game(&self, now: Instant) -> Result<bool> {
@@ -1972,12 +1966,7 @@ impl TournamentManager {
     pub(super) fn set_game_start(&mut self, time: Instant) {
         if let ClockState::Stopped { .. } = self.clock_state {
             self.game_start_time = time;
-            let regulation_play = if self.config.single_half {
-                self.config.half_play_duration
-            } else {
-                2 * self.config.half_play_duration + self.config.half_time_duration
-            };
-            self.next_scheduled_start = Some(time + regulation_play + self.config.nominal_break);
+            self.next_scheduled_start = Some(time + self.config.game_block);
         } else {
             panic!("Can't edit game start time while clock is running");
         }
@@ -2517,6 +2506,7 @@ mod test {
             half_time_duration: Duration::from_secs(3),
             nominal_break: Duration::from_secs(9),
             minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(19),
             single_half: true,
             overtime_allowed: false,
             sudden_death_allowed: false,
@@ -2532,6 +2522,25 @@ mod test {
     }
 
     #[test]
+    fn test_between_game_timing_game_block() {
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(10),
+            half_time_duration: Duration::from_secs(3),
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(40), // start-to-start slot
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let now = Instant::now();
+        tm.start_clock(now);
+        tm.start_play_now(now).unwrap();
+        assert_eq!(tm.next_scheduled_start, Some(now + Duration::from_secs(40)));
+    }
+
+    #[test]
     fn test_between_game_timing() {
         initialize();
         // Total time between starts of games is nominally 32s
@@ -2540,6 +2549,7 @@ mod test {
             half_time_duration: Duration::from_secs(3),
             nominal_break: Duration::from_secs(9),
             minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(32),
             overtime_allowed: false,
             sudden_death_allowed: false,
             ..Default::default()
@@ -4034,6 +4044,7 @@ mod test {
             half_time_duration: Duration::from_secs(2),
             nominal_break: Duration::from_secs(5),
             minimum_break: Duration::from_secs(1),
+            game_block: Duration::from_secs(25),
             ..Default::default()
         };
         // 2*9 + 2 + 5 = 25 sec from game start to game start
@@ -4059,6 +4070,7 @@ mod test {
             half_time_duration: Duration::from_secs(2),
             nominal_break: Duration::from_secs(7),
             minimum_break: Duration::from_secs(5),
+            game_block: Duration::from_secs(27),
             ..Default::default()
         };
         // 2*9 + 2 + 7 = 27 sec from game start to game start
@@ -4084,6 +4096,7 @@ mod test {
             half_time_duration: Duration::from_secs(2),
             nominal_break: Duration::from_secs(6),
             minimum_break: Duration::from_secs(1),
+            game_block: Duration::from_secs(26),
             ..Default::default()
         };
         // 2*9 + 2 + 6 = 26 sec from game start to game start
@@ -4109,6 +4122,7 @@ mod test {
             half_time_duration: Duration::from_secs(2),
             nominal_break: Duration::from_secs(8),
             minimum_break: Duration::from_secs(1),
+            game_block: Duration::from_secs(28),
             ..Default::default()
         };
         // 2*9 + 2 + 8 = 28 sec from game start to game start
@@ -4215,6 +4229,7 @@ mod test {
             half_time_duration: Duration::from_secs(2),
             nominal_break: Duration::from_secs(8),
             minimum_break: Duration::from_secs(1),
+            game_block: Duration::from_secs(28),
             ..Default::default()
         };
         // 2*9 + 2 + 8 = 28 sec from game start to game start
@@ -4240,6 +4255,7 @@ mod test {
             half_time_duration: Duration::from_secs(2),
             nominal_break: Duration::from_secs(8),
             minimum_break: Duration::from_secs(1),
+            game_block: Duration::from_secs(28),
             ..Default::default()
         };
         // 2*9 + 2 + 8 = 28 sec from game start to game start
@@ -4268,6 +4284,7 @@ mod test {
             half_time_duration: Duration::from_secs(2),
             nominal_break: Duration::from_secs(8),
             minimum_break: Duration::from_secs(1),
+            game_block: Duration::from_secs(28),
             ..Default::default()
         };
         // 2*9 + 2 + 8 = 28 sec from game start to game start
@@ -4314,6 +4331,7 @@ mod test {
             half_time_duration: Duration::from_secs(2),
             nominal_break: Duration::from_secs(8),
             minimum_break: Duration::from_secs(1),
+            game_block: Duration::from_secs(28),
             ..Default::default()
         };
         // 2*9 + 2 + 8 = 28 sec from game start to game start

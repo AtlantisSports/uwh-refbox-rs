@@ -413,3 +413,9 @@ two-halves = 2ハーフ
 one-period = 1ピリオド
 game-len = 試合時間
 length-of-game-during-regular-play = 通常試合中の試合全体の長さ
+
+# Single-period (1 Period) info variants — Game Length, no half-time line
+game-config-single-half = 試合時間: { $half_len }
+    サドンデス許可: { $sd_allowed },  延長戦許可: { $ot_allowed }
+game-length-ot-allowed-single-half = 試合時間: { $half_length }
+         延長戦許可: { $overtime }

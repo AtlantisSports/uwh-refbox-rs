@@ -413,3 +413,9 @@ two-halves = 2 SEPARUH
 one-period = 1 PERIOD
 game-len = PANJANG PERLAWANAN
 length-of-game-during-regular-play = Panjang perlawanan semasa permainan biasa
+
+# Single-period (1 Period) info variants — Game Length, no half-time line
+game-config-single-half = Panjang Perlawanan: { $half_len }
+    Sudden Death Dibenarkan: { $sd_allowed },  Masa Tambahan Dibenarkan: { $ot_allowed }
+game-length-ot-allowed-single-half = Panjang Perlawanan: { $half_length }
+         Masa Tambahan Dibenarkan: { $overtime }

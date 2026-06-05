@@ -413,3 +413,9 @@ two-halves = 2 KALAHATI
 one-period = 1 YUGTO
 game-len = HABA NG LARO
 length-of-game-during-regular-play = Ang haba ng buong laro sa panahon ng regular na laro
+
+# Single-period (1 Period) info variants — Game Length, no half-time line
+game-config-single-half = Haba ng Laro: { $half_len }
+    Sudden Death Pinahintulutan: { $sd_allowed },  Overtime Pinahintulutan: { $ot_allowed }
+game-length-ot-allowed-single-half = Haba ng Laro: { $half_length }
+         Overtime Pinahintulutan: { $overtime }

@@ -415,3 +415,9 @@ two-halves = 2 하프
 one-period = 1 피리어드
 game-len = 경기 시간
 length-of-game-during-regular-play = 정규 경기 중 전체 경기 시간
+
+# Single-period (1 Period) info variants — Game Length, no half-time line
+game-config-single-half = 경기 시간: { $half_len }
+    서든 데스 허용: { $sd_allowed },  연장전 허용: { $ot_allowed }
+game-length-ot-allowed-single-half = 경기 시간: { $half_length }
+         연장전 허용: { $overtime }

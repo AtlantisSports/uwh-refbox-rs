@@ -413,3 +413,9 @@ two-halves = 2 个半场
 one-period = 1 节
 game-len = 比赛时长
 length-of-game-during-regular-play = 常规比赛中整场比赛的时长
+
+# Single-period (1 Period) info variants — Game Length, no half-time line
+game-config-single-half = 比赛时长：{ $half_len }
+    允许突然死亡：{ $sd_allowed }，  允许加时赛：{ $ot_allowed }
+game-length-ot-allowed-single-half = 比赛时长：{ $half_length }
+         允许加时赛：{ $overtime }

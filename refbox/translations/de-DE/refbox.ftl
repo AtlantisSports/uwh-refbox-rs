@@ -142,6 +142,8 @@ length-of-half-during-regular-play = Die Dauer einer Halbzeit während des regul
 half-time-lenght = HALBZEITPAUSE DAUER
 length-of-half-time-period = Die Dauer der Halbzeitpause
 nom-break = NOM. PAUSE
+game-block = SPIELBLOCK
+game-block-help = Zeit vom Beginn eines Spiels bis zum Beginn des nächsten
 system-will-keep-game-times-spaced = Das System versucht, die Spielstartzeiten gleichmäßig zu verteilen. Die Gesamtzeit von einem Start zum nächsten beträgt 2 × [Halbzeitdauer] + [Halbzeitpausendauer] + [Nominale Spielpause] (Beispiel: bei [Halbzeitdauer] = 15 Min, [Halbzeitpausendauer] = 3 Min und [Nominale Spielpause] = 12 Min beträgt die Zeit von Spielstart zu Spielstart 45 Min. Auszeiten oder andere Spielunterbrechungen verkürzen die 12 Min bis zur minimalen Pause zwischen Spielen).
 min-break = MIN. PAUSE
 min-time-btwn-games = Wenn ein Spiel länger dauert als geplant, ist dies die minimale Pause zwischen Spielen, die das System einplant. Bei Rückstand holt das System bei nachfolgenden Spielen auf und hält dabei stets diese Mindestpause ein.

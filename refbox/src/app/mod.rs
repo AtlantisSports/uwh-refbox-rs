@@ -189,7 +189,10 @@ enum AppState {
     GameDetailsPage(bool),
     WarningsSummaryPage,
     EditGameConfig(ConfigPage),
-    ParameterEditor(LengthParameter, Duration),
+    // 3rd field: staged `single_half` choice, only meaningful for
+    // LengthParameter::Half (the 2 Halves / 1 Period selector). Carried here so
+    // it commits on Done and is discarded on Cancel, like the edited Duration.
+    ParameterEditor(LengthParameter, Duration, bool),
     ParameterList(ListableParameter, usize),
     ConfirmationPage(ConfirmationKind),
     ConfirmScores(BlackWhiteBundle<u8>),
@@ -1426,7 +1429,7 @@ impl RefBoxApp {
                             (game_dur, true)
                         }
                     }
-                    AppState::ParameterEditor(_, ref mut dur) => (dur, false),
+                    AppState::ParameterEditor(_, ref mut dur, _) => (dur, false),
                     AppState::KeypadPage(KeypadPage::TeamTimeouts(ref mut dur, _), _) => {
                         (dur, false)
                     }
@@ -2360,6 +2363,11 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::EditParameter(param) => {
+                let single_half = self
+                    .edited_settings
+                    .as_ref()
+                    .map(|s| s.config.single_half)
+                    .unwrap_or(self.config.game.single_half);
                 self.app_state = AppState::ParameterEditor(
                     param,
                     match param {
@@ -2374,6 +2382,7 @@ impl RefBoxApp {
                             self.config.game.pre_sudden_death_duration
                         }
                     },
+                    single_half,
                 );
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
@@ -2408,11 +2417,12 @@ impl RefBoxApp {
                 let mut task = Task::none();
                 if !canceled {
                     match self.app_state {
-                        AppState::ParameterEditor(param, dur) => {
+                        AppState::ParameterEditor(param, dur, single_half) => {
                             let edited_settings = self.edited_settings.as_mut().unwrap();
                             match param {
                                 LengthParameter::Half => {
-                                    edited_settings.config.half_play_duration = dur
+                                    edited_settings.config.half_play_duration = dur;
+                                    edited_settings.config.single_half = single_half;
                                 }
                                 LengthParameter::HalfTime => {
                                     edited_settings.config.half_time_duration = dur
@@ -2485,7 +2495,9 @@ impl RefBoxApp {
                 // routes return to Game Options per ADR 009 (Unit 3's
                 // redesign of the post-keypad landing).
                 let next_state = match self.app_state {
-                    AppState::ParameterEditor(_, _) => AppState::EditGameConfig(ConfigPage::Game),
+                    AppState::ParameterEditor(_, _, _) => {
+                        AppState::EditGameConfig(ConfigPage::Game)
+                    }
                     AppState::KeypadPage(KeypadPage::GameNumber, _) => {
                         AppState::EditGameConfig(ConfigPage::Game)
                     }
@@ -2606,6 +2618,20 @@ impl RefBoxApp {
                         trace!("AppState changed to {:?}", self.app_state)
                     }
 
+                    BoolGameParameter::SingleHalf => {
+                        // Staged inside the Half Length parameter editor (the
+                        // 2 Halves / 1 Period selector), so flip the editor's
+                        // staged bool in place — it commits on Done / discards
+                        // on Cancel, like the edited Duration.
+                        if let AppState::ParameterEditor(_, _, ref mut single_half) = self.app_state
+                        {
+                            *single_half ^= true
+                        } else {
+                            unreachable!()
+                        }
+                        trace!("AppState changed to {:?}", self.app_state)
+                    }
+
                     _ => {
                         let edited_settings = self.edited_settings.as_mut().unwrap();
                         match param {
@@ -2614,9 +2640,6 @@ impl RefBoxApp {
                             }
                             BoolGameParameter::SuddenDeathAllowed => {
                                 edited_settings.config.sudden_death_allowed ^= true
-                            }
-                            BoolGameParameter::SingleHalf => {
-                                edited_settings.config.single_half ^= true
                             }
                             BoolGameParameter::WhiteOnRight => {
                                 edited_settings.white_on_right ^= true
@@ -2663,7 +2686,8 @@ impl RefBoxApp {
                                 edited_settings.track_fouls_and_warnings ^= true
                             }
                             BoolGameParameter::TeamWarning
-                            | BoolGameParameter::TimeoutsCountedPerHalf => {
+                            | BoolGameParameter::TimeoutsCountedPerHalf
+                            | BoolGameParameter::SingleHalf => {
                                 unreachable!()
                             }
                             BoolGameParameter::ConfirmScore => {
@@ -3810,7 +3834,9 @@ impl RefBoxApp {
                 page,
                 self.page_entry_snapshot.as_ref(),
             ),
-            AppState::ParameterEditor(param, dur) => build_game_parameter_editor(data, param, dur),
+            AppState::ParameterEditor(param, dur, single_half) => {
+                build_game_parameter_editor(data, param, dur, single_half)
+            }
             AppState::ParameterList(param, index) => build_list_selector_page(
                 data,
                 param,

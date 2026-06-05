@@ -409,3 +409,9 @@ portal-page-attention-info = Le résultat du match n.a pas été accepté par { 
 portal-page-attention-score = Résultat stocké : Clair { $white } - Foncé { $black }
 portal-page-attention-remediation = Vous pouvez Réessayer si la connexion est vérifiée, ou supprimer pour effacer l'erreur
 portal-advisory-at-game-end = Problème du portail détecté. Le résultat sera tout de même mis en file d'attente — trouvez un administrateur pour le résoudre.
+
+# 2 Halves / 1 Period selector (Half Length editor)
+two-halves = 2 PÉRIODES
+one-period = 1 PÉRIODE
+game-len = DURÉE DU MATCH
+length-of-game-during-regular-play = La durée du jeu pendant le match régulier

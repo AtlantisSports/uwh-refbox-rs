@@ -407,3 +407,9 @@ portal-page-attention-info = Oyun sonucu { $portal } Portal'da kabul edilmedi
 portal-page-attention-score = Saklanan oyun sonucu: Beyaz { $white } - Siyah { $black }
 portal-page-attention-remediation = Bağlantı doğrulandıysa Tekrar Dene'yi seçebilir veya hatayı temizlemek için iptal edebilirsiniz
 portal-advisory-at-game-end = Portal sorunu algılandı. Skor yine de sıraya alınacak — çözmek için bir yöneticiye başvurun.
+
+# 2 Halves / 1 Period selector (Half Length editor)
+two-halves = 2 DEVRE
+one-period = 1 PERİYOT
+game-len = OYUN SÜRESİ
+length-of-game-during-regular-play = Normal oyun sırasında oyunun süresi

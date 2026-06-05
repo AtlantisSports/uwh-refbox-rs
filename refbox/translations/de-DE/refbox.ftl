@@ -407,3 +407,9 @@ portal-page-attention-info = Das Spielergebnis wurde vom { $portal } Portal nich
 portal-page-attention-score = Gespeichertes Spielergebnis: Weiß { $white } - Schwarz { $black }
 portal-page-attention-remediation = Sie können erneut versuchen, wenn die Verbindung bestätigt ist, oder verwerfen, um den Fehler zu löschen
 portal-advisory-at-game-end = Portal-Problem erkannt. Spielstand wird trotzdem in die Warteschlange gestellt — bitte einen Administrator zur Lösung kontaktieren.
+
+# 2 Halves / 1 Period selector (Half Length editor)
+two-halves = 2 HALBZEITEN
+one-period = 1 PERIODE
+game-len = SPIELDAUER
+length-of-game-during-regular-play = Die Spieldauer während des regulären Spiels

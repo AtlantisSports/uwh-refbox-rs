@@ -407,3 +407,9 @@ portal-page-attention-info = Hasil pertandingan belum diterima oleh { $portal } 
 portal-page-attention-score = Hasil pertandingan tersimpan: Putih { $white } - Hitam { $black }
 portal-page-attention-remediation = Anda dapat Coba Lagi jika koneksi sudah terverifikasi, atau buang untuk menghapus galat
 portal-advisory-at-game-end = Masalah Portal terdeteksi. Skor tetap akan diantrekan — temui admin untuk menyelesaikan.
+
+# 2 Halves / 1 Period selector (Half Length editor)
+two-halves = 2 BABAK
+one-period = 1 PERIODE
+game-len = DURASI PERTANDINGAN
+length-of-game-during-regular-play = Durasi permainan selama pertandingan reguler

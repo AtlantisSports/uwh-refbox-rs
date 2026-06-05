@@ -409,3 +409,9 @@ portal-page-attention-info = 경기 결과가 { $portal } Portal에서 수락되
 portal-page-attention-score = 저장된 경기 결과: 흰 { $white } - 검정 { $black }
 portal-page-attention-remediation = 연결이 확인되면 재시도하거나, 오류를 지우려면 버리기를 선택하세요
 portal-advisory-at-game-end = Portal 문제가 감지되었습니다. 점수는 계속 대기열에 있습니다 — 관리자에게 문의하세요.
+
+# 2 Halves / 1 Period selector (Half Length editor)
+two-halves = 2 하프
+one-period = 1 피리어드
+game-len = 경기 시간
+length-of-game-during-regular-play = 정규 경기 중 전체 경기 시간

@@ -407,3 +407,9 @@ portal-page-attention-info = Keputusan perlawanan tidak diterima di Portal { $po
 portal-page-attention-score = Keputusan perlawanan disimpan: Putih { $white } - Hitam { $black }
 portal-page-attention-remediation = Anda boleh Cuba Semula jika sambungan disahkan, atau buang untuk membersihkan ralat
 portal-advisory-at-game-end = Masalah portal dikesan. Markah masih akan dibariskan — cari admin untuk selesaikan.
+
+# 2 Halves / 1 Period selector (Half Length editor)
+two-halves = 2 SEPARUH
+one-period = 1 PERIOD
+game-len = PANJANG PERLAWANAN
+length-of-game-during-regular-play = Panjang perlawanan semasa permainan biasa

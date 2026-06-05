@@ -2011,6 +2011,44 @@ impl TournamentManager {
         self.clock_state.clock_time(now)
     }
 
+    /// Wall-clock time the current game has lost to stoppages so far: the real
+    /// time elapsed since the game started minus the scheduled game-clock time
+    /// consumed. Counts only what has already happened (no projection of future
+    /// timeouts). Returns `ZERO` when not in a live game or before the game start.
+    // Called by the game-block scheduling logic in a later task; allow dead_code
+    // until that call site is wired in.
+    #[allow(dead_code)]
+    pub fn accumulated_overrun(&self, now: Instant) -> Duration {
+        if self.current_period == GamePeriod::BetweenGames {
+            return Duration::ZERO;
+        }
+        let Some(real_elapsed) = now.checked_duration_since(self.game_start_time) else {
+            return Duration::ZERO;
+        };
+
+        // Scheduled game-clock time consumed = full length of every period already
+        // completed this game, plus the portion of the current period consumed.
+        let mut scheduled = Duration::ZERO;
+        let mut period = GamePeriod::FirstHalf;
+        while period != self.current_period {
+            scheduled += period.duration(&self.config).unwrap_or(Duration::ZERO);
+            match period.next_period() {
+                Some(next) => period = next,
+                None => break,
+            }
+        }
+        let clock_time = self.game_clock_time(now).unwrap_or(Duration::ZERO);
+        let consumed_in_current = match self.current_period.duration(&self.config) {
+            // Counting-down period: consumed = full length minus what's left.
+            Some(len) => len.saturating_sub(clock_time),
+            // SuddenDeath has no fixed length and counts up: consumed = elapsed.
+            None => clock_time,
+        };
+        scheduled += consumed_in_current;
+
+        real_elapsed.saturating_sub(scheduled)
+    }
+
     /// Returns `None` if there is no timeout, if the clock time would be negative, or if `now` is
     /// before the start of the current timeout
     pub fn timeout_clock_time(&self, now: Instant) -> Option<Duration> {
@@ -2600,6 +2638,43 @@ mod test {
         // Check that after falling behind the system tries to catch up
         assert_eq!(tm.current_period(), GamePeriod::BetweenGames);
         assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(14)));
+    }
+
+    #[test]
+    fn test_accumulated_overrun() {
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(20),
+            half_time_duration: Duration::from_secs(5),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap(); // FirstHalf, counting down from 20
+
+        // Running in sync with real time => no overrun.
+        let t5 = start + Duration::from_secs(5);
+        assert_eq!(tm.accumulated_overrun(t5), Duration::ZERO);
+
+        // Stop the clock (stoppage) and let 8s of real time pass.
+        tm.stop_clock(t5).unwrap();
+        let t13 = t5 + Duration::from_secs(8);
+        assert_eq!(tm.accumulated_overrun(t13), Duration::from_secs(8));
+
+        // Resume; running in sync again must NOT grow the accumulated overrun.
+        tm.start_clock(t13);
+        let t16 = t13 + Duration::from_secs(3);
+        assert_eq!(tm.accumulated_overrun(t16), Duration::from_secs(8));
+    }
+
+    #[test]
+    fn test_accumulated_overrun_zero_between_games() {
+        initialize();
+        let tm = TournamentManager::new(GameConfig::default());
+        let now = Instant::now();
+        // Fresh manager is BetweenGames -> no live game -> zero.
+        assert_eq!(tm.accumulated_overrun(now), Duration::ZERO);
     }
 
     #[test]

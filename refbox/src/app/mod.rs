@@ -3834,9 +3834,15 @@ impl RefBoxApp {
                 page,
                 self.page_entry_snapshot.as_ref(),
             ),
-            AppState::ParameterEditor(param, dur, single_half) => {
-                build_game_parameter_editor(data, param, dur, single_half)
-            }
+            AppState::ParameterEditor(param, dur, single_half) => build_game_parameter_editor(
+                data,
+                param,
+                dur,
+                single_half,
+                self.edited_settings
+                    .as_ref()
+                    .map_or(&self.config.game, |s| &s.config),
+            ),
             AppState::ParameterList(param, index) => build_list_selector_page(
                 data,
                 param,

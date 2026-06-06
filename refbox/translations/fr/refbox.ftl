@@ -142,6 +142,8 @@ length-of-half-time-period = La durée de la mi-temps
 nom-break = PAUSE NOMINALE
 game-block = BLOC DE JEU
 game-block-help = Temps entre le début d'un match et le début du suivant
+game-block-too-short = Trop court pour contenir le match et la pause minimale
+game-block-tight = Serré — les temps morts pourraient faire déborder les matchs de leur créneau
 system-will-keep-game-times-spaced = Le système essaiera de maintenir les heures de début des matchs régulièrement espacées, avec un temps total de 2 * [Durée de la mi-temps] + [Durée de la mi-temps] + [Pause nominale entre les matchs] (exemple: si les matchs ont [Durée de la mi-temps] = 15m, [Durée de la mi-temps] = 3m, et [Pause nominale entre les matchs] = 12m, le temps entre le début d'un match et le suivant sera de 45m. Tout temps mort pris, ou autre arrêt de l'horloge, réduira le temps de 12m jusqu'à ce que la valeur de la pause minimale entre les matchs soit atteinte).
 min-break = PAUSE MINIMUM
 min-time-btwn-games = Si un match dure plus longtemps que prévu, ceci est le temps minimum entre les matchs que le système allouera. Si les matchs prennent du retard, le système essaiera automatiquement de rattraper après les matchs suivants, en respectant toujours ce temps minimum entre les matchs.

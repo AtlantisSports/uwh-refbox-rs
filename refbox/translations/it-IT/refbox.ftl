@@ -144,6 +144,8 @@ length-of-half-time-period = La durata del periodo di intervallo
 nom-break = PAUSA NOM
 game-block = BLOCCO PARTITA
 game-block-help = Tempo dall'inizio di una partita all'inizio della successiva
+game-block-too-short = Troppo breve per contenere la partita più la pausa minima
+game-block-tight = Stretto — i timeout potrebbero far sforare le partite dal loro slot
 system-will-keep-game-times-spaced = Il sistema cercherà di mantenere i tempi di inizio partita equamente distanziati, con il tempo totale da un inizio all'altro pari a 2 × [Durata Tempo] + [Durata Intervallo] + [Tempo Nominale fra Partite] (esempio: se [Durata Tempo] = 15 min, [Durata Intervallo] = 3 min e [Tempo Nominale fra Partite] = 12 min, il tempo da inizio a inizio sarà 45 min. Eventuali time-out o altre interruzioni ridurranno i 12 min fino al raggiungimento del tempo minimo fra partite).
 min-break = PAUSA MIN
 min-time-btwn-games = Se una partita dura più del previsto, questo è il tempo minimo fra le partite che il sistema assegnerà. Se le partite accumulano ritardo, il sistema cercherà di recuperare nelle partite successive, rispettando sempre questo tempo minimo.

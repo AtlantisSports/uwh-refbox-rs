@@ -85,6 +85,7 @@ pub(in super::super) fn build_portal_detail_page<'a>(
             mode,
             clock_running,
             portal_indicator,
+            None,
         ),
         list,
         row![back, horizontal_space(), horizontal_space(),]

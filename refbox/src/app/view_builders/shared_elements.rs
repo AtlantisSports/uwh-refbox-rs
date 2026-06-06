@@ -398,6 +398,7 @@ pub(super) fn make_game_time_button<'a>(
     mode: Mode,
     clock_running: bool,
     portal_indicator: Option<PortalIndicatorState>,
+    overrun_label: Option<String>,
 ) -> Row<'a, Message> {
     let make_red = if editing_time {
         false
@@ -550,6 +551,15 @@ pub(super) fn make_game_time_button<'a>(
                 timeout_color,
             ));
         }
+    }
+
+    if let Some(label) = overrun_label {
+        content = content.push(
+            text(label)
+                .style(red_text)
+                .size(MEDIUM_TEXT)
+                .align_y(Vertical::Center),
+        );
     }
 
     // The tile fills the banner height so it looks visually balanced on

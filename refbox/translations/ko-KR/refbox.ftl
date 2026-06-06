@@ -220,6 +220,7 @@ sd-allowed = 서든 데스 허용: { $sd }
 pre-sd = 서든 데스 전 휴식 시간: { $pre_sd_len }
 team-to-len = 팀 타임아웃 시간: { $to_len }
 time-btwn-games = 경기 간 기준 시간: { $time_btwn }
+game-block-info = 게임 블록: { $game_block }
 min-brk-btwn-games = 경기 간 최소 시간: { $min_brk_time }
 
 

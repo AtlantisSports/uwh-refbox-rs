@@ -228,6 +228,7 @@ sd-allowed = Muerte súbita habilitada: { $sd }
 pre-sd = Duración del descanso previo a la muerte súbita: { $pre_sd_len }
 team-to-len = Duración del tiempo muerto de equipo: { $to_len }
 time-btwn-games = Tiempo nominal entre partidos: { $time_btwn }
+game-block-info = Bloque de Juego: { $game_block }
 min-brk-btwn-games = Tiempo mínimo entre partidos: { $min_brk_time }
 
 

@@ -218,6 +218,7 @@ sd-allowed = อนุญาตตายกะทันหัน: { $sd }
 pre-sd = ความยาวพักก่อนตายกะทันหัน: { $pre_sd_len }
 team-to-len = ระยะเวลาพักทีม: { $to_len }
 time-btwn-games = เวลาระหว่างเกมตามกำหนด: { $time_btwn }
+game-block-info = บล็อกเกม: { $game_block }
 min-brk-btwn-games = เวลาระหว่างเกมขั้นต่ำ: { $min_brk_time }
 
 

@@ -219,6 +219,8 @@ pub struct Config {
     pub collect_scorer_cap_num: bool,
     pub track_fouls_and_warnings: bool,
     #[derivative(Default(value = "true"))]
+    pub show_behind_schedule_time: bool,
+    #[derivative(Default(value = "true"))]
     pub confirm_score: bool,
     pub game: Game,
     pub beep_test: BeepTest,
@@ -239,6 +241,7 @@ impl Config {
             mut hide_time,
             mut collect_scorer_cap_num,
             mut track_fouls_and_warnings,
+            mut show_behind_schedule_time,
             confirm_score,
             mut game,
             mut beep_test,
@@ -263,6 +266,11 @@ impl Config {
             old,
             "track_fouls_and_warnings",
             &mut track_fouls_and_warnings,
+        );
+        get_boolean_value(
+            old,
+            "show_behind_schedule_time",
+            &mut show_behind_schedule_time,
         );
         if let Some(old_game) = old.get("game") {
             if let Some(old_game) = old_game.as_table() {
@@ -295,6 +303,7 @@ impl Config {
             hide_time,
             collect_scorer_cap_num,
             track_fouls_and_warnings,
+            show_behind_schedule_time,
             confirm_score,
             game,
             beep_test,
@@ -505,6 +514,24 @@ mod test {
             deser.front_display_layout,
             crate::sim_frame::FrontDisplayLayout::Corners
         );
+    }
+
+    #[test]
+    fn test_migrate_show_behind_schedule_time_defaults_true_when_absent() {
+        let old: Table = Default::default();
+        let config = Config::migrate(&old);
+        assert!(config.show_behind_schedule_time);
+    }
+
+    #[test]
+    fn test_migrate_show_behind_schedule_time_respects_present_false() {
+        let mut old: Table = Default::default();
+        old.insert(
+            "show_behind_schedule_time".to_string(),
+            toml::Value::Boolean(false),
+        );
+        let config = Config::migrate(&old);
+        assert!(!config.show_behind_schedule_time);
     }
 
     #[test]

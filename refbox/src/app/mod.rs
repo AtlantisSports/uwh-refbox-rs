@@ -3785,6 +3785,11 @@ impl RefBoxApp {
                 } else {
                     &self.config.game
                 };
+                let overrun = self
+                    .tm
+                    .lock()
+                    .unwrap()
+                    .accumulated_overrun(Instant::now());
                 build_main_view(
                     data,
                     game_config,
@@ -3793,6 +3798,7 @@ impl RefBoxApp {
                     self.config.track_fouls_and_warnings,
                     self.config.sound.sound_enabled && self.config.sound.manual_alarm_enabled,
                     self.mouse_alarm_held || self.spacebar_held,
+                    overrun,
                 )
             }
             AppState::TimeEdit(_, time, timeout_time) =>

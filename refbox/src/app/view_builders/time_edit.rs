@@ -40,7 +40,15 @@ pub(in super::super) fn build_time_edit_view<'a>(
     }
 
     column![
-        make_game_time_button(snapshot, false, true, mode, clock_running, portal_indicator),
+        make_game_time_button(
+            snapshot,
+            false,
+            true,
+            mode,
+            clock_running,
+            portal_indicator,
+            None
+        ),
         vertical_space(),
         text(fl!("Note-Game-time-is-paused"))
             .size(SMALL_TEXT)

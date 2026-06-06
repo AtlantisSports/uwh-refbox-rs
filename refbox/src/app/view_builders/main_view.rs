@@ -11,6 +11,8 @@ use uwh_common::{
     uwhportal::schedule::Schedule,
 };
 
+// View builder takes app-state slices; grouping into a context struct is a separate refactor across all view_builders. Filed as a Findings-Backlog item in AUDIT-PLAN.md (Unit 3, 2026-05-13).
+#[allow(clippy::too_many_arguments)]
 pub(in super::super) fn build_main_view<'a>(
     data: ViewData<'_, '_>,
     game_config: &GameConfig,
@@ -19,6 +21,7 @@ pub(in super::super) fn build_main_view<'a>(
     track_fouls_and_warnings: bool,
     manual_alarm_enabled: bool,
     alarm_held: bool,
+    overrun: std::time::Duration,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -30,8 +33,21 @@ pub(in super::super) fn build_main_view<'a>(
         ..
     } = data;
 
-    let time_button =
-        make_game_time_button(snapshot, true, false, mode, clock_running, portal_indicator);
+    let over_slot = overrun.saturating_sub(game_config.game_block_buffer());
+    let overrun_label = if over_slot > std::time::Duration::ZERO {
+        Some(format!("-{}", time_string(over_slot)))
+    } else {
+        None
+    };
+    let time_button = make_game_time_button(
+        snapshot,
+        true,
+        false,
+        mode,
+        clock_running,
+        portal_indicator,
+        overrun_label,
+    );
 
     let mut center_col = column![time_button]
         .spacing(SPACING)

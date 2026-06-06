@@ -146,7 +146,8 @@ pub(in super::super) fn build_list_selector_page<'a>(
             false,
             mode,
             clock_running,
-            portal_indicator
+            portal_indicator,
+            None
         ),
         row![
             scroll_list,

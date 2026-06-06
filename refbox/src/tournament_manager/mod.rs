@@ -2015,9 +2015,6 @@ impl TournamentManager {
     /// time elapsed since the game started minus the scheduled game-clock time
     /// consumed. Counts only what has already happened (no projection of future
     /// timeouts). Returns `ZERO` when not in a live game or before the game start.
-    // Called by the game-block scheduling logic in a later task; allow dead_code
-    // until that call site is wired in.
-    #[allow(dead_code)]
     pub fn accumulated_overrun(&self, now: Instant) -> Duration {
         if self.current_period == GamePeriod::BetweenGames {
             return Duration::ZERO;

@@ -97,7 +97,8 @@ pub(in super::super) fn build_score_edit_view<'a>(
             is_confirmation,
             mode,
             clock_running,
-            portal_indicator
+            portal_indicator,
+            None
         ),
         vertical_space()
     ]

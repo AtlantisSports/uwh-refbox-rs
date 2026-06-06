@@ -52,7 +52,8 @@ pub(in super::super) fn build_game_info_page<'a>(
             false,
             mode,
             clock_running,
-            portal_indicator
+            portal_indicator,
+            None
         ),
         row![
             text(left_details)

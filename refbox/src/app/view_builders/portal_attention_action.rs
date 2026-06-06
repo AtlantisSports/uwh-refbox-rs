@@ -48,6 +48,7 @@ pub(in super::super) fn build_portal_attention_action<'a>(
         mode,
         clock_running,
         portal_indicator,
+        None,
     );
 
     let title = text(fl!("portal-page-title-attention", game = game_number))

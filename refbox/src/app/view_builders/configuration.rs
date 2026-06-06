@@ -372,7 +372,8 @@ fn make_main_config_page<'a>(
             false,
             mode,
             clock_running,
-            portal_indicator
+            portal_indicator,
+            None
         ),
         row_top,
         row_bottom,
@@ -466,7 +467,8 @@ fn make_user_config_page<'a>(
             false,
             mode,
             clock_running,
-            portal_indicator
+            portal_indicator,
+            None
         ),
         tiles,
         row![view_mode_button, horizontal_space()]
@@ -584,6 +586,7 @@ fn make_event_config_page<'a>(
         mode,
         clock_running,
         portal_indicator,
+        None,
     )]
     .spacing(SPACING)
     .height(Length::Fill);
@@ -886,7 +889,8 @@ fn make_app_config_page<'a>(
             false,
             mode,
             clock_running,
-            portal_indicator
+            portal_indicator,
+            None
         ),
         row![
             make_value_button(
@@ -1093,7 +1097,8 @@ fn make_display_config_page<'a>(
             false,
             mode,
             clock_running,
-            portal_indicator
+            portal_indicator,
+            None
         ),
         row![sides_btn].spacing(SPACING).height(Length::Fill),
         row![hide_time_btn, layout_btn]
@@ -1132,7 +1137,8 @@ fn make_sound_config_page<'a>(
             false,
             mode,
             clock_running,
-            portal_indicator
+            portal_indicator,
+            None
         ),
         row![
             make_value_button(
@@ -1348,7 +1354,8 @@ fn make_remote_config_page<'a>(
             false,
             mode,
             clock_running,
-            portal_indicator
+            portal_indicator,
+            None
         ),
         row![
             make_scroll_list(
@@ -1504,7 +1511,8 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
         false,
         mode,
         clock_running,
-        portal_indicator
+        portal_indicator,
+        None
     )]
     .spacing(SPACING)
     .align_x(Alignment::Center)
@@ -1663,7 +1671,8 @@ fn make_language_select_page<'a>(
             false,
             mode,
             clock_running,
-            portal_indicator
+            portal_indicator,
+            None
         ),
         row![
             lang_btn_note(

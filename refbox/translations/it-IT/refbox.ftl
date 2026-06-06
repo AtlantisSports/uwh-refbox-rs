@@ -218,6 +218,7 @@ sd-allowed = Morte Improvvisa Consentita: { $sd }
 pre-sd = Durata Pausa Pre-Morte Improvvisa: { $pre_sd_len }
 team-to-len = Durata Time-out di Squadra: { $to_len }
 time-btwn-games = Tempo Nominale fra Partite: { $time_btwn }
+game-block-info = Blocco di Gioco: { $game_block }
 min-brk-btwn-games = Tempo Minimo fra Partite: { $min_brk_time }
 
 

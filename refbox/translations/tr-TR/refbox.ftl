@@ -218,6 +218,7 @@ sd-allowed = Ani Ölüm İzin Verildi: { $sd }
 pre-sd = Ani Ölüm Öncesi Ara Süresi: { $pre_sd_len }
 team-to-len = Takım Molası Süresi: { $to_len }
 time-btwn-games = Oyunlar Arası Nominal Süre: { $time_btwn }
+game-block-info = Oyun Bloğu: { $game_block }
 min-brk-btwn-games = Oyunlar Arası Minimum Süre: { $min_brk_time }
 
 

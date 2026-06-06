@@ -218,6 +218,7 @@ sd-allowed = Sudden Death Pinahintulutan: { $sd }
 pre-sd = Haba ng Pahinga Bago Sudden Death: { $pre_sd_len }
 team-to-len = Tagal ng Timeout ng Koponan: { $to_len }
 time-btwn-games = Nominal na Oras sa Pagitan ng mga Laro: { $time_btwn }
+game-block-info = Bloke ng Laro: { $game_block }
 min-brk-btwn-games = Pinakamaliit na Oras sa Pagitan ng mga Laro: { $min_brk_time }
 
 

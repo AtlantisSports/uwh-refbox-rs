@@ -218,6 +218,7 @@ sd-allowed = Sudden Death Diizinkan: { $sd }
 pre-sd = Durasi Jeda Sebelum Sudden Death: { $pre_sd_len }
 team-to-len = Durasi Time-out Tim: { $to_len }
 time-btwn-games = Waktu Nominal Antar Pertandingan: { $time_btwn }
+game-block-info = Blok Permainan: { $game_block }
 min-brk-btwn-games = Waktu Minimum Antar Pertandingan: { $min_brk_time }
 
 

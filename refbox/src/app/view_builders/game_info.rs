@@ -251,8 +251,8 @@ fn details_strings(
     };
     if !using_uwhportal {
         left_string += &fl!(
-            "time-btwn-games",
-            time_btwn = time_string(config.nominal_break)
+            "game-block-info",
+            game_block = time_string(config.game_block)
         );
         left_string += "\n";
     }

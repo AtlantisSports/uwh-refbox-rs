@@ -220,6 +220,7 @@ sd-allowed = Mort Subite Autorisée: { $sd }
 pre-sd = Durée de la pause avant la mort subite: { $pre_sd_len }
 team-to-len = Durée du Temps Mort d'Équipe: { $to_len }
 time-btwn-games = Temps Entre les Matchs: { $time_btwn }
+game-block-info = Bloc de Jeu: { $game_block }
 min-brk-btwn-games = Temps Minimum Entre les Matchs: { $min_brk_time }
 
 # List Selecters

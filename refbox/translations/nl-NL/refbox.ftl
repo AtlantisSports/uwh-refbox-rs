@@ -218,6 +218,7 @@ sd-allowed = Plotselinge Dood Toegestaan: { $sd }
 pre-sd = Duur Pauze Voor Plotselinge Dood: { $pre_sd_len }
 team-to-len = Duur Team Time-out: { $to_len }
 time-btwn-games = Nominale Tijd Tussen Wedstrijden: { $time_btwn }
+game-block-info = Spelblok: { $game_block }
 min-brk-btwn-games = Minimale Tijd Tussen Wedstrijden: { $min_brk_time }
 
 

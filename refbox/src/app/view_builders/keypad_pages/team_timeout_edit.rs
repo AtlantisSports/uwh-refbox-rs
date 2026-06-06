@@ -50,7 +50,7 @@ pub(super) fn make_team_timeout_edit_page<'a>(
         vertical_space(),
         row![
             horizontal_space(),
-            make_time_editor(fl!("timeout-length"), duration, false),
+            make_time_editor(fl!("timeout-length"), duration, false, None),
             horizontal_space()
         ],
         vertical_space(),

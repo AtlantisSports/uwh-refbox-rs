@@ -623,6 +623,7 @@ pub(super) fn make_time_editor<'a, T: IntoFragment<'a>>(
     title: T,
     time: Duration,
     timeout: bool,
+    value_color: Option<iced::Color>,
 ) -> Container<'a, Message> {
     let wide = time > Duration::from_secs(MAX_STRINGABLE_SECS as u64);
 
@@ -663,7 +664,13 @@ pub(super) fn make_time_editor<'a, T: IntoFragment<'a>>(
     .spacing(SPACING);
 
     let time_col = column![
-        text(time_string(time)).size(LARGE_TEXT),
+        {
+            let t = text(time_string(time)).size(LARGE_TEXT);
+            match value_color {
+                Some(c) => t.color(c),
+                None => t,
+            }
+        },
         row![
             horizontal_space(),
             make_small_button(fl!("zero"), MEDIUM_TEXT)

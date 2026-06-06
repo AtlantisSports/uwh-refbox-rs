@@ -50,6 +50,13 @@ pub struct TournamentManager {
     start_stop_rx: watch::Receiver<bool>,
     next_game: Option<NextGameInfo>,
     next_scheduled_start: Option<Instant>,
+    /// Scheduled start of the game currently in progress (portal printed time when
+    /// present, else the Game Block grid slot). Set at `start_game`. `None` before
+    /// the first game. Used by `behind_schedule`.
+    current_scheduled_start: Option<Instant>,
+    /// When the last game ended (entering BetweenGames). Used by `behind_schedule`
+    /// to measure lateness while waiting for the next game. `None` before any game ends.
+    last_game_end_time: Option<Instant>,
     reset_game_time: Duration,
     recent_goal: Option<(Color, u8, GamePeriod, Duration)>,
     current_game_stats: GameStats,
@@ -78,6 +85,8 @@ impl TournamentManager {
             start_stop_rx,
             next_game: None,
             next_scheduled_start: None,
+            current_scheduled_start: None,
+            last_game_end_time: None,
             reset_game_time: config.nominal_break,
             config,
             recent_goal: None,
@@ -215,6 +224,8 @@ impl TournamentManager {
         self.warnings.iter_mut().for_each(|(_, w)| w.clear());
         self.fouls.iter_mut().for_each(|(_, f)| f.clear());
         self.current_game_stats = GameStats::new(self.next_game_number());
+        self.current_scheduled_start = None;
+        self.last_game_end_time = None;
         self.has_reset = true;
     }
 
@@ -883,6 +894,23 @@ impl TournamentManager {
         Ok(())
     }
 
+    /// The scheduled start of the next (or currently-about-to-start) game as an
+    /// `Instant`: the portal/CSV printed `start_time` when present, otherwise the
+    /// Game Block grid value `next_scheduled_start`. Returns `None` when neither is
+    /// known (manual mode before the first game).
+    fn next_game_scheduled_start(&self, now: Instant) -> Option<Instant> {
+        if let Some(start_time) = self.next_game.as_ref().and_then(|info| info.start_time) {
+            let delta = start_time - OffsetDateTime::now_utc(); // signed time::Duration
+            if delta.is_negative() {
+                Some(now.checked_sub(delta.unsigned_abs()).unwrap_or(now))
+            } else {
+                delta.try_into().ok().map(|d: Duration| now + d)
+            }
+        } else {
+            self.next_scheduled_start
+        }
+    }
+
     fn calc_time_to_next_game(&self, now: Instant, from_time: Instant) -> Duration {
         info!("Next game info is: {:?}", self.next_game);
         let scheduled_start =
@@ -949,6 +977,8 @@ impl TournamentManager {
 
     fn end_game(&mut self, now: Instant) {
         let was_running = self.clock_is_running();
+
+        self.last_game_end_time = Some(now);
 
         self.current_period = GamePeriod::BetweenGames;
 
@@ -1017,6 +1047,17 @@ impl TournamentManager {
             info!("Resetting game");
             self.reset();
         }
+
+        // The scheduled start of the game we're starting: portal time if present,
+        // else this game's Game Block grid slot (`next_scheduled_start` still holds
+        // it here — it is reassigned to the *next* game's slot below). Fall back to
+        // the actual start for the very first manual game (=> no inherited lateness).
+        // Set after the reset above (which clears `current_scheduled_start`) and
+        // before `next_game.take()` / the `next_scheduled_start` reassignment below.
+        self.current_scheduled_start = Some(
+            self.next_game_scheduled_start(start_time)
+                .unwrap_or(start_time),
+        );
 
         self.game_number = self.next_game_number();
 
@@ -2060,6 +2101,35 @@ impl TournamentManager {
         real_elapsed.saturating_sub(scheduled)
     }
 
+    /// How far behind its scheduled start times the run of games currently is, as a
+    /// positive duration (`ZERO` when on time, ahead, or before the first game).
+    /// Carries lateness across games; a longer scheduled break claws it back down to
+    /// the always-enforced minimum break. See
+    /// docs/superpowers/specs/2026-06-06-behind-schedule-indicator-design.md.
+    // Read-model consumed by the main-view indicator in a later task of this feature
+    // (the App-Options-gated display); the `#[allow]` is removed once that caller lands.
+    #[allow(dead_code)]
+    pub fn behind_schedule(&self, now: Instant) -> Duration {
+        if self.current_period == GamePeriod::BetweenGames {
+            let (Some(end), Some(sched_next)) =
+                (self.last_game_end_time, self.next_game_scheduled_start(now))
+            else {
+                return Duration::ZERO;
+            };
+            let earliest_next = max(end + self.config.minimum_break, now);
+            earliest_next.saturating_duration_since(sched_next)
+        } else {
+            let Some(sched_start) = self.current_scheduled_start else {
+                return Duration::ZERO;
+            };
+            let inherited = self.game_start_time.saturating_duration_since(sched_start);
+            let developing = self
+                .accumulated_overrun(now)
+                .saturating_sub(self.config.game_block_buffer());
+            inherited + developing
+        }
+    }
+
     /// Returns `None` if there is no timeout, if the clock time would be negative, or if `now` is
     /// before the start of the current timeout
     pub fn timeout_clock_time(&self, now: Instant) -> Option<Duration> {
@@ -2714,6 +2784,95 @@ mod test {
         // Overrun = 200 - 55 = 145 (would be 0 before the fix, swamped by ~960s of
         // phantom overtime periods).
         assert_eq!(tm.accumulated_overrun(start), Duration::from_secs(145));
+    }
+
+    #[test]
+    fn test_behind_schedule_inherited_lateness_persists_in_manual_mode() {
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(10),
+            half_time_duration: Duration::from_secs(3),
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(40),
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let g1 = Instant::now();
+        tm.start_clock(g1);
+        tm.start_play_now(g1).unwrap(); // game 1 on time -> anchor; next_scheduled_start = g1+40
+        // Take game 1 to BetweenGames so the next start_play_now begins a NEW game.
+        tm.stop_clock(g1).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        tm.end_game(g1);
+        let g2 = g1 + Duration::from_secs(46);
+        tm.start_play_now(g2).unwrap(); // game 2 begins 6s late vs its 40s grid slot
+        assert_eq!(tm.behind_schedule(g2), Duration::from_secs(6));
+        assert_eq!(
+            tm.behind_schedule(g2 + Duration::from_secs(5)),
+            Duration::from_secs(6)
+        );
+    }
+
+    #[test]
+    fn test_behind_schedule_grows_with_in_game_stoppage_beyond_buffer() {
+        initialize();
+        // Slot 40; regulation 2*10+3=23; min_break 2 => buffer 15.
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(10),
+            half_time_duration: Duration::from_secs(3),
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(40),
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap();
+        let t1 = start + Duration::from_secs(5);
+        tm.stop_clock(t1).unwrap();
+        let t2 = t1 + Duration::from_secs(20); // 20s stopped => overrun 20; -15 buffer => 5
+        assert_eq!(tm.behind_schedule(t2), Duration::from_secs(5));
+        assert_eq!(
+            tm.behind_schedule(t1 + Duration::from_secs(10)),
+            Duration::ZERO
+        );
+    }
+
+    #[test]
+    fn test_behind_schedule_zero_before_first_game_and_when_ahead() {
+        initialize();
+        let tm = TournamentManager::new(GameConfig::default());
+        assert_eq!(tm.behind_schedule(Instant::now()), Duration::ZERO);
+    }
+
+    #[test]
+    fn test_behind_schedule_between_games_overdue() {
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(10),
+            half_time_duration: Duration::from_secs(3),
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(40),
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap(); // next_scheduled_start = start+40
+        let end = start + Duration::from_secs(50);
+        // Stop the running clock while still valid, then end the game at `end`.
+        tm.stop_clock(start).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        tm.end_game(end);
+        // BetweenGames: earliest next = max(end+min_break(2), now=end) = start+52;
+        // sched_next = next_scheduled_start = start+40 => behind = 12.
+        assert_eq!(tm.behind_schedule(end), Duration::from_secs(12));
     }
 
     #[test]

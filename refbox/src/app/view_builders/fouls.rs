@@ -28,7 +28,8 @@ pub(in super::super) fn build_foul_overview_page<'a>(
             false,
             mode,
             clock_running,
-            portal_indicator
+            portal_indicator,
+            None
         ),
         row![
             make_foul_list(

@@ -102,7 +102,8 @@ pub(in super::super) fn build_keypad_page<'a>(
             false,
             mode,
             clock_running,
-            portal_indicator
+            portal_indicator,
+            None
         ),
         row![
             container(

@@ -133,7 +133,15 @@ pub(in super::super) fn build_confirmation_page<'a>(
     }
 
     column![
-        make_game_time_button(snapshot, false, true, mode, clock_running, portal_indicator),
+        make_game_time_button(
+            snapshot,
+            false,
+            true,
+            mode,
+            clock_running,
+            portal_indicator,
+            None
+        ),
         vertical_space(),
         row![
             horizontal_space(),
@@ -209,7 +217,15 @@ pub(in super::super) fn build_score_confirmation_page<'a>(
     body = body.push(options);
 
     column![
-        make_game_time_button(snapshot, false, true, mode, clock_running, portal_indicator),
+        make_game_time_button(
+            snapshot,
+            false,
+            true,
+            mode,
+            clock_running,
+            portal_indicator,
+            None
+        ),
         vertical_space(),
         row![
             horizontal_space(),

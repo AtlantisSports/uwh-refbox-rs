@@ -92,7 +92,8 @@ pub(in super::super) fn build_warnings_summary_page<'a>(
             false,
             mode,
             clock_running,
-            portal_indicator
+            portal_indicator,
+            None
         ),
         warnings_and_fouls_row.height(Length::Fill),
         row![

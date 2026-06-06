@@ -144,6 +144,8 @@ length-of-half-time-period = Durasi periode jeda babak
 nom-break = JEDA NOMINAL
 game-block = BLOK PERTANDINGAN
 game-block-help = Waktu dari awal satu pertandingan hingga awal pertandingan berikutnya
+game-block-too-short = Terlalu singkat untuk pertandingan ditambah jeda minimum
+game-block-tight = Terlalu ketat — time-out tim bisa membuat pertandingan melewati slot mereka
 system-will-keep-game-times-spaced = Sistem akan mencoba menjaga waktu mulai pertandingan agar merata, dengan total waktu dari satu mulai ke mulai berikutnya adalah 2 × [Durasi Babak] + [Durasi Jeda Babak] + [Waktu Nominal Antar Pertandingan] (contoh: jika [Durasi Babak] = 15 menit, [Durasi Jeda Babak] = 3 menit, dan [Waktu Nominal Antar Pertandingan] = 12 menit, waktu dari mulai satu pertandingan ke berikutnya adalah 45 menit. Setiap time-out yang diambil, atau penghentian jam lainnya, akan mengurangi waktu 12 menit tersebut hingga mencapai nilai waktu minimum antar pertandingan).
 min-break = JEDA MINIMUM
 min-time-btwn-games = Jika suatu pertandingan berjalan lebih lama dari jadwal, ini adalah waktu minimum antar pertandingan yang akan dialokasikan oleh sistem. Jika pertandingan tertunda, sistem akan secara otomatis mencoba mengejar pada pertandingan berikutnya, selalu menghormati waktu minimum antar pertandingan ini.

@@ -486,6 +486,25 @@ fn make_user_config_page<'a>(
     .into()
 }
 
+/// Whether the configured Game Block leaves enough time for the game plus
+/// breaks and team timeouts. Drives the red/yellow validation styling.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum GameBlockValidity {
+    Ok,
+    Tight,
+    TooShort,
+}
+
+fn game_block_validity(cfg: &GameConfig) -> GameBlockValidity {
+    if cfg.game_block < cfg.game_block_minimum() {
+        GameBlockValidity::TooShort
+    } else if cfg.game_block_buffer() < cfg.team_timeout_allotment() {
+        GameBlockValidity::Tight
+    } else {
+        GameBlockValidity::Ok
+    }
+}
+
 // View builder takes app-state slices; grouping into a context struct is a separate refactor across all view_builders. Filed as a Findings-Backlog item in AUDIT-PLAN.md (Unit 3, 2026-05-13).
 #[allow(clippy::too_many_arguments)]
 fn make_event_config_page<'a>(
@@ -799,6 +818,11 @@ fn make_event_config_page<'a>(
                         (false, true),
                         Some(Message::EditParameter(LengthParameter::GameBlock)),
                     )
+                    .style(match game_block_validity(config) {
+                        GameBlockValidity::TooShort => red_button,
+                        GameBlockValidity::Tight => yellow_button,
+                        GameBlockValidity::Ok => light_gray_button,
+                    })
                 ]
                 .spacing(SPACING)
                 .height(Length::Fill),
@@ -1361,6 +1385,7 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
     param: LengthParameter,
     length: Duration,
     single_half: bool,
+    config: &GameConfig,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -1392,6 +1417,44 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
             (fl!("ot-half-tm-len"), fl!("len-of-overtime-halftime"))
         }
         LengthParameter::PreSuddenDeath => (fl!("pre-sd-break"), fl!("pre-sd-len")),
+    };
+
+    // Live Game Block validation: build a staged copy of the config with the
+    // value currently being edited (and the staged 2-halves/1-period choice)
+    // so the colour and the disabled Done button reflect the pending edit, not
+    // the saved config. Only the Game Block editor validates; other parameters
+    // get None (no colour, Done always enabled, no note).
+    let game_block_validity = if matches!(param, LengthParameter::GameBlock) {
+        let staged = GameConfig {
+            game_block: length,
+            single_half,
+            ..config.clone()
+        };
+        Some(game_block_validity(&staged))
+    } else {
+        None
+    };
+    let value_color = match game_block_validity {
+        Some(GameBlockValidity::TooShort) => Some(RED),
+        Some(GameBlockValidity::Tight) => Some(YELLOW),
+        _ => None,
+    };
+    let validity_note: Option<Element<'a, Message>> = match game_block_validity {
+        Some(GameBlockValidity::TooShort) => Some(
+            text(fl!("game-block-too-short"))
+                .size(SMALL_TEXT)
+                .color(RED)
+                .align_x(Horizontal::Center)
+                .into(),
+        ),
+        Some(GameBlockValidity::Tight) => Some(
+            text(fl!("game-block-tight"))
+                .size(SMALL_TEXT)
+                .color(YELLOW)
+                .align_x(Horizontal::Center)
+                .into(),
+        ),
+        _ => None,
     };
 
     // For the Half Length editor, offer a 2 Halves / 1 Period selector above the
@@ -1452,15 +1515,21 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
         col = col.push(selector);
     }
 
-    col.push(vertical_space())
-        .push(make_time_editor(title, length, false))
+    col = col
+        .push(vertical_space())
+        .push(make_time_editor(title, length, false, value_color))
         .push(vertical_space())
         .push(
             text(fl!("help") + &hint)
                 .size(SMALL_TEXT)
                 .align_x(Horizontal::Center),
-        )
-        .push(vertical_space())
+        );
+
+    if let Some(note) = validity_note {
+        col = col.push(note);
+    }
+
+    col.push(vertical_space())
         .push(
             row![
                 make_button(fl!("cancel"))
@@ -1471,7 +1540,10 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
                 make_button(fl!("done"))
                     .style(green_button)
                     .width(Length::Fill)
-                    .on_press(Message::ParameterEditComplete { canceled: false }),
+                    .on_press_maybe(
+                        (!matches!(game_block_validity, Some(GameBlockValidity::TooShort)))
+                            .then_some(Message::ParameterEditComplete { canceled: false }),
+                    ),
             ]
             .spacing(SPACING),
         )
@@ -2173,5 +2245,39 @@ mod tests {
         //    sub-page navigation; this assertion documents the predicate's
         //    conservative behaviour under None.
         assert!(!page_has_changes(ConfigPage::Sound, &edited, None));
+    }
+
+    #[test]
+    fn test_game_block_validity_thresholds() {
+        // half 9, halftime 2, two-period => regulation 20; minimum_break 2 => minimum 22.
+        // 1 timeout/team, 60s, counted per half over 2 periods => allotment = 2*2*1*60 = 240.
+        let base = GameConfig {
+            single_half: false,
+            half_play_duration: Duration::from_secs(9),
+            half_time_duration: Duration::from_secs(2),
+            minimum_break: Duration::from_secs(2),
+            num_team_timeouts_allowed: 1,
+            team_timeout_duration: Duration::from_secs(60),
+            timeouts_counted_per_half: true,
+            ..Default::default()
+        };
+        // Below minimum (22) => TooShort.
+        let too_short = GameConfig {
+            game_block: Duration::from_secs(21),
+            ..base.clone()
+        };
+        assert_eq!(game_block_validity(&too_short), GameBlockValidity::TooShort);
+        // >= minimum but buffer (game_block-22) < allotment(240) => Tight.
+        let tight = GameConfig {
+            game_block: Duration::from_secs(100),
+            ..base.clone()
+        };
+        assert_eq!(game_block_validity(&tight), GameBlockValidity::Tight);
+        // buffer >= allotment => Ok (22 + 240 = 262).
+        let ok = GameConfig {
+            game_block: Duration::from_secs(262),
+            ..base.clone()
+        };
+        assert_eq!(game_block_validity(&ok), GameBlockValidity::Ok);
     }
 }

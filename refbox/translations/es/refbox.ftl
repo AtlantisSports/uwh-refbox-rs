@@ -146,6 +146,8 @@ length-of-half-time-period = La duración del período de medio tiempo
 nom-break = DESCANSO NOMINAL
 game-block = BLOQUE DE JUEGO
 game-block-help = Tiempo desde el inicio de un partido hasta el inicio del siguiente
+game-block-too-short = Demasiado corto para el partido más la pausa mínima
+game-block-tight = Ajustado — los tiempos muertos podrían retrasar los partidos fuera de su franja
 system-will-keep-game-times-spaced = El sistema intentará mantener los tiempos de inicio de los juegos espaciados uniformemente, con el tiempo total de un juego al siguiente siendo 2 * [Duración de la Mitad] + [Duración del Medio Tiempo] + [Tiempo Nominal Entre Juegos] (ejemplo: si los juegos tienen [Duración de la Mitad] = 15m, [Duración del Medio Tiempo] = 3m, y [Tiempo Nominal Entre Juegos] = 12m, el tiempo desde el inicio de un juego al siguiente será de 45m. Cualquier tiempo de espera tomado, u otras paradas de reloj, reducirán el tiempo de 12m hasta alcanzar el tiempo mínimo entre juegos).
 min-break = DESCANSO MÍNIMO
 min-time-btwn-games = Si un juego dura más de lo programado, este es el tiempo mínimo entre juegos que el sistema asignará. Si los juegos se retrasan, el sistema intentará automáticamente reajustarse después de los juegos subsecuentes, siempre respetando este tiempo mínimo entre juegos.

@@ -2025,10 +2025,26 @@ impl TournamentManager {
 
         // Scheduled game-clock time consumed = full length of every period already
         // completed this game, plus the portion of the current period consumed.
+        // Walk the period chain, but only count periods the current config actually
+        // plays through: a single-period game has no half-time or second half, and
+        // the overtime periods are skipped entirely when overtime is disabled (the
+        // game goes straight from the second half to the sudden-death break). Without
+        // these guards the walk would add never-played periods and wrongly suppress
+        // the overrun figure (e.g. during sudden death in a sudden-death-only game).
         let mut scheduled = Duration::ZERO;
         let mut period = GamePeriod::FirstHalf;
         while period != self.current_period {
-            scheduled += period.duration(&self.config).unwrap_or(Duration::ZERO);
+            let played = match period {
+                GamePeriod::HalfTime | GamePeriod::SecondHalf => !self.config.single_half,
+                GamePeriod::PreOvertime
+                | GamePeriod::OvertimeFirstHalf
+                | GamePeriod::OvertimeHalfTime
+                | GamePeriod::OvertimeSecondHalf => self.config.overtime_allowed,
+                _ => true,
+            };
+            if played {
+                scheduled += period.duration(&self.config).unwrap_or(Duration::ZERO);
+            }
             match period.next_period() {
                 Some(next) => period = next,
                 None => break,
@@ -2672,6 +2688,34 @@ mod test {
         let now = Instant::now();
         // Fresh manager is BetweenGames -> no live game -> zero.
         assert_eq!(tm.accumulated_overrun(now), Duration::ZERO);
+    }
+
+    #[test]
+    fn test_accumulated_overrun_sudden_death_only_not_suppressed() {
+        // Regression: with overtime disabled the game skips the overtime periods
+        // (second half -> pre-sudden-death -> sudden death). The scheduled-time
+        // walk must NOT add those never-played overtime periods, otherwise the
+        // overrun is wrongly suppressed to zero during sudden death.
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(20),
+            half_time_duration: Duration::from_secs(5),
+            pre_sudden_death_duration: Duration::from_secs(10),
+            overtime_allowed: false,
+            sudden_death_allowed: true,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        // Force into Sudden Death (clock stopped at 0 = no elapsed in this period).
+        tm.set_period_and_game_clock_time(GamePeriod::SuddenDeath, Duration::from_secs(0));
+        // The game started 200s of real time ago.
+        tm.set_game_start(start - Duration::from_secs(200));
+        // Played-through scheduled time (overtime skipped): FirstHalf 20 + HalfTime 5
+        // + SecondHalf 20 + PreSuddenDeath 10 = 55. SuddenDeath consumed = 0.
+        // Overrun = 200 - 55 = 145 (would be 0 before the fix, swamped by ~960s of
+        // phantom overtime periods).
+        assert_eq!(tm.accumulated_overrun(start), Duration::from_secs(145));
     }
 
     #[test]

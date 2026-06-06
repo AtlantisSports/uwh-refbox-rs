@@ -218,6 +218,7 @@ sd-allowed = 允许突然死亡：{ $sd }
 pre-sd = 突然死亡前休息时长：{ $pre_sd_len }
 team-to-len = 队伍暂停时长：{ $to_len }
 time-btwn-games = 名义场间时间：{ $time_btwn }
+game-block-info = 比赛块：{ $game_block }
 min-brk-btwn-games = 最短场间时间：{ $min_brk_time }
 
 

@@ -218,6 +218,7 @@ sd-allowed = Plötzlicher Tod Erlaubt: { $sd }
 pre-sd = Pause vor Plötzlichem Tod: { $pre_sd_len }
 team-to-len = Mannschafts-Auszeit Dauer: { $to_len }
 time-btwn-games = Nominale Spielpause: { $time_btwn }
+game-block-info = Spielblock: { $game_block }
 min-brk-btwn-games = Minimale Spielpause: { $min_brk_time }
 
 

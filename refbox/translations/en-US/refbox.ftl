@@ -227,6 +227,7 @@ sd-allowed = Sudden Death Allowed: { $sd }
 pre-sd = Pre-Sudden-Death Break Length: { $pre_sd_len }
 team-to-len = Team Timeout Duration: { $to_len }
 time-btwn-games = Nominal Time Between Games: { $time_btwn }
+game-block-info = Game Block: { $game_block }
 min-brk-btwn-games = Minimum Time Between Games: { $min_brk_time }
 
 

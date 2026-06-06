@@ -218,6 +218,7 @@ sd-allowed = サドンデス許可: { $sd }
 pre-sd = サドンデス前休憩時間: { $pre_sd_len }
 team-to-len = チームタイムアウト時間: { $to_len }
 time-btwn-games = 試合間基準時間: { $time_btwn }
+game-block-info = ゲームブロック: { $game_block }
 min-brk-btwn-games = 試合間最小時間: { $min_brk_time }
 
 

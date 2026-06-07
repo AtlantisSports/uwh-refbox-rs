@@ -72,6 +72,8 @@ track-cap-number-of-scorer = TRACCIA NUMERO
 event = EVENTO:
 track-fouls-and-warnings = TRACCIA FALLI
     E AMMONIZIONI
+show-behind-schedule-time = MOSTRA RITARDO
+    PROGRAMMA
 court = CAMPO:
 single-half = SINGOLO
     TEMPO:

@@ -72,6 +72,8 @@ track-cap-number-of-scorer = REGISTAR NÚMERO
 event = EVENTO:
 track-fouls-and-warnings = REGISTAR FALTAS
     E AVISOS
+show-behind-schedule-time = MOSTRAR ATRASO
+    NO HORÁRIO
 court = CAMPO:
 single-half = TEMPO
     ÚNICO:

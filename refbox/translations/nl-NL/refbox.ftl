@@ -72,6 +72,8 @@ track-cap-number-of-scorer = MUTSNUMMER
 event = EVENEMENT:
 track-fouls-and-warnings = OVERTREDINGEN
     EN WAARSCHUWINGEN
+show-behind-schedule-time = TOON SCHEMA-
+    VERTRAGING
 court = BAAN:
 single-half = ENKELE
     HELFT:

@@ -269,6 +269,7 @@ pub(crate) enum PageEntrySnapshot {
         mode: Mode,
         collect_scorer_cap_num: bool,
         track_fouls_and_warnings: bool,
+        show_behind_schedule_time: bool,
         confirm_score: bool,
     },
     Display {
@@ -318,6 +319,7 @@ impl PageEntrySnapshot {
                 mode,
                 collect_scorer_cap_num,
                 track_fouls_and_warnings,
+                show_behind_schedule_time,
                 confirm_score,
             } => {
                 edited.using_uwhportal = using_uwhportal;
@@ -327,6 +329,7 @@ impl PageEntrySnapshot {
                 edited.mode = mode;
                 edited.collect_scorer_cap_num = collect_scorer_cap_num;
                 edited.track_fouls_and_warnings = track_fouls_and_warnings;
+                edited.show_behind_schedule_time = show_behind_schedule_time;
                 edited.confirm_score = confirm_score;
             }
             PageEntrySnapshot::Display {
@@ -732,6 +735,7 @@ impl RefBoxApp {
         let mode = edited.mode;
         let collect_scorer_cap_num = edited.collect_scorer_cap_num;
         let track_fouls_and_warnings = edited.track_fouls_and_warnings;
+        let show_behind_schedule_time = edited.show_behind_schedule_time;
         let confirm_score = edited.confirm_score;
 
         // Cross-portal Mode change requires explicit confirmation and an app
@@ -755,6 +759,7 @@ impl RefBoxApp {
         self.config.mode = mode;
         self.config.collect_scorer_cap_num = collect_scorer_cap_num;
         self.config.track_fouls_and_warnings = track_fouls_and_warnings;
+        self.config.show_behind_schedule_time = show_behind_schedule_time;
         self.config.confirm_score = confirm_score;
         None
     }
@@ -1090,6 +1095,7 @@ impl RefBoxApp {
                 mode: edited.mode,
                 collect_scorer_cap_num: edited.collect_scorer_cap_num,
                 track_fouls_and_warnings: edited.track_fouls_and_warnings,
+                show_behind_schedule_time: edited.show_behind_schedule_time,
                 confirm_score: edited.confirm_score,
             },
             ConfigPage::Display => PageEntrySnapshot::Display {
@@ -2276,6 +2282,7 @@ impl RefBoxApp {
                     hide_time: self.config.hide_time,
                     collect_scorer_cap_num: self.config.collect_scorer_cap_num,
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
+                    show_behind_schedule_time: self.config.show_behind_schedule_time,
                     confirm_score: self.config.confirm_score,
                     pending_language: None,
                     original_language: None,
@@ -2684,6 +2691,9 @@ impl RefBoxApp {
                             }
                             BoolGameParameter::FoulsAndWarnings => {
                                 edited_settings.track_fouls_and_warnings ^= true
+                            }
+                            BoolGameParameter::ShowBehindScheduleTime => {
+                                edited_settings.show_behind_schedule_time ^= true
                             }
                             BoolGameParameter::TeamWarning
                             | BoolGameParameter::TimeoutsCountedPerHalf
@@ -3378,6 +3388,7 @@ impl RefBoxApp {
                     hide_time: self.config.hide_time,
                     collect_scorer_cap_num: self.config.collect_scorer_cap_num,
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
+                    show_behind_schedule_time: self.config.show_behind_schedule_time,
                     confirm_score: self.config.confirm_score,
                     pending_language: Some(current_language),
                     original_language: Some(current_language),
@@ -3425,6 +3436,7 @@ impl RefBoxApp {
                     hide_time: self.config.hide_time,
                     collect_scorer_cap_num: self.config.collect_scorer_cap_num,
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
+                    show_behind_schedule_time: self.config.show_behind_schedule_time,
                     confirm_score: self.config.confirm_score,
                     pending_language: Some(current_language),
                     original_language: Some(current_language),
@@ -3509,6 +3521,7 @@ impl RefBoxApp {
                     hide_time: self.config.hide_time,
                     collect_scorer_cap_num: self.config.collect_scorer_cap_num,
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
+                    show_behind_schedule_time: self.config.show_behind_schedule_time,
                     confirm_score: self.config.confirm_score,
                     pending_language: Some(current_language),
                     original_language: Some(current_language),
@@ -3565,6 +3578,7 @@ impl RefBoxApp {
                     hide_time: self.config.hide_time,
                     collect_scorer_cap_num: self.config.collect_scorer_cap_num,
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
+                    show_behind_schedule_time: self.config.show_behind_schedule_time,
                     confirm_score: self.config.confirm_score,
                     pending_language: Some(current_language),
                     original_language: Some(current_language),

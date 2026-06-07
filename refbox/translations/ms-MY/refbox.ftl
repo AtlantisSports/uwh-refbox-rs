@@ -72,6 +72,8 @@ track-cap-number-of-scorer = REKOD NOMBOR PEMAIN
 event = ACARA:
 track-fouls-and-warnings = REKOD KESALAHAN
     DAN AMARAN
+show-behind-schedule-time = TUNJUK KELEWATAN
+    JADUAL
 court = GELANGGANG:
 single-half = SEPARUH
     TUNGGAL:

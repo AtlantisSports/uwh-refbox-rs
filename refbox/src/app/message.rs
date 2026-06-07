@@ -677,6 +677,7 @@ pub enum BoolGameParameter {
     HideTime,
     ScorerCapNum,
     FoulsAndWarnings,
+    ShowBehindScheduleTime,
     TeamWarning,
     TimeoutsCountedPerHalf,
     ConfirmScore,

@@ -39,6 +39,7 @@ pub(in super::super) struct EditableSettings {
     pub hide_time: bool,
     pub collect_scorer_cap_num: bool,
     pub track_fouls_and_warnings: bool,
+    pub show_behind_schedule_time: bool,
     pub confirm_score: bool,
     pub pending_language: Option<Language>,
     pub original_language: Option<Language>,
@@ -211,6 +212,7 @@ pub(in super::super) fn page_has_changes(
                 mode,
                 collect_scorer_cap_num,
                 track_fouls_and_warnings,
+                show_behind_schedule_time,
                 confirm_score,
             },
         ) => {
@@ -221,6 +223,7 @@ pub(in super::super) fn page_has_changes(
                 || edited.mode != *mode
                 || edited.collect_scorer_cap_num != *collect_scorer_cap_num
                 || edited.track_fouls_and_warnings != *track_fouls_and_warnings
+                || edited.show_behind_schedule_time != *show_behind_schedule_time
                 || edited.confirm_score != *confirm_score
         }
         (
@@ -878,6 +881,7 @@ fn make_app_config_page<'a>(
     let EditableSettings {
         collect_scorer_cap_num,
         track_fouls_and_warnings,
+        show_behind_schedule_time,
         confirm_score,
         ..
     } = settings;
@@ -930,7 +934,19 @@ fn make_app_config_page<'a>(
         ]
         .spacing(SPACING)
         .height(Length::Fill),
-        row![horizontal_space()].height(Length::Fill),
+        row![
+            make_value_button(
+                fl!("show-behind-schedule-time"),
+                bool_string(*show_behind_schedule_time),
+                (false, true),
+                Some(Message::ToggleBoolParameter(
+                    BoolGameParameter::ShowBehindScheduleTime,
+                )),
+            ),
+            horizontal_space(),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),
         make_cancel_apply_footer(ConfigPage::App, settings, page_entry_snapshot),
     ]
@@ -2029,6 +2045,7 @@ mod tests {
             mode: edited.mode,
             collect_scorer_cap_num: edited.collect_scorer_cap_num,
             track_fouls_and_warnings: edited.track_fouls_and_warnings,
+            show_behind_schedule_time: edited.show_behind_schedule_time,
             confirm_score: edited.confirm_score,
         };
 

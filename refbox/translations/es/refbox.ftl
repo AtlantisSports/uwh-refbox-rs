@@ -70,6 +70,8 @@ track-cap-number-of-scorer = REGISTRAR NÚMERO
     DEL ANOTADOR
 track-fouls-and-warnings = REGISTRAR FALTAS
     Y ADVERTENCIAS
+show-behind-schedule-time = MOSTRAR RETRASO
+    DE HORARIO
 event = EVENTO:
 court = CANCHA:
 single-half = UNA SOLA MITAD:

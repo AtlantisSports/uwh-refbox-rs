@@ -72,6 +72,8 @@ track-cap-number-of-scorer = GOLCÜNÜN BAŞLIK
 event = ETKİNLİK:
 track-fouls-and-warnings = FAUL VE
     UYARILARI TAKİP ET
+show-behind-schedule-time = PROGRAM GECİKMESİNİ
+    GÖSTER
 court = SAHA:
 single-half = TEK
     DEVRE:

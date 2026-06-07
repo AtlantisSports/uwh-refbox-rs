@@ -72,6 +72,8 @@ track-cap-number-of-scorer = BADEKAPPENNUMMER
 event = VERANSTALTUNG:
 track-fouls-and-warnings = FOULS UND
     VERWARNUNGEN ERFASSEN
+show-behind-schedule-time = PLANVERZÖGERUNG
+    ANZEIGEN
 court = FELD:
 single-half = EINZELNE
     HALBZEIT:

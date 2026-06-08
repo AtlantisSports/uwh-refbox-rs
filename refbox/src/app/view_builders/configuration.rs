@@ -1418,28 +1418,21 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
         ..
     } = data;
 
-    let (title, hint) = match param {
-        LengthParameter::Half => (
+    let title = match param {
+        LengthParameter::Half => {
             if single_half {
                 fl!("game-len")
             } else {
                 fl!("half-length")
-            },
-            if single_half {
-                fl!("length-of-game-during-regular-play")
-            } else {
-                fl!("length-of-half-during-regular-play")
-            },
-        ),
-        LengthParameter::HalfTime => (fl!("half-time-lenght"), fl!("length-of-half-time-period")),
-        LengthParameter::GameBlock => (fl!("game-block"), fl!("game-block-help")),
-        LengthParameter::MinimumBetweenGame => (fl!("min-break"), fl!("min-time-btwn-games")),
-        LengthParameter::PreOvertime => (fl!("pre-ot-break-abreviated"), fl!("pre-sd-brk")),
-        LengthParameter::OvertimeHalf => (fl!("ot-half-len"), fl!("time-during-ot")),
-        LengthParameter::OvertimeHalfTime => {
-            (fl!("ot-half-tm-len"), fl!("len-of-overtime-halftime"))
+            }
         }
-        LengthParameter::PreSuddenDeath => (fl!("pre-sd-break"), fl!("pre-sd-len")),
+        LengthParameter::HalfTime => fl!("half-time-lenght"),
+        LengthParameter::GameBlock => fl!("game-block"),
+        LengthParameter::MinimumBetweenGame => fl!("min-break"),
+        LengthParameter::PreOvertime => fl!("pre-ot-break-abreviated"),
+        LengthParameter::OvertimeHalf => fl!("ot-half-len"),
+        LengthParameter::OvertimeHalfTime => fl!("ot-half-tm-len"),
+        LengthParameter::PreSuddenDeath => fl!("pre-sd-break"),
     };
 
     // Live Game Block validation: build a staged copy of the config with the
@@ -1539,15 +1532,27 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
         col = col.push(selector);
     }
 
+    let help_button = make_small_button("?", MEDIUM_TEXT)
+        .style(blue_button)
+        .on_press(Message::ShowParameterHelp);
+
+    // Time editor stays centred between two balancing spacers; the ? button sits
+    // top-right (its width matched by the fixed-width spacer on the left), and
+    // align_y(Top) pins it to the top of the row.
+    let editor_row = row![
+        horizontal_space().width(Length::Fixed(MIN_BUTTON_SIZE)),
+        horizontal_space(),
+        make_time_editor(title, length, false, value_color),
+        horizontal_space(),
+        help_button,
+    ]
+    .spacing(SPACING)
+    .align_y(Vertical::Top);
+
     col = col
         .push(vertical_space())
-        .push(make_time_editor(title, length, false, value_color))
-        .push(vertical_space())
-        .push(
-            text(fl!("help") + &hint)
-                .size(SMALL_TEXT)
-                .align_x(Horizontal::Center),
-        );
+        .push(editor_row)
+        .push(vertical_space());
 
     if let Some(note) = validity_note {
         col = col.push(note);
@@ -1572,6 +1577,74 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
             .spacing(SPACING),
         )
         .into()
+}
+
+pub(in super::super) fn build_parameter_help_page<'a>(
+    data: ViewData<'_, '_>,
+    param: LengthParameter,
+    _length: Duration,
+    single_half: bool,
+) -> Element<'a, Message> {
+    let ViewData {
+        snapshot,
+        mode,
+        clock_running,
+        portal_indicator,
+        ..
+    } = data;
+
+    // Title reuses the editor's short, already-translated label; body is the
+    // existing hint string. No new translation keys are introduced.
+    let (title, body) = match param {
+        LengthParameter::Half => (
+            if single_half {
+                fl!("game-len")
+            } else {
+                fl!("half-length")
+            },
+            if single_half {
+                fl!("length-of-game-during-regular-play")
+            } else {
+                fl!("length-of-half-during-regular-play")
+            },
+        ),
+        LengthParameter::HalfTime => (fl!("half-time-lenght"), fl!("length-of-half-time-period")),
+        LengthParameter::GameBlock => (fl!("game-block"), fl!("game-block-help")),
+        LengthParameter::MinimumBetweenGame => (fl!("min-break"), fl!("min-time-btwn-games")),
+        LengthParameter::PreOvertime => (fl!("pre-ot-break-abreviated"), fl!("pre-sd-brk")),
+        LengthParameter::OvertimeHalf => (fl!("ot-half-len"), fl!("time-during-ot")),
+        LengthParameter::OvertimeHalfTime => {
+            (fl!("ot-half-tm-len"), fl!("len-of-overtime-halftime"))
+        }
+        LengthParameter::PreSuddenDeath => (fl!("pre-sd-break"), fl!("pre-sd-len")),
+    };
+    let body = body.replace('\n', " ");
+
+    column![
+        make_game_time_button(
+            snapshot,
+            false,
+            false,
+            mode,
+            clock_running,
+            portal_indicator,
+            None
+        ),
+        container(text(title).size(MEDIUM_TEXT)).center_x(Length::Fill),
+        text(body).size(SMALL_TEXT).width(Length::Fill),
+        vertical_space(),
+        row![
+            make_button(fl!("back"))
+                .style(red_button)
+                .width(Length::Fill)
+                .on_press(Message::CloseParameterHelp),
+            horizontal_space(),
+            horizontal_space(),
+        ]
+        .spacing(SPACING),
+    ]
+    .spacing(SPACING)
+    .into()
 }
 
 fn font_family_id(lang: Language) -> u8 {

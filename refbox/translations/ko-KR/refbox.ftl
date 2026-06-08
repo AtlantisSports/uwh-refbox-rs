@@ -74,8 +74,7 @@ track-cap-number-of-scorer = 득점자 모자
 event = 대회:
 track-fouls-and-warnings = 반칙 및
     경고 추적
-show-behind-schedule-time = 일정 지연
-    표시
+show-behind-schedule-time = 지연 표시
 court = 코트:
 single-half = 단일
     전반:

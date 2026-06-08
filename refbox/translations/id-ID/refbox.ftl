@@ -72,8 +72,7 @@ track-cap-number-of-scorer = LACAK NOMOR TOPI
 event = ACARA:
 track-fouls-and-warnings = LACAK PELANGGARAN
     DAN PERINGATAN
-show-behind-schedule-time = TAMPILKAN KETERLAMBATAN
-    JADWAL
+show-behind-schedule-time = TAMPILKAN KELEWATAN
 court = LAPANGAN:
 single-half = BABAK
     TUNGGAL:

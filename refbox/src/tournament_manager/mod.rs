@@ -993,12 +993,6 @@ impl TournamentManager {
     fn end_game(&mut self, now: Instant) {
         let was_running = self.clock_is_running();
 
-        // Capture the lateness carried out of this game BEFORE flipping to BetweenGames,
-        // so `behind_schedule` can hold it steady through the break (it reads the in-game
-        // branch here). Re-derived when the next game starts.
-        // removed in Task 2
-        // self.behind_at_game_end = self.behind_schedule(now);
-
         self.current_period = GamePeriod::BetweenGames;
 
         info!(
@@ -2176,8 +2170,16 @@ impl TournamentManager {
     /// docs/superpowers/specs/2026-06-06-behind-schedule-indicator-design.md.
     pub fn behind_schedule(&self, now: Instant) -> Duration {
         if self.current_period == GamePeriod::BetweenGames {
-            // TODO(Task 2): projected-next-start formula
-            Duration::ZERO
+            // Project the next game's start from the *live* break clock. While the
+            // break counts down normally the projection holds steady (frozen);
+            // pausing it, sitting past zero, or editing it slides the projection --
+            // and the figure -- by exactly that amount. Floored at zero (on-time/ahead).
+            let Some(sched_next) = self.next_game_scheduled_start(now) else {
+                return Duration::ZERO;
+            };
+            let remaining_break = self.clock_state.clock_time(now).unwrap_or(Duration::ZERO);
+            let projected_next_start = now + remaining_break;
+            projected_next_start.saturating_duration_since(sched_next)
         } else {
             let Some(sched_start) = self.current_scheduled_start else {
                 return Duration::ZERO;
@@ -2978,28 +2980,6 @@ mod test {
     }
 
     #[test]
-    fn test_behind_schedule_frozen_during_break() {
-        // After a game ends behind, the figure must HOLD steady during the break (the
-        // next-game countdown is "running"), not climb. It only changes when the next
-        // game starts. Models the operator's expectation: delay accrues during in-game
-        // stoppages, stays put otherwise.
-        initialize();
-        let mut tm = TournamentManager::new(behind_test_config());
-        let start = Instant::now();
-        tm.start_clock(start);
-        tm.start_play_now(start).unwrap(); // next_scheduled_start = start + 40
-        let end = start + Duration::from_secs(50); // game ran 50s real vs its 40s slot
-        tm.stop_clock(start).unwrap();
-        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
-        tm.end_game(end);
-        let at_end = tm.behind_schedule(end);
-        assert_eq!(at_end, Duration::from_secs(12));
-        // 30s and 90s later, with the break countdown running, it must NOT have grown.
-        assert_eq!(tm.behind_schedule(end + Duration::from_secs(30)), at_end);
-        assert_eq!(tm.behind_schedule(end + Duration::from_secs(90)), at_end);
-    }
-
-    #[test]
     fn test_behind_schedule_recovered_by_long_break() {
         // A deliberately long scheduled break (large Game Block slot) pushes the next
         // game's scheduled start far enough out that an ended game is no longer behind:
@@ -3025,6 +3005,69 @@ mod test {
         // earliest next = max(end + min_break(2), now=end) = start+32; sched_next = start+600.
         // 32 is well before 600 => on schedule => ZERO.
         assert_eq!(tm.behind_schedule(end), Duration::ZERO);
+    }
+
+    #[test]
+    fn test_behind_schedule_between_games_climbs_when_break_overdue() {
+        initialize();
+        // Manual mode, block 40, regulation 23, min_break 2 => buffer 15.
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(10),
+            half_time_duration: Duration::from_secs(3),
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(40),
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap();
+        tm.stop_clock(start + Duration::from_secs(5)).unwrap();
+        let end = start + Duration::from_secs(60);
+        tm.end_game(end);
+        assert_eq!(tm.current_period, GamePeriod::BetweenGames);
+
+        let v_at_end = tm.behind_schedule(end);
+        let v_one_min_later = tm.behind_schedule(end + Duration::from_secs(60));
+        assert!(
+            v_one_min_later > v_at_end,
+            "between-games figure did not climb when overdue: {v_at_end:?} -> {v_one_min_later:?}"
+        );
+    }
+
+    #[test]
+    fn test_behind_schedule_between_games_follows_break_edit() {
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(10),
+            half_time_duration: Duration::from_secs(3),
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(40),
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap();
+        let end = start + Duration::from_secs(30);
+        tm.end_game(end);
+
+        // The break clock is CountingDown (running) between games, and
+        // `set_game_clock_time` requires a stopped clock. Stop the break first
+        // (freezing it at its current remaining value), then sample `before`
+        // AFTER stopping so the comparison isolates the edit's effect: a stopped
+        // break with the same remaining value yields the same projection at the
+        // same `now`, so only the +10s edit can move the figure.
+        tm.stop_clock(end).unwrap();
+        let before = tm.behind_schedule(end);
+        tm.set_game_clock_time(tm.game_clock_time(end).unwrap() + Duration::from_secs(10))
+            .unwrap();
+        let after = tm.behind_schedule(end);
+        assert_eq!(after, before + Duration::from_secs(10));
     }
 
     /// Builds a manual-mode config with a 40s Game Block slot: regulation 2*10+3 = 23,
@@ -3117,9 +3160,17 @@ mod test {
         let start = Instant::now();
         tm.start_clock(start);
         tm.start_play_now(start).unwrap(); // next_scheduled_start = start + 40
+        // Play the full regulation (FirstHalf 10 + HalfTime 3 + SecondHalf 10 = 23s)
+        // by advancing through each period boundary, then stop the clock at the end of
+        // the second half. The game has now played its whole regulation but sits in a
+        // long end-of-game stoppage; ending it at +50 leaves it genuinely 12s behind
+        // (50 real - 23 regulation - 15 slot buffer = 12). Ending from a stopped clock
+        // anchors the break at `end`, so the in-game and between-games readings come
+        // from one consistent state and must match.
+        tm.update(start + Duration::from_secs(10)).unwrap(); // FirstHalf -> HalfTime
+        tm.update(start + Duration::from_secs(13)).unwrap(); // HalfTime -> SecondHalf
+        tm.stop_clock(start + Duration::from_secs(23)).unwrap(); // full regulation played
         let end = start + Duration::from_secs(50); // game took 50s real vs its 40s slot
-        tm.stop_clock(start).unwrap();
-        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
         let v_in_game = tm.behind_schedule(end); // sampled while still in the game
         tm.end_game(end);
         let v_between = tm.behind_schedule(end); // sampled immediately after, same instant

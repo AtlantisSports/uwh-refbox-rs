@@ -72,8 +72,7 @@ track-cap-number-of-scorer = 追踪进球
 event = 赛事：
 track-fouls-and-warnings = 追踪犯规
     和警告
-show-behind-schedule-time = 显示日程
-    延误
+show-behind-schedule-time = 显示落后时间
 court = 球场：
 single-half = 单节
     比赛：

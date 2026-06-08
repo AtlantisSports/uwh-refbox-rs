@@ -72,8 +72,7 @@ track-cap-number-of-scorer = 得点者の
 event = 大会:
 track-fouls-and-warnings = 反則・
     警告の記録
-show-behind-schedule-time = スケジュール
-    遅延表示
+show-behind-schedule-time = 遅延を表示
 court = コート:
 single-half = 単一
     ハーフ:

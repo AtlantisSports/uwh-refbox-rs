@@ -72,8 +72,7 @@ track-cap-number-of-scorer = บันทึกหมายเลขหมวก
 event = กิจกรรม:
 track-fouls-and-warnings = บันทึกฟาวล์
     และการเตือน
-show-behind-schedule-time = แสดงความล่าช้า
-    ของตารางเวลา
+show-behind-schedule-time = แสดงเวลาล่าช้า
 court = สนาม:
 single-half = ครึ่ง
     เดียว:

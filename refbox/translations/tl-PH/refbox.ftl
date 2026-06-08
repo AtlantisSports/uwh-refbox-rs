@@ -72,8 +72,7 @@ track-cap-number-of-scorer = SUBAYBAYAN ANG NUMERO
 event = KAGANAPAN:
 track-fouls-and-warnings = SUBAYBAYAN ANG POUL
     AT BABALA
-show-behind-schedule-time = IPAKITA ANG PAGKAANTALA
-    NG ISKEDYUL
+show-behind-schedule-time = IPAKITA PAGKAHULI
 court = KORTE:
 single-half = ISANG
     KALAHATI:

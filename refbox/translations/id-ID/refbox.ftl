@@ -73,6 +73,7 @@ event = ACARA:
 track-fouls-and-warnings = LACAK PELANGGARAN
     DAN PERINGATAN
 show-behind-schedule-time = TAMPILKAN KELEWATAN
+delay = TERLAMBAT
 court = LAPANGAN:
 single-half = BABAK
     TUNGGAL:

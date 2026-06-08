@@ -73,6 +73,7 @@ event = EVENTO:
 track-fouls-and-warnings = REGISTAR FALTAS
     E AVISOS
 show-behind-schedule-time = MOSTRAR ATRASO
+delay = ATRASO
 court = CAMPO:
 single-half = TEMPO
     ÚNICO:

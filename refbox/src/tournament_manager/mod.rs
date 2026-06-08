@@ -54,9 +54,11 @@ pub struct TournamentManager {
     /// present, else the Game Block grid slot). Set at `start_game`. `None` before
     /// the first game. Used by `behind_schedule`.
     current_scheduled_start: Option<Instant>,
-    /// When the last game ended (entering BetweenGames). Used by `behind_schedule`
-    /// to measure lateness while waiting for the next game. `None` before any game ends.
-    last_game_end_time: Option<Instant>,
+    /// The behind-schedule lateness carried in from the last game's end, captured at
+    /// `end_game`. Shown (frozen) by `behind_schedule` throughout the between-games
+    /// break so the figure holds steady while the break countdown runs; it is only
+    /// re-derived when the next game starts. `ZERO` before any game ends.
+    behind_at_game_end: Duration,
     reset_game_time: Duration,
     recent_goal: Option<(Color, u8, GamePeriod, Duration)>,
     current_game_stats: GameStats,
@@ -86,7 +88,7 @@ impl TournamentManager {
             next_game: None,
             next_scheduled_start: None,
             current_scheduled_start: None,
-            last_game_end_time: None,
+            behind_at_game_end: Duration::ZERO,
             reset_game_time: config.nominal_break,
             config,
             recent_goal: None,
@@ -225,7 +227,7 @@ impl TournamentManager {
         self.fouls.iter_mut().for_each(|(_, f)| f.clear());
         self.current_game_stats = GameStats::new(self.next_game_number());
         self.current_scheduled_start = None;
-        self.last_game_end_time = None;
+        self.behind_at_game_end = Duration::ZERO;
         self.has_reset = true;
     }
 
@@ -978,7 +980,10 @@ impl TournamentManager {
     fn end_game(&mut self, now: Instant) {
         let was_running = self.clock_is_running();
 
-        self.last_game_end_time = Some(now);
+        // Capture the lateness carried out of this game BEFORE flipping to BetweenGames,
+        // so `behind_schedule` can hold it steady through the break (it reads the in-game
+        // branch here). Re-derived when the next game starts.
+        self.behind_at_game_end = self.behind_schedule(now);
 
         self.current_period = GamePeriod::BetweenGames;
 
@@ -2108,13 +2113,11 @@ impl TournamentManager {
     /// docs/superpowers/specs/2026-06-06-behind-schedule-indicator-design.md.
     pub fn behind_schedule(&self, now: Instant) -> Duration {
         if self.current_period == GamePeriod::BetweenGames {
-            let (Some(end), Some(sched_next)) =
-                (self.last_game_end_time, self.next_game_scheduled_start(now))
-            else {
-                return Duration::ZERO;
-            };
-            let earliest_next = max(end + self.config.minimum_break, now);
-            earliest_next.saturating_duration_since(sched_next)
+            // Frozen at the lateness carried in from the last game's end; it does not
+            // climb while the break runs. Clawback/recovery is realised when the next
+            // game starts (its inherited lateness is re-derived from actual vs
+            // scheduled start). `ZERO` before the first game.
+            self.behind_at_game_end
         } else {
             let Some(sched_start) = self.current_scheduled_start else {
                 return Duration::ZERO;
@@ -2881,6 +2884,28 @@ mod test {
         // BetweenGames: earliest next = max(end+min_break(2), now=end) = start+52;
         // sched_next = next_scheduled_start = start+40 => behind = 12.
         assert_eq!(tm.behind_schedule(end), Duration::from_secs(12));
+    }
+
+    #[test]
+    fn test_behind_schedule_frozen_during_break() {
+        // After a game ends behind, the figure must HOLD steady during the break (the
+        // next-game countdown is "running"), not climb. It only changes when the next
+        // game starts. Models the operator's expectation: delay accrues during in-game
+        // stoppages, stays put otherwise.
+        initialize();
+        let mut tm = TournamentManager::new(behind_test_config());
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap(); // next_scheduled_start = start + 40
+        let end = start + Duration::from_secs(50); // game ran 50s real vs its 40s slot
+        tm.stop_clock(start).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        tm.end_game(end);
+        let at_end = tm.behind_schedule(end);
+        assert_eq!(at_end, Duration::from_secs(12));
+        // 30s and 90s later, with the break countdown running, it must NOT have grown.
+        assert_eq!(tm.behind_schedule(end + Duration::from_secs(30)), at_end);
+        assert_eq!(tm.behind_schedule(end + Duration::from_secs(90)), at_end);
     }
 
     #[test]

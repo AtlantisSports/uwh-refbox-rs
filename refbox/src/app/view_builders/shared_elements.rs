@@ -493,9 +493,25 @@ pub(super) fn make_game_time_button<'a>(
         make_time_view!(r, per, time).align_y(Alignment::Center)
     };
 
+    // The banner is "tight" only in UWR + portal mode (both side tiles present)
+    // AND when a second middle column is also competing for width -- either a
+    // timeout column or the delay figure. In that case the period label and clock
+    // shrink so everything fits; every other banner keeps the big full-size clock
+    // for poolside readability.
+    let compact = portal_indicator.is_some()
+        && mode == Mode::Rugby
+        && (snapshot.timeout.is_some() || overrun_label.is_some());
+
     let make_time_view_col = |period_text, time_text, style| {
-        let per = text(period_text).style(style);
-        let time = text(time_text).style(style).size(LARGE_TEXT);
+        let per = if compact {
+            text(period_text).style(style).size(SMALL_TEXT)
+        } else {
+            text(period_text).style(style)
+        };
+        let time =
+            text(time_text)
+                .style(style)
+                .size(if compact { MEDIUM_TEXT } else { LARGE_TEXT });
         let c = column![];
         make_time_view!(c, per, time).align_x(Alignment::Center)
     };
@@ -553,13 +569,17 @@ pub(super) fn make_game_time_button<'a>(
         }
     }
 
+    // The delay figure yields its slot to an active timeout: the banner cannot
+    // hold the period/clock, a timeout column, the delay, the portal tile, and the
+    // UWR pause button at once. During a timeout the delay is hidden (it keeps
+    // accruing) and reappears, updated, once the timeout ends.
     if let Some(label) = overrun_label {
-        content = content.push(
-            text(label)
-                .style(red_text)
-                .size(MEDIUM_TEXT)
-                .align_y(Vertical::Center),
-        );
+        if snapshot.timeout.is_none() {
+            // Build the DELAY block with the same helper as the period/clock so the
+            // label and figure match the game time's size and vertical alignment
+            // exactly (it tracks `compact` the same way).
+            content = content.push(make_time_view_col(fl!("delay"), label, red_text));
+        }
     }
 
     // The tile fills the banner height so it looks visually balanced on

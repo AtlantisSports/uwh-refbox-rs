@@ -69,6 +69,7 @@ track-cap-number-of-scorer = SUIVRE LE NUMÉRO DU
 track-fouls-and-warnings = SUIVRE LES FAUTES
     ET LES AVERTISSEMENTS
 show-behind-schedule-time = AFFICHER LE RETARD
+delay = RETARD
 event = EVÉNEMENT:
 court = TERRAIN:
 single-half = UNE SEULE PÉRIODE:

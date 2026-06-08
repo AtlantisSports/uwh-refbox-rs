@@ -73,6 +73,7 @@ event = 赛事：
 track-fouls-and-warnings = 追踪犯规
     和警告
 show-behind-schedule-time = 显示落后时间
+delay = 延误
 court = 球场：
 single-half = 单节
     比赛：

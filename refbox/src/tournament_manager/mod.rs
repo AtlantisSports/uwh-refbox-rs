@@ -2875,6 +2875,34 @@ mod test {
     }
 
     #[test]
+    fn test_behind_schedule_recovered_by_long_break() {
+        // A deliberately long scheduled break (large Game Block slot) pushes the next
+        // game's scheduled start far enough out that an ended game is no longer behind:
+        // the long break absorbs the delay and the figure reads zero.
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(10),
+            half_time_duration: Duration::from_secs(3),
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(600), // long slot => long break before next game
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap(); // next_scheduled_start = start + 600
+        let end = start + Duration::from_secs(30);
+        tm.stop_clock(start).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        tm.end_game(end);
+        // earliest next = max(end + min_break(2), now=end) = start+32; sched_next = start+600.
+        // 32 is well before 600 => on schedule => ZERO.
+        assert_eq!(tm.behind_schedule(end), Duration::ZERO);
+    }
+
+    #[test]
     fn test_reset() {
         initialize();
         let config = GameConfig {

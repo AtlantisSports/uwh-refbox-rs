@@ -2106,61 +2106,6 @@ impl TournamentManager {
         played.min(self.config.regulation_play())
     }
 
-    /// Wall-clock time the current game has lost to stoppages so far: the real
-    /// time elapsed since the game started minus the scheduled game-clock time
-    /// consumed. Counts only what has already happened (no projection of future
-    /// timeouts). Returns `ZERO` when not in a live game or before the game start.
-    // Now only exercised by its own tests: `behind_schedule` was its sole non-test
-    // caller and now measures overrun directly. Scheduled for removal (with its tests)
-    // in Task 2; the allow keeps clippy green in the interim.
-    #[allow(dead_code)]
-    pub fn accumulated_overrun(&self, now: Instant) -> Duration {
-        if self.current_period == GamePeriod::BetweenGames {
-            return Duration::ZERO;
-        }
-        let Some(real_elapsed) = now.checked_duration_since(self.game_start_time) else {
-            return Duration::ZERO;
-        };
-
-        // Scheduled game-clock time consumed = full length of every period already
-        // completed this game, plus the portion of the current period consumed.
-        // Walk the period chain, but only count periods the current config actually
-        // plays through: a single-period game has no half-time or second half, and
-        // the overtime periods are skipped entirely when overtime is disabled (the
-        // game goes straight from the second half to the sudden-death break). Without
-        // these guards the walk would add never-played periods and wrongly suppress
-        // the overrun figure (e.g. during sudden death in a sudden-death-only game).
-        let mut scheduled = Duration::ZERO;
-        let mut period = GamePeriod::FirstHalf;
-        while period != self.current_period {
-            let played = match period {
-                GamePeriod::HalfTime | GamePeriod::SecondHalf => !self.config.single_half,
-                GamePeriod::PreOvertime
-                | GamePeriod::OvertimeFirstHalf
-                | GamePeriod::OvertimeHalfTime
-                | GamePeriod::OvertimeSecondHalf => self.config.overtime_allowed,
-                _ => true,
-            };
-            if played {
-                scheduled += period.duration(&self.config).unwrap_or(Duration::ZERO);
-            }
-            match period.next_period() {
-                Some(next) => period = next,
-                None => break,
-            }
-        }
-        let clock_time = self.game_clock_time(now).unwrap_or(Duration::ZERO);
-        let consumed_in_current = match self.current_period.duration(&self.config) {
-            // Counting-down period: consumed = full length minus what's left.
-            Some(len) => len.saturating_sub(clock_time),
-            // SuddenDeath has no fixed length and counts up: consumed = elapsed.
-            None => clock_time,
-        };
-        scheduled += consumed_in_current;
-
-        real_elapsed.saturating_sub(scheduled)
-    }
-
     /// How far behind its scheduled start times the run of games currently is, as a
     /// positive duration (`ZERO` when on time, ahead, or before the first game).
     /// Carries lateness across games; a longer scheduled break claws it back down to
@@ -2794,71 +2739,6 @@ mod test {
     }
 
     #[test]
-    fn test_accumulated_overrun() {
-        initialize();
-        let config = GameConfig {
-            half_play_duration: Duration::from_secs(20),
-            half_time_duration: Duration::from_secs(5),
-            ..Default::default()
-        };
-        let mut tm = TournamentManager::new(config);
-        let start = Instant::now();
-        tm.start_clock(start);
-        tm.start_play_now(start).unwrap(); // FirstHalf, counting down from 20
-
-        // Running in sync with real time => no overrun.
-        let t5 = start + Duration::from_secs(5);
-        assert_eq!(tm.accumulated_overrun(t5), Duration::ZERO);
-
-        // Stop the clock (stoppage) and let 8s of real time pass.
-        tm.stop_clock(t5).unwrap();
-        let t13 = t5 + Duration::from_secs(8);
-        assert_eq!(tm.accumulated_overrun(t13), Duration::from_secs(8));
-
-        // Resume; running in sync again must NOT grow the accumulated overrun.
-        tm.start_clock(t13);
-        let t16 = t13 + Duration::from_secs(3);
-        assert_eq!(tm.accumulated_overrun(t16), Duration::from_secs(8));
-    }
-
-    #[test]
-    fn test_accumulated_overrun_zero_between_games() {
-        initialize();
-        let tm = TournamentManager::new(GameConfig::default());
-        let now = Instant::now();
-        // Fresh manager is BetweenGames -> no live game -> zero.
-        assert_eq!(tm.accumulated_overrun(now), Duration::ZERO);
-    }
-
-    #[test]
-    fn test_accumulated_overrun_sudden_death_only_not_suppressed() {
-        // Regression: with overtime disabled the game skips the overtime periods
-        // (second half -> pre-sudden-death -> sudden death). The scheduled-time
-        // walk must NOT add those never-played overtime periods, otherwise the
-        // overrun is wrongly suppressed to zero during sudden death.
-        initialize();
-        let config = GameConfig {
-            half_play_duration: Duration::from_secs(20),
-            half_time_duration: Duration::from_secs(5),
-            pre_sudden_death_duration: Duration::from_secs(10),
-            overtime_allowed: false,
-            sudden_death_allowed: true,
-            ..Default::default()
-        };
-        let mut tm = TournamentManager::new(config);
-        let start = Instant::now();
-        // Force into Sudden Death (clock stopped at 0 = no elapsed in this period).
-        tm.set_period_and_game_clock_time(GamePeriod::SuddenDeath, Duration::from_secs(0));
-        // The game started 200s of real time ago.
-        tm.set_game_start(start - Duration::from_secs(200));
-        // Played-through scheduled time (overtime skipped): FirstHalf 20 + HalfTime 5
-        // + SecondHalf 20 + PreSuddenDeath 10 = 55. SuddenDeath consumed = 0.
-        // Overrun = 200 - 55 = 145 (would be 0 before the fix, swamped by ~960s of
-        // phantom overtime periods).
-        assert_eq!(tm.accumulated_overrun(start), Duration::from_secs(145));
-    }
-
-    #[test]
     fn test_behind_schedule_inherited_lateness_persists_in_manual_mode() {
         initialize();
         let config = GameConfig {
@@ -3234,6 +3114,108 @@ mod test {
         assert_eq!(
             tm.behind_schedule(pause_at + Duration::from_secs(12)),
             Duration::from_secs(4)
+        );
+    }
+
+    #[test]
+    fn test_behind_schedule_frozen_through_half_time() {
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(10),
+            half_time_duration: Duration::from_secs(6),
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(40), // buffer 12
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap();
+        // Advance into half-time (first half 10s, then half-time begins).
+        tm.update(start + Duration::from_secs(11)).unwrap();
+        assert_eq!(tm.current_period, GamePeriod::HalfTime);
+        // Half-time is scheduled time => figure frozen while it counts down.
+        let a = tm.behind_schedule(start + Duration::from_secs(12));
+        let b = tm.behind_schedule(start + Duration::from_secs(14));
+        assert_eq!(a, b);
+        assert_eq!(a, Duration::ZERO);
+    }
+
+    #[test]
+    fn test_behind_schedule_climbs_in_overtime_beyond_buffer() {
+        initialize();
+        // regulation = 2*10 + 4 = 24; block 30, min_break 2 => buffer 4.
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(10),
+            half_time_duration: Duration::from_secs(4),
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(30),
+            overtime_allowed: true,
+            pre_overtime_break: Duration::from_secs(2),
+            ot_half_play_duration: Duration::from_secs(10),
+            ot_half_time_duration: Duration::from_secs(2),
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap();
+        // Scores stay level (default 0-0) so the game enters overtime rather than
+        // ending at the close of regulation. A single `update` advances at most one
+        // period boundary, so step the clock through the chain with no stoppage:
+        // FirstHalf 0..10, HalfTime 10..14, SecondHalf 14..24, PreOvertime 24..26,
+        // then OvertimeFirstHalf from 26.
+        tm.update(start + Duration::from_secs(11)).unwrap(); // -> HalfTime
+        tm.update(start + Duration::from_secs(15)).unwrap(); // -> SecondHalf
+        tm.update(start + Duration::from_secs(25)).unwrap(); // -> PreOvertime
+        tm.update(start + Duration::from_secs(27)).unwrap(); // -> OvertimeFirstHalf
+        let in_ot = start + Duration::from_secs(24 + 8);
+        tm.update(in_ot).unwrap();
+        assert_eq!(tm.current_period, GamePeriod::OvertimeFirstHalf);
+        let v1 = tm.behind_schedule(in_ot);
+        let v2 = tm.behind_schedule(in_ot + Duration::from_secs(3));
+        assert!(
+            v1 > Duration::ZERO,
+            "overtime did not push the figure past the buffer"
+        );
+        assert!(v2 > v1, "figure did not climb during overtime");
+    }
+
+    #[test]
+    fn test_behind_schedule_robust_to_midgame_half_length_change() {
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(10),
+            half_time_duration: Duration::from_secs(3),
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(40),
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        // Shrink the half length before play starts (config can only change between
+        // games, the real API). This leaves a configured half (5) shorter than the
+        // clock reading we then load (10) — the period-length-vs-clock mismatch that
+        // triggered the original bug. Once running in regulation the figure must stay
+        // frozen rather than climbing with real time.
+        let mut shrunk = tm.config().clone();
+        shrunk.half_play_duration = Duration::from_secs(5);
+        tm.set_config(shrunk).unwrap();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap(); // FirstHalf, running
+        tm.stop_clock(start).unwrap(); // must be stopped to set the clock
+        tm.set_game_clock_time(Duration::from_secs(10)).unwrap(); // clock 10 > half 5
+        tm.start_clock(start); // resume: counting down from 10, running
+        let a = tm.behind_schedule(start + Duration::from_secs(2));
+        let b = tm.behind_schedule(start + Duration::from_secs(4));
+        assert_eq!(
+            a, b,
+            "figure climbed while running after a half-length change"
         );
     }
 

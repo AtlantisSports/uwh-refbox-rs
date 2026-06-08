@@ -108,6 +108,8 @@ pub enum Message {
     PortalGoToLogin,
     RequestPortalRefresh,
     ShowWarnings,
+    ShowParameterHelp,
+    CloseParameterHelp,
     EditGameConfig,
     ChangeConfigPage(ConfigPage),
     ApplyConfigPage(ConfigPage),
@@ -287,6 +289,8 @@ impl Message {
             | Self::PortalGoToLogin
             | Self::RequestPortalRefresh
             | Self::ShowWarnings
+            | Self::ShowParameterHelp
+            | Self::CloseParameterHelp
             | Self::EditGameConfig
             | Self::ChangeConfigPage(_)
             | Self::ApplyConfigPage(_)
@@ -361,6 +365,8 @@ impl PartialEq for Message {
             | (Self::PortalGoToLogin, Self::PortalGoToLogin)
             | (Self::RequestPortalRefresh, Self::RequestPortalRefresh)
             | (Self::ShowWarnings, Self::ShowWarnings)
+            | (Self::ShowParameterHelp, Self::ShowParameterHelp)
+            | (Self::CloseParameterHelp, Self::CloseParameterHelp)
             | (Self::EditGameConfig, Self::EditGameConfig)
             | (Self::ConfigEditComplete, Self::ConfigEditComplete)
             | (Self::RequestRemoteId, Self::RequestRemoteId)
@@ -563,6 +569,8 @@ impl PartialEq for Message {
             | (Self::PortalGoToLogin, _)
             | (Self::RequestPortalRefresh, _)
             | (Self::ShowWarnings, _)
+            | (Self::ShowParameterHelp, _)
+            | (Self::CloseParameterHelp, _)
             | (Self::EditGameConfig, _)
             | (Self::ChangeConfigPage(_), _)
             | (Self::ApplyConfigPage(_), _)

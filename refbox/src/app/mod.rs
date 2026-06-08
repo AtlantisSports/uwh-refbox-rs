@@ -193,6 +193,7 @@ enum AppState {
     // LengthParameter::Half (the 2 Halves / 1 Period selector). Carried here so
     // it commits on Done and is discarded on Cancel, like the edited Duration.
     ParameterEditor(LengthParameter, Duration, bool),
+    ParameterEditorHelp(LengthParameter, Duration, bool),
     ParameterList(ListableParameter, usize),
     ConfirmationPage(ConfirmationKind),
     ConfirmScores(BlackWhiteBundle<u8>),
@@ -2394,6 +2395,20 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
+            Message::ShowParameterHelp => {
+                if let AppState::ParameterEditor(param, dur, single_half) = self.app_state {
+                    self.app_state = AppState::ParameterEditorHelp(param, dur, single_half);
+                    trace!("AppState changed to {:?}", self.app_state);
+                }
+                Task::none()
+            }
+            Message::CloseParameterHelp => {
+                if let AppState::ParameterEditorHelp(param, dur, single_half) = self.app_state {
+                    self.app_state = AppState::ParameterEditor(param, dur, single_half);
+                    trace!("AppState changed to {:?}", self.app_state);
+                }
+                Task::none()
+            }
             Message::SelectParameter(param) => {
                 let index = match param {
                     ListableParameter::Event => Some(0),
@@ -3863,6 +3878,9 @@ impl RefBoxApp {
                     .as_ref()
                     .map_or(&self.config.game, |s| &s.config),
             ),
+            AppState::ParameterEditorHelp(param, dur, single_half) => {
+                build_parameter_help_page(data, param, dur, single_half)
+            }
             AppState::ParameterList(param, index) => build_list_selector_page(
                 data,
                 param,

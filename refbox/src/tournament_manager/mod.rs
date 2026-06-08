@@ -899,7 +899,10 @@ impl TournamentManager {
             if delta.is_negative() {
                 Some(now.checked_sub(delta.unsigned_abs()).unwrap_or(now))
             } else {
-                delta.try_into().ok().map(|d: Duration| now + d)
+                delta
+                    .try_into()
+                    .ok()
+                    .map(|d: Duration| now.checked_add(d).unwrap_or(now))
             }
         } else {
             self.next_scheduled_start
@@ -2081,7 +2084,7 @@ impl TournamentManager {
                 return Duration::ZERO;
             };
             let remaining_break = self.clock_state.clock_time(now).unwrap_or(Duration::ZERO);
-            let projected_next_start = now + remaining_break;
+            let projected_next_start = now.checked_add(remaining_break).unwrap_or(now);
             projected_next_start.saturating_duration_since(sched_next)
         } else {
             let Some(sched_start) = self.current_scheduled_start else {
@@ -3087,6 +3090,57 @@ mod test {
         let end = start + Duration::from_secs(100);
         tm.end_game(end);
         assert_eq!(tm.behind_schedule(end), Duration::ZERO);
+    }
+
+    #[test]
+    fn test_behind_schedule_far_future_portal_time_is_safe() {
+        // A portal scheduled start an extreme distance in the future (e.g. a fat-fingered
+        // date) must never panic and must produce a finite, sensible figure. With the next
+        // game ~1000 years out, an ended game is trivially "on time" => ZERO. This exercises
+        // the `now + d` path in next_game_scheduled_start with a very large positive delta.
+        initialize();
+        let mut tm = TournamentManager::new(behind_test_config());
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap();
+        tm.set_next_game(NextGameInfo {
+            number: "2".to_string(),
+            timing: None,
+            start_time: Some(OffsetDateTime::now_utc() + time::Duration::days(365 * 1000)),
+        });
+        tm.stop_clock(start).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        let end = start + Duration::from_secs(30);
+        tm.end_game(end);
+        // No panic, and the absurdly-distant next start reads as on-time.
+        assert_eq!(tm.behind_schedule(end), Duration::ZERO);
+    }
+
+    #[test]
+    fn test_behind_schedule_zero_length_regulation_is_safe() {
+        // Degenerate config: zero-length halves and half-time => regulation_play() == 0.
+        // The in-game raw tally is real_elapsed + remaining_regulation(=0) - reg(=0), all
+        // via guarded/saturating arithmetic: must not panic and must equal real elapsed.
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(0),
+            half_time_duration: Duration::from_secs(0),
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(10),
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap(); // on time => inherited 0
+        tm.stop_clock(start).unwrap();
+        // real_elapsed 7 + remaining_regulation 0 - reg 0 = 7; inherited 0.
+        assert_eq!(
+            tm.behind_schedule(start + Duration::from_secs(7)),
+            Duration::from_secs(7)
+        );
     }
 
     #[test]

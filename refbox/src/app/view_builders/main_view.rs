@@ -21,7 +21,7 @@ pub(in super::super) fn build_main_view<'a>(
     track_fouls_and_warnings: bool,
     manual_alarm_enabled: bool,
     alarm_held: bool,
-    overrun: std::time::Duration,
+    behind_schedule: std::time::Duration,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -33,9 +33,8 @@ pub(in super::super) fn build_main_view<'a>(
         ..
     } = data;
 
-    let over_slot = overrun.saturating_sub(game_config.game_block_buffer());
-    let overrun_label = if over_slot > std::time::Duration::ZERO {
-        Some(format!("-{}", time_string(over_slot)))
+    let behind_label = if behind_schedule > std::time::Duration::ZERO {
+        Some(format!("-{}", time_string(behind_schedule)))
     } else {
         None
     };
@@ -46,7 +45,7 @@ pub(in super::super) fn build_main_view<'a>(
         mode,
         clock_running,
         portal_indicator,
-        overrun_label,
+        behind_label,
     );
 
     let mut center_col = column![time_button]

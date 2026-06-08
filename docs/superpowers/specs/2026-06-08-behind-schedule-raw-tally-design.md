@@ -62,6 +62,15 @@ property, which depended on the now-removed in-game buffer.)
 - Long scheduled gap (e.g. lunch) → absorbs the lateness **at the break** (figure drops then), not during
   the prior game.
 
+### Between-games: what actually moves the figure (auto-start)
+
+The next game **auto-starts** the instant the between-games break elapses (`update()` calls `start_game`
+when the break clock reaches zero). So "sitting idle past the scheduled start" is **not** a real cause —
+the game simply starts. Between games, the figure only grows while the break is **paused** (its clock
+stopped) or **edited longer**; otherwise it stays frozen as the break counts down, then the next game
+starts and any residual lateness shows as that game's inherited amount. Verified by
+`test_behind_schedule_between_games_climbs_when_break_paused` and the auto-start path in `update()`.
+
 ## Implementation
 
 Single production change in `behind_schedule`'s in-game (`else`) branch:

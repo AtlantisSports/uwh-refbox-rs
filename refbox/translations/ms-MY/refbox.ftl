@@ -73,6 +73,7 @@ event = ACARA:
 track-fouls-and-warnings = REKOD KESALAHAN
     DAN AMARAN
 show-behind-schedule-time = TUNJUK KELEWATAN
+delay = LEWAT
 court = GELANGGANG:
 single-half = SEPARUH
     TUNGGAL:

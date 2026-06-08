@@ -73,6 +73,7 @@ event = EVENEMENT:
 track-fouls-and-warnings = OVERTREDINGEN
     EN WAARSCHUWINGEN
 show-behind-schedule-time = ACHTERSTAND TONEN
+delay = VERTRAGING
 court = BAAN:
 single-half = ENKELE
     HELFT:

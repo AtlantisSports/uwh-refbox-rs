@@ -75,6 +75,7 @@ event = 대회:
 track-fouls-and-warnings = 반칙 및
     경고 추적
 show-behind-schedule-time = 지연 표시
+delay = 지연
 court = 코트:
 single-half = 단일
     전반:

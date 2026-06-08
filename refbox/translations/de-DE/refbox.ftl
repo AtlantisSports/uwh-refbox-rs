@@ -73,6 +73,7 @@ event = VERANSTALTUNG:
 track-fouls-and-warnings = FOULS UND
     VERWARNUNGEN ERFASSEN
 show-behind-schedule-time = VERZÖGERUNG ANZEIGEN
+delay = VERZÖGERUNG
 court = FELD:
 single-half = EINZELNE
     HALBZEIT:

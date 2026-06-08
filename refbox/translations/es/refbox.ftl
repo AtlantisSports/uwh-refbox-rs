@@ -71,6 +71,7 @@ track-cap-number-of-scorer = REGISTRAR NÚMERO
 track-fouls-and-warnings = REGISTRAR FALTAS
     Y ADVERTENCIAS
 show-behind-schedule-time = MOSTRAR RETRASO
+delay = RETRASO
 event = EVENTO:
 court = CANCHA:
 single-half = UNA SOLA MITAD:

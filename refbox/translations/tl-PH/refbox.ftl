@@ -73,6 +73,7 @@ event = KAGANAPAN:
 track-fouls-and-warnings = SUBAYBAYAN ANG POUL
     AT BABALA
 show-behind-schedule-time = IPAKITA PAGKAHULI
+delay = ANTALA
 court = KORTE:
 single-half = ISANG
     KALAHATI:

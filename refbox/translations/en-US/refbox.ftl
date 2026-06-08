@@ -72,6 +72,7 @@ event = EVENT:
 track-fouls-and-warnings = TRACK FOULS
     AND WARNINGS
 show-behind-schedule-time = SHOW BEHIND TIME/DELAY
+delay = DELAY
 court = COURT:
 single-half = SINGLE
     HALF:

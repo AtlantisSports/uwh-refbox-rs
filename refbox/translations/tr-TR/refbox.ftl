@@ -73,6 +73,7 @@ event = ETKİNLİK:
 track-fouls-and-warnings = FAUL VE
     UYARILARI TAKİP ET
 show-behind-schedule-time = GECİKMEYİ GÖSTER
+delay = GECİKME
 court = SAHA:
 single-half = TEK
     DEVRE:

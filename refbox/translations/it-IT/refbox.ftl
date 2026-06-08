@@ -73,6 +73,7 @@ event = EVENTO:
 track-fouls-and-warnings = TRACCIA FALLI
     E AMMONIZIONI
 show-behind-schedule-time = MOSTRA RITARDO
+delay = RITARDO
 court = CAMPO:
 single-half = SINGOLO
     TEMPO:

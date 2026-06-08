@@ -72,6 +72,8 @@ track-cap-number-of-scorer = 得点者の
 event = 大会:
 track-fouls-and-warnings = 反則・
     警告の記録
+show-behind-schedule-time = 遅延を表示
+delay = 遅延
 court = コート:
 single-half = 単一
     ハーフ:
@@ -142,6 +144,10 @@ length-of-half-during-regular-play = 通常試合中のハーフの長さ
 half-time-lenght = ハーフタイム時間
 length-of-half-time-period = ハーフタイムの長さ
 nom-break = 基準休憩
+game-block = ゲームブロック
+game-block-help = ある試合の開始から次の試合の開始までの時間
+game-block-too-short = 試合と最短休憩を収めるには短すぎます
+game-block-tight = タイト — チームタイムアウトにより試合が枠を超える可能性があります
 system-will-keep-game-times-spaced = システムは試合開始時刻を均等に保つよう努めます。1試合の開始から次の試合の開始までの合計時間は、2 × [ハーフ時間] + [ハーフタイム時間] + [試合間基準時間] となります（例：[ハーフ時間] = 15分、[ハーフタイム時間] = 3分、[試合間基準時間] = 12分の場合、1試合の開始から次の試合まで45分。タイムアウトやその他のクロック停止があると、最小試合間時間に達するまで12分が短縮されます）。
 min-break = 最小休憩
 min-time-btwn-games = 試合が予定より長引いた場合、システムが確保する試合間の最小時間です。試合が遅れた場合、システムは後続の試合で自動的に追いつきを試みますが、常にこの最小試合間時間を守ります。
@@ -214,6 +220,7 @@ sd-allowed = サドンデス許可: { $sd }
 pre-sd = サドンデス前休憩時間: { $pre_sd_len }
 team-to-len = チームタイムアウト時間: { $to_len }
 time-btwn-games = 試合間基準時間: { $time_btwn }
+game-block-info = ゲームブロック: { $game_block }
 min-brk-btwn-games = 試合間最小時間: { $min_brk_time }
 
 

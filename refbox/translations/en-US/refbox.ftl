@@ -71,6 +71,8 @@ track-cap-number-of-scorer = TRACK CAP NUMBER
 event = EVENT:
 track-fouls-and-warnings = TRACK FOULS
     AND WARNINGS
+show-behind-schedule-time = SHOW BEHIND TIME/DELAY
+delay = DELAY
 court = COURT:
 single-half = SINGLE
     HALF:
@@ -141,6 +143,10 @@ length-of-half-during-regular-play = The length of a half during regular play
 half-time-lenght = HALF TIME LEN
 length-of-half-time-period = The length of the Half Time period
 nom-break = NOM BREAK
+game-block = GAME BLOCK
+game-block-help = Time from the start of one game to the start of the next
+game-block-too-short = Too short to fit the game plus the minimum break
+game-block-tight = Tight — team timeouts could push games past their slot
 system-will-keep-game-times-spaced = The system will try to keep the game start times evenly spaced, with the
     total time from one start to the next being 2 * [Half Length] + [Half Time
     Length] + [Nominal Time Between Games] (example: if games have [Half
@@ -223,6 +229,7 @@ sd-allowed = Sudden Death Allowed: { $sd }
 pre-sd = Pre-Sudden-Death Break Length: { $pre_sd_len }
 team-to-len = Team Timeout Duration: { $to_len }
 time-btwn-games = Nominal Time Between Games: { $time_btwn }
+game-block-info = Game Block: { $game_block }
 min-brk-btwn-games = Minimum Time Between Games: { $min_brk_time }
 
 

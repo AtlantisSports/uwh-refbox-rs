@@ -72,6 +72,8 @@ track-cap-number-of-scorer = REKOD NOMBOR PEMAIN
 event = ACARA:
 track-fouls-and-warnings = REKOD KESALAHAN
     DAN AMARAN
+show-behind-schedule-time = TUNJUK KELEWATAN
+delay = LEWAT
 court = GELANGGANG:
 single-half = SEPARUH
     TUNGGAL:
@@ -142,6 +144,10 @@ length-of-half-during-regular-play = Panjang separuh semasa permainan biasa
 half-time-lenght = PANJANG REHAT SEPARUH MASA
 length-of-half-time-period = Panjang tempoh rehat separuh masa
 nom-break = REHAT NOMINAL
+game-block = BLOK PERLAWANAN
+game-block-help = Masa dari permulaan satu perlawanan hingga permulaan perlawanan berikutnya
+game-block-too-short = Terlalu singkat untuk memuatkan perlawanan ditambah rehat minimum
+game-block-tight = Ketat — masa rehat pasukan boleh menyebabkan perlawanan melebihi slot mereka
 system-will-keep-game-times-spaced = Sistem akan cuba mengekalkan masa mula perlawanan secara sekata, dengan jumlah masa dari satu permulaan ke permulaan berikutnya ialah 2 × [Panjang Separuh] + [Panjang Rehat Separuh Masa] + [Masa Nominal Antara Perlawanan] (contoh: jika perlawanan mempunyai [Panjang Separuh] = 15m, [Panjang Rehat Separuh Masa] = 3m, dan [Masa Nominal Antara Perlawanan] = 12m, masa dari mula satu perlawanan ke perlawanan berikutnya ialah 45m. Sebarang masa rehat yang diambil, atau penghentian jam yang lain, akan mengurangkan masa 12m itu sehingga nilai masa minimum antara perlawanan dicapai).
 min-break = REHAT MINIMUM
 min-time-btwn-games = Jika perlawanan berjalan lebih lama daripada yang dijadualkan, ini adalah masa minimum antara perlawanan yang akan diperuntukkan oleh sistem. Jika perlawanan tertangguh, sistem akan cuba mengejar secara automatik selepas perlawanan seterusnya, sentiasa mematuhi masa minimum antara perlawanan ini.
@@ -214,6 +220,7 @@ sd-allowed = Sudden Death Dibenarkan: { $sd }
 pre-sd = Panjang Rehat Pra-Sudden Death: { $pre_sd_len }
 team-to-len = Tempoh Masa Rehat Pasukan: { $to_len }
 time-btwn-games = Masa Nominal Antara Perlawanan: { $time_btwn }
+game-block-info = Blok Permainan: { $game_block }
 min-brk-btwn-games = Masa Minimum Antara Perlawanan: { $min_brk_time }
 
 

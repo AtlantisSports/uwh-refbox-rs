@@ -72,6 +72,8 @@ track-cap-number-of-scorer = 追踪进球
 event = 赛事：
 track-fouls-and-warnings = 追踪犯规
     和警告
+show-behind-schedule-time = 显示落后时间
+delay = 延误
 court = 球场：
 single-half = 单节
     比赛：
@@ -142,6 +144,10 @@ length-of-half-during-regular-play = 常规比赛中每半场的时长
 half-time-lenght = 中场时长
 length-of-half-time-period = 中场休息阶段的时长
 nom-break = 名义休息
+game-block = 赛程块
+game-block-help = 从一场比赛开始到下一场比赛开始所经过的时间
+game-block-too-short = 时间太短，无法容纳比赛加上最短休息
+game-block-tight = 紧张 — 队伍暂停可能导致比赛超出其时段
 system-will-keep-game-times-spaced = 系统将尽量保持比赛开始时间均匀分布，从一场比赛开始到下一场比赛开始的总时间为 2 × [半场时长] + [中场时长] + [名义场间时间]（例如：若[半场时长] = 15分钟、[中场时长] = 3分钟、[名义场间时间] = 12分钟，则从一场比赛开始到下一场的时间为45分钟。任何暂停或其他停钟操作都会缩短这12分钟，直到达到最短场间时间为止）。
 min-break = 最短休息
 min-time-btwn-games = 若比赛超出预定时长，这是系统分配的场间最短时间。若比赛落后于计划，系统将在后续比赛中自动追赶，始终遵守此最短场间时间。
@@ -214,6 +220,7 @@ sd-allowed = 允许突然死亡：{ $sd }
 pre-sd = 突然死亡前休息时长：{ $pre_sd_len }
 team-to-len = 队伍暂停时长：{ $to_len }
 time-btwn-games = 名义场间时间：{ $time_btwn }
+game-block-info = 比赛块：{ $game_block }
 min-brk-btwn-games = 最短场间时间：{ $min_brk_time }
 
 

@@ -72,6 +72,8 @@ track-cap-number-of-scorer = MUTSNUMMER
 event = EVENEMENT:
 track-fouls-and-warnings = OVERTREDINGEN
     EN WAARSCHUWINGEN
+show-behind-schedule-time = ACHTERSTAND TONEN
+delay = VERTRAGING
 court = BAAN:
 single-half = ENKELE
     HELFT:
@@ -142,6 +144,10 @@ length-of-half-during-regular-play = De duur van een helft tijdens regulier spel
 half-time-lenght = DUUR RUST
 length-of-half-time-period = De duur van de rustperiode
 nom-break = NOM PAUZE
+game-block = SPELBLOK
+game-block-help = Tijd van het begin van één wedstrijd tot het begin van de volgende
+game-block-too-short = Te kort voor de wedstrijd plus de minimale pauze
+game-block-tight = Krap — teamtime-outs kunnen wedstrijden buiten hun tijdslot duwen
 system-will-keep-game-times-spaced = Het systeem probeert de starttijden van wedstrijden gelijkmatig te verdelen. De totale tijd van de ene start tot de volgende is 2 × [Duur Helft] + [Duur Rust] + [Nominale Tijd Tussen Wedstrijden] (voorbeeld: als [Duur Helft] = 15 min, [Duur Rust] = 3 min en [Nominale Tijd] = 12 min, dan is de tijd van start tot start 45 min. Genomen time-outs of andere onderbrekingen verkorten de 12 min tot de minimale tijd tussen wedstrijden is bereikt).
 min-break = MIN PAUZE
 min-time-btwn-games = Als een wedstrijd langer duurt dan gepland, is dit de minimale tijd tussen wedstrijden die het systeem toestaat. Als wedstrijden uitlopen, probeert het systeem bij volgende wedstrijden in te halen, waarbij altijd deze minimale tijd wordt gerespecteerd.
@@ -214,6 +220,7 @@ sd-allowed = Plotselinge Dood Toegestaan: { $sd }
 pre-sd = Duur Pauze Voor Plotselinge Dood: { $pre_sd_len }
 team-to-len = Duur Team Time-out: { $to_len }
 time-btwn-games = Nominale Tijd Tussen Wedstrijden: { $time_btwn }
+game-block-info = Spelblok: { $game_block }
 min-brk-btwn-games = Minimale Tijd Tussen Wedstrijden: { $min_brk_time }
 
 

@@ -262,6 +262,13 @@ pub struct TimingRule {
     pub pre_sudden_death_duration: Duration,
     #[serde(with = "secs_only_duration", rename = "minimumBreak")]
     pub minimum_break: Duration,
+    #[serde(
+        default,
+        rename = "gameBlock",
+        skip_serializing_if = "Option::is_none",
+        with = "secs_only_duration::option"
+    )]
+    pub game_block: Option<Duration>,
 }
 
 #[allow(clippy::from_over_into)]
@@ -282,6 +289,7 @@ impl Into<GameConfig> for TimingRule {
             pre_overtime_break,
             pre_sudden_death_duration,
             minimum_break,
+            game_block,
         } = self;
 
         let GameConfig {
@@ -308,6 +316,15 @@ impl Into<GameConfig> for TimingRule {
             post_game_duration,
             nominal_break,
             minimum_break,
+            game_block: game_block.unwrap_or_else(|| {
+                // No portal-sent Game Block: derive from this rule's play durations.
+                let regulation = if half_time_duration == Duration::ZERO {
+                    half_play_duration
+                } else {
+                    2 * half_play_duration + half_time_duration
+                };
+                regulation + nominal_break
+            }),
         }
     }
 }
@@ -531,6 +548,28 @@ mod secs_only_duration {
         D: Deserializer<'de>,
     {
         Ok(Duration::from_secs(u64::deserialize(deserializer)?))
+    }
+
+    pub mod option {
+        use serde::{Deserialize, Deserializer, Serializer};
+        use std::time::Duration;
+
+        pub fn serialize<S>(dur: &Option<Duration>, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: Serializer,
+        {
+            match dur {
+                Some(d) => serializer.serialize_u64(d.as_secs()),
+                None => serializer.serialize_none(),
+            }
+        }
+
+        pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Duration>, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            Ok(Option::<u64>::deserialize(deserializer)?.map(Duration::from_secs))
+        }
     }
 }
 
@@ -868,6 +907,7 @@ mod tests {
             pre_overtime_break: Duration::from_secs(180),
             pre_sudden_death_duration: Duration::from_secs(60),
             minimum_break: Duration::from_secs(240),
+            game_block: None,
         };
         let serialized = serde_json::to_string(&timing_rule).unwrap();
         assert_eq!(
@@ -897,8 +937,53 @@ mod tests {
                 pre_overtime_break: Duration::from_secs(180),
                 pre_sudden_death_duration: Duration::from_secs(60),
                 minimum_break: Duration::from_secs(240),
+                game_block: None,
             }
         );
+    }
+
+    #[test]
+    fn test_timing_rule_game_block_absent_is_derived() {
+        // Portal payload WITHOUT gameBlock (today's case): derive game_block = regulation + nominal_break.
+        let json = r#"{"name":"RR","teamTimeoutCount":1,"teamTimeoutsCountedPerHalf":true,"overtimeAllowed":true,"suddenDeathAllowed":true,"halfPlayDuration":900,"halfTimeDuration":180,"teamTimeoutDuration":60,"overtimeHalfPlayDuration":300,"overtimeHalfTimeDuration":180,"preOvertimeBreak":180,"preSuddenDeathDuration":60,"minimumBreak":240}"#;
+        let rule: TimingRule = serde_json::from_str(json).unwrap();
+        assert_eq!(rule.game_block, None);
+        let config: GameConfig = rule.into();
+        // regulation = 2*900 + 180 = 1980; nominal_break default = 900 -> 2880
+        assert_eq!(config.game_block, Duration::from_secs(2880));
+    }
+
+    #[test]
+    fn test_timing_rule_game_block_present_is_authoritative() {
+        let json = r#"{"name":"RR","teamTimeoutCount":1,"teamTimeoutsCountedPerHalf":true,"overtimeAllowed":true,"suddenDeathAllowed":true,"halfPlayDuration":900,"halfTimeDuration":180,"teamTimeoutDuration":60,"overtimeHalfPlayDuration":300,"overtimeHalfTimeDuration":180,"preOvertimeBreak":180,"preSuddenDeathDuration":60,"minimumBreak":240,"gameBlock":1500}"#;
+        let rule: TimingRule = serde_json::from_str(json).unwrap();
+        assert_eq!(rule.game_block, Some(Duration::from_secs(1500)));
+        let config: GameConfig = rule.into();
+        assert_eq!(config.game_block, Duration::from_secs(1500));
+    }
+
+    #[test]
+    fn test_timing_rule_game_block_single_half_derived() {
+        // halfTimeDuration == 0 signals single-half; regulation = half_play only.
+        let json = r#"{"name":"RR","teamTimeoutCount":0,"teamTimeoutsCountedPerHalf":false,"overtimeAllowed":false,"suddenDeathAllowed":false,"halfPlayDuration":600,"halfTimeDuration":0,"teamTimeoutDuration":0,"overtimeHalfPlayDuration":0,"overtimeHalfTimeDuration":0,"preOvertimeBreak":0,"preSuddenDeathDuration":0,"minimumBreak":120}"#;
+        let rule: TimingRule = serde_json::from_str(json).unwrap();
+        let config: GameConfig = rule.into();
+        // single half: regulation = 600; nominal_break default = 900 -> 1500
+        assert_eq!(config.game_block, Duration::from_secs(1500));
+    }
+
+    #[test]
+    fn test_timing_rule_game_block_round_trip_none_omitted() {
+        // A TimingRule with game_block None must serialize WITHOUT a gameBlock key, and round-trip.
+        let json = r#"{"name":"RR","teamTimeoutCount":1,"teamTimeoutsCountedPerHalf":true,"overtimeAllowed":true,"suddenDeathAllowed":true,"halfPlayDuration":900,"halfTimeDuration":180,"teamTimeoutDuration":60,"overtimeHalfPlayDuration":300,"overtimeHalfTimeDuration":180,"preOvertimeBreak":180,"preSuddenDeathDuration":60,"minimumBreak":240}"#;
+        let rule: TimingRule = serde_json::from_str(json).unwrap();
+        let serialized = serde_json::to_string(&rule).unwrap();
+        assert!(
+            !serialized.contains("gameBlock"),
+            "None game_block must be omitted, got: {serialized}"
+        );
+        let reparsed: TimingRule = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(rule, reparsed);
     }
 
     #[test]
@@ -1115,6 +1200,7 @@ mod tests {
             pre_overtime_break: Duration::ZERO,
             pre_sudden_death_duration: Duration::ZERO,
             minimum_break: Duration::ZERO,
+            game_block: None,
         };
         let config: GameConfig = rule.into();
         assert!(
@@ -1140,6 +1226,7 @@ mod tests {
             pre_overtime_break: Duration::ZERO,
             pre_sudden_death_duration: Duration::ZERO,
             minimum_break: Duration::ZERO,
+            game_block: None,
         };
         let config: GameConfig = rule.into();
         assert!(
@@ -1302,6 +1389,7 @@ mod tests {
                 pre_overtime_break: Duration::from_secs(180),
                 pre_sudden_death_duration: Duration::from_secs(60),
                 minimum_break: Duration::from_secs(240),
+                game_block: None,
             }],
             standings_order: None,
             final_results_order: None,

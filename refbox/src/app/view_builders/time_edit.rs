@@ -21,7 +21,7 @@ pub(in super::super) fn build_time_edit_view<'a>(
 
     let mut edit_row = row![
         horizontal_space(),
-        make_time_editor(fl!("game-time"), time, false),
+        make_time_editor(fl!("game-time"), time, false, None),
         horizontal_space()
     ]
     .spacing(SPACING)
@@ -34,12 +34,21 @@ pub(in super::super) fn build_time_edit_view<'a>(
                 fl!("timeout"),
                 timeout_time.unwrap(),
                 true,
+                None,
             ))
             .push(horizontal_space());
     }
 
     column![
-        make_game_time_button(snapshot, false, true, mode, clock_running, portal_indicator),
+        make_game_time_button(
+            snapshot,
+            false,
+            true,
+            mode,
+            clock_running,
+            portal_indicator,
+            None
+        ),
         vertical_space(),
         text(fl!("Note-Game-time-is-paused"))
             .size(SMALL_TEXT)

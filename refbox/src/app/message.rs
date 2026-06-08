@@ -645,7 +645,7 @@ pub enum ConfigPage {
 pub enum LengthParameter {
     Half,
     HalfTime,
-    NominalBetweenGame,
+    GameBlock,
     MinimumBetweenGame,
     PreOvertime,
     OvertimeHalf,
@@ -677,6 +677,7 @@ pub enum BoolGameParameter {
     HideTime,
     ScorerCapNum,
     FoulsAndWarnings,
+    ShowBehindScheduleTime,
     TeamWarning,
     TimeoutsCountedPerHalf,
     ConfirmScore,

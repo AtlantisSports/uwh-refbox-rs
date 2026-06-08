@@ -74,6 +74,8 @@ track-cap-number-of-scorer = 득점자 모자
 event = 대회:
 track-fouls-and-warnings = 반칙 및
     경고 추적
+show-behind-schedule-time = 지연 표시
+delay = 지연
 court = 코트:
 single-half = 단일
     전반:
@@ -144,6 +146,10 @@ length-of-half-during-regular-play = 정규 경기 중 전반의 시간
 half-time-lenght = 하프타임 시간
 length-of-half-time-period = 하프타임 기간의 시간
 nom-break = 기준 휴식
+game-block = 게임 블록
+game-block-help = 한 경기 시작부터 다음 경기 시작까지의 시간
+game-block-too-short = 경기와 최소 휴식을 담기에 너무 짧습니다
+game-block-tight = 빡빡함 — 팀 타임아웃으로 경기가 슬롯을 초과할 수 있습니다
 system-will-keep-game-times-spaced = 시스템은 경기 시작 시간을 균등하게 유지하려 합니다. 한 경기 시작부터 다음 경기 시작까지의 총 시간은 2 × [전반 시간] + [하프타임 시간] + [경기 간 기준 시간]입니다 (예: [전반 시간] = 15분, [하프타임 시간] = 3분, [경기 간 기준 시간] = 12분이면 한 경기 시작부터 다음 경기까지 45분. 타임아웃이나 기타 시계 정지 시 최소 경기 간 시간에 도달할 때까지 12분이 줄어듭니다).
 min-break = 최소 휴식
 min-time-btwn-games = 경기가 예정보다 길어질 경우, 시스템이 할당하는 경기 간 최소 시간입니다. 경기가 지연되면 시스템이 이후 경기에서 자동으로 따라잡으며 항상 이 최소 경기 간 시간을 준수합니다.
@@ -216,6 +222,7 @@ sd-allowed = 서든 데스 허용: { $sd }
 pre-sd = 서든 데스 전 휴식 시간: { $pre_sd_len }
 team-to-len = 팀 타임아웃 시간: { $to_len }
 time-btwn-games = 경기 간 기준 시간: { $time_btwn }
+game-block-info = 게임 블록: { $game_block }
 min-brk-btwn-games = 경기 간 최소 시간: { $min_brk_time }
 
 

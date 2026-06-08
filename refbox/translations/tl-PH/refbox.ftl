@@ -72,6 +72,8 @@ track-cap-number-of-scorer = SUBAYBAYAN ANG NUMERO
 event = KAGANAPAN:
 track-fouls-and-warnings = SUBAYBAYAN ANG POUL
     AT BABALA
+show-behind-schedule-time = IPAKITA PAGKAHULI
+delay = ANTALA
 court = KORTE:
 single-half = ISANG
     KALAHATI:
@@ -142,6 +144,10 @@ length-of-half-during-regular-play = Ang haba ng isang kalahati sa panahon ng re
 half-time-lenght = HABA NG PAHINGA
 length-of-half-time-period = Ang haba ng panahon ng pahinga
 nom-break = NOMINAL NA PAHINGA
+game-block = BLOKE NG LARO
+game-block-help = Oras mula sa simula ng isang laro hanggang sa simula ng susunod
+game-block-too-short = Masyadong maikli para sa laro kasama ang pinakamaliit na pahinga
+game-block-tight = Masikip — ang mga timeout ng koponan ay maaaring itulak ang mga laro lampas sa kanilang slot
 system-will-keep-game-times-spaced = Susubukan ng sistema na panatilihing pantay ang mga oras ng simula ng laro, na ang kabuuang oras mula sa isang simula hanggang sa susunod ay 2 × [Haba ng Kalahati] + [Haba ng Pahinga] + [Nominal na Oras sa Pagitan ng mga Laro] (halimbawa: kung ang [Haba ng Kalahati] = 15 min, [Haba ng Pahinga] = 3 min at [Nominal na Oras sa Pagitan ng mga Laro] = 12 min, ang oras mula simula hanggang simula ay magiging 45 min. Ang anumang mga timeout o iba pang paghinto ng orasan ay magbabawas ng 12 min hanggang maabot ang pinakamaliit na oras sa pagitan ng mga laro).
 min-break = PINAKAMALIIT NA PAHINGA
 min-time-btwn-games = Kung ang isang laro ay mas matagal kaysa sa nakatakda, ito ang pinakamaliit na oras sa pagitan ng mga larong itatalaga ng sistema. Kung nahuhuli ang mga laro, awtomatikong susubukan ng sistema na makahabol sa mga susunod na laro, palaging iginagalang ang pinakamaliit na oras na ito sa pagitan ng mga laro.
@@ -214,6 +220,7 @@ sd-allowed = Sudden Death Pinahintulutan: { $sd }
 pre-sd = Haba ng Pahinga Bago Sudden Death: { $pre_sd_len }
 team-to-len = Tagal ng Timeout ng Koponan: { $to_len }
 time-btwn-games = Nominal na Oras sa Pagitan ng mga Laro: { $time_btwn }
+game-block-info = Bloke ng Laro: { $game_block }
 min-brk-btwn-games = Pinakamaliit na Oras sa Pagitan ng mga Laro: { $min_brk_time }
 
 

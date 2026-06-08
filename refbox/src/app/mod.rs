@@ -269,6 +269,7 @@ pub(crate) enum PageEntrySnapshot {
         mode: Mode,
         collect_scorer_cap_num: bool,
         track_fouls_and_warnings: bool,
+        show_behind_schedule_time: bool,
         confirm_score: bool,
     },
     Display {
@@ -318,6 +319,7 @@ impl PageEntrySnapshot {
                 mode,
                 collect_scorer_cap_num,
                 track_fouls_and_warnings,
+                show_behind_schedule_time,
                 confirm_score,
             } => {
                 edited.using_uwhportal = using_uwhportal;
@@ -327,6 +329,7 @@ impl PageEntrySnapshot {
                 edited.mode = mode;
                 edited.collect_scorer_cap_num = collect_scorer_cap_num;
                 edited.track_fouls_and_warnings = track_fouls_and_warnings;
+                edited.show_behind_schedule_time = show_behind_schedule_time;
                 edited.confirm_score = confirm_score;
             }
             PageEntrySnapshot::Display {
@@ -732,6 +735,7 @@ impl RefBoxApp {
         let mode = edited.mode;
         let collect_scorer_cap_num = edited.collect_scorer_cap_num;
         let track_fouls_and_warnings = edited.track_fouls_and_warnings;
+        let show_behind_schedule_time = edited.show_behind_schedule_time;
         let confirm_score = edited.confirm_score;
 
         // Cross-portal Mode change requires explicit confirmation and an app
@@ -755,6 +759,7 @@ impl RefBoxApp {
         self.config.mode = mode;
         self.config.collect_scorer_cap_num = collect_scorer_cap_num;
         self.config.track_fouls_and_warnings = track_fouls_and_warnings;
+        self.config.show_behind_schedule_time = show_behind_schedule_time;
         self.config.confirm_score = confirm_score;
         None
     }
@@ -1090,6 +1095,7 @@ impl RefBoxApp {
                 mode: edited.mode,
                 collect_scorer_cap_num: edited.collect_scorer_cap_num,
                 track_fouls_and_warnings: edited.track_fouls_and_warnings,
+                show_behind_schedule_time: edited.show_behind_schedule_time,
                 confirm_score: edited.confirm_score,
             },
             ConfigPage::Display => PageEntrySnapshot::Display {
@@ -2276,6 +2282,7 @@ impl RefBoxApp {
                     hide_time: self.config.hide_time,
                     collect_scorer_cap_num: self.config.collect_scorer_cap_num,
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
+                    show_behind_schedule_time: self.config.show_behind_schedule_time,
                     confirm_score: self.config.confirm_score,
                     pending_language: None,
                     original_language: None,
@@ -2373,7 +2380,7 @@ impl RefBoxApp {
                     match param {
                         LengthParameter::Half => self.config.game.half_play_duration,
                         LengthParameter::HalfTime => self.config.game.half_time_duration,
-                        LengthParameter::NominalBetweenGame => self.config.game.nominal_break,
+                        LengthParameter::GameBlock => self.config.game.game_block,
                         LengthParameter::MinimumBetweenGame => self.config.game.minimum_break,
                         LengthParameter::PreOvertime => self.config.game.pre_overtime_break,
                         LengthParameter::OvertimeHalf => self.config.game.ot_half_play_duration,
@@ -2427,8 +2434,8 @@ impl RefBoxApp {
                                 LengthParameter::HalfTime => {
                                     edited_settings.config.half_time_duration = dur
                                 }
-                                LengthParameter::NominalBetweenGame => {
-                                    edited_settings.config.nominal_break = dur
+                                LengthParameter::GameBlock => {
+                                    edited_settings.config.game_block = dur
                                 }
                                 LengthParameter::MinimumBetweenGame => {
                                     edited_settings.config.minimum_break = dur
@@ -2684,6 +2691,9 @@ impl RefBoxApp {
                             }
                             BoolGameParameter::FoulsAndWarnings => {
                                 edited_settings.track_fouls_and_warnings ^= true
+                            }
+                            BoolGameParameter::ShowBehindScheduleTime => {
+                                edited_settings.show_behind_schedule_time ^= true
                             }
                             BoolGameParameter::TeamWarning
                             | BoolGameParameter::TimeoutsCountedPerHalf
@@ -3378,6 +3388,7 @@ impl RefBoxApp {
                     hide_time: self.config.hide_time,
                     collect_scorer_cap_num: self.config.collect_scorer_cap_num,
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
+                    show_behind_schedule_time: self.config.show_behind_schedule_time,
                     confirm_score: self.config.confirm_score,
                     pending_language: Some(current_language),
                     original_language: Some(current_language),
@@ -3425,6 +3436,7 @@ impl RefBoxApp {
                     hide_time: self.config.hide_time,
                     collect_scorer_cap_num: self.config.collect_scorer_cap_num,
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
+                    show_behind_schedule_time: self.config.show_behind_schedule_time,
                     confirm_score: self.config.confirm_score,
                     pending_language: Some(current_language),
                     original_language: Some(current_language),
@@ -3509,6 +3521,7 @@ impl RefBoxApp {
                     hide_time: self.config.hide_time,
                     collect_scorer_cap_num: self.config.collect_scorer_cap_num,
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
+                    show_behind_schedule_time: self.config.show_behind_schedule_time,
                     confirm_score: self.config.confirm_score,
                     pending_language: Some(current_language),
                     original_language: Some(current_language),
@@ -3565,6 +3578,7 @@ impl RefBoxApp {
                     hide_time: self.config.hide_time,
                     collect_scorer_cap_num: self.config.collect_scorer_cap_num,
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
+                    show_behind_schedule_time: self.config.show_behind_schedule_time,
                     confirm_score: self.config.confirm_score,
                     pending_language: Some(current_language),
                     original_language: Some(current_language),
@@ -3785,6 +3799,11 @@ impl RefBoxApp {
                 } else {
                     &self.config.game
                 };
+                let behind_schedule = if self.config.show_behind_schedule_time {
+                    self.tm.lock().unwrap().behind_schedule(Instant::now())
+                } else {
+                    std::time::Duration::ZERO
+                };
                 build_main_view(
                     data,
                     game_config,
@@ -3793,6 +3812,7 @@ impl RefBoxApp {
                     self.config.track_fouls_and_warnings,
                     self.config.sound.sound_enabled && self.config.sound.manual_alarm_enabled,
                     self.mouse_alarm_held || self.spacebar_held,
+                    behind_schedule,
                 )
             }
             AppState::TimeEdit(_, time, timeout_time) =>
@@ -3834,9 +3854,15 @@ impl RefBoxApp {
                 page,
                 self.page_entry_snapshot.as_ref(),
             ),
-            AppState::ParameterEditor(param, dur, single_half) => {
-                build_game_parameter_editor(data, param, dur, single_half)
-            }
+            AppState::ParameterEditor(param, dur, single_half) => build_game_parameter_editor(
+                data,
+                param,
+                dur,
+                single_half,
+                self.edited_settings
+                    .as_ref()
+                    .map_or(&self.config.game, |s| &s.config),
+            ),
             AppState::ParameterList(param, index) => build_list_selector_page(
                 data,
                 param,

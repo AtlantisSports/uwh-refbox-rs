@@ -72,6 +72,8 @@ track-cap-number-of-scorer = GOLCÜNÜN BAŞLIK
 event = ETKİNLİK:
 track-fouls-and-warnings = FAUL VE
     UYARILARI TAKİP ET
+show-behind-schedule-time = GECİKMEYİ GÖSTER
+delay = GECİKME
 court = SAHA:
 single-half = TEK
     DEVRE:
@@ -142,6 +144,10 @@ length-of-half-during-regular-play = Normal oyun sırasında bir devrenin süres
 half-time-lenght = DEVRE ARASI SÜRESİ
 length-of-half-time-period = Devre arası süresinin uzunluğu
 nom-break = NOMİNAL ARA
+game-block = OYUN BLOĞU
+game-block-help = Bir oyunun başlangıcından bir sonraki oyunun başlangıcına kadar geçen süre
+game-block-too-short = Oyunu ve minimum arayı sığdırmak için çok kısa
+game-block-tight = Dar — takım molaları oyunları zamanlamasının dışına itebilir
 system-will-keep-game-times-spaced = Sistem, oyun başlangıç zamanlarını eşit aralıklı tutmaya çalışır. Bir başlangıçtan diğerine toplam süre 2 × [Devre Uzunluğu] + [Devre Arası Uzunluğu] + [Oyunlar Arası Nominal Süre] şeklindedir (örnek: [Devre Uzunluğu] = 15dk, [Devre Arası Uzunluğu] = 3dk ve [Oyunlar Arası Nominal Süre] = 12dk ise, bir oyunun başlangıcından diğerine kadar geçen süre 45dk olacaktır. Alınan molalar veya diğer saat duraklamaları, oyunlar arası minimum süreye ulaşılana kadar 12dk'yı kısaltacaktır).
 min-break = MİNİMUM ARA
 min-time-btwn-games = Bir oyun planlanandan uzun sürerse, bu sistemin izin vereceği oyunlar arasındaki minimum süredir. Oyunlar geride kalırsa sistem, her zaman bu minimum süreye saygı göstererek sonraki oyunlarda yakalamaya otomatik olarak çalışacaktır.
@@ -214,6 +220,7 @@ sd-allowed = Ani Ölüm İzin Verildi: { $sd }
 pre-sd = Ani Ölüm Öncesi Ara Süresi: { $pre_sd_len }
 team-to-len = Takım Molası Süresi: { $to_len }
 time-btwn-games = Oyunlar Arası Nominal Süre: { $time_btwn }
+game-block-info = Oyun Bloğu: { $game_block }
 min-brk-btwn-games = Oyunlar Arası Minimum Süre: { $min_brk_time }
 
 

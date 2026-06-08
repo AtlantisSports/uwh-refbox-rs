@@ -50,6 +50,10 @@ pub struct TournamentManager {
     start_stop_rx: watch::Receiver<bool>,
     next_game: Option<NextGameInfo>,
     next_scheduled_start: Option<Instant>,
+    /// Scheduled start of the game currently in progress (portal printed time when
+    /// present, else the Game Block grid slot). Set at `start_game`. `None` before
+    /// the first game. Used by `behind_schedule`.
+    current_scheduled_start: Option<Instant>,
     reset_game_time: Duration,
     recent_goal: Option<(Color, u8, GamePeriod, Duration)>,
     current_game_stats: GameStats,
@@ -78,6 +82,7 @@ impl TournamentManager {
             start_stop_rx,
             next_game: None,
             next_scheduled_start: None,
+            current_scheduled_start: None,
             reset_game_time: config.nominal_break,
             config,
             recent_goal: None,
@@ -215,6 +220,7 @@ impl TournamentManager {
         self.warnings.iter_mut().for_each(|(_, w)| w.clear());
         self.fouls.iter_mut().for_each(|(_, f)| f.clear());
         self.current_game_stats = GameStats::new(self.next_game_number());
+        self.current_scheduled_start = None;
         self.has_reset = true;
     }
 
@@ -883,6 +889,26 @@ impl TournamentManager {
         Ok(())
     }
 
+    /// The scheduled start of the next (or currently-about-to-start) game as an
+    /// `Instant`: the portal/CSV printed `start_time` when present, otherwise the
+    /// Game Block grid value `next_scheduled_start`. Returns `None` when neither is
+    /// known (manual mode before the first game).
+    fn next_game_scheduled_start(&self, now: Instant) -> Option<Instant> {
+        if let Some(start_time) = self.next_game.as_ref().and_then(|info| info.start_time) {
+            let delta = start_time - OffsetDateTime::now_utc(); // signed time::Duration
+            if delta.is_negative() {
+                Some(now.checked_sub(delta.unsigned_abs()).unwrap_or(now))
+            } else {
+                delta
+                    .try_into()
+                    .ok()
+                    .map(|d: Duration| now.checked_add(d).unwrap_or(now))
+            }
+        } else {
+            self.next_scheduled_start
+        }
+    }
+
     fn calc_time_to_next_game(&self, now: Instant, from_time: Instant) -> Duration {
         info!("Next game info is: {:?}", self.next_game);
         let scheduled_start =
@@ -1018,6 +1044,17 @@ impl TournamentManager {
             self.reset();
         }
 
+        // The scheduled start of the game we're starting: portal time if present,
+        // else this game's Game Block grid slot (`next_scheduled_start` still holds
+        // it here — it is reassigned to the *next* game's slot below). Fall back to
+        // the actual start for the very first manual game (=> no inherited lateness).
+        // Set after the reset above (which clears `current_scheduled_start`) and
+        // before `next_game.take()` / the `next_scheduled_start` reassignment below.
+        self.current_scheduled_start = Some(
+            self.next_game_scheduled_start(start_time)
+                .unwrap_or(start_time),
+        );
+
         self.game_number = self.next_game_number();
 
         if let Some(timing) = self.next_game.take().and_then(|info| info.timing) {
@@ -1037,15 +1074,9 @@ impl TournamentManager {
         self.has_reset = false;
 
         let sched_start = self.next_scheduled_start.unwrap_or(start_time);
-        // A single-period game is one period with no half-time and no second
-        // half, so its slot is just one play period; a two-period game is two
-        // halves plus the half-time between them.
-        let regulation_play = if self.config.single_half {
-            self.config.half_play_duration
-        } else {
-            2 * self.config.half_play_duration + self.config.half_time_duration
-        };
-        self.next_scheduled_start = Some(sched_start + regulation_play + self.config.nominal_break);
+        // The next game starts one Game Block (the authoritative start-to-start
+        // slot duration) after this game's scheduled start.
+        self.next_scheduled_start = Some(sched_start + self.config.game_block);
     }
 
     pub fn could_end_game(&self, now: Instant) -> Result<bool> {
@@ -1970,12 +2001,7 @@ impl TournamentManager {
     pub(super) fn set_game_start(&mut self, time: Instant) {
         if let ClockState::Stopped { .. } = self.clock_state {
             self.game_start_time = time;
-            let regulation_play = if self.config.single_half {
-                self.config.half_play_duration
-            } else {
-                2 * self.config.half_play_duration + self.config.half_time_duration
-            };
-            self.next_scheduled_start = Some(time + regulation_play + self.config.nominal_break);
+            self.next_scheduled_start = Some(time + self.config.game_block);
         } else {
             panic!("Can't edit game start time while clock is running");
         }
@@ -2018,6 +2044,68 @@ impl TournamentManager {
             self.clock_state
         );
         self.clock_state.clock_time(now)
+    }
+
+    /// Scheduled regulation play still to come before the game reaches the end of
+    /// regulation: the live remaining on the current regulation period plus the full
+    /// length of any regulation periods after it. ZERO in extra time (overtime /
+    /// sudden death and their breaks) and between games. Lets `behind_schedule`
+    /// project when the game will end, so a clock edit moves the figure immediately.
+    fn remaining_regulation(&self, now: Instant) -> Duration {
+        let remaining_current = self.clock_state.clock_time(now).unwrap_or(Duration::ZERO);
+        match self.current_period {
+            GamePeriod::FirstHalf => {
+                if self.config.single_half {
+                    remaining_current
+                } else {
+                    remaining_current
+                        + self.config.half_time_duration
+                        + self.config.half_play_duration
+                }
+            }
+            GamePeriod::HalfTime => remaining_current + self.config.half_play_duration,
+            GamePeriod::SecondHalf => remaining_current,
+            _ => Duration::ZERO,
+        }
+    }
+
+    /// How far behind its scheduled start times the run of games currently is, as a
+    /// positive duration (`ZERO` when on time, ahead, or before the first game).
+    /// Carries lateness across games; a longer scheduled break claws it back down to
+    /// the always-enforced minimum break. See
+    /// docs/superpowers/specs/2026-06-06-behind-schedule-indicator-design.md.
+    pub fn behind_schedule(&self, now: Instant) -> Duration {
+        if self.current_period == GamePeriod::BetweenGames {
+            // Project the next game's start from the *live* break clock. While the
+            // break counts down normally the projection holds steady (frozen);
+            // pausing it, sitting past zero, or editing it slides the projection --
+            // and the figure -- by exactly that amount. Floored at zero (on-time/ahead).
+            let Some(sched_next) = self.next_game_scheduled_start(now) else {
+                return Duration::ZERO;
+            };
+            let remaining_break = self.clock_state.clock_time(now).unwrap_or(Duration::ZERO);
+            let projected_next_start = now.checked_add(remaining_break).unwrap_or(now);
+            projected_next_start.saturating_duration_since(sched_next)
+        } else {
+            let Some(sched_start) = self.current_scheduled_start else {
+                return Duration::ZERO;
+            };
+            let inherited = self.game_start_time.saturating_duration_since(sched_start);
+            // Raw deviation tally: the game's projected total wall-clock duration minus
+            // the scheduled regulation play. Stoppages and edit-ups add; skipping a half
+            // early and edit-downs subtract (deviation can be negative). Shown on top of
+            // the lateness the game started with; floored at zero overall. The slot's
+            // slack (clawback) is NOT subtracted here — it is realised between games as
+            // the break compresses, so the figure steps down at the break when behind.
+            let real_elapsed = now.saturating_duration_since(self.game_start_time);
+            let projected_total = real_elapsed + self.remaining_regulation(now);
+            let reg = self.config.regulation_play();
+            if projected_total >= reg {
+                inherited + (projected_total - reg)
+            } else {
+                inherited.saturating_sub(reg - projected_total)
+            }
+        }
     }
 
     /// Returns `None` if there is no timeout, if the clock time would be negative, or if `now` is
@@ -2515,6 +2603,7 @@ mod test {
             half_time_duration: Duration::from_secs(3),
             nominal_break: Duration::from_secs(9),
             minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(19),
             single_half: true,
             overtime_allowed: false,
             sudden_death_allowed: false,
@@ -2530,6 +2619,25 @@ mod test {
     }
 
     #[test]
+    fn test_between_game_timing_game_block() {
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(10),
+            half_time_duration: Duration::from_secs(3),
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(40), // start-to-start slot
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let now = Instant::now();
+        tm.start_clock(now);
+        tm.start_play_now(now).unwrap();
+        assert_eq!(tm.next_scheduled_start, Some(now + Duration::from_secs(40)));
+    }
+
+    #[test]
     fn test_between_game_timing() {
         initialize();
         // Total time between starts of games is nominally 32s
@@ -2538,6 +2646,7 @@ mod test {
             half_time_duration: Duration::from_secs(3),
             nominal_break: Duration::from_secs(9),
             minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(32),
             overtime_allowed: false,
             sudden_death_allowed: false,
             ..Default::default()
@@ -2588,6 +2697,831 @@ mod test {
         // Check that after falling behind the system tries to catch up
         assert_eq!(tm.current_period(), GamePeriod::BetweenGames);
         assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(14)));
+    }
+
+    #[test]
+    fn test_behind_schedule_inherited_lateness_persists_in_manual_mode() {
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(10),
+            half_time_duration: Duration::from_secs(3),
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(40),
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let g1 = Instant::now();
+        tm.start_clock(g1);
+        tm.start_play_now(g1).unwrap(); // game 1 on time -> anchor; next_scheduled_start = g1+40
+        // Take game 1 to BetweenGames so the next start_play_now begins a NEW game.
+        tm.stop_clock(g1).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        tm.end_game(g1);
+        let g2 = g1 + Duration::from_secs(46);
+        tm.start_play_now(g2).unwrap(); // game 2 begins 6s late vs its 40s grid slot
+        assert_eq!(tm.behind_schedule(g2), Duration::from_secs(6));
+        assert_eq!(
+            tm.behind_schedule(g2 + Duration::from_secs(5)),
+            Duration::from_secs(6)
+        );
+    }
+
+    #[test]
+    fn test_behind_schedule_frozen_while_running_clock_exceeds_period_len() {
+        // Reproduces the live bug: clock reading (40s) greater than the configured
+        // half length (10s). The old reconstruction (period_len − clock) saturated to
+        // zero and made the figure climb with real time while the clock ran.
+        initialize();
+        // Slot 40; regulation 2*10+3 = 23; min_break 2 => buffer 15.
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(10),
+            half_time_duration: Duration::from_secs(3),
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(40),
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap(); // FirstHalf, clock = 10, running
+        tm.stop_clock(start).unwrap(); // must be stopped to set the clock
+        tm.set_game_clock_time(Duration::from_secs(40)).unwrap(); // clock = 40 > half len
+        tm.start_clock(start); // resume: counting down from 40, running
+
+        let a = tm.behind_schedule(start + Duration::from_secs(16));
+        let b = tm.behind_schedule(start + Duration::from_secs(19));
+        assert_eq!(a, b, "figure climbed while the clock was running");
+        // Projection reports the over-long clock as a frozen, nonzero figure: a 40s clock
+        // in a 10s half projects ~30s of extra play; raw tally = 30 (no buffer subtracted).
+        assert_eq!(a, Duration::from_secs(30));
+    }
+
+    #[test]
+    fn test_behind_schedule_in_game_edit_up_raises_figure_immediately() {
+        initialize();
+        // half 60, ht 10, sh 60 => regulation 130; block 180, min_break 5 => buffer 45.
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(60),
+            half_time_duration: Duration::from_secs(10),
+            minimum_break: Duration::from_secs(5),
+            game_block: Duration::from_secs(180),
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap();
+        tm.stop_clock(start + Duration::from_secs(10)).unwrap();
+        let t = start + Duration::from_secs(60); // 50s stopped: real 60 + remaining 120 - reg 130 = 50
+        let before = tm.behind_schedule(t);
+        assert_eq!(before, Duration::from_secs(50));
+        tm.set_game_clock_time(tm.game_clock_time(t).unwrap() + Duration::from_secs(30))
+            .unwrap();
+        let after = tm.behind_schedule(t);
+        assert_eq!(
+            after,
+            before + Duration::from_secs(30),
+            "edit up did not raise the figure by the edited amount"
+        );
+    }
+
+    #[test]
+    fn test_behind_schedule_in_game_edit_down_lowers_figure_immediately() {
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(60),
+            half_time_duration: Duration::from_secs(10),
+            minimum_break: Duration::from_secs(5),
+            game_block: Duration::from_secs(180),
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap();
+        tm.stop_clock(start + Duration::from_secs(10)).unwrap();
+        let t = start + Duration::from_secs(100); // 90s stopped: real 100 + remaining 120 - reg 130 = 90
+        let before = tm.behind_schedule(t);
+        assert_eq!(before, Duration::from_secs(90));
+        tm.set_game_clock_time(tm.game_clock_time(t).unwrap() - Duration::from_secs(30))
+            .unwrap();
+        let after = tm.behind_schedule(t);
+        assert_eq!(
+            after,
+            before - Duration::from_secs(30),
+            "edit down did not lower the figure by the edited amount"
+        );
+    }
+
+    #[test]
+    fn test_behind_schedule_grows_with_in_game_stoppage_beyond_buffer() {
+        initialize();
+        // Slot 40; regulation 2*10+3=23; min_break 2 => buffer 15.
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(10),
+            half_time_duration: Duration::from_secs(3),
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(40),
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap();
+        let t1 = start + Duration::from_secs(5);
+        tm.stop_clock(t1).unwrap();
+        let t2 = t1 + Duration::from_secs(20); // 20s stopped: real 25 + remaining 18 - reg 23 = 20
+        assert_eq!(tm.behind_schedule(t2), Duration::from_secs(20));
+        // 10s after the stop (real 15) + remaining 18 - reg 23 = 10.
+        assert_eq!(
+            tm.behind_schedule(t1 + Duration::from_secs(10)),
+            Duration::from_secs(10)
+        );
+    }
+
+    #[test]
+    fn test_behind_schedule_start_now_during_halftime_reduces_delay() {
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(60),
+            half_time_duration: Duration::from_secs(10),
+            minimum_break: Duration::from_secs(5),
+            game_block: Duration::from_secs(180),
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap();
+        tm.stop_clock(start + Duration::from_secs(10)).unwrap();
+        tm.start_clock(start + Duration::from_secs(30)); // resume, 50s left on first half
+        tm.update(start + Duration::from_secs(80)).unwrap(); // first half hits 0 -> HalfTime
+        let t = start + Duration::from_secs(80);
+        let before = tm.behind_schedule(t);
+        assert_eq!(before, Duration::from_secs(20));
+        tm.start_play_now(t).unwrap(); // skip remaining 10s of half-time
+        let after = tm.behind_schedule(t);
+        assert_eq!(after, Duration::from_secs(10));
+    }
+
+    #[test]
+    fn test_behind_schedule_zero_before_first_game_and_when_ahead() {
+        initialize();
+        let tm = TournamentManager::new(GameConfig::default());
+        assert_eq!(tm.behind_schedule(Instant::now()), Duration::ZERO);
+    }
+
+    #[test]
+    fn test_behind_schedule_recovered_by_long_break() {
+        // A deliberately long scheduled break (large Game Block slot) pushes the next
+        // game's scheduled start far enough out that an ended game is no longer behind:
+        // the long break absorbs the delay and the figure reads zero.
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(10),
+            half_time_duration: Duration::from_secs(3),
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(600), // long slot => long break before next game
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap(); // next_scheduled_start = start + 600
+        let end = start + Duration::from_secs(30);
+        tm.stop_clock(start).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        tm.end_game(end);
+        // earliest next = max(end + min_break(2), now=end) = start+32; sched_next = start+600.
+        // 32 is well before 600 => on schedule => ZERO.
+        assert_eq!(tm.behind_schedule(end), Duration::ZERO);
+    }
+
+    #[test]
+    fn test_behind_schedule_between_games_follows_break_edit() {
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(10),
+            half_time_duration: Duration::from_secs(3),
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(40),
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap();
+        let end = start + Duration::from_secs(30);
+        tm.end_game(end);
+
+        // The break clock is CountingDown (running) between games, and
+        // `set_game_clock_time` requires a stopped clock. Stop the break first
+        // (freezing it at its current remaining value), then sample `before`
+        // AFTER stopping so the comparison isolates the edit's effect: a stopped
+        // break with the same remaining value yields the same projection at the
+        // same `now`, so only the +10s edit can move the figure.
+        tm.stop_clock(end).unwrap();
+        let before = tm.behind_schedule(end);
+        tm.set_game_clock_time(tm.game_clock_time(end).unwrap() + Duration::from_secs(10))
+            .unwrap();
+        let after = tm.behind_schedule(end);
+        assert_eq!(after, before + Duration::from_secs(10));
+    }
+
+    /// Builds a manual-mode config with a 40s Game Block slot: regulation 2*10+3 = 23,
+    /// minimum break 2 => slot buffer 15.
+    #[cfg(test)]
+    fn behind_test_config() -> GameConfig {
+        GameConfig {
+            half_play_duration: Duration::from_secs(10),
+            half_time_duration: Duration::from_secs(3),
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(40),
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_behind_schedule_accrues_during_time_pause() {
+        // Pausing the clock (the time-edit screen stops it) lets real time pass while
+        // the game clock is frozen. The raw tally climbs second-for-second with the
+        // pause (no buffer is subtracted in-game; the slot slack is realised at the break).
+        initialize();
+        let mut tm = TournamentManager::new(behind_test_config());
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap(); // on time => no inherited lateness
+        // Run 5s on schedule, then pause (stop the clock) as the time-edit screen does.
+        let pause_at = start + Duration::from_secs(5);
+        tm.stop_clock(pause_at).unwrap();
+        // 14s into the pause: real 19 + remaining 18 - reg 23 = 14.
+        assert_eq!(
+            tm.behind_schedule(pause_at + Duration::from_secs(14)),
+            Duration::from_secs(14)
+        );
+        // 15s paused: real 20 + remaining 18 - reg 23 = 15.
+        assert_eq!(
+            tm.behind_schedule(pause_at + Duration::from_secs(15)),
+            Duration::from_secs(15)
+        );
+        // 16s paused: real 21 + remaining 18 - reg 23 = 16.
+        assert_eq!(
+            tm.behind_schedule(pause_at + Duration::from_secs(16)),
+            Duration::from_secs(16)
+        );
+        // 20s paused: real 25 + remaining 18 - reg 23 = 20.
+        assert_eq!(
+            tm.behind_schedule(pause_at + Duration::from_secs(20)),
+            Duration::from_secs(20)
+        );
+        // Resume; running back on schedule must NOT grow the figure further.
+        let resume = pause_at + Duration::from_secs(20);
+        tm.start_clock(resume);
+        assert_eq!(
+            tm.behind_schedule(resume + Duration::from_secs(3)),
+            Duration::from_secs(20)
+        );
+    }
+
+    #[test]
+    fn test_behind_schedule_accrues_during_ref_timeout() {
+        // A referee timeout freezes the game clock the same way; real time spent in the
+        // timeout feeds the raw tally second-for-second.
+        initialize();
+        let mut tm = TournamentManager::new(behind_test_config());
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap();
+        let to_at = start + Duration::from_secs(5);
+        tm.start_ref_timeout(to_at).unwrap();
+        // 20s into the ref timeout: real 25 + remaining 18 - reg 23 = 20.
+        assert_eq!(
+            tm.behind_schedule(to_at + Duration::from_secs(20)),
+            Duration::from_secs(20)
+        );
+        // 10s into the ref timeout: real 15 + remaining 18 - reg 23 = 10.
+        assert_eq!(
+            tm.behind_schedule(to_at + Duration::from_secs(10)),
+            Duration::from_secs(10)
+        );
+    }
+
+    #[test]
+    fn test_behind_schedule_steps_down_by_slack_at_game_end() {
+        // The in-game figure is a raw tally (no buffer); the slot's slack is realised at
+        // the break. So when a game ends behind, the figure STEPS DOWN at the game-end
+        // boundary by exactly the slot slack (game_block - regulation_play - minimum_break).
+        initialize();
+        let mut tm = TournamentManager::new(behind_test_config());
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap(); // next_scheduled_start = start + 40
+        // Play the full regulation (FirstHalf 10 + HalfTime 3 + SecondHalf 10 = 23s)
+        // by advancing through each period boundary, then stop the clock at the end of
+        // the second half. Ending it at +50 leaves it genuinely behind. Ending from a
+        // stopped clock anchors the break at `end`, so the in-game and between-games
+        // readings come from one consistent state.
+        tm.update(start + Duration::from_secs(10)).unwrap(); // FirstHalf -> HalfTime
+        tm.update(start + Duration::from_secs(13)).unwrap(); // HalfTime -> SecondHalf
+        tm.stop_clock(start + Duration::from_secs(23)).unwrap(); // full regulation played
+        let end = start + Duration::from_secs(50); // game took 50s real vs its 40s slot
+        // In-game raw tally: real 50 + remaining 0 - reg 23 = 27.
+        let v_in_game = tm.behind_schedule(end); // sampled while still in the game
+        assert_eq!(v_in_game, Duration::from_secs(27));
+        tm.end_game(end);
+        // Between-games (unchanged branch): earliest next = end + min_break(2) = start+52;
+        // sched_next = start+40 => 12.
+        let v_between = tm.behind_schedule(end); // sampled immediately after, same instant
+        assert_eq!(v_between, Duration::from_secs(12));
+        // The step-down equals the slot slack: 40 - 23 - 2 = 15.
+        let slack = behind_test_config().game_block
+            - behind_test_config().regulation_play()
+            - behind_test_config().minimum_break;
+        assert_eq!(slack, Duration::from_secs(15));
+        assert_eq!(v_in_game - v_between, slack);
+    }
+
+    #[test]
+    fn test_behind_schedule_long_portal_gap_absorbs_overrun() {
+        // Portal mode: a deliberately long gap before the next game (e.g. a lunch break).
+        // During the game the figure is a RAW tally and shows the overrun (it is not
+        // absorbed in-game); the long gap is realised at the break, where the
+        // between-games figure drops to zero.
+        initialize();
+        let mut tm = TournamentManager::new(behind_test_config());
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap(); // no next_game set yet => scheduled start = actual => inherited 0
+        // Now a portal schedule says the next game is an hour away (long break).
+        tm.set_next_game(NextGameInfo {
+            number: "2".to_string(),
+            timing: None,
+            start_time: Some(OffsetDateTime::now_utc() + time::Duration::hours(1)),
+        });
+        // Pause for 100s (a long stoppage) to build an overrun.
+        tm.stop_clock(start).unwrap();
+        // In-game raw tally: real 100 + remaining 23 - reg 23 = 100; the overrun is shown,
+        // not absorbed.
+        assert!(
+            tm.behind_schedule(start + Duration::from_secs(100)) > Duration::ZERO,
+            "in-game figure should show the raw overrun, not absorb it"
+        );
+        // End the game into the long gap. Because the next game is ~1h out, the
+        // between-games figure reads zero.
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        let end = start + Duration::from_secs(100);
+        tm.end_game(end);
+        assert_eq!(tm.behind_schedule(end), Duration::ZERO);
+    }
+
+    #[test]
+    fn test_behind_schedule_far_future_portal_time_is_safe() {
+        // A portal scheduled start an extreme distance in the future (e.g. a fat-fingered
+        // date) must never panic and must produce a finite, sensible figure. With the next
+        // game ~1000 years out, an ended game is trivially "on time" => ZERO. This exercises
+        // the `now + d` path in next_game_scheduled_start with a very large positive delta.
+        initialize();
+        let mut tm = TournamentManager::new(behind_test_config());
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap();
+        tm.set_next_game(NextGameInfo {
+            number: "2".to_string(),
+            timing: None,
+            start_time: Some(OffsetDateTime::now_utc() + time::Duration::days(365 * 1000)),
+        });
+        tm.stop_clock(start).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        let end = start + Duration::from_secs(30);
+        tm.end_game(end);
+        // No panic, and the absurdly-distant next start reads as on-time.
+        assert_eq!(tm.behind_schedule(end), Duration::ZERO);
+    }
+
+    #[test]
+    fn test_behind_schedule_zero_length_regulation_is_safe() {
+        // Degenerate config: zero-length halves and half-time => regulation_play() == 0.
+        // The in-game raw tally is real_elapsed + remaining_regulation(=0) - reg(=0), all
+        // via guarded/saturating arithmetic: must not panic and must equal real elapsed.
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(0),
+            half_time_duration: Duration::from_secs(0),
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(10),
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap(); // on time => inherited 0
+        tm.stop_clock(start).unwrap();
+        // real_elapsed 7 + remaining_regulation 0 - reg 0 = 7; inherited 0.
+        assert_eq!(
+            tm.behind_schedule(start + Duration::from_secs(7)),
+            Duration::from_secs(7)
+        );
+    }
+
+    #[test]
+    fn test_behind_schedule_single_period_game() {
+        // Single-period ("1 Period") game: regulation is just the one play period.
+        // game_block 30, half_play 20, min 2 => slot buffer = 30 - 20 - 2 = 8.
+        initialize();
+        let config = GameConfig {
+            single_half: true,
+            half_play_duration: Duration::from_secs(20),
+            half_time_duration: Duration::from_secs(3), // ignored when single_half
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(30),
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap();
+        let pause_at = start + Duration::from_secs(5);
+        tm.stop_clock(pause_at).unwrap();
+        // Raw tally, single-period reg 20: 8s paused => real 13 + remaining 15 - 20 = 8;
+        // 12s paused => real 17 + remaining 15 - 20 = 12.
+        assert_eq!(
+            tm.behind_schedule(pause_at + Duration::from_secs(8)),
+            Duration::from_secs(8)
+        );
+        assert_eq!(
+            tm.behind_schedule(pause_at + Duration::from_secs(12)),
+            Duration::from_secs(12)
+        );
+    }
+
+    #[test]
+    fn test_behind_schedule_frozen_through_half_time() {
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(10),
+            half_time_duration: Duration::from_secs(6),
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(40), // buffer 12
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap();
+        // Advance into half-time (first half 10s, then half-time begins).
+        tm.update(start + Duration::from_secs(11)).unwrap();
+        assert_eq!(tm.current_period, GamePeriod::HalfTime);
+        // Half-time is scheduled time => figure frozen while it counts down.
+        let a = tm.behind_schedule(start + Duration::from_secs(12));
+        let b = tm.behind_schedule(start + Duration::from_secs(14));
+        assert_eq!(a, b);
+        assert_eq!(a, Duration::ZERO);
+    }
+
+    #[test]
+    fn test_behind_schedule_climbs_in_overtime_beyond_buffer() {
+        initialize();
+        // regulation = 2*10 + 4 = 24; block 30, min_break 2 => buffer 4.
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(10),
+            half_time_duration: Duration::from_secs(4),
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(30),
+            overtime_allowed: true,
+            pre_overtime_break: Duration::from_secs(2),
+            ot_half_play_duration: Duration::from_secs(10),
+            ot_half_time_duration: Duration::from_secs(2),
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap();
+        // Scores stay level (default 0-0) so the game enters overtime rather than
+        // ending at the close of regulation. A single `update` advances at most one
+        // period boundary, so step the clock through the chain with no stoppage:
+        // FirstHalf 0..10, HalfTime 10..14, SecondHalf 14..24, PreOvertime 24..26,
+        // then OvertimeFirstHalf from 26.
+        tm.update(start + Duration::from_secs(11)).unwrap(); // -> HalfTime
+        tm.update(start + Duration::from_secs(15)).unwrap(); // -> SecondHalf
+        tm.update(start + Duration::from_secs(25)).unwrap(); // -> PreOvertime
+        tm.update(start + Duration::from_secs(27)).unwrap(); // -> OvertimeFirstHalf
+        let in_ot = start + Duration::from_secs(24 + 8);
+        tm.update(in_ot).unwrap();
+        assert_eq!(tm.current_period, GamePeriod::OvertimeFirstHalf);
+        let v1 = tm.behind_schedule(in_ot);
+        let v2 = tm.behind_schedule(in_ot + Duration::from_secs(3));
+        assert!(
+            v1 > Duration::ZERO,
+            "overtime did not push the figure past the buffer"
+        );
+        assert!(v2 > v1, "figure did not climb during overtime");
+    }
+
+    #[test]
+    fn test_behind_schedule_robust_to_midgame_half_length_change() {
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(10),
+            half_time_duration: Duration::from_secs(3),
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(40),
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        // Shrink the half length before play starts (config can only change between
+        // games, the real API). This leaves a configured half (5) shorter than the
+        // clock reading we then load (10) — the period-length-vs-clock mismatch that
+        // triggered the original bug. Once running in regulation the figure must stay
+        // frozen rather than climbing with real time.
+        let mut shrunk = tm.config().clone();
+        shrunk.half_play_duration = Duration::from_secs(5);
+        tm.set_config(shrunk).unwrap();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap(); // FirstHalf, running
+        tm.stop_clock(start).unwrap(); // must be stopped to set the clock
+        tm.set_game_clock_time(Duration::from_secs(10)).unwrap(); // clock 10 > half 5
+        tm.start_clock(start); // resume: counting down from 10, running
+        let a = tm.behind_schedule(start + Duration::from_secs(2));
+        let b = tm.behind_schedule(start + Duration::from_secs(4));
+        assert_eq!(
+            a, b,
+            "figure climbed while running after a half-length change"
+        );
+    }
+
+    /// Real-slack manual-mode config: half 60, half-time 10, second half 60 =>
+    /// regulation 130; game_block 180, minimum_break 5 => slot slack
+    /// 180 - 130 - 5 = 45.
+    #[cfg(test)]
+    fn behind_real_slack_config() -> GameConfig {
+        GameConfig {
+            half_play_duration: Duration::from_secs(60),
+            half_time_duration: Duration::from_secs(10),
+            minimum_break: Duration::from_secs(5),
+            game_block: Duration::from_secs(180),
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_behind_schedule_rugby_penalty_shot_frozen() {
+        // A rugby penalty shot keeps the MAIN game clock running (unlike a team
+        // timeout or a normal penalty shot, which stop it). Because the scheduled
+        // clock keeps advancing, the behind-schedule figure must stay frozen at
+        // whatever value it had reached -- this is the rugby-PS exception.
+        initialize();
+        let mut tm = TournamentManager::new(behind_real_slack_config());
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap(); // FirstHalf, clock 60, on time => inherited 0
+        // 30s of stoppage builds the figure: stop at +10 (clock frozen at 50),
+        // resume at +40. At resume real_elapsed=40, remaining_regulation =
+        // 50 (first half) + 10 (half-time) + 60 (second half) = 120; raw tally =
+        // 40 + 120 - 130 = 30.
+        tm.stop_clock(start + Duration::from_secs(10)).unwrap();
+        tm.start_clock(start + Duration::from_secs(40)); // resume, main clock running
+        tm.start_rugby_penalty_shot(start + Duration::from_secs(40))
+            .unwrap(); // main clock KEEPS running
+        // During the shot the main clock advances, so real_elapsed grows while
+        // remaining_regulation shrinks by the same amount: the figure is frozen.
+        let a = tm.behind_schedule(start + Duration::from_secs(41));
+        let b = tm.behind_schedule(start + Duration::from_secs(43));
+        assert_eq!(a, b, "figure moved during a rugby penalty shot");
+        assert_eq!(a, Duration::from_secs(30));
+    }
+
+    #[test]
+    fn test_behind_schedule_climbs_during_team_timeout() {
+        // A team timeout STOPS the main game clock, so real time spent in it feeds
+        // the raw tally second-for-second: the figure climbs.
+        initialize();
+        let mut tm = TournamentManager::new(behind_real_slack_config());
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap(); // FirstHalf, clock 60, inherited 0
+        let to_at = start + Duration::from_secs(5); // clock frozen at 55
+        tm.start_team_timeout(Color::Black, to_at).unwrap();
+        // remaining_regulation stays 55 + 10 + 60 = 125 while the main clock is frozen.
+        // 15s into the timeout: real 20 + 125 - 130 = 15.
+        assert_eq!(
+            tm.behind_schedule(to_at + Duration::from_secs(15)),
+            Duration::from_secs(15)
+        );
+        // 25s into the timeout: real 30 + 125 - 130 = 25.
+        assert_eq!(
+            tm.behind_schedule(to_at + Duration::from_secs(25)),
+            Duration::from_secs(25)
+        );
+    }
+
+    #[test]
+    fn test_behind_schedule_climbs_during_penalty_shot() {
+        // A normal penalty shot STOPS the main game clock (counting up), so the raw
+        // tally climbs with real time spent on the shot.
+        initialize();
+        let mut tm = TournamentManager::new(behind_real_slack_config());
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap(); // FirstHalf, clock 60, inherited 0
+        let ps_at = start + Duration::from_secs(5); // clock frozen at 55
+        tm.start_penalty_shot(ps_at).unwrap();
+        // remaining_regulation stays 55 + 10 + 60 = 125 while the main clock is frozen.
+        // 15s into the shot: real 20 + 125 - 130 = 15.
+        assert_eq!(
+            tm.behind_schedule(ps_at + Duration::from_secs(15)),
+            Duration::from_secs(15)
+        );
+        // 25s into the shot: real 30 + 125 - 130 = 25.
+        assert_eq!(
+            tm.behind_schedule(ps_at + Duration::from_secs(25)),
+            Duration::from_secs(25)
+        );
+    }
+
+    #[test]
+    fn test_behind_schedule_climbs_during_confirm_pause() {
+        // The score-confirmation pause stops the main clock (sets it to a 10ms stub)
+        // while leaving the period at SecondHalf. remaining_regulation in SecondHalf is
+        // just the (now ~0) clock reading, so the raw tally is driven by real_elapsed
+        // and climbs while the pause is held.
+        initialize();
+        let mut tm = TournamentManager::new(behind_real_slack_config());
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap(); // FirstHalf, game_start_time = start
+        tm.update(start + Duration::from_secs(61)).unwrap(); // FirstHalf -> HalfTime
+        tm.update(start + Duration::from_secs(71)).unwrap(); // HalfTime -> SecondHalf
+        // pause_for_confirm requires the clock running and SecondHalf here.
+        tm.pause_for_confirm(start + Duration::from_secs(125))
+            .unwrap();
+        assert_eq!(tm.current_period, GamePeriod::SecondHalf);
+        // During the pause the main clock is a frozen 10ms stub, so for any sample `t`:
+        // real_elapsed = t - start, remaining_regulation = 10ms, reg = 130 =>
+        // figure = (t - start) + 10ms - 130s.
+        let a = tm.behind_schedule(start + Duration::from_secs(135));
+        let b = tm.behind_schedule(start + Duration::from_secs(140));
+        // 135 + 0.010 - 130 = 5.010s; 140 + 0.010 - 130 = 10.010s.
+        assert_eq!(a, Duration::from_millis(5010));
+        assert_eq!(b, Duration::from_millis(10010));
+        assert!(b > a, "figure did not climb during the confirm pause");
+    }
+
+    #[test]
+    fn test_behind_schedule_climbs_during_sudden_death() {
+        // In sudden death remaining_regulation is ZERO (it is past regulation), so the
+        // raw tally is inherited + real_elapsed - regulation. With the clock held, the
+        // figure climbs second-for-second with real time.
+        initialize();
+        let config = GameConfig {
+            sudden_death_allowed: true,
+            ..behind_real_slack_config()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap(); // FirstHalf, game_start_time = start, inherited 0
+        tm.stop_clock(start).unwrap(); // must be stopped to set the period
+        tm.set_period_and_game_clock_time(GamePeriod::SuddenDeath, Duration::from_secs(30));
+        // remaining_regulation is ZERO in SuddenDeath, reg = 130:
+        // 135s elapsed: 135 + 0 - 130 = 5.
+        assert_eq!(
+            tm.behind_schedule(start + Duration::from_secs(135)),
+            Duration::from_secs(5)
+        );
+        // 150s elapsed: 150 + 0 - 130 = 20.
+        assert_eq!(
+            tm.behind_schedule(start + Duration::from_secs(150)),
+            Duration::from_secs(20)
+        );
+    }
+
+    #[test]
+    fn test_behind_schedule_multi_game_accumulate_then_recover() {
+        // Full lifecycle: a game runs long, falls behind, then clean games claw the
+        // lateness back down one slot-slack at a time until the run is on time again.
+        // Config: regulation 130, game_block 180, minimum_break 5 => slot slack 45.
+        initialize();
+        let mut tm = TournamentManager::new(behind_real_slack_config());
+        let g1 = Instant::now();
+
+        // --- Game 1: on time, then overruns well past the slack. ---
+        tm.start_clock(g1);
+        tm.start_play_now(g1).unwrap(); // inherited 0; next_scheduled_start = g1 + 180
+        tm.stop_clock(g1).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        let end1 = g1 + Duration::from_secs(230); // game took 230s real vs its 180s slot
+        // In-game just before end: real 230 + remaining 0 - reg 130 = 100 (>> slack 45).
+        assert_eq!(tm.behind_schedule(end1), Duration::from_secs(100));
+        tm.end_game(end1);
+        // Between games: break = max(min_break 5, sched_next g1+180 - end1) = 5;
+        // projected next = end1 + 5 = g1+235; sched_next = g1+180 => residual 55.
+        let residual1 = tm.behind_schedule(end1);
+        assert_eq!(residual1, Duration::from_secs(55));
+
+        // --- Game 2: starts at the compressed break (g1+235), plays clean. ---
+        let g2 = g1 + Duration::from_secs(235);
+        tm.start_play_now(g2).unwrap(); // current_scheduled_start g1+180 => inherited 55
+        // While it plays cleanly (clock running on schedule) the figure holds at the
+        // inherited 55: at +10 real 10 + remaining_reg 120 - 130 = 0, plus inherited 55.
+        assert_eq!(
+            tm.behind_schedule(g2 + Duration::from_secs(10)),
+            Duration::from_secs(55)
+        );
+        tm.stop_clock(g2).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        let end2 = g2 + Duration::from_secs(130); // clean: exactly one regulation = g1+365
+        tm.end_game(end2);
+        // Game 2 slot was g1+180..g1+360; next_scheduled_start = g1+360.
+        // break = max(5, (g1+360) - end2) = max(5, -5) = 5; projected = end2+5 = g1+370;
+        // sched_next = g1+360 => residual 10. Step-down from 55 is exactly one slack (45).
+        let residual2 = tm.behind_schedule(end2);
+        assert_eq!(residual2, Duration::from_secs(10));
+        assert_eq!(residual1 - residual2, Duration::from_secs(45));
+
+        // --- Game 3: starts at g1+370, plays clean; the run recovers to ZERO. ---
+        let g3 = g1 + Duration::from_secs(370);
+        tm.start_play_now(g3).unwrap(); // current_scheduled_start g1+360 => inherited 10
+        assert_eq!(
+            tm.behind_schedule(g3 + Duration::from_secs(10)),
+            Duration::from_secs(10)
+        );
+        tm.stop_clock(g3).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        let end3 = g3 + Duration::from_secs(130); // clean = g1+500
+        tm.end_game(end3);
+        // Game 3 slot was g1+360..g1+540; next_scheduled_start = g1+540.
+        // break = max(5, (g1+540) - end3) = max(5, 40) = 40; projected = end3+40 = g1+540;
+        // sched_next = g1+540 => behind 0. Residual 10 (< slack 45) is fully absorbed.
+        let residual3 = tm.behind_schedule(end3);
+        assert_eq!(residual3, Duration::ZERO);
+        // Monotonic decrease across the clean games, ending on time.
+        assert!(residual2 < residual1);
+        assert!(residual3 < residual2);
+    }
+
+    #[test]
+    fn test_behind_schedule_between_games_climbs_when_break_paused() {
+        // The live app auto-starts the next game when the break elapses, so "sitting
+        // idle past zero between games" never actually persists. The realistic cause of
+        // a between-games figure that keeps climbing is the operator PAUSING the break
+        // (stopping the break clock): the projected next start then slides out with real
+        // time. (The edit case is covered by between_games_follows_break_edit.)
+        initialize();
+        let mut tm = TournamentManager::new(behind_test_config()); // block 40, reg 23, min 2
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap(); // next_scheduled_start = start + 40
+        tm.stop_clock(start).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        let end = start + Duration::from_secs(60); // ended behind
+        tm.end_game(end);
+        assert_eq!(tm.current_period, GamePeriod::BetweenGames);
+        // break = max(min_break 2, (start+40) - end) = 2; pause it now (freeze at 2).
+        tm.stop_clock(end).unwrap();
+        // Paused break stays frozen at 2s remaining; sched_next = start+40.
+        // projected next = now + 2. At end (start+60): 62 - 40 = 22.
+        assert_eq!(tm.behind_schedule(end), Duration::from_secs(22));
+        // 10s later: (start+70) + 2 - (start+40) = 32.
+        assert_eq!(
+            tm.behind_schedule(end + Duration::from_secs(10)),
+            Duration::from_secs(32)
+        );
+        // 20s later: (start+80) + 2 - (start+40) = 42.
+        assert_eq!(
+            tm.behind_schedule(end + Duration::from_secs(20)),
+            Duration::from_secs(42)
+        );
     }
 
     #[test]
@@ -4032,6 +4966,7 @@ mod test {
             half_time_duration: Duration::from_secs(2),
             nominal_break: Duration::from_secs(5),
             minimum_break: Duration::from_secs(1),
+            game_block: Duration::from_secs(25),
             ..Default::default()
         };
         // 2*9 + 2 + 5 = 25 sec from game start to game start
@@ -4057,6 +4992,7 @@ mod test {
             half_time_duration: Duration::from_secs(2),
             nominal_break: Duration::from_secs(7),
             minimum_break: Duration::from_secs(5),
+            game_block: Duration::from_secs(27),
             ..Default::default()
         };
         // 2*9 + 2 + 7 = 27 sec from game start to game start
@@ -4082,6 +5018,7 @@ mod test {
             half_time_duration: Duration::from_secs(2),
             nominal_break: Duration::from_secs(6),
             minimum_break: Duration::from_secs(1),
+            game_block: Duration::from_secs(26),
             ..Default::default()
         };
         // 2*9 + 2 + 6 = 26 sec from game start to game start
@@ -4107,6 +5044,7 @@ mod test {
             half_time_duration: Duration::from_secs(2),
             nominal_break: Duration::from_secs(8),
             minimum_break: Duration::from_secs(1),
+            game_block: Duration::from_secs(28),
             ..Default::default()
         };
         // 2*9 + 2 + 8 = 28 sec from game start to game start
@@ -4213,6 +5151,7 @@ mod test {
             half_time_duration: Duration::from_secs(2),
             nominal_break: Duration::from_secs(8),
             minimum_break: Duration::from_secs(1),
+            game_block: Duration::from_secs(28),
             ..Default::default()
         };
         // 2*9 + 2 + 8 = 28 sec from game start to game start
@@ -4238,6 +5177,7 @@ mod test {
             half_time_duration: Duration::from_secs(2),
             nominal_break: Duration::from_secs(8),
             minimum_break: Duration::from_secs(1),
+            game_block: Duration::from_secs(28),
             ..Default::default()
         };
         // 2*9 + 2 + 8 = 28 sec from game start to game start
@@ -4266,6 +5206,7 @@ mod test {
             half_time_duration: Duration::from_secs(2),
             nominal_break: Duration::from_secs(8),
             minimum_break: Duration::from_secs(1),
+            game_block: Duration::from_secs(28),
             ..Default::default()
         };
         // 2*9 + 2 + 8 = 28 sec from game start to game start
@@ -4312,6 +5253,7 @@ mod test {
             half_time_duration: Duration::from_secs(2),
             nominal_break: Duration::from_secs(8),
             minimum_break: Duration::from_secs(1),
+            game_block: Duration::from_secs(28),
             ..Default::default()
         };
         // 2*9 + 2 + 8 = 28 sec from game start to game start

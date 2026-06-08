@@ -39,6 +39,7 @@ pub(in super::super) struct EditableSettings {
     pub hide_time: bool,
     pub collect_scorer_cap_num: bool,
     pub track_fouls_and_warnings: bool,
+    pub show_behind_schedule_time: bool,
     pub confirm_score: bool,
     pub pending_language: Option<Language>,
     pub original_language: Option<Language>,
@@ -211,6 +212,7 @@ pub(in super::super) fn page_has_changes(
                 mode,
                 collect_scorer_cap_num,
                 track_fouls_and_warnings,
+                show_behind_schedule_time,
                 confirm_score,
             },
         ) => {
@@ -221,6 +223,7 @@ pub(in super::super) fn page_has_changes(
                 || edited.mode != *mode
                 || edited.collect_scorer_cap_num != *collect_scorer_cap_num
                 || edited.track_fouls_and_warnings != *track_fouls_and_warnings
+                || edited.show_behind_schedule_time != *show_behind_schedule_time
                 || edited.confirm_score != *confirm_score
         }
         (
@@ -372,7 +375,8 @@ fn make_main_config_page<'a>(
             false,
             mode,
             clock_running,
-            portal_indicator
+            portal_indicator,
+            None
         ),
         row_top,
         row_bottom,
@@ -466,7 +470,8 @@ fn make_user_config_page<'a>(
             false,
             mode,
             clock_running,
-            portal_indicator
+            portal_indicator,
+            None
         ),
         tiles,
         row![view_mode_button, horizontal_space()]
@@ -484,6 +489,25 @@ fn make_user_config_page<'a>(
     .spacing(SPACING)
     .height(Length::Fill)
     .into()
+}
+
+/// Whether the configured Game Block leaves enough time for the game plus
+/// breaks and team timeouts. Drives the red/yellow validation styling.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum GameBlockValidity {
+    Ok,
+    Tight,
+    TooShort,
+}
+
+fn game_block_validity(cfg: &GameConfig) -> GameBlockValidity {
+    if cfg.game_block < cfg.game_block_minimum() {
+        GameBlockValidity::TooShort
+    } else if cfg.game_block_buffer() < cfg.team_timeout_allotment() {
+        GameBlockValidity::Tight
+    } else {
+        GameBlockValidity::Ok
+    }
 }
 
 // View builder takes app-state slices; grouping into a context struct is a separate refactor across all view_builders. Filed as a Findings-Backlog item in AUDIT-PLAN.md (Unit 3, 2026-05-13).
@@ -565,6 +589,7 @@ fn make_event_config_page<'a>(
         mode,
         clock_running,
         portal_indicator,
+        None,
     )]
     .spacing(SPACING)
     .height(Length::Fill);
@@ -794,11 +819,16 @@ fn make_event_config_page<'a>(
                         },
                     ),
                     make_value_button(
-                        fl!("nominal-break-between-games"),
-                        time_string(config.nominal_break),
+                        fl!("game-block"),
+                        time_string(config.game_block),
                         (false, true),
-                        Some(Message::EditParameter(LengthParameter::NominalBetweenGame)),
+                        Some(Message::EditParameter(LengthParameter::GameBlock)),
                     )
+                    .style(match game_block_validity(config) {
+                        GameBlockValidity::TooShort => red_button,
+                        GameBlockValidity::Tight => yellow_button,
+                        GameBlockValidity::Ok => light_gray_button,
+                    })
                 ]
                 .spacing(SPACING)
                 .height(Length::Fill),
@@ -851,6 +881,7 @@ fn make_app_config_page<'a>(
     let EditableSettings {
         collect_scorer_cap_num,
         track_fouls_and_warnings,
+        show_behind_schedule_time,
         confirm_score,
         ..
     } = settings;
@@ -862,7 +893,8 @@ fn make_app_config_page<'a>(
             false,
             mode,
             clock_running,
-            portal_indicator
+            portal_indicator,
+            None
         ),
         row![
             make_value_button(
@@ -902,7 +934,19 @@ fn make_app_config_page<'a>(
         ]
         .spacing(SPACING)
         .height(Length::Fill),
-        row![horizontal_space()].height(Length::Fill),
+        row![
+            make_value_button(
+                fl!("show-behind-schedule-time"),
+                bool_string(*show_behind_schedule_time),
+                (false, true),
+                Some(Message::ToggleBoolParameter(
+                    BoolGameParameter::ShowBehindScheduleTime,
+                )),
+            ),
+            horizontal_space(),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),
         make_cancel_apply_footer(ConfigPage::App, settings, page_entry_snapshot),
     ]
@@ -1069,7 +1113,8 @@ fn make_display_config_page<'a>(
             false,
             mode,
             clock_running,
-            portal_indicator
+            portal_indicator,
+            None
         ),
         row![sides_btn].spacing(SPACING).height(Length::Fill),
         row![hide_time_btn, layout_btn]
@@ -1108,7 +1153,8 @@ fn make_sound_config_page<'a>(
             false,
             mode,
             clock_running,
-            portal_indicator
+            portal_indicator,
+            None
         ),
         row![
             make_value_button(
@@ -1324,7 +1370,8 @@ fn make_remote_config_page<'a>(
             false,
             mode,
             clock_running,
-            portal_indicator
+            portal_indicator,
+            None
         ),
         row![
             make_scroll_list(
@@ -1361,6 +1408,7 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
     param: LengthParameter,
     length: Duration,
     single_half: bool,
+    config: &GameConfig,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -1384,9 +1432,7 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
             },
         ),
         LengthParameter::HalfTime => (fl!("half-time-lenght"), fl!("length-of-half-time-period")),
-        LengthParameter::NominalBetweenGame => {
-            (fl!("nom-break"), fl!("system-will-keep-game-times-spaced"))
-        }
+        LengthParameter::GameBlock => (fl!("game-block"), fl!("game-block-help")),
         LengthParameter::MinimumBetweenGame => (fl!("min-break"), fl!("min-time-btwn-games")),
         LengthParameter::PreOvertime => (fl!("pre-ot-break-abreviated"), fl!("pre-sd-brk")),
         LengthParameter::OvertimeHalf => (fl!("ot-half-len"), fl!("time-during-ot")),
@@ -1394,6 +1440,44 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
             (fl!("ot-half-tm-len"), fl!("len-of-overtime-halftime"))
         }
         LengthParameter::PreSuddenDeath => (fl!("pre-sd-break"), fl!("pre-sd-len")),
+    };
+
+    // Live Game Block validation: build a staged copy of the config with the
+    // value currently being edited (and the staged 2-halves/1-period choice)
+    // so the colour and the disabled Done button reflect the pending edit, not
+    // the saved config. Only the Game Block editor validates; other parameters
+    // get None (no colour, Done always enabled, no note).
+    let game_block_validity = if matches!(param, LengthParameter::GameBlock) {
+        let staged = GameConfig {
+            game_block: length,
+            single_half,
+            ..config.clone()
+        };
+        Some(game_block_validity(&staged))
+    } else {
+        None
+    };
+    let value_color = match game_block_validity {
+        Some(GameBlockValidity::TooShort) => Some(RED),
+        Some(GameBlockValidity::Tight) => Some(YELLOW),
+        _ => None,
+    };
+    let validity_note: Option<Element<'a, Message>> = match game_block_validity {
+        Some(GameBlockValidity::TooShort) => Some(
+            text(fl!("game-block-too-short"))
+                .size(SMALL_TEXT)
+                .color(RED)
+                .align_x(Horizontal::Center)
+                .into(),
+        ),
+        Some(GameBlockValidity::Tight) => Some(
+            text(fl!("game-block-tight"))
+                .size(SMALL_TEXT)
+                .color(YELLOW)
+                .align_x(Horizontal::Center)
+                .into(),
+        ),
+        _ => None,
     };
 
     // For the Half Length editor, offer a 2 Halves / 1 Period selector above the
@@ -1443,7 +1527,8 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
         false,
         mode,
         clock_running,
-        portal_indicator
+        portal_indicator,
+        None
     )]
     .spacing(SPACING)
     .align_x(Alignment::Center)
@@ -1454,15 +1539,21 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
         col = col.push(selector);
     }
 
-    col.push(vertical_space())
-        .push(make_time_editor(title, length, false))
+    col = col
+        .push(vertical_space())
+        .push(make_time_editor(title, length, false, value_color))
         .push(vertical_space())
         .push(
             text(fl!("help") + &hint)
                 .size(SMALL_TEXT)
                 .align_x(Horizontal::Center),
-        )
-        .push(vertical_space())
+        );
+
+    if let Some(note) = validity_note {
+        col = col.push(note);
+    }
+
+    col.push(vertical_space())
         .push(
             row![
                 make_button(fl!("cancel"))
@@ -1473,7 +1564,10 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
                 make_button(fl!("done"))
                     .style(green_button)
                     .width(Length::Fill)
-                    .on_press(Message::ParameterEditComplete { canceled: false }),
+                    .on_press_maybe(
+                        (!matches!(game_block_validity, Some(GameBlockValidity::TooShort)))
+                            .then_some(Message::ParameterEditComplete { canceled: false }),
+                    ),
             ]
             .spacing(SPACING),
         )
@@ -1593,7 +1687,8 @@ fn make_language_select_page<'a>(
             false,
             mode,
             clock_running,
-            portal_indicator
+            portal_indicator,
+            None
         ),
         row![
             lang_btn_note(
@@ -1950,6 +2045,7 @@ mod tests {
             mode: edited.mode,
             collect_scorer_cap_num: edited.collect_scorer_cap_num,
             track_fouls_and_warnings: edited.track_fouls_and_warnings,
+            show_behind_schedule_time: edited.show_behind_schedule_time,
             confirm_score: edited.confirm_score,
         };
 
@@ -2175,5 +2271,39 @@ mod tests {
         //    sub-page navigation; this assertion documents the predicate's
         //    conservative behaviour under None.
         assert!(!page_has_changes(ConfigPage::Sound, &edited, None));
+    }
+
+    #[test]
+    fn test_game_block_validity_thresholds() {
+        // half 9, halftime 2, two-period => regulation 20; minimum_break 2 => minimum 22.
+        // 1 timeout/team, 60s, counted per half over 2 periods => allotment = 2*2*1*60 = 240.
+        let base = GameConfig {
+            single_half: false,
+            half_play_duration: Duration::from_secs(9),
+            half_time_duration: Duration::from_secs(2),
+            minimum_break: Duration::from_secs(2),
+            num_team_timeouts_allowed: 1,
+            team_timeout_duration: Duration::from_secs(60),
+            timeouts_counted_per_half: true,
+            ..Default::default()
+        };
+        // Below minimum (22) => TooShort.
+        let too_short = GameConfig {
+            game_block: Duration::from_secs(21),
+            ..base.clone()
+        };
+        assert_eq!(game_block_validity(&too_short), GameBlockValidity::TooShort);
+        // >= minimum but buffer (game_block-22) < allotment(240) => Tight.
+        let tight = GameConfig {
+            game_block: Duration::from_secs(100),
+            ..base.clone()
+        };
+        assert_eq!(game_block_validity(&tight), GameBlockValidity::Tight);
+        // buffer >= allotment => Ok (22 + 240 = 262).
+        let ok = GameConfig {
+            game_block: Duration::from_secs(262),
+            ..base.clone()
+        };
+        assert_eq!(game_block_validity(&ok), GameBlockValidity::Ok);
     }
 }

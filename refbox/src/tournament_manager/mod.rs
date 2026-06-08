@@ -54,13 +54,6 @@ pub struct TournamentManager {
     /// present, else the Game Block grid slot). Set at `start_game`. `None` before
     /// the first game. Used by `behind_schedule`.
     current_scheduled_start: Option<Instant>,
-    /// Wall-clock time this game has spent making *scheduled regulation* progress —
-    /// counting down first half / half-time / second half with no timeout active —
-    /// capped at `regulation_play`. Reset at `start_game`. `behind_schedule` uses it
-    /// to measure overrun directly instead of reconstructing it from clock readings.
-    regulation_played: Duration,
-    /// Instant `regulation_played` was last folded up to (see `settle_regulation_played`).
-    regulation_mark: Instant,
     reset_game_time: Duration,
     recent_goal: Option<(Color, u8, GamePeriod, Duration)>,
     current_game_stats: GameStats,
@@ -90,8 +83,6 @@ impl TournamentManager {
             next_game: None,
             next_scheduled_start: None,
             current_scheduled_start: None,
-            regulation_played: Duration::ZERO,
-            regulation_mark: Instant::now(),
             reset_game_time: config.nominal_break,
             config,
             recent_goal: None,
@@ -208,7 +199,6 @@ impl TournamentManager {
     }
 
     pub fn reset_game(&mut self, now: Instant) {
-        self.settle_regulation_played(now);
         info!("{} Resetting Game", self.status_string(now));
         let was_running = self.clock_is_running();
 
@@ -391,7 +381,6 @@ impl TournamentManager {
     }
 
     pub fn start_team_timeout(&mut self, color: Color, now: Instant) -> Result<()> {
-        self.settle_regulation_played(now);
         self.can_start_team_timeout(color)?;
         info!("{} Starting a {color} timeout", self.status_string(now));
         let cs = if self.clock_is_running() {
@@ -411,7 +400,6 @@ impl TournamentManager {
     }
 
     pub fn start_ref_timeout(&mut self, now: Instant) -> Result<()> {
-        self.settle_regulation_played(now);
         self.can_start_ref_timeout()?;
         info!("{} Starting a ref timeout", self.status_string(now));
         if self.clock_is_running() {
@@ -429,7 +417,6 @@ impl TournamentManager {
     }
 
     pub fn start_penalty_shot(&mut self, now: Instant) -> Result<()> {
-        self.settle_regulation_played(now);
         self.can_start_penalty_shot()?;
         info!("{} Starting a penalty shot", self.status_string(now));
         if self.clock_is_running() {
@@ -447,7 +434,6 @@ impl TournamentManager {
     }
 
     pub fn start_rugby_penalty_shot(&mut self, now: Instant) -> Result<()> {
-        self.settle_regulation_played(now);
         self.can_start_rugby_penalty_shot()?;
         info!("{} Starting a rugby penalty shot", self.status_string(now));
         if self.clock_is_running() {
@@ -476,7 +462,6 @@ impl TournamentManager {
     }
 
     pub fn switch_to_ref_timeout(&mut self, now: Instant) -> Result<()> {
-        self.settle_regulation_played(now);
         self.can_switch_to_ref_timeout()?;
         info!("Switching to a ref timeout");
         if let Some(TimeoutState::PenaltyShot(cs)) = &self.timeout_state {
@@ -500,7 +485,6 @@ impl TournamentManager {
     }
 
     pub fn switch_to_rugby_penalty_shot(&mut self, now: Instant) -> Result<()> {
-        self.settle_regulation_played(now);
         self.can_switch_to_rugby_penalty_shot()?;
         info!("Switching to a rugby penalty shot");
         if let Some(TimeoutState::Ref(cs)) = &self.timeout_state {
@@ -547,7 +531,6 @@ impl TournamentManager {
     }
 
     pub fn end_timeout(&mut self, now: Instant) -> Result<()> {
-        self.settle_regulation_played(now);
         match &self.timeout_state {
             None => Err(TournamentManagerError::NotInTimeout),
             Some(TimeoutState::Team(color, cs)) => {
@@ -958,7 +941,6 @@ impl TournamentManager {
     }
 
     pub fn apply_next_game_start(&mut self, now: Instant) -> Result<()> {
-        self.settle_regulation_played(now);
         if self.current_period != GamePeriod::BetweenGames {
             return Err(TournamentManagerError::GameInProgress);
         }
@@ -1058,9 +1040,6 @@ impl TournamentManager {
             info!("Resetting game");
             self.reset();
         }
-
-        self.regulation_played = Duration::ZERO;
-        self.regulation_mark = start_time;
 
         // The scheduled start of the game we're starting: portal time if present,
         // else this game's Game Block grid slot (`next_scheduled_start` still holds
@@ -1183,7 +1162,6 @@ impl TournamentManager {
     }
 
     pub(super) fn update(&mut self, now: Instant) -> Result<()> {
-        self.settle_regulation_played(now);
         // Case of clock running, with no timeout and not SD
         if let ClockState::CountingDown {
             start_time,
@@ -1551,7 +1529,6 @@ impl TournamentManager {
     }
 
     pub fn start_clock(&mut self, now: Instant) {
-        self.settle_regulation_played(now);
         let mut need_to_send = false;
         let status_str = self.status_string(now);
         match &mut self.timeout_state {
@@ -1598,7 +1575,6 @@ impl TournamentManager {
     }
 
     pub fn stop_clock(&mut self, now: Instant) -> Result<()> {
-        self.settle_regulation_played(now);
         let mut need_to_send = false;
         let status_str = self.status_string(now);
         match &mut self.timeout_state {
@@ -1649,7 +1625,6 @@ impl TournamentManager {
     }
 
     pub fn halt_clock(&mut self, now: Instant, mut end_timeout: bool) -> Result<()> {
-        self.settle_regulation_played(now);
         if end_timeout {
             self.timeout_state = None;
         }
@@ -1709,7 +1684,6 @@ impl TournamentManager {
     }
 
     pub fn start_play_now(&mut self, now: Instant) -> Result<()> {
-        self.settle_regulation_played(now);
         if let Some(ref ts) = self.timeout_state {
             return Err(TournamentManagerError::AlreadyInTimeout(
                 ts.as_snapshot(Instant::now()),
@@ -1840,7 +1814,6 @@ impl TournamentManager {
     }
 
     pub fn pause_for_confirm(&mut self, now: Instant) -> Result<()> {
-        self.settle_regulation_played(now);
         if self.timeout_state.is_some() {
             return Err(TournamentManagerError::PausingDuringTimeout);
         }
@@ -1915,7 +1888,6 @@ impl TournamentManager {
 
     /// Scores must be accurately set before calling this
     pub fn end_confirm_pause(&mut self, now: Instant) -> Result<()> {
-        self.settle_regulation_played(now);
         info!(
             "Ending Pause, Pause Duration: {:?}",
             self.time_pause_confirmation
@@ -2071,39 +2043,27 @@ impl TournamentManager {
         self.clock_state.clock_time(now)
     }
 
-    /// True while the game is moving through *scheduled regulation* time at the
-    /// scheduled pace: a regulation period's clock counting down, no timeout active.
-    /// This — not "any clock running" — is what freezes the behind-schedule figure.
-    fn in_regulation_progress(&self) -> bool {
-        matches!(
-            self.current_period,
-            GamePeriod::FirstHalf | GamePeriod::HalfTime | GamePeriod::SecondHalf
-        ) && self.timeout_state.is_none()
-            && self.clock_state.is_running()
-    }
-
-    /// Fold the interval since the last mark into `regulation_played` when the game
-    /// was making regulation progress, then advance the mark. Called at the top of
-    /// every `&mut self` method that takes `now` and can change the clock/timeout/
-    /// period. Over-calling is harmless: a non-progress interval only moves the mark.
-    fn settle_regulation_played(&mut self, now: Instant) {
-        if self.in_regulation_progress() {
-            let played = now.saturating_duration_since(self.regulation_mark);
-            self.regulation_played =
-                (self.regulation_played + played).min(self.config.regulation_play());
+    /// Scheduled regulation play still to come before the game reaches the end of
+    /// regulation: the live remaining on the current regulation period plus the full
+    /// length of any regulation periods after it. ZERO in extra time (overtime /
+    /// sudden death and their breaks) and between games. Lets `behind_schedule`
+    /// project when the game will end, so a clock edit moves the figure immediately.
+    fn remaining_regulation(&self, now: Instant) -> Duration {
+        let remaining_current = self.clock_state.clock_time(now).unwrap_or(Duration::ZERO);
+        match self.current_period {
+            GamePeriod::FirstHalf => {
+                if self.config.single_half {
+                    remaining_current
+                } else {
+                    remaining_current
+                        + self.config.half_time_duration
+                        + self.config.half_play_duration
+                }
+            }
+            GamePeriod::HalfTime => remaining_current + self.config.half_play_duration,
+            GamePeriod::SecondHalf => remaining_current,
+            _ => Duration::ZERO,
         }
-        self.regulation_mark = now;
-    }
-
-    /// `regulation_played` plus the not-yet-settled tail when currently progressing,
-    /// so read-only callers (which cannot settle) see a live value between settles.
-    /// Capped at `regulation_play`.
-    fn regulation_played_now(&self, now: Instant) -> Duration {
-        let mut played = self.regulation_played;
-        if self.in_regulation_progress() {
-            played += now.saturating_duration_since(self.regulation_mark);
-        }
-        played.min(self.config.regulation_play())
     }
 
     /// How far behind its scheduled start times the run of games currently is, as a
@@ -2136,12 +2096,16 @@ impl TournamentManager {
                     .saturating_sub(self.config.regulation_play() + self.config.minimum_break),
                 None => self.config.game_block_buffer(),
             };
-            // Overrun = real time the game has taken beyond the scheduled regulation
-            // play it has actually completed. Frozen while regulation runs (both grow
-            // together); climbs while stopped and while in extra time (regulation
-            // capped). Measured directly, so immune to clock-reading-vs-period-length.
+            // Forward projection: the game's projected total wall-clock duration is the
+            // time taken so far plus the regulation play still to come. Overrun is the
+            // part beyond the scheduled regulation length. Frozen while a regulation
+            // clock runs (real time and remaining move together); climbs while stopped
+            // and in extra time; an in-game clock edit shifts `remaining` — and the
+            // figure — immediately. Reads the live remaining clock directly, so it is
+            // immune to clock-reading-vs-period-length.
             let real_elapsed = now.saturating_duration_since(self.game_start_time);
-            let overrun = real_elapsed.saturating_sub(self.regulation_played_now(now));
+            let projected_total = real_elapsed + self.remaining_regulation(now);
+            let overrun = projected_total.saturating_sub(self.config.regulation_play());
             let developing = overrun.saturating_sub(slot_buffer);
             inherited + developing
         }
@@ -2794,7 +2758,70 @@ mod test {
         let a = tm.behind_schedule(start + Duration::from_secs(16));
         let b = tm.behind_schedule(start + Duration::from_secs(19));
         assert_eq!(a, b, "figure climbed while the clock was running");
-        assert_eq!(a, Duration::ZERO);
+        // Projection reports the over-long clock as a frozen, nonzero figure: a 40s clock
+        // in a 10s half projects ~30s of extra play; 30 - 15 buffer = 15.
+        assert_eq!(a, Duration::from_secs(15));
+    }
+
+    #[test]
+    fn test_behind_schedule_in_game_edit_up_raises_figure_immediately() {
+        initialize();
+        // half 60, ht 10, sh 60 => regulation 130; block 180, min_break 5 => buffer 45.
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(60),
+            half_time_duration: Duration::from_secs(10),
+            minimum_break: Duration::from_secs(5),
+            game_block: Duration::from_secs(180),
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap();
+        tm.stop_clock(start + Duration::from_secs(10)).unwrap();
+        let t = start + Duration::from_secs(60); // 50s stopped
+        let before = tm.behind_schedule(t);
+        assert_eq!(before, Duration::from_secs(5));
+        tm.set_game_clock_time(tm.game_clock_time(t).unwrap() + Duration::from_secs(30))
+            .unwrap();
+        let after = tm.behind_schedule(t);
+        assert_eq!(
+            after,
+            before + Duration::from_secs(30),
+            "edit up did not raise the figure by the edited amount"
+        );
+    }
+
+    #[test]
+    fn test_behind_schedule_in_game_edit_down_lowers_figure_immediately() {
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(60),
+            half_time_duration: Duration::from_secs(10),
+            minimum_break: Duration::from_secs(5),
+            game_block: Duration::from_secs(180),
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap();
+        tm.stop_clock(start + Duration::from_secs(10)).unwrap();
+        let t = start + Duration::from_secs(100); // 90s stopped
+        let before = tm.behind_schedule(t);
+        assert_eq!(before, Duration::from_secs(45));
+        tm.set_game_clock_time(tm.game_clock_time(t).unwrap() - Duration::from_secs(30))
+            .unwrap();
+        let after = tm.behind_schedule(t);
+        assert_eq!(
+            after,
+            before - Duration::from_secs(30),
+            "edit down did not lower the figure by the edited amount"
+        );
     }
 
     #[test]

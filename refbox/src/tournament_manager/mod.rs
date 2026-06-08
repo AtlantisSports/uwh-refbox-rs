@@ -2106,9 +2106,6 @@ impl TournamentManager {
     /// Carries lateness across games; a longer scheduled break claws it back down to
     /// the always-enforced minimum break. See
     /// docs/superpowers/specs/2026-06-06-behind-schedule-indicator-design.md.
-    // Read-model consumed by the main-view indicator in a later task of this feature
-    // (the App-Options-gated display); the `#[allow]` is removed once that caller lands.
-    #[allow(dead_code)]
     pub fn behind_schedule(&self, now: Instant) -> Duration {
         if self.current_period == GamePeriod::BetweenGames {
             let (Some(end), Some(sched_next)) =

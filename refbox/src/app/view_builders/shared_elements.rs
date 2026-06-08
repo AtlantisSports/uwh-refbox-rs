@@ -888,6 +888,14 @@ pub(super) fn config_string(
         }
     }
 
+    // Game Block (the start-to-start slot) sits right after the game number and
+    // before the play-length lines.
+    result += &fl!(
+        "game-block-info",
+        game_block = time_string(config.game_block)
+    );
+    result += "\n";
+
     result += &if config.single_half {
         // Single-period game: show "Game Length" and omit the half-time line.
         fl!(

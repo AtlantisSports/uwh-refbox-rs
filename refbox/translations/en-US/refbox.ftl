@@ -71,8 +71,7 @@ track-cap-number-of-scorer = TRACK CAP NUMBER
 event = EVENT:
 track-fouls-and-warnings = TRACK FOULS
     AND WARNINGS
-show-behind-schedule-time = SHOW BEHIND TIME
-    DELAY
+show-behind-schedule-time = SHOW BEHIND TIME/DELAY
 court = COURT:
 single-half = SINGLE
     HALF:

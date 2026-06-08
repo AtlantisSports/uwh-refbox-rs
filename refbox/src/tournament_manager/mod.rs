@@ -895,7 +895,9 @@ impl TournamentManager {
                 info!("Calculated time to next game: {time_to_game}");
 
                 match time_to_game.try_into() {
-                    Ok(dur) => Instant::now() + dur,
+                    // Guard against Instant overflow on an absurd scheduled time;
+                    // fall back to `now` (matching the conversion-error arm below).
+                    Ok(dur) => Instant::now().checked_add(dur).unwrap_or(now),
                     Err(e) => {
                         error!("Failed to calculate time to next game start: {e}");
                         now

@@ -21,6 +21,8 @@
 use super::*;
 use uwh_common::game_snapshot::{PenaltyTime, TimeoutSnapshot};
 
+pub(super) mod scenarios;
+
 // ─── Public types ─────────────────────────────────────────────────────────────
 
 /// Every action a scenario can inject at a given time offset.

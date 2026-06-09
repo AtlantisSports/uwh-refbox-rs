@@ -1,0 +1,419 @@
+//! Golden-trace regression driver for `TournamentManager`.
+//!
+//! This module provides a fixed-step replay driver that runs test scenarios through
+//! `TournamentManager` and emits a deduplicated, state-change-keyed text trace.
+//! The resulting `Vec<String>` can be compared against a saved "golden" file to detect
+//! regressions in the time engine.
+//!
+//! # Design notes
+//!
+//! * Fixed 100 ms step (finding #1 from the feasibility spike): `next_update_time` returns
+//!   `now` on whole-second boundaries and would cause the replay to hang. Dense fixed-step
+//!   ticks are used instead.
+//!
+//! * No timestamp in the trace output (finding #2): lines are keyed on observed state only,
+//!   so the trace is stable even when the step size changes.
+//!
+//! * Fixed-step faithfulness: this driver is faithful as long as `update` recomputes state
+//!   purely from `start_time + elapsed` without accumulating per-call state. If the engine
+//!   ever accumulates per-call state, this driver could diverge from the real app.
+
+use super::*;
+use uwh_common::game_snapshot::{PenaltyTime, TimeoutSnapshot};
+
+// ─── Public types ─────────────────────────────────────────────────────────────
+
+/// Every action a scenario can inject at a given time offset.
+//
+// Several variants are unused by the smoke test but are part of the stable public API
+// of this driver module — Tasks 3+ will exercise them. Suppress the warning here rather
+// than leaving them as `todo!()` stubs.
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+pub(super) enum Action {
+    /// Set the active period and remaining clock time (test-only engine method).
+    SetupPeriod(GamePeriod, Duration),
+    /// Start the game clock (and any active timeout clock).
+    StartClock,
+    /// Stop the game clock.
+    StopClock,
+    /// Record a goal for the given colour (player number 0).
+    AddScore(Color),
+    /// Start a timed penalty for `(color, player_number, kind)`.
+    StartPenalty(Color, u8, PenaltyKind),
+    /// Start a team timeout for the given colour.
+    StartTeamTimeout(Color),
+    /// Start a referee timeout.
+    StartRefTimeout,
+    /// Start a (non-rugby) penalty shot.
+    StartPenaltyShot,
+    /// Start a rugby penalty shot.
+    StartRugbyPenaltyShot,
+    /// End the current timeout and resume play.
+    EndTimeout,
+    /// Manually set the game clock to the given duration (clock must be stopped).
+    SetGameClock(Duration),
+}
+
+/// A single replay scenario.
+pub(super) struct Scenario {
+    /// Human-readable identifier used in assertion messages.
+    pub name: &'static str,
+    /// Game configuration for this scenario.
+    pub config: GameConfig,
+    /// Timed actions: `(offset_secs, action)`.  The list must be sorted by offset ascending.
+    pub actions: &'static [(u64, Action)],
+    /// How many virtual seconds to run before stopping the replay.
+    pub run_secs: u64,
+}
+
+// ─── Driver internals ─────────────────────────────────────────────────────────
+
+/// Attempt to generate a snapshot; if the engine is momentarily unable to produce one
+/// (e.g. it needs an `update` pass first), retry up to 4 times.
+///
+/// This mirrors the retry loop in `app/mod.rs` around line 4186:
+/// ```text
+/// let mut i = 0;
+/// let snapshot = loop {
+///     if i > 4 { panic!("No snapshot"); }
+///     match tm_.generate_snapshot(now) {
+///         Some(val) => break val,
+///         None => { tm_.update(now).unwrap(); i += 1; }
+///     }
+/// };
+/// ```
+fn snapshot_with_retry(tm: &mut TournamentManager, now: Instant) -> GameSnapshot {
+    let mut i = 0;
+    loop {
+        assert!(
+            i <= 4,
+            "no snapshot after 5 attempts (mirrors the panic path in app/mod.rs)"
+        );
+        match tm.generate_snapshot(now) {
+            Some(s) => return s,
+            None => {
+                tm.update(now).unwrap();
+                i += 1;
+            }
+        }
+    }
+}
+
+/// One tick of the game loop, mirroring the per-frame tick in `app/mod.rs` (≈ lines 4174-4183):
+/// ```text
+/// if tm_.could_end_game(now).unwrap() {
+///     tm_.pause_for_confirm(now).unwrap();
+/// } else if tm_.pause_has_ended(now) {
+///     tm_.end_confirm_pause(now).unwrap();
+/// } else {
+///     tm_.update(now).unwrap();
+/// }
+/// ```
+/// Unlike the spike this function does NOT call or return `next_update_time`.
+fn tick(tm: &mut TournamentManager, now: Instant) {
+    if tm.could_end_game(now).unwrap() {
+        tm.pause_for_confirm(now).unwrap();
+    } else if tm.pause_has_ended(now) {
+        tm.end_confirm_pause(now).unwrap();
+    } else {
+        tm.update(now).unwrap();
+    }
+}
+
+// ─── KNOWN COUPLING POINT ────────────────────────────────────────────────────
+//
+// `apply_action` is a hand-copy of the real action handlers in `app/mod.rs`.
+// If any handler in that file ever changes which `TournamentManager` methods it calls
+// (argument list, call order, extra follow-up calls, etc.), the corresponding arm below
+// MUST be updated in lockstep or the golden traces will silently stop reflecting the
+// real application.
+//
+// Cross-reference targets in `app/mod.rs` (as of master at the time this was written):
+//   StartClock      → Message::StartPlayNow / manual start_clock call
+//   StopClock       → Message::EditTime  (stop_clock + clock_is_running check)
+//   AddScore        → Message::AddNewScore  (add_score(color, 0, now); no score-confirm path)
+//   StartPenalty    → penalty_editor.rs add_to_tm → tm.start_penalty(...)
+//   StartTeamTimeout→ Message::TeamTimeout  (start_team_timeout)
+//   StartRefTimeout → Message::RefTimeout   (start_ref_timeout)
+//   StartPenaltyShot→ Message::PenaltyShot  (start_penalty_shot, UWH mode)
+//   StartRugbyPenaltyShot → Message::PenaltyShot (start_rugby_penalty_shot, Rugby mode)
+//   EndTimeout      → Message::EndTimeout   (end_timeout + update; no game-ending branch here)
+//   SetGameClock    → Message::TimeEditComplete (set_game_clock_time)
+//   SetupPeriod     → test-only; no real handler (uses pub(super) test method)
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn apply_action(
+    tm: &mut TournamentManager,
+    action: Action,
+    now: Instant,
+    clock_running: &mut bool,
+) {
+    match action {
+        Action::SetupPeriod(period, clock_time) => {
+            tm.set_period_and_game_clock_time(period, clock_time);
+        }
+        Action::StartClock => {
+            tm.start_clock(now);
+            *clock_running = true;
+        }
+        Action::StopClock => {
+            tm.stop_clock(now).unwrap();
+            *clock_running = false;
+        }
+        Action::AddScore(color) => {
+            // Mirrors Message::AddNewScore without the collect_scorer_cap_num path
+            // and without the SuddenDeath confirm path (use StartClock/StopClock around
+            // SD goals if a scenario needs to trigger the confirm flow manually).
+            tm.add_score(color, 0, now);
+        }
+        Action::StartPenalty(color, player_number, kind) => {
+            // Mirrors penalty_editor.rs add_to_tm (Infraction::Unknown is the
+            // default when no specific infraction is tracked).
+            tm.start_penalty(color, player_number, kind, now, Infraction::Unknown)
+                .unwrap();
+        }
+        Action::StartTeamTimeout(color) => {
+            // Mirrors Message::TeamTimeout { switch: false }
+            tm.start_team_timeout(color, now).unwrap();
+            *clock_running = false;
+        }
+        Action::StartRefTimeout => {
+            // Mirrors Message::RefTimeout { switch: false }
+            tm.start_ref_timeout(now).unwrap();
+            *clock_running = false;
+        }
+        Action::StartPenaltyShot => {
+            // Mirrors Message::PenaltyShot { switch: false } in UWH mode
+            tm.start_penalty_shot(now).unwrap();
+            *clock_running = false;
+        }
+        Action::StartRugbyPenaltyShot => {
+            // Mirrors Message::PenaltyShot { switch: false } in Rugby mode
+            tm.start_rugby_penalty_shot(now).unwrap();
+            *clock_running = false;
+        }
+        Action::EndTimeout => {
+            // Mirrors Message::EndTimeout (non-game-ending branch only):
+            //   tm.end_timeout(now).unwrap();
+            //   tm.update(now).unwrap();
+            // The game-ending branch (halt_clock) is not implemented here;
+            // scenarios that need to end the game during a timeout should use
+            // StopClock + the normal confirm flow.
+            tm.end_timeout(now).unwrap();
+            tm.update(now).unwrap();
+            *clock_running = true;
+        }
+        Action::SetGameClock(duration) => {
+            // Mirrors Message::TimeEditComplete (clock must already be stopped)
+            tm.set_game_clock_time(duration).unwrap();
+        }
+    }
+}
+
+/// Render a `GameSnapshot` as a single-line state string with no timestamp.
+///
+/// Format: `period=<P> | clock=<secs>s | timeout=<...> | pens=[<...>]`
+///
+/// Penalties are sorted by (remaining desc, color asc, player# asc) so the
+/// order is stable and human-readable.
+fn render(snap: &GameSnapshot) -> String {
+    let period = format!("{:?}", snap.current_period);
+
+    let timeout = match snap.timeout {
+        None => "none".to_string(),
+        Some(TimeoutSnapshot::Black(s)) => format!("Black:{s}s"),
+        Some(TimeoutSnapshot::White(s)) => format!("White:{s}s"),
+        Some(TimeoutSnapshot::Ref(s)) => format!("Ref:{s}s"),
+        Some(TimeoutSnapshot::PenaltyShot(s)) => format!("PenaltyShot:{s}s"),
+    };
+
+    let mut pens: Vec<(i64, char, u8, String)> = Vec::new();
+    for (color, list) in snap.penalties.iter() {
+        let cchar = match color {
+            Color::Black => 'B',
+            Color::White => 'W',
+        };
+        for p in list {
+            let (sortkey, disp) = match p.time {
+                PenaltyTime::Seconds(n) => (n as i64, format!("{n}")),
+                PenaltyTime::TotalDismissal => (i64::MAX, "TD".to_string()),
+            };
+            pens.push((
+                sortkey,
+                cchar,
+                p.player_number,
+                format!("{cchar}#{}:{disp}", p.player_number),
+            ));
+        }
+    }
+    // Sort: remaining descending, then color ascending (B before W), then player# ascending.
+    pens.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
+    let pens_str = pens
+        .iter()
+        .map(|x| x.3.clone())
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    format!(
+        "period={period:<13} | clock={:>3}s | timeout={timeout:<12} | pens=[{pens_str}]",
+        snap.secs_in_period
+    )
+}
+
+/// Run a scenario through `TournamentManager` and return the deduplicated state trace.
+///
+/// The trace contains one entry per observed state *change*; unchanged consecutive states
+/// are collapsed into the previous entry. There is no timestamp column.
+///
+/// # Fixed-step loop
+///
+/// ```text
+/// const STEP: Duration = Duration::from_millis(100);
+/// ```
+///
+/// The step is 100 ms (finding #1 from the spike). At each step:
+/// 1. Apply any `Scenario::actions` whose offset falls within `(prev_elapsed, elapsed]`.
+///    Record the new state immediately after each action if it changed.
+/// 2. If the clock is running, call `tick()` and record if the state changed.
+pub(super) fn run(scenario: &Scenario) -> Vec<String> {
+    const STEP: Duration = Duration::from_millis(100);
+    // NOTE: fixed-step is faithful only while `update` is idempotent w.r.t. call
+    // frequency (it recomputes state from start_time+elapsed). If the engine ever
+    // accumulates per-call state, this driver could diverge from the real app.
+
+    let mut tm = TournamentManager::new(scenario.config.clone());
+    let base = Instant::now();
+    let mut clock_running = false;
+    let mut trace: Vec<String> = Vec::new();
+    let mut last: Option<String> = None;
+
+    // Helper: push render(snapshot) onto trace iff it differs from the last entry.
+    macro_rules! record {
+        ($now:expr) => {{
+            let snap = snapshot_with_retry(&mut tm, $now);
+            let line = render(&snap);
+            if last.as_deref() != Some(&line) {
+                trace.push(line.clone());
+                last = Some(line);
+            }
+        }};
+    }
+
+    // Apply setup actions: any action at offset 0 is treated as a setup step.
+    // These run before the main loop, at virtual time t=base.
+    let mut action_index = 0;
+    while action_index < scenario.actions.len() && scenario.actions[action_index].0 == 0 {
+        let (_, action) = scenario.actions[action_index];
+        apply_action(&mut tm, action, base, &mut clock_running);
+        action_index += 1;
+    }
+    record!(base);
+
+    // Main loop: advance virtual time from STEP to run_secs inclusive.
+    let end = Duration::from_secs(scenario.run_secs);
+    let mut elapsed = Duration::ZERO;
+
+    while elapsed < end {
+        elapsed = (elapsed + STEP).min(end);
+        let now = base + elapsed;
+
+        // Apply all actions whose offset falls within the current step window.
+        while action_index < scenario.actions.len() {
+            let (offset_secs, action) = scenario.actions[action_index];
+            let action_at = Duration::from_secs(offset_secs);
+            if action_at > elapsed {
+                break;
+            }
+            // Actions at exactly their offset instant, not at `now`.
+            let action_now = base + action_at;
+            // If we overshot (action_at > prev_elapsed already ensured), fine.
+            apply_action(&mut tm, action, action_now, &mut clock_running);
+            record!(action_now);
+            action_index += 1;
+        }
+
+        // Tick the engine at the step boundary if the clock is running.
+        if clock_running {
+            tick(&mut tm, now);
+            record!(now);
+        }
+    }
+
+    trace
+}
+
+// ─── Smoke test ───────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The spike scenario: FirstHalf 40 s, penalty B#7 @2 s, stop@15/start@18, run 55 s.
+    ///
+    /// Assertions:
+    ///   1. Two consecutive runs produce identical traces (determinism).
+    ///   2. The trace contains a `HalfTime` line (the period transition fired).
+    ///   3. The trace contains a fully-counted-down B#7 penalty (`B#7:0`).
+    #[test]
+    fn smoke_test_spike_scenario() {
+        static ACTIONS: &[(u64, Action)] = &[
+            (
+                0,
+                Action::SetupPeriod(GamePeriod::FirstHalf, Duration::from_secs(40)),
+            ),
+            (0, Action::StartClock),
+            (
+                2,
+                Action::StartPenalty(Color::Black, 7, PenaltyKind::ThirtySecond),
+            ),
+            (15, Action::StopClock),
+            (18, Action::StartClock),
+        ];
+
+        let scenario = Scenario {
+            name: "spike-scenario",
+            config: GameConfig {
+                half_play_duration: Duration::from_secs(40),
+                half_time_duration: Duration::from_secs(10),
+                overtime_allowed: false,
+                sudden_death_allowed: false,
+                ..Default::default()
+            },
+            actions: ACTIONS,
+            run_secs: 55,
+        };
+
+        let trace1 = run(&scenario);
+        let trace2 = run(&scenario);
+
+        println!("=== Golden trace for '{}' ===", scenario.name);
+        for (i, line) in trace1.iter().enumerate() {
+            println!("{i:>3}: {line}");
+        }
+
+        // 1. Determinism: two runs must be identical.
+        assert_eq!(
+            trace1, trace2,
+            "golden trace is non-deterministic for scenario '{}'",
+            scenario.name
+        );
+
+        // 2. HalfTime must appear in the trace.
+        assert!(
+            trace1.iter().any(|l| l.contains("HalfTime")),
+            "expected 'HalfTime' in trace for scenario '{}', got:\n{}",
+            scenario.name,
+            trace1.join("\n")
+        );
+
+        // 3. B#7 penalty must reach 0 seconds remaining.
+        assert!(
+            trace1.iter().any(|l| l.contains("B#7:0")),
+            "expected 'B#7:0' in trace for scenario '{}', got:\n{}",
+            scenario.name,
+            trace1.join("\n")
+        );
+    }
+}

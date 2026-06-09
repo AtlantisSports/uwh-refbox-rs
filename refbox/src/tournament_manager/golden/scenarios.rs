@@ -498,6 +498,21 @@ static SUDDEN_DEATH_NO_OVERTIME_ACTIONS: &[(u64, Action)] = &[
     (0, StartClock),
 ];
 
+// Manual clock edit that rewinds the clock to before a running penalty started,
+// so the penalty's remaining time exceeds its full duration and the rebase branch
+// in set_game_clock_time fires (resetting the penalty's start to the edited clock).
+static MANUAL_CLOCK_EDIT_REWINDS_PENALTY_ACTIONS: &[(u64, Action)] = &[
+    (
+        0,
+        SetupPeriod(GamePeriod::FirstHalf, Duration::from_secs(20)),
+    ),
+    (0, StartClock),
+    (2, StartPenalty(Color::Black, 7, PenaltyKind::OneMinute)), // starts at clock=18s
+    (5, StopClock),                                             // clock=15s
+    (5, SetGameClock(Duration::from_secs(19))),                 // rewind to before penalty start
+    (6, StartClock),
+];
+
 // ── Public entry point ────────────────────────────────────────────────────────
 
 /// Return every scenario in the library.
@@ -792,6 +807,12 @@ pub(super) fn all() -> Vec<Scenario> {
             },
             actions: SUDDEN_DEATH_NO_OVERTIME_ACTIONS,
             run_secs: 18, // SecondHalf 5s + conf_pause ~2.5s + PreSuddenDeath 5s + into SuddenDeath
+        },
+        Scenario {
+            name: "manual_clock_edit_rewinds_penalty",
+            config: reg_config(), // FirstHalf 20s
+            actions: MANUAL_CLOCK_EDIT_REWINDS_PENALTY_ACTIONS,
+            run_secs: 25,
         },
     ]
 }

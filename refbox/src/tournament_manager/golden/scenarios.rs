@@ -513,6 +513,65 @@ static MANUAL_CLOCK_EDIT_REWINDS_PENALTY_ACTIONS: &[(u64, Action)] = &[
     (6, StartClock),
 ];
 
+// Team timeout left to expire on the clock (no EndTimeout): update() ends it and
+// resumes the game clock. Exercises the natural team-timeout-expiry path in update.
+static TEAM_TIMEOUT_EXPIRES_ACTIONS: &[(u64, Action)] = &[
+    (
+        0,
+        SetupPeriod(GamePeriod::FirstHalf, Duration::from_secs(20)),
+    ),
+    (0, StartClock),
+    (3, StartTeamTimeout(Color::Black)), // game clock stops at 17s; timeout 15s expires at t=18
+];
+
+// Rugby penalty shot still running when the period clock hits 0: the half is
+// extended (game clock stops at 0), and ending the shot then drives the period
+// transition through handle_rugby_pen_shot_end with the clock STOPPED -- the only
+// path that reaches update:1348 and the clock-stopped block (1443/1478). No EndTimeout.
+static RUGBY_PENALTY_SHOT_EXPIRES_ACTIONS: &[(u64, Action)] = &[
+    (
+        0,
+        SetupPeriod(GamePeriod::FirstHalf, Duration::from_secs(5)),
+    ),
+    (0, StartClock),
+    (1, StartRugbyPenaltyShot), // 15s shot; half clock hits 0 at t=5 -> extended; shot ends ~t=16
+];
+
+// Single-half game that ends tied and continues to overtime: exercises the
+// single_half branch of end_first_half (-> PreOvertime, not game end).
+static SINGLE_HALF_TO_OVERTIME_ACTIONS: &[(u64, Action)] = &[
+    (
+        0,
+        SetupPeriod(GamePeriod::FirstHalf, Duration::from_secs(10)),
+    ),
+    (0, StartClock),
+];
+
+// Single-half game DECIDED by a score (overtime enabled but not needed): the half
+// ends with a winner -> end_game. With a non-tie score, are_not_equal() is true so
+// the `||` short-circuits, distinguishing it from `&&`: this is the config that
+// exercises the second clause of end_first_half's single_half branch (1368).
+static SINGLE_HALF_DECIDED_ACTIONS: &[(u64, Action)] = &[
+    (
+        0,
+        SetupPeriod(GamePeriod::FirstHalf, Duration::from_secs(10)),
+    ),
+    (0, StartClock),
+    (3, AddScore(Color::Black)), // 1-0: decided, so the single half ends the game
+];
+
+// Single-half game that ends in a DRAW with no overtime/sudden-death configured:
+// the half ends the game directly. With a tie (are_not_equal() false), the second
+// clause of end_first_half's single_half branch decides the outcome, so flipping the
+// sudden-death term (1368) changes BetweenGames -> PreSuddenDeath (observable).
+static SINGLE_HALF_DRAWN_ACTIONS: &[(u64, Action)] = &[
+    (
+        0,
+        SetupPeriod(GamePeriod::FirstHalf, Duration::from_secs(10)),
+    ),
+    (0, StartClock),
+];
+
 // ── Public entry point ────────────────────────────────────────────────────────
 
 /// Return every scenario in the library.
@@ -813,6 +872,51 @@ pub(super) fn all() -> Vec<Scenario> {
             config: reg_config(), // FirstHalf 20s
             actions: MANUAL_CLOCK_EDIT_REWINDS_PENALTY_ACTIONS,
             run_secs: 25,
+        },
+        Scenario {
+            name: "team_timeout_expires",
+            config: reg_config(), // team_timeout_duration=15s, FirstHalf 20s
+            actions: TEAM_TIMEOUT_EXPIRES_ACTIONS,
+            run_secs: 25,
+        },
+        Scenario {
+            name: "rugby_penalty_shot_expires",
+            config: reg_config(), // penalty_shot_duration=15s; FirstHalf set to 5s so the shot extends it
+            actions: RUGBY_PENALTY_SHOT_EXPIRES_ACTIONS,
+            run_secs: 28, // shot ends ~t=16 -> HalfTime 8s -> into SecondHalf
+        },
+        Scenario {
+            name: "single_half_to_overtime",
+            config: GameConfig {
+                single_half: true,
+                overtime_allowed: true,
+                sudden_death_allowed: false,
+                ..reg_config()
+            },
+            actions: SINGLE_HALF_TO_OVERTIME_ACTIONS,
+            run_secs: 25,
+        },
+        Scenario {
+            name: "single_half_decided",
+            config: GameConfig {
+                single_half: true,
+                overtime_allowed: true,
+                sudden_death_allowed: false,
+                ..reg_config()
+            },
+            actions: SINGLE_HALF_DECIDED_ACTIONS,
+            run_secs: 20,
+        },
+        Scenario {
+            name: "single_half_drawn",
+            config: GameConfig {
+                single_half: true,
+                overtime_allowed: false,
+                sudden_death_allowed: false,
+                ..reg_config()
+            },
+            actions: SINGLE_HALF_DRAWN_ACTIONS,
+            run_secs: 20,
         },
     ]
 }

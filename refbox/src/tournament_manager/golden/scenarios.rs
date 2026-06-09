@@ -17,8 +17,9 @@ use uwh_common::{color::Color, config::Game as GameConfig, game_snapshot::GamePe
 
 use crate::tournament_manager::{
     golden::Action::{
-        AddScore, EndTimeout, SetGameClock, SetupPeriod, StartClock, StartPenalty,
-        StartPenaltyShot, StartRefTimeout, StartRugbyPenaltyShot, StartTeamTimeout, StopClock,
+        AddScore, ConfirmScore, EndTimeout, ScoreSuddenDeath, SetGameClock, SetupPeriod,
+        StartClock, StartPenalty, StartPenaltyShot, StartRefTimeout, StartRugbyPenaltyShot,
+        StartTeamTimeout, StopClock,
     },
     penalty::PenaltyKind,
 };
@@ -231,16 +232,28 @@ static OVERTIME_FULL_ACTIONS: &[(u64, Action)] = &[
 ];
 
 // 16. sudden_death — 0-0 through all of overtime → PreSuddenDeath → SuddenDeath;
-//     AddScore ends the game.  Starts at OvertimeSecondHalf 5 s remaining.
+//     score during SuddenDeath triggers the confirm-pause gate before ending the game.
+//     Starts at OvertimeSecondHalf 5 s remaining.
+//
+//     The SD confirm-pause window = minimum_break / 2.  minimum_break is set to 20 s
+//     here so the window is 10 s — wide enough for the ScoreSuddenDeath→ConfirmScore
+//     gap (t=15 → t=17, 2 s) to always land inside it and exercise the manual path.
+//
+//     Expected trace:
+//       OvertimeSecondHalf count-down → PreSuddenDeath break → SuddenDeath count-up
+//       → conf_pause=Ns appears (ScoreSuddenDeath fires pause_for_confirm)
+//       → ConfirmScore applies score + ends pause → BetweenGames
 static SUDDEN_DEATH_ACTIONS: &[(u64, Action)] = &[
     (
         0,
         SetupPeriod(GamePeriod::OvertimeSecondHalf, Duration::from_secs(5)),
     ),
     (0, StartClock),
-    // After ~5 s we'll be in PreSuddenDeath, then SuddenDeath starts (count-up).
-    // Add a goal at t=15 (well into SuddenDeath) to end the game.
-    (15, AddScore(Color::Black)),
+    // At ~t=5 we enter PreSuddenDeath (5 s break), then SuddenDeath starts (count-up).
+    // ScoreSuddenDeath at t=15: calls pause_for_confirm; score held, not yet applied.
+    // ConfirmScore at t=17: applies held score + ends pause → BetweenGames.
+    (15, ScoreSuddenDeath(Color::Black)),
+    (17, ConfirmScore(Color::Black)),
 ];
 
 // 17. overtime_score_ends — a score during OvertimeSecondHalf breaks the tie
@@ -308,13 +321,13 @@ pub(super) fn all() -> Vec<Scenario> {
             name: "regulation_full",
             config: reg_config(),
             actions: REGULATION_FULL_ACTIONS,
-            run_secs: 50, // FirstHalf 20s + HalfTime 8s + SecondHalf (partial)
+            run_secs: 55, // FirstHalf 20s + HalfTime 8s + SecondHalf 20s + conf_pause 3s + margin
         },
         Scenario {
             name: "regulation_with_scores",
             config: reg_config(),
             actions: REGULATION_WITH_SCORES_ACTIONS,
-            run_secs: 50,
+            run_secs: 55, // same timing as regulation_full; scores don't change period transitions
         },
         // ── Family 2 — Penalties over time ───────────────────────────────────
         Scenario {
@@ -431,10 +444,14 @@ pub(super) fn all() -> Vec<Scenario> {
                 ot_half_play_duration: Duration::from_secs(10),
                 ot_half_time_duration: Duration::from_secs(5),
                 pre_sudden_death_duration: Duration::from_secs(5),
+                // minimum_break=20 s → SD confirm-pause window = 20/2 = 10 s.
+                // This ensures ScoreSuddenDeath (t=15) → ConfirmScore (t=17) lands
+                // inside the window and exercises the manual confirm path.
+                minimum_break: Duration::from_secs(20),
                 ..reg_config()
             },
             actions: SUDDEN_DEATH_ACTIONS,
-            run_secs: 30,
+            run_secs: 35,
         },
         Scenario {
             name: "overtime_score_ends",

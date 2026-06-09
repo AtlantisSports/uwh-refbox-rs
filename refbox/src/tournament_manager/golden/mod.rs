@@ -344,6 +344,106 @@ pub(super) fn run(scenario: &Scenario) -> Vec<String> {
     trace
 }
 
+// ─── Golden file harness ──────────────────────────────────────────────────────
+//
+// These functions are only compiled in test builds. They are defined here
+// (not inside the `tests` module) so that Task 4 integration tests can call
+// them via `super::golden_path(...)` / `super::check_or_bless(...)` without
+// re-exporting from the `tests` module.
+
+#[cfg(test)]
+fn golden_path(name: &str) -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src/tournament_manager/golden_traces")
+        .join(format!("{name}.trace"))
+}
+
+/// Compare `trace` against the saved golden file for `name`, or bless it.
+///
+/// * `bless = true`  — create the directory if needed, write the file, return `Ok(())`.
+/// * `bless = false` — read the file; missing → `Err`; mismatch → `Err` with a diff.
+///
+/// Callers that want to honour the `UPDATE_GOLDEN` env var should pass
+/// `bless: std::env::var("UPDATE_GOLDEN").is_ok()`.  The parameter is
+/// explicit so that unit tests can control bless mode without touching the
+/// process-global env var (which is unsafe in Rust 2024 and inherently racy
+/// under parallel test execution).
+#[cfg(test)]
+fn check_or_bless(name: &str, trace: &[String], bless: bool) -> std::result::Result<(), String> {
+    let path = golden_path(name);
+
+    if bless {
+        // Create the directory if it doesn't exist yet.
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)
+                .map_err(|e| format!("failed to create golden_traces dir: {e}"))?;
+        }
+        // Write the trace, one line per entry, with a trailing newline.
+        let content = format!("{}\n", trace.join("\n"));
+        std::fs::write(&path, content)
+            .map_err(|e| format!("failed to write golden file '{}': {e}", path.display()))?;
+        return Ok(());
+    }
+
+    // Compare mode: read the file.
+    let raw = std::fs::read_to_string(&path).map_err(|_| {
+        format!(
+            "no golden file for scenario '{name}' at '{}'; \
+             re-run with UPDATE_GOLDEN=1 to create it",
+            path.display()
+        )
+    })?;
+
+    // Split into lines and strip the single trailing empty line introduced by the
+    // trailing '\n' we wrote during bless.
+    let mut expected: Vec<&str> = raw.lines().collect();
+    if expected.last() == Some(&"") {
+        expected.pop();
+    }
+
+    // Line-by-line comparison.
+    let actual: Vec<&str> = trace.iter().map(String::as_str).collect();
+
+    if expected == actual {
+        return Ok(());
+    }
+
+    // Build a human-readable diff string.
+    const MAX_SHOWN: usize = 10;
+    let mut diff = format!(
+        "golden trace mismatch for scenario '{name}':\n  \
+         expected {} lines, got {} lines\n",
+        expected.len(),
+        actual.len()
+    );
+
+    let max_len = expected.len().max(actual.len());
+    let mut shown = 0;
+    let mut extra = 0;
+    for i in 0..max_len {
+        let exp = expected.get(i).copied().unwrap_or("<missing>");
+        let act = actual.get(i).copied().unwrap_or("<missing>");
+        if exp != act {
+            if shown < MAX_SHOWN {
+                diff.push_str(&format!(
+                    "  line {}:\n    - {}\n    + {}\n",
+                    i + 1,
+                    exp,
+                    act
+                ));
+                shown += 1;
+            } else {
+                extra += 1;
+            }
+        }
+    }
+    if extra > 0 {
+        diff.push_str(&format!("  ... and {extra} more differences\n"));
+    }
+
+    Err(diff)
+}
+
 // ─── Smoke test ───────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -415,5 +515,59 @@ mod tests {
             scenario.name,
             trace1.join("\n")
         );
+    }
+
+    /// Self-test for the golden file read/write/compare harness.
+    ///
+    /// Uses a unique synthetic scenario name (`__harness_selftest__`) to avoid
+    /// colliding with real golden files.  The bless/compare cycle is driven by
+    /// explicit `bless: bool` parameters so that no process-global env var is
+    /// touched and the test is safe to run in parallel with other tests.
+    ///
+    /// Steps:
+    ///   1. Remove any leftover temp file from a previous run.
+    ///   2. Bless (write) a small synthetic trace.
+    ///   3. Confirm read-back matches exactly → `Ok(())`.
+    ///   4. Confirm a modified trace is detected as a mismatch → `Err(...)`.
+    ///   5. Clean up the temp file.
+    #[test]
+    fn harness_selftest() {
+        let name = "__harness_selftest__";
+        let path = golden_path(name);
+
+        // Step 1: Remove any leftover from a prior run so bless always starts fresh.
+        let _ = std::fs::remove_file(&path);
+
+        // Step 2: Bless a small synthetic trace.
+        let synthetic: Vec<String> = vec![
+            "period=FirstHalf     | clock= 40s | timeout=none         | pens=[]".to_string(),
+            "period=FirstHalf     | clock= 30s | timeout=none         | pens=[]".to_string(),
+            "period=HalfTime      | clock= 10s | timeout=none         | pens=[]".to_string(),
+        ];
+        check_or_bless(name, &synthetic, true).expect("bless should succeed");
+
+        // The file must now exist.
+        assert!(path.exists(), "golden file should exist after bless");
+
+        // Step 3: Read-back must match exactly.
+        check_or_bless(name, &synthetic, false).expect("compare after bless should return Ok(())");
+
+        // Step 4: A modified trace must produce a meaningful Err.
+        let mut modified = synthetic.clone();
+        modified[1] =
+            "period=FirstHalf     | clock= 25s | timeout=none         | pens=[]".to_string();
+        let err = check_or_bless(name, &modified, false)
+            .expect_err("compare of modified trace should return Err");
+        assert!(
+            err.contains("__harness_selftest__"),
+            "error message should name the scenario; got: {err}"
+        );
+        assert!(
+            err.contains("line 2"),
+            "error message should identify the first differing line; got: {err}"
+        );
+
+        // Step 5: Clean up.
+        let _ = std::fs::remove_file(&path);
     }
 }

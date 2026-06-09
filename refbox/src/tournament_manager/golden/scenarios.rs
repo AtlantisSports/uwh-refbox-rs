@@ -483,6 +483,21 @@ static ACTIONS_AT_EXACT_TRANSITION_INSTANT_ACTIONS: &[(u64, Action)] = &[
     (30, EndTimeout),
 ];
 
+// ── Family 9 — mutation-coverage gaps (follow-up A) ──────────────────────────
+// Each scenario here closes a gap the cargo-mutants validation found: a path the
+// original 30 scenarios never exercised, so a mutation there survived. See
+// docs/superpowers/specs/2026-06-09-golden-trace-missing-scenarios-design.md.
+
+// Sudden death reached directly from regulation (overtime disabled). Exercises the
+// SecondHalf -> PreSuddenDeath confirm-pause branch (pause_for_confirm SD arm).
+static SUDDEN_DEATH_NO_OVERTIME_ACTIONS: &[(u64, Action)] = &[
+    (
+        0,
+        SetupPeriod(GamePeriod::SecondHalf, Duration::from_secs(5)),
+    ),
+    (0, StartClock),
+];
+
 // ── Public entry point ────────────────────────────────────────────────────────
 
 /// Return every scenario in the library.
@@ -766,6 +781,17 @@ pub(super) fn all() -> Vec<Scenario> {
             config: reg_config(), // half=20s
             actions: ACTIONS_AT_EXACT_TRANSITION_INSTANT_ACTIONS,
             run_secs: 60,
+        },
+        // ── Family 9 — mutation-coverage gaps (follow-up A) ──────────────────
+        Scenario {
+            name: "sudden_death_no_overtime",
+            config: GameConfig {
+                overtime_allowed: false,
+                sudden_death_allowed: true,
+                ..reg_config()
+            },
+            actions: SUDDEN_DEATH_NO_OVERTIME_ACTIONS,
+            run_secs: 18, // SecondHalf 5s + conf_pause ~2.5s + PreSuddenDeath 5s + into SuddenDeath
         },
     ]
 }

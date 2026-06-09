@@ -40,7 +40,23 @@ pub(super) enum Action {
     /// Stop the game clock.
     StopClock,
     /// Record a goal for the given colour (player number 0).
+    ///
+    /// Mirrors `Message::AddNewScore` in the non-SuddenDeath path: calls
+    /// `tm.add_score(color, 0, now)` directly.  Do NOT use this variant in
+    /// SuddenDeath — use [`Action::ScoreSuddenDeath`] + [`Action::ConfirmScore`] instead.
     AddScore(Color),
+    /// Mirror the SuddenDeath score-entry in `app/mod.rs` (AddScoreComplete, SD branch):
+    ///   the held score is incremented locally, then `tm.pause_for_confirm(now)` is called.
+    ///   The engine score is NOT changed yet; the increment is conceptually held by the
+    ///   operator until `ConfirmScore` fires.
+    ///
+    /// Cross-reference: `app/mod.rs` ~line 2048–2053.
+    ScoreSuddenDeath(Color),
+    /// Mirror the operator confirming a SuddenDeath score (`Message::ScoreConfirmation { correct: true }`):
+    ///   recomputes the held score, calls `tm.set_scores(held, now)` then `tm.end_confirm_pause(now)`.
+    ///
+    /// Cross-reference: `app/mod.rs` ~line 2907–2911.
+    ConfirmScore(Color),
     /// Start a timed penalty for `(color, player_number, kind)`.
     StartPenalty(Color, u8, PenaltyKind),
     /// Start a team timeout for the given colour.
@@ -132,43 +148,64 @@ fn tick(tm: &mut TournamentManager, now: Instant) {
 // real application.
 //
 // Cross-reference targets in `app/mod.rs` (as of master at the time this was written):
-//   StartClock      → Message::StartPlayNow / manual start_clock call
-//   StopClock       → Message::EditTime  (stop_clock + clock_is_running check)
-//   AddScore        → Message::AddNewScore  (add_score(color, 0, now); no score-confirm path)
-//   StartPenalty    → penalty_editor.rs add_to_tm → tm.start_penalty(...)
-//   StartTeamTimeout→ Message::TeamTimeout  (start_team_timeout)
-//   StartRefTimeout → Message::RefTimeout   (start_ref_timeout)
-//   StartPenaltyShot→ Message::PenaltyShot  (start_penalty_shot, UWH mode)
-//   StartRugbyPenaltyShot → Message::PenaltyShot (start_rugby_penalty_shot, Rugby mode)
-//   EndTimeout      → Message::EndTimeout   (end_timeout + update; no game-ending branch here)
-//   SetGameClock    → Message::TimeEditComplete (set_game_clock_time)
-//   SetupPeriod     → test-only; no real handler (uses pub(super) test method)
+//   StartClock           → Message::StartPlayNow / manual start_clock call
+//   StopClock            → Message::EditTime  (stop_clock + clock_is_running check)
+//   AddScore             → Message::AddNewScore  (add_score(color, 0, now); non-SD path)
+//   ScoreSuddenDeath     → Message::AddScoreComplete SD branch (~line 2048–2053):
+//                          hold score locally, pause_for_confirm(now)
+//   ConfirmScore         → Message::ScoreConfirmation { correct: true } (~line 2907–2911):
+//                          set_scores(held, now) + end_confirm_pause(now)
+//   StartPenalty         → penalty_editor.rs add_to_tm → tm.start_penalty(...)
+//   StartTeamTimeout     → Message::TeamTimeout  (start_team_timeout)
+//   StartRefTimeout      → Message::RefTimeout   (start_ref_timeout)
+//   StartPenaltyShot     → Message::PenaltyShot  (start_penalty_shot, UWH mode)
+//   StartRugbyPenaltyShot→ Message::PenaltyShot  (start_rugby_penalty_shot, Rugby mode)
+//   EndTimeout           → Message::EndTimeout   (end_timeout + update; no game-ending branch here)
+//   SetGameClock         → Message::TimeEditComplete (set_game_clock_time)
+//   SetupPeriod          → test-only; no real handler (uses pub(super) test method)
+//
+// CLOCK-LATCH COUPLING: the tick decision in `run()` reads the engine's start/stop watch
+// channel via `tm.get_start_stop_rx()`, exactly as the real `time_updater` loop in
+// `app/mod.rs` (~line 4132–4165) does.  `apply_action` does NOT maintain any separate
+// `clock_running` bool; the engine owns that state and broadcasts it via the latch.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 
-fn apply_action(
-    tm: &mut TournamentManager,
-    action: Action,
-    now: Instant,
-    clock_running: &mut bool,
-) {
+fn apply_action(tm: &mut TournamentManager, action: Action, now: Instant) {
     match action {
         Action::SetupPeriod(period, clock_time) => {
             tm.set_period_and_game_clock_time(period, clock_time);
         }
         Action::StartClock => {
             tm.start_clock(now);
-            *clock_running = true;
         }
         Action::StopClock => {
             tm.stop_clock(now).unwrap();
-            *clock_running = false;
         }
         Action::AddScore(color) => {
-            // Mirrors Message::AddNewScore without the collect_scorer_cap_num path
-            // and without the SuddenDeath confirm path (use StartClock/StopClock around
-            // SD goals if a scenario needs to trigger the confirm flow manually).
+            // Mirrors Message::AddNewScore without the collect_scorer_cap_num path.
+            // Non-SuddenDeath path only — use ScoreSuddenDeath + ConfirmScore for SD goals.
             tm.add_score(color, 0, now);
+        }
+        Action::ScoreSuddenDeath(color) => {
+            // Mirrors app/mod.rs AddScoreComplete SD branch (~line 2048–2053):
+            // the new score is held locally (not yet sent to the engine); the engine
+            // is told to enter a confirmation pause so the operator can verify.
+            let mut s = tm.get_scores();
+            s[color] = s[color].saturating_add(1);
+            // NOTE: `s` is the held score — do NOT call tm.set_scores here.
+            // The held value is stored implicitly; ConfirmScore recomputes it.
+            let _ = s; // suppress unused-variable warning; ConfirmScore will recompute
+            tm.pause_for_confirm(now).unwrap();
+        }
+        Action::ConfirmScore(color) => {
+            // Mirrors app/mod.rs ScoreConfirmation { correct: true } (~line 2907–2911):
+            // recompute the held score (same increment as ScoreSuddenDeath), apply it
+            // to the engine, then end the confirmation pause.
+            let mut s = tm.get_scores();
+            s[color] = s[color].saturating_add(1);
+            tm.set_scores(s, now);
+            tm.end_confirm_pause(now).unwrap();
         }
         Action::StartPenalty(color, player_number, kind) => {
             // Mirrors penalty_editor.rs add_to_tm (Infraction::Unknown is the
@@ -177,24 +214,26 @@ fn apply_action(
                 .unwrap();
         }
         Action::StartTeamTimeout(color) => {
-            // Mirrors Message::TeamTimeout { switch: false }
+            // Mirrors Message::TeamTimeout { switch: false }.
+            // Does NOT touch the latch — the engine's start_team_timeout does not
+            // call send_clock_running, so the latch remains true (tick loop keeps
+            // firing, driving the timeout countdown).
             tm.start_team_timeout(color, now).unwrap();
-            *clock_running = false;
         }
         Action::StartRefTimeout => {
-            // Mirrors Message::RefTimeout { switch: false }
+            // Mirrors Message::RefTimeout { switch: false }.
+            // Same latch note as StartTeamTimeout.
             tm.start_ref_timeout(now).unwrap();
-            *clock_running = false;
         }
         Action::StartPenaltyShot => {
-            // Mirrors Message::PenaltyShot { switch: false } in UWH mode
+            // Mirrors Message::PenaltyShot { switch: false } in UWH mode.
+            // Same latch note as StartTeamTimeout.
             tm.start_penalty_shot(now).unwrap();
-            *clock_running = false;
         }
         Action::StartRugbyPenaltyShot => {
-            // Mirrors Message::PenaltyShot { switch: false } in Rugby mode
+            // Mirrors Message::PenaltyShot { switch: false } in Rugby mode.
+            // Same latch note as StartTeamTimeout.
             tm.start_rugby_penalty_shot(now).unwrap();
-            *clock_running = false;
         }
         Action::EndTimeout => {
             // Mirrors Message::EndTimeout (non-game-ending branch only):
@@ -205,7 +244,6 @@ fn apply_action(
             // StopClock + the normal confirm flow.
             tm.end_timeout(now).unwrap();
             tm.update(now).unwrap();
-            *clock_running = true;
         }
         Action::SetGameClock(duration) => {
             // Mirrors Message::TimeEditComplete (clock must already be stopped)
@@ -216,7 +254,7 @@ fn apply_action(
 
 /// Render a `GameSnapshot` as a single-line state string with no timestamp.
 ///
-/// Format: `period=<P> | clock=<secs>s | timeout=<...> | pens=[<...>]`
+/// Format: `period=<P> | clock=<secs>s | timeout=<...> | conf_pause=<none|Ns> | pens=[<...>]`
 ///
 /// Penalties are sorted by (remaining desc, color asc, player# asc) so the
 /// order is stable and human-readable.
@@ -229,6 +267,11 @@ fn render(snap: &GameSnapshot) -> String {
         Some(TimeoutSnapshot::White(s)) => format!("White:{s}s"),
         Some(TimeoutSnapshot::Ref(s)) => format!("Ref:{s}s"),
         Some(TimeoutSnapshot::PenaltyShot(s)) => format!("PenaltyShot:{s}s"),
+    };
+
+    let conf_pause = match snap.conf_pause_time {
+        None => "none".to_string(),
+        Some(n) => format!("{n}s"),
     };
 
     let mut pens: Vec<(i64, char, u8, String)> = Vec::new();
@@ -259,7 +302,7 @@ fn render(snap: &GameSnapshot) -> String {
         .join(", ");
 
     format!(
-        "period={period:<13} | clock={:>3}s | timeout={timeout:<12} | pens=[{pens_str}]",
+        "period={period:<13} | clock={:>3}s | timeout={timeout:<12} | conf_pause={conf_pause:<6} | pens=[{pens_str}]",
         snap.secs_in_period
     )
 }
@@ -278,7 +321,18 @@ fn render(snap: &GameSnapshot) -> String {
 /// The step is 100 ms (finding #1 from the spike). At each step:
 /// 1. Apply any `Scenario::actions` whose offset falls within `(prev_elapsed, elapsed]`.
 ///    Record the new state immediately after each action if it changed.
-/// 2. If the clock is running, call `tick()` and record if the state changed.
+/// 2. Read the engine's start/stop latch (`*rx.borrow()`). If true, call `tick()` and
+///    record if the state changed.
+///
+/// # Clock-latch faithfulness
+///
+/// This driver mirrors the real `time_updater` loop in `app/mod.rs` (~line 4132):
+///   ```text
+///   let mut clock_running_receiver = tm.lock().unwrap().get_start_stop_rx();
+///   ```
+/// The latch is read fresh after every action (actions may flip it) and at every tick
+/// boundary. The engine is the sole authority on whether the tick loop fires — there is
+/// no separate hand-tracked bool in this driver.
 pub(super) fn run(scenario: &Scenario) -> Vec<String> {
     const STEP: Duration = Duration::from_millis(100);
     // NOTE: fixed-step is faithful only while `update` is idempotent w.r.t. call
@@ -287,7 +341,9 @@ pub(super) fn run(scenario: &Scenario) -> Vec<String> {
 
     let mut tm = TournamentManager::new(scenario.config.clone());
     let base = Instant::now();
-    let mut clock_running = false;
+    // Mirror the real time_updater: read the engine's start/stop watch channel.
+    // The latch starts `false`; actions that call start_clock flip it to `true`.
+    let rx = tm.get_start_stop_rx();
     let mut trace: Vec<String> = Vec::new();
     let mut last: Option<String> = None;
 
@@ -308,7 +364,7 @@ pub(super) fn run(scenario: &Scenario) -> Vec<String> {
     let mut action_index = 0;
     while action_index < scenario.actions.len() && scenario.actions[action_index].0 == 0 {
         let (_, action) = scenario.actions[action_index];
-        apply_action(&mut tm, action, base, &mut clock_running);
+        apply_action(&mut tm, action, base);
         action_index += 1;
     }
     record!(base);
@@ -330,14 +386,14 @@ pub(super) fn run(scenario: &Scenario) -> Vec<String> {
             }
             // Actions at exactly their offset instant, not at `now`.
             let action_now = base + action_at;
-            // If we overshot (action_at > prev_elapsed already ensured), fine.
-            apply_action(&mut tm, action, action_now, &mut clock_running);
+            apply_action(&mut tm, action, action_now);
             record!(action_now);
             action_index += 1;
         }
 
-        // Tick the engine at the step boundary if the clock is running.
-        if clock_running {
+        // Tick the engine at the step boundary if the engine's latch says running.
+        // Read the latch AFTER applying due actions (an action may have flipped it).
+        if *rx.borrow() {
             tick(&mut tm, now);
             record!(now);
         }
@@ -542,9 +598,9 @@ mod tests {
 
         // Step 2: Bless a small synthetic trace.
         let synthetic: Vec<String> = vec![
-            "period=FirstHalf     | clock= 40s | timeout=none         | pens=[]".to_string(),
-            "period=FirstHalf     | clock= 30s | timeout=none         | pens=[]".to_string(),
-            "period=HalfTime      | clock= 10s | timeout=none         | pens=[]".to_string(),
+            "period=FirstHalf     | clock= 40s | timeout=none         | conf_pause=none   | pens=[]".to_string(),
+            "period=FirstHalf     | clock= 30s | timeout=none         | conf_pause=none   | pens=[]".to_string(),
+            "period=HalfTime      | clock= 10s | timeout=none         | conf_pause=none   | pens=[]".to_string(),
         ];
         check_or_bless(name, &synthetic, true).expect("bless should succeed");
 

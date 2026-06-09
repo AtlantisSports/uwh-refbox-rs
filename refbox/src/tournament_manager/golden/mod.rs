@@ -502,76 +502,33 @@ fn check_or_bless(name: &str, trace: &[String], bless: bool) -> std::result::Res
     Err(diff)
 }
 
-// ─── Smoke test ───────────────────────────────────────────────────────────────
+// ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// The spike scenario: FirstHalf 40 s, penalty B#7 @2 s, stop@15/start@18, run 55 s.
+    /// Permanent regression guard: runs all 30 scenarios, checks determinism,
+    /// then compares each trace against its saved golden file.
     ///
-    /// Assertions:
-    ///   1. Two consecutive runs produce identical traces (determinism).
-    ///   2. The trace contains a `HalfTime` line (the period transition fired).
-    ///   3. The trace contains a fully-counted-down B#7 penalty (`B#7:0`).
+    /// To regenerate the golden files (e.g. after an intentional engine change):
+    ///   `UPDATE_GOLDEN=1 cargo test -p refbox golden_traces_match_baseline`
     #[test]
-    fn smoke_test_spike_scenario() {
-        static ACTIONS: &[(u64, Action)] = &[
-            (
-                0,
-                Action::SetupPeriod(GamePeriod::FirstHalf, Duration::from_secs(40)),
-            ),
-            (0, Action::StartClock),
-            (
-                2,
-                Action::StartPenalty(Color::Black, 7, PenaltyKind::ThirtySecond),
-            ),
-            (15, Action::StopClock),
-            (18, Action::StartClock),
-        ];
-
-        let scenario = Scenario {
-            name: "spike-scenario",
-            config: GameConfig {
-                half_play_duration: Duration::from_secs(40),
-                half_time_duration: Duration::from_secs(10),
-                overtime_allowed: false,
-                sudden_death_allowed: false,
-                ..Default::default()
-            },
-            actions: ACTIONS,
-            run_secs: 55,
-        };
-
-        let trace1 = run(&scenario);
-        let trace2 = run(&scenario);
-
-        println!("=== Golden trace for '{}' ===", scenario.name);
-        for (i, line) in trace1.iter().enumerate() {
-            println!("{i:>3}: {line}");
+    fn golden_traces_match_baseline() {
+        let bless = std::env::var("UPDATE_GOLDEN").is_ok();
+        let mut failures = Vec::new();
+        for s in scenarios::all() {
+            let a = run(&s);
+            let b = run(&s);
+            assert_eq!(a, b, "scenario '{}' is non-deterministic", s.name);
+            if let Err(diff) = check_or_bless(s.name, &a, bless) {
+                failures.push(format!("--- {} ---\n{diff}", s.name));
+            }
         }
-
-        // 1. Determinism: two runs must be identical.
-        assert_eq!(
-            trace1, trace2,
-            "golden trace is non-deterministic for scenario '{}'",
-            scenario.name
-        );
-
-        // 2. HalfTime must appear in the trace.
         assert!(
-            trace1.iter().any(|l| l.contains("HalfTime")),
-            "expected 'HalfTime' in trace for scenario '{}', got:\n{}",
-            scenario.name,
-            trace1.join("\n")
-        );
-
-        // 3. B#7 penalty must reach 0 seconds remaining.
-        assert!(
-            trace1.iter().any(|l| l.contains("B#7:0")),
-            "expected 'B#7:0' in trace for scenario '{}', got:\n{}",
-            scenario.name,
-            trace1.join("\n")
+            failures.is_empty(),
+            "golden trace mismatches:\n\n{}",
+            failures.join("\n\n")
         );
     }
 

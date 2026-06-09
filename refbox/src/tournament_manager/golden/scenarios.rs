@@ -309,6 +309,180 @@ static MANUAL_CLOCK_EDIT_ACTIONS: &[(u64, Action)] = &[
     (15, StartClock),
 ];
 
+// ── Family 5 — Penalty interactions ──────────────────────────────────────────
+
+// 21. penalty_started_during_timeout — start a team timeout, then while the timeout
+//     is active start a penalty.  Pin whether the penalty clock ticks during the
+//     timeout or waits until play resumes.
+//
+//     Half = 60 s.  Clock running.  Team timeout (Black) at t=5.
+//     StartPenalty (White #2, ThirtySecond) at t=8 — timeout still active.
+//     EndTimeout at t=20.  Run to 50 s to see penalty count down after timeout.
+static PENALTY_STARTED_DURING_TIMEOUT_ACTIONS: &[(u64, Action)] = &[
+    (
+        0,
+        SetupPeriod(GamePeriod::FirstHalf, Duration::from_secs(60)),
+    ),
+    (0, StartClock),
+    (5, StartTeamTimeout(Color::Black)),
+    (8, StartPenalty(Color::White, 2, PenaltyKind::ThirtySecond)),
+    (20, EndTimeout),
+];
+
+// 22. penalty_during_confirm_pause — a penalty is still active when the game reaches
+//     end-of-game and enters the confirm pause.  SecondHalf 5 s remaining (no OT/SD)
+//     so the game ends quickly.  Penalty (TwoMinute, Black #1) started at t=0 — it
+//     will still have ~115 s remaining when the confirm pause fires.
+//     Pin how the penalty renders in the conf_pause snapshot.
+static PENALTY_DURING_CONFIRM_PAUSE_ACTIONS: &[(u64, Action)] = &[
+    (
+        0,
+        SetupPeriod(GamePeriod::SecondHalf, Duration::from_secs(5)),
+    ),
+    (0, StartPenalty(Color::Black, 1, PenaltyKind::TwoMinute)),
+    (0, StartClock),
+];
+
+// 23. manual_clock_edit_while_penalty_running — penalty counting down; stop the game
+//     clock, set it to a new value, restart.  Pin that the penalty clock is unaffected
+//     by the game-clock edit (penalty continues its own countdown).
+//
+//     Half = 60 s.  B#6 ThirtySecond starts at t=2.  StopClock at t=10.
+//     SetGameClock(50 s) at t=10 (jumps clock forward to 50 s remaining).
+//     StartClock at t=15.  Run to t=45 to observe penalty countdown through edit.
+static MANUAL_CLOCK_EDIT_WHILE_PENALTY_RUNNING_ACTIONS: &[(u64, Action)] = &[
+    (
+        0,
+        SetupPeriod(GamePeriod::FirstHalf, Duration::from_secs(60)),
+    ),
+    (0, StartClock),
+    (2, StartPenalty(Color::Black, 6, PenaltyKind::ThirtySecond)),
+    (10, StopClock),
+    (10, SetGameClock(Duration::from_secs(50))),
+    (15, StartClock),
+];
+
+// ── Family 6 — Timeout interactions ──────────────────────────────────────────
+
+// 24. timeout_ending_at_period_boundary — EndTimeout fires at the same virtual
+//     second that the half expires.  Half = 20 s.  Team timeout (White) called at
+//     t=15 (5 s of game clock remain).  EndTimeout at t=20 — the exact whole-second
+//     at which 5 s of game time would have elapsed.  Pin the ordering of timeout-end
+//     and period transition.
+static TIMEOUT_ENDING_AT_PERIOD_BOUNDARY_ACTIONS: &[(u64, Action)] = &[
+    (
+        0,
+        SetupPeriod(GamePeriod::FirstHalf, Duration::from_secs(20)),
+    ),
+    (0, StartClock),
+    (15, StartTeamTimeout(Color::White)),
+    // EndTimeout at t=20.  At this point 5 s of game time have elapsed since the
+    // timeout was called; the 5 s remaining on the game clock were frozen during
+    // the timeout, so the period has NOT yet ended — EndTimeout resumes the clock
+    // and the 5 remaining seconds count down normally.
+    (20, EndTimeout),
+];
+
+// 25. timeout_during_overtime — drive to OvertimeFirstHalf (tie at end of regulation,
+//     overtime allowed), call a ref timeout during it, EndTimeout, resume.
+//     (Team timeouts are only allowed in regulation halves, not OT; ref timeouts are
+//     available in any play period.)
+//     Starts at OvertimeFirstHalf 20 s remaining.  RefTimeout at t=8, EndTimeout
+//     at t=18.  Run to 40 s to show OT half-time and OTSecondHalf.
+static TIMEOUT_DURING_OVERTIME_ACTIONS: &[(u64, Action)] = &[
+    (
+        0,
+        SetupPeriod(GamePeriod::OvertimeFirstHalf, Duration::from_secs(20)),
+    ),
+    (0, StartClock),
+    (8, StartRefTimeout),
+    (18, EndTimeout),
+];
+
+// ── Family 7 — Overtime / Sudden Death interactions ───────────────────────────
+
+// 26. overtime_with_active_penalty — penalty started near end of SecondHalf ticks
+//     across the regulation → PreOvertime → OvertimeFirstHalf transition.
+//     SecondHalf 5 s remaining; OneMinute penalty for White #3 started at t=2.
+//     At end of SecondHalf the penalty still has ~57 s remaining; it should
+//     continue ticking through the break and into OT.
+static OVERTIME_WITH_ACTIVE_PENALTY_ACTIONS: &[(u64, Action)] = &[
+    (
+        0,
+        SetupPeriod(GamePeriod::SecondHalf, Duration::from_secs(5)),
+    ),
+    (0, StartClock),
+    (2, StartPenalty(Color::White, 3, PenaltyKind::OneMinute)),
+];
+
+// 27. sudden_death_with_timeout — reach SuddenDeath (0-0 through OT),
+//     call a ref timeout during SD, EndTimeout, resume.  Does NOT score (no SD
+//     confirm flow needed).  Starts at OvertimeSecondHalf 5 s remaining.
+//     RefTimeout at t=15 (into SuddenDeath), EndTimeout at t=25.
+static SUDDEN_DEATH_WITH_TIMEOUT_ACTIONS: &[(u64, Action)] = &[
+    (
+        0,
+        SetupPeriod(GamePeriod::OvertimeSecondHalf, Duration::from_secs(5)),
+    ),
+    (0, StartClock),
+    // ~t=5: OT second half ends → PreSuddenDeath (5 s break) → SuddenDeath starts
+    (15, StartRefTimeout),
+    (25, EndTimeout),
+];
+
+// ── Family 8 — Manual-edit / boundary edge cases ─────────────────────────────
+
+// 28. manual_clock_edit_near_period_boundary — StopClock, SetGameClock to a small
+//     value (3 s), StartClock; the clock rolls into the next period a few seconds
+//     later.  Pin the period transition after a manual edit.
+//
+//     Half = 60 s.  StopClock at t=10.  SetGameClock(3 s) at t=10.
+//     StartClock at t=15.  Run to 30 s; the period ends ~3 s after clock restart.
+static MANUAL_CLOCK_EDIT_NEAR_PERIOD_BOUNDARY_ACTIONS: &[(u64, Action)] = &[
+    (
+        0,
+        SetupPeriod(GamePeriod::FirstHalf, Duration::from_secs(60)),
+    ),
+    (0, StartClock),
+    (10, StopClock),
+    (10, SetGameClock(Duration::from_secs(3))),
+    (15, StartClock),
+];
+
+// 29. manual_clock_edit_to_zero — StopClock, SetGameClock(Duration::ZERO), StartClock.
+//     Pin whatever end-of-period logic the engine triggers when the clock is manually
+//     set to zero.
+//
+//     Half = 60 s.  StopClock at t=5.  SetGameClock(0) at t=5.
+//     StartClock at t=10.  Run to 25 s to observe resulting period/state.
+static MANUAL_CLOCK_EDIT_TO_ZERO_ACTIONS: &[(u64, Action)] = &[
+    (
+        0,
+        SetupPeriod(GamePeriod::FirstHalf, Duration::from_secs(60)),
+    ),
+    (0, StartClock),
+    (5, StopClock),
+    (5, SetGameClock(Duration::ZERO)),
+    (10, StartClock),
+];
+
+// 30. actions_at_exact_transition_instant — a StartTeamTimeout fires at offset 20,
+//     the exact whole-second at which a 20 s FirstHalf would expire.  Tests the
+//     fixed-step driver's handling of an action coinciding with a period transition.
+//     Pin the result: does the timeout fire in FirstHalf or after the transition?
+//
+//     Half = 20 s.  StartClock at t=0.  StartTeamTimeout(Black) at t=20 (boundary).
+//     EndTimeout at t=30.  Run to 60 s.
+static ACTIONS_AT_EXACT_TRANSITION_INSTANT_ACTIONS: &[(u64, Action)] = &[
+    (
+        0,
+        SetupPeriod(GamePeriod::FirstHalf, Duration::from_secs(20)),
+    ),
+    (0, StartClock),
+    (20, StartTeamTimeout(Color::Black)),
+    (30, EndTimeout),
+];
+
 // ── Public entry point ────────────────────────────────────────────────────────
 
 /// Return every scenario in the library.
@@ -492,6 +666,105 @@ pub(super) fn all() -> Vec<Scenario> {
                 ..reg_config()
             },
             actions: MANUAL_CLOCK_EDIT_ACTIONS,
+            run_secs: 60,
+        },
+        // ── Family 5 — Penalty interactions ─────────────────────────────────
+        Scenario {
+            name: "penalty_started_during_timeout",
+            config: GameConfig {
+                half_play_duration: Duration::from_secs(60),
+                ..reg_config()
+            },
+            actions: PENALTY_STARTED_DURING_TIMEOUT_ACTIONS,
+            run_secs: 50,
+        },
+        Scenario {
+            name: "penalty_during_confirm_pause",
+            config: reg_config(), // overtime_allowed=false, sudden_death_allowed=false
+            actions: PENALTY_DURING_CONFIRM_PAUSE_ACTIONS,
+            run_secs: 20,
+        },
+        Scenario {
+            name: "manual_clock_edit_while_penalty_running",
+            config: GameConfig {
+                half_play_duration: Duration::from_secs(60),
+                ..reg_config()
+            },
+            actions: MANUAL_CLOCK_EDIT_WHILE_PENALTY_RUNNING_ACTIONS,
+            run_secs: 45,
+        },
+        // ── Family 6 — Timeout interactions ─────────────────────────────────
+        Scenario {
+            name: "timeout_ending_at_period_boundary",
+            config: reg_config(), // half=20s
+            actions: TIMEOUT_ENDING_AT_PERIOD_BOUNDARY_ACTIONS,
+            run_secs: 55, // through second half and into end-of-game
+        },
+        Scenario {
+            name: "timeout_during_overtime",
+            config: GameConfig {
+                overtime_allowed: true,
+                sudden_death_allowed: false,
+                pre_overtime_break: Duration::from_secs(5),
+                ot_half_play_duration: Duration::from_secs(20),
+                ot_half_time_duration: Duration::from_secs(5),
+                ..reg_config()
+            },
+            actions: TIMEOUT_DURING_OVERTIME_ACTIONS,
+            run_secs: 40, // OTFirstHalf + OTHalfTime + into OTSecondHalf
+        },
+        // ── Family 7 — Overtime / Sudden Death interactions ──────────────────
+        Scenario {
+            name: "overtime_with_active_penalty",
+            config: GameConfig {
+                overtime_allowed: true,
+                sudden_death_allowed: false,
+                pre_overtime_break: Duration::from_secs(5),
+                ot_half_play_duration: Duration::from_secs(15),
+                ot_half_time_duration: Duration::from_secs(5),
+                ..reg_config()
+            },
+            actions: OVERTIME_WITH_ACTIVE_PENALTY_ACTIONS,
+            run_secs: 50, // penalty (60s) ticks through OT break and into OTFirstHalf
+        },
+        Scenario {
+            name: "sudden_death_with_timeout",
+            config: GameConfig {
+                overtime_allowed: true,
+                sudden_death_allowed: true,
+                pre_overtime_break: Duration::from_secs(5),
+                ot_half_play_duration: Duration::from_secs(5),
+                ot_half_time_duration: Duration::from_secs(3),
+                pre_sudden_death_duration: Duration::from_secs(5),
+                minimum_break: Duration::from_secs(20),
+                ..reg_config()
+            },
+            actions: SUDDEN_DEATH_WITH_TIMEOUT_ACTIONS,
+            run_secs: 40,
+        },
+        // ── Family 8 — Manual-edit / boundary edge cases ─────────────────────
+        Scenario {
+            name: "manual_clock_edit_near_period_boundary",
+            config: GameConfig {
+                half_play_duration: Duration::from_secs(60),
+                ..reg_config()
+            },
+            actions: MANUAL_CLOCK_EDIT_NEAR_PERIOD_BOUNDARY_ACTIONS,
+            run_secs: 30,
+        },
+        Scenario {
+            name: "manual_clock_edit_to_zero",
+            config: GameConfig {
+                half_play_duration: Duration::from_secs(60),
+                ..reg_config()
+            },
+            actions: MANUAL_CLOCK_EDIT_TO_ZERO_ACTIONS,
+            run_secs: 25,
+        },
+        Scenario {
+            name: "actions_at_exact_transition_instant",
+            config: reg_config(), // half=20s
+            actions: ACTIONS_AT_EXACT_TRANSITION_INSTANT_ACTIONS,
             run_secs: 60,
         },
     ]

@@ -148,7 +148,9 @@ fn tick(tm: &mut TournamentManager, now: Instant) {
 // real application.
 //
 // Cross-reference targets in `app/mod.rs` (as of master at the time this was written):
-//   StartClock           → Message::StartPlayNow / manual start_clock call
+//   StartClock           → models the bare start_clock(now) resume primitive (resume the
+//                          clock in the already-set-up period). NOT Message::StartPlayNow,
+//                          which calls the distinct start_play_now(now) to begin/advance a period.
 //   StopClock            → Message::EditTime  (stop_clock + clock_is_running check)
 //   AddScore             → Message::AddNewScore  (add_score(color, 0, now); non-SD path)
 //   ScoreSuddenDeath     → Message::AddScoreComplete SD branch (~line 2048–2053):
@@ -161,7 +163,10 @@ fn tick(tm: &mut TournamentManager, now: Instant) {
 //   StartPenaltyShot     → Message::PenaltyShot  (start_penalty_shot, UWH mode)
 //   StartRugbyPenaltyShot→ Message::PenaltyShot  (start_rugby_penalty_shot, Rugby mode)
 //   EndTimeout           → Message::EndTimeout   (end_timeout + update; no game-ending branch here)
-//   SetGameClock         → Message::TimeEditComplete (set_game_clock_time)
+//   SetGameClock         → Message::TimeEditComplete (set_game_clock_time). Models the
+//                          clock-stopped path only; the real handler additionally calls
+//                          start_clock(now)+update(now) when the clock was running. Scenarios
+//                          always StopClock before SetGameClock, so was_running == false here.
 //   SetupPeriod          → test-only; no real handler (uses pub(super) test method)
 //
 // CLOCK-LATCH COUPLING: the tick decision in `run()` reads the engine's start/stop watch

@@ -16,7 +16,7 @@ async-trait = "0.1"
 bs58 = "0.5.1"
 clap = { version = "4", features = ["derive"] }
 collect_array = "0.1"
-confy = "1.0"
+confy = "2.0"
 conquer-once = "0.4"
 derivative = "2"
 directories = "6"

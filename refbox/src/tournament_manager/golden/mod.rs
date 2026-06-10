@@ -570,6 +570,37 @@ mod tests {
         );
     }
 
+    /// Compile-time completeness guard for `render`.
+    ///
+    /// This exhaustive destructure has no `..`, so adding a field to `GameSnapshot`
+    /// fails to compile here until someone consciously decides whether to render it.
+    /// Fields are grouped into "rendered" and "intentionally omitted" with the
+    /// rationale, mirroring the design doc. This catches *new field* rot; it does
+    /// not detect semantic changes to existing fields.
+    #[test]
+    fn render_accounts_for_every_snapshot_field() {
+        let mut tm = TournamentManager::new(GameConfig::default());
+        let snap = snapshot_with_retry(&mut tm, Instant::now());
+        let GameSnapshot {
+            // ── Rendered by `render` ──
+            current_period: _,
+            secs_in_period: _,
+            timeout: _,
+            scores: _,
+            penalties: _,
+            is_old_game: _,
+            conf_pause_time: _,
+            // ── Intentionally NOT rendered (see design doc §4) ──
+            warnings: _,             // inert Vec-append; not core time/state logic
+            fouls: _,                // inert Vec-append; not core time/state logic
+            game_number: _,          // not core timing/state
+            next_game_number: _,     // not core timing/state
+            event_id: _,             // hardcoded None in the snapshot constructor
+            recent_goal: _,          // display sugar; verified deterministic, no outcome effect
+            next_period_len_secs: _, // not core timing/state
+        } = snap;
+    }
+
     /// Self-test for the golden file read/write/compare harness.
     ///
     /// Uses a unique synthetic scenario name (`__harness_selftest__`) to avoid

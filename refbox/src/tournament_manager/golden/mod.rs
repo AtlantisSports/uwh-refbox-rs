@@ -301,6 +301,17 @@ fn render(snap: &GameSnapshot) -> String {
         Some(n) => format!("{n}s"),
     };
 
+    // Scores: fixed-width "B<black>/W<white>".
+    let score = format!(
+        "B{}/W{}",
+        snap.scores[Color::Black],
+        snap.scores[Color::White]
+    );
+
+    // Between-games "old game" flag: Y while the displayed game is the finished/old
+    // one (has_reset == false); flips to N when the engine auto-resets for the next game.
+    let old = if snap.is_old_game { "Y" } else { "N" };
+
     let mut pens: Vec<(i64, char, u8, String)> = Vec::new();
     for (color, list) in snap.penalties.iter() {
         let cchar = match color {
@@ -329,7 +340,7 @@ fn render(snap: &GameSnapshot) -> String {
         .join(", ");
 
     format!(
-        "period={period:<13} | clock={:>3}s | timeout={timeout:<12} | conf_pause={conf_pause:<6} | pens=[{pens_str}]",
+        "period={period:<13} | clock={:>3}s | score={score:<7} | timeout={timeout:<12} | conf_pause={conf_pause:<6} | old?={old} | pens=[{pens_str}]",
         snap.secs_in_period
     )
 }

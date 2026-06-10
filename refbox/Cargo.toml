@@ -56,7 +56,7 @@ thiserror = "2"
 time = { version = "0.3", features = ["local-offset", "macros", "serde", "serde-human-readable"] }
 tokio = { version = "1", features = ["io-util", "macros", "net", "rt", "sync", "time"] }
 tokio-serial = "5"
-toml = "0.9"
+toml = "1.0"
 unic-langid = "0.9.6"
 uwh-common = { version = "0.4.2", path = "../uwh-common"}
 web-audio-api = { version = "1.2", default-features = false, features = ["cpal"] }

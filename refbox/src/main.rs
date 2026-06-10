@@ -227,9 +227,6 @@ pub fn build_sim_argv(config: &SimSpawnConfig) -> Vec<String> {
 ///  - `--is-simulator`: this relaunches the main app, never a simulator child.
 ///  - `--capture-previews`: a dev-only flag that renders preview PNGs and exits
 ///    immediately; replaying it would make the restarted process exit at once.
-///
-/// NOTE: wired into `main()` in the Task 2 commit.
-#[allow(dead_code)]
 pub(crate) fn build_restart_argv(args: &Cli) -> Vec<String> {
     let mut argv: Vec<String> = Vec::new();
 
@@ -293,6 +290,10 @@ pub(crate) fn spawn_sim_child(config: &SimSpawnConfig) -> std::io::Result<std::p
 
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let args = Cli::parse();
+
+    // Capture the argv needed to relaunch this same configuration on an in-app
+    // restart, before any field of `args` is moved below.
+    let restart_argv = build_restart_argv(&args);
 
     if let Some(lang) = args.language {
         *LANGUAGE_OVERRIDE.lock().unwrap() = Some(lang);
@@ -592,8 +593,14 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // a clean slate without overlapping the old windows. See
     // `app::RESTART_PENDING` for the trigger sites.
     if app::RESTART_PENDING.load(std::sync::atomic::Ordering::Relaxed) {
-        if let Ok(exe) = std::env::current_exe() {
-            let _ = std::process::Command::new(exe).spawn();
+        match std::env::current_exe() {
+            Ok(exe) => {
+                info!("Restart requested: respawning {exe:?} with args {restart_argv:?}");
+                if let Err(e) = std::process::Command::new(exe).args(&restart_argv).spawn() {
+                    error!("Failed to respawn refbox on restart: {e}");
+                }
+            }
+            Err(e) => error!("Failed to locate current exe for restart respawn: {e}"),
         }
     }
 

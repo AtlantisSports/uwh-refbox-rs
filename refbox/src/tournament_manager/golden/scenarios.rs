@@ -601,6 +601,22 @@ static SINGLE_HALF_DRAWN_ACTIONS: &[(u64, Action)] = &[
 // HalfTime → SecondHalf, ends 0-0, and enters BetweenGames with old?=Y. Once the
 // between-games clock counts down past reset_game_time the engine auto-resets,
 // flipping is_old_game → old?=N. run_secs stops a few seconds after the flip.
+//
+// WHY a full game must complete (not just SetupPeriod(BetweenGames, …)): the
+// auto-reset only fires while `!has_reset`, and `has_reset` is set false ONLY by
+// `start_game` (mod.rs:1076). SetupPeriod does not touch `has_reset`, so a
+// constructed-then-SetupPeriod game keeps `has_reset = true`, the reset never
+// fires, and is_old_game never flips. StartPlayNow → start_game is the only
+// faithful way to reach the precondition.
+//
+// CAVEAT (validation): unlike the other scenarios, this one cannot be compared
+// against the human baseline 46ec0973 — the between-games clock is computed via
+// the post-baseline Game Block feature (`game_block` did not exist then). Its
+// trace therefore pins CURRENT behavior, not a trusted baseline. Its value rests
+// on (a) structural correctness (the Y→N flip at reset_game_time) and (b)
+// demonstrated mutation sensitivity: the cargo-mutants sweep confirms the two
+// reset mutants at mod.rs:1181/1182 and the is_old_game assembly mutant at
+// mod.rs:2196 are all caught by the `old?` column.
 static BETWEEN_GAMES_AUTO_RESET_ACTIONS: &[(u64, Action)] = &[(0, StartPlayNow)];
 
 // ── Public entry point ────────────────────────────────────────────────────────

@@ -21,6 +21,22 @@ use tokio::{
 use tokio_serial::{SerialPortBuilder, SerialPortBuilderExt, SerialStream};
 use uwh_common::game_snapshot::{EncodingError, GamePeriod, GameSnapshot, GameSnapshotNoHeap};
 
+/// Open each serial port, skipping (and logging) any that fail to open instead
+/// of panicking. A missing or still-held port simply means the LED panel is
+/// unavailable — it must never crash startup or a restart.
+fn open_serial_ports(builders: Vec<SerialPortBuilder>) -> Vec<SerialStream> {
+    builders
+        .into_iter()
+        .filter_map(|builder| match builder.open_native_async() {
+            Ok(port) => Some(port),
+            Err(e) => {
+                error!("Failed to open serial port; the LED panel will be unavailable: {e}");
+                None
+            }
+        })
+        .collect()
+}
+
 const TIMEOUT: Duration = Duration::from_millis(500);
 const SERIAL_SEND_SPACING: Duration = Duration::from_millis(100);
 const WORKER_CHANNEL_LEN: usize = 4;
@@ -45,10 +61,7 @@ impl UpdateSender {
     ) -> Self {
         let (tx, rx) = mpsc::channel(8);
 
-        let initial = initial
-            .into_iter()
-            .map(|builder| builder.open_native_async().unwrap())
-            .collect();
+        let initial = open_serial_ports(initial);
 
         let server_join =
             task::spawn(Server::new(rx, initial, hide_time, beep_test, initial_layout).run_loop());
@@ -1057,5 +1070,21 @@ mod test {
         let closed: TrySendError<i32> = TrySendError::Closed(99);
         assert!(matches!(error_formatter(full), TrySendError::Full(_)));
         assert!(matches!(error_formatter(closed), TrySendError::Closed(_)));
+    }
+
+    #[tokio::test]
+    async fn open_serial_ports_skips_ports_that_fail_to_open() {
+        let bad = tokio_serial::new("/dev/refbox_nonexistent_test_port", 115200);
+        let opened = open_serial_ports(vec![bad]);
+        assert!(
+            opened.is_empty(),
+            "an unopenable port must be skipped, not panic"
+        );
+    }
+
+    #[tokio::test]
+    async fn open_serial_ports_empty_input_is_empty() {
+        let opened = open_serial_ports(Vec::new());
+        assert!(opened.is_empty());
     }
 }

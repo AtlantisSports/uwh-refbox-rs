@@ -16,7 +16,7 @@ jobs:
     - name: Versions
       run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version
     - run: cargo build --release --bin refbox
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       with:
         name: refbox-windows
         path: target/release/refbox.exe
@@ -35,7 +35,7 @@ jobs:
     - name: Versions
       run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version && cargo bundle --version
     - run: cargo bundle --release --target aarch64-apple-darwin -p refbox
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       with:
         name: refbox-macos-arm
         path: target/aarch64-apple-darwin/release/bundle/osx/refbox.app
@@ -55,7 +55,7 @@ jobs:
       run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version && cargo bundle --version
     - run: rustup target add x86_64-apple-darwin
     - run: cargo bundle --release --target x86_64-apple-darwin -p refbox
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       with:
         name: refbox-macos-x86
         path: target/x86_64-apple-darwin/release/bundle/osx/refbox.app
@@ -74,7 +74,7 @@ jobs:
     - name: Versions
       run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version && cross --version
     - run: cross build --release --target aarch64-unknown-linux-gnu -p refbox
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       with:
         name: refbox-rpi
         path: target/aarch64-unknown-linux-gnu/release/refbox
@@ -86,19 +86,19 @@ jobs:
     needs: [build-windows, build-macos-arm, build-macos-x86, build-rpi]
 
     steps:
-    - uses: actions/download-artifact@v5
+    - uses: actions/download-artifact@v8
       with:
         name: refbox-windows
         path: release/Windows/refbox.exe
-    - uses: actions/download-artifact@v5
+    - uses: actions/download-artifact@v8
       with:
         name: refbox-macos-arm
         path: release/Mac\ (Arm processor)/refbox.app
-    - uses: actions/download-artifact@v5
+    - uses: actions/download-artifact@v8
       with:
         name: refbox-macos-x86
         path: release/Mac\ (Intel processor)/refbox.app
-    - uses: actions/download-artifact@v5
+    - uses: actions/download-artifact@v8
       with:
         name: refbox-rpi
         path: release/Raspberry\ Pi

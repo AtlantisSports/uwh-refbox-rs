@@ -1,10 +1,11 @@
 # Golden time-traces
 
 These `*.trace` files are the **time-engine regression guard**. Each one is a recording of
-exactly how `TournamentManager` reports the passage of time for one scripted game scenario:
-the period, the game clock, any timeout clock, the score-confirmation pause, and every
-penalty's remaining time — sampled as the game plays out and deduplicated to the sequence of
-distinct observable states.
+exactly how `TournamentManager` reports core game state for one scripted game scenario:
+the period, the game clock, any timeout clock, the score-confirmation pause, every penalty's
+remaining time, the **score** (`score=B/W`), and the **between-games "old game" flag**
+(`old?=Y/N`, i.e. `is_old_game`) — sampled as the game plays out and deduplicated to the
+sequence of distinct observable states.
 
 They were captured once from the last human-authored engine commit (`46ec0973`) and are the
 **trusted baseline**. The test `golden_traces_match_baseline` (in `../golden/mod.rs`) replays
@@ -13,10 +14,18 @@ engine computes different time-state, the build fails with a per-scenario, line-
 
 ## What is and isn't watched
 
-The guard watches **time-state only** (period, game clock, timeout type + clock,
-score-confirmation pause, penalty remaining). Scores, fouls, warnings, and penalty infraction
-details are intentionally *out of scope* for now. The single place that decides what is watched
-is the `render()` function in `../golden/mod.rs` — extend it there if the watched set grows.
+The guard watches the core game-state engine: period, game clock, timeout type + clock,
+score-confirmation pause, penalty remaining, **score**, and **`is_old_game`** (the
+between-games auto-reset flag). Intentionally *out of scope* — they are record-keeping or
+display fields, not core timing/state logic, so a regression in them can't corrupt the clock or
+game flow: **fouls, warnings, penalty infraction kind, game numbers, recent-goal marker,
+next-period length, and event id**.
+
+The single place that decides what is watched is the `render()` function in `../golden/mod.rs`.
+A companion test, `render_accounts_for_every_snapshot_field`, destructures `GameSnapshot` with
+no `..`, so adding a new field to the snapshot fails to compile until someone consciously
+decides whether `render()` should watch it — the out-of-scope omissions above are deliberate,
+not accidental.
 
 ## When a change makes a `.trace` file change
 

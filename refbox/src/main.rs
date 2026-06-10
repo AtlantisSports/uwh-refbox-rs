@@ -216,6 +216,71 @@ pub fn build_sim_argv(config: &SimSpawnConfig) -> Vec<String> {
     args
 }
 
+/// Build the argv used to relaunch the MAIN app on an in-app restart so the new
+/// process inherits the same command-line settings the operator started with
+/// (fullscreen, serial/LED-panel port, real-hardware mode, ports, logging).
+///
+/// Deliberately NOT replayed:
+///  - `--language`: a restart is often triggered BY a language change. The new
+///    language is persisted to the config file and must drive startup; replaying
+///    the old `--language` would override it.
+///  - `--is-simulator`: this relaunches the main app, never a simulator child.
+///  - `--capture-previews`: a dev-only flag that renders preview PNGs and exits
+///    immediately; replaying it would make the restarted process exit at once.
+///
+/// NOTE: wired into `main()` in the Task 2 commit.
+#[allow(dead_code)]
+pub(crate) fn build_restart_argv(args: &Cli) -> Vec<String> {
+    let mut argv: Vec<String> = Vec::new();
+
+    if args.no_simulate {
+        argv.push("--no-simulate".to_string());
+    }
+    for _ in 0..args.verbose {
+        argv.push("--verbose".to_string());
+    }
+    argv.push("--scale".to_string());
+    argv.push(args.scale.to_string());
+    if let Some(spacing) = args.spacing {
+        argv.push("--spacing".to_string());
+        argv.push(spacing.to_string());
+    }
+    if args.fullscreen {
+        argv.push("--fullscreen".to_string());
+    }
+    argv.push("--binary-port".to_string());
+    argv.push(args.binary_port.to_string());
+    argv.push("--json-port".to_string());
+    argv.push(args.json_port.to_string());
+    if let Some(port) = &args.serial_port {
+        argv.push("--serial-port".to_string());
+        argv.push(port.clone());
+        argv.push("--baud-rate".to_string());
+        argv.push(args.baud_rate.to_string());
+    }
+    if args.allow_http {
+        argv.push("--allow-http".to_string());
+    }
+    if args.all_events {
+        argv.push("--all-events".to_string());
+    }
+    if let Some(loc) = &args.log_location {
+        argv.push("--log-location".to_string());
+        // Matches the original main.rs behaviour and `build_sim_argv`. A
+        // non-UTF-8 log path would already have panicked at startup before here.
+        argv.push(loc.to_str().unwrap().to_string());
+    }
+    argv.push("--log-max-file-size".to_string());
+    argv.push(args.log_max_file_size.to_string());
+    argv.push("--num-old-logs".to_string());
+    argv.push(args.num_old_logs.to_string());
+    if args.simulate_sunlight_display {
+        argv.push("--simulate-sunlight-display".to_string());
+    }
+
+    argv
+}
+
 pub(crate) fn spawn_sim_child(config: &SimSpawnConfig) -> std::io::Result<std::process::Child> {
     let bin_name = std::env::current_exe()?.into_os_string();
     let argv = build_sim_argv(config);
@@ -533,6 +598,66 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     }
 
     result.map_err(|e| e.into())
+}
+
+#[cfg(test)]
+mod restart_argv_tests {
+    use super::*;
+
+    fn argv_from(extra: &[&str]) -> Vec<String> {
+        let mut argv = vec!["refbox"];
+        argv.extend_from_slice(extra);
+        let cli = Cli::parse_from(argv);
+        build_restart_argv(&cli)
+    }
+
+    #[test]
+    fn replays_fullscreen_only_when_set() {
+        assert!(argv_from(&["--fullscreen"]).contains(&"--fullscreen".to_string()));
+        assert!(!argv_from(&[]).contains(&"--fullscreen".to_string()));
+    }
+
+    #[test]
+    fn replays_serial_port_and_baud_when_set() {
+        let argv = argv_from(&["--serial-port", "/dev/ttyUSB0", "--baud-rate", "57600"]);
+        assert!(argv.contains(&"--serial-port".to_string()));
+        assert!(argv.contains(&"/dev/ttyUSB0".to_string()));
+        assert!(argv.contains(&"--baud-rate".to_string()));
+        assert!(argv.contains(&"57600".to_string()));
+    }
+
+    #[test]
+    fn omits_serial_port_when_not_set() {
+        let argv = argv_from(&[]);
+        assert!(!argv.contains(&"--serial-port".to_string()));
+    }
+
+    #[test]
+    fn replays_no_simulate_when_set() {
+        assert!(argv_from(&["--no-simulate"]).contains(&"--no-simulate".to_string()));
+        assert!(!argv_from(&[]).contains(&"--no-simulate".to_string()));
+    }
+
+    #[test]
+    fn repeats_verbose_per_count() {
+        let argv = argv_from(&["-v", "-v"]);
+        assert_eq!(argv.iter().filter(|a| a.as_str() == "--verbose").count(), 2);
+    }
+
+    #[test]
+    fn never_replays_language_or_is_simulator() {
+        let argv = argv_from(&["--language", "fr", "--is-simulator"]);
+        assert!(!argv.contains(&"--language".to_string()));
+        assert!(!argv.contains(&"--is-simulator".to_string()));
+    }
+
+    #[test]
+    fn replays_log_location_when_set_and_omits_when_unset() {
+        let argv = argv_from(&["--log-location", "/tmp/test-logs"]);
+        assert!(argv.contains(&"--log-location".to_string()));
+        assert!(argv.contains(&"/tmp/test-logs".to_string()));
+        assert!(!argv_from(&[]).contains(&"--log-location".to_string()));
+    }
 }
 
 #[cfg(test)]

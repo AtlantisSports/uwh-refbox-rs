@@ -111,7 +111,7 @@ jobs:
         curl -L "https://drive.usercontent.google.com/download?id=1FLtJwc8gb5vuSRVPUNLxKhT1ufcOSa-w&export=download" -o "release/Refbox User Manual with Fouls.pdf"
     - name: Zip release
       run: cd release && zip -r ../refbox.zip .
-    - uses: softprops/action-gh-release@v2
+    - uses: softprops/action-gh-release@v3
       with:
         files: refbox.zip
         draft: true

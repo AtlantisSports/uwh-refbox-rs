@@ -18,8 +18,8 @@ use uwh_common::{color::Color, config::Game as GameConfig, game_snapshot::GamePe
 use crate::tournament_manager::{
     golden::Action::{
         AddScore, ConfirmScore, EndTimeout, ScoreSuddenDeath, SetGameClock, SetupPeriod,
-        StartClock, StartPenalty, StartPenaltyShot, StartRefTimeout, StartRugbyPenaltyShot,
-        StartTeamTimeout, StopClock,
+        StartClock, StartPenalty, StartPenaltyShot, StartPlayNow, StartRefTimeout,
+        StartRugbyPenaltyShot, StartTeamTimeout, StopClock,
     },
     penalty::PenaltyKind,
 };
@@ -43,6 +43,27 @@ fn reg_config() -> GameConfig {
         minimum_break: Duration::from_secs(6),
         team_timeout_duration: Duration::from_secs(15),
         penalty_shot_duration: Duration::from_secs(15),
+        ..Default::default()
+    }
+}
+
+/// Short two-half regulation config with NO overtime/sudden-death, used by the
+/// between-games scenario so a full game completes quickly and lands in
+/// BetweenGames. Breaks are short so the auto-reset (which fires
+/// `post_game_duration` into the between-games countdown) is reached fast.
+fn between_games_config() -> GameConfig {
+    GameConfig {
+        half_play_duration: Duration::from_secs(3),
+        half_time_duration: Duration::from_secs(2),
+        overtime_allowed: false,
+        sudden_death_allowed: false,
+        post_game_duration: Duration::from_secs(2),
+        nominal_break: Duration::from_secs(6),
+        minimum_break: Duration::from_secs(4),
+        // Short next-game slot so the between-games clock is a small, readable
+        // number (the default game_block is 2880s). The break counts down from
+        // ~slot-minus-game-length and the auto-reset fires post_game_duration in.
+        game_block: Duration::from_secs(20),
         ..Default::default()
     }
 }
@@ -572,6 +593,16 @@ static SINGLE_HALF_DRAWN_ACTIONS: &[(u64, Action)] = &[
     (0, StartClock),
 ];
 
+// ── Family 10 — between-games lifecycle ───────────────────────────────────────
+//
+// between_games_auto_reset — exercises is_old_game and the auto-reset at
+// mod.rs:1180-1182. StartPlayNow begins a real game (start_game sets
+// has_reset = false → is_old_game = true → old?=Y). The game plays FirstHalf →
+// HalfTime → SecondHalf, ends 0-0, and enters BetweenGames with old?=Y. Once the
+// between-games clock counts down past reset_game_time the engine auto-resets,
+// flipping is_old_game → old?=N. run_secs stops a few seconds after the flip.
+static BETWEEN_GAMES_AUTO_RESET_ACTIONS: &[(u64, Action)] = &[(0, StartPlayNow)];
+
 // ── Public entry point ────────────────────────────────────────────────────────
 
 /// Return every scenario in the library.
@@ -917,6 +948,13 @@ pub(super) fn all() -> Vec<Scenario> {
             },
             actions: SINGLE_HALF_DRAWN_ACTIONS,
             run_secs: 20,
+        },
+        // ── Family 10 — between-games lifecycle ──────────────────────────────
+        Scenario {
+            name: "between_games_auto_reset",
+            config: between_games_config(),
+            actions: BETWEEN_GAMES_AUTO_RESET_ACTIONS,
+            run_secs: 14,
         },
     ]
 }

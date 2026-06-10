@@ -596,7 +596,11 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         match std::env::current_exe() {
             Ok(exe) => {
                 info!("Restart requested: respawning {exe:?} with args {restart_argv:?}");
-                if let Err(e) = std::process::Command::new(exe).args(&restart_argv).spawn() {
+                if let Err(e) = std::process::Command::new(exe)
+                    .args(&restart_argv)
+                    .stdin(Stdio::null())
+                    .spawn()
+                {
                     error!("Failed to respawn refbox on restart: {e}");
                 }
             }
@@ -652,10 +656,17 @@ mod restart_argv_tests {
     }
 
     #[test]
-    fn never_replays_language_or_is_simulator() {
-        let argv = argv_from(&["--language", "fr", "--is-simulator"]);
+    fn never_replays_language_is_simulator_or_capture_previews() {
+        let argv = argv_from(&[
+            "--language",
+            "fr",
+            "--is-simulator",
+            "--capture-previews",
+            "/tmp/previews",
+        ]);
         assert!(!argv.contains(&"--language".to_string()));
         assert!(!argv.contains(&"--is-simulator".to_string()));
+        assert!(!argv.contains(&"--capture-previews".to_string()));
     }
 
     #[test]

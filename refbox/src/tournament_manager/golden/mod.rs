@@ -37,6 +37,18 @@ pub(super) enum Action {
     SetupPeriod(GamePeriod, Duration),
     /// Start the game clock (and any active timeout clock).
     StartClock,
+    /// Manually start/advance play — the operator "Start" button.
+    ///
+    /// Mirrors `Message::StartPlayNow` → `tm.start_play_now(now)`. From
+    /// `BetweenGames` this begins a new game via `start_game` (which sets
+    /// `has_reset = false` → `is_old_game = true`); from `HalfTime` / `PreOvertime`
+    /// / `OvertimeHalfTime` / `PreSuddenDeath` it advances to the next play period.
+    ///
+    /// DISTINCT from `StartClock` (the bare `start_clock(now)` resume primitive):
+    /// `StartClock` never calls `start_game`, so scenarios built only from
+    /// `SetupPeriod` + `StartClock` leave `has_reset = true` and can never exercise
+    /// the between-games auto-reset.
+    StartPlayNow,
     /// Stop the game clock.
     StopClock,
     /// Record a goal for the given colour (player number 0).
@@ -151,6 +163,9 @@ fn tick(tm: &mut TournamentManager, now: Instant) {
 //   StartClock           → models the bare start_clock(now) resume primitive (resume the
 //                          clock in the already-set-up period). NOT Message::StartPlayNow,
 //                          which calls the distinct start_play_now(now) to begin/advance a period.
+//   StartPlayNow         → Message::StartPlayNow (start_play_now(now)): begin a new
+//                          game from BetweenGames (→ start_game, has_reset=false) or
+//                          advance HalfTime/PreOvertime/etc. to the next play period.
 //   StopClock            → Message::EditTime  (stop_clock + clock_is_running check)
 //   AddScore             → Message::AddNewScore  (add_score(color, 0, now); non-SD path)
 //   ScoreSuddenDeath     → Message::AddScoreComplete SD branch (~line 2048–2053):
@@ -183,6 +198,13 @@ fn apply_action(tm: &mut TournamentManager, action: Action, now: Instant) {
         }
         Action::StartClock => {
             tm.start_clock(now);
+        }
+        Action::StartPlayNow => {
+            // Mirrors Message::StartPlayNow → start_play_now(now).
+            // From BetweenGames: start_game → has_reset = false (is_old_game = true)
+            // and the clock starts running (send_clock_running(true)); the driver's
+            // latch tick then drives the game forward.
+            tm.start_play_now(now).unwrap();
         }
         Action::StopClock => {
             tm.stop_clock(now).unwrap();

@@ -17,7 +17,7 @@ use uwh_common::{color::Color, config::Game as GameConfig, game_snapshot::GamePe
 
 use crate::tournament_manager::{
     golden::Action::{
-        AddScore, ConfirmScore, EndTimeout, ScoreSuddenDeath, SetGameClock, SetupPeriod,
+        AddScore, ConfirmScore, EndTimeout, ResetGame, ScoreSuddenDeath, SetGameClock, SetupPeriod,
         StartClock, StartPenalty, StartPenaltyShot, StartPlayNow, StartRefTimeout,
         StartRugbyPenaltyShot, StartTeamTimeout, StopClock,
     },
@@ -619,6 +619,18 @@ static SINGLE_HALF_DRAWN_ACTIONS: &[(u64, Action)] = &[
 // mod.rs:2196 are all caught by the `old?` column.
 static BETWEEN_GAMES_AUTO_RESET_ACTIONS: &[(u64, Action)] = &[(0, StartPlayNow)];
 
+// manual_reset_game — exercises the operator's manual end-game reset (`reset_game`).
+// StartPlayNow begins a real game (old?=Y); a Black goal makes the score B1/W0; then
+// ResetGame ends the game → BetweenGames with the score zeroed (B0/W0) and has_reset=true
+// (old?=N), clock restarted at minimum_break. Kills the `reset_game`-body mutant (mod.rs:202):
+// with the reset stubbed out, none of period/score/old? change. Reuses between_games_config
+// (short two-half, no OT/SD) so the reset lands mid-FirstHalf and the trace is compact.
+static MANUAL_RESET_GAME_ACTIONS: &[(u64, Action)] = &[
+    (0, StartPlayNow),
+    (1, AddScore(Color::Black)),
+    (2, ResetGame),
+];
+
 // ── Public entry point ────────────────────────────────────────────────────────
 
 /// Return every scenario in the library.
@@ -971,6 +983,12 @@ pub(super) fn all() -> Vec<Scenario> {
             config: between_games_config(),
             actions: BETWEEN_GAMES_AUTO_RESET_ACTIONS,
             run_secs: 14,
+        },
+        Scenario {
+            name: "manual_reset_game",
+            config: between_games_config(),
+            actions: MANUAL_RESET_GAME_ACTIONS,
+            run_secs: 7,
         },
     ]
 }

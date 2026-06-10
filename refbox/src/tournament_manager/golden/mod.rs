@@ -49,6 +49,15 @@ pub(super) enum Action {
     /// `SetupPeriod` + `StartClock` leave `has_reset = true` and can never exercise
     /// the between-games auto-reset.
     StartPlayNow,
+    /// Manually reset the game (operator's end-game / "new game" reset).
+    ///
+    /// Mirrors `tm.reset_game(now)` as called from the `ConfirmationOption::EndGameAndApply`
+    /// path in `app/mod.rs` (apply edited settings mid-game → end the current game and reset).
+    /// `reset_game` moves to `BetweenGames`, stops the clock at `minimum_break`, clears the
+    /// timeout, and calls `reset()` — which zeroes the scores, clears penalties/warnings/fouls,
+    /// and sets `has_reset = true` (→ `is_old_game = false`, `old?=N`). If the clock was
+    /// running it is restarted (the break counts down).
+    ResetGame,
     /// Stop the game clock.
     StopClock,
     /// Record a goal for the given colour (player number 0).
@@ -166,6 +175,9 @@ fn tick(tm: &mut TournamentManager, now: Instant) {
 //   StartPlayNow         → Message::StartPlayNow (start_play_now(now)): begin a new
 //                          game from BetweenGames (→ start_game, has_reset=false) or
 //                          advance HalfTime/PreOvertime/etc. to the next play period.
+//   ResetGame            → tm.reset_game(now), as called from ConfirmationOption::EndGameAndApply
+//                          (app/mod.rs ~line 964): end the current game and reset → BetweenGames,
+//                          scores zeroed, penalties/warnings/fouls cleared, has_reset=true.
 //   StopClock            → Message::EditTime  (stop_clock + clock_is_running check)
 //   AddScore             → Message::AddNewScore  (add_score(color, 0, now); non-SD path)
 //   ScoreSuddenDeath     → Message::AddScoreComplete SD branch (~line 2048–2053):
@@ -205,6 +217,13 @@ fn apply_action(tm: &mut TournamentManager, action: Action, now: Instant) {
             // and the clock starts running (send_clock_running(true)); the driver's
             // latch tick then drives the game forward.
             tm.start_play_now(now).unwrap();
+        }
+        Action::ResetGame => {
+            // Mirrors tm.reset_game(now) (app/mod.rs ConfirmationOption::EndGameAndApply):
+            // → BetweenGames, clock stopped at minimum_break (restarted if it was running),
+            // timeout cleared, reset() zeroes scores + clears penalties/warnings/fouls and
+            // sets has_reset = true (is_old_game = false).
+            tm.reset_game(now);
         }
         Action::StopClock => {
             tm.stop_clock(now).unwrap();

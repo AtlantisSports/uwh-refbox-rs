@@ -16,7 +16,7 @@ use tokio::{
     select,
     sync::mpsc::{self, error::TrySendError},
     task::{self, JoinHandle},
-    time::{Duration, Instant, sleep_until, timeout},
+    time::{Duration, Instant, sleep, sleep_until, timeout},
 };
 use tokio_serial::{SerialPortBuilder, SerialPortBuilderExt, SerialStream};
 use uwh_common::game_snapshot::{EncodingError, GamePeriod, GameSnapshot, GameSnapshotNoHeap};
@@ -667,22 +667,61 @@ impl Drop for Server {
     }
 }
 
+/// Time budget + initial backoff for retrying a transient (port-in-use) bind.
+/// 🔧 PI: confirm/tune on the spare Pi during the 5×-restart test.
+const TCP_BIND_RETRY_BUDGET: Duration = Duration::from_millis(2000);
+const TCP_BIND_RETRY_INITIAL: Duration = Duration::from_millis(100);
+
+/// A bind failure is worth retrying only when the address is momentarily still
+/// in use (e.g. held by the exiting process during a restart).
+fn is_transient_bind_error(e: &io::Error) -> bool {
+    matches!(e.kind(), std::io::ErrorKind::AddrInUse)
+}
+
+/// Bind a TCP listener, retrying an `AddrInUse` failure within `budget` (with
+/// exponential backoff from `initial`) before giving up and returning `None`.
+/// Any non-transient error gives up immediately. Never panics.
+async fn bind_with_retry(
+    addr: (&str, u16),
+    label: &str,
+    budget: Duration,
+    initial: Duration,
+) -> Option<TcpListener> {
+    let deadline = Instant::now() + budget;
+    let mut backoff = initial;
+    loop {
+        match TcpListener::bind(addr).await {
+            Ok(listener) => return Some(listener),
+            Err(e) => {
+                if is_transient_bind_error(&e) && Instant::now() < deadline {
+                    warn!("{label} port {} in use, retrying in {backoff:?}", addr.1);
+                    sleep(backoff).await;
+                    backoff = (backoff * 2).min(budget);
+                    continue;
+                }
+                error!("Failed to bind {label} port {}: {e:?}", addr.1);
+                return None;
+            }
+        }
+    }
+}
+
 async fn listener_loop(tx: mpsc::Sender<ServerMessage>, binary_port: u16, json_port: u16) {
     info!("Starting Listeners for JSON (port {json_port}) and binary (port {binary_port})");
-    let binary_listener_v6 = match TcpListener::bind(("::", binary_port)).await {
-        Ok(listener) => Some(listener),
-        Err(e) => {
-            error!("Failed to bind to binary port {binary_port}: {e:?}");
-            None
-        }
-    };
-    let json_listener_v6 = match TcpListener::bind(("::", json_port)).await {
-        Ok(listener) => Some(listener),
-        Err(e) => {
-            error!("Failed to bind to JSON port {json_port}: {e:?}");
-            None
-        }
-    };
+    let binary_listener_v6 = bind_with_retry(
+        ("::", binary_port),
+        "binary",
+        TCP_BIND_RETRY_BUDGET,
+        TCP_BIND_RETRY_INITIAL,
+    )
+    .await;
+    let json_listener_v6 = bind_with_retry(
+        ("::", json_port),
+        "JSON",
+        TCP_BIND_RETRY_BUDGET,
+        TCP_BIND_RETRY_INITIAL,
+    )
+    .await;
 
     // On some OSs, we must separately listen on IPv4, but on other OSs that
     // that isn't allowed, so we just try to listen on IPv4
@@ -1140,5 +1179,40 @@ mod test {
         // An absent / unknown device must be skipped immediately, not retried.
         let absent = SerialError::new(SerialErrorKind::NoDevice, "no device");
         assert!(!is_transient_serial_error(&absent));
+    }
+
+    #[test]
+    fn transient_bind_error_only_for_addr_in_use() {
+        assert!(is_transient_bind_error(&std::io::Error::from(
+            std::io::ErrorKind::AddrInUse
+        )));
+        assert!(!is_transient_bind_error(&std::io::Error::from(
+            std::io::ErrorKind::PermissionDenied
+        )));
+    }
+
+    #[tokio::test]
+    async fn bind_with_retry_gives_up_on_held_port_within_budget() {
+        // Hold an ephemeral port, then try to bind it again: the second bind
+        // fails AddrInUse, so bind_with_retry must retry then give up (None)
+        // within roughly its budget — never hang or panic.
+        let held = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = held.local_addr().unwrap().port();
+        let start = Instant::now();
+        let result = bind_with_retry(
+            ("127.0.0.1", port),
+            "test",
+            Duration::from_millis(150),
+            Duration::from_millis(50),
+        )
+        .await;
+        assert!(
+            result.is_none(),
+            "a held port must yield None, not a listener"
+        );
+        assert!(
+            start.elapsed() < Duration::from_secs(1),
+            "must give up within roughly the budget"
+        );
     }
 }

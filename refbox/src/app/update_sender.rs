@@ -21,19 +21,59 @@ use tokio::{
 use tokio_serial::{SerialPortBuilder, SerialPortBuilderExt, SerialStream};
 use uwh_common::game_snapshot::{EncodingError, GamePeriod, GameSnapshot, GameSnapshotNoHeap};
 
-/// Open each serial port, skipping (and logging) any that fail to open instead
-/// of panicking. A missing or still-held port simply means the LED panel is
-/// unavailable — it must never crash startup or a restart.
+/// Total time budget for retrying a *transient* serial-open failure, plus the
+/// initial backoff step (doubled each attempt, capped by the budget). Sized for
+/// the brief window during a restart where the exiting process is still
+/// releasing the port.
+/// 🔧 PI: confirm/tune on the spare Pi during the 5×-restart test.
+const SERIAL_OPEN_RETRY_BUDGET: Duration = Duration::from_millis(2000);
+const SERIAL_OPEN_RETRY_INITIAL: Duration = Duration::from_millis(100);
+
+/// Whether a serial-open error is worth retrying. `true` for a device that
+/// exists but is momentarily unavailable (e.g. still held by the exiting
+/// process during a restart); `false` for an absent/misconfigured device, which
+/// would only delay startup if retried.
+/// 🔧 PI: if a briefly-held port on the Pi surfaces a different `ErrorKind`,
+/// widen this allowlist (this is the single place to tune it).
+fn is_transient_serial_error(e: &tokio_serial::Error) -> bool {
+    use tokio_serial::ErrorKind;
+    matches!(
+        e.kind(),
+        ErrorKind::Io(std::io::ErrorKind::PermissionDenied)
+            | ErrorKind::Io(std::io::ErrorKind::WouldBlock)
+            | ErrorKind::Io(std::io::ErrorKind::TimedOut)
+    )
+}
+
+/// Open one serial port, retrying transient failures within a bounded budget,
+/// and skipping (logging) a permanent failure instead of panicking. A missing
+/// or unopenable port simply means the LED panel is unavailable — it must never
+/// crash startup or a restart.
+fn open_one_serial_port_with_retry(builder: SerialPortBuilder) -> Option<SerialStream> {
+    let deadline = std::time::Instant::now() + SERIAL_OPEN_RETRY_BUDGET;
+    let mut backoff = SERIAL_OPEN_RETRY_INITIAL;
+    loop {
+        match builder.clone().open_native_async() {
+            Ok(port) => return Some(port),
+            Err(e) => {
+                if is_transient_serial_error(&e) && std::time::Instant::now() < deadline {
+                    warn!("Serial port busy, retrying in {backoff:?}: {e}");
+                    std::thread::sleep(backoff);
+                    backoff = (backoff * 2).min(SERIAL_OPEN_RETRY_BUDGET);
+                    continue;
+                }
+                error!("Failed to open serial port; the LED panel will be unavailable: {e}");
+                return None;
+            }
+        }
+    }
+}
+
+/// Open each serial port (see `open_one_serial_port_with_retry`).
 fn open_serial_ports(builders: Vec<SerialPortBuilder>) -> Vec<SerialStream> {
     builders
         .into_iter()
-        .filter_map(|builder| match builder.open_native_async() {
-            Ok(port) => Some(port),
-            Err(e) => {
-                error!("Failed to open serial port; the LED panel will be unavailable: {e}");
-                None
-            }
-        })
+        .filter_map(open_one_serial_port_with_retry)
         .collect()
 }
 
@@ -1086,5 +1126,19 @@ mod test {
     async fn open_serial_ports_empty_input_is_empty() {
         let opened = open_serial_ports(Vec::new());
         assert!(opened.is_empty());
+    }
+
+    #[test]
+    fn transient_serial_error_retries_busy_but_not_absent() {
+        use tokio_serial::{Error as SerialError, ErrorKind as SerialErrorKind};
+        // A momentarily-held port (typical during a restart) is worth retrying.
+        let busy = SerialError::new(
+            SerialErrorKind::Io(std::io::ErrorKind::PermissionDenied),
+            "busy",
+        );
+        assert!(is_transient_serial_error(&busy));
+        // An absent / unknown device must be skipped immediately, not retried.
+        let absent = SerialError::new(SerialErrorKind::NoDevice, "no device");
+        assert!(!is_transient_serial_error(&absent));
     }
 }

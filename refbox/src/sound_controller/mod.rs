@@ -21,7 +21,7 @@ use tokio::{
         watch::{self, Sender},
     },
     task::{self, AbortHandle, JoinError, JoinHandle, JoinSet},
-    time::{Duration, Instant, sleep, sleep_until},
+    time::{Duration, Instant, sleep, sleep_until, timeout},
 };
 use toml::Table;
 use web_audio_api::{
@@ -608,19 +608,32 @@ impl SoundController {
     }
 }
 
+/// Maximum time the sound-controller teardown waits for its worker to finish
+/// before proceeding with shutdown/restart anyway. A hung audio shutdown must
+/// never be able to prevent the app from relaunching.
+/// 🔧 PI: confirm on the spare Pi during the 5×-restart test.
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Await the worker `JoinHandle`, but never longer than `limit`. On timeout,
+/// log and return so teardown (and the pending relaunch) can proceed.
+async fn await_handle_bounded(handle: JoinHandle<()>, limit: Duration) {
+    match timeout(limit, handle).await {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => error!("Sound controller thread failed: {e}"),
+        Err(_) => warn!("Sound controller shutdown timed out after {limit:?}; proceeding"),
+    }
+}
+
 impl Drop for SoundController {
     fn drop(&mut self) {
         if self.stop_tx.send(true).is_err() {
             return;
         }
 
-        tokio::runtime::Handle::current().block_on(async move {
-            if let Some(handle) = self.handle.take() {
-                if let Err(e) = handle.await {
-                    error!("Sound controller thread failed: {e}");
-                }
-            }
-        });
+        if let Some(handle) = self.handle.take() {
+            tokio::runtime::Handle::current()
+                .block_on(await_handle_bounded(handle, SHUTDOWN_TIMEOUT));
+        }
     }
 }
 
@@ -899,5 +912,25 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn await_handle_bounded_returns_for_hung_task() {
+        // A worker that never finishes must not block teardown past the bound.
+        let handle = tokio::spawn(async { std::future::pending::<()>().await });
+        let start = Instant::now();
+        await_handle_bounded(handle, Duration::from_millis(150)).await;
+        assert!(
+            start.elapsed() < Duration::from_secs(1),
+            "bounded shutdown must return shortly after the timeout"
+        );
+    }
+
+    #[tokio::test]
+    async fn await_handle_bounded_returns_promptly_for_finished_task() {
+        let handle = tokio::spawn(async {});
+        let start = Instant::now();
+        await_handle_bounded(handle, Duration::from_secs(5)).await;
+        assert!(start.elapsed() < Duration::from_secs(1));
     }
 }

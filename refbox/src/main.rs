@@ -228,50 +228,75 @@ pub fn build_sim_argv(config: &SimSpawnConfig) -> Vec<String> {
 ///  - `--capture-previews`: a dev-only flag that renders preview PNGs and exits
 ///    immediately; replaying it would make the restarted process exit at once.
 pub(crate) fn build_restart_argv(args: &Cli) -> Vec<String> {
+    // DRIFT GUARD: destructure every field with no `..`, so ANY future CLI field
+    // added to `Cli` breaks the build here until its author consciously decides
+    // whether it should be replayed across an in-app restart. This is what stops
+    // the "restart drops CLI args" bug (PR #1073) from silently re-appearing.
+    let Cli {
+        no_simulate,
+        verbose,
+        scale,
+        spacing,
+        fullscreen,
+        binary_port,
+        json_port,
+        serial_port,
+        baud_rate,
+        allow_http,
+        all_events,
+        log_location,
+        log_max_file_size,
+        num_old_logs,
+        simulate_sunlight_display,
+        // --- Deliberately NOT replayed (see this fn's doc comment) ---
+        language: _,         // a restart is often triggered BY a language change
+        is_simulator: _,     // this relaunches the MAIN app, never a sim child
+        capture_previews: _, // dev-only; replaying it would exit immediately
+    } = args;
+
     let mut argv: Vec<String> = Vec::new();
 
-    if args.no_simulate {
+    if *no_simulate {
         argv.push("--no-simulate".to_string());
     }
-    for _ in 0..args.verbose {
+    for _ in 0..*verbose {
         argv.push("--verbose".to_string());
     }
     argv.push("--scale".to_string());
-    argv.push(args.scale.to_string());
-    if let Some(spacing) = args.spacing {
+    argv.push(scale.to_string());
+    if let Some(spacing) = spacing {
         argv.push("--spacing".to_string());
         argv.push(spacing.to_string());
     }
-    if args.fullscreen {
+    if *fullscreen {
         argv.push("--fullscreen".to_string());
     }
     argv.push("--binary-port".to_string());
-    argv.push(args.binary_port.to_string());
+    argv.push(binary_port.to_string());
     argv.push("--json-port".to_string());
-    argv.push(args.json_port.to_string());
-    if let Some(port) = &args.serial_port {
+    argv.push(json_port.to_string());
+    if let Some(port) = serial_port {
         argv.push("--serial-port".to_string());
         argv.push(port.clone());
         argv.push("--baud-rate".to_string());
-        argv.push(args.baud_rate.to_string());
+        argv.push(baud_rate.to_string());
     }
-    if args.allow_http {
+    if *allow_http {
         argv.push("--allow-http".to_string());
     }
-    if args.all_events {
+    if *all_events {
         argv.push("--all-events".to_string());
     }
-    if let Some(loc) = &args.log_location {
+    if let Some(loc) = log_location {
         argv.push("--log-location".to_string());
-        // Matches the original main.rs behaviour and `build_sim_argv`. A
-        // non-UTF-8 log path would already have panicked at startup before here.
+        // A non-UTF-8 log path would already have panicked at startup before here.
         argv.push(loc.to_str().unwrap().to_string());
     }
     argv.push("--log-max-file-size".to_string());
-    argv.push(args.log_max_file_size.to_string());
+    argv.push(log_max_file_size.to_string());
     argv.push("--num-old-logs".to_string());
-    argv.push(args.num_old_logs.to_string());
-    if args.simulate_sunlight_display {
+    argv.push(num_old_logs.to_string());
+    if *simulate_sunlight_display {
         argv.push("--simulate-sunlight-display".to_string());
     }
 

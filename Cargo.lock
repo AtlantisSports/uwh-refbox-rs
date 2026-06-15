@@ -5485,6 +5485,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
+ "sha2",
  "skip_error",
  "tempfile",
  "thiserror 2.0.17",

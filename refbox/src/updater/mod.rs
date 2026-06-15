@@ -1,4 +1,5 @@
 pub mod release;
+pub mod verify;
 pub mod version;
 
 /// Errors that can occur during the self-update process.

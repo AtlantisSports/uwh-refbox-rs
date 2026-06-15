@@ -426,3 +426,27 @@ game-config-single-half = Haba ng Laro: { $half_len }
     Sudden Death Pinahintulutan: { $sd_allowed },  Overtime Pinahintulutan: { $ot_allowed }
 game-length-ot-allowed-single-half = Haba ng Laro: { $half_length }
          Overtime Pinahintulutan: { $overtime }
+
+# Self-update / Updates page
+check-version = Tingnan ang Bersyon
+updates-current-version = Kasalukuyang bersyon
+updates-check-for-updates = Maghanap ng Update
+updates-install-update = I-install ang Update
+updates-continue = Magpatuloy
+updates-unknown = Hindi alam
+updates-checking = Sinusuri…
+updates-up-to-date = Napapanahon na.
+updates-available = May update na available: {$version}
+updates-confirm-install = Ire-restart nito ang refbox. Magpatuloy?
+updates-downloading = Dina-download…
+updates-verifying = Sinusuri ang download…
+updates-installing = Ini-install…
+updates-restarting = Nire-restart…
+updates-confirm-revert = Bumalik sa nakaraang bersyon? Ire-restart nito ang refbox.
+updates-rolled-back = Hindi nagsimula nang tama ang nakaraang update at ibinalik sa bersyong gumagana.
+updates-revert = Bumalik sa Nakaraang Bersyon ({$version})
+updates-error-no-internet = Hindi maabot ang update server, pakitingnan ang iyong koneksyon sa internet
+updates-error-bad-download = Hindi balido ang na-download na update at hindi ito na-install.
+updates-error-rate-limited = Abala ang update server, pakisubukang muli mamaya.
+updates-error-no-space = Hindi sapat ang libreng espasyo para i-install ang update.
+updates-error-not-writable = Hindi ma-save ang update (tinanggihan ang pahintulot).

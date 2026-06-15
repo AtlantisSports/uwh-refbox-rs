@@ -437,3 +437,27 @@ game-config-single-half = Duración del juego: { $half_len }
     Muerte súbita permitida: { $sd_allowed },  Tiempo Extra Permitido: { $ot_allowed }
 game-length-ot-allowed-single-half = Duración del juego: { $half_length }
          Tiempo extra habilitado: { $overtime }
+
+# Self-update / Updates page
+check-version = Comprobar versión
+updates-current-version = Versión actual
+updates-check-for-updates = Buscar actualizaciones
+updates-install-update = Instalar actualización
+updates-continue = Continuar
+updates-unknown = Desconocido
+updates-checking = Comprobando…
+updates-up-to-date = Está actualizado.
+updates-available = Actualización disponible: {$version}
+updates-confirm-install = Esto reiniciará la refbox. ¿Continuar?
+updates-downloading = Descargando…
+updates-verifying = Comprobando la descarga…
+updates-installing = Instalando…
+updates-restarting = Reiniciando…
+updates-confirm-revert = ¿Volver a la versión anterior? Esto reiniciará la refbox.
+updates-rolled-back = La actualización anterior no se inició correctamente y se restauró a la versión que funcionaba.
+updates-revert = Volver a la versión anterior ({$version})
+updates-error-no-internet = No se pudo conectar con el servidor de actualizaciones, comprueba tu conexión a internet
+updates-error-bad-download = La actualización descargada no era válida y no se instaló.
+updates-error-rate-limited = El servidor de actualizaciones está ocupado, inténtalo de nuevo dentro de un rato.
+updates-error-no-space = No hay suficiente espacio libre para instalar la actualización.
+updates-error-not-writable = No se pudo guardar la actualización (permiso denegado).

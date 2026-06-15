@@ -434,3 +434,27 @@ game-config-single-half = Game Length: { $half_len }
     Sudden Death Allowed: { $sd_allowed },  Overtime Allowed: { $ot_allowed }
 game-length-ot-allowed-single-half = Game Length: { $half_length }
          Overtime Allowed: { $overtime }
+
+# Self-update / Updates page
+check-version = Check Version
+updates-current-version = Current version
+updates-check-for-updates = Check for Updates
+updates-install-update = Install Update
+updates-continue = Continue
+updates-unknown = Unknown
+updates-checking = Checking…
+updates-up-to-date = Up to date.
+updates-available = Update available: {$version}
+updates-confirm-install = This will restart the refbox. Continue?
+updates-downloading = Downloading…
+updates-verifying = Checking the download…
+updates-installing = Installing…
+updates-restarting = Restarting…
+updates-confirm-revert = Revert to the previous version? This will restart the refbox.
+updates-rolled-back = The previous update didn’t start correctly and was rolled back to the working version.
+updates-revert = Revert to Previous Version ({$version})
+updates-error-no-internet = Couldn’t reach the update server, please check your internet connection
+updates-error-bad-download = The downloaded update wasn’t valid and was not installed.
+updates-error-rate-limited = The update server is busy, please try again in a little while.
+updates-error-no-space = Not enough free space to install the update.
+updates-error-not-writable = The update couldn’t be saved (permission denied).

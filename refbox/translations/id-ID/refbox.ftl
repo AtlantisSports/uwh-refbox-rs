@@ -426,3 +426,27 @@ game-config-single-half = Durasi Pertandingan: { $half_len }
     Sudden Death Diizinkan: { $sd_allowed },  Perpanjangan Waktu Diizinkan: { $ot_allowed }
 game-length-ot-allowed-single-half = Durasi Pertandingan: { $half_length }
          Perpanjangan Waktu Diizinkan: { $overtime }
+
+# Self-update / Updates page
+check-version = Periksa Versi
+updates-current-version = Versi saat ini
+updates-check-for-updates = Periksa Pembaruan
+updates-install-update = Pasang Pembaruan
+updates-continue = Lanjutkan
+updates-unknown = Tidak diketahui
+updates-checking = Memeriksa…
+updates-up-to-date = Sudah versi terbaru.
+updates-available = Pembaruan tersedia: {$version}
+updates-confirm-install = Ini akan memulai ulang refbox. Lanjutkan?
+updates-downloading = Mengunduh…
+updates-verifying = Memeriksa unduhan…
+updates-installing = Memasang…
+updates-restarting = Memulai ulang…
+updates-confirm-revert = Kembali ke versi sebelumnya? Ini akan memulai ulang refbox.
+updates-rolled-back = Pembaruan sebelumnya tidak dimulai dengan benar dan dikembalikan ke versi yang berfungsi.
+updates-revert = Kembali ke Versi Sebelumnya ({$version})
+updates-error-no-internet = Tidak dapat menjangkau server pembaruan, harap periksa koneksi internet Anda
+updates-error-bad-download = Pembaruan yang diunduh tidak valid dan tidak dipasang.
+updates-error-rate-limited = Server pembaruan sedang sibuk, harap coba lagi sebentar lagi.
+updates-error-no-space = Ruang kosong tidak cukup untuk memasang pembaruan.
+updates-error-not-writable = Pembaruan tidak dapat disimpan (izin ditolak).

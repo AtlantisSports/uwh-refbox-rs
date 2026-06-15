@@ -426,3 +426,27 @@ game-config-single-half = ความยาวเกม: { $half_len }
     อนุญาตตายกะทันหัน: { $sd_allowed },  อนุญาตต่อเวลาพิเศษ: { $ot_allowed }
 game-length-ot-allowed-single-half = ความยาวเกม: { $half_length }
          อนุญาตต่อเวลาพิเศษ: { $overtime }
+
+# Self-update / Updates page
+check-version = ตรวจสอบเวอร์ชัน
+updates-current-version = เวอร์ชันปัจจุบัน
+updates-check-for-updates = ตรวจหาการอัปเดต
+updates-install-update = ติดตั้งการอัปเดต
+updates-continue = ดำเนินการต่อ
+updates-unknown = ไม่ทราบ
+updates-checking = กำลังตรวจสอบ…
+updates-up-to-date = เป็นเวอร์ชันล่าสุดแล้ว
+updates-available = มีการอัปเดต: {$version}
+updates-confirm-install = การดำเนินการนี้จะรีสตาร์ท refbox ดำเนินการต่อหรือไม่?
+updates-downloading = กำลังดาวน์โหลด…
+updates-verifying = กำลังตรวจสอบไฟล์ที่ดาวน์โหลด…
+updates-installing = กำลังติดตั้ง…
+updates-restarting = กำลังรีสตาร์ท…
+updates-confirm-revert = ย้อนกลับไปยังเวอร์ชันก่อนหน้าหรือไม่? การดำเนินการนี้จะรีสตาร์ท refbox
+updates-rolled-back = การอัปเดตครั้งก่อนเริ่มทำงานไม่ถูกต้องและถูกย้อนกลับไปยังเวอร์ชันที่ใช้งานได้
+updates-revert = ย้อนกลับไปยังเวอร์ชันก่อนหน้า ({$version})
+updates-error-no-internet = ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์อัปเดตได้ โปรดตรวจสอบการเชื่อมต่ออินเทอร์เน็ตของคุณ
+updates-error-bad-download = ไฟล์อัปเดตที่ดาวน์โหลดมาไม่ถูกต้องและไม่ได้ติดตั้ง
+updates-error-rate-limited = เซิร์ฟเวอร์อัปเดตกำลังไม่ว่าง โปรดลองอีกครั้งในอีกสักครู่
+updates-error-no-space = พื้นที่ว่างไม่เพียงพอสำหรับติดตั้งการอัปเดต
+updates-error-not-writable = ไม่สามารถบันทึกการอัปเดตได้ (ปฏิเสธสิทธิ์การเข้าถึง)

@@ -426,3 +426,27 @@ game-config-single-half = Panjang Perlawanan: { $half_len }
     Sudden Death Dibenarkan: { $sd_allowed },  Masa Tambahan Dibenarkan: { $ot_allowed }
 game-length-ot-allowed-single-half = Panjang Perlawanan: { $half_length }
          Masa Tambahan Dibenarkan: { $overtime }
+
+# Self-update / Updates page
+check-version = Semak Versi
+updates-current-version = Versi semasa
+updates-check-for-updates = Semak Kemas Kini
+updates-install-update = Pasang Kemas Kini
+updates-continue = Teruskan
+updates-unknown = Tidak diketahui
+updates-checking = Menyemak…
+updates-up-to-date = Sudah terkini.
+updates-available = Kemas kini tersedia: {$version}
+updates-confirm-install = Ini akan memulakan semula refbox. Teruskan?
+updates-downloading = Memuat turun…
+updates-verifying = Menyemak muat turun…
+updates-installing = Memasang…
+updates-restarting = Memulakan semula…
+updates-confirm-revert = Kembali ke versi sebelumnya? Ini akan memulakan semula refbox.
+updates-rolled-back = Kemas kini sebelumnya tidak bermula dengan betul dan telah dikembalikan kepada versi yang berfungsi.
+updates-revert = Kembali ke Versi Sebelumnya ({$version})
+updates-error-no-internet = Tidak dapat menghubungi pelayan kemas kini, sila semak sambungan internet anda
+updates-error-bad-download = Kemas kini yang dimuat turun tidak sah dan tidak dipasang.
+updates-error-rate-limited = Pelayan kemas kini sibuk, sila cuba lagi sebentar lagi.
+updates-error-no-space = Ruang kosong tidak mencukupi untuk memasang kemas kini.
+updates-error-not-writable = Kemas kini tidak dapat disimpan (kebenaran ditolak).

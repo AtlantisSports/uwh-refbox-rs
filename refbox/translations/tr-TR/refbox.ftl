@@ -426,3 +426,27 @@ game-config-single-half = Oyun Süresi: { $half_len }
     Ani Ölüm İzin Verildi: { $sd_allowed },  Uzatma İzin Verildi: { $ot_allowed }
 game-length-ot-allowed-single-half = Oyun Süresi: { $half_length }
          Uzatma İzin Verildi: { $overtime }
+
+# Self-update / Updates page
+check-version = Sürümü Denetle
+updates-current-version = Mevcut sürüm
+updates-check-for-updates = Güncellemeleri Denetle
+updates-install-update = Güncellemeyi Yükle
+updates-continue = Devam Et
+updates-unknown = Bilinmiyor
+updates-checking = Denetleniyor…
+updates-up-to-date = Güncel.
+updates-available = Güncelleme mevcut: {$version}
+updates-confirm-install = Bu işlem refbox'ı yeniden başlatacak. Devam edilsin mi?
+updates-downloading = İndiriliyor…
+updates-verifying = İndirme denetleniyor…
+updates-installing = Yükleniyor…
+updates-restarting = Yeniden başlatılıyor…
+updates-confirm-revert = Önceki sürüme dönülsün mü? Bu işlem refbox'ı yeniden başlatacak.
+updates-rolled-back = Önceki güncelleme doğru şekilde başlamadı ve çalışan sürüme geri alındı.
+updates-revert = Önceki Sürüme Dön ({$version})
+updates-error-no-internet = Güncelleme sunucusuna ulaşılamadı, lütfen internet bağlantınızı denetleyin
+updates-error-bad-download = İndirilen güncelleme geçerli değildi ve yüklenmedi.
+updates-error-rate-limited = Güncelleme sunucusu meşgul, lütfen biraz sonra tekrar deneyin.
+updates-error-no-space = Güncellemeyi yüklemek için yeterli boş alan yok.
+updates-error-not-writable = Güncelleme kaydedilemedi (izin reddedildi).

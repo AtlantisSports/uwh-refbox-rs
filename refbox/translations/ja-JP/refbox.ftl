@@ -426,3 +426,27 @@ game-config-single-half = 試合時間: { $half_len }
     サドンデス許可: { $sd_allowed },  延長戦許可: { $ot_allowed }
 game-length-ot-allowed-single-half = 試合時間: { $half_length }
          延長戦許可: { $overtime }
+
+# Self-update / Updates page
+check-version = バージョン確認
+updates-current-version = 現在のバージョン
+updates-check-for-updates = 更新を確認
+updates-install-update = 更新をインストール
+updates-continue = 続行
+updates-unknown = 不明
+updates-checking = 確認中…
+updates-up-to-date = 最新です。
+updates-available = 更新があります: {$version}
+updates-confirm-install = refbox が再起動します。続行しますか？
+updates-downloading = ダウンロード中…
+updates-verifying = ダウンロードを確認中…
+updates-installing = インストール中…
+updates-restarting = 再起動中…
+updates-confirm-revert = 以前のバージョンに戻しますか？ refbox が再起動します。
+updates-rolled-back = 前回の更新が正しく起動しなかったため、動作するバージョンに戻されました。
+updates-revert = 以前のバージョンに戻す ({$version})
+updates-error-no-internet = 更新サーバーに接続できませんでした。インターネット接続を確認してください
+updates-error-bad-download = ダウンロードした更新が無効だったため、インストールされませんでした。
+updates-error-rate-limited = 更新サーバーが混雑しています。しばらくしてからもう一度お試しください。
+updates-error-no-space = 更新をインストールするための空き容量が足りません。
+updates-error-not-writable = 更新を保存できませんでした（アクセスが拒否されました）。

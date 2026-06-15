@@ -428,3 +428,27 @@ game-config-single-half = 경기 시간: { $half_len }
     서든 데스 허용: { $sd_allowed },  연장전 허용: { $ot_allowed }
 game-length-ot-allowed-single-half = 경기 시간: { $half_length }
          연장전 허용: { $overtime }
+
+# Self-update / Updates page
+check-version = 버전 확인
+updates-current-version = 현재 버전
+updates-check-for-updates = 업데이트 확인
+updates-install-update = 업데이트 설치
+updates-continue = 계속
+updates-unknown = 알 수 없음
+updates-checking = 확인 중…
+updates-up-to-date = 최신 상태입니다.
+updates-available = 업데이트 사용 가능: {$version}
+updates-confirm-install = refbox가 다시 시작됩니다. 계속하시겠습니까?
+updates-downloading = 다운로드 중…
+updates-verifying = 다운로드 확인 중…
+updates-installing = 설치 중…
+updates-restarting = 다시 시작 중…
+updates-confirm-revert = 이전 버전으로 되돌리시겠습니까? refbox가 다시 시작됩니다.
+updates-rolled-back = 이전 업데이트가 올바르게 시작되지 않아 작동하는 버전으로 되돌렸습니다.
+updates-revert = 이전 버전으로 되돌리기 ({$version})
+updates-error-no-internet = 업데이트 서버에 연결할 수 없습니다. 인터넷 연결을 확인하세요
+updates-error-bad-download = 다운로드한 업데이트가 유효하지 않아 설치되지 않았습니다.
+updates-error-rate-limited = 업데이트 서버가 사용 중입니다. 잠시 후 다시 시도하세요.
+updates-error-no-space = 업데이트를 설치할 여유 공간이 부족합니다.
+updates-error-not-writable = 업데이트를 저장할 수 없습니다 (권한이 거부됨).

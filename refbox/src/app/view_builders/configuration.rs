@@ -2061,15 +2061,17 @@ pub(in super::super) fn make_updates_page<'a>(
         row![horizontal_space()].height(Length::Fill).into()
     };
 
-    // 5. Footer: Back (idle) / Cancel (progress|confirm) / disabled Back (Restarting).
-    let footer_label = if (is_progress && !matches!(state, UpdateUiState::Restarting)) || is_confirm
+    // 5. Footer: Back (idle) / Cancel (progress|confirm) / disabled Back (Restarting|Installing).
+    let footer_label = if (is_progress
+        && !matches!(state, UpdateUiState::Restarting | UpdateUiState::Installing))
+        || is_confirm
     {
         fl!("cancel")
     } else {
         fl!("back")
     };
     let footer_btn = make_button(footer_label).style(red_button);
-    let footer_btn = if matches!(state, UpdateUiState::Restarting) {
+    let footer_btn = if matches!(state, UpdateUiState::Restarting | UpdateUiState::Installing) {
         footer_btn
     } else {
         footer_btn.on_press(Message::UpdatesBack)

@@ -426,3 +426,27 @@ game-config-single-half = 比赛时长：{ $half_len }
     允许突然死亡：{ $sd_allowed }，  允许加时赛：{ $ot_allowed }
 game-length-ot-allowed-single-half = 比赛时长：{ $half_length }
          允许加时赛：{ $overtime }
+
+# Self-update / Updates page
+check-version = 检查版本
+updates-current-version = 当前版本
+updates-check-for-updates = 检查更新
+updates-install-update = 安装更新
+updates-continue = 继续
+updates-unknown = 未知
+updates-checking = 正在检查…
+updates-up-to-date = 已是最新版本。
+updates-available = 有可用更新：{$version}
+updates-confirm-install = 这将重启 refbox。是否继续？
+updates-downloading = 正在下载…
+updates-verifying = 正在检查下载内容…
+updates-installing = 正在安装…
+updates-restarting = 正在重启…
+updates-confirm-revert = 要恢复到上一个版本吗？这将重启 refbox。
+updates-rolled-back = 上一次更新未能正确启动，已恢复到可正常运行的版本。
+updates-revert = 恢复到上一个版本（{$version}）
+updates-error-no-internet = 无法连接到更新服务器，请检查您的网络连接
+updates-error-bad-download = 下载的更新无效，未予安装。
+updates-error-rate-limited = 更新服务器繁忙，请稍后再试。
+updates-error-no-space = 可用空间不足，无法安装更新。
+updates-error-not-writable = 无法保存更新（权限被拒绝）。

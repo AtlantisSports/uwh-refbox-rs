@@ -428,3 +428,27 @@ game-config-single-half = Durée du match: { $half_len }
     Mort Subite: { $sd_allowed },  Prolongations: { $ot_allowed }
 game-length-ot-allowed-single-half = Durée du match: { $half_length }
          Prolongations Autorisées: { $overtime }
+
+# Self-update / Updates page
+check-version = Vérifier la version
+updates-current-version = Version actuelle
+updates-check-for-updates = Rechercher des mises à jour
+updates-install-update = Installer la mise à jour
+updates-continue = Continuer
+updates-unknown = Inconnu
+updates-checking = Vérification…
+updates-up-to-date = À jour.
+updates-available = Mise à jour disponible : {$version}
+updates-confirm-install = La refbox va redémarrer. Continuer ?
+updates-downloading = Téléchargement…
+updates-verifying = Vérification du téléchargement…
+updates-installing = Installation…
+updates-restarting = Redémarrage…
+updates-confirm-revert = Revenir à la version précédente ? La refbox va redémarrer.
+updates-rolled-back = La mise à jour précédente n’a pas démarré correctement et a été restaurée vers la version fonctionnelle.
+updates-revert = Revenir à la version précédente ({$version})
+updates-error-no-internet = Impossible de joindre le serveur de mises à jour, veuillez vérifier votre connexion internet
+updates-error-bad-download = La mise à jour téléchargée n’était pas valide et n’a pas été installée.
+updates-error-rate-limited = Le serveur de mises à jour est occupé, veuillez réessayer dans un instant.
+updates-error-no-space = Espace libre insuffisant pour installer la mise à jour.
+updates-error-not-writable = Impossible d’enregistrer la mise à jour (autorisation refusée).

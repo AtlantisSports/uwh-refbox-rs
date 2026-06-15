@@ -426,3 +426,27 @@ game-config-single-half = Wedstrijdduur: { $half_len }
     Plotselinge Dood Toegestaan: { $sd_allowed },  Verlenging Toegestaan: { $ot_allowed }
 game-length-ot-allowed-single-half = Wedstrijdduur: { $half_length }
          Verlenging Toegestaan: { $overtime }
+
+# Self-update / Updates page
+check-version = Versie controleren
+updates-current-version = Huidige versie
+updates-check-for-updates = Controleren op updates
+updates-install-update = Update installeren
+updates-continue = Doorgaan
+updates-unknown = Onbekend
+updates-checking = Bezig met controleren…
+updates-up-to-date = Up-to-date.
+updates-available = Update beschikbaar: {$version}
+updates-confirm-install = Hiermee wordt de refbox opnieuw opgestart. Doorgaan?
+updates-downloading = Bezig met downloaden…
+updates-verifying = Download controleren…
+updates-installing = Bezig met installeren…
+updates-restarting = Bezig met opnieuw opstarten…
+updates-confirm-revert = Terug naar de vorige versie? Hiermee wordt de refbox opnieuw opgestart.
+updates-rolled-back = De vorige update is niet correct gestart en is teruggezet naar de werkende versie.
+updates-revert = Terug naar vorige versie ({$version})
+updates-error-no-internet = Kon de updateserver niet bereiken, controleer je internetverbinding
+updates-error-bad-download = De gedownloade update was niet geldig en is niet geïnstalleerd.
+updates-error-rate-limited = De updateserver is bezig, probeer het over een tijdje opnieuw.
+updates-error-no-space = Niet genoeg vrije ruimte om de update te installeren.
+updates-error-not-writable = De update kon niet worden opgeslagen (toegang geweigerd).

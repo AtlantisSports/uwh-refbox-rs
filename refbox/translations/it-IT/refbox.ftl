@@ -426,3 +426,27 @@ game-config-single-half = Durata Partita: { $half_len }
     Morte Improvvisa Consentita: { $sd_allowed },  Tempi Suppl. Consentiti: { $ot_allowed }
 game-length-ot-allowed-single-half = Durata Partita: { $half_length }
          Tempi Suppl. Consentiti: { $overtime }
+
+# Self-update / Updates page
+check-version = Controlla versione
+updates-current-version = Versione attuale
+updates-check-for-updates = Controlla aggiornamenti
+updates-install-update = Installa aggiornamento
+updates-continue = Continua
+updates-unknown = Sconosciuto
+updates-checking = Controllo in corso…
+updates-up-to-date = Aggiornato.
+updates-available = Aggiornamento disponibile: {$version}
+updates-confirm-install = Questo riavvierà la refbox. Continuare?
+updates-downloading = Download in corso…
+updates-verifying = Controllo del download…
+updates-installing = Installazione in corso…
+updates-restarting = Riavvio in corso…
+updates-confirm-revert = Tornare alla versione precedente? Questo riavvierà la refbox.
+updates-rolled-back = L’aggiornamento precedente non si è avviato correttamente ed è stato ripristinato alla versione funzionante.
+updates-revert = Torna alla versione precedente ({$version})
+updates-error-no-internet = Impossibile raggiungere il server degli aggiornamenti, controlla la tua connessione internet
+updates-error-bad-download = L’aggiornamento scaricato non era valido e non è stato installato.
+updates-error-rate-limited = Il server degli aggiornamenti è occupato, riprova tra poco.
+updates-error-no-space = Spazio libero insufficiente per installare l’aggiornamento.
+updates-error-not-writable = Impossibile salvare l’aggiornamento (permesso negato).

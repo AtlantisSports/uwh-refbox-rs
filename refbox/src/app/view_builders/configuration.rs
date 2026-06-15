@@ -432,8 +432,8 @@ fn make_cancel_apply_footer<'a>(
     if page == ConfigPage::App {
         // Blue "Check Version" button opens the self-update page. Disabled
         // (no on_press → greyed) while a game is in progress so an operator
-        // can't trigger a restart mid-game. Label is translated in a later task.
-        let check = make_button("Check Version")
+        // can't trigger a restart mid-game.
+        let check = make_button(fl!("check-version"))
             .style(blue_button)
             .width(Length::Fill);
         let check = if game_in_progress {
@@ -1973,7 +1973,7 @@ pub(in super::super) fn make_updates_page<'a>(
 
     // 2. Current version (left half) + primary action button (right half)
     let version_element: Element<'a, Message> = make_value_button(
-        "Current version",
+        fl!("updates-current-version"),
         env!("CARGO_PKG_VERSION"),
         (false, true),
         None,
@@ -1983,22 +1983,22 @@ pub(in super::super) fn make_updates_page<'a>(
         UpdateUiState::Unknown
         | UpdateUiState::RolledBack
         | UpdateUiState::UpToDate
-        | UpdateUiState::Error(_) => make_button("Check for Updates")
+        | UpdateUiState::Error(_) => make_button(fl!("updates-check-for-updates"))
             .style(yellow_button)
             .width(Length::Fill)
             .on_press(Message::UpdatesCheck)
             .into(),
-        UpdateUiState::UpdateAvailable => make_button("Install Update")
+        UpdateUiState::UpdateAvailable => make_button(fl!("updates-install-update"))
             .style(yellow_button)
             .width(Length::Fill)
             .on_press(Message::UpdatesInstall)
             .into(),
-        UpdateUiState::ConfirmInstall => make_button("Continue")
+        UpdateUiState::ConfirmInstall => make_button(fl!("updates-continue"))
             .style(yellow_button)
             .width(Length::Fill)
             .on_press(Message::UpdatesConfirmInstall)
             .into(),
-        UpdateUiState::RevertConfirm => make_button("Continue")
+        UpdateUiState::RevertConfirm => make_button(fl!("updates-continue"))
             .style(yellow_button)
             .width(Length::Fill)
             .on_press(Message::UpdatesConfirmRevert)
@@ -2015,40 +2015,25 @@ pub(in super::super) fn make_updates_page<'a>(
 
     // 3. Status line
     let status_text: String = match state {
-        UpdateUiState::Unknown => "Unknown".to_string(),
-        UpdateUiState::RolledBack => {
-            "The previous update didn\u{2019}t start correctly and was rolled back to the working version.".to_string()
-        }
-        UpdateUiState::Checking => "Checking\u{2026}".to_string(),
-        UpdateUiState::UpToDate => "Up to date.".to_string(),
-        UpdateUiState::UpdateAvailable => format!(
-            "Update available: {}",
-            available_version.map(|v| v.to_string()).unwrap_or_default()
+        UpdateUiState::Unknown => fl!("updates-unknown"),
+        UpdateUiState::RolledBack => fl!("updates-rolled-back"),
+        UpdateUiState::Checking => fl!("updates-checking"),
+        UpdateUiState::UpToDate => fl!("updates-up-to-date"),
+        UpdateUiState::UpdateAvailable => fl!(
+            "updates-available",
+            version = available_version.map(|v| v.to_string()).unwrap_or_default()
         ),
-        UpdateUiState::ConfirmInstall => "This will restart the refbox. Continue?".to_string(),
-        UpdateUiState::Downloading => "Downloading\u{2026}".to_string(),
-        UpdateUiState::Verifying => "Checking the download\u{2026}".to_string(),
-        UpdateUiState::Installing => "Installing\u{2026}".to_string(),
-        UpdateUiState::Restarting => "Restarting\u{2026}".to_string(),
-        UpdateUiState::RevertConfirm => {
-            "Revert to the previous version? This will restart the refbox.".to_string()
-        }
-        UpdateUiState::Error(UpdateUiError::NoInternet) => {
-            "Couldn\u{2019}t reach the update server, please check your internet connection"
-                .to_string()
-        }
-        UpdateUiState::Error(UpdateUiError::RateLimited) => {
-            "The update server is busy, please try again in a little while.".to_string()
-        }
-        UpdateUiState::Error(UpdateUiError::BadDownload) => {
-            "The downloaded update wasn\u{2019}t valid and was not installed.".to_string()
-        }
-        UpdateUiState::Error(UpdateUiError::NoSpace) => {
-            "Not enough free space to install the update.".to_string()
-        }
-        UpdateUiState::Error(UpdateUiError::NotWritable) => {
-            "The update couldn\u{2019}t be saved (permission denied).".to_string()
-        }
+        UpdateUiState::ConfirmInstall => fl!("updates-confirm-install"),
+        UpdateUiState::Downloading => fl!("updates-downloading"),
+        UpdateUiState::Verifying => fl!("updates-verifying"),
+        UpdateUiState::Installing => fl!("updates-installing"),
+        UpdateUiState::Restarting => fl!("updates-restarting"),
+        UpdateUiState::RevertConfirm => fl!("updates-confirm-revert"),
+        UpdateUiState::Error(UpdateUiError::NoInternet) => fl!("updates-error-no-internet"),
+        UpdateUiState::Error(UpdateUiError::RateLimited) => fl!("updates-error-rate-limited"),
+        UpdateUiState::Error(UpdateUiError::BadDownload) => fl!("updates-error-bad-download"),
+        UpdateUiState::Error(UpdateUiError::NoSpace) => fl!("updates-error-no-space"),
+        UpdateUiState::Error(UpdateUiError::NotWritable) => fl!("updates-error-not-writable"),
     };
     let status_row = row![text(status_text).size(MEDIUM_TEXT).width(Length::Fill)].spacing(SPACING);
 
@@ -2061,9 +2046,9 @@ pub(in super::super) fn make_updates_page<'a>(
         );
     let blank_or_revert_row: Element<'a, Message> = if show_revert {
         row![
-            make_button(format!(
-                "Revert to Previous Version ({})",
-                backup_version.map(|v| v.to_string()).unwrap_or_default()
+            make_button(fl!(
+                "updates-revert",
+                version = backup_version.map(|v| v.to_string()).unwrap_or_default()
             ))
             .style(light_gray_button)
             .width(Length::Fill)
@@ -2079,9 +2064,9 @@ pub(in super::super) fn make_updates_page<'a>(
     // 5. Footer: Back (idle) / Cancel (progress|confirm) / disabled Back (Restarting).
     let footer_label = if (is_progress && !matches!(state, UpdateUiState::Restarting)) || is_confirm
     {
-        "Cancel"
+        fl!("cancel")
     } else {
-        "Back"
+        fl!("back")
     };
     let footer_btn = make_button(footer_label).style(red_button);
     let footer_btn = if matches!(state, UpdateUiState::Restarting) {

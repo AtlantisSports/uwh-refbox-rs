@@ -70,7 +70,48 @@ pub async fn download_to(url: &str, dest: &std::path::Path) -> Result<(), Update
         } else {
             UpdateError::Io(e.to_string())
         }
-    })
+    })?;
+    // The downloaded artifact must be executable for the smoke test and swap.
+    set_executable(dest).map_err(|e| UpdateError::Io(e.to_string()))?;
+    Ok(())
+}
+
+/// Mark a freshly-downloaded file executable. On Unix this sets mode 0o755 so
+/// the binary can be smoke-tested and exec'd after the swap; on other platforms
+/// the executable bit is not used, so this is a no-op.
+#[cfg(unix)]
+fn set_executable(path: &std::path::Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
+}
+
+#[cfg(not(unix))]
+fn set_executable(_path: &std::path::Path) -> std::io::Result<()> {
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn set_executable_sets_exec_bit() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("f");
+        std::fs::write(&p, b"x").unwrap();
+        // default is typically 0o644 — no exec bit
+        assert_eq!(
+            std::fs::metadata(&p).unwrap().permissions().mode() & 0o111,
+            0
+        );
+        set_executable(&p).unwrap();
+        assert_ne!(
+            std::fs::metadata(&p).unwrap().permissions().mode() & 0o111,
+            0
+        );
+    }
 }
 
 /// Fetch the text body of `url` (used to retrieve checksum files).

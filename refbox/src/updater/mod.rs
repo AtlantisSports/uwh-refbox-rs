@@ -1,3 +1,4 @@
+pub mod marker;
 pub mod release;
 pub mod swap;
 pub mod verify;

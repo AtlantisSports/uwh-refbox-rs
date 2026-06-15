@@ -123,9 +123,13 @@ jobs:
         curl -L "https://drive.usercontent.google.com/download?id=1FLtJwc8gb5vuSRVPUNLxKhT1ufcOSa-w&export=download" -o "release/Refbox User Manual with Fouls.pdf"
     - name: Zip release
       run: cd release && zip -r ../refbox.zip .
+    - uses: actions/download-artifact@v5
+      with:
+        name: refbox-rpi
+        path: pi-standalone
     - name: Stage standalone Pi assets
       run: |
-        cp "release/Raspberry Pi/refbox" refbox-aarch64-linux
+        cp pi-standalone/refbox refbox-aarch64-linux
         cp release/rpi-sha256/refbox.sha256 refbox-aarch64-linux.sha256
     - uses: softprops/action-gh-release@v2
       with:

@@ -166,6 +166,11 @@ struct Cli {
 
     #[clap(long, hide = true)]
     simulate_sunlight_display: bool,
+
+    #[clap(long, hide = true)]
+    /// Probe that the binary starts on this machine, then exit 0. Used as the
+    /// post-download smoke test before committing to a new binary.
+    self_check: bool,
 }
 
 /// All arguments needed to launch a panel-simulator child process. Built once
@@ -252,6 +257,7 @@ pub(crate) fn build_restart_argv(args: &Cli) -> Vec<String> {
         language: _,         // a restart is often triggered BY a language change
         is_simulator: _,     // this relaunches the MAIN app, never a sim child
         capture_previews: _, // dev-only; replaying it would exit immediately
+        self_check: _,       // a smoke-test probe, never replayed into a real restart
     } = args;
 
     let mut argv: Vec<String> = Vec::new();
@@ -412,6 +418,14 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     if let Some(dir) = args.capture_previews {
         info!("Capturing front-display layout previews to {dir:?}");
         return sim_app::capture::run_capture(dir).map_err(|e| e.into());
+    }
+
+    if args.self_check {
+        // Smoke test: logging + config are already initialised above. Prove we
+        // can start on this machine without opening a window, spawning a sim
+        // child, or grabbing hardware, then exit 0.
+        info!("--self-check ok");
+        return Ok(());
     }
 
     if args.is_simulator {
@@ -700,6 +714,11 @@ mod restart_argv_tests {
         assert!(argv.contains(&"--log-location".to_string()));
         assert!(argv.contains(&"/tmp/test-logs".to_string()));
         assert!(!argv_from(&[]).contains(&"--log-location".to_string()));
+    }
+
+    #[test]
+    fn never_replays_self_check() {
+        assert!(!argv_from(&["--self-check"]).contains(&"--self-check".to_string()));
     }
 }
 

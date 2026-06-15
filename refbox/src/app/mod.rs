@@ -216,6 +216,10 @@ enum AppState {
     /// BeepTest Settings hierarchy. Reached via the Settings button on the
     /// BeepTest main view. Mirrors the `EditGameConfig(ConfigPage)` pattern.
     BeepTestSettings(BeepTestConfigPage),
+    Updates {
+        state: crate::app::message::UpdateUiState,
+        backup_available: bool,
+    },
 }
 
 /// Sub-pages inside `AppState::BeepTestSettings`.
@@ -2357,6 +2361,71 @@ impl RefBoxApp {
                 self.navigate_to_parent(page);
                 Task::none()
             }
+            Message::OpenUpdatesPage => {
+                self.app_state = AppState::Updates {
+                    state: UpdateUiState::Unknown,
+                    backup_available: false,
+                };
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::UpdatesCheck => {
+                if let AppState::Updates { ref mut state, .. } = self.app_state {
+                    *state = UpdateUiState::Checking;
+                }
+                Task::none()
+            }
+            Message::UpdatesInstall => {
+                if let AppState::Updates { ref mut state, .. } = self.app_state {
+                    *state = UpdateUiState::ConfirmInstall;
+                }
+                Task::none()
+            }
+            Message::UpdatesConfirmInstall => {
+                if let AppState::Updates { ref mut state, .. } = self.app_state {
+                    *state = UpdateUiState::Downloading;
+                }
+                Task::none()
+            }
+            Message::UpdatesRevert => {
+                if let AppState::Updates { ref mut state, .. } = self.app_state {
+                    *state = UpdateUiState::RevertConfirm;
+                }
+                Task::none()
+            }
+            Message::UpdatesConfirmRevert => {
+                if let AppState::Updates { ref mut state, .. } = self.app_state {
+                    *state = UpdateUiState::Restarting;
+                }
+                Task::none()
+            }
+            Message::UpdatesStep(next) => {
+                if let AppState::Updates { ref mut state, .. } = self.app_state {
+                    *state = next;
+                }
+                Task::none()
+            }
+            Message::UpdatesBack => {
+                if let AppState::Updates { ref mut state, .. } = self.app_state {
+                    match state {
+                        UpdateUiState::Checking => *state = UpdateUiState::Unknown,
+                        UpdateUiState::Downloading
+                        | UpdateUiState::Verifying
+                        | UpdateUiState::Installing
+                        | UpdateUiState::ConfirmInstall => *state = UpdateUiState::UpdateAvailable,
+                        UpdateUiState::RevertConfirm => *state = UpdateUiState::Unknown,
+                        UpdateUiState::Restarting => {} // disabled — no-op
+                        UpdateUiState::Unknown
+                        | UpdateUiState::UpToDate
+                        | UpdateUiState::UpdateAvailable
+                        | UpdateUiState::Error(_) => {
+                            self.app_state = AppState::EditGameConfig(ConfigPage::App);
+                            trace!("AppState changed to {:?}", self.app_state);
+                        }
+                    }
+                }
+                Task::none()
+            }
             Message::ConfigEditComplete => {
                 // Per-page Apply/Cancel chrome is the only commit path after ADR 009
                 // Tasks 8-13. ConfigEditComplete only fires `canceled: true` now (from
@@ -3932,6 +4001,10 @@ impl RefBoxApp {
                     self.beep_test_has_run,
                 )
             }
+            AppState::Updates {
+                ref state,
+                backup_available,
+            } => make_updates_page(data, state, backup_available),
             AppState::BeepTestSettings(page) => match page {
                 BeepTestConfigPage::Main => {
                     // App Mode is cycled directly on the landing. The

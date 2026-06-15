@@ -1906,6 +1906,155 @@ fn make_language_select_page<'a>(
     .into()
 }
 
+pub(in super::super) fn make_updates_page<'a>(
+    data: ViewData<'_, '_>,
+    state: &UpdateUiState,
+    backup_available: bool,
+) -> Element<'a, Message> {
+    let ViewData {
+        snapshot,
+        mode,
+        clock_running,
+        portal_indicator,
+        ..
+    } = data;
+
+    let is_progress = matches!(
+        state,
+        UpdateUiState::Checking
+            | UpdateUiState::Downloading
+            | UpdateUiState::Verifying
+            | UpdateUiState::Installing
+            | UpdateUiState::Restarting
+    );
+    let is_confirm = matches!(
+        state,
+        UpdateUiState::ConfirmInstall | UpdateUiState::RevertConfirm
+    );
+
+    // 1. Time banner
+    let time_banner = make_game_time_button(
+        snapshot,
+        false,
+        false,
+        mode,
+        clock_running,
+        portal_indicator,
+        None,
+    );
+
+    // 2. Current version (left half) + primary action button (right half)
+    let version_element: Element<'a, Message> = make_value_button(
+        "Current version",
+        env!("CARGO_PKG_VERSION"),
+        (false, true),
+        None,
+    )
+    .into();
+    let primary_element: Element<'a, Message> = match state {
+        UpdateUiState::Unknown | UpdateUiState::UpToDate | UpdateUiState::Error(_) => {
+            make_button("Check for Updates")
+                .style(yellow_button)
+                .width(Length::Fill)
+                .on_press(Message::UpdatesCheck)
+                .into()
+        }
+        UpdateUiState::UpdateAvailable => make_button("Install Update")
+            .style(yellow_button)
+            .width(Length::Fill)
+            .on_press(Message::UpdatesInstall)
+            .into(),
+        UpdateUiState::ConfirmInstall => make_button("Continue")
+            .style(yellow_button)
+            .width(Length::Fill)
+            .on_press(Message::UpdatesConfirmInstall)
+            .into(),
+        UpdateUiState::RevertConfirm => make_button("Continue")
+            .style(yellow_button)
+            .width(Length::Fill)
+            .on_press(Message::UpdatesConfirmRevert)
+            .into(),
+        UpdateUiState::Checking
+        | UpdateUiState::Downloading
+        | UpdateUiState::Verifying
+        | UpdateUiState::Installing
+        | UpdateUiState::Restarting => horizontal_space().into(),
+    };
+    let version_primary_row = row![version_element, primary_element]
+        .spacing(SPACING)
+        .height(Length::Fill);
+
+    // 3. Status line
+    let status_text = match state {
+        UpdateUiState::Unknown => "Unknown",
+        UpdateUiState::Checking => "Checking\u{2026}",
+        UpdateUiState::UpToDate => "Up to date.",
+        UpdateUiState::UpdateAvailable => "Update available: 0.4.3",
+        UpdateUiState::ConfirmInstall => "This will restart the refbox. Continue?",
+        UpdateUiState::Downloading => "Downloading\u{2026}",
+        UpdateUiState::Verifying => "Checking the download\u{2026}",
+        UpdateUiState::Installing => "Installing\u{2026}",
+        UpdateUiState::Restarting => "Restarting\u{2026}",
+        UpdateUiState::RevertConfirm => {
+            "Revert to the previous version? This will restart the refbox."
+        }
+        UpdateUiState::Error(UpdateUiError::NoInternet) => {
+            "Couldn\u{2019}t reach the update server, please check your internet connection"
+        }
+        UpdateUiState::Error(UpdateUiError::BadDownload) => {
+            "The downloaded update wasn\u{2019}t valid and was not installed."
+        }
+    };
+    let status_row = row![text(status_text).size(MEDIUM_TEXT).width(Length::Fill)].spacing(SPACING);
+
+    // 4. The "blank row": a Revert button when a backup exists and state is idle,
+    // otherwise the same blank-spacer idiom the other config pages use.
+    let show_revert = backup_available
+        && matches!(
+            state,
+            UpdateUiState::Unknown | UpdateUiState::UpToDate | UpdateUiState::UpdateAvailable
+        );
+    let blank_or_revert_row: Element<'a, Message> = if show_revert {
+        row![
+            make_button("Revert to Previous Version (0.4.1)")
+                .style(light_gray_button)
+                .width(Length::Fill)
+                .on_press(Message::UpdatesRevert),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill)
+        .into()
+    } else {
+        row![horizontal_space()].height(Length::Fill).into()
+    };
+
+    // 5. Footer: Back (idle) / Cancel (progress|confirm) / disabled Back (Restarting).
+    let footer_label = if (is_progress && !matches!(state, UpdateUiState::Restarting)) || is_confirm
+    {
+        "Cancel"
+    } else {
+        "Back"
+    };
+    let footer_btn = make_button(footer_label).style(red_button);
+    let footer_btn = if matches!(state, UpdateUiState::Restarting) {
+        footer_btn
+    } else {
+        footer_btn.on_press(Message::UpdatesBack)
+    };
+    let footer_row = row![footer_btn, horizontal_space(), horizontal_space()].spacing(SPACING);
+
+    column![
+        time_banner,
+        version_primary_row,
+        status_row,
+        blank_or_revert_row,
+        footer_row,
+    ]
+    .spacing(SPACING)
+    .height(Length::Fill)
+    .into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

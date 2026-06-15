@@ -234,6 +234,14 @@ pub enum Message {
     SpacebarReleased,
     AlarmDelayElapsed(u64),
     TimeUpdaterStarted(Sender<Arc<Mutex<TournamentManager>>>),
+    OpenUpdatesPage,
+    UpdatesCheck,
+    UpdatesInstall,
+    UpdatesConfirmInstall,
+    UpdatesRevert,
+    UpdatesConfirmRevert,
+    UpdatesStep(UpdateUiState),
+    UpdatesBack,
     NoAction,
 }
 
@@ -342,7 +350,15 @@ impl Message {
             | Self::AlarmReleased
             | Self::SpacebarPressed
             | Self::SpacebarReleased
-            | Self::AlarmDelayElapsed(_) => false,
+            | Self::AlarmDelayElapsed(_)
+            | Self::OpenUpdatesPage
+            | Self::UpdatesCheck
+            | Self::UpdatesInstall
+            | Self::UpdatesConfirmInstall
+            | Self::UpdatesRevert
+            | Self::UpdatesConfirmRevert
+            | Self::UpdatesStep(_)
+            | Self::UpdatesBack => false,
         }
     }
 }
@@ -400,6 +416,13 @@ impl PartialEq for Message {
             | (Self::AlarmReleased, Self::AlarmReleased)
             | (Self::SpacebarPressed, Self::SpacebarPressed)
             | (Self::SpacebarReleased, Self::SpacebarReleased)
+            | (Self::OpenUpdatesPage, Self::OpenUpdatesPage)
+            | (Self::UpdatesCheck, Self::UpdatesCheck)
+            | (Self::UpdatesInstall, Self::UpdatesInstall)
+            | (Self::UpdatesConfirmInstall, Self::UpdatesConfirmInstall)
+            | (Self::UpdatesRevert, Self::UpdatesRevert)
+            | (Self::UpdatesConfirmRevert, Self::UpdatesConfirmRevert)
+            | (Self::UpdatesBack, Self::UpdatesBack)
             | (Self::NoAction, Self::NoAction) => true,
             (Self::AlarmDelayElapsed(a), Self::AlarmDelayElapsed(b)) => a == b,
 
@@ -530,6 +553,7 @@ impl PartialEq for Message {
             (Self::RecvSchedule(a, b), Self::RecvSchedule(c, d)) => a == c && b == d,
             (Self::RecvPortalToken(a), Self::RecvPortalToken(b)) => a == b,
             (Self::RecvTokenValid(a), Self::RecvTokenValid(b)) => a == b,
+            (Self::UpdatesStep(a), Self::UpdatesStep(b)) => a == b,
 
             (Self::NewSnapshot(_), _)
             | (Self::EditTime, _)
@@ -632,9 +656,38 @@ impl PartialEq for Message {
             | (Self::SpacebarReleased, _)
             | (Self::AlarmDelayElapsed(_), _)
             | (Self::TimeUpdaterStarted(_), _)
+            | (Self::OpenUpdatesPage, _)
+            | (Self::UpdatesCheck, _)
+            | (Self::UpdatesInstall, _)
+            | (Self::UpdatesConfirmInstall, _)
+            | (Self::UpdatesRevert, _)
+            | (Self::UpdatesConfirmRevert, _)
+            | (Self::UpdatesStep(_), _)
+            | (Self::UpdatesBack, _)
             | (Self::NoAction, _) => false,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpdateUiError {
+    NoInternet,
+    BadDownload,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpdateUiState {
+    Unknown,
+    Checking,
+    UpToDate,
+    UpdateAvailable,
+    ConfirmInstall,
+    Downloading,
+    Verifying,
+    Installing,
+    Restarting,
+    RevertConfirm,
+    Error(UpdateUiError),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

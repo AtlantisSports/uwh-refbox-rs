@@ -1980,13 +1980,14 @@ pub(in super::super) fn make_updates_page<'a>(
     )
     .into();
     let primary_element: Element<'a, Message> = match state {
-        UpdateUiState::Unknown | UpdateUiState::UpToDate | UpdateUiState::Error(_) => {
-            make_button("Check for Updates")
-                .style(yellow_button)
-                .width(Length::Fill)
-                .on_press(Message::UpdatesCheck)
-                .into()
-        }
+        UpdateUiState::Unknown
+        | UpdateUiState::RolledBack
+        | UpdateUiState::UpToDate
+        | UpdateUiState::Error(_) => make_button("Check for Updates")
+            .style(yellow_button)
+            .width(Length::Fill)
+            .on_press(Message::UpdatesCheck)
+            .into(),
         UpdateUiState::UpdateAvailable => make_button("Install Update")
             .style(yellow_button)
             .width(Length::Fill)
@@ -2015,6 +2016,9 @@ pub(in super::super) fn make_updates_page<'a>(
     // 3. Status line
     let status_text: String = match state {
         UpdateUiState::Unknown => "Unknown".to_string(),
+        UpdateUiState::RolledBack => {
+            "The previous update didn\u{2019}t start correctly and was rolled back to the working version.".to_string()
+        }
         UpdateUiState::Checking => "Checking\u{2026}".to_string(),
         UpdateUiState::UpToDate => "Up to date.".to_string(),
         UpdateUiState::UpdateAvailable => format!(

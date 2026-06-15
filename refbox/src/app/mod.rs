@@ -223,6 +223,10 @@ pub struct RefBoxAppFlags {
     pub list_all_events: bool,
     pub install_path: Option<std::path::PathBuf>,
     pub restart_argv: Vec<String>,
+    /// Set by `main()` when the startup safety net auto-reverted a failed update
+    /// on this boot. Makes `new()` land on the Updates page with a one-time
+    /// rollback notice instead of the normal main screen.
+    pub show_rolled_back: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -1265,6 +1269,7 @@ impl RefBoxApp {
             list_all_events,
             install_path,
             restart_argv,
+            show_rolled_back,
         } = flags;
 
         // Paint in the saved display mode from the first frame.
@@ -1410,10 +1415,23 @@ impl RefBoxApp {
 
         // BeepTest mode boots straight into the beep-test screen. Hockey and
         // Rugby modes keep the historic MainPage landing.
-        let initial_app_state = if config.mode == Mode::BeepTest {
+        let default_app_state = if config.mode == Mode::BeepTest {
             AppState::BeepTestPage
         } else {
             AppState::MainPage
+        };
+
+        // After a startup auto-revert, land on the Updates page showing the
+        // one-time rollback notice instead of the normal landing screen. The
+        // backup was consumed (renamed away) by the revert, so no revert button
+        // is offered. `last_app_state` stays the normal default so Back is sane.
+        let initial_app_state = if show_rolled_back {
+            AppState::Updates {
+                state: UpdateUiState::RolledBack,
+                backup_available: false,
+            }
+        } else {
+            default_app_state.clone()
         };
 
         let new = Self {
@@ -1427,8 +1445,8 @@ impl RefBoxApp {
             edited_settings: Default::default(),
             page_entry_snapshot: None,
             snapshot,
-            app_state: initial_app_state.clone(),
-            last_app_state: initial_app_state,
+            app_state: initial_app_state,
+            last_app_state: default_app_state,
             last_message: Message::NoAction,
             update_sender,
             uwhportal_client,
@@ -1470,6 +1488,13 @@ impl RefBoxApp {
         if new.using_uwhportal {
             startup_tasks.push(new.request_event_list());
         }
+        // Arm a one-shot ~20s timer. If the app is still running when it fires,
+        // startup was healthy and the update trial marker can be cleared so a
+        // later boot is not mistaken for a failed update trial.
+        startup_tasks.push(Task::future(async {
+            tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+            Message::UpdaterHealthyCheck
+        }));
         let task = Task::batch(startup_tasks);
 
         (new, task)
@@ -2770,6 +2795,12 @@ impl RefBoxApp {
                         | UpdateUiState::ConfirmInstall => *state = UpdateUiState::UpdateAvailable,
                         UpdateUiState::RevertConfirm => *state = UpdateUiState::Unknown,
                         UpdateUiState::Restarting => {} // disabled — no-op
+                        UpdateUiState::RolledBack => {
+                            // The rollback notice was shown at startup, not reached
+                            // from settings, so Back returns to the main screen.
+                            self.app_state = AppState::MainPage;
+                            trace!("AppState changed to {:?}", self.app_state);
+                        }
                         UpdateUiState::Unknown
                         | UpdateUiState::UpToDate
                         | UpdateUiState::UpdateAvailable
@@ -2778,6 +2809,15 @@ impl RefBoxApp {
                             trace!("AppState changed to {:?}", self.app_state);
                         }
                     }
+                }
+                Task::none()
+            }
+            Message::UpdaterHealthyCheck => {
+                // The app processed this message ~20s after launch, so it started
+                // healthily. Clear any update trial marker so a later boot is not
+                // mistaken for a failed trial. Idempotent / no-op if absent.
+                if let Err(e) = crate::updater::marker::clear_trial(&self.config_dir) {
+                    warn!("Failed to clear update trial marker: {e}");
                 }
                 Task::none()
             }

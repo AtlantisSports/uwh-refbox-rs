@@ -2537,14 +2537,10 @@ impl RefBoxApp {
                 }
                 Task::none()
             }
-            Message::UpdatesInstall => {
-                if let AppState::Updates { ref mut state, .. } = self.app_state {
-                    *state = UpdateUiState::ConfirmInstall;
-                }
-                Task::none()
-            }
             Message::UpdatesConfirmInstall => {
-                // Defensive re-check: never start an update if a game began.
+                // Triggered by the Install button in the bottom-right of the
+                // footer when an update is available. Defensive re-check: never
+                // start an update if a game began.
                 if self.snapshot.current_period != GamePeriod::BetweenGames {
                     self.app_state = AppState::EditGameConfig(ConfigPage::App);
                     trace!("AppState changed to {:?}", self.app_state);
@@ -2791,8 +2787,7 @@ impl RefBoxApp {
                         UpdateUiState::Checking => *state = UpdateUiState::Unknown,
                         UpdateUiState::Downloading
                         | UpdateUiState::Verifying
-                        | UpdateUiState::Installing
-                        | UpdateUiState::ConfirmInstall => *state = UpdateUiState::UpdateAvailable,
+                        | UpdateUiState::Installing => *state = UpdateUiState::UpdateAvailable,
                         UpdateUiState::RevertConfirm => *state = UpdateUiState::Unknown,
                         UpdateUiState::Restarting => {} // disabled — no-op
                         UpdateUiState::RolledBack => {

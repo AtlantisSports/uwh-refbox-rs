@@ -240,7 +240,10 @@ pub enum Message {
     UpdatesConfirmInstall,
     UpdatesRevert,
     UpdatesConfirmRevert,
-    UpdatesStep(UpdateUiState),
+    UpdatesCheckDone(Result<crate::updater::release::ReleaseInfo, UpdateUiError>),
+    UpdatesDownloaded(Result<String, UpdateUiError>),
+    UpdatesVerified(Result<(), UpdateUiError>),
+    UpdatesInstalled(Result<(), UpdateUiError>),
     UpdatesBack,
     NoAction,
 }
@@ -357,7 +360,10 @@ impl Message {
             | Self::UpdatesConfirmInstall
             | Self::UpdatesRevert
             | Self::UpdatesConfirmRevert
-            | Self::UpdatesStep(_)
+            | Self::UpdatesCheckDone(_)
+            | Self::UpdatesDownloaded(_)
+            | Self::UpdatesVerified(_)
+            | Self::UpdatesInstalled(_)
             | Self::UpdatesBack => false,
         }
     }
@@ -553,7 +559,10 @@ impl PartialEq for Message {
             (Self::RecvSchedule(a, b), Self::RecvSchedule(c, d)) => a == c && b == d,
             (Self::RecvPortalToken(a), Self::RecvPortalToken(b)) => a == b,
             (Self::RecvTokenValid(a), Self::RecvTokenValid(b)) => a == b,
-            (Self::UpdatesStep(a), Self::UpdatesStep(b)) => a == b,
+            (Self::UpdatesCheckDone(a), Self::UpdatesCheckDone(b)) => a == b,
+            (Self::UpdatesDownloaded(a), Self::UpdatesDownloaded(b)) => a == b,
+            (Self::UpdatesVerified(a), Self::UpdatesVerified(b)) => a == b,
+            (Self::UpdatesInstalled(a), Self::UpdatesInstalled(b)) => a == b,
 
             (Self::NewSnapshot(_), _)
             | (Self::EditTime, _)
@@ -662,7 +671,10 @@ impl PartialEq for Message {
             | (Self::UpdatesConfirmInstall, _)
             | (Self::UpdatesRevert, _)
             | (Self::UpdatesConfirmRevert, _)
-            | (Self::UpdatesStep(_), _)
+            | (Self::UpdatesCheckDone(_), _)
+            | (Self::UpdatesDownloaded(_), _)
+            | (Self::UpdatesVerified(_), _)
+            | (Self::UpdatesInstalled(_), _)
             | (Self::UpdatesBack, _)
             | (Self::NoAction, _) => false,
         }
@@ -672,7 +684,10 @@ impl PartialEq for Message {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UpdateUiError {
     NoInternet,
+    RateLimited,
     BadDownload,
+    NoSpace,
+    NotWritable,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

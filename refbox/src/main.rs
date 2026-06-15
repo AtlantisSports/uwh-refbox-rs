@@ -582,6 +582,12 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         .map(std::path::Path::to_path_buf)
         .unwrap_or_else(std::env::temp_dir);
 
+    // Canonical path of the running binary, captured BEFORE any self-update swap.
+    // The updater swaps the new binary in at this path and main() respawns it.
+    let install_path = std::env::current_exe()
+        .ok()
+        .and_then(|p| std::fs::canonicalize(&p).ok());
+
     let mode = config.mode;
     let flags = app::RefBoxAppFlags {
         config,
@@ -594,6 +600,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         require_https: !args.allow_http,
         fullscreen: args.fullscreen,
         list_all_events: args.all_events,
+        install_path: install_path.clone(),
+        restart_argv: restart_argv.clone(),
     };
 
     // Roboto covers Latin scripts. The CJK subset covers Japanese, Korean, and Chinese
@@ -646,9 +654,19 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // a clean slate without overlapping the old windows. See
     // `app::RESTART_PENDING` for the trigger sites.
     if app::RESTART_PENDING.load(std::sync::atomic::Ordering::Relaxed) {
-        match std::env::current_exe() {
-            Ok(exe) => respawn(exe, &restart_argv),
-            Err(e) => error!("Failed to locate current exe for restart respawn: {e}"),
+        // Prefer the install path captured BEFORE any self-update swap. After a
+        // swap, current_exe() resolves to the old, now-unlinked inode and is
+        // reported as "<path> (deleted)", which would fail to respawn. The
+        // captured install_path still names the on-disk (new) binary. For a
+        // normal (non-update) restart install_path equals the running binary, so
+        // this is correct in both cases; current_exe() is only a last-resort
+        // fallback if the path couldn't be captured at startup.
+        match install_path
+            .clone()
+            .or_else(|| std::env::current_exe().ok())
+        {
+            Some(exe) => respawn(exe, &restart_argv),
+            None => error!("Failed to locate exe for restart respawn"),
         }
     }
 

@@ -77,6 +77,38 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// would otherwise produce.
 pub static RESTART_PENDING: AtomicBool = AtomicBool::new(false);
 
+/// Parse the version out of a `refbox-v<X.Y.Z>.bak` backup filename.
+fn backup_version_from_filename(p: &std::path::Path) -> Option<crate::updater::version::Version> {
+    let name = p.file_name()?.to_str()?;
+    let v = name.strip_prefix("refbox-v")?.strip_suffix(".bak")?;
+    crate::updater::version::Version::parse(v)
+}
+
+/// Map a low-level updater error to the coarse, operator-facing UI error.
+fn updater_err_to_ui(e: crate::updater::UpdateError) -> crate::app::message::UpdateUiError {
+    use crate::app::message::UpdateUiError as E;
+    use crate::updater::UpdateError as U;
+    match e {
+        U::Network | U::NotJson => E::NoInternet,
+        U::RateLimited => E::RateLimited,
+        U::NoSpace => E::NoSpace,
+        U::NotWritable => E::NotWritable,
+        U::AssetMissing | U::BadVersion | U::Checksum | U::Io(_) => E::BadDownload,
+    }
+}
+
+/// Map a filesystem error from the swap/revert step to the UI error.
+fn updater_io_to_ui(e: &std::io::Error) -> crate::app::message::UpdateUiError {
+    use crate::app::message::UpdateUiError as E;
+    if e.raw_os_error() == Some(28) {
+        E::NoSpace
+    } else if e.kind() == std::io::ErrorKind::PermissionDenied {
+        E::NotWritable
+    } else {
+        E::BadDownload
+    }
+}
+
 pub struct RefBoxApp {
     tm: Arc<Mutex<TournamentManager>>,
     /// Cadence engine for BeepTest mode. `Some(_)` only when
@@ -146,6 +178,23 @@ pub struct RefBoxApp {
     /// (from anywhere) would route to the detail page, which matches
     /// the operator's most recent intent.
     portal_login_return_to_detail: bool,
+    /// Directory holding the persisted config + portal retry queue. Also
+    /// where the self-update trial marker is written (next to the config).
+    config_dir: std::path::PathBuf,
+    /// Canonical path of the running binary, captured at startup before any
+    /// self-update swap. `None` if it could not be resolved (the Updates page
+    /// then refuses to install/revert rather than guessing a path).
+    install_path: Option<std::path::PathBuf>,
+    /// argv this process was launched with, replayed by `main()` after an
+    /// in-app restart. Passed to the new binary's smoke test (`--self-check`
+    /// short-circuits before any of these take effect).
+    restart_argv: Vec<String>,
+    /// The release the operator confirmed to install, captured when the check
+    /// found a newer version. Drives the download/verify/install pipeline.
+    pending_update: Option<crate::updater::release::ReleaseInfo>,
+    /// Version of the on-disk backup (`refbox-v*.bak`), if one exists. Shown on
+    /// the Revert button so the operator sees which version they'd roll back to.
+    update_backup_version: Option<crate::updater::version::Version>,
     /// Debug-only one-shot: when `UWH_PORTAL_SCRAMBLE_TOKEN` is set in a
     /// debug build, this starts `true` and is cleared the first time
     /// `set_current_event_id` is called with `Some(_)`. At that point
@@ -172,6 +221,8 @@ pub struct RefBoxAppFlags {
     pub require_https: bool,
     pub fullscreen: bool,
     pub list_all_events: bool,
+    pub install_path: Option<std::path::PathBuf>,
+    pub restart_argv: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -512,6 +563,37 @@ impl RefBoxApp {
         } else {
             Task::none()
         }
+    }
+
+    /// Directory the running binary lives in (where the new binary is swapped
+    /// in and where the `refbox-v*.bak` backup is kept). `None` if the install
+    /// path couldn't be resolved at startup.
+    fn updater_install_dir(&self) -> Option<std::path::PathBuf> {
+        self.install_path
+            .as_ref()
+            .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
+    }
+
+    /// Scratch path the downloaded binary is written to before verification and
+    /// the swap. Lives next to the running binary so the final swap is a rename
+    /// within one filesystem.
+    fn updater_temp_path(&self) -> Option<std::path::PathBuf> {
+        self.updater_install_dir().map(|d| d.join("refbox.new"))
+    }
+
+    /// The single `refbox-v*.bak` backup next to the binary, if present.
+    fn find_update_backup(&self) -> Option<std::path::PathBuf> {
+        let dir = self.updater_install_dir()?;
+        std::fs::read_dir(&dir)
+            .ok()?
+            .flatten()
+            .map(|e| e.path())
+            .find(|p| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|n| n.starts_with("refbox-v") && n.ends_with(".bak"))
+                    .unwrap_or(false)
+            })
     }
 
     fn request_teams_list(&self, event_id: EventId) -> Task<Message> {
@@ -1181,6 +1263,8 @@ impl RefBoxApp {
             require_https,
             fullscreen,
             list_all_events,
+            install_path,
+            restart_argv,
         } = flags;
 
         // Paint in the saved display mode from the first frame.
@@ -1366,6 +1450,11 @@ impl RefBoxApp {
             portal_manager,
             portal_event_rx,
             portal_login_return_to_detail: false,
+            config_dir,
+            install_path,
+            restart_argv,
+            pending_update: None,
+            update_backup_version: None,
             #[cfg(debug_assertions)]
             scramble_token_pending,
         };
@@ -2362,9 +2451,14 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::OpenUpdatesPage => {
+                let backup = self.find_update_backup();
+                self.update_backup_version = backup
+                    .as_ref()
+                    .and_then(|p| backup_version_from_filename(p));
+                self.pending_update = None;
                 self.app_state = AppState::Updates {
                     state: UpdateUiState::Unknown,
-                    backup_available: false,
+                    backup_available: backup.is_some(),
                 };
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
@@ -2372,6 +2466,49 @@ impl RefBoxApp {
             Message::UpdatesCheck => {
                 if let AppState::Updates { ref mut state, .. } = self.app_state {
                     *state = UpdateUiState::Checking;
+                }
+                Task::future(async move {
+                    match crate::updater::net::check_latest().await {
+                        Ok(info) => Message::UpdatesCheckDone(Ok(info)),
+                        Err(e) => Message::UpdatesCheckDone(Err(updater_err_to_ui(e))),
+                    }
+                })
+            }
+            Message::UpdatesCheckDone(result) => {
+                // Drop a stale result if the operator left the page or cancelled.
+                if !matches!(
+                    self.app_state,
+                    AppState::Updates {
+                        state: UpdateUiState::Checking,
+                        ..
+                    }
+                ) {
+                    return Task::none();
+                }
+                if let AppState::Updates { ref mut state, .. } = self.app_state {
+                    match result {
+                        Ok(info) => {
+                            // The current crate version is a compile-time-constant valid
+                            // semver, so parsing it is expected to succeed; a parse failure
+                            // is treated as "not newer" rather than panicking.
+                            let newer = match crate::updater::version::Version::parse(env!(
+                                "CARGO_PKG_VERSION"
+                            )) {
+                                Some(current) => {
+                                    info.version.cmp_to(&current) == std::cmp::Ordering::Greater
+                                }
+                                None => false,
+                            };
+                            if newer {
+                                self.pending_update = Some(info);
+                                *state = UpdateUiState::UpdateAvailable;
+                            } else {
+                                self.pending_update = None;
+                                *state = UpdateUiState::UpToDate;
+                            }
+                        }
+                        Err(e) => *state = UpdateUiState::Error(e),
+                    }
                 }
                 Task::none()
             }
@@ -2382,11 +2519,200 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::UpdatesConfirmInstall => {
-                if let AppState::Updates { ref mut state, .. } = self.app_state {
-                    *state = UpdateUiState::Downloading;
+                // Defensive re-check: never start an update if a game began.
+                if self.snapshot.current_period != GamePeriod::BetweenGames {
+                    self.app_state = AppState::EditGameConfig(ConfigPage::App);
+                    trace!("AppState changed to {:?}", self.app_state);
+                    return Task::none();
                 }
-                Task::none()
+                let info = self.pending_update.clone();
+                let temp = self.updater_temp_path();
+                match (info, temp) {
+                    (Some(info), Some(temp)) => {
+                        if let AppState::Updates { ref mut state, .. } = self.app_state {
+                            *state = UpdateUiState::Downloading;
+                        }
+                        let binary_url = info.binary_url.clone();
+                        let checksum_url = info.checksum_url.clone();
+                        Task::future(async move {
+                            if let Err(e) =
+                                crate::updater::net::download_to(&binary_url, &temp).await
+                            {
+                                return Message::UpdatesDownloaded(Err(updater_err_to_ui(e)));
+                            }
+                            match crate::updater::net::fetch_text(&checksum_url).await {
+                                Ok(text) => {
+                                    // The checksum file is "<hex>" (possibly "<hex>  name").
+                                    let sum =
+                                        text.split_whitespace().next().unwrap_or("").to_string();
+                                    Message::UpdatesDownloaded(Ok(sum))
+                                }
+                                Err(e) => Message::UpdatesDownloaded(Err(updater_err_to_ui(e))),
+                            }
+                        })
+                    }
+                    _ => {
+                        if let AppState::Updates { ref mut state, .. } = self.app_state {
+                            *state = UpdateUiState::Error(UpdateUiError::BadDownload);
+                        }
+                        Task::none()
+                    }
+                }
             }
+            Message::UpdatesDownloaded(result) => {
+                // Drop a stale result if the operator left the page or cancelled
+                // (Cancel during download must not proceed to verify/swap).
+                if !matches!(
+                    self.app_state,
+                    AppState::Updates {
+                        state: UpdateUiState::Downloading,
+                        ..
+                    }
+                ) {
+                    return Task::none();
+                }
+                match result {
+                    Ok(checksum) => {
+                        if let AppState::Updates { ref mut state, .. } = self.app_state {
+                            *state = UpdateUiState::Verifying;
+                        }
+                        match self.updater_temp_path() {
+                            Some(temp) => Task::future(async move {
+                                let ok = tokio::task::spawn_blocking(move || {
+                                    crate::updater::verify::verify_sha256(&temp, &checksum)
+                                        .unwrap_or(false)
+                                })
+                                .await
+                                .unwrap_or(false);
+                                if ok {
+                                    Message::UpdatesVerified(Ok(()))
+                                } else {
+                                    Message::UpdatesVerified(Err(UpdateUiError::BadDownload))
+                                }
+                            }),
+                            None => {
+                                if let AppState::Updates { ref mut state, .. } = self.app_state {
+                                    *state = UpdateUiState::Error(UpdateUiError::BadDownload);
+                                }
+                                Task::none()
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        if let AppState::Updates { ref mut state, .. } = self.app_state {
+                            *state = UpdateUiState::Error(e);
+                        }
+                        Task::none()
+                    }
+                }
+            }
+            Message::UpdatesVerified(result) => {
+                // Drop a stale result if the operator left the page or cancelled
+                // (Cancel during verify must not proceed to the binary swap).
+                if !matches!(
+                    self.app_state,
+                    AppState::Updates {
+                        state: UpdateUiState::Verifying,
+                        ..
+                    }
+                ) {
+                    return Task::none();
+                }
+                match result {
+                    Ok(()) => {
+                        let temp = self.updater_temp_path();
+                        let install = self.install_path.clone();
+                        let trying = self.pending_update.as_ref().map(|r| r.version);
+                        let prev =
+                            crate::updater::version::Version::parse(env!("CARGO_PKG_VERSION"));
+                        let config_dir = self.config_dir.clone();
+                        let argv = self.restart_argv.clone();
+                        match (temp, install, trying, prev) {
+                            (Some(temp), Some(install), Some(trying), Some(prev)) => {
+                                if let AppState::Updates { ref mut state, .. } = self.app_state {
+                                    *state = UpdateUiState::Installing;
+                                }
+                                Task::future(async move {
+                                    let result = tokio::task::spawn_blocking(
+                                        move || -> std::result::Result<(), UpdateUiError> {
+                                            // Smoke test: the downloaded binary must start on this
+                                            // machine (--self-check exits 0 before opening a window
+                                            // or binding ports). Pass the replay argv it would be
+                                            // restarted with; --self-check short-circuits before
+                                            // those take effect.
+                                            let ok = std::process::Command::new(&temp)
+                                                .arg("--self-check")
+                                                .args(&argv)
+                                                .stdin(std::process::Stdio::null())
+                                                .status()
+                                                .map(|s| s.success())
+                                                .unwrap_or(false);
+                                            if !ok {
+                                                return Err(UpdateUiError::BadDownload);
+                                            }
+                                            crate::updater::swap::swap_in_place(
+                                                &install, &temp, &prev,
+                                            )
+                                            .map_err(|e| updater_io_to_ui(&e))?;
+                                            // Best-effort: a failed marker write means the new
+                                            // binary won't auto-revert, but it passed the smoke
+                                            // test, so proceed with the restart.
+                                            if let Err(e) = crate::updater::marker::write_trial(
+                                                &config_dir,
+                                                &trying,
+                                                &prev,
+                                            ) {
+                                                warn!("Failed to write update trial marker: {e}");
+                                            }
+                                            Ok(())
+                                        },
+                                    )
+                                    .await
+                                    .unwrap_or(Err(UpdateUiError::BadDownload));
+                                    Message::UpdatesInstalled(result)
+                                })
+                            }
+                            _ => {
+                                if let AppState::Updates { ref mut state, .. } = self.app_state {
+                                    *state = UpdateUiState::Error(UpdateUiError::BadDownload);
+                                }
+                                Task::none()
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        if let AppState::Updates { ref mut state, .. } = self.app_state {
+                            *state = UpdateUiState::Error(e);
+                        }
+                        Task::none()
+                    }
+                }
+            }
+            Message::UpdatesInstalled(result) => match result {
+                Ok(()) => {
+                    if let AppState::Updates {
+                        ref mut state,
+                        ref mut backup_available,
+                    } = self.app_state
+                    {
+                        *state = UpdateUiState::Restarting;
+                        *backup_available = true;
+                    }
+                    self.update_backup_version =
+                        crate::updater::version::Version::parse(env!("CARGO_PKG_VERSION"));
+                    for mut child in self.sim_children.drain(..) {
+                        let _ = child.kill();
+                    }
+                    RESTART_PENDING.store(true, Ordering::Relaxed);
+                    iced::exit()
+                }
+                Err(e) => {
+                    if let AppState::Updates { ref mut state, .. } = self.app_state {
+                        *state = UpdateUiState::Error(e);
+                    }
+                    Task::none()
+                }
+            },
             Message::UpdatesRevert => {
                 if let AppState::Updates { ref mut state, .. } = self.app_state {
                     *state = UpdateUiState::RevertConfirm;
@@ -2394,16 +2720,45 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::UpdatesConfirmRevert => {
-                if let AppState::Updates { ref mut state, .. } = self.app_state {
-                    *state = UpdateUiState::Restarting;
+                let backup = self.find_update_backup();
+                let install = self.install_path.clone();
+                match (backup, install) {
+                    (Some(backup), Some(install)) => {
+                        // Clear the trial marker first so reverting can't itself be
+                        // mistaken for a failed trial and auto-reverted on next boot.
+                        let _ = crate::updater::marker::clear_trial(&self.config_dir);
+                        match crate::updater::swap::revert(&install, &backup) {
+                            Ok(()) => {
+                                if let AppState::Updates {
+                                    ref mut state,
+                                    ref mut backup_available,
+                                } = self.app_state
+                                {
+                                    *state = UpdateUiState::Restarting;
+                                    *backup_available = false;
+                                }
+                                self.update_backup_version = None;
+                                for mut child in self.sim_children.drain(..) {
+                                    let _ = child.kill();
+                                }
+                                RESTART_PENDING.store(true, Ordering::Relaxed);
+                                iced::exit()
+                            }
+                            Err(e) => {
+                                if let AppState::Updates { ref mut state, .. } = self.app_state {
+                                    *state = UpdateUiState::Error(updater_io_to_ui(&e));
+                                }
+                                Task::none()
+                            }
+                        }
+                    }
+                    _ => {
+                        if let AppState::Updates { ref mut state, .. } = self.app_state {
+                            *state = UpdateUiState::Error(UpdateUiError::BadDownload);
+                        }
+                        Task::none()
+                    }
                 }
-                Task::none()
-            }
-            Message::UpdatesStep(next) => {
-                if let AppState::Updates { ref mut state, .. } = self.app_state {
-                    *state = next;
-                }
-                Task::none()
             }
             Message::UpdatesBack => {
                 if let AppState::Updates { ref mut state, .. } = self.app_state {
@@ -4004,7 +4359,13 @@ impl RefBoxApp {
             AppState::Updates {
                 ref state,
                 backup_available,
-            } => make_updates_page(data, state, backup_available),
+            } => make_updates_page(
+                data,
+                state,
+                backup_available,
+                self.pending_update.as_ref().map(|r| r.version),
+                self.update_backup_version,
+            ),
             AppState::BeepTestSettings(page) => match page {
                 BeepTestConfigPage::Main => {
                     // App Mode is cycled directly on the landing. The

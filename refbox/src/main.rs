@@ -588,6 +588,47 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         .ok()
         .and_then(|p| std::fs::canonicalize(&p).ok());
 
+    // Self-update startup decision: recover from a failed update before opening
+    // any window. An uncleared trial marker means the previously-installed binary
+    // never reached a healthy state, so revert to the backup and relaunch it.
+    let mut show_rolled_back = false;
+    match updater::marker::decide_on_startup(&config_dir) {
+        updater::marker::StartupDecision::Normal => {}
+        updater::marker::StartupDecision::AutoRevert { backup_version } => {
+            match install_path.as_ref().and_then(|p| {
+                p.parent()
+                    .map(|dir| (p.clone(), dir.join(format!("refbox-v{backup_version}.bak"))))
+            }) {
+                Some((install, backup)) => match updater::swap::revert(&install, &backup) {
+                    Ok(()) => {
+                        // Trial cleared so we don't loop; rolled-back marker shows
+                        // the operator a one-time notice on the relaunched binary.
+                        let _ = updater::marker::clear_trial(&config_dir);
+                        let _ = updater::marker::write_rolled_back(&config_dir);
+                        info!("Auto-reverted failed update to {backup_version}; relaunching");
+                        respawn(install, &restart_argv);
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        // Revert failed: clear the trial marker anyway so we don't
+                        // retry-loop forever, and start the (current) binary.
+                        error!("Auto-revert failed: {e}; clearing trial marker and starting");
+                        let _ = updater::marker::clear_trial(&config_dir);
+                    }
+                },
+                None => {
+                    error!("Auto-revert needed but install path unknown; clearing trial marker");
+                    let _ = updater::marker::clear_trial(&config_dir);
+                }
+            }
+        }
+        updater::marker::StartupDecision::ShowRolledBack => {
+            // Clear immediately so the notice is shown strictly once.
+            let _ = updater::marker::clear_rolled_back(&config_dir);
+            show_rolled_back = true;
+        }
+    }
+
     let mode = config.mode;
     let flags = app::RefBoxAppFlags {
         config,
@@ -602,6 +643,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         list_all_events: args.all_events,
         install_path: install_path.clone(),
         restart_argv: restart_argv.clone(),
+        show_rolled_back,
     };
 
     // Roboto covers Latin scripts. The CJK subset covers Japanese, Korean, and Chinese

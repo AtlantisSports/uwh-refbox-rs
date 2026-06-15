@@ -245,6 +245,10 @@ pub enum Message {
     UpdatesVerified(Result<(), UpdateUiError>),
     UpdatesInstalled(Result<(), UpdateUiError>),
     UpdatesBack,
+    /// Fired roughly 20 seconds after startup. Receiving it proves the app
+    /// launched healthily, so the update trial marker is cleared (the safety
+    /// net no longer needs to auto-revert on the next boot).
+    UpdaterHealthyCheck,
     NoAction,
 }
 
@@ -364,7 +368,8 @@ impl Message {
             | Self::UpdatesDownloaded(_)
             | Self::UpdatesVerified(_)
             | Self::UpdatesInstalled(_)
-            | Self::UpdatesBack => false,
+            | Self::UpdatesBack
+            | Self::UpdaterHealthyCheck => false,
         }
     }
 }
@@ -429,6 +434,7 @@ impl PartialEq for Message {
             | (Self::UpdatesRevert, Self::UpdatesRevert)
             | (Self::UpdatesConfirmRevert, Self::UpdatesConfirmRevert)
             | (Self::UpdatesBack, Self::UpdatesBack)
+            | (Self::UpdaterHealthyCheck, Self::UpdaterHealthyCheck)
             | (Self::NoAction, Self::NoAction) => true,
             (Self::AlarmDelayElapsed(a), Self::AlarmDelayElapsed(b)) => a == b,
 
@@ -676,6 +682,7 @@ impl PartialEq for Message {
             | (Self::UpdatesVerified(_), _)
             | (Self::UpdatesInstalled(_), _)
             | (Self::UpdatesBack, _)
+            | (Self::UpdaterHealthyCheck, _)
             | (Self::NoAction, _) => false,
         }
     }
@@ -693,6 +700,9 @@ pub enum UpdateUiError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UpdateUiState {
     Unknown,
+    /// Idle state shown once at startup after the safety net auto-reverted a
+    /// failed update. Behaves like an idle page (offers a fresh check).
+    RolledBack,
     Checking,
     UpToDate,
     UpdateAvailable,

@@ -18,7 +18,7 @@ use std::collections::BTreeMap;
 use tokio::time::Duration;
 use uwh_common::{
     config::Game as GameConfig,
-    game_snapshot::GameSnapshot,
+    game_snapshot::{GamePeriod, GameSnapshot},
     uwhportal::schedule::{Event, EventId, GameNumber, Schedule},
 };
 
@@ -405,6 +405,7 @@ fn make_cancel_apply_footer<'a>(
     page: ConfigPage,
     edited: &EditableSettings,
     snapshot: Option<&PageEntrySnapshot>,
+    game_in_progress: bool,
 ) -> Element<'a, Message> {
     // Apply is enabled when there are pending changes AND the resulting state is
     // committable. For Game Options in portal mode, "committable" requires a
@@ -428,9 +429,24 @@ fn make_cancel_apply_footer<'a>(
         apply
     };
 
-    row![cancel, horizontal_space(), apply]
-        .spacing(SPACING)
-        .into()
+    if page == ConfigPage::App {
+        // Blue "Check Version" button opens the self-update page. Disabled
+        // (no on_press → greyed) while a game is in progress so an operator
+        // can't trigger a restart mid-game. Label is translated in a later task.
+        let check = make_button("Check Version")
+            .style(blue_button)
+            .width(Length::Fill);
+        let check = if game_in_progress {
+            check
+        } else {
+            check.on_press(Message::OpenUpdatesPage)
+        };
+        row![cancel, check, apply].spacing(SPACING).into()
+    } else {
+        row![cancel, horizontal_space(), apply]
+            .spacing(SPACING)
+            .into()
+    }
 }
 
 fn make_user_config_page<'a>(
@@ -886,6 +902,10 @@ fn make_app_config_page<'a>(
         ..
     } = settings;
 
+    // A game is "in progress" for the purpose of gating the updater whenever we
+    // are not in the BetweenGames period.
+    let game_in_progress = snapshot.current_period != GamePeriod::BetweenGames;
+
     column![
         make_game_time_button(
             snapshot,
@@ -948,7 +968,12 @@ fn make_app_config_page<'a>(
         .spacing(SPACING)
         .height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),
-        make_cancel_apply_footer(ConfigPage::App, settings, page_entry_snapshot),
+        make_cancel_apply_footer(
+            ConfigPage::App,
+            settings,
+            page_entry_snapshot,
+            game_in_progress
+        ),
     ]
     .spacing(SPACING)
     .height(Length::Fill)
@@ -1128,7 +1153,7 @@ fn make_display_config_page<'a>(
         ]
         .spacing(SPACING)
         .height(Length::FillPortion(2)),
-        make_cancel_apply_footer(ConfigPage::Display, settings, page_entry_snapshot),
+        make_cancel_apply_footer(ConfigPage::Display, settings, page_entry_snapshot, false),
     ]
     .spacing(SPACING)
     .height(Length::Fill)
@@ -1273,7 +1298,7 @@ fn make_sound_config_page<'a>(
         ]
         .spacing(SPACING)
         .height(Length::Fill),
-        make_cancel_apply_footer(ConfigPage::Sound, settings, page_entry_snapshot),
+        make_cancel_apply_footer(ConfigPage::Sound, settings, page_entry_snapshot, false),
     ]
     .spacing(SPACING)
     .height(Length::Fill)
@@ -1396,6 +1421,7 @@ fn make_remote_config_page<'a>(
             ConfigPage::Remotes(index, listening),
             settings,
             page_entry_snapshot,
+            false,
         ),
     ]
     .spacing(SPACING)

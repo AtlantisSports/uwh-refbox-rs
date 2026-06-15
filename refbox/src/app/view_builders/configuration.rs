@@ -1936,6 +1936,8 @@ pub(in super::super) fn make_updates_page<'a>(
     data: ViewData<'_, '_>,
     state: &UpdateUiState,
     backup_available: bool,
+    available_version: Option<crate::updater::version::Version>,
+    backup_version: Option<crate::updater::version::Version>,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -2011,24 +2013,37 @@ pub(in super::super) fn make_updates_page<'a>(
         .height(Length::Fill);
 
     // 3. Status line
-    let status_text = match state {
-        UpdateUiState::Unknown => "Unknown",
-        UpdateUiState::Checking => "Checking\u{2026}",
-        UpdateUiState::UpToDate => "Up to date.",
-        UpdateUiState::UpdateAvailable => "Update available: 0.4.3",
-        UpdateUiState::ConfirmInstall => "This will restart the refbox. Continue?",
-        UpdateUiState::Downloading => "Downloading\u{2026}",
-        UpdateUiState::Verifying => "Checking the download\u{2026}",
-        UpdateUiState::Installing => "Installing\u{2026}",
-        UpdateUiState::Restarting => "Restarting\u{2026}",
+    let status_text: String = match state {
+        UpdateUiState::Unknown => "Unknown".to_string(),
+        UpdateUiState::Checking => "Checking\u{2026}".to_string(),
+        UpdateUiState::UpToDate => "Up to date.".to_string(),
+        UpdateUiState::UpdateAvailable => format!(
+            "Update available: {}",
+            available_version.map(|v| v.to_string()).unwrap_or_default()
+        ),
+        UpdateUiState::ConfirmInstall => "This will restart the refbox. Continue?".to_string(),
+        UpdateUiState::Downloading => "Downloading\u{2026}".to_string(),
+        UpdateUiState::Verifying => "Checking the download\u{2026}".to_string(),
+        UpdateUiState::Installing => "Installing\u{2026}".to_string(),
+        UpdateUiState::Restarting => "Restarting\u{2026}".to_string(),
         UpdateUiState::RevertConfirm => {
-            "Revert to the previous version? This will restart the refbox."
+            "Revert to the previous version? This will restart the refbox.".to_string()
         }
         UpdateUiState::Error(UpdateUiError::NoInternet) => {
             "Couldn\u{2019}t reach the update server, please check your internet connection"
+                .to_string()
+        }
+        UpdateUiState::Error(UpdateUiError::RateLimited) => {
+            "The update server is busy, please try again in a little while.".to_string()
         }
         UpdateUiState::Error(UpdateUiError::BadDownload) => {
-            "The downloaded update wasn\u{2019}t valid and was not installed."
+            "The downloaded update wasn\u{2019}t valid and was not installed.".to_string()
+        }
+        UpdateUiState::Error(UpdateUiError::NoSpace) => {
+            "Not enough free space to install the update.".to_string()
+        }
+        UpdateUiState::Error(UpdateUiError::NotWritable) => {
+            "The update couldn\u{2019}t be saved (permission denied).".to_string()
         }
     };
     let status_row = row![text(status_text).size(MEDIUM_TEXT).width(Length::Fill)].spacing(SPACING);
@@ -2042,10 +2057,13 @@ pub(in super::super) fn make_updates_page<'a>(
         );
     let blank_or_revert_row: Element<'a, Message> = if show_revert {
         row![
-            make_button("Revert to Previous Version (0.4.1)")
-                .style(light_gray_button)
-                .width(Length::Fill)
-                .on_press(Message::UpdatesRevert),
+            make_button(format!(
+                "Revert to Previous Version ({})",
+                backup_version.map(|v| v.to_string()).unwrap_or_default()
+            ))
+            .style(light_gray_button)
+            .width(Length::Fill)
+            .on_press(Message::UpdatesRevert),
         ]
         .spacing(SPACING)
         .height(Length::Fill)

@@ -21,8 +21,10 @@ use tokio::{
 use tokio_serial::{SerialPortBuilder, SerialPortBuilderExt, SerialStream};
 use uwh_common::game_snapshot::{EncodingError, GamePeriod, GameSnapshot, GameSnapshotNoHeap};
 
-/// Total time budget for retrying a *transient* serial-open failure, plus the
-/// initial backoff step (doubled each attempt, capped by the budget). Sized for
+/// Time budget for retrying a *transient* serial-open failure, plus the initial
+/// backoff step (doubled each attempt, capped by the budget). This bounds when a
+/// new attempt may *start*; the final backoff sleep runs to completion, so
+/// worst-case wall time is up to one extra backoff beyond the budget. Sized for
 /// the brief window during a restart where the exiting process is still
 /// releasing the port.
 /// 🔧 PI: confirm/tune on the spare Pi during the 5×-restart test.
@@ -33,13 +35,21 @@ const SERIAL_OPEN_RETRY_INITIAL: Duration = Duration::from_millis(100);
 /// exists but is momentarily unavailable (e.g. still held by the exiting
 /// process during a restart); `false` for an absent/misconfigured device, which
 /// would only delay startup if retried.
-/// 🔧 PI: if a briefly-held port on the Pi surfaces a different `ErrorKind`,
-/// widen this allowlist (this is the single place to tune it).
+///
+/// A port held under the kernel's exclusive lock (`TIOCEXCL`) — the
+/// restart-overlap case we care about most — fails with `EBUSY`, which
+/// serialport 4.7.3 maps to `ErrorKind::Unknown` (it drops the raw errno), so
+/// `Unknown` MUST count as transient. An absent path fails with
+/// `Io(NotFound)`, which stays excluded so a missing panel skips immediately
+/// with no startup penalty.
+/// 🔧 PI: confirm on the spare Pi that a held port surfaces as `Unknown` (log
+/// the actual `ErrorKind`); adjust this allowlist if it differs.
 fn is_transient_serial_error(e: &tokio_serial::Error) -> bool {
     use tokio_serial::ErrorKind;
     matches!(
         e.kind(),
-        ErrorKind::Io(std::io::ErrorKind::PermissionDenied)
+        ErrorKind::Unknown
+            | ErrorKind::Io(std::io::ErrorKind::PermissionDenied)
             | ErrorKind::Io(std::io::ErrorKind::WouldBlock)
             | ErrorKind::Io(std::io::ErrorKind::TimedOut)
     )
@@ -668,6 +678,9 @@ impl Drop for Server {
 }
 
 /// Time budget + initial backoff for retrying a transient (port-in-use) bind.
+/// The budget bounds when a new attempt may *start*; the final backoff sleep
+/// runs to completion, so worst-case wall time is up to one extra backoff beyond
+/// the budget.
 /// 🔧 PI: confirm/tune on the spare Pi during the 5×-restart test.
 const TCP_BIND_RETRY_BUDGET: Duration = Duration::from_millis(2000);
 const TCP_BIND_RETRY_INITIAL: Duration = Duration::from_millis(100);
@@ -1170,14 +1183,22 @@ mod test {
     #[test]
     fn transient_serial_error_retries_busy_but_not_absent() {
         use tokio_serial::{Error as SerialError, ErrorKind as SerialErrorKind};
-        // A momentarily-held port (typical during a restart) is worth retrying.
-        let busy = SerialError::new(
+        // A port held under the kernel's exclusive lock during a restart fails
+        // with EBUSY, which serialport maps to `Unknown` (raw errno dropped) --
+        // this is the case we must retry.
+        let busy_exclusive = SerialError::new(SerialErrorKind::Unknown, "EBUSY: resource busy");
+        assert!(is_transient_serial_error(&busy_exclusive));
+        // A permission-class momentary failure is also retried.
+        let busy_perm = SerialError::new(
             SerialErrorKind::Io(std::io::ErrorKind::PermissionDenied),
             "busy",
         );
-        assert!(is_transient_serial_error(&busy));
-        // An absent / unknown device must be skipped immediately, not retried.
-        let absent = SerialError::new(SerialErrorKind::NoDevice, "no device");
+        assert!(is_transient_serial_error(&busy_perm));
+        // An absent device (nonexistent path -> NotFound) skips immediately.
+        let absent = SerialError::new(
+            SerialErrorKind::Io(std::io::ErrorKind::NotFound),
+            "no such file",
+        );
         assert!(!is_transient_serial_error(&absent));
     }
 

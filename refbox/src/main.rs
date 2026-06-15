@@ -319,6 +319,19 @@ pub(crate) fn spawn_sim_child(config: &SimSpawnConfig) -> std::io::Result<std::p
         .spawn()
 }
 
+/// Respawn the app: `exe` is the program file to launch, `argv` the replayed
+/// start-up arguments. A failed spawn is logged, never silently swallowed.
+fn respawn(exe: std::path::PathBuf, argv: &[String]) {
+    info!("Restart requested: respawning {exe:?} with args {argv:?}");
+    if let Err(e) = std::process::Command::new(exe)
+        .args(argv)
+        .stdin(Stdio::null())
+        .spawn()
+    {
+        error!("Failed to respawn refbox on restart: {e}");
+    }
+}
+
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let args = Cli::parse();
 
@@ -633,16 +646,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     // `app::RESTART_PENDING` for the trigger sites.
     if app::RESTART_PENDING.load(std::sync::atomic::Ordering::Relaxed) {
         match std::env::current_exe() {
-            Ok(exe) => {
-                info!("Restart requested: respawning {exe:?} with args {restart_argv:?}");
-                if let Err(e) = std::process::Command::new(exe)
-                    .args(&restart_argv)
-                    .stdin(Stdio::null())
-                    .spawn()
-                {
-                    error!("Failed to respawn refbox on restart: {e}");
-                }
-            }
+            Ok(exe) => respawn(exe, &restart_argv),
             Err(e) => error!("Failed to locate current exe for restart respawn: {e}"),
         }
     }

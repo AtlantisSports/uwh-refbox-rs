@@ -43,6 +43,7 @@ mod sim_app;
 mod sim_frame;
 mod sound_controller;
 mod tournament_manager;
+pub mod updater;
 
 mod config;
 use app::languages::Language;

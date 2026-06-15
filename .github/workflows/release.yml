@@ -78,6 +78,14 @@ jobs:
       with:
         name: refbox-rpi
         path: target/aarch64-unknown-linux-gnu/release/refbox
+    - name: Compute SHA-256 checksum
+      run: |
+        sha256sum target/aarch64-unknown-linux-gnu/release/refbox | awk '{print $1}' \
+          > target/aarch64-unknown-linux-gnu/release/refbox.sha256
+    - uses: actions/upload-artifact@v4
+      with:
+        name: refbox-rpi-sha256
+        path: target/aarch64-unknown-linux-gnu/release/refbox.sha256
 
   upload-release:
     name: Upload release artifacts
@@ -102,6 +110,10 @@ jobs:
       with:
         name: refbox-rpi
         path: release/Raspberry\ Pi
+    - uses: actions/download-artifact@v5
+      with:
+        name: refbox-rpi-sha256
+        path: release/rpi-sha256
     - name: Download PDFs from Google Drive
       run: |
         curl -L "https://drive.usercontent.google.com/download?id=1Momxds_2oyPTEZHgcuSxnTxI_HbGeaN8&export=download" -o "release/Getting Started Guide - English.pdf"
@@ -111,8 +123,15 @@ jobs:
         curl -L "https://drive.usercontent.google.com/download?id=1FLtJwc8gb5vuSRVPUNLxKhT1ufcOSa-w&export=download" -o "release/Refbox User Manual with Fouls.pdf"
     - name: Zip release
       run: cd release && zip -r ../refbox.zip .
+    - name: Stage standalone Pi assets
+      run: |
+        cp "release/Raspberry Pi/refbox" refbox-aarch64-linux
+        cp release/rpi-sha256/refbox.sha256 refbox-aarch64-linux.sha256
     - uses: softprops/action-gh-release@v2
       with:
-        files: refbox.zip
+        files: |
+          refbox.zip
+          refbox-aarch64-linux
+          refbox-aarch64-linux.sha256
         draft: true
         generate_release_notes: true

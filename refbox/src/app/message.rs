@@ -236,7 +236,6 @@ pub enum Message {
     TimeUpdaterStarted(Sender<Arc<Mutex<TournamentManager>>>),
     OpenUpdatesPage,
     UpdatesCheck,
-    UpdatesInstall,
     UpdatesConfirmInstall,
     UpdatesRevert,
     UpdatesConfirmRevert,
@@ -360,7 +359,6 @@ impl Message {
             | Self::AlarmDelayElapsed(_)
             | Self::OpenUpdatesPage
             | Self::UpdatesCheck
-            | Self::UpdatesInstall
             | Self::UpdatesConfirmInstall
             | Self::UpdatesRevert
             | Self::UpdatesConfirmRevert
@@ -429,7 +427,6 @@ impl PartialEq for Message {
             | (Self::SpacebarReleased, Self::SpacebarReleased)
             | (Self::OpenUpdatesPage, Self::OpenUpdatesPage)
             | (Self::UpdatesCheck, Self::UpdatesCheck)
-            | (Self::UpdatesInstall, Self::UpdatesInstall)
             | (Self::UpdatesConfirmInstall, Self::UpdatesConfirmInstall)
             | (Self::UpdatesRevert, Self::UpdatesRevert)
             | (Self::UpdatesConfirmRevert, Self::UpdatesConfirmRevert)
@@ -673,7 +670,6 @@ impl PartialEq for Message {
             | (Self::TimeUpdaterStarted(_), _)
             | (Self::OpenUpdatesPage, _)
             | (Self::UpdatesCheck, _)
-            | (Self::UpdatesInstall, _)
             | (Self::UpdatesConfirmInstall, _)
             | (Self::UpdatesRevert, _)
             | (Self::UpdatesConfirmRevert, _)
@@ -706,7 +702,6 @@ pub enum UpdateUiState {
     Checking,
     UpToDate,
     UpdateAvailable,
-    ConfirmInstall,
     Downloading,
     Verifying,
     Installing,

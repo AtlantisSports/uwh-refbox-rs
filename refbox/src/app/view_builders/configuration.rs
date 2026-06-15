@@ -1955,10 +1955,7 @@ pub(in super::super) fn make_updates_page<'a>(
             | UpdateUiState::Installing
             | UpdateUiState::Restarting
     );
-    let is_confirm = matches!(
-        state,
-        UpdateUiState::ConfirmInstall | UpdateUiState::RevertConfirm
-    );
+    let is_confirm = matches!(state, UpdateUiState::RevertConfirm);
 
     // 1. Time banner
     let time_banner = make_game_time_button(
@@ -1980,34 +1977,16 @@ pub(in super::super) fn make_updates_page<'a>(
     )
     .into();
     let primary_element: Element<'a, Message> = match state {
-        UpdateUiState::Unknown
-        | UpdateUiState::RolledBack
-        | UpdateUiState::UpToDate
-        | UpdateUiState::Error(_) => make_button(fl!("updates-check-for-updates"))
-            .style(yellow_button)
-            .width(Length::Fill)
-            .on_press(Message::UpdatesCheck)
-            .into(),
-        UpdateUiState::UpdateAvailable => make_button(fl!("updates-install-update"))
-            .style(yellow_button)
-            .width(Length::Fill)
-            .on_press(Message::UpdatesInstall)
-            .into(),
-        UpdateUiState::ConfirmInstall => make_button(fl!("updates-continue"))
-            .style(yellow_button)
-            .width(Length::Fill)
-            .on_press(Message::UpdatesConfirmInstall)
-            .into(),
-        UpdateUiState::RevertConfirm => make_button(fl!("updates-continue"))
-            .style(yellow_button)
-            .width(Length::Fill)
-            .on_press(Message::UpdatesConfirmRevert)
-            .into(),
         UpdateUiState::Checking
         | UpdateUiState::Downloading
         | UpdateUiState::Verifying
         | UpdateUiState::Installing
         | UpdateUiState::Restarting => horizontal_space().into(),
+        _ => make_button(fl!("updates-check-for-updates"))
+            .style(yellow_button)
+            .width(Length::Fill)
+            .on_press(Message::UpdatesCheck)
+            .into(),
     };
     let version_primary_row = row![version_element, primary_element]
         .spacing(SPACING)
@@ -2023,12 +2002,14 @@ pub(in super::super) fn make_updates_page<'a>(
             "updates-available",
             version = available_version.map(|v| v.to_string()).unwrap_or_default()
         ),
-        UpdateUiState::ConfirmInstall => fl!("updates-confirm-install"),
         UpdateUiState::Downloading => fl!("updates-downloading"),
         UpdateUiState::Verifying => fl!("updates-verifying"),
         UpdateUiState::Installing => fl!("updates-installing"),
         UpdateUiState::Restarting => fl!("updates-restarting"),
-        UpdateUiState::RevertConfirm => fl!("updates-confirm-revert"),
+        UpdateUiState::RevertConfirm => fl!(
+            "updates-confirm-revert",
+            version = backup_version.map(|v| v.to_string()).unwrap_or_default()
+        ),
         UpdateUiState::Error(UpdateUiError::NoInternet) => fl!("updates-error-no-internet"),
         UpdateUiState::Error(UpdateUiError::RateLimited) => fl!("updates-error-rate-limited"),
         UpdateUiState::Error(UpdateUiError::BadDownload) => fl!("updates-error-bad-download"),
@@ -2036,6 +2017,20 @@ pub(in super::super) fn make_updates_page<'a>(
         UpdateUiState::Error(UpdateUiError::NotWritable) => fl!("updates-error-not-writable"),
     };
     let status_row = row![text(status_text).size(MEDIUM_TEXT).width(Length::Fill)].spacing(SPACING);
+
+    // 3b. Note line: explains what the bottom-right action button will do when an
+    // update is available / in the revert-confirm view. Empty spacer otherwise.
+    let note_text: Option<String> = match state {
+        UpdateUiState::UpdateAvailable => Some(fl!("updates-install-note")),
+        UpdateUiState::RevertConfirm => Some(fl!("updates-revert-note")),
+        _ => None,
+    };
+    let note_row: Element<'a, Message> = match note_text {
+        Some(t) => row![text(t).size(SMALL_TEXT).width(Length::Fill)]
+            .spacing(SPACING)
+            .into(),
+        None => row![horizontal_space()].into(),
+    };
 
     // 4. The "blank row": a Revert button when a backup exists and state is idle,
     // otherwise the same blank-spacer idiom the other config pages use.
@@ -2076,12 +2071,29 @@ pub(in super::super) fn make_updates_page<'a>(
     } else {
         footer_btn.on_press(Message::UpdatesBack)
     };
-    let footer_row = row![footer_btn, horizontal_space(), horizontal_space()].spacing(SPACING);
+
+    // bottom-right action: Install (when an update is available) / Revert (in the
+    // revert-confirm view) / nothing otherwise. Green like Apply.
+    let footer_action: Element<'a, Message> = match state {
+        UpdateUiState::UpdateAvailable => make_button(fl!("updates-install"))
+            .style(green_button)
+            .width(Length::Fill)
+            .on_press(Message::UpdatesConfirmInstall)
+            .into(),
+        UpdateUiState::RevertConfirm => make_button(fl!("updates-do-revert"))
+            .style(green_button)
+            .width(Length::Fill)
+            .on_press(Message::UpdatesConfirmRevert)
+            .into(),
+        _ => horizontal_space().into(),
+    };
+    let footer_row = row![footer_btn, horizontal_space(), footer_action].spacing(SPACING);
 
     column![
         time_banner,
         version_primary_row,
         status_row,
+        note_row,
         blank_or_revert_row,
         footer_row,
     ]

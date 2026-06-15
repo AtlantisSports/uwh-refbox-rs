@@ -92,6 +92,7 @@ fn set_executable(_path: &std::path::Path) -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use super::*;
 
     #[cfg(unix)]

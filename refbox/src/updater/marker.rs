@@ -210,12 +210,20 @@ pub fn decide_on_startup(dir: &Path) -> StartupDecision {
 
 /// fsync the directory itself so that renames/removals are durable.
 ///
-/// On some filesystems the rename is not persisted until the containing
-/// directory's metadata is fsynced. This mirrors the pattern used in
-/// `portal_manager/queue.rs`.
+/// On some filesystems a rename is not persisted until the containing
+/// directory's metadata is fsynced.
+#[cfg(unix)]
 fn fsync_dir(dir: &Path) -> io::Result<()> {
     let d = fs::File::open(dir)?;
     d.sync_all()?;
+    Ok(())
+}
+
+/// Windows cannot open a directory as a file handle for fsync (it returns
+/// "Access is denied"), and directory fsync is not the durability mechanism
+/// there, so this is a no-op. (Same approach taken by tempfile/atomicwrites.)
+#[cfg(not(unix))]
+fn fsync_dir(_dir: &Path) -> io::Result<()> {
     Ok(())
 }
 

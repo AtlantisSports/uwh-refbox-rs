@@ -519,7 +519,10 @@ enum GameBlockValidity {
 fn game_block_validity(cfg: &GameConfig) -> GameBlockValidity {
     if cfg.game_block < cfg.game_block_minimum() {
         GameBlockValidity::TooShort
-    } else if cfg.game_block_buffer() < cfg.team_timeout_allotment() {
+    } else if cfg.game_block_buffer() <= cfg.team_timeout_allotment() {
+        // `<=`: a Game Block that exactly covers the game, break, and full timeout
+        // allotment is "barely sufficient" (no slack to recover if running behind),
+        // so it warns yellow rather than reading as comfortably Ok.
         GameBlockValidity::Tight
     } else {
         GameBlockValidity::Ok
@@ -2568,9 +2571,16 @@ mod tests {
             ..base.clone()
         };
         assert_eq!(game_block_validity(&tight), GameBlockValidity::Tight);
-        // buffer >= allotment => Ok (22 + 240 = 262).
-        let ok = GameConfig {
+        // Exactly minimum + allotment (22 + 240 = 262): barely sufficient, no slack
+        // to recover if running behind => Tight (yellow), not Ok.
+        let barely = GameConfig {
             game_block: Duration::from_secs(262),
+            ..base.clone()
+        };
+        assert_eq!(game_block_validity(&barely), GameBlockValidity::Tight);
+        // Above minimum + allotment (263) => Ok (green).
+        let ok = GameConfig {
+            game_block: Duration::from_secs(263),
             ..base.clone()
         };
         assert_eq!(game_block_validity(&ok), GameBlockValidity::Ok);

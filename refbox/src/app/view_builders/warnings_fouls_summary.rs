@@ -79,8 +79,8 @@ pub(in super::super) fn build_warnings_summary_page<'a>(
     .height(Length::Fill);
 
     let warnings_and_fouls_row = row![
-        warnings_container.width(Length::Fill),
-        fouls_container.width(Length::Fill)
+        fouls_container.width(Length::Fill),
+        warnings_container.width(Length::Fill)
     ]
     .spacing(SPACING)
     .width(Length::Fill);
@@ -101,14 +101,14 @@ pub(in super::super) fn build_warnings_summary_page<'a>(
                 .style(red_button)
                 .width(Length::Fill)
                 .on_press(Message::ConfigEditComplete),
-            make_button(fl!("edit-warnings"))
-                .style(blue_button)
-                .width(Length::Fill)
-                .on_press(Message::WarningOverview),
             make_button(fl!("edit-fouls"))
                 .style(orange_button)
                 .width(Length::Fill)
                 .on_press(Message::FoulOverview),
+            make_button(fl!("edit-warnings"))
+                .style(blue_button)
+                .width(Length::Fill)
+                .on_press(Message::WarningOverview),
         ]
         .spacing(SPACING)
         .width(Length::Fill),

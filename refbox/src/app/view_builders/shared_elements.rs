@@ -176,12 +176,27 @@ pub(super) fn make_scroll_list<'a, const LIST_LEN: usize>(
     .style(cont_style)
 }
 
+/// Team timeouts can be cancelled (undone) for this long after they start.
+pub(in super::super) const TIMEOUT_GRACE_SECS: u16 = 15;
+
+/// True while a team timeout is still inside its cancel/grace window.
+/// `remaining` is the timeout's remaining seconds (from the snapshot);
+/// `team_timeout_duration` is the configured full length.
+pub(in super::super) fn team_timeout_in_grace(
+    team_timeout_duration: Duration,
+    remaining: u16,
+) -> bool {
+    (team_timeout_duration.as_secs() as u16).saturating_sub(remaining) < TIMEOUT_GRACE_SECS
+}
+
 pub(in super::super) fn build_timeout_ribbon<'a>(
     snapshot: &GameSnapshot,
     tm: &Arc<Mutex<TournamentManager>>,
     mode: Mode,
 ) -> Row<'a, Message> {
     let tm = tm.lock().unwrap();
+
+    let team_to_dur = tm.config().team_timeout_duration;
 
     let black = match snapshot.timeout {
         None => make_multi_label_button((fl!("dark-timeout-line-1"), fl!("dark-timeout-line-2")))
@@ -191,20 +206,34 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
                     .map(|_| Message::TeamTimeout(GameColor::Black, false)),
             )
             .style(black_button),
-        Some(TimeoutSnapshot::Black(_)) => {
-            make_multi_label_button((fl!("end-timeout-line-1"), fl!("end-timeout-line-2")))
-                .on_press(Message::EndTimeout)
-                .style(yellow_button)
+        Some(TimeoutSnapshot::Black(remaining)) => {
+            if team_timeout_in_grace(team_to_dur, remaining) {
+                make_multi_label_button((
+                    fl!("cancel-timeout-line-1"),
+                    fl!("cancel-timeout-line-2"),
+                ))
+                .on_press(Message::CancelTimeout)
+                .style(orange_button)
+            } else {
+                make_multi_label_button((fl!("end-timeout-line-1"), fl!("end-timeout-line-2")))
+                    .on_press(Message::EndTimeout)
+                    .style(red_button)
+            }
         }
-        Some(TimeoutSnapshot::White(_))
-        | Some(TimeoutSnapshot::Ref(_))
-        | Some(TimeoutSnapshot::PenaltyShot(_)) => {
-            make_multi_label_button((fl!("switch-to"), fl!("dark-team-name-caps")))
-                .on_press_maybe(
-                    tm.can_switch_to_team_timeout(GameColor::Black)
-                        .ok()
-                        .map(|_| Message::TeamTimeout(GameColor::Black, true)),
-                )
+        Some(TimeoutSnapshot::White(other_remaining)) => {
+            if team_timeout_in_grace(team_to_dur, other_remaining)
+                && tm.can_switch_to_team_timeout(GameColor::Black).is_ok()
+            {
+                make_multi_label_button((fl!("switch-to"), fl!("dark-team-name-caps")))
+                    .on_press(Message::TeamTimeout(GameColor::Black, true))
+                    .style(black_button)
+            } else {
+                make_multi_label_button((fl!("dark-timeout-line-1"), fl!("dark-timeout-line-2")))
+                    .style(black_button)
+            }
+        }
+        Some(TimeoutSnapshot::Ref(_)) | Some(TimeoutSnapshot::PenaltyShot(_)) => {
+            make_multi_label_button((fl!("dark-timeout-line-1"), fl!("dark-timeout-line-2")))
                 .style(black_button)
         }
     };
@@ -217,20 +246,34 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
                     .map(|_| Message::TeamTimeout(GameColor::White, false)),
             )
             .style(white_button),
-        Some(TimeoutSnapshot::White(_)) => {
-            make_multi_label_button((fl!("end-timeout-line-1"), fl!("end-timeout-line-2")))
-                .on_press(Message::EndTimeout)
-                .style(yellow_button)
+        Some(TimeoutSnapshot::White(remaining)) => {
+            if team_timeout_in_grace(team_to_dur, remaining) {
+                make_multi_label_button((
+                    fl!("cancel-timeout-line-1"),
+                    fl!("cancel-timeout-line-2"),
+                ))
+                .on_press(Message::CancelTimeout)
+                .style(orange_button)
+            } else {
+                make_multi_label_button((fl!("end-timeout-line-1"), fl!("end-timeout-line-2")))
+                    .on_press(Message::EndTimeout)
+                    .style(red_button)
+            }
         }
-        Some(TimeoutSnapshot::Black(_))
-        | Some(TimeoutSnapshot::Ref(_))
-        | Some(TimeoutSnapshot::PenaltyShot(_)) => {
-            make_multi_label_button((fl!("switch-to"), fl!("light-team-name-caps")))
-                .on_press_maybe(
-                    tm.can_switch_to_team_timeout(GameColor::White)
-                        .ok()
-                        .map(|_| Message::TeamTimeout(GameColor::White, true)),
-                )
+        Some(TimeoutSnapshot::Black(other_remaining)) => {
+            if team_timeout_in_grace(team_to_dur, other_remaining)
+                && tm.can_switch_to_team_timeout(GameColor::White).is_ok()
+            {
+                make_multi_label_button((fl!("switch-to"), fl!("light-team-name-caps")))
+                    .on_press(Message::TeamTimeout(GameColor::White, true))
+                    .style(white_button)
+            } else {
+                make_multi_label_button((fl!("light-timeout-line-1"), fl!("light-timeout-line-2")))
+                    .style(white_button)
+            }
+        }
+        Some(TimeoutSnapshot::Ref(_)) | Some(TimeoutSnapshot::PenaltyShot(_)) => {
+            make_multi_label_button((fl!("light-timeout-line-1"), fl!("light-timeout-line-2")))
                 .style(white_button)
         }
     };
@@ -243,22 +286,23 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
                     .map(|_| Message::RefTimeout(false)),
             )
             .style(yellow_button),
-        Some(TimeoutSnapshot::Ref(_)) => {
-            make_multi_label_button((fl!("end-timeout-line-1"), fl!("end-timeout-line-2")))
-                .on_press(Message::EndTimeout)
-                .style(yellow_button)
-        }
+        Some(TimeoutSnapshot::Ref(_)) => make_multi_label_button((
+            fl!("cancel-ref-timeout-line-1"),
+            fl!("cancel-ref-timeout-line-2"),
+        ))
+        .on_press(Message::EndTimeout)
+        .style(orange_button),
         Some(TimeoutSnapshot::Black(_))
         | Some(TimeoutSnapshot::White(_))
-        | Some(TimeoutSnapshot::PenaltyShot(_)) => {
-            make_multi_label_button((fl!("switch-to"), fl!("ref")))
-                .on_press_maybe(
-                    tm.can_switch_to_ref_timeout()
-                        .ok()
-                        .map(|_| Message::RefTimeout(true)),
-                )
-                .style(yellow_button)
-        }
+        | Some(TimeoutSnapshot::PenaltyShot(_)) => match tm.can_switch_to_ref_timeout() {
+            Ok(()) => make_multi_label_button((fl!("switch-to"), fl!("ref")))
+                .on_press(Message::RefTimeout(true))
+                .style(yellow_button),
+            Err(_) => {
+                make_multi_label_button((fl!("ref-timeout-line-1"), fl!("ref-timeout-line-2")))
+                    .style(yellow_button)
+            }
+        },
     };
 
     let penalty = match snapshot.timeout {
@@ -270,9 +314,9 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
             )
             .style(red_button),
         Some(TimeoutSnapshot::PenaltyShot(_)) => {
-            make_multi_label_button((fl!("end-timeout-line-1"), fl!("end-timeout-line-2")))
+            make_multi_label_button((fl!("cancel-pen-shot-line-1"), fl!("cancel-pen-shot-line-2")))
                 .on_press(Message::EndTimeout)
-                .style(yellow_button)
+                .style(orange_button)
         }
         Some(TimeoutSnapshot::Black(_))
         | Some(TimeoutSnapshot::White(_))
@@ -282,9 +326,16 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
             } else {
                 tm.can_switch_to_penalty_shot()
             };
-            make_multi_label_button((fl!("switch-to"), fl!("pen-shot")))
-                .on_press_maybe(can_switch.ok().map(|_| Message::PenaltyShot(true)))
-                .style(red_button)
+            match can_switch {
+                Ok(()) => make_multi_label_button((fl!("switch-to"), fl!("pen-shot")))
+                    .on_press(Message::PenaltyShot(true))
+                    .style(red_button),
+                Err(_) => make_multi_label_button((
+                    fl!("penalty-shot-line-1"),
+                    fl!("penalty-shot-line-2"),
+                ))
+                .style(red_button),
+            }
         }
     };
 

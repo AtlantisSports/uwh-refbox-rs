@@ -41,7 +41,7 @@ team-warning-line-2 = PASUKAN
 # Konfigurasi
 none-selected = Tiada Dipilih
 loading = Memuatkan...
-game-select = Perlawanan:
+game-select = PERLAWANAN:
 game-options = PILIHAN PERLAWANAN
 app-options = PILIHAN APLIKASI
 display-options = PILIHAN PAPARAN
@@ -294,8 +294,7 @@ teams = Pasukan { -dark-team-name }: { $dark_team }
     Pasukan { -light-team-name }: { $light_team }
 game-config = Panjang Separuh: { $half_len },  Panjang Rehat Separuh Masa: { $half_time_len }
     Sudden Death Dibenarkan: { $sd_allowed },  Masa Tambahan Dibenarkan: { $ot_allowed }
-team-timeouts-per-half = Masa Rehat Pasukan Dibenarkan Per Separuh: { $team_timeouts }
-team-timeouts-per-game = Masa Rehat Pasukan Dibenarkan Per Perlawanan: { $team_timeouts }
+team-timeouts = Masa Rehat Pasukan: { $value }
 stop-clock-last-2 = Hentikan Jam 2 Minit Terakhir: { $stop_clock }
 ref-list = Ketua Pengadil: { $chief_ref }
     Pencatat Masa: { $timer }

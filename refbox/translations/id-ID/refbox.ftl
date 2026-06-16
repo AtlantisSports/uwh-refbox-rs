@@ -41,7 +41,7 @@ team-warning-line-2 = TIM
 # Konfigurasi
 none-selected = Tidak Ada Dipilih
 loading = Memuat...
-game-select = Pertandingan:
+game-select = PERTANDINGAN:
 game-options = OPSI PERTANDINGAN
 app-options = OPSI APLIKASI
 display-options = OPSI TAMPILAN
@@ -294,8 +294,7 @@ teams = Tim { -dark-team-name }: { $dark_team }
     Tim { -light-team-name }: { $light_team }
 game-config = Durasi Babak: { $half_len },  Durasi Jeda Babak: { $half_time_len }
     Sudden Death Diizinkan: { $sd_allowed },  Perpanjangan Waktu Diizinkan: { $ot_allowed }
-team-timeouts-per-half = Time-out Tim yang Diizinkan Per Babak: { $team_timeouts }
-team-timeouts-per-game = Time-out Tim yang Diizinkan Per Pertandingan: { $team_timeouts }
+team-timeouts = Time-out Tim: { $value }
 stop-clock-last-2 = Hentikan Jam di 2 Menit Terakhir: { $stop_clock }
 ref-list = Wasit Kepala: { $chief_ref }
     Pencatat Waktu: { $timer }

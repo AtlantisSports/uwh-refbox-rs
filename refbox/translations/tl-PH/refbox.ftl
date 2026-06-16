@@ -41,7 +41,7 @@ team-warning-line-2 = KOPONAN
 # Configuration
 none-selected = Wala na Pinili
 loading = Naglo-load...
-game-select = Laro:
+game-select = LARO:
 game-options = MGA OPSYON SA LARO
 app-options = MGA OPSYON SA APP
 display-options = MGA OPSYON SA DISPLAY
@@ -294,8 +294,7 @@ teams = Koponan ng { -dark-team-name }: { $dark_team }
     Koponan ng { -light-team-name }: { $light_team }
 game-config = Haba ng Kalahati: { $half_len },  Haba ng Pahinga: { $half_time_len }
     Sudden Death Pinahintulutan: { $sd_allowed },  Overtime Pinahintulutan: { $ot_allowed }
-team-timeouts-per-half = Mga Timeout ng Koponan na Pinahintulutan Bawat Kalahati: { $team_timeouts }
-team-timeouts-per-game = Mga Timeout ng Koponan na Pinahintulutan Bawat Laro: { $team_timeouts }
+team-timeouts = Mga Timeout ng Koponan: { $value }
 stop-clock-last-2 = Ihinto ang Orasan sa Huling 2 Minuto: { $stop_clock }
 ref-list = Punong Ref: { $chief_ref }
     Timer: { $timer }

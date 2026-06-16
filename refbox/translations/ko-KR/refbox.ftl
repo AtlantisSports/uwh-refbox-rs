@@ -296,8 +296,7 @@ teams = { -dark-team-name } 팀: { $dark_team }
     { -light-team-name } 팀: { $light_team }
 game-config = 전반 시간: { $half_len },  하프타임 시간: { $half_time_len }
     서든 데스 허용: { $sd_allowed },  연장전 허용: { $ot_allowed }
-team-timeouts-per-half = 전반당 팀 타임아웃 허용 횟수: { $team_timeouts }
-team-timeouts-per-game = 경기당 팀 타임아웃 허용 횟수: { $team_timeouts }
+team-timeouts = 팀 타임아웃: { $value }
 stop-clock-last-2 = 마지막 2분 시계 정지: { $stop_clock }
 ref-list = 주심: { $chief_ref }
     계시원: { $timer }

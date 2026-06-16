@@ -41,7 +41,7 @@ team-warning-line-2 = WAARSCHUWING
 # Configuratie
 none-selected = Niets Geselecteerd
 loading = Laden...
-game-select = Wedstrijd:
+game-select = WEDSTRIJD:
 game-options = WEDSTRIJDOPTIES
 app-options = APP-OPTIES
 display-options = WEERGAVEOPTIES
@@ -294,8 +294,7 @@ teams = { -dark-team-name } Team: { $dark_team }
     { -light-team-name } Team: { $light_team }
 game-config = Duur Helft: { $half_len },  Duur Rust: { $half_time_len }
     Plotselinge Dood Toegestaan: { $sd_allowed },  Verlenging Toegestaan: { $ot_allowed }
-team-timeouts-per-half = Team Time-outs Toegestaan Per Helft: { $team_timeouts }
-team-timeouts-per-game = Team Time-outs Toegestaan Per Wedstrijd: { $team_timeouts }
+team-timeouts = Team Time-outs: { $value }
 stop-clock-last-2 = Klok Stoppen in Laatste 2 Minuten: { $stop_clock }
 ref-list = Hoofdscheidsrechter: { $chief_ref }
     Tijdwaarnemer: { $timer }

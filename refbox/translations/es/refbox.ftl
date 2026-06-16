@@ -40,7 +40,7 @@ team-warning-line-2 = DE EQUIPO
 # Configuration
 none-selected = Ninguno seleccionado
 loading = Cargando...
-game-select = Juego:
+game-select = JUEGO:
 game-options = OPCIONES DE JUEGO
 app-options = OPCIONES DE APP
 display-options = OPCIONES DE PANTALLA
@@ -305,8 +305,7 @@ teams = { -dark-team-name } Equipo: { $dark_team }
     { -light-team-name } Equipo: { $light_team }
 game-config = Duración de la mitad: { $half_len },  Duración del medio tiempo: { $half_time_len }
     Muerte súbita permitida: { $sd_allowed },  Tiempo Extra Permitido: { $ot_allowed }
-team-timeouts-per-half = Tiempos muertos de equipo permitidos por mitad: { $team_timeouts }
-team-timeouts-per-game = Tiempos muertos de equipo permitidos por juego: { $team_timeouts }
+team-timeouts = Tiempos muertos de equipo: { $value }
 stop-clock-last-2 = Detener reloj en los Últimos 2 minutos: { $stop_clock }
 ref-list = Árbitro principal: { $chief_ref }
     Timer: { $timer }

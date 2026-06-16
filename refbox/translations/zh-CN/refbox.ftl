@@ -303,8 +303,7 @@ teams = { -dark-team-name }：{ $dark_team }
     { -light-team-name }：{ $light_team }
 game-config = 半场时长：{ $half_len }，  中场时长：{ $half_time_len }
     允许突然死亡：{ $sd_allowed }，  允许加时赛：{ $ot_allowed }
-team-timeouts-per-half = 每半场允许队伍暂停次数：{ $team_timeouts }
-team-timeouts-per-game = 每场允许队伍暂停次数：{ $team_timeouts }
+team-timeouts = 队伍暂停：{ $value }
 stop-clock-last-2 = 最后2分钟停钟：{ $stop_clock }
 ref-list = 主裁判：{ $chief_ref }
     计时员：{ $timer }

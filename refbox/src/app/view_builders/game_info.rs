@@ -238,17 +238,14 @@ fn details_strings(
         left_string += "\n";
     };
 
-    left_string += &if config.timeouts_counted_per_half {
-        fl!(
-            "team-timeouts-per-half",
-            team_timeouts = config.num_team_timeouts_allowed
-        )
+    let team_timeouts_value = if config.num_team_timeouts_allowed == 0 {
+        "0".to_string()
+    } else if config.timeouts_counted_per_half {
+        format!("{}/{}", config.num_team_timeouts_allowed, fl!("half"))
     } else {
-        fl!(
-            "team-timeouts-per-game",
-            team_timeouts = config.num_team_timeouts_allowed
-        )
+        format!("{}/{}", config.num_team_timeouts_allowed, fl!("game"))
     };
+    left_string += &fl!("team-timeouts", value = team_timeouts_value);
     left_string += "\n";
 
     if config.num_team_timeouts_allowed != 0 {

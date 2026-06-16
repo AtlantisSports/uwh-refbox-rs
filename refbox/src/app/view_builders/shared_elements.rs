@@ -985,19 +985,15 @@ pub(super) fn config_string(
         )
     };
 
-    if config.timeouts_counted_per_half {
-        result += "\n";
-        result += &fl!(
-            "team-timeouts-per-half",
-            team_timeouts = config.num_team_timeouts_allowed
-        );
+    let team_timeouts_value = if config.num_team_timeouts_allowed == 0 {
+        "0".to_string()
+    } else if config.timeouts_counted_per_half {
+        format!("{}/{}", config.num_team_timeouts_allowed, fl!("half"))
     } else {
-        result += "\n";
-        result += &fl!(
-            "team-timeouts-per-game",
-            team_timeouts = config.num_team_timeouts_allowed
-        );
-    }
+        format!("{}/{}", config.num_team_timeouts_allowed, fl!("game"))
+    };
+    result += "\n";
+    result += &fl!("team-timeouts", value = team_timeouts_value);
 
     let stop_clock = if let Some(sched) = schedule {
         if let Some(timing_rule) = sched.get_game_timing(&game_number) {

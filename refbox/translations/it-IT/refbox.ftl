@@ -41,7 +41,7 @@ team-warning-line-2 = DI SQUADRA
 # Configurazione
 none-selected = Nessuno Selezionato
 loading = Caricamento...
-game-select = Partita:
+game-select = PARTITA:
 game-options = OPZIONI PARTITA
 app-options = OPZIONI APP
 display-options = OPZIONI DISPLAY
@@ -303,8 +303,7 @@ teams = Squadra { -dark-team-name }: { $dark_team }
     Squadra { -light-team-name }: { $light_team }
 game-config = Durata Tempo: { $half_len },  Durata Intervallo: { $half_time_len }
     Morte Improvvisa Consentita: { $sd_allowed },  Tempi Suppl. Consentiti: { $ot_allowed }
-team-timeouts-per-half = Time-out di Squadra Consentiti per Tempo: { $team_timeouts }
-team-timeouts-per-game = Time-out di Squadra Consentiti per Partita: { $team_timeouts }
+team-timeouts = Time-out di Squadra: { $value }
 stop-clock-last-2 = Ferma Orologio negli Ultimi 2 Minuti: { $stop_clock }
 ref-list = Capo Arbitro: { $chief_ref }
     Cronometrista: { $timer }

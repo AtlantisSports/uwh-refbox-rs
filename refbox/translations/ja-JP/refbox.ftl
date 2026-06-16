@@ -303,8 +303,7 @@ teams = { -dark-team-name }チーム: { $dark_team }
     { -light-team-name }チーム: { $light_team }
 game-config = ハーフ時間: { $half_len },  ハーフタイム時間: { $half_time_len }
     サドンデス許可: { $sd_allowed },  延長戦許可: { $ot_allowed }
-team-timeouts-per-half = 1ハーフあたりのチームタイムアウト数: { $team_timeouts }
-team-timeouts-per-game = 1試合あたりのチームタイムアウト数: { $team_timeouts }
+team-timeouts = チームタイムアウト: { $value }
 stop-clock-last-2 = 残り2分でクロック停止: { $stop_clock }
 ref-list = 主審: { $chief_ref }
     タイムキーパー: { $timer }

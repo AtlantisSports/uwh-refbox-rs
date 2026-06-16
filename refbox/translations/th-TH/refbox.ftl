@@ -303,8 +303,7 @@ teams = { -dark-team-name }: { $dark_team }
     { -light-team-name }: { $light_team }
 game-config = ความยาวครึ่ง: { $half_len },  ความยาวพักครึ่ง: { $half_time_len }
     อนุญาตตายกะทันหัน: { $sd_allowed },  อนุญาตต่อเวลาพิเศษ: { $ot_allowed }
-team-timeouts-per-half = พักทีมที่อนุญาตต่อครึ่ง: { $team_timeouts }
-team-timeouts-per-game = พักทีมที่อนุญาตต่อเกม: { $team_timeouts }
+team-timeouts = พักทีม: { $value }
 stop-clock-last-2 = หยุดนาฬิกาใน 2 นาทีสุดท้าย: { $stop_clock }
 ref-list = หัวหน้าผู้ตัดสิน: { $chief_ref }
     กรรมการจับเวลา: { $timer }

@@ -41,7 +41,7 @@ team-warning-line-2 = UYARISI
 # Yapılandırma
 none-selected = Seçim Yok
 loading = Yükleniyor...
-game-select = Oyun:
+game-select = OYUN:
 game-options = OYUN SEÇENEKLERİ
 app-options = UYGULAMA SEÇENEKLERİ
 display-options = GÖRÜNTÜ SEÇENEKLERİ
@@ -303,8 +303,7 @@ teams = { -dark-team-name } Takım: { $dark_team }
     { -light-team-name } Takım: { $light_team }
 game-config = Devre Süresi: { $half_len },  Devre Arası Süresi: { $half_time_len }
     Ani Ölüm İzin Verildi: { $sd_allowed },  Uzatma İzin Verildi: { $ot_allowed }
-team-timeouts-per-half = Devre Başına İzin Verilen Takım Molaları: { $team_timeouts }
-team-timeouts-per-game = Oyun Başına İzin Verilen Takım Molaları: { $team_timeouts }
+team-timeouts = Takım Molaları: { $value }
 stop-clock-last-2 = Son 2 Dakikada Saati Durdur: { $stop_clock }
 ref-list = Başhakem: { $chief_ref }
     Zaman Ayarlayıcı: { $timer }

@@ -41,7 +41,7 @@ team-warning-line-2 = VERWARNUNG
 # Konfiguration
 none-selected = Nichts ausgewählt
 loading = Wird geladen...
-game-select = Spiel:
+game-select = SPIEL:
 game-options = SPIELOPTIONEN
 app-options = APP-OPTIONEN
 display-options = ANZEIGEOPTIONEN
@@ -303,8 +303,7 @@ teams = { -dark-team-name } Mannschaft: { $dark_team }
     { -light-team-name } Mannschaft: { $light_team }
 game-config = Halbzeitdauer: { $half_len },  Halbzeitpausendauer: { $half_time_len }
     Plötzlicher Tod Erlaubt: { $sd_allowed },  Verlängerung Erlaubt: { $ot_allowed }
-team-timeouts-per-half = Mannschafts-Auszeiten pro Halbzeit: { $team_timeouts }
-team-timeouts-per-game = Mannschafts-Auszeiten pro Spiel: { $team_timeouts }
+team-timeouts = Mannschafts-Auszeiten: { $value }
 stop-clock-last-2 = Uhr in den letzten 2 Minuten stoppen: { $stop_clock }
 ref-list = Hauptschiedsrichter: { $chief_ref }
     Zeitnehmer: { $timer }

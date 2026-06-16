@@ -305,8 +305,7 @@ teams = Équipe { -dark-team-name }: { $dark_team }
     Équipe { -light-team-name }: { $light_team }
 game-config = Durée de la Pér.: { $half_len },  Mi-temps: { $half_time_len }
     Mort Subite: { $sd_allowed },  Prolongations: { $ot_allowed }
-team-timeouts-per-half = Temps Morts d'Équipe Autorisés par Période: { $team_timeouts }
-team-timeouts-per-game = Temps Morts d'Équipe Autorisés par Match: { $team_timeouts }
+team-timeouts = Temps Morts d'Équipe: { $value }
 stop-clock-last-2 = Arrêter le temps dans les 2 dernières minutes: { $stop_clock }
 ref-list = Arbitre en Chef: { $chief_ref }
     Chronométreur: { $timer }

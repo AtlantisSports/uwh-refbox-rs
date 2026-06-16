@@ -3468,6 +3468,20 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 task
             }
+            Message::CancelTimeout => {
+                let mut tm = self.tm.lock().unwrap();
+                let now = Instant::now();
+                // The Cancel button is only rendered for an active team timeout
+                // inside its grace window, so this call is valid by construction.
+                // Unlike EndTimeout, no `timeout_end_would_end_game` check is needed:
+                // a team timeout only happens mid-half with the game clock stopped, so
+                // cancelling it can never end the game — it just resumes play.
+                tm.cancel_team_timeout(now).unwrap();
+                tm.update(now).unwrap();
+                let snapshot = tm.generate_snapshot(now).unwrap();
+                std::mem::drop(tm);
+                self.apply_snapshot(snapshot)
+            }
             Message::RecvEventList(e_list) => {
                 let mut tasks = vec![];
                 let e_map: BTreeMap<_, _> = e_list.into_iter().map(|e| (e.id.clone(), e)).collect();

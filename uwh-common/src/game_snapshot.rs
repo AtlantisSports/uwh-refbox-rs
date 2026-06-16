@@ -1,10 +1,8 @@
-use crate::{
-    bundles::{BlackWhiteBundle, OptColorBundle},
-    color::Color,
-    drawing_support::*,
-};
+use crate::{bundles::BlackWhiteBundle, drawing_support::*};
 #[cfg(feature = "std")]
 use crate::{
+    bundles::OptColorBundle,
+    color::Color,
     config::Game,
     uwhportal::schedule::{EventId, GameNumber},
 };

@@ -85,10 +85,10 @@ impl<'a, T> IntoIterator for &'a BlackWhiteBundle<T> {
 
 impl<T> IntoIterator for BlackWhiteBundle<T> {
     type Item = (Color, T);
-    type IntoIter = std::vec::IntoIter<Self::Item>;
+    type IntoIter = core::array::IntoIter<Self::Item, 2>;
 
     fn into_iter(self) -> Self::IntoIter {
-        vec![(Color::Black, self.black), (Color::White, self.white)].into_iter()
+        [(Color::Black, self.black), (Color::White, self.white)].into_iter()
     }
 }
 
@@ -205,10 +205,10 @@ impl<'a, T> IntoIterator for &'a OptColorBundle<T> {
 
 impl<T> IntoIterator for OptColorBundle<T> {
     type Item = (Option<Color>, T);
-    type IntoIter = std::vec::IntoIter<Self::Item>;
+    type IntoIter = core::array::IntoIter<Self::Item, 3>;
 
     fn into_iter(self) -> Self::IntoIter {
-        vec![
+        [
             (Some(Color::Black), self.black),
             (None, self.equal),
             (Some(Color::White), self.white),

@@ -192,6 +192,14 @@ fn details_strings(
         }
     }
 
+    // Game Block (the start-to-start slot) sits right after the team names and before
+    // the play-length lines -- matching the main page layout.
+    left_string += &fl!(
+        "game-block-info",
+        game_block = time_string(config.game_block)
+    );
+    left_string += "\n";
+
     left_string += &if config.single_half {
         // Single-period game: show "Game Length" and omit the half-time line.
         fl!(
@@ -250,13 +258,6 @@ fn details_strings(
         );
         left_string += "\n";
     };
-    if !using_uwhportal {
-        left_string += &fl!(
-            "game-block-info",
-            game_block = time_string(config.game_block)
-        );
-        left_string += "\n";
-    }
     left_string += &fl!(
         "min-brk-btwn-games",
         min_brk_time = time_string(config.minimum_break)

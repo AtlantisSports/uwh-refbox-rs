@@ -2078,6 +2078,14 @@ impl TournamentManager {
     /// docs/superpowers/specs/2026-06-06-behind-schedule-indicator-design.md.
     pub fn behind_schedule(&self, now: Instant) -> Duration {
         if self.current_period == GamePeriod::BetweenGames {
+            // Before the first game has started there is no schedule anchor yet, so the
+            // event cannot be "behind". (The in-game branch below applies the same guard
+            // via `current_scheduled_start`.) Without this, the pre-game break countdown
+            // projects ~= the scheduled start and clock granularity leaks a sub-minute
+            // positive value, shown as "DELAY -0:0".
+            if self.current_scheduled_start.is_none() {
+                return Duration::ZERO;
+            }
             // Project the next game's start from the *live* break clock. While the
             // break counts down normally the projection holds steady (frozen);
             // pausing it, sitting past zero, or editing it slides the projection --
@@ -3119,6 +3127,27 @@ mod test {
         tm.end_game(end);
         // No panic, and the absurdly-distant next start reads as on-time.
         assert_eq!(tm.behind_schedule(end), Duration::ZERO);
+    }
+
+    #[test]
+    fn test_behind_schedule_zero_before_first_game() {
+        // Pre-first-game: a portal schedule is loaded and the between-games countdown
+        // is running toward game 1, but NO game has started yet (current_scheduled_start
+        // is None). Even when the projection would compute a positive delta, the figure
+        // must be ZERO -- you cannot be "behind" before the first game (Bug: "DELAY -0:0").
+        initialize();
+        let mut tm = TournamentManager::new(behind_test_config());
+        let now = Instant::now();
+        assert!(
+            tm.current_scheduled_start.is_none(),
+            "no game has started yet"
+        );
+        // In the between-games countdown to the first game, with 20s left on the break...
+        tm.set_period_and_game_clock_time(GamePeriod::BetweenGames, Duration::from_secs(20));
+        // ...and the grid saying the first game is scheduled 5s from now. Without the
+        // guard, projected (now+20) is 15s past the scheduled start (now+5) => 15s behind.
+        tm.next_scheduled_start = Some(now + Duration::from_secs(5));
+        assert_eq!(tm.behind_schedule(now), Duration::ZERO);
     }
 
     #[test]

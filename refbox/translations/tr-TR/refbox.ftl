@@ -253,6 +253,15 @@ confirmation-count-down = Not: Değiştirilmemiş skor { $countdown } içinde ot
 ## Mola şeridi
 end-timeout-line-1 = MOLAYI
 end-timeout-line-2 = BİTİR
+cancel-timeout = { cancel } { timeout }
+cancel-timeout-line-1 = { cancel }
+cancel-timeout-line-2 = { timeout }
+cancel-ref-timeout = { cancel } { ref } { timeout }
+cancel-ref-timeout-line-1 = { cancel } { ref }
+cancel-ref-timeout-line-2 = { timeout }
+cancel-pen-shot = { cancel } { pen-shot }
+cancel-pen-shot-line-1 = { cancel }
+cancel-pen-shot-line-2 = { pen-shot }
 switch-to = GEÇİŞ YAP
 ref = HAKEM
 ref-timeout-line-1 = { ref }

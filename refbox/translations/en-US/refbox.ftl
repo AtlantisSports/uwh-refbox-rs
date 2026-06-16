@@ -262,6 +262,15 @@ confirmation-count-down = Note: The unchanged score will be automatically confir
 ## Timeout ribbon
 end-timeout-line-1 = END
 end-timeout-line-2 = { timeout }
+cancel-timeout = { cancel } { timeout }
+cancel-timeout-line-1 = { cancel }
+cancel-timeout-line-2 = { timeout }
+cancel-ref-timeout = { cancel } { ref } { timeout }
+cancel-ref-timeout-line-1 = { cancel } { ref }
+cancel-ref-timeout-line-2 = { timeout }
+cancel-pen-shot = { cancel } { pen-shot }
+cancel-pen-shot-line-1 = { cancel }
+cancel-pen-shot-line-2 = { pen-shot }
 switch-to = SWITCH TO
 ref = REF
 ref-timeout-line-1 = { ref }

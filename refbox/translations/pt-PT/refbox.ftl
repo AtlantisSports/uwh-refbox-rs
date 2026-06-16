@@ -253,6 +253,15 @@ confirmation-count-down = Nota: O resultado inalterado será confirmado automati
 ## Faixa de tempo de equipa
 end-timeout-line-1 = TERMINAR
 end-timeout-line-2 = { timeout }
+cancel-timeout = { cancel } { timeout }
+cancel-timeout-line-1 = { cancel }
+cancel-timeout-line-2 = { timeout }
+cancel-ref-timeout = { cancel } { ref } { timeout }
+cancel-ref-timeout-line-1 = { cancel } { ref }
+cancel-ref-timeout-line-2 = { timeout }
+cancel-pen-shot = { cancel } { pen-shot }
+cancel-pen-shot-line-1 = { cancel }
+cancel-pen-shot-line-2 = { pen-shot }
 switch-to = MUDAR PARA
 ref = ÁRBITRO
 ref-timeout-line-1 = { ref }

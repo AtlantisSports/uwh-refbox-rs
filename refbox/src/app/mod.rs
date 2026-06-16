@@ -2833,27 +2833,26 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::EditParameter(param) => {
-                let single_half = self
+                // Seed the editor from the in-progress edits when present (mirroring
+                // the single_half handling below), so reopening a parameter shows the
+                // value the operator just entered rather than the last-saved one.
+                let config = self
                     .edited_settings
                     .as_ref()
-                    .map(|s| s.config.single_half)
-                    .unwrap_or(self.config.game.single_half);
-                self.app_state = AppState::ParameterEditor(
-                    param,
-                    match param {
-                        LengthParameter::Half => self.config.game.half_play_duration,
-                        LengthParameter::HalfTime => self.config.game.half_time_duration,
-                        LengthParameter::GameBlock => self.config.game.game_block,
-                        LengthParameter::MinimumBetweenGame => self.config.game.minimum_break,
-                        LengthParameter::PreOvertime => self.config.game.pre_overtime_break,
-                        LengthParameter::OvertimeHalf => self.config.game.ot_half_play_duration,
-                        LengthParameter::OvertimeHalfTime => self.config.game.ot_half_time_duration,
-                        LengthParameter::PreSuddenDeath => {
-                            self.config.game.pre_sudden_death_duration
-                        }
-                    },
-                    single_half,
-                );
+                    .map(|s| &s.config)
+                    .unwrap_or(&self.config.game);
+                let single_half = config.single_half;
+                let dur = match param {
+                    LengthParameter::Half => config.half_play_duration,
+                    LengthParameter::HalfTime => config.half_time_duration,
+                    LengthParameter::GameBlock => config.game_block,
+                    LengthParameter::MinimumBetweenGame => config.minimum_break,
+                    LengthParameter::PreOvertime => config.pre_overtime_break,
+                    LengthParameter::OvertimeHalf => config.ot_half_play_duration,
+                    LengthParameter::OvertimeHalfTime => config.ot_half_time_duration,
+                    LengthParameter::PreSuddenDeath => config.pre_sudden_death_duration,
+                };
+                self.app_state = AppState::ParameterEditor(param, dur, single_half);
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }

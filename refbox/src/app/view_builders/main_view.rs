@@ -7,7 +7,7 @@ use iced::{
 use uwh_common::{
     color::Color as GameColor,
     config::Game as GameConfig,
-    game_snapshot::{GamePeriod, GameSnapshot, PenaltyTime},
+    game_snapshot::{GamePeriod, GameSnapshot, PenaltyTime, TimeoutSnapshot},
     uwhportal::schedule::Schedule,
 };
 
@@ -83,11 +83,31 @@ pub(in super::super) fn build_main_view<'a>(
             center_col =
                 center_col.push(row![make_foul_button(), make_warn_button()].spacing(SPACING));
         } else {
-            center_col = center_col.push(
-                make_button(fl!("end-timeout"))
-                    .style(yellow_button)
+            let cancel_btn = match snapshot.timeout {
+                Some(TimeoutSnapshot::Black(remaining))
+                | Some(TimeoutSnapshot::White(remaining)) => {
+                    if team_timeout_in_grace(game_config.team_timeout_duration, remaining) {
+                        make_button(fl!("cancel-timeout"))
+                            .style(orange_button)
+                            .on_press(Message::CancelTimeout)
+                    } else {
+                        make_button(fl!("end-timeout"))
+                            .style(red_button)
+                            .on_press(Message::EndTimeout)
+                    }
+                }
+                Some(TimeoutSnapshot::Ref(_)) => make_button(fl!("cancel-ref-timeout"))
+                    .style(orange_button)
                     .on_press(Message::EndTimeout),
-            );
+                Some(TimeoutSnapshot::PenaltyShot(_)) => make_button(fl!("cancel-pen-shot"))
+                    .style(orange_button)
+                    .on_press(Message::EndTimeout),
+                // Unreachable: this block is guarded by `snapshot.timeout.is_some()`.
+                None => make_button(fl!("end-timeout"))
+                    .style(red_button)
+                    .on_press(Message::EndTimeout),
+            };
+            center_col = center_col.push(cancel_btn);
         }
     } else {
         match snapshot.current_period {

@@ -434,13 +434,16 @@ impl RefBoxApp {
         new_snapshot.event_id = self.current_event_id.clone();
 
         self.maybe_play_sound(&new_snapshot);
-        self.update_sender
-            .send_snapshot(
-                new_snapshot.clone(),
-                self.config.hardware.white_on_right,
-                self.config.hardware.brightness,
-            )
-            .unwrap();
+        if let Err(e) = self.update_sender.send_snapshot(
+            new_snapshot.clone(),
+            self.config.hardware.white_on_right,
+            self.config.hardware.brightness,
+        ) {
+            // Channel-full or closed: the next snapshot re-sends fresh state,
+            // so dropping one is acceptable -- never crash the refbox over a
+            // slow/stalled display consumer.
+            warn!("Failed to send snapshot to displays: {e:?}");
+        }
         self.snapshot = new_snapshot;
         task
     }

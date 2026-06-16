@@ -2148,6 +2148,22 @@ impl TournamentManager {
         }
     }
 
+    /// The behind-schedule figure as shown to the operator: the genuine, unrecoverable
+    /// delay. During a game the slot's spare time (`game_block_buffer`) is discounted --
+    /// this previews the exact step-down the engine applies at the break, so the figure
+    /// stays blank while the slot can still absorb the loss and is continuous across the
+    /// end of a game. Between games the engine has already applied that step-down, so the
+    /// raw figure is returned unchanged (no double discount). See
+    /// docs/superpowers/specs/2026-06-17-delay-display-threshold-design.md.
+    pub fn behind_schedule_shown(&self, now: Instant) -> Duration {
+        let raw = self.behind_schedule(now);
+        if self.current_period == GamePeriod::BetweenGames {
+            raw
+        } else {
+            raw.saturating_sub(self.config.game_block_buffer())
+        }
+    }
+
     /// Returns `None` if there is no timeout, if the clock time would be negative, or if `now` is
     /// before the start of the current timeout
     pub fn timeout_clock_time(&self, now: Instant) -> Option<Duration> {
@@ -3407,6 +3423,109 @@ mod test {
             tm.behind_schedule(to_at + Duration::from_secs(25)),
             Duration::from_secs(25)
         );
+    }
+
+    #[test]
+    fn test_behind_schedule_shown_blanks_team_timeout_within_slack() {
+        // The user's case: a team timeout within the slot's spare time must NOT surface as
+        // delay. Raw figure climbs (existing behaviour) but the shown figure stays blank.
+        initialize();
+        let mut tm = TournamentManager::new(behind_real_slack_config()); // slack = 45s
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap();
+        let to_at = start + Duration::from_secs(5);
+        tm.start_team_timeout(Color::Black, to_at).unwrap();
+        // Raw climbs to 15 and 25, both within the 45s slack -> shown stays zero (blank).
+        assert_eq!(
+            tm.behind_schedule(to_at + Duration::from_secs(15)),
+            Duration::from_secs(15)
+        );
+        assert_eq!(
+            tm.behind_schedule_shown(to_at + Duration::from_secs(15)),
+            Duration::ZERO
+        );
+        assert_eq!(
+            tm.behind_schedule_shown(to_at + Duration::from_secs(25)),
+            Duration::ZERO
+        );
+    }
+
+    #[test]
+    fn test_behind_schedule_shown_shows_excess_beyond_slack() {
+        // Once the raw tally exceeds the slot's spare time, the shown figure is the excess.
+        initialize();
+        let mut tm = TournamentManager::new(behind_test_config()); // slack = 15s
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap();
+        let pause_at = start + Duration::from_secs(5);
+        tm.stop_clock(pause_at).unwrap();
+        let t = pause_at + Duration::from_secs(20);
+        // Raw 20, slack 15 -> shown excess = 5.
+        assert_eq!(tm.behind_schedule(t), Duration::from_secs(20));
+        assert_eq!(tm.behind_schedule_shown(t), Duration::from_secs(5));
+    }
+
+    #[test]
+    fn test_behind_schedule_shown_continuous_across_game_end() {
+        // The in-game discount previews the engine's break step-down, so the shown figure
+        // does NOT jump at the end of a game (and the break is not double-discounted).
+        initialize();
+        let mut tm = TournamentManager::new(behind_test_config()); // slack = 15s
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap();
+        tm.update(start + Duration::from_secs(10)).unwrap(); // FirstHalf -> HalfTime
+        tm.update(start + Duration::from_secs(13)).unwrap(); // HalfTime -> SecondHalf
+        tm.stop_clock(start + Duration::from_secs(23)).unwrap();
+        let end = start + Duration::from_secs(50);
+        // In-game: raw 27, shown 27 - 15 = 12.
+        assert_eq!(tm.behind_schedule(end), Duration::from_secs(27));
+        let shown_in_game = tm.behind_schedule_shown(end);
+        assert_eq!(shown_in_game, Duration::from_secs(12));
+        tm.end_game(end);
+        // Between games: raw already stepped down to 12; shown unchanged = 12.
+        assert_eq!(tm.behind_schedule(end), Duration::from_secs(12));
+        let shown_between = tm.behind_schedule_shown(end);
+        assert_eq!(shown_between, Duration::from_secs(12));
+        // Smooth across the boundary -> no jump.
+        assert_eq!(shown_in_game, shown_between);
+    }
+
+    #[test]
+    fn test_behind_schedule_shown_equals_raw_with_no_slack() {
+        // A slot with no spare time has nothing to discount: shown == raw (today's behaviour).
+        initialize();
+        let mut config = behind_test_config();
+        config.game_block = Duration::from_secs(25); // == regulation_play(23) + minimum_break(2) => slack 0
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+        tm.start_clock(start);
+        tm.start_play_now(start).unwrap();
+        let pause_at = start + Duration::from_secs(5);
+        tm.stop_clock(pause_at).unwrap();
+        let t = pause_at + Duration::from_secs(20);
+        assert_eq!(tm.behind_schedule_shown(t), tm.behind_schedule(t));
+        assert_eq!(tm.behind_schedule_shown(t), Duration::from_secs(20));
+    }
+
+    #[test]
+    fn test_behind_schedule_shown_blanks_recoverable_late_start() {
+        // A game that starts late but whose slot can recover it shows blank (stay-blank rule).
+        initialize();
+        let mut tm = TournamentManager::new(behind_test_config()); // slack = 15s
+        let g1 = Instant::now();
+        tm.start_clock(g1);
+        tm.start_play_now(g1).unwrap();
+        tm.stop_clock(g1).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        tm.end_game(g1);
+        let g2 = g1 + Duration::from_secs(46);
+        tm.start_play_now(g2).unwrap(); // game 2 begins 6s late vs its 40s slot
+        // Raw shows the 6s late start; slack 15 can recover it -> shown blank.
+        assert_eq!(tm.behind_schedule(g2), Duration::from_secs(6));
+        assert_eq!(tm.behind_schedule_shown(g2), Duration::ZERO);
     }
 
     #[test]

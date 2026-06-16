@@ -138,6 +138,7 @@ pub enum Message {
     RefTimeout(bool),
     PenaltyShot(bool),
     EndTimeout,
+    CancelTimeout,
     ConfirmScores(GameSnapshot),
     ScoreConfirmation {
         correct: bool,
@@ -325,6 +326,7 @@ impl Message {
             | Self::RefTimeout(_)
             | Self::PenaltyShot(_)
             | Self::EndTimeout
+            | Self::CancelTimeout
             | Self::ConfirmScores(_)
             | Self::ScoreConfirmation { .. }
             | Self::AutoConfirmScores(_)
@@ -396,6 +398,7 @@ impl PartialEq for Message {
             | (Self::ConfigEditComplete, Self::ConfigEditComplete)
             | (Self::RequestRemoteId, Self::RequestRemoteId)
             | (Self::EndTimeout, Self::EndTimeout)
+            | (Self::CancelTimeout, Self::CancelTimeout)
             | (Self::StopClock, Self::StopClock)
             | (Self::StartClock, Self::StartClock)
             | (Self::BeepTestStart, Self::BeepTestStart)
@@ -628,6 +631,7 @@ impl PartialEq for Message {
             | (Self::RefTimeout(_), _)
             | (Self::PenaltyShot(_), _)
             | (Self::EndTimeout, _)
+            | (Self::CancelTimeout, _)
             | (Self::ConfirmScores(_), _)
             | (Self::ScoreConfirmation { .. }, _)
             | (Self::AutoConfirmScores(_), _)

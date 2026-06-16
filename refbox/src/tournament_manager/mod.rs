@@ -599,6 +599,36 @@ impl TournamentManager {
         }
     }
 
+    /// Cancel a team timeout within its grace window: resume the game clock (if it
+    /// was running) and refund the team the timeout that `start_team_timeout`
+    /// charged. Mirrors `end_timeout`'s team branch plus the refund; only valid
+    /// while a team timeout is active.
+    pub fn cancel_team_timeout(&mut self, now: Instant) -> Result<()> {
+        match &self.timeout_state {
+            Some(TimeoutState::Team(color, cs)) => {
+                let color = *color;
+                info!(
+                    "{} Cancelling {color} team timeout",
+                    self.status_string(now)
+                );
+                match cs {
+                    ClockState::Stopped { .. } => self.timeout_state = None,
+                    ClockState::CountingDown { .. } => {
+                        self.start_game_clock(now);
+                        self.timeout_state = None;
+                    }
+                    ClockState::CountingUp { .. } => {
+                        error!("Invalid timeout state");
+                        return Err(TournamentManagerError::InvalidState);
+                    }
+                }
+                self.timeouts_used[color] = self.timeouts_used[color].saturating_sub(1);
+                Ok(())
+            }
+            _ => Err(TournamentManagerError::NotInTimeout),
+        }
+    }
+
     pub fn start_penalty(
         &mut self,
         color: Color,
@@ -4417,6 +4447,64 @@ mod test {
         assert_eq!(tm.timeout_state, None);
         assert_eq!(tm.game_clock_time(after_t_o), Some(fifteen_secs));
         assert_eq!(tm.clock_is_running(), true);
+    }
+
+    #[test]
+    fn test_cancel_team_timeout_refunds_and_resumes() {
+        initialize();
+        let config = GameConfig {
+            num_team_timeouts_allowed: 1,
+            team_timeout_duration: Duration::from_secs(60),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let start = Instant::now();
+
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(300));
+        tm.start_clock(start);
+        assert_eq!(tm.start_team_timeout(Color::Black, start), Ok(()));
+        assert_eq!(tm.timeouts_used.black, 1);
+
+        // Cancel within the grace window: clock resumes, the team is refunded.
+        let cancel_at = start + Duration::from_secs(5);
+        assert_eq!(tm.cancel_team_timeout(cancel_at), Ok(()));
+        assert_eq!(tm.timeout_state, None);
+        assert_eq!(tm.timeouts_used.black, 0);
+        assert!(tm.clock_is_running());
+
+        // Cancel with no timeout, or a non-team timeout, is an error.
+        assert_eq!(tm.cancel_team_timeout(cancel_at), Err(TMErr::NotInTimeout));
+
+        // Stop the (resumed) game clock before re-staging state for the edge cases.
+        tm.stop_clock(start + Duration::from_secs(6)).unwrap();
+
+        // Clock-stopped team timeout (started while the game clock was stopped):
+        // cancel clears it and refunds, but does NOT resume the clock.
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(300));
+        tm.timeouts_used.white = 1;
+        tm.set_timeout_state(Some(TimeoutState::Team(
+            Color::White,
+            ClockState::Stopped {
+                clock_time: Duration::from_secs(60),
+            },
+        )));
+        assert_eq!(tm.clock_is_running(), false);
+        assert_eq!(tm.cancel_team_timeout(start), Ok(()));
+        assert_eq!(tm.timeout_state, None);
+        assert_eq!(tm.timeouts_used.white, 0);
+        assert_eq!(tm.clock_is_running(), false);
+
+        // Refund saturates at zero: cancelling a team timeout whose charge is
+        // already 0 must not underflow.
+        tm.timeouts_used.black = 0;
+        tm.set_timeout_state(Some(TimeoutState::Team(
+            Color::Black,
+            ClockState::Stopped {
+                clock_time: Duration::from_secs(60),
+            },
+        )));
+        assert_eq!(tm.cancel_team_timeout(start), Ok(()));
+        assert_eq!(tm.timeouts_used.black, 0);
     }
 
     #[test]

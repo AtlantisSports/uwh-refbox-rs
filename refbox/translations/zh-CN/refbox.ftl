@@ -31,6 +31,8 @@ penalty-kind = {$kind ->
 # 队伍暂停编辑
 timeout-length = 队伍暂停
     时长
+team-timeout-count = 队伍暂停
+    次数:
 
 # 警告添加
 team-warning = 队伍

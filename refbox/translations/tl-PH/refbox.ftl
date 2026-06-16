@@ -31,6 +31,8 @@ penalty-kind = {$kind ->
 # Pag-edit ng Timeout ng Koponan
 timeout-length = TIMEOUT NG
     KOPONAN
+team-timeout-count = BILANG NG
+    TIMEOUT:
 
 # Pagdagdag ng Babala
 team-warning = BABALA NG

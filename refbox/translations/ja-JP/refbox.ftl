@@ -31,6 +31,8 @@ penalty-kind = {$kind ->
 # チームタイムアウト編集
 timeout-length = チームタイムアウト
     時間
+team-timeout-count = チームタイムアウト
+    回数:
 
 # 警告追加
 team-warning = チーム

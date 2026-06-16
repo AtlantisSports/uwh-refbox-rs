@@ -31,6 +31,8 @@ penalty-kind = {$kind ->
 # แก้ไขพักทีม
 timeout-length = ระยะเวลา
     พักทีม
+team-timeout-count = จำนวน
+    พักทีม:
 
 # เพิ่มการเตือน
 team-warning = การเตือน

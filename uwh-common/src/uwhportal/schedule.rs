@@ -317,13 +317,17 @@ impl Into<GameConfig> for TimingRule {
             nominal_break,
             minimum_break,
             game_block: game_block.unwrap_or_else(|| {
-                // No portal-sent Game Block: derive from this rule's play durations.
+                // No portal-sent Game Block: derive from this rule's play durations
+                // plus the schedule's own minimum break (the gap the portal packs
+                // games at). This matches schedule-processor's slot math. Using the
+                // refbox default nominal_break here was the bug: the portal never
+                // sends nominal_break, so it injected a 15-min default gap.
                 let regulation = if half_time_duration == Duration::ZERO {
                     half_play_duration
                 } else {
                     2 * half_play_duration + half_time_duration
                 };
-                regulation + nominal_break
+                regulation + minimum_break
             }),
         }
     }
@@ -944,13 +948,13 @@ mod tests {
 
     #[test]
     fn test_timing_rule_game_block_absent_is_derived() {
-        // Portal payload WITHOUT gameBlock (today's case): derive game_block = regulation + nominal_break.
+        // Portal payload WITHOUT gameBlock (today's case): derive game_block = regulation + minimum_break.
         let json = r#"{"name":"RR","teamTimeoutCount":1,"teamTimeoutsCountedPerHalf":true,"overtimeAllowed":true,"suddenDeathAllowed":true,"halfPlayDuration":900,"halfTimeDuration":180,"teamTimeoutDuration":60,"overtimeHalfPlayDuration":300,"overtimeHalfTimeDuration":180,"preOvertimeBreak":180,"preSuddenDeathDuration":60,"minimumBreak":240}"#;
         let rule: TimingRule = serde_json::from_str(json).unwrap();
         assert_eq!(rule.game_block, None);
         let config: GameConfig = rule.into();
-        // regulation = 2*900 + 180 = 1980; nominal_break default = 900 -> 2880
-        assert_eq!(config.game_block, Duration::from_secs(2880));
+        // regulation = 2*900 + 180 = 1980; minimum_break = 240 -> 2220
+        assert_eq!(config.game_block, Duration::from_secs(2220));
     }
 
     #[test]
@@ -968,8 +972,20 @@ mod tests {
         let json = r#"{"name":"RR","teamTimeoutCount":0,"teamTimeoutsCountedPerHalf":false,"overtimeAllowed":false,"suddenDeathAllowed":false,"halfPlayDuration":600,"halfTimeDuration":0,"teamTimeoutDuration":0,"overtimeHalfPlayDuration":0,"overtimeHalfTimeDuration":0,"preOvertimeBreak":0,"preSuddenDeathDuration":0,"minimumBreak":120}"#;
         let rule: TimingRule = serde_json::from_str(json).unwrap();
         let config: GameConfig = rule.into();
-        // single half: regulation = 600; nominal_break default = 900 -> 1500
-        assert_eq!(config.game_block, Duration::from_secs(1500));
+        // single half: regulation = 600; minimum_break = 120 -> 720
+        assert_eq!(config.game_block, Duration::from_secs(720));
+    }
+
+    #[test]
+    fn test_timing_rule_game_block_uses_schedule_minimum_break() {
+        // Reported bug: 10-min halves + 2-min half-time + 4-min gap must derive a
+        // 26:00 Game Block (regulation 1320 + minimum_break 240 = 1560), NOT 37:00
+        // (which is regulation + the 15-min default nominal_break).
+        let json = r#"{"name":"RR","teamTimeoutCount":0,"teamTimeoutsCountedPerHalf":false,"overtimeAllowed":false,"suddenDeathAllowed":false,"halfPlayDuration":600,"halfTimeDuration":120,"teamTimeoutDuration":0,"overtimeHalfPlayDuration":0,"overtimeHalfTimeDuration":0,"preOvertimeBreak":0,"preSuddenDeathDuration":0,"minimumBreak":240}"#;
+        let rule: TimingRule = serde_json::from_str(json).unwrap();
+        assert_eq!(rule.game_block, None);
+        let config: GameConfig = rule.into();
+        assert_eq!(config.game_block, Duration::from_secs(1560)); // 26:00
     }
 
     #[test]

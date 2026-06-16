@@ -31,6 +31,8 @@ penalty-kind = {$kind ->
 # Edit Masa Rehat Pasukan
 timeout-length = MASA REHAT
     PASUKAN
+team-timeout-count = BILANGAN
+    MASA REHAT:
 
 # Tambah Amaran
 team-warning = AMARAN

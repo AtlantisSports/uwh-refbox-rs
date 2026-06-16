@@ -31,6 +31,8 @@ penalty-kind = {$kind ->
 # Edit Time-out Tim
 timeout-length = TIME-OUT TIM
     DURASI
+team-timeout-count = JUMLAH
+    TIME-OUT TIM:
 
 # Tambah Peringatan
 team-warning = PERINGATAN

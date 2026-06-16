@@ -31,6 +31,8 @@ penalty-kind = {$kind ->
 # Edição de Tempo de Equipa
 timeout-length = DURAÇÃO DO
     TEMPO DE EQUIPA
+team-timeout-count = NÚMERO DE
+    TEMPOS DE EQUIPA:
 
 # Adicionar Aviso
 team-warning = AVISO DE

@@ -31,6 +31,8 @@ penalty-kind = {$kind ->
 # Modifica Time-out di Squadra
 timeout-length = TIME-OUT DI
     SQUADRA
+team-timeout-count = NUMERO DI
+    TIME-OUT:
 
 # Aggiunta Ammonizione
 team-warning = AMMONIZIONE

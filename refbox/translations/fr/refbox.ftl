@@ -29,6 +29,8 @@ penalty-kind = {$kind ->
 
 # Team Timeout Edit
 timeout-length = DURÉE DU TEMPS MORT
+team-timeout-count = NOMBRE DE
+    TEMPS MORTS:
 
 # Warning Add
 team-warning = AVERT. D'ÉQUIPE

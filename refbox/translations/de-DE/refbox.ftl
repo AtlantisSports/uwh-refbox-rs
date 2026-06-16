@@ -31,6 +31,8 @@ penalty-kind = {$kind ->
 # Auszeit-Bearbeitung
 timeout-length = AUSZEIT
     DAUER
+team-timeout-count = AUSZEIT
+    ANZAHL:
 
 # Verwarnung hinzufügen
 team-warning = MANNSCHAFT

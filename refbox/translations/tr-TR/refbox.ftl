@@ -31,6 +31,8 @@ penalty-kind = {$kind ->
 # Takım Molası Düzenleme
 timeout-length = TAKIM MOLASI
     SÜRESİ
+team-timeout-count = TAKIM MOLASI
+    SAYISI:
 
 # Uyarı Ekleme
 team-warning = TAKIM

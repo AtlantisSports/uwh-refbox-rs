@@ -30,7 +30,7 @@ penalty-kind = {$kind ->
 
 # Edição de Tempo de Equipa
 timeout-length = DURAÇÃO DO
-    TEMPO DE EQUIPA
+    TEMPO DE EQUIPA:
 team-timeout-count = NÚMERO DE
     TEMPOS DE EQUIPA:
 
@@ -306,6 +306,8 @@ teams = Equipa { -dark-team-name }: { $dark_team }
 game-config = Duração do Tempo: { $half_len },  Duração do Intervalo: { $half_time_len }
     Morte Súbita Permitida: { $sd_allowed },  Prorrogação Permitida: { $ot_allowed }
 team-timeouts = Tempos de Equipa: { $value }
+team-timeouts-label = TEMPOS DE
+    EQUIPA:
 stop-clock-last-2 = Parar Relógio nos Últimos 2 Minutos: { $stop_clock }
 ref-list = Árbitro Principal: { $chief_ref }
     Controlador de Tempo: { $timer }

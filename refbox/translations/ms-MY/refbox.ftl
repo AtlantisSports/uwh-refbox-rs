@@ -30,7 +30,7 @@ penalty-kind = {$kind ->
 
 # Edit Masa Rehat Pasukan
 timeout-length = MASA REHAT
-    PASUKAN
+    PASUKAN:
 team-timeout-count = BILANGAN
     MASA REHAT:
 
@@ -306,6 +306,8 @@ teams = Pasukan { -dark-team-name }: { $dark_team }
 game-config = Panjang Separuh: { $half_len },  Panjang Rehat Separuh Masa: { $half_time_len }
     Sudden Death Dibenarkan: { $sd_allowed },  Masa Tambahan Dibenarkan: { $ot_allowed }
 team-timeouts = Masa Rehat Pasukan: { $value }
+team-timeouts-label = MASA REHAT
+    PASUKAN:
 stop-clock-last-2 = Hentikan Jam 2 Minit Terakhir: { $stop_clock }
 ref-list = Ketua Pengadil: { $chief_ref }
     Pencatat Masa: { $timer }

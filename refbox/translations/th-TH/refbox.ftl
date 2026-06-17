@@ -30,7 +30,7 @@ penalty-kind = {$kind ->
 
 # แก้ไขพักทีม
 timeout-length = ระยะเวลา
-    พักทีม
+    พักทีม:
 team-timeout-count = จำนวน
     พักทีม:
 
@@ -306,6 +306,7 @@ teams = { -dark-team-name }: { $dark_team }
 game-config = ความยาวครึ่ง: { $half_len },  ความยาวพักครึ่ง: { $half_time_len }
     อนุญาตตายกะทันหัน: { $sd_allowed },  อนุญาตต่อเวลาพิเศษ: { $ot_allowed }
 team-timeouts = พักทีม: { $value }
+team-timeouts-label = พักทีม:
 stop-clock-last-2 = หยุดนาฬิกาใน 2 นาทีสุดท้าย: { $stop_clock }
 ref-list = หัวหน้าผู้ตัดสิน: { $chief_ref }
     กรรมการจับเวลา: { $timer }

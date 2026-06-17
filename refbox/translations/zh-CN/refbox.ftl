@@ -30,7 +30,7 @@ penalty-kind = {$kind ->
 
 # 队伍暂停编辑
 timeout-length = 队伍暂停
-    时长
+    时长：
 team-timeout-count = 队伍暂停
     次数:
 
@@ -306,6 +306,7 @@ teams = { -dark-team-name }：{ $dark_team }
 game-config = 半场时长：{ $half_len }，  中场时长：{ $half_time_len }
     允许突然死亡：{ $sd_allowed }，  允许加时赛：{ $ot_allowed }
 team-timeouts = 队伍暂停：{ $value }
+team-timeouts-label = 队伍暂停：
 stop-clock-last-2 = 最后2分钟停钟：{ $stop_clock }
 ref-list = 主裁判：{ $chief_ref }
     计时员：{ $timer }

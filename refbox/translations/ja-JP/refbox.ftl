@@ -30,7 +30,7 @@ penalty-kind = {$kind ->
 
 # チームタイムアウト編集
 timeout-length = チームタイムアウト
-    時間
+    時間:
 team-timeout-count = チームタイムアウト
     回数:
 
@@ -306,6 +306,8 @@ teams = { -dark-team-name }チーム: { $dark_team }
 game-config = ハーフ時間: { $half_len },  ハーフタイム時間: { $half_time_len }
     サドンデス許可: { $sd_allowed },  延長戦許可: { $ot_allowed }
 team-timeouts = チームタイムアウト: { $value }
+team-timeouts-label = チーム
+    タイムアウト:
 stop-clock-last-2 = 残り2分でクロック停止: { $stop_clock }
 ref-list = 主審: { $chief_ref }
     タイムキーパー: { $timer }

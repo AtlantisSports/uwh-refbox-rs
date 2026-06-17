@@ -2094,9 +2094,11 @@ impl RefBoxApp {
                         .player_number
                         .map(|n| n.into())
                         .unwrap_or(0),
-                    KeypadPage::TeamTimeouts(_, _) => {
-                        self.config.game.num_team_timeouts_allowed as u32
-                    }
+                    KeypadPage::TeamTimeouts(_, _) => self
+                        .edited_settings
+                        .as_ref()
+                        .map(|s| s.config.num_team_timeouts_allowed as u32)
+                        .unwrap_or(self.config.game.num_team_timeouts_allowed as u32),
                     KeypadPage::GameNumber => self
                         .edited_settings
                         .as_ref()

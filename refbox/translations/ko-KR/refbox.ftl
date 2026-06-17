@@ -147,6 +147,7 @@ half-time-lenght = 하프타임 시간
 length-of-half-time-period = 하프타임 기간의 시간
 nom-break = 기준 휴식
 game-block = 게임 블록
+game-block-full = 게임 블록:
 game-block-help = 한 경기 시작부터 다음 경기 시작까지의 시간
 game-block-too-short = 경기와 최소 휴식을 담기에 너무 짧습니다
 game-block-tight = 빡빡함 — 팀 타임아웃으로 경기가 슬롯을 초과할 수 있습니다

@@ -147,6 +147,7 @@ half-time-lenght = DURACIÓN DEL
 length-of-half-time-period = La duración del período de medio tiempo
 nom-break = DESCANSO NOMINAL
 game-block = BLOQUE DE JUEGO
+game-block-full = BLOQUE DE JUEGO:
 game-block-help = Tiempo desde el inicio de un partido hasta el inicio del siguiente
 game-block-too-short = Demasiado corto para el partido más la pausa mínima
 game-block-tight = Ajustado — los tiempos muertos podrían retrasar los partidos fuera de su franja

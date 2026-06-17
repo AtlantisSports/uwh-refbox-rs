@@ -144,6 +144,7 @@ half-time-lenght = HALF TIME LEN
 length-of-half-time-period = The length of the Half Time period
 nom-break = NOM BREAK
 game-block = GAME BLOCK
+game-block-full = GAME BLOCK:
 game-block-help = Time from the start of one game to the start of the next
 game-block-too-short = Too short to fit the game plus the minimum break
 game-block-tight = Tight — team timeouts could push games past their slot

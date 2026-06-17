@@ -145,6 +145,7 @@ half-time-lenght = 中场时长
 length-of-half-time-period = 中场休息阶段的时长
 nom-break = 名义休息
 game-block = 赛程块
+game-block-full = 赛程块：
 game-block-help = 从一场比赛开始到下一场比赛开始所经过的时间
 game-block-too-short = 时间太短，无法容纳比赛加上最短休息
 game-block-tight = 紧张 — 队伍暂停可能导致比赛超出其时段

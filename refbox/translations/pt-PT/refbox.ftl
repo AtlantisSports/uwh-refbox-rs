@@ -145,6 +145,7 @@ half-time-lenght = DUR INTERVALO
 length-of-half-time-period = A duração do período de intervalo
 nom-break = PAUSA NOM
 game-block = BLOCO DE JOGO
+game-block-full = BLOCO DE JOGO:
 game-block-help = Tempo desde o início de um jogo até ao início do seguinte
 game-block-too-short = Demasiado curto para o jogo mais a pausa mínima
 game-block-tight = Apertado — os tempos mortos podem fazer os jogos ultrapassar o seu slot

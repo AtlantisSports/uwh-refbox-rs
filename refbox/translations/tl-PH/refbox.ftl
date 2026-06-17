@@ -145,6 +145,7 @@ half-time-lenght = HABA NG PAHINGA
 length-of-half-time-period = Ang haba ng panahon ng pahinga
 nom-break = NOMINAL NA PAHINGA
 game-block = BLOKE NG LARO
+game-block-full = BLOKE NG LARO:
 game-block-help = Oras mula sa simula ng isang laro hanggang sa simula ng susunod
 game-block-too-short = Masyadong maikli para sa laro kasama ang pinakamaliit na pahinga
 game-block-tight = Masikip — ang mga timeout ng koponan ay maaaring itulak ang mga laro lampas sa kanilang slot

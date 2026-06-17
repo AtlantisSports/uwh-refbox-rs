@@ -143,6 +143,7 @@ half-time-lenght = DURÉE MI-TEMPS
 length-of-half-time-period = La durée de la mi-temps
 nom-break = PAUSE NOMINALE
 game-block = BLOC DE JEU
+game-block-full = BLOC DE JEU:
 game-block-help = Temps entre le début d'un match et le début du suivant
 game-block-too-short = Trop court pour contenir le match et la pause minimale
 game-block-tight = Serré — les temps morts pourraient faire déborder les matchs de leur créneau

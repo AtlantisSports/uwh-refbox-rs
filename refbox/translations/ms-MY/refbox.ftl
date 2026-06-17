@@ -145,6 +145,7 @@ half-time-lenght = PANJANG REHAT SEPARUH MASA
 length-of-half-time-period = Panjang tempoh rehat separuh masa
 nom-break = REHAT NOMINAL
 game-block = BLOK PERLAWANAN
+game-block-full = BLOK PERLAWANAN:
 game-block-help = Masa dari permulaan satu perlawanan hingga permulaan perlawanan berikutnya
 game-block-too-short = Terlalu singkat untuk memuatkan perlawanan ditambah rehat minimum
 game-block-tight = Ketat — masa rehat pasukan boleh menyebabkan perlawanan melebihi slot mereka

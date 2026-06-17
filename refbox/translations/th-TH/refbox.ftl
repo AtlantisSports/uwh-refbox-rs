@@ -145,6 +145,7 @@ half-time-lenght = ความยาวพักครึ่ง
 length-of-half-time-period = ความยาวของช่วงพักครึ่งเวลา
 nom-break = พักตามกำหนด
 game-block = บล็อกเกม
+game-block-full = บล็อกเกม:
 game-block-help = เวลาจากการเริ่มต้นของเกมหนึ่งถึงการเริ่มต้นของเกมถัดไป
 game-block-too-short = สั้นเกินไปสำหรับเกมรวมกับช่วงพักขั้นต่ำ
 game-block-tight = ตึง — การพักทีมอาจทำให้เกมเกินช่วงเวลาของตน

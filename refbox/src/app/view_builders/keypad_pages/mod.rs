@@ -55,6 +55,27 @@ pub(in super::super) fn build_keypad_page<'a>(
         _ => true,
     };
 
+    // The team-timeout settings page does not use the shared number pad; it
+    // renders as a full-width panel below the game-time bar.
+    if let KeypadPage::TeamTimeouts(dur, per_half) = &page {
+        let (dur, per_half) = (*dur, *per_half);
+        return column![
+            make_game_time_button(
+                snapshot,
+                false,
+                false,
+                mode,
+                clock_running,
+                portal_indicator,
+                None
+            ),
+            make_team_timeout_edit_page(dur, per_half, player_num),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill)
+        .into();
+    }
+
     let setup_keypad_button =
         |button: Button<'a, Message>, message: Message| -> Button<'a, Message> {
             let button = if enabled {
@@ -204,8 +225,9 @@ pub(in super::super) fn build_keypad_page<'a>(
                     )
                 }
                 KeypadPage::GameNumber => make_game_number_edit_page(),
-                KeypadPage::TeamTimeouts(dur, per_half) =>
-                    make_team_timeout_edit_page(dur, per_half),
+                KeypadPage::TeamTimeouts(_, _) => {
+                    unreachable!("TeamTimeouts is handled by the early return above")
+                }
                 KeypadPage::FoulAdd {
                     origin,
                     color,

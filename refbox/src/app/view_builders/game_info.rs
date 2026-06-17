@@ -238,6 +238,21 @@ fn details_strings(
         left_string += "\n";
     };
 
+    // Stop Clock in Last 2 Minutes — a normal game rule (not Portal-specific), shown directly
+    // above Team Timeouts. Reads "Unknown" when no schedule timing rule is available
+    // (e.g. when not using the Portal).
+    let stop_clock = if let Some(sched) = schedule {
+        if let Some(timing_rule) = sched.get_game_timing(game_number) {
+            bool_string(timing_rule.last_2_min_stop_time)
+        } else {
+            fl!("unknown")
+        }
+    } else {
+        fl!("unknown")
+    };
+    left_string += &fl!("stop-clock-last-2", stop_clock = stop_clock);
+    left_string += "\n";
+
     let team_timeouts_value = if config.num_team_timeouts_allowed == 0 {
         "0".to_string()
     } else if config.timeouts_counted_per_half {
@@ -261,19 +276,8 @@ fn details_strings(
     );
     left_string += "\n";
 
+    // Referees only exist when using the Portal — they render into the right column.
     if using_uwhportal {
-        let stop_clock = if let Some(sched) = schedule {
-            if let Some(timing_rule) = sched.get_game_timing(game_number) {
-                bool_string(timing_rule.last_2_min_stop_time)
-            } else {
-                fl!("unknown")
-            }
-        } else {
-            fl!("unknown")
-        };
-        left_string += &fl!("stop-clock-last-2", stop_clock = stop_clock);
-        left_string += "\n";
-
         let mut chief_ref = "-".to_string();
         let mut timer = "-".to_string();
         let mut water_ref_1 = "-".to_string();
@@ -316,4 +320,61 @@ fn details_strings(
     }
 
     (left_string, right_string)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn details_page_shows_stop_clock_even_outside_portal_mode() {
+        let config = GameConfig {
+            num_team_timeouts_allowed: 0,
+            ..Default::default()
+        };
+        let snapshot = GameSnapshot::default();
+
+        let (left, _right) = details_strings(&snapshot, &config, false, None, None);
+
+        let stop_clock_line = fl!("stop-clock-last-2", stop_clock = fl!("unknown"));
+        let team_timeouts_line = fl!("team-timeouts", value = "0");
+
+        let stop_idx = left
+            .find(&stop_clock_line)
+            .expect("page must show stop-clock even when not using the portal");
+        let to_idx = left
+            .find(&team_timeouts_line)
+            .expect("team-timeouts line should be present");
+        assert!(
+            stop_idx < to_idx,
+            "stop-clock should appear above team timeouts"
+        );
+    }
+
+    #[test]
+    fn details_page_keeps_referees_portal_only() {
+        let config = GameConfig::default();
+        let snapshot = GameSnapshot::default();
+
+        let ref_block = fl!(
+            "ref-list",
+            chief_ref = "-",
+            timer = "-",
+            water_ref_1 = "-",
+            water_ref_2 = "-",
+            water_ref_3 = "-"
+        );
+
+        let (_l, right_no_portal) = details_strings(&snapshot, &config, false, None, None);
+        assert!(
+            !right_no_portal.contains(&ref_block),
+            "referees must not show when not using the portal"
+        );
+
+        let (_l2, right_portal) = details_strings(&snapshot, &config, true, None, None);
+        assert!(
+            right_portal.contains(&ref_block),
+            "referees must show when using the portal"
+        );
+    }
 }

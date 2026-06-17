@@ -69,13 +69,13 @@ use languages::*;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long the operator must hold a used-up team timeout button to revive
-/// (give back) one team timeout. Deliberately long to guard against accidents.
-const TIMEOUT_REVIVE_HOLD_DURATION: Duration = Duration::from_secs(5);
+/// (give back) one team timeout. Long enough to confirm the hold was intentional.
+const TIMEOUT_REVIVE_HOLD_DURATION: Duration = Duration::from_secs(3);
 
 /// Which phase an in-progress timeout-revive long-press is in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RevivePhase {
-    /// Finger down on a used-up button, counting down to the 5s revive.
+    /// Finger down on a used-up button, counting down to the 3s revive.
     Reviving,
     /// Revived; finger still down. Stays here until release, which confirms the restore.
     Restored,
@@ -3798,7 +3798,7 @@ impl RefBoxApp {
             }
             Message::TimeoutRevivePressed(color) => {
                 // Press-down on a used-up (greyed) team timeout button: begin the
-                // 5-second revive hold. The view only attaches this on an eligible button.
+                // 3-second revive hold. The view only attaches this on an eligible button.
                 if matches!(&self.timeout_revive, Some(h) if h.color == color) {
                     return Task::none();
                 }
@@ -3825,7 +3825,7 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::TimeoutReviveHoldElapsed(token, color) => {
-                // The 5-second revive hold elapsed. Only proceed if this is still the
+                // The 3-second revive hold elapsed. Only proceed if this is still the
                 // current Reviving hold for this team.
                 if !matches!(
                     &self.timeout_revive,
@@ -3848,6 +3848,8 @@ impl RefBoxApp {
                 let apply_task = self.apply_snapshot(snapshot);
                 // Enter the "restored, hold to keep showing" state. It has no timer:
                 // it persists until the finger is lifted, and release confirms the restore.
+                // The token is still bumped so any stray in-flight hold timer is ignored;
+                // Restored itself never waits on it.
                 self.timeout_revive_token += 1;
                 let token = self.timeout_revive_token;
                 self.timeout_revive = Some(ReviveHold {

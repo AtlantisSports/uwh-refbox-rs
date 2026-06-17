@@ -210,11 +210,12 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
 
     let black: Element<'a, Message> = match snapshot.timeout {
         None => {
-            if black_phase == Some(RevivePhase::Deciding) {
-                // Revived, still held: YELLOW "release to bank / hold to start" window.
-                // The mouse_area keeps the same handlers and layout slot across the
-                // colour change, so the release/exit event is still captured when it
-                // arrives (mouse_area holds no retained press state of its own).
+            if black_phase == Some(RevivePhase::Restored) {
+                // Revived, still held: YELLOW "RESTORED" state, shown until release
+                // (which confirms the restore). The mouse_area keeps the same handlers
+                // and layout slot across the colour change, so the release/exit event is
+                // still captured when it arrives (mouse_area holds no retained press
+                // state of its own).
                 mouse_area(
                     make_multi_label_button((fl!("timeout"), fl!("revive-deciding-line-2")))
                         .style(yellow_button_armed),
@@ -291,7 +292,7 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
 
     let white: Element<'a, Message> = match snapshot.timeout {
         None => {
-            if white_phase == Some(RevivePhase::Deciding) {
+            if white_phase == Some(RevivePhase::Restored) {
                 mouse_area(
                     make_multi_label_button((fl!("timeout"), fl!("revive-deciding-line-2")))
                         .style(yellow_button_armed),

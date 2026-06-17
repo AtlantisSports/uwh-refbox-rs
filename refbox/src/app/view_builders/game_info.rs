@@ -43,7 +43,7 @@ pub(in super::super) fn build_game_info_page<'a>(
         horizontal_space().into()
     };
 
-    use super::game_info_table::{Variant, game_info_rows, render_game_info_table};
+    use super::game_info_table::{game_info_rows, render_game_info_table};
     let table = render_game_info_table(game_info_rows(
         snapshot,
         config,
@@ -51,7 +51,6 @@ pub(in super::super) fn build_game_info_page<'a>(
         schedule,
         teams,
         last_game_scores,
-        Variant::Full,
     ));
     // Pin the table to the top of the button via a transparent fill-height
     // wrapper, so the table's dark gridline backing only covers the grid and the

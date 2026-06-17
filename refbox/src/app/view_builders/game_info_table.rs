@@ -13,12 +13,6 @@ use uwh_common::{
 const TEAM_NAME_LEN_LIMIT: usize = 40;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in super::super) enum Variant {
-    Full,
-    Compact,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in super::super) enum GameRole {
     Last,
     Current,
@@ -85,7 +79,6 @@ pub(in super::super) fn game_info_rows(
     schedule: Option<&Schedule>,
     teams: Option<&TeamList>,
     last_game_scores: Option<BlackWhiteBundle<u8>>,
-    variant: Variant,
 ) -> Vec<Row> {
     let between = snapshot.current_period == GamePeriod::BetweenGames;
     // The "current" game whose config + settings are displayed: the in-progress
@@ -206,7 +199,7 @@ pub(in super::super) fn game_info_rows(
     }
 
     if using_uwhportal {
-        rows.extend(referee_rows(current_game_num, schedule, variant));
+        rows.extend(referee_rows(current_game_num, schedule));
     }
 
     // Context block AFTER the current block, in-game only: the upcoming game (no score).
@@ -271,15 +264,11 @@ fn game_block_row(
     }
 }
 
-fn referee_rows(
-    game_number: &GameNumber,
-    schedule: Option<&Schedule>,
-    variant: Variant,
-) -> Vec<Row> {
+fn referee_rows(game_number: &GameNumber, schedule: Option<&Schedule>) -> Vec<Row> {
     // Resolve assigned names by role; "-" for an assigned-but-unnamed or absent slot.
     let mut chief = "-".to_string();
     let mut keeper = "-".to_string();
-    let mut helper: Option<String> = None;
+    let mut helper = "-".to_string();
     let mut water = ["-".to_string(), "-".to_string(), "-".to_string()];
 
     if let Some(game) = schedule.and_then(|s| s.games.get(game_number)) {
@@ -292,7 +281,7 @@ fn referee_rows(
                 match r.role.as_str() {
                     "Chief" => chief = name,
                     "TimeOrScoreKeeper" => keeper = name,
-                    "TimeOrScoreKeeperHelper" => helper = Some(name),
+                    "TimeOrScoreKeeperHelper" => helper = name,
                     "Water1" => water[0] = name,
                     "Water2" => water[1] = name,
                     "Water3" => water[2] = name,
@@ -302,7 +291,7 @@ fn referee_rows(
         }
     }
 
-    let mut out = vec![
+    vec![
         Row::Referee {
             label: fl!("gi-ref-chief"),
             name: chief,
@@ -311,29 +300,23 @@ fn referee_rows(
             label: fl!("gi-ref-timekeeper"),
             name: keeper,
         },
-    ];
-    if matches!(variant, Variant::Compact) {
-        return out; // main page: Chief + Keeper only
-    }
-    if let Some(h) = helper {
-        out.push(Row::Referee {
+        Row::Referee {
             label: fl!("gi-ref-timekeeper-helper"),
-            name: h,
-        });
-    }
-    out.push(Row::Referee {
-        label: fl!("gi-ref-water-1"),
-        name: water[0].clone(),
-    });
-    out.push(Row::Referee {
-        label: fl!("gi-ref-water-2"),
-        name: water[1].clone(),
-    });
-    out.push(Row::Referee {
-        label: fl!("gi-ref-water-3"),
-        name: water[2].clone(),
-    });
-    out
+            name: helper,
+        },
+        Row::Referee {
+            label: fl!("gi-ref-water-1"),
+            name: water[0].clone(),
+        },
+        Row::Referee {
+            label: fl!("gi-ref-water-2"),
+            name: water[1].clone(),
+        },
+        Row::Referee {
+            label: fl!("gi-ref-water-3"),
+            name: water[2].clone(),
+        },
+    ]
 }
 
 // Returns (white_name, black_name, display_number). Names are Some only when the
@@ -632,15 +615,7 @@ mod tests {
     fn current_block_always_present() {
         // GameSnapshot::default() is BetweenGames; the Current block is present in any state.
         let snapshot = GameSnapshot::default();
-        let rows = game_info_rows(
-            &snapshot,
-            &cfg_all_on(),
-            false,
-            None,
-            None,
-            None,
-            Variant::Full,
-        );
+        let rows = game_info_rows(&snapshot, &cfg_all_on(), false, None, None, None);
         assert!(rows.iter().any(|r| matches!(
             r,
             Row::GameBlock {
@@ -654,15 +629,7 @@ mod tests {
     #[test]
     fn settings_order_all_features_on() {
         let snapshot = GameSnapshot::default();
-        let rows = game_info_rows(
-            &snapshot,
-            &cfg_all_on(),
-            false,
-            None,
-            None,
-            None,
-            Variant::Full,
-        );
+        let rows = game_info_rows(&snapshot, &cfg_all_on(), false, None, None, None);
         let pairs = setting_pairs(&rows);
         // Six fixed rows, paired exactly as in the mockup.
         assert_eq!(pairs.len(), 6);
@@ -699,7 +666,7 @@ mod tests {
             overtime_allowed: false,
             ..cfg_all_on()
         };
-        let rows = game_info_rows(&snapshot, &config, false, None, None, None, Variant::Full);
+        let rows = game_info_rows(&snapshot, &config, false, None, None, None);
         // Overtime-detail settings stay in their slots but greyed.
         assert_eq!(
             cell_grayed(&rows, &fl!("gi-pre-overtime-break")),
@@ -733,7 +700,7 @@ mod tests {
             num_team_timeouts_allowed: 0,
             ..cfg_all_on()
         };
-        let rows = game_info_rows(&snapshot, &config, false, None, None, None, Variant::Full);
+        let rows = game_info_rows(&snapshot, &config, false, None, None, None);
         assert_eq!(cell_grayed(&rows, &fl!("gi-timeout-duration")), Some(true));
         assert_eq!(cell_grayed(&rows, &fl!("gi-timeouts")), Some(false));
     }
@@ -745,7 +712,7 @@ mod tests {
             single_half: true,
             ..cfg_all_on()
         };
-        let rows = game_info_rows(&snapshot, &config, false, None, None, None, Variant::Full);
+        let rows = game_info_rows(&snapshot, &config, false, None, None, None);
         let pairs = setting_pairs(&rows);
         // First row's left label becomes "Game Length" (active); "Half Length" is unused.
         assert_eq!(pairs[0].0, fl!("gi-game-length"));
@@ -766,7 +733,7 @@ mod tests {
             num_team_timeouts_allowed: 0,
             ..Default::default()
         };
-        let rows = game_info_rows(&snapshot, &config, false, None, None, None, Variant::Full);
+        let rows = game_info_rows(&snapshot, &config, false, None, None, None);
         let pairs = setting_pairs(&rows);
         assert_eq!(pairs.len(), 6);
         assert!(pairs.contains(&(fl!("gi-overtime"), fl!("gi-sudden-death"))));
@@ -806,7 +773,6 @@ mod tests {
             None,
             None,
             None,
-            Variant::Full,
         );
         assert_eq!(roles(&rows).first(), Some(&GameRole::Last));
         assert!(roles(&rows).contains(&GameRole::Current));
@@ -815,15 +781,7 @@ mod tests {
 
     #[test]
     fn in_game_shows_current_then_next_no_last() {
-        let rows = game_info_rows(
-            &in_game_snapshot(),
-            &cfg_all_on(),
-            false,
-            None,
-            None,
-            None,
-            Variant::Full,
-        );
+        let rows = game_info_rows(&in_game_snapshot(), &cfg_all_on(), false, None, None, None);
         assert!(!roles(&rows).contains(&GameRole::Last));
         assert_eq!(roles(&rows).first(), Some(&GameRole::Current));
         assert_eq!(roles(&rows).last(), Some(&GameRole::Next));
@@ -839,7 +797,6 @@ mod tests {
             None,
             None,
             Some(scores),
-            Variant::Full,
         );
         let last = rows
             .iter()
@@ -875,14 +832,14 @@ mod tests {
             None,
             None,
             None,
-            Variant::Full,
         );
         assert!(ref_labels(&rows).is_empty());
     }
 
     #[test]
-    fn compact_variant_keeps_only_chief_and_keeper() {
-        // Portal on but no schedule => referee section still renders its fixed labels with "-".
+    fn referee_rows_always_include_blank_helper_and_all_water() {
+        // Portal on but no schedule => referee section renders its fixed labels with "-".
+        // Both tables list the same referees, including a blank T/S Helper row.
         let rows = game_info_rows(
             &GameSnapshot::default(),
             &cfg_all_on(),
@@ -890,31 +847,13 @@ mod tests {
             None,
             None,
             None,
-            Variant::Compact,
         );
-        assert_eq!(
-            ref_labels(&rows),
-            vec![fl!("gi-ref-chief"), fl!("gi-ref-timekeeper")]
-        );
-    }
-
-    #[test]
-    fn full_variant_lists_standard_referees_without_helper() {
-        let rows = game_info_rows(
-            &GameSnapshot::default(),
-            &cfg_all_on(),
-            true,
-            None,
-            None,
-            None,
-            Variant::Full,
-        );
-        // Helper omitted when no Helper assignment is present.
         assert_eq!(
             ref_labels(&rows),
             vec![
                 fl!("gi-ref-chief"),
                 fl!("gi-ref-timekeeper"),
+                fl!("gi-ref-timekeeper-helper"),
                 fl!("gi-ref-water-1"),
                 fl!("gi-ref-water-2"),
                 fl!("gi-ref-water-3"),
@@ -924,15 +863,7 @@ mod tests {
 
     #[test]
     fn next_block_has_no_scores() {
-        let rows = game_info_rows(
-            &in_game_snapshot(),
-            &cfg_all_on(),
-            false,
-            None,
-            None,
-            None,
-            Variant::Full,
-        );
+        let rows = game_info_rows(&in_game_snapshot(), &cfg_all_on(), false, None, None, None);
         let next = rows
             .iter()
             .find_map(|r| match r {
@@ -959,7 +890,6 @@ mod tests {
             None,
             None,
             None,
-            Variant::Full,
         );
         let current = rows
             .iter()
@@ -983,15 +913,7 @@ mod tests {
             scores: BlackWhiteBundle { black: 2, white: 3 },
             ..GameSnapshot::default()
         };
-        let rows = game_info_rows(
-            &snapshot,
-            &cfg_all_on(),
-            false,
-            None,
-            None,
-            None,
-            Variant::Full,
-        );
+        let rows = game_info_rows(&snapshot, &cfg_all_on(), false, None, None, None);
         let current = rows
             .iter()
             .find_map(|r| match r {

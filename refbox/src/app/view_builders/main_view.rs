@@ -1,4 +1,4 @@
-use super::game_info_table::{Variant, game_info_rows, render_game_info_table};
+use super::game_info_table::{game_info_rows, render_game_info_table};
 use super::*;
 use iced::{
     Alignment, Element, Length,
@@ -264,7 +264,6 @@ pub(in super::super) fn build_main_view<'a>(
                     schedule,
                     teams,
                     None,
-                    Variant::Compact,
                 )))
                 .align_y(Vertical::Top)
                 .height(Length::Fill)

@@ -242,8 +242,14 @@ pub(in super::super) fn build_keypad_page<'a>(
                     infraction,
                     team_warning,
                     ret_to_overview,
-                } =>
-                    make_warning_add_page(origin, color, infraction, team_warning, ret_to_overview),
+                } => make_warning_add_page(
+                    origin,
+                    color,
+                    infraction,
+                    team_warning,
+                    ret_to_overview,
+                    player_num,
+                ),
                 KeypadPage::PortalLogin(id, requested) => {
                     make_portal_login_page(id, requested, mode)
                 }

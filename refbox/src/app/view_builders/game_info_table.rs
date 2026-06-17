@@ -1,8 +1,8 @@
 use super::*;
 use iced::{
-    Alignment, Element, Length,
-    alignment::Horizontal,
-    widget::{column, container, row, text},
+    Element, Length,
+    alignment::{Horizontal, Vertical},
+    widget::{column, container, text},
 };
 use uwh_common::{
     config::Game as GameConfig,
@@ -31,6 +31,34 @@ pub(in super::super) struct TeamLine {
     pub score: Option<u8>,
 }
 
+/// One settings cell (label + value). `grayed` is true when the setting does not
+/// apply to this game's config — it is shown dimmed rather than hidden, so the
+/// grid keeps a fixed shape.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in super::super) struct SettingCell {
+    pub label: String,
+    pub value: String,
+    pub grayed: bool,
+}
+
+impl SettingCell {
+    fn active(label: String, value: String) -> Self {
+        Self {
+            label,
+            value,
+            grayed: false,
+        }
+    }
+
+    fn maybe(label: String, value: String, grayed: bool) -> Self {
+        Self {
+            label,
+            value,
+            grayed,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in super::super) enum Row {
     GameBlock {
@@ -41,8 +69,8 @@ pub(in super::super) enum Row {
         black: TeamLine,
     },
     SettingPair {
-        left: (String, String),
-        right: Option<(String, String)>,
+        left: SettingCell,
+        right: SettingCell,
     },
     Referee {
         label: String,
@@ -82,72 +110,82 @@ pub(in super::super) fn game_info_rows(
     ));
 
     // --- Settings grid (belongs to the current game) ---
-    let mut settings: Vec<(String, String)> = Vec::new();
-    if config.single_half {
-        settings.push((
+    // Six fixed rows in fixed left/right slots so the layout never reorders.
+    // Settings that don't apply to this game's config are shown greyed, not hidden.
+    let single = config.single_half;
+    let no_ot = !config.overtime_allowed;
+    let no_sd = !config.sudden_death_allowed;
+    let no_to = config.num_team_timeouts_allowed == 0;
+
+    // Half Length / Game Length (left label depends on single-period) | Half-Time.
+    let half_left = if single {
+        SettingCell::active(
             fl!("gi-game-length"),
             time_string(config.half_play_duration),
-        ));
+        )
     } else {
-        settings.push((
+        SettingCell::active(
             fl!("gi-half-length"),
             time_string(config.half_play_duration),
-        ));
-        settings.push((
+        )
+    };
+    rows.push(Row::SettingPair {
+        left: half_left,
+        right: SettingCell::maybe(
             fl!("gi-half-time-length"),
             time_string(config.half_time_duration),
-        ));
-    }
-    settings.push((fl!("gi-timeouts"), team_timeouts_value(config)));
-    if config.num_team_timeouts_allowed != 0 {
-        settings.push((
+            single,
+        ),
+    });
+    rows.push(Row::SettingPair {
+        left: SettingCell::active(fl!("gi-timeouts"), team_timeouts_value(config)),
+        right: SettingCell::maybe(
             fl!("gi-timeout-duration"),
             time_string(config.team_timeout_duration),
-        ));
-    }
-    settings.push((fl!("gi-overtime"), bool_string(config.overtime_allowed)));
-    settings.push((
-        fl!("gi-sudden-death"),
-        bool_string(config.sudden_death_allowed),
-    ));
-    if config.overtime_allowed {
-        settings.push((
+            no_to,
+        ),
+    });
+    rows.push(Row::SettingPair {
+        left: SettingCell::active(fl!("gi-overtime"), bool_string(config.overtime_allowed)),
+        right: SettingCell::active(
+            fl!("gi-sudden-death"),
+            bool_string(config.sudden_death_allowed),
+        ),
+    });
+    rows.push(Row::SettingPair {
+        left: SettingCell::maybe(
             fl!("gi-pre-overtime-break"),
             time_string(config.pre_overtime_break),
-        ));
-    }
-    if config.sudden_death_allowed {
-        settings.push((
+            no_ot,
+        ),
+        right: SettingCell::maybe(
             fl!("gi-pre-sudden-death-break"),
             time_string(config.pre_sudden_death_duration),
-        ));
-    }
-    if config.overtime_allowed {
-        settings.push((
+            no_sd,
+        ),
+    });
+    rows.push(Row::SettingPair {
+        left: SettingCell::maybe(
             fl!("gi-overtime-half-length"),
             time_string(config.ot_half_play_duration),
-        ));
-    }
-    settings.push((
-        fl!("gi-minimum-game-break"),
-        time_string(config.minimum_break),
-    ));
-    if config.overtime_allowed {
-        settings.push((
+            no_ot,
+        ),
+        right: SettingCell::active(
+            fl!("gi-minimum-game-break"),
+            time_string(config.minimum_break),
+        ),
+    });
+    rows.push(Row::SettingPair {
+        left: SettingCell::maybe(
             fl!("gi-overtime-half-time-length"),
             time_string(config.ot_half_time_duration),
-        ));
-    }
-    settings.push((
-        fl!("gi-stop-clock-last-2"),
-        stop_clock_value(schedule, current_game_num),
-    ));
-
-    let mut iter = settings.into_iter();
-    while let Some(left) = iter.next() {
-        let right = iter.next();
-        rows.push(Row::SettingPair { left, right });
-    }
+            no_ot,
+        ),
+        right: SettingCell::active(
+            fl!("gi-stop-clock-last-2"),
+            stop_clock_value(schedule, current_game_num),
+        ),
+    });
 
     // Context block BEFORE the current block, between games only: the just-finished game.
     if between {
@@ -195,7 +233,9 @@ fn team_timeouts_value(config: &GameConfig) -> String {
 fn stop_clock_value(schedule: Option<&Schedule>, game_number: &GameNumber) -> String {
     match schedule.and_then(|s| s.get_game_timing(game_number)) {
         Some(rule) => bool_string(rule.last_2_min_stop_time),
-        None => fl!("unknown"),
+        // Language-neutral placeholder when no timing rule is available (e.g. not
+        // using the Portal). Table-specific; the global `unknown` key stays "Unknown".
+        None => fl!("gi-unknown"),
     }
 }
 
@@ -312,166 +352,224 @@ fn resolve_game(
 }
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
+// The table is a column of grid rows on a dark backing. Every row uses the same
+// four columns — label (LABEL_FP) | value (VALUE_FP) | label/name (LABEL_FP) |
+// value/score (VALUE_FP) — so settings values, team names, and scores all line up.
+// The 1px gaps between cells reveal the dark backing (theme::table_grid_container)
+// as gridlines, giving a spreadsheet-style grid.
 
-/// Render the `Vec<Row>` produced by `game_info_rows` into an iced `Element`.
+const LABEL_FP: u16 = 7; // label / team-name columns (1 and 3)
+const VALUE_FP: u16 = 3; // value / score columns (2 and 4); ~25% narrower than labels
+const HALF_FP: u16 = LABEL_FP + VALUE_FP; // one right-half (a team row's column span)
+const GRID: f32 = 1.0; // gridline thickness (gap between cells)
+const CELL_PAD: f32 = PADDING / 2.0; // padding inside each cell
+// Smaller than SMALL_TEXT so long labels (e.g. "Overtime Half-Time Length") fit on
+// one line within their cell instead of wrapping.
+const TABLE_TEXT: f32 = 15.0;
+// Uniform height for every table row; the merged Last-game cell spans two of these.
+// Kept tight so all parameters + referees fit on the Game Information page.
+const ROW_H: f32 = 22.0;
+
+type CellStyle = fn(&iced::Theme) -> iced::widget::container::Style;
+
 pub(in super::super) fn render_game_info_table(rows: Vec<Row>) -> Element<'static, Message> {
-    let mut col = column![].spacing(SPACING / 4.0).width(Length::Fill);
+    let mut table = column![].spacing(GRID).width(Length::Fill);
     for r in rows {
-        col = col.push(match r {
+        match r {
+            // Last game: "Last Game" + number as tall cells spanning both team
+            // rows (no Game Block line), beside the white/black team rows.
+            Row::GameBlock {
+                role: GameRole::Last,
+                number,
+                white,
+                black,
+                ..
+            } => {
+                let right = column![team_row(white, false), team_row(black, true)]
+                    .spacing(GRID)
+                    .width(Length::FillPortion(HALF_FP));
+                table = table.push(grid_row(vec![
+                    tall_cell(fl!("gi-last-game"), LABEL_FP, table_label_cell),
+                    tall_cell(number, VALUE_FP, table_value_cell),
+                    right.into(),
+                ]));
+            }
+            // Current / Next game: two rows — header (role + number) over Game
+            // Block — each beside its team row, all on the shared 4-column grid.
             Row::GameBlock {
                 role,
                 number,
                 game_block,
                 white,
                 black,
-            } => render_game_block(role, number, game_block, white, black),
-            Row::SettingPair { left, right } => render_setting_pair(left, right),
-            Row::Referee { label, name } => render_referee(label, name),
-        });
+            } => {
+                let role_label = match role {
+                    GameRole::Current => fl!("gi-current-game"),
+                    _ => fl!("gi-next-game"),
+                };
+                let block = game_block.unwrap_or_default();
+                table = table.push(grid_row(vec![
+                    label_cell(role_label, LABEL_FP),
+                    value_cell(number, VALUE_FP),
+                    name_cell(white.name, false, LABEL_FP),
+                    score_cell(white.score, false, VALUE_FP),
+                ]));
+                table = table.push(grid_row(vec![
+                    label_cell(fl!("gi-game-block"), LABEL_FP),
+                    value_cell(block, VALUE_FP),
+                    name_cell(black.name, true, LABEL_FP),
+                    score_cell(black.score, true, VALUE_FP),
+                ]));
+            }
+            Row::SettingPair { left, right } => {
+                table = table.push(grid_row(vec![
+                    setting_label(left.label, left.grayed),
+                    setting_value(left.value, left.grayed),
+                    setting_label(right.label, right.grayed),
+                    setting_value(right.value, right.grayed),
+                ]));
+            }
+            Row::Referee { label, name } => {
+                // Label in column 1; the name spans columns 2–4.
+                table = table.push(grid_row(vec![
+                    label_cell(label, LABEL_FP),
+                    value_cell(name, VALUE_FP + HALF_FP),
+                ]));
+            }
+        }
     }
-    col.into()
-}
 
-// ── Row renderers ─────────────────────────────────────────────────────────────
-
-/// Renders a GameBlock as a 2-row × 4-column grid.
-///
-/// Row 1: [role label + game number] | [white team name] | [white score]
-/// Row 2: [game block label+value (if Some), else blank] | [black team name] | [black score]
-///
-/// The black (dark) team row uses `black_container` (dark bg, light text).
-/// The white (light) team row uses `white_container` (light bg, dark text).
-fn render_game_block(
-    role: GameRole,
-    number: String,
-    game_block: Option<String>,
-    white: TeamLine,
-    black: TeamLine,
-) -> Element<'static, Message> {
-    let role_label = match role {
-        GameRole::Last => fl!("gi-last-game"),
-        GameRole::Current => fl!("gi-current-game"),
-        GameRole::Next => fl!("gi-next-game"),
-    };
-
-    // Left column, row 1: role label and game number.
-    let header_cell = label_cell(format!("{role_label} {number}"));
-
-    // Left column, row 2: game block value (only when Some).
-    let block_cell: Element<'static, Message> = match game_block {
-        Some(gb) => label_cell(gb),
-        None => container(text("")).width(Length::Fill).into(),
-    };
-
-    let left_col: Element<'static, Message> = column![header_cell, block_cell]
-        .width(Length::FillPortion(3))
-        .into();
-
-    // White team row (top, light background).
-    let white_row: Element<'static, Message> = container(
-        row![team_name_cell(white.name), team_score_cell(white.score),]
-            .spacing(SPACING / 2.0)
-            .align_y(Alignment::Center),
-    )
-    .padding(PADDING / 2.0)
-    .width(Length::Fill)
-    .style(white_container)
-    .into();
-
-    // Black team row (bottom, dark background with light text).
-    let black_row: Element<'static, Message> = container(
-        row![team_name_cell(black.name), team_score_cell(black.score),]
-            .spacing(SPACING / 2.0)
-            .align_y(Alignment::Center),
-    )
-    .padding(PADDING / 2.0)
-    .width(Length::Fill)
-    .style(black_container)
-    .into();
-
-    let right_col: Element<'static, Message> = column![white_row, black_row]
-        .width(Length::FillPortion(5))
-        .into();
-
-    row![left_col, right_col]
-        .spacing(SPACING / 2.0)
-        .width(Length::Fill)
-        .into()
-}
-
-/// Renders a SettingPair as a 4-column row: left label, left value, right label, right value.
-/// When `right` is `None`, the right two cells are left blank.
-fn render_setting_pair(
-    left: (String, String),
-    right: Option<(String, String)>,
-) -> Element<'static, Message> {
-    let (right_label, right_value) = match right {
-        Some((l, v)) => (l, v),
-        None => (String::new(), String::new()),
-    };
-
-    row![
-        label_cell(left.0),
-        value_cell(left.1),
-        label_cell(right_label),
-        value_cell(right_value),
-    ]
-    .spacing(SPACING / 2.0)
-    .width(Length::Fill)
-    .into()
-}
-
-/// Renders a Referee row as a full-width label + name.
-fn render_referee(label: String, name: String) -> Element<'static, Message> {
-    row![label_cell(label), value_cell(name),]
-        .spacing(SPACING / 2.0)
+    container(table)
+        .style(table_grid_container)
+        .padding(GRID)
         .width(Length::Fill)
         .into()
 }
 
 // ── Cell helpers ──────────────────────────────────────────────────────────────
 
-/// A left-aligned label cell (grey background, standard small text).
-fn label_cell(content: impl Into<String>) -> Element<'static, Message> {
-    container(
-        text(content.into())
-            .size(SMALL_TEXT)
-            .align_x(Horizontal::Left),
-    )
-    .padding(PADDING / 2.0)
-    .width(Length::Fill)
-    .style(gray_container)
-    .into()
-}
-
-/// A right-aligned value cell (light-grey background, standard small text).
-fn value_cell(content: impl Into<String>) -> Element<'static, Message> {
-    container(
-        text(content.into())
-            .size(SMALL_TEXT)
-            .align_x(Horizontal::Right),
-    )
-    .padding(PADDING / 2.0)
-    .width(Length::Fill)
-    .style(light_gray_container)
-    .into()
-}
-
-/// A team name cell (fills remaining space, left-aligned).
-fn team_name_cell(name: Option<String>) -> Element<'static, Message> {
-    text(name.unwrap_or_default())
-        .size(SMALL_TEXT)
-        .align_x(Horizontal::Left)
+/// A horizontal grid row whose cells are separated by 1px gridline gaps.
+fn grid_row(cells: Vec<Element<'static, Message>>) -> Element<'static, Message> {
+    iced::widget::Row::with_children(cells)
+        .spacing(GRID)
         .width(Length::Fill)
         .into()
 }
 
-/// A score cell (right-aligned, shrinks to content).
-fn team_score_cell(score: Option<u8>) -> Element<'static, Message> {
-    text(score.map(|s| s.to_string()).unwrap_or_default())
-        .size(SMALL_TEXT)
-        .align_x(Horizontal::Right)
-        .into()
+/// One team row: name (column 3) + score (column 4), white or black styled.
+fn team_row(line: TeamLine, dark: bool) -> Element<'static, Message> {
+    grid_row(vec![
+        name_cell(line.name, dark, LABEL_FP),
+        score_cell(line.score, dark, VALUE_FP),
+    ])
+}
+
+/// A label cell (medium-grey fill), left-aligned.
+fn label_cell(content: impl Into<String>, fp: u16) -> Element<'static, Message> {
+    cell(
+        content.into(),
+        fp,
+        table_label_cell,
+        Horizontal::Left,
+        false,
+    )
+}
+
+/// A value cell (lighter-grey fill), left-aligned.
+fn value_cell(content: impl Into<String>, fp: u16) -> Element<'static, Message> {
+    cell(
+        content.into(),
+        fp,
+        table_value_cell,
+        Horizontal::Left,
+        false,
+    )
+}
+
+/// A team-name cell (white or black fill), left-aligned.
+fn name_cell(name: Option<String>, dark: bool, fp: u16) -> Element<'static, Message> {
+    cell(
+        name.unwrap_or_default(),
+        fp,
+        team_style(dark),
+        Horizontal::Left,
+        false,
+    )
+}
+
+/// A score cell (white or black fill), right-aligned.
+fn score_cell(score: Option<u8>, dark: bool, fp: u16) -> Element<'static, Message> {
+    cell(
+        score.map(|s| s.to_string()).unwrap_or_default(),
+        fp,
+        team_style(dark),
+        Horizontal::Right,
+        false,
+    )
+}
+
+/// A settings label cell — greyed when the setting is inactive for this game.
+fn setting_label(content: String, grayed: bool) -> Element<'static, Message> {
+    let style = if grayed {
+        table_label_cell_grayed
+    } else {
+        table_label_cell
+    };
+    cell(content, LABEL_FP, style, Horizontal::Left, false)
+}
+
+/// A settings value cell — greyed when the setting is inactive for this game.
+fn setting_value(content: String, grayed: bool) -> Element<'static, Message> {
+    let style = if grayed {
+        table_value_cell_grayed
+    } else {
+        table_value_cell
+    };
+    cell(content, VALUE_FP, style, Horizontal::Left, false)
+}
+
+/// A cell that spans two rows (vertically centred) — used for the merged
+/// Last-game label/number beside its two team rows.
+fn tall_cell(content: impl Into<String>, fp: u16, style: CellStyle) -> Element<'static, Message> {
+    cell(content.into(), fp, style, Horizontal::Left, true)
+}
+
+fn team_style(dark: bool) -> CellStyle {
+    if dark {
+        table_black_cell
+    } else {
+        table_white_cell
+    }
+}
+
+/// Builds one filled, square table cell of uniform height `ROW_H`. `span2` makes
+/// it two rows tall (plus the gridline between them) for the merged Last-game cells.
+fn cell(
+    content: String,
+    fp: u16,
+    style: CellStyle,
+    align_x: Horizontal,
+    span2: bool,
+) -> Element<'static, Message> {
+    let height = if span2 {
+        Length::Fixed(2.0 * ROW_H + GRID)
+    } else {
+        Length::Fixed(ROW_H)
+    };
+    container(
+        text(content)
+            .size(TABLE_TEXT)
+            .width(Length::Fill)
+            .align_x(align_x),
+    )
+    // Horizontal inset only; the fixed row height + vertical centring provide the
+    // (now tighter) vertical spacing, so rows stay short.
+    .padding([0.0, CELL_PAD])
+    .width(Length::FillPortion(fp))
+    .height(height)
+    .align_y(Vertical::Center)
+    .style(style)
+    .into()
 }
 
 #[cfg(test)]
@@ -489,16 +587,30 @@ mod tests {
         }
     }
 
-    // Helper: collect the (label, value) pairs the settings grid emits, in order.
-    fn setting_pairs(rows: &[Row]) -> Vec<(String, Option<String>)> {
+    // Helper: collect the (left-label, right-label) pairs the settings grid emits, in order.
+    fn setting_pairs(rows: &[Row]) -> Vec<(String, String)> {
         rows.iter()
             .filter_map(|r| match r {
-                Row::SettingPair { left, right } => {
-                    Some((left.0.clone(), right.as_ref().map(|p| p.0.clone())))
-                }
+                Row::SettingPair { left, right } => Some((left.label.clone(), right.label.clone())),
                 _ => None,
             })
             .collect()
+    }
+
+    // Helper: find a settings cell's `grayed` flag by label (left or right slot).
+    fn cell_grayed(rows: &[Row], label: &str) -> Option<bool> {
+        rows.iter().find_map(|r| match r {
+            Row::SettingPair { left, right } => {
+                if left.label == label {
+                    Some(left.grayed)
+                } else if right.label == label {
+                    Some(right.grayed)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        })
     }
 
     #[test]
@@ -537,109 +649,113 @@ mod tests {
             Variant::Full,
         );
         let pairs = setting_pairs(&rows);
-        // Six rows, paired exactly as in the mockup.
+        // Six fixed rows, paired exactly as in the mockup.
+        assert_eq!(pairs.len(), 6);
         assert_eq!(
             pairs[0],
-            (fl!("gi-half-length"), Some(fl!("gi-half-time-length")))
+            (fl!("gi-half-length"), fl!("gi-half-time-length"))
         );
-        assert_eq!(
-            pairs[1],
-            (fl!("gi-timeouts"), Some(fl!("gi-timeout-duration")))
-        );
-        assert_eq!(pairs[2], (fl!("gi-overtime"), Some(fl!("gi-sudden-death"))));
+        assert_eq!(pairs[1], (fl!("gi-timeouts"), fl!("gi-timeout-duration")));
+        assert_eq!(pairs[2], (fl!("gi-overtime"), fl!("gi-sudden-death")));
         assert_eq!(
             pairs[3],
             (
                 fl!("gi-pre-overtime-break"),
-                Some(fl!("gi-pre-sudden-death-break"))
+                fl!("gi-pre-sudden-death-break")
             )
         );
         assert_eq!(
             pairs[4],
-            (
-                fl!("gi-overtime-half-length"),
-                Some(fl!("gi-minimum-game-break"))
-            )
+            (fl!("gi-overtime-half-length"), fl!("gi-minimum-game-break"))
         );
         assert_eq!(
             pairs[5],
             (
                 fl!("gi-overtime-half-time-length"),
-                Some(fl!("gi-stop-clock-last-2"))
+                fl!("gi-stop-clock-last-2")
             )
         );
     }
 
     #[test]
-    fn overtime_off_hides_overtime_rows() {
+    fn overtime_off_grays_overtime_settings() {
         let snapshot = GameSnapshot::default();
         let config = GameConfig {
             overtime_allowed: false,
             ..cfg_all_on()
         };
-        let labels: Vec<String> = setting_pairs(&game_info_rows(
-            &snapshot,
-            &config,
-            false,
-            None,
-            None,
-            None,
-            Variant::Full,
-        ))
-        .into_iter()
-        .flat_map(|(l, r)| std::iter::once(l).chain(r))
-        .collect();
-        assert!(!labels.contains(&fl!("gi-pre-overtime-break")));
-        assert!(!labels.contains(&fl!("gi-overtime-half-length")));
-        assert!(!labels.contains(&fl!("gi-overtime-half-time-length")));
-        assert!(labels.contains(&fl!("gi-minimum-game-break")));
-        assert!(labels.contains(&fl!("gi-stop-clock-last-2")));
+        let rows = game_info_rows(&snapshot, &config, false, None, None, None, Variant::Full);
+        // Overtime-detail settings stay in their slots but greyed.
+        assert_eq!(
+            cell_grayed(&rows, &fl!("gi-pre-overtime-break")),
+            Some(true)
+        );
+        assert_eq!(
+            cell_grayed(&rows, &fl!("gi-overtime-half-length")),
+            Some(true)
+        );
+        assert_eq!(
+            cell_grayed(&rows, &fl!("gi-overtime-half-time-length")),
+            Some(true)
+        );
+        // Always-applicable settings stay active.
+        assert_eq!(
+            cell_grayed(&rows, &fl!("gi-minimum-game-break")),
+            Some(false)
+        );
+        assert_eq!(
+            cell_grayed(&rows, &fl!("gi-stop-clock-last-2")),
+            Some(false)
+        );
+        // Fixed pairing preserved: Overtime stays beside Sudden Death.
+        assert!(setting_pairs(&rows).contains(&(fl!("gi-overtime"), fl!("gi-sudden-death"))));
     }
 
     #[test]
-    fn zero_timeouts_hides_duration() {
+    fn zero_timeouts_grays_duration() {
         let snapshot = GameSnapshot::default();
         let config = GameConfig {
             num_team_timeouts_allowed: 0,
             ..cfg_all_on()
         };
-        let labels: Vec<String> = setting_pairs(&game_info_rows(
-            &snapshot,
-            &config,
-            false,
-            None,
-            None,
-            None,
-            Variant::Full,
-        ))
-        .into_iter()
-        .flat_map(|(l, r)| std::iter::once(l).chain(r))
-        .collect();
-        assert!(!labels.contains(&fl!("gi-timeout-duration")));
+        let rows = game_info_rows(&snapshot, &config, false, None, None, None, Variant::Full);
+        assert_eq!(cell_grayed(&rows, &fl!("gi-timeout-duration")), Some(true));
+        assert_eq!(cell_grayed(&rows, &fl!("gi-timeouts")), Some(false));
     }
 
     #[test]
-    fn single_half_shows_game_length_hides_half_time() {
+    fn single_half_shows_game_length_grays_half_time() {
         let snapshot = GameSnapshot::default();
         let config = GameConfig {
             single_half: true,
             ..cfg_all_on()
         };
-        let labels: Vec<String> = setting_pairs(&game_info_rows(
-            &snapshot,
-            &config,
-            false,
-            None,
-            None,
-            None,
-            Variant::Full,
-        ))
-        .into_iter()
-        .flat_map(|(l, r)| std::iter::once(l).chain(r))
-        .collect();
-        assert!(labels.contains(&fl!("gi-game-length")));
-        assert!(!labels.contains(&fl!("gi-half-length")));
-        assert!(!labels.contains(&fl!("gi-half-time-length")));
+        let rows = game_info_rows(&snapshot, &config, false, None, None, None, Variant::Full);
+        let pairs = setting_pairs(&rows);
+        // First row's left label becomes "Game Length" (active); "Half Length" is unused.
+        assert_eq!(pairs[0].0, fl!("gi-game-length"));
+        assert_eq!(cell_grayed(&rows, &fl!("gi-half-length")), None);
+        // Half-Time keeps its slot but greyed.
+        assert_eq!(cell_grayed(&rows, &fl!("gi-half-time-length")), Some(true));
+    }
+
+    #[test]
+    fn settings_keep_six_fixed_rows_when_mostly_off() {
+        // The user's reported bug: with OT/SD off and 0 timeouts, rows must NOT
+        // reflow into wrong pairs — every slot stays fixed (just greyed).
+        let snapshot = GameSnapshot::default();
+        let config = GameConfig {
+            single_half: false,
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            num_team_timeouts_allowed: 0,
+            ..Default::default()
+        };
+        let rows = game_info_rows(&snapshot, &config, false, None, None, None, Variant::Full);
+        let pairs = setting_pairs(&rows);
+        assert_eq!(pairs.len(), 6);
+        assert!(pairs.contains(&(fl!("gi-overtime"), fl!("gi-sudden-death"))));
+        assert!(pairs.contains(&(fl!("gi-timeouts"), fl!("gi-timeout-duration"))));
     }
 
     fn between_games_snapshot() -> GameSnapshot {

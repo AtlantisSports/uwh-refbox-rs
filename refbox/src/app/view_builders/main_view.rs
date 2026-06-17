@@ -266,7 +266,8 @@ pub(in super::super) fn build_main_view<'a>(
                     None,
                     Variant::Compact,
                 )))
-                .center_y(Length::Fill)
+                .align_y(Vertical::Top)
+                .height(Length::Fill)
                 .width(Length::Fill),
             )
             .padding(PADDING)

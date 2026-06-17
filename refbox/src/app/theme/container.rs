@@ -1,7 +1,7 @@
 use super::{
-    BORDER_RADIUS, BORDER_WIDTH, DisplayMode, HC_DARK_GREY, black, blue, blue_pressed,
-    border_color, disabled_color, display_mode, gray, green, light_gray, red, red_pressed, white,
-    window_background, yellow,
+    BORDER_RADIUS, BORDER_RADIUS_ZERO, BORDER_WIDTH, DisplayMode, HC_DARK_GREY, black, blue,
+    blue_pressed, border_color, disabled_color, display_mode, gray, green, light_gray, red,
+    red_pressed, white, window_background, yellow,
 };
 use iced::{Background, Border, Color, Theme, widget::container::Style};
 
@@ -124,6 +124,72 @@ pub fn blue_pressed_container(theme: &Theme) -> Style {
         ..gray_container_base(theme)
     };
     outline_container_in_high_contrast(style, blue(), Some(Background::Color(black())))
+}
+
+// ── Game-info table cells ───────────────────────────────────────────────────
+// The game-info table is composed of square (radius-zero) filled cells laid out
+// on a dark `table_grid_container` backing. A 1px gap between cells (and 1px
+// backing padding) lets the backing show through as thin gridlines, giving a
+// spreadsheet-style grid without per-cell borders.
+
+/// Dark backing behind the whole game-info table; revealed through the 1px
+/// gaps between cells as gridlines.
+pub fn table_grid_container(_theme: &Theme) -> Style {
+    Style {
+        background: Some(Background::Color(black())),
+        text_color: None,
+        border: Border {
+            width: 0.0,
+            color: black(),
+            radius: BORDER_RADIUS_ZERO,
+        },
+        shadow: Default::default(),
+    }
+}
+
+/// A single square table cell with the given fill and text colour.
+fn table_cell(fill: Color, text: Color) -> Style {
+    Style {
+        background: Some(Background::Color(fill)),
+        text_color: Some(text),
+        border: Border {
+            width: 0.0,
+            color: black(),
+            radius: BORDER_RADIUS_ZERO,
+        },
+        shadow: Default::default(),
+    }
+}
+
+/// Label cell — light-grey fill, dark text. (Same fill as value cells so the
+/// whole settings grid is one uniform grey; cells are separated by gridlines.)
+pub fn table_label_cell(_theme: &Theme) -> Style {
+    table_cell(light_gray(), black())
+}
+
+/// Value cell — light-grey fill, dark text.
+pub fn table_value_cell(_theme: &Theme) -> Style {
+    table_cell(light_gray(), black())
+}
+
+/// White-team row cell — white fill, dark text.
+pub fn table_white_cell(_theme: &Theme) -> Style {
+    table_cell(white(), black())
+}
+
+/// Black-team row cell — black fill, light text.
+pub fn table_black_cell(_theme: &Theme) -> Style {
+    table_cell(black(), white())
+}
+
+/// Greyed label cell — light-grey fill, dimmed text (an inactive setting).
+pub fn table_label_cell_grayed(_theme: &Theme) -> Style {
+    table_cell(light_gray(), disabled_color())
+}
+
+/// Greyed value cell — light-grey fill, dimmed text.
+pub fn table_value_cell_grayed(_theme: &Theme) -> Style {
+    table_cell(light_gray(), disabled_color())
 }
 
 pub fn scroll_bar_container(theme: &Theme) -> Style {

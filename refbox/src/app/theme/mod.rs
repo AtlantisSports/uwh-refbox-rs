@@ -359,7 +359,9 @@ pub mod container;
 pub use container::{
     black_container, blue_container, blue_pressed_container, disabled_container, gray_container,
     green_container, light_gray_container, red_container, red_pressed_container,
-    scroll_bar_container, transparent_container, white_container, yellow_container,
+    scroll_bar_container, table_black_cell, table_grid_container, table_label_cell,
+    table_label_cell_grayed, table_value_cell, table_value_cell_grayed, table_white_cell,
+    transparent_container, white_container, yellow_container,
 };
 
 pub mod text;

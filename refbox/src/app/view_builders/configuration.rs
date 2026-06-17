@@ -475,7 +475,7 @@ fn make_user_config_page<'a>(
     let view_mode_button = make_value_button(
         fl!("view-mode"),
         view_mode_label,
-        (false, false),
+        (false, true),
         Some(Message::CycleDisplayMode),
     );
 

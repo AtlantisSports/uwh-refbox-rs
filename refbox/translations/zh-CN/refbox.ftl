@@ -468,7 +468,7 @@ updates-error-no-space = 可用空间不足，无法安装更新。
 updates-error-not-writable = 无法保存更新（权限被拒绝）。
 
 # Game-info table labels
-gi-last-game = 上场
+gi-prior-game = 上场
 gi-current-game = 当前比赛
 gi-next-game = 下场
 gi-game-block = 比赛块

@@ -469,7 +469,7 @@ updates-error-no-space = Ruang kosong tidak cukup untuk memasang pembaruan.
 updates-error-not-writable = Pembaruan tidak dapat disimpan (izin ditolak).
 
 # Game-info table labels
-gi-last-game = Pertandingan Terakhir
+gi-prior-game = Pertandingan Terakhir
 gi-current-game = Pertandingan Saat Ini
 gi-next-game = Pertandingan Berikutnya
 gi-game-block = Blok Permainan

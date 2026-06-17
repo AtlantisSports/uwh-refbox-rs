@@ -376,7 +376,7 @@ pub(in super::super) fn render_game_info_table(rows: Vec<Row>) -> Element<'stati
                     .spacing(GRID)
                     .width(Length::FillPortion(HALF_FP));
                 table = table.push(grid_row(vec![
-                    tall_cell(fl!("gi-last-game"), LABEL_FP, table_label_cell),
+                    tall_cell(fl!("gi-prior-game"), LABEL_FP, table_label_cell),
                     tall_cell(number, VALUE_FP, table_value_cell),
                     right.into(),
                 ]));

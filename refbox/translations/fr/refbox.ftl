@@ -471,7 +471,7 @@ updates-error-no-space = Espace libre insuffisant pour installer la mise à jour
 updates-error-not-writable = Impossible d’enregistrer la mise à jour (autorisation refusée).
 
 # Game-info table labels
-gi-last-game = Dernier Match
+gi-prior-game = Dernier Match
 gi-current-game = Match en cours
 gi-next-game = Prochain Match
 gi-game-block = Bloc de Jeu

@@ -471,7 +471,7 @@ updates-error-no-space = 업데이트를 설치할 여유 공간이 부족합니
 updates-error-not-writable = 업데이트를 저장할 수 없습니다 (권한이 거부됨).
 
 # Game-info table labels
-gi-last-game = 이전 경기
+gi-prior-game = 이전 경기
 gi-current-game = 현재 경기
 gi-next-game = 다음 경기
 gi-game-block = 게임 블록

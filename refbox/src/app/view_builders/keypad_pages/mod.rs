@@ -40,6 +40,7 @@ pub(in super::super) fn build_keypad_page<'a>(
     page: KeypadPage,
     player_num: u32,
     track_fouls_and_warnings: bool,
+    original_game_number: Option<String>,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -224,7 +225,8 @@ pub(in super::super) fn build_keypad_page<'a>(
                         foul,
                     )
                 }
-                KeypadPage::GameNumber => make_game_number_edit_page(),
+                KeypadPage::GameNumber =>
+                    make_game_number_edit_page(player_num, original_game_number),
                 KeypadPage::TeamTimeouts(_, _) => {
                     unreachable!("TeamTimeouts is handled by the early return above")
                 }

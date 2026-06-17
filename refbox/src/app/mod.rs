@@ -4456,7 +4456,13 @@ impl RefBoxApp {
                 indices
             ),
             AppState::KeypadPage(page, player_num) =>
-                build_keypad_page(data, page, player_num, self.config.track_fouls_and_warnings),
+                build_keypad_page(
+                    data,
+                    page,
+                    player_num,
+                    self.config.track_fouls_and_warnings,
+                    self.edited_settings.as_ref().map(|e| e.game_number.clone()),
+                ),
             AppState::GameDetailsPage(is_refreshing) => build_game_info_page(
                 data,
                 &self.config.game,

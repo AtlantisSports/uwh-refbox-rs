@@ -469,7 +469,7 @@ updates-error-no-space = Nicht genügend freier Speicherplatz, um das Update zu 
 updates-error-not-writable = Das Update konnte nicht gespeichert werden (Zugriff verweigert).
 
 # Game-info table labels
-gi-last-game = Letztes Spiel
+gi-prior-game = Letztes Spiel
 gi-current-game = Aktuelles Spiel
 gi-next-game = Nächstes Spiel
 gi-game-block = Spielblock

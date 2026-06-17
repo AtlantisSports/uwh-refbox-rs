@@ -469,7 +469,7 @@ updates-error-no-space = Espaço livre insuficiente para instalar a atualizaçã
 updates-error-not-writable = Não foi possível guardar a atualização (permissão negada).
 
 # Game-info table labels
-gi-last-game = Último Jogo
+gi-prior-game = Último Jogo
 gi-current-game = Jogo atual
 gi-next-game = Próximo Jogo
 gi-game-block = Bloco de Jogo

@@ -236,7 +236,7 @@ game-block-info = Game Block: { $game_block }
 min-brk-btwn-games = Minimum Time Between Games: { $min_brk_time }
 
 # Game-info table labels
-gi-last-game = Last Game
+gi-prior-game = Prior Game
 gi-current-game = Current Game
 gi-next-game = Next Game
 gi-game-block = Game Block

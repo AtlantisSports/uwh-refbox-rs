@@ -469,7 +469,7 @@ updates-error-no-space = Güncellemeyi yüklemek için yeterli boş alan yok.
 updates-error-not-writable = Güncelleme kaydedilemedi (izin reddedildi).
 
 # Game-info table labels
-gi-last-game = Önceki Oyun
+gi-prior-game = Önceki Oyun
 gi-current-game = Mevcut Oyun
 gi-next-game = Sonraki Oyun
 gi-game-block = Oyun Bloğu

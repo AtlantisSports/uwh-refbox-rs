@@ -469,7 +469,7 @@ updates-error-no-space = Niet genoeg vrije ruimte om de update te installeren.
 updates-error-not-writable = De update kon niet worden opgeslagen (toegang geweigerd).
 
 # Game-info table labels
-gi-last-game = Vorige Wedstrijd
+gi-prior-game = Vorige Wedstrijd
 gi-current-game = Huidige Wedstrijd
 gi-next-game = Volgende Wedstrijd
 gi-game-block = Spelblok

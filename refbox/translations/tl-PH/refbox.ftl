@@ -469,7 +469,7 @@ updates-error-no-space = Hindi sapat ang libreng espasyo para i-install ang upda
 updates-error-not-writable = Hindi ma-save ang update (tinanggihan ang pahintulot).
 
 # Game-info table labels
-gi-last-game = Huling Laro
+gi-prior-game = Huling Laro
 gi-current-game = Kasalukuyang Laro
 gi-next-game = Susunod na Laro
 gi-game-block = Bloke ng Laro

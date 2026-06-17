@@ -842,7 +842,7 @@ fn make_event_config_page<'a>(
                         },
                     ),
                     make_value_button(
-                        fl!("game-block"),
+                        fl!("game-block-full"),
                         time_string(config.game_block),
                         (false, true),
                         Some(Message::EditParameter(LengthParameter::GameBlock)),
@@ -863,8 +863,16 @@ fn make_event_config_page<'a>(
     // make_cancel_apply_footer's gate so a click on Apply can't reach a
     // wasteful confirmation dialog).
     let apply_blocked = settings.uwhportal_incomplete();
-    let apply_enabled =
-        page_has_changes(ConfigPage::Game, settings, page_entry_snapshot) && !apply_blocked;
+    // A red (too-short) Game Block is invalid, so APPLY must be disabled until it
+    // is widened. Only gate this in portal-OFF mode — that is the only mode that
+    // renders the Game Block button, so the disabled APPLY always has a visible
+    // red button explaining it. Yellow ("tight") is a caution, not invalid, and
+    // does not block.
+    let game_block_too_short =
+        !using_uwhportal && matches!(game_block_validity(config), GameBlockValidity::TooShort);
+    let apply_enabled = page_has_changes(ConfigPage::Game, settings, page_entry_snapshot)
+        && !apply_blocked
+        && !game_block_too_short;
 
     let cancel_btn = make_button(fl!("cancel"))
         .style(red_button)

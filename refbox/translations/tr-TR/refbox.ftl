@@ -147,6 +147,7 @@ half-time-lenght = DEVRE ARASI SÜRESİ
 length-of-half-time-period = Devre arası süresinin uzunluğu
 nom-break = NOMİNAL ARA
 game-block = OYUN BLOĞU
+game-block-full = OYUN BLOĞU:
 game-block-help = Bir oyunun başlangıcından bir sonraki oyunun başlangıcına kadar geçen süre
 game-block-too-short = Oyunu ve minimum arayı sığdırmak için çok kısa
 game-block-tight = Dar — takım molaları oyunları zamanlamasının dışına itebilir

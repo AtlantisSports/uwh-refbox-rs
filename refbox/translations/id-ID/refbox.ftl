@@ -147,6 +147,7 @@ half-time-lenght = DUR JEDA BABAK
 length-of-half-time-period = Durasi periode jeda babak
 nom-break = JEDA NOMINAL
 game-block = BLOK PERTANDINGAN
+game-block-full = BLOK PERTANDINGAN:
 game-block-help = Waktu dari awal satu pertandingan hingga awal pertandingan berikutnya
 game-block-too-short = Terlalu singkat untuk pertandingan ditambah jeda minimum
 game-block-tight = Terlalu ketat — time-out tim bisa membuat pertandingan melewati slot mereka

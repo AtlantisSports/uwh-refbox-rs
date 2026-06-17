@@ -147,6 +147,7 @@ half-time-lenght = DUUR RUST
 length-of-half-time-period = De duur van de rustperiode
 nom-break = NOM PAUZE
 game-block = SPELBLOK
+game-block-full = SPELBLOK:
 game-block-help = Tijd van het begin van één wedstrijd tot het begin van de volgende
 game-block-too-short = Te kort voor de wedstrijd plus de minimale pauze
 game-block-tight = Krap — teamtime-outs kunnen wedstrijden buiten hun tijdslot duwen

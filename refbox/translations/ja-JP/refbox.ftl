@@ -147,6 +147,7 @@ half-time-lenght = ハーフタイム時間
 length-of-half-time-period = ハーフタイムの長さ
 nom-break = 基準休憩
 game-block = ゲームブロック
+game-block-full = ゲームブロック:
 game-block-help = ある試合の開始から次の試合の開始までの時間
 game-block-too-short = 試合と最短休憩を収めるには短すぎます
 game-block-tight = タイト — チームタイムアウトにより試合が枠を超える可能性があります

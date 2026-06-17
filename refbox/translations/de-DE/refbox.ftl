@@ -147,6 +147,7 @@ half-time-lenght = HALBZEITPAUSE DAUER
 length-of-half-time-period = Die Dauer der Halbzeitpause
 nom-break = NOM. PAUSE
 game-block = SPIELBLOCK
+game-block-full = SPIELBLOCK:
 game-block-help = Zeit vom Beginn eines Spiels bis zum Beginn des nächsten
 game-block-too-short = Zu kurz für das Spiel plus die Mindestpause
 game-block-tight = Knapp — Auszeiten könnten die Spiele über ihren Zeitslot hinausschieben

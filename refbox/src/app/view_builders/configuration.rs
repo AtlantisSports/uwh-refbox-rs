@@ -1206,11 +1206,11 @@ fn make_sound_config_page<'a>(
                 )),
             ),
             make_value_button(
-                fl!("whistle-volume"),
-                sound.whistle_vol.to_string(),
+                fl!("buzzer-sound"),
+                sound.buzzer_sound.to_string().to_uppercase(),
                 (false, true),
-                if sound.sound_enabled && sound.whistle_enabled {
-                    Some(Message::CycleParameter(CyclingParameter::AlertVolume))
+                if sound.sound_enabled {
+                    Some(Message::CycleParameter(CyclingParameter::BuzzerSound))
                 } else {
                     None
                 },
@@ -1245,27 +1245,27 @@ fn make_sound_config_page<'a>(
                 },
             ),
             make_value_button(
-                fl!("auto-sound-start-play"),
-                bool_string(sound.auto_sound_start_play),
+                fl!("alarm-button"),
+                bool_string(sound.manual_alarm_enabled),
                 (false, true),
                 if sound.sound_enabled {
                     Some(Message::ToggleBoolParameter(
-                        BoolGameParameter::AutoSoundStartPlay,
+                        BoolGameParameter::ManualAlarmEnabled,
                     ))
                 } else {
                     None
                 },
-            )
+            ),
         ]
         .spacing(SPACING)
         .height(Length::Fill),
         row![
             make_value_button(
-                fl!("buzzer-sound"),
-                sound.buzzer_sound.to_string().to_uppercase(),
+                fl!("whistle-volume"),
+                sound.whistle_vol.to_string(),
                 (false, true),
-                if sound.sound_enabled {
-                    Some(Message::CycleParameter(CyclingParameter::BuzzerSound))
+                if sound.sound_enabled && sound.whistle_enabled {
+                    Some(Message::CycleParameter(CyclingParameter::AlertVolume))
                 } else {
                     None
                 },
@@ -1281,6 +1281,24 @@ fn make_sound_config_page<'a>(
                 },
             ),
             make_value_button(
+                fl!("auto-sound-start-play"),
+                bool_string(sound.auto_sound_start_play),
+                (false, true),
+                if sound.sound_enabled {
+                    Some(Message::ToggleBoolParameter(
+                        BoolGameParameter::AutoSoundStartPlay,
+                    ))
+                } else {
+                    None
+                },
+            ),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill),
+        row![
+            horizontal_space(),
+            horizontal_space(),
+            make_value_button(
                 fl!("auto-sound-stop-play"),
                 bool_string(sound.auto_sound_stop_play),
                 (false, true),
@@ -1291,25 +1309,7 @@ fn make_sound_config_page<'a>(
                 } else {
                     None
                 },
-            )
-        ]
-        .spacing(SPACING)
-        .height(Length::Fill),
-        row![
-            make_value_button(
-                fl!("alarm-button"),
-                bool_string(sound.manual_alarm_enabled),
-                (false, true),
-                if sound.sound_enabled {
-                    Some(Message::ToggleBoolParameter(
-                        BoolGameParameter::ManualAlarmEnabled,
-                    ))
-                } else {
-                    None
-                },
             ),
-            horizontal_space(),
-            horizontal_space(),
         ]
         .spacing(SPACING)
         .height(Length::Fill),

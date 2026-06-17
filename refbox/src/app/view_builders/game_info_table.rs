@@ -2,6 +2,11 @@
 // The dead_code allow is removed once the renderer + wiring tasks wire this in.
 #![allow(dead_code)]
 use super::*;
+use iced::{
+    Alignment, Element, Length,
+    alignment::Horizontal,
+    widget::{column, container, row, text},
+};
 use uwh_common::{
     config::Game as GameConfig,
     game_snapshot::{GamePeriod, GameSnapshot},
@@ -307,6 +312,169 @@ fn resolve_game(
         }
     }
     (None, None, game_number.to_string())
+}
+
+// ── Renderer ──────────────────────────────────────────────────────────────────
+
+/// Render the `Vec<Row>` produced by `game_info_rows` into an iced `Element`.
+pub(in super::super) fn render_game_info_table(rows: Vec<Row>) -> Element<'static, Message> {
+    let mut col = column![].spacing(SPACING / 4.0).width(Length::Fill);
+    for r in rows {
+        col = col.push(match r {
+            Row::GameBlock {
+                role,
+                number,
+                game_block,
+                white,
+                black,
+            } => render_game_block(role, number, game_block, white, black),
+            Row::SettingPair { left, right } => render_setting_pair(left, right),
+            Row::Referee { label, name } => render_referee(label, name),
+        });
+    }
+    col.into()
+}
+
+// ── Row renderers ─────────────────────────────────────────────────────────────
+
+/// Renders a GameBlock as a 2-row × 4-column grid.
+///
+/// Row 1: [role label + game number] | [white team name] | [white score]
+/// Row 2: [game block label+value (if Some), else blank] | [black team name] | [black score]
+///
+/// The black (dark) team row uses `black_container` (dark bg, light text).
+/// The white (light) team row uses `white_container` (light bg, dark text).
+fn render_game_block(
+    role: GameRole,
+    number: String,
+    game_block: Option<String>,
+    white: TeamLine,
+    black: TeamLine,
+) -> Element<'static, Message> {
+    let role_label = match role {
+        GameRole::Last => fl!("gi-last-game"),
+        GameRole::Current => fl!("gi-current-game"),
+        GameRole::Next => fl!("gi-next-game"),
+    };
+
+    // Left column, row 1: role label and game number.
+    let header_cell = label_cell(format!("{role_label} {number}"));
+
+    // Left column, row 2: game block value (only when Some).
+    let block_cell: Element<'static, Message> = match game_block {
+        Some(gb) => label_cell(gb),
+        None => container(text("")).width(Length::Fill).into(),
+    };
+
+    let left_col: Element<'static, Message> = column![header_cell, block_cell]
+        .width(Length::FillPortion(3))
+        .into();
+
+    // White team row (top, light background).
+    let white_row: Element<'static, Message> = container(
+        row![team_name_cell(white.name), team_score_cell(white.score),]
+            .spacing(SPACING / 2.0)
+            .align_y(Alignment::Center),
+    )
+    .padding(PADDING / 2.0)
+    .width(Length::Fill)
+    .style(white_container)
+    .into();
+
+    // Black team row (bottom, dark background with light text).
+    let black_row: Element<'static, Message> = container(
+        row![team_name_cell(black.name), team_score_cell(black.score),]
+            .spacing(SPACING / 2.0)
+            .align_y(Alignment::Center),
+    )
+    .padding(PADDING / 2.0)
+    .width(Length::Fill)
+    .style(black_container)
+    .into();
+
+    let right_col: Element<'static, Message> = column![white_row, black_row]
+        .width(Length::FillPortion(5))
+        .into();
+
+    row![left_col, right_col]
+        .spacing(SPACING / 2.0)
+        .width(Length::Fill)
+        .into()
+}
+
+/// Renders a SettingPair as a 4-column row: left label, left value, right label, right value.
+/// When `right` is `None`, the right two cells are left blank.
+fn render_setting_pair(
+    left: (String, String),
+    right: Option<(String, String)>,
+) -> Element<'static, Message> {
+    let (right_label, right_value) = match right {
+        Some((l, v)) => (l, v),
+        None => (String::new(), String::new()),
+    };
+
+    row![
+        label_cell(left.0),
+        value_cell(left.1),
+        label_cell(right_label),
+        value_cell(right_value),
+    ]
+    .spacing(SPACING / 2.0)
+    .width(Length::Fill)
+    .into()
+}
+
+/// Renders a Referee row as a full-width label + name.
+fn render_referee(label: String, name: String) -> Element<'static, Message> {
+    row![label_cell(label), value_cell(name),]
+        .spacing(SPACING / 2.0)
+        .width(Length::Fill)
+        .into()
+}
+
+// ── Cell helpers ──────────────────────────────────────────────────────────────
+
+/// A left-aligned label cell (grey background, standard small text).
+fn label_cell(content: impl Into<String>) -> Element<'static, Message> {
+    container(
+        text(content.into())
+            .size(SMALL_TEXT)
+            .align_x(Horizontal::Left),
+    )
+    .padding(PADDING / 2.0)
+    .width(Length::Fill)
+    .style(gray_container)
+    .into()
+}
+
+/// A right-aligned value cell (light-grey background, standard small text).
+fn value_cell(content: impl Into<String>) -> Element<'static, Message> {
+    container(
+        text(content.into())
+            .size(SMALL_TEXT)
+            .align_x(Horizontal::Right),
+    )
+    .padding(PADDING / 2.0)
+    .width(Length::Fill)
+    .style(light_gray_container)
+    .into()
+}
+
+/// A team name cell (fills remaining space, left-aligned).
+fn team_name_cell(name: Option<String>) -> Element<'static, Message> {
+    text(name.unwrap_or_default())
+        .size(SMALL_TEXT)
+        .align_x(Horizontal::Left)
+        .width(Length::Fill)
+        .into()
+}
+
+/// A score cell (right-aligned, shrinks to content).
+fn team_score_cell(score: Option<u8>) -> Element<'static, Message> {
+    text(score.map(|s| s.to_string()).unwrap_or_default())
+        .size(SMALL_TEXT)
+        .align_x(Horizontal::Right)
+        .into()
 }
 
 #[cfg(test)]

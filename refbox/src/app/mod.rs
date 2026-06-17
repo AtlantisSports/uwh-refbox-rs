@@ -2140,6 +2140,28 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
+            Message::SetTeamTimeoutCount(count) => {
+                if let AppState::KeypadPage(KeypadPage::TeamTimeouts(_, _), ref mut val) =
+                    self.app_state
+                {
+                    *val = count;
+                } else {
+                    unreachable!()
+                }
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::SetTeamTimeoutLength(new_len) => {
+                if let AppState::KeypadPage(KeypadPage::TeamTimeouts(ref mut dur, _), _) =
+                    self.app_state
+                {
+                    *dur = new_len;
+                } else {
+                    unreachable!()
+                }
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
             Message::ChangeColor(new_color) => {
                 match self.app_state {
                     AppState::KeypadPage(KeypadPage::AddScore(ref mut color), _)

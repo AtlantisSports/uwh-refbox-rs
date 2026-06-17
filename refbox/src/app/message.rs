@@ -123,6 +123,10 @@ pub enum Message {
     ParameterSelected(ListableParameter, String),
     ToggleBoolParameter(BoolGameParameter),
     CycleParameter(CyclingParameter),
+    /// Set the team-timeout count directly (team-timeout edit page 0/1 toggle).
+    SetTeamTimeoutCount(u32),
+    /// Set the team-timeout length to a preset value (team-timeout edit page).
+    SetTeamTimeoutLength(Duration),
     /// Advance the on-screen display mode (Light → Dark → High Contrast → …).
     /// Commits immediately; not part of the DONE/Apply settings round-trip.
     CycleDisplayMode,
@@ -369,7 +373,9 @@ impl Message {
             | Self::UpdatesVerified(_)
             | Self::UpdatesInstalled(_)
             | Self::UpdatesBack
-            | Self::UpdaterHealthyCheck => false,
+            | Self::UpdaterHealthyCheck
+            | Self::SetTeamTimeoutCount(_)
+            | Self::SetTeamTimeoutLength(_) => false,
         }
     }
 }
@@ -565,6 +571,8 @@ impl PartialEq for Message {
             (Self::RecvSchedule(a, b), Self::RecvSchedule(c, d)) => a == c && b == d,
             (Self::RecvPortalToken(a), Self::RecvPortalToken(b)) => a == b,
             (Self::RecvTokenValid(a), Self::RecvTokenValid(b)) => a == b,
+            (Self::SetTeamTimeoutCount(a), Self::SetTeamTimeoutCount(b)) => a == b,
+            (Self::SetTeamTimeoutLength(a), Self::SetTeamTimeoutLength(b)) => a == b,
             (Self::UpdatesCheckDone(a), Self::UpdatesCheckDone(b)) => a == b,
             (Self::UpdatesDownloaded(a), Self::UpdatesDownloaded(b)) => a == b,
             (Self::UpdatesVerified(a), Self::UpdatesVerified(b)) => a == b,
@@ -683,6 +691,8 @@ impl PartialEq for Message {
             | (Self::UpdatesInstalled(_), _)
             | (Self::UpdatesBack, _)
             | (Self::UpdaterHealthyCheck, _)
+            | (Self::SetTeamTimeoutCount(_), _)
+            | (Self::SetTeamTimeoutLength(_), _)
             | (Self::NoAction, _) => false,
         }
     }

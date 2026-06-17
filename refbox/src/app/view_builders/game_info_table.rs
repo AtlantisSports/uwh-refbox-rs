@@ -98,12 +98,16 @@ pub(in super::super) fn game_info_rows(
 
     let mut rows = Vec::new();
 
+    // The current game shows a live score only while a game is in progress; between
+    // games the "current" block is the upcoming game, which has not been played yet.
+    let current_scores = if between { None } else { Some(snapshot.scores) };
+
     // --- Current game block ---
     rows.push(game_block_row(
         GameRole::Current,
         current_game_num,
         Some(time_string(config.game_block)),
-        Some(snapshot.scores),
+        current_scores,
         using_uwhportal,
         schedule,
         teams,
@@ -396,6 +400,8 @@ pub(in super::super) fn render_game_info_table(rows: Vec<Row>) -> Element<'stati
             }
             // Current / Next game: two rows — header (role + number) over Game
             // Block — each beside its team row, all on the shared 4-column grid.
+            // A block with no score (an upcoming game) merges its name+score into
+            // one wide name cell spanning the right half.
             Row::GameBlock {
                 role,
                 number,
@@ -408,18 +414,27 @@ pub(in super::super) fn render_game_info_table(rows: Vec<Row>) -> Element<'stati
                     _ => fl!("gi-next-game"),
                 };
                 let block = game_block.unwrap_or_default();
-                table = table.push(grid_row(vec![
+                let has_score = white.score.is_some() || black.score.is_some();
+
+                let mut white_row = vec![
                     label_cell(role_label, LABEL_FP),
                     value_cell(number, VALUE_FP),
-                    name_cell(white.name, false, LABEL_FP),
-                    score_cell(white.score, false, VALUE_FP),
-                ]));
-                table = table.push(grid_row(vec![
+                ];
+                let mut black_row = vec![
                     label_cell(fl!("gi-game-block"), LABEL_FP),
                     value_cell(block, VALUE_FP),
-                    name_cell(black.name, true, LABEL_FP),
-                    score_cell(black.score, true, VALUE_FP),
-                ]));
+                ];
+                if has_score {
+                    white_row.push(name_cell(white.name, false, LABEL_FP));
+                    white_row.push(score_cell(white.score, false, VALUE_FP));
+                    black_row.push(name_cell(black.name, true, LABEL_FP));
+                    black_row.push(score_cell(black.score, true, VALUE_FP));
+                } else {
+                    white_row.push(name_cell(white.name, false, HALF_FP));
+                    black_row.push(name_cell(black.name, true, HALF_FP));
+                }
+                table = table.push(grid_row(white_row));
+                table = table.push(grid_row(black_row));
             }
             Row::SettingPair { left, right } => {
                 table = table.push(grid_row(vec![
@@ -932,5 +947,63 @@ mod tests {
             })
             .unwrap();
         assert_eq!(next, (true, None, None)); // Next keeps its Game Block line, no scores
+    }
+
+    #[test]
+    fn between_games_current_block_has_no_score() {
+        // Between games the "Current" block is the upcoming (not-yet-played) game.
+        let rows = game_info_rows(
+            &between_games_snapshot(),
+            &cfg_all_on(),
+            false,
+            None,
+            None,
+            None,
+            Variant::Full,
+        );
+        let current = rows
+            .iter()
+            .find_map(|r| match r {
+                Row::GameBlock {
+                    role: GameRole::Current,
+                    white,
+                    black,
+                    ..
+                } => Some((white.score, black.score)),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(current, (None, None));
+    }
+
+    #[test]
+    fn in_game_current_block_carries_live_score() {
+        let snapshot = GameSnapshot {
+            current_period: GamePeriod::FirstHalf,
+            scores: BlackWhiteBundle { black: 2, white: 3 },
+            ..GameSnapshot::default()
+        };
+        let rows = game_info_rows(
+            &snapshot,
+            &cfg_all_on(),
+            false,
+            None,
+            None,
+            None,
+            Variant::Full,
+        );
+        let current = rows
+            .iter()
+            .find_map(|r| match r {
+                Row::GameBlock {
+                    role: GameRole::Current,
+                    white,
+                    black,
+                    ..
+                } => Some((white.score, black.score)),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(current, (Some(3), Some(2)));
     }
 }

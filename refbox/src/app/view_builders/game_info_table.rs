@@ -161,6 +161,10 @@ pub(in super::super) fn game_info_rows(
         rows.insert(0, last);
     }
 
+    if using_uwhportal {
+        rows.extend(referee_rows(current_game_num, schedule, variant));
+    }
+
     // Context block AFTER the current block, in-game only: the upcoming game (no score).
     if !between {
         rows.push(game_block_row(
@@ -173,7 +177,6 @@ pub(in super::super) fn game_info_rows(
             teams,
         ));
     }
-    let _ = variant; // consumed in Task 4
     rows
 }
 
@@ -220,6 +223,71 @@ fn game_block_row(
             score: scores.map(|s| s.black),
         },
     }
+}
+
+fn referee_rows(
+    game_number: &GameNumber,
+    schedule: Option<&Schedule>,
+    variant: Variant,
+) -> Vec<Row> {
+    // Resolve assigned names by role; "-" for an assigned-but-unnamed or absent slot.
+    let mut chief = "-".to_string();
+    let mut keeper = "-".to_string();
+    let mut helper: Option<String> = None;
+    let mut water = ["-".to_string(), "-".to_string(), "-".to_string()];
+
+    if let Some(game) = schedule.and_then(|s| s.games.get(game_number)) {
+        if let Some(refs) = &game.referee_assignments {
+            for r in refs {
+                if r.user_id.is_none() {
+                    continue;
+                }
+                let name = r.display_name.clone().unwrap_or_else(|| "-".to_string());
+                match r.role.as_str() {
+                    "Chief" => chief = name,
+                    "TimeOrScoreKeeper" => keeper = name,
+                    "TimeOrScoreKeeperHelper" => helper = Some(name),
+                    "Water1" => water[0] = name,
+                    "Water2" => water[1] = name,
+                    "Water3" => water[2] = name,
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    let mut out = vec![
+        Row::Referee {
+            label: fl!("gi-ref-chief"),
+            name: chief,
+        },
+        Row::Referee {
+            label: fl!("gi-ref-timekeeper"),
+            name: keeper,
+        },
+    ];
+    if matches!(variant, Variant::Compact) {
+        return out; // main page: Chief + Keeper only
+    }
+    if let Some(h) = helper {
+        out.push(Row::Referee {
+            label: fl!("gi-ref-timekeeper-helper"),
+            name: h,
+        });
+    }
+    out.push(Row::Referee {
+        label: fl!("gi-ref-water-1"),
+        name: water[0].clone(),
+    });
+    out.push(Row::Referee {
+        label: fl!("gi-ref-water-2"),
+        name: water[1].clone(),
+    });
+    out.push(Row::Referee {
+        label: fl!("gi-ref-water-3"),
+        name: water[2].clone(),
+    });
+    out
 }
 
 // Returns (white_name, black_name, display_number). Names are Some only when the
@@ -491,6 +559,71 @@ mod tests {
             })
             .unwrap();
         assert_eq!(last, (None, Some(3), Some(5)));
+    }
+
+    fn ref_labels(rows: &[Row]) -> Vec<String> {
+        rows.iter()
+            .filter_map(|r| match r {
+                Row::Referee { label, .. } => Some(label.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn no_referees_without_portal() {
+        let rows = game_info_rows(
+            &GameSnapshot::default(),
+            &cfg_all_on(),
+            false,
+            None,
+            None,
+            None,
+            Variant::Full,
+        );
+        assert!(ref_labels(&rows).is_empty());
+    }
+
+    #[test]
+    fn compact_variant_keeps_only_chief_and_keeper() {
+        // Portal on but no schedule => referee section still renders its fixed labels with "-".
+        let rows = game_info_rows(
+            &GameSnapshot::default(),
+            &cfg_all_on(),
+            true,
+            None,
+            None,
+            None,
+            Variant::Compact,
+        );
+        assert_eq!(
+            ref_labels(&rows),
+            vec![fl!("gi-ref-chief"), fl!("gi-ref-timekeeper")]
+        );
+    }
+
+    #[test]
+    fn full_variant_lists_standard_referees_without_helper() {
+        let rows = game_info_rows(
+            &GameSnapshot::default(),
+            &cfg_all_on(),
+            true,
+            None,
+            None,
+            None,
+            Variant::Full,
+        );
+        // Helper omitted when no Helper assignment is present.
+        assert_eq!(
+            ref_labels(&rows),
+            vec![
+                fl!("gi-ref-chief"),
+                fl!("gi-ref-timekeeper"),
+                fl!("gi-ref-water-1"),
+                fl!("gi-ref-water-2"),
+                fl!("gi-ref-water-3"),
+            ]
+        );
     }
 
     #[test]

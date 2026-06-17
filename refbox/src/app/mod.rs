@@ -4433,8 +4433,13 @@ impl RefBoxApp {
             AppState::ScoreEdit {
                 scores,
                 is_confirmation,
-            } =>
-                build_score_edit_view(data, scores, is_confirmation, self.snapshot.conf_pause_time),
+            } => build_score_edit_view(
+                data,
+                scores,
+                is_confirmation,
+                self.snapshot.conf_pause_time,
+                self.snapshot.scores,
+            ),
             AppState::PenaltyOverview(indices) => build_penalty_overview_page(
                 data,
                 self.pen_edit.get_printable_lists(Instant::now()).unwrap(),

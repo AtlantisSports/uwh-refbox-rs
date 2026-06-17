@@ -203,7 +203,7 @@ pub fn yellow_button(theme: &Theme, status: Status) -> Style {
 
 /// Like `yellow_button`, but always renders in the bright "active" colour even
 /// when the button is non-interactive (no `on_press`). Colours a timeout button
-/// yellow during the post-revive "decide" window, where the button is wrapped in
+/// yellow during the post-revive RESTORED state, where the button is wrapped in
 /// a `mouse_area` and has no `on_press` of its own.
 pub fn yellow_button_armed(theme: &Theme, _status: Status) -> Style {
     yellow_button(theme, Status::Active)

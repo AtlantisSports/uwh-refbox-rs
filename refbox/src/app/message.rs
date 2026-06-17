@@ -235,11 +235,11 @@ pub enum Message {
     SpacebarReleased,
     AlarmDelayElapsed(u64),
     /// Press-down on a used-up (greyed) team timeout button — begins the
-    /// 5-second hold-to-revive.
+    /// 3-second hold-to-revive.
     TimeoutRevivePressed(GameColor),
     /// Release of a hold-to-revive press before it completed.
     TimeoutReviveReleased(GameColor),
-    /// The 5-second revive hold elapsed for the given team (token guards stale timers).
+    /// The 3-second revive hold elapsed for the given team (token guards stale timers).
     TimeoutReviveHoldElapsed(u64, GameColor),
     TimeUpdaterStarted(Sender<Arc<Mutex<TournamentManager>>>),
     OpenUpdatesPage,

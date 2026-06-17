@@ -1072,16 +1072,9 @@ pub(super) fn config_string(
         )
     };
 
-    let team_timeouts_value = if config.num_team_timeouts_allowed == 0 {
-        "0".to_string()
-    } else if config.timeouts_counted_per_half {
-        format!("{}/{}", config.num_team_timeouts_allowed, fl!("half"))
-    } else {
-        format!("{}/{}", config.num_team_timeouts_allowed, fl!("game"))
-    };
-    result += "\n";
-    result += &fl!("team-timeouts", value = team_timeouts_value);
-
+    // Stop Clock in Last 2 Minutes — a normal game rule (not Portal-specific), shown directly
+    // above Team Timeouts. Reads "Unknown" when no schedule timing rule is available
+    // (e.g. when not using the Portal).
     let stop_clock = if let Some(sched) = schedule {
         if let Some(timing_rule) = sched.get_game_timing(&game_number) {
             bool_string(timing_rule.last_2_min_stop_time)
@@ -1093,47 +1086,60 @@ pub(super) fn config_string(
     };
     result += "\n";
     result += &fl!("stop-clock-last-2", stop_clock = stop_clock);
+
+    let team_timeouts_value = if config.num_team_timeouts_allowed == 0 {
+        "0".to_string()
+    } else if config.timeouts_counted_per_half {
+        format!("{}/{}", config.num_team_timeouts_allowed, fl!("half"))
+    } else {
+        format!("{}/{}", config.num_team_timeouts_allowed, fl!("game"))
+    };
     result += "\n";
+    result += &fl!("team-timeouts", value = team_timeouts_value);
 
-    let mut chief_ref = "-".to_string();
-    let mut timer = "-".to_string();
-    let mut water_ref_1 = "-".to_string();
-    let mut water_ref_2 = "-".to_string();
-    let mut water_ref_3 = "-".to_string();
+    // Referees only exist when using the Portal — hide the whole block otherwise.
+    if using_uwhportal {
+        let mut chief_ref = "-".to_string();
+        let mut timer = "-".to_string();
+        let mut water_ref_1 = "-".to_string();
+        let mut water_ref_2 = "-".to_string();
+        let mut water_ref_3 = "-".to_string();
 
-    if let Some(games) = games {
-        if let Some(game) = games.get(&game_number) {
-            if let Some(refs) = &game.referee_assignments {
-                for ref_assignment in refs {
-                    if ref_assignment.user_id.is_some() {
-                        // Fall back to '-' for unassigned slots — language-neutral,
-                        // visually distinct from real names.
-                        let display = ref_assignment
-                            .display_name
-                            .clone()
-                            .unwrap_or_else(|| "-".to_string());
-                        match ref_assignment.role.as_str() {
-                            "Chief" => chief_ref = display,
-                            "TimeOrScoreKeeper" => timer = display,
-                            "Water1" => water_ref_1 = display,
-                            "Water2" => water_ref_2 = display,
-                            "Water3" => water_ref_3 = display,
-                            _ => {}
+        if let Some(games) = games {
+            if let Some(game) = games.get(&game_number) {
+                if let Some(refs) = &game.referee_assignments {
+                    for ref_assignment in refs {
+                        if ref_assignment.user_id.is_some() {
+                            // Fall back to '-' for unassigned slots — language-neutral,
+                            // visually distinct from real names.
+                            let display = ref_assignment
+                                .display_name
+                                .clone()
+                                .unwrap_or_else(|| "-".to_string());
+                            match ref_assignment.role.as_str() {
+                                "Chief" => chief_ref = display,
+                                "TimeOrScoreKeeper" => timer = display,
+                                "Water1" => water_ref_1 = display,
+                                "Water2" => water_ref_2 = display,
+                                "Water3" => water_ref_3 = display,
+                                _ => {}
+                            }
                         }
                     }
                 }
             }
         }
-    }
 
-    result += &fl!(
-        "ref-list",
-        chief_ref = chief_ref,
-        timer = timer,
-        water_ref_1 = water_ref_1,
-        water_ref_2 = water_ref_2,
-        water_ref_3 = water_ref_3
-    );
+        result += "\n";
+        result += &fl!(
+            "ref-list",
+            chief_ref = chief_ref,
+            timer = timer,
+            water_ref_1 = water_ref_1,
+            water_ref_2 = water_ref_2,
+            water_ref_3 = water_ref_3
+        );
+    }
 
     result
 }
@@ -1450,5 +1456,58 @@ mod tests {
     fn crosses_portal_rugby_to_hockey_is_true() {
         assert!(crosses_portal(Mode::Rugby, Mode::Hockey6V6));
         assert!(crosses_portal(Mode::Rugby, Mode::Hockey3V3));
+    }
+
+    #[test]
+    fn config_string_hides_referees_outside_portal_mode() {
+        let config = GameConfig::default();
+        let snapshot = GameSnapshot::default();
+
+        // The referee block exactly as config_string renders it with no assignments.
+        let ref_block = fl!(
+            "ref-list",
+            chief_ref = "-",
+            timer = "-",
+            water_ref_1 = "-",
+            water_ref_2 = "-",
+            water_ref_3 = "-"
+        );
+
+        let out_no_portal = config_string(&snapshot, &config, false, None, None);
+        assert!(
+            !out_no_portal.contains(&ref_block),
+            "referees must not show when not using the portal"
+        );
+
+        let out_portal = config_string(&snapshot, &config, true, None, None);
+        assert!(
+            out_portal.contains(&ref_block),
+            "referees must show when using the portal"
+        );
+    }
+
+    #[test]
+    fn config_string_shows_stop_clock_above_team_timeouts() {
+        let config = GameConfig {
+            num_team_timeouts_allowed: 0,
+            ..Default::default()
+        };
+        let snapshot = GameSnapshot::default();
+
+        let out = config_string(&snapshot, &config, false, None, None);
+
+        let stop_clock_line = fl!("stop-clock-last-2", stop_clock = fl!("unknown"));
+        let team_timeouts_line = fl!("team-timeouts", value = "0");
+
+        let stop_idx = out
+            .find(&stop_clock_line)
+            .expect("stop-clock line should always be present");
+        let to_idx = out
+            .find(&team_timeouts_line)
+            .expect("team-timeouts line should be present");
+        assert!(
+            stop_idx < to_idx,
+            "stop-clock should appear above team timeouts"
+        );
     }
 }

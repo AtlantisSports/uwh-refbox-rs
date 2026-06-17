@@ -499,3 +499,4 @@ updates-error-bad-download = The downloaded update wasn’t valid and was not in
 updates-error-rate-limited = The update server is busy, please try again in a little while.
 updates-error-no-space = Not enough free space to install the update.
 updates-error-not-writable = The update couldn’t be saved (permission denied).
+gi-unknown = ???

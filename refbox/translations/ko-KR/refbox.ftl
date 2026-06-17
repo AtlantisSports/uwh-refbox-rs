@@ -494,3 +494,4 @@ gi-ref-timekeeper-helper = 계시 보조원
 gi-ref-water-1 = 수중 심판 1
 gi-ref-water-2 = 수중 심판 2
 gi-ref-water-3 = 수중 심판 3
+gi-unknown = ???

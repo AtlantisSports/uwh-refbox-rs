@@ -1,7 +1,8 @@
 use super::*;
 use iced::{
     Length,
-    widget::{button, column, horizontal_space, row},
+    alignment::Vertical,
+    widget::{button, column, container, horizontal_space, row},
 };
 use uwh_common::{
     bundles::BlackWhiteBundle, config::Game as GameConfig, uwhportal::schedule::Schedule,
@@ -52,12 +53,20 @@ pub(in super::super) fn build_game_info_page<'a>(
         last_game_scores,
         Variant::Full,
     ));
-    let table_button = button(table)
-        .padding(PADDING)
-        .style(light_gray_button)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .on_press(Message::EditGameConfigPage(ConfigPage::Game));
+    // Pin the table to the top of the button via a transparent fill-height
+    // wrapper, so the table's dark gridline backing only covers the grid and the
+    // button's own colour shows through the empty space below it.
+    let table_button = button(
+        container(table)
+            .align_y(Vertical::Top)
+            .width(Length::Fill)
+            .height(Length::Fill),
+    )
+    .padding(PADDING)
+    .style(light_gray_button)
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .on_press(Message::EditGameConfigPage(ConfigPage::Game));
 
     column![
         make_game_time_button(

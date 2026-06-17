@@ -234,6 +234,15 @@ pub enum Message {
     SpacebarPressed,
     SpacebarReleased,
     AlarmDelayElapsed(u64),
+    /// Press-down on a used-up (greyed) team timeout button — begins the
+    /// 5-second hold-to-revive.
+    TimeoutRevivePressed(GameColor),
+    /// Release of a hold-to-revive press before it completed.
+    TimeoutReviveReleased(GameColor),
+    /// The 5-second revive hold elapsed for the given team (token guards stale timers).
+    TimeoutReviveHoldElapsed(u64, GameColor),
+    /// The 2-second post-revive decide window elapsed for the given team.
+    TimeoutReviveDecideElapsed(u64, GameColor),
     TimeUpdaterStarted(Sender<Arc<Mutex<TournamentManager>>>),
     OpenUpdatesPage,
     UpdatesCheck,
@@ -359,6 +368,10 @@ impl Message {
             | Self::SpacebarPressed
             | Self::SpacebarReleased
             | Self::AlarmDelayElapsed(_)
+            | Self::TimeoutRevivePressed(_)
+            | Self::TimeoutReviveReleased(_)
+            | Self::TimeoutReviveHoldElapsed(_, _)
+            | Self::TimeoutReviveDecideElapsed(_, _)
             | Self::OpenUpdatesPage
             | Self::UpdatesCheck
             | Self::UpdatesConfirmInstall
@@ -437,6 +450,14 @@ impl PartialEq for Message {
             | (Self::UpdaterHealthyCheck, Self::UpdaterHealthyCheck)
             | (Self::NoAction, Self::NoAction) => true,
             (Self::AlarmDelayElapsed(a), Self::AlarmDelayElapsed(b)) => a == b,
+            (Self::TimeoutRevivePressed(a), Self::TimeoutRevivePressed(b)) => a == b,
+            (Self::TimeoutReviveReleased(a), Self::TimeoutReviveReleased(b)) => a == b,
+            (Self::TimeoutReviveHoldElapsed(a, b), Self::TimeoutReviveHoldElapsed(c, d)) => {
+                a == c && b == d
+            }
+            (Self::TimeoutReviveDecideElapsed(a, b), Self::TimeoutReviveDecideElapsed(c, d)) => {
+                a == c && b == d
+            }
 
             (Self::NewSnapshot(a), Self::NewSnapshot(b)) => a == b,
             (
@@ -671,6 +692,10 @@ impl PartialEq for Message {
             | (Self::SpacebarPressed, _)
             | (Self::SpacebarReleased, _)
             | (Self::AlarmDelayElapsed(_), _)
+            | (Self::TimeoutRevivePressed(_), _)
+            | (Self::TimeoutReviveReleased(_), _)
+            | (Self::TimeoutReviveHoldElapsed(_, _), _)
+            | (Self::TimeoutReviveDecideElapsed(_, _), _)
             | (Self::TimeUpdaterStarted(_), _)
             | (Self::OpenUpdatesPage, _)
             | (Self::UpdatesCheck, _)

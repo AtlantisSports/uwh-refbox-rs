@@ -351,8 +351,8 @@ pub use button::{
     black_button, black_selected_button, blue_button, blue_selected_button,
     blue_with_border_button, gray_button, green_button, green_selected_button, light_gray_button,
     light_gray_selected_button, orange_button, orange_selected_button, red_button,
-    red_selected_button, white_button, white_selected_button, yellow_button,
-    yellow_selected_button,
+    red_button_armed, red_selected_button, white_button, white_selected_button, yellow_button,
+    yellow_button_armed, yellow_selected_button,
 };
 
 pub mod container;

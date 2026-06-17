@@ -153,6 +153,14 @@ pub fn red_button(theme: &Theme, status: Status) -> Style {
     outline_in_high_contrast(style, red(), black(), status)
 }
 
+/// Like `red_button`, but always renders in the bright "active" colour even when
+/// the button is non-interactive (no `on_press`). Colours a timeout button red
+/// while it is held during the revive long-press, where the button is wrapped in
+/// a `mouse_area` and has no `on_press` of its own.
+pub fn red_button_armed(theme: &Theme, _status: Status) -> Style {
+    red_button(theme, Status::Active)
+}
+
 pub fn red_selected_button(theme: &Theme, status: Status) -> Style {
     let mut style = red_button(theme, status);
     style.border.width = BORDER_WIDTH;
@@ -191,6 +199,14 @@ pub fn yellow_button(theme: &Theme, status: Status) -> Style {
         ..gray_button(theme, status)
     };
     outline_in_high_contrast(style, yellow(), black(), status)
+}
+
+/// Like `yellow_button`, but always renders in the bright "active" colour even
+/// when the button is non-interactive (no `on_press`). Colours a timeout button
+/// yellow during the post-revive "decide" window, where the button is wrapped in
+/// a `mouse_area` and has no `on_press` of its own.
+pub fn yellow_button_armed(theme: &Theme, _status: Status) -> Style {
+    yellow_button(theme, Status::Active)
 }
 
 pub fn yellow_selected_button(theme: &Theme, status: Status) -> Style {

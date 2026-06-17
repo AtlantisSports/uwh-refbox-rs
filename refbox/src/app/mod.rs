@@ -68,6 +68,30 @@ pub(crate) mod languages;
 use languages::*;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+/// How long the operator must hold a used-up team timeout button to revive
+/// (give back) one team timeout. Deliberately long to guard against accidents.
+const TIMEOUT_REVIVE_HOLD_DURATION: Duration = Duration::from_secs(5);
+/// After the 5s revive, the team's button shows YELLOW for this long: releasing
+/// in this window banks the timeout; holding through it starts a team timeout.
+const TIMEOUT_REVIVE_DECIDE_DURATION: Duration = Duration::from_secs(2);
+
+/// Which phase an in-progress timeout-revive long-press is in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RevivePhase {
+    /// Finger down on a used-up button, counting down to the 5s revive.
+    Reviving,
+    /// Revived; finger still down, within the 2s "release to bank / hold to start" window.
+    Deciding,
+}
+
+/// An in-progress timeout-revive long-press.
+struct ReviveHold {
+    color: Color,
+    phase: RevivePhase,
+    /// Token of the async timer this hold is currently waiting on; a timer whose
+    /// token no longer matches the live hold is stale and ignored.
+    token: u64,
+}
 
 /// Set to `true` by the in-app restart paths (`RestartAndApply` confirmation
 /// for a Mode change, `LanguageSelectComplete` with a font-family change).
@@ -161,6 +185,10 @@ pub struct RefBoxApp {
     mouse_alarm_held: bool,
     spacebar_held: bool,
     alarm_delay_token: u64,
+    /// The in-progress timeout-revive long-press, if any (`None` = no hold active).
+    timeout_revive: Option<ReviveHold>,
+    /// Monotonic source of revive-timer tokens (never reset; guards stale timers).
+    timeout_revive_token: u64,
     portal_manager: PortalManager,
     /// Receiver half of the portal-manager background task's event
     /// channel. Wrapped in `Arc<Mutex<Option<_>>>` so an iced
@@ -1468,6 +1496,8 @@ impl RefBoxApp {
             mouse_alarm_held: false,
             spacebar_held: false,
             alarm_delay_token: 0,
+            timeout_revive: None,
+            timeout_revive_token: 0,
             portal_manager,
             portal_event_rx,
             portal_login_return_to_detail: false,
@@ -3769,6 +3799,98 @@ impl RefBoxApp {
                 }
                 Task::none()
             }
+            Message::TimeoutRevivePressed(color) => {
+                // Press-down on a used-up (greyed) team timeout button: begin the
+                // 5-second revive hold. The view only attaches this on an eligible button.
+                if matches!(&self.timeout_revive, Some(h) if h.color == color) {
+                    return Task::none();
+                }
+                self.timeout_revive_token += 1;
+                let token = self.timeout_revive_token;
+                self.timeout_revive = Some(ReviveHold {
+                    color,
+                    phase: RevivePhase::Reviving,
+                    token,
+                });
+                info!("Timeout-revive hold started for {color}, token={token}");
+                Task::future(async move {
+                    sleep(TIMEOUT_REVIVE_HOLD_DURATION).await;
+                    Message::TimeoutReviveHoldElapsed(token, color)
+                })
+            }
+            Message::TimeoutReviveReleased(color) => {
+                // Finger up, or pointer left the button. In Reviving this cancels
+                // (nothing given back); in Deciding it banks the already-revived timeout.
+                if matches!(&self.timeout_revive, Some(h) if h.color == color) {
+                    self.timeout_revive = None;
+                    info!("Timeout-revive hold released for {color}");
+                }
+                Task::none()
+            }
+            Message::TimeoutReviveHoldElapsed(token, color) => {
+                // The 5-second revive hold elapsed. Only proceed if this is still the
+                // current Reviving hold for this team.
+                if !matches!(
+                    &self.timeout_revive,
+                    Some(h) if h.color == color
+                        && h.token == token
+                        && h.phase == RevivePhase::Reviving
+                ) {
+                    return Task::none();
+                }
+                let mut tm = self.tm.lock().unwrap();
+                let now = Instant::now();
+                if tm.revive_team_timeout(color).is_err() {
+                    // State moved on during the hold (e.g. half ended); nothing to do.
+                    std::mem::drop(tm);
+                    self.timeout_revive = None;
+                    return Task::none();
+                }
+                let snapshot = tm.generate_snapshot(now).unwrap();
+                std::mem::drop(tm);
+                let apply_task = self.apply_snapshot(snapshot);
+                // Enter the 2-second "release to bank / hold to start" window.
+                self.timeout_revive_token += 1;
+                let token = self.timeout_revive_token;
+                self.timeout_revive = Some(ReviveHold {
+                    color,
+                    phase: RevivePhase::Deciding,
+                    token,
+                });
+                info!("Timeout revived for {color}; deciding window started, token={token}");
+                let decide_task = Task::future(async move {
+                    sleep(TIMEOUT_REVIVE_DECIDE_DURATION).await;
+                    Message::TimeoutReviveDecideElapsed(token, color)
+                });
+                Task::batch(vec![apply_task, decide_task])
+            }
+            Message::TimeoutReviveDecideElapsed(token, color) => {
+                // The 2-second window elapsed while still held: start the team timeout
+                // (spending the just-revived timeout).
+                if !matches!(
+                    &self.timeout_revive,
+                    Some(h) if h.color == color
+                        && h.token == token
+                        && h.phase == RevivePhase::Deciding
+                ) {
+                    return Task::none();
+                }
+                self.timeout_revive = None;
+                let mut tm = self.tm.lock().unwrap();
+                let now = Instant::now();
+                if tm.start_team_timeout(color, now).is_err() {
+                    // State moved on during the window; nothing to do.
+                    std::mem::drop(tm);
+                    return Task::none();
+                }
+                if let AppState::TimeEdit(_, _, ref mut time) = self.app_state {
+                    *time = Some(tm.timeout_clock_time(now).unwrap());
+                }
+                let snapshot = tm.generate_snapshot(now).unwrap();
+                std::mem::drop(tm);
+                info!("Timeout-revive: held through, starting {color} team timeout");
+                self.apply_snapshot(snapshot)
+            }
             Message::BeepTestStart => {
                 // Distinguish "fresh start" from "resume from pause" using
                 // beep_test_has_run, not current_period. During the warm-up
@@ -4511,6 +4633,7 @@ impl RefBoxApp {
                     &self.snapshot,
                     &self.tm,
                     self.config.mode,
+                    self.timeout_revive.as_ref().map(|h| (h.color, h.phase)),
                 ));
             }
         }

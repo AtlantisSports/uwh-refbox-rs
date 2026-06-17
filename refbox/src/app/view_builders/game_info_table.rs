@@ -1,6 +1,3 @@
-// Task 2 of a staged implementation: types and builder are consumed by Tasks 3–8.
-// The dead_code allow is removed once the renderer + wiring tasks wire this in.
-#![allow(dead_code)]
 use super::*;
 use iced::{
     Alignment, Element, Length,

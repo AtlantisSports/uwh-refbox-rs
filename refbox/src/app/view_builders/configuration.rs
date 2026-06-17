@@ -1444,6 +1444,24 @@ fn make_remote_config_page<'a>(
     .into()
 }
 
+/// Returns true when the parameter editor's buffer differs from the value shown
+/// when it opened. Length is compared on whole seconds — the precision the mm:ss
+/// editor displays — so zeroing and rebuilding to the same displayed value counts
+/// as "no change" (mirrors `time_edit_has_changes` from PR #1218). For the Half
+/// Length editor, flipping the 2 Halves / 1 Period choice is also a change, since
+/// Apply commits `single_half` for that parameter; for all other parameters the
+/// `single_half` flag is not committed and is ignored here.
+fn param_edit_has_changes(
+    length: Duration,
+    old_length: Duration,
+    param: LengthParameter,
+    single_half: bool,
+    old_single_half: bool,
+) -> bool {
+    length.as_secs() != old_length.as_secs()
+        || (matches!(param, LengthParameter::Half) && single_half != old_single_half)
+}
+
 pub(in super::super) fn build_game_parameter_editor<'a>(
     data: ViewData<'_, '_>,
     param: LengthParameter,
@@ -1596,6 +1614,24 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
         col = col.push(note);
     }
 
+    // The original value shown when the editor opened, re-derived from the seed
+    // config (the in-progress edited config, or the saved config) — the same
+    // source `EditParameter` used to populate the editor. Apply is enabled only
+    // when the operator has actually changed something, and (for Game Block) the
+    // pending value is not too short.
+    let old_length = match param {
+        LengthParameter::Half => config.half_play_duration,
+        LengthParameter::HalfTime => config.half_time_duration,
+        LengthParameter::GameBlock => config.game_block,
+        LengthParameter::MinimumBetweenGame => config.minimum_break,
+        LengthParameter::PreOvertime => config.pre_overtime_break,
+        LengthParameter::OvertimeHalf => config.ot_half_play_duration,
+        LengthParameter::OvertimeHalfTime => config.ot_half_time_duration,
+        LengthParameter::PreSuddenDeath => config.pre_sudden_death_duration,
+    };
+    let apply_enabled = !matches!(game_block_validity, Some(GameBlockValidity::TooShort))
+        && param_edit_has_changes(length, old_length, param, single_half, config.single_half);
+
     col.push(vertical_space())
         .push(
             row![
@@ -1604,12 +1640,11 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
                     .width(Length::Fill)
                     .on_press(Message::ParameterEditComplete { canceled: true }),
                 horizontal_space(),
-                make_button(fl!("done"))
+                make_button(fl!("apply"))
                     .style(green_button)
                     .width(Length::Fill)
                     .on_press_maybe(
-                        (!matches!(game_block_validity, Some(GameBlockValidity::TooShort)))
-                            .then_some(Message::ParameterEditComplete { canceled: false }),
+                        apply_enabled.then_some(Message::ParameterEditComplete { canceled: false }),
                     ),
             ]
             .spacing(SPACING),
@@ -2143,6 +2178,68 @@ mod tests {
             standings_order: None,
             final_results_order: None,
         }
+    }
+
+    #[test]
+    fn param_edit_no_change_is_false() {
+        let d = Duration::from_secs(900);
+        assert!(!param_edit_has_changes(
+            d,
+            d,
+            LengthParameter::Half,
+            false,
+            false
+        ));
+    }
+
+    #[test]
+    fn param_edit_length_change_is_true() {
+        assert!(param_edit_has_changes(
+            Duration::from_secs(901),
+            Duration::from_secs(900),
+            LengthParameter::HalfTime,
+            false,
+            false
+        ));
+    }
+
+    #[test]
+    fn param_edit_single_half_toggle_on_half_is_true() {
+        let d = Duration::from_secs(900);
+        assert!(param_edit_has_changes(
+            d,
+            d,
+            LengthParameter::Half,
+            true,
+            false
+        ));
+    }
+
+    #[test]
+    fn param_edit_single_half_ignored_off_half() {
+        // single_half differs but the parameter is not Half, so it is not
+        // committed and must not count as a change.
+        let d = Duration::from_secs(900);
+        assert!(!param_edit_has_changes(
+            d,
+            d,
+            LengthParameter::GameBlock,
+            true,
+            false
+        ));
+    }
+
+    #[test]
+    fn param_edit_sub_second_matches_displayed_whole_seconds() {
+        // Original 900.6s displays as "15:00" (900 whole seconds); rebuilding to
+        // an exact 900.0s lands on the same displayed value, so it is not a change.
+        assert!(!param_edit_has_changes(
+            Duration::from_secs(900),
+            Duration::from_millis(900_600),
+            LengthParameter::HalfTime,
+            false,
+            false
+        ));
     }
 
     #[test]

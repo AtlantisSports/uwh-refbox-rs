@@ -28,6 +28,14 @@ pub(in super::super) fn build_penalty_overview_page<'a>(
         Mode::BeepTest => unreachable!("BeepTest mode does not edit penalties"),
     };
 
+    let has_changes = any_pending_change(
+        penalties
+            .black
+            .iter()
+            .chain(penalties.white.iter())
+            .map(|p| p.format_hint),
+    );
+
     column![
         make_game_time_button(
             snapshot,
@@ -68,10 +76,12 @@ pub(in super::super) fn build_penalty_overview_page<'a>(
                     default_pen_len,
                     Infraction::Unknown,
                 ))),
-            make_button(fl!("done"))
+            make_button(fl!("apply"))
                 .style(green_button)
                 .width(Length::Fill)
-                .on_press(Message::PenaltyOverviewComplete { canceled: false }),
+                .on_press_maybe(
+                    has_changes.then_some(Message::PenaltyOverviewComplete { canceled: false }),
+                ),
         ]
         .spacing(SPACING),
     ]

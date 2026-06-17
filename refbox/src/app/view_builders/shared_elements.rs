@@ -1432,10 +1432,34 @@ pub fn inf_short_name(inf: Infraction) -> String {
     }
 }
 
+/// Returns true when any of the given format hints represents a pending change
+/// (anything other than `NoChange`). Used to gray the Apply button on the
+/// penalty / warning / foul overview pages until a row is added, edited, or
+/// deleted.
+pub(super) fn any_pending_change(hints: impl IntoIterator<Item = FormatHint>) -> bool {
+    hints.into_iter().any(|h| h != FormatHint::NoChange)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::config::Mode;
+
+    #[test]
+    fn any_pending_change_detects_edits() {
+        let empty: [FormatHint; 0] = [];
+        assert!(!any_pending_change(empty));
+        assert!(!any_pending_change([
+            FormatHint::NoChange,
+            FormatHint::NoChange
+        ]));
+        assert!(any_pending_change([
+            FormatHint::NoChange,
+            FormatHint::Edited
+        ]));
+        assert!(any_pending_change([FormatHint::New]));
+        assert!(any_pending_change([FormatHint::Deleted]));
+    }
 
     #[test]
     fn crosses_portal_within_hockey_is_false() {

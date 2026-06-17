@@ -114,8 +114,6 @@ pub enum Message {
     /// Navigate directly to a specific `ConfigPage` inside the Game Options
     /// editor, bypassing the default `ConfigPage::Main` landing. Used by
     /// the game-info table tap-through (Task 7).
-    // Task 7 will construct this variant; suppress dead-code lint on this branch.
-    #[allow(dead_code)]
     EditGameConfigPage(ConfigPage),
     ChangeConfigPage(ConfigPage),
     ApplyConfigPage(ConfigPage),

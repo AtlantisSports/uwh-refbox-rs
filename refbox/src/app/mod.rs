@@ -4477,7 +4477,8 @@ impl RefBoxApp {
                 &self.config.game,
                 self.using_uwhportal,
                 is_refreshing,
-                self.schedule.as_ref()
+                self.schedule.as_ref(),
+                self.tm.lock().unwrap().last_game_info().map(|i| i.scores),
             ),
             AppState::WarningsSummaryPage => build_warnings_summary_page(data),
             AppState::EditGameConfig(page) => build_game_config_edit_page(

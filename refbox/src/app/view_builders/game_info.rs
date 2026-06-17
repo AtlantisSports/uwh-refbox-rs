@@ -1,12 +1,10 @@
 use super::*;
 use iced::{
     Length,
-    alignment::{Horizontal, Vertical},
-    widget::{column, horizontal_space, row, text},
+    widget::{button, column, horizontal_space, row},
 };
 use uwh_common::{
-    game_snapshot::GameSnapshot,
-    uwhportal::schedule::{Schedule, TeamList},
+    bundles::BlackWhiteBundle, config::Game as GameConfig, uwhportal::schedule::Schedule,
 };
 
 pub(in super::super) fn build_game_info_page<'a>(
@@ -15,6 +13,7 @@ pub(in super::super) fn build_game_info_page<'a>(
     using_uwhportal: bool,
     is_refreshing: bool,
     schedule: Option<&Schedule>,
+    last_game_scores: Option<BlackWhiteBundle<u8>>,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -43,8 +42,23 @@ pub(in super::super) fn build_game_info_page<'a>(
         horizontal_space().into()
     };
 
-    let (left_details, right_details) =
-        details_strings(snapshot, config, using_uwhportal, schedule, teams);
+    use super::game_info_table::{Variant, game_info_rows, render_game_info_table};
+    let table = render_game_info_table(game_info_rows(
+        snapshot,
+        config,
+        using_uwhportal,
+        schedule,
+        teams,
+        last_game_scores,
+        Variant::Full,
+    ));
+    let table_button = button(table)
+        .padding(PADDING)
+        .style(light_gray_button)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .on_press(Message::EditGameConfigPage(ConfigPage::Game));
+
     column![
         make_game_time_button(
             snapshot,
@@ -55,21 +69,7 @@ pub(in super::super) fn build_game_info_page<'a>(
             portal_indicator,
             None
         ),
-        row![
-            text(left_details)
-                .size(SMALL_TEXT)
-                .align_y(Vertical::Top)
-                .align_x(Horizontal::Left)
-                .width(Length::Fill),
-            text(right_details)
-                .size(SMALL_TEXT)
-                .align_y(Vertical::Top)
-                .align_x(Horizontal::Left)
-                .width(Length::Fill),
-        ]
-        .spacing(SPACING)
-        .width(Length::Fill)
-        .height(Length::Fill),
+        table_button,
         row![
             make_button(fl!("back"))
                 .style(red_button)
@@ -87,294 +87,4 @@ pub(in super::super) fn build_game_info_page<'a>(
     .spacing(SPACING)
     .height(Length::Fill)
     .into()
-}
-
-fn details_strings(
-    snapshot: &GameSnapshot,
-    config: &GameConfig,
-    using_uwhportal: bool,
-    schedule: Option<&Schedule>,
-    teams: Option<&TeamList>,
-) -> (String, String) {
-    const TEAM_NAME_LEN_LIMIT: usize = 40;
-    let mut right_string = String::new();
-    let mut left_string = String::new();
-    let games = schedule.map(|s| &s.games);
-    let game_number = if snapshot.current_period == GamePeriod::BetweenGames {
-        let prev_game;
-        let next_game;
-        if using_uwhportal {
-            if let Some(games) = games {
-                prev_game = match games.get(&snapshot.game_number) {
-                    Some(game) => game.number.to_string(),
-                    None if snapshot.game_number == "0" => fl!("none").to_string(),
-                    None => fl!(
-                        "game-number-error",
-                        game_number = snapshot.game_number.clone()
-                    ),
-                };
-                next_game = match games.get(&snapshot.next_game_number) {
-                    Some(game) => game.number.to_string(),
-                    None => fl!(
-                        "next-game-number-error",
-                        next_game_number = snapshot.next_game_number.clone()
-                    ),
-                };
-            } else {
-                prev_game = if snapshot.game_number == "0" {
-                    fl!("none").to_string()
-                } else {
-                    fl!(
-                        "game-number-error",
-                        game_number = snapshot.game_number.clone()
-                    )
-                };
-                next_game = fl!(
-                    "next-game-number-error",
-                    next_game_number = snapshot.next_game_number.clone()
-                );
-            }
-        } else {
-            prev_game = if snapshot.game_number == "0" {
-                fl!("none").to_string()
-            } else {
-                snapshot.game_number.to_string()
-            };
-            next_game = snapshot.next_game_number.to_string();
-        }
-
-        left_string += &fl!(
-            "last-game-next-game",
-            prev_game = prev_game,
-            next_game = next_game
-        );
-
-        left_string += "\n";
-
-        &snapshot.next_game_number
-    } else {
-        let game;
-        if using_uwhportal {
-            if let Some(games) = games {
-                game = match games.get(&snapshot.game_number) {
-                    Some(game) => game.number.to_string(),
-                    None => fl!(
-                        "game-number-error",
-                        game_number = snapshot.game_number.clone()
-                    ),
-                };
-            } else {
-                game = fl!(
-                    "game-number-error",
-                    game_number = snapshot.game_number.clone()
-                );
-            }
-        } else {
-            game = snapshot.game_number.to_string();
-        }
-        left_string += &fl!("one-game", game = game);
-        left_string += "\n";
-        &snapshot.game_number
-    };
-
-    if using_uwhportal {
-        if let Some(games) = games {
-            if let Some(game) = games.get(game_number) {
-                let black = get_team_name(&game.dark, teams);
-                let white = get_team_name(&game.light, teams);
-                left_string += &fl!(
-                    "black-team-white-team",
-                    black_team = limit_team_name_len(&black, TEAM_NAME_LEN_LIMIT),
-                    white_team = limit_team_name_len(&white, TEAM_NAME_LEN_LIMIT)
-                );
-                left_string += "\n";
-            }
-        }
-    }
-
-    // Game Block (the start-to-start slot) sits right after the team names and before
-    // the play-length lines -- matching the main page layout.
-    left_string += &fl!(
-        "game-block-info",
-        game_block = time_string(config.game_block)
-    );
-    left_string += "\n";
-
-    left_string += &if config.single_half {
-        // Single-period game: show "Game Length" and omit the half-time line.
-        fl!(
-            "game-length-ot-allowed-single-half",
-            half_length = time_string(config.half_play_duration),
-            overtime = bool_string(config.overtime_allowed)
-        )
-    } else {
-        fl!(
-            "game-length-ot-allowed",
-            half_length = time_string(config.half_play_duration),
-            half_time_length = time_string(config.half_time_duration),
-            overtime = bool_string(config.overtime_allowed)
-        )
-    };
-    left_string += "\n";
-
-    if config.overtime_allowed {
-        left_string += &fl!(
-            "overtime-details",
-            pre_overtime = time_string(config.pre_overtime_break),
-            overtime_len = time_string(config.ot_half_play_duration),
-            overtime_half_time_len = time_string(config.ot_half_time_duration)
-        );
-        left_string += "\n";
-    };
-
-    left_string += &fl!("sd-allowed", sd = bool_string(config.sudden_death_allowed));
-    left_string += "\n";
-
-    if config.sudden_death_allowed {
-        left_string += &fl!(
-            "pre-sd",
-            pre_sd_len = time_string(config.pre_sudden_death_duration)
-        );
-        left_string += "\n";
-    };
-
-    // Stop Clock in Last 2 Minutes — a normal game rule (not Portal-specific), shown directly
-    // above Team Timeouts. Reads "Unknown" when no schedule timing rule is available
-    // (e.g. when not using the Portal).
-    let stop_clock = if let Some(sched) = schedule {
-        if let Some(timing_rule) = sched.get_game_timing(game_number) {
-            bool_string(timing_rule.last_2_min_stop_time)
-        } else {
-            fl!("unknown")
-        }
-    } else {
-        fl!("unknown")
-    };
-    left_string += &fl!("stop-clock-last-2", stop_clock = stop_clock);
-    left_string += "\n";
-
-    let team_timeouts_value = if config.num_team_timeouts_allowed == 0 {
-        "0".to_string()
-    } else if config.timeouts_counted_per_half {
-        format!("{}/{}", config.num_team_timeouts_allowed, fl!("half"))
-    } else {
-        format!("{}/{}", config.num_team_timeouts_allowed, fl!("game"))
-    };
-    left_string += &fl!("team-timeouts", value = team_timeouts_value);
-    left_string += "\n";
-
-    if config.num_team_timeouts_allowed != 0 {
-        left_string += &fl!(
-            "team-to-len",
-            to_len = time_string(config.team_timeout_duration)
-        );
-        left_string += "\n";
-    };
-    left_string += &fl!(
-        "min-brk-btwn-games",
-        min_brk_time = time_string(config.minimum_break)
-    );
-    left_string += "\n";
-
-    // Referees only exist when using the Portal — they render into the right column.
-    if using_uwhportal {
-        let mut chief_ref = "-".to_string();
-        let mut timer = "-".to_string();
-        let mut water_ref_1 = "-".to_string();
-        let mut water_ref_2 = "-".to_string();
-        let mut water_ref_3 = "-".to_string();
-
-        if let Some(games) = games {
-            if let Some(game) = games.get(game_number) {
-                if let Some(refs) = &game.referee_assignments {
-                    for ref_assignment in refs {
-                        if ref_assignment.user_id.is_some() {
-                            // Fall back to '-' for unassigned slots — language-neutral,
-                            // visually distinct from real names.
-                            let display = ref_assignment
-                                .display_name
-                                .clone()
-                                .unwrap_or_else(|| "-".to_string());
-                            match ref_assignment.role.as_str() {
-                                "Chief" => chief_ref = display,
-                                "TimeOrScoreKeeper" => timer = display,
-                                "Water1" => water_ref_1 = display,
-                                "Water2" => water_ref_2 = display,
-                                "Water3" => water_ref_3 = display,
-                                _ => {}
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        right_string += &fl!(
-            "ref-list",
-            chief_ref = chief_ref,
-            timer = timer,
-            water_ref_1 = water_ref_1,
-            water_ref_2 = water_ref_2,
-            water_ref_3 = water_ref_3
-        );
-    }
-
-    (left_string, right_string)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn details_page_shows_stop_clock_even_outside_portal_mode() {
-        let config = GameConfig {
-            num_team_timeouts_allowed: 0,
-            ..Default::default()
-        };
-        let snapshot = GameSnapshot::default();
-
-        let (left, _right) = details_strings(&snapshot, &config, false, None, None);
-
-        let stop_clock_line = fl!("stop-clock-last-2", stop_clock = fl!("unknown"));
-        let team_timeouts_line = fl!("team-timeouts", value = "0");
-
-        let stop_idx = left
-            .find(&stop_clock_line)
-            .expect("page must show stop-clock even when not using the portal");
-        let to_idx = left
-            .find(&team_timeouts_line)
-            .expect("team-timeouts line should be present");
-        assert!(
-            stop_idx < to_idx,
-            "stop-clock should appear above team timeouts"
-        );
-    }
-
-    #[test]
-    fn details_page_keeps_referees_portal_only() {
-        let config = GameConfig::default();
-        let snapshot = GameSnapshot::default();
-
-        let ref_block = fl!(
-            "ref-list",
-            chief_ref = "-",
-            timer = "-",
-            water_ref_1 = "-",
-            water_ref_2 = "-",
-            water_ref_3 = "-"
-        );
-
-        let (_l, right_no_portal) = details_strings(&snapshot, &config, false, None, None);
-        assert!(
-            !right_no_portal.contains(&ref_block),
-            "referees must not show when not using the portal"
-        );
-
-        let (_l2, right_portal) = details_strings(&snapshot, &config, true, None, None);
-        assert!(
-            right_portal.contains(&ref_block),
-            "referees must show when using the portal"
-        );
-    }
 }

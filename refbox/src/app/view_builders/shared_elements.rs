@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::RevivePhase;
 use crate::portal_manager::{HealthState, PortalIndicatorState};
 use enum_iterator::all;
 use iced::{
@@ -6,8 +7,8 @@ use iced::{
     alignment::{Horizontal, Vertical},
     widget::{
         Button, Container, Image, Row, Space, Text, button, container,
-        container::Style as ContainerStyle, horizontal_space, image, svg, svg::Svg, text,
-        text::Style as TextStyle, vertical_space,
+        container::Style as ContainerStyle, horizontal_space, image, mouse_area, svg, svg::Svg,
+        text, text::Style as TextStyle, vertical_space,
     },
 };
 use iced_core::border::Radius;
@@ -193,19 +194,64 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
     snapshot: &GameSnapshot,
     tm: &Arc<Mutex<TournamentManager>>,
     mode: Mode,
+    revive_hold: Option<(GameColor, RevivePhase)>,
 ) -> Row<'a, Message> {
     let tm = tm.lock().unwrap();
+    let black_phase = match revive_hold {
+        Some((GameColor::Black, p)) => Some(p),
+        _ => None,
+    };
+    let white_phase = match revive_hold {
+        Some((GameColor::White, p)) => Some(p),
+        _ => None,
+    };
 
     let team_to_dur = tm.config().team_timeout_duration;
 
-    let black = match snapshot.timeout {
-        None => make_multi_label_button((fl!("dark-timeout-line-1"), fl!("dark-timeout-line-2")))
-            .on_press_maybe(
-                tm.can_start_team_timeout(GameColor::Black)
-                    .ok()
-                    .map(|_| Message::TeamTimeout(GameColor::Black, false)),
-            )
-            .style(black_button),
+    let black: Element<'a, Message> = match snapshot.timeout {
+        None => {
+            if black_phase == Some(RevivePhase::Deciding) {
+                // Revived, still held: YELLOW "release to bank / hold to start" window.
+                // The mouse_area keeps the same handlers and layout slot across the
+                // colour change, so the release/exit event is still captured when it
+                // arrives (mouse_area holds no retained press state of its own).
+                mouse_area(
+                    make_multi_label_button((fl!("timeout"), fl!("revive-deciding-line-2")))
+                        .style(yellow_button_armed),
+                )
+                .on_press(Message::TimeoutRevivePressed(GameColor::Black))
+                .on_release(Message::TimeoutReviveReleased(GameColor::Black))
+                .on_exit(Message::TimeoutReviveReleased(GameColor::Black))
+                .into()
+            } else if tm.can_revive_team_timeout(GameColor::Black).is_ok() {
+                // Used-up: greyed normally; RED while in the Reviving phase. The inner
+                // button has no `on_press`, so the mouse_area captures the press/hold.
+                let face = if black_phase == Some(RevivePhase::Reviving) {
+                    make_multi_label_button((fl!("revive-hold-line-1"), fl!("revive-hold-line-2")))
+                        .style(red_button_armed)
+                } else {
+                    make_multi_label_button((
+                        fl!("dark-timeout-line-1"),
+                        fl!("dark-timeout-line-2"),
+                    ))
+                    .style(black_button)
+                };
+                mouse_area(face)
+                    .on_press(Message::TimeoutRevivePressed(GameColor::Black))
+                    .on_release(Message::TimeoutReviveReleased(GameColor::Black))
+                    .on_exit(Message::TimeoutReviveReleased(GameColor::Black))
+                    .into()
+            } else {
+                make_multi_label_button((fl!("dark-timeout-line-1"), fl!("dark-timeout-line-2")))
+                    .on_press_maybe(
+                        tm.can_start_team_timeout(GameColor::Black)
+                            .ok()
+                            .map(|_| Message::TeamTimeout(GameColor::Black, false)),
+                    )
+                    .style(black_button)
+                    .into()
+            }
+        }
         Some(TimeoutSnapshot::Black(remaining)) => {
             if team_timeout_in_grace(team_to_dur, remaining) {
                 make_multi_label_button((
@@ -214,10 +260,12 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
                 ))
                 .on_press(Message::CancelTimeout)
                 .style(orange_button)
+                .into()
             } else {
                 make_multi_label_button((fl!("end-timeout-line-1"), fl!("end-timeout-line-2")))
                     .on_press(Message::EndTimeout)
                     .style(red_button)
+                    .into()
             }
         }
         Some(TimeoutSnapshot::White(other_remaining)) => {
@@ -227,25 +275,58 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
                 make_multi_label_button((fl!("switch-to"), fl!("dark-team-name-caps")))
                     .on_press(Message::TeamTimeout(GameColor::Black, true))
                     .style(black_button)
+                    .into()
             } else {
                 make_multi_label_button((fl!("dark-timeout-line-1"), fl!("dark-timeout-line-2")))
                     .style(black_button)
+                    .into()
             }
         }
         Some(TimeoutSnapshot::Ref(_)) | Some(TimeoutSnapshot::PenaltyShot(_)) => {
             make_multi_label_button((fl!("dark-timeout-line-1"), fl!("dark-timeout-line-2")))
                 .style(black_button)
+                .into()
         }
     };
 
-    let white = match snapshot.timeout {
-        None => make_multi_label_button((fl!("light-timeout-line-1"), fl!("light-timeout-line-2")))
-            .on_press_maybe(
-                tm.can_start_team_timeout(GameColor::White)
-                    .ok()
-                    .map(|_| Message::TeamTimeout(GameColor::White, false)),
-            )
-            .style(white_button),
+    let white: Element<'a, Message> = match snapshot.timeout {
+        None => {
+            if white_phase == Some(RevivePhase::Deciding) {
+                mouse_area(
+                    make_multi_label_button((fl!("timeout"), fl!("revive-deciding-line-2")))
+                        .style(yellow_button_armed),
+                )
+                .on_press(Message::TimeoutRevivePressed(GameColor::White))
+                .on_release(Message::TimeoutReviveReleased(GameColor::White))
+                .on_exit(Message::TimeoutReviveReleased(GameColor::White))
+                .into()
+            } else if tm.can_revive_team_timeout(GameColor::White).is_ok() {
+                let face = if white_phase == Some(RevivePhase::Reviving) {
+                    make_multi_label_button((fl!("revive-hold-line-1"), fl!("revive-hold-line-2")))
+                        .style(red_button_armed)
+                } else {
+                    make_multi_label_button((
+                        fl!("light-timeout-line-1"),
+                        fl!("light-timeout-line-2"),
+                    ))
+                    .style(white_button)
+                };
+                mouse_area(face)
+                    .on_press(Message::TimeoutRevivePressed(GameColor::White))
+                    .on_release(Message::TimeoutReviveReleased(GameColor::White))
+                    .on_exit(Message::TimeoutReviveReleased(GameColor::White))
+                    .into()
+            } else {
+                make_multi_label_button((fl!("light-timeout-line-1"), fl!("light-timeout-line-2")))
+                    .on_press_maybe(
+                        tm.can_start_team_timeout(GameColor::White)
+                            .ok()
+                            .map(|_| Message::TeamTimeout(GameColor::White, false)),
+                    )
+                    .style(white_button)
+                    .into()
+            }
+        }
         Some(TimeoutSnapshot::White(remaining)) => {
             if team_timeout_in_grace(team_to_dur, remaining) {
                 make_multi_label_button((
@@ -254,10 +335,12 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
                 ))
                 .on_press(Message::CancelTimeout)
                 .style(orange_button)
+                .into()
             } else {
                 make_multi_label_button((fl!("end-timeout-line-1"), fl!("end-timeout-line-2")))
                     .on_press(Message::EndTimeout)
                     .style(red_button)
+                    .into()
             }
         }
         Some(TimeoutSnapshot::Black(other_remaining)) => {
@@ -267,14 +350,17 @@ pub(in super::super) fn build_timeout_ribbon<'a>(
                 make_multi_label_button((fl!("switch-to"), fl!("light-team-name-caps")))
                     .on_press(Message::TeamTimeout(GameColor::White, true))
                     .style(white_button)
+                    .into()
             } else {
                 make_multi_label_button((fl!("light-timeout-line-1"), fl!("light-timeout-line-2")))
                     .style(white_button)
+                    .into()
             }
         }
         Some(TimeoutSnapshot::Ref(_)) | Some(TimeoutSnapshot::PenaltyShot(_)) => {
             make_multi_label_button((fl!("light-timeout-line-1"), fl!("light-timeout-line-2")))
                 .style(white_button)
+                .into()
         }
     };
 

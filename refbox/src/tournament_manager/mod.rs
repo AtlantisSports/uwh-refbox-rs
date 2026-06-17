@@ -461,6 +461,38 @@ impl TournamentManager {
         Ok(())
     }
 
+    /// Returns `Ok` if a used team timeout can be given back to `color`.
+    ///
+    /// Only true when the team's timeout button is greyed *specifically because
+    /// the team has used its allowed timeout(s)* during a half — i.e. giving one
+    /// back would actually make a team timeout startable again. Returns `Err`
+    /// when a timeout is running, when not in a half, or when nothing is used.
+    pub fn can_revive_team_timeout(&self, color: Color) -> Result<()> {
+        if self.timeout_state.is_some() {
+            return Err(TournamentManagerError::NoTimeoutToRevive(color));
+        }
+        match self.current_period {
+            GamePeriod::FirstHalf | GamePeriod::SecondHalf
+                if self.timeouts_used[color] > 0
+                    && self.timeouts_used[color] >= self.config.num_team_timeouts_allowed =>
+            {
+                Ok(())
+            }
+            _ => Err(TournamentManagerError::NoTimeoutToRevive(color)),
+        }
+    }
+
+    /// Give one used team timeout back to `color` (lowers the used count by one,
+    /// never below zero). Touches only the used-count — not the clock, period, or
+    /// any active timeout. Errors if reviving does not apply (see
+    /// `can_revive_team_timeout`).
+    pub fn revive_team_timeout(&mut self, color: Color) -> Result<()> {
+        self.can_revive_team_timeout(color)?;
+        info!("Reviving a {color} team timeout");
+        self.timeouts_used[color] = self.timeouts_used[color].saturating_sub(1);
+        Ok(())
+    }
+
     pub fn switch_to_ref_timeout(&mut self, now: Instant) -> Result<()> {
         self.can_switch_to_ref_timeout()?;
         info!("Switching to a ref timeout");
@@ -2445,6 +2477,8 @@ pub enum TournamentManagerError {
     WrongGamePeriod(TimeoutSnapshot, GamePeriod),
     #[error("The {0} team has no more timeouts to use")]
     TooManyTeamTimeouts(Color),
+    #[error("The {0} team has no timeout to revive")]
+    NoTimeoutToRevive(Color),
     #[error("Already in a {0}")]
     AlreadyInTimeout(TimeoutSnapshot),
     #[error("Can only switch to Penalty Shot from Ref Timeout")]
@@ -4936,6 +4970,107 @@ mod test {
                 time_at_start: Duration::ZERO,
             }))
         );
+    }
+
+    #[test]
+    fn test_revive_team_timeout() {
+        initialize();
+        let config = GameConfig {
+            num_team_timeouts_allowed: 1,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(10));
+
+        // Nothing used yet: button is enabled, so there is nothing to revive.
+        assert_eq!(tm.can_start_team_timeout(Color::Black), Ok(()));
+        assert_eq!(
+            tm.can_revive_team_timeout(Color::Black),
+            Err(TMErr::NoTimeoutToRevive(Color::Black))
+        );
+        assert_eq!(
+            tm.revive_team_timeout(Color::Black),
+            Err(TMErr::NoTimeoutToRevive(Color::Black))
+        );
+        assert_eq!(tm.timeouts_used.black, 0);
+
+        // Use Black's timeout: button greys (TooManyTeamTimeouts) and revive applies.
+        tm.timeouts_used.black = 1;
+        assert_eq!(
+            tm.can_start_team_timeout(Color::Black),
+            Err(TMErr::TooManyTeamTimeouts(Color::Black))
+        );
+        assert_eq!(tm.can_revive_team_timeout(Color::Black), Ok(()));
+
+        // Revive gives one back; the button is enabled again.
+        assert_eq!(tm.revive_team_timeout(Color::Black), Ok(()));
+        assert_eq!(tm.timeouts_used.black, 0);
+        assert_eq!(tm.can_start_team_timeout(Color::Black), Ok(()));
+
+        // White is untouched.
+        assert_eq!(tm.timeouts_used.white, 0);
+    }
+
+    #[test]
+    fn test_revive_team_timeout_guards() {
+        initialize();
+        let config = GameConfig {
+            num_team_timeouts_allowed: 1,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        // Used up, but in a non-play period -> no revive (button greys for the
+        // period, not the count, so giving one back would not re-enable it).
+        tm.set_period_and_game_clock_time(GamePeriod::OvertimeFirstHalf, Duration::from_secs(10));
+        tm.timeouts_used.black = 1;
+        assert_eq!(
+            tm.can_revive_team_timeout(Color::Black),
+            Err(TMErr::NoTimeoutToRevive(Color::Black))
+        );
+
+        // Used up and in a half, but a timeout is currently running -> no revive.
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(10));
+        tm.set_timeout_state(Some(TimeoutState::Ref(ClockState::Stopped {
+            clock_time: Duration::from_secs(0),
+        })));
+        assert_eq!(
+            tm.can_revive_team_timeout(Color::Black),
+            Err(TMErr::NoTimeoutToRevive(Color::Black))
+        );
+
+        // No timeout running, in a half, used up -> revive applies.
+        tm.set_timeout_state(None);
+        assert_eq!(tm.can_revive_team_timeout(Color::Black), Ok(()));
+    }
+
+    #[test]
+    fn test_revive_team_timeout_respects_cap() {
+        initialize();
+        let config = GameConfig {
+            num_team_timeouts_allowed: 2,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        tm.set_period_and_game_clock_time(GamePeriod::FirstHalf, Duration::from_secs(10));
+
+        // One of two used: button still enabled, so no revive is offered.
+        tm.timeouts_used.black = 1;
+        assert_eq!(tm.can_start_team_timeout(Color::Black), Ok(()));
+        assert_eq!(
+            tm.can_revive_team_timeout(Color::Black),
+            Err(TMErr::NoTimeoutToRevive(Color::Black))
+        );
+
+        // Both used: button greys; revive gives back exactly one.
+        tm.timeouts_used.black = 2;
+        assert_eq!(
+            tm.can_start_team_timeout(Color::Black),
+            Err(TMErr::TooManyTeamTimeouts(Color::Black))
+        );
+        assert_eq!(tm.revive_team_timeout(Color::Black), Ok(()));
+        assert_eq!(tm.timeouts_used.black, 1);
+        assert_eq!(tm.can_start_team_timeout(Color::Black), Ok(()));
     }
 
     #[test]

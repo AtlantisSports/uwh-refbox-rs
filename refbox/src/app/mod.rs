@@ -150,6 +150,9 @@ pub struct RefBoxApp {
     foul_edit: ListEditor<InfractionDetails, Option<Color>>,
     app_state: AppState,
     last_app_state: AppState,
+    // The game/timeout clock times captured when the time-edit screen was opened,
+    // used to gray out the Apply button when no change has been made.
+    time_edit_old: (Duration, Option<Duration>),
     last_message: Message,
     update_sender: UpdateSender,
     uwhportal_client: Option<Arc<Mutex<UwhPortalClient>>>,
@@ -1475,6 +1478,7 @@ impl RefBoxApp {
             snapshot,
             app_state: initial_app_state,
             last_app_state: default_app_state,
+            time_edit_old: (Duration::ZERO, None),
             last_message: Message::NoAction,
             update_sender,
             uwhportal_client,
@@ -1562,12 +1566,11 @@ impl RefBoxApp {
                 let mut tm = self.tm.lock().unwrap();
                 let was_running = tm.clock_is_running();
                 tm.stop_clock(now).unwrap();
+                let game_time = tm.game_clock_time(now).unwrap();
+                let timeout_time = tm.timeout_clock_time(now);
+                self.time_edit_old = (game_time, timeout_time);
                 self.last_app_state = self.app_state.clone();
-                self.app_state = AppState::TimeEdit(
-                    was_running,
-                    tm.game_clock_time(now).unwrap(),
-                    tm.timeout_clock_time(now),
-                );
+                self.app_state = AppState::TimeEdit(was_running, game_time, timeout_time);
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
@@ -4420,8 +4423,13 @@ impl RefBoxApp {
                     behind_schedule,
                 )
             }
-            AppState::TimeEdit(_, time, timeout_time) =>
-                build_time_edit_view(data, time, timeout_time),
+            AppState::TimeEdit(_, time, timeout_time) => build_time_edit_view(
+                data,
+                time,
+                timeout_time,
+                self.time_edit_old.0,
+                self.time_edit_old.1,
+            ),
             AppState::ScoreEdit {
                 scores,
                 is_confirmation,

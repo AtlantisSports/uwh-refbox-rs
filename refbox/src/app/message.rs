@@ -241,8 +241,6 @@ pub enum Message {
     TimeoutReviveReleased(GameColor),
     /// The 5-second revive hold elapsed for the given team (token guards stale timers).
     TimeoutReviveHoldElapsed(u64, GameColor),
-    /// The 2-second post-revive decide window elapsed for the given team.
-    TimeoutReviveDecideElapsed(u64, GameColor),
     TimeUpdaterStarted(Sender<Arc<Mutex<TournamentManager>>>),
     OpenUpdatesPage,
     UpdatesCheck,
@@ -371,7 +369,6 @@ impl Message {
             | Self::TimeoutRevivePressed(_)
             | Self::TimeoutReviveReleased(_)
             | Self::TimeoutReviveHoldElapsed(_, _)
-            | Self::TimeoutReviveDecideElapsed(_, _)
             | Self::OpenUpdatesPage
             | Self::UpdatesCheck
             | Self::UpdatesConfirmInstall
@@ -453,9 +450,6 @@ impl PartialEq for Message {
             (Self::TimeoutRevivePressed(a), Self::TimeoutRevivePressed(b)) => a == b,
             (Self::TimeoutReviveReleased(a), Self::TimeoutReviveReleased(b)) => a == b,
             (Self::TimeoutReviveHoldElapsed(a, b), Self::TimeoutReviveHoldElapsed(c, d)) => {
-                a == c && b == d
-            }
-            (Self::TimeoutReviveDecideElapsed(a, b), Self::TimeoutReviveDecideElapsed(c, d)) => {
                 a == c && b == d
             }
 
@@ -695,7 +689,6 @@ impl PartialEq for Message {
             | (Self::TimeoutRevivePressed(_), _)
             | (Self::TimeoutReviveReleased(_), _)
             | (Self::TimeoutReviveHoldElapsed(_, _), _)
-            | (Self::TimeoutReviveDecideElapsed(_, _), _)
             | (Self::TimeUpdaterStarted(_), _)
             | (Self::OpenUpdatesPage, _)
             | (Self::UpdatesCheck, _)

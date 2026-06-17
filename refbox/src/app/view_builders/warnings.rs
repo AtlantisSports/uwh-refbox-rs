@@ -21,6 +21,14 @@ pub(in super::super) fn build_warning_overview_page<'a>(
         ..
     } = data;
 
+    let has_changes = any_pending_change(
+        warnings
+            .black
+            .iter()
+            .chain(warnings.white.iter())
+            .map(|w| w.format_hint),
+    );
+
     column![
         make_game_time_button(
             snapshot,
@@ -60,10 +68,12 @@ pub(in super::super) fn build_warning_overview_page<'a>(
                     team_warning: false,
                     ret_to_overview: true,
                 })),
-            make_button(fl!("done"))
+            make_button(fl!("apply"))
                 .style(green_button)
                 .width(Length::Fill)
-                .on_press(Message::WarningOverviewComplete { canceled: false }),
+                .on_press_maybe(
+                    has_changes.then_some(Message::WarningOverviewComplete { canceled: false }),
+                ),
         ]
         .spacing(SPACING),
     ]

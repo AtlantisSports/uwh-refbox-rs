@@ -111,6 +111,12 @@ pub enum Message {
     ShowParameterHelp,
     CloseParameterHelp,
     EditGameConfig,
+    /// Navigate directly to a specific `ConfigPage` inside the Game Options
+    /// editor, bypassing the default `ConfigPage::Main` landing. Used by
+    /// the game-info table tap-through (Task 7).
+    // Task 7 will construct this variant; suppress dead-code lint on this branch.
+    #[allow(dead_code)]
+    EditGameConfigPage(ConfigPage),
     ChangeConfigPage(ConfigPage),
     ApplyConfigPage(ConfigPage),
     CancelConfigPage(ConfigPage),
@@ -318,6 +324,7 @@ impl Message {
             | Self::ShowParameterHelp
             | Self::CloseParameterHelp
             | Self::EditGameConfig
+            | Self::EditGameConfigPage(_)
             | Self::ChangeConfigPage(_)
             | Self::ApplyConfigPage(_)
             | Self::CancelConfigPage(_)
@@ -559,6 +566,7 @@ impl PartialEq for Message {
             (Self::ParameterSelected(a, b), Self::ParameterSelected(c, d)) => a == c && b == d,
             (Self::ToggleBoolParameter(a), Self::ToggleBoolParameter(b)) => a == b,
             (Self::CycleParameter(a), Self::CycleParameter(b)) => a == b,
+            (Self::EditGameConfigPage(a), Self::EditGameConfigPage(b)) => a == b,
             (Self::ApplyConfigPage(a), Self::ApplyConfigPage(b)) => a == b,
             (Self::CancelConfigPage(a), Self::CancelConfigPage(b)) => a == b,
             (Self::SelectLanguage(a), Self::SelectLanguage(b)) => a == b,
@@ -634,6 +642,7 @@ impl PartialEq for Message {
             | (Self::ShowParameterHelp, _)
             | (Self::CloseParameterHelp, _)
             | (Self::EditGameConfig, _)
+            | (Self::EditGameConfigPage(_), _)
             | (Self::ChangeConfigPage(_), _)
             | (Self::ApplyConfigPage(_), _)
             | (Self::CancelConfigPage(_), _)

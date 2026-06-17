@@ -1255,6 +1255,68 @@ impl RefBoxApp {
         confy::store(APP_NAME, None, &self.config).unwrap();
     }
 
+    /// Initialize `edited_settings` from the current app/TM state and
+    /// navigate to the Game Options editor, landing on `landing`.
+    ///
+    /// Used by both `Message::EditGameConfig` (landing = `ConfigPage::Main`)
+    /// and `Message::EditGameConfigPage` (arbitrary landing page, e.g. for
+    /// the game-info table tap-through added in Task 7).
+    fn enter_game_config(&mut self, landing: ConfigPage) -> Task<Message> {
+        let mut task = Task::none();
+
+        let uwhportal_token_valid = if let Some(ref client) = self.uwhportal_client {
+            // why this cannot panic: the guard is held only for a synchronous
+            // `has_token()` call and dropped immediately.
+            let has_token = client.lock().unwrap().has_token();
+            if has_token {
+                if let Some(event_id) = self.current_event_id.as_ref() {
+                    task = self.check_uwhportal_auth(event_id);
+                    None
+                } else {
+                    Some(false)
+                }
+            } else {
+                Some(false)
+            }
+        } else {
+            Some(false)
+        };
+
+        let edited_settings = EditableSettings {
+            config: self.tm.lock().unwrap().config().clone(),
+            game_number: if self.snapshot.current_period == GamePeriod::BetweenGames {
+                self.snapshot.next_game_number.clone()
+            } else {
+                self.snapshot.game_number.clone()
+            },
+            white_on_right: self.config.hardware.white_on_right,
+            brightness: self.config.hardware.brightness,
+            front_display_layout: self.config.front_display_layout,
+            using_uwhportal: self.using_uwhportal,
+            uwhportal_token_valid,
+            current_event_id: self.current_event_id.clone(),
+            current_court: self.current_court.clone(),
+            schedule: self.schedule.clone(),
+            sound: self.config.sound.clone(),
+            mode: self.config.mode,
+            hide_time: self.config.hide_time,
+            collect_scorer_cap_num: self.config.collect_scorer_cap_num,
+            track_fouls_and_warnings: self.config.track_fouls_and_warnings,
+            show_behind_schedule_time: self.config.show_behind_schedule_time,
+            confirm_score: self.config.confirm_score,
+            pending_language: None,
+            original_language: None,
+            beep_test_levels: None,
+            selected_level: 0,
+        };
+
+        self.edited_settings = Some(edited_settings);
+
+        self.app_state = AppState::EditGameConfig(landing);
+        trace!("AppState changed to {:?}", self.app_state);
+        task
+    }
+
     fn navigate_to_parent(&mut self, page: ConfigPage) {
         let parent = match page {
             ConfigPage::Game | ConfigPage::App | ConfigPage::User | ConfigPage::Language => {
@@ -2417,61 +2479,8 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
-            Message::EditGameConfig => {
-                let mut task = Task::none();
-
-                let uwhportal_token_valid = if let Some(ref client) = self.uwhportal_client {
-                    // why this cannot panic: the guard is held only for a synchronous
-                    // `has_token()` call and dropped immediately.
-                    let has_token = client.lock().unwrap().has_token();
-                    if has_token {
-                        if let Some(event_id) = self.current_event_id.as_ref() {
-                            task = self.check_uwhportal_auth(event_id);
-                            None
-                        } else {
-                            Some(false)
-                        }
-                    } else {
-                        Some(false)
-                    }
-                } else {
-                    Some(false)
-                };
-
-                let edited_settings = EditableSettings {
-                    config: self.tm.lock().unwrap().config().clone(),
-                    game_number: if self.snapshot.current_period == GamePeriod::BetweenGames {
-                        self.snapshot.next_game_number.clone()
-                    } else {
-                        self.snapshot.game_number.clone()
-                    },
-                    white_on_right: self.config.hardware.white_on_right,
-                    brightness: self.config.hardware.brightness,
-                    front_display_layout: self.config.front_display_layout,
-                    using_uwhportal: self.using_uwhportal,
-                    uwhportal_token_valid,
-                    current_event_id: self.current_event_id.clone(),
-                    current_court: self.current_court.clone(),
-                    schedule: self.schedule.clone(),
-                    sound: self.config.sound.clone(),
-                    mode: self.config.mode,
-                    hide_time: self.config.hide_time,
-                    collect_scorer_cap_num: self.config.collect_scorer_cap_num,
-                    track_fouls_and_warnings: self.config.track_fouls_and_warnings,
-                    show_behind_schedule_time: self.config.show_behind_schedule_time,
-                    confirm_score: self.config.confirm_score,
-                    pending_language: None,
-                    original_language: None,
-                    beep_test_levels: None,
-                    selected_level: 0,
-                };
-
-                self.edited_settings = Some(edited_settings);
-
-                self.app_state = AppState::EditGameConfig(ConfigPage::Main);
-                trace!("AppState changed to {:?}", self.app_state);
-                task
-            }
+            Message::EditGameConfig => self.enter_game_config(ConfigPage::Main),
+            Message::EditGameConfigPage(page) => self.enter_game_config(page),
             Message::CycleDisplayMode => {
                 let next = self.config.display_mode.next();
                 self.config.display_mode = next;

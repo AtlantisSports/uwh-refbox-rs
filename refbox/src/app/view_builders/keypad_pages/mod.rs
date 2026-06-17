@@ -235,7 +235,7 @@ pub(in super::super) fn build_keypad_page<'a>(
                     color,
                     infraction,
                     ret_to_overview,
-                } => make_foul_add_page(origin, color, infraction, ret_to_overview),
+                } => make_foul_add_page(origin, color, infraction, ret_to_overview, player_num),
                 KeypadPage::WarningAdd {
                     origin,
                     color,

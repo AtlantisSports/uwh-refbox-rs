@@ -147,7 +147,33 @@ pub(in super::super) fn game_info_rows(
         rows.push(Row::SettingPair { left, right });
     }
 
-    let _ = (variant, last_game_scores); // consumed in Tasks 3–4
+    // Context block BEFORE the current block, between games only: the just-finished game.
+    if between {
+        let last = game_block_row(
+            GameRole::Last,
+            &snapshot.game_number,
+            None, // prior game's Game Block is intentionally not shown
+            last_game_scores,
+            using_uwhportal,
+            schedule,
+            teams,
+        );
+        rows.insert(0, last);
+    }
+
+    // Context block AFTER the current block, in-game only: the upcoming game (no score).
+    if !between {
+        rows.push(game_block_row(
+            GameRole::Next,
+            &snapshot.next_game_number,
+            Some(time_string(config.game_block)),
+            None,
+            using_uwhportal,
+            schedule,
+            teams,
+        ));
+    }
+    let _ = variant; // consumed in Task 4
     rows
 }
 
@@ -381,5 +407,116 @@ mod tests {
         assert!(labels.contains(&fl!("gi-game-length")));
         assert!(!labels.contains(&fl!("gi-half-length")));
         assert!(!labels.contains(&fl!("gi-half-time-length")));
+    }
+
+    fn between_games_snapshot() -> GameSnapshot {
+        // Equivalent to GameSnapshot::default() (BetweenGames), spelled out for clarity.
+        GameSnapshot {
+            current_period: GamePeriod::BetweenGames,
+            ..GameSnapshot::default()
+        }
+    }
+
+    fn in_game_snapshot() -> GameSnapshot {
+        GameSnapshot {
+            current_period: GamePeriod::FirstHalf,
+            ..GameSnapshot::default()
+        }
+    }
+
+    fn roles(rows: &[Row]) -> Vec<GameRole> {
+        rows.iter()
+            .filter_map(|r| match r {
+                Row::GameBlock { role, .. } => Some(*role),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn between_games_shows_last_then_current_no_next() {
+        let rows = game_info_rows(
+            &between_games_snapshot(),
+            &cfg_all_on(),
+            false,
+            None,
+            None,
+            None,
+            Variant::Full,
+        );
+        assert_eq!(roles(&rows).first(), Some(&GameRole::Last));
+        assert!(roles(&rows).contains(&GameRole::Current));
+        assert!(!roles(&rows).contains(&GameRole::Next));
+    }
+
+    #[test]
+    fn in_game_shows_current_then_next_no_last() {
+        let rows = game_info_rows(
+            &in_game_snapshot(),
+            &cfg_all_on(),
+            false,
+            None,
+            None,
+            None,
+            Variant::Full,
+        );
+        assert!(!roles(&rows).contains(&GameRole::Last));
+        assert_eq!(roles(&rows).first(), Some(&GameRole::Current));
+        assert_eq!(roles(&rows).last(), Some(&GameRole::Next));
+    }
+
+    #[test]
+    fn last_block_has_no_game_block_line_and_uses_last_scores() {
+        let scores = BlackWhiteBundle { black: 5, white: 3 };
+        let rows = game_info_rows(
+            &between_games_snapshot(),
+            &cfg_all_on(),
+            false,
+            None,
+            None,
+            Some(scores),
+            Variant::Full,
+        );
+        let last = rows
+            .iter()
+            .find_map(|r| match r {
+                Row::GameBlock {
+                    role: GameRole::Last,
+                    game_block,
+                    white,
+                    black,
+                    ..
+                } => Some((game_block.clone(), white.score, black.score)),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(last, (None, Some(3), Some(5)));
+    }
+
+    #[test]
+    fn next_block_has_no_scores() {
+        let rows = game_info_rows(
+            &in_game_snapshot(),
+            &cfg_all_on(),
+            false,
+            None,
+            None,
+            None,
+            Variant::Full,
+        );
+        let next = rows
+            .iter()
+            .find_map(|r| match r {
+                Row::GameBlock {
+                    role: GameRole::Next,
+                    white,
+                    black,
+                    game_block,
+                    ..
+                } => Some((game_block.is_some(), white.score, black.score)),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(next, (true, None, None)); // Next keeps its Game Block line, no scores
     }
 }

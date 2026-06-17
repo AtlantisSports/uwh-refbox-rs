@@ -1262,23 +1262,22 @@ where
 {
     let mut button = button(
         row![
-            text(first_label)
-                .size(if large_text.0 {
-                    MEDIUM_TEXT
-                } else {
-                    SMALL_TEXT
-                })
-                .height(Length::Fill)
-                .align_y(Vertical::Center),
+            // Do NOT pair `align_y(Center)` with `height(Fill)` on these text
+            // widgets: that caches a paragraph-position anchor that bleeds
+            // across renders (iced 0.13 bug; see portal_detail::row_text_centered
+            // and the time-view fix in this file). The row's `.align_y(Center)`
+            // below handles the vertical centering instead.
+            text(first_label).size(if large_text.0 {
+                MEDIUM_TEXT
+            } else {
+                SMALL_TEXT
+            }),
             horizontal_space(),
-            text(second_label)
-                .size(if large_text.1 {
-                    MEDIUM_TEXT
-                } else {
-                    SMALL_TEXT
-                })
-                .height(Length::Fill)
-                .align_y(Vertical::Center),
+            text(second_label).size(if large_text.1 {
+                MEDIUM_TEXT
+            } else {
+                SMALL_TEXT
+            }),
         ]
         .spacing(SPACING)
         .align_y(Alignment::Center)

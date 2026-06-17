@@ -17,6 +17,8 @@ pub(super) use confirmation::*;
 pub mod game_info;
 pub(super) use game_info::*;
 
+pub mod game_info_table;
+
 pub mod warnings_fouls_summary;
 pub(super) use warnings_fouls_summary::*;
 

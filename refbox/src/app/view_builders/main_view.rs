@@ -6,6 +6,7 @@ use iced::{
     widget::{Space, button, column, container, mouse_area, row, text},
 };
 use uwh_common::{
+    bundles::BlackWhiteBundle,
     color::Color as GameColor,
     config::Game as GameConfig,
     game_snapshot::{GamePeriod, GameSnapshot, PenaltyTime, TimeoutSnapshot},
@@ -23,6 +24,7 @@ pub(in super::super) fn build_main_view<'a>(
     manual_alarm_enabled: bool,
     alarm_held: bool,
     behind_schedule: std::time::Duration,
+    last_game_scores: Option<BlackWhiteBundle<u8>>,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -263,7 +265,7 @@ pub(in super::super) fn build_main_view<'a>(
                     using_uwhportal,
                     schedule,
                     teams,
-                    None,
+                    last_game_scores,
                 )))
                 .align_y(Vertical::Top)
                 .height(Length::Fill)

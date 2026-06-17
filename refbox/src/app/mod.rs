@@ -4430,6 +4430,7 @@ impl RefBoxApp {
                     self.config.sound.sound_enabled && self.config.sound.manual_alarm_enabled,
                     self.mouse_alarm_held || self.spacebar_held,
                     behind_schedule,
+                    self.tm.lock().unwrap().last_game_info().map(|i| i.scores),
                 )
             }
             AppState::TimeEdit(_, time, timeout_time) => build_time_edit_view(

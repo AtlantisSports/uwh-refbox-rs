@@ -11,6 +11,7 @@ pub(in super::super) fn build_score_edit_view<'a>(
     scores: BlackWhiteBundle<u8>,
     is_confirmation: bool,
     confirmation_time: Option<u32>,
+    old_scores: BlackWhiteBundle<u8>,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -122,6 +123,22 @@ pub(in super::super) fn build_score_edit_view<'a>(
         main_col = main_col.push(vertical_space());
     }
 
+    // Confirmation mode keeps "Done" and stays always-clickable (the operator
+    // must be able to commit the final score). Edit mode uses "Apply" and grays
+    // out until the scores actually differ from what was shown on open.
+    let confirm_btn = if is_confirmation {
+        make_button(fl!("done"))
+            .style(green_button)
+            .on_press(Message::ScoreEditComplete { canceled: false })
+    } else {
+        make_button(fl!("apply"))
+            .style(green_button)
+            .on_press_maybe(
+                score_edit_has_changes(scores, old_scores)
+                    .then_some(Message::ScoreEditComplete { canceled: false }),
+            )
+    };
+
     main_col
         .push(
             row![
@@ -140,11 +157,47 @@ pub(in super::super) fn build_score_edit_view<'a>(
                     .on_press_maybe(cancel_btn_msg)
                     .style(red_button),
                 horizontal_space(),
-                make_button(fl!("done"))
-                    .style(green_button)
-                    .on_press(Message::ScoreEditComplete { canceled: false }),
+                confirm_btn,
             ]
             .spacing(SPACING),
         )
         .into()
+}
+
+/// Returns true when the edited scores differ from the scores shown when the
+/// Score EDIT screen was opened (the tournament-manager scores, which are not
+/// changed until Apply). Only consulted in edit mode — never in confirmation,
+/// where the operator must always be able to commit the final score.
+fn score_edit_has_changes(scores: BlackWhiteBundle<u8>, old: BlackWhiteBundle<u8>) -> bool {
+    scores != old
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn score_no_change_is_false() {
+        let s = BlackWhiteBundle { black: 3, white: 5 };
+        assert!(!score_edit_has_changes(s, s));
+    }
+
+    #[test]
+    fn score_change_is_true() {
+        assert!(score_edit_has_changes(
+            BlackWhiteBundle { black: 4, white: 5 },
+            BlackWhiteBundle { black: 3, white: 5 }
+        ));
+    }
+
+    #[test]
+    fn score_round_trip_is_false() {
+        // +1 then -1 returns to the original bundle.
+        let original = BlackWhiteBundle { black: 2, white: 2 };
+        let after = BlackWhiteBundle {
+            black: original.black + 1 - 1,
+            white: original.white,
+        };
+        assert!(!score_edit_has_changes(after, original));
+    }
 }

@@ -17,6 +17,7 @@ pub(super) fn make_penalty_edit_page<'a>(
     mode: Mode,
     track_fouls_and_warnings: bool,
     infraction: Infraction,
+    player_num: u32,
 ) -> Element<'a, Message> {
     let (black_style, white_style): (StyleFn, StyleFn) = match color {
         GameColor::Black => (black_selected_button, white_button),
@@ -105,10 +106,13 @@ pub(super) fn make_penalty_edit_page<'a>(
         make_smaller_button(fl!("done"))
             .style(green_button)
             .width(Length::Fill)
-            .on_press(Message::PenaltyEditComplete {
-                canceled: false,
-                deleted: false,
-            }),
+            .on_press_maybe(
+                penalty_edit_can_commit(infraction, track_fouls_and_warnings, player_num)
+                    .then_some(Message::PenaltyEditComplete {
+                        canceled: false,
+                        deleted: false,
+                    }),
+            ),
     );
 
     let green_label = fl!("penalty-kind", kind = green.fluent());
@@ -157,4 +161,47 @@ pub(super) fn make_penalty_edit_page<'a>(
 
     content = content.push(exit_row);
     content.into()
+}
+
+/// Returns true when the penalty entry can be saved: a player number is always
+/// required (penalties are always individual). The infraction is required only
+/// when "track fouls & warnings" is on — that is exactly when the infraction
+/// picker is shown on this screen.
+fn penalty_edit_can_commit(
+    infraction: Infraction,
+    track_fouls_and_warnings: bool,
+    player_num: u32,
+) -> bool {
+    player_num > 0 && (!track_fouls_and_warnings || !matches!(infraction, Infraction::Unknown))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn penalty_needs_number() {
+        // Tracking off: only a number is required.
+        assert!(!penalty_edit_can_commit(Infraction::Unknown, false, 0));
+        assert!(penalty_edit_can_commit(Infraction::Unknown, false, 5));
+    }
+
+    #[test]
+    fn penalty_needs_infraction_when_tracking_on() {
+        assert!(!penalty_edit_can_commit(Infraction::Unknown, true, 5));
+        assert!(penalty_edit_can_commit(
+            Infraction::StickInfringement,
+            true,
+            5
+        ));
+    }
+
+    #[test]
+    fn penalty_tracking_on_still_needs_number() {
+        assert!(!penalty_edit_can_commit(
+            Infraction::StickInfringement,
+            true,
+            0
+        ));
+    }
 }

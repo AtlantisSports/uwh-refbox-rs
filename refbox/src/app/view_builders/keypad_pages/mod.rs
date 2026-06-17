@@ -223,6 +223,7 @@ pub(in super::super) fn build_keypad_page<'a>(
                         mode,
                         track_fouls_and_warnings,
                         foul,
+                        player_num,
                     )
                 }
                 KeypadPage::GameNumber =>

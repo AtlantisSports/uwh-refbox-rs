@@ -1,3 +1,4 @@
+use super::game_info_table::{Variant, game_info_rows, render_game_info_table};
 use super::*;
 use iced::{
     Alignment, Element, Length,
@@ -256,18 +257,15 @@ pub(in super::super) fn build_main_view<'a>(
         // applied in commit 8a8d018 for make_multi_label_button.
         center_col = center_col.push(if max_num_warns < 4 {
             button(
-                container(
-                    text(config_string(
-                        snapshot,
-                        game_config,
-                        using_uwhportal,
-                        schedule,
-                        teams,
-                    ))
-                    .size(SMALL_TEXT)
-                    .align_x(Horizontal::Left)
-                    .width(Length::Fill),
-                )
+                container(render_game_info_table(game_info_rows(
+                    snapshot,
+                    game_config,
+                    using_uwhportal,
+                    schedule,
+                    teams,
+                    None,
+                    Variant::Compact,
+                )))
                 .center_y(Length::Fill)
                 .width(Length::Fill),
             )

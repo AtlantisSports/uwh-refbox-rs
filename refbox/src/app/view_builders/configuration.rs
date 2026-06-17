@@ -1590,10 +1590,7 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
     .spacing(SPACING)
     .align_y(Vertical::Top);
 
-    col = col
-        .push(vertical_space())
-        .push(editor_row)
-        .push(vertical_space());
+    col = col.push(editor_row);
 
     if let Some(note) = validity_note {
         col = col.push(note);

@@ -49,13 +49,11 @@ pub(in super::super) fn build_time_edit_view<'a>(
             portal_indicator,
             None
         ),
-        vertical_space(),
+        edit_row,
         text(fl!("Note-Game-time-is-paused"))
             .size(SMALL_TEXT)
             .width(Length::Fill)
             .align_x(Horizontal::Center),
-        vertical_space(),
-        edit_row,
         vertical_space(),
         row![
             make_button(fl!("cancel"))

@@ -30,7 +30,7 @@ penalty-kind = {$kind ->
 
 # Team time-out bewerken
 timeout-length = TEAM TIME-OUT
-    DUUR
+    DUUR:
 team-timeout-count = AANTAL
     TEAM TIME-OUTS:
 
@@ -309,6 +309,8 @@ teams = { -dark-team-name } Team: { $dark_team }
 game-config = Duur Helft: { $half_len },  Duur Rust: { $half_time_len }
     Plotselinge Dood Toegestaan: { $sd_allowed },  Verlenging Toegestaan: { $ot_allowed }
 team-timeouts = Team Time-outs: { $value }
+team-timeouts-label = TEAM
+    TIME-OUTS:
 stop-clock-last-2 = Klok Stoppen in Laatste 2 Minuten: { $stop_clock }
 ref-list = Hoofdscheidsrechter: { $chief_ref }
     Tijdwaarnemer: { $timer }

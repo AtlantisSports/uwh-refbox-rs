@@ -3,7 +3,7 @@ use iced::{
     Length, Theme,
     widget::{
         button::{Status, Style},
-        column, row, text, vertical_space,
+        column, horizontal_space, row, text, vertical_space,
     },
 };
 use std::time::Duration;
@@ -11,13 +11,7 @@ use std::time::Duration;
 type StyleFn = fn(&Theme, Status) -> Style;
 
 /// Length presets shown on the team-timeout edit page: (label, seconds).
-const LENGTH_PRESETS: [(&str, u64); 5] = [
-    ("0:30", 30),
-    ("0:45", 45),
-    ("1:00", 60),
-    ("1:15", 75),
-    ("1:30", 90),
-];
+const LENGTH_PRESETS: [(&str, u64); 3] = [("0:30", 30), ("1:00", 60), ("1:30", 90)];
 
 pub(super) fn make_team_timeout_edit_page<'a>(
     duration: Duration,
@@ -33,10 +27,10 @@ pub(super) fn make_team_timeout_edit_page<'a>(
     let (zero_style, zero_msg): (StyleFn, _) = if zero_selected {
         (blue_selected_button, Message::NoAction)
     } else {
-        (blue_button, Message::SetTeamTimeoutCount(0))
+        (light_gray_button, Message::SetTeamTimeoutCount(0))
     };
     let (one_style, one_msg): (StyleFn, _) = if zero_selected {
-        (blue_button, Message::SetTeamTimeoutCount(1))
+        (light_gray_button, Message::SetTeamTimeoutCount(1))
     } else {
         (blue_selected_button, Message::NoAction)
     };
@@ -64,10 +58,10 @@ pub(super) fn make_team_timeout_edit_page<'a>(
     let half_style: StyleFn = if timeouts_counted_per_half {
         blue_selected_button
     } else {
-        blue_button
+        light_gray_button
     };
     let game_style: StyleFn = if timeouts_counted_per_half {
-        blue_button
+        light_gray_button
     } else {
         blue_selected_button
     };
@@ -111,9 +105,11 @@ pub(super) fn make_team_timeout_edit_page<'a>(
         let style: StyleFn = if selected {
             blue_selected_button
         } else {
-            blue_button
+            light_gray_button
         };
-        let mut b = make_button(label).style(style).width(Length::Fill);
+        let mut b = make_button(label)
+            .style(style)
+            .width(Length::FillPortion(2));
         if count_enabled {
             b = b.on_press(if selected {
                 Message::NoAction
@@ -124,35 +120,31 @@ pub(super) fn make_team_timeout_edit_page<'a>(
         b.into()
     };
 
-    let presets_row = row![
+    // Length label + the three presets share one row: the label takes 1/3
+    // (matching the labels above) and the three presets share the other 2/3.
+    let length_row = row![
+        text(fl!("timeout-length"))
+            .size(SMALL_PLUS_TEXT)
+            .width(Length::FillPortion(3))
+            .height(Length::Fixed(MIN_BUTTON_SIZE))
+            .align_y(Vertical::Center),
         make_preset(LENGTH_PRESETS[0].0, LENGTH_PRESETS[0].1),
         make_preset(LENGTH_PRESETS[1].0, LENGTH_PRESETS[1].1),
         make_preset(LENGTH_PRESETS[2].0, LENGTH_PRESETS[2].1),
-        make_preset(LENGTH_PRESETS[3].0, LENGTH_PRESETS[3].1),
-        make_preset(LENGTH_PRESETS[4].0, LENGTH_PRESETS[4].1),
-    ]
-    .spacing(SPACING);
-
-    let length_block = column![
-        text(fl!("timeout-length"))
-            .size(SMALL_PLUS_TEXT)
-            .height(Length::Fixed(MIN_BUTTON_SIZE))
-            .align_y(Vertical::Center),
-        presets_row,
     ]
     .spacing(SPACING);
 
     column![
         count_row,
         counted_per_row,
-        vertical_space(),
-        length_block,
+        length_row,
         vertical_space(),
         row![
             make_button(fl!("cancel"))
                 .style(red_button)
                 .width(Length::Fill)
                 .on_press(Message::ParameterEditComplete { canceled: true }),
+            horizontal_space(),
             make_button(fl!("apply"))
                 .style(green_button)
                 .width(Length::Fill)

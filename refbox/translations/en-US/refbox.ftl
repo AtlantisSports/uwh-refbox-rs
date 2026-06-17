@@ -29,7 +29,7 @@ penalty-kind = {$kind ->
 
 # Team Timeout Edit
 timeout-length = TEAM TIMEOUT
-    LENGTH
+    LENGTH:
 team-timeout-count = TEAM TIMEOUT
     COUNT:
 
@@ -318,6 +318,8 @@ teams = { -dark-team-name } Team: { $dark_team }
 game-config = Half Length: { $half_len },  Half Time Length: { $half_time_len }
     Sudden Death Allowed: { $sd_allowed },  Overtime Allowed: { $ot_allowed }
 team-timeouts = Team Timeouts: { $value }
+team-timeouts-label = TEAM
+    TIMEOUTS:
 stop-clock-last-2 = Stop Clock in Last 2 Minutes: { $stop_clock }
 ref-list = Chief Ref: { $chief_ref }
     Timer: { $timer }

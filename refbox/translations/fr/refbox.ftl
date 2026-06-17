@@ -28,7 +28,7 @@ penalty-kind = {$kind ->
 }
 
 # Team Timeout Edit
-timeout-length = DURÉE DU TEMPS MORT
+timeout-length = DURÉE DU TEMPS MORT:
 team-timeout-count = NOMBRE DE
     TEMPS MORTS:
 
@@ -311,6 +311,8 @@ teams = Équipe { -dark-team-name }: { $dark_team }
 game-config = Durée de la Pér.: { $half_len },  Mi-temps: { $half_time_len }
     Mort Subite: { $sd_allowed },  Prolongations: { $ot_allowed }
 team-timeouts = Temps Morts d'Équipe: { $value }
+team-timeouts-label = TEMPS MORTS
+    D'ÉQUIPE:
 stop-clock-last-2 = Arrêter le temps dans les 2 dernières minutes: { $stop_clock }
 ref-list = Arbitre en Chef: { $chief_ref }
     Chronométreur: { $timer }

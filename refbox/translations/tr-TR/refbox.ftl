@@ -30,7 +30,7 @@ penalty-kind = {$kind ->
 
 # Takım Molası Düzenleme
 timeout-length = TAKIM MOLASI
-    SÜRESİ
+    SÜRESİ:
 team-timeout-count = TAKIM MOLASI
     SAYISI:
 
@@ -309,6 +309,8 @@ teams = { -dark-team-name } Takım: { $dark_team }
 game-config = Devre Süresi: { $half_len },  Devre Arası Süresi: { $half_time_len }
     Ani Ölüm İzin Verildi: { $sd_allowed },  Uzatma İzin Verildi: { $ot_allowed }
 team-timeouts = Takım Molaları: { $value }
+team-timeouts-label = TAKIM
+    MOLALARI:
 stop-clock-last-2 = Son 2 Dakikada Saati Durdur: { $stop_clock }
 ref-list = Başhakem: { $chief_ref }
     Zaman Ayarlayıcı: { $timer }

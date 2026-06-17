@@ -30,7 +30,7 @@ penalty-kind = {$kind ->
 
 # Pag-edit ng Timeout ng Koponan
 timeout-length = TIMEOUT NG
-    KOPONAN
+    KOPONAN:
 team-timeout-count = BILANG NG
     TIMEOUT:
 
@@ -309,6 +309,8 @@ teams = Koponan ng { -dark-team-name }: { $dark_team }
 game-config = Haba ng Kalahati: { $half_len },  Haba ng Pahinga: { $half_time_len }
     Sudden Death Pinahintulutan: { $sd_allowed },  Overtime Pinahintulutan: { $ot_allowed }
 team-timeouts = Mga Timeout ng Koponan: { $value }
+team-timeouts-label = MGA TIMEOUT
+    NG KOPONAN:
 stop-clock-last-2 = Ihinto ang Orasan sa Huling 2 Minuto: { $stop_clock }
 ref-list = Punong Ref: { $chief_ref }
     Timer: { $timer }

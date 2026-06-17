@@ -32,7 +32,7 @@ penalty-kind = {$kind ->
 
 # 팀 타임아웃 편집
 timeout-length = 팀 타임아웃
-    시간
+    시간:
 team-timeout-count = 팀 타임아웃
     횟수:
 
@@ -311,6 +311,8 @@ teams = { -dark-team-name } 팀: { $dark_team }
 game-config = 전반 시간: { $half_len },  하프타임 시간: { $half_time_len }
     서든 데스 허용: { $sd_allowed },  연장전 허용: { $ot_allowed }
 team-timeouts = 팀 타임아웃: { $value }
+team-timeouts-label = 팀
+    타임아웃:
 stop-clock-last-2 = 마지막 2분 시계 정지: { $stop_clock }
 ref-list = 주심: { $chief_ref }
     계시원: { $timer }

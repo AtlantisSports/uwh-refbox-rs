@@ -815,12 +815,16 @@ fn make_event_config_page<'a>(
             .push(
                 row![
                     make_value_button(
-                        if config.timeouts_counted_per_half {
-                            fl!("num-tos-per-half")
+                        fl!("team-timeouts-label"),
+                        // Compact value, matching the "0 / 1/HALF / 1/GAME"
+                        // representation used on the Main and Game Info pages.
+                        if config.num_team_timeouts_allowed == 0 {
+                            "0".to_string()
+                        } else if config.timeouts_counted_per_half {
+                            format!("{}/{}", config.num_team_timeouts_allowed, fl!("half"))
                         } else {
-                            fl!("num-tos-per-game")
+                            format!("{}/{}", config.num_team_timeouts_allowed, fl!("game"))
                         },
-                        config.num_team_timeouts_allowed.to_string(),
                         (false, true),
                         Some(Message::KeypadPage(KeypadPage::TeamTimeouts(
                             config.team_timeout_duration,

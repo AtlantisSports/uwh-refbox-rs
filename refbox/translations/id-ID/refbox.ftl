@@ -30,7 +30,7 @@ penalty-kind = {$kind ->
 
 # Edit Time-out Tim
 timeout-length = TIME-OUT TIM
-    DURASI
+    DURASI:
 team-timeout-count = JUMLAH
     TIME-OUT TIM:
 
@@ -309,6 +309,8 @@ teams = Tim { -dark-team-name }: { $dark_team }
 game-config = Durasi Babak: { $half_len },  Durasi Jeda Babak: { $half_time_len }
     Sudden Death Diizinkan: { $sd_allowed },  Perpanjangan Waktu Diizinkan: { $ot_allowed }
 team-timeouts = Time-out Tim: { $value }
+team-timeouts-label = TIME-OUT
+    TIM:
 stop-clock-last-2 = Hentikan Jam di 2 Menit Terakhir: { $stop_clock }
 ref-list = Wasit Kepala: { $chief_ref }
     Pencatat Waktu: { $timer }

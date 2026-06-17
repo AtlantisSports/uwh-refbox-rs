@@ -30,7 +30,7 @@ penalty-kind = {$kind ->
 
 # Auszeit-Bearbeitung
 timeout-length = AUSZEIT
-    DAUER
+    DAUER:
 team-timeout-count = AUSZEIT
     ANZAHL:
 
@@ -309,6 +309,8 @@ teams = { -dark-team-name } Mannschaft: { $dark_team }
 game-config = Halbzeitdauer: { $half_len },  Halbzeitpausendauer: { $half_time_len }
     Plötzlicher Tod Erlaubt: { $sd_allowed },  Verlängerung Erlaubt: { $ot_allowed }
 team-timeouts = Mannschafts-Auszeiten: { $value }
+team-timeouts-label = MANNSCHAFTS-
+    AUSZEITEN:
 stop-clock-last-2 = Uhr in den letzten 2 Minuten stoppen: { $stop_clock }
 ref-list = Hauptschiedsrichter: { $chief_ref }
     Zeitnehmer: { $timer }

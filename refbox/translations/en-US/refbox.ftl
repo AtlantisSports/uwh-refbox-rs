@@ -235,6 +235,30 @@ time-btwn-games = Nominal Time Between Games: { $time_btwn }
 game-block-info = Game Block: { $game_block }
 min-brk-btwn-games = Minimum Time Between Games: { $min_brk_time }
 
+# Game-info table labels
+gi-last-game = Last Game
+gi-current-game = Current Game
+gi-next-game = Next Game
+gi-game-block = Game Block
+gi-half-length = Half Length
+gi-half-time-length = Half-Time Length
+gi-game-length = Game Length
+gi-timeouts = Timeouts
+gi-timeout-duration = Timeout Duration
+gi-overtime = Overtime
+gi-sudden-death = Sudden Death
+gi-pre-overtime-break = Pre-Overtime Break
+gi-pre-sudden-death-break = Pre-Sudden Death Break
+gi-overtime-half-length = Overtime Half Length
+gi-overtime-half-time-length = Overtime Half-Time Length
+gi-minimum-game-break = Minimum Game Break
+gi-stop-clock-last-2 = Stop Clock in Last 2 Min
+gi-ref-chief = Chief Referee
+gi-ref-timekeeper = Time/Score Keeper
+gi-ref-timekeeper-helper = Time/Score Helper
+gi-ref-water-1 = Water Referee 1
+gi-ref-water-2 = Water Referee 2
+gi-ref-water-3 = Water Referee 3
 
 # List Selecters
 select-event = SELECT EVENT

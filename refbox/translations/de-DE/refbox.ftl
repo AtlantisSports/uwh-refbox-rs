@@ -494,4 +494,6 @@ gi-ref-timekeeper-helper = Zeitnehmer-Assistent
 gi-ref-water-1 = Wasserschiedsrichter 1
 gi-ref-water-2 = Wasserschiedsrichter 2
 gi-ref-water-3 = Wasserschiedsrichter 3
+gi-ref-water-referees = Wasserschiedsrichter
+gi-ref-deck-referees = Deckschiedsrichter
 gi-unknown = ???

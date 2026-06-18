@@ -494,4 +494,6 @@ gi-ref-timekeeper-helper = Assistente de Tempo
 gi-ref-water-1 = Árbitro Aquático 1
 gi-ref-water-2 = Árbitro Aquático 2
 gi-ref-water-3 = Árbitro Aquático 3
+gi-ref-water-referees = Árbitros Aquáticos
+gi-ref-deck-referees = Árbitros de Bordo
 gi-unknown = ???

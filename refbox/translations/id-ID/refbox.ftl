@@ -494,4 +494,6 @@ gi-ref-timekeeper-helper = Asisten Pencatat Waktu
 gi-ref-water-1 = Wasit Air 1
 gi-ref-water-2 = Wasit Air 2
 gi-ref-water-3 = Wasit Air 3
+gi-ref-water-referees = Wasit Air
+gi-ref-deck-referees = Wasit Tepi Kolam
 gi-unknown = ???

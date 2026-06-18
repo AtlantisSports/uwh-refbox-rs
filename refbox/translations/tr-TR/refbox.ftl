@@ -494,4 +494,6 @@ gi-ref-timekeeper-helper = Zaman Ayarlayıcı Yardımcısı
 gi-ref-water-1 = Su Hakemi 1
 gi-ref-water-2 = Su Hakemi 2
 gi-ref-water-3 = Su Hakemi 3
+gi-ref-water-referees = Su Hakemleri
+gi-ref-deck-referees = Kenar Hakemleri
 gi-unknown = ???

@@ -261,6 +261,8 @@ gi-ref-timekeeper-helper = Time/Score Helper
 gi-ref-water-1 = Water Referee 1
 gi-ref-water-2 = Water Referee 2
 gi-ref-water-3 = Water Referee 3
+gi-ref-water-referees = Water Referees
+gi-ref-deck-referees = Deck Referees
 
 # List Selecters
 select-event = SELECT EVENT

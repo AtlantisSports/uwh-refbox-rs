@@ -37,16 +37,12 @@ use web_audio_api::{
 const FADE_LEN: f64 = 0.05;
 const FADE_WAIT: Duration = Duration::from_nanos((FADE_LEN * 1_000_000_000.0) as u64);
 
-// 2.15s rather than a round 2.0s: a round value aligned too closely with the
-// 0.5s cycle of Buzz/Whoop and 0.667s cycle of Crazy, placing the software
-// fade-out right at the start of a new loop cycle (within the sound's own
-// natural fade-in). 2.15s lands the fade-out safely in the full-amplitude
-// region of every bundled sound.
+// Target length for a timed (auto) buzzer. The actual play time is snapped to
+// the nearest whole number of the chosen sound's loop cycles (see
+// `whole_cycles_for`), so the buzzer always ends on a complete pattern rather
+// than partway through one. A fixed length lands mid-pattern: 2.15s is 4.3
+// Whoop cycles, which would chop off a partial 5th whoop.
 const SOUND_LEN: f64 = 2.15;
-
-const TIMED_SOUND_LEN: f64 = SOUND_LEN + FADE_LEN * 2.0;
-const TIMED_SOUND_DURATION: Duration =
-    Duration::from_nanos((TIMED_SOUND_LEN * 1_000_000_000.0) as u64);
 
 #[cfg(target_os = "linux")]
 const BUTTON_TIMEOUT: Duration = Duration::from_millis(600);
@@ -662,6 +658,16 @@ impl ChannelVolumes {
     }
 }
 
+/// Whole number of complete loop cycles to play so a timed (auto) buzzer ends
+/// on a pattern boundary nearest the `target` length, never partway through a
+/// pattern. Always at least one cycle; guards against a non-positive period.
+fn whole_cycles_for(loop_period: f64, target: f64) -> u32 {
+    if loop_period <= 0.0 {
+        return 1;
+    }
+    ((target / loop_period).round() as i64).max(1) as u32
+}
+
 struct Sound {
     _merger: ChannelMergerNode,
     gain_l: GainNode,
@@ -714,20 +720,33 @@ impl Sound {
             .linear_ramp_to_value_at_time(volumes.right, fade_end);
 
         let end = if timed {
-            let sound_end = fade_end + SOUND_LEN;
-            let fade_out_end = sound_end + FADE_LEN;
+            // The buffer loops from playback start (t0 ≈ current_time()). Play a
+            // whole number of complete loop cycles so the buzzer ends on a
+            // pattern boundary, and place the fade-out in the final cycle so it
+            // completes exactly at that boundary — landing in the clip's trailing
+            // silence for clips that have one.
+            let loop_period = length as f64 / context.sample_rate() as f64;
+            let played = whole_cycles_for(loop_period, SOUND_LEN) as f64 * loop_period;
 
-            gain_l.gain().set_value_at_time(volumes.left, sound_end);
+            let t0 = fade_end - FADE_LEN;
+            let fade_out_end = t0 + played;
+            let fade_out_start = fade_out_end - FADE_LEN;
+
+            gain_l
+                .gain()
+                .set_value_at_time(volumes.left, fade_out_start);
             gain_l
                 .gain()
                 .linear_ramp_to_value_at_time(0.0, fade_out_end);
 
-            gain_r.gain().set_value_at_time(volumes.right, sound_end);
+            gain_r
+                .gain()
+                .set_value_at_time(volumes.right, fade_out_start);
             gain_r
                 .gain()
                 .linear_ramp_to_value_at_time(0.0, fade_out_end);
 
-            Some(start + TIMED_SOUND_DURATION)
+            Duration::try_from_secs_f64(played).ok().map(|d| start + d)
         } else if !repeat {
             let length_secs = length as f32 / context.sample_rate();
             Duration::try_from_secs_f32(length_secs)
@@ -932,5 +951,27 @@ mod tests {
         let start = Instant::now();
         await_handle_bounded(handle, Duration::from_secs(5)).await;
         assert!(start.elapsed() < Duration::from_secs(1));
+    }
+
+    #[test]
+    fn whole_cycles_rounds_to_nearest_whole_cycle() {
+        // Target ~2.15s snapped to each bundled clip's loop period. These are
+        // the counts that make the auto buzzer end on a complete pattern.
+        assert_eq!(whole_cycles_for(0.5, 2.15), 4); // Whoop / Buzz (0.500s)
+        assert_eq!(whole_cycles_for(29430.0 / 44100.0, 2.15), 3); // Crazy (0.667s)
+        assert_eq!(whole_cycles_for(0.75, 2.15), 3); // De-De-Du (0.750s)
+        assert_eq!(whole_cycles_for(0.8, 2.15), 3); // Two-Tone (0.800s)
+    }
+
+    #[test]
+    fn whole_cycles_is_at_least_one() {
+        // A clip longer than the target still plays one full cycle.
+        assert_eq!(whole_cycles_for(3.0, 2.15), 1);
+    }
+
+    #[test]
+    fn whole_cycles_guards_nonpositive_period() {
+        assert_eq!(whole_cycles_for(0.0, 2.15), 1);
+        assert_eq!(whole_cycles_for(-1.0, 2.15), 1);
     }
 }

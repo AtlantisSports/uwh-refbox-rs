@@ -1313,6 +1313,12 @@ impl RefBoxApp {
         self.edited_settings = Some(edited_settings);
 
         self.app_state = AppState::EditGameConfig(landing);
+        // Start change-watching for the landing page right away. Without this,
+        // entering the editor directly on a real page (e.g. the game-info
+        // shortcut into Game Options) leaves no page-entry snapshot, so
+        // page_has_changes always reports "no changes" and Apply never enables.
+        // No-op for Main/User landings (capture_snapshot_for early-returns).
+        self.capture_snapshot_for(landing);
         trace!("AppState changed to {:?}", self.app_state);
         task
     }

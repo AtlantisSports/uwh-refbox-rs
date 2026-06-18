@@ -7,7 +7,7 @@ use iced::{
 use uwh_common::{
     config::Game as GameConfig,
     game_snapshot::{GamePeriod, GameSnapshot},
-    uwhportal::schedule::{Schedule, TeamList},
+    uwhportal::schedule::{RefereeAssignment, Schedule, TeamList},
 };
 
 const TEAM_NAME_LEN_LIMIT: usize = 40;
@@ -199,7 +199,7 @@ pub(in super::super) fn game_info_rows(
     }
 
     if using_uwhportal {
-        rows.extend(referee_rows(current_game_num, schedule));
+        rows.extend(referee_rows(current_game_num, schedule, teams));
     }
 
     // Context block AFTER the current block, in-game only: the upcoming game (no score).
@@ -264,59 +264,114 @@ fn game_block_row(
     }
 }
 
-fn referee_rows(game_number: &GameNumber, schedule: Option<&Schedule>) -> Vec<Row> {
-    // Resolve assigned names by role; "-" for an assigned-but-unnamed or absent slot.
-    let mut chief = "-".to_string();
-    let mut keeper = "-".to_string();
-    let mut helper = "-".to_string();
-    let mut water = ["-".to_string(), "-".to_string(), "-".to_string()];
+fn referee_rows(
+    game_number: &GameNumber,
+    schedule: Option<&Schedule>,
+    teams: Option<&TeamList>,
+) -> Vec<Row> {
+    let assignments = schedule
+        .and_then(|s| s.games.get(game_number))
+        .and_then(|g| g.referee_assignments.as_deref())
+        .unwrap_or(&[]);
+    referee_layout_rows(assignments, teams)
+}
 
-    if let Some(game) = schedule.and_then(|s| s.games.get(game_number)) {
-        if let Some(refs) = &game.referee_assignments {
-            for r in refs {
-                if r.user_id.is_none() {
-                    continue;
+// Build the referee rows for a game. Two fixed layouts, all rows in the chosen
+// layout always shown ("-" for empty):
+//  * Team layout (a `Referees` role is present — only possible in the portal's Team
+//    assignment mode): Water Referees (from `Referees`) + Deck Referees (from team
+//    `TimeOrScoreKeeper`, with team `TimeOrScoreHelper` absorbed; keeper team wins
+//    if they differ).
+//  * Individual layout (otherwise): Chief / Time-Score Keeper / Helper / Water 1-3,
+//    each filled by a person's name or a per-slot team name.
+fn referee_layout_rows(assignments: &[RefereeAssignment], teams: Option<&TeamList>) -> Vec<Row> {
+    // Resolve one assignment to a display string: person name, else team name, else "-".
+    let resolve = |a: &RefereeAssignment| -> String {
+        if a.user_id.is_some() {
+            a.display_name.clone().unwrap_or_else(|| "-".to_string())
+        } else if let Some(tid) = &a.team_id {
+            teams
+                .and_then(|t| t.get(tid).cloned())
+                .unwrap_or_else(|| tid.full().to_string())
+        } else {
+            "-".to_string()
+        }
+    };
+
+    let team_layout = assignments.iter().any(|a| a.role == "Referees");
+
+    if team_layout {
+        let mut water = "-".to_string();
+        let mut deck = "-".to_string();
+        let mut deck_from_keeper = false;
+        for a in assignments {
+            match a.role.as_str() {
+                "Referees" => water = resolve(a),
+                "TimeOrScoreKeeper" => {
+                    deck = resolve(a);
+                    deck_from_keeper = true;
                 }
-                let name = r.display_name.clone().unwrap_or_else(|| "-".to_string());
-                match r.role.as_str() {
-                    "Chief" => chief = name,
-                    "TimeOrScoreKeeper" => keeper = name,
-                    "TimeOrScoreKeeperHelper" => helper = name,
-                    "Water1" => water[0] = name,
-                    "Water2" => water[1] = name,
-                    "Water3" => water[2] = name,
-                    _ => {}
+                "TimeOrScoreHelper" => {
+                    if !deck_from_keeper {
+                        deck = resolve(a);
+                    }
                 }
+                _ => {}
             }
         }
+        vec![
+            Row::Referee {
+                label: fl!("gi-ref-deck-referees"),
+                name: deck,
+            },
+            Row::Referee {
+                label: fl!("gi-ref-water-referees"),
+                name: water,
+            },
+        ]
+    } else {
+        let mut chief = "-".to_string();
+        let mut keeper = "-".to_string();
+        let mut helper = "-".to_string();
+        let mut water = ["-".to_string(), "-".to_string(), "-".to_string()];
+        for a in assignments {
+            match a.role.as_str() {
+                "Chief" => chief = resolve(a),
+                "TimeOrScoreKeeper" => keeper = resolve(a),
+                "TimeOrScoreHelper" => helper = resolve(a),
+                "Water1" => water[0] = resolve(a),
+                "Water2" => water[1] = resolve(a),
+                "Water3" => water[2] = resolve(a),
+                _ => {}
+            }
+        }
+        vec![
+            Row::Referee {
+                label: fl!("gi-ref-chief"),
+                name: chief,
+            },
+            Row::Referee {
+                label: fl!("gi-ref-timekeeper"),
+                name: keeper,
+            },
+            Row::Referee {
+                label: fl!("gi-ref-timekeeper-helper"),
+                name: helper,
+            },
+            Row::Referee {
+                label: fl!("gi-ref-water-1"),
+                name: water[0].clone(),
+            },
+            Row::Referee {
+                label: fl!("gi-ref-water-2"),
+                name: water[1].clone(),
+            },
+            Row::Referee {
+                label: fl!("gi-ref-water-3"),
+                name: water[2].clone(),
+            },
+        ]
     }
-
-    vec![
-        Row::Referee {
-            label: fl!("gi-ref-chief"),
-            name: chief,
-        },
-        Row::Referee {
-            label: fl!("gi-ref-timekeeper"),
-            name: keeper,
-        },
-        Row::Referee {
-            label: fl!("gi-ref-timekeeper-helper"),
-            name: helper,
-        },
-        Row::Referee {
-            label: fl!("gi-ref-water-1"),
-            name: water[0].clone(),
-        },
-        Row::Referee {
-            label: fl!("gi-ref-water-2"),
-            name: water[1].clone(),
-        },
-        Row::Referee {
-            label: fl!("gi-ref-water-3"),
-            name: water[2].clone(),
-        },
-    ]
 }
 
 // Returns (white_name, black_name, display_number). Names are Some only when the
@@ -596,7 +651,9 @@ fn cell(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
     use uwh_common::game_snapshot::GameSnapshot;
+    use uwh_common::uwhportal::schedule::TeamId;
 
     fn cfg_all_on() -> GameConfig {
         GameConfig {
@@ -844,6 +901,103 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    fn person(role: &str, name: &str) -> RefereeAssignment {
+        RefereeAssignment {
+            role: role.to_string(),
+            user_id: Some(format!("uid-{name}")),
+            team_id: None,
+            display_name: Some(name.to_string()),
+        }
+    }
+    fn team(role: &str, full_id: &str) -> RefereeAssignment {
+        RefereeAssignment {
+            role: role.to_string(),
+            user_id: None,
+            team_id: Some(TeamId::from_full(full_id).unwrap()),
+            display_name: None,
+        }
+    }
+    fn teamlist() -> TeamList {
+        BTreeMap::from([(
+            TeamId::from_full("teams/10753-A").unwrap(),
+            "Sharks".to_string(),
+        )])
+    }
+    fn ref_pairs(rows: &[Row]) -> Vec<(String, String)> {
+        rows.iter()
+            .filter_map(|r| match r {
+                Row::Referee { label, name } => Some((label.clone(), name.clone())),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn team_layout_shows_water_and_deck_referees() {
+        let tl = teamlist();
+        let rows = referee_layout_rows(
+            &[
+                team("Referees", "teams/10753-A"),
+                team("TimeOrScoreKeeper", "teams/10753-A"),
+            ],
+            Some(&tl),
+        );
+        assert_eq!(
+            ref_pairs(&rows),
+            vec![
+                (fl!("gi-ref-deck-referees"), "Sharks".to_string()),
+                (fl!("gi-ref-water-referees"), "Sharks".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn individual_layout_resolves_person_and_corrected_helper_role() {
+        let rows = referee_layout_rows(
+            &[person("Chief", "Alice"), person("TimeOrScoreHelper", "Bob")],
+            None,
+        );
+        let pairs = ref_pairs(&rows);
+        assert_eq!(pairs.len(), 6); // all individual rows always shown
+        assert!(pairs.contains(&(fl!("gi-ref-chief"), "Alice".to_string())));
+        // Corrected role string ("TimeOrScoreHelper") now resolves into the helper row.
+        assert!(pairs.contains(&(fl!("gi-ref-timekeeper-helper"), "Bob".to_string())));
+    }
+
+    #[test]
+    fn team_in_numbered_water_slot_is_per_slot() {
+        let tl = teamlist();
+        let rows = referee_layout_rows(&[team("Water2", "teams/10753-A")], Some(&tl));
+        let pairs = ref_pairs(&rows);
+        assert!(pairs.contains(&(fl!("gi-ref-water-2"), "Sharks".to_string())));
+        assert_eq!(pairs.len(), 6); // individual layout (no Referees role)
+    }
+
+    #[test]
+    fn deck_referees_absorbs_team_helper_keeper_wins() {
+        let mut tl = teamlist();
+        tl.insert(
+            TeamId::from_full("teams/999-B").unwrap(),
+            "Rays".to_string(),
+        );
+        let rows = referee_layout_rows(
+            &[
+                team("Referees", "teams/10753-A"),
+                team("TimeOrScoreKeeper", "teams/10753-A"),
+                team("TimeOrScoreHelper", "teams/999-B"),
+            ],
+            Some(&tl),
+        );
+        // Keeper team wins the single Deck Referees row; helper absorbed.
+        assert_eq!(
+            ref_pairs(&rows),
+            vec![
+                (fl!("gi-ref-deck-referees"), "Sharks".to_string()),
+                (fl!("gi-ref-water-referees"), "Sharks".to_string()),
+            ]
+        );
     }
 
     #[test]

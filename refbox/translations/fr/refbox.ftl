@@ -472,6 +472,8 @@ updates-error-not-writable = Impossible d’enregistrer la mise à jour (autoris
 
 # Game-info table labels
 gi-prior-game = Dernier Match
+gi-team-light = { -light-team-name }
+gi-team-dark = { -dark-team-name }
 gi-current-game = Match en cours
 gi-next-game = Prochain Match
 gi-game-block = Bloc de Jeu

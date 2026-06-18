@@ -481,6 +481,8 @@ updates-error-not-writable = No se pudo guardar la actualización (permiso deneg
 
 # Game-info table labels
 gi-prior-game = Último partido
+gi-team-light = { -light-team-name }
+gi-team-dark = { -dark-team-name }
 gi-current-game = Partido actual
 gi-next-game = Próximo Juego
 gi-game-block = Bloque de Juego

@@ -237,6 +237,8 @@ min-brk-btwn-games = Minimum Time Between Games: { $min_brk_time }
 
 # Game-info table labels
 gi-prior-game = Prior Game
+gi-team-light = { -light-team-name }
+gi-team-dark = { -dark-team-name }
 gi-current-game = Current Game
 gi-next-game = Next Game
 gi-game-block = Game Block

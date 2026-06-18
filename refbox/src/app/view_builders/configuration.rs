@@ -2559,6 +2559,83 @@ mod tests {
     }
 
     // ---------------------------------------------------------------------
+    // Invariant 5: a completed portal selection enables Apply (regression)
+    //
+    // Regression guard for the "Apply stays gray after switching USING
+    // UWHPORTAL to YES and completing the picks" report. The Game-page footer
+    // enables Apply only when `page_has_changes(...) && !uwhportal_incomplete()`.
+    // These lock that combined decision: a fully-completed portal selection
+    // (changed from a portal-off entry) enables Apply, while a still-incomplete
+    // one keeps it disabled. The async flow that *populates* those fields lives
+    // in App::update (not unit-testable without sockets); the existing
+    // uwhportal_incomplete_* tests already cover the "schedule not locked in"
+    // shape that produced the report.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn apply_enabled_after_completing_portal_selection() {
+        let event_id = EventId::from_partial("evt-A");
+
+        // Entry-time state: operator opened Game Options with the portal off.
+        let entry = EditableSettings::default();
+        let snapshot = PageEntrySnapshot::Game {
+            config: entry.config.clone(),
+            game_number: entry.game_number.clone(),
+            using_uwhportal: entry.using_uwhportal,
+            current_event_id: entry.current_event_id.clone(),
+            current_court: entry.current_court.clone(),
+            schedule: entry.schedule.clone(),
+        };
+
+        // Operator switched the portal on and completed every pick.
+        let edited = EditableSettings {
+            using_uwhportal: true,
+            current_event_id: Some(event_id.clone()),
+            current_court: Some("CourtA".to_string()),
+            schedule: Some(make_schedule_with_one_game(event_id, "1", "CourtA")),
+            game_number: "1".to_string(),
+            ..Default::default()
+        };
+
+        let apply_enabled = page_has_changes(ConfigPage::Game, &edited, Some(&snapshot))
+            && !edited.uwhportal_incomplete();
+        assert!(
+            apply_enabled,
+            "a completed portal selection (changed from portal-off entry) must enable Apply"
+        );
+    }
+
+    #[test]
+    fn apply_disabled_when_portal_selection_incomplete() {
+        // Same portal-off entry snapshot.
+        let entry = EditableSettings::default();
+        let snapshot = PageEntrySnapshot::Game {
+            config: entry.config.clone(),
+            game_number: entry.game_number.clone(),
+            using_uwhportal: entry.using_uwhportal,
+            current_event_id: entry.current_event_id.clone(),
+            current_court: entry.current_court.clone(),
+            schedule: entry.schedule.clone(),
+        };
+
+        // Operator switched the portal on but has not picked event/court/game.
+        let edited = EditableSettings {
+            using_uwhportal: true,
+            ..Default::default()
+        };
+
+        // Toggling the portal on is itself a change...
+        assert!(page_has_changes(ConfigPage::Game, &edited, Some(&snapshot)));
+        let apply_enabled = page_has_changes(ConfigPage::Game, &edited, Some(&snapshot))
+            && !edited.uwhportal_incomplete();
+        // ...but the incomplete selection keeps Apply disabled.
+        assert!(
+            !apply_enabled,
+            "an incomplete portal selection must keep Apply disabled"
+        );
+    }
+
+    // ---------------------------------------------------------------------
     // Invariant 4: picker-driven field clearing on event/court change
     // (B3.15, B3.16)
     //

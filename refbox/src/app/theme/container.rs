@@ -132,8 +132,9 @@ pub fn blue_pressed_container(theme: &Theme) -> Style {
 // backing padding) lets the backing show through as thin gridlines, giving a
 // spreadsheet-style grid without per-cell borders.
 
-/// Dark backing behind the whole game-info table; revealed through the 1px
-/// gaps between cells as gridlines.
+/// Outer frame of the game-info table: a dark backing shown through 1px of
+/// padding around the cells, so the outer edge reads as the same 2px line as the
+/// inner gridlines (which are two abutting 1px cell borders).
 pub fn table_grid_container(_theme: &Theme) -> Style {
     Style {
         background: Some(Background::Color(black())),
@@ -147,13 +148,16 @@ pub fn table_grid_container(_theme: &Theme) -> Style {
     }
 }
 
-/// A single square table cell with the given fill and text colour.
+/// A single square table cell with the given fill and text colour. The 1px black
+/// border draws the gridlines: because borders don't consume layout space (unlike
+/// inter-cell gaps), every row divides its full width by the same proportions, so
+/// columns line up across rows regardless of how many cells a row has.
 fn table_cell(fill: Color, text: Color) -> Style {
     Style {
         background: Some(Background::Color(fill)),
         text_color: Some(text),
         border: Border {
-            width: 0.0,
+            width: 1.0,
             color: black(),
             radius: BORDER_RADIUS_ZERO,
         },

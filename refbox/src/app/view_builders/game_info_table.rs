@@ -334,21 +334,29 @@ fn resolve_game(
                 limit_team_name_len(&get_team_name(&game.light, teams), TEAM_NAME_LEN_LIMIT);
             return (Some(white), Some(black), game.number.to_string());
         }
+        // Portal on but this game isn't in the schedule: leave the names empty.
+        return (None, None, game_number.to_string());
     }
-    (None, None, game_number.to_string())
+    // Not using the Portal: there are no scheduled team names, so label the rows
+    // with the team colours ("White"/"Black") instead of leaving them blank.
+    (
+        Some(fl!("gi-team-light")),
+        Some(fl!("gi-team-dark")),
+        game_number.to_string(),
+    )
 }
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
-// The table is a column of grid rows on a dark backing. Every row uses the same
-// four columns — label (LABEL_FP) | value (VALUE_FP) | label/name (LABEL_FP) |
-// value/score (VALUE_FP) — so settings values, team names, and scores all line up.
-// The 1px gaps between cells reveal the dark backing (theme::table_grid_container)
-// as gridlines, giving a spreadsheet-style grid.
+// The table is a column of grid rows. Every row uses the same four columns —
+// label (LABEL_FP) | value (VALUE_FP) | label/name (LABEL_FP) | value/score
+// (VALUE_FP) — so settings values, team names, and scores all line up. Gridlines
+// are the cells' own 1px borders (see theme::table_cell) rather than inter-cell
+// gaps: borders don't consume layout space, so every row divides its full width by
+// the same proportions and the columns align across rows no matter the cell count.
 
 const LABEL_FP: u16 = 7; // label / team-name columns (1 and 3)
 const VALUE_FP: u16 = 3; // value / score columns (2 and 4); ~25% narrower than labels
 const HALF_FP: u16 = LABEL_FP + VALUE_FP; // one right-half (a team row's column span)
-const GRID: f32 = 1.0; // gridline thickness (gap between cells)
 const CELL_PAD: f32 = PADDING / 2.0; // padding inside each cell
 // Smaller than SMALL_TEXT so long labels (e.g. "Overtime Half-Time Length") fit on
 // one line within their cell instead of wrapping.
@@ -360,7 +368,7 @@ const ROW_H: f32 = 22.0;
 type CellStyle = fn(&iced::Theme) -> iced::widget::container::Style;
 
 pub(in super::super) fn render_game_info_table(rows: Vec<Row>) -> Element<'static, Message> {
-    let mut table = column![].spacing(GRID).width(Length::Fill);
+    let mut table = column![].width(Length::Fill);
     for r in rows {
         match r {
             // Last game: "Last Game" + number as tall cells spanning both team
@@ -373,11 +381,15 @@ pub(in super::super) fn render_game_info_table(rows: Vec<Row>) -> Element<'stati
                 ..
             } => {
                 let right = column![team_row(white, false), team_row(black, true)]
-                    .spacing(GRID)
                     .width(Length::FillPortion(HALF_FP));
                 table = table.push(grid_row(vec![
-                    tall_cell(fl!("gi-prior-game"), LABEL_FP, table_label_cell),
-                    tall_cell(number, VALUE_FP, table_value_cell),
+                    tall_cell(
+                        fl!("gi-prior-game"),
+                        LABEL_FP,
+                        table_label_cell,
+                        Horizontal::Left,
+                    ),
+                    tall_cell(number, VALUE_FP, table_value_cell, Horizontal::Center),
                     right.into(),
                 ]));
             }
@@ -428,10 +440,12 @@ pub(in super::super) fn render_game_info_table(rows: Vec<Row>) -> Element<'stati
                 ]));
             }
             Row::Referee { label, name } => {
-                // Label in column 1; the name spans columns 2–4.
+                // Label in column 1; the name (left-aligned like a name, not a
+                // value) spans columns 2–4. Uses a label-style cell so it stays
+                // left while value/score cells centre.
                 table = table.push(grid_row(vec![
                     label_cell(label, LABEL_FP),
-                    value_cell(name, VALUE_FP + HALF_FP),
+                    label_cell(name, VALUE_FP + HALF_FP),
                 ]));
             }
         }
@@ -439,17 +453,18 @@ pub(in super::super) fn render_game_info_table(rows: Vec<Row>) -> Element<'stati
 
     container(table)
         .style(table_grid_container)
-        .padding(GRID)
+        // 1px of dark backing around the cells; with each edge cell's own 1px
+        // border this makes the outer frame the same 2px weight as inner gridlines.
+        .padding(1.0)
         .width(Length::Fill)
         .into()
 }
 
 // ── Cell helpers ──────────────────────────────────────────────────────────────
 
-/// A horizontal grid row whose cells are separated by 1px gridline gaps.
+/// A horizontal grid row; cells abut and their 1px borders form the gridlines.
 fn grid_row(cells: Vec<Element<'static, Message>>) -> Element<'static, Message> {
     iced::widget::Row::with_children(cells)
-        .spacing(GRID)
         .width(Length::Fill)
         .into()
 }
@@ -473,13 +488,13 @@ fn label_cell(content: impl Into<String>, fp: u16) -> Element<'static, Message> 
     )
 }
 
-/// A value cell (lighter-grey fill), left-aligned.
+/// A value cell (lighter-grey fill), centre-aligned.
 fn value_cell(content: impl Into<String>, fp: u16) -> Element<'static, Message> {
     cell(
         content.into(),
         fp,
         table_value_cell,
-        Horizontal::Left,
+        Horizontal::Center,
         false,
     )
 }
@@ -495,13 +510,13 @@ fn name_cell(name: Option<String>, dark: bool, fp: u16) -> Element<'static, Mess
     )
 }
 
-/// A score cell (white or black fill), right-aligned.
+/// A score cell (white or black fill), centre-aligned.
 fn score_cell(score: Option<u8>, dark: bool, fp: u16) -> Element<'static, Message> {
     cell(
         score.map(|s| s.to_string()).unwrap_or_default(),
         fp,
         team_style(dark),
-        Horizontal::Right,
+        Horizontal::Center,
         false,
     )
 }
@@ -523,13 +538,19 @@ fn setting_value(content: String, grayed: bool) -> Element<'static, Message> {
     } else {
         table_value_cell
     };
-    cell(content, VALUE_FP, style, Horizontal::Left, false)
+    cell(content, VALUE_FP, style, Horizontal::Center, false)
 }
 
 /// A cell that spans two rows (vertically centred) — used for the merged
-/// Last-game label/number beside its two team rows.
-fn tall_cell(content: impl Into<String>, fp: u16, style: CellStyle) -> Element<'static, Message> {
-    cell(content.into(), fp, style, Horizontal::Left, true)
+/// Last-game label/number beside its two team rows. `align_x` lets the label
+/// stay left while the number column centres like other value cells.
+fn tall_cell(
+    content: impl Into<String>,
+    fp: u16,
+    style: CellStyle,
+    align_x: Horizontal,
+) -> Element<'static, Message> {
+    cell(content.into(), fp, style, align_x, true)
 }
 
 fn team_style(dark: bool) -> CellStyle {
@@ -541,7 +562,8 @@ fn team_style(dark: bool) -> CellStyle {
 }
 
 /// Builds one filled, square table cell of uniform height `ROW_H`. `span2` makes
-/// it two rows tall (plus the gridline between them) for the merged Last-game cells.
+/// it two rows tall for the merged Last-game cells (the two stacked team rows abut,
+/// so the span is exactly twice the row height).
 fn cell(
     content: String,
     fp: u16,
@@ -550,24 +572,25 @@ fn cell(
     span2: bool,
 ) -> Element<'static, Message> {
     let height = if span2 {
-        Length::Fixed(2.0 * ROW_H + GRID)
+        Length::Fixed(2.0 * ROW_H)
     } else {
         Length::Fixed(ROW_H)
     };
-    container(
-        text(content)
-            .size(TABLE_TEXT)
-            .width(Length::Fill)
-            .align_x(align_x),
-    )
-    // Horizontal inset only; the fixed row height + vertical centring provide the
-    // (now tighter) vertical spacing, so rows stay short.
-    .padding([0.0, CELL_PAD])
-    .width(Length::FillPortion(fp))
-    .height(height)
-    .align_y(Vertical::Center)
-    .style(style)
-    .into()
+    // Align the text via the CONTAINER, not via a Fill-width `text` with its own
+    // `align_x`. Anchoring alignment on the text triggers an iced 0.13
+    // paragraph-cache/stale-anchor bug: two identically-shaped short texts (e.g. a
+    // white "0" and a black "0") collide and one renders blank. Letting the parent
+    // container position the text avoids it. See the same fix in main_view.rs.
+    container(text(content).size(TABLE_TEXT))
+        // Horizontal inset only; the fixed row height + vertical centring provide the
+        // (now tighter) vertical spacing, so rows stay short.
+        .padding([0.0, CELL_PAD])
+        .width(Length::FillPortion(fp))
+        .height(height)
+        .align_x(align_x)
+        .align_y(Vertical::Center)
+        .style(style)
+        .into()
 }
 
 #[cfg(test)]

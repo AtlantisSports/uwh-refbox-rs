@@ -470,6 +470,8 @@ updates-error-not-writable = Kemas kini tidak dapat disimpan (kebenaran ditolak)
 
 # Game-info table labels
 gi-prior-game = Perlawanan Lepas
+gi-team-light = { -light-team-name }
+gi-team-dark = { -dark-team-name }
 gi-current-game = Perlawanan Semasa
 gi-next-game = Perlawanan Seterusnya
 gi-game-block = Blok Permainan

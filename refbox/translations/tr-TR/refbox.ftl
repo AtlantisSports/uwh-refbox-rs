@@ -470,6 +470,8 @@ updates-error-not-writable = Güncelleme kaydedilemedi (izin reddedildi).
 
 # Game-info table labels
 gi-prior-game = Önceki Oyun
+gi-team-light = { -light-team-name }
+gi-team-dark = { -dark-team-name }
 gi-current-game = Mevcut Oyun
 gi-next-game = Sonraki Oyun
 gi-game-block = Oyun Bloğu

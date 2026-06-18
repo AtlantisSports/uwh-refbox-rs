@@ -470,6 +470,8 @@ updates-error-not-writable = Das Update konnte nicht gespeichert werden (Zugriff
 
 # Game-info table labels
 gi-prior-game = Letztes Spiel
+gi-team-light = { -light-team-name }
+gi-team-dark = { -dark-team-name }
 gi-current-game = Aktuelles Spiel
 gi-next-game = Nächstes Spiel
 gi-game-block = Spielblock

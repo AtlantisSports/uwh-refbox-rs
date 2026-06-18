@@ -470,6 +470,8 @@ updates-error-not-writable = Impossibile salvare l’aggiornamento (permesso neg
 
 # Game-info table labels
 gi-prior-game = Ultima Partita
+gi-team-light = { -light-team-name }
+gi-team-dark = { -dark-team-name }
 gi-current-game = Partita in corso
 gi-next-game = Prossima Partita
 gi-game-block = Blocco di Gioco

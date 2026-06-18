@@ -469,6 +469,8 @@ updates-error-not-writable = 无法保存更新（权限被拒绝）。
 
 # Game-info table labels
 gi-prior-game = 上场
+gi-team-light = { -light-team-name }
+gi-team-dark = { -dark-team-name }
 gi-current-game = 当前比赛
 gi-next-game = 下场
 gi-game-block = 比赛块

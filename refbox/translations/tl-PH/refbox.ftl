@@ -470,6 +470,8 @@ updates-error-not-writable = Hindi ma-save ang update (tinanggihan ang pahintulo
 
 # Game-info table labels
 gi-prior-game = Huling Laro
+gi-team-light = { -light-team-name }
+gi-team-dark = { -dark-team-name }
 gi-current-game = Kasalukuyang Laro
 gi-next-game = Susunod na Laro
 gi-game-block = Bloke ng Laro

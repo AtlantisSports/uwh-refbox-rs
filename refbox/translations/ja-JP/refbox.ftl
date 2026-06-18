@@ -470,6 +470,8 @@ updates-error-not-writable = 更新を保存できませんでした（アクセ
 
 # Game-info table labels
 gi-prior-game = 前の試合
+gi-team-light = { -light-team-name }
+gi-team-dark = { -dark-team-name }
 gi-current-game = 現在の試合
 gi-next-game = 次の試合
 gi-game-block = ゲームブロック

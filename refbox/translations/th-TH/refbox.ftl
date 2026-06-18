@@ -469,6 +469,8 @@ updates-error-not-writable = ไม่สามารถบันทึกกา
 
 # Game-info table labels
 gi-prior-game = เกมที่แล้ว
+gi-team-light = { -light-team-name }
+gi-team-dark = { -dark-team-name }
 gi-current-game = เกมปัจจุบัน
 gi-next-game = เกมถัดไป
 gi-game-block = บล็อกเกม

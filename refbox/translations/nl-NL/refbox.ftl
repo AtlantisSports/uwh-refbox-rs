@@ -470,6 +470,8 @@ updates-error-not-writable = De update kon niet worden opgeslagen (toegang gewei
 
 # Game-info table labels
 gi-prior-game = Vorige Wedstrijd
+gi-team-light = { -light-team-name }
+gi-team-dark = { -dark-team-name }
 gi-current-game = Huidige Wedstrijd
 gi-next-game = Volgende Wedstrijd
 gi-game-block = Spelblok

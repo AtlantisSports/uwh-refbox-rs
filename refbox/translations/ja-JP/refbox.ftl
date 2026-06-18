@@ -494,4 +494,6 @@ gi-ref-timekeeper-helper = タイムキーパー補佐
 gi-ref-water-1 = 水中審判1
 gi-ref-water-2 = 水中審判2
 gi-ref-water-3 = 水中審判3
+gi-ref-water-referees = 水中審判
+gi-ref-deck-referees = デッキ審判
 gi-unknown = ???

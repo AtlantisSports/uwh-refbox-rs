@@ -505,4 +505,6 @@ gi-ref-timekeeper-helper = Asistente de marcador
 gi-ref-water-1 = Árbitro de agua 1
 gi-ref-water-2 = Árbitro de agua 2
 gi-ref-water-3 = Árbitro de agua 3
+gi-ref-water-referees = Árbitros de agua
+gi-ref-deck-referees = Árbitros de borde
 gi-unknown = ???

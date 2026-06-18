@@ -494,4 +494,6 @@ gi-ref-timekeeper-helper = Pembantu Pencatat Masa
 gi-ref-water-1 = Pengadil Air 1
 gi-ref-water-2 = Pengadil Air 2
 gi-ref-water-3 = Pengadil Air 3
+gi-ref-water-referees = Pengadil Air
+gi-ref-deck-referees = Pengadil Tepi Kolam
 gi-unknown = ???

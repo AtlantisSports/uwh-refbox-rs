@@ -94,6 +94,22 @@ impl EditableSettings {
         self.current_court = Some(court);
         self.game_number = String::new();
     }
+
+    /// Whether a freshly-arrived schedule should auto-select its court for the
+    /// current edit session. True only when the schedule is for the event the
+    /// operator currently has selected, that event has exactly one court, and no
+    /// court is chosen yet. The event-id check stops a late schedule from a
+    /// previously-selected event from filling the court for a different event
+    /// (it mirrors the event-id guard on the schedule-store in RecvSchedule).
+    pub(in super::super) fn should_adopt_auto_court(
+        &self,
+        schedule_event_id: &EventId,
+        court_count: usize,
+    ) -> bool {
+        court_count == 1
+            && self.current_court.is_none()
+            && self.current_event_id.as_ref() == Some(schedule_event_id)
+    }
 }
 
 pub(in super::super) trait Cyclable
@@ -652,9 +668,14 @@ fn make_event_config_page<'a>(
             String::new()
         };
 
+        // The court picker is tappable only when the event has more than one
+        // court. A single-court event auto-selects that court (see RecvSchedule
+        // and ParameterSelected::Event), so there is nothing to choose: the tile
+        // is greyed (no on_press) while still showing the court via pool_label.
         let pool_btn_msg = events
             .as_ref()
             .and_then(|tourns| tourns.get(current_event_id.as_ref()?)?.courts.as_ref())
+            .filter(|courts| courts.len() > 1)
             .map(|_| Message::SelectParameter(ListableParameter::Court));
 
         let auth_container = |auth| {
@@ -2686,6 +2707,60 @@ mod tests {
         // Event id and schedule are NOT touched by a court change.
         assert!(edited.current_event_id.is_some());
         assert!(edited.schedule.is_some());
+    }
+
+    // ---------------------------------------------------------------------
+    // Invariant 6: schedule-arrival auto-court adoption guard
+    //
+    // should_adopt_auto_court decides whether an arriving schedule auto-fills
+    // the court. It must fire only for the event currently selected, when that
+    // event has exactly one court and none is chosen yet — so a late schedule
+    // from a previously-selected event cannot fill the court for a different one.
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn auto_court_adopted_for_single_court_matching_event() {
+        let event_id = EventId::from_partial("evt-A");
+        let edited = EditableSettings {
+            current_event_id: Some(event_id.clone()),
+            current_court: None,
+            ..Default::default()
+        };
+        assert!(edited.should_adopt_auto_court(&event_id, 1));
+    }
+
+    #[test]
+    fn auto_court_rejected_for_mismatched_event() {
+        // Schedule for evt-A arrives late, but the operator is now on evt-B with
+        // no court chosen. The court must NOT be auto-filled from the stale event.
+        let edited = EditableSettings {
+            current_event_id: Some(EventId::from_partial("evt-B")),
+            current_court: None,
+            ..Default::default()
+        };
+        assert!(!edited.should_adopt_auto_court(&EventId::from_partial("evt-A"), 1));
+    }
+
+    #[test]
+    fn auto_court_rejected_when_multiple_courts() {
+        let event_id = EventId::from_partial("evt-A");
+        let edited = EditableSettings {
+            current_event_id: Some(event_id.clone()),
+            current_court: None,
+            ..Default::default()
+        };
+        assert!(!edited.should_adopt_auto_court(&event_id, 2));
+    }
+
+    #[test]
+    fn auto_court_rejected_when_court_already_set() {
+        let event_id = EventId::from_partial("evt-A");
+        let edited = EditableSettings {
+            current_event_id: Some(event_id.clone()),
+            current_court: Some("CourtA".to_string()),
+            ..Default::default()
+        };
+        assert!(!edited.should_adopt_auto_court(&event_id, 1));
     }
 
     // ---------------------------------------------------------------------

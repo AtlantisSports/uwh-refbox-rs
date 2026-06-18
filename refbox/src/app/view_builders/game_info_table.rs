@@ -311,10 +311,8 @@ fn referee_layout_rows(assignments: &[RefereeAssignment], teams: Option<&TeamLis
                     deck = resolve(a);
                     deck_from_keeper = true;
                 }
-                "TimeOrScoreHelper" => {
-                    if !deck_from_keeper {
-                        deck = resolve(a);
-                    }
+                "TimeOrScoreHelper" if !deck_from_keeper => {
+                    deck = resolve(a);
                 }
                 _ => {}
             }

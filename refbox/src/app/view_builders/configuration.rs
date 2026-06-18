@@ -1783,7 +1783,7 @@ fn make_language_select_page<'a>(
         style: iced_core::font::Style::Normal,
     };
 
-    // Font to apply to Cancel/Done/Restart text so they render in the target language's script
+    // Font to apply to Cancel/Apply/Restart text so they render in the target language's script
     // regardless of the app's current default font. Without an explicit Latin arm, Turkish text
     // like "İPTAL" or "BAŞLAT" renders as tofu when the app is currently in a CJK/Thai locale.
     let selected_font: Option<iced_core::Font> = match selected {
@@ -1982,7 +1982,7 @@ fn make_language_select_page<'a>(
                     .on_press_maybe(confirm_msg)
                     .into()
             } else {
-                button(make_label(selected.done_text(), selected_font))
+                button(make_label(selected.apply_text(), selected_font))
                     .padding(PADDING)
                     .height(Length::Fixed(MIN_BUTTON_SIZE))
                     .style(green_button)

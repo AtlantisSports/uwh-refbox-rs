@@ -704,8 +704,8 @@ pub(in super::super) fn build_beep_test_language_picker<'a>(
             .into()
     };
 
-    // Cancel / Done(Restart) footer. The labels use the selected language's
-    // own translation of CANCEL / DONE / RESTART (so a user mid-switch can
+    // Cancel / Apply(Restart) footer. The labels use the selected language's
+    // own translation of CANCEL / APPLY / RESTART (so a user mid-switch can
     // read them) and the appropriate font for the selected script.
     let make_label = |content: &'static str, font: Option<iced_core::Font>| {
         let t = text(content)
@@ -733,7 +733,7 @@ pub(in super::super) fn build_beep_test_language_picker<'a>(
             .on_press_maybe(confirm_msg)
             .into()
     } else {
-        button(make_label(selected.done_text(), selected_font))
+        button(make_label(selected.apply_text(), selected_font))
             .padding(PADDING)
             .height(Length::Fixed(MIN_BUTTON_SIZE))
             .style(green_button)

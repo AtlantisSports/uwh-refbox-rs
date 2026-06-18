@@ -98,23 +98,23 @@ impl Language {
         }
     }
 
-    pub fn done_text(self) -> &'static str {
+    pub fn apply_text(self) -> &'static str {
         match self {
-            Self::English => "DONE",
-            Self::French => "TERMINÉ",
-            Self::Spanish => "HECHO",
-            Self::Mandarin => "完成",
-            Self::Korean => "완료",
-            Self::Italian => "FATTO",
-            Self::German => "FERTIG",
-            Self::Tagalog => "TAPOS",
-            Self::Indonesian => "SELESAI",
-            Self::Dutch => "KLAAR",
-            Self::Japanese => "完了",
-            Self::Malay => "SELESAI",
-            Self::Portuguese => "CONCLUÍDO",
-            Self::Thai => "เสร็จสิ้น",
-            Self::Turkish => "TAMAM",
+            Self::English => "APPLY",
+            Self::French => "APPLIQUER",
+            Self::Spanish => "APLICAR",
+            Self::Mandarin => "应用",
+            Self::Korean => "적용",
+            Self::Italian => "APPLICA",
+            Self::German => "ANWENDEN",
+            Self::Tagalog => "ILAPAT",
+            Self::Indonesian => "TERAPKAN",
+            Self::Dutch => "TOEPASSEN",
+            Self::Japanese => "適用",
+            Self::Malay => "GUNA",
+            Self::Portuguese => "APLICAR",
+            Self::Thai => "ใช้",
+            Self::Turkish => "UYGULA",
         }
     }
 

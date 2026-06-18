@@ -154,12 +154,6 @@ pub(in super::super) fn build_main_view<'a>(
         .unwrap();
 
     if manual_alarm_enabled {
-        center_col = center_col.push(
-            make_button(fl!("game-info"))
-                .style(light_gray_button)
-                .on_press(Message::ShowGameDetails),
-        );
-
         // Red + tap prompt during active play with no timeout; blue + hold prompt everywhere else.
         // The button is always interactive while the feature is enabled.
         let is_active_play = matches!(
@@ -215,7 +209,14 @@ pub(in super::super) fn build_main_view<'a>(
             .into();
 
         if track_fouls_and_warnings {
-            // Split the lower area: alarm left, warnings right
+            // Game Info stays a fixed-height label bar on top; the lower area is
+            // split between the alarm (left) and the warnings panel (right).
+            center_col = center_col.push(
+                make_button(fl!("game-info"))
+                    .style(light_gray_button)
+                    .on_press(Message::ShowGameDetails),
+            );
+
             let warnings_zone = button(
                 column![
                     text(fl!("warnings"))
@@ -250,6 +251,29 @@ pub(in super::super) fn build_main_view<'a>(
                     .height(Length::Fill),
             );
         } else {
+            // No warnings to show: the game-info table and the alarm button each
+            // fill ~half the space below the clock (roughly equal height). The table
+            // reuses the same helpers as the alarm-disabled branch below.
+            center_col = center_col.push(
+                button(
+                    container(render_game_info_table(game_info_rows(
+                        snapshot,
+                        game_config,
+                        using_uwhportal,
+                        schedule,
+                        teams,
+                        last_game_scores,
+                    )))
+                    .align_y(Vertical::Top)
+                    .height(Length::Fill)
+                    .width(Length::Fill),
+                )
+                .padding(PADDING)
+                .style(light_gray_button)
+                .height(Length::Fill)
+                .width(Length::Fill)
+                .on_press(Message::ShowGameDetails),
+            );
             center_col = center_col.push(alarm_face);
         }
     } else {

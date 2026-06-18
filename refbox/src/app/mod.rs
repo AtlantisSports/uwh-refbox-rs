@@ -3608,11 +3608,9 @@ impl RefBoxApp {
                 }
                 let courts: Vec<_> = courts.into_iter().collect();
 
-                if courts.len() == 1 {
-                    if let Some(ref mut edits) = self.edited_settings {
-                        if edits.current_court.is_none() {
-                            edits.current_court = Some(courts[0].clone());
-                        }
+                if let Some(ref mut edits) = self.edited_settings {
+                    if edits.should_adopt_auto_court(&event_id, courts.len()) {
+                        edits.current_court = Some(courts[0].clone());
                     }
                 }
 

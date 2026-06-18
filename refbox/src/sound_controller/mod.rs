@@ -698,7 +698,7 @@ impl Sound {
         gain_r.connect_from_output_to_input(&_merger, 0, 1);
         gain_r.gain().set_value(volumes.right);
 
-        let length = buffer.length();
+        let buffer_secs = buffer.duration();
         let mut source = context.create_buffer_source();
         source.set_buffer(buffer);
         source.connect(&gain_l);
@@ -725,7 +725,12 @@ impl Sound {
             // pattern boundary, and place the fade-out in the final cycle so it
             // completes exactly at that boundary — landing in the clip's trailing
             // silence for clips that have one.
-            let loop_period = length as f64 / context.sample_rate() as f64;
+            // Use the clip's OWN duration. The clip is 44.1 kHz, but the audio
+            // context can run at another rate (commonly 48 kHz); the clip is
+            // resampled on playback yet its real-time loop length stays
+            // `buffer.duration()`. Deriving the period from `context.sample_rate()`
+            // miscounts the cycles and lands the fade-out mid-pattern.
+            let loop_period = buffer_secs;
             let played = whole_cycles_for(loop_period, SOUND_LEN) as f64 * loop_period;
 
             let t0 = fade_end - FADE_LEN;
@@ -748,8 +753,9 @@ impl Sound {
 
             Duration::try_from_secs_f64(played).ok().map(|d| start + d)
         } else if !repeat {
-            let length_secs = length as f32 / context.sample_rate();
-            Duration::try_from_secs_f32(length_secs)
+            // Same fix as above: a one-shot sound (the whistle) plays for its
+            // own duration, independent of the context's sample rate.
+            Duration::try_from_secs_f64(buffer_secs)
                 .ok()
                 .map(|d| start + d)
         } else {
@@ -973,5 +979,72 @@ mod tests {
     fn whole_cycles_guards_nonpositive_period() {
         assert_eq!(whole_cycles_for(0.0, 2.15), 1);
         assert_eq!(whole_cycles_for(-1.0, 2.15), 1);
+    }
+
+    /// The timed buzzer must fade out in the clip's trailing silence even when
+    /// the audio context runs at a different sample rate than the 44.1 kHz
+    /// clips (48 kHz is common on Windows/macOS). The loop length must come
+    /// from the clip's own duration, not `context.sample_rate()`. Renders a
+    /// synthetic "loud then silent" clip at 48 kHz and proves the fade lands in
+    /// silence with the correct period, and in the loud region with the buggy
+    /// `length / context_rate` period (so this test has teeth).
+    #[test]
+    fn timed_buzzer_fade_lands_in_clip_silence_at_48k_context() {
+        use web_audio_api::context::OfflineAudioContext;
+
+        let dev_sr = 48_000.0_f32; // context rate differs from the clip rate
+        let clip_sr = 44_100.0_f32;
+        let clip_len = 22_050_usize; // 0.5 s clip: loud 0..0.4 s, silent 0.4..0.5 s
+
+        let render_tail_peak = |loop_period: f64| -> f32 {
+            let render_secs = 2.7;
+            let mut ctx =
+                OfflineAudioContext::new(1, (dev_sr as f64 * render_secs) as usize, dev_sr);
+
+            let mut buffer = ctx.create_buffer(1, clip_len, clip_sr);
+            let data: Vec<f32> = (0..clip_len)
+                .map(|i| if (i as f32 / clip_sr) < 0.4 { 1.0 } else { 0.0 })
+                .collect();
+            buffer.copy_to_channel(&data, 0);
+            assert!((buffer.duration() - 0.5).abs() < 1e-9);
+
+            let gain = ctx.create_gain();
+            gain.connect(&ctx.destination());
+            let mut source = ctx.create_buffer_source();
+            source.set_buffer(buffer);
+            source.set_loop(true);
+            source.connect(&gain);
+
+            let played = whole_cycles_for(loop_period, SOUND_LEN) as f64 * loop_period;
+            let fade_out_end = played;
+            let fade_out_start = fade_out_end - FADE_LEN;
+            gain.gain().set_value(0.0);
+            gain.gain().linear_ramp_to_value_at_time(1.0, FADE_LEN);
+            gain.gain().set_value_at_time(1.0, fade_out_start);
+            gain.gain().linear_ramp_to_value_at_time(0.0, fade_out_end);
+            source.start();
+
+            let rendered = ctx.start_rendering_sync();
+            let ch = rendered.get_channel_data(0);
+            // Peak over the last 40 ms before the buzzer ends.
+            let s = ((fade_out_end - 0.04) * dev_sr as f64) as usize;
+            let e = ((fade_out_end * dev_sr as f64) as usize).min(ch.len());
+            ch[s..e].iter().fold(0.0f32, |m, &x| m.max(x.abs()))
+        };
+
+        // FIXED: period = clip's own duration (0.5 s) -> ends in silence.
+        let fixed_peak = render_tail_peak(0.5);
+        assert!(
+            fixed_peak < 1e-3,
+            "fix: tail should be silent, peak={fixed_peak}"
+        );
+
+        // BUGGY: period = length / context_rate (22050/48000 = 0.459 s) ->
+        // fade lands in the loud region. Documents the regression.
+        let buggy_peak = render_tail_peak(clip_len as f64 / dev_sr as f64);
+        assert!(
+            buggy_peak > 0.5,
+            "buggy period should land in the loud region, peak={buggy_peak}"
+        );
     }
 }

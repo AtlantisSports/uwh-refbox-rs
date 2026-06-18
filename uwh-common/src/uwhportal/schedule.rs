@@ -211,6 +211,10 @@ pub struct RefereeAssignment {
     pub role: String,
     #[serde(rename = "userId")]
     pub user_id: Option<String>,
+    /// Team id when the official is assigned by team (then `user_id` is `None`).
+    /// Full RavenDB id form, e.g. `"teams/10753-A"`. Omitted from output when `None`.
+    #[serde(rename = "teamId", skip_serializing_if = "Option::is_none")]
+    pub team_id: Option<TeamId>,
     /// Human-readable display name, resolved from the portal after fetching.
     /// Not present in the portal JSON; populated locally via name-map lookup.
     #[serde(skip)]
@@ -1426,31 +1430,59 @@ mod tests {
         let ra = RefereeAssignment {
             role: "Chief".to_string(),
             user_id: Some("u123".to_string()),
+            team_id: None,
             display_name: Some("Alice".to_string()),
         };
         let serialized = serde_json::to_value(&ra).unwrap();
-        // display_name has #[serde(skip)] — must NOT appear in JSON
+        // display_name has #[serde(skip)] — must NOT appear in JSON;
+        // team_id is None and skip_serializing_if-omitted, so it must NOT appear either.
         assert_eq!(serialized, json!({"role": "Chief", "userId": "u123"}));
     }
 
     #[test]
     fn test_deserialize_referee_assignment_ignores_unknown_fields() {
         use serde_json::json;
-        // Portal may still send the now-removed `identifier`, `teamId`, `comments`
+        // Portal may still send extra fields like `identifier`, `comments`
         // (or a hypothetical future `displayName`). Serde must accept them silently.
+        // (`teamId` is now a real field — covered by the parse test below.)
         let input = json!({
             "role": "Water1",
             "userId": "u456",
             "identifier": "ABC123",
-            "teamId": "t789",
             "comments": "captain",
             "displayName": "will-be-ignored"
         });
         let ra: RefereeAssignment = serde_json::from_value(input).unwrap();
         assert_eq!(ra.role, "Water1");
         assert_eq!(ra.user_id, Some("u456".to_string()));
+        assert_eq!(ra.team_id, None);
         // display_name not deserialized from JSON despite "displayName" key in input
         assert_eq!(ra.display_name, None);
+    }
+
+    #[test]
+    fn test_deserialize_referee_assignment_parses_team_id() {
+        use serde_json::json;
+        // Team assignment: userId null, teamId set (full RavenDB id form).
+        let input = json!({
+            "role": "Referees",
+            "userId": null,
+            "teamId": "teams/10753-A",
+            "isTeamRefereeAssignment": true
+        });
+        let ra: RefereeAssignment = serde_json::from_value(input).unwrap();
+        assert_eq!(ra.role, "Referees");
+        assert_eq!(ra.user_id, None);
+        assert_eq!(
+            ra.team_id,
+            Some(TeamId::from_full("teams/10753-A").unwrap())
+        );
+        assert_eq!(ra.display_name, None);
+
+        // Absent teamId → None.
+        let input2 = json!({ "role": "Chief", "userId": "u1" });
+        let ra2: RefereeAssignment = serde_json::from_value(input2).unwrap();
+        assert_eq!(ra2.team_id, None);
     }
 
     #[test]

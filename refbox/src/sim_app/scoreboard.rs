@@ -18,6 +18,11 @@ const BLACK_BOX_OUTLINE: Color = Color::from_rgb(0.5, 0.5, 0.5);
 /// (the new layouts use a single yellow throughout; the Default panel keeps its
 /// own colours unchanged).
 fn badge_text(data: &TransmittedData) -> String {
+    // Beep test has no teams or timeouts: the centre label is always "BEEP TEST",
+    // matching the Default (Matrix) panel's beep-test rendering.
+    if data.beep_test {
+        return "BEEP TEST".to_string();
+    }
     match data.snapshot.timeout {
         Some(TimeoutSnapshot::White(_)) => "WHITE T/O".to_string(),
         Some(TimeoutSnapshot::Black(_)) => "BLACK T/O".to_string(),
@@ -166,7 +171,23 @@ pub fn draw_classic(frame: &mut Frame, bounds: Size, data: &TransmittedData) {
     let label_size = h * 0.07;
     let label_gap = h * 0.06;
 
-    if white_left {
+    if data.beep_test {
+        // Beep test: only the lap count (the white score), labeled LAPS, on the
+        // white side (pinned left for beep test). The black side is hidden.
+        let lap_x = if white_left { left_x } else { right_x };
+        draw_team_block(
+            frame,
+            lap_x,
+            box_y,
+            box_w,
+            box_h,
+            label_gap,
+            "LAPS",
+            data.snapshot.scores.white,
+            true,
+            label_size,
+        );
+    } else if white_left {
         draw_team_block(
             frame,
             left_x,
@@ -283,7 +304,23 @@ pub fn draw_corners(frame: &mut Frame, bounds: Size, data: &TransmittedData) {
     let label_size = h * 0.06;
     let label_gap = h * 0.06;
 
-    if white_left {
+    if data.beep_test {
+        // Beep test: only the lap count (the white score), labeled LAPS, on the
+        // white side (pinned left for beep test). The black side is hidden.
+        let lap_x = if white_left { left_x } else { right_x };
+        draw_team_block(
+            frame,
+            lap_x,
+            box_y,
+            box_w,
+            box_h,
+            label_gap,
+            "LAPS",
+            data.snapshot.scores.white,
+            true,
+            label_size,
+        );
+    } else if white_left {
         draw_team_block(
             frame,
             left_x,
@@ -363,7 +400,23 @@ pub fn draw_scores_only(frame: &mut Frame, bounds: Size, data: &TransmittedData)
     let left_x = w * 0.05;
     let right_x = w - box_w - w * 0.05;
 
-    if white_left {
+    if data.beep_test {
+        // Beep test: only the lap count (the white score) box, on the white side
+        // (pinned left). This layout has no labels, and the black box is hidden.
+        let lap_x = if white_left { left_x } else { right_x };
+        draw_team_block(
+            frame,
+            lap_x,
+            box_y,
+            box_w,
+            box_h,
+            0.0,
+            "LAPS",
+            data.snapshot.scores.white,
+            true,
+            0.0,
+        );
+    } else if white_left {
         draw_team_block(
             frame,
             left_x,

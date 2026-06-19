@@ -1445,7 +1445,7 @@ impl RefBoxApp {
             json_port,
             config.hide_time,
             config.mode == Mode::BeepTest,
-            if has_led_panel {
+            if has_led_panel || config.mode == Mode::BeepTest {
                 crate::sim_frame::FrontDisplayLayout::Default
             } else {
                 config.front_display_layout
@@ -3970,7 +3970,8 @@ impl RefBoxApp {
                     };
                     if let Err(e) = self.update_sender.send_snapshot(
                         game_snap,
-                        self.config.hardware.white_on_right,
+                        // Beep test has no sides control: lap count always on the left.
+                        false,
                         self.config.hardware.brightness,
                     ) {
                         // Channel-full or closed: the next tick re-sends

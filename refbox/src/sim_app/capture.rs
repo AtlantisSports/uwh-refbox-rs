@@ -61,10 +61,91 @@ pub(crate) fn sample_data(white_on_right: bool) -> TransmittedData {
     }
 }
 
-/// Every layout, in both starting-side orientations (10 pictures). Generating
-/// both for every layout keeps the capture and the display logic uniform; the
-/// few that don't differ by side just produce two identical pictures.
-pub(crate) fn variants() -> Vec<(FrontDisplayLayout, bool)> {
+/// Beep-test sample shown in the beep-test previews: lap count 12 on the white
+/// side, black side 0, white on the left. Mirrors the
+/// `BeepTestSnapshot -> GameSnapshotNoHeap` conversion (BetweenGames,
+/// lap_count as the white score). Default blanks the black side; the other
+/// layouts render the 0 — which is exactly what the preview should show.
+pub(crate) fn beep_sample_data() -> TransmittedData {
+    let snapshot = uwh_common::game_snapshot::GameSnapshotNoHeap {
+        current_period: GamePeriod::BetweenGames,
+        secs_in_period: 45,
+        scores: BlackWhiteBundle {
+            black: 0,
+            white: 12,
+        },
+        ..Default::default()
+    };
+
+    TransmittedData {
+        white_on_right: false,
+        flash: false,
+        beep_test: true,
+        brightness: Brightness::Low,
+        snapshot,
+    }
+}
+
+/// The layout's filename token, e.g. `big-time`.
+fn layout_stem(layout: FrontDisplayLayout) -> &'static str {
+    match layout {
+        FrontDisplayLayout::Default => "default",
+        FrontDisplayLayout::Classic => "classic",
+        FrontDisplayLayout::BigTime => "big-time",
+        FrontDisplayLayout::Corners => "corners",
+        FrontDisplayLayout::ScoresOnly => "scores-only",
+    }
+}
+
+/// Stable filename (no extension) for a game layout/side pair, e.g. `classic-white-right`.
+pub(crate) fn file_stem(layout: FrontDisplayLayout, white_on_right: bool) -> String {
+    let side = if white_on_right {
+        "white-right"
+    } else {
+        "white-left"
+    };
+    format!("{}-{}", layout_stem(layout), side)
+}
+
+/// One preview to render.
+#[derive(Clone, Copy)]
+pub(crate) enum Variant {
+    /// Game-state preview, both starting-side orientations.
+    Game {
+        layout: FrontDisplayLayout,
+        white_on_right: bool,
+    },
+    /// Beep-test preview, white-on-left only (beep test has no sides control).
+    Beep { layout: FrontDisplayLayout },
+}
+
+impl Variant {
+    fn layout(self) -> FrontDisplayLayout {
+        match self {
+            Variant::Game { layout, .. } | Variant::Beep { layout } => layout,
+        }
+    }
+
+    fn sample(self) -> TransmittedData {
+        match self {
+            Variant::Game { white_on_right, .. } => sample_data(white_on_right),
+            Variant::Beep { .. } => beep_sample_data(),
+        }
+    }
+
+    fn file_stem(self) -> String {
+        match self {
+            Variant::Game {
+                layout,
+                white_on_right,
+            } => file_stem(layout, white_on_right),
+            Variant::Beep { layout } => format!("beep-{}", layout_stem(layout)),
+        }
+    }
+}
+
+/// Every preview: 10 game (5 layouts x 2 sides) + 5 beep (5 layouts, white-on-left).
+pub(crate) fn variants() -> Vec<Variant> {
     let layouts = [
         FrontDisplayLayout::Default,
         FrontDisplayLayout::Classic,
@@ -72,30 +153,19 @@ pub(crate) fn variants() -> Vec<(FrontDisplayLayout, bool)> {
         FrontDisplayLayout::Corners,
         FrontDisplayLayout::ScoresOnly,
     ];
-    let mut out = Vec::with_capacity(10);
+    let mut out = Vec::with_capacity(15);
     for layout in layouts {
         for white_on_right in [false, true] {
-            out.push((layout, white_on_right));
+            out.push(Variant::Game {
+                layout,
+                white_on_right,
+            });
         }
     }
+    for layout in layouts {
+        out.push(Variant::Beep { layout });
+    }
     out
-}
-
-/// Stable filename (no extension) for a layout/side pair, e.g. `classic-white-right`.
-pub(crate) fn file_stem(layout: FrontDisplayLayout, white_on_right: bool) -> String {
-    let layout = match layout {
-        FrontDisplayLayout::Default => "default",
-        FrontDisplayLayout::Classic => "classic",
-        FrontDisplayLayout::BigTime => "big-time",
-        FrontDisplayLayout::Corners => "corners",
-        FrontDisplayLayout::ScoresOnly => "scores-only",
-    };
-    let side = if white_on_right {
-        "white-right"
-    } else {
-        "white-left"
-    };
-    format!("{layout}-{side}")
 }
 
 #[derive(Debug, Clone)]
@@ -107,7 +177,7 @@ enum Message {
 
 struct CaptureApp {
     sim: SimRefBoxApp,
-    variants: Vec<(FrontDisplayLayout, bool)>,
+    variants: Vec<Variant>,
     index: usize,
     out_dir: PathBuf,
     window_id: Option<window::Id>,
@@ -162,8 +232,8 @@ impl CaptureApp {
             }
             Message::Captured(shot) => {
                 self.awaiting_shot = false;
-                let (layout, white_on_right) = self.variants[self.index];
-                save_png(&self.out_dir, layout, white_on_right, &shot);
+                let variant = self.variants[self.index];
+                save_png(&self.out_dir, variant, &shot);
 
                 self.index += 1;
                 if self.index >= self.variants.len() {
@@ -197,18 +267,18 @@ impl CaptureApp {
     }
 }
 
-fn push_variant(sim: &mut SimRefBoxApp, (layout, white_on_right): (FrontDisplayLayout, bool)) {
+fn push_variant(sim: &mut SimRefBoxApp, variant: Variant) {
     // `update` returns Task::none() for NewSnapshot; nothing to schedule.
     let _ = sim.update(SimMessage::NewSnapshot(SimFrame {
-        layout,
-        data: sample_data(white_on_right),
+        layout: variant.layout(),
+        data: variant.sample(),
     }));
 }
 
-fn save_png(dir: &Path, layout: FrontDisplayLayout, white_on_right: bool, shot: &Screenshot) {
+fn save_png(dir: &Path, variant: Variant, shot: &Screenshot) {
     let buf = image::RgbaImage::from_raw(shot.size.width, shot.size.height, shot.bytes.to_vec())
         .expect("screenshot byte length matches its reported size");
-    let path = dir.join(format!("{}.png", file_stem(layout, white_on_right)));
+    let path = dir.join(format!("{}.png", variant.file_stem()));
     buf.save(&path).expect("write preview png");
     println!("wrote {}", path.display());
 }
@@ -250,12 +320,28 @@ mod tests {
     }
 
     #[test]
-    fn there_are_ten_variants_with_unique_filenames() {
+    fn variants_cover_game_and_beep_with_unique_filenames() {
         let v = variants();
-        assert_eq!(v.len(), 10);
-        let mut stems: Vec<String> = v.iter().map(|&(l, w)| file_stem(l, w)).collect();
-        stems.sort();
-        stems.dedup();
-        assert_eq!(stems.len(), 10, "every variant must have a unique filename");
+        // 5 layouts x 2 sides (game) + 5 layouts white-on-left (beep) = 15.
+        assert_eq!(v.len(), 15);
+        let beep = v
+            .iter()
+            .filter(|x| matches!(x, Variant::Beep { .. }))
+            .count();
+        assert_eq!(beep, 5);
+        let stems: std::collections::HashSet<String> = v.iter().map(|x| x.file_stem()).collect();
+        assert_eq!(stems.len(), 15, "all preview filenames must be unique");
+        assert!(stems.contains("beep-default"));
+        assert!(stems.contains("beep-scores-only"));
+        assert!(stems.contains("default-white-left"));
+    }
+
+    #[test]
+    fn beep_sample_has_lap_count_on_white_and_blank_black() {
+        let d = beep_sample_data();
+        assert!(d.beep_test);
+        assert!(!d.white_on_right);
+        assert_eq!(d.snapshot.scores.white, 12);
+        assert_eq!(d.snapshot.scores.black, 0);
     }
 }

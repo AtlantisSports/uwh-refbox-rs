@@ -181,6 +181,12 @@ pub struct RefBoxApp {
     /// until this flag is set. The flag is never cleared — Stop and Reset
     /// do not unset it — so it persists for the lifetime of the process.
     beep_test_has_run: bool,
+    /// In-memory display layout for BeepTest mode, shown on the player-facing
+    /// display. Starts at `Default` every boot and is never persisted (the
+    /// game-mode `config.front_display_layout` is untouched). Changed only by
+    /// the BeepTest Settings "DISPLAY LAYOUT" picker via
+    /// `Message::BeepTestCycleDisplayLayout`.
+    beep_test_display_layout: crate::sim_frame::FrontDisplayLayout,
     list_all_events: bool,
     mouse_alarm_held: bool,
     spacebar_held: bool,
@@ -1561,6 +1567,7 @@ impl RefBoxApp {
             sim_spawn_config,
             has_led_panel,
             beep_test_has_run: false,
+            beep_test_display_layout: crate::sim_frame::FrontDisplayLayout::Default,
             list_all_events,
             mouse_alarm_held: false,
             spacebar_held: false,
@@ -3982,6 +3989,20 @@ impl RefBoxApp {
                 }
                 Task::none()
             }
+            Message::BeepTestCycleDisplayLayout => {
+                // Session-only: advance the in-memory beep-test layout and push
+                // it to the display. Never written to config (resets to Default
+                // on the next boot).
+                self.beep_test_display_layout = self.beep_test_display_layout.next();
+                let effective = crate::sim_frame::effective_beep_layout(
+                    self.has_led_panel,
+                    self.beep_test_display_layout,
+                );
+                if let Err(e) = self.update_sender.set_layout(effective) {
+                    warn!("Failed to push beep-test display layout: {e:?}");
+                }
+                Task::none()
+            }
             Message::BeepTestOpenSettings => {
                 // Seed `edited_settings.mode` with the current mode so the
                 // App Mode cycle button on the Settings landing has a value
@@ -4583,6 +4604,8 @@ impl RefBoxApp {
                         &self.config,
                         staged_mode,
                         self.beep_test_has_run,
+                        self.beep_test_display_layout,
+                        self.has_led_panel,
                     )
                 }
                 BeepTestConfigPage::Sound => {

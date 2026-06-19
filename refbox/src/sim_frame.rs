@@ -48,6 +48,22 @@ impl FrontDisplayLayout {
     }
 }
 
+/// The layout actually shown during beep test: forced to `Default` whenever a
+/// real LED panel is connected (the panel only renders Default), else the
+/// operator's in-memory session choice. Mirrors the game-mode Display page's
+/// `effective_layout` rule so the picker label, the preview, and the layout
+/// pushed to the display always agree.
+pub fn effective_beep_layout(
+    has_led_panel: bool,
+    session_layout: FrontDisplayLayout,
+) -> FrontDisplayLayout {
+    if has_led_panel {
+        FrontDisplayLayout::Default
+    } else {
+        session_layout
+    }
+}
+
 /// A display-feed frame: the existing panel payload plus a one-byte layout
 /// selector. Used ONLY on the binary/TCP path to the display window. The
 /// serial/hardware path keeps sending bare `TransmittedData`, so the panel
@@ -121,6 +137,24 @@ mod tests {
     #[test]
     fn unknown_u8_falls_back_to_default() {
         assert_eq!(FrontDisplayLayout::from_u8(99), FrontDisplayLayout::Default);
+    }
+
+    #[test]
+    fn effective_beep_layout_forces_default_with_panel() {
+        // With a panel, any session choice collapses to Default.
+        assert_eq!(
+            effective_beep_layout(true, FrontDisplayLayout::Corners),
+            FrontDisplayLayout::Default,
+        );
+        // Without a panel, the session choice is respected.
+        assert_eq!(
+            effective_beep_layout(false, FrontDisplayLayout::Corners),
+            FrontDisplayLayout::Corners,
+        );
+        assert_eq!(
+            effective_beep_layout(false, FrontDisplayLayout::Default),
+            FrontDisplayLayout::Default,
+        );
     }
 
     #[test]

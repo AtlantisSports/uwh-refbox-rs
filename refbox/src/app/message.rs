@@ -237,6 +237,8 @@ pub enum Message {
     /// existing mode-change exe-restart flow used by the hockey-mode
     /// PortalTenantSwitch confirmation).
     BeepTestRestartToApply,
+    /// Cycle the in-memory BeepTest display layout (session-only, live-apply).
+    BeepTestCycleDisplayLayout,
     AlarmPressed,
     AlarmReleased,
     SpacebarPressed,
@@ -370,6 +372,7 @@ impl Message {
             | Self::BeepTestEditLevelsSave
             | Self::BeepTestEditLevelsCancel
             | Self::BeepTestRestartToApply
+            | Self::BeepTestCycleDisplayLayout
             | Self::AlarmPressed
             | Self::AlarmReleased
             | Self::SpacebarPressed
@@ -444,6 +447,7 @@ impl PartialEq for Message {
             | (Self::BeepTestEditLevelsSave, Self::BeepTestEditLevelsSave)
             | (Self::BeepTestEditLevelsCancel, Self::BeepTestEditLevelsCancel)
             | (Self::BeepTestRestartToApply, Self::BeepTestRestartToApply)
+            | (Self::BeepTestCycleDisplayLayout, Self::BeepTestCycleDisplayLayout)
             | (Self::CycleDisplayMode, Self::CycleDisplayMode)
             | (Self::AlarmPressed, Self::AlarmPressed)
             | (Self::AlarmReleased, Self::AlarmReleased)
@@ -695,6 +699,7 @@ impl PartialEq for Message {
             | (Self::BeepTestEditLevelsSave, _)
             | (Self::BeepTestEditLevelsCancel, _)
             | (Self::BeepTestRestartToApply, _)
+            | (Self::BeepTestCycleDisplayLayout, _)
             | (Self::CycleDisplayMode, _)
             | (Self::AlarmPressed, _)
             | (Self::AlarmReleased, _)

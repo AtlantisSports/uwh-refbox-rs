@@ -16,37 +16,36 @@
 
 use super::*;
 use crate::config::{Config, Level};
+use crate::sim_frame::{FrontDisplayLayout, effective_beep_layout};
 use iced::{
     Element, Length,
     alignment::{Horizontal, Vertical},
-    widget::{Column, Row, Space, button, column, container, horizontal_space, row, text},
+    widget::{
+        Column, Image, Row, Space, button, column, container, horizontal_space, image, row, text,
+    },
 };
 
-/// 2x2 landing page for the BeepTest Settings hierarchy.
+/// Landing page for the BeepTest Settings hierarchy.
 ///
-/// Layout (top to bottom):
-/// - Row 1: [SOUND SETTINGS] [EDIT LEVELS]
-/// - Row 2: [APP MODE = <staged>] [LANGUAGE]
-/// - Filler rows
-/// - Bottom row: [BACK]   [horizontal_space]   [RESTART TO APPLY (when staged mode != live)]
+/// Grid (top to bottom):
+/// - Row 1: [APP MODE = <staged>] [EDIT LEVELS]
+/// - Row 2: [SOUND SETTINGS]      [DISPLAY LAYOUT]
+/// - Rows 3-4: left column [LANGUAGE] over a blank cell; right column a
+///   beep-test PREVIEW spanning both rows.
+/// - Bottom row: [BACK]   [horizontal_space]   [RESTART TO APPLY (when staged
+///   mode != live mode and no test has run)] — unchanged.
 ///
-/// The APP MODE tile cycles the staged mode in place (no navigation). When
-/// the staged mode differs from the live mode, a green RESTART TO APPLY
-/// button appears at the right end of the bottom row; pressing it commits
-/// the mode change and restarts the app.
-///
-/// `BACK` discards any staged mode change and returns to the BeepTest main
-/// view, matching the standard set by `make_user_config_page` in
-/// `configuration.rs`.
+/// DISPLAY LAYOUT cycles the in-memory beep-test layout live (no Apply). It is
+/// grayed and forced to Default when a real LED panel is connected (the panel
+/// only renders Default) or once a beep test has run. APP MODE, EDIT LEVELS,
+/// and LANGUAGE are gated on `!has_run`; SOUND SETTINGS stays live.
 pub(in super::super) fn build_beep_test_settings_landing<'a>(
     config: &Config,
     staged_mode: Mode,
     has_run: bool,
+    beep_test_layout: FrontDisplayLayout,
+    has_led_panel: bool,
 ) -> Element<'a, Message> {
-    // SOUND SETTINGS is the only "dangerous" control that stays pressable
-    // while a beep test is in progress — the operator wants to adjust
-    // volume / mute mid-run if needed. EDIT LEVELS, APP MODE, LANGUAGE,
-    // and RESTART TO APPLY are gated on `!has_run` (ready state only).
     let sound_button = make_button(fl!("sound-settings"))
         .style(light_gray_button)
         .on_press(Message::BeepTestEditOpenSound);
@@ -59,10 +58,6 @@ pub(in super::super) fn build_beep_test_settings_landing<'a>(
             .on_press(Message::BeepTestEditOpenLevels)
     };
 
-    // APP MODE cycles in place — no sub-page navigation. Uses the same
-    // CycleParameter(Mode) handler the hockey-mode App config page uses.
-    // Passing `None` for the message uses iced's disabled-style rendering
-    // when `has_run` is true.
     let app_mode_button = make_value_button(
         fl!("app-mode"),
         staged_mode.to_string(),
@@ -82,24 +77,66 @@ pub(in super::super) fn build_beep_test_settings_landing<'a>(
             .on_press(Message::BeepTestEditOpenLanguage)
     };
 
-    let row_top = row![sound_button, edit_levels_button]
+    // DISPLAY LAYOUT — cycles the in-memory beep-test layout (live-apply, not
+    // persisted). Grayed + forced to Default with a panel connected or after a run.
+    let effective_layout = effective_beep_layout(has_led_panel, beep_test_layout);
+    let layout_label = match effective_layout {
+        FrontDisplayLayout::Default => fl!("layout-default"),
+        FrontDisplayLayout::Classic => fl!("layout-classic"),
+        FrontDisplayLayout::BigTime => fl!("layout-big-time"),
+        FrontDisplayLayout::Corners => fl!("layout-corners"),
+        FrontDisplayLayout::ScoresOnly => fl!("layout-scores-only"),
+    };
+    let display_layout_button = make_value_button(
+        fl!("front-display-layout"),
+        layout_label,
+        (false, true),
+        if has_led_panel || has_run {
+            None
+        } else {
+            Some(Message::BeepTestCycleDisplayLayout)
+        },
+    );
+
+    // Static preview of the effective layout's beep-test appearance (white-on-left).
+    let preview = container(
+        Image::new(beep_test_layout_preview_handle(effective_layout))
+            .width(Length::Fill)
+            .height(Length::Fill),
+    )
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .center_x(Length::Fill)
+    .center_y(Length::Fill);
+
+    let row1 = row![app_mode_button, edit_levels_button]
+        .spacing(SPACING)
+        .height(Length::Fill);
+    let row2 = row![sound_button, display_layout_button]
         .spacing(SPACING)
         .height(Length::Fill);
 
-    let row_bottom = row![app_mode_button, language_button]
+    // Rows 3-4: LANGUAGE over a blank cell on the left; preview on the right
+    // spanning both rows. FillPortion(2) gives this band the height of two tile
+    // rows, so the preview reads as a 2-row-tall cell.
+    let lower_left = column![
+        row![language_button].spacing(SPACING).height(Length::Fill),
+        row![horizontal_space()].height(Length::Fill),
+    ]
+    .spacing(SPACING)
+    .width(Length::Fill);
+
+    let rows_34 = row![lower_left, preview]
         .spacing(SPACING)
-        .height(Length::Fill);
+        .height(Length::FillPortion(2));
 
     let back_button = make_button(fl!("back"))
         .style(red_button)
         .on_press(Message::BeepTestCloseSettings);
 
-    // Bottom row keeps a stable 3-cell layout. When the staged mode differs
-    // from the live mode AND the operator is in the ready state (no run
-    // started yet, or post-Reset), the right cell becomes a blue RESTART TO
-    // APPLY button; otherwise it stays a filler so the BACK button doesn't
-    // shift. Hiding restart-to-apply during a run avoids losing an
-    // in-progress beep test to an accidental restart.
+    // Bottom row unchanged: BACK on the left, and a blue RESTART TO APPLY at the
+    // right when the staged App Mode differs from the live mode and no test has
+    // run yet; otherwise a filler keeps BACK from shifting.
     let bottom_row: Element<'a, Message> = if staged_mode != config.mode && !has_run {
         let restart_button = make_button(fl!("restart-to-apply"))
             .style(blue_button)
@@ -113,14 +150,14 @@ pub(in super::super) fn build_beep_test_settings_landing<'a>(
             .into()
     };
 
-    // 2 tile rows + 4 spacer rows = 6 Fill shares. The extra spacer row
-    // compensates for the removed time banner (Task 5), keeping each Fill
-    // share close to button height so content rows don't render too tall.
+    // 2 single tile rows (1 share each) + the preview band (2 shares) + 2 spacer
+    // rows (1 share each) = 6 Fill shares, matching the sibling config pages so
+    // each tile renders at ~button height instead of stretching to fill. The
+    // spacers absorb the gap above the footer; the footer stays pinned at the bottom.
     column![
-        row_top,
-        row_bottom,
-        row![horizontal_space()].height(Length::Fill),
-        row![horizontal_space()].height(Length::Fill),
+        row1,
+        row2,
+        rows_34,
         row![horizontal_space()].height(Length::Fill),
         row![horizontal_space()].height(Length::Fill),
         bottom_row,
@@ -855,6 +892,31 @@ fn font_family_id(lang: Language) -> u8 {
         Language::Thai => 2,
         _ => 0,
     }
+}
+
+/// The embedded beep-test preview picture for a layout (white-on-left only —
+/// beep test has no sides control). Exhaustive match, mirroring
+/// `layout_preview_handle` in `configuration.rs`; adding a `FrontDisplayLayout`
+/// variant won't compile until its `beep-*.png` is added here and generated via
+/// `just capture-previews`.
+fn beep_test_layout_preview_handle(layout: FrontDisplayLayout) -> image::Handle {
+    macro_rules! preview {
+        ($stem:literal) => {
+            &include_bytes!(concat!(
+                "../../../resources/layout-previews/",
+                $stem,
+                ".png"
+            ))[..]
+        };
+    }
+    let bytes: &'static [u8] = match layout {
+        FrontDisplayLayout::Default => preview!("beep-default"),
+        FrontDisplayLayout::Classic => preview!("beep-classic"),
+        FrontDisplayLayout::BigTime => preview!("beep-big-time"),
+        FrontDisplayLayout::Corners => preview!("beep-corners"),
+        FrontDisplayLayout::ScoresOnly => preview!("beep-scores-only"),
+    };
+    image::Handle::from_bytes(bytes)
 }
 
 /// Cancel / Apply footer for BeepTest Settings editor sub-pages.

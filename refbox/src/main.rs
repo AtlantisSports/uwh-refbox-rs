@@ -84,6 +84,21 @@ fn request_language(loader: &FluentLanguageLoader, requested_languages: &[Langua
     loader.set_use_isolating(false); // Required until iced supports RTL text (https://github.com/iced-rs/iced/issues/250)
 }
 
+/// The default font family and weight to render UI text in for a given language.
+///
+/// Iced locks in a single default font at startup, so this must reflect the language that will
+/// actually be displayed. CJK scripts (Korean/Japanese/Mandarin) need the bundled CJK subset and
+/// Thai needs the Thai subset; every other language uses Roboto.
+fn default_font_for(lang: Language) -> (&'static str, iced_core::font::Weight) {
+    match lang {
+        Language::Korean | Language::Japanese | Language::Mandarin => {
+            ("WenQuanYi Zen Hei", iced_core::font::Weight::Normal)
+        }
+        Language::Thai => ("Noto Sans Thai", iced_core::font::Weight::Normal),
+        _ => ("Roboto", iced_core::font::Weight::Medium),
+    }
+}
+
 #[macro_export]
 macro_rules! fl {
     ($message_id:literal) => {{
@@ -561,18 +576,18 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Choose the default font based on the active language. Iced sets the font once at startup
+    // Choose the default font from the language we actually resolved — CLI override, then saved
+    // config, then system locale — NOT just the saved config. Iced sets the font once at startup
     // and cannot change it at runtime, so a restart is required when switching between script
-    // families (e.g. Latin ↔ Korean). The language select screen uses explicit per-button fonts
-    // so all language names render correctly regardless of this default.
-    let saved_language = config.language.unwrap_or(Language::English);
-    let (default_font_family, default_font_weight) = match saved_language {
-        Language::Korean | Language::Japanese | Language::Mandarin => {
-            ("WenQuanYi Zen Hei", iced_core::font::Weight::Normal)
-        }
-        Language::Thai => ("Noto Sans Thai", iced_core::font::Weight::Normal),
-        _ => ("Roboto", iced_core::font::Weight::Medium),
-    };
+    // families (e.g. Latin ↔ Korean). On first launch there is no saved language yet, but the
+    // system locale may already be CJK (e.g. Korean); reading only `config.language` here left
+    // the default as Latin and rendered all CJK text as empty boxes until the operator manually
+    // switched languages and back. `current_languages()` reflects the same resolution the rest of
+    // the UI uses (see the language picker), so the startup font now matches the displayed text.
+    // The language select screen uses explicit per-button fonts so all language names render
+    // correctly regardless of this default.
+    let active_language = Language::from_lang_id(&LANGUAGE_LOADER.current_languages()[0]);
+    let (default_font_family, default_font_weight) = default_font_for(active_language);
 
     // The portal retry queue lives next to the config file. `config_path` is
     // the file itself (see above where it was loaded), so its parent is the
@@ -828,5 +843,33 @@ mod sim_spawn_tests {
         let on = build_sim_argv(&make_test_config(0, true));
         assert!(!off.contains(&"--simulate-sunlight-display".to_string()));
         assert!(on.contains(&"--simulate-sunlight-display".to_string()));
+    }
+}
+
+#[cfg(test)]
+mod default_font_tests {
+    use super::*;
+
+    fn font_for(locale: &str) -> &'static str {
+        let lang = Language::from_lang_id(&locale.parse::<LanguageIdentifier>().unwrap());
+        default_font_for(lang).0
+    }
+
+    #[test]
+    fn cjk_locales_select_the_cjk_font() {
+        // Regression guard for the first-launch boxes bug: the startup default font must follow
+        // the resolved language, so a CJK system locale (what auto-detection yields on a Korean
+        // machine) gets the bundled CJK font rather than the Latin default — otherwise every CJK
+        // glyph renders as an empty box.
+        assert_eq!(font_for("ko-KR"), "WenQuanYi Zen Hei");
+        assert_eq!(font_for("ja-JP"), "WenQuanYi Zen Hei");
+        assert_eq!(font_for("zh-CN"), "WenQuanYi Zen Hei");
+    }
+
+    #[test]
+    fn thai_and_latin_locales_select_their_own_fonts() {
+        assert_eq!(font_for("th-TH"), "Noto Sans Thai");
+        assert_eq!(font_for("en-US"), "Roboto");
+        assert_eq!(font_for("fr"), "Roboto");
     }
 }

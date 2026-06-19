@@ -73,7 +73,7 @@ install-hooks:
     @echo "Pre-commit hook installed."
 
 # Regenerate the bundled CJK font subset from the Japanese, Korean, and Chinese translation files.
-# Run this any time those translations change. Requires: sudo apt-get install python3-fonttools
+# Run this any time those translations change. Requires: sudo apt-get install python3-fonttools fonts-wqy-zenhei
 regen-cjk-font:
     python3 scripts/regen-cjk-font.py
 

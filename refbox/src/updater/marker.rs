@@ -162,6 +162,16 @@ fn read_trial(dir: &Path) -> Option<(Version, Version, String)> {
     Some((trying, backup, phase))
 }
 
+/// Read the two versions recorded in the trial marker, if one is present.
+///
+/// Returns `(trying, backup)` — the version being trialled and the version it
+/// would revert to. Used to log a successful self-update once the freshly
+/// installed binary reaches a healthy state. Returns `None` when no marker is
+/// present or it is malformed.
+pub fn trial_versions(dir: &Path) -> Option<(Version, Version)> {
+    read_trial(dir).map(|(trying, backup, _phase)| (trying, backup))
+}
+
 /// Read marker files and decide what the application should do on startup.
 ///
 /// Two-phase trial logic:
@@ -343,5 +353,15 @@ mod tests {
             decide_on_startup(d.path()),
             StartupDecision::Normal
         ));
+    }
+
+    #[test]
+    fn trial_versions_reads_both_versions_when_present() {
+        let d = tempfile::tempdir().unwrap();
+        // No marker -> None.
+        assert_eq!(trial_versions(d.path()), None);
+        // After a trial is written, both versions are recoverable.
+        write_trial(d.path(), &v("0.4.4"), &v("0.4.3")).unwrap();
+        assert_eq!(trial_versions(d.path()), Some((v("0.4.4"), v("0.4.3"))));
     }
 }

@@ -2829,6 +2829,18 @@ impl RefBoxApp {
                         let _ = crate::updater::marker::clear_trial(&self.config_dir);
                         match crate::updater::swap::revert(&install, &backup) {
                             Ok(()) => {
+                                // Record the rollback before the tracked backup
+                                // version is cleared. The running binary is the
+                                // version being reverted *from*; `update_backup_version`
+                                // is the one being restored *to*.
+                                if let (Some(from), Some(to)) = (
+                                    crate::updater::version::Version::parse(env!(
+                                        "CARGO_PKG_VERSION"
+                                    )),
+                                    self.update_backup_version,
+                                ) {
+                                    info!("Reverted update: v{from} -> v{to}; restarting to apply");
+                                }
                                 if let AppState::Updates {
                                     ref mut state,
                                     ref mut backup_available,
@@ -2888,8 +2900,17 @@ impl RefBoxApp {
             }
             Message::UpdaterHealthyCheck => {
                 // The app processed this message ~20s after launch, so it started
-                // healthily. Clear any update trial marker so a later boot is not
-                // mistaken for a failed trial. Idempotent / no-op if absent.
+                // healthily. A trial marker still present here means this is the
+                // first healthy run of a freshly self-installed binary, so record
+                // the version change before clearing the marker below. (`trying` is
+                // the version now running; `backup` is the one it replaced.)
+                if let Some((trying, backup)) =
+                    crate::updater::marker::trial_versions(&self.config_dir)
+                {
+                    info!("Self-update succeeded: now running v{trying} (updated from v{backup})");
+                }
+                // Clear any update trial marker so a later boot is not mistaken for
+                // a failed trial. Idempotent / no-op if absent.
                 if let Err(e) = crate::updater::marker::clear_trial(&self.config_dir) {
                     warn!("Failed to clear update trial marker: {e}");
                 }

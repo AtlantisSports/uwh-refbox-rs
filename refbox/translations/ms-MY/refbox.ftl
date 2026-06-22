@@ -110,6 +110,8 @@ sound-enabled = BUNYI
 whistle-volume = KELANTANGAN
     WISEL:
 manage-remotes = URUS KAWALAN JAUH
+update-audio-output = KEMAS KINI
+    OUTPUT AUDIO
 whistle-enabled = WISEL
     DIAKTIFKAN:
 above-water-volume = KELANTANGAN

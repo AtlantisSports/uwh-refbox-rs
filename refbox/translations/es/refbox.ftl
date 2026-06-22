@@ -110,6 +110,8 @@ sound-enabled = SONIDO
 whistle-volume = VOLUMEN
     DEL SILBATO:
 manage-remotes = GESTIONAR REMOTOS
+update-audio-output = ACTUALIZAR
+    SALIDA DE AUDIO
 whistle-enabled = SILBATO
     HABILITADO:
 above-water-volume = VOLUMEN

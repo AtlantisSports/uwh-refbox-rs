@@ -110,6 +110,8 @@ sound-enabled = SOM
 whistle-volume = VOLUME DO
     APITO:
 manage-remotes = GERIR CONTROLOS REMOTOS
+update-audio-output = ATUALIZAR
+    SAÍDA DE ÁUDIO
 whistle-enabled = APITO
     ATIVADO:
 above-water-volume = VOLUME

@@ -110,6 +110,8 @@ sound-enabled = サウンド
 whistle-volume = 笛
     音量:
 manage-remotes = リモコン管理
+update-audio-output = オーディオ出力を
+    更新
 whistle-enabled = 笛
     有効:
 above-water-volume = 水上

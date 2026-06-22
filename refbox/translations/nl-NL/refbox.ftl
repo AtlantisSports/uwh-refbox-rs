@@ -180,6 +180,7 @@ game-configuration-can-not-be-changed = De wedstrijdconfiguratie kan niet worden
 
     Wat wilt u doen?
 apply-this-game-number-change = Hoe wilt u deze wijziging van het wedstrijdnummer toepassen?
+apply-switch-to-manual = Overschakelen naar handmatig wist het geladen schema en reset de tijd voor de volgende wedstrijd. Er is een wedstrijd bezig.
 portal-enabled = Als { $portal }PORTAL is ingeschakeld, moeten alle velden worden ingevuld.
 mode-switch-portal-tenant = Het wijzigen van de modus van { $from_mode } naar { $to_mode } verbreekt de verbinding met { $from_portal }PORTAL en u moet opnieuw verbinding maken met { $to_portal }PORTAL.
 uwhportal-token-invalid-code = Ongeldige code ingevoerd.

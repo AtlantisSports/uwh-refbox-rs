@@ -188,6 +188,7 @@ game-configuration-can-not-be-changed = La configuración del juego no se puede 
 
     ¿Qué te gustaría hacer?
 apply-this-game-number-change = ¿Cómo te gustaría aplicar este cambio de número de juego?
+apply-switch-to-manual = Cambiar al modo manual borrará el calendario cargado y restablecerá el tiempo antes del próximo juego. Un juego está en progreso.
 portal-enabled = Cuando { $portal }PORTAL está habilitado, todos los campos deben ser completados.
 mode-switch-portal-tenant = Cambiar el modo de { $from_mode } a { $to_mode } desactivará el enlace a { $from_portal }PORTAL y deberás volver a conectarte a { $to_portal }PORTAL.
 ### Check

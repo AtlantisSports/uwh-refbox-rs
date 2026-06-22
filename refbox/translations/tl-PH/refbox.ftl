@@ -180,6 +180,7 @@ game-configuration-can-not-be-changed = Hindi mababago ang configuration ng laro
 
     Ano ang nais mong gawin?
 apply-this-game-number-change = Paano mo nais ilapat ang pagbabago ng numero ng larong ito?
+apply-switch-to-manual = Ang paglipat sa manual ay magtatanggal ng na-load na iskedyul at ire-reset ang oras bago ang susunod na laro. May laro na nagaganap.
 portal-enabled = Kapag pinagana ang { $portal }PORTAL, dapat mapunan ang lahat ng field.
 mode-switch-portal-tenant = Ang pagbabago ng mode mula { $from_mode } patungong { $to_mode } ay magpapatay ng koneksyon sa { $from_portal }PORTAL at kailangan mong muling kumonekta sa { $to_portal }PORTAL.
 uwhportal-token-invalid-code = Maling code ang naipasok.

@@ -180,6 +180,7 @@ game-configuration-can-not-be-changed = Oyun yapılandırması, bir oyun devam e
 
     Ne yapmak istersiniz?
 apply-this-game-number-change = Bu oyun numarası değişikliğini nasıl uygulamak istersiniz?
+apply-switch-to-manual = Manuel moda geçmek yüklenen programı temizleyecek ve bir sonraki oyun öncesi süreyi sıfırlayacaktır. Bir oyun devam etmektedir.
 portal-enabled = { $portal }PORTAL etkinleştirildiğinde, tüm alanlar doldurulmalıdır.
 mode-switch-portal-tenant = Modu { $from_mode } yerine { $to_mode } olarak değiştirmek { $from_portal }PORTAL bağlantısını devre dışı bırakacak ve { $to_portal }PORTAL'a yeniden bağlanmanız gerekecektir.
 uwhportal-token-invalid-code = Geçersiz kod girildi.

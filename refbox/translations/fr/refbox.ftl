@@ -180,6 +180,7 @@ game-configuration-can-not-be-changed = La configuration du match ne peut pas ê
     
     Que souhaitez-vous faire ?
 apply-this-game-number-change = Comment souhaitez-vous appliquer ce changement de numéro ?
+apply-switch-to-manual = Passer en mode manuel effacera le calendrier chargé et réinitialisera le temps avant le prochain match. Un match est en cours.
 portal-enabled = Lorsque { $portal }PORTAL est activé, tous les champs doivent être remplis.
 mode-switch-portal-tenant = Changer le mode de { $from_mode } à { $to_mode } désactivera le lien vers { $from_portal }PORTAL et vous devrez vous reconnecter à { $to_portal }PORTAL.
 ### Check

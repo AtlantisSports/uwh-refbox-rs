@@ -180,6 +180,7 @@ game-configuration-can-not-be-changed = La configurazione della partita non può
 
     Cosa vuoi fare?
 apply-this-game-number-change = Come vuoi applicare questa modifica al numero di partita?
+apply-switch-to-manual = Il passaggio alla modalità manuale eliminerà il calendario caricato e resetterà il tempo prima della prossima partita. Una partita è in corso.
 portal-enabled = Quando { $portal }PORTAL è abilitato, tutti i campi devono essere compilati.
 mode-switch-portal-tenant = Cambiare modalità da { $from_mode } a { $to_mode } disabiliterà il collegamento a { $from_portal }PORTAL e sarà necessario ricollegarsi a { $to_portal }PORTAL.
 uwhportal-token-invalid-code = Codice inserito non valido.

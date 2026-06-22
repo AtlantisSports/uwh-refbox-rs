@@ -3486,6 +3486,14 @@ impl RefBoxApp {
                                     edited_settings.uwhportal_token_valid = None;
                                     trigger_event_list_fetch = true;
                                 }
+                                if was_using && !edited_settings.using_uwhportal {
+                                    // ON -> OFF: switching to manual is a clean slate
+                                    // (reverses ADR 017's "no proactive clearing").
+                                    edited_settings.current_event_id = None;
+                                    edited_settings.current_court = None;
+                                    edited_settings.schedule = None;
+                                    edited_settings.game_number = String::new();
+                                }
                             }
                             BoolGameParameter::SoundEnabled => {
                                 edited_settings.sound.sound_enabled ^= true

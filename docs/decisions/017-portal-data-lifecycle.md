@@ -153,6 +153,22 @@ single authoritative gate.
   snapshot. Toggling back to ON re-runs the event-list fetch (fresh data).
   No proactive clearing — keeps the toggle as a UI-level switch rather than
   a destructive state purge.
+  **(SUPERSEDED 2026-06-23 — see the amendment below.)**
+
+### Amendment 2026-06-23 — ON → OFF is now a clean wipe
+
+The original ON → OFF decision ("no proactive clearing") is reversed. Switching the
+portal off now returns the refbox to a fresh-manual-launch state: the loaded event,
+court, game, and schedule are cleared, and the before-game clock is reset to the
+nominal break (`TournamentManager::reset_to_manual_break`, which also resets the
+game number to the fresh-launch default). The saved portal token is kept (this is
+not a logout). Mid-game, the switch is gated by the `SwitchToManualFromApply`
+confirmation (End game & apply / Keep game & apply), matching other mid-game
+parameter changes. Rationale: a leftover portal-scheduled start time silently
+driving the manual countdown is confusing; "switch to manual = clean slate" is more
+predictable for the operator. The original network-cost rationale is unaffected — no
+fetches fire while the portal is off. See
+`docs/superpowers/specs/2026-06-22-portal-off-manual-reset-design.md`.
 
 ### What is not in scope for this ADR
 

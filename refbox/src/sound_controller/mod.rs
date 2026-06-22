@@ -276,7 +276,6 @@ impl SoundEnds {
 }
 
 pub struct SoundController {
-    _context: Arc<AudioContext>,
     msg_tx: UnboundedSender<SoundMessage>,
     settings_tx: Sender<SoundSettings>,
     stop_tx: Sender<bool>,
@@ -322,9 +321,13 @@ impl SoundController {
 
         let mut _stop_rx = stop_rx.clone();
         let mut _settings_rx = settings_rx.clone();
-        let _context = context.clone();
 
         let handle = task::spawn(async move {
+            // Owned by the worker so the audio output device can be rebuilt in
+            // place when the operator presses "UPDATE AUDIO OUTPUT". A fresh
+            // AudioContext resolves the CURRENT system default output device.
+            let mut context = context;
+            let mut library = library;
             #[cfg_attr(not(target_os = "linux"), allow(unused_assignments))]
             let mut last_sound: Option<(SoundId, Sound)> = None;
             let mut sound_queue: VecDeque<SoundId> = VecDeque::new();
@@ -357,6 +360,31 @@ impl SoundController {
                                         if sound_queue.contains(&SoundId::ManualAlarm) {
                                             sound_queue.retain(|s| *s != SoundId::ManualAlarm);
                                         }
+                                    }
+                                    SoundMessage::ReloadAudioOutput => {
+                                        info!("Reloading audio output to current system default");
+                                        // Stop any sound playing on the OLD device first.
+                                        if let Some((sound_id, sound)) = last_sound.take() {
+                                            sound.stop().await;
+                                            sound_ends.cancel(&sound_id);
+                                        }
+                                        // A fresh context (default sink) re-resolves
+                                        // the device the OS currently has as default.
+                                        let opts = AudioContextOptions {
+                                            sample_rate: Some(SAMPLE_RATE),
+                                            ..AudioContextOptions::default()
+                                        };
+                                        let new_context = AudioContext::new(opts);
+                                        debug!(
+                                            "Audio output reloaded with sink {:?}",
+                                            new_context.sink_id()
+                                        );
+                                        context = Arc::new(new_context);
+                                        library = SoundLibrary::new(&context);
+                                        // sound_queue holds only SoundId values; they are
+                                        // realized into Sound objects later by start_sound,
+                                        // which uses the new context — so the queue is
+                                        // intentionally left intact here, not drained.
                                     }
                                     #[cfg(target_os = "linux")]
                                     SoundMessage::StartWiredBuzzer => {
@@ -425,7 +453,7 @@ impl SoundController {
                                 trigger_flash().unwrap();
                             }
                             Sound::new(
-                                _context.clone(),
+                                context.clone(),
                                 volumes,
                                 library[settings.buzzer_sound].clone(),
                                 true,
@@ -436,7 +464,7 @@ impl SoundController {
                             info!("Playing whistle once");
                             let volumes = ChannelVolumes::new(&settings, true);
                             Sound::new(
-                                _context.clone(),
+                                context.clone(),
                                 volumes,
                                 library.whistle().clone(),
                                 false,
@@ -450,7 +478,7 @@ impl SoundController {
                                 trigger_flash().unwrap();
                             }
                             Sound::new(
-                                _context.clone(),
+                                context.clone(),
                                 volumes,
                                 library[settings.buzzer_sound].clone(),
                                 true,
@@ -465,7 +493,7 @@ impl SoundController {
                                 trigger_flash().unwrap();
                             }
                             Sound::new(
-                                _context.clone(),
+                                context.clone(),
                                 volumes,
                                 library[settings.buzzer_sound].clone(),
                                 true,
@@ -486,7 +514,7 @@ impl SoundController {
                                     trigger_flash().unwrap();
                                 }
                                 Sound::new(
-                                    _context.clone(),
+                                    context.clone(),
                                     volumes,
                                     library[buzzer_sound].clone(),
                                     true,
@@ -553,7 +581,6 @@ impl SoundController {
         };
 
         Self {
-            _context: context,
             msg_tx,
             settings_tx,
             stop_tx,
@@ -583,6 +610,12 @@ impl SoundController {
 
     pub fn trigger_buzzer(&self) {
         self.msg_tx.send(SoundMessage::TriggerBuzzer).unwrap()
+    }
+
+    pub fn reload_audio_output(&self) {
+        // The worker receiver lives for the app's lifetime; send only fails
+        // after shutdown, when there is nothing left to play through anyway.
+        self.msg_tx.send(SoundMessage::ReloadAudioOutput).unwrap()
     }
 
     /// Returns a future that resolves to the next detected remote id.

@@ -22,6 +22,7 @@ pub(super) enum SoundMessage {
     TriggerWhistle,
     StartManualBuzzer,
     StopManualBuzzer,
+    ReloadAudioOutput,
     #[cfg(target_os = "linux")]
     StartWiredBuzzer,
     #[cfg(target_os = "linux")]

@@ -2325,6 +2325,10 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
+            Message::UpdateAudioOutput => {
+                self.sound.reload_audio_output();
+                Task::none()
+            }
             Message::OpenNewDisplay => {
                 if self.has_led_panel {
                     // Defense in depth — the UI grays the button out when an

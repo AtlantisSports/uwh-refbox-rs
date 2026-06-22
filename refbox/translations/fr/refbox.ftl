@@ -108,8 +108,7 @@ sound-enabled = SON
 whistle-volume = VOLUME DU
     SIFFLET:
 manage-remotes = GÉRER LES TÉLÉCOMMANDES
-update-audio-output = ACTUALISER
-    SORTIE AUDIO
+update-audio-output = ACTUALISER SORTIE
 whistle-enabled = SIFFLET
     ACTIVÉ:
 above-water-volume = VOLUME

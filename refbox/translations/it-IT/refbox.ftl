@@ -110,8 +110,7 @@ sound-enabled = AUDIO
 whistle-volume = VOLUME
     FISCHIO:
 manage-remotes = GESTISCI TELECOMANDI
-update-audio-output = AGGIORNA
-    USCITA AUDIO
+update-audio-output = AGGIORNA USCITA
 whistle-enabled = FISCHIO
     ATTIVATO:
 above-water-volume = VOLUME

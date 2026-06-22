@@ -112,8 +112,7 @@ sound-enabled = 소리
 whistle-volume = 호루라기
     음량:
 manage-remotes = 리모컨 관리
-update-audio-output = 오디오 출력
-    업데이트
+update-audio-output = 출력 새로고침
 whistle-enabled = 호루라기
     사용:
 above-water-volume = 수상

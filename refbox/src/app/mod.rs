@@ -1347,6 +1347,9 @@ impl RefBoxApp {
                     tm.reset_to_manual_break();
                 }
                 self.clear_portal_selections_to_manual(manual_config);
+                // Clear the page-entry snapshot like the sibling apply arms so a
+                // later path can't read a stale "has changes" state.
+                self.page_entry_snapshot = None;
                 // Safety: snapshot generation only fails before the tournament
                 // manager is initialised, which happens in `RefBoxApp::new()`.
                 let new_snapshot = self.tm.lock().unwrap().generate_snapshot(now).unwrap();
@@ -1370,6 +1373,9 @@ impl RefBoxApp {
                     tm.clear_portal_next_game();
                 }
                 self.clear_portal_selections_to_manual(manual_config);
+                // Clear the page-entry snapshot like the sibling apply arms so a
+                // later path can't read a stale "has changes" state.
+                self.page_entry_snapshot = None;
                 // Safety: snapshot generation only fails before the tournament
                 // manager is initialised, which happens in `RefBoxApp::new()`.
                 let new_snapshot = self

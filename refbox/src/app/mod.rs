@@ -345,16 +345,12 @@ enum ConfirmationKind {
     // OFF mid-game. Switching to manual clears the loaded schedule and resets the
     // before-game clock to the nominal break; this confirms whether to end the
     // current game first or keep it running.
-    #[allow(dead_code)] // constructed in Task 3; remove allow then
     SwitchToManualFromApply,
     // Raised when the operator changes Mode across the portal boundary (Hockey ↔
     // Rugby). Carries the current and proposed modes so the confirmation page can
     // describe what will change. Raised in apply_app_options (Task 9); rendered
     // in Task 7 view builder; committed via RestartAndApply handler (Task 8).
-    PortalTenantSwitch {
-        from_mode: Mode,
-        to_mode: Mode,
-    },
+    PortalTenantSwitch { from_mode: Mode, to_mode: Mode },
 }
 
 // PageEntrySnapshot is a singleton — `RefBoxApp.page_entry_snapshot` holds at most
@@ -986,6 +982,24 @@ impl RefBoxApp {
         self.sound.update_settings(self.config.sound.clone());
     }
 
+    /// Clear the on-screen portal selections back to a fresh manual slate.
+    ///
+    /// The TM-side reset (clock + next-game) is done separately by the caller via the
+    /// engine routines (`reset_to_manual_break` / `clear_portal_next_game`).
+    /// Does NOT clear `config.uwhportal.token` (no logout).
+    /// The `manual_config` parameter is the `GameConfig` that should be persisted as the
+    /// active game config; pass it in as a snapshot captured before the `edited` borrow
+    /// ends (mirrors the borrow choreography of the config-change branch).
+    fn clear_portal_selections_to_manual(&mut self, manual_config: GameConfig) {
+        self.using_uwhportal = false;
+        // Route through set_current_event_id so portal_event_id stays in sync (ADR 011).
+        self.set_current_event_id(None);
+        self.current_court = None;
+        self.schedule = None;
+        self.config.game = manual_config;
+        self.persist_config();
+    }
+
     /// Commit the Game-Options slice (game config + game number) to the live state.
     ///
     /// Returns `Some(ConfirmationKind)` when a safety gate fires (uwhportal-incomplete,
@@ -1005,6 +1019,29 @@ impl RefBoxApp {
 
         // Safety: Mutex poison only occurs if another thread already panicked; the refbox treats that as fatal (matches the 20+ identical sites in this file).
         let mut tm = self.tm.lock().unwrap();
+
+        // Detect the ON→OFF portal transition.  At function entry `self.using_uwhportal`
+        // still holds the prior committed value, so a true→false change means the
+        // operator just switched the portal toggle off.
+        let switching_to_manual = self.using_uwhportal && !edited.using_uwhportal;
+        if switching_to_manual {
+            if tm.current_period() != GamePeriod::BetweenGames {
+                // Mid-game: surface the confirmation page; Task 4 will handle the actions.
+                return Some(ConfirmationKind::SwitchToManualFromApply);
+            }
+            // Between games: commit the clean manual slate directly.
+            // Safety: BetweenGames checked above; set_config only errors when a game is
+            // in progress, so this path is unreachable.
+            tm.set_config(edited.config.clone()).unwrap();
+            tm.reset_to_manual_break();
+            // Snapshot the config we need before dropping the `edited` borrow so we can
+            // call `&mut self` methods below (mirrors the existing config-change branch at
+            // ~line 1049).
+            let manual_config = edited.config.clone();
+            std::mem::drop(tm);
+            self.clear_portal_selections_to_manual(manual_config);
+            return None;
+        }
 
         let new_config = if edited.using_uwhportal {
             edited

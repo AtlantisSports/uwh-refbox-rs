@@ -171,8 +171,6 @@ impl TournamentManager {
     /// running clock. Used on KeepGameAndApply when switching to manual mid-game: the
     /// in-progress game keeps running, and when it ends the between-games break falls
     /// back to the nominal break.
-    // allow(dead_code): called from app layer in a later task; not yet wired up
-    #[allow(dead_code)]
     pub fn clear_portal_next_game(&mut self) {
         self.next_game = None;
         self.next_scheduled_start = None;
@@ -182,8 +180,6 @@ impl TournamentManager {
     /// info and the Game Block grid slot, and stop the clock at the nominal break.
     /// Precondition: called only in `BetweenGames` (the apply path and the
     /// EndGameAndApply confirmation guarantee this).
-    // allow(dead_code): called from app layer in a later task; not yet wired up
-    #[allow(dead_code)]
     pub fn reset_to_manual_break(&mut self) {
         self.clear_portal_next_game();
         self.clock_state = ClockState::Stopped {

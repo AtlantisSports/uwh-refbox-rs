@@ -179,6 +179,7 @@ game-configuration-can-not-be-changed = Konfigurasi pertandingan tidak dapat diu
 
     Apa yang ingin Anda lakukan?
 apply-this-game-number-change = Bagaimana Anda ingin menerapkan perubahan nomor pertandingan ini?
+apply-switch-to-manual = Beralih ke mode manual akan menghapus jadwal yang dimuat dan mereset waktu sebelum pertandingan berikutnya. Pertandingan sedang berlangsung.
 portal-enabled = Saat { $portal }PORTAL diaktifkan, semua kolom harus diisi.
 mode-switch-portal-tenant = Mengubah mode dari { $from_mode } ke { $to_mode } akan menonaktifkan tautan ke { $from_portal }PORTAL dan Anda harus menghubungkan kembali ke { $to_portal }PORTAL.
 uwhportal-token-invalid-code = Kode yang dimasukkan tidak valid.

@@ -37,6 +37,7 @@ pub(in super::super) fn build_confirmation_page<'a>(
             fl!("uwhportal-token-no-pending-link")
         }
         ConfirmationKind::UwhPortalLinkFailed(PortalTokenResponse::Success(_)) => unreachable!(),
+        ConfirmationKind::SwitchToManualFromApply => fl!("apply-switch-to-manual"),
         ConfirmationKind::PortalTenantSwitch { from_mode, to_mode } => fl!(
             "mode-switch-portal-tenant",
             from_mode = format!("{from_mode}"),
@@ -106,6 +107,28 @@ pub(in super::super) fn build_confirmation_page<'a>(
         ConfirmationKind::UwhPortalLinkFailed(_) => {
             vec![(fl!("ok"), green_button, ConfirmationOption::GoBack)]
         }
+        ConfirmationKind::SwitchToManualFromApply => vec![
+            (
+                fl!("go-back-to-editor"),
+                green_button,
+                ConfirmationOption::GoBack,
+            ),
+            (
+                fl!("discard-changes"),
+                yellow_button,
+                ConfirmationOption::DiscardChanges,
+            ),
+            (
+                fl!("keep-current-game-and-apply-change"),
+                orange_button,
+                ConfirmationOption::KeepGameAndApply,
+            ),
+            (
+                fl!("end-current-game-and-apply-change"),
+                red_button,
+                ConfirmationOption::EndGameAndApply,
+            ),
+        ],
         ConfirmationKind::PortalTenantSwitch { .. } => vec![
             (
                 fl!("cancel"),

@@ -181,6 +181,7 @@ game-configuration-can-not-be-changed = 경기 진행 중에는 경기 설정을
 
     어떻게 하시겠습니까?
 apply-this-game-number-change = 이 경기 번호 변경을 어떻게 적용하시겠습니까?
+apply-switch-to-manual = 수동 모드로 전환하면 불러온 일정이 지워지고 다음 경기 전 시간이 초기화됩니다. 경기가 진행 중입니다.
 portal-enabled = { $portal }PORTAL이 활성화된 경우 모든 필드를 입력해야 합니다.
 mode-switch-portal-tenant = 모드를 { $from_mode }에서 { $to_mode }로 변경하면 { $from_portal }PORTAL 연결이 끊어지며 { $to_portal }PORTAL에 다시 연결해야 합니다.
 uwhportal-token-invalid-code = 잘못된 코드가 입력되었습니다.

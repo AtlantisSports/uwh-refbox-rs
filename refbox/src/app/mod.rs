@@ -341,11 +341,20 @@ enum ConfirmationKind {
     GameNumberChangedFromApply,
     GameConfigChangedFromApply(GameConfig),
     UwhPortalIncompleteFromApply,
+    // Raised by per-page Apply on Game Options when the operator turns the portal
+    // OFF mid-game. Switching to manual clears the loaded schedule and resets the
+    // before-game clock to the nominal break; this confirms whether to end the
+    // current game first or keep it running.
+    #[allow(dead_code)] // constructed in Task 3; remove allow then
+    SwitchToManualFromApply,
     // Raised when the operator changes Mode across the portal boundary (Hockey ↔
     // Rugby). Carries the current and proposed modes so the confirmation page can
     // describe what will change. Raised in apply_app_options (Task 9); rendered
     // in Task 7 view builder; committed via RestartAndApply handler (Task 8).
-    PortalTenantSwitch { from_mode: Mode, to_mode: Mode },
+    PortalTenantSwitch {
+        from_mode: Mode,
+        to_mode: Mode,
+    },
 }
 
 // PageEntrySnapshot is a singleton — `RefBoxApp.page_entry_snapshot` holds at most

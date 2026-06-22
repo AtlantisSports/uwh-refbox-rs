@@ -188,6 +188,7 @@ game-configuration-can-not-be-changed = The game configuration can not be change
     
     What would you like to do?
 apply-this-game-number-change = How would you like to apply this game number change?
+apply-switch-to-manual = Switching to manual will clear the loaded schedule and reset the time before the next game. A game is in progress.
 portal-enabled = When { $portal }PORTAL is enabled, all fields must be filled out.
 mode-switch-portal-tenant = Changing mode from { $from_mode } to { $to_mode } will disable the link to { $from_portal }PORTAL and you must re-connect to { $to_portal }PORTAL.
 uwhportal-token-invalid-code = Invalid code entered.

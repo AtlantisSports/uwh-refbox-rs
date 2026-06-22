@@ -179,6 +179,7 @@ game-configuration-can-not-be-changed = A configuração do jogo não pode ser a
 
     O que pretende fazer?
 apply-this-game-number-change = Como pretende aplicar esta alteração ao número de jogo?
+apply-switch-to-manual = Mudar para modo manual irá limpar o calendário carregado e repor o tempo antes do próximo jogo. Um jogo está em curso.
 portal-enabled = Quando o { $portal }PORTAL está ativado, todos os campos têm de ser preenchidos.
 mode-switch-portal-tenant = Alterar o modo de { $from_mode } para { $to_mode } desativará a ligação ao { $from_portal }PORTAL e terá de se ligar novamente ao { $to_portal }PORTAL.
 uwhportal-token-invalid-code = Código introduzido inválido.

@@ -179,6 +179,7 @@ game-configuration-can-not-be-changed = Konfigurasi perlawanan tidak boleh diuba
 
     Apakah yang anda ingin lakukan?
 apply-this-game-number-change = Bagaimana anda ingin menerapkan perubahan nombor perlawanan ini?
+apply-switch-to-manual = Bertukar ke mod manual akan memadam jadual yang dimuatkan dan menetapkan semula masa sebelum perlawanan seterusnya. Perlawanan sedang berlangsung.
 portal-enabled = Apabila { $portal }PORTAL diaktifkan, semua medan mesti diisi.
 mode-switch-portal-tenant = Menukar mod daripada { $from_mode } kepada { $to_mode } akan menyahaktifkan pautan ke { $from_portal }PORTAL dan anda perlu menyambung semula ke { $to_portal }PORTAL.
 uwhportal-token-invalid-code = Kod yang dimasukkan tidak sah.

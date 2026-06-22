@@ -851,6 +851,41 @@ impl RefBoxApp {
         }
     }
 
+    /// Write or delete `portal_link.json` to reflect the current live link.
+    /// Linked (portal on + an event selected) → write a note stamped now so a
+    /// relaunch or short shutdown can re-establish the link. Not linked →
+    /// delete any existing note. Errors are logged, never fatal: a failed note
+    /// write only means a future restart won't auto-relink.
+    fn persist_link_session(&self) {
+        use crate::portal_manager::link_session::{self, LinkSessionFile};
+        if self.using_uwhportal {
+            if let Some(event_id) = self.current_event_id.clone() {
+                // The game the operator is on: the upcoming game between games,
+                // otherwise the current game number from the live snapshot.
+                let game_number = if self.snapshot.current_period == GamePeriod::BetweenGames {
+                    Some(self.snapshot.next_game_number.clone())
+                } else {
+                    Some(self.snapshot.game_number.clone())
+                };
+                let note = LinkSessionFile {
+                    version: LinkSessionFile::CURRENT_VERSION,
+                    event_id,
+                    court: self.current_court.clone(),
+                    game_number,
+                    mode: self.config.mode,
+                    last_active: time::OffsetDateTime::now_utc(),
+                };
+                if let Err(e) = link_session::save(&self.config_dir, &note) {
+                    error!("Failed to write portal_link.json: {e}");
+                }
+                return;
+            }
+        }
+        if let Err(e) = link_session::delete(&self.config_dir) {
+            error!("Failed to delete portal_link.json: {e}");
+        }
+    }
+
     fn apply_app_options(&mut self) -> Option<ConfirmationKind> {
         let edited = self.edited_settings.as_ref()?;
         // Snapshot the fields we need so the immutable borrow on
@@ -2550,6 +2585,10 @@ impl RefBoxApp {
                 }
                 self.page_entry_snapshot = None;
                 self.persist_config();
+                // Keep the link note in step with the committed portal fields
+                // (link/unlink, court, game) so a relaunch restores the right
+                // state — or deletes the note when the portal was switched off.
+                self.persist_link_session();
                 self.navigate_to_parent(page);
                 Task::none()
             }

@@ -1145,6 +1145,16 @@ impl RefBoxApp {
     /// logic of `Message::ConfirmationSelected` for the global-Done variants, but
     /// commits only the Game slice and routes back into settings (not out to MainPage).
     fn apply_game_confirmation(&mut self, selection: ConfirmationOption) -> Task<Message> {
+        // Dispatch the switch-to-manual confirmation to its own handler so its logic
+        // (which does NOT involve a new_config carried in the kind) stays separate from
+        // the GameConfigChanged / GameNumberChanged option arms below.
+        if matches!(
+            self.app_state,
+            AppState::ConfirmationPage(ConfirmationKind::SwitchToManualFromApply)
+        ) {
+            return self.apply_switch_to_manual_confirmation(selection);
+        }
+
         let new_config = if let AppState::ConfirmationPage(
             ConfirmationKind::GameConfigChangedFromApply(ref config),
         ) = self.app_state
@@ -1284,6 +1294,100 @@ impl RefBoxApp {
                 RESTART_PENDING.store(true, Ordering::Relaxed);
                 task = iced::exit();
                 AppState::MainPage
+            }
+        };
+        self.app_state = app_state;
+        trace!("AppState changed to {:?}", self.app_state);
+        task
+    }
+
+    /// Handles operator responses to `ConfirmationKind::SwitchToManualFromApply`.
+    ///
+    /// This confirmation is raised when the operator turns the portal toggle OFF while
+    /// a game is in progress.  The four options mean:
+    ///
+    /// - `EndGameAndApply`   — end the current game, reset to a clean manual slate.
+    /// - `KeepGameAndApply`  — leave the running game untouched; only clear the portal
+    ///                         next-game/grid so the break after this game uses the
+    ///                         nominal break duration from the manual config.
+    /// - `DiscardChanges`    — revert the edited settings and return to the main settings
+    ///                         page (mirrors the shared DiscardChanges arm).
+    /// - `GoBack`            — return to the Game sub-page without committing anything
+    ///                         (mirrors the shared GoBack arm).
+    fn apply_switch_to_manual_confirmation(
+        &mut self,
+        selection: ConfirmationOption,
+    ) -> Task<Message> {
+        let mut task = Task::none();
+        let app_state = match selection {
+            ConfirmationOption::EndGameAndApply => {
+                // Snapshot the manual config before acquiring the TM lock so the
+                // borrow on `edited_settings` is released before the `&mut self`
+                // call to `clear_portal_selections_to_manual`.
+                //
+                // Safety: *FromApply confirmations are only raised while
+                // `edited_settings` is Some; the invariant is enforced by
+                // `apply_game_options`.
+                let manual_config = self.edited_settings.as_ref().unwrap().config.clone();
+                let now = Instant::now();
+                {
+                    // Safety: Mutex poison only occurs if another thread already
+                    // panicked; the refbox treats that as fatal (matches the 20+
+                    // identical sites in this file).
+                    let mut tm = self.tm.lock().unwrap();
+                    tm.reset_game(now);
+                    // `set_config` must run BEFORE `reset_to_manual_break` because
+                    // `reset_to_manual_break` reads `self.config.nominal_break` to
+                    // set the break clock.  After `reset_game` the period is
+                    // `BetweenGames`, so `set_config` cannot error.
+                    tm.set_config(manual_config.clone()).unwrap();
+                    // Overrides reset_game's minimum-break clock with the nominal
+                    // break; also resets the game number to "0" and clears the
+                    // next-game / grid.
+                    tm.reset_to_manual_break();
+                }
+                self.clear_portal_selections_to_manual(manual_config);
+                // Safety: snapshot generation only fails before the tournament
+                // manager is initialised, which happens in `RefBoxApp::new()`.
+                let new_snapshot = self.tm.lock().unwrap().generate_snapshot(now).unwrap();
+                task = self.apply_snapshot(new_snapshot);
+                AppState::EditGameConfig(ConfigPage::Main)
+            }
+            ConfirmationOption::KeepGameAndApply => {
+                // The game keeps running.  Do NOT call set_config or
+                // reset_to_manual_break — that would error (game in progress) or
+                // disrupt the live clock.  Only clear the portal next-game/grid so
+                // the break after this game uses the nominal break duration from the
+                // manual config.
+                //
+                // Safety: *FromApply confirmations are only raised while
+                // `edited_settings` is Some; the invariant is enforced by
+                // `apply_game_options`.
+                let manual_config = self.edited_settings.as_ref().unwrap().config.clone();
+                {
+                    // Safety: Mutex poison — same rationale as the EndGameAndApply arm.
+                    let mut tm = self.tm.lock().unwrap();
+                    tm.clear_portal_next_game();
+                }
+                self.clear_portal_selections_to_manual(manual_config);
+                // Safety: snapshot generation only fails before the tournament
+                // manager is initialised, which happens in `RefBoxApp::new()`.
+                let new_snapshot = self
+                    .tm
+                    .lock()
+                    .unwrap()
+                    .generate_snapshot(Instant::now())
+                    .unwrap();
+                task = self.apply_snapshot(new_snapshot);
+                AppState::EditGameConfig(ConfigPage::Main)
+            }
+            ConfirmationOption::DiscardChanges => {
+                self.revert_from_snapshot();
+                AppState::EditGameConfig(ConfigPage::Main)
+            }
+            ConfirmationOption::GoBack => AppState::EditGameConfig(ConfigPage::Game),
+            ConfirmationOption::RestartAndApply => {
+                unreachable!("RestartAndApply is only offered by PortalTenantSwitch pages")
             }
         };
         self.app_state = app_state;
@@ -3535,6 +3639,7 @@ impl RefBoxApp {
                             | ConfirmationKind::GameNumberChangedFromApply
                             | ConfirmationKind::UwhPortalIncompleteFromApply
                             | ConfirmationKind::PortalTenantSwitch { .. }
+                            | ConfirmationKind::SwitchToManualFromApply
                     )
                 ) {
                     return self.apply_game_confirmation(selection);

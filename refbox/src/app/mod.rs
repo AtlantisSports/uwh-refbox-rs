@@ -2462,6 +2462,13 @@ impl RefBoxApp {
                         self.portal_manager.on_token_status(valid);
                     }
                 }
+                // The background task fires verify_token on its cadence
+                // (~5 min when healthy). Use that heartbeat to refresh the link
+                // note's last-active timestamp (and current game number) so the
+                // 48h restore window tracks real usage, not just first link.
+                if self.using_uwhportal && self.current_event_id.is_some() {
+                    self.persist_link_session();
+                }
                 Task::none()
             }
             Message::PortalUiTick => {

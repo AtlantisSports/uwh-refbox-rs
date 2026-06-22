@@ -5,6 +5,7 @@
 //! and `docs/decisions/011-portal-health-indicator.md`.
 
 pub mod health;
+pub mod link_session;
 pub mod queue;
 
 use serde::{Deserialize, Serialize};

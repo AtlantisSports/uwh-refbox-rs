@@ -3740,11 +3740,18 @@ impl RefBoxApp {
                                 if self.edited_settings.is_none() {
                                     let mut tm = self.tm.lock().unwrap();
                                     if tm.current_period() == GamePeriod::BetweenGames {
+                                        // On a startup link restore, re-select the
+                                        // remembered game; otherwise pick the default
+                                        // next game by number.
+                                        let restore_num = self.pending_restore_game.take();
+                                        let lookup_num = restore_num
+                                            .clone()
+                                            .unwrap_or_else(|| tm.next_game_number());
                                         if let (Some(game), Some(timing)) = self
                                             .schedule
                                             .as_ref()
                                             .unwrap()
-                                            .get_game_and_timing(&tm.next_game_number())
+                                            .get_game_and_timing(&lookup_num)
                                         {
                                             info!(
                                                 "Setting upcoming game info from received schedule: {game:?}"
@@ -3754,6 +3761,21 @@ impl RefBoxApp {
                                                 timing: Some(timing.clone()),
                                                 start_time: Some(game.start_time),
                                             });
+                                            if restore_num.is_some() {
+                                                // Start the live countdown to the
+                                                // scheduled start so a restored session
+                                                // is ready to go (same path the normal
+                                                // between-games transition uses).
+                                                let now = Instant::now();
+                                                // why this cannot panic: BetweenGames was
+                                                // just checked and next_game was just set.
+                                                tm.apply_next_game_start(now).unwrap();
+                                                let new_game_config = tm.config().clone();
+                                                let snapshot = tm.generate_snapshot(now).unwrap();
+                                                std::mem::drop(tm);
+                                                self.config.game = new_game_config;
+                                                return self.apply_snapshot(snapshot);
+                                            }
                                             if let AppState::GameDetailsPage(
                                                 ref mut is_refreshing,
                                             ) = self.app_state

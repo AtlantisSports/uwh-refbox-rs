@@ -167,6 +167,30 @@ impl TournamentManager {
         self.next_scheduled_start = None;
     }
 
+    /// Drop any loaded next-game info and Game Block grid slot WITHOUT touching the
+    /// running clock. Used on KeepGameAndApply when switching to manual mid-game: the
+    /// in-progress game keeps running, and when it ends the between-games break falls
+    /// back to the nominal break.
+    // allow(dead_code): called from app layer in a later task; not yet wired up
+    #[allow(dead_code)]
+    pub fn clear_portal_next_game(&mut self) {
+        self.next_game = None;
+        self.next_scheduled_start = None;
+    }
+
+    /// Return to the fresh-manual-launch before-game state: forget any loaded next-game
+    /// info and the Game Block grid slot, and stop the clock at the nominal break.
+    /// Precondition: called only in `BetweenGames` (the apply path and the
+    /// EndGameAndApply confirmation guarantee this).
+    // allow(dead_code): called from app layer in a later task; not yet wired up
+    #[allow(dead_code)]
+    pub fn reset_to_manual_break(&mut self) {
+        self.clear_portal_next_game();
+        self.clock_state = ClockState::Stopped {
+            clock_time: self.config.nominal_break,
+        };
+    }
+
     pub fn game_number(&self) -> GameNumber {
         self.game_number.clone()
     }
@@ -8359,5 +8383,82 @@ mod test {
 
         // Recovery must clear the stale pause state.
         assert_eq!(tm.time_pause_confirmation, None);
+    }
+
+    #[test]
+    fn test_clear_portal_next_game_leaves_clock_untouched() {
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        let now = Instant::now();
+        tm.start_clock(now);
+        tm.start_play_now(now).unwrap(); // FirstHalf, clock running, next_scheduled_start set
+        tm.set_next_game(NextGameInfo {
+            number: "5".to_string(),
+            timing: None,
+            start_time: Some(OffsetDateTime::now_utc()),
+        });
+        let before = tm.clock_state.clone();
+
+        tm.clear_portal_next_game();
+
+        assert!(tm.next_game.is_none(), "next_game should be cleared");
+        assert_eq!(tm.next_scheduled_start, None, "grid slot should be cleared");
+        assert_eq!(tm.clock_state, before, "clock must not change");
+    }
+
+    #[test]
+    fn test_reset_to_manual_break_sets_nominal_break_and_clears_schedule() {
+        initialize();
+        let config = GameConfig {
+            nominal_break: Duration::from_secs(180),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        // Load portal-style next-game info and a grid slot, as if a schedule were active.
+        tm.set_next_game(NextGameInfo {
+            number: "5".to_string(),
+            timing: None,
+            start_time: Some(OffsetDateTime::now_utc()),
+        });
+        tm.set_game_start(Instant::now()); // test helper sets next_scheduled_start = Some(..)
+
+        tm.reset_to_manual_break();
+
+        assert!(tm.next_game.is_none(), "next_game should be cleared");
+        assert_eq!(tm.next_scheduled_start, None, "grid slot should be cleared");
+        assert_eq!(
+            tm.clock_state,
+            ClockState::Stopped {
+                clock_time: Duration::from_secs(180)
+            },
+            "clock should be stopped at the nominal break",
+        );
+    }
+
+    #[test]
+    fn test_kept_game_break_falls_back_to_nominal_after_clear() {
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(10),
+            half_time_duration: Duration::from_secs(3),
+            nominal_break: Duration::from_secs(30),
+            minimum_break: Duration::from_secs(2),
+            game_block: Duration::from_secs(40),
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let now = Instant::now();
+        tm.start_clock(now);
+        tm.start_play_now(now).unwrap(); // next_scheduled_start = now + 40 (grid)
+        tm.clear_portal_next_game(); // operator switched to manual, kept the running game
+        tm.stop_clock(now).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::ZERO);
+        tm.end_game(now);
+
+        assert_eq!(tm.current_period(), GamePeriod::BetweenGames);
+        // No leftover grid/portal time: the break falls back to the nominal break (30s), not 40s.
+        assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(30)));
     }
 }

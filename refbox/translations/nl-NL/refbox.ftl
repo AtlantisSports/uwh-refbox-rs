@@ -110,6 +110,8 @@ sound-enabled = GELUID
 whistle-volume = FLUIT-
     VOLUME:
 manage-remotes = AFSTANDSBEDIENINGEN BEHEREN
+update-audio-output = AUDIO-UITVOER
+    BIJWERKEN
 whistle-enabled = FLUIT
     INGESCHAKELD:
 above-water-volume = VOLUME

@@ -110,6 +110,8 @@ sound-enabled = SES
 whistle-volume = DÜDÜK
     SESİ:
 manage-remotes = UZAKTAN KUMANDAYI YÖNETİN
+update-audio-output = SES ÇIKIŞINI
+    GÜNCELLE
 whistle-enabled = DÜDÜK
     AKTİF:
 above-water-volume = SU ÜSTÜ

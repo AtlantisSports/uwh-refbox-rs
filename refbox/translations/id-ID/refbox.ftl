@@ -110,6 +110,8 @@ sound-enabled = SUARA
 whistle-volume = VOLUME
     PELUIT:
 manage-remotes = KELOLA REMOTE
+update-audio-output = PERBARUI
+    OUTPUT AUDIO
 whistle-enabled = PELUIT
     DIAKTIFKAN:
 above-water-volume = VOLUME

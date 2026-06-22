@@ -110,6 +110,8 @@ sound-enabled = เปิดใช้
 whistle-volume = ระดับเสียง
     นกหวีด:
 manage-remotes = จัดการรีโมต
+update-audio-output = อัปเดต
+    เอาต์พุตเสียง
 whistle-enabled = เปิดใช้
     นกหวีด:
 above-water-volume = ระดับเสียง

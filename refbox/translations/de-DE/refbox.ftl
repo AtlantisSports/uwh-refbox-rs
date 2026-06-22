@@ -110,6 +110,8 @@ sound-enabled = TON
 whistle-volume = PFEIFEN-
     LAUTSTÄRKE:
 manage-remotes = FERNBEDIENUNGEN VERWALTEN
+update-audio-output = AUDIOAUSGANG
+    AKTUALISIEREN
 whistle-enabled = PFEIFE
     AKTIVIERT:
 above-water-volume = LAUTSTÄRKE

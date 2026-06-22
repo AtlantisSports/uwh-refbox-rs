@@ -171,6 +171,11 @@ pub struct RefBoxApp {
     /// One-shot: the game number to re-select once the schedule arrives during
     /// a startup link restore; cleared on first use. `None` in normal operation.
     pending_restore_game: Option<GameNumber>,
+    /// One-shot: the event whose schedule to fetch once the event list lands
+    /// during a startup link restore. Deferred (rather than fetched at startup)
+    /// so the schedule arrives after `self.events` is populated — `RecvSchedule`
+    /// requires the event to be present there. Cleared on first use.
+    pending_restore_schedule: Option<EventId>,
     sound: SoundController,
     sim_children: Vec<Child>,
     sim_spawn_config: crate::SimSpawnConfig,
@@ -1601,6 +1606,7 @@ impl RefBoxApp {
             current_event_id: None,
             current_court: None,
             pending_restore_game: None,
+            pending_restore_schedule: None,
             sound,
             sim_children,
             sim_spawn_config,
@@ -1629,7 +1635,6 @@ impl RefBoxApp {
         // or a short shutdown comes back recognized instead of dormant. A stale or
         // cross-portal note is ignored — and a stale one deleted — so a fresh power-on
         // weeks later for a new event starts clean. See ADR 011/017 amendment.
-        let mut restore_schedule_for: Option<EventId> = None;
         match crate::portal_manager::link_session::load_or_none(&new.config_dir) {
             Ok(Some(note)) => {
                 if decide_restore(&note, time::OffsetDateTime::now_utc(), new.config.mode) {
@@ -1643,7 +1648,10 @@ impl RefBoxApp {
                     new.current_court = note.court.clone();
                     new.pending_restore_game = note.game_number.clone();
                     new.set_current_event_id(Some(note.event_id.clone()));
-                    restore_schedule_for = Some(note.event_id);
+                    // Defer the schedule fetch to RecvEventList (after the event
+                    // list populates self.events) so it can't race ahead of the
+                    // event list and silently skip the game re-selection.
+                    new.pending_restore_schedule = Some(note.event_id);
                 } else {
                     info!("Portal link note present but stale/cross-portal; starting dormant");
                     let _ = crate::portal_manager::link_session::delete(&new.config_dir);
@@ -1664,11 +1672,6 @@ impl RefBoxApp {
         }];
         if new.using_uwhportal {
             startup_tasks.push(new.request_event_list());
-        }
-        // On a restored link, also fetch the schedule so the remembered game can
-        // be re-selected and its scheduled-start countdown re-established (Task 4).
-        if let Some(event_id) = restore_schedule_for {
-            startup_tasks.push(new.request_schedule(event_id));
         }
         // Arm a one-shot ~20s timer. If the app is still running when it fires,
         // startup was healthy and the update trial marker can be cleared so a
@@ -3676,6 +3679,23 @@ impl RefBoxApp {
                     tasks.push(self.request_teams_list(event.id.clone()));
                 }
                 self.events = Some(e_map);
+                // Startup link restore: now that the event list is populated,
+                // fetch the schedule for the restored event so RecvSchedule can
+                // re-select the remembered game and start its scheduled countdown.
+                if let Some(event_id) = self.pending_restore_schedule.take() {
+                    let in_list = self
+                        .events
+                        .as_ref()
+                        .is_some_and(|m| m.contains_key(&event_id));
+                    if in_list {
+                        tasks.push(self.request_schedule(event_id));
+                    } else {
+                        warn!(
+                            "Restore event {} not in fetched event list; not re-linking schedule",
+                            event_id.full()
+                        );
+                    }
+                }
                 Task::batch(tasks)
             }
             Message::RecvTeamsList(event_id, teams) => {

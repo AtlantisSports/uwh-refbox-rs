@@ -139,6 +139,11 @@ pub enum Message {
         canceled: bool,
     },
     RequestRemoteId,
+    // Constructed by the Sound-page button on non-Linux only; on Linux the Pi
+    // has a fixed dedicated speaker so the button is compiled out. The variant
+    // is kept ungated so the worker match and update() arm stay uniform.
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
+    UpdateAudioOutput,
     GotRemoteId(RemoteId),
     DeleteRemote(usize),
     ConfirmationSelected(ConfirmationOption),
@@ -337,6 +342,7 @@ impl Message {
             | Self::SelectLanguage(_)
             | Self::LanguageSelectComplete { .. }
             | Self::RequestRemoteId
+            | Self::UpdateAudioOutput
             | Self::GotRemoteId(_)
             | Self::DeleteRemote(_)
             | Self::ConfirmationSelected(_)
@@ -421,6 +427,7 @@ impl PartialEq for Message {
             | (Self::EditGameConfig, Self::EditGameConfig)
             | (Self::ConfigEditComplete, Self::ConfigEditComplete)
             | (Self::RequestRemoteId, Self::RequestRemoteId)
+            | (Self::UpdateAudioOutput, Self::UpdateAudioOutput)
             | (Self::EndTimeout, Self::EndTimeout)
             | (Self::CancelTimeout, Self::CancelTimeout)
             | (Self::StopClock, Self::StopClock)
@@ -658,6 +665,7 @@ impl PartialEq for Message {
             | (Self::SelectLanguage(_), _)
             | (Self::LanguageSelectComplete { .. }, _)
             | (Self::RequestRemoteId, _)
+            | (Self::UpdateAudioOutput, _)
             | (Self::GotRemoteId(_), _)
             | (Self::DeleteRemote(_), _)
             | (Self::ConfirmationSelected(_), _)

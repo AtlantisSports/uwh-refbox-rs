@@ -1207,6 +1207,17 @@ fn make_sound_config_page<'a>(
 ) -> Element<'a, Message> {
     let EditableSettings { sound, .. } = settings;
 
+    // Re-adopt the OS default output device. Laptop-only: the Pi runs Linux
+    // with a fixed dedicated speaker, so the button is absent there and the
+    // bottom row keeps its existing empty spacer.
+    #[cfg(not(target_os = "linux"))]
+    let audio_output_slot: Element<'a, Message> = make_button(fl!("update-audio-output"))
+        .on_press(Message::UpdateAudioOutput)
+        .style(light_gray_button)
+        .into();
+    #[cfg(target_os = "linux")]
+    let audio_output_slot: Element<'a, Message> = horizontal_space().into();
+
     column![
         make_game_time_button(
             snapshot,
@@ -1317,7 +1328,7 @@ fn make_sound_config_page<'a>(
         .spacing(SPACING)
         .height(Length::Fill),
         row![
-            horizontal_space(),
+            audio_output_slot,
             horizontal_space(),
             make_value_button(
                 fl!("auto-sound-stop-play"),

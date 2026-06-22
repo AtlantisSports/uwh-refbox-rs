@@ -109,6 +109,8 @@ sound-enabled = SOUND
 whistle-volume = WHISTLE
     VOLUME:
 manage-remotes = MANAGE REMOTES
+update-audio-output = UPDATE AUDIO
+    OUTPUT
 whistle-enabled = WHISTLE 
     ENABLED:
 above-water-volume = ABOVE WATER

@@ -110,8 +110,7 @@ sound-enabled = 声音
 whistle-volume = 哨声
     音量：
 manage-remotes = 管理遥控器
-update-audio-output = 更新音频
-    输出
+update-audio-output = 刷新输出
 whistle-enabled = 哨声
     启用：
 above-water-volume = 水上

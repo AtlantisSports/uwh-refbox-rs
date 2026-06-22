@@ -110,8 +110,7 @@ sound-enabled = TUNOG
 whistle-volume = LAKAS NG
     SIPOL:
 manage-remotes = PAMAHALAAN ANG MGA REMOTE
-update-audio-output = I-UPDATE ANG
-    AUDIO OUTPUT
+update-audio-output = I-REFRESH OUTPUT
 whistle-enabled = SIPOL
     PINAGANA:
 above-water-volume = LAKAS SA

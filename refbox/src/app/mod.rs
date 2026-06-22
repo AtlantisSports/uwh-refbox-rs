@@ -168,6 +168,9 @@ pub struct RefBoxApp {
     schedule: Option<Schedule>,
     current_event_id: Option<EventId>,
     current_court: Option<String>,
+    /// One-shot: the game number to re-select once the schedule arrives during
+    /// a startup link restore; cleared on first use. `None` in normal operation.
+    pending_restore_game: Option<GameNumber>,
     sound: SoundController,
     sim_children: Vec<Child>,
     sim_spawn_config: crate::SimSpawnConfig,
@@ -1574,7 +1577,7 @@ impl RefBoxApp {
             default_app_state.clone()
         };
 
-        let new = Self {
+        let mut new = Self {
             pen_edit: ListEditor::new(tm.clone()),
             warn_edit: ListEditor::new(tm.clone()),
             foul_edit: ListEditor::new(tm.clone()),
@@ -1597,6 +1600,7 @@ impl RefBoxApp {
             schedule: None,
             current_event_id: None,
             current_court: None,
+            pending_restore_game: None,
             sound,
             sim_children,
             sim_spawn_config,
@@ -1621,8 +1625,37 @@ impl RefBoxApp {
             scramble_token_pending,
         };
 
+        // Restore a recent portal link so a relaunch (language change, self-update)
+        // or a short shutdown comes back recognized instead of dormant. A stale or
+        // cross-portal note is ignored — and a stale one deleted — so a fresh power-on
+        // weeks later for a new event starts clean. See ADR 011/017 amendment.
+        let mut restore_schedule_for: Option<EventId> = None;
+        match crate::portal_manager::link_session::load_or_none(&new.config_dir) {
+            Ok(Some(note)) => {
+                if decide_restore(&note, time::OffsetDateTime::now_utc(), new.config.mode) {
+                    info!(
+                        "Restoring portal link to {} (court {:?}, game {:?})",
+                        note.event_id.full(),
+                        note.court,
+                        note.game_number
+                    );
+                    new.using_uwhportal = true;
+                    new.current_court = note.court.clone();
+                    new.pending_restore_game = note.game_number.clone();
+                    new.set_current_event_id(Some(note.event_id.clone()));
+                    restore_schedule_for = Some(note.event_id);
+                } else {
+                    info!("Portal link note present but stale/cross-portal; starting dormant");
+                    let _ = crate::portal_manager::link_session::delete(&new.config_dir);
+                }
+            }
+            Ok(None) => {}
+            Err(e) => error!("Failed to read portal_link.json: {e}"),
+        }
+
         // Portal subsystem stays dormant until the operator turns Using-UWH-Portal
-        // ON: no event-list fetch fires at startup unless the runtime flag is true.
+        // ON (or a recent link was restored above): no event-list fetch fires at
+        // startup unless the runtime flag is true.
         // See ADR 017 (Portal Data Lifecycle) for the dormancy contract.
         let mut startup_tasks = vec![if fullscreen {
             window::get_latest().and_then(|w| window::change_mode(w, window::Mode::Fullscreen))
@@ -1631,6 +1664,11 @@ impl RefBoxApp {
         }];
         if new.using_uwhportal {
             startup_tasks.push(new.request_event_list());
+        }
+        // On a restored link, also fetch the schedule so the remembered game can
+        // be re-selected and its scheduled-start countdown re-established (Task 4).
+        if let Some(event_id) = restore_schedule_for {
+            startup_tasks.push(new.request_schedule(event_id));
         }
         // Arm a one-shot ~20s timer. If the app is still running when it fires,
         // startup was healthy and the update trial marker can be cleared so a
@@ -4831,6 +4869,59 @@ impl RefBoxApp {
             background_color: window_background(),
             text_color,
         }
+    }
+}
+
+/// Decide whether a remembered link note should be restored at startup:
+/// it must be fresh (within the freshness window) and belong to the same
+/// portal as the current mode (a UWH note is never restored into UWR).
+fn decide_restore(
+    note: &crate::portal_manager::link_session::LinkSessionFile,
+    now: time::OffsetDateTime,
+    current_mode: Mode,
+) -> bool {
+    use crate::portal_manager::link_session::{FRESHNESS_WINDOW, is_fresh};
+    is_fresh(note.last_active, now, FRESHNESS_WINDOW) && !crosses_portal(note.mode, current_mode)
+}
+
+#[cfg(test)]
+mod restore_tests {
+    use super::*;
+    use crate::portal_manager::link_session::LinkSessionFile;
+
+    fn note(last_active: time::OffsetDateTime, mode: Mode) -> LinkSessionFile {
+        LinkSessionFile {
+            version: LinkSessionFile::CURRENT_VERSION,
+            event_id: EventId::from_full("events/2113-A").unwrap(),
+            court: Some("1".into()),
+            game_number: Some("G1".into()),
+            mode,
+            last_active,
+        }
+    }
+
+    #[test]
+    fn fresh_same_portal_restores() {
+        let now = time::OffsetDateTime::now_utc();
+        let n = note(now - time::Duration::hours(20), Mode::Hockey6V6);
+        assert!(decide_restore(&n, now, Mode::Hockey6V6));
+        // 3v3 shares the UWH portal with 6v6 → still restore
+        assert!(decide_restore(&n, now, Mode::Hockey3V3));
+    }
+
+    #[test]
+    fn stale_does_not_restore() {
+        let now = time::OffsetDateTime::now_utc();
+        let n = note(now - time::Duration::hours(49), Mode::Hockey6V6);
+        assert!(!decide_restore(&n, now, Mode::Hockey6V6));
+    }
+
+    #[test]
+    fn cross_portal_does_not_restore() {
+        let now = time::OffsetDateTime::now_utc();
+        let n = note(now, Mode::Hockey6V6);
+        // Rugby uses the UWR portal → must NOT restore a UWH note
+        assert!(!decide_restore(&n, now, Mode::Rugby));
     }
 }
 

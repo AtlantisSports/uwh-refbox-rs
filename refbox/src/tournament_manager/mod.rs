@@ -182,6 +182,8 @@ impl TournamentManager {
     /// EndGameAndApply confirmation guarantee this).
     pub fn reset_to_manual_break(&mut self) {
         self.clear_portal_next_game();
+        // Reset to the fresh-launch default so the game selection clears, matching TournamentManager::new.
+        self.game_number = "0".to_string();
         self.clock_state = ClockState::Stopped {
             clock_time: self.config.nominal_break,
         };
@@ -8417,6 +8419,8 @@ mod test {
             start_time: Some(OffsetDateTime::now_utc()),
         });
         tm.set_game_start(Instant::now()); // test helper sets next_scheduled_start = Some(..)
+        // Simulate a leftover portal game number (e.g. game 5 was running).
+        tm.set_game_number("5");
 
         tm.reset_to_manual_break();
 
@@ -8428,6 +8432,10 @@ mod test {
                 clock_time: Duration::from_secs(180)
             },
             "clock should be stopped at the nominal break",
+        );
+        assert_eq!(
+            tm.game_number, "0",
+            "game number should reset to the fresh-launch default"
         );
     }
 

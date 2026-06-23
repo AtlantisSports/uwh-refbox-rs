@@ -1033,7 +1033,8 @@ impl RefBoxApp {
             // Safety: BetweenGames checked above; set_config only errors when a game is
             // in progress, so this path is unreachable.
             tm.set_config(edited.config.clone()).unwrap();
-            tm.reset_to_manual_break();
+            let now = Instant::now();
+            tm.reset_to_manual_break(now);
             // Snapshot the config we need before dropping the `edited` borrow so we can
             // call `&mut self` methods below (mirrors the existing config-change branch at
             // ~line 1049).
@@ -1342,9 +1343,9 @@ impl RefBoxApp {
                     // `BetweenGames`, so `set_config` cannot error.
                     tm.set_config(manual_config.clone()).unwrap();
                     // Overrides reset_game's minimum-break clock with the nominal
-                    // break; also resets the game number to "0" and clears the
-                    // next-game / grid.
-                    tm.reset_to_manual_break();
+                    // break; also resets the game number to "0", clears the
+                    // next-game / grid, and starts the break counting down.
+                    tm.reset_to_manual_break(now);
                 }
                 self.clear_portal_selections_to_manual(manual_config);
                 // Clear the page-entry snapshot like the sibling apply arms so a

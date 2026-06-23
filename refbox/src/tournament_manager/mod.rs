@@ -177,16 +177,21 @@ impl TournamentManager {
     }
 
     /// Return to the fresh-manual-launch before-game state: forget any loaded next-game
-    /// info and the Game Block grid slot, and stop the clock at the nominal break.
+    /// info and the Game Block grid slot, reset the game number, and start the break
+    /// clock counting down from the nominal break. Mirrors the app's startup sequence
+    /// (`TournamentManager::new` leaves the clock stopped, then `start_clock` runs), so
+    /// the before-game time counts down like a fresh launch rather than sitting frozen.
     /// Precondition: called only in `BetweenGames` (the apply path and the
     /// EndGameAndApply confirmation guarantee this).
-    pub fn reset_to_manual_break(&mut self) {
+    pub fn reset_to_manual_break(&mut self, now: Instant) {
         self.clear_portal_next_game();
         // Reset to the fresh-launch default so the game selection clears, matching TournamentManager::new.
         self.game_number = "0".to_string();
         self.clock_state = ClockState::Stopped {
             clock_time: self.config.nominal_break,
         };
+        // Start the break counting down, exactly as the app does at startup.
+        self.start_clock(now);
     }
 
     pub fn game_number(&self) -> GameNumber {
@@ -8422,20 +8427,28 @@ mod test {
         // Simulate a leftover portal game number (e.g. game 5 was running).
         tm.set_game_number("5");
 
-        tm.reset_to_manual_break();
+        let now = Instant::now();
+        tm.reset_to_manual_break(now);
 
         assert!(tm.next_game.is_none(), "next_game should be cleared");
         assert_eq!(tm.next_scheduled_start, None, "grid slot should be cleared");
         assert_eq!(
-            tm.clock_state,
-            ClockState::Stopped {
-                clock_time: Duration::from_secs(180)
-            },
-            "clock should be stopped at the nominal break",
-        );
-        assert_eq!(
             tm.game_number, "0",
             "game number should reset to the fresh-launch default"
+        );
+        assert!(
+            tm.clock_is_running(),
+            "the break clock should be running (counting down) like a fresh launch",
+        );
+        assert_eq!(
+            tm.game_clock_time(now),
+            Some(Duration::from_secs(180)),
+            "the break clock should start at the nominal break",
+        );
+        assert_eq!(
+            tm.game_clock_time(now + Duration::from_secs(10)),
+            Some(Duration::from_secs(170)),
+            "the break clock should count down",
         );
     }
 

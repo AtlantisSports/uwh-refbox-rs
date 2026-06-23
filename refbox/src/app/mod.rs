@@ -1307,14 +1307,14 @@ impl RefBoxApp {
     /// This confirmation is raised when the operator turns the portal toggle OFF while
     /// a game is in progress.  The four options mean:
     ///
-    /// - `EndGameAndApply`   — end the current game, reset to a clean manual slate.
-    /// - `KeepGameAndApply`  — leave the running game untouched; only clear the portal
-    ///                         next-game/grid so the break after this game uses the
-    ///                         nominal break duration from the manual config.
-    /// - `DiscardChanges`    — revert the edited settings and return to the main settings
-    ///                         page (mirrors the shared DiscardChanges arm).
-    /// - `GoBack`            — return to the Game sub-page without committing anything
-    ///                         (mirrors the shared GoBack arm).
+    /// - `EndGameAndApply` — end the current game, reset to a clean manual slate.
+    /// - `KeepGameAndApply` — leave the running game untouched; only clear the portal
+    ///   next-game/grid so the break after this game uses the nominal break duration
+    ///   from the manual config.
+    /// - `DiscardChanges` — revert the edited settings and return to the main settings
+    ///   page (mirrors the shared DiscardChanges arm).
+    /// - `GoBack` — return to the Game sub-page without committing anything (mirrors
+    ///   the shared GoBack arm).
     fn apply_switch_to_manual_confirmation(
         &mut self,
         selection: ConfirmationOption,

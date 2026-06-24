@@ -419,6 +419,7 @@ false-start = Vals Vertrek
 
 # Portal Health Indicator
 portal-summary-title = { $portal } PORTAALSTATUS
+portal-retry-all = ALLES OPNIEUW
 portal-row-token-expired = Portaal-login verlopen — tik om opnieuw in te loggen
 portal-row-stuck = Wedstrijd { $game } Fout bij verzenden score, tik om te herstellen
 portal-row-pending = Wedstrijd { $game } Score niet verzonden, tik om opnieuw te proberen

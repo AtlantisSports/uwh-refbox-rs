@@ -421,6 +421,7 @@ false-start = 부정 출발
 
 # Portal Health Indicator
 portal-summary-title = { $portal } PORTAL 상태
+portal-retry-all = 모두 재시도
 portal-row-token-expired = Portal 로그인 만료됨 — 탭하여 다시 로그인
 portal-row-stuck = 경기 { $game } 점수 전송 오류, 탭하여 수정
 portal-row-pending = 경기 { $game } 점수 전송 안 됨, 탭하여 재시도

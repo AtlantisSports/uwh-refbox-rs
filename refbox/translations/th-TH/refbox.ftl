@@ -418,6 +418,7 @@ false-start = การออกตัวผิด
 
 # Portal Health Indicator
 portal-summary-title = สถานะ { $portal } PORTAL
+portal-retry-all = ลองใหม่ทั้งหมด
 portal-row-token-expired = การเข้าสู่ระบบพอร์ทัลหมดอายุ — แตะเพื่อเข้าสู่ระบบใหม่
 portal-row-stuck = เกม { $game } ส่งคะแนนผิดพลาด แตะเพื่อแก้ไข
 portal-row-pending = เกม { $game } ยังไม่ส่งคะแนน แตะเพื่อลองอีกครั้ง

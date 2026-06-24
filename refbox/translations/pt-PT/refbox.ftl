@@ -419,6 +419,7 @@ false-start = Saída Falsa
 
 # Portal Health Indicator
 portal-summary-title = ESTADO DO PORTAL { $portal }
+portal-retry-all = REPETIR TUDO
 portal-row-token-expired = Sessão do portal expirou — toque para iniciar sessão novamente
 portal-row-stuck = Jogo { $game } Erro no envio do resultado, toque para corrigir
 portal-row-pending = Jogo { $game } Resultado não enviado, toque para tentar novamente

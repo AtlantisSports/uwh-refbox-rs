@@ -419,6 +419,7 @@ false-start = Fehlstart
 
 # Portal Health Indicator
 portal-summary-title = { $portal } PORTAL STATUS
+portal-retry-all = ALLE WIEDERHOLEN
 portal-row-token-expired = Portal-Anmeldung abgelaufen — zum erneuten Anmelden tippen
 portal-row-stuck = Spiel { $game } Übermittlungsfehler, zum Beheben tippen
 portal-row-pending = Spiel { $game } Spielstand nicht gesendet, zum erneuten Versuch tippen

@@ -419,6 +419,7 @@ false-start = Hatalı Başlangıç
 
 # Portal Health Indicator
 portal-summary-title = { $portal } PORTAL DURUMU
+portal-retry-all = TÜMÜNÜ TEKRAR DENE
 portal-row-token-expired = Portal oturumu sona erdi — yeniden giriş için dokunun
 portal-row-stuck = Oyun { $game } Skor gönderme hatası, düzeltmek için dokunun
 portal-row-pending = Oyun { $game } Skor gönderilmedi, tekrar denemek için dokunun

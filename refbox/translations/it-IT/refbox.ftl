@@ -419,6 +419,7 @@ false-start = Falsa Partenza
 
 # Portal Health Indicator
 portal-summary-title = STATO PORTALE { $portal }
+portal-retry-all = RIPROVA TUTTO
 portal-row-token-expired = Sessione Portale scaduta — tocca per accedere di nuovo
 portal-row-stuck = Partita { $game } Errore invio punteggio, tocca per correggere
 portal-row-pending = Partita { $game } Punteggio non inviato, tocca per riprovare

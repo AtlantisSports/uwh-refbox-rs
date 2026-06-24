@@ -50,10 +50,33 @@ const COUNTDOWN_LEN: usize = include_bytes!("../../resources/sounds/countdown.ra
 static COUNTDOWN: [f32; COUNTDOWN_LEN] =
     process_array(include_bytes!("../../resources/sounds/countdown.raw"));
 
+const AIRHORN_LEN: usize = include_bytes!("../../resources/sounds/airhorn.raw").len() / 4;
+static AIRHORN: [f32; AIRHORN_LEN] =
+    process_array(include_bytes!("../../resources/sounds/airhorn.raw"));
+
+const PIPES_LEN: usize = include_bytes!("../../resources/sounds/pipes.raw").len() / 4;
+static PIPES: [f32; PIPES_LEN] = process_array(include_bytes!("../../resources/sounds/pipes.raw"));
+
+const KLAXON_LEN: usize = include_bytes!("../../resources/sounds/klaxon.raw").len() / 4;
+static KLAXON: [f32; KLAXON_LEN] =
+    process_array(include_bytes!("../../resources/sounds/klaxon.raw"));
+
+const PIP_LEN: usize = include_bytes!("../../resources/sounds/pip.raw").len() / 4;
+static PIP: [f32; PIP_LEN] = process_array(include_bytes!("../../resources/sounds/pip.raw"));
+
+const PULSE_LEN: usize = include_bytes!("../../resources/sounds/pulse.raw").len() / 4;
+static PULSE: [f32; PULSE_LEN] = process_array(include_bytes!("../../resources/sounds/pulse.raw"));
+
+const SIREN_LEN: usize = include_bytes!("../../resources/sounds/siren.raw").len() / 4;
+static SIREN: [f32; SIREN_LEN] = process_array(include_bytes!("../../resources/sounds/siren.raw"));
+
+const TRILL_LEN: usize = include_bytes!("../../resources/sounds/trill.raw").len() / 4;
+static TRILL: [f32; TRILL_LEN] = process_array(include_bytes!("../../resources/sounds/trill.raw"));
+
 pub const SAMPLE_RATE: f32 = 44100.0;
 
 macro_attr! {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Derivative, EnumFromStr!)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Derivative, EnumFromStr!)]
     #[derivative(Default)]
     pub enum BuzzerSound {
         #[derivative(Default)]
@@ -62,6 +85,13 @@ macro_attr! {
         Crazy,
         DeDeDu,
         TwoTone,
+        Airhorn,
+        Pipes,
+        Klaxon,
+        Pip,
+        Pulse,
+        Siren,
+        Trill,
     }
 }
 
@@ -73,8 +103,35 @@ impl Display for BuzzerSound {
             Self::Crazy => write!(f, "Crazy"),
             Self::DeDeDu => write!(f, "De De Du"),
             Self::TwoTone => write!(f, "Two Tone"),
+            Self::Airhorn => write!(f, "Airhorn"),
+            Self::Pipes => write!(f, "Pipes"),
+            Self::Klaxon => write!(f, "Klaxon"),
+            Self::Pip => write!(f, "Pip"),
+            Self::Pulse => write!(f, "Pulse"),
+            Self::Siren => write!(f, "Siren"),
+            Self::Trill => write!(f, "Trill"),
         }
     }
+}
+
+impl BuzzerSound {
+    /// All buzzer sounds, in picker display order (existing first, new last).
+    // Used by the sounds picker UI (wired in a later task).
+    #[allow(dead_code)]
+    pub const ALL: [BuzzerSound; 12] = [
+        BuzzerSound::Buzz,
+        BuzzerSound::Whoop,
+        BuzzerSound::Crazy,
+        BuzzerSound::DeDeDu,
+        BuzzerSound::TwoTone,
+        BuzzerSound::Airhorn,
+        BuzzerSound::Pipes,
+        BuzzerSound::Klaxon,
+        BuzzerSound::Pip,
+        BuzzerSound::Pulse,
+        BuzzerSound::Siren,
+        BuzzerSound::Trill,
+    ];
 }
 
 pub(super) struct SoundLibrary {
@@ -85,6 +142,13 @@ pub(super) struct SoundLibrary {
     two_tone: AudioBuffer,
     whistle: AudioBuffer,
     countdown: AudioBuffer,
+    airhorn: AudioBuffer,
+    pipes: AudioBuffer,
+    klaxon: AudioBuffer,
+    pip: AudioBuffer,
+    pulse: AudioBuffer,
+    siren: AudioBuffer,
+    trill: AudioBuffer,
 }
 
 impl Index<BuzzerSound> for SoundLibrary {
@@ -97,6 +161,13 @@ impl Index<BuzzerSound> for SoundLibrary {
             BuzzerSound::Crazy => &self.crazy,
             BuzzerSound::DeDeDu => &self.de_de_du,
             BuzzerSound::TwoTone => &self.two_tone,
+            BuzzerSound::Airhorn => &self.airhorn,
+            BuzzerSound::Pipes => &self.pipes,
+            BuzzerSound::Klaxon => &self.klaxon,
+            BuzzerSound::Pip => &self.pip,
+            BuzzerSound::Pulse => &self.pulse,
+            BuzzerSound::Siren => &self.siren,
+            BuzzerSound::Trill => &self.trill,
         }
     }
 }
@@ -124,6 +195,27 @@ impl SoundLibrary {
         let mut countdown = context.create_buffer(1, COUNTDOWN_LEN, SAMPLE_RATE);
         countdown.copy_to_channel(&COUNTDOWN, 0);
 
+        let mut airhorn = context.create_buffer(1, AIRHORN_LEN, SAMPLE_RATE);
+        airhorn.copy_to_channel(&AIRHORN, 0);
+
+        let mut pipes = context.create_buffer(1, PIPES_LEN, SAMPLE_RATE);
+        pipes.copy_to_channel(&PIPES, 0);
+
+        let mut klaxon = context.create_buffer(1, KLAXON_LEN, SAMPLE_RATE);
+        klaxon.copy_to_channel(&KLAXON, 0);
+
+        let mut pip = context.create_buffer(1, PIP_LEN, SAMPLE_RATE);
+        pip.copy_to_channel(&PIP, 0);
+
+        let mut pulse = context.create_buffer(1, PULSE_LEN, SAMPLE_RATE);
+        pulse.copy_to_channel(&PULSE, 0);
+
+        let mut siren = context.create_buffer(1, SIREN_LEN, SAMPLE_RATE);
+        siren.copy_to_channel(&SIREN, 0);
+
+        let mut trill = context.create_buffer(1, TRILL_LEN, SAMPLE_RATE);
+        trill.copy_to_channel(&TRILL, 0);
+
         Self {
             buzz,
             whoop,
@@ -132,6 +224,13 @@ impl SoundLibrary {
             two_tone,
             whistle,
             countdown,
+            airhorn,
+            pipes,
+            klaxon,
+            pip,
+            pulse,
+            siren,
+            trill,
         }
     }
 
@@ -141,5 +240,24 @@ impl SoundLibrary {
 
     pub(super) fn countdown(&self) -> &AudioBuffer {
         &self.countdown
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn all_buzzer_sounds_round_trip_via_serde() {
+        for s in BuzzerSound::ALL {
+            let toml = toml::to_string(&Wrap { s }).unwrap();
+            let back: Wrap = toml::from_str(&toml).unwrap();
+            assert_eq!(back.s, s, "round-trip failed for {s:?}");
+        }
+        assert_eq!(BuzzerSound::ALL.len(), 12);
+    }
+    #[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug)]
+    struct Wrap {
+        s: BuzzerSound,
     }
 }

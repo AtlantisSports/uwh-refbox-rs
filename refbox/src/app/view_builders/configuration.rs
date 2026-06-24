@@ -131,7 +131,14 @@ impl Cyclable for BuzzerSound {
             Self::Whoop => Self::Crazy,
             Self::Crazy => Self::DeDeDu,
             Self::DeDeDu => Self::TwoTone,
-            Self::TwoTone => Self::Buzz,
+            Self::TwoTone => Self::Airhorn,
+            Self::Airhorn => Self::Pipes,
+            Self::Pipes => Self::Klaxon,
+            Self::Klaxon => Self::Pip,
+            Self::Pip => Self::Pulse,
+            Self::Pulse => Self::Siren,
+            Self::Siren => Self::Trill,
+            Self::Trill => Self::Buzz,
         }
     }
 }
@@ -143,7 +150,14 @@ impl Cyclable for Option<BuzzerSound> {
             Some(BuzzerSound::Whoop) => Some(BuzzerSound::Crazy),
             Some(BuzzerSound::Crazy) => Some(BuzzerSound::DeDeDu),
             Some(BuzzerSound::DeDeDu) => Some(BuzzerSound::TwoTone),
-            Some(BuzzerSound::TwoTone) => None,
+            Some(BuzzerSound::TwoTone) => Some(BuzzerSound::Airhorn),
+            Some(BuzzerSound::Airhorn) => Some(BuzzerSound::Pipes),
+            Some(BuzzerSound::Pipes) => Some(BuzzerSound::Klaxon),
+            Some(BuzzerSound::Klaxon) => Some(BuzzerSound::Pip),
+            Some(BuzzerSound::Pip) => Some(BuzzerSound::Pulse),
+            Some(BuzzerSound::Pulse) => Some(BuzzerSound::Siren),
+            Some(BuzzerSound::Siren) => Some(BuzzerSound::Trill),
+            Some(BuzzerSound::Trill) => None,
             None => Some(BuzzerSound::Buzz),
         }
     }

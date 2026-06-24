@@ -544,8 +544,9 @@ impl PortalManager {
     /// `force` is deliberately left untouched: RETRY ALL is a plain
     /// resend, never an overwrite. A game the portal genuinely rejects
     /// (a conflict) simply re-fails and re-surfaces as stuck for the
-    /// operator to Force or Discard individually. See the design doc
-    /// (2026-06-25-retry-all-portal-queue) and ADR 011.
+    /// operator to Force or Discard individually. See ADR 011
+    /// (portal-health-indicator) for why a failed submit cannot be told
+    /// apart from a conflict.
     ///
     /// No-op-safe on an empty queue. Persistence is best-effort, matching
     /// `token_refreshed`/`force_submit`: the in-memory reset stands even

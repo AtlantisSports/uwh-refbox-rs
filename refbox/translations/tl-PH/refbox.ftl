@@ -419,6 +419,7 @@ false-start = Maling Simula
 
 # Portal Health Indicator
 portal-summary-title = STATUS NG { $portal } PORTAL
+portal-retry-all = ULITIN LAHAT
 portal-row-token-expired = Nag-expire ang Portal login — pindutin para mag-login muli
 portal-row-stuck = Laro { $game } Error sa pagpapadala ng puntos, pindutin para ayusin
 portal-row-pending = Laro { $game } Hindi naipadala ang puntos, pindutin para subukan muli

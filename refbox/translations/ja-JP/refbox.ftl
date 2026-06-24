@@ -419,6 +419,7 @@ false-start = 不正スタート
 
 # Portal Health Indicator
 portal-summary-title = { $portal } PORTAL 状態
+portal-retry-all = すべて再試行
 portal-row-token-expired = ポータルのログインが期限切れです — タップして再ログイン
 portal-row-stuck = 試合 { $game } のスコア送信エラー、タップして修正
 portal-row-pending = 試合 { $game } のスコアが未送信、タップして再試行

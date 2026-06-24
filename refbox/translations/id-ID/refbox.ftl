@@ -419,6 +419,7 @@ false-start = Start Curang
 
 # Portal Health Indicator
 portal-summary-title = STATUS { $portal } PORTAL
+portal-retry-all = ULANGI SEMUA
 portal-row-token-expired = Login Portal kedaluwarsa — ketuk untuk login ulang
 portal-row-stuck = Pertandingan { $game } Galat kirim skor, ketuk untuk perbaiki
 portal-row-pending = Pertandingan { $game } Skor belum terkirim, ketuk untuk coba lagi

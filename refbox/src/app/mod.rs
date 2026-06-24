@@ -2661,6 +2661,12 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
+            Message::PortalRetryAll => {
+                if let Err(e) = self.portal_manager.retry_all() {
+                    error!("retry_all failed: {e}");
+                }
+                Task::none()
+            }
             Message::PortalDiscardTapped(id) => {
                 // Snapshot the current attention-page state before any
                 // mutation so we don't fight the borrow checker when

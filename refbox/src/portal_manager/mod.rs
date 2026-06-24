@@ -535,6 +535,34 @@ impl PortalManager {
         Ok(())
     }
 
+    /// Operator tapped RETRY ALL on the portal detail page. Resets every
+    /// queued game so the background task re-attempts all of them on its
+    /// next tick: clears each item's attempt counter and last-attempt
+    /// timestamp, and resets `queued_at` to now so any item past the
+    /// 30-minute stuck threshold returns to the auto-retry pool.
+    ///
+    /// `force` is deliberately left untouched: RETRY ALL is a plain
+    /// resend, never an overwrite. A game the portal genuinely rejects
+    /// (a conflict) simply re-fails and re-surfaces as stuck for the
+    /// operator to Force or Discard individually. See the design doc
+    /// (2026-06-25-retry-all-portal-queue) and ADR 011.
+    ///
+    /// No-op-safe on an empty queue. Persistence is best-effort, matching
+    /// `token_refreshed`/`force_submit`: the in-memory reset stands even
+    /// if the disk write fails (the error propagates for logging).
+    pub fn retry_all(&mut self) -> std::io::Result<()> {
+        let now = OffsetDateTime::now_utc();
+        for item in &mut self.queue.items {
+            item.attempts = 0;
+            item.last_attempt_at = None;
+            item.queued_at = now;
+        }
+        queue::save(&self.config_dir, &self.queue)?;
+        self.recompute_indicator();
+        self.push_queue_snapshot();
+        Ok(())
+    }
+
     /// Operator tapped a young (yellow) pending row on the detail page.
     /// Clears `last_attempt_at` on the target item AND pushes a fresh
     /// queue snapshot to the background task, so the task sees the
@@ -812,6 +840,45 @@ mod tests {
         assert!(m.queue.items[0].force);
         assert_eq!(m.queue.items[0].attempts, 0);
         assert!(m.queue.items[0].last_attempt_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn retry_all_unsticks_and_resets_every_item_without_forcing() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+
+        // One stuck game (queued 31 min ago) and one young pending game.
+        m.enqueue_game_end("event".into(), "G_STUCK".into(), 0, 0, "{}".into())
+            .unwrap();
+        m.enqueue_game_end("event".into(), "G_YOUNG".into(), 1, 0, "{}".into())
+            .unwrap();
+
+        // Age the first past the 30-min stuck threshold and give both
+        // some prior attempt history.
+        let old = OffsetDateTime::now_utc() - TimeDuration::minutes(31);
+        m.queue.items[0].queued_at = old;
+        m.queue.items[0].attempts = 5;
+        m.queue.items[0].last_attempt_at = Some(old);
+        m.queue.items[1].attempts = 2;
+        m.queue.items[1].last_attempt_at = Some(OffsetDateTime::now_utc());
+
+        // Precondition: the first item is currently stuck.
+        assert!(is_item_stuck(&m.queue.items[0], OffsetDateTime::now_utc()));
+
+        m.retry_all().unwrap();
+
+        let now = OffsetDateTime::now_utc();
+        for item in &m.queue.items {
+            // Reset to a fresh, immediately-retriable state...
+            assert_eq!(item.attempts, 0);
+            assert!(item.last_attempt_at.is_none());
+            // ...and no longer stuck (queued_at moved to ~now), which
+            // together with last_attempt_at == None means the background
+            // task will pick it up on its next tick.
+            assert!(!is_item_stuck(item, now));
+            // Safe resend: force must never be set by retry_all.
+            assert!(!item.force);
+        }
     }
 
     #[tokio::test]

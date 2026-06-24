@@ -46,6 +46,13 @@ pub(in super::super) fn build_portal_detail_page<'a>(
 
     let num_items = rows.len();
 
+    // RETRY ALL is actionable only when there is at least one unsent
+    // game (a stuck/red or pending/yellow row). Recent-success and
+    // token-expired rows don't count.
+    let has_unsent = rows
+        .iter()
+        .any(|r| matches!(r, DetailRow::Stuck { .. } | DetailRow::Pending { .. }));
+
     let row_buttons: CollectArrayResult<_, PORTAL_DETAIL_LIST_LEN> = rows
         .into_iter()
         .skip(scroll_index)
@@ -77,6 +84,12 @@ pub(in super::super) fn build_portal_detail_page<'a>(
         .on_press(Message::ClosePortalDetailPage)
         .style(red_button);
 
+    // Blue safe-action button, anchored bottom-right opposite BACK.
+    // Grayed (no on_press) when there is nothing unsent to retry.
+    let retry_all = make_button(fl!("portal-retry-all"))
+        .on_press_maybe(has_unsent.then_some(Message::PortalRetryAll))
+        .style(blue_button);
+
     column![
         make_game_time_button(
             snapshot,
@@ -88,7 +101,7 @@ pub(in super::super) fn build_portal_detail_page<'a>(
             None,
         ),
         list,
-        row![back, horizontal_space(), horizontal_space(),]
+        row![back, horizontal_space(), retry_all,]
             .spacing(SPACING)
             .width(Length::Fill),
     ]

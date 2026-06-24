@@ -222,6 +222,7 @@ pub struct RemoteInfo {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum SoundId {
     AutoBuzzer,
+    TestBuzzer(BuzzerSound),
     Whistle,
     CountdownBeep,
     ManualAlarm,
@@ -367,6 +368,12 @@ impl SoundController {
                                             sound_queue.retain(|s| *s != SoundId::ManualAlarm);
                                         }
                                     }
+                                    SoundMessage::TestBuzzer(sound) => {
+                                        let id = SoundId::TestBuzzer(sound);
+                                        if !sound_queue.contains(&id) {
+                                            sound_queue.push_back(id);
+                                        }
+                                    }
                                     SoundMessage::ReloadAudioOutput => {
                                         info!("Reloading audio output to current system default");
                                         // Stop any sound playing on the OLD device first.
@@ -465,6 +472,11 @@ impl SoundController {
                                 true,
                                 true,
                             )
+                        }
+                        SoundId::TestBuzzer(sound) => {
+                            info!("Testing buzzer sound {sound:?}");
+                            let volumes = ChannelVolumes::new(&settings, false);
+                            Sound::new(context.clone(), volumes, library[sound].clone(), true, true)
                         }
                         SoundId::Whistle => {
                             info!("Playing whistle once");
@@ -633,6 +645,16 @@ impl SoundController {
 
     pub fn trigger_buzzer(&self) {
         self.msg_tx.send(SoundMessage::TriggerBuzzer).unwrap()
+    }
+
+    // Called by the buzzer-picker Test button (wired in Task 5/6 of this feature).
+    // The allow suppresses the dead-code lint that a bin crate emits for public
+    // methods not yet called anywhere in the binary.
+    #[allow(dead_code)]
+    pub fn test_buzzer(&self, sound: BuzzerSound) {
+        // The worker receiver lives for the app's lifetime; send only fails
+        // after shutdown, when there is nothing left to play through anyway.
+        self.msg_tx.send(SoundMessage::TestBuzzer(sound)).unwrap()
     }
 
     pub fn reload_audio_output(&self) {
@@ -1023,6 +1045,10 @@ mod tests {
         assert_eq!(whole_cycles_for(29430.0 / 44100.0, 2.15), 3); // Crazy (0.667s)
         assert_eq!(whole_cycles_for(0.75, 2.15), 3); // De-De-Du (0.750s)
         assert_eq!(whole_cycles_for(0.8, 2.15), 3); // Two-Tone (0.800s)
+        assert_eq!(whole_cycles_for(0.14, 2.15), 15); // Pip
+        assert_eq!(whole_cycles_for(0.215, 2.15), 10); // Pipes
+        assert_eq!(whole_cycles_for(0.70, 2.15), 3); // Airhorn/Klaxon/Pulse/Siren
+        assert_eq!(whole_cycles_for(0.50, 2.15), 4); // Trill
     }
 
     #[test]

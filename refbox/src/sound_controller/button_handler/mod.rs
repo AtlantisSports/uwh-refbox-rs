@@ -1,3 +1,4 @@
+use super::BuzzerSound;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 
@@ -24,6 +25,7 @@ pub(super) enum SoundMessage {
     StartManualBuzzer,
     StopManualBuzzer,
     ReloadAudioOutput,
+    TestBuzzer(BuzzerSound),
     #[cfg(target_os = "linux")]
     StartWiredBuzzer,
     #[cfg(target_os = "linux")]

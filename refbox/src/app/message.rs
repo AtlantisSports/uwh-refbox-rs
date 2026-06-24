@@ -107,6 +107,12 @@ pub enum Message {
     /// re-login returns the operator to the portal detail page.
     PortalGoToLogin,
     RequestPortalRefresh,
+    /// Emitted when the operator taps RETRY ALL on the portal detail
+    /// page. `update()` calls `PortalManager::retry_all`, which resets
+    /// every queued game (including stuck ones) so the background task
+    /// re-attempts them all on its next tick. A plain resend — never a
+    /// force-overwrite.
+    PortalRetryAll,
     ShowWarnings,
     ShowParameterHelp,
     CloseParameterHelp,
@@ -325,6 +331,7 @@ impl Message {
             | Self::PortalDiscardTapped(_)
             | Self::PortalGoToLogin
             | Self::RequestPortalRefresh
+            | Self::PortalRetryAll
             | Self::ShowWarnings
             | Self::ShowParameterHelp
             | Self::CloseParameterHelp
@@ -421,6 +428,7 @@ impl PartialEq for Message {
             | (Self::PortalUiTick, Self::PortalUiTick)
             | (Self::PortalGoToLogin, Self::PortalGoToLogin)
             | (Self::RequestPortalRefresh, Self::RequestPortalRefresh)
+            | (Self::PortalRetryAll, Self::PortalRetryAll)
             | (Self::ShowWarnings, Self::ShowWarnings)
             | (Self::ShowParameterHelp, Self::ShowParameterHelp)
             | (Self::CloseParameterHelp, Self::CloseParameterHelp)
@@ -647,6 +655,7 @@ impl PartialEq for Message {
             | (Self::PortalDiscardTapped(_), _)
             | (Self::PortalGoToLogin, _)
             | (Self::RequestPortalRefresh, _)
+            | (Self::PortalRetryAll, _)
             | (Self::ShowWarnings, _)
             | (Self::ShowParameterHelp, _)
             | (Self::CloseParameterHelp, _)

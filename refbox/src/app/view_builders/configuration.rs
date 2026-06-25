@@ -432,9 +432,10 @@ fn make_cancel_apply_footer<'a>(
     // otherwise pressing Apply would only open a wasteful "fix something and try
     // again" dialog. Other pages have no committability gate.
     let apply_blocked = matches!(page, ConfigPage::Game) && edited.uwhportal_incomplete();
-    let apply_enabled = page_has_changes(page, edited, snapshot) && !apply_blocked;
+    let has_changes = page_has_changes(page, edited, snapshot);
+    let apply_enabled = has_changes && !apply_blocked;
 
-    let cancel = make_button(fl!("cancel"))
+    let cancel = make_button(cancel_or_back_label(has_changes))
         .style(red_button)
         .width(Length::Fill)
         .on_press(Message::CancelConfigPage(page));

@@ -931,7 +931,7 @@ fn make_beep_test_cancel_apply_footer<'a>(
     apply_message: Message,
     has_changes: bool,
 ) -> Element<'a, Message> {
-    let cancel = make_button(fl!("cancel"))
+    let cancel = make_button(cancel_or_back_label(has_changes))
         .style(red_button)
         .width(Length::Fill)
         .on_press(cancel_message);

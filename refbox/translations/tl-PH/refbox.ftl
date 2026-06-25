@@ -73,8 +73,10 @@ event = KAGANAPAN:
 track-fouls-and-warnings = SUBAYBAYAN ANG POUL
     AT BABALA
 show-behind-schedule-time = IPAKITA PAGKAHULI
-show-countdown-for-last-10-seconds = IPAKITA COUNTDOWN HULING 10 SEGUNDO
-audible-countdown-for-last-10-seconds = COUNTDOWN NA TUNOG HULING 10 SEGUNDO
+show-countdown-for-last-10-seconds = IPAKITA COUNTDOWN
+    HULING 10 SEGUNDO
+audible-countdown-for-last-10-seconds = COUNTDOWN NA TUNOG
+    HULING 10 SEGUNDO
 delay = ANTALA
 court = KORTE:
 single-half = ISANG

@@ -73,8 +73,10 @@ event = 大会:
 track-fouls-and-warnings = 反則・
     警告の記録
 show-behind-schedule-time = 遅延を表示
-show-countdown-for-last-10-seconds = 残り10秒のカウントダウン表示
-audible-countdown-for-last-10-seconds = 残り10秒の音声カウントダウン
+show-countdown-for-last-10-seconds = 残り10秒の
+    カウントダウン表示
+audible-countdown-for-last-10-seconds = 残り10秒の音声
+    カウントダウン
 delay = 遅延
 court = コート:
 single-half = 単一

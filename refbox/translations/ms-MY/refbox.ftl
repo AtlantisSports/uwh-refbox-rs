@@ -73,8 +73,10 @@ event = ACARA:
 track-fouls-and-warnings = REKOD KESALAHAN
     DAN AMARAN
 show-behind-schedule-time = TUNJUK KELEWATAN
-show-countdown-for-last-10-seconds = TUNJUK KIRA DETIK 10 SAAT
-audible-countdown-for-last-10-seconds = KIRA DETIK BUNYI 10 SAAT
+show-countdown-for-last-10-seconds = TUNJUK KIRA DETIK
+    10 SAAT
+audible-countdown-for-last-10-seconds = KIRA DETIK BUNYI
+    10 SAAT
 delay = LEWAT
 court = GELANGGANG:
 single-half = SEPARUH

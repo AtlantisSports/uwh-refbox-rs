@@ -71,8 +71,10 @@ track-cap-number-of-scorer = REGISTRAR NÚMERO
 track-fouls-and-warnings = REGISTRAR FALTAS
     Y ADVERTENCIAS
 show-behind-schedule-time = MOSTRAR RETRASO
-show-countdown-for-last-10-seconds = MOSTRAR CUENTA ATRÁS ÚLTIMOS 10 S
-audible-countdown-for-last-10-seconds = CUENTA ATRÁS SONORA ÚLTIMOS 10 S
+show-countdown-for-last-10-seconds = MOSTRAR CUENTA ATRÁS
+    ÚLTIMOS 10 S
+audible-countdown-for-last-10-seconds = CUENTA ATRÁS SONORA
+    ÚLTIMOS 10 S
 delay = RETRASO
 event = EVENTO:
 court = CANCHA:

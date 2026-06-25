@@ -367,8 +367,8 @@ impl PortalManager {
         self.queue.items.iter().any(|it| is_item_stuck(it, now))
     }
 
-    fn has_any_queue_items(&self) -> bool {
-        !self.queue.items.is_empty()
+    fn has_score_pending_items(&self) -> bool {
+        self.queue.items.iter().any(|it| !it.score_sent)
     }
 
     fn needs_attention(&self) -> bool {
@@ -378,7 +378,7 @@ impl PortalManager {
     fn recompute_indicator(&mut self) {
         let health = if self.needs_attention() {
             HealthState::Red
-        } else if self.check_in_flight || self.has_any_queue_items() {
+        } else if self.check_in_flight || self.has_score_pending_items() {
             HealthState::Yellow
         } else {
             HealthState::Green
@@ -935,6 +935,23 @@ mod tests {
         // non-persistent default) rather than any user-supplied path.
         let (manager, _rx) = PortalManager::new_degraded();
         assert_eq!(manager.config_dir, std::env::temp_dir());
+    }
+
+    #[tokio::test]
+    async fn queue_with_only_stats_pending_item_is_green() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        m.enqueue_game_end("e".into(), "G1".into(), 3, 2, "{}".into())
+            .unwrap();
+        // Mark it stats-pending and age it well past the stuck threshold.
+        m.queue.items[0].score_sent = true;
+        m.queue.items[0].queued_at = OffsetDateTime::now_utc() - TimeDuration::minutes(120);
+        m.recompute_indicator();
+        assert_eq!(
+            m.indicator_state().health,
+            HealthState::Green,
+            "a queue holding only stats-pending items must keep the dot green"
+        );
     }
 
     #[tokio::test]

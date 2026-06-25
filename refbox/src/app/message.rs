@@ -101,11 +101,6 @@ pub enum Message {
     /// attention action page. First tap arms the discard; second tap
     /// for the same item confirms and removes it from the queue.
     PortalDiscardTapped(ItemId),
-    /// Emitted when the operator taps GO TO LOGIN on the token-expired
-    /// action page. `update()` navigates to the existing portal login
-    /// keypad and sets `portal_login_return_to_detail` so a successful
-    /// re-login returns the operator to the portal detail page.
-    PortalGoToLogin,
     RequestPortalRefresh,
     ShowWarnings,
     ShowParameterHelp,
@@ -323,7 +318,6 @@ impl Message {
             | Self::PortalRowTapped(_)
             | Self::PortalForceSubmit(_)
             | Self::PortalDiscardTapped(_)
-            | Self::PortalGoToLogin
             | Self::RequestPortalRefresh
             | Self::ShowWarnings
             | Self::ShowParameterHelp
@@ -419,7 +413,6 @@ impl PartialEq for Message {
             | (Self::ClosePortalDetailPage, Self::ClosePortalDetailPage)
             | (Self::ClosePortalAttentionAction, Self::ClosePortalAttentionAction)
             | (Self::PortalUiTick, Self::PortalUiTick)
-            | (Self::PortalGoToLogin, Self::PortalGoToLogin)
             | (Self::RequestPortalRefresh, Self::RequestPortalRefresh)
             | (Self::ShowWarnings, Self::ShowWarnings)
             | (Self::ShowParameterHelp, Self::ShowParameterHelp)
@@ -645,7 +638,6 @@ impl PartialEq for Message {
             | (Self::PortalRowTapped(_), _)
             | (Self::PortalForceSubmit(_), _)
             | (Self::PortalDiscardTapped(_), _)
-            | (Self::PortalGoToLogin, _)
             | (Self::RequestPortalRefresh, _)
             | (Self::ShowWarnings, _)
             | (Self::ShowParameterHelp, _)

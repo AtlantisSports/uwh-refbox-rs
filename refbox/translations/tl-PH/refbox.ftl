@@ -63,8 +63,6 @@ sound-settings = MGA SETTING NG TUNOG
 beep-test-edit-levels = I-EDIT ANG MGA ANTAS
 app-mode = MODE NG
     APP
-hide-time-for-last-15-seconds = ITAGO ANG ORAS SA
-    HULING 15 SEGUNDO
 player-display-brightness = LIWANAG NG
     DISPLAY NG MANLALARO
 confirm-score-at-game-end = KUMPIRMAHIN ANG PUNTOS

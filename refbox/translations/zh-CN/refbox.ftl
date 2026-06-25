@@ -63,8 +63,6 @@ sound-settings = 声音设置
 beep-test-edit-levels = 编辑级别
 app-mode = 应用
     模式
-hide-time-for-last-15-seconds = 最后15秒
-    隐藏时间
 player-display-brightness = 球员显示
     亮度
 confirm-score-at-game-end = 比赛结束时

@@ -63,8 +63,6 @@ sound-settings = サウンド設定
 beep-test-edit-levels = レベル編集
 app-mode = アプリ
     モード
-hide-time-for-last-15-seconds = 残り15秒
-    時間非表示
 player-display-brightness = 選手表示
     明るさ
 confirm-score-at-game-end = 試合終了時

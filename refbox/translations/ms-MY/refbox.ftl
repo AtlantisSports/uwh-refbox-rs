@@ -63,8 +63,6 @@ sound-settings = TETAPAN BUNYI
 beep-test-edit-levels = SUNTING TAHAP
 app-mode = MOD
     APLIKASI
-hide-time-for-last-15-seconds = SEMBUNYIKAN MASA
-    15 SAAT TERAKHIR
 player-display-brightness = KECERAHAN PAPARAN
     PEMAIN
 confirm-score-at-game-end = SAHKAN MARKAH

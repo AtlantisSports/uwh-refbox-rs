@@ -63,8 +63,6 @@ sound-settings = GELUIDSINSTELLINGEN
 beep-test-edit-levels = NIVEAUS BEWERKEN
 app-mode = APP-
     MODUS
-hide-time-for-last-15-seconds = TIJD VERBERGEN
-    LAATSTE 15 SEK
 player-display-brightness = HELDERHEID
     SPELERSSCHERM
 confirm-score-at-game-end = SCORE BEVESTIGEN

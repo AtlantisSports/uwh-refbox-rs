@@ -63,8 +63,6 @@ sound-settings = PENGATURAN SUARA
 beep-test-edit-levels = UBAH LEVEL
 app-mode = MODE
     APLIKASI
-hide-time-for-last-15-seconds = SEMBUNYIKAN WAKTU
-    15 DETIK TERAKHIR
 player-display-brightness = KECERAHAN
     TAMPILAN PEMAIN
 confirm-score-at-game-end = KONFIRMASI SKOR

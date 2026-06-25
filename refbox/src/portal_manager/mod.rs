@@ -240,6 +240,11 @@ pub enum PortalEvent {
     HealthChanged,
     ItemResolved(ItemId),
     ItemUpdated,
+    /// The score posted successfully but the stats upload failed. The
+    /// main thread flips the item to stats-pending (`score_sent = true`)
+    /// so the auto-retry loop, the stuck escalation, and the indicator
+    /// all stop treating it as outstanding. Carries the item id.
+    ScoreSentStatsPending(ItemId),
     /// Result of the latest periodic `verify_token` probe.
     /// `true` = portal accepted the token, `false` = rejected. The
     /// main-thread handler maps this onto `token_known_problem` so the
@@ -621,6 +626,27 @@ impl PortalManager {
         self.recompute_indicator();
         self.push_queue_snapshot();
         Ok(())
+    }
+
+    /// Background task reported a score-OK / stats-fail outcome: the score
+    /// is up but the stats upload was rejected. Flip the item to
+    /// stats-pending so it leaves the auto-retry loop and the yellow/red
+    /// indicator, persist, and push a fresh snapshot so the background
+    /// task stops attempting it. Idempotent: a duplicate event (or an
+    /// unknown id) is a silent no-op.
+    pub fn on_score_sent_stats_pending(&mut self, id: ItemId) {
+        let Some(item) = self.find_mut(&id) else {
+            return;
+        };
+        if item.score_sent {
+            return; // Already stats-pending; nothing to do.
+        }
+        item.score_sent = true;
+        if let Err(e) = queue::save(&self.config_dir, &self.queue) {
+            log::warn!("portal queue save after score-sent/stats-pending failed: {e}");
+        }
+        self.recompute_indicator();
+        self.push_queue_snapshot();
     }
 
     /// Called from the UI thread after the background task reports that
@@ -1236,6 +1262,31 @@ mod tests {
             reloaded.items[0].last_attempt_at.is_none(),
             "on-disk queue must show last_attempt_at cleared"
         );
+    }
+
+    #[tokio::test]
+    async fn on_score_sent_stats_pending_marks_item_and_stays_green() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        m.enqueue_game_end("e".into(), "G1".into(), 3, 2, "{}".into())
+            .unwrap();
+        let id = m.queue.items[0].id.clone();
+        assert_eq!(m.indicator_state().health, HealthState::Yellow);
+
+        m.on_score_sent_stats_pending(id);
+
+        assert!(
+            m.queue.items[0].score_sent,
+            "item must be marked stats-pending"
+        );
+        assert_eq!(
+            m.indicator_state().health,
+            HealthState::Green,
+            "once the score is sent the dot must be green even though stats are outstanding"
+        );
+        // Persisted: a restart must reload it as stats-pending.
+        let reloaded = queue::load_or_empty(tmp.path()).unwrap();
+        assert!(reloaded.items[0].score_sent);
     }
 
     #[test]

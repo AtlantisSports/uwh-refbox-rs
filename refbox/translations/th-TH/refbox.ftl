@@ -63,8 +63,6 @@ sound-settings = ตั้งค่าเสียง
 beep-test-edit-levels = แก้ไขระดับ
 app-mode = โหมด
     แอป
-hide-time-for-last-15-seconds = ซ่อนเวลา
-    15 วินาทีสุดท้าย
 player-display-brightness = ความสว่าง
     หน้าจอผู้เล่น
 confirm-score-at-game-end = ยืนยันคะแนน

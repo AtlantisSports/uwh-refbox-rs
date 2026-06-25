@@ -59,8 +59,6 @@ display-mode-high-contrast = HIGH CONTRAST
 sound-settings = RÉGLAGES DU SON
 beep-test-edit-levels = MODIFIER LES NIVEAUX
 app-mode = MODE
-hide-time-for-last-15-seconds = CACHER LE TEMPS POUR
-    LES 15 DERNIÈRES SECONDES
 ### Shorten
 player-display-brightness = LUMINOSITÉ DE
     L'AFFICHAGE DES JOUEURS

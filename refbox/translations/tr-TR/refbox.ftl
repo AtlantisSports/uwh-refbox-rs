@@ -63,8 +63,6 @@ sound-settings = SES AYARLARI
 beep-test-edit-levels = SEVİYELERİ DÜZENLE
 app-mode = UYGULAMA
     MODU
-hide-time-for-last-15-seconds = SON 15 SANİYE
-    ZAMANI GİZLE
 player-display-brightness = OYUNCU EKRANI
     PARLAKLIGI
 confirm-score-at-game-end = OYUN SONUNDA

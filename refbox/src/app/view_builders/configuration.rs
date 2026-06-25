@@ -938,6 +938,8 @@ fn make_app_config_page<'a>(
         track_fouls_and_warnings,
         show_behind_schedule_time,
         confirm_score,
+        hide_time,
+        audible_countdown,
         ..
     } = settings;
 
@@ -995,6 +997,26 @@ fn make_app_config_page<'a>(
         .height(Length::Fill),
         row![
             make_value_button(
+                // Internally still `hide_time`; the button shows the INVERSE:
+                // YES = the final 10-second countdown IS shown on the scoreboard.
+                fl!("show-countdown-for-last-10-seconds"),
+                bool_string(!*hide_time),
+                (false, true),
+                Some(Message::ToggleBoolParameter(BoolGameParameter::HideTime)),
+            ),
+            make_value_button(
+                fl!("audible-countdown-for-last-10-seconds"),
+                bool_string(*audible_countdown),
+                (false, true),
+                Some(Message::ToggleBoolParameter(
+                    BoolGameParameter::AudibleCountdown,
+                )),
+            ),
+        ]
+        .spacing(SPACING)
+        .height(Length::Fill),
+        row![
+            make_value_button(
                 fl!("show-behind-schedule-time"),
                 bool_string(*show_behind_schedule_time),
                 (false, true),
@@ -1006,7 +1028,6 @@ fn make_app_config_page<'a>(
         ]
         .spacing(SPACING)
         .height(Length::Fill),
-        row![horizontal_space()].height(Length::Fill),
         make_cancel_apply_footer(
             ConfigPage::App,
             settings,
@@ -1060,7 +1081,6 @@ fn make_display_config_page<'a>(
 ) -> Element<'a, Message> {
     let EditableSettings {
         white_on_right,
-        hide_time,
         brightness,
         front_display_layout,
         ..
@@ -1129,13 +1149,6 @@ fn make_display_config_page<'a>(
         },
     );
 
-    let hide_time_btn = make_value_button(
-        fl!("hide-time-for-last-15-seconds"),
-        bool_string(*hide_time),
-        (false, true),
-        Some(Message::ToggleBoolParameter(BoolGameParameter::HideTime)),
-    );
-
     let brightness_btn = make_value_button(
         fl!("player-display-brightness"),
         fl!("brightness", brightness = brightness.to_string()),
@@ -1181,7 +1194,7 @@ fn make_display_config_page<'a>(
             None
         ),
         row![sides_btn].spacing(SPACING).height(Length::Fill),
-        row![hide_time_btn, layout_btn]
+        row![layout_btn, horizontal_space()]
             .spacing(SPACING)
             .height(Length::Fill),
         row![

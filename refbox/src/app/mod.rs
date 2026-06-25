@@ -2760,14 +2760,30 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::RequestPortalRefresh => {
-                if let AppState::GameDetailsPage(ref mut is_refreshing) = self.app_state {
-                    *is_refreshing = true;
-                }
-                if let Some(ref event_id) = self.current_event_id {
-                    self.request_schedule(event_id.clone())
+                // Only spin the REFRESH button when there is actually an event
+                // to refresh; otherwise nothing would arrive to clear the flag.
+                if let Some(event_id) = self.current_event_id.clone() {
+                    if let AppState::GameDetailsPage(ref mut is_refreshing) = self.app_state {
+                        *is_refreshing = true;
+                    }
+                    // request_schedule yields NoAction when the fetch fails;
+                    // translate that into a refresh-finished signal so the
+                    // "Refreshing..." button cannot stick on a network error.
+                    self.request_schedule(event_id).map(|msg| match msg {
+                        Message::NoAction => Message::PortalRefreshFinished,
+                        other => other,
+                    })
                 } else {
                     Task::none()
                 }
+            }
+            Message::PortalRefreshFinished => {
+                // The refresh ended without a schedule (failure path). Stop the
+                // REFRESH spinner; the success path clears it in RecvSchedule.
+                if let AppState::GameDetailsPage(ref mut is_refreshing) = self.app_state {
+                    *is_refreshing = false;
+                }
+                Task::none()
             }
             Message::ShowWarnings => {
                 self.app_state = AppState::WarningsSummaryPage;
@@ -3944,6 +3960,12 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::RecvSchedule(event_id, mut schedule) => {
+                // A manual REFRESH (RequestPortalRefresh) spins the Game Info
+                // button until a schedule arrives. Clear it for every success
+                // path here, not just the between-games branch below.
+                if let AppState::GameDetailsPage(ref mut is_refreshing) = self.app_state {
+                    *is_refreshing = false;
+                }
                 if let Some(id) = self.current_event_id.as_ref().or_else(|| {
                     self.edited_settings
                         .as_ref()
@@ -4029,12 +4051,6 @@ impl RefBoxApp {
                                                 std::mem::drop(tm);
                                                 self.config.game = new_game_config;
                                                 return self.apply_snapshot(snapshot);
-                                            }
-                                            if let AppState::GameDetailsPage(
-                                                ref mut is_refreshing,
-                                            ) = self.app_state
-                                            {
-                                                *is_refreshing = false;
                                             }
                                         }
                                     }

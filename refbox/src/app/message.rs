@@ -102,6 +102,11 @@ pub enum Message {
     /// for the same item confirms and removes it from the queue.
     PortalDiscardTapped(ItemId),
     RequestPortalRefresh,
+    /// Emitted when a portal schedule refresh triggered by
+    /// `RequestPortalRefresh` ends without delivering a schedule (e.g. the
+    /// fetch failed). Clears the Game Info REFRESH button's "Refreshing..."
+    /// spinner; the success case is cleared in `RecvSchedule`.
+    PortalRefreshFinished,
     /// Emitted when the operator taps RETRY ALL on the portal detail
     /// page. `update()` calls `PortalManager::retry_all`, which resets
     /// every queued game (including stuck ones) so the background task
@@ -316,6 +321,7 @@ impl Message {
             | Self::TimeUpdaterStarted(_)
             | Self::PortalEvent(_)
             | Self::PortalUiTick
+            | Self::PortalRefreshFinished
             | Self::BeepTestTick
             | Self::NoAction
             | Self::OpenNewDisplay => true,
@@ -451,6 +457,7 @@ impl PartialEq for Message {
             | (Self::ClosePortalAttentionAction, Self::ClosePortalAttentionAction)
             | (Self::PortalUiTick, Self::PortalUiTick)
             | (Self::RequestPortalRefresh, Self::RequestPortalRefresh)
+            | (Self::PortalRefreshFinished, Self::PortalRefreshFinished)
             | (Self::PortalRetryAll, Self::PortalRetryAll)
             | (Self::ShowWarnings, Self::ShowWarnings)
             | (Self::ShowParameterHelp, Self::ShowParameterHelp)
@@ -679,6 +686,7 @@ impl PartialEq for Message {
             | (Self::PortalForceSubmit(_), _)
             | (Self::PortalDiscardTapped(_), _)
             | (Self::RequestPortalRefresh, _)
+            | (Self::PortalRefreshFinished, _)
             | (Self::PortalRetryAll, _)
             | (Self::ShowWarnings, _)
             | (Self::ShowParameterHelp, _)

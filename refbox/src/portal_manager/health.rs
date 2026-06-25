@@ -135,7 +135,8 @@ async fn run_task(
                 // Tick: try each eligible queued item, then health-check if due.
                 let now = OffsetDateTime::now_utc();
                 for item in &queue_snapshot.items {
-                    if is_item_retry_eligible(item, now)
+                    if !item.score_sent
+                        && is_item_retry_eligible(item, now)
                         && attempt_item(&io, item, &event_tx).await
                     {
                         last_success = Some(TokioInstant::now());
@@ -179,16 +180,17 @@ async fn run_task(
 
 /// Attempt to submit a single queued item (scores + stats). The portal
 /// API collapses all non-success outcomes (409 conflict, 401 token
-/// expired, 5xx, network) into a single error, so we treat any `Err`
-/// identically: leave the item on the queue for the next retry tick,
-/// and emit `ItemUpdated` so the UI can refresh the row. Only a full
-/// success (both scores and stats posted) emits `ItemResolved`.
+/// expired, 5xx, network) into a single error. Three outcomes:
 ///
-/// Returns `true` iff both portal calls succeeded. The caller uses this
-/// to decide whether to stamp `last_success`; advancing `last_success`
-/// on a failed attempt would suppress the cadence-driven
-/// `verify_token` health check and leave the indicator stuck at Green
-/// during a silent portal outage.
+/// - **Score fails** → emits `ItemUpdated`, returns `false`. The item
+///   remains fully on the queue; `last_success` is not advanced so the
+///   cadence-driven `verify_token` health check is not suppressed.
+/// - **Score succeeds, stats fail** → emits `ScoreSentStatsPending`,
+///   returns `true`. The portal is reachable (score posted), so we
+///   advance `last_success` to suppress an unnecessary `verify_token`.
+///   The main thread flips the item to `score_sent = true` so it exits
+///   the auto-retry loop and the yellow/red indicator.
+/// - **Both succeed** → emits `ItemResolved`, returns `true`.
 async fn attempt_item(
     io: &impl PortalTaskIo,
     item: &QueuedItem,
@@ -207,8 +209,14 @@ async fn attempt_item(
             true
         }
         Err(_) => {
-            let _ = event_tx.send(PortalEvent::ItemUpdated).await;
-            false
+            // Score is up but stats failed (e.g. an event that does not
+            // require unique cap numbers rejects all stats). Mark the
+            // item stats-pending; the portal is reachable, so return
+            // `true` to suppress the cadence `verify_token`.
+            let _ = event_tx
+                .send(PortalEvent::ScoreSentStatsPending(item.id.clone()))
+                .await;
+            true
         }
     }
 }
@@ -487,6 +495,101 @@ mod tests {
         );
 
         drop(handle.command_tx);
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn score_ok_stats_fail_emits_score_sent_stats_pending() {
+        let scores_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let stats_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let io = FakeIo {
+            verify_results: Mutex::new(vec![Ok(())]),
+            verify_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_results: Mutex::new(vec![Ok(())]),
+            scores_count: scores_count.clone(),
+            stats_results: Mutex::new(vec![Err(PortalCallError::Failed("no unique caps".into()))]),
+            stats_count: stats_count.clone(),
+        };
+        let mut handle = spawn(io);
+
+        let queue = queue_with_one_eligible_item();
+        let expected_id = queue.items[0].id.clone();
+        handle
+            .command_tx
+            .send(PortalCommand::QueueUpdated(queue))
+            .await
+            .unwrap();
+
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(3)).await;
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_millis(500)).await;
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        assert_eq!(scores_count.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(stats_count.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        let events = drain_events(&mut handle.event_rx);
+        assert!(
+            events.iter().any(|ev| matches!(
+                ev,
+                PortalEvent::ScoreSentStatsPending(id) if id == &expected_id
+            )),
+            "expected ScoreSentStatsPending for {expected_id:?}, got {events:?}"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|ev| matches!(ev, PortalEvent::ItemResolved(_))),
+            "score-ok/stats-fail must NOT resolve the item"
+        );
+        drop(handle);
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn stats_pending_item_is_not_auto_attempted_by_loop() {
+        let scores_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let stats_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let io = FakeIo {
+            verify_results: Mutex::new(vec![Ok(())]),
+            verify_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_results: Mutex::new(vec![Ok(())]),
+            scores_count: scores_count.clone(),
+            stats_results: Mutex::new(vec![Ok(())]),
+            stats_count: stats_count.clone(),
+        };
+        let handle = spawn(io);
+
+        // A single item already in the stats-pending state.
+        let mut item = mk_queue_item(0);
+        item.score_sent = true;
+        let queue = QueueFile {
+            version: QueueFile::CURRENT_VERSION,
+            items: vec![item],
+        };
+        handle
+            .command_tx
+            .send(PortalCommand::QueueUpdated(queue))
+            .await
+            .unwrap();
+
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(3)).await;
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_millis(500)).await;
+        tokio::task::yield_now().await;
+
+        assert_eq!(
+            scores_count.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "the auto-retry loop must not re-post scores for a stats-pending item"
+        );
+        assert_eq!(
+            stats_count.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "the auto-retry loop must not auto-attempt stats for a stats-pending item"
+        );
+        drop(handle);
     }
 
     #[tokio::test(flavor = "current_thread", start_paused = true)]

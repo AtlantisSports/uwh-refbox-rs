@@ -2656,6 +2656,9 @@ impl RefBoxApp {
                     PortalEvent::ItemResolved(id) => {
                         self.portal_manager.on_item_resolved(id);
                     }
+                    PortalEvent::ScoreSentStatsPending(id) => {
+                        self.portal_manager.on_score_sent_stats_pending(id);
+                    }
                     PortalEvent::HealthChanged | PortalEvent::ItemUpdated => {
                         self.portal_manager.ui_tick();
                     }

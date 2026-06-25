@@ -41,6 +41,7 @@ pub(in super::super) struct EditableSettings {
     pub track_fouls_and_warnings: bool,
     pub show_behind_schedule_time: bool,
     pub confirm_score: bool,
+    pub audible_countdown: bool,
     pub pending_language: Option<Language>,
     pub original_language: Option<Language>,
     /// Staged copy of `config.beep_test.levels` used by the BeepTest

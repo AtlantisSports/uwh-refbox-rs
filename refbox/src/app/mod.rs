@@ -904,6 +904,7 @@ impl RefBoxApp {
         let track_fouls_and_warnings = edited.track_fouls_and_warnings;
         let show_behind_schedule_time = edited.show_behind_schedule_time;
         let confirm_score = edited.confirm_score;
+        let audible_countdown = edited.audible_countdown;
 
         // Cross-portal Mode change requires explicit confirmation and an app
         // restart. Raise the confirmation before committing any fields so that
@@ -928,6 +929,7 @@ impl RefBoxApp {
         self.config.track_fouls_and_warnings = track_fouls_and_warnings;
         self.config.show_behind_schedule_time = show_behind_schedule_time;
         self.config.confirm_score = confirm_score;
+        self.config.audible_countdown = audible_countdown;
         None
     }
 
@@ -1501,6 +1503,7 @@ impl RefBoxApp {
             track_fouls_and_warnings: self.config.track_fouls_and_warnings,
             show_behind_schedule_time: self.config.show_behind_schedule_time,
             confirm_score: self.config.confirm_score,
+            audible_countdown: self.config.audible_countdown,
             pending_language: None,
             original_language: None,
             beep_test_levels: None,
@@ -3506,6 +3509,9 @@ impl RefBoxApp {
                             BoolGameParameter::ConfirmScore => {
                                 edited_settings.confirm_score ^= true
                             }
+                            BoolGameParameter::AudibleCountdown => {
+                                edited_settings.audible_countdown ^= true
+                            }
                             BoolGameParameter::ManualAlarmEnabled => {
                                 edited_settings.sound.manual_alarm_enabled ^= true
                             }
@@ -4315,6 +4321,7 @@ impl RefBoxApp {
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
                     show_behind_schedule_time: self.config.show_behind_schedule_time,
                     confirm_score: self.config.confirm_score,
+                    audible_countdown: self.config.audible_countdown,
                     pending_language: Some(current_language),
                     original_language: Some(current_language),
                     beep_test_levels: None,
@@ -4363,6 +4370,7 @@ impl RefBoxApp {
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
                     show_behind_schedule_time: self.config.show_behind_schedule_time,
                     confirm_score: self.config.confirm_score,
+                    audible_countdown: self.config.audible_countdown,
                     pending_language: Some(current_language),
                     original_language: Some(current_language),
                     beep_test_levels: None,
@@ -4448,6 +4456,7 @@ impl RefBoxApp {
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
                     show_behind_schedule_time: self.config.show_behind_schedule_time,
                     confirm_score: self.config.confirm_score,
+                    audible_countdown: self.config.audible_countdown,
                     pending_language: Some(current_language),
                     original_language: Some(current_language),
                     beep_test_levels: None,
@@ -4505,6 +4514,7 @@ impl RefBoxApp {
                     track_fouls_and_warnings: self.config.track_fouls_and_warnings,
                     show_behind_schedule_time: self.config.show_behind_schedule_time,
                     confirm_score: self.config.confirm_score,
+                    audible_countdown: self.config.audible_countdown,
                     pending_language: Some(current_language),
                     original_language: Some(current_language),
                     beep_test_levels: Some(self.config.beep_test.levels.clone()),

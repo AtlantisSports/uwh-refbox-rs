@@ -171,7 +171,10 @@ pub enum Message {
     RecvTeamsList(EventId, TeamList),
     RecvSchedule(EventId, Schedule),
     RecvPortalToken(PortalTokenResponse),
-    RecvTokenValid(bool),
+    /// Result of a portal token-validity check for a specific event. Carries
+    /// the `EventId` it was checked for so a late reply for a previously
+    /// selected event can be dropped instead of overwriting the current one.
+    RecvTokenValid(EventId, bool),
     StopClock,
     StartClock,
     /// Operator pressed Start in BeepTest mode.
@@ -317,7 +320,7 @@ impl Message {
             | Self::RecvTeamsList(_, _)
             | Self::RecvSchedule(_, _)
             | Self::RecvPortalToken(_)
-            | Self::RecvTokenValid(_)
+            | Self::RecvTokenValid(_, _)
             | Self::TimeUpdaterStarted(_)
             | Self::PortalEvent(_)
             | Self::PortalUiTick
@@ -642,7 +645,7 @@ impl PartialEq for Message {
             (Self::RecvTeamsList(a, b), Self::RecvTeamsList(c, d)) => a == c && b == d,
             (Self::RecvSchedule(a, b), Self::RecvSchedule(c, d)) => a == c && b == d,
             (Self::RecvPortalToken(a), Self::RecvPortalToken(b)) => a == b,
-            (Self::RecvTokenValid(a), Self::RecvTokenValid(b)) => a == b,
+            (Self::RecvTokenValid(a, b), Self::RecvTokenValid(c, d)) => a == c && b == d,
             (Self::SetTeamTimeoutCount(a), Self::SetTeamTimeoutCount(b)) => a == b,
             (Self::SetTeamTimeoutLength(a), Self::SetTeamTimeoutLength(b)) => a == b,
             (Self::UpdatesCheckDone(a), Self::UpdatesCheckDone(b)) => a == b,
@@ -724,7 +727,7 @@ impl PartialEq for Message {
             | (Self::RecvTeamsList(_, _), _)
             | (Self::RecvSchedule(_, _), _)
             | (Self::RecvPortalToken(_), _)
-            | (Self::RecvTokenValid(_), _)
+            | (Self::RecvTokenValid(_, _), _)
             | (Self::StopClock, _)
             | (Self::StartClock, _)
             | (Self::BeepTestStart, _)

@@ -1016,6 +1016,23 @@ pub(super) fn config_string_game_num(
     (result, game_number)
 }
 
+/// Label for a config-page footer's red button: `CANCEL` when the page has
+/// pending edits to discard, `BACK` when it does not. "Cancel" implies
+/// discarding changes; with nothing to discard the button is plain navigation,
+/// so it reads "Back". Driven off the page's *has-changes* predicate, NOT its
+/// Apply-enabled flag — a page can hold pending changes that Apply still
+/// refuses (e.g. an incomplete portal selection), and those must still read
+/// "Cancel". Mirrors the cancel/back swap already used in `make_updates_page`.
+/// The two language pickers do not use this — they label their buttons in the
+/// *previewed* language via `Language::back_text()`.
+pub(super) fn cancel_or_back_label(has_changes: bool) -> String {
+    if has_changes {
+        fl!("cancel")
+    } else {
+        fl!("back")
+    }
+}
+
 pub(super) fn make_button<'a, Message: 'a + Clone, T: IntoFragment<'a>>(
     label: T,
 ) -> Button<'a, Message> {
@@ -1352,5 +1369,15 @@ mod tests {
     fn crosses_portal_rugby_to_hockey_is_true() {
         assert!(crosses_portal(Mode::Rugby, Mode::Hockey6V6));
         assert!(crosses_portal(Mode::Rugby, Mode::Hockey3V3));
+    }
+
+    #[test]
+    fn cancel_or_back_label_swaps_on_changes() {
+        // Pending changes → the "cancel" label; nothing to discard → the "back" label.
+        // Compared against the same fl! keys so the assertion holds regardless of which
+        // locale the loader resolves to.
+        assert_eq!(cancel_or_back_label(true), fl!("cancel"));
+        assert_eq!(cancel_or_back_label(false), fl!("back"));
+        assert_ne!(cancel_or_back_label(true), cancel_or_back_label(false));
     }
 }

@@ -507,12 +507,12 @@ impl Server {
                 | GamePeriod::HalfTime
                 | GamePeriod::OvertimeHalfTime
                 | GamePeriod::PreOvertime => {
-                    if self.snapshot.secs_in_period < 15 {
+                    if self.snapshot.secs_in_period < 10 {
                         self.snapshot.secs_in_period = next_time;
                     };
                 }
                 GamePeriod::PreSuddenDeath => {
-                    if self.snapshot.secs_in_period < 15 {
+                    if self.snapshot.secs_in_period < 10 {
                         self.snapshot.secs_in_period = 0;
                     }
                 }

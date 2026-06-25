@@ -75,6 +75,8 @@ event = ACARA:
 track-fouls-and-warnings = LACAK PELANGGARAN
     DAN PERINGATAN
 show-behind-schedule-time = TAMPILKAN KELEWATAN
+show-countdown-for-last-10-seconds = TAMPILKAN HITUNG MUNDUR 10 DETIK
+audible-countdown-for-last-10-seconds = HITUNG MUNDUR SUARA 10 DETIK
 delay = TERLAMBAT
 court = LAPANGAN:
 single-half = BABAK

@@ -74,6 +74,8 @@ event = EVENT:
 track-fouls-and-warnings = TRACK FOULS
     AND WARNINGS
 show-behind-schedule-time = SHOW BEHIND TIME/DELAY
+show-countdown-for-last-10-seconds = SHOW COUNTDOWN FOR LAST 10 SECONDS
+audible-countdown-for-last-10-seconds = AUDIBLE COUNTDOWN FOR LAST 10 SECONDS
 delay = DELAY
 court = COURT:
 single-half = SINGLE

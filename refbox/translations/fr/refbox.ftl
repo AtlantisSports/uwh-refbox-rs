@@ -71,6 +71,8 @@ track-cap-number-of-scorer = SUIVRE LE NUMÉRO DU
 track-fouls-and-warnings = SUIVRE LES FAUTES
     ET LES AVERTISSEMENTS
 show-behind-schedule-time = AFFICHER LE RETARD
+show-countdown-for-last-10-seconds = AFFICHER COMPTE À REBOURS 10 S
+audible-countdown-for-last-10-seconds = COMPTE À REBOURS SONORE 10 S
 delay = RETARD
 event = EVÉNEMENT:
 court = TERRAIN:

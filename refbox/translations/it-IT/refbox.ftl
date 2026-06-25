@@ -75,6 +75,8 @@ event = EVENTO:
 track-fouls-and-warnings = TRACCIA FALLI
     E AMMONIZIONI
 show-behind-schedule-time = MOSTRA RITARDO
+show-countdown-for-last-10-seconds = MOSTRA CONTO ALLA ROVESCIA 10 S
+audible-countdown-for-last-10-seconds = CONTO ALLA ROVESCIA SONORO 10 S
 delay = RITARDO
 court = CAMPO:
 single-half = SINGOLO

@@ -77,6 +77,8 @@ event = 대회:
 track-fouls-and-warnings = 반칙 및
     경고 추적
 show-behind-schedule-time = 지연 표시
+show-countdown-for-last-10-seconds = 마지막 10초 카운트다운 표시
+audible-countdown-for-last-10-seconds = 마지막 10초 음성 카운트다운
 delay = 지연
 court = 코트:
 single-half = 단일

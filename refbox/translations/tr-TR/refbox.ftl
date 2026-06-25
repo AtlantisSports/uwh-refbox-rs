@@ -75,6 +75,8 @@ event = ETKİNLİK:
 track-fouls-and-warnings = FAUL VE
     UYARILARI TAKİP ET
 show-behind-schedule-time = GECİKMEYİ GÖSTER
+show-countdown-for-last-10-seconds = SON 10 SANİYE GERİ SAYIMI GÖSTER
+audible-countdown-for-last-10-seconds = SESLİ GERİ SAYIM SON 10 SANİYE
 delay = GECİKME
 court = SAHA:
 single-half = TEK

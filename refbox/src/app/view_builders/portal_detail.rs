@@ -49,9 +49,12 @@ pub(in super::super) fn build_portal_detail_page<'a>(
     // RETRY ALL is actionable only when there is at least one unsent
     // game (a stuck/red or pending/yellow row). Recent-success and
     // token-expired rows don't count.
-    let has_unsent = rows
-        .iter()
-        .any(|r| matches!(r, DetailRow::Stuck { .. } | DetailRow::Pending { .. }));
+    let has_unsent = rows.iter().any(|r| {
+        matches!(
+            r,
+            DetailRow::Stuck { .. } | DetailRow::Pending { .. } | DetailRow::StatsPending { .. }
+        )
+    });
 
     let row_buttons: CollectArrayResult<_, PORTAL_DETAIL_LIST_LEN> = rows
         .into_iter()
@@ -169,6 +172,16 @@ fn render_row<'a>(r: DetailRow) -> Element<'a, Message> {
                 .height(Length::Fixed(MIN_BUTTON_SIZE))
                 .into()
         }
+        DetailRow::StatsPending { id, game_number } => button(row_text_centered(fl!(
+            "portal-row-stats-pending",
+            game = game_number
+        )))
+        .on_press(Message::PortalRowTapped(id))
+        .style(yellow_button)
+        .padding(PADDING)
+        .width(Length::Fill)
+        .height(Length::Fixed(MIN_BUTTON_SIZE))
+        .into(),
         DetailRow::RecentSuccess {
             game_number,
             submitted_mins_ago,

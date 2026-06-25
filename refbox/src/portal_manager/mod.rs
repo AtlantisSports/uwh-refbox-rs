@@ -285,6 +285,12 @@ pub enum DetailRow {
         game_number: String,
         attempts: u32,
     },
+    /// A game whose score is sent but whose stats upload is still
+    /// outstanding (stats-pending). Rendered yellow like `Pending`, but
+    /// it never escalates and is not auto-retried — tapping fires one
+    /// stats attempt. No attempt counter: the row is one-shot, so a
+    /// counter would wrongly imply background retrying.
+    StatsPending { id: ItemId, game_number: String },
     /// A recently-completed submission, shown as an informational
     /// green strip. Not tappable.
     RecentSuccess {
@@ -777,11 +783,19 @@ impl PortalManager {
             }
         }
         for it in &items {
-            if !is_item_stuck(it, now) {
+            if !it.score_sent && !is_item_stuck(it, now) {
                 out.push(DetailRow::Pending {
                     id: it.id.clone(),
                     game_number: it.id.game_number.clone(),
                     attempts: it.attempts,
+                });
+            }
+        }
+        for it in &items {
+            if it.score_sent {
+                out.push(DetailRow::StatsPending {
+                    id: it.id.clone(),
+                    game_number: it.id.game_number.clone(),
                 });
             }
         }
@@ -1390,6 +1404,44 @@ mod tests {
             !is_item_stuck(&it, OffsetDateTime::now_utc()),
             "a stats-pending item must never be classified as stuck"
         );
+    }
+
+    #[tokio::test]
+    async fn detail_rows_places_stats_pending_after_pending_before_recent() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+
+        // A score-pending (young) game and a stats-pending game.
+        m.enqueue_game_end("e".into(), "G_SCORE".into(), 0, 0, "{}".into())
+            .unwrap();
+        m.queue.items[0].queued_at = OffsetDateTime::now_utc() - TimeDuration::minutes(2);
+        m.enqueue_game_end("e".into(), "G_STATS".into(), 1, 0, "{}".into())
+            .unwrap();
+        m.queue.items[1].score_sent = true;
+
+        // And one recent success.
+        m.enqueue_game_end("e".into(), "G_DONE".into(), 2, 1, "{}".into())
+            .unwrap();
+        let done_id = m.queue.items[2].id.clone();
+        m.on_item_resolved(done_id);
+
+        let rows = m.detail_rows();
+        assert!(
+            matches!(&rows[0], DetailRow::Pending { game_number, .. } if game_number == "G_SCORE"),
+            "row0 should be the score-pending game, got {:?}",
+            rows[0]
+        );
+        assert!(
+            matches!(&rows[1], DetailRow::StatsPending { game_number, .. } if game_number == "G_STATS"),
+            "row1 should be the stats-pending game, got {:?}",
+            rows[1]
+        );
+        assert!(
+            matches!(&rows[2], DetailRow::RecentSuccess { game_number, .. } if game_number == "G_DONE"),
+            "row2 should be the recent success, got {:?}",
+            rows[2]
+        );
+        assert_eq!(rows.len(), 3);
     }
 
     #[tokio::test]

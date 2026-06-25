@@ -2638,8 +2638,12 @@ impl RefBoxApp {
                         discard_armed: false,
                     };
                     trace!("AppState changed to {:?}", self.app_state);
+                } else if self.portal_manager.is_stats_pending(&id) {
+                    // Stats-pending row: fire one stats attempt. No
+                    // background loop, no escalation.
+                    self.portal_manager.request_stats_retry(&id);
                 } else {
-                    // Young pending row tapped — force an immediate retry.
+                    // Young score-pending row tapped — force an immediate retry.
                     if let Err(e) = self.portal_manager.force_immediate_retry(&id) {
                         error!("force_immediate_retry failed: {e}");
                     }

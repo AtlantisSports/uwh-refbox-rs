@@ -69,6 +69,11 @@ pub enum PortalCommand {
     /// after every queue mutation so the task knows which items to
     /// attempt on its next tick.
     QueueUpdated(QueueFile),
+    /// One-shot request to (re)post the stats for a single stats-pending
+    /// item. Triggered by the operator tapping the item's row or RETRY
+    /// ALL. The task attempts stats exactly once and never schedules a
+    /// follow-up — stats-pending items are not on the auto-retry cadence.
+    RetryStats(QueuedItem),
 }
 
 pub struct BackgroundTaskHandle {
@@ -171,6 +176,19 @@ async fn run_task(
                     None => break,
                     Some(PortalCommand::QueueUpdated(new_queue)) => {
                         queue_snapshot = new_queue;
+                    }
+                    Some(PortalCommand::RetryStats(item)) => {
+                        match io.post_stats(&item).await {
+                            Ok(()) => {
+                                let _ = event_tx
+                                    .send(PortalEvent::ItemResolved(item.id.clone()))
+                                    .await;
+                            }
+                            Err(_) => {
+                                // Stays stats-pending; no escalation, no loop.
+                                let _ = event_tx.send(PortalEvent::ItemUpdated).await;
+                            }
+                        }
                     }
                 }
             }
@@ -588,6 +606,103 @@ mod tests {
             stats_count.load(std::sync::atomic::Ordering::SeqCst),
             0,
             "the auto-retry loop must not auto-attempt stats for a stats-pending item"
+        );
+        drop(handle);
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn retry_stats_command_posts_stats_once_and_resolves_on_success() {
+        let scores_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let stats_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let io = FakeIo {
+            verify_results: Mutex::new(vec![Ok(())]),
+            verify_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_results: Mutex::new(vec![]),
+            scores_count: scores_count.clone(),
+            stats_results: Mutex::new(vec![Ok(())]),
+            stats_count: stats_count.clone(),
+        };
+        let mut handle = spawn(io);
+
+        let mut item = mk_queue_item(0);
+        item.score_sent = true;
+        let expected_id = item.id.clone();
+        handle
+            .command_tx
+            .send(PortalCommand::RetryStats(item))
+            .await
+            .unwrap();
+
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        assert_eq!(
+            stats_count.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "RetryStats must post stats exactly once"
+        );
+        assert_eq!(
+            scores_count.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "RetryStats must never re-post the score"
+        );
+        let events = drain_events(&mut handle.event_rx);
+        assert!(
+            events.iter().any(|ev| matches!(
+                ev, PortalEvent::ItemResolved(id) if id == &expected_id
+            )),
+            "successful RetryStats must resolve the item, got {events:?}"
+        );
+        drop(handle);
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn retry_stats_command_emits_item_updated_on_failure() {
+        let scores_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let stats_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let io = FakeIo {
+            verify_results: Mutex::new(vec![Ok(())]),
+            verify_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_results: Mutex::new(vec![]),
+            scores_count: scores_count.clone(),
+            stats_results: Mutex::new(vec![Err(PortalCallError::Failed("forced".into()))]),
+            stats_count: stats_count.clone(),
+        };
+        let mut handle = spawn(io);
+
+        let mut item = mk_queue_item(0);
+        item.score_sent = true;
+        handle
+            .command_tx
+            .send(PortalCommand::RetryStats(item))
+            .await
+            .unwrap();
+
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        assert_eq!(
+            stats_count.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "RetryStats must post stats exactly once even on failure"
+        );
+        assert_eq!(
+            scores_count.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "RetryStats must never re-post the score"
+        );
+        let events = drain_events(&mut handle.event_rx);
+        assert!(
+            events
+                .iter()
+                .any(|ev| matches!(ev, PortalEvent::ItemUpdated)),
+            "failed RetryStats must emit ItemUpdated, got {events:?}"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|ev| matches!(ev, PortalEvent::ItemResolved(_))),
+            "failed RetryStats must NOT emit ItemResolved, got {events:?}"
         );
         drop(handle);
     }

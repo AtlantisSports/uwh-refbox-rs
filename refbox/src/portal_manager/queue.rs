@@ -57,6 +57,16 @@ pub struct QueuedItem {
     /// via the FORCE THIS GAME RESULT button on the attention action
     /// page (see Task 15).
     pub force: bool,
+    /// Whether the portal has already accepted this game's **score**.
+    /// `false` = score-pending (the normal queued state: auto-retried,
+    /// can go stuck/red). `true` = stats-pending (score is up, only the
+    /// stats upload is outstanding) — excluded from the auto-retry loop,
+    /// the stuck escalation, and the yellow/red indicator; re-sent only
+    /// by a one-shot `RetryStats` command. `#[serde(default)]` so old
+    /// `portal_queue.json` files (written before this field existed)
+    /// load as score-pending.
+    #[serde(default)]
+    pub score_sent: bool,
 }
 
 const QUEUE_FILE_NAME: &str = "portal_queue.json";
@@ -153,6 +163,7 @@ mod tests {
                 attempts: 2,
                 last_attempt_at: Some(datetime!(2026-04-19 14:23:15 UTC)),
                 force: false,
+                score_sent: false,
             }],
         };
         let s = serde_json::to_string_pretty(&q).unwrap();
@@ -189,6 +200,7 @@ mod tests {
                     attempts: 0,
                     last_attempt_at: None,
                     force: false,
+                    score_sent: false,
                 }],
             };
             save(tmp.path(), &q).unwrap();
@@ -226,5 +238,53 @@ mod tests {
             assert!(tmp.path().join("portal_queue.json").exists());
             assert!(!tmp.path().join("portal_queue.json.tmp").exists());
         }
+    }
+
+    #[test]
+    fn score_sent_round_trips_true() {
+        let item = QueuedItem {
+            id: ItemId {
+                event_id: "e1".into(),
+                game_number: "G1".into(),
+            },
+            black_score: 1,
+            white_score: 0,
+            stats: "{}".into(),
+            queued_at: datetime!(2026-06-25 12:00:00 UTC),
+            attempts: 0,
+            last_attempt_at: None,
+            force: false,
+            score_sent: true,
+        };
+        let s = serde_json::to_string(&item).unwrap();
+        let back: QueuedItem = serde_json::from_str(&s).unwrap();
+        assert!(back.score_sent);
+        assert_eq!(item, back);
+    }
+
+    #[test]
+    fn missing_score_sent_field_defaults_to_false() {
+        // Simulate an old portal_queue.json written before this field existed.
+        let item = QueuedItem {
+            id: ItemId {
+                event_id: "e1".into(),
+                game_number: "G1".into(),
+            },
+            black_score: 0,
+            white_score: 0,
+            stats: "{}".into(),
+            queued_at: datetime!(2026-06-25 12:00:00 UTC),
+            attempts: 0,
+            last_attempt_at: None,
+            force: false,
+            score_sent: true,
+        };
+        let mut v = serde_json::to_value(&item).unwrap();
+        v.as_object_mut().unwrap().remove("score_sent");
+        let back: QueuedItem = serde_json::from_value(v).unwrap();
+        assert!(
+            !back.score_sent,
+            "an item with no score_sent field must load as score-pending (false)"
+        );
     }
 }

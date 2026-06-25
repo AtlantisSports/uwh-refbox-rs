@@ -231,6 +231,7 @@ mod tests {
             attempts,
             last_attempt_at: None,
             force: false,
+            score_sent: false,
         }
     }
 

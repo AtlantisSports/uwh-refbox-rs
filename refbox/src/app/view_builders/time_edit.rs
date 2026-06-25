@@ -41,6 +41,8 @@ pub(in super::super) fn build_time_edit_view<'a>(
             .push(horizontal_space());
     }
 
+    let has_changes = time_edit_has_changes(time, timeout_time, old_time, old_timeout_time);
+
     column![
         make_game_time_button(
             snapshot,
@@ -58,7 +60,7 @@ pub(in super::super) fn build_time_edit_view<'a>(
             .align_x(Horizontal::Center),
         vertical_space(),
         row![
-            make_button(fl!("cancel"))
+            make_button(cancel_or_back_label(has_changes))
                 .style(red_button)
                 .width(Length::Fill)
                 .on_press(Message::TimeEditComplete { canceled: true }),
@@ -67,8 +69,7 @@ pub(in super::super) fn build_time_edit_view<'a>(
                 .style(green_button)
                 .width(Length::Fill)
                 .on_press_maybe(
-                    time_edit_has_changes(time, timeout_time, old_time, old_timeout_time)
-                        .then_some(Message::TimeEditComplete { canceled: false }),
+                    has_changes.then_some(Message::TimeEditComplete { canceled: false }),
                 ),
         ]
         .spacing(SPACING),

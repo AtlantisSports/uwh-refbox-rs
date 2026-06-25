@@ -2690,6 +2690,9 @@ impl RefBoxApp {
                     PortalEvent::TokenStatus(valid) => {
                         self.portal_manager.on_token_status(valid);
                     }
+                    PortalEvent::TokenUnreachable => {
+                        self.portal_manager.on_token_unreachable();
+                    }
                 }
                 // The background task fires verify_token on its cadence
                 // (~5 min when healthy). Use that heartbeat to refresh the link

@@ -46,6 +46,11 @@ pub(in super::super) fn build_portal_detail_page<'a>(
 
     let num_items = rows.len();
 
+    // Clamp a stale scroll position so a list that shrank under us (queued
+    // games uploading in the background) can't skip past the end and show
+    // blank rows. make_scroll_list clamps its own scrollbar math too.
+    let scroll_index = scroll_index.min(num_items.saturating_sub(PORTAL_DETAIL_LIST_LEN));
+
     // RETRY ALL is actionable only when there is at least one unsent
     // game (a stuck/red or pending/yellow row). Recent-success and
     // token-expired rows don't count.

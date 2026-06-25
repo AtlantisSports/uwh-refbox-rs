@@ -1677,13 +1677,15 @@ pub(in super::super) fn build_game_parameter_editor<'a>(
         LengthParameter::OvertimeHalfTime => config.ot_half_time_duration,
         LengthParameter::PreSuddenDeath => config.pre_sudden_death_duration,
     };
-    let apply_enabled = !matches!(game_block_validity, Some(GameBlockValidity::TooShort))
-        && param_edit_has_changes(length, old_length, param, single_half, config.single_half);
+    let has_changes =
+        param_edit_has_changes(length, old_length, param, single_half, config.single_half);
+    let apply_enabled =
+        !matches!(game_block_validity, Some(GameBlockValidity::TooShort)) && has_changes;
 
     col.push(vertical_space())
         .push(
             row![
-                make_button(fl!("cancel"))
+                make_button(cancel_or_back_label(has_changes))
                     .style(red_button)
                     .width(Length::Fill)
                     .on_press(Message::ParameterEditComplete { canceled: true }),

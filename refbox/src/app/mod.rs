@@ -369,11 +369,12 @@ pub(crate) enum PageEntrySnapshot {
         track_fouls_and_warnings: bool,
         show_behind_schedule_time: bool,
         confirm_score: bool,
+        hide_time: bool,
+        audible_countdown: bool,
     },
     Display {
         white_on_right: bool,
         brightness: matrix_drawing::transmitted_data::Brightness,
-        hide_time: bool,
         front_display_layout: crate::sim_frame::FrontDisplayLayout,
     },
     Sound {
@@ -419,6 +420,8 @@ impl PageEntrySnapshot {
                 track_fouls_and_warnings,
                 show_behind_schedule_time,
                 confirm_score,
+                hide_time,
+                audible_countdown,
             } => {
                 edited.using_uwhportal = using_uwhportal;
                 edited.current_event_id = current_event_id;
@@ -429,16 +432,16 @@ impl PageEntrySnapshot {
                 edited.track_fouls_and_warnings = track_fouls_and_warnings;
                 edited.show_behind_schedule_time = show_behind_schedule_time;
                 edited.confirm_score = confirm_score;
+                edited.hide_time = hide_time;
+                edited.audible_countdown = audible_countdown;
             }
             PageEntrySnapshot::Display {
                 white_on_right,
                 brightness,
-                hide_time,
                 front_display_layout,
             } => {
                 edited.white_on_right = white_on_right;
                 edited.brightness = brightness;
-                edited.hide_time = hide_time;
                 edited.front_display_layout = front_display_layout;
             }
             PageEntrySnapshot::Sound { sound } => {
@@ -1418,11 +1421,12 @@ impl RefBoxApp {
                 track_fouls_and_warnings: edited.track_fouls_and_warnings,
                 show_behind_schedule_time: edited.show_behind_schedule_time,
                 confirm_score: edited.confirm_score,
+                hide_time: edited.hide_time,
+                audible_countdown: edited.audible_countdown,
             },
             ConfigPage::Display => PageEntrySnapshot::Display {
                 white_on_right: edited.white_on_right,
                 brightness: edited.brightness,
-                hide_time: edited.hide_time,
                 front_display_layout: edited.front_display_layout,
             },
             ConfigPage::Sound => PageEntrySnapshot::Sound {

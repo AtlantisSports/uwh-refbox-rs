@@ -231,6 +231,8 @@ pub(in super::super) fn page_has_changes(
                 track_fouls_and_warnings,
                 show_behind_schedule_time,
                 confirm_score,
+                hide_time,
+                audible_countdown,
             },
         ) => {
             edited.using_uwhportal != *using_uwhportal
@@ -242,19 +244,19 @@ pub(in super::super) fn page_has_changes(
                 || edited.track_fouls_and_warnings != *track_fouls_and_warnings
                 || edited.show_behind_schedule_time != *show_behind_schedule_time
                 || edited.confirm_score != *confirm_score
+                || edited.hide_time != *hide_time
+                || edited.audible_countdown != *audible_countdown
         }
         (
             ConfigPage::Display,
             PageEntrySnapshot::Display {
                 white_on_right,
                 brightness,
-                hide_time,
                 front_display_layout,
             },
         ) => {
             edited.white_on_right != *white_on_right
                 || edited.brightness != *brightness
-                || edited.hide_time != *hide_time
                 || edited.front_display_layout != *front_display_layout
         }
         (ConfigPage::Sound, PageEntrySnapshot::Sound { sound }) => edited.sound != *sound,
@@ -2280,13 +2282,11 @@ mod tests {
         let edited = EditableSettings {
             white_on_right: false,
             brightness: Brightness::Medium,
-            hide_time: false,
             ..Default::default()
         };
         let snap = PageEntrySnapshot::Display {
             white_on_right: false,
             brightness: Brightness::Medium,
-            hide_time: false,
             front_display_layout: FrontDisplayLayout::Default,
         };
         assert!(!page_has_changes(ConfigPage::Display, &edited, Some(&snap)));
@@ -2297,13 +2297,11 @@ mod tests {
         let edited = EditableSettings {
             white_on_right: false,
             brightness: Brightness::High,
-            hide_time: false,
             ..Default::default()
         };
         let snap = PageEntrySnapshot::Display {
             white_on_right: false,
             brightness: Brightness::Medium,
-            hide_time: false,
             front_display_layout: FrontDisplayLayout::Default,
         };
         assert!(page_has_changes(ConfigPage::Display, &edited, Some(&snap)));
@@ -2314,14 +2312,12 @@ mod tests {
         let edited = EditableSettings {
             white_on_right: false,
             brightness: Brightness::Medium,
-            hide_time: false,
             front_display_layout: FrontDisplayLayout::Corners,
             ..Default::default()
         };
         let snap = PageEntrySnapshot::Display {
             white_on_right: false,
             brightness: Brightness::Medium,
-            hide_time: false,
             front_display_layout: FrontDisplayLayout::Default,
         };
         assert!(page_has_changes(ConfigPage::Display, &edited, Some(&snap)));
@@ -2331,6 +2327,51 @@ mod tests {
     fn page_without_snapshot_reports_no_changes() {
         let edited = EditableSettings::default();
         assert!(!page_has_changes(ConfigPage::Display, &edited, None));
+    }
+
+    #[test]
+    fn app_detects_hide_time_change() {
+        // hide_time moved from Display to App; dirty-check must fire on App page.
+        let snap = PageEntrySnapshot::App {
+            using_uwhportal: false,
+            current_event_id: None,
+            current_court: None,
+            schedule: None,
+            mode: Mode::Hockey6V6,
+            collect_scorer_cap_num: false,
+            track_fouls_and_warnings: false,
+            show_behind_schedule_time: false,
+            confirm_score: false,
+            hide_time: false,
+            audible_countdown: false,
+        };
+        let edited = EditableSettings {
+            hide_time: true,
+            ..Default::default()
+        };
+        assert!(page_has_changes(ConfigPage::App, &edited, Some(&snap)));
+    }
+
+    #[test]
+    fn app_detects_audible_countdown_change() {
+        let snap = PageEntrySnapshot::App {
+            using_uwhportal: false,
+            current_event_id: None,
+            current_court: None,
+            schedule: None,
+            mode: Mode::Hockey6V6,
+            collect_scorer_cap_num: false,
+            track_fouls_and_warnings: false,
+            show_behind_schedule_time: false,
+            confirm_score: false,
+            hide_time: false,
+            audible_countdown: false,
+        };
+        let edited = EditableSettings {
+            audible_countdown: true,
+            ..Default::default()
+        };
+        assert!(page_has_changes(ConfigPage::App, &edited, Some(&snap)));
     }
 
     // ---------------------------------------------------------------------
@@ -2458,6 +2499,8 @@ mod tests {
             track_fouls_and_warnings: edited.track_fouls_and_warnings,
             show_behind_schedule_time: edited.show_behind_schedule_time,
             confirm_score: edited.confirm_score,
+            hide_time: false,
+            audible_countdown: false,
         };
 
         edited.using_uwhportal = false;
@@ -2467,6 +2510,8 @@ mod tests {
         edited.collect_scorer_cap_num = true;
         edited.track_fouls_and_warnings = true;
         edited.confirm_score = true;
+        edited.hide_time = true;
+        edited.audible_countdown = true;
         edited.game_number = "99".to_string();
 
         snap.revert_into(&mut edited);
@@ -2479,6 +2524,8 @@ mod tests {
         assert!(!edited.collect_scorer_cap_num);
         assert!(!edited.track_fouls_and_warnings);
         assert!(!edited.confirm_score);
+        assert!(!edited.hide_time);
+        assert!(!edited.audible_countdown);
 
         // Game-slice field NOT restored by the App snapshot.
         assert_eq!(edited.game_number, "99");

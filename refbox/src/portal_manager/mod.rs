@@ -303,7 +303,9 @@ struct RecentSuccess {
 pub const STUCK_THRESHOLD: TimeDuration = TimeDuration::minutes(30);
 
 pub fn is_item_stuck(item: &QueuedItem, now: OffsetDateTime) -> bool {
-    (now - item.queued_at) >= STUCK_THRESHOLD
+    // Stats-pending items (score already accepted) never go stuck: a
+    // missing stat must not nag the operator or escalate to red.
+    !item.score_sent && (now - item.queued_at) >= STUCK_THRESHOLD
 }
 
 pub struct PortalManager {
@@ -1251,6 +1253,17 @@ mod tests {
         assert!(
             reloaded.items[0].last_attempt_at.is_none(),
             "on-disk queue must show last_attempt_at cleared"
+        );
+    }
+
+    #[test]
+    fn stats_pending_item_is_never_stuck_even_when_old() {
+        let mut it = mk_young_item();
+        it.score_sent = true;
+        it.queued_at = OffsetDateTime::now_utc() - TimeDuration::minutes(120);
+        assert!(
+            !is_item_stuck(&it, OffsetDateTime::now_utc()),
+            "a stats-pending item must never be classified as stuck"
         );
     }
 }

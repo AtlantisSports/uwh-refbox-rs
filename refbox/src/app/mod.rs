@@ -1041,6 +1041,15 @@ impl RefBoxApp {
         self.schedule = None;
         self.config.game = manual_config;
         self.persist_config();
+        // Delete the saved portal-link note now that the portal is off, so a
+        // later restart starts dormant instead of silently re-linking the old
+        // event. Mirrors the Apply path's `persist_config(); persist_link_session();`
+        // pairing: the mid-game switch-to-manual confirmation returns early into
+        // a ConfirmationPage and never reaches that Apply-path call, so without
+        // this the note would survive and the restore on next launch would turn
+        // the portal back on (finding H3). With the portal now off and no event
+        // selected, `persist_link_session` takes its delete branch.
+        self.persist_link_session();
     }
 
     /// Commit the Game-Options slice (game config + game number) to the live state.

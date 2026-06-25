@@ -257,6 +257,18 @@ pub enum PortalEvent {
     HealthChanged,
     ItemResolved(ItemId),
     ItemUpdated,
+    /// The background task just made a retry attempt for this queued item.
+    /// Carries the item's new attempt count and the timestamp, so the main
+    /// thread mirrors them onto the authoritative queue: the on-screen
+    /// "(attempt N)" counter advances and the detail-page "retry in 0:NN"
+    /// countdown is computed from a real `last_attempt_at`. The background
+    /// task self-throttles on its own snapshot copy, so this is purely for
+    /// the operator-facing record (no resend is triggered).
+    ItemAttempted {
+        id: ItemId,
+        attempts: u32,
+        at: OffsetDateTime,
+    },
     /// The score posted successfully but the stats upload failed. The
     /// main thread flips the item to stats-pending (`score_sent = true`)
     /// so the auto-retry loop, the stuck escalation, and the indicator
@@ -744,6 +756,25 @@ impl PortalManager {
         self.push_queue_snapshot();
     }
 
+    /// Mirror a background retry attempt onto the authoritative queue. Sets
+    /// the item's attempt count and last-attempt timestamp from the values the
+    /// background task reported, so the detail page shows an honest
+    /// "(attempt N)" and a live retry countdown. A no-op for an unknown id (the
+    /// item resolved or was discarded since the attempt was made).
+    ///
+    /// Deliberately does NOT persist to disk or push a fresh snapshot:
+    /// `attempts` / `last_attempt_at` are runtime hints (a restart legitimately
+    /// re-attempts immediately and re-counts from zero), the background task
+    /// self-throttles on its own snapshot copy, and skipping the write avoids an
+    /// SD-card save on every retry tick. The next queue mutation persists the
+    /// current values.
+    pub fn on_item_attempted(&mut self, id: ItemId, attempts: u32, at: OffsetDateTime) {
+        if let Some(item) = self.find_mut(&id) {
+            item.attempts = attempts;
+            item.last_attempt_at = Some(at);
+        }
+    }
+
     /// Called from the UI thread after the background task reports that
     /// a queued item was successfully posted to the portal. Removes the
     /// item from the queue, records it in the recent-success ring
@@ -981,6 +1012,43 @@ mod tests {
         m.on_token_status(false);
         assert_eq!(m.indicator_state().health, HealthState::Red);
         assert!(m.indicator_state().token_expired);
+    }
+
+    #[test]
+    fn on_item_attempted_sets_attempts_and_last_attempt_at() {
+        // The background task reports each retry attempt; the authoritative
+        // queue must reflect the new count and timestamp so the detail page's
+        // "(attempt N)" counter advances and the retry countdown is real.
+        let item = mk_young_item();
+        let id = item.id.clone();
+        let q = QueueFile {
+            version: 1,
+            items: vec![item],
+        };
+        let mut m = PortalManager::new_for_test(q, false, false);
+        assert_eq!(m.queue.items[0].attempts, 0);
+        assert!(m.queue.items[0].last_attempt_at.is_none());
+
+        let at = OffsetDateTime::now_utc();
+        m.on_item_attempted(id, 1, at);
+        assert_eq!(m.queue.items[0].attempts, 1);
+        assert_eq!(m.queue.items[0].last_attempt_at, Some(at));
+    }
+
+    #[test]
+    fn on_item_attempted_with_unknown_id_is_noop() {
+        // An attempt reported for an item that resolved/was discarded since
+        // must be a silent no-op, never a panic.
+        let mut m = PortalManager::new_for_test(QueueFile::empty(), false, false);
+        m.on_item_attempted(
+            ItemId {
+                event_id: "gone".into(),
+                game_number: "G9".into(),
+            },
+            3,
+            OffsetDateTime::now_utc(),
+        );
+        assert!(m.queue.items.is_empty());
     }
 
     #[test]

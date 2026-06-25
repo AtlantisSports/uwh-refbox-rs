@@ -148,13 +148,32 @@ async fn run_task(
             _ = sleep(POLL_INTERVAL) => {
                 // Tick: try each eligible queued item, then health-check if due.
                 let now = OffsetDateTime::now_utc();
-                for item in &queue_snapshot.items {
-                    if !item.score_sent
-                        && is_item_retry_eligible(item, now)
-                        && attempt_item(&io, item, &event_tx).await
-                    {
+                for idx in 0..queue_snapshot.items.len() {
+                    let item = &queue_snapshot.items[idx];
+                    if item.score_sent || !is_item_retry_eligible(item, now) {
+                        continue;
+                    }
+                    if attempt_item(&io, item, &event_tx).await {
                         last_success = Some(TokioInstant::now());
                     }
+                    // Record the attempt on our own snapshot copy so this task
+                    // self-throttles to ITEM_RETRY_INTERVAL: `is_item_retry_eligible`
+                    // keys off `last_attempt_at`, so without stamping it here the item
+                    // would look eligible on every POLL_INTERVAL tick and we'd re-send
+                    // it every ~2s instead of every ~15s. Also notify the main thread
+                    // so it mirrors the attempt onto the authoritative queue (the honest
+                    // "(attempt N)" counter and the detail-page retry countdown). See
+                    // finding H4.
+                    let item = &mut queue_snapshot.items[idx];
+                    item.attempts = item.attempts.saturating_add(1);
+                    item.last_attempt_at = Some(now);
+                    let _ = event_tx
+                        .send(PortalEvent::ItemAttempted {
+                            id: item.id.clone(),
+                            attempts: item.attempts,
+                            at: now,
+                        })
+                        .await;
                 }
 
                 let elapsed = match current_health {
@@ -853,6 +872,90 @@ mod tests {
         assert_eq!(scores_count.load(std::sync::atomic::Ordering::SeqCst), 1);
         assert_eq!(stats_count.load(std::sync::atomic::Ordering::SeqCst), 1);
 
+        drop(handle);
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn failing_item_is_attempted_once_then_throttled_not_every_poll() {
+        // Regression for the retry-flood (H4): a failing item used to be
+        // re-sent on every POLL_INTERVAL (~2s) tick because `last_attempt_at`
+        // was never stamped, so `is_item_retry_eligible` saw `None` forever.
+        // The task now stamps it on its own snapshot copy, so within one
+        // ITEM_RETRY_INTERVAL the item is attempted exactly once. (Wall-clock
+        // barely advances under paused time, so the 15s throttle stays closed
+        // across the poll ticks below.)
+        let scores_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let io = FakeIo {
+            verify_results: Mutex::new(vec![]),
+            verify_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_results: Mutex::new(vec![
+                Err(PortalCallError::Failed("x".into())),
+                Err(PortalCallError::Failed("x".into())),
+                Err(PortalCallError::Failed("x".into())),
+                Err(PortalCallError::Failed("x".into())),
+            ]),
+            scores_count: scores_count.clone(),
+            stats_results: Mutex::new(vec![]),
+            stats_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+        };
+        let handle = spawn(io);
+        handle
+            .command_tx
+            .send(PortalCommand::QueueUpdated(queue_with_one_eligible_item()))
+            .await
+            .unwrap();
+
+        // Fire several poll ticks, all within ITEM_RETRY_INTERVAL.
+        for _ in 0..4 {
+            tokio::task::yield_now().await;
+            tokio::time::advance(Duration::from_secs(2)).await;
+            tokio::task::yield_now().await;
+            tokio::task::yield_now().await;
+        }
+
+        assert_eq!(
+            scores_count.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "a failing item must be attempted once then throttled, not re-sent on every poll"
+        );
+        drop(handle);
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn attempt_emits_item_attempted_event_with_incremented_count() {
+        let io = FakeIo {
+            verify_results: Mutex::new(vec![]),
+            verify_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_results: Mutex::new(vec![Err(PortalCallError::Failed("x".into()))]),
+            scores_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            stats_results: Mutex::new(vec![]),
+            stats_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+        };
+        let mut handle = spawn(io);
+        let queue = queue_with_one_eligible_item();
+        let expected_id = queue.items[0].id.clone();
+        handle
+            .command_tx
+            .send(PortalCommand::QueueUpdated(queue))
+            .await
+            .unwrap();
+
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(3)).await;
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_millis(500)).await;
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        let events = drain_events(&mut handle.event_rx);
+        assert!(
+            events.iter().any(|ev| matches!(
+                ev,
+                PortalEvent::ItemAttempted { id, attempts, .. }
+                    if id == &expected_id && *attempts == 1
+            )),
+            "an attempt must emit ItemAttempted with the item id and attempts == 1, got {events:?}"
+        );
         drop(handle);
     }
 }

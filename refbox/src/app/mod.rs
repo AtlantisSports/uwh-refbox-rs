@@ -2684,6 +2684,9 @@ impl RefBoxApp {
                     PortalEvent::ScoreSentStatsPending(id) => {
                         self.portal_manager.on_score_sent_stats_pending(id);
                     }
+                    PortalEvent::ItemAttempted { id, attempts, at } => {
+                        self.portal_manager.on_item_attempted(id, attempts, at);
+                    }
                     PortalEvent::HealthChanged | PortalEvent::ItemUpdated => {
                         self.portal_manager.ui_tick();
                     }

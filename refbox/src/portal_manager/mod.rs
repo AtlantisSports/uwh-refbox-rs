@@ -488,6 +488,34 @@ impl PortalManager {
         (m, rx)
     }
 
+    /// Send a one-shot `RetryStats` command to the background task for
+    /// the given item. The command carries a clone of the item, so the
+    /// task can attempt it without holding the UI lock. Spawned like
+    /// `push_queue_snapshot` because `update()` is synchronous.
+    fn send_stats_retry(&self, item: &QueuedItem) {
+        let tx = self.command_tx.clone();
+        let item = item.clone();
+        tokio::spawn(async move {
+            let _ = tx.send(health::PortalCommand::RetryStats(item)).await;
+        });
+    }
+
+    /// Operator asked to retry the stats for one stats-pending item
+    /// (tapped its row). Sends exactly one `RetryStats`. No-op if the id
+    /// is not in the queue.
+    pub fn request_stats_retry(&self, id: &ItemId) {
+        if let Some(item) = self.find(id) {
+            self.send_stats_retry(item);
+        }
+    }
+
+    /// True iff the queued item exists and its score has been sent but
+    /// stats are still outstanding (stats-pending). False for score-
+    /// pending items and for unknown ids.
+    pub fn is_stats_pending(&self, id: &ItemId) -> bool {
+        self.find(id).is_some_and(|it| it.score_sent)
+    }
+
     /// Send the current queue snapshot to the background task. Called
     /// after every queue mutation so the task's view stays fresh.
     fn push_queue_snapshot(&self) {
@@ -1322,6 +1350,28 @@ mod tests {
         // Persisted: a restart must reload it as stats-pending.
         let reloaded = queue::load_or_empty(tmp.path()).unwrap();
         assert!(reloaded.items[0].score_sent);
+    }
+
+    #[tokio::test]
+    async fn is_stats_pending_reflects_score_sent_flag() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        m.enqueue_game_end("e".into(), "G1".into(), 0, 0, "{}".into())
+            .unwrap();
+        let id = m.queue.items[0].id.clone();
+        assert!(!m.is_stats_pending(&id), "fresh item is score-pending");
+
+        m.queue.items[0].score_sent = true;
+        assert!(m.is_stats_pending(&id), "score_sent item is stats-pending");
+
+        let unknown = ItemId {
+            event_id: "e".into(),
+            game_number: "GX".into(),
+        };
+        assert!(
+            !m.is_stats_pending(&unknown),
+            "unknown id must be false, not panic"
+        );
     }
 
     #[test]

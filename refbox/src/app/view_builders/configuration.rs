@@ -1993,7 +1993,15 @@ fn make_language_select_page<'a>(
                 container(t).center(Length::Fill)
             };
 
-            let cancel_btn = button(make_label(selected.cancel_text(), selected_font))
+            // `apply_enabled` here is exactly page_has_changes(ConfigPage::Language, …)
+            // (the Language page has no extra Apply gate), so it doubles as the
+            // has-changes signal for the Cancel/Back swap.
+            let footer_label = if apply_enabled {
+                selected.cancel_text()
+            } else {
+                selected.back_text()
+            };
+            let cancel_btn = button(make_label(footer_label, selected_font))
                 .padding(PADDING)
                 .height(Length::Fixed(MIN_BUTTON_SIZE))
                 .style(red_button)

@@ -1741,46 +1741,56 @@ impl RefBoxApp {
         // sees the problem — but the core game clock and scoring still
         // work, which is what matters at the pool.
         //
-        // The production `UwhPortalIo` is built from a clone of the
-        // shared `UwhPortalClient` handle so that token mutations on the
-        // UI thread are immediately visible to the background retry task.
-        // If the client failed to construct (only possible on a bad
-        // https-only config), fall back to `NullIo` for the non-degraded
-        // path — no portal calls will be made, but the queue can still
-        // accept items and persist them for a later attempt.
+        // The production `UwhPortalIo` is built from a clone of the shared
+        // `UwhPortalClient` handle so that token mutations on the UI thread are
+        // immediately visible to the background retry task. If the client
+        // failed to construct (only possible on a bad https-only config), we go
+        // straight to degraded mode (a visible red indicator, no background
+        // task) rather than a `NullIo` uploader — a `NullIo`-backed manager
+        // would report success for every call, keeping the dot green while it
+        // fake-resolved (deleted) every queued game and nothing reached the
+        // portal (finding M6).
         std::fs::create_dir_all(&config_dir).ok();
 
-        // Try `config_dir` first, then `std::env::temp_dir()`, then fall
-        // back to degraded mode. Each attempt gets its own freshly-built
-        // `PortalTaskIo`: either the real `UwhPortalIo` (if we have a
-        // portal client) or `NullIo` (if client construction failed
-        // earlier). The I/O is generic in the `PortalTaskIo` impl so the
-        // retry helper is a closure that owns the attempt.
-        let try_new_manager = |dir: &std::path::Path| match &uwhportal_client {
-            Some(client) => PortalManager::new(
-                dir,
-                UwhPortalIo::new(Arc::clone(client), Arc::clone(&portal_event_id)),
-            ),
-            None => PortalManager::new(dir, crate::portal_manager::NullIo),
-        };
-
-        let (portal_manager, portal_event_rx) = match try_new_manager(&config_dir) {
-            Ok(pair) => pair,
-            Err(primary_err) => {
-                error!(
-                    "portal manager startup failed on config dir ({}); falling back to temp dir",
-                    primary_err
+        let (portal_manager, portal_event_rx) = match &uwhportal_client {
+            // No portal client: degraded mode (red, not-sending). See above.
+            None => {
+                warn!(
+                    "portal client unavailable; portal subsystem starting in degraded \
+                     (red, not-sending) mode — no results will be uploaded this session"
                 );
-                match try_new_manager(&std::env::temp_dir()) {
+                PortalManager::new_degraded()
+            }
+            // Have a client: build the real uploader, trying `config_dir` first,
+            // then `std::env::temp_dir()`, then falling back to degraded mode if
+            // even the temp dir refuses I/O. Each attempt gets its own freshly
+            // built `UwhPortalIo`, so the retry helper is a closure.
+            Some(client) => {
+                let try_new_manager = |dir: &std::path::Path| {
+                    PortalManager::new(
+                        dir,
+                        UwhPortalIo::new(Arc::clone(client), Arc::clone(&portal_event_id)),
+                    )
+                };
+                match try_new_manager(&config_dir) {
                     Ok(pair) => pair,
-                    Err(secondary_err) => {
+                    Err(primary_err) => {
                         error!(
-                            "portal manager also failed on temp dir ({}); \
-                             continuing in degraded mode — retry queue will not persist, \
-                             portal indicator will show red",
-                            secondary_err
+                            "portal manager startup failed on config dir ({}); falling back to temp dir",
+                            primary_err
                         );
-                        PortalManager::new_degraded()
+                        match try_new_manager(&std::env::temp_dir()) {
+                            Ok(pair) => pair,
+                            Err(secondary_err) => {
+                                error!(
+                                    "portal manager also failed on temp dir ({}); \
+                                     continuing in degraded mode — retry queue will not persist, \
+                                     portal indicator will show red",
+                                    secondary_err
+                                );
+                                PortalManager::new_degraded()
+                            }
+                        }
                     }
                 }
             }

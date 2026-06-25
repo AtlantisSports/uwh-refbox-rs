@@ -129,7 +129,7 @@ alarm-button = PULSANTE
     ALLARME:
 alarm = ALLARME
 hold-to-test = TIENI PER TESTARE
-test = TESTA
+test = PROVA
 or-press-spacebar = O Premi Barra Spazio
 or-hold-spacebar = O Tieni Barra Spazio
 game-info = INFORMAZIONI

@@ -699,8 +699,11 @@ pub(in super::super) fn build_beep_test_buzzer_picker<'a>(
         col = col.push(r);
     }
 
-    // Two trailing filler rows for vertical balance — mirrors the Language picker.
+    // Three trailing filler rows for vertical balance. This page has no top
+    // "next game" ribbon (unlike the main Sound buzzer picker), so the extra
+    // filler keeps the footer from riding up under the sound grid.
     col = col
+        .push(row![horizontal_space()].height(Length::Fill))
         .push(row![horizontal_space()].height(Length::Fill))
         .push(row![horizontal_space()].height(Length::Fill));
 

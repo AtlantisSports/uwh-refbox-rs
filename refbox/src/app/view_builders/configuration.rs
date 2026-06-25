@@ -1837,6 +1837,12 @@ fn make_buzzer_select_page<'a>(
         grid = grid.push(r);
     }
 
+    // One trailing filler row for vertical balance above the footer. This page
+    // carries the "next game" ribbon across the top (the beep-test buzzer picker
+    // does not), so a single filler here gives the same balance that picker gets
+    // from its two filler rows.
+    grid = grid.push(row![horizontal_space()].height(Length::Fill));
+
     // Footer: Cancel | TEST | Apply (Apply gated by page_has_changes).
     let cancel = make_button(fl!("cancel"))
         .style(red_button)

@@ -60,6 +60,13 @@ pub(super) fn make_scroll_list<'a, const LIST_LEN: usize>(
         main_col = main_col.push(button);
     }
 
+    // A remembered scroll index can outlive the list it points into: e.g. the
+    // portal detail list shrinks as queued games upload while the operator is
+    // scrolled down. Clamp it to the last valid offset so the
+    // `num_items - LIST_LEN - index` math below cannot underflow (a debug panic
+    // / release u16 wrap).
+    let index = index.min(num_items.saturating_sub(LIST_LEN));
+
     let top_len;
     let bottom_len;
     let can_scroll_up;
@@ -1379,5 +1386,27 @@ mod tests {
         assert_eq!(cancel_or_back_label(true), fl!("cancel"));
         assert_eq!(cancel_or_back_label(false), fl!("back"));
         assert_ne!(cancel_or_back_label(true), cancel_or_back_label(false));
+    }
+
+    #[test]
+    fn make_scroll_list_handles_index_past_end_of_shrunken_list() {
+        // Regression for the portal-detail crash (H7): a list can shrink under
+        // a remembered scroll position (queued games uploading in the
+        // background) so the index points past the new end. The scrollbar math
+        // `num_items - LIST_LEN - index` must not underflow (a debug panic /
+        // release u16 wrap). num_items=5 (> LIST_LEN=4, so it enters the
+        // subtraction branch) with index=6 (> num_items - LIST_LEN = 1) is the
+        // exact trigger; before the clamp this panicked here in debug builds.
+        const LIST_LEN: usize = 4;
+        let buttons: [Element<'static, Message>; LIST_LEN] =
+            core::array::from_fn(|_| horizontal_space().into());
+        let _list = make_scroll_list::<LIST_LEN>(
+            buttons,
+            5,
+            6,
+            text("test"),
+            ScrollOption::PortalDetail,
+            transparent_container,
+        );
     }
 }

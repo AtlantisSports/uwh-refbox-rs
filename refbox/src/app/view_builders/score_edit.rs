@@ -139,6 +139,15 @@ pub(in super::super) fn build_score_edit_view<'a>(
             )
     };
 
+    // Confirmation mode keeps the (disabled) "Cancel" label — the operator is
+    // committing a final score, not navigating back. Edit mode swaps to "Back"
+    // when the scores are unchanged.
+    let cancel_label = if is_confirmation {
+        fl!("cancel")
+    } else {
+        cancel_or_back_label(score_edit_has_changes(scores, old_scores))
+    };
+
     main_col
         .push(
             row![
@@ -153,7 +162,7 @@ pub(in super::super) fn build_score_edit_view<'a>(
         .push(vertical_space())
         .push(
             row![
-                make_button(fl!("cancel"))
+                make_button(cancel_label)
                     .on_press_maybe(cancel_btn_msg)
                     .style(red_button),
                 horizontal_space(),

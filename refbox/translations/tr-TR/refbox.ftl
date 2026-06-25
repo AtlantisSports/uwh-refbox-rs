@@ -129,6 +129,7 @@ alarm-button = ALARM
     DÜĞME:
 alarm = ALARM
 hold-to-test = TEST İÇİN BASILI TUTUN
+test = TEST ET
 or-press-spacebar = Veya Boşluk Tuşuna Basın
 or-hold-spacebar = Veya Boşluk Tuşunu Basılı Tutun
 game-info = BİLGİ

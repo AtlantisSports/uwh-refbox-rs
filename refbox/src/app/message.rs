@@ -1,7 +1,7 @@
 use super::{fl, languages::Language};
 use crate::{
     portal_manager::{ItemId, PortalEvent},
-    sound_controller::RemoteId,
+    sound_controller::{BuzzerSound, RemoteId},
     tournament_manager::{TournamentManager, penalty::PenaltyKind},
 };
 use std::sync::{Arc, Mutex};
@@ -139,6 +139,10 @@ pub enum Message {
     LanguageSelectComplete {
         canceled: bool,
     },
+    /// Operator tapped a sound in the buzzer picker (stages the selection).
+    SelectBuzzer(BuzzerSound),
+    /// Operator pressed TEST in the buzzer picker — plays the staged sound.
+    TestBuzzer,
     RequestRemoteId,
     // Constructed by the Sound-page button on non-Linux only; on Linux the Pi
     // has a fixed dedicated speaker so the button is compiled out. The variant
@@ -342,6 +346,8 @@ impl Message {
             | Self::CycleDisplayMode
             | Self::SelectLanguage(_)
             | Self::LanguageSelectComplete { .. }
+            | Self::SelectBuzzer(_)
+            | Self::TestBuzzer
             | Self::RequestRemoteId
             | Self::UpdateAudioOutput
             | Self::GotRemoteId(_)
@@ -584,6 +590,7 @@ impl PartialEq for Message {
                 Self::LanguageSelectComplete { canceled: a },
                 Self::LanguageSelectComplete { canceled: b },
             ) => a == b,
+            (Self::SelectBuzzer(a), Self::SelectBuzzer(b)) => a == b,
             (Self::GotRemoteId(a), Self::GotRemoteId(b)) => a == b,
             (Self::DeleteRemote(a), Self::DeleteRemote(b)) => a == b,
             (Self::PortalRowTapped(a), Self::PortalRowTapped(b)) => a == b,
@@ -665,6 +672,8 @@ impl PartialEq for Message {
             | (Self::CycleParameter(_), _)
             | (Self::SelectLanguage(_), _)
             | (Self::LanguageSelectComplete { .. }, _)
+            | (Self::SelectBuzzer(_), _)
+            | (Self::TestBuzzer, _)
             | (Self::RequestRemoteId, _)
             | (Self::UpdateAudioOutput, _)
             | (Self::GotRemoteId(_), _)
@@ -773,6 +782,7 @@ pub enum ConfigPage {
     User,
     Remotes(usize, bool),
     Language,
+    Buzzer,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

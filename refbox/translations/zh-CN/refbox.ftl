@@ -129,6 +129,7 @@ alarm-button = 警报
     按钮：
 alarm = 警报
 hold-to-test = 长按测试
+test = 测试
 or-press-spacebar = 或按空格键
 or-hold-spacebar = 或长按空格键
 game-info = 信息

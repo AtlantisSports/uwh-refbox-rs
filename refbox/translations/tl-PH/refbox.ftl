@@ -129,6 +129,7 @@ alarm-button = PINDUTAN NG
     ALARMA:
 alarm = ALARMA
 hold-to-test = PINDUTIN NANG MATAGAL PARA SUBUKAN
+test = SUBUKAN
 or-press-spacebar = O Pindutin ang Spacebar
 or-hold-spacebar = O Pindutin Nang Matagal ang Spacebar
 game-info = IMPORMASYON

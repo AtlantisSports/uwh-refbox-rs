@@ -387,6 +387,9 @@ pub(crate) enum PageEntrySnapshot {
         original_language: Option<Language>,
         pending_language: Option<Language>,
     },
+    Buzzer {
+        buzzer_sound: BuzzerSound,
+    },
 }
 
 impl PageEntrySnapshot {
@@ -456,6 +459,9 @@ impl PageEntrySnapshot {
             } => {
                 edited.original_language = original_language;
                 edited.pending_language = pending_language;
+            }
+            PageEntrySnapshot::Buzzer { buzzer_sound } => {
+                edited.sound.buzzer_sound = buzzer_sound;
             }
         }
     }
@@ -1476,6 +1482,9 @@ impl RefBoxApp {
                 original_language: edited.original_language,
                 pending_language: edited.pending_language,
             },
+            ConfigPage::Buzzer => PageEntrySnapshot::Buzzer {
+                buzzer_sound: edited.sound.buzzer_sound,
+            },
             ConfigPage::Main | ConfigPage::User => return,
         };
         self.page_entry_snapshot = Some(snapshot);
@@ -1571,6 +1580,7 @@ impl RefBoxApp {
             }
             ConfigPage::Display | ConfigPage::Sound => ConfigPage::User,
             ConfigPage::Remotes(_, _) => ConfigPage::Sound,
+            ConfigPage::Buzzer => ConfigPage::Sound,
             ConfigPage::Main => ConfigPage::Main,
         };
         self.app_state = AppState::EditGameConfig(parent);
@@ -2812,6 +2822,13 @@ impl RefBoxApp {
                         // Apply.
                         return Task::none();
                     }
+                    ConfigPage::Buzzer => {
+                        let bs = self.edited_settings.as_ref().map(|e| e.sound.buzzer_sound);
+                        if let Some(bs) = bs {
+                            self.config.sound.buzzer_sound = bs;
+                        }
+                        self.sound.update_settings(self.config.sound.clone());
+                    }
                 }
                 self.page_entry_snapshot = None;
                 self.persist_config();
@@ -3628,6 +3645,18 @@ impl RefBoxApp {
                     *page = ConfigPage::Main;
                 }
                 trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::SelectBuzzer(sound) => {
+                if let Some(edited) = self.edited_settings.as_mut() {
+                    edited.sound.buzzer_sound = sound;
+                }
+                Task::none()
+            }
+            Message::TestBuzzer => {
+                if let Some(edited) = self.edited_settings.as_ref() {
+                    self.sound.test_buzzer(edited.sound.buzzer_sound);
+                }
                 Task::none()
             }
             Message::RequestRemoteId => {

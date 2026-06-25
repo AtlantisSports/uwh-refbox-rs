@@ -129,6 +129,7 @@ alarm-button = BOTÓN DE
     ALARMA:
 alarm = ALARMA
 hold-to-test = MANTÉN PARA PROBAR
+test = PROBAR
 or-press-spacebar = O Presiona la Barra
 or-hold-spacebar = O Mantén la Barra
 game-info = INFORMACIÓN

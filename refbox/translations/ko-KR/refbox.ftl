@@ -131,6 +131,7 @@ alarm-button = 알람
     버튼:
 alarm = 알람
 hold-to-test = 길게 눌러 테스트
+test = 테스트
 or-press-spacebar = 또는 스페이스바 누르기
 or-hold-spacebar = 또는 스페이스바 길게 누르기
 game-info = 정보

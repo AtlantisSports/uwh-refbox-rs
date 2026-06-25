@@ -129,6 +129,7 @@ alarm-button = ALARM-
     KNOP:
 alarm = ALARM
 hold-to-test = INGEDRUKT HOUDEN OM TE TESTEN
+test = TEST
 or-press-spacebar = Of Druk op Spatiebalk
 or-hold-spacebar = Of Houd Spatiebalk Ingedrukt
 game-info = INFORMATIE

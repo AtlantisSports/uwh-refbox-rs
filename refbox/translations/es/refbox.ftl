@@ -436,6 +436,7 @@ portal-retry-all = REINTENTAR TODO
 portal-row-token-expired = Sesión del portal expirada — toca para iniciar sesión
 portal-row-stuck = Juego { $game } · Error al enviar resultado, toca para corregir
 portal-row-pending = Juego { $game } · Resultado no enviado, toca para reintentar
+portal-row-stats-pending = Juego { $game } · Estadísticas no enviadas, toca para reintentar
 portal-row-attempt-suffix = (intento { $attempts })
 portal-row-recent = Juego { $game } · Enviado hace { $mins } min
 portal-action-force-submit = Reintentar este resultado

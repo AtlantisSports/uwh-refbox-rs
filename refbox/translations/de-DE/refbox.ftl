@@ -425,6 +425,7 @@ portal-retry-all = ALLE WIEDERHOLEN
 portal-row-token-expired = Portal-Anmeldung abgelaufen — zum erneuten Anmelden tippen
 portal-row-stuck = Spiel { $game } Übermittlungsfehler, zum Beheben tippen
 portal-row-pending = Spiel { $game } Spielstand nicht gesendet, zum erneuten Versuch tippen
+portal-row-stats-pending = Spiel { $game } Statistik nicht gesendet, zum erneuten Versuch tippen
 portal-row-attempt-suffix = (Versuch { $attempts })
 portal-row-recent = Spiel { $game } · Übermittelt vor { $mins } Min
 portal-action-force-submit = Dieses Spielergebnis erneut senden

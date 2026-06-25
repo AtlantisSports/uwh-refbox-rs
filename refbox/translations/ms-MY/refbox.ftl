@@ -425,6 +425,7 @@ portal-retry-all = CUBA SEMULA SEMUA
 portal-row-token-expired = Log masuk portal tamat tempoh — ketik untuk log masuk semula
 portal-row-stuck = Perlawanan { $game } Ralat hantar markah, ketik untuk perbaiki
 portal-row-pending = Perlawanan { $game } Markah belum dihantar, ketik untuk cuba semula
+portal-row-stats-pending = Perlawanan { $game } Statistik belum dihantar, ketik untuk cuba semula
 portal-row-attempt-suffix = (percubaan { $attempts })
 portal-row-recent = Perlawanan { $game } · Dihantar { $mins } min lalu
 portal-action-force-submit = Cuba semula keputusan perlawanan ini

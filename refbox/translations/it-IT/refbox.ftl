@@ -425,6 +425,7 @@ portal-retry-all = RIPROVA TUTTO
 portal-row-token-expired = Sessione Portale scaduta — tocca per accedere di nuovo
 portal-row-stuck = Partita { $game } Errore invio punteggio, tocca per correggere
 portal-row-pending = Partita { $game } Punteggio non inviato, tocca per riprovare
+portal-row-stats-pending = Partita { $game } Statistiche non inviate, tocca per riprovare
 portal-row-attempt-suffix = (tentativo { $attempts })
 portal-row-recent = Partita { $game } · Inviato { $mins } min fa
 portal-action-force-submit = Riprova questo risultato

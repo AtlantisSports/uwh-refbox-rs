@@ -60,7 +60,7 @@ pub(in super::super) fn build_foul_overview_page<'a>(
         .spacing(SPACING)
         .height(Length::Fill),
         row![
-            make_button(fl!("cancel"))
+            make_button(cancel_or_back_label(has_changes))
                 .style(red_button)
                 .width(Length::Fill)
                 .on_press(Message::FoulOverviewComplete { canceled: true }),

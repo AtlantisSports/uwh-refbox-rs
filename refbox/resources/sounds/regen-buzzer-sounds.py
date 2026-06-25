@@ -36,6 +36,18 @@ def cat(*p): return np.concatenate(p)
 def norm(x):
     p = np.max(np.abs(x)); return x / p * 0.95 if p > 0 else x
 
+def loud(x, drive):
+    # Loudness boost for elements that peak-normalization leaves too quiet.
+    # Peak-norm matches the single loudest sample, but the ear judges loudness
+    # by average energy (RMS). A honk-with-a-gap or a decaying clang peaks high
+    # yet carries little energy, so it sounds far quieter than a solid tone at
+    # the same peak. Soft-saturate (tanh) to raise the quiet portions toward the
+    # old sounds' loudness without hard-clipping, then peak-normalize. `drive`
+    # is tuned per-sound by ear (higher = louder/denser). tanh is memoryless, so
+    # loop seams are preserved (zeros stay zero, the seam shape is unchanged).
+    y = np.tanh(drive * x); p = np.max(np.abs(y))
+    return y / p * 0.97 if p > 0 else y
+
 def e_airhorn():
     def honk(d):
         return edge(norm(wave_at(215, d, "saw") + wave_at(286, d, "saw")
@@ -74,6 +86,21 @@ def e_trill():
 
 ELEMENTS = {"airhorn": e_airhorn, "pipes": e_pipes, "klaxon": e_klaxon,
             "pip": e_pip, "pulse": e_pulse, "siren": e_siren, "trill": e_trill}
+
+# Per-sound finishing. pip / pulse / siren / trill already sit inside the old
+# sounds' loudness band, so they keep plain peak-normalization (output
+# unchanged). klaxon / airhorn / pipes are far too quiet under peak-norm
+# (energy spread thin by a gap or a decaying ring), so each gets an
+# individually tuned loudness boost — these `drive` values are set by ear.
+FINISH = {
+    "klaxon":  lambda x: loud(x, 1.6),
+    "airhorn": lambda x: loud(x, 4.5),
+    "pipes":   lambda x: loud(x, 5.5),
+    "pip":     norm,
+    "pulse":   norm,
+    "siren":   norm,
+    "trill":   norm,
+}
 for name, fn in ELEMENTS.items():
-    norm(fn()).astype("<f4").tofile(os.path.join(OUT, name + ".raw"))
+    FINISH[name](fn()).astype("<f4").tofile(os.path.join(OUT, name + ".raw"))
     print("wrote", name + ".raw")

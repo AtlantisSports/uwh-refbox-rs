@@ -314,13 +314,14 @@ enum AppState {
 ///
 /// `Main` is the 2x2 landing page (Sound, Edit Levels, App Mode, Language).
 /// App Mode is cycled directly on the landing (not its own sub-page).
-/// `Sound`, `EditLevels`, `Language` are dedicated BeepTest sub-pages.
+/// `Sound`, `EditLevels`, `Language`, and `Buzzer` are dedicated BeepTest sub-pages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BeepTestConfigPage {
     Main,
     Sound,
     EditLevels,
     Language,
+    Buzzer,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -3592,7 +3593,6 @@ impl RefBoxApp {
             Message::CycleParameter(param) => {
                 let settings = &mut self.edited_settings.as_mut().unwrap();
                 match param {
-                    CyclingParameter::BuzzerSound => settings.sound.buzzer_sound.cycle(),
                     CyclingParameter::RemoteBuzzerSound(idx) => {
                         settings.sound.remotes[idx].sound.cycle()
                     }
@@ -4560,6 +4560,44 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
+            Message::BeepTestEditOpenBuzzer => {
+                // Navigate from the BeepTest Sound sub-page to the Buzzer
+                // picker. `edited_settings` is already seeded by
+                // `BeepTestEditOpenSound` — do NOT re-seed it here.
+                self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Buzzer);
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::BeepTestSelectBuzzer(sound) => {
+                // Stage the tapped sound into edited_settings.
+                if let Some(edited) = self.edited_settings.as_mut() {
+                    edited.sound.buzzer_sound = sound;
+                }
+                Task::none()
+            }
+            Message::BeepTestTestBuzzer => {
+                // Play the currently-staged buzzer sound without committing.
+                if let Some(edited) = self.edited_settings.as_ref() {
+                    self.sound.test_buzzer(edited.sound.buzzer_sound);
+                }
+                Task::none()
+            }
+            Message::BeepTestBuzzerSave => {
+                // Return to Sound sub-page keeping the staged selection;
+                // `BeepTestSoundSettingsSave` will persist it.
+                self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Sound);
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::BeepTestBuzzerCancel => {
+                // Revert the staged sound to the live value, then return.
+                if let Some(edited) = self.edited_settings.as_mut() {
+                    edited.sound.buzzer_sound = self.config.sound.buzzer_sound;
+                }
+                self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Sound);
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
             Message::BeepTestEditOpenLevels => {
                 // Seed `edited_settings` with a clone of the live level list
                 // and `selected_level = 0` so the Edit Levels page can mutate
@@ -5029,6 +5067,19 @@ impl RefBoxApp {
                     build_beep_test_language_picker(
                         edited,
                     )
+                }
+                BeepTestConfigPage::Buzzer => {
+                    // Invariant: `BeepTestEditOpenSound` seeds
+                    // `edited_settings` before navigating to the Sound
+                    // sub-page, and `BeepTestEditOpenBuzzer` navigates
+                    // from Sound to here without re-seeding. Every exit path
+                    // (BeepTestBuzzerSave / BeepTestBuzzerCancel) returns to
+                    // the Sound sub-page. Reaching this arm with
+                    // `edited_settings == None` indicates a programming error.
+                    let edited = self.edited_settings.as_ref().expect(
+                        "edited_settings must be Some when AppState is BeepTestSettings(Buzzer)",
+                    );
+                    build_beep_test_buzzer_picker(&self.config, &edited.sound)
                 }
             },
         }]

@@ -241,6 +241,25 @@ pub enum Message {
     /// Operator pressed Cancel on the Edit Levels page. Discards staged
     /// level edits and returns to the BeepTest Settings landing.
     BeepTestEditLevelsCancel,
+    /// Operator pressed the buzzer-sound tile on the BeepTest Sound Settings
+    /// sub-page. Navigates to the full-page BeepTest Buzzer picker
+    /// (`BeepTestConfigPage::Buzzer`). `edited_settings` is already seeded
+    /// by `BeepTestEditOpenSound`; this handler does NOT re-seed it.
+    BeepTestEditOpenBuzzer,
+    /// Operator tapped a buzzer-sound cell on the BeepTest Buzzer picker.
+    /// Stages the selected sound into `edited_settings.sound.buzzer_sound`.
+    BeepTestSelectBuzzer(BuzzerSound),
+    /// Operator pressed TEST on the BeepTest Buzzer picker. Plays the
+    /// currently-staged buzzer sound without committing it.
+    BeepTestTestBuzzer,
+    /// Operator pressed Apply on the BeepTest Buzzer picker. Returns to the
+    /// BeepTest Sound Settings sub-page with the staged sound kept; the
+    /// existing `BeepTestSoundSettingsSave` path persists it.
+    BeepTestBuzzerSave,
+    /// Operator pressed Cancel on the BeepTest Buzzer picker. Reverts
+    /// `edited_settings.sound.buzzer_sound` to the live value and returns
+    /// to the BeepTest Sound Settings sub-page.
+    BeepTestBuzzerCancel,
     /// Operator pressed RESTART TO APPLY on the BeepTest Settings landing
     /// after cycling the App Mode. Commits the staged mode. When the mode
     /// differs from the current mode, the app restarts (mirroring the
@@ -384,6 +403,11 @@ impl Message {
             | Self::BeepTestEditRemoveLevel
             | Self::BeepTestEditLevelsSave
             | Self::BeepTestEditLevelsCancel
+            | Self::BeepTestEditOpenBuzzer
+            | Self::BeepTestSelectBuzzer(_)
+            | Self::BeepTestTestBuzzer
+            | Self::BeepTestBuzzerSave
+            | Self::BeepTestBuzzerCancel
             | Self::BeepTestRestartToApply
             | Self::BeepTestCycleDisplayLayout
             | Self::AlarmPressed
@@ -591,6 +615,7 @@ impl PartialEq for Message {
                 Self::LanguageSelectComplete { canceled: b },
             ) => a == b,
             (Self::SelectBuzzer(a), Self::SelectBuzzer(b)) => a == b,
+            (Self::BeepTestSelectBuzzer(a), Self::BeepTestSelectBuzzer(b)) => a == b,
             (Self::GotRemoteId(a), Self::GotRemoteId(b)) => a == b,
             (Self::DeleteRemote(a), Self::DeleteRemote(b)) => a == b,
             (Self::PortalRowTapped(a), Self::PortalRowTapped(b)) => a == b,
@@ -716,6 +741,11 @@ impl PartialEq for Message {
             | (Self::BeepTestEditRemoveLevel, _)
             | (Self::BeepTestEditLevelsSave, _)
             | (Self::BeepTestEditLevelsCancel, _)
+            | (Self::BeepTestEditOpenBuzzer, _)
+            | (Self::BeepTestSelectBuzzer(_), _)
+            | (Self::BeepTestTestBuzzer, _)
+            | (Self::BeepTestBuzzerSave, _)
+            | (Self::BeepTestBuzzerCancel, _)
             | (Self::BeepTestRestartToApply, _)
             | (Self::BeepTestCycleDisplayLayout, _)
             | (Self::CycleDisplayMode, _)
@@ -831,7 +861,6 @@ pub enum BoolGameParameter {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CyclingParameter {
-    BuzzerSound,
     RemoteBuzzerSound(usize),
     AlertVolume,
     AboveWaterVol,

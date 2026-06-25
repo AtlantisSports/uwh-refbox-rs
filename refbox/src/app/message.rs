@@ -815,6 +815,9 @@ pub enum BoolGameParameter {
     TeamWarning,
     TimeoutsCountedPerHalf,
     ConfirmScore,
+    // Button that emits this variant is wired in a later task on this branch.
+    #[allow(dead_code)]
+    AudibleCountdown,
     ManualAlarmEnabled,
 }
 

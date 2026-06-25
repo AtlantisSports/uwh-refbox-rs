@@ -216,12 +216,19 @@ pub enum HealthState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PortalIndicatorState {
     pub health: HealthState,
+    /// True when the saved login token is known to be expired/rejected.
+    /// This is the specific Red cause that makes a schedule refresh
+    /// pointless (it can only fail until the operator re-logs-in), so
+    /// the game-info REFRESH button greys out on it. A Red caused only
+    /// by a stuck queue item leaves this `false`.
+    pub token_expired: bool,
 }
 
 impl Default for PortalIndicatorState {
     fn default() -> Self {
         Self {
             health: HealthState::Green,
+            token_expired: false,
         }
     }
 }
@@ -382,7 +389,10 @@ impl PortalManager {
             HealthState::Green
         };
 
-        self.indicator_state = PortalIndicatorState { health };
+        self.indicator_state = PortalIndicatorState {
+            health,
+            token_expired: self.token_known_problem,
+        };
     }
 
     fn find_mut(&mut self, id: &ItemId) -> Option<&mut QueuedItem> {
@@ -757,6 +767,31 @@ mod tests {
     fn token_known_problem_is_red() {
         let m = PortalManager::new_for_test(QueueFile::empty(), false, true);
         assert_eq!(m.indicator_state().health, HealthState::Red);
+    }
+
+    #[test]
+    fn token_known_problem_sets_token_expired() {
+        let m = PortalManager::new_for_test(QueueFile::empty(), false, true);
+        assert!(m.indicator_state().token_expired);
+    }
+
+    #[test]
+    fn stuck_item_red_is_not_token_expired() {
+        // A Red caused solely by a stuck queue item must NOT report
+        // token_expired — a schedule refresh still works in that case.
+        let q = QueueFile {
+            version: 1,
+            items: vec![mk_stuck_item()],
+        };
+        let m = PortalManager::new_for_test(q, false, false);
+        assert_eq!(m.indicator_state().health, HealthState::Red);
+        assert!(!m.indicator_state().token_expired);
+    }
+
+    #[test]
+    fn healthy_connection_is_not_token_expired() {
+        let m = PortalManager::new_for_test(QueueFile::empty(), false, false);
+        assert!(!m.indicator_state().token_expired);
     }
 
     #[test]

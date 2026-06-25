@@ -46,6 +46,10 @@ const TWO_TONE_LEN: usize = include_bytes!("../../resources/sounds/two-tone.raw"
 static TWO_TONE: [f32; TWO_TONE_LEN] =
     process_array(include_bytes!("../../resources/sounds/two-tone.raw"));
 
+const COUNTDOWN_LEN: usize = include_bytes!("../../resources/sounds/countdown.raw").len() / 4;
+static COUNTDOWN: [f32; COUNTDOWN_LEN] =
+    process_array(include_bytes!("../../resources/sounds/countdown.raw"));
+
 pub const SAMPLE_RATE: f32 = 44100.0;
 
 macro_attr! {
@@ -80,6 +84,7 @@ pub(super) struct SoundLibrary {
     de_de_du: AudioBuffer,
     two_tone: AudioBuffer,
     whistle: AudioBuffer,
+    countdown: AudioBuffer,
 }
 
 impl Index<BuzzerSound> for SoundLibrary {
@@ -116,6 +121,9 @@ impl SoundLibrary {
         let mut whistle = context.create_buffer(1, WHISTLE_LEN, SAMPLE_RATE);
         whistle.copy_to_channel(&WHISTLE, 0);
 
+        let mut countdown = context.create_buffer(1, COUNTDOWN_LEN, SAMPLE_RATE);
+        countdown.copy_to_channel(&COUNTDOWN, 0);
+
         Self {
             buzz,
             whoop,
@@ -123,10 +131,17 @@ impl SoundLibrary {
             de_de_du,
             two_tone,
             whistle,
+            countdown,
         }
     }
 
     pub(super) fn whistle(&self) -> &AudioBuffer {
         &self.whistle
+    }
+
+    // Task 5 wires the countdown trigger; suppress dead_code until then.
+    #[allow(dead_code)]
+    pub(super) fn countdown(&self) -> &AudioBuffer {
+        &self.countdown
     }
 }

@@ -595,6 +595,9 @@ impl PortalManager {
     /// if the disk write fails (the error propagates for logging).
     pub fn retry_all(&mut self) -> std::io::Result<()> {
         let now = OffsetDateTime::now_utc();
+        // Reset every item; touching a stats-pending item's attempt/queued_at
+        // fields is harmless (they are unused while score_sent == true) and
+        // keeps this a single pass.
         for item in &mut self.queue.items {
             item.attempts = 0;
             item.last_attempt_at = None;
@@ -1420,6 +1423,7 @@ mod tests {
         m.enqueue_game_end("e".into(), "G_SCORE".into(), 2, 1, "{}".into())
             .unwrap();
         m.queue.items[1].attempts = 3;
+        m.queue.items[1].last_attempt_at = Some(OffsetDateTime::now_utc());
 
         m.retry_all().unwrap();
 
@@ -1428,10 +1432,16 @@ mod tests {
             m.queue.items[0].score_sent,
             "retry_all must not clear score_sent"
         );
-        assert!(!m.queue.items[0].force);
+        assert!(
+            !m.queue.items[0].force,
+            "retry_all must not set force on the stats-pending item"
+        );
         // Score-pending item is reset for immediate auto-retry.
         assert_eq!(m.queue.items[1].attempts, 0);
         assert!(m.queue.items[1].last_attempt_at.is_none());
-        assert!(!m.queue.items[1].force);
+        assert!(
+            !m.queue.items[1].force,
+            "retry_all must not set force on the score-pending item"
+        );
     }
 }

@@ -75,6 +75,8 @@ event = EVENEMENT:
 track-fouls-and-warnings = OVERTREDINGEN
     EN WAARSCHUWINGEN
 show-behind-schedule-time = ACHTERSTAND TONEN
+show-countdown-for-last-10-seconds = AFTELLING LAATSTE 10 SECONDEN
+audible-countdown-for-last-10-seconds = HOORBARE AFTELLING 10 SECONDEN
 delay = VERTRAGING
 court = BAAN:
 single-half = ENKELE

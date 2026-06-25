@@ -116,8 +116,6 @@ impl Display for BuzzerSound {
 
 impl BuzzerSound {
     /// All buzzer sounds, in picker display order (existing first, new last).
-    // Used by the sounds picker UI (wired in a later task).
-    #[allow(dead_code)]
     pub const ALL: [BuzzerSound; 12] = [
         BuzzerSound::Buzz,
         BuzzerSound::Whoop,

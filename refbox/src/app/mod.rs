@@ -1780,8 +1780,14 @@ impl RefBoxApp {
 
         // Restore a recent portal link so a relaunch (language change, self-update)
         // or a short shutdown comes back recognized instead of dormant. A stale or
-        // cross-portal note is ignored — and a stale one deleted — so a fresh power-on
-        // weeks later for a new event starts clean. See ADR 011/017 amendment.
+        // cross-portal note is simply not restored (the app starts dormant) but the
+        // note is NOT deleted here: a Raspberry Pi can boot with an uncorrected clock,
+        // and deleting on a momentarily-wrong clock would permanently lose a recent
+        // link and force the operator to re-supply the token on every restart. The
+        // note's real lifecycle lives in `persist_link_session` (rewritten on Apply /
+        // heartbeat, deleted when the portal is switched off or no event is linked).
+        // See ADR 011/017 amendment and
+        // docs/superpowers/specs/2026-06-25-portal-link-restore-resilience-design.md.
         match crate::portal_manager::link_session::load_or_none(&new.config_dir) {
             Ok(Some(note)) => {
                 if decide_restore(&note, time::OffsetDateTime::now_utc(), new.config.mode) {
@@ -1800,8 +1806,9 @@ impl RefBoxApp {
                     // event list and silently skip the game re-selection.
                     new.pending_restore_schedule = Some(note.event_id);
                 } else {
-                    info!("Portal link note present but stale/cross-portal; starting dormant");
-                    let _ = crate::portal_manager::link_session::delete(&new.config_dir);
+                    info!(
+                        "Portal link note present but stale/cross-portal; starting dormant (note kept)"
+                    );
                 }
             }
             Ok(None) => {}
@@ -5054,7 +5061,22 @@ fn decide_restore(
     current_mode: Mode,
 ) -> bool {
     use crate::portal_manager::link_session::{FRESHNESS_WINDOW, is_fresh};
-    is_fresh(note.last_active, now, FRESHNESS_WINDOW) && !crosses_portal(note.mode, current_mode)
+    // A link for a different portal (UWR vs UWH) is never restored, regardless
+    // of timing — that is a correctness guard, not a freshness question.
+    if crosses_portal(note.mode, current_mode) {
+        return false;
+    }
+    // A Raspberry Pi has no battery-backed clock, so it can boot with a time
+    // that has not yet been corrected by the network. If `now` reads *earlier*
+    // than when the link was last saved, the clock is plainly not trustworthy
+    // yet — and the link is therefore genuinely recent. Restore it rather than
+    // discard a fresh link on the strength of a bad clock. The token is
+    // re-verified against the portal after restore, so this is safe.
+    if now < note.last_active {
+        return true;
+    }
+    // Trustworthy clock: restore only while the link is within the window.
+    is_fresh(note.last_active, now, FRESHNESS_WINDOW)
 }
 
 #[cfg(test)]
@@ -5084,9 +5106,28 @@ mod restore_tests {
 
     #[test]
     fn stale_does_not_restore() {
+        // Trustworthy clock, link older than the 120h window → dormant.
         let now = time::OffsetDateTime::now_utc();
-        let n = note(now - time::Duration::hours(49), Mode::Hockey6V6);
+        let n = note(now - time::Duration::hours(121), Mode::Hockey6V6);
         assert!(!decide_restore(&n, now, Mode::Hockey6V6));
+    }
+
+    #[test]
+    fn clock_behind_save_restores() {
+        // Pi booted with an uncorrected clock: `now` reads earlier than the
+        // link was saved. The clock is untrustworthy and the link is genuinely
+        // recent, so it must restore (this is the bad-boot-clock fix).
+        let now = time::OffsetDateTime::now_utc();
+        let n = note(now + time::Duration::hours(3), Mode::Hockey6V6);
+        assert!(decide_restore(&n, now, Mode::Hockey6V6));
+    }
+
+    #[test]
+    fn clock_behind_save_does_not_override_cross_portal() {
+        // The cross-portal guard wins even when the clock looks untrustworthy.
+        let now = time::OffsetDateTime::now_utc();
+        let n = note(now + time::Duration::hours(3), Mode::Hockey6V6);
+        assert!(!decide_restore(&n, now, Mode::Rugby));
     }
 
     #[test]

@@ -1502,7 +1502,9 @@ impl RefBoxApp {
     }
 
     fn persist_config(&self) {
-        confy::store(APP_NAME, None, &self.config).unwrap();
+        if let Err(e) = confy::store(APP_NAME, None, &self.config) {
+            error!("Failed to persist config: {e}");
+        }
     }
 
     /// Initialize `edited_settings` from the current app/TM state and
@@ -3616,7 +3618,9 @@ impl RefBoxApp {
                         let original = settings.original_language.unwrap_or(Language::English);
                         let needs_restart = font_family_id(original) != font_family_id(lang);
                         self.config.language = Some(lang);
-                        confy::store(crate::APP_NAME, None, &self.config).unwrap();
+                        if let Err(e) = confy::store(crate::APP_NAME, None, &self.config) {
+                            error!("Failed to persist config: {e}");
+                        }
                         if needs_restart {
                             // Kill every simulator child so they do not linger as
                             // orphans after the iced runtime closes its windows.
@@ -4480,7 +4484,9 @@ impl RefBoxApp {
                 if let Some(lang) = lang_opt {
                     let needs_restart = font_family_id(original) != font_family_id(lang);
                     self.config.language = Some(lang);
-                    confy::store(crate::APP_NAME, None, &self.config).unwrap();
+                    if let Err(e) = confy::store(crate::APP_NAME, None, &self.config) {
+                        error!("Failed to persist config: {e}");
+                    }
                     if needs_restart {
                         // Kill every simulator child so they do not linger as
                         // orphans after the iced runtime closes its windows.

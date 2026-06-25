@@ -895,11 +895,10 @@ fn make_event_config_page<'a>(
     // does not block.
     let game_block_too_short =
         !using_uwhportal && matches!(game_block_validity(config), GameBlockValidity::TooShort);
-    let apply_enabled = page_has_changes(ConfigPage::Game, settings, page_entry_snapshot)
-        && !apply_blocked
-        && !game_block_too_short;
+    let has_changes = page_has_changes(ConfigPage::Game, settings, page_entry_snapshot);
+    let apply_enabled = has_changes && !apply_blocked && !game_block_too_short;
 
-    let cancel_btn = make_button(fl!("cancel"))
+    let cancel_btn = make_button(cancel_or_back_label(has_changes))
         .style(red_button)
         .width(Length::Fill)
         .on_press(Message::CancelConfigPage(ConfigPage::Game));

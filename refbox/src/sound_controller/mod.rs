@@ -617,8 +617,6 @@ impl SoundController {
         self.msg_tx.send(SoundMessage::TriggerWhistle).unwrap()
     }
 
-    // Task 6 calls this from the app; suppress dead_code until then.
-    #[allow(dead_code)]
     pub fn trigger_countdown_beep(&self) {
         self.msg_tx
             .send(SoundMessage::TriggerCountdownBeep)

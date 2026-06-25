@@ -20,12 +20,20 @@ use crate::portal_manager::queue::{QueueFile, QueuedItem};
 /// detail page. When a sixth success lands, the oldest is evicted.
 pub const RECENT_SUCCESS_CAP: usize = 5;
 
-/// Placeholder `PortalTaskIo` used in tests and in the degraded-fallback
-/// startup path. This type is intentionally do-nothing — the background
-/// retry task spawned by `PortalManager::new` calls its methods but they
-/// always succeed without contacting any server.
+/// Placeholder `PortalTaskIo` used by the unit tests: a do-nothing uploader
+/// whose calls always succeed without contacting any server.
+///
+/// Intentionally NOT a production type. A failed portal-client construction
+/// must route to `new_degraded()` (a visible red, not-sending mode), never to
+/// a `NullIo`-backed manager — `NullIo` reports success for every call, so its
+/// background task would keep the indicator green and fake-resolve (delete)
+/// every queued game while nothing reached the portal (finding M6). The
+/// `#[cfg(test)]` gate makes that misuse impossible: the type does not exist in
+/// a release build.
+#[cfg(test)]
 pub(crate) struct NullIo;
 
+#[cfg(test)]
 #[async_trait::async_trait]
 impl health::PortalTaskIo for NullIo {
     async fn verify_token(&self) -> Result<(), health::PortalCallError> {

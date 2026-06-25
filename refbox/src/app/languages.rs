@@ -98,6 +98,26 @@ impl Language {
         }
     }
 
+    pub fn back_text(self) -> &'static str {
+        match self {
+            Self::English => "BACK",
+            Self::French => "RETOUR",
+            Self::Spanish => "ATRÁS",
+            Self::Mandarin => "返回",
+            Self::Korean => "뒤로",
+            Self::Italian => "INDIETRO",
+            Self::German => "ZURÜCK",
+            Self::Tagalog => "BUMALIK",
+            Self::Indonesian => "KEMBALI",
+            Self::Dutch => "TERUG",
+            Self::Japanese => "戻る",
+            Self::Malay => "KEMBALI",
+            Self::Portuguese => "VOLTAR",
+            Self::Thai => "กลับ",
+            Self::Turkish => "GERİ",
+        }
+    }
+
     pub fn apply_text(self) -> &'static str {
         match self {
             Self::English => "APPLY",
@@ -135,6 +155,41 @@ impl Language {
             Self::Portuguese => "REINICIAR PARA APLICAR",
             Self::Thai => "รีสตาร์ทเพื่อใช้งาน",
             Self::Turkish => "UYGULAMAK İÇİN YENİDEN BAŞLAT",
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn back_text_matches_known_values() {
+        assert_eq!(Language::English.back_text(), "BACK");
+        assert_eq!(Language::French.back_text(), "RETOUR");
+        assert_eq!(Language::German.back_text(), "ZURÜCK");
+        assert_eq!(Language::Japanese.back_text(), "戻る");
+        assert_eq!(Language::Mandarin.back_text(), "返回");
+        // Back must read differently from Cancel in every language.
+        for lang in [
+            Language::English,
+            Language::French,
+            Language::Spanish,
+            Language::Mandarin,
+            Language::Korean,
+            Language::Italian,
+            Language::German,
+            Language::Tagalog,
+            Language::Indonesian,
+            Language::Dutch,
+            Language::Japanese,
+            Language::Malay,
+            Language::Portuguese,
+            Language::Thai,
+            Language::Turkish,
+        ] {
+            assert!(!lang.back_text().is_empty());
+            assert_ne!(lang.back_text(), lang.cancel_text());
         }
     }
 }

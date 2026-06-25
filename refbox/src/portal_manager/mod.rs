@@ -597,6 +597,13 @@ impl PortalManager {
         queue::save(&self.config_dir, &self.queue)?;
         self.recompute_indicator();
         self.push_queue_snapshot();
+        // Stats-pending games are not on the auto-retry cadence; give
+        // each a single fresh stats attempt so RETRY ALL sweeps them too.
+        for item in &self.queue.items {
+            if item.score_sent {
+                self.send_stats_retry(item);
+            }
+        }
         Ok(())
     }
 
@@ -1348,5 +1355,31 @@ mod tests {
             !is_item_stuck(&it, OffsetDateTime::now_utc()),
             "a stats-pending item must never be classified as stuck"
         );
+    }
+
+    #[tokio::test]
+    async fn retry_all_preserves_score_sent_and_resets_score_pending() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        // One stats-pending game and one score-pending game.
+        m.enqueue_game_end("e".into(), "G_STATS".into(), 1, 0, "{}".into())
+            .unwrap();
+        m.queue.items[0].score_sent = true;
+        m.enqueue_game_end("e".into(), "G_SCORE".into(), 2, 1, "{}".into())
+            .unwrap();
+        m.queue.items[1].attempts = 3;
+
+        m.retry_all().unwrap();
+
+        // Stats-pending item keeps score_sent and is not forced.
+        assert!(
+            m.queue.items[0].score_sent,
+            "retry_all must not clear score_sent"
+        );
+        assert!(!m.queue.items[0].force);
+        // Score-pending item is reset for immediate auto-retry.
+        assert_eq!(m.queue.items[1].attempts, 0);
+        assert!(m.queue.items[1].last_attempt_at.is_none());
+        assert!(!m.queue.items[1].force);
     }
 }

@@ -753,7 +753,12 @@ pub(in super::super) fn build_beep_test_language_picker<'a>(
         container(t).center(Length::Fill)
     };
 
-    let cancel_btn = button(make_label(selected.cancel_text(), selected_font))
+    let footer_label = if has_changes {
+        selected.cancel_text()
+    } else {
+        selected.back_text()
+    };
+    let cancel_btn = button(make_label(footer_label, selected_font))
         .padding(PADDING)
         .height(Length::Fixed(MIN_BUTTON_SIZE))
         .style(red_button)

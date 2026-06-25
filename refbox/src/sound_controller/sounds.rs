@@ -139,8 +139,6 @@ impl SoundLibrary {
         &self.whistle
     }
 
-    // Task 5 wires the countdown trigger; suppress dead_code until then.
-    #[allow(dead_code)]
     pub(super) fn countdown(&self) -> &AudioBuffer {
         &self.countdown
     }

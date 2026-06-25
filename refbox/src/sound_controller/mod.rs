@@ -223,6 +223,7 @@ pub struct RemoteInfo {
 enum SoundId {
     AutoBuzzer,
     Whistle,
+    CountdownBeep,
     ManualAlarm,
     #[cfg(target_os = "linux")]
     WiredButton,
@@ -349,6 +350,11 @@ impl SoundController {
                                             sound_queue.push_back(SoundId::Whistle);
                                         }
                                     }
+                                    SoundMessage::TriggerCountdownBeep => {
+                                        if !sound_queue.contains(&SoundId::CountdownBeep) {
+                                            sound_queue.push_back(SoundId::CountdownBeep);
+                                        }
+                                    }
                                     SoundMessage::StartManualBuzzer => {
                                         if !sound_queue.contains(&SoundId::ManualAlarm) {
                                             // Push to front so the manual alarm immediately
@@ -467,6 +473,17 @@ impl SoundController {
                                 context.clone(),
                                 volumes,
                                 library.whistle().clone(),
+                                false,
+                                false,
+                            )
+                        }
+                        SoundId::CountdownBeep => {
+                            info!("Playing countdown beep once");
+                            let volumes = ChannelVolumes::new(&settings, false);
+                            Sound::new(
+                                context.clone(),
+                                volumes,
+                                library.countdown().clone(),
                                 false,
                                 false,
                             )
@@ -598,6 +615,14 @@ impl SoundController {
 
     pub fn trigger_whistle(&self) {
         self.msg_tx.send(SoundMessage::TriggerWhistle).unwrap()
+    }
+
+    // Task 6 calls this from the app; suppress dead_code until then.
+    #[allow(dead_code)]
+    pub fn trigger_countdown_beep(&self) {
+        self.msg_tx
+            .send(SoundMessage::TriggerCountdownBeep)
+            .unwrap()
     }
 
     pub fn start_manual_buzzer(&self) {

@@ -1231,6 +1231,15 @@ impl RefBoxApp {
                     ConfigPage::Main
                 };
                 self.revert_from_snapshot();
+                // revert_from_snapshot() consumes the page-entry snapshot, so
+                // re-capture one for the landing page. Without this the App
+                // Options APPLY button compares against a missing snapshot,
+                // reads "nothing changed", and stays greyed for every later
+                // edit until the operator leaves and re-enters the page
+                // (finding H1). Mirrors navigate_to_parent's re-capture; a
+                // no-op for the Main landing, where capture_snapshot_for
+                // early-returns for navigation-only pages.
+                self.capture_snapshot_for(landing);
                 AppState::EditGameConfig(landing)
             }
             ConfirmationOption::GoBack => AppState::EditGameConfig(ConfigPage::Game),

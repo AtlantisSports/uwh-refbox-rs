@@ -461,6 +461,30 @@ impl PageEntrySnapshot {
     }
 }
 
+/// One countdown beep this tick when: the audible-countdown setting is on, we are
+/// in a break that precedes a playing period, the whole-second value just changed,
+/// and the new value is in the final 10..=1 window. Reads the RAW snapshot, so it
+/// is independent of the visual "show countdown" (`hide_time`) setting.
+fn should_play_countdown_beep(
+    period: GamePeriod,
+    new_secs: u32,
+    old_secs: u32,
+    audible_countdown: bool,
+) -> bool {
+    let is_break_before_play = matches!(
+        period,
+        GamePeriod::BetweenGames
+            | GamePeriod::HalfTime
+            | GamePeriod::PreOvertime
+            | GamePeriod::OvertimeHalfTime
+            | GamePeriod::PreSuddenDeath
+    );
+    audible_countdown
+        && is_break_before_play
+        && new_secs != old_secs
+        && (1..=10).contains(&new_secs)
+}
+
 impl RefBoxApp {
     fn apply_snapshot(&mut self, mut new_snapshot: GameSnapshot) -> Task<Message> {
         let mut task = Task::none();
@@ -542,12 +566,25 @@ impl RefBoxApp {
             }
         };
 
+        let play_countdown = new_snapshot.timeout.is_none()
+            && should_play_countdown_beep(
+                new_snapshot.current_period,
+                new_snapshot.secs_in_period,
+                self.snapshot.secs_in_period,
+                self.config.audible_countdown,
+            );
+
         if play_whistle {
             info!("Triggering whistle");
             self.sound.trigger_whistle();
         } else if play_buzzer {
             info!("Triggering buzzer");
             self.sound.trigger_buzzer();
+        }
+
+        if play_countdown {
+            info!("Triggering countdown beep");
+            self.sound.trigger_countdown_beep();
         }
     }
 
@@ -5248,4 +5285,66 @@ fn portal_event_stream(
             }
         }
     })
+}
+
+#[cfg(test)]
+mod countdown_beep_tests {
+    use super::should_play_countdown_beep;
+    use uwh_common::game_snapshot::GamePeriod;
+
+    #[test]
+    fn fires_each_second_10_down_to_1_in_each_break() {
+        for p in [
+            GamePeriod::BetweenGames,
+            GamePeriod::HalfTime,
+            GamePeriod::PreOvertime,
+            GamePeriod::OvertimeHalfTime,
+            GamePeriod::PreSuddenDeath,
+        ] {
+            for s in 1..=10u32 {
+                assert!(should_play_countdown_beep(p, s, s + 1, true), "{p:?} @ {s}");
+            }
+        }
+    }
+
+    #[test]
+    fn silent_outside_window_when_disabled_or_unchanged() {
+        assert!(!should_play_countdown_beep(
+            GamePeriod::HalfTime,
+            11,
+            12,
+            true
+        ));
+        assert!(!should_play_countdown_beep(
+            GamePeriod::HalfTime,
+            0,
+            1,
+            true
+        ));
+        assert!(!should_play_countdown_beep(
+            GamePeriod::HalfTime,
+            10,
+            11,
+            false
+        ));
+        assert!(!should_play_countdown_beep(
+            GamePeriod::HalfTime,
+            10,
+            10,
+            true
+        ));
+    }
+
+    #[test]
+    fn never_fires_during_playing_periods() {
+        for p in [
+            GamePeriod::FirstHalf,
+            GamePeriod::SecondHalf,
+            GamePeriod::OvertimeFirstHalf,
+            GamePeriod::OvertimeSecondHalf,
+            GamePeriod::SuddenDeath,
+        ] {
+            assert!(!should_play_countdown_beep(p, 5, 6, true), "{p:?}");
+        }
+    }
 }

@@ -20,8 +20,6 @@ impl From<u32> for RemoteId {
 pub(super) enum SoundMessage {
     TriggerBuzzer,
     TriggerWhistle,
-    // Task 6 sends this from the app; suppress dead_code until then.
-    #[allow(dead_code)]
     TriggerCountdownBeep,
     StartManualBuzzer,
     StopManualBuzzer,

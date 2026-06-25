@@ -423,6 +423,7 @@ portal-retry-all = すべて再試行
 portal-row-token-expired = ポータルのログインが期限切れです — タップして再ログイン
 portal-row-stuck = 試合 { $game } のスコア送信エラー、タップして修正
 portal-row-pending = 試合 { $game } のスコアが未送信、タップして再試行
+portal-row-stats-pending = 試合 { $game } の統計が未送信、タップして再試行
 portal-row-recent = 試合 { $game } · { $mins } 分前に送信済み
 portal-row-attempt-suffix = (試行 { $attempts })
 portal-action-force-submit = この試合結果を再送信

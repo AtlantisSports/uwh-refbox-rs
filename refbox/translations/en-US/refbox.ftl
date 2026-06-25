@@ -459,6 +459,7 @@ portal-retry-all = RETRY ALL
 portal-row-token-expired = Portal login expired — tap to re-login
 portal-row-stuck = Game { $game } Score send error, tap to fix
 portal-row-pending = Game { $game } Score not sent, tap to retry
+portal-row-stats-pending = Game { $game } Stats not sent, tap to retry
 portal-row-attempt-suffix = (attempt { $attempts })
 portal-row-recent = Game { $game } · Submitted { $mins } min ago
 portal-action-force-submit = Retry this game result

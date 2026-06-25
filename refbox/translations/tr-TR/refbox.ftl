@@ -423,6 +423,7 @@ portal-retry-all = TÜMÜNÜ TEKRAR DENE
 portal-row-token-expired = Portal oturumu sona erdi — yeniden giriş için dokunun
 portal-row-stuck = Oyun { $game } Skor gönderme hatası, düzeltmek için dokunun
 portal-row-pending = Oyun { $game } Skor gönderilmedi, tekrar denemek için dokunun
+portal-row-stats-pending = Oyun { $game } İstatistikler gönderilmedi, tekrar denemek için dokunun
 portal-row-recent = Oyun { $game } · { $mins } dk önce gönderildi
 portal-row-attempt-suffix = (deneme { $attempts })
 portal-action-force-submit = Bu oyun sonucunu tekrar dene

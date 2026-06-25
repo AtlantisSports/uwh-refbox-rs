@@ -422,6 +422,7 @@ portal-retry-all = 全部重试
 portal-row-token-expired = Portal 登录已过期 — 点击重新登录
 portal-row-stuck = 比赛 { $game } 比分发送错误，点击修复
 portal-row-pending = 比赛 { $game } 比分未发送，点击重试
+portal-row-stats-pending = 比赛 { $game } 统计未发送，点击重试
 portal-row-attempt-suffix = （尝试 { $attempts } 次）
 portal-row-recent = 比赛 { $game } · { $mins } 分钟前已提交
 portal-action-force-submit = 重试此比赛结果

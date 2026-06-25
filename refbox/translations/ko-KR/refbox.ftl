@@ -425,6 +425,7 @@ portal-retry-all = 모두 재시도
 portal-row-token-expired = Portal 로그인 만료됨 — 탭하여 다시 로그인
 portal-row-stuck = 경기 { $game } 점수 전송 오류, 탭하여 수정
 portal-row-pending = 경기 { $game } 점수 전송 안 됨, 탭하여 재시도
+portal-row-stats-pending = 경기 { $game } 통계 전송 안 됨, 탭하여 재시도
 portal-row-attempt-suffix = (시도 { $attempts }회)
 portal-row-recent = 경기 { $game } · { $mins }분 전 전송됨
 portal-action-force-submit = 이 경기 결과 재시도

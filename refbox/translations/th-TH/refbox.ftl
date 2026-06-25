@@ -422,6 +422,7 @@ portal-retry-all = ลองใหม่ทั้งหมด
 portal-row-token-expired = การเข้าสู่ระบบพอร์ทัลหมดอายุ — แตะเพื่อเข้าสู่ระบบใหม่
 portal-row-stuck = เกม { $game } ส่งคะแนนผิดพลาด แตะเพื่อแก้ไข
 portal-row-pending = เกม { $game } ยังไม่ส่งคะแนน แตะเพื่อลองอีกครั้ง
+portal-row-stats-pending = เกม { $game } ยังไม่ส่งสถิติ แตะเพื่อลองอีกครั้ง
 portal-row-attempt-suffix = (ครั้งที่ { $attempts })
 portal-row-recent = เกม { $game } · ส่งเมื่อ { $mins } นาทีที่แล้ว
 portal-action-force-submit = ลองส่งผลเกมอีกครั้ง

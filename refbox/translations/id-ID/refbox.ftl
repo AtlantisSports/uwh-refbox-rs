@@ -423,6 +423,7 @@ portal-retry-all = ULANGI SEMUA
 portal-row-token-expired = Login Portal kedaluwarsa — ketuk untuk login ulang
 portal-row-stuck = Pertandingan { $game } Galat kirim skor, ketuk untuk perbaiki
 portal-row-pending = Pertandingan { $game } Skor belum terkirim, ketuk untuk coba lagi
+portal-row-stats-pending = Pertandingan { $game } Statistik belum terkirim, ketuk untuk coba lagi
 portal-row-attempt-suffix = (percobaan { $attempts })
 portal-row-recent = Pertandingan { $game } · Dikirim { $mins } mnt lalu
 portal-action-force-submit = Coba lagi kirim hasil pertandingan ini

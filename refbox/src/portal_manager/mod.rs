@@ -518,6 +518,7 @@ impl PortalManager {
             attempts: 0,
             last_attempt_at: None,
             force: false,
+            score_sent: false,
         };
         self.queue.items.push(item);
         queue::save(&self.config_dir, &self.queue)?;
@@ -757,6 +758,7 @@ mod tests {
             attempts: 0,
             last_attempt_at: None,
             force: false,
+            score_sent: false,
         }
     }
 

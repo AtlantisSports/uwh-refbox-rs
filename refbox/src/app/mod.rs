@@ -779,15 +779,18 @@ impl RefBoxApp {
         if let Some(client) = &self.uwhportal_client {
             // why this cannot panic: see `request_event_list` above.
             let request = client.lock().unwrap().verify_token(event_id);
+            // Tag the result with the event it was checked for so the handler
+            // can drop a late reply for a previously-selected event.
+            let event_id = event_id.clone();
             Task::future(async move {
                 match request.await {
                     Ok(()) => {
                         info!("Portal token validated");
-                        Message::RecvTokenValid(true)
+                        Message::RecvTokenValid(event_id, true)
                     }
                     Err(e) => {
                         error!("Portal token validity check failed: {e}");
-                        Message::RecvTokenValid(false)
+                        Message::RecvTokenValid(event_id, false)
                     }
                 }
             })
@@ -1174,10 +1177,19 @@ impl RefBoxApp {
         }
 
         std::mem::drop(tm);
-        self.using_uwhportal = edited.using_uwhportal;
-        self.current_event_id = edited.current_event_id.clone();
-        self.current_court = edited.current_court.clone();
-        self.schedule = edited.schedule.clone();
+        // Snapshot the fields we need so the immutable borrow on `edited` ends
+        // before we call `set_current_event_id` (which takes `&mut self`).
+        let using_uwhportal = edited.using_uwhportal;
+        let event_id = edited.current_event_id.clone();
+        let current_court = edited.current_court.clone();
+        let schedule = edited.schedule.clone();
+
+        self.using_uwhportal = using_uwhportal;
+        // Route through set_current_event_id so portal_event_id stays in sync
+        // for the background health check (ADR 011 amendment 2026-04-23).
+        self.set_current_event_id(event_id);
+        self.current_court = current_court;
+        self.schedule = schedule;
 
         None
     }
@@ -4101,9 +4113,15 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 task
             }
-            Message::RecvTokenValid(valid) => {
+            Message::RecvTokenValid(event_id, valid) => {
                 if let Some(ref mut settings) = self.edited_settings {
-                    settings.uwhportal_token_valid = Some(valid);
+                    // Drop a stale reply for an event the operator has since
+                    // switched away from, so a late "valid" for a previous
+                    // event can't paint a false OK for the current one. The
+                    // schedule and auto-court paths already guard on event id.
+                    if settings.current_event_id.as_ref() == Some(&event_id) {
+                        settings.uwhportal_token_valid = Some(valid);
+                    }
                 }
                 Task::none()
             }

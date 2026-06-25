@@ -129,7 +129,7 @@ fn row_text_centered<'a>(label: String) -> Element<'a, Message> {
 fn render_row<'a>(r: DetailRow) -> Element<'a, Message> {
     match r {
         DetailRow::TokenExpired => button(row_text_centered(fl!("portal-row-token-expired")))
-            .on_press(Message::PortalGoToLogin)
+            .on_press(Message::EditGameConfigPage(ConfigPage::Game))
             .style(red_button)
             .padding(PADDING)
             .width(Length::Fill)

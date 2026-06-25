@@ -211,15 +211,6 @@ pub struct RefBoxApp {
     /// stream task without needing a `&mut` on `self` (which iced's
     /// `subscription(&self)` entry point cannot provide).
     portal_event_rx: Arc<Mutex<Option<mpsc::Receiver<PortalEvent>>>>,
-    /// Set when the operator initiates portal re-login from the
-    /// token-expired action page so a successful login returns them to
-    /// the portal detail page instead of the default edit-config
-    /// landing. Consumed (cleared) when the success handler reads it.
-    /// Re-armed each time `PortalGoToLogin` fires, so an aborted login
-    /// leaves the flag stale but harmless: the next successful login
-    /// (from anywhere) would route to the detail page, which matches
-    /// the operator's most recent intent.
-    portal_login_return_to_detail: bool,
     /// Directory holding the persisted config + portal retry queue. Also
     /// where the self-update trial marker is written (next to the config).
     config_dir: std::path::PathBuf,
@@ -1778,7 +1769,6 @@ impl RefBoxApp {
             timeout_revive_token: 0,
             portal_manager,
             portal_event_rx,
-            portal_login_return_to_detail: false,
             config_dir,
             install_path,
             restart_argv,
@@ -2696,35 +2686,6 @@ impl RefBoxApp {
                         trace!("AppState changed to {:?}", self.app_state);
                     }
                 }
-                Task::none()
-            }
-            Message::PortalGoToLogin => {
-                // Navigate to the existing portal login keypad, arming
-                // the return-to-detail flag so a successful re-login
-                // lands back on the detail page (mirroring the
-                // `UwhPortalLinkFailed` GoBack handler, which reuses
-                // the same client id-lookup pattern).
-                let portal_id = match self.uwhportal_client.as_ref() {
-                    Some(client) => {
-                        // why this cannot panic: the guard is held only
-                        // for a synchronous `id()` call and dropped
-                        // immediately.
-                        client.lock().unwrap().id()
-                    }
-                    None => {
-                        // No portal client configured — there is
-                        // nothing to log into. Fall back to the detail
-                        // page so the operator is not stranded on an
-                        // empty login screen.
-                        warn!("PortalGoToLogin with no portal client configured");
-                        self.app_state = AppState::PortalDetailPage { scroll_index: 0 };
-                        trace!("AppState changed to {:?}", self.app_state);
-                        return Task::none();
-                    }
-                };
-                self.portal_login_return_to_detail = true;
-                self.app_state = AppState::KeypadPage(KeypadPage::PortalLogin(portal_id, false), 0);
-                trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
             Message::RequestPortalRefresh => {
@@ -4037,18 +3998,9 @@ impl RefBoxApp {
                             task = self.request_schedule(event_id.clone())
                         }
 
-                        // If the re-login was initiated from the
-                        // token-expired action page, return to the
-                        // portal detail page (where the operator left
-                        // off); otherwise land on the default
-                        // edit-config Game page. The flag is consumed
-                        // here so it does not leak into later logins.
-                        if self.portal_login_return_to_detail {
-                            self.portal_login_return_to_detail = false;
-                            AppState::PortalDetailPage { scroll_index: 0 }
-                        } else {
-                            AppState::EditGameConfig(ConfigPage::Game)
-                        }
+                        // A successful re-login lands on the edit-config
+                        // Game page (the portal parameters page).
+                        AppState::EditGameConfig(ConfigPage::Game)
                     }
                     r @ PortalTokenResponse::NoPendingLink
                     | r @ PortalTokenResponse::InvalidCode => {

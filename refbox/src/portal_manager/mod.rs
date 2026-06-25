@@ -99,13 +99,22 @@ impl UwhPortalIo {
     }
 }
 
-/// Collapse a portal-client error into `PortalCallError::Failed`. The
-/// uwh-common API does not distinguish token-expiry, conflict, server
-/// error, or network failure — they all come back as `Box<dyn Error>` —
-/// so the background task treats every failure the same way (retry later
-/// on its cadence). See ADR 011 amendment (2026-04-21).
-fn classify_error<E: std::fmt::Display>(e: E) -> health::PortalCallError {
-    health::PortalCallError::Failed(e.to_string())
+/// Classify a portal-client error. A `reqwest` transport error means the
+/// HTTP exchange never completed (DNS, connect, timeout, TLS, or a dropped
+/// response): the portal is unreachable, which is a connectivity problem,
+/// NOT a token rejection. A non-OK HTTP response surfaces as uwh-common's
+/// own error type instead and is mapped to `Failed` (could be a 401 token
+/// rejection, a 409 conflict, or a 5xx). Keeping the two apart lets the
+/// indicator avoid mislabelling an ordinary wifi drop as "login expired".
+/// The retry/cadence logic treats both the same (retry later); only the
+/// `verify_token` token-status path acts on the distinction. See ADR 011
+/// amendment (2026-04-21).
+fn classify_error(e: Box<dyn std::error::Error>) -> health::PortalCallError {
+    if e.downcast_ref::<reqwest::Error>().is_some() {
+        health::PortalCallError::Unreachable(e.to_string())
+    } else {
+        health::PortalCallError::Failed(e.to_string())
+    }
 }
 
 /// Parse an `event_id` string (from a `QueuedItem`) into an `EventId`.
@@ -220,7 +229,8 @@ pub struct PortalIndicatorState {
     /// This is the specific Red cause that makes a schedule refresh
     /// pointless (it can only fail until the operator re-logs-in), so
     /// the game-info REFRESH button greys out on it. A Red caused only
-    /// by a stuck queue item leaves this `false`.
+    /// by a stuck queue item — or by a connectivity problem (the portal
+    /// is unreachable, but the login may be fine) — leaves this `false`.
     pub token_expired: bool,
 }
 
@@ -252,11 +262,17 @@ pub enum PortalEvent {
     /// so the auto-retry loop, the stuck escalation, and the indicator
     /// all stop treating it as outstanding. Carries the item id.
     ScoreSentStatsPending(ItemId),
-    /// Result of the latest periodic `verify_token` probe.
-    /// `true` = portal accepted the token, `false` = rejected. The
+    /// Result of the latest periodic `verify_token` probe that reached the
+    /// portal. `true` = portal accepted the token, `false` = rejected. The
     /// main-thread handler maps this onto `token_known_problem` so the
     /// indicator and detail-page row reflect the current token state.
     TokenStatus(bool),
+    /// The latest periodic `verify_token` probe could not reach the portal
+    /// at all (a connectivity failure, not a token rejection). The
+    /// main-thread handler flags a connection problem so the indicator
+    /// degrades WITHOUT claiming the login expired — the operator keeps the
+    /// schedule REFRESH button and is not pushed into a pointless re-login.
+    TokenUnreachable,
 }
 
 /// One row rendered on the portal detail page. The ordering of the
@@ -322,10 +338,17 @@ pub fn is_item_stuck(item: &QueuedItem, now: OffsetDateTime) -> bool {
 pub struct PortalManager {
     queue: QueueFile,
     check_in_flight: bool,
-    /// Set true when the last `verify_token` probe failed. Cleared on
-    /// the next successful probe or by `token_refreshed()` after the
-    /// operator re-logs-in.
+    /// Set true when the last `verify_token` probe reached the portal and
+    /// it rejected the token. Cleared on the next reached probe that
+    /// succeeds, or by `token_refreshed()` after the operator re-logs-in.
     token_known_problem: bool,
+    /// Set true when the last `verify_token` probe could not reach the
+    /// portal at all (connectivity failure). Drives the Red indicator like
+    /// a token problem does, but deliberately leaves `token_expired` false
+    /// so an ordinary wifi drop neither greys the schedule REFRESH button
+    /// nor shows the re-login row. Cleared by the next probe that reaches
+    /// the portal (whether it accepts or rejects the token).
+    connection_problem: bool,
     indicator_state: PortalIndicatorState,
     command_tx: mpsc::Sender<health::PortalCommand>,
     config_dir: std::path::PathBuf,
@@ -348,6 +371,7 @@ impl PortalManager {
             queue,
             check_in_flight,
             token_known_problem,
+            connection_problem: false,
             indicator_state: PortalIndicatorState::default(),
             command_tx: tx,
             config_dir: std::env::temp_dir(),
@@ -394,7 +418,7 @@ impl PortalManager {
     }
 
     fn recompute_indicator(&mut self) {
-        let health = if self.needs_attention() {
+        let health = if self.needs_attention() || self.connection_problem {
             HealthState::Red
         } else if self.check_in_flight || self.has_score_pending_items() {
             HealthState::Yellow
@@ -450,6 +474,7 @@ impl PortalManager {
             queue,
             check_in_flight: false,
             token_known_problem: false,
+            connection_problem: false,
             indicator_state: PortalIndicatorState::default(),
             command_tx,
             config_dir: config_dir.to_path_buf(),
@@ -485,6 +510,7 @@ impl PortalManager {
             check_in_flight: false,
             // Key: indicator will show Red so the operator sees the problem.
             token_known_problem: true,
+            connection_problem: false,
             indicator_state: PortalIndicatorState::default(),
             command_tx,
             config_dir: std::env::temp_dir(),
@@ -663,6 +689,21 @@ impl PortalManager {
     /// notice a silent token expiration without having to open Settings.
     pub fn on_token_status(&mut self, valid: bool) {
         self.token_known_problem = !valid;
+        // A probe that reached the portal (whether it accepted or rejected
+        // the token) proves connectivity, so clear any prior "unreachable"
+        // flag.
+        self.connection_problem = false;
+        self.recompute_indicator();
+    }
+
+    /// Apply a `verify_token` probe that could not reach the portal at all.
+    /// Flags a connection problem so the indicator degrades to Red, but
+    /// deliberately leaves `token_known_problem` untouched: a connectivity
+    /// failure is not evidence the login expired, so the operator is not
+    /// pushed to re-login and the schedule REFRESH button stays usable.
+    /// The next probe that reaches the portal clears this flag.
+    pub fn on_token_unreachable(&mut self) {
+        self.connection_problem = true;
         self.recompute_indicator();
     }
 
@@ -903,6 +944,43 @@ mod tests {
     fn healthy_connection_is_not_token_expired() {
         let m = PortalManager::new_for_test(QueueFile::empty(), false, false);
         assert!(!m.indicator_state().token_expired);
+    }
+
+    #[test]
+    fn connection_problem_is_red_but_not_token_expired() {
+        // An ordinary wifi drop (verify_token could not reach the portal)
+        // must degrade the indicator to Red WITHOUT reporting token_expired:
+        // the login may be fine, so the schedule REFRESH button must stay
+        // usable and no re-login row should appear.
+        let mut m = PortalManager::new_for_test(QueueFile::empty(), false, false);
+        m.on_token_unreachable();
+        assert_eq!(m.indicator_state().health, HealthState::Red);
+        assert!(!m.indicator_state().token_expired);
+    }
+
+    #[test]
+    fn reaching_the_portal_clears_a_prior_connection_problem() {
+        // Once a probe reaches the portal again (here: the token is
+        // accepted), the connection problem clears and the indicator
+        // returns to Green.
+        let mut m = PortalManager::new_for_test(QueueFile::empty(), false, false);
+        m.on_token_unreachable();
+        assert_eq!(m.indicator_state().health, HealthState::Red);
+        m.on_token_status(true);
+        assert_eq!(m.indicator_state().health, HealthState::Green);
+        assert!(!m.indicator_state().token_expired);
+    }
+
+    #[test]
+    fn server_rejection_after_outage_reports_token_expired() {
+        // A probe that reaches the portal but is rejected clears the
+        // connectivity flag and reports a genuine token problem (the
+        // re-login row + greyed REFRESH).
+        let mut m = PortalManager::new_for_test(QueueFile::empty(), false, false);
+        m.on_token_unreachable();
+        m.on_token_status(false);
+        assert_eq!(m.indicator_state().health, HealthState::Red);
+        assert!(m.indicator_state().token_expired);
     }
 
     #[test]

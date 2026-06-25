@@ -100,17 +100,26 @@ pub trait PortalTaskIo {
 
 #[derive(Debug)]
 pub enum PortalCallError {
-    /// The portal call did not succeed. We cannot distinguish a conflict
-    /// (409), token-expiry (401), or network/5xx failure from the current
-    /// uwh-common API — all non-success outcomes collapse to this one
-    /// variant. See ADR 011 amendment (2026-04-21) for the rationale.
+    /// The portal responded, but with a non-success status. From the
+    /// current uwh-common API we cannot tell a conflict (409), token
+    /// rejection (401), or server error (5xx) apart — they all collapse to
+    /// this one variant. See ADR 011 amendment (2026-04-21) for the
+    /// rationale.
     Failed(String),
+    /// The portal could not be reached at all: the HTTP exchange never
+    /// completed (DNS, connect, timeout, TLS, or a dropped response). The
+    /// login may be perfectly valid — this is a connectivity problem, not a
+    /// token problem — so callers must not push the operator to re-login.
+    /// Produced by `classify_error` downcasting the underlying `reqwest`
+    /// transport error.
+    Unreachable(String),
 }
 
 impl std::fmt::Display for PortalCallError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Failed(msg) => write!(f, "portal call failed: {msg}"),
+            Self::Unreachable(msg) => write!(f, "portal unreachable: {msg}"),
         }
     }
 }
@@ -164,7 +173,19 @@ async fn run_task(
                             current_health = HealthState::Green;
                             let _ = event_tx.send(PortalEvent::TokenStatus(true)).await;
                         }
-                        Err(_) => {
+                        Err(PortalCallError::Unreachable(_)) => {
+                            // Couldn't reach the portal (wifi blip / outage).
+                            // Degrade the indicator, but do NOT report a token
+                            // problem: the login may be fine, so the UI must
+                            // not push the operator to re-login or grey out the
+                            // schedule REFRESH button.
+                            current_health = HealthState::Red;
+                            let _ = event_tx.send(PortalEvent::TokenUnreachable).await;
+                        }
+                        Err(PortalCallError::Failed(_)) => {
+                            // The portal responded but rejected the request (or
+                            // returned a server error). Treat as a token
+                            // problem so the operator is prompted to re-login.
                             current_health = HealthState::Red;
                             let _ = event_tx.send(PortalEvent::TokenStatus(false)).await;
                         }
@@ -414,6 +435,83 @@ mod tests {
         tokio::task::yield_now().await;
 
         assert!(count.load(std::sync::atomic::Ordering::SeqCst) >= 1);
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn unreachable_verify_emits_token_unreachable_not_token_status() {
+        // A verify_token that cannot reach the portal must surface as
+        // TokenUnreachable (a connectivity problem), never TokenStatus(false)
+        // — which the UI reads as "login expired" and uses to grey out the
+        // schedule REFRESH button.
+        let io = FakeIo {
+            verify_results: Mutex::new(vec![Err(PortalCallError::Unreachable("blip".into()))]),
+            verify_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_results: Mutex::new(vec![]),
+            scores_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            stats_results: Mutex::new(vec![]),
+            stats_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+        };
+        let mut handle = spawn(io);
+
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(3)).await;
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_millis(500)).await;
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        let events = drain_events(&mut handle.event_rx);
+        assert!(
+            events
+                .iter()
+                .any(|ev| matches!(ev, PortalEvent::TokenUnreachable)),
+            "unreachable verify must emit TokenUnreachable, got {events:?}"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|ev| matches!(ev, PortalEvent::TokenStatus(_))),
+            "unreachable verify must NOT emit TokenStatus, got {events:?}"
+        );
+        drop(handle);
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn rejected_verify_emits_token_status_false() {
+        // A verify_token that reached the portal but was rejected must
+        // surface as TokenStatus(false) so the operator is prompted to
+        // re-login — and must NOT be confused with an outage.
+        let io = FakeIo {
+            verify_results: Mutex::new(vec![Err(PortalCallError::Failed("401".into()))]),
+            verify_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_results: Mutex::new(vec![]),
+            scores_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            stats_results: Mutex::new(vec![]),
+            stats_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+        };
+        let mut handle = spawn(io);
+
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(3)).await;
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_millis(500)).await;
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        let events = drain_events(&mut handle.event_rx);
+        assert!(
+            events
+                .iter()
+                .any(|ev| matches!(ev, PortalEvent::TokenStatus(false))),
+            "rejected verify must emit TokenStatus(false), got {events:?}"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|ev| matches!(ev, PortalEvent::TokenUnreachable)),
+            "rejected verify must NOT emit TokenUnreachable, got {events:?}"
+        );
+        drop(handle);
     }
 
     /// Build a `QueueFile` with a single freshly-queued item (no prior

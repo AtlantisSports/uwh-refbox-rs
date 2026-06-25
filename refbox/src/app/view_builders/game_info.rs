@@ -26,6 +26,13 @@ pub(in super::super) fn build_game_info_page<'a>(
         ..
     } = data;
 
+    // A refresh re-fetches the schedule from the portal, which can only
+    // fail while the saved login token is expired — so grey the button out
+    // in that one case and leave the operator to re-login via the
+    // connection indicator. A Red caused merely by a stuck submission
+    // leaves `token_expired` false and keeps refresh usable.
+    let token_expired = portal_indicator.is_some_and(|s| s.token_expired);
+
     let middle_item: Element<_> = if using_uwhportal {
         if is_refreshing {
             make_button(fl!("refreshing"))
@@ -36,7 +43,7 @@ pub(in super::super) fn build_game_info_page<'a>(
             make_button(fl!("refresh"))
                 .style(blue_button)
                 .width(Length::Fill)
-                .on_press(Message::RequestPortalRefresh)
+                .on_press_maybe((!token_expired).then_some(Message::RequestPortalRefresh))
                 .into()
         }
     } else {

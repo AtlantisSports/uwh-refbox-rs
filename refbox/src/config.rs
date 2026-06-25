@@ -222,6 +222,8 @@ pub struct Config {
     pub show_behind_schedule_time: bool,
     #[derivative(Default(value = "true"))]
     pub confirm_score: bool,
+    #[serde(default)]
+    pub audible_countdown: bool,
     pub game: Game,
     pub beep_test: BeepTest,
     pub hardware: Hardware,
@@ -243,6 +245,7 @@ impl Config {
             mut track_fouls_and_warnings,
             mut show_behind_schedule_time,
             confirm_score,
+            mut audible_countdown,
             mut game,
             mut beep_test,
             mut hardware,
@@ -272,6 +275,7 @@ impl Config {
             "show_behind_schedule_time",
             &mut show_behind_schedule_time,
         );
+        get_boolean_value(old, "audible_countdown", &mut audible_countdown);
         if let Some(old_game) = old.get("game") {
             if let Some(old_game) = old_game.as_table() {
                 game = Game::migrate(old_game);
@@ -305,6 +309,7 @@ impl Config {
             track_fouls_and_warnings,
             show_behind_schedule_time,
             confirm_score,
+            audible_countdown,
             game,
             beep_test,
             hardware,
@@ -514,6 +519,21 @@ mod test {
             deser.front_display_layout,
             crate::sim_frame::FrontDisplayLayout::Corners
         );
+    }
+
+    #[test]
+    fn test_migrate_audible_countdown_defaults_false_when_absent() {
+        let old: Table = Default::default();
+        let config = Config::migrate(&old);
+        assert!(!config.audible_countdown);
+    }
+
+    #[test]
+    fn test_migrate_audible_countdown_respects_present_true() {
+        let mut old: Table = Default::default();
+        old.insert("audible_countdown".to_string(), toml::Value::Boolean(true));
+        let config = Config::migrate(&old);
+        assert!(config.audible_countdown);
     }
 
     #[test]

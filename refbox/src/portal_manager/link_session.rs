@@ -18,8 +18,12 @@ use time::macros::format_description;
 use crate::config::Mode;
 use uwh_common::uwhportal::schedule::{EventId, GameNumber};
 
-/// How recent the last session must be to auto-restore the link on startup.
-pub const FRESHNESS_WINDOW: time::Duration = time::Duration::hours(48);
+/// How recent the last session must be to auto-restore the link on startup,
+/// *when the boot clock is trustworthy*. A Raspberry Pi has no battery-backed
+/// clock and may boot with a time that has not yet been corrected by the
+/// network — `decide_restore` handles that clock-suspect case separately so a
+/// wrong boot clock never discards a recent link.
+pub const FRESHNESS_WINDOW: time::Duration = time::Duration::hours(120);
 
 const FILE_NAME: &str = "portal_link.json";
 const TMP_FILE_NAME: &str = "portal_link.json.tmp";
@@ -204,15 +208,15 @@ mod tests {
         assert!(is_fresh(t0, t0, FRESHNESS_WINDOW)); // 0h
         assert!(is_fresh(
             t0,
-            t0 + time::Duration::hours(47),
+            t0 + FRESHNESS_WINDOW - time::Duration::hours(1),
             FRESHNESS_WINDOW
-        ));
-        assert!(is_fresh(t0, t0 + FRESHNESS_WINDOW, FRESHNESS_WINDOW)); // exactly 48h
+        )); // just inside the window
+        assert!(is_fresh(t0, t0 + FRESHNESS_WINDOW, FRESHNESS_WINDOW)); // exactly the window
         assert!(!is_fresh(
             t0,
-            t0 + time::Duration::hours(48) + time::Duration::seconds(1),
+            t0 + FRESHNESS_WINDOW + time::Duration::seconds(1),
             FRESHNESS_WINDOW
-        ));
+        )); // just past the window
         // clock skew: "now" before last_active is treated as not fresh
         assert!(!is_fresh(
             t0,

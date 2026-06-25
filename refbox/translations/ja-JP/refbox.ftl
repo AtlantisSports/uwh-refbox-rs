@@ -129,6 +129,7 @@ alarm-button = アラーム
     ボタン:
 alarm = アラーム
 hold-to-test = 長押しでテスト
+test = テスト
 or-press-spacebar = またはスペースキーを押す
 or-hold-spacebar = またはスペースキーを長押し
 game-info = 情報

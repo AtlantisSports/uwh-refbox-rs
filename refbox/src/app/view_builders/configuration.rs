@@ -10,7 +10,7 @@ use iced::{
     Alignment, Element, Length,
     alignment::{Horizontal, Vertical},
     widget::{
-        Image, button, column, container, horizontal_space, image, row, text, vertical_space,
+        Image, Row, button, column, container, horizontal_space, image, row, text, vertical_space,
     },
 };
 use matrix_drawing::transmitted_data::Brightness;
@@ -287,6 +287,9 @@ pub(in super::super) fn page_has_changes(
             edited.original_language != *original_language
                 || edited.pending_language != *pending_language
         }
+        (ConfigPage::Buzzer, PageEntrySnapshot::Buzzer { buzzer_sound }) => {
+            edited.sound.buzzer_sound != *buzzer_sound
+        }
         _ => false,
     }
 }
@@ -362,6 +365,14 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
             portal_indicator,
         ),
         ConfigPage::Language => make_language_select_page(
+            snapshot,
+            settings,
+            mode,
+            clock_running,
+            page_entry_snapshot,
+            portal_indicator,
+        ),
+        ConfigPage::Buzzer => make_buzzer_select_page(
             snapshot,
             settings,
             mode,
@@ -1272,7 +1283,7 @@ fn make_sound_config_page<'a>(
                 sound.buzzer_sound.to_string().to_uppercase(),
                 (false, true),
                 if sound.sound_enabled {
-                    Some(Message::CycleParameter(CyclingParameter::BuzzerSound))
+                    Some(Message::ChangeConfigPage(ConfigPage::Buzzer))
                 } else {
                     None
                 },
@@ -1791,6 +1802,83 @@ fn font_family_id(lang: Language) -> u8 {
 }
 
 #[allow(clippy::too_many_arguments)]
+fn make_buzzer_select_page<'a>(
+    snapshot: &GameSnapshot,
+    settings: &EditableSettings,
+    mode: Mode,
+    clock_running: bool,
+    page_entry_snapshot: Option<&PageEntrySnapshot>,
+    portal_indicator: Option<PortalIndicatorState>,
+) -> Element<'a, Message> {
+    let selected = settings.sound.buzzer_sound;
+    let has_changes = page_has_changes(ConfigPage::Buzzer, settings, page_entry_snapshot);
+
+    // Build each sound cell: blue when selected, gray otherwise.
+    let cell = |s: BuzzerSound| -> Element<'a, Message> {
+        let style = if s == selected {
+            blue_selected_button
+        } else {
+            light_gray_button
+        };
+        button(centered_text(s.to_string().to_uppercase()))
+            .padding(PADDING)
+            .height(Length::Fixed(MIN_BUTTON_SIZE))
+            .width(Length::Fill)
+            .style(style)
+            .on_press(Message::SelectBuzzer(s))
+            .into()
+    };
+
+    // 12 sounds laid out in 3 rows of 4, mirroring the Language page's
+    // row-per-row grid structure. BuzzerSound::ALL is always exactly 12 elements.
+    let mut grid = column![make_game_time_button(
+        snapshot,
+        false,
+        false,
+        mode,
+        clock_running,
+        portal_indicator,
+        None
+    )]
+    .spacing(SPACING)
+    .height(Length::Fill);
+
+    for chunk in BuzzerSound::ALL.chunks(4) {
+        let mut r = Row::new().spacing(SPACING).height(Length::Fill);
+        for &s in chunk {
+            r = r.push(cell(s));
+        }
+        // Pad any short final chunk with spacers (chunks(4) on 12 items is always
+        // exactly 3 full rows, but this keeps the layout robust).
+        for _ in chunk.len()..4 {
+            r = r.push(horizontal_space());
+        }
+        grid = grid.push(r);
+    }
+
+    // Footer: Cancel | TEST | Apply (Apply gated by page_has_changes).
+    let cancel = make_button(fl!("cancel"))
+        .style(red_button)
+        .width(Length::Fill)
+        .on_press(Message::CancelConfigPage(ConfigPage::Buzzer));
+    let test = make_button(fl!("test"))
+        .style(blue_button)
+        .width(Length::Fill)
+        .on_press(Message::TestBuzzer);
+    let apply = {
+        let b = make_button(fl!("apply"))
+            .style(green_button)
+            .width(Length::Fill);
+        if has_changes {
+            b.on_press(Message::ApplyConfigPage(ConfigPage::Buzzer))
+        } else {
+            b
+        }
+    };
+
+    grid.push(row![cancel, test, apply].spacing(SPACING)).into()
+}
+
 fn make_language_select_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,

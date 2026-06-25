@@ -129,6 +129,7 @@ alarm-button = ปุ่ม
     สัญญาณเตือน:
 alarm = สัญญาณเตือน
 hold-to-test = กดค้างเพื่อทดสอบ
+test = ทดสอบ
 or-press-spacebar = หรือกดสเปซบาร์
 or-hold-spacebar = หรือกดค้างสเปซบาร์
 game-info = ข้อมูล

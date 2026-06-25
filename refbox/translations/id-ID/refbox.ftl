@@ -129,6 +129,7 @@ alarm-button = TOMBOL
     ALARM:
 alarm = ALARM
 hold-to-test = TAHAN UNTUK UJI
+test = UJI
 or-press-spacebar = Atau Tekan Spacebar
 or-hold-spacebar = Atau Tahan Spacebar
 game-info = INFORMASI

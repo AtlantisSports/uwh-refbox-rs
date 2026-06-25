@@ -128,6 +128,7 @@ alarm-button = ALARM
     BUTTON:
 alarm = ALARM
 hold-to-test = HOLD TO TEST
+test = TEST
 or-press-spacebar = Or Press Spacebar
 or-hold-spacebar = Or Hold Spacebar
 game-info = INFORMATION

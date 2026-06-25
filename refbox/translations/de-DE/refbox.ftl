@@ -129,6 +129,7 @@ alarm-button = ALARM-
     TASTE:
 alarm = ALARM
 hold-to-test = ZUM TESTEN HALTEN
+test = TESTEN
 or-press-spacebar = Oder Leertaste drücken
 or-hold-spacebar = Oder Leertaste halten
 game-info = INFORMATIONEN

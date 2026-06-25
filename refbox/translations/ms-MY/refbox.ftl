@@ -129,6 +129,7 @@ alarm-button = BUTANG
     PENGGERA:
 alarm = PENGGERA
 hold-to-test = TAHAN UNTUK UJI
+test = UJI
 or-press-spacebar = Atau Tekan Kekunci Ruang
 or-hold-spacebar = Atau Tahan Kekunci Ruang
 game-info = MAKLUMAT

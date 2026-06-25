@@ -647,10 +647,7 @@ impl SoundController {
         self.msg_tx.send(SoundMessage::TriggerBuzzer).unwrap()
     }
 
-    // Called by the buzzer-picker Test button (wired in Task 5/6 of this feature).
-    // The allow suppresses the dead-code lint that a bin crate emits for public
-    // methods not yet called anywhere in the binary.
-    #[allow(dead_code)]
+    // Called by the buzzer-picker Test button (wired in Task 5 of this feature).
     pub fn test_buzzer(&self, sound: BuzzerSound) {
         // The worker receiver lives for the app's lifetime; send only fails
         // after shutdown, when there is nothing left to play through anyway.

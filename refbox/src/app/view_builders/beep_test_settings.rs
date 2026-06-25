@@ -228,13 +228,13 @@ pub(in super::super) fn build_beep_test_sound_settings_page<'a>(
         },
     );
 
-    // BUZZER SOUND — gated by SOUND ENABLED.
+    // BUZZER SOUND — gated by SOUND ENABLED. Opens the full-page picker.
     let buzzer_sound_btn = make_value_button(
         fl!("buzzer-sound"),
         sound.buzzer_sound.to_string().to_uppercase(),
         (false, true),
         if sound_enabled {
-            Some(Message::CycleParameter(CyclingParameter::BuzzerSound))
+            Some(Message::BeepTestEditOpenBuzzer)
         } else {
             None
         },
@@ -644,6 +644,87 @@ fn build_edit_panel(levels: &[Level], selected: usize) -> Element<'_, Message> {
     column![management_row, time_row, count_row]
         .spacing(SPACING)
         .into()
+}
+
+/// Buzzer picker sub-page for the BeepTest hierarchy.
+///
+/// Mirrors the BeepTest Language picker layout: 3 rows of 4 sound
+/// buttons (using `BuzzerSound::ALL.chunks(4)`), two trailing filler
+/// rows for vertical balance, and a Cancel | TEST | Apply footer.
+/// There is no `make_game_time_button` header — BeepTest sub-pages have
+/// no timeout ribbon.
+///
+/// `sound` is the staged `SoundSettings` from `edited_settings`
+/// (seeded by `BeepTestEditOpenSound`). The selected sound is
+/// `sound.buzzer_sound`. Apply enables when the staged sound differs
+/// from the live `config.sound.buzzer_sound`.
+pub(in super::super) fn build_beep_test_buzzer_picker<'a>(
+    config: &Config,
+    sound: &crate::sound_controller::SoundSettings,
+) -> Element<'a, Message> {
+    use crate::sound_controller::BuzzerSound;
+    use iced::widget::Row;
+
+    let selected = sound.buzzer_sound;
+    let has_changes = config.sound.buzzer_sound != selected;
+
+    // Build each sound cell: blue when selected, gray otherwise.
+    let cell = |s: BuzzerSound| -> Element<'a, Message> {
+        let style = if s == selected {
+            blue_selected_button
+        } else {
+            light_gray_button
+        };
+        button(centered_text(s.to_string().to_uppercase()))
+            .padding(PADDING)
+            .height(Length::Fixed(MIN_BUTTON_SIZE))
+            .width(Length::Fill)
+            .style(style)
+            .on_press(Message::BeepTestSelectBuzzer(s))
+            .into()
+    };
+
+    // 12 sounds in 3 rows of 4, mirroring the Language picker's row structure.
+    let mut col = Column::new().spacing(SPACING).height(Length::Fill);
+    for chunk in BuzzerSound::ALL.chunks(4) {
+        let mut r = Row::new().spacing(SPACING).height(Length::Fill);
+        for &s in chunk {
+            r = r.push(cell(s));
+        }
+        // Pad any short final chunk with spacers (chunks(4) on 12 items is
+        // always exactly 3 full rows, but this keeps the layout robust).
+        for _ in chunk.len()..4 {
+            r = r.push(horizontal_space());
+        }
+        col = col.push(r);
+    }
+
+    // Two trailing filler rows for vertical balance — mirrors the Language picker.
+    col = col
+        .push(row![horizontal_space()].height(Length::Fill))
+        .push(row![horizontal_space()].height(Length::Fill));
+
+    // Footer: Cancel | TEST | Apply (Apply gated by has_changes).
+    let cancel = make_button(fl!("cancel"))
+        .style(red_button)
+        .width(Length::Fill)
+        .on_press(Message::BeepTestBuzzerCancel);
+    let test = make_button(fl!("test"))
+        .style(blue_button)
+        .width(Length::Fill)
+        .on_press(Message::BeepTestTestBuzzer);
+    let apply = {
+        let b = make_button(fl!("apply"))
+            .style(green_button)
+            .width(Length::Fill);
+        if has_changes {
+            b.on_press(Message::BeepTestBuzzerSave)
+        } else {
+            b
+        }
+    };
+
+    col.push(row![cancel, test, apply].spacing(SPACING)).into()
 }
 
 /// Language picker sub-page for the BeepTest hierarchy.

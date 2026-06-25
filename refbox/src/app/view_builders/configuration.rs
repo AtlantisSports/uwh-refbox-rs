@@ -124,25 +124,6 @@ where
     }
 }
 
-impl Cyclable for BuzzerSound {
-    fn next(&self) -> Self {
-        match self {
-            Self::Buzz => Self::Whoop,
-            Self::Whoop => Self::Crazy,
-            Self::Crazy => Self::DeDeDu,
-            Self::DeDeDu => Self::TwoTone,
-            Self::TwoTone => Self::Airhorn,
-            Self::Airhorn => Self::Pipes,
-            Self::Pipes => Self::Klaxon,
-            Self::Klaxon => Self::Pip,
-            Self::Pip => Self::Pulse,
-            Self::Pulse => Self::Siren,
-            Self::Siren => Self::Trill,
-            Self::Trill => Self::Buzz,
-        }
-    }
-}
-
 impl Cyclable for Option<BuzzerSound> {
     fn next(&self) -> Self {
         match self {

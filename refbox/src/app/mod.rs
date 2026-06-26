@@ -955,6 +955,7 @@ impl RefBoxApp {
         let show_behind_schedule_time = edited.show_behind_schedule_time;
         let confirm_score = edited.confirm_score;
         let audible_countdown = edited.audible_countdown;
+        let hide_time = edited.hide_time;
 
         // Cross-portal Mode change requires explicit confirmation and an app
         // restart. Raise the confirmation before committing any fields so that
@@ -980,6 +981,17 @@ impl RefBoxApp {
         self.config.show_behind_schedule_time = show_behind_schedule_time;
         self.config.confirm_score = confirm_score;
         self.config.audible_countdown = audible_countdown;
+        // The "show countdown for last 10 seconds" toggle lives on this App page,
+        // so its commit must happen here. Notify the update server only when it
+        // actually changed. Bounded channel with one message per Apply from the
+        // GUI loop, so it cannot be full; Closed means the update-server task is
+        // gone (application-fatal), matching the other unwrap sites.
+        if self.config.hide_time != hide_time {
+            self.config.hide_time = hide_time;
+            self.update_sender
+                .set_hide_time(self.config.hide_time)
+                .unwrap();
+        }
         None
     }
 
@@ -989,12 +1001,6 @@ impl RefBoxApp {
         };
         self.config.hardware.white_on_right = edited.white_on_right;
         self.config.hardware.brightness = edited.brightness;
-        if self.config.hide_time != edited.hide_time {
-            self.config.hide_time = edited.hide_time;
-            self.update_sender
-                .set_hide_time(self.config.hide_time)
-                .unwrap();
-        }
         self.config.front_display_layout = edited.front_display_layout;
         // A real LED panel always renders Default; mirror the button's gating so
         // Apply never pushes a full-screen layout to the hardware path.

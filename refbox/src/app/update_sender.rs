@@ -1164,6 +1164,43 @@ mod test {
         assert!(matches!(error_formatter(closed), TrySendError::Closed(_)));
     }
 
+    #[test]
+    fn show_countdown_off_hides_final_under_10s_not_at_10s() {
+        // "Show countdown for last 10 seconds" = OFF (hide_time = true): during
+        // the last <10s of a pre-game break the displayed time switches to the
+        // upcoming period length instead of the live countdown. The window is 10s
+        // (it was 15s before v0.4.x); this guards the threshold against drift.
+        let (_tx, rx) = mpsc::channel(1);
+        let mut server = Server::new(rx, vec![], true, false, FrontDisplayLayout::Default);
+        let snap = |secs| GameSnapshot {
+            current_period: GamePeriod::BetweenGames,
+            secs_in_period: secs,
+            next_period_len_secs: Some(900),
+            ..Default::default()
+        };
+        // 9s left -> hidden: shows the 900s (15:00) upcoming period length.
+        server.encode(snap(9));
+        assert_eq!(server.snapshot.secs_in_period, 900);
+        // Exactly 10s left -> still the live countdown (threshold is `< 10`).
+        server.encode(snap(10));
+        assert_eq!(server.snapshot.secs_in_period, 10);
+    }
+
+    #[test]
+    fn show_countdown_on_never_hides_final_seconds() {
+        // hide_time = false ("show countdown" = ON): the live countdown is always
+        // shown, even in the final seconds of a pre-game break.
+        let (_tx, rx) = mpsc::channel(1);
+        let mut server = Server::new(rx, vec![], false, false, FrontDisplayLayout::Default);
+        server.encode(GameSnapshot {
+            current_period: GamePeriod::BetweenGames,
+            secs_in_period: 3,
+            next_period_len_secs: Some(900),
+            ..Default::default()
+        });
+        assert_eq!(server.snapshot.secs_in_period, 3);
+    }
+
     #[tokio::test]
     async fn open_serial_ports_skips_ports_that_fail_to_open() {
         let bad = tokio_serial::new("/dev/refbox_nonexistent_test_port", 115200);

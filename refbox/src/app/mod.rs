@@ -196,6 +196,10 @@ pub struct RefBoxApp {
     /// `Message::BeepTestCycleDisplayLayout`.
     beep_test_display_layout: crate::sim_frame::FrontDisplayLayout,
     list_all_events: bool,
+    /// `true` when started with `--fullscreen` (the Pi). Read by
+    /// `force_display_repaint` to decide whether a display-mode change needs a
+    /// full-screen repaint. See `should_force_repaint`.
+    fullscreen: bool,
     mouse_alarm_held: bool,
     spacebar_held: bool,
     alarm_delay_token: u64,
@@ -1865,6 +1869,7 @@ impl RefBoxApp {
             beep_test_has_run: false,
             beep_test_display_layout: crate::sim_frame::FrontDisplayLayout::Default,
             list_all_events,
+            fullscreen,
             mouse_alarm_held: false,
             spacebar_held: false,
             alarm_delay_token: 0,
@@ -2849,7 +2854,7 @@ impl RefBoxApp {
                 self.config.display_mode = next;
                 crate::app::theme::set_display_mode(next);
                 self.persist_config();
-                Task::none()
+                self.force_display_repaint()
             }
             Message::ChangeConfigPage(new_page) => {
                 if let AppState::EditGameConfig(ref mut page) = self.app_state {
@@ -5268,6 +5273,36 @@ impl RefBoxApp {
             text_color,
         }
     }
+
+    /// Force the whole window to repaint after a display-mode change.
+    ///
+    /// On the Pi (Linux/tiny-skia, fullscreen) a palette-only change otherwise
+    /// leaves stale background pixels in one of the double-buffered frames,
+    /// producing a persistent flicker. Briefly leaving and re-entering
+    /// fullscreen is a genuine surface resize, which makes iced clear its
+    /// per-buffer layer history so both buffers repaint in the new palette.
+    /// Gated off everywhere else (no bug there; would just blink for nothing).
+    /// Mirrors the startup fullscreen task at the top of `new()`.
+    fn force_display_repaint(&self) -> Task<Message> {
+        if !should_force_repaint(self.fullscreen) {
+            return Task::none();
+        }
+        window::get_latest().and_then(|w| {
+            window::change_mode(w, window::Mode::Windowed)
+                .chain(window::change_mode(w, window::Mode::Fullscreen))
+        })
+    }
+}
+
+/// Whether changing the display mode must force a full-screen repaint.
+///
+/// Only the Pi hits the flicker: Linux uses the tiny-skia software renderer
+/// with a double-buffered Wayland surface, and a palette-only change repaints
+/// just one of the two buffers (the other keeps stale background pixels). On
+/// Windows/Mac (wgpu) and on windowed/single-buffered setups there is no such
+/// bug, so we never force a repaint — avoiding a needless on-screen blink.
+const fn should_force_repaint(fullscreen: bool) -> bool {
+    cfg!(target_os = "linux") && fullscreen
 }
 
 /// Decide whether a remembered link note should be restored at startup:
@@ -5554,5 +5589,30 @@ mod countdown_beep_tests {
         ] {
             assert!(!should_play_countdown_beep(p, 5, 6, true), "{p:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod repaint_gate_tests {
+    use super::*;
+
+    #[test]
+    fn windowed_never_repaints() {
+        // A windowed window has no stale second buffer to clear, on any platform.
+        assert!(!should_force_repaint(false));
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn linux_fullscreen_repaints() {
+        // The Pi (Linux/tiny-skia, fullscreen) is the one place the flicker occurs.
+        assert!(should_force_repaint(true));
+    }
+
+    #[test]
+    #[cfg(not(target_os = "linux"))]
+    fn non_linux_never_repaints() {
+        // Windows/Mac use wgpu and don't have the bug; never force a repaint.
+        assert!(!should_force_repaint(true));
     }
 }

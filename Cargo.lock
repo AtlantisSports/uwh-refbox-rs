@@ -2190,7 +2190,7 @@ dependencies = [
 
 [[package]]
 name = "fonts"
-version = "0.4.6"
+version = "0.4.7"
 dependencies = [
  "embedded-graphics",
 ]
@@ -3563,7 +3563,7 @@ checksum = "7a79a3332a6609480d7d0c9eab957bca6b455b91bb84e66d19f5ff66294b85b8"
 
 [[package]]
 name = "led-panel-sim"
-version = "0.4.6"
+version = "0.4.7"
 dependencies = [
  "matrix-drawing",
  "uwh-common",
@@ -3887,7 +3887,7 @@ dependencies = [
 
 [[package]]
 name = "matrix-drawing"
-version = "0.4.6"
+version = "0.4.7"
 dependencies = [
  "arrayref",
  "arrayvec",
@@ -4740,7 +4740,7 @@ dependencies = [
 
 [[package]]
 name = "overlay"
-version = "0.4.6"
+version = "0.4.7"
 dependencies = [
  "alphagen",
  "clap",
@@ -5438,7 +5438,7 @@ dependencies = [
 
 [[package]]
 name = "refbox"
-version = "0.4.6"
+version = "0.4.7"
 dependencies = [
  "arrayref",
  "async-trait",
@@ -5867,7 +5867,7 @@ dependencies = [
 
 [[package]]
 name = "schedule-processor"
-version = "0.4.6"
+version = "0.4.7"
 dependencies = [
  "clap",
  "csv",
@@ -7301,7 +7301,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uwh-common"
-version = "0.4.6"
+version = "0.4.7"
 dependencies = [
  "arrayref",
  "arrayvec",
@@ -8283,7 +8283,7 @@ dependencies = [
 
 [[package]]
 name = "wireless-modes"
-version = "0.4.6"
+version = "0.4.7"
 dependencies = [
  "lora-modulation",
 ]

@@ -1,13 +1,13 @@
 [package]
 name = "led-panel-sim"
-version = "0.4.6"
+version = "0.4.7"
 authors = ["Atlantis Sports <maintainers@atlantissports.org>"]
 edition = "2024"
 rust-version = "1.85"
 
 [dependencies]
-matrix-drawing = { version = "0.4.6", path = "../matrix-drawing" }
-uwh-common = { version = "0.4.6", path = "../uwh-common" }
+matrix-drawing = { version = "0.4.7", path = "../matrix-drawing" }
+uwh-common = { version = "0.4.7", path = "../uwh-common" }
 
 [lib]
 name = "led_panel_sim"

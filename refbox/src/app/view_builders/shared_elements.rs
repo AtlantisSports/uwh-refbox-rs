@@ -638,13 +638,12 @@ pub(super) fn make_game_time_button<'a>(
     };
 
     // The banner is "tight" only in UWR + portal mode (both side tiles present)
-    // AND when a second middle column is also competing for width -- either a
-    // timeout column or the delay figure. In that case the period label and clock
-    // shrink so everything fits; every other banner keeps the big full-size clock
-    // for poolside readability.
-    let compact = portal_indicator.is_some()
-        && mode == Mode::Rugby
-        && (snapshot.timeout.is_some() || overrun_label.is_some());
+    // AND when a timeout column is also competing for width. In that case the
+    // period label and clock shrink so everything fits; every other banner keeps
+    // the big full-size clock for poolside readability. The behind-schedule DELAY
+    // figure no longer competes for width here -- when it shows it drops to its
+    // own line below the clock (see the `overrun_label` branch further down).
+    let compact = portal_indicator.is_some() && mode == Mode::Rugby && snapshot.timeout.is_some();
 
     let make_time_view_col = |period_text, time_text, style| {
         let per = if compact {
@@ -658,6 +657,36 @@ pub(super) fn make_game_time_button<'a>(
                 .size(if compact { MEDIUM_TEXT } else { LARGE_TEXT });
         let c = column![];
         make_time_view!(c, per, time).align_x(Alignment::Center)
+    };
+
+    // When the behind-schedule DELAY figure is showing, the period/clock and the
+    // delay are stacked on two reduced-size lines, each laid out as
+    // "label  value" (mirroring `make_time_view_row` so the two lines align into
+    // a tidy column). Giving the clock its own line means a long period name
+    // (e.g. "Second Half" or an overtime label) plus the delay figure can never
+    // crowd the time out of the banner -- the root cause of the clock vanishing
+    // in the second half with the delay figure enabled.
+    let make_delay_line = |label: String, value: String, style: fn(&Theme) -> TextStyle| {
+        let lab = container(
+            text(label)
+                .style(style)
+                .size(SMALL_PLUS_TEXT)
+                .width(Length::Shrink)
+                .align_y(Vertical::Center),
+        )
+        .width(Length::Fill)
+        .align_x(Horizontal::Right)
+        .align_y(Vertical::Center);
+        let val = text(value)
+            .style(style)
+            .size(MEDIUM_TEXT)
+            .width(Length::Fill)
+            .align_y(Vertical::Center)
+            .align_x(Horizontal::Left);
+        row![lab, val]
+            .spacing(SPACING)
+            .width(Length::Fill)
+            .align_y(Alignment::Center)
     };
 
     let mut content = row![]
@@ -693,7 +722,21 @@ pub(super) fn make_game_time_button<'a>(
 
     let time_text = time_text.trim().to_owned();
 
-    if tall {
+    // Behind schedule, the period/clock and DELAY share a two-line stacked
+    // layout (handled here, before the normal one-line layouts). The delay is
+    // hidden while a timeout is active -- the timeout takes that slot instead --
+    // so this two-line layout only appears during normal play, with no third
+    // column competing for width.
+    if let Some(delay_value) = overrun_label.filter(|_| snapshot.timeout.is_none()) {
+        let block = column![
+            make_delay_line(period_text, time_text, period_color),
+            make_delay_line(fl!("delay"), delay_value, red_text),
+        ]
+        .width(Length::Fill)
+        .spacing(SPACING)
+        .align_x(Alignment::Center);
+        content = content.push(block);
+    } else if tall {
         content = content.push(make_time_view_col(period_text, time_text, period_color));
         if let Some((timeout_text, timeout_color)) = timeout_info {
             content = content.push(make_time_view_col(
@@ -710,19 +753,6 @@ pub(super) fn make_game_time_button<'a>(
                 timeout_time_string(snapshot),
                 timeout_color,
             ));
-        }
-    }
-
-    // The delay figure yields its slot to an active timeout: the banner cannot
-    // hold the period/clock, a timeout column, the delay, the portal tile, and the
-    // UWR pause button at once. During a timeout the delay is hidden (it keeps
-    // accruing) and reappears, updated, once the timeout ends.
-    if let Some(label) = overrun_label {
-        if snapshot.timeout.is_none() {
-            // Build the DELAY block with the same helper as the period/clock so the
-            // label and figure match the game time's size and vertical alignment
-            // exactly (it tracks `compact` the same way).
-            content = content.push(make_time_view_col(fl!("delay"), label, red_text));
         }
     }
 

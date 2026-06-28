@@ -5400,6 +5400,60 @@ fn font_family_id(lang: Language) -> u8 {
     }
 }
 
+/// Fallback re-poll delay for the time updater when the clock is running but
+/// the game state has no concrete next-update instant. This happens only in
+/// degenerate zero-duration timing rules (e.g. the portal "FINALS" rule, whose
+/// pre-overtime break is zero, producing a zero-length score-confirm pause).
+/// Re-polling soon lets the state machine advance; it must never panic.
+const UPDATER_NO_NEXT_TIME_FALLBACK: Duration = Duration::from_millis(100);
+
+/// Decide when [`time_updater`] should next wake.
+///
+/// - Clock stopped: `None` — await the next clock-running change.
+/// - Clock running with a concrete next-update instant: wake at that instant.
+/// - Clock running but no next-update instant (degenerate state): re-poll after
+///   [`UPDATER_NO_NEXT_TIME_FALLBACK`] so the state machine can advance.
+///
+/// Replaces an earlier `next_update_time(now).unwrap()` that crashed the whole
+/// app (poisoning the shared game lock) when the value was absent.
+fn next_updater_wake(
+    clock_running: bool,
+    next_update_time: Option<Instant>,
+    now: Instant,
+) -> Option<Instant> {
+    clock_running.then(|| next_update_time.unwrap_or(now + UPDATER_NO_NEXT_TIME_FALLBACK))
+}
+
+#[cfg(test)]
+mod updater_wake_tests {
+    use super::*;
+
+    #[test]
+    fn stopped_clock_has_no_scheduled_wake() {
+        let now = Instant::now();
+        assert_eq!(next_updater_wake(false, Some(now), now), None);
+        assert_eq!(next_updater_wake(false, None, now), None);
+    }
+
+    #[test]
+    fn running_clock_uses_concrete_next_time() {
+        let now = Instant::now();
+        let next = now + Duration::from_secs(1);
+        assert_eq!(next_updater_wake(true, Some(next), now), Some(next));
+    }
+
+    #[test]
+    fn running_clock_with_empty_next_time_falls_back_without_panicking() {
+        // The FINALS-template crash case: clock running but no concrete next
+        // update instant. Must NOT panic; schedules a short re-poll instead.
+        let now = Instant::now();
+        assert_eq!(
+            next_updater_wake(true, None, now),
+            Some(now + UPDATER_NO_NEXT_TIME_FALLBACK)
+        );
+    }
+}
+
 fn time_updater() -> impl Stream<Item = Message> {
     use iced::futures::SinkExt;
     debug!("Updater starting");
@@ -5482,11 +5536,7 @@ fn time_updater() -> impl Stream<Item = Message> {
                     }
                 };
 
-                next_time = if clock_running {
-                    Some(tm_.next_update_time(now).unwrap())
-                } else {
-                    None
-                };
+                next_time = next_updater_wake(clock_running, tm_.next_update_time(now), now);
 
                 (msg_type, snapshot)
             };

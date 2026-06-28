@@ -7665,6 +7665,43 @@ mod test {
     }
 
     #[test]
+    fn test_finals_template_yields_empty_next_update_time() {
+        initialize();
+        // A FINALS-style timing rule: overtime enabled, but the pre-overtime
+        // break is zero. This is the degenerate config that crashed the refbox.
+        let config = GameConfig {
+            overtime_allowed: true,
+            sudden_death_allowed: true,
+            pre_overtime_break: Duration::ZERO,
+            pre_sudden_death_duration: Duration::from_secs(60),
+            minimum_break: Duration::from_secs(180),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start = Instant::now();
+        let game_end = start + Duration::from_secs(30);
+
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(30));
+        tm.set_game_start(start);
+        tm.start_game_clock(start);
+        tm.set_scores(BlackWhiteBundle { black: 1, white: 2 }, start);
+
+        assert_eq!(Ok(true), tm.could_end_game(game_end));
+        tm.pause_for_confirm(game_end).unwrap();
+
+        // Confirm pause is zero-length: min(pre_overtime_break, minimum_break)/2 == 0.
+        let confirm = tm.time_pause_confirmation.as_ref().unwrap();
+        assert_eq!(confirm.duration_of_pause, Duration::ZERO);
+
+        // One tick after the pause begins, the remaining-pause computation
+        // underflows, so there is no concrete next-update instant. The app must
+        // tolerate this empty value instead of unwrapping it.
+        let after = game_end + Duration::from_millis(1);
+        assert_eq!(tm.next_update_time(after), None);
+    }
+
+    #[test]
     fn test_pause_score_confirm_with_only_sd_score_changed_to_tie() {
         initialize();
         let config = GameConfig {

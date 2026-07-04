@@ -1,7 +1,41 @@
+# Updated CLAUDE.md — 2026-05-20 — Added reference to user-global instructions
+# Changes: Only added User-Global Instructions section at the top. All other content preserved.
+
 # uwh-refbox-rs — Claude Session Guide
 
 Read this file at the start of every session. It provides everything needed to work in this
 workspace without requiring the human to re-explain context.
+
+---
+
+## User-Global Instructions
+
+A user-global rules file now lives at `~/.claude/CLAUDE.md`. Those rules apply to **every**
+Claude Code session in every project, including this one. The project-level rules in this file
+take precedence where they conflict, but otherwise the user-global rules are in force here too.
+
+The most important rule from that file:
+
+**For any non-trivial task — anything that touches more than one file or needs more than a
+single tool call — always start with a Scope Card, then move into Planning Mode (Superpowers)
+before doing any implementation.**
+
+A Scope Card is a short, explicit statement of what is being done and what is intentionally
+*not* being done. It uses this exact format:
+
+> **Scope Card**
+> Task: [one clear sentence summarizing what the human wants]
+> Explicitly not doing: [2–3 nearby things the human might reasonably assume are included but
+> I am NOT touching]
+
+After the Scope Card, use the appropriate planning workflow (brainstorming, writing-plans,
+plan mode, etc.) to agree on the approach before touching code. Only after the Scope Card has
+been stated and a plan is in place may implementation begin.
+
+If a request is vague or open to multiple interpretations, do **not** produce a Scope Card
+yet — ask clarifying questions first and list the assumptions that would otherwise be made.
+See `~/.claude/CLAUDE.md` for the full vague-prompt protocol, literal-value rule, multi-site
+confirmation rule, and context discipline rule.
 
 ---
 

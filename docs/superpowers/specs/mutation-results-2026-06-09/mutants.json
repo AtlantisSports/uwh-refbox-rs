@@ -1,0 +1,7172 @@
+[
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::add_score",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 105,
+          "column": 5
+        },
+        "end": {
+          "line": 123,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 106,
+        "column": 9
+      },
+      "end": {
+        "line": 122,
+        "column": 38
+      }
+    },
+    "replacement": "()",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::add_score",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 105,
+          "column": 5
+        },
+        "end": {
+          "line": 123,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 121,
+        "column": 23
+      },
+      "end": {
+        "line": 121,
+        "column": 25
+      }
+    },
+    "replacement": "-=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::add_score",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 105,
+          "column": 5
+        },
+        "end": {
+          "line": 123,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 121,
+        "column": 23
+      },
+      "end": {
+        "line": 121,
+        "column": 25
+      }
+    },
+    "replacement": "*=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::set_scores",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 129,
+          "column": 5
+        },
+        "end": {
+          "line": 139,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 130,
+        "column": 9
+      },
+      "end": {
+        "line": 138,
+        "column": 10
+      }
+    },
+    "replacement": "()",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::set_scores",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 129,
+          "column": 5
+        },
+        "end": {
+          "line": 139,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 135,
+        "column": 13
+      },
+      "end": {
+        "line": 135,
+        "column": 15
+      }
+    },
+    "replacement": "||",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::set_scores",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 129,
+          "column": 5
+        },
+        "end": {
+          "line": 139,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 134,
+        "column": 13
+      },
+      "end": {
+        "line": 134,
+        "column": 15
+      }
+    },
+    "replacement": "||",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::set_scores",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 129,
+          "column": 5
+        },
+        "end": {
+          "line": 139,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 133,
+        "column": 32
+      },
+      "end": {
+        "line": 133,
+        "column": 34
+      }
+    },
+    "replacement": "!=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::set_scores",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 129,
+          "column": 5
+        },
+        "end": {
+          "line": 139,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 134,
+        "column": 29
+      },
+      "end": {
+        "line": 134,
+        "column": 31
+      }
+    },
+    "replacement": "==",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::set_scores",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 129,
+          "column": 5
+        },
+        "end": {
+          "line": 139,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 135,
+        "column": 16
+      },
+      "end": {
+        "line": 135,
+        "column": 17
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::can_start_team_timeout",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 227,
+          "column": 5
+        },
+        "end": {
+          "line": 252,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 229,
+        "column": 9
+      },
+      "end": {
+        "line": 251,
+        "column": 10
+      }
+    },
+    "replacement": "Ok(())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::can_start_team_timeout",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 227,
+          "column": 5
+        },
+        "end": {
+          "line": 252,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 230,
+        "column": 31
+      },
+      "end": {
+        "line": 230,
+        "column": 33
+      }
+    },
+    "replacement": "!=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::can_start_team_timeout",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 227,
+          "column": 5
+        },
+        "end": {
+          "line": 252,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 237,
+        "column": 13
+      },
+      "end": {
+        "line": 243,
+        "column": 14
+      }
+    },
+    "replacement": "",
+    "genre": "MatchArm"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::can_start_team_timeout",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 227,
+          "column": 5
+        },
+        "end": {
+          "line": 252,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 238,
+        "column": 46
+      },
+      "end": {
+        "line": 238,
+        "column": 47
+      }
+    },
+    "replacement": "==",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::can_start_team_timeout",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 227,
+          "column": 5
+        },
+        "end": {
+          "line": 252,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 238,
+        "column": 46
+      },
+      "end": {
+        "line": 238,
+        "column": 47
+      }
+    },
+    "replacement": ">",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::can_start_team_timeout",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 227,
+          "column": 5
+        },
+        "end": {
+          "line": 252,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 238,
+        "column": 46
+      },
+      "end": {
+        "line": 238,
+        "column": 47
+      }
+    },
+    "replacement": "<=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::can_switch_to_team_timeout",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 313,
+          "column": 5
+        },
+        "end": {
+          "line": 328,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 315,
+        "column": 9
+      },
+      "end": {
+        "line": 327,
+        "column": 10
+      }
+    },
+    "replacement": "Ok(())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::can_switch_to_team_timeout",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 313,
+          "column": 5
+        },
+        "end": {
+          "line": 328,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 316,
+        "column": 22
+      },
+      "end": {
+        "line": 316,
+        "column": 24
+      }
+    },
+    "replacement": "==",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::can_switch_to_team_timeout",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 313,
+          "column": 5
+        },
+        "end": {
+          "line": 328,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 317,
+        "column": 46
+      },
+      "end": {
+        "line": 317,
+        "column": 47
+      }
+    },
+    "replacement": "==",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::can_switch_to_team_timeout",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 313,
+          "column": 5
+        },
+        "end": {
+          "line": 328,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 317,
+        "column": 46
+      },
+      "end": {
+        "line": 317,
+        "column": 47
+      }
+    },
+    "replacement": ">",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::can_switch_to_team_timeout",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 313,
+          "column": 5
+        },
+        "end": {
+          "line": 328,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 317,
+        "column": 46
+      },
+      "end": {
+        "line": 317,
+        "column": 47
+      }
+    },
+    "replacement": "<=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::start_team_timeout",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 383,
+          "column": 5
+        },
+        "end": {
+          "line": 400,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 384,
+        "column": 9
+      },
+      "end": {
+        "line": 399,
+        "column": 15
+      }
+    },
+    "replacement": "Ok(())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::start_team_timeout",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 383,
+          "column": 5
+        },
+        "end": {
+          "line": 400,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 398,
+        "column": 35
+      },
+      "end": {
+        "line": 398,
+        "column": 37
+      }
+    },
+    "replacement": "-=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::start_team_timeout",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 383,
+          "column": 5
+        },
+        "end": {
+          "line": 400,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 398,
+        "column": 35
+      },
+      "end": {
+        "line": 398,
+        "column": 37
+      }
+    },
+    "replacement": "*=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::switch_to_team_timeout",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 452,
+          "column": 5
+        },
+        "end": {
+          "line": 462,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 453,
+        "column": 9
+      },
+      "end": {
+        "line": 461,
+        "column": 15
+      }
+    },
+    "replacement": "Ok(())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::switch_to_team_timeout",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 452,
+          "column": 5
+        },
+        "end": {
+          "line": 462,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 458,
+        "column": 39
+      },
+      "end": {
+        "line": 458,
+        "column": 41
+      }
+    },
+    "replacement": "-=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::switch_to_team_timeout",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 452,
+          "column": 5
+        },
+        "end": {
+          "line": 462,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 458,
+        "column": 39
+      },
+      "end": {
+        "line": 458,
+        "column": 41
+      }
+    },
+    "replacement": "*=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::timeout_end_would_end_game",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 507,
+          "column": 5
+        },
+        "end": {
+          "line": 531,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 508,
+        "column": 9
+      },
+      "end": {
+        "line": 530,
+        "column": 18
+      }
+    },
+    "replacement": "Ok(true)",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::timeout_end_would_end_game",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 507,
+          "column": 5
+        },
+        "end": {
+          "line": 531,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 508,
+        "column": 9
+      },
+      "end": {
+        "line": 530,
+        "column": 18
+      }
+    },
+    "replacement": "Ok(false)",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::timeout_end_would_end_game",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 507,
+          "column": 5
+        },
+        "end": {
+          "line": 531,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 515,
+        "column": 21
+      },
+      "end": {
+        "line": 515,
+        "column": 23
+      }
+    },
+    "replacement": "||",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::timeout_end_would_end_game",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 507,
+          "column": 5
+        },
+        "end": {
+          "line": 531,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 519,
+        "column": 25
+      },
+      "end": {
+        "line": 519,
+        "column": 27
+      }
+    },
+    "replacement": "&&",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::timeout_end_would_end_game",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 507,
+          "column": 5
+        },
+        "end": {
+          "line": 531,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 516,
+        "column": 25
+      },
+      "end": {
+        "line": 516,
+        "column": 27
+      }
+    },
+    "replacement": "||",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::timeout_end_would_end_game",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 507,
+          "column": 5
+        },
+        "end": {
+          "line": 531,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 515,
+        "column": 46
+      },
+      "end": {
+        "line": 515,
+        "column": 48
+      }
+    },
+    "replacement": "!=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::timeout_end_would_end_game",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 507,
+          "column": 5
+        },
+        "end": {
+          "line": 531,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 517,
+        "column": 29
+      },
+      "end": {
+        "line": 517,
+        "column": 31
+      }
+    },
+    "replacement": "&&",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::timeout_end_would_end_game",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 507,
+          "column": 5
+        },
+        "end": {
+          "line": 531,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 518,
+        "column": 33
+      },
+      "end": {
+        "line": 518,
+        "column": 35
+      }
+    },
+    "replacement": "||",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::timeout_end_would_end_game",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 507,
+          "column": 5
+        },
+        "end": {
+          "line": 531,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 517,
+        "column": 33
+      },
+      "end": {
+        "line": 517,
+        "column": 34
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::timeout_end_would_end_game",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 507,
+          "column": 5
+        },
+        "end": {
+          "line": 531,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 518,
+        "column": 36
+      },
+      "end": {
+        "line": 518,
+        "column": 37
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::timeout_end_would_end_game",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 507,
+          "column": 5
+        },
+        "end": {
+          "line": 531,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 520,
+        "column": 29
+      },
+      "end": {
+        "line": 520,
+        "column": 31
+      }
+    },
+    "replacement": "||",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::timeout_end_would_end_game",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 507,
+          "column": 5
+        },
+        "end": {
+          "line": 531,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 519,
+        "column": 49
+      },
+      "end": {
+        "line": 519,
+        "column": 51
+      }
+    },
+    "replacement": "!=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::timeout_end_would_end_game",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 507,
+          "column": 5
+        },
+        "end": {
+          "line": 531,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 521,
+        "column": 33
+      },
+      "end": {
+        "line": 521,
+        "column": 35
+      }
+    },
+    "replacement": "&&",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::timeout_end_would_end_game",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 507,
+          "column": 5
+        },
+        "end": {
+          "line": 531,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 521,
+        "column": 36
+      },
+      "end": {
+        "line": 521,
+        "column": 37
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_timeout",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 533,
+          "column": 5
+        },
+        "end": {
+          "line": 600,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 534,
+        "column": 9
+      },
+      "end": {
+        "line": 599,
+        "column": 10
+      }
+    },
+    "replacement": "Ok(())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_timeout",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 533,
+          "column": 5
+        },
+        "end": {
+          "line": 600,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 565,
+        "column": 40
+      },
+      "end": {
+        "line": 565,
+        "column": 41
+      }
+    },
+    "replacement": "-",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_timeout",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 533,
+          "column": 5
+        },
+        "end": {
+          "line": 600,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 565,
+        "column": 40
+      },
+      "end": {
+        "line": 565,
+        "column": 41
+      }
+    },
+    "replacement": "*",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::limit_pen_list_len",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 674,
+          "column": 5
+        },
+        "end": {
+          "line": 697,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 675,
+        "column": 9
+      },
+      "end": {
+        "line": 696,
+        "column": 15
+      }
+    },
+    "replacement": "Ok(())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::limit_pen_list_len",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 674,
+          "column": 5
+        },
+        "end": {
+          "line": 697,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 680,
+        "column": 43
+      },
+      "end": {
+        "line": 680,
+        "column": 44
+      }
+    },
+    "replacement": "==",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::limit_pen_list_len",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 674,
+          "column": 5
+        },
+        "end": {
+          "line": 697,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 680,
+        "column": 43
+      },
+      "end": {
+        "line": 680,
+        "column": 44
+      }
+    },
+    "replacement": "<",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::limit_pen_list_len",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 674,
+          "column": 5
+        },
+        "end": {
+          "line": 697,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 680,
+        "column": 43
+      },
+      "end": {
+        "line": 680,
+        "column": 44
+      }
+    },
+    "replacement": ">=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::cull_penalties",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 699,
+          "column": 5
+        },
+        "end": {
+          "line": 724,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 700,
+        "column": 9
+      },
+      "end": {
+        "line": 723,
+        "column": 15
+      }
+    },
+    "replacement": "Ok(())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::cull_penalties",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 699,
+          "column": 5
+        },
+        "end": {
+          "line": 724,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 710,
+        "column": 80
+      },
+      "end": {
+        "line": 710,
+        "column": 81
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::cull_penalties",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 699,
+          "column": 5
+        },
+        "end": {
+          "line": 724,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 715,
+        "column": 19
+      },
+      "end": {
+        "line": 715,
+        "column": 21
+      }
+    },
+    "replacement": "-=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::cull_penalties",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 699,
+          "column": 5
+        },
+        "end": {
+          "line": 724,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 715,
+        "column": 19
+      },
+      "end": {
+        "line": 715,
+        "column": 21
+      }
+    },
+    "replacement": "*=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::cull_penalties",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 699,
+          "column": 5
+        },
+        "end": {
+          "line": 724,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 716,
+        "column": 20
+      },
+      "end": {
+        "line": 716,
+        "column": 21
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_game",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 978,
+          "column": 5
+        },
+        "end": {
+          "line": 1041,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 979,
+        "column": 9
+      },
+      "end": {
+        "line": 1040,
+        "column": 10
+      }
+    },
+    "replacement": "()",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_game",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 978,
+          "column": 5
+        },
+        "end": {
+          "line": 1041,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1009,
+        "column": 33
+      },
+      "end": {
+        "line": 1009,
+        "column": 34
+      }
+    },
+    "replacement": "-",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_game",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 978,
+          "column": 5
+        },
+        "end": {
+          "line": 1041,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1009,
+        "column": 33
+      },
+      "end": {
+        "line": 1009,
+        "column": 34
+      }
+    },
+    "replacement": "*",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_game",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 978,
+          "column": 5
+        },
+        "end": {
+          "line": 1041,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1030,
+        "column": 12
+      },
+      "end": {
+        "line": 1030,
+        "column": 13
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::start_game",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 1043,
+          "column": 5
+        },
+        "end": {
+          "line": 1082,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1044,
+        "column": 9
+      },
+      "end": {
+        "line": 1081,
+        "column": 80
+      }
+    },
+    "replacement": "()",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::start_game",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 1043,
+          "column": 5
+        },
+        "end": {
+          "line": 1082,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1044,
+        "column": 12
+      },
+      "end": {
+        "line": 1044,
+        "column": 13
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::start_game",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 1043,
+          "column": 5
+        },
+        "end": {
+          "line": 1082,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1081,
+        "column": 54
+      },
+      "end": {
+        "line": 1081,
+        "column": 55
+      }
+    },
+    "replacement": "-",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::start_game",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 1043,
+          "column": 5
+        },
+        "end": {
+          "line": 1082,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1081,
+        "column": 54
+      },
+      "end": {
+        "line": 1081,
+        "column": 55
+      }
+    },
+    "replacement": "*",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::could_end_game",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 1084,
+          "column": 5
+        },
+        "end": {
+          "line": 1143,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1085,
+        "column": 9
+      },
+      "end": {
+        "line": 1142,
+        "column": 10
+      }
+    },
+    "replacement": "Ok(true)",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::could_end_game",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 1084,
+          "column": 5
+        },
+        "end": {
+          "line": 1143,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1085,
+        "column": 9
+      },
+      "end": {
+        "line": 1142,
+        "column": 10
+      }
+    },
+    "replacement": "Ok(false)",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::could_end_game",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 1084,
+          "column": 5
+        },
+        "end": {
+          "line": 1143,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1093,
+        "column": 20
+      },
+      "end": {
+        "line": 1093,
+        "column": 21
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::could_end_game",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 1084,
+          "column": 5
+        },
+        "end": {
+          "line": 1143,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1103,
+        "column": 69
+      },
+      "end": {
+        "line": 1103,
+        "column": 70
+      }
+    },
+    "replacement": "|",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::could_end_game",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 1084,
+          "column": 5
+        },
+        "end": {
+          "line": 1143,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1103,
+        "column": 69
+      },
+      "end": {
+        "line": 1103,
+        "column": 70
+      }
+    },
+    "replacement": "^",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::could_end_game",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 1084,
+          "column": 5
+        },
+        "end": {
+          "line": 1143,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1103,
+        "column": 41
+      },
+      "end": {
+        "line": 1103,
+        "column": 43
+      }
+    },
+    "replacement": "!=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::could_end_game",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 1084,
+          "column": 5
+        },
+        "end": {
+          "line": 1143,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1123,
+        "column": 24
+      },
+      "end": {
+        "line": 1123,
+        "column": 25
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::check_time_remaining",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 1145,
+          "column": 5
+        },
+        "end": {
+          "line": 1158,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1151,
+        "column": 9
+      },
+      "end": {
+        "line": 1157,
+        "column": 77
+      }
+    },
+    "replacement": "Ok(true)",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::check_time_remaining",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 1145,
+          "column": 5
+        },
+        "end": {
+          "line": 1158,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1151,
+        "column": 9
+      },
+      "end": {
+        "line": 1157,
+        "column": 77
+      }
+    },
+    "replacement": "Ok(false)",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::check_time_remaining",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 1145,
+          "column": 5
+        },
+        "end": {
+          "line": 1158,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1156,
+        "column": 13
+      },
+      "end": {
+        "line": 1156,
+        "column": 15
+      }
+    },
+    "replacement": "||",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::check_time_remaining",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 1145,
+          "column": 5
+        },
+        "end": {
+          "line": 1158,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1155,
+        "column": 17
+      },
+      "end": {
+        "line": 1155,
+        "column": 19
+      }
+    },
+    "replacement": "<",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::check_time_remaining",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 1145,
+          "column": 5
+        },
+        "end": {
+          "line": 1158,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1157,
+        "column": 17
+      },
+      "end": {
+        "line": 1157,
+        "column": 19
+      }
+    },
+    "replacement": "&&",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::check_time_remaining",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 1145,
+          "column": 5
+        },
+        "end": {
+          "line": 1158,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1156,
+        "column": 37
+      },
+      "end": {
+        "line": 1156,
+        "column": 39
+      }
+    },
+    "replacement": "!=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::check_time_remaining",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 1145,
+          "column": 5
+        },
+        "end": {
+          "line": 1158,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1157,
+        "column": 41
+      },
+      "end": {
+        "line": 1157,
+        "column": 43
+      }
+    },
+    "replacement": "!=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::pause_has_ended",
+      "return_type": "-> bool",
+      "span": {
+        "start": {
+          "line": 1160,
+          "column": 5
+        },
+        "end": {
+          "line": 1167,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1161,
+        "column": 9
+      },
+      "end": {
+        "line": 1166,
+        "column": 10
+      }
+    },
+    "replacement": "true",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::pause_has_ended",
+      "return_type": "-> bool",
+      "span": {
+        "start": {
+          "line": 1160,
+          "column": 5
+        },
+        "end": {
+          "line": 1167,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1161,
+        "column": 9
+      },
+      "end": {
+        "line": 1166,
+        "column": 10
+      }
+    },
+    "replacement": "false",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::pause_has_ended",
+      "return_type": "-> bool",
+      "span": {
+        "start": {
+          "line": 1160,
+          "column": 5
+        },
+        "end": {
+          "line": 1167,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1163,
+        "column": 21
+      },
+      "end": {
+        "line": 1163,
+        "column": 23
+      }
+    },
+    "replacement": "<",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::update",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1169,
+          "column": 5
+        },
+        "end": {
+          "line": 1363,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1171,
+        "column": 9
+      },
+      "end": {
+        "line": 1362,
+        "column": 15
+      }
+    },
+    "replacement": "Ok(())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::update",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1169,
+          "column": 5
+        },
+        "end": {
+          "line": 1363,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1182,
+        "column": 17
+      },
+      "end": {
+        "line": 1182,
+        "column": 19
+      }
+    },
+    "replacement": "||",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::update",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1169,
+          "column": 5
+        },
+        "end": {
+          "line": 1363,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1181,
+        "column": 17
+      },
+      "end": {
+        "line": 1181,
+        "column": 19
+      }
+    },
+    "replacement": "||",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::update",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1169,
+          "column": 5
+        },
+        "end": {
+          "line": 1363,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1180,
+        "column": 16
+      },
+      "end": {
+        "line": 1180,
+        "column": 17
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::update",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1169,
+          "column": 5
+        },
+        "end": {
+          "line": 1363,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1181,
+        "column": 40
+      },
+      "end": {
+        "line": 1181,
+        "column": 42
+      }
+    },
+    "replacement": "!=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::update",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1169,
+          "column": 5
+        },
+        "end": {
+          "line": 1363,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1182,
+        "column": 72
+      },
+      "end": {
+        "line": 1182,
+        "column": 74
+      }
+    },
+    "replacement": ">",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::update",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1169,
+          "column": 5
+        },
+        "end": {
+          "line": 1363,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1198,
+        "column": 32
+      },
+      "end": {
+        "line": 1198,
+        "column": 33
+      }
+    },
+    "replacement": "==",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::update",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1169,
+          "column": 5
+        },
+        "end": {
+          "line": 1363,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1198,
+        "column": 32
+      },
+      "end": {
+        "line": 1198,
+        "column": 33
+      }
+    },
+    "replacement": ">",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::update",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1169,
+          "column": 5
+        },
+        "end": {
+          "line": 1363,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1198,
+        "column": 32
+      },
+      "end": {
+        "line": 1198,
+        "column": 33
+      }
+    },
+    "replacement": "<=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::update",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1169,
+          "column": 5
+        },
+        "end": {
+          "line": 1363,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1208,
+        "column": 21
+      },
+      "end": {
+        "line": 1208,
+        "column": 23
+      }
+    },
+    "replacement": "<",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::update",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1169,
+          "column": 5
+        },
+        "end": {
+          "line": 1363,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1213,
+        "column": 52
+      },
+      "end": {
+        "line": 1213,
+        "column": 53
+      }
+    },
+    "replacement": "-",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::update",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1169,
+          "column": 5
+        },
+        "end": {
+          "line": 1363,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1213,
+        "column": 52
+      },
+      "end": {
+        "line": 1213,
+        "column": 53
+      }
+    },
+    "replacement": "*",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::update",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1169,
+          "column": 5
+        },
+        "end": {
+          "line": 1363,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1287,
+        "column": 44
+      },
+      "end": {
+        "line": 1287,
+        "column": 46
+      }
+    },
+    "replacement": "==",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::update",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1169,
+          "column": 5
+        },
+        "end": {
+          "line": 1363,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1288,
+        "column": 67
+      },
+      "end": {
+        "line": 1288,
+        "column": 69
+      }
+    },
+    "replacement": "==",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::update",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1169,
+          "column": 5
+        },
+        "end": {
+          "line": 1363,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1290,
+        "column": 56
+      },
+      "end": {
+        "line": 1290,
+        "column": 57
+      }
+    },
+    "replacement": "-",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::update",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1169,
+          "column": 5
+        },
+        "end": {
+          "line": 1363,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1290,
+        "column": 56
+      },
+      "end": {
+        "line": 1290,
+        "column": 57
+      }
+    },
+    "replacement": "*",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::update",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1169,
+          "column": 5
+        },
+        "end": {
+          "line": 1363,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1298,
+        "column": 56
+      },
+      "end": {
+        "line": 1298,
+        "column": 57
+      }
+    },
+    "replacement": "-",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::update",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1169,
+          "column": 5
+        },
+        "end": {
+          "line": 1363,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1298,
+        "column": 56
+      },
+      "end": {
+        "line": 1298,
+        "column": 57
+      }
+    },
+    "replacement": "*",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::update",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1169,
+          "column": 5
+        },
+        "end": {
+          "line": 1363,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1314,
+        "column": 55
+      },
+      "end": {
+        "line": 1314,
+        "column": 56
+      }
+    },
+    "replacement": "|",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::update",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1169,
+          "column": 5
+        },
+        "end": {
+          "line": 1363,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1314,
+        "column": 55
+      },
+      "end": {
+        "line": 1314,
+        "column": 56
+      }
+    },
+    "replacement": "^",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::update",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1169,
+          "column": 5
+        },
+        "end": {
+          "line": 1363,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1326,
+        "column": 60
+      },
+      "end": {
+        "line": 1326,
+        "column": 62
+      }
+    },
+    "replacement": "<",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::update",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1169,
+          "column": 5
+        },
+        "end": {
+          "line": 1363,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1330,
+        "column": 61
+      },
+      "end": {
+        "line": 1330,
+        "column": 62
+      }
+    },
+    "replacement": "-",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::update",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1169,
+          "column": 5
+        },
+        "end": {
+          "line": 1363,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1330,
+        "column": 61
+      },
+      "end": {
+        "line": 1330,
+        "column": 62
+      }
+    },
+    "replacement": "*",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::update",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1169,
+          "column": 5
+        },
+        "end": {
+          "line": 1363,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1348,
+        "column": 60
+      },
+      "end": {
+        "line": 1348,
+        "column": 62
+      }
+    },
+    "replacement": "<",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_first_half",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 1365,
+          "column": 5
+        },
+        "end": {
+          "line": 1390,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1366,
+        "column": 9
+      },
+      "end": {
+        "line": 1389,
+        "column": 10
+      }
+    },
+    "replacement": "()",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_first_half",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 1365,
+          "column": 5
+        },
+        "end": {
+          "line": 1390,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1368,
+        "column": 17
+      },
+      "end": {
+        "line": 1368,
+        "column": 19
+      }
+    },
+    "replacement": "&&",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_first_half",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 1365,
+          "column": 5
+        },
+        "end": {
+          "line": 1390,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1368,
+        "column": 51
+      },
+      "end": {
+        "line": 1368,
+        "column": 53
+      }
+    },
+    "replacement": "||",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_first_half",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 1365,
+          "column": 5
+        },
+        "end": {
+          "line": 1390,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1368,
+        "column": 21
+      },
+      "end": {
+        "line": 1368,
+        "column": 22
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_first_half",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 1365,
+          "column": 5
+        },
+        "end": {
+          "line": 1390,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1368,
+        "column": 54
+      },
+      "end": {
+        "line": 1368,
+        "column": 55
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_second_half",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 1392,
+          "column": 5
+        },
+        "end": {
+          "line": 1412,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1393,
+        "column": 9
+      },
+      "end": {
+        "line": 1411,
+        "column": 10
+      }
+    },
+    "replacement": "()",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_second_half",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 1392,
+          "column": 5
+        },
+        "end": {
+          "line": 1412,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1394,
+        "column": 13
+      },
+      "end": {
+        "line": 1394,
+        "column": 15
+      }
+    },
+    "replacement": "&&",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_second_half",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 1392,
+          "column": 5
+        },
+        "end": {
+          "line": 1412,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1394,
+        "column": 47
+      },
+      "end": {
+        "line": 1394,
+        "column": 49
+      }
+    },
+    "replacement": "||",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_second_half",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 1392,
+          "column": 5
+        },
+        "end": {
+          "line": 1412,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1394,
+        "column": 17
+      },
+      "end": {
+        "line": 1394,
+        "column": 18
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_second_half",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 1392,
+          "column": 5
+        },
+        "end": {
+          "line": 1412,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1394,
+        "column": 50
+      },
+      "end": {
+        "line": 1394,
+        "column": 51
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_overtime_first_half",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 1414,
+          "column": 5
+        },
+        "end": {
+          "line": 1417,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1415,
+        "column": 9
+      },
+      "end": {
+        "line": 1416,
+        "column": 60
+      }
+    },
+    "replacement": "()",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_overtime_second_half",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 1419,
+          "column": 5
+        },
+        "end": {
+          "line": 1430,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1420,
+        "column": 9
+      },
+      "end": {
+        "line": 1429,
+        "column": 10
+      }
+    },
+    "replacement": "()",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_overtime_second_half",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 1419,
+          "column": 5
+        },
+        "end": {
+          "line": 1430,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1420,
+        "column": 40
+      },
+      "end": {
+        "line": 1420,
+        "column": 42
+      }
+    },
+    "replacement": "&&",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_overtime_second_half",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 1419,
+          "column": 5
+        },
+        "end": {
+          "line": 1430,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1420,
+        "column": 43
+      },
+      "end": {
+        "line": 1420,
+        "column": 44
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::handle_rugby_pen_shot_end",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1432,
+          "column": 5
+        },
+        "end": {
+          "line": 1485,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1438,
+        "column": 9
+      },
+      "end": {
+        "line": 1484,
+        "column": 15
+      }
+    },
+    "replacement": "Ok(())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::handle_rugby_pen_shot_end",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1432,
+          "column": 5
+        },
+        "end": {
+          "line": 1485,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1443,
+        "column": 27
+      },
+      "end": {
+        "line": 1443,
+        "column": 29
+      }
+    },
+    "replacement": "!=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::handle_rugby_pen_shot_end",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1432,
+          "column": 5
+        },
+        "end": {
+          "line": 1485,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1478,
+        "column": 49
+      },
+      "end": {
+        "line": 1478,
+        "column": 50
+      }
+    },
+    "replacement": "-",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::handle_rugby_pen_shot_end",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1432,
+          "column": 5
+        },
+        "end": {
+          "line": 1485,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1478,
+        "column": 49
+      },
+      "end": {
+        "line": 1478,
+        "column": 50
+      }
+    },
+    "replacement": "*",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::start_game_clock",
+      "return_type": "-> bool",
+      "span": {
+        "start": {
+          "line": 1492,
+          "column": 5
+        },
+        "end": {
+          "line": 1513,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1493,
+        "column": 9
+      },
+      "end": {
+        "line": 1512,
+        "column": 10
+      }
+    },
+    "replacement": "true",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::start_game_clock",
+      "return_type": "-> bool",
+      "span": {
+        "start": {
+          "line": 1492,
+          "column": 5
+        },
+        "end": {
+          "line": 1513,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1493,
+        "column": 9
+      },
+      "end": {
+        "line": 1512,
+        "column": 10
+      }
+    },
+    "replacement": "false",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::start_game_clock",
+      "return_type": "-> bool",
+      "span": {
+        "start": {
+          "line": 1492,
+          "column": 5
+        },
+        "end": {
+          "line": 1513,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1496,
+        "column": 17
+      },
+      "end": {
+        "line": 1501,
+        "column": 18
+      }
+    },
+    "replacement": "",
+    "genre": "MatchArm"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::stop_game_clock",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 1516,
+          "column": 5
+        },
+        "end": {
+          "line": 1530,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1517,
+        "column": 9
+      },
+      "end": {
+        "line": 1529,
+        "column": 10
+      }
+    },
+    "replacement": "Ok(true)",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::stop_game_clock",
+      "return_type": "-> Result<bool>",
+      "span": {
+        "start": {
+          "line": 1516,
+          "column": 5
+        },
+        "end": {
+          "line": 1530,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1517,
+        "column": 9
+      },
+      "end": {
+        "line": 1529,
+        "column": 10
+      }
+    },
+    "replacement": "Ok(false)",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::start_clock",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 1536,
+          "column": 5
+        },
+        "end": {
+          "line": 1580,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1537,
+        "column": 9
+      },
+      "end": {
+        "line": 1579,
+        "column": 10
+      }
+    },
+    "replacement": "()",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::start_clock",
+      "return_type": "",
+      "span": {
+        "start": {
+          "line": 1536,
+          "column": 5
+        },
+        "end": {
+          "line": 1580,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1558,
+        "column": 24
+      },
+      "end": {
+        "line": 1558,
+        "column": 25
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::stop_clock",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1582,
+          "column": 5
+        },
+        "end": {
+          "line": 1630,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1583,
+        "column": 9
+      },
+      "end": {
+        "line": 1629,
+        "column": 15
+      }
+    },
+    "replacement": "Ok(())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::stop_clock",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1582,
+          "column": 5
+        },
+        "end": {
+          "line": 1630,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1606,
+        "column": 24
+      },
+      "end": {
+        "line": 1606,
+        "column": 25
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::start_play_now",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1691,
+          "column": 5
+        },
+        "end": {
+          "line": 1764,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1692,
+        "column": 9
+      },
+      "end": {
+        "line": 1763,
+        "column": 15
+      }
+    },
+    "replacement": "Ok(())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::start_play_now",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1691,
+          "column": 5
+        },
+        "end": {
+          "line": 1764,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1736,
+        "column": 13
+      },
+      "end": {
+        "line": 1742,
+        "column": 15
+      }
+    },
+    "replacement": "",
+    "genre": "MatchArm"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::start_play_now",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1691,
+          "column": 5
+        },
+        "end": {
+          "line": 1764,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1743,
+        "column": 13
+      },
+      "end": {
+        "line": 1746,
+        "column": 15
+      }
+    },
+    "replacement": "",
+    "genre": "MatchArm"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::start_play_now",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1691,
+          "column": 5
+        },
+        "end": {
+          "line": 1764,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1759,
+        "column": 12
+      },
+      "end": {
+        "line": 1759,
+        "column": 13
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::set_game_clock_time",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1766,
+          "column": 5
+        },
+        "end": {
+          "line": 1795,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1767,
+        "column": 9
+      },
+      "end": {
+        "line": 1794,
+        "column": 10
+      }
+    },
+    "replacement": "Ok(())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::set_game_clock_time",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1766,
+          "column": 5
+        },
+        "end": {
+          "line": 1795,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1767,
+        "column": 12
+      },
+      "end": {
+        "line": 1767,
+        "column": 13
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::set_game_clock_time",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1766,
+          "column": 5
+        },
+        "end": {
+          "line": 1795,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1782,
+        "column": 21
+      },
+      "end": {
+        "line": 1782,
+        "column": 23
+      }
+    },
+    "replacement": "||",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::set_game_clock_time",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1766,
+          "column": 5
+        },
+        "end": {
+          "line": 1795,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1781,
+        "column": 30
+      },
+      "end": {
+        "line": 1781,
+        "column": 32
+      }
+    },
+    "replacement": "==",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::set_game_clock_time",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1766,
+          "column": 5
+        },
+        "end": {
+          "line": 1795,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1783,
+        "column": 25
+      },
+      "end": {
+        "line": 1783,
+        "column": 26
+      }
+    },
+    "replacement": "==",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::set_game_clock_time",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1766,
+          "column": 5
+        },
+        "end": {
+          "line": 1795,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1783,
+        "column": 25
+      },
+      "end": {
+        "line": 1783,
+        "column": 26
+      }
+    },
+    "replacement": "<",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::set_game_clock_time",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1766,
+          "column": 5
+        },
+        "end": {
+          "line": 1795,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1783,
+        "column": 25
+      },
+      "end": {
+        "line": 1783,
+        "column": 26
+      }
+    },
+    "replacement": ">=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::set_timeout_clock_time",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1797,
+          "column": 5
+        },
+        "end": {
+          "line": 1819,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1798,
+        "column": 9
+      },
+      "end": {
+        "line": 1818,
+        "column": 10
+      }
+    },
+    "replacement": "Ok(())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::set_timeout_clock_time",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1797,
+          "column": 5
+        },
+        "end": {
+          "line": 1819,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1798,
+        "column": 12
+      },
+      "end": {
+        "line": 1798,
+        "column": 13
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::pause_for_confirm",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1821,
+          "column": 5
+        },
+        "end": {
+          "line": 1892,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1822,
+        "column": 9
+      },
+      "end": {
+        "line": 1891,
+        "column": 15
+      }
+    },
+    "replacement": "Ok(())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::pause_for_confirm",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1821,
+          "column": 5
+        },
+        "end": {
+          "line": 1892,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1825,
+        "column": 12
+      },
+      "end": {
+        "line": 1825,
+        "column": 13
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::pause_for_confirm",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1821,
+          "column": 5
+        },
+        "end": {
+          "line": 1892,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1833,
+        "column": 33
+      },
+      "end": {
+        "line": 1833,
+        "column": 34
+      }
+    },
+    "replacement": "-",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::pause_for_confirm",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1821,
+          "column": 5
+        },
+        "end": {
+          "line": 1892,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1833,
+        "column": 33
+      },
+      "end": {
+        "line": 1833,
+        "column": 34
+      }
+    },
+    "replacement": "*",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::pause_for_confirm",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1821,
+          "column": 5
+        },
+        "end": {
+          "line": 1892,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1839,
+        "column": 13
+      },
+      "end": {
+        "line": 1850,
+        "column": 14
+      }
+    },
+    "replacement": "",
+    "genre": "MatchArm"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::pause_for_confirm",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1821,
+          "column": 5
+        },
+        "end": {
+          "line": 1892,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1851,
+        "column": 13
+      },
+      "end": {
+        "line": 1860,
+        "column": 14
+      }
+    },
+    "replacement": "",
+    "genre": "MatchArm"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::pause_for_confirm",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1821,
+          "column": 5
+        },
+        "end": {
+          "line": 1892,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1861,
+        "column": 13
+      },
+      "end": {
+        "line": 1861,
+        "column": 70
+      }
+    },
+    "replacement": "",
+    "genre": "MatchArm"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::pause_for_confirm",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1821,
+          "column": 5
+        },
+        "end": {
+          "line": 1892,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1841,
+        "column": 84
+      },
+      "end": {
+        "line": 1841,
+        "column": 85
+      }
+    },
+    "replacement": "%",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::pause_for_confirm",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1821,
+          "column": 5
+        },
+        "end": {
+          "line": 1892,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1841,
+        "column": 84
+      },
+      "end": {
+        "line": 1841,
+        "column": 85
+      }
+    },
+    "replacement": "*",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::pause_for_confirm",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1821,
+          "column": 5
+        },
+        "end": {
+          "line": 1892,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1846,
+        "column": 23
+      },
+      "end": {
+        "line": 1846,
+        "column": 24
+      }
+    },
+    "replacement": "%",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::pause_for_confirm",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1821,
+          "column": 5
+        },
+        "end": {
+          "line": 1892,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1846,
+        "column": 23
+      },
+      "end": {
+        "line": 1846,
+        "column": 24
+      }
+    },
+    "replacement": "*",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::pause_for_confirm",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1821,
+          "column": 5
+        },
+        "end": {
+          "line": 1892,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1848,
+        "column": 47
+      },
+      "end": {
+        "line": 1848,
+        "column": 48
+      }
+    },
+    "replacement": "%",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::pause_for_confirm",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1821,
+          "column": 5
+        },
+        "end": {
+          "line": 1892,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1848,
+        "column": 47
+      },
+      "end": {
+        "line": 1848,
+        "column": 48
+      }
+    },
+    "replacement": "*",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::pause_for_confirm",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1821,
+          "column": 5
+        },
+        "end": {
+          "line": 1892,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1856,
+        "column": 23
+      },
+      "end": {
+        "line": 1856,
+        "column": 24
+      }
+    },
+    "replacement": "%",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::pause_for_confirm",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1821,
+          "column": 5
+        },
+        "end": {
+          "line": 1892,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1856,
+        "column": 23
+      },
+      "end": {
+        "line": 1856,
+        "column": 24
+      }
+    },
+    "replacement": "*",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::pause_for_confirm",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1821,
+          "column": 5
+        },
+        "end": {
+          "line": 1892,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1858,
+        "column": 47
+      },
+      "end": {
+        "line": 1858,
+        "column": 48
+      }
+    },
+    "replacement": "%",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::pause_for_confirm",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1821,
+          "column": 5
+        },
+        "end": {
+          "line": 1892,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1858,
+        "column": 47
+      },
+      "end": {
+        "line": 1858,
+        "column": 48
+      }
+    },
+    "replacement": "*",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::pause_for_confirm",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1821,
+          "column": 5
+        },
+        "end": {
+          "line": 1892,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1861,
+        "column": 66
+      },
+      "end": {
+        "line": 1861,
+        "column": 67
+      }
+    },
+    "replacement": "%",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::pause_for_confirm",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1821,
+          "column": 5
+        },
+        "end": {
+          "line": 1892,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1861,
+        "column": 66
+      },
+      "end": {
+        "line": 1861,
+        "column": 67
+      }
+    },
+    "replacement": "*",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_confirm_pause",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1894,
+          "column": 5
+        },
+        "end": {
+          "line": 1986,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1896,
+        "column": 9
+      },
+      "end": {
+        "line": 1985,
+        "column": 47
+      }
+    },
+    "replacement": "Ok(())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_confirm_pause",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1894,
+          "column": 5
+        },
+        "end": {
+          "line": 1986,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1924,
+        "column": 24
+      },
+      "end": {
+        "line": 1924,
+        "column": 25
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_confirm_pause",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1894,
+          "column": 5
+        },
+        "end": {
+          "line": 1986,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1945,
+        "column": 73
+      },
+      "end": {
+        "line": 1945,
+        "column": 75
+      }
+    },
+    "replacement": "!=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_confirm_pause",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1894,
+          "column": 5
+        },
+        "end": {
+          "line": 1986,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1956,
+        "column": 36
+      },
+      "end": {
+        "line": 1956,
+        "column": 38
+      }
+    },
+    "replacement": "!=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_confirm_pause",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1894,
+          "column": 5
+        },
+        "end": {
+          "line": 1986,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1968,
+        "column": 17
+      },
+      "end": {
+        "line": 1973,
+        "column": 18
+      }
+    },
+    "replacement": "",
+    "genre": "MatchArm"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::end_confirm_pause",
+      "return_type": "-> Result<()>",
+      "span": {
+        "start": {
+          "line": 1894,
+          "column": 5
+        },
+        "end": {
+          "line": 1986,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 1974,
+        "column": 17
+      },
+      "end": {
+        "line": 1977,
+        "column": 19
+      }
+    },
+    "replacement": "",
+    "genre": "MatchArm"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::game_clock_time",
+      "return_type": "-> Option<Duration>",
+      "span": {
+        "start": {
+          "line": 2041,
+          "column": 5
+        },
+        "end": {
+          "line": 2049,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2044,
+        "column": 9
+      },
+      "end": {
+        "line": 2048,
+        "column": 41
+      }
+    },
+    "replacement": "None",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::game_clock_time",
+      "return_type": "-> Option<Duration>",
+      "span": {
+        "start": {
+          "line": 2041,
+          "column": 5
+        },
+        "end": {
+          "line": 2049,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2044,
+        "column": 9
+      },
+      "end": {
+        "line": 2048,
+        "column": 41
+      }
+    },
+    "replacement": "Some(Default::default())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::timeout_clock_time",
+      "return_type": "-> Option<Duration>",
+      "span": {
+        "start": {
+          "line": 2113,
+          "column": 5
+        },
+        "end": {
+          "line": 2123,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2116,
+        "column": 9
+      },
+      "end": {
+        "line": 2122,
+        "column": 10
+      }
+    },
+    "replacement": "None",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::timeout_clock_time",
+      "return_type": "-> Option<Duration>",
+      "span": {
+        "start": {
+          "line": 2113,
+          "column": 5
+        },
+        "end": {
+          "line": 2123,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2116,
+        "column": 9
+      },
+      "end": {
+        "line": 2122,
+        "column": 10
+      }
+    },
+    "replacement": "Some(Default::default())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::generate_snapshot",
+      "return_type": "-> Option<GameSnapshot>",
+      "span": {
+        "start": {
+          "line": 2129,
+          "column": 5
+        },
+        "end": {
+          "line": 2204,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2130,
+        "column": 9
+      },
+      "end": {
+        "line": 2203,
+        "column": 11
+      }
+    },
+    "replacement": "None",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::generate_snapshot",
+      "return_type": "-> Option<GameSnapshot>",
+      "span": {
+        "start": {
+          "line": 2129,
+          "column": 5
+        },
+        "end": {
+          "line": 2204,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2130,
+        "column": 9
+      },
+      "end": {
+        "line": 2203,
+        "column": 11
+      }
+    },
+    "replacement": "Some(Default::default())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::generate_snapshot",
+      "return_type": "-> Option<GameSnapshot>",
+      "span": {
+        "start": {
+          "line": 2129,
+          "column": 5
+        },
+        "end": {
+          "line": 2204,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2169,
+        "column": 17
+      },
+      "end": {
+        "line": 2169,
+        "column": 18
+      }
+    },
+    "replacement": "&",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::generate_snapshot",
+      "return_type": "-> Option<GameSnapshot>",
+      "span": {
+        "start": {
+          "line": 2129,
+          "column": 5
+        },
+        "end": {
+          "line": 2204,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2169,
+        "column": 17
+      },
+      "end": {
+        "line": 2169,
+        "column": 18
+      }
+    },
+    "replacement": "^",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::generate_snapshot",
+      "return_type": "-> Option<GameSnapshot>",
+      "span": {
+        "start": {
+          "line": 2129,
+          "column": 5
+        },
+        "end": {
+          "line": 2204,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2168,
+        "column": 26
+      },
+      "end": {
+        "line": 2168,
+        "column": 28
+      }
+    },
+    "replacement": "==",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::generate_snapshot",
+      "return_type": "-> Option<GameSnapshot>",
+      "span": {
+        "start": {
+          "line": 2129,
+          "column": 5
+        },
+        "end": {
+          "line": 2204,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2169,
+        "column": 55
+      },
+      "end": {
+        "line": 2169,
+        "column": 56
+      }
+    },
+    "replacement": "==",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::generate_snapshot",
+      "return_type": "-> Option<GameSnapshot>",
+      "span": {
+        "start": {
+          "line": 2129,
+          "column": 5
+        },
+        "end": {
+          "line": 2204,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2169,
+        "column": 55
+      },
+      "end": {
+        "line": 2169,
+        "column": 56
+      }
+    },
+    "replacement": "<",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::generate_snapshot",
+      "return_type": "-> Option<GameSnapshot>",
+      "span": {
+        "start": {
+          "line": 2129,
+          "column": 5
+        },
+        "end": {
+          "line": 2204,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2169,
+        "column": 55
+      },
+      "end": {
+        "line": 2169,
+        "column": 56
+      }
+    },
+    "replacement": ">=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::generate_snapshot",
+      "return_type": "-> Option<GameSnapshot>",
+      "span": {
+        "start": {
+          "line": 2129,
+          "column": 5
+        },
+        "end": {
+          "line": 2204,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2196,
+        "column": 26
+      },
+      "end": {
+        "line": 2196,
+        "column": 27
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::next_update_time",
+      "return_type": "-> Option<Instant>",
+      "span": {
+        "start": {
+          "line": 2206,
+          "column": 5
+        },
+        "end": {
+          "line": 2248,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2207,
+        "column": 9
+      },
+      "end": {
+        "line": 2247,
+        "column": 10
+      }
+    },
+    "replacement": "None",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::next_update_time",
+      "return_type": "-> Option<Instant>",
+      "span": {
+        "start": {
+          "line": 2206,
+          "column": 5
+        },
+        "end": {
+          "line": 2248,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2207,
+        "column": 9
+      },
+      "end": {
+        "line": 2247,
+        "column": 10
+      }
+    },
+    "replacement": "Some(Default::default())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::next_update_time",
+      "return_type": "-> Option<Instant>",
+      "span": {
+        "start": {
+          "line": 2206,
+          "column": 5
+        },
+        "end": {
+          "line": 2248,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2207,
+        "column": 49
+      },
+      "end": {
+        "line": 2207,
+        "column": 50
+      }
+    },
+    "replacement": "-",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::next_update_time",
+      "return_type": "-> Option<Instant>",
+      "span": {
+        "start": {
+          "line": 2206,
+          "column": 5
+        },
+        "end": {
+          "line": 2248,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2207,
+        "column": 49
+      },
+      "end": {
+        "line": 2207,
+        "column": 50
+      }
+    },
+    "replacement": "*",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::next_update_time",
+      "return_type": "-> Option<Instant>",
+      "span": {
+        "start": {
+          "line": 2206,
+          "column": 5
+        },
+        "end": {
+          "line": 2248,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2209,
+        "column": 31
+      },
+      "end": {
+        "line": 2209,
+        "column": 32
+      }
+    },
+    "replacement": "-",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::next_update_time",
+      "return_type": "-> Option<Instant>",
+      "span": {
+        "start": {
+          "line": 2206,
+          "column": 5
+        },
+        "end": {
+          "line": 2248,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2209,
+        "column": 31
+      },
+      "end": {
+        "line": 2209,
+        "column": 32
+      }
+    },
+    "replacement": "*",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::next_update_time",
+      "return_type": "-> Option<Instant>",
+      "span": {
+        "start": {
+          "line": 2206,
+          "column": 5
+        },
+        "end": {
+          "line": 2248,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2209,
+        "column": 68
+      },
+      "end": {
+        "line": 2209,
+        "column": 69
+      }
+    },
+    "replacement": "+",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::next_update_time",
+      "return_type": "-> Option<Instant>",
+      "span": {
+        "start": {
+          "line": 2206,
+          "column": 5
+        },
+        "end": {
+          "line": 2248,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2209,
+        "column": 68
+      },
+      "end": {
+        "line": 2209,
+        "column": 69
+      }
+    },
+    "replacement": "/",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::next_update_time",
+      "return_type": "-> Option<Instant>",
+      "span": {
+        "start": {
+          "line": 2206,
+          "column": 5
+        },
+        "end": {
+          "line": 2248,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2231,
+        "column": 31
+      },
+      "end": {
+        "line": 2231,
+        "column": 33
+      }
+    },
+    "replacement": "!=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::next_update_time",
+      "return_type": "-> Option<Instant>",
+      "span": {
+        "start": {
+          "line": 2206,
+          "column": 5
+        },
+        "end": {
+          "line": 2248,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2237,
+        "column": 36
+      },
+      "end": {
+        "line": 2237,
+        "column": 38
+      }
+    },
+    "replacement": "||",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::next_update_time",
+      "return_type": "-> Option<Instant>",
+      "span": {
+        "start": {
+          "line": 2206,
+          "column": 5
+        },
+        "end": {
+          "line": 2248,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2237,
+        "column": 39
+      },
+      "end": {
+        "line": 2237,
+        "column": 40
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "TournamentManager::next_update_time",
+      "return_type": "-> Option<Instant>",
+      "span": {
+        "start": {
+          "line": 2206,
+          "column": 5
+        },
+        "end": {
+          "line": 2248,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2241,
+        "column": 25
+      },
+      "end": {
+        "line": 2241,
+        "column": 87
+      }
+    },
+    "replacement": "",
+    "genre": "MatchArm"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "ClockState::clock_time",
+      "return_type": "-> Option<Duration>",
+      "span": {
+        "start": {
+          "line": 2316,
+          "column": 5
+        },
+        "end": {
+          "line": 2334,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2319,
+        "column": 9
+      },
+      "end": {
+        "line": 2333,
+        "column": 10
+      }
+    },
+    "replacement": "None",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "ClockState::clock_time",
+      "return_type": "-> Option<Duration>",
+      "span": {
+        "start": {
+          "line": 2316,
+          "column": 5
+        },
+        "end": {
+          "line": 2334,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2319,
+        "column": 9
+      },
+      "end": {
+        "line": 2333,
+        "column": 10
+      }
+    },
+    "replacement": "Some(Default::default())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "ClockState::clock_time",
+      "return_type": "-> Option<Duration>",
+      "span": {
+        "start": {
+          "line": 2316,
+          "column": 5
+        },
+        "end": {
+          "line": 2334,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2331,
+        "column": 28
+      },
+      "end": {
+        "line": 2331,
+        "column": 29
+      }
+    },
+    "replacement": "-",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "ClockState::clock_time",
+      "return_type": "-> Option<Duration>",
+      "span": {
+        "start": {
+          "line": 2316,
+          "column": 5
+        },
+        "end": {
+          "line": 2334,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2331,
+        "column": 28
+      },
+      "end": {
+        "line": 2331,
+        "column": 29
+      }
+    },
+    "replacement": "*",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "ClockState::as_secs_u16",
+      "return_type": "-> u16",
+      "span": {
+        "start": {
+          "line": 2336,
+          "column": 5
+        },
+        "end": {
+          "line": 2342,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2337,
+        "column": 9
+      },
+      "end": {
+        "line": 2341,
+        "column": 22
+      }
+    },
+    "replacement": "0",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/mod.rs",
+    "function": {
+      "function_name": "ClockState::as_secs_u16",
+      "return_type": "-> u16",
+      "span": {
+        "start": {
+          "line": 2336,
+          "column": 5
+        },
+        "end": {
+          "line": 2342,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 2337,
+        "column": 9
+      },
+      "end": {
+        "line": 2341,
+        "column": 22
+      }
+    },
+    "replacement": "1",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::time_elapsed",
+      "return_type": "-> PenaltyResult<SignedDuration>",
+      "span": {
+        "start": {
+          "line": 58,
+          "column": 5
+        },
+        "end": {
+          "line": 103,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 64,
+        "column": 9
+      },
+      "end": {
+        "line": 102,
+        "column": 10
+      }
+    },
+    "replacement": "PenaltyResult::new()",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::time_elapsed",
+      "return_type": "-> PenaltyResult<SignedDuration>",
+      "span": {
+        "start": {
+          "line": 58,
+          "column": 5
+        },
+        "end": {
+          "line": 103,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 64,
+        "column": 9
+      },
+      "end": {
+        "line": 102,
+        "column": 10
+      }
+    },
+    "replacement": "PenaltyResult::from_iter([Default::default()])",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::time_elapsed",
+      "return_type": "-> PenaltyResult<SignedDuration>",
+      "span": {
+        "start": {
+          "line": 58,
+          "column": 5
+        },
+        "end": {
+          "line": 103,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 64,
+        "column": 9
+      },
+      "end": {
+        "line": 102,
+        "column": 10
+      }
+    },
+    "replacement": "PenaltyResult::new(Default::default())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::time_elapsed",
+      "return_type": "-> PenaltyResult<SignedDuration>",
+      "span": {
+        "start": {
+          "line": 58,
+          "column": 5
+        },
+        "end": {
+          "line": 103,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 64,
+        "column": 9
+      },
+      "end": {
+        "line": 102,
+        "column": 10
+      }
+    },
+    "replacement": "PenaltyResult::from(Default::default())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::time_elapsed",
+      "return_type": "-> PenaltyResult<SignedDuration>",
+      "span": {
+        "start": {
+          "line": 58,
+          "column": 5
+        },
+        "end": {
+          "line": 103,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 74,
+        "column": 26
+      },
+      "end": {
+        "line": 74,
+        "column": 27
+      }
+    },
+    "replacement": "==",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::time_elapsed",
+      "return_type": "-> PenaltyResult<SignedDuration>",
+      "span": {
+        "start": {
+          "line": 58,
+          "column": 5
+        },
+        "end": {
+          "line": 103,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 74,
+        "column": 26
+      },
+      "end": {
+        "line": 74,
+        "column": 27
+      }
+    },
+    "replacement": ">",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::time_elapsed",
+      "return_type": "-> PenaltyResult<SignedDuration>",
+      "span": {
+        "start": {
+          "line": 58,
+          "column": 5
+        },
+        "end": {
+          "line": 103,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 74,
+        "column": 26
+      },
+      "end": {
+        "line": 74,
+        "column": 27
+      }
+    },
+    "replacement": "<=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::time_elapsed",
+      "return_type": "-> PenaltyResult<SignedDuration>",
+      "span": {
+        "start": {
+          "line": 58,
+          "column": 5
+        },
+        "end": {
+          "line": 103,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 76,
+        "column": 29
+      },
+      "end": {
+        "line": 76,
+        "column": 31
+      }
+    },
+    "replacement": "-=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::time_elapsed",
+      "return_type": "-> PenaltyResult<SignedDuration>",
+      "span": {
+        "start": {
+          "line": 58,
+          "column": 5
+        },
+        "end": {
+          "line": 103,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 76,
+        "column": 29
+      },
+      "end": {
+        "line": 76,
+        "column": 31
+      }
+    },
+    "replacement": "*=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::time_elapsed",
+      "return_type": "-> PenaltyResult<SignedDuration>",
+      "span": {
+        "start": {
+          "line": 58,
+          "column": 5
+        },
+        "end": {
+          "line": 103,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 81,
+        "column": 25
+      },
+      "end": {
+        "line": 81,
+        "column": 27
+      }
+    },
+    "replacement": "-=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::time_elapsed",
+      "return_type": "-> PenaltyResult<SignedDuration>",
+      "span": {
+        "start": {
+          "line": 58,
+          "column": 5
+        },
+        "end": {
+          "line": 103,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 81,
+        "column": 25
+      },
+      "end": {
+        "line": 81,
+        "column": 27
+      }
+    },
+    "replacement": "*=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::time_elapsed",
+      "return_type": "-> PenaltyResult<SignedDuration>",
+      "span": {
+        "start": {
+          "line": 58,
+          "column": 5
+        },
+        "end": {
+          "line": 103,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 100,
+        "column": 98
+      },
+      "end": {
+        "line": 100,
+        "column": 99
+      }
+    },
+    "replacement": "",
+    "genre": "UnaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::time_remaining",
+      "return_type": "-> PenaltyResult<SignedDuration>",
+      "span": {
+        "start": {
+          "line": 105,
+          "column": 5
+        },
+        "end": {
+          "line": 131,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 111,
+        "column": 9
+      },
+      "end": {
+        "line": 130,
+        "column": 10
+      }
+    },
+    "replacement": "PenaltyResult::new()",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::time_remaining",
+      "return_type": "-> PenaltyResult<SignedDuration>",
+      "span": {
+        "start": {
+          "line": 105,
+          "column": 5
+        },
+        "end": {
+          "line": 131,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 111,
+        "column": 9
+      },
+      "end": {
+        "line": 130,
+        "column": 10
+      }
+    },
+    "replacement": "PenaltyResult::from_iter([Default::default()])",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::time_remaining",
+      "return_type": "-> PenaltyResult<SignedDuration>",
+      "span": {
+        "start": {
+          "line": 105,
+          "column": 5
+        },
+        "end": {
+          "line": 131,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 111,
+        "column": 9
+      },
+      "end": {
+        "line": 130,
+        "column": 10
+      }
+    },
+    "replacement": "PenaltyResult::new(Default::default())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::time_remaining",
+      "return_type": "-> PenaltyResult<SignedDuration>",
+      "span": {
+        "start": {
+          "line": 105,
+          "column": 5
+        },
+        "end": {
+          "line": 131,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 111,
+        "column": 9
+      },
+      "end": {
+        "line": 130,
+        "column": 10
+      }
+    },
+    "replacement": "PenaltyResult::from(Default::default())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::time_remaining",
+      "return_type": "-> PenaltyResult<SignedDuration>",
+      "span": {
+        "start": {
+          "line": 105,
+          "column": 5
+        },
+        "end": {
+          "line": 131,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 113,
+        "column": 48
+      },
+      "end": {
+        "line": 113,
+        "column": 50
+      }
+    },
+    "replacement": "||",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::time_remaining",
+      "return_type": "-> PenaltyResult<SignedDuration>",
+      "span": {
+        "start": {
+          "line": 105,
+          "column": 5
+        },
+        "end": {
+          "line": 131,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 113,
+        "column": 20
+      },
+      "end": {
+        "line": 113,
+        "column": 22
+      }
+    },
+    "replacement": "!=",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::time_remaining",
+      "return_type": "-> PenaltyResult<SignedDuration>",
+      "span": {
+        "start": {
+          "line": 105,
+          "column": 5
+        },
+        "end": {
+          "line": 131,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 113,
+        "column": 69
+      },
+      "end": {
+        "line": 113,
+        "column": 71
+      }
+    },
+    "replacement": "==",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::is_complete",
+      "return_type": "-> PenaltyResult<bool>",
+      "span": {
+        "start": {
+          "line": 133,
+          "column": 5
+        },
+        "end": {
+          "line": 149,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 139,
+        "column": 9
+      },
+      "end": {
+        "line": 148,
+        "column": 10
+      }
+    },
+    "replacement": "PenaltyResult::new()",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::is_complete",
+      "return_type": "-> PenaltyResult<bool>",
+      "span": {
+        "start": {
+          "line": 133,
+          "column": 5
+        },
+        "end": {
+          "line": 149,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 139,
+        "column": 9
+      },
+      "end": {
+        "line": 148,
+        "column": 10
+      }
+    },
+    "replacement": "PenaltyResult::from_iter([true])",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::is_complete",
+      "return_type": "-> PenaltyResult<bool>",
+      "span": {
+        "start": {
+          "line": 133,
+          "column": 5
+        },
+        "end": {
+          "line": 149,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 139,
+        "column": 9
+      },
+      "end": {
+        "line": 148,
+        "column": 10
+      }
+    },
+    "replacement": "PenaltyResult::new(true)",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::is_complete",
+      "return_type": "-> PenaltyResult<bool>",
+      "span": {
+        "start": {
+          "line": 133,
+          "column": 5
+        },
+        "end": {
+          "line": 149,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 139,
+        "column": 9
+      },
+      "end": {
+        "line": 148,
+        "column": 10
+      }
+    },
+    "replacement": "PenaltyResult::from(true)",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::is_complete",
+      "return_type": "-> PenaltyResult<bool>",
+      "span": {
+        "start": {
+          "line": 133,
+          "column": 5
+        },
+        "end": {
+          "line": 149,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 139,
+        "column": 9
+      },
+      "end": {
+        "line": 148,
+        "column": 10
+      }
+    },
+    "replacement": "PenaltyResult::from_iter([false])",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::is_complete",
+      "return_type": "-> PenaltyResult<bool>",
+      "span": {
+        "start": {
+          "line": 133,
+          "column": 5
+        },
+        "end": {
+          "line": 149,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 139,
+        "column": 9
+      },
+      "end": {
+        "line": 148,
+        "column": 10
+      }
+    },
+    "replacement": "PenaltyResult::new(false)",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::is_complete",
+      "return_type": "-> PenaltyResult<bool>",
+      "span": {
+        "start": {
+          "line": 133,
+          "column": 5
+        },
+        "end": {
+          "line": 149,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 139,
+        "column": 9
+      },
+      "end": {
+        "line": 148,
+        "column": 10
+      }
+    },
+    "replacement": "PenaltyResult::from(false)",
+    "genre": "FnValue"
+  },
+  {
+    "package": "refbox",
+    "file": "refbox/src/tournament_manager/penalty.rs",
+    "function": {
+      "function_name": "Penalty::is_complete",
+      "return_type": "-> PenaltyResult<bool>",
+      "span": {
+        "start": {
+          "line": 133,
+          "column": 5
+        },
+        "end": {
+          "line": 149,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 147,
+        "column": 32
+      },
+      "end": {
+        "line": 147,
+        "column": 34
+      }
+    },
+    "replacement": ">",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "uwh-common",
+    "file": "uwh-common/src/game_snapshot.rs",
+    "function": {
+      "function_name": "GamePeriod::duration",
+      "return_type": "-> Option<Duration>",
+      "span": {
+        "start": {
+          "line": 160,
+          "column": 5
+        },
+        "end": {
+          "line": 173,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 162,
+        "column": 9
+      },
+      "end": {
+        "line": 172,
+        "column": 10
+      }
+    },
+    "replacement": "None",
+    "genre": "FnValue"
+  },
+  {
+    "package": "uwh-common",
+    "file": "uwh-common/src/game_snapshot.rs",
+    "function": {
+      "function_name": "GamePeriod::duration",
+      "return_type": "-> Option<Duration>",
+      "span": {
+        "start": {
+          "line": 160,
+          "column": 5
+        },
+        "end": {
+          "line": 173,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 162,
+        "column": 9
+      },
+      "end": {
+        "line": 172,
+        "column": 10
+      }
+    },
+    "replacement": "Some(Default::default())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "uwh-common",
+    "file": "uwh-common/src/game_snapshot.rs",
+    "function": {
+      "function_name": "GamePeriod::time_elapsed_at",
+      "return_type": "-> Option<SignedDuration>",
+      "span": {
+        "start": {
+          "line": 175,
+          "column": 5
+        },
+        "end": {
+          "line": 191,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 177,
+        "column": 9
+      },
+      "end": {
+        "line": 190,
+        "column": 10
+      }
+    },
+    "replacement": "None",
+    "genre": "FnValue"
+  },
+  {
+    "package": "uwh-common",
+    "file": "uwh-common/src/game_snapshot.rs",
+    "function": {
+      "function_name": "GamePeriod::time_elapsed_at",
+      "return_type": "-> Option<SignedDuration>",
+      "span": {
+        "start": {
+          "line": 175,
+          "column": 5
+        },
+        "end": {
+          "line": 191,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 177,
+        "column": 9
+      },
+      "end": {
+        "line": 190,
+        "column": 10
+      }
+    },
+    "replacement": "Some(Default::default())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "uwh-common",
+    "file": "uwh-common/src/game_snapshot.rs",
+    "function": {
+      "function_name": "GamePeriod::time_elapsed_at",
+      "return_type": "-> Option<SignedDuration>",
+      "span": {
+        "start": {
+          "line": 175,
+          "column": 5
+        },
+        "end": {
+          "line": 191,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 188,
+        "column": 77
+      },
+      "end": {
+        "line": 188,
+        "column": 78
+      }
+    },
+    "replacement": "+",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "uwh-common",
+    "file": "uwh-common/src/game_snapshot.rs",
+    "function": {
+      "function_name": "GamePeriod::time_elapsed_at",
+      "return_type": "-> Option<SignedDuration>",
+      "span": {
+        "start": {
+          "line": 175,
+          "column": 5
+        },
+        "end": {
+          "line": 191,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 188,
+        "column": 77
+      },
+      "end": {
+        "line": 188,
+        "column": 78
+      }
+    },
+    "replacement": "/",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "uwh-common",
+    "file": "uwh-common/src/game_snapshot.rs",
+    "function": {
+      "function_name": "GamePeriod::time_between",
+      "return_type": "-> SignedDuration",
+      "span": {
+        "start": {
+          "line": 193,
+          "column": 5
+        },
+        "end": {
+          "line": 207,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 195,
+        "column": 9
+      },
+      "end": {
+        "line": 206,
+        "column": 10
+      }
+    },
+    "replacement": "Default::default()",
+    "genre": "FnValue"
+  },
+  {
+    "package": "uwh-common",
+    "file": "uwh-common/src/game_snapshot.rs",
+    "function": {
+      "function_name": "GamePeriod::time_between",
+      "return_type": "-> SignedDuration",
+      "span": {
+        "start": {
+          "line": 193,
+          "column": 5
+        },
+        "end": {
+          "line": 207,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 204,
+        "column": 45
+      },
+      "end": {
+        "line": 204,
+        "column": 46
+      }
+    },
+    "replacement": "+",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "uwh-common",
+    "file": "uwh-common/src/game_snapshot.rs",
+    "function": {
+      "function_name": "GamePeriod::time_between",
+      "return_type": "-> SignedDuration",
+      "span": {
+        "start": {
+          "line": 193,
+          "column": 5
+        },
+        "end": {
+          "line": 207,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 204,
+        "column": 45
+      },
+      "end": {
+        "line": 204,
+        "column": 46
+      }
+    },
+    "replacement": "/",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "uwh-common",
+    "file": "uwh-common/src/game_snapshot.rs",
+    "function": {
+      "function_name": "GamePeriod::time_between",
+      "return_type": "-> SignedDuration",
+      "span": {
+        "start": {
+          "line": 193,
+          "column": 5
+        },
+        "end": {
+          "line": 207,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 205,
+        "column": 38
+      },
+      "end": {
+        "line": 205,
+        "column": 39
+      }
+    },
+    "replacement": "+",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "uwh-common",
+    "file": "uwh-common/src/game_snapshot.rs",
+    "function": {
+      "function_name": "GamePeriod::time_between",
+      "return_type": "-> SignedDuration",
+      "span": {
+        "start": {
+          "line": 193,
+          "column": 5
+        },
+        "end": {
+          "line": 207,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 205,
+        "column": 38
+      },
+      "end": {
+        "line": 205,
+        "column": 39
+      }
+    },
+    "replacement": "/",
+    "genre": "BinaryOperator"
+  },
+  {
+    "package": "uwh-common",
+    "file": "uwh-common/src/game_snapshot.rs",
+    "function": {
+      "function_name": "GamePeriod::next_period",
+      "return_type": "-> Option<GamePeriod>",
+      "span": {
+        "start": {
+          "line": 209,
+          "column": 5
+        },
+        "end": {
+          "line": 222,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 210,
+        "column": 9
+      },
+      "end": {
+        "line": 221,
+        "column": 10
+      }
+    },
+    "replacement": "None",
+    "genre": "FnValue"
+  },
+  {
+    "package": "uwh-common",
+    "file": "uwh-common/src/game_snapshot.rs",
+    "function": {
+      "function_name": "GamePeriod::next_period",
+      "return_type": "-> Option<GamePeriod>",
+      "span": {
+        "start": {
+          "line": 209,
+          "column": 5
+        },
+        "end": {
+          "line": 222,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 210,
+        "column": 9
+      },
+      "end": {
+        "line": 221,
+        "column": 10
+      }
+    },
+    "replacement": "Some(Default::default())",
+    "genre": "FnValue"
+  },
+  {
+    "package": "uwh-common",
+    "file": "uwh-common/src/game_snapshot.rs",
+    "function": {
+      "function_name": "GamePeriod::next_period_dur",
+      "return_type": "-> Option<Duration>",
+      "span": {
+        "start": {
+          "line": 224,
+          "column": 5
+        },
+        "end": {
+          "line": 270,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 226,
+        "column": 9
+      },
+      "end": {
+        "line": 269,
+        "column": 10
+      }
+    },
+    "replacement": "None",
+    "genre": "FnValue"
+  },
+  {
+    "package": "uwh-common",
+    "file": "uwh-common/src/game_snapshot.rs",
+    "function": {
+      "function_name": "GamePeriod::next_period_dur",
+      "return_type": "-> Option<Duration>",
+      "span": {
+        "start": {
+          "line": 224,
+          "column": 5
+        },
+        "end": {
+          "line": 270,
+          "column": 6
+        }
+      }
+    },
+    "span": {
+      "start": {
+        "line": 226,
+        "column": 9
+      },
+      "end": {
+        "line": 269,
+        "column": 10
+      }
+    },
+    "replacement": "Some(Default::default())",
+    "genre": "FnValue"
+  }
+]

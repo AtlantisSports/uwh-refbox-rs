@@ -1,0 +1,22 @@
+refbox/src/tournament_manager/mod.rs:134:29: replace != with == in TournamentManager::set_scores
+refbox/src/tournament_manager/mod.rs:135:16: delete ! in TournamentManager::set_scores
+refbox/src/tournament_manager/mod.rs:202:9: replace TournamentManager::reset_game with ()
+refbox/src/tournament_manager/mod.rs:1213:52: replace + with - in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1198:32: replace < with <= in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1314:55: replace & with | in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1314:55: replace & with ^ in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:2169:17: replace | with & in TournamentManager::generate_snapshot
+refbox/src/tournament_manager/mod.rs:2169:17: replace | with ^ in TournamentManager::generate_snapshot
+refbox/src/tournament_manager/mod.rs:2168:26: replace != with == in TournamentManager::generate_snapshot
+refbox/src/tournament_manager/mod.rs:2169:55: replace > with == in TournamentManager::generate_snapshot
+refbox/src/tournament_manager/mod.rs:2169:55: replace > with < in TournamentManager::generate_snapshot
+refbox/src/tournament_manager/mod.rs:2169:55: replace > with >= in TournamentManager::generate_snapshot
+refbox/src/tournament_manager/mod.rs:2207:9: replace TournamentManager::next_update_time -> Option<Instant> with None
+refbox/src/tournament_manager/mod.rs:2207:49: replace + with - in TournamentManager::next_update_time
+refbox/src/tournament_manager/mod.rs:2209:31: replace + with - in TournamentManager::next_update_time
+refbox/src/tournament_manager/mod.rs:2209:68: replace - with / in TournamentManager::next_update_time
+refbox/src/tournament_manager/mod.rs:2209:68: replace - with + in TournamentManager::next_update_time
+refbox/src/tournament_manager/mod.rs:2231:31: replace == with != in TournamentManager::next_update_time
+refbox/src/tournament_manager/mod.rs:2237:36: replace && with || in TournamentManager::next_update_time
+refbox/src/tournament_manager/mod.rs:2237:39: delete ! in TournamentManager::next_update_time
+refbox/src/tournament_manager/mod.rs:2241:25: delete match arm (Some(period), Some(pen)) in TournamentManager::next_update_time

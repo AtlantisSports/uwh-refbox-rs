@@ -1,0 +1,100 @@
+refbox/src/tournament_manager/mod.rs:134:13: replace && with || in TournamentManager::set_scores
+refbox/src/tournament_manager/mod.rs:133:32: replace == with != in TournamentManager::set_scores
+refbox/src/tournament_manager/mod.rs:238:46: replace < with == in TournamentManager::can_start_team_timeout
+refbox/src/tournament_manager/mod.rs:237:13: delete match arm GamePeriod::FirstHalf | GamePeriod::SecondHalf in TournamentManager::can_start_team_timeout
+refbox/src/tournament_manager/mod.rs:238:46: replace < with > in TournamentManager::can_start_team_timeout
+refbox/src/tournament_manager/mod.rs:121:23: replace += with -= in TournamentManager::add_score
+refbox/src/tournament_manager/mod.rs:130:9: replace TournamentManager::set_scores with ()
+refbox/src/tournament_manager/mod.rs:135:13: replace && with || in TournamentManager::set_scores
+refbox/src/tournament_manager/mod.rs:398:35: replace += with -= in TournamentManager::start_team_timeout
+refbox/src/tournament_manager/mod.rs:384:9: replace TournamentManager::start_team_timeout -> Result<()> with Ok(())
+refbox/src/tournament_manager/mod.rs:534:9: replace TournamentManager::end_timeout -> Result<()> with Ok(())
+refbox/src/tournament_manager/mod.rs:700:9: replace TournamentManager::cull_penalties -> Result<()> with Ok(())
+refbox/src/tournament_manager/mod.rs:715:19: replace += with -= in TournamentManager::cull_penalties
+refbox/src/tournament_manager/mod.rs:710:80: delete ! in TournamentManager::cull_penalties
+refbox/src/tournament_manager/mod.rs:979:9: replace TournamentManager::end_game with ()
+refbox/src/tournament_manager/mod.rs:1044:12: delete ! in TournamentManager::start_game
+refbox/src/tournament_manager/mod.rs:1044:9: replace TournamentManager::start_game with ()
+refbox/src/tournament_manager/mod.rs:1085:9: replace TournamentManager::could_end_game -> Result<bool> with Ok(true)
+refbox/src/tournament_manager/mod.rs:1085:9: replace TournamentManager::could_end_game -> Result<bool> with Ok(false)
+refbox/src/tournament_manager/mod.rs:1103:69: replace & with | in TournamentManager::could_end_game
+refbox/src/tournament_manager/mod.rs:1103:69: replace & with ^ in TournamentManager::could_end_game
+refbox/src/tournament_manager/mod.rs:1151:9: replace TournamentManager::check_time_remaining -> Result<bool> with Ok(true)
+refbox/src/tournament_manager/mod.rs:1156:13: replace && with || in TournamentManager::check_time_remaining
+refbox/src/tournament_manager/mod.rs:1151:9: replace TournamentManager::check_time_remaining -> Result<bool> with Ok(false)
+refbox/src/tournament_manager/mod.rs:1155:17: replace >= with < in TournamentManager::check_time_remaining
+refbox/src/tournament_manager/mod.rs:1157:17: replace || with && in TournamentManager::check_time_remaining
+refbox/src/tournament_manager/mod.rs:1156:37: replace == with != in TournamentManager::check_time_remaining
+refbox/src/tournament_manager/mod.rs:1157:41: replace == with != in TournamentManager::check_time_remaining
+refbox/src/tournament_manager/mod.rs:1163:21: replace >= with < in TournamentManager::pause_has_ended
+refbox/src/tournament_manager/mod.rs:1161:9: replace TournamentManager::pause_has_ended -> bool with true
+refbox/src/tournament_manager/mod.rs:1161:9: replace TournamentManager::pause_has_ended -> bool with false
+refbox/src/tournament_manager/mod.rs:1171:9: replace TournamentManager::update -> Result<()> with Ok(())
+refbox/src/tournament_manager/mod.rs:1182:17: replace && with || in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1181:17: replace && with || in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1180:16: delete ! in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1198:32: replace < with == in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1198:32: replace < with > in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1208:21: replace >= with < in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1287:44: replace != with == in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1288:67: replace != with == in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1290:56: replace + with - in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1298:56: replace + with - in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1326:60: replace >= with < in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1366:9: replace TournamentManager::end_first_half with ()
+refbox/src/tournament_manager/mod.rs:1415:9: replace TournamentManager::end_overtime_first_half with ()
+refbox/src/tournament_manager/mod.rs:1438:9: replace TournamentManager::handle_rugby_pen_shot_end -> Result<()> with Ok(())
+refbox/src/tournament_manager/mod.rs:1493:9: replace TournamentManager::start_game_clock -> bool with true
+refbox/src/tournament_manager/mod.rs:1493:9: replace TournamentManager::start_game_clock -> bool with false
+refbox/src/tournament_manager/mod.rs:1496:17: delete match arm GamePeriod::SuddenDeath in TournamentManager::start_game_clock
+refbox/src/tournament_manager/mod.rs:1517:9: replace TournamentManager::stop_game_clock -> Result<bool> with Ok(true)
+refbox/src/tournament_manager/mod.rs:1517:9: replace TournamentManager::stop_game_clock -> Result<bool> with Ok(false)
+refbox/src/tournament_manager/mod.rs:1537:9: replace TournamentManager::start_clock with ()
+refbox/src/tournament_manager/mod.rs:1583:9: replace TournamentManager::stop_clock -> Result<()> with Ok(())
+refbox/src/tournament_manager/mod.rs:1767:12: delete ! in TournamentManager::set_game_clock_time
+refbox/src/tournament_manager/mod.rs:1767:9: replace TournamentManager::set_game_clock_time -> Result<()> with Ok(())
+refbox/src/tournament_manager/mod.rs:1782:21: replace && with || in TournamentManager::set_game_clock_time
+refbox/src/tournament_manager/mod.rs:1783:25: replace > with < in TournamentManager::set_game_clock_time
+refbox/src/tournament_manager/mod.rs:1822:9: replace TournamentManager::pause_for_confirm -> Result<()> with Ok(())
+refbox/src/tournament_manager/mod.rs:1825:12: delete ! in TournamentManager::pause_for_confirm
+refbox/src/tournament_manager/mod.rs:1833:33: replace + with - in TournamentManager::pause_for_confirm
+refbox/src/tournament_manager/mod.rs:1839:13: delete match arm GamePeriod::SecondHalf in TournamentManager::pause_for_confirm
+refbox/src/tournament_manager/mod.rs:1851:13: delete match arm GamePeriod::OvertimeSecondHalf in TournamentManager::pause_for_confirm
+refbox/src/tournament_manager/mod.rs:1861:13: delete match arm GamePeriod::SuddenDeath in TournamentManager::pause_for_confirm
+refbox/src/tournament_manager/mod.rs:1841:84: replace / with * in TournamentManager::pause_for_confirm
+refbox/src/tournament_manager/mod.rs:1848:47: replace / with * in TournamentManager::pause_for_confirm
+refbox/src/tournament_manager/mod.rs:1856:23: replace / with * in TournamentManager::pause_for_confirm
+refbox/src/tournament_manager/mod.rs:1858:47: replace / with * in TournamentManager::pause_for_confirm
+refbox/src/tournament_manager/mod.rs:1861:66: replace / with * in TournamentManager::pause_for_confirm
+refbox/src/tournament_manager/mod.rs:1896:9: replace TournamentManager::end_confirm_pause -> Result<()> with Ok(())
+refbox/src/tournament_manager/mod.rs:1924:24: delete ! in TournamentManager::end_confirm_pause
+refbox/src/tournament_manager/mod.rs:1945:73: replace == with != in TournamentManager::end_confirm_pause
+refbox/src/tournament_manager/mod.rs:1956:36: replace == with != in TournamentManager::end_confirm_pause
+refbox/src/tournament_manager/mod.rs:1968:17: delete match arm GamePeriod::PreOvertime | GamePeriod::PreSuddenDeath | GamePeriod::BetweenGames in TournamentManager::end_confirm_pause
+refbox/src/tournament_manager/mod.rs:2044:9: replace TournamentManager::game_clock_time -> Option<Duration> with None
+refbox/src/tournament_manager/mod.rs:2044:9: replace TournamentManager::game_clock_time -> Option<Duration> with Some(Default::default())
+refbox/src/tournament_manager/mod.rs:2130:9: replace TournamentManager::generate_snapshot -> Option<GameSnapshot> with None
+refbox/src/tournament_manager/mod.rs:2130:9: replace TournamentManager::generate_snapshot -> Option<GameSnapshot> with Some(Default::default())
+refbox/src/tournament_manager/mod.rs:2319:9: replace ClockState::clock_time -> Option<Duration> with None
+refbox/src/tournament_manager/mod.rs:2331:28: replace + with - in ClockState::clock_time
+refbox/src/tournament_manager/mod.rs:2319:9: replace ClockState::clock_time -> Option<Duration> with Some(Default::default())
+refbox/src/tournament_manager/mod.rs:2337:9: replace ClockState::as_secs_u16 -> u16 with 0
+refbox/src/tournament_manager/mod.rs:2337:9: replace ClockState::as_secs_u16 -> u16 with 1
+refbox/src/tournament_manager/penalty.rs:74:26: replace < with > in Penalty::time_elapsed
+refbox/src/tournament_manager/penalty.rs:74:26: replace < with == in Penalty::time_elapsed
+refbox/src/tournament_manager/penalty.rs:74:26: replace < with <= in Penalty::time_elapsed
+refbox/src/tournament_manager/penalty.rs:76:29: replace += with -= in Penalty::time_elapsed
+refbox/src/tournament_manager/penalty.rs:81:25: replace += with -= in Penalty::time_elapsed
+refbox/src/tournament_manager/penalty.rs:100:98: delete - in Penalty::time_elapsed
+refbox/src/tournament_manager/penalty.rs:113:48: replace && with || in Penalty::time_remaining
+refbox/src/tournament_manager/penalty.rs:113:20: replace == with != in Penalty::time_remaining
+refbox/src/tournament_manager/penalty.rs:113:69: replace != with == in Penalty::time_remaining
+refbox/src/tournament_manager/penalty.rs:147:32: replace <= with > in Penalty::is_complete
+uwh-common/src/game_snapshot.rs:162:9: replace GamePeriod::duration -> Option<Duration> with None
+uwh-common/src/game_snapshot.rs:162:9: replace GamePeriod::duration -> Option<Duration> with Some(Default::default())
+uwh-common/src/game_snapshot.rs:188:77: replace - with + in GamePeriod::time_elapsed_at
+uwh-common/src/game_snapshot.rs:177:9: replace GamePeriod::time_elapsed_at -> Option<SignedDuration> with None
+uwh-common/src/game_snapshot.rs:177:9: replace GamePeriod::time_elapsed_at -> Option<SignedDuration> with Some(Default::default())
+uwh-common/src/game_snapshot.rs:195:9: replace GamePeriod::time_between -> SignedDuration with Default::default()
+uwh-common/src/game_snapshot.rs:204:45: replace - with + in GamePeriod::time_between
+uwh-common/src/game_snapshot.rs:210:9: replace GamePeriod::next_period -> Option<GamePeriod> with None

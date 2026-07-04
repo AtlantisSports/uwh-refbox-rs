@@ -1,0 +1,1 @@
+uwh-common/src/game_snapshot.rs:210:9: replace GamePeriod::next_period -> Option<GamePeriod> with Some(Default::default())

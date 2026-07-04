@@ -1,0 +1,33 @@
+refbox/src/tournament_manager/mod.rs:106:9: replace TournamentManager::add_score with ()
+refbox/src/tournament_manager/mod.rs:133:32: replace == with != in TournamentManager::set_scores
+refbox/src/tournament_manager/mod.rs:218:9: replace TournamentManager::reset with ()
+refbox/src/tournament_manager/mod.rs:121:23: replace += with -= in TournamentManager::add_score
+refbox/src/tournament_manager/mod.rs:1044:9: replace TournamentManager::start_game with ()
+refbox/src/tournament_manager/mod.rs:1044:12: delete ! in TournamentManager::start_game
+refbox/src/tournament_manager/mod.rs:1081:54: replace + with - in TournamentManager::start_game
+refbox/src/tournament_manager/mod.rs:1171:9: replace TournamentManager::update -> Result<()> with Ok(())
+refbox/src/tournament_manager/mod.rs:1182:17: replace && with || in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1181:17: replace && with || in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1180:16: delete ! in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:134:13: replace && with || in TournamentManager::set_scores
+refbox/src/tournament_manager/mod.rs:135:13: replace && with || in TournamentManager::set_scores
+refbox/src/tournament_manager/mod.rs:130:9: replace TournamentManager::set_scores with ()
+refbox/src/tournament_manager/mod.rs:121:23: replace += with *= in TournamentManager::add_score
+refbox/src/tournament_manager/mod.rs:1181:40: replace == with != in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1208:21: replace >= with < in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1182:72: replace <= with > in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1198:32: replace < with > in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1198:32: replace < with == in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1287:44: replace != with == in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1288:67: replace != with == in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1290:56: replace + with - in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1298:56: replace + with - in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1330:61: replace + with - in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1326:60: replace >= with < in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1348:60: replace >= with < in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1493:9: replace TournamentManager::start_game_clock -> bool with true
+refbox/src/tournament_manager/mod.rs:1493:9: replace TournamentManager::start_game_clock -> bool with false
+refbox/src/tournament_manager/mod.rs:1496:17: delete match arm GamePeriod::SuddenDeath in TournamentManager::start_game_clock
+refbox/src/tournament_manager/mod.rs:2130:9: replace TournamentManager::generate_snapshot -> Option<GameSnapshot> with None
+refbox/src/tournament_manager/mod.rs:2130:9: replace TournamentManager::generate_snapshot -> Option<GameSnapshot> with Some(Default::default())
+refbox/src/tournament_manager/mod.rs:2196:26: delete ! in TournamentManager::generate_snapshot

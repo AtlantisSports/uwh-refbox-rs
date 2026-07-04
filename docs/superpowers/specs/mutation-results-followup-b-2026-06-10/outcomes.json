@@ -1,0 +1,4000 @@
+{
+  "outcomes": [
+    {
+      "scenario": "Baseline",
+      "summary": "Success",
+      "log_path": "log/baseline.log",
+      "diff_path": null,
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 87.160991467,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.754196645,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::add_score",
+            "return_type": "",
+            "span": {
+              "start": {
+                "line": 105,
+                "column": 5
+              },
+              "end": {
+                "line": 123,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 106,
+              "column": 9
+            },
+            "end": {
+              "line": 122,
+              "column": 38
+            }
+          },
+          "replacement": "()",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_106_col_9.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_106_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 31.257214081,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 2.426311975,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::set_scores",
+            "return_type": "",
+            "span": {
+              "start": {
+                "line": 129,
+                "column": 5
+              },
+              "end": {
+                "line": 139,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 133,
+              "column": 32
+            },
+            "end": {
+              "line": 133,
+              "column": 34
+            }
+          },
+          "replacement": "!=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_133_col_32.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_133_col_32.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 34.834579379,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1.2614334569999999,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::set_scores",
+            "return_type": "",
+            "span": {
+              "start": {
+                "line": 129,
+                "column": 5
+              },
+              "end": {
+                "line": 139,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 134,
+              "column": 29
+            },
+            "end": {
+              "line": 134,
+              "column": 31
+            }
+          },
+          "replacement": "==",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_134_col_29.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_134_col_29.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 28.077396987,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1.512236524,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::set_scores",
+            "return_type": "",
+            "span": {
+              "start": {
+                "line": 129,
+                "column": 5
+              },
+              "end": {
+                "line": 139,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 135,
+              "column": 16
+            },
+            "end": {
+              "line": 135,
+              "column": 17
+            }
+          },
+          "replacement": "",
+          "genre": "UnaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_135_col_16.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_135_col_16.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 29.649354828,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 2.186163818,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::reset_game",
+            "return_type": "",
+            "span": {
+              "start": {
+                "line": 201,
+                "column": 5
+              },
+              "end": {
+                "line": 215,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 202,
+              "column": 9
+            },
+            "end": {
+              "line": 214,
+              "column": 10
+            }
+          },
+          "replacement": "()",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_202_col_9.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_202_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 31.380689836,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1.474678761,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::reset",
+            "return_type": "",
+            "span": {
+              "start": {
+                "line": 217,
+                "column": 5
+              },
+              "end": {
+                "line": 225,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 218,
+              "column": 9
+            },
+            "end": {
+              "line": 224,
+              "column": 31
+            }
+          },
+          "replacement": "()",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_218_col_9.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_218_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 37.386118963,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1.658764602,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::add_score",
+            "return_type": "",
+            "span": {
+              "start": {
+                "line": 105,
+                "column": 5
+              },
+              "end": {
+                "line": 123,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 121,
+              "column": 23
+            },
+            "end": {
+              "line": 121,
+              "column": 25
+            }
+          },
+          "replacement": "-=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_121_col_23.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_121_col_23.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 164.330273726,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 47.724782651,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::start_game",
+            "return_type": "",
+            "span": {
+              "start": {
+                "line": 1043,
+                "column": 5
+              },
+              "end": {
+                "line": 1082,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1044,
+              "column": 9
+            },
+            "end": {
+              "line": 1081,
+              "column": 80
+            }
+          },
+          "replacement": "()",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1044_col_9.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1044_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 39.094202471,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 2.968063376,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::start_game",
+            "return_type": "",
+            "span": {
+              "start": {
+                "line": 1043,
+                "column": 5
+              },
+              "end": {
+                "line": 1082,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1044,
+              "column": 12
+            },
+            "end": {
+              "line": 1044,
+              "column": 13
+            }
+          },
+          "replacement": "",
+          "genre": "UnaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1044_col_12.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1044_col_12.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 29.875494303,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 3.434447662,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::start_game",
+            "return_type": "",
+            "span": {
+              "start": {
+                "line": 1043,
+                "column": 5
+              },
+              "end": {
+                "line": 1082,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1081,
+              "column": 54
+            },
+            "end": {
+              "line": 1081,
+              "column": 55
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1081_col_54_001.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1081_col_54_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 5.185658824,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::start_game",
+            "return_type": "",
+            "span": {
+              "start": {
+                "line": 1043,
+                "column": 5
+              },
+              "end": {
+                "line": 1082,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1081,
+              "column": 54
+            },
+            "end": {
+              "line": 1081,
+              "column": 55
+            }
+          },
+          "replacement": "-",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1081_col_54.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1081_col_54.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 30.663923238,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.605063827,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::update",
+            "return_type": "-> Result<()>",
+            "span": {
+              "start": {
+                "line": 1169,
+                "column": 5
+              },
+              "end": {
+                "line": 1363,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1171,
+              "column": 9
+            },
+            "end": {
+              "line": 1362,
+              "column": 15
+            }
+          },
+          "replacement": "Ok(())",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1171_col_9.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1171_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 26.506263047,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.454014858,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::update",
+            "return_type": "-> Result<()>",
+            "span": {
+              "start": {
+                "line": 1169,
+                "column": 5
+              },
+              "end": {
+                "line": 1363,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1182,
+              "column": 17
+            },
+            "end": {
+              "line": 1182,
+              "column": 19
+            }
+          },
+          "replacement": "||",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1182_col_17.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1182_col_17.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 12.454654798,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.553374254,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::update",
+            "return_type": "-> Result<()>",
+            "span": {
+              "start": {
+                "line": 1169,
+                "column": 5
+              },
+              "end": {
+                "line": 1363,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1181,
+              "column": 17
+            },
+            "end": {
+              "line": 1181,
+              "column": 19
+            }
+          },
+          "replacement": "||",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1181_col_17.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1181_col_17.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 13.059376402,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.856540428,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::update",
+            "return_type": "-> Result<()>",
+            "span": {
+              "start": {
+                "line": 1169,
+                "column": 5
+              },
+              "end": {
+                "line": 1363,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1180,
+              "column": 16
+            },
+            "end": {
+              "line": 1180,
+              "column": 17
+            }
+          },
+          "replacement": "",
+          "genre": "UnaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1180_col_16.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1180_col_16.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 13.495571805,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 2.310689336,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::set_scores",
+            "return_type": "",
+            "span": {
+              "start": {
+                "line": 129,
+                "column": 5
+              },
+              "end": {
+                "line": 139,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 134,
+              "column": 13
+            },
+            "end": {
+              "line": 134,
+              "column": 15
+            }
+          },
+          "replacement": "||",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_134_col_13.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_134_col_13.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 303.788362047,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1.857477645,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::set_scores",
+            "return_type": "",
+            "span": {
+              "start": {
+                "line": 129,
+                "column": 5
+              },
+              "end": {
+                "line": 139,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 135,
+              "column": 13
+            },
+            "end": {
+              "line": 135,
+              "column": 15
+            }
+          },
+          "replacement": "||",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_135_col_13.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_135_col_13.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 304.053597122,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1.607525357,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::set_scores",
+            "return_type": "",
+            "span": {
+              "start": {
+                "line": 129,
+                "column": 5
+              },
+              "end": {
+                "line": 139,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 130,
+              "column": 9
+            },
+            "end": {
+              "line": 138,
+              "column": 10
+            }
+          },
+          "replacement": "()",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_130_col_9.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_130_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 303.960067004,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1.808707606,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::add_score",
+            "return_type": "",
+            "span": {
+              "start": {
+                "line": 105,
+                "column": 5
+              },
+              "end": {
+                "line": 123,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 121,
+              "column": 23
+            },
+            "end": {
+              "line": 121,
+              "column": 25
+            }
+          },
+          "replacement": "*=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_121_col_23_001.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_121_col_23_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 305.431076736,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1.455492497,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::update",
+            "return_type": "-> Result<()>",
+            "span": {
+              "start": {
+                "line": 1169,
+                "column": 5
+              },
+              "end": {
+                "line": 1363,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1181,
+              "column": 40
+            },
+            "end": {
+              "line": 1181,
+              "column": 42
+            }
+          },
+          "replacement": "!=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1181_col_40.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1181_col_40.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 14.809081481,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1.253887169,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::update",
+            "return_type": "-> Result<()>",
+            "span": {
+              "start": {
+                "line": 1169,
+                "column": 5
+              },
+              "end": {
+                "line": 1363,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1213,
+              "column": 52
+            },
+            "end": {
+              "line": 1213,
+              "column": 53
+            }
+          },
+          "replacement": "-",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1213_col_52.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1213_col_52.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 13.084669213,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 2.610658125,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::update",
+            "return_type": "-> Result<()>",
+            "span": {
+              "start": {
+                "line": 1169,
+                "column": 5
+              },
+              "end": {
+                "line": 1363,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1208,
+              "column": 21
+            },
+            "end": {
+              "line": 1208,
+              "column": 23
+            }
+          },
+          "replacement": "<",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1208_col_21.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1208_col_21.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 16.313733701,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1.355605661,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::update",
+            "return_type": "-> Result<()>",
+            "span": {
+              "start": {
+                "line": 1169,
+                "column": 5
+              },
+              "end": {
+                "line": 1363,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1182,
+              "column": 72
+            },
+            "end": {
+              "line": 1182,
+              "column": 74
+            }
+          },
+          "replacement": ">",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1182_col_72.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1182_col_72.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 18.8034207,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1.155120665,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::update",
+            "return_type": "-> Result<()>",
+            "span": {
+              "start": {
+                "line": 1169,
+                "column": 5
+              },
+              "end": {
+                "line": 1363,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1198,
+              "column": 32
+            },
+            "end": {
+              "line": 1198,
+              "column": 33
+            }
+          },
+          "replacement": ">",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1198_col_32_001.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1198_col_32_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 19.057710058,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1.155620702,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::update",
+            "return_type": "-> Result<()>",
+            "span": {
+              "start": {
+                "line": 1169,
+                "column": 5
+              },
+              "end": {
+                "line": 1363,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1213,
+              "column": 52
+            },
+            "end": {
+              "line": 1213,
+              "column": 53
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1213_col_52_001.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1213_col_52_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 3.212343673,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::update",
+            "return_type": "-> Result<()>",
+            "span": {
+              "start": {
+                "line": 1169,
+                "column": 5
+              },
+              "end": {
+                "line": 1363,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1198,
+              "column": 32
+            },
+            "end": {
+              "line": 1198,
+              "column": 33
+            }
+          },
+          "replacement": "==",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1198_col_32.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1198_col_32.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 20.456612001,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1.004999414,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::update",
+            "return_type": "-> Result<()>",
+            "span": {
+              "start": {
+                "line": 1169,
+                "column": 5
+              },
+              "end": {
+                "line": 1363,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1198,
+              "column": 32
+            },
+            "end": {
+              "line": 1198,
+              "column": 33
+            }
+          },
+          "replacement": "<=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1198_col_32_002.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1198_col_32_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 20.759638217,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1.20553522,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::update",
+            "return_type": "-> Result<()>",
+            "span": {
+              "start": {
+                "line": 1169,
+                "column": 5
+              },
+              "end": {
+                "line": 1363,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1290,
+              "column": 56
+            },
+            "end": {
+              "line": 1290,
+              "column": 57
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1290_col_56_001.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1290_col_56_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.009213622,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::update",
+            "return_type": "-> Result<()>",
+            "span": {
+              "start": {
+                "line": 1169,
+                "column": 5
+              },
+              "end": {
+                "line": 1363,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1298,
+              "column": 56
+            },
+            "end": {
+              "line": 1298,
+              "column": 57
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1298_col_56_001.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1298_col_56_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.861016561,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::update",
+            "return_type": "-> Result<()>",
+            "span": {
+              "start": {
+                "line": 1169,
+                "column": 5
+              },
+              "end": {
+                "line": 1363,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1287,
+              "column": 44
+            },
+            "end": {
+              "line": 1287,
+              "column": 46
+            }
+          },
+          "replacement": "==",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1287_col_44.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1287_col_44.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 12.646137491,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1.35573904,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::update",
+            "return_type": "-> Result<()>",
+            "span": {
+              "start": {
+                "line": 1169,
+                "column": 5
+              },
+              "end": {
+                "line": 1363,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1288,
+              "column": 67
+            },
+            "end": {
+              "line": 1288,
+              "column": 69
+            }
+          },
+          "replacement": "==",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1288_col_67.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1288_col_67.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 12.993728130000001,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.703344981,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::update",
+            "return_type": "-> Result<()>",
+            "span": {
+              "start": {
+                "line": 1169,
+                "column": 5
+              },
+              "end": {
+                "line": 1363,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1290,
+              "column": 56
+            },
+            "end": {
+              "line": 1290,
+              "column": 57
+            }
+          },
+          "replacement": "-",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1290_col_56.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1290_col_56.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 13.691167022,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.4026608,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::update",
+            "return_type": "-> Result<()>",
+            "span": {
+              "start": {
+                "line": 1169,
+                "column": 5
+              },
+              "end": {
+                "line": 1363,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1298,
+              "column": 56
+            },
+            "end": {
+              "line": 1298,
+              "column": 57
+            }
+          },
+          "replacement": "-",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1298_col_56.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1298_col_56.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 12.988302773000001,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.954521615,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::update",
+            "return_type": "-> Result<()>",
+            "span": {
+              "start": {
+                "line": 1169,
+                "column": 5
+              },
+              "end": {
+                "line": 1363,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1330,
+              "column": 61
+            },
+            "end": {
+              "line": 1330,
+              "column": 62
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1330_col_61_001.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1330_col_61_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.608111809,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::update",
+            "return_type": "-> Result<()>",
+            "span": {
+              "start": {
+                "line": 1169,
+                "column": 5
+              },
+              "end": {
+                "line": 1363,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1314,
+              "column": 55
+            },
+            "end": {
+              "line": 1314,
+              "column": 56
+            }
+          },
+          "replacement": "|",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1314_col_55.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1314_col_55.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 16.345463817,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1.054988028,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::update",
+            "return_type": "-> Result<()>",
+            "span": {
+              "start": {
+                "line": 1169,
+                "column": 5
+              },
+              "end": {
+                "line": 1363,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1314,
+              "column": 55
+            },
+            "end": {
+              "line": 1314,
+              "column": 56
+            }
+          },
+          "replacement": "^",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1314_col_55_001.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1314_col_55_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 16.448600229,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.553927611,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::update",
+            "return_type": "-> Result<()>",
+            "span": {
+              "start": {
+                "line": 1169,
+                "column": 5
+              },
+              "end": {
+                "line": 1363,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1330,
+              "column": 61
+            },
+            "end": {
+              "line": 1330,
+              "column": 62
+            }
+          },
+          "replacement": "-",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1330_col_61.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1330_col_61.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 11.633877633,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1.005547401,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::update",
+            "return_type": "-> Result<()>",
+            "span": {
+              "start": {
+                "line": 1169,
+                "column": 5
+              },
+              "end": {
+                "line": 1363,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1326,
+              "column": 60
+            },
+            "end": {
+              "line": 1326,
+              "column": 62
+            }
+          },
+          "replacement": "<",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1326_col_60.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1326_col_60.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 13.24400103,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.553576998,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::update",
+            "return_type": "-> Result<()>",
+            "span": {
+              "start": {
+                "line": 1169,
+                "column": 5
+              },
+              "end": {
+                "line": 1363,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1348,
+              "column": 60
+            },
+            "end": {
+              "line": 1348,
+              "column": 62
+            }
+          },
+          "replacement": "<",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1348_col_60.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1348_col_60.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 11.487295679,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.804435162,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::start_game_clock",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 1492,
+                "column": 5
+              },
+              "end": {
+                "line": 1513,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1493,
+              "column": 9
+            },
+            "end": {
+              "line": 1512,
+              "column": 10
+            }
+          },
+          "replacement": "true",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1493_col_9.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1493_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 12.546005267,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.805472837,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::start_game_clock",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 1492,
+                "column": 5
+              },
+              "end": {
+                "line": 1513,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1493,
+              "column": 9
+            },
+            "end": {
+              "line": 1512,
+              "column": 10
+            }
+          },
+          "replacement": "false",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1493_col_9_001.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1493_col_9_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 12.74858979,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.453593083,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::start_game_clock",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 1492,
+                "column": 5
+              },
+              "end": {
+                "line": 1513,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 1496,
+              "column": 17
+            },
+            "end": {
+              "line": 1501,
+              "column": 18
+            }
+          },
+          "replacement": "",
+          "genre": "MatchArm"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_1496_col_17.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_1496_col_17.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 12.709503796,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 1.006312297,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::generate_snapshot",
+            "return_type": "-> Option<GameSnapshot>",
+            "span": {
+              "start": {
+                "line": 2129,
+                "column": 5
+              },
+              "end": {
+                "line": 2204,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 2169,
+              "column": 17
+            },
+            "end": {
+              "line": 2169,
+              "column": 18
+            }
+          },
+          "replacement": "&",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_2169_col_17.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_2169_col_17.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 10.390504591,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.554277902,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::generate_snapshot",
+            "return_type": "-> Option<GameSnapshot>",
+            "span": {
+              "start": {
+                "line": 2129,
+                "column": 5
+              },
+              "end": {
+                "line": 2204,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 2130,
+              "column": 9
+            },
+            "end": {
+              "line": 2203,
+              "column": 11
+            }
+          },
+          "replacement": "None",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_2130_col_9.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_2130_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 13.805743476,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.453732372,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::generate_snapshot",
+            "return_type": "-> Option<GameSnapshot>",
+            "span": {
+              "start": {
+                "line": 2129,
+                "column": 5
+              },
+              "end": {
+                "line": 2204,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 2130,
+              "column": 9
+            },
+            "end": {
+              "line": 2203,
+              "column": 11
+            }
+          },
+          "replacement": "Some(Default::default())",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_2130_col_9_001.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_2130_col_9_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 14.555972964,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.554068302,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::generate_snapshot",
+            "return_type": "-> Option<GameSnapshot>",
+            "span": {
+              "start": {
+                "line": 2129,
+                "column": 5
+              },
+              "end": {
+                "line": 2204,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 2169,
+              "column": 17
+            },
+            "end": {
+              "line": 2169,
+              "column": 18
+            }
+          },
+          "replacement": "^",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_2169_col_17_001.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_2169_col_17_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 12.399972721,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.603887072,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::generate_snapshot",
+            "return_type": "-> Option<GameSnapshot>",
+            "span": {
+              "start": {
+                "line": 2129,
+                "column": 5
+              },
+              "end": {
+                "line": 2204,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 2168,
+              "column": 26
+            },
+            "end": {
+              "line": 2168,
+              "column": 28
+            }
+          },
+          "replacement": "==",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_2168_col_26.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_2168_col_26.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 12.191230811,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.754481905,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::generate_snapshot",
+            "return_type": "-> Option<GameSnapshot>",
+            "span": {
+              "start": {
+                "line": 2129,
+                "column": 5
+              },
+              "end": {
+                "line": 2204,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 2169,
+              "column": 55
+            },
+            "end": {
+              "line": 2169,
+              "column": 56
+            }
+          },
+          "replacement": "==",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_2169_col_55.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_2169_col_55.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 11.842667943,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.654536729,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::next_update_time",
+            "return_type": "-> Option<Instant>",
+            "span": {
+              "start": {
+                "line": 2206,
+                "column": 5
+              },
+              "end": {
+                "line": 2248,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 2207,
+              "column": 9
+            },
+            "end": {
+              "line": 2247,
+              "column": 10
+            }
+          },
+          "replacement": "Some(Default::default())",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_2207_col_9_001.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_2207_col_9_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.761518174,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::generate_snapshot",
+            "return_type": "-> Option<GameSnapshot>",
+            "span": {
+              "start": {
+                "line": 2129,
+                "column": 5
+              },
+              "end": {
+                "line": 2204,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 2169,
+              "column": 55
+            },
+            "end": {
+              "line": 2169,
+              "column": 56
+            }
+          },
+          "replacement": "<",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_2169_col_55_001.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_2169_col_55_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 10.836627323,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.554474058,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::next_update_time",
+            "return_type": "-> Option<Instant>",
+            "span": {
+              "start": {
+                "line": 2206,
+                "column": 5
+              },
+              "end": {
+                "line": 2248,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 2207,
+              "column": 49
+            },
+            "end": {
+              "line": 2207,
+              "column": 50
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_2207_col_49_001.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_2207_col_49_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.109528116,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::generate_snapshot",
+            "return_type": "-> Option<GameSnapshot>",
+            "span": {
+              "start": {
+                "line": 2129,
+                "column": 5
+              },
+              "end": {
+                "line": 2204,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 2169,
+              "column": 55
+            },
+            "end": {
+              "line": 2169,
+              "column": 56
+            }
+          },
+          "replacement": ">=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_2169_col_55_002.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_2169_col_55_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 12.289838674,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.710247703,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::next_update_time",
+            "return_type": "-> Option<Instant>",
+            "span": {
+              "start": {
+                "line": 2206,
+                "column": 5
+              },
+              "end": {
+                "line": 2248,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 2209,
+              "column": 31
+            },
+            "end": {
+              "line": 2209,
+              "column": 32
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_2209_col_31_001.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_2209_col_31_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 2.05947353,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::generate_snapshot",
+            "return_type": "-> Option<GameSnapshot>",
+            "span": {
+              "start": {
+                "line": 2129,
+                "column": 5
+              },
+              "end": {
+                "line": 2204,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 2196,
+              "column": 26
+            },
+            "end": {
+              "line": 2196,
+              "column": 27
+            }
+          },
+          "replacement": "",
+          "genre": "UnaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_2196_col_26.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_2196_col_26.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 12.293492724,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.554128991,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::next_update_time",
+            "return_type": "-> Option<Instant>",
+            "span": {
+              "start": {
+                "line": 2206,
+                "column": 5
+              },
+              "end": {
+                "line": 2248,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 2207,
+              "column": 9
+            },
+            "end": {
+              "line": 2247,
+              "column": 10
+            }
+          },
+          "replacement": "None",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_2207_col_9.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_2207_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 11.643785013,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.754689679,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::next_update_time",
+            "return_type": "-> Option<Instant>",
+            "span": {
+              "start": {
+                "line": 2206,
+                "column": 5
+              },
+              "end": {
+                "line": 2248,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 2207,
+              "column": 49
+            },
+            "end": {
+              "line": 2207,
+              "column": 50
+            }
+          },
+          "replacement": "-",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_2207_col_49.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_2207_col_49.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 10.441200445,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.555456354,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::next_update_time",
+            "return_type": "-> Option<Instant>",
+            "span": {
+              "start": {
+                "line": 2206,
+                "column": 5
+              },
+              "end": {
+                "line": 2248,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 2209,
+              "column": 31
+            },
+            "end": {
+              "line": 2209,
+              "column": 32
+            }
+          },
+          "replacement": "-",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_2209_col_31.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_2209_col_31.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 10.24653697,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.554633652,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::next_update_time",
+            "return_type": "-> Option<Instant>",
+            "span": {
+              "start": {
+                "line": 2206,
+                "column": 5
+              },
+              "end": {
+                "line": 2248,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 2209,
+              "column": 68
+            },
+            "end": {
+              "line": 2209,
+              "column": 69
+            }
+          },
+          "replacement": "/",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_2209_col_68_001.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_2209_col_68_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 10.644189059,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.755304338,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::next_update_time",
+            "return_type": "-> Option<Instant>",
+            "span": {
+              "start": {
+                "line": 2206,
+                "column": 5
+              },
+              "end": {
+                "line": 2248,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 2209,
+              "column": 68
+            },
+            "end": {
+              "line": 2209,
+              "column": 69
+            }
+          },
+          "replacement": "+",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_2209_col_68.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_2209_col_68.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 10.7503373,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.955096312,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::next_update_time",
+            "return_type": "-> Option<Instant>",
+            "span": {
+              "start": {
+                "line": 2206,
+                "column": 5
+              },
+              "end": {
+                "line": 2248,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 2231,
+              "column": 31
+            },
+            "end": {
+              "line": 2231,
+              "column": 33
+            }
+          },
+          "replacement": "!=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_2231_col_31.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_2231_col_31.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 11.049425295,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.703482305,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::next_update_time",
+            "return_type": "-> Option<Instant>",
+            "span": {
+              "start": {
+                "line": 2206,
+                "column": 5
+              },
+              "end": {
+                "line": 2248,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 2237,
+              "column": 36
+            },
+            "end": {
+              "line": 2237,
+              "column": 38
+            }
+          },
+          "replacement": "||",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_2237_col_36.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_2237_col_36.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 11.656597137,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.505236238,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::next_update_time",
+            "return_type": "-> Option<Instant>",
+            "span": {
+              "start": {
+                "line": 2206,
+                "column": 5
+              },
+              "end": {
+                "line": 2248,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 2237,
+              "column": 39
+            },
+            "end": {
+              "line": 2237,
+              "column": 40
+            }
+          },
+          "replacement": "",
+          "genre": "UnaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_2237_col_39.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_2237_col_39.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 10.048641978,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.753853015,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "package": "refbox",
+          "file": "refbox/src/tournament_manager/mod.rs",
+          "function": {
+            "function_name": "TournamentManager::next_update_time",
+            "return_type": "-> Option<Instant>",
+            "span": {
+              "start": {
+                "line": 2206,
+                "column": 5
+              },
+              "end": {
+                "line": 2248,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 2241,
+              "column": 25
+            },
+            "end": {
+              "line": 2241,
+              "column": 87
+            }
+          },
+          "replacement": "",
+          "genre": "MatchArm"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/refbox__src__tournament_manager__mod.rs_line_2241_col_25.log",
+      "diff_path": "diff/refbox__src__tournament_manager__mod.rs_line_2241_col_25.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 10.798956825,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=refbox@0.4.2"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 0.502490461,
+          "process_status": "Success",
+          "argv": [
+            "/home/estraily/.rustup/toolchains/1.85.0-x86_64-unknown-linux-gnu/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=refbox@0.4.2",
+            "golden_traces_match_baseline"
+          ]
+        }
+      ]
+    }
+  ],
+  "total_mutants": 63,
+  "missed": 22,
+  "caught": 33,
+  "timeout": 0,
+  "unviable": 8,
+  "success": 0,
+  "start_time": "2026-06-10T01:38:52.316485061Z",
+  "end_time": "2026-06-10T01:46:57.824077295Z",
+  "cargo_mutants_version": "26.0.0"
+}

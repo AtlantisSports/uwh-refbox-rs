@@ -1,0 +1,8 @@
+refbox/src/tournament_manager/mod.rs:1081:54: replace + with * in TournamentManager::start_game
+refbox/src/tournament_manager/mod.rs:1213:52: replace + with * in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1290:56: replace + with * in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1298:56: replace + with * in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:1330:61: replace + with * in TournamentManager::update
+refbox/src/tournament_manager/mod.rs:2207:9: replace TournamentManager::next_update_time -> Option<Instant> with Some(Default::default())
+refbox/src/tournament_manager/mod.rs:2207:49: replace + with * in TournamentManager::next_update_time
+refbox/src/tournament_manager/mod.rs:2209:31: replace + with * in TournamentManager::next_update_time

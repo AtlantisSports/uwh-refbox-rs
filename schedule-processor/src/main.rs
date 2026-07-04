@@ -77,6 +77,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         log_panics::init();
     }
 
+    let options = vec!["Underwater Hockey", "Underwater Rugby"];
+    let sport_choice = Select::new("Select the sport for the schedule:", options)
+        .prompt()
+        .unwrap_or_else(|_| {
+            error!("No sport selected. Exiting.");
+            std::process::exit(1);
+        });
+
     info!("Please select a schedule file (.csv or .json) to process in the file dialog.");
     let schedule_path = FileDialog::new()
         .add_filter("Schedule files", &["csv", "json"])
@@ -90,28 +98,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("No file selected".into());
     };
 
-    let options = vec!["Underwater Hockey", "Underwater Rugby"];
-    let sport_choice = Select::new("Select the sport for the schedule:", options)
-        .prompt()
-        .unwrap_or_else(|_| {
-            error!("No sport selected. Exiting.");
-            std::process::exit(1);
-        });
-
-    let options = vec!["Production", "Development", "Local"];
-    let site_choice = Select::new("Select the uwhportal site to connect to:", options)
-        .prompt()
-        .unwrap_or_else(|_| {
-            error!("No site selected. Exiting.");
-            std::process::exit(1);
-        });
-
-    let site_url = match (site_choice, sport_choice) {
-        ("Production", "Underwater Hockey") => "https://api.uwhportal.com",
-        ("Production", "Underwater Rugby") => "https://api.uwrportal.com",
-        ("Development", "Underwater Hockey") => "https://api.dev.uwhportal.com",
-        ("Development", "Underwater Rugby") => "https://api.dev.uwrportal.com",
-        ("Local", _) => "http://localhost:9000",
+    // This build always connects to the Production portal.
+    let site_url = match sport_choice {
+        "Underwater Hockey" => "https://api.uwhportal.com",
+        "Underwater Rugby" => "https://api.uwrportal.com",
         _ => unreachable!(),
     };
 
@@ -121,7 +111,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut portal_client = UwhPortalClient::new(
         site_url,
         None,
-        !matches!(site_choice, "Local"),
+        true,
         std::time::Duration::from_secs(10),
     )?;
 

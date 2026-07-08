@@ -245,11 +245,6 @@ pub async fn generate_scoresheets_for_event(
             ),
         };
 
-        let html_path = inputs
-            .output_dir
-            .join(format!("game-{}.html", sanitize(num)));
-        fs::write(&html_path, html.as_bytes())?;
-
         // Capture CSS from the first page and append this page fragment for combined output
         if combined_css.is_none() {
             if let (Some(s), Some(e)) = (html.find("<style>"), html.find("</style>")) {
@@ -304,17 +299,12 @@ pub async fn generate_scoresheets_for_event(
         };
         let html_url = format!("file:///{}", html_abs.to_string_lossy().replace('\\', "/"));
 
-        // Hardwire Chrome: prefer standard install paths, then PATH 'chrome'
-        let mut candidates: Vec<String> = vec![
-            r#"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"#.into(),
-            r#"C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"#.into(),
-        ];
-        if let Ok(local) = std::env::var("LOCALAPPDATA") {
-            let mut p = std::path::PathBuf::from(&local);
-            p.push("Google\\Chrome\\Application\\chrome.exe");
-            candidates.push(p.to_string_lossy().into_owned());
-        }
-        candidates.push("chrome".into());
+        // Browsers to try for HTML->PDF, across Linux/WSL, macOS and Windows.
+        // Override with the SCORESHEET_BROWSER env var (full path to a browser).
+        let candidates = browser_candidates(
+            std::env::var("SCORESHEET_BROWSER").ok().as_deref(),
+            std::env::var("LOCALAPPDATA").ok().as_deref(),
+        );
         let try_arg_sets: [&[&str]; 4] = [
             &[
                 "--headless=new",
@@ -354,7 +344,7 @@ pub async fn generate_scoresheets_for_event(
             // If 'c' looks like a path, ensure it exists before trying
             let is_path_like = c.contains('\\') || c.contains('/') || c.contains(':');
             if is_path_like && !std::path::Path::new(c).exists() {
-                log::warn!("Chrome not found at: {}", c);
+                log::debug!("Browser not found at: {}", c);
                 continue;
             }
             for args in &try_arg_sets {
@@ -365,7 +355,7 @@ pub async fn generate_scoresheets_for_event(
                     .arg("--no-default-browser-check")
                     .arg(print_arg)
                     .arg(&html_url);
-                log::info!(
+                log::debug!(
                     "Attempting to print via '{}' url={} pdf={}",
                     c,
                     &html_url,
@@ -380,15 +370,21 @@ pub async fn generate_scoresheets_for_event(
                     Ok(out) => {
                         let so = String::from_utf8_lossy(&out.stdout);
                         let se = String::from_utf8_lossy(&out.stderr);
-                        log::error!(
-                            "Chrome run failed (status {}). stdout: {} stderr: {}",
+                        log::debug!(
+                            "Browser '{}' run failed (status {}). stdout: {} stderr: {}",
+                            c,
                             out.status,
-                            so,
-                            se
+                            so.trim(),
+                            se.trim()
                         );
                     }
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                        // Browser isn't installed; skip its remaining arg sets.
+                        log::debug!("Browser '{}' is not installed", c);
+                        continue 'outer;
+                    }
                     Err(e) => {
-                        log::error!("Failed to run Chrome '{}': {}", c, e);
+                        log::debug!("Failed to run browser '{}': {}", c, e);
                     }
                 }
             }
@@ -396,7 +392,13 @@ pub async fn generate_scoresheets_for_event(
 
         if !printed {
             log::error!(
-                "Could not find or run a browser to produce combined PDF. Saved combined HTML at {}",
+                "No web browser was found to create the PDF. The combined HTML was still saved \
+                 at {}. To also get scoresheets-all.pdf, install Google Chrome and run again. On \
+                 Linux/WSL: download google-chrome-stable_current_amd64.deb from google.com and \
+                 install it with `sudo apt-get install -y ./google-chrome-stable_current_amd64.deb` \
+                 (Ubuntu's `chromium-browser` apt package is a Snap stub that does not run under \
+                 WSL). You can also point the tool at a specific browser by setting the \
+                 SCORESHEET_BROWSER environment variable to its full path.",
                 all_html_path.display()
             );
         }
@@ -405,10 +407,50 @@ pub async fn generate_scoresheets_for_event(
     Ok(())
 }
 
-fn sanitize(s: &str) -> String {
-    s.chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
-        .collect()
+/// Build the ordered list of browser executables to try when converting the
+/// combined score-sheet HTML into a PDF via headless Chrome/Chromium.
+///
+/// Order: an explicit override (`SCORESHEET_BROWSER`) first, then common
+/// Linux/macOS names resolved via PATH, then the standard Windows Chrome
+/// install locations, then a bare `chrome` on PATH.
+///
+/// `explicit` is the value of the `SCORESHEET_BROWSER` env var (a full path to
+/// a browser executable); `localappdata` is the Windows `LOCALAPPDATA` env var.
+fn browser_candidates(explicit: Option<&str>, localappdata: Option<&str>) -> Vec<String> {
+    let mut candidates: Vec<String> = Vec::new();
+
+    // 1. Explicit override wins, when set and non-empty.
+    if let Some(path) = explicit {
+        if !path.is_empty() {
+            candidates.push(path.to_string());
+        }
+    }
+
+    // 2. Linux / macOS names, resolved via PATH.
+    for name in [
+        "chromium",
+        "chromium-browser",
+        "google-chrome",
+        "google-chrome-stable",
+        "microsoft-edge",
+    ] {
+        candidates.push(name.to_string());
+    }
+
+    // 3. Standard Windows Chrome install locations (kept for the Windows build).
+    candidates.push(r#"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"#.to_string());
+    candidates
+        .push(r#"C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"#.to_string());
+    if let Some(local) = localappdata {
+        let mut p = PathBuf::from(local);
+        p.push("Google\\Chrome\\Application\\chrome.exe");
+        candidates.push(p.to_string_lossy().into_owned());
+    }
+
+    // 4. Bare `chrome` on PATH.
+    candidates.push("chrome".to_string());
+
+    candidates
 }
 
 fn copy_logo(
@@ -2570,4 +2612,45 @@ fn html_escape(s: &str) -> String {
             _ => vec![c],
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::browser_candidates;
+
+    #[test]
+    fn candidates_include_linux_names() {
+        let candidates = browser_candidates(None, None);
+        for name in [
+            "chromium",
+            "chromium-browser",
+            "google-chrome",
+            "google-chrome-stable",
+        ] {
+            assert!(
+                candidates.iter().any(|c| c == name),
+                "expected candidate list to include {name}, got {candidates:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn explicit_browser_is_tried_first() {
+        let candidates = browser_candidates(Some("/opt/custom/chrome"), None);
+        assert_eq!(
+            candidates.first().map(String::as_str),
+            Some("/opt/custom/chrome"),
+            "explicit SCORESHEET_BROWSER path should be first"
+        );
+    }
+
+    #[test]
+    fn empty_explicit_is_ignored() {
+        let candidates = browser_candidates(Some(""), None);
+        assert_eq!(
+            candidates.first().map(String::as_str),
+            Some("chromium"),
+            "empty override should be skipped, Linux names come first"
+        );
+    }
 }

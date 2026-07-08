@@ -280,10 +280,15 @@ pub async fn generate_scoresheets_for_event(
     // Build combined HTML and export a single PDF via Chrome headless
     if !combined_pages.is_empty() {
         let css = combined_css.unwrap_or_default();
+        // Auto-fit: size each header field value's font to fill its fixed-width box on
+        // one line, growing up to MAX and shrinking (down to MIN) when the text is too
+        // long. Runs in headless Chrome before print-to-pdf, and in the saved HTML.
+        const FIT_SCRIPT: &str = "(function(){var MIN=7,MAX=16;var vs=document.querySelectorAll('.fields .val');for(var i=0;i<vs.length;i++){var el=vs[i];el.style.whiteSpace='nowrap';el.style.overflow='hidden';if(!el.textContent.trim())continue;var s=MIN;el.style.fontSize=s+'px';while(s<MAX){el.style.fontSize=(s+0.5)+'px';if(el.scrollWidth>el.clientWidth){el.style.fontSize=s+'px';break;}s+=0.5;}}})();";
         let all_html = format!(
-            r#"<!doctype html><html><head><meta charset='utf-8'/><style>{css}</style></head><body>{pages}</body></html>"#,
+            r#"<!doctype html><html><head><meta charset='utf-8'/><style>{css}</style></head><body>{pages}<script>{fit}</script></body></html>"#,
             css = css,
-            pages = combined_pages
+            pages = combined_pages,
+            fit = FIT_SCRIPT
         );
         let all_html_path = inputs.output_dir.join("scoresheets-all.html");
         fs::write(&all_html_path, all_html.as_bytes())?;
@@ -815,11 +820,11 @@ fn render_html(
       .center { display:grid; grid-template-rows: auto auto auto auto; gap:4px; }
       .center .tname { text-align:center; font-weight:700; color:#000; font-size:22px; border:1px solid var(--border); padding:4px 8px; }
       .fields { display:grid; gap:5px; }
-      .fields.meta { grid-template-columns: 0.69fr 0.9fr 1fr 0.75fr 0.9fr 0.9fr; }
+      .fields.meta { grid-template-columns: 0.6fr 0.9fr 1.25fr 1.12fr 1.0fr 1.15fr 1.15fr; }
       .fields.off1, .fields.off2 { grid-template-columns: repeat(3, 1fr); }
-      .field { display:grid; grid-template-columns: auto 1fr; align-items:center; column-gap:6px; }
+      .field { display:grid; grid-template-columns: auto 1fr; align-items:center; column-gap:6px; min-width:0; }
       .field .lbl { font-size:10px; text-align:right; line-height:1.05; white-space:nowrap; }
-      .field .val { border:1px solid var(--border); height:22px; display:flex; align-items:center; justify-content:center; font-size:12px; }
+      .field .val { border:1px solid var(--border); height:22px; display:flex; align-items:center; justify-content:center; font-size:12px; min-width:0; }
 
       .sides { display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-top:5px; }
       .block { border:0; }
@@ -975,9 +980,10 @@ fn render_html(
     <div class='center'>
       <div class='tname'>{event_name}</div>
       <div class='fields meta'>
+        <div class='field'><div class='lbl'>COURT:</div><div class='val'>{court}</div></div>
         <div class='field'><div class='lbl'>GAME #:</div><div class='val'>{game_number}</div></div>
-        <div class='field'><div class='lbl'>DIV. / POD:</div><div class='val'>{divpod}</div></div>
-        <div class='field'><div class='lbl'>CATEGORY:</div><div class='val'>{category}</div></div>
+        <div class='field'><div class='lbl'>DIV. /<br>POD:</div><div class='val'>{divpod}</div></div>
+        <div class='field'><div class='lbl'>TYPE:</div><div class='val'>{category}</div></div>
         <div class='field'><div class='lbl'>DATE:</div><div class='val'>{date}</div></div>
         <div class='field'><div class='lbl'>SCHEDULED<br>START TIME:</div><div class='val'>{time}</div></div>
         <div class='field'><div class='lbl'>ACTUAL<br>START TIME:</div><div class='val'></div></div>
@@ -1009,6 +1015,7 @@ fn render_html(
         "#,
         css = css,
         event_name = html_escape(&event.name),
+        court = html_escape(&game.court),
         game_number = html_escape(game_number),
         divpod = html_escape(&divpod),
         category = html_escape(cat),

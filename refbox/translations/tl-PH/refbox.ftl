@@ -504,3 +504,7 @@ gi-ref-water-3 = Water Referee 3
 gi-ref-water-referees = Water Referees
 gi-ref-deck-referees = Deck Referees
 gi-unknown = ???
+
+shut-down = I-SHUT DOWN
+restart-pi = I-RESTART ANG PI
+restart-refbox = I-RESTART ANG REFBOX

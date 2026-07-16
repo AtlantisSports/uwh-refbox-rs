@@ -504,3 +504,7 @@ gi-ref-water-3 = Waterscheidsrechter 3
 gi-ref-water-referees = Waterscheidsrechters
 gi-ref-deck-referees = Kantscheidsrechters
 gi-unknown = ???
+
+shut-down = AFSLUITEN
+restart-pi = PI HERSTARTEN
+restart-refbox = REFBOX HERSTARTEN

@@ -506,3 +506,7 @@ gi-ref-water-3 = 수중 심판 3
 gi-ref-water-referees = 수중 심판
 gi-ref-deck-referees = 데크 심판
 gi-unknown = ???
+
+shut-down = 종료
+restart-pi = Pi 재시작
+restart-refbox = Refbox 재시작

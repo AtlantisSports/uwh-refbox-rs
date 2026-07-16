@@ -504,3 +504,7 @@ gi-ref-water-3 = Su Hakemi 3
 gi-ref-water-referees = Su Hakemleri
 gi-ref-deck-referees = Kenar Hakemleri
 gi-unknown = ???
+
+shut-down = KAPAT
+restart-pi = PI'Yİ YENİDEN BAŞLAT
+restart-refbox = REFBOX'U YENİDEN BAŞLAT

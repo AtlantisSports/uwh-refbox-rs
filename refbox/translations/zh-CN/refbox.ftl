@@ -503,3 +503,7 @@ gi-ref-water-3 = 水下裁判3
 gi-ref-water-referees = 水下裁判
 gi-ref-deck-referees = 岸上裁判
 gi-unknown = ???
+
+shut-down = 关机
+restart-pi = 重启 PI
+restart-refbox = 重启 REFBOX

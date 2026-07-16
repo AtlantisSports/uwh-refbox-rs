@@ -506,3 +506,7 @@ gi-ref-water-3 = Arbitre Aquatique 3
 gi-ref-water-referees = Arbitres Aquatiques
 gi-ref-deck-referees = Arbitres de Bord
 gi-unknown = ???
+
+shut-down = ÉTEINDRE
+restart-pi = REDÉMARRER PI
+restart-refbox = REDÉMARRER REFBOX

@@ -671,7 +671,7 @@ impl Server {
 
 impl Drop for Server {
     fn drop(&mut self) {
-        for (_, handle) in self.senders.iter() {
+        for handle in self.senders.values() {
             handle.join.abort();
         }
     }

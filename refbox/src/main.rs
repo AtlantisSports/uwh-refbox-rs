@@ -184,6 +184,11 @@ struct Cli {
     simulate_sunlight_display: bool,
 
     #[clap(long, hide = true)]
+    /// Testing aid: show the power controls (and power page) even when not on a
+    /// Raspberry Pi. Shut Down / Restart Pi are safe no-ops when not on a Pi.
+    force_power_controls: bool,
+
+    #[clap(long, hide = true)]
     /// Probe that the binary starts on this machine, then exit 0. Used as the
     /// post-download smoke test before committing to a new binary.
     self_check: bool,
@@ -269,6 +274,7 @@ pub(crate) fn build_restart_argv(args: &Cli) -> Vec<String> {
         log_max_file_size,
         num_old_logs,
         simulate_sunlight_display,
+        force_power_controls,
         // --- Deliberately NOT replayed (see this fn's doc comment) ---
         language: _,         // a restart is often triggered BY a language change
         is_simulator: _,     // this relaunches the MAIN app, never a sim child
@@ -320,6 +326,9 @@ pub(crate) fn build_restart_argv(args: &Cli) -> Vec<String> {
     argv.push(num_old_logs.to_string());
     if *simulate_sunlight_display {
         argv.push("--simulate-sunlight-display".to_string());
+    }
+    if *force_power_controls {
+        argv.push("--force-power-controls".to_string());
     }
 
     argv
@@ -656,6 +665,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         require_https: !args.allow_http,
         fullscreen: args.fullscreen,
         list_all_events: args.all_events,
+        force_power_controls: args.force_power_controls,
         install_path: install_path.clone(),
         restart_argv: restart_argv.clone(),
         show_rolled_back,

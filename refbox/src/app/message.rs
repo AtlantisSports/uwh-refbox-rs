@@ -76,6 +76,11 @@ pub enum Message {
         canceled: bool,
     },
     ShowGameDetails,
+    /// Operator tapped the power button on the game-info page. Opens the
+    /// Pi power page (`AppState::PowerPage`).
+    OpenPowerPage,
+    /// Operator picked one of the three actions on the Pi power page.
+    PowerAction(PowerAction),
     /// Spawns a new panel-simulator window (in addition to any already
     /// open). Triggered by the "Open New Display" button on the Display
     /// Options tab. See [`crate::spawn_sim_child`] for the spawn details.
@@ -439,7 +444,9 @@ impl Message {
             | Self::UpdatesBack
             | Self::UpdaterHealthyCheck
             | Self::SetTeamTimeoutCount(_)
-            | Self::SetTeamTimeoutLength(_) => false,
+            | Self::SetTeamTimeoutLength(_)
+            | Self::OpenPowerPage
+            | Self::PowerAction(_) => false,
         }
     }
 }
@@ -454,6 +461,7 @@ impl PartialEq for Message {
             | (Self::WarningOverview, Self::WarningOverview)
             | (Self::FoulOverview, Self::FoulOverview)
             | (Self::ShowGameDetails, Self::ShowGameDetails)
+            | (Self::OpenPowerPage, Self::OpenPowerPage)
             | (Self::OpenNewDisplay, Self::OpenNewDisplay)
             | (Self::OpenPortalDetailPage, Self::OpenPortalDetailPage)
             | (Self::ClosePortalDetailPage, Self::ClosePortalDetailPage)
@@ -636,6 +644,7 @@ impl PartialEq for Message {
             // unequal so every event is delivered to `update()`.
             (Self::PortalEvent(_), Self::PortalEvent(_)) => false,
             (Self::ConfirmationSelected(a), Self::ConfirmationSelected(b)) => a == b,
+            (Self::PowerAction(a), Self::PowerAction(b)) => a == b,
             (Self::BeepTestEditSelectLevel(a), Self::BeepTestEditSelectLevel(b)) => a == b,
             (Self::TeamTimeout(a, b), Self::TeamTimeout(c, d)) => a == c && b == d,
             (Self::RefTimeout(a), Self::RefTimeout(b)) => a == b,
@@ -782,6 +791,8 @@ impl PartialEq for Message {
             | (Self::UpdaterHealthyCheck, _)
             | (Self::SetTeamTimeoutCount(_), _)
             | (Self::SetTeamTimeoutLength(_), _)
+            | (Self::OpenPowerPage, _)
+            | (Self::PowerAction(_), _)
             | (Self::NoAction, _) => false,
         }
     }
@@ -968,4 +979,15 @@ pub enum ConfirmationOption {
     // Offered by ConfirmationKind::PortalTenantSwitch — restarts the app on the
     // new Mode/portal. Raised by apply_app_options (Task 9); handled in Task 8.
     RestartAndApply,
+}
+
+/// The three actions offered on the operator power page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PowerAction {
+    /// Power the Raspberry Pi off (`systemctl poweroff`, wired in Task 2).
+    ShutDownPi,
+    /// Reboot the Raspberry Pi (`systemctl reboot`, wired in Task 2).
+    RestartPi,
+    /// Relaunch just the refbox app (reuses the existing restart path).
+    RestartRefbox,
 }

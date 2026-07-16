@@ -10,7 +10,8 @@ use iced::{
     Alignment, Element, Length,
     alignment::{Horizontal, Vertical},
     widget::{
-        Image, Row, button, column, container, horizontal_space, image, row, text, vertical_space,
+        Image, Row, button, column, container, horizontal_space, image, row, svg, svg::Svg, text,
+        vertical_space,
     },
 };
 use matrix_drawing::transmitted_data::Brightness;
@@ -281,6 +282,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
     events: Option<&BTreeMap<EventId, Event>>,
     page: ConfigPage,
     page_entry_snapshot: Option<&PageEntrySnapshot>,
+    show_power_button: bool,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -295,9 +297,14 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
     // — page_entry_snapshot (Unit 3) then portal_indicator (Unit 7) then has_led_panel
     //   (open-new-display gate).
     match page {
-        ConfigPage::Main => {
-            make_main_config_page(snapshot, settings, mode, clock_running, portal_indicator)
-        }
+        ConfigPage::Main => make_main_config_page(
+            snapshot,
+            settings,
+            mode,
+            clock_running,
+            portal_indicator,
+            show_power_button,
+        ),
         ConfigPage::Game => make_event_config_page(
             snapshot,
             settings,
@@ -370,6 +377,7 @@ fn make_main_config_page<'a>(
     mode: Mode,
     clock_running: bool,
     portal_indicator: Option<PortalIndicatorState>,
+    show_power_button: bool,
 ) -> Element<'a, Message> {
     let row_top = row![
         make_button(fl!("game-options"))
@@ -393,6 +401,33 @@ fn make_main_config_page<'a>(
     .spacing(SPACING)
     .height(Length::Fill);
 
+    // Icon-only blue power button opposite Back (right third), shown only on the
+    // Pi (or with --force-power-controls). Sizing mirrors make_button so it lines
+    // up with the Back button; matches the icon-button pattern in shared_elements.
+    let power_slot: Element<_> = if show_power_button {
+        button(
+            container(
+                Svg::new(svg::Handle::from_memory(
+                    &include_bytes!("../../../resources/power.svg")[..],
+                ))
+                .style(white_svg)
+                .width(Length::Fixed(44.0))
+                .height(Length::Fixed(44.0)),
+            )
+            .center_x(Length::Fill)
+            .center_y(Length::Fill)
+            .style(transparent_container),
+        )
+        .padding(PADDING)
+        .height(Length::Fixed(MIN_BUTTON_SIZE))
+        .width(Length::Fill)
+        .style(blue_button)
+        .on_press(Message::OpenPowerPage)
+        .into()
+    } else {
+        horizontal_space().into()
+    };
+
     column![
         make_game_time_button(
             snapshot,
@@ -410,7 +445,7 @@ fn make_main_config_page<'a>(
         row![
             make_back_button(Message::ConfigEditComplete),
             horizontal_space(),
-            horizontal_space(),
+            power_slot,
         ]
         .spacing(SPACING),
     ]

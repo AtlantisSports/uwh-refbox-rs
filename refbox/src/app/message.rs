@@ -984,9 +984,9 @@ pub enum ConfirmationOption {
 /// The three actions offered on the operator power page.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PowerAction {
-    /// Power the Raspberry Pi off (`systemctl poweroff`, wired in Task 2).
+    /// Power the Raspberry Pi off (`systemctl poweroff`).
     ShutDownPi,
-    /// Reboot the Raspberry Pi (`systemctl reboot`, wired in Task 2).
+    /// Reboot the Raspberry Pi (`systemctl reboot`).
     RestartPi,
     /// Relaunch just the refbox app (reuses the existing restart path).
     RestartRefbox,

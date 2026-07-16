@@ -32,7 +32,6 @@ pub(in super::super) fn build_main_view<'a>(
         clock_running,
         teams,
         portal_indicator,
-        has_led_panel: _,
         ..
     } = data;
 

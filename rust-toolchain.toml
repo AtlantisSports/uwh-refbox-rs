@@ -1,0 +1,8 @@
+# Pin the toolchain used to build, lint, and format the main workspace so CI (and local
+# builds) are reproducible and a new stable Rust release cannot spontaneously introduce
+# lint/warning failures (as happened when the CI runner moved to 1.97 and clippy flagged
+# previously-clean code). Bump this deliberately; Renovate can propose updates.
+# The wireless-remote sub-workspace keeps its own rust-toolchain.toml.
+[toolchain]
+channel = "1.96.0"
+components = ["rustfmt", "clippy"]

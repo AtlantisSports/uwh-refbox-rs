@@ -1,4 +1,6 @@
-//! Raspberry Pi detection and (Task 2) power commands for the operator power page.
+//! Raspberry Pi detection and power commands for the operator power page.
+
+use std::process::Command;
 
 /// True when the device-tree model string identifies a Raspberry Pi. Factored
 /// out from `detect_raspberry_pi` so it is unit-testable without touching `/proc`.
@@ -13,6 +15,20 @@ pub fn detect_raspberry_pi() -> bool {
     std::fs::read_to_string("/proc/device-tree/model")
         .map(|m| model_is_pi(&m))
         .unwrap_or(false)
+}
+
+/// Power the Pi off. Spawns `systemctl poweroff` (non-blocking); systemd tears
+/// the app down as part of shutdown.
+pub fn shut_down_pi() -> std::io::Result<()> {
+    Command::new("systemctl")
+        .arg("poweroff")
+        .spawn()
+        .map(|_| ())
+}
+
+/// Reboot the Pi. Spawns `systemctl reboot` (non-blocking).
+pub fn reboot_pi() -> std::io::Result<()> {
+    Command::new("systemctl").arg("reboot").spawn().map(|_| ())
 }
 
 #[cfg(test)]

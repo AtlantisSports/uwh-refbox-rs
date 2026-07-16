@@ -204,7 +204,7 @@ pub struct RefBoxApp {
     fullscreen: bool,
     /// `true` when running on a Raspberry Pi (device-tree model check). Gates the
     /// power button's visibility together with `force_power_controls`, and
-    /// (Task 2) whether the Pi power actions actually execute.
+    /// whether the Pi power actions actually execute.
     is_pi: bool,
     /// `true` when started with `--force-power-controls`: shows the power controls
     /// off-Pi for testing (the Pi actions stay safe no-ops off-Pi).
@@ -2700,14 +2700,29 @@ impl RefBoxApp {
                     RESTART_PENDING.store(true, Ordering::Relaxed);
                     iced::exit()
                 }
-                // Real OS commands land in Task 2; log-only here so this task is
-                // safe to walk through on any machine.
+                // The real OS commands run only on an actual Pi; off-Pi (forced
+                // on for testing) they log so a walkthrough can't power off the
+                // test machine.
                 PowerAction::ShutDownPi => {
-                    info!("Power page: Shut Down requested");
+                    if self.is_pi {
+                        if let Err(e) = power_control::shut_down_pi() {
+                            error!("Failed to power off the Pi: {e}");
+                        }
+                    } else {
+                        info!(
+                            "--force-power-controls: would power off the Pi (systemctl poweroff)"
+                        );
+                    }
                     Task::none()
                 }
                 PowerAction::RestartPi => {
-                    info!("Power page: Restart Pi requested");
+                    if self.is_pi {
+                        if let Err(e) = power_control::reboot_pi() {
+                            error!("Failed to reboot the Pi: {e}");
+                        }
+                    } else {
+                        info!("--force-power-controls: would reboot the Pi (systemctl reboot)");
+                    }
                     Task::none()
                 }
             },

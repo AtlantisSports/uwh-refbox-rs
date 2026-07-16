@@ -30,10 +30,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v5
-    - uses: awalsh128/cache-apt-pkgs-action@latest
-      with:
-        packages: libssl-dev pkg-config libasound2-dev
-        version: latest
+    - run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config libasound2-dev
     - uses: Swatinem/rust-cache@v2
     - name: Versions
       run: cargo --version && rustc --version && cargo fmt -- --version && cargo clippy -- --version
@@ -64,12 +61,9 @@ jobs:
 
     steps:
     - uses: actions/checkout@v5
-    - uses: awalsh128/cache-apt-pkgs-action@latest
-      with:
-        # xvfb provides a virtual display so the capture window can render;
-        # libxkbcommon-x11-0 is the winit X11 runtime dep iced needs headless.
-        packages: libssl-dev pkg-config libasound2-dev xvfb libxkbcommon-x11-0
-        version: latest
+    # xvfb provides a virtual display so the capture window can render;
+    # libxkbcommon-x11-0 is the winit X11 runtime dep iced needs headless.
+    - run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config libasound2-dev xvfb libxkbcommon-x11-0
     - uses: Swatinem/rust-cache@v2
     - name: Versions
       run: cargo --version && rustc --version
@@ -105,10 +99,7 @@ jobs:
     steps:
     - uses: actions/checkout@v5
     - if: ${{ matrix.os == 'ubuntu-latest' }}
-      uses: awalsh128/cache-apt-pkgs-action@latest
-      with:
-        packages: libssl-dev pkg-config libasound2-dev
-        version: latest
+      run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config libasound2-dev
     - uses: Swatinem/rust-cache@v2
       with:
         workspaces: |
@@ -127,10 +118,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v5
-    - uses: awalsh128/cache-apt-pkgs-action@latest
-      with:
-        packages: libssl-dev pkg-config libasound2-dev
-        version: latest
+    - run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config libasound2-dev
     - uses: Swatinem/rust-cache@v2
       with:
         workspaces: |
@@ -153,10 +141,7 @@ jobs:
     steps:
     - uses: actions/checkout@v5
     - if: ${{ matrix.os == 'ubuntu-latest' }}
-      uses: awalsh128/cache-apt-pkgs-action@latest
-      with:
-        packages: libssl-dev pkg-config libasound2-dev
-        version: latest
+      run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config libasound2-dev
     - uses: Swatinem/rust-cache@v2
       with:
         workspaces: |
@@ -175,10 +160,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v5
-    - uses: awalsh128/cache-apt-pkgs-action@latest
-      with:
-        packages: libssl-dev pkg-config libasound2-dev
-        version: latest
+    - run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config libasound2-dev
     - uses: Swatinem/rust-cache@v2
       with:
         workspaces: |

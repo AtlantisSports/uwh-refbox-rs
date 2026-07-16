@@ -4001,7 +4001,10 @@ impl RefBoxApp {
                 let now = Instant::now();
                 let would_end = tm.timeout_end_would_end_game(now).unwrap();
                 if would_end {
-                    tm.halt_clock(now, true).unwrap();
+                    // Arm the end-of-game confirm pause so the confirm screen (below) can finish
+                    // the game cleanly; a bare halt would leave `end_confirm_pause` with no pause
+                    // to end, panicking on confirm (R6).
+                    tm.end_game_ending_timeout(now).unwrap();
                 } else {
                     tm.end_timeout(now).unwrap();
                     tm.update(now).unwrap();

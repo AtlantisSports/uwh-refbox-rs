@@ -67,6 +67,8 @@ use update_sender::*;
 pub(crate) mod languages;
 use languages::*;
 
+mod power_control;
+
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long the operator must hold a used-up team timeout button to revive
 /// (give back) one team timeout. Long enough to confirm the hold was intentional.
@@ -200,6 +202,13 @@ pub struct RefBoxApp {
     /// `force_display_repaint` to decide whether a display-mode change needs a
     /// full-screen repaint. See `should_force_repaint`.
     fullscreen: bool,
+    /// `true` when running on a Raspberry Pi (device-tree model check). Gates the
+    /// power button's visibility together with `force_power_controls`, and
+    /// (Task 2) whether the Pi power actions actually execute.
+    is_pi: bool,
+    /// `true` when started with `--force-power-controls`: shows the power controls
+    /// off-Pi for testing (the Pi actions stay safe no-ops off-Pi).
+    force_power_controls: bool,
     mouse_alarm_held: bool,
     spacebar_held: bool,
     alarm_delay_token: u64,
@@ -258,6 +267,7 @@ pub struct RefBoxAppFlags {
     pub require_https: bool,
     pub fullscreen: bool,
     pub list_all_events: bool,
+    pub force_power_controls: bool,
     pub install_path: Option<std::path::PathBuf>,
     pub restart_argv: Vec<String>,
     /// Set by `main()` when the startup safety net auto-reverted a failed update
@@ -280,6 +290,8 @@ enum AppState {
     KeypadPage(KeypadPage, u32),
     GameDetailsPage(bool),
     WarningsSummaryPage,
+    /// The Raspberry-Pi power page (Shut Down / Restart Pi / Restart Refbox).
+    PowerPage,
     EditGameConfig(ConfigPage),
     // 3rd field: staged `single_half` choice, only meaningful for
     // LengthParameter::Half (the 2 Halves / 1 Period selector). Carried here so
@@ -1648,6 +1660,12 @@ impl Drop for RefBoxApp {
 }
 
 impl RefBoxApp {
+    /// Whether the game-info power button and the power page are shown: only on
+    /// the Pi, or when forced on for testing.
+    fn power_controls_visible(&self) -> bool {
+        self.is_pi || self.force_power_controls
+    }
+
     pub(super) fn new(flags: RefBoxAppFlags) -> (Self, Task<Message>) {
         let RefBoxAppFlags {
             config,
@@ -1660,6 +1678,7 @@ impl RefBoxApp {
             require_https,
             fullscreen,
             list_all_events,
+            force_power_controls,
             install_path,
             restart_argv,
             show_rolled_back,
@@ -1870,6 +1889,8 @@ impl RefBoxApp {
             beep_test_display_layout: crate::sim_frame::FrontDisplayLayout::Default,
             list_all_events,
             fullscreen,
+            is_pi: crate::app::power_control::detect_raspberry_pi(),
+            force_power_controls,
             mouse_alarm_held: false,
             spacebar_held: false,
             alarm_delay_token: 0,
@@ -2663,6 +2684,33 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
+            Message::OpenPowerPage => {
+                self.app_state = AppState::PowerPage;
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
+            Message::PowerAction(action) => match action {
+                PowerAction::RestartRefbox => {
+                    // Reuse the existing graceful-restart path: kill sim children,
+                    // mark the restart, and let iced close its windows; `main()`
+                    // respawns the exe (see RESTART_PENDING).
+                    for mut child in self.sim_children.drain(..) {
+                        let _ = child.kill();
+                    }
+                    RESTART_PENDING.store(true, Ordering::Relaxed);
+                    iced::exit()
+                }
+                // Real OS commands land in Task 2; log-only here so this task is
+                // safe to walk through on any machine.
+                PowerAction::ShutDownPi => {
+                    info!("Power page: Shut Down requested");
+                    Task::none()
+                }
+                PowerAction::RestartPi => {
+                    info!("Power page: Restart Pi requested");
+                    Task::none()
+                }
+            },
             Message::UpdateAudioOutput => {
                 self.sound.reload_audio_output();
                 Task::none()
@@ -5000,12 +5048,14 @@ impl RefBoxApp {
                 self.tm.lock().unwrap().last_game_info().map(|i| i.scores),
             ),
             AppState::WarningsSummaryPage => build_warnings_summary_page(data),
+            AppState::PowerPage => build_power_page(data),
             AppState::EditGameConfig(page) => build_game_config_edit_page(
                 data,
                 self.edited_settings.as_ref().unwrap(),
                 self.events.as_ref(),
                 page,
                 self.page_entry_snapshot.as_ref(),
+                self.power_controls_visible(),
             ),
             AppState::ParameterEditor(param, dur, single_half) => build_game_parameter_editor(
                 data,
@@ -5176,6 +5226,8 @@ impl RefBoxApp {
                 is_confirmation, ..
             } if is_confirmation => {}
             AppState::ConfirmScores(_) => {}
+            // The power page has its own Back button and no game controls.
+            AppState::PowerPage => {}
             // BeepTest mode has its own bottom action row; the timeout ribbon
             // is a hockey/rugby concept and does not belong here.
             AppState::BeepTestPage => {}

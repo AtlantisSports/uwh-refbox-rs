@@ -504,3 +504,7 @@ gi-ref-water-3 = Wasit Air 3
 gi-ref-water-referees = Wasit Air
 gi-ref-deck-referees = Wasit Tepi Kolam
 gi-unknown = ???
+
+shut-down = MATIKAN
+restart-pi = MULAI ULANG PI
+restart-refbox = MULAI ULANG REFBOX

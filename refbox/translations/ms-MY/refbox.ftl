@@ -504,3 +504,7 @@ gi-ref-water-3 = Pengadil Air 3
 gi-ref-water-referees = Pengadil Air
 gi-ref-deck-referees = Pengadil Tepi Kolam
 gi-unknown = ???
+
+shut-down = MATIKAN
+restart-pi = MULA SEMULA PI
+restart-refbox = MULA SEMULA REFBOX

@@ -504,3 +504,7 @@ gi-ref-water-3 = 水中審判3
 gi-ref-water-referees = 水中審判
 gi-ref-deck-referees = デッキ審判
 gi-unknown = ???
+
+shut-down = シャットダウン
+restart-pi = Pi を再起動
+restart-refbox = Refbox を再起動

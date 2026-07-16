@@ -504,3 +504,7 @@ gi-ref-water-3 = Arbitro di Vasca 3
 gi-ref-water-referees = Arbitri di Vasca
 gi-ref-deck-referees = Arbitri di Bordo
 gi-unknown = ???
+
+shut-down = SPEGNI
+restart-pi = RIAVVIA PI
+restart-refbox = RIAVVIA REFBOX

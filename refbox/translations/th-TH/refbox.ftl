@@ -503,3 +503,7 @@ gi-ref-water-3 = ผู้ตัดสินในน้ำ 3
 gi-ref-water-referees = ผู้ตัดสินในน้ำ
 gi-ref-deck-referees = ผู้ตัดสินขอบสระ
 gi-unknown = ???
+
+shut-down = ปิดเครื่อง
+restart-pi = รีสตาร์ท PI
+restart-refbox = รีสตาร์ท REFBOX

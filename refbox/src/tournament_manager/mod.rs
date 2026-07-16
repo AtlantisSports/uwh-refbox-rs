@@ -1793,6 +1793,26 @@ impl TournamentManager {
         }
     }
 
+    /// End a timeout that finishes the game (a game-ending penalty shot), arming the end-of-game
+    /// confirm pause so the confirm screen finishes the game cleanly (R6). Mirrors the pause the
+    /// clock updater arms via `pause_for_confirm` at a normal end of regulation; without it the
+    /// confirm handler's `end_confirm_pause` would return `NotPaused` and the app would panic.
+    ///
+    /// Precondition: only call when the timeout actually ends the game (i.e.
+    /// `timeout_end_would_end_game` returned true), which guarantees the period is Second Half or
+    /// Overtime Second Half; other periods would hit `confirm_pause_duration`'s `unreachable!`.
+    pub fn end_game_ending_timeout(&mut self, now: Instant) -> Result<()> {
+        self.halt_clock(now, true)?;
+        self.time_pause_confirmation = Some(ConfirmPause {
+            pause_began: now,
+            duration_of_pause: self.confirm_pause_duration(),
+            // Resume time is only used if the game continues; a game-ending timeout always ends
+            // the game, so this mirrors `pause_for_confirm`'s non-sudden-death placeholder.
+            clock_time: Duration::from_millis(10),
+        });
+        Ok(())
+    }
+
     pub fn start_play_now(&mut self, now: Instant) -> Result<()> {
         if let Some(ref ts) = self.timeout_state {
             return Err(TournamentManagerError::AlreadyInTimeout(
@@ -1923,24 +1943,11 @@ impl TournamentManager {
         }
     }
 
-    pub fn pause_for_confirm(&mut self, now: Instant) -> Result<()> {
-        if self.timeout_state.is_some() {
-            return Err(TournamentManagerError::PausingDuringTimeout);
-        }
-        if !self.clock_state.is_running() {
-            return Err(TournamentManagerError::ClockStopped);
-        }
-        info!("Pausing for Confirmation");
-        let pause_inst = match self.clock_state {
-            ClockState::CountingDown {
-                start_time,
-                time_remaining_at_start,
-            } => min(start_time + time_remaining_at_start, now),
-            ClockState::CountingUp { .. } => now,
-            ClockState::Stopped { .. } => unreachable!(),
-        };
-
-        let dur_pause = match self.current_period {
+    /// Length of the end-of-period score-confirmation window for the current period. Shared by
+    /// the normal confirm pause (`pause_for_confirm`) and the game-ending-timeout confirm pause
+    /// (`end_game_ending_timeout`) so both windows count down for the same duration.
+    fn confirm_pause_duration(&self) -> Duration {
+        match self.current_period {
             GamePeriod::SecondHalf => {
                 if self.config.overtime_allowed {
                     min(self.config.pre_overtime_break, self.config.minimum_break) / 2
@@ -1967,7 +1974,39 @@ impl TournamentManager {
             _ => {
                 unreachable!()
             }
+        }
+    }
+
+    pub fn pause_for_confirm(&mut self, now: Instant) -> Result<()> {
+        // A deciding sudden-death goal must always go through the confirm window, even when the
+        // game clock is stopped or a referee timeout / penalty shot is active (R2). Outside sudden
+        // death the confirm pause is only ever armed by the clock updater with the clock running
+        // and no timeout, so the strict guards remain there as backstops.
+        let in_sudden_death = self.current_period == GamePeriod::SuddenDeath;
+        if !in_sudden_death {
+            if self.timeout_state.is_some() {
+                return Err(TournamentManagerError::PausingDuringTimeout);
+            }
+            if !self.clock_state.is_running() {
+                return Err(TournamentManagerError::ClockStopped);
+            }
+        } else if self.timeout_state.is_some() {
+            // The deciding goal ends the game, so any active referee timeout / penalty shot is over.
+            self.timeout_state = None;
+        }
+        info!("Pausing for Confirmation");
+        let pause_inst = match self.clock_state {
+            ClockState::CountingDown {
+                start_time,
+                time_remaining_at_start,
+            } => min(start_time + time_remaining_at_start, now),
+            ClockState::CountingUp { .. } => now,
+            // Sudden-death goal recorded with the game clock stopped (R2); non-sudden-death
+            // callers are rejected above while the clock is stopped, so this is SD-only.
+            ClockState::Stopped { .. } => now,
         };
+
+        let dur_pause = self.confirm_pause_duration();
 
         info!("Current Period: {}", self.current_period);
 
@@ -8133,6 +8172,152 @@ mod test {
 
         assert!(!tm.in_score_confirm_pause());
         assert_eq!(tm.time_pause_confirmation, None);
+    }
+
+    // R2 (ruling 6.10 / edit 7.4): scoring or editing a deciding sudden-death goal while the
+    // game clock is stopped or a timeout is active must NOT crash — it must open the sudden-death
+    // confirm window (goal held until confirm), then end the game cleanly on confirm.
+    #[test]
+    fn test_sd_score_confirm_with_clock_stopped_does_not_crash() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: false,
+            sudden_death_allowed: true,
+            minimum_break: Duration::from_secs(20),
+            post_game_duration: Duration::from_secs(20),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start = Instant::now();
+        let now = start + Duration::from_secs(1);
+
+        // In sudden death with the game clock STOPPED (operator stopped it).
+        tm.set_period_and_game_clock_time(GamePeriod::SuddenDeath, Duration::from_secs(30));
+        tm.set_scores(BlackWhiteBundle { black: 1, white: 1 }, start);
+        assert!(!tm.clock_is_running());
+
+        // Scoring must open the confirm window rather than panic.
+        tm.pause_for_confirm(now).unwrap();
+        assert!(tm.in_score_confirm_pause());
+
+        // The deciding goal is committed only on confirm, then the game ends cleanly.
+        tm.set_scores(BlackWhiteBundle { black: 2, white: 1 }, now);
+        tm.end_confirm_pause(now + Duration::from_secs(1)).unwrap();
+        assert_eq!(tm.current_period, GamePeriod::BetweenGames);
+        assert_eq!(tm.get_scores(), BlackWhiteBundle { black: 2, white: 1 });
+        assert!(!tm.in_score_confirm_pause());
+    }
+
+    #[test]
+    fn test_sd_score_confirm_during_ref_timeout_does_not_crash() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: false,
+            sudden_death_allowed: true,
+            minimum_break: Duration::from_secs(20),
+            post_game_duration: Duration::from_secs(20),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start = Instant::now();
+        let now = start + Duration::from_secs(1);
+
+        // In sudden death with a referee timeout active (game clock frozen).
+        tm.set_period_and_game_clock_time(GamePeriod::SuddenDeath, Duration::from_secs(30));
+        tm.set_scores(BlackWhiteBundle { black: 1, white: 1 }, start);
+        tm.set_timeout_state(Some(TimeoutState::Ref(ClockState::CountingUp {
+            start_time: start,
+            time_at_start: Duration::ZERO,
+        })));
+
+        // Scoring must open the confirm window and end the deciding timeout, not panic.
+        tm.pause_for_confirm(now).unwrap();
+        assert!(tm.in_score_confirm_pause());
+        assert!(tm.timeout_state.is_none());
+
+        tm.set_scores(BlackWhiteBundle { black: 2, white: 1 }, now);
+        tm.end_confirm_pause(now + Duration::from_secs(1)).unwrap();
+        assert_eq!(tm.current_period, GamePeriod::BetweenGames);
+        assert_eq!(tm.get_scores(), BlackWhiteBundle { black: 2, white: 1 });
+        assert!(!tm.in_score_confirm_pause());
+    }
+
+    #[test]
+    fn test_sd_score_confirm_during_penalty_shot_does_not_crash() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: false,
+            sudden_death_allowed: true,
+            minimum_break: Duration::from_secs(20),
+            post_game_duration: Duration::from_secs(20),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start = Instant::now();
+        let now = start + Duration::from_secs(1);
+
+        // In sudden death with a penalty shot active (game clock frozen).
+        tm.set_period_and_game_clock_time(GamePeriod::SuddenDeath, Duration::from_secs(30));
+        tm.set_scores(BlackWhiteBundle { black: 1, white: 1 }, start);
+        tm.set_timeout_state(Some(TimeoutState::PenaltyShot(ClockState::Stopped {
+            clock_time: Duration::ZERO,
+        })));
+
+        tm.pause_for_confirm(now).unwrap();
+        assert!(tm.in_score_confirm_pause());
+        assert!(tm.timeout_state.is_none());
+
+        tm.set_scores(BlackWhiteBundle { black: 2, white: 1 }, now);
+        tm.end_confirm_pause(now + Duration::from_secs(1)).unwrap();
+        assert_eq!(tm.current_period, GamePeriod::BetweenGames);
+        assert_eq!(tm.get_scores(), BlackWhiteBundle { black: 2, white: 1 });
+        assert!(!tm.in_score_confirm_pause());
+    }
+
+    // R6 (ruling 3.37 = 7.11): ending a game-ending rugby penalty shot then confirming the score
+    // must end the game cleanly. Previously the confirm path armed no pause, so end_confirm_pause
+    // returned NotPaused and the app panicked.
+    #[test]
+    fn test_game_ending_rugby_penalty_shot_confirm_ends_game() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            minimum_break: Duration::from_secs(20),
+            post_game_duration: Duration::from_secs(20),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start = Instant::now();
+        let now = start + Duration::from_secs(1);
+
+        // Second half ran out (clock at zero) with a rugby penalty shot still running, decisive
+        // score: ending the timeout would end the game.
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::ZERO);
+        tm.set_scores(BlackWhiteBundle { black: 2, white: 1 }, start);
+        tm.set_timeout_state(Some(TimeoutState::RugbyPenaltyShot(
+            ClockState::CountingDown {
+                start_time: start,
+                time_remaining_at_start: Duration::from_secs(20),
+            },
+        )));
+        assert!(tm.timeout_end_would_end_game(now).unwrap());
+
+        // Operator ends the game-ending timeout; the confirm screen is then shown.
+        tm.end_game_ending_timeout(now).unwrap();
+        assert!(tm.in_score_confirm_pause());
+        assert!(tm.timeout_state.is_none());
+
+        // Confirming ends the game cleanly (no NotPaused panic).
+        tm.set_scores(BlackWhiteBundle { black: 2, white: 1 }, now);
+        tm.end_confirm_pause(now + Duration::from_secs(1)).unwrap();
+        assert_eq!(tm.current_period, GamePeriod::BetweenGames);
+        assert_eq!(tm.get_scores(), BlackWhiteBundle { black: 2, white: 1 });
+        assert!(!tm.in_score_confirm_pause());
     }
 
     #[test]

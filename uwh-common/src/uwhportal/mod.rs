@@ -15,6 +15,66 @@ use std::{
 
 pub mod schedule;
 
+// --- Coin-flip portal types (used by scoresheet generation / coin-flip resolution) ---
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CoinFlipDetails {
+    #[serde(rename = "Groups", alias = "groups")]
+    pub groups: Vec<GroupCoinFlips>,
+    #[serde(rename = "Games", alias = "games")]
+    pub games: Vec<CoinFlip>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GroupCoinFlips {
+    #[serde(rename = "Identifier", alias = "identifier")]
+    pub identifier: String,
+    #[serde(rename = "Name", alias = "name")]
+    pub name: String,
+    #[serde(rename = "ShortName", alias = "shortName")]
+    pub short_name: Option<String>,
+    #[serde(rename = "CoinFlips", alias = "coinFlips")]
+    pub coin_flips: Vec<CoinFlip>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CoinFlip {
+    #[serde(rename = "Identifier", alias = "identifier")]
+    pub identifier: String,
+    #[serde(rename = "TiedTeams", alias = "tiedTeams")]
+    pub tied_teams: Vec<CoinFlipTeam>,
+    #[serde(rename = "Result", alias = "result")]
+    pub result: Option<CoinFlipResult>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CoinFlipTeam {
+    #[serde(rename = "TeamId", alias = "teamId")]
+    pub team_id: Option<String>,
+    #[serde(rename = "PendingAssignmentName", alias = "pendingAssignmentName")]
+    pub pending_assignment_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CoinFlipResult {
+    #[serde(rename = "Kind", alias = "kind")]
+    pub kind: String,
+    #[serde(rename = "Team", alias = "team")]
+    pub team: CoinFlipTeam,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SetCoinFlipModel {
+    #[serde(rename = "GroupIdentifier")]
+    pub group_identifier: Option<String>,
+    #[serde(rename = "CoinFlipIdentifier")]
+    pub coin_flip_identifier: String,
+    #[serde(rename = "TeamIdOrPendingAssignmentName")]
+    pub team_id_or_pending_assignment_name: String,
+    #[serde(rename = "Kind")]
+    pub kind: String,
+}
+
 pub struct UwhPortalClient {
     base_url: String,
     access_token: Option<String>,
@@ -539,4 +599,55 @@ pub enum PortalTokenResponse {
     Success(String),
     NoPendingLink,
     InvalidCode,
+}
+
+#[cfg(test)]
+mod coin_flip_tests {
+    use super::*;
+
+    #[test]
+    fn coin_flip_details_deserializes_camel_case() {
+        // The portal sends camelCase (aliases); PascalCase is also accepted.
+        let json = r#"{
+            "groups": [{
+                "identifier": "g1",
+                "name": "Group A",
+                "shortName": "A",
+                "coinFlips": [{
+                    "identifier": "cf1",
+                    "tiedTeams": [
+                        {"teamId": "1-A", "pendingAssignmentName": null},
+                        {"teamId": "2-A", "pendingAssignmentName": null}
+                    ],
+                    "result": {"kind": "White", "team": {"teamId": "1-A", "pendingAssignmentName": null}}
+                }]
+            }],
+            "games": []
+        }"#;
+        let parsed: CoinFlipDetails = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.groups.len(), 1);
+        let g = &parsed.groups[0];
+        assert_eq!(g.identifier, "g1");
+        assert_eq!(g.coin_flips.len(), 1);
+        assert_eq!(g.coin_flips[0].tied_teams.len(), 2);
+        assert_eq!(
+            g.coin_flips[0].result.as_ref().unwrap().kind.as_str(),
+            "White"
+        );
+    }
+
+    #[test]
+    fn set_coin_flip_model_serializes_pascal_case() {
+        let model = SetCoinFlipModel {
+            group_identifier: Some("g1".to_string()),
+            coin_flip_identifier: "cf1".to_string(),
+            team_id_or_pending_assignment_name: "1-A".to_string(),
+            kind: "White".to_string(),
+        };
+        let v: serde_json::Value = serde_json::to_value(&model).unwrap();
+        assert_eq!(v["GroupIdentifier"], "g1");
+        assert_eq!(v["CoinFlipIdentifier"], "cf1");
+        assert_eq!(v["TeamIdOrPendingAssignmentName"], "1-A");
+        assert_eq!(v["Kind"], "White");
+    }
 }

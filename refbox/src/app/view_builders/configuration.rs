@@ -2359,6 +2359,7 @@ mod tests {
             timing_rules: vec![],
             standings_order: None,
             final_results_order: None,
+            referees_by_game_number: None,
         }
     }
 

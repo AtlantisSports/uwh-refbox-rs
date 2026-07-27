@@ -79,19 +79,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         log_panics::init();
     }
 
-    info!("Please select a CSV schedule to process in the file dialog.");
-    let csv_path = FileDialog::new()
-        .add_filter("CSV files", &["csv"])
-        .set_title("Select Schedule CSV File")
-        .pick_file();
-
-    let csv_path = if let Some(path) = csv_path {
-        path
-    } else {
-        error!("No file selected. Exiting.");
-        return Err("No file selected".into());
-    };
-
     let options = vec!["Underwater Hockey", "Underwater Rugby"];
     let sport_choice = Select::new("Select the sport for the schedule:", options)
         .prompt()
@@ -151,85 +138,78 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let offset = event.date_range.start.offset();
     info!("Using timezone offset: {offset}");
 
-    info!("Reading csv file: {}", csv_path.display());
-    let csv = std::fs::read_to_string(&csv_path)?;
-    let schedule = match parse_csv(&csv, offset, event.id.clone()) {
-        Ok(schedule) => schedule,
-        Err(e) => {
-            error!("Failed to parse CSV file: {e}");
-            Text::new("Press any key close the app")
-                .with_placeholder("Press Enter to proceed")
-                .prompt()
-                .unwrap_or_else(|_| {
-                    error!("Failed to proceed. Exiting.");
-                    std::process::exit(1);
-                });
-            return Err(e);
-        }
-    };
+    // Load the schedule CSV lazily — only when an action needs it (Upload / Save /
+    // Print Schedule). Portal-based actions (score sheets, coin tosses) never require it.
+    let load_schedule = || -> Result<Schedule, Box<dyn std::error::Error>> {
+        info!("Please select a CSV schedule to process in the file dialog.");
+        let Some(csv_path) = FileDialog::new()
+            .add_filter("CSV files", &["csv"])
+            .set_title("Select Schedule CSV File")
+            .pick_file()
+        else {
+            return Err("No file selected".into());
+        };
+        info!("Reading csv file: {}", csv_path.display());
+        let csv = std::fs::read_to_string(&csv_path)?;
+        let schedule = parse_csv(&csv, offset, event.id.clone())?;
 
-    let mut success_string = "Successfully parsed schedule. Details:".to_string();
-    write!(
-        &mut success_string,
-        "\n    Number of games: {}",
-        schedule.games.len()
-    )
-    .unwrap();
-    write!(
-        &mut success_string,
-        "\n    Groups: {}",
-        schedule.groups.iter().map(|g| &g.name).join(", ")
-    )
-    .unwrap();
-    write!(
-        &mut success_string,
-        "\n    Timing rules: {}",
-        schedule.timing_rules.iter().map(|tr| &tr.name).join(", ")
-    )
-    .unwrap();
-    write!(
-        &mut success_string,
-        "\n    Courts: {}",
-        schedule
+        let mut success_string = "Successfully parsed schedule. Details:".to_string();
+        write!(
+            &mut success_string,
+            "\n    Number of games: {}",
+            schedule.games.len()
+        )
+        .unwrap();
+        write!(
+            &mut success_string,
+            "\n    Groups: {}",
+            schedule.groups.iter().map(|g| &g.name).join(", ")
+        )
+        .unwrap();
+        write!(
+            &mut success_string,
+            "\n    Timing rules: {}",
+            schedule.timing_rules.iter().map(|tr| &tr.name).join(", ")
+        )
+        .unwrap();
+        write!(
+            &mut success_string,
+            "\n    Courts: {}",
+            schedule
+                .games
+                .iter()
+                .map(|(_, g)| &g.court)
+                .unique()
+                .join(", ")
+        )
+        .unwrap();
+        let unassigned_teams: Vec<_> = schedule
             .games
             .iter()
-            .map(|(_, g)| &g.court)
+            .flat_map(|(_, g)| vec![&g.light, &g.dark])
+            .filter_map(|t| t.pending().map(|name| name.to_string()))
             .unique()
-            .join(", ")
-    )
-    .unwrap();
-    let unassigned_teams: Vec<_> = schedule
-        .games
-        .iter()
-        .flat_map(|(_, g)| vec![&g.light, &g.dark])
-        .filter_map(|t| t.pending().map(|name| name.to_string()))
-        .unique()
-        .collect();
-    write!(
-        &mut success_string,
-        "\n    Unassigned teams ({}): \"{}\"",
-        unassigned_teams.len(),
-        unassigned_teams.iter().join("\", \"")
-    )
-    .unwrap();
-    info!("{success_string}");
+            .collect();
+        write!(
+            &mut success_string,
+            "\n    Unassigned teams ({}): \"{}\"",
+            unassigned_teams.len(),
+            unassigned_teams.iter().join("\", \"")
+        )
+        .unwrap();
+        info!("{success_string}");
 
-    info!("Running schedule checks");
-    if let Err(e) = run_schedule_checks(&schedule) {
-        error!("Schedule checks failed: {e}");
-        if !args.allow_failures {
-            Text::new("Press any key to close the app")
-                .with_placeholder("Press Enter to proceed")
-                .prompt()
-                .unwrap_or_else(|_| {
-                    error!("Failed to proceed. Exiting.");
-                    std::process::exit(1);
-                });
-            return Err(e);
+        info!("Running schedule checks");
+        if let Err(e) = run_schedule_checks(&schedule) {
+            error!("Schedule checks failed: {e}");
+            if !args.allow_failures {
+                return Err(e);
+            }
         }
-    }
+        Ok(schedule)
+    };
 
-    let sendable_schedule = schedule.clone().into();
+    let mut schedule: Option<Schedule> = None;
 
     let mut team_map = vec![];
 
@@ -311,6 +291,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         match step_choice {
             StepChoice::MapTeams => {
+                if schedule.is_none() {
+                    match load_schedule() {
+                        Ok(s) => schedule = Some(s),
+                        Err(e) => {
+                            error!("Could not load the schedule CSV: {e}");
+                            continue 'outer;
+                        }
+                    }
+                }
+                // Safe: `schedule` is Some — set just above, or the Err arm continued.
+                let unassigned_teams: Vec<String> = schedule
+                    .as_ref()
+                    .expect("schedule loaded above")
+                    .games
+                    .iter()
+                    .flat_map(|(_, g)| vec![&g.light, &g.dark])
+                    .filter_map(|t| t.pending().map(|name| name.to_string()))
+                    .unique()
+                    .collect();
+
                 let event_teams = match portal_client.get_event_teams(&event.id).await {
                     Ok(teams) => teams,
                     Err(e) => {
@@ -449,6 +449,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             StepChoice::Upload => {
+                if schedule.is_none() {
+                    match load_schedule() {
+                        Ok(s) => schedule = Some(s),
+                        Err(e) => {
+                            error!("Could not load the schedule CSV: {e}");
+                            continue 'outer;
+                        }
+                    }
+                }
+                // Safe: `schedule` is Some — set just above, or the Err arm continued.
+                let sendable_schedule: SendableSchedule = schedule
+                    .as_ref()
+                    .expect("schedule loaded above")
+                    .clone()
+                    .into();
+
                 if !portal_client.has_token() {
                     let email = match Text::new("Enter your uwhportal email:").prompt() {
                         Ok(email) => email,
@@ -530,6 +546,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 error!("Upload cannot be performed at this time. Please map teams first.");
             }
             StepChoice::SaveSchedule => {
+                if schedule.is_none() {
+                    match load_schedule() {
+                        Ok(s) => schedule = Some(s),
+                        Err(e) => {
+                            error!("Could not load the schedule CSV: {e}");
+                            continue 'outer;
+                        }
+                    }
+                }
+                // Safe: `schedule` is Some — set just above, or the Err arm continued.
+                let sendable_schedule: SendableSchedule = schedule
+                    .as_ref()
+                    .expect("schedule loaded above")
+                    .clone()
+                    .into();
+
                 let output_path = FileDialog::new()
                     .add_filter("JSON files", &["json"])
                     .set_title("Save Schedule as JSON")
@@ -545,6 +577,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             StepChoice::PrintSchedule => {
+                if schedule.is_none() {
+                    match load_schedule() {
+                        Ok(s) => schedule = Some(s),
+                        Err(e) => {
+                            error!("Could not load the schedule CSV: {e}");
+                            continue 'outer;
+                        }
+                    }
+                }
+                // Safe: `schedule` is Some — set just above, or the Err arm continued.
+                let sendable_schedule: SendableSchedule = schedule
+                    .as_ref()
+                    .expect("schedule loaded above")
+                    .clone()
+                    .into();
                 let output = serde_json::to_string_pretty(&sendable_schedule)?;
                 println!("{output}");
             }
@@ -905,7 +952,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
 
-                let csv_schedule_opt = Some(&schedule);
+                let csv_schedule_opt = schedule.as_ref();
                 match generate_scoresheets_for_event(
                     &mut portal_client,
                     &event,
@@ -950,7 +997,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     continue 'outer;
                                 }
                             }
-                            let csv_schedule_opt = Some(&schedule);
+                            let csv_schedule_opt = schedule.as_ref();
                             match generate_scoresheets_for_event(
                                 &mut portal_client,
                                 &event,

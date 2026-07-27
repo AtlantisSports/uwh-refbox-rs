@@ -114,7 +114,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::time::Duration::from_secs(10),
     )?;
 
-    let events = portal_client.get_event_list(false, false).await?;
+    let mut events = portal_client.get_event_list(false, false).await?;
+    // Show soonest events first: nearest date at the top, further-future toward the bottom.
+    events.sort_by_key(|e| e.date_range.start);
 
     struct SelectableEvent(Event);
 

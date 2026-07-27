@@ -5,6 +5,7 @@ excluded_files=(
   './Cargo.toml'
   './Cross.toml'
   './refbox/i18n.toml'
+  './rust-toolchain.toml'
   './wireless-remote/rust-toolchain.toml'
   './wireless-remote/.cargo/config.toml'
 )

@@ -873,9 +873,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     (None, None)
                 };
 
-                let (ref_csv_path, prefer_portal_officials) = if style == SheetStyle::SimpleTeamRefs
+                let (ref_csv_path, prefer_portal_officials, include_referees) = if style
+                    == SheetStyle::SimpleTeamRefs
                 {
-                    (None, false)
+                    // Team-refs style uses team-based assignments, not official names.
+                    (None, false, false)
                 } else {
                     let include_referees = Confirm::new("Include referee names on the scoresheet?")
                         .with_default(true)
@@ -902,7 +904,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         false
                     };
 
-                    (csv_path, prefer_officials)
+                    (csv_path, prefer_officials, include_referees)
                 };
 
                 let inputs = RenderInputs {
@@ -911,9 +913,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     output_dir,
                     style,
                     prefer_portal_officials,
+                    include_referees,
                 };
 
-                if !portal_client.has_token() && style != SheetStyle::SimpleTeamRefs {
+                // Offer login only when referee names are wanted AND the portal is the chosen
+                // source (no CSV given, or a CSV was given but portal names are preferred).
+                // Portal official display names require a login.
+                let wants_portal_names =
+                    include_referees && (ref_csv_path.is_none() || prefer_portal_officials);
+                if wants_portal_names && !portal_client.has_token() {
                     if let Ok(true) =
                         Confirm::new("Use display names for officials? (requires uwhportal login)")
                             .with_default(true)

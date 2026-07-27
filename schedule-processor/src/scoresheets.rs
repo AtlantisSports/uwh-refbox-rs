@@ -50,6 +50,10 @@ pub struct RenderInputs {
     pub output_dir: PathBuf,
     pub style: SheetStyle,
     pub prefer_portal_officials: bool,
+    /// When false, referee/official names are left blank on the sheet (the operator
+    /// fills them in by hand). Does not apply to the Simple (Team Refs) style, which
+    /// uses team-based assignments rather than individual official names.
+    pub include_referees: bool,
 }
 
 pub async fn generate_scoresheets_for_event(
@@ -138,8 +142,12 @@ pub async fn generate_scoresheets_for_event(
         let (white_suffix, white_name) = placeholder_suffix_and_name(&game.light, &teams);
         let (black_suffix, black_name) = placeholder_suffix_and_name(&game.dark, &teams);
 
-        // Decide official names based on preference: portal display names vs CSV
-        let officials = if inputs.prefer_portal_officials {
+        // Decide official names. When the operator declined referee names, leave them
+        // blank (skipping the portal/CSV lookups entirely). Otherwise choose by
+        // preference: portal display names vs CSV.
+        let officials = if !inputs.include_referees {
+            OfficialNames::default()
+        } else if inputs.prefer_portal_officials {
             let resolved =
                 resolve_officials(&*portal_client, &event.id, game, &mut name_cache).await;
             // Fallback to CSV for this game if portal provides nothing

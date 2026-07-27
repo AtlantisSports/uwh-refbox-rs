@@ -22,6 +22,8 @@ use csv_parser::parse_csv;
 mod schedule_checks;
 use schedule_checks::run_schedule_checks;
 
+mod scoresheets;
+
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {

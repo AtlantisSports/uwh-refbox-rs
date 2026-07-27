@@ -14,7 +14,7 @@ use std::{
     fmt::{Display, Write},
     vec,
 };
-use uwh_common::uwhportal::{UwhPortalClient, schedule::*};
+use uwh_common::uwhportal::{CoinFlipTeam, SetCoinFlipModel, UwhPortalClient, schedule::*};
 
 mod csv_parser;
 use csv_parser::parse_csv;
@@ -23,6 +23,9 @@ mod schedule_checks;
 use schedule_checks::run_schedule_checks;
 
 mod scoresheets;
+use scoresheets::{
+    RenderInputs, SheetStyle, generate_example_rule_sheets, generate_scoresheets_for_event,
+};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -239,6 +242,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             UploadDisabled,
             SaveSchedule,
             PrintSchedule,
+            ResolveCoinTosses,
+            GenerateScoreSheets,
+            GenerateExampleSheets,
             SaveTeamMap,
             SaveTeamMapDisabled,
             PrintTeamMap,
@@ -254,6 +260,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     StepChoice::UploadDisabled => write!(f, "U̶p̶l̶o̶a̶d̶ ̶S̶c̶h̶e̶d̶u̶l̶e̶"),
                     StepChoice::SaveSchedule => write!(f, "Save Schedule to File"),
                     StepChoice::PrintSchedule => write!(f, "Print Schedule"),
+                    StepChoice::ResolveCoinTosses => write!(f, "Resolve Coin Tosses"),
+                    StepChoice::GenerateScoreSheets => write!(f, "Generate Score Sheets"),
+                    StepChoice::GenerateExampleSheets => {
+                        write!(f, "Generate Example Sheets (rule options)")
+                    }
                     StepChoice::SaveTeamMap => write!(f, "Save Team Map to File"),
                     StepChoice::SaveTeamMapDisabled => write!(f, "S̶a̶v̶e̶ ̶T̶e̶a̶m̶ ̶M̶a̶p̶ ̶t̶o̶ ̶F̶i̶l̶e̶"),
                     StepChoice::PrintTeamMap => write!(f, "Print Team Map"),
@@ -269,6 +280,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 StepChoice::UploadDisabled,
                 StepChoice::SaveSchedule,
                 StepChoice::PrintSchedule,
+                StepChoice::ResolveCoinTosses,
+                StepChoice::GenerateScoreSheets,
+                StepChoice::GenerateExampleSheets,
                 StepChoice::SaveTeamMapDisabled,
                 StepChoice::PrintTeamMapDisabled,
                 StepChoice::Exit,
@@ -279,6 +293,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 StepChoice::Upload,
                 StepChoice::SaveSchedule,
                 StepChoice::PrintSchedule,
+                StepChoice::ResolveCoinTosses,
+                StepChoice::GenerateScoreSheets,
+                StepChoice::GenerateExampleSheets,
                 StepChoice::SaveTeamMap,
                 StepChoice::PrintTeamMap,
                 StepChoice::Exit,
@@ -557,6 +574,423 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 error!(
                     "Printing team map cannot be performed at this time. Please map teams first."
                 );
+            }
+            StepChoice::ResolveCoinTosses => {
+                // Requires login to access privileged coin-flip endpoints.
+                if !portal_client.has_token() {
+                    #[allow(non_snake_case)]
+                    let emailOrusername =
+                        match Text::new("Enter your uwhportal emailOrusername:").prompt() {
+                            Ok(v) => v,
+                            Err(_) => {
+                                error!("No emailOrusername provided. Please try again.");
+                                continue 'outer;
+                            }
+                        };
+                    let password = match Password::new("Enter your uwhportal password:")
+                        .with_display_mode(PasswordDisplayMode::Masked)
+                        .without_confirmation()
+                        .prompt()
+                    {
+                        Ok(pass) => pass,
+                        Err(_) => {
+                            error!("No password provided. Please try again.");
+                            continue 'outer;
+                        }
+                    };
+                    match portal_client
+                        .login_with_email_and_password(&emailOrusername, &password)
+                        .await
+                    {
+                        Ok(token) => portal_client.set_token(&token),
+                        Err(e) => {
+                            error!("uwhportal login failed. Please try again. Reason: {e}");
+                            continue 'outer;
+                        }
+                    }
+                }
+
+                let team_lookup: BTreeMap<String, String> =
+                    match portal_client.get_event_teams(&event.id).await {
+                        Ok(teams) => teams
+                            .into_iter()
+                            .map(|(id, name)| (id.full().to_string(), name))
+                            .collect(),
+                        Err(_) => BTreeMap::new(),
+                    };
+
+                let details = match portal_client.get_coin_flips(&event.slug).await {
+                    Ok(d) => d,
+                    Err(e) => {
+                        error!("Failed to fetch coin tosses: {e}");
+                        continue 'outer;
+                    }
+                };
+
+                #[derive(Clone)]
+                struct FlipOption {
+                    label: String,
+                    group_identifier: Option<String>,
+                    coin_flip_identifier: String,
+                    teams: Vec<CoinFlipTeam>,
+                }
+                impl Display for FlipOption {
+                    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(f, "{}", self.label)
+                    }
+                }
+
+                let team_label = |t: &CoinFlipTeam| -> String {
+                    if let Some(id) = &t.team_id {
+                        team_lookup
+                            .get(id)
+                            .cloned()
+                            .unwrap_or_else(|| format!("Team {id}"))
+                    } else if let Some(n) = &t.pending_assignment_name {
+                        n.clone()
+                    } else {
+                        "<unknown>".to_string()
+                    }
+                };
+
+                let mut options: Vec<FlipOption> = Vec::new();
+                for g in details.groups {
+                    for flip in g.coin_flips {
+                        if flip.result.is_none() {
+                            let teams_str = flip.tied_teams.iter().map(team_label).join(" vs ");
+                            options.push(FlipOption {
+                                label: format!("Group {} — {}", g.name, teams_str),
+                                group_identifier: Some(g.identifier.clone()),
+                                coin_flip_identifier: flip.identifier.clone(),
+                                teams: flip.tied_teams,
+                            });
+                        }
+                    }
+                }
+                for flip in details.games {
+                    if flip.result.is_none() {
+                        let teams_str = flip.tied_teams.iter().map(team_label).join(" vs ");
+                        options.push(FlipOption {
+                            label: format!("Tied Game — {teams_str}"),
+                            group_identifier: None,
+                            coin_flip_identifier: flip.identifier,
+                            teams: flip.tied_teams,
+                        });
+                    }
+                }
+
+                if options.is_empty() {
+                    error!("No pending coin tosses for this event.");
+                    continue 'outer;
+                }
+
+                let selected = match Select::new("Select a coin toss to resolve:", options).prompt()
+                {
+                    Ok(s) => s,
+                    Err(_) => {
+                        error!("No selection made. Skipping.");
+                        continue 'outer;
+                    }
+                };
+
+                #[derive(Clone)]
+                struct TeamChoice {
+                    label: String,
+                    ident: String,
+                }
+                impl Display for TeamChoice {
+                    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(f, "{}", self.label)
+                    }
+                }
+
+                let team_choices: Vec<TeamChoice> = selected
+                    .teams
+                    .iter()
+                    .map(|t| TeamChoice {
+                        label: team_label(t),
+                        ident: t
+                            .team_id
+                            .clone()
+                            .or(t.pending_assignment_name.clone())
+                            .unwrap_or_default(),
+                    })
+                    .collect();
+
+                if team_choices.is_empty() {
+                    error!("No teams found on selected coin toss.");
+                    continue 'outer;
+                }
+
+                let picked_team = match Select::new(
+                    "Which team should win the coin toss?",
+                    team_choices,
+                )
+                .prompt()
+                {
+                    Ok(t) => t,
+                    Err(_) => {
+                        error!("No team selected.");
+                        continue 'outer;
+                    }
+                };
+
+                let kind = match Select::new("Outcome kind:", vec!["Favor", "Against"]).prompt() {
+                    Ok(k) => k.to_string(),
+                    Err(_) => {
+                        error!("No outcome kind selected.");
+                        continue 'outer;
+                    }
+                };
+
+                let model = SetCoinFlipModel {
+                    group_identifier: selected.group_identifier.clone(),
+                    coin_flip_identifier: selected.coin_flip_identifier.clone(),
+                    team_id_or_pending_assignment_name: picked_team.ident,
+                    kind,
+                };
+
+                match portal_client
+                    .set_coin_flip_result(&event.slug, &model, false)
+                    .await
+                {
+                    Ok(()) => info!("Coin toss resolved successfully."),
+                    Err(e) => error!("Failed to set coin toss: {e}"),
+                }
+            }
+            StepChoice::GenerateScoreSheets => {
+                let Some(output_dir) = FileDialog::new()
+                    .set_title("Select output folder for score sheets")
+                    .pick_folder()
+                else {
+                    error!("No output folder selected. Aborting.");
+                    continue 'outer;
+                };
+
+                let path_str = output_dir.to_string_lossy();
+                if path_str.contains('\'')
+                    || path_str.contains('"')
+                    || path_str.contains('&')
+                    || path_str.contains('!')
+                {
+                    log::warn!(
+                        "Output folder path contains special characters which may prevent PDF \
+                        generation. Consider a path without special characters."
+                    );
+                }
+
+                let style = match Select::new(
+                    "Sheet style:",
+                    vec!["Detailed", "Simple", "Simple (Team Refs)", "Col_3x3"],
+                )
+                .prompt()
+                {
+                    Ok("Simple") => SheetStyle::Simple,
+                    Ok("Simple (Team Refs)") => SheetStyle::SimpleTeamRefs,
+                    Ok("Col_3x3") => SheetStyle::Col3x3,
+                    Ok(_) => SheetStyle::Detailed,
+                    Err(_) => SheetStyle::Detailed,
+                };
+
+                let (left_logo, right_logo) = if style == SheetStyle::Detailed {
+                    let left = loop {
+                        let p = FileDialog::new()
+                            .add_filter("Images", &["png", "jpg", "jpeg", "svg"])
+                            .set_title("Select sanctioning body logo (left) — optional")
+                            .pick_file();
+                        match p {
+                            Some(p) if p.is_file() => break Some(p),
+                            Some(p) if p.is_dir() => {
+                                error!("Selected a folder. Please select an image file.");
+                                continue;
+                            }
+                            _ => break None,
+                        }
+                    };
+                    let right = loop {
+                        let p = FileDialog::new()
+                            .add_filter("Images", &["png", "jpg", "jpeg", "svg"])
+                            .set_title("Select tournament logo (right) — optional")
+                            .pick_file();
+                        match p {
+                            Some(p) if p.is_file() => break Some(p),
+                            Some(p) if p.is_dir() => {
+                                error!("Selected a folder. Please select an image file.");
+                                continue;
+                            }
+                            _ => break None,
+                        }
+                    };
+                    (left, right)
+                } else {
+                    (None, None)
+                };
+
+                let (ref_csv_path, prefer_portal_officials) = if style == SheetStyle::SimpleTeamRefs
+                {
+                    (None, false)
+                } else {
+                    let include_referees = Confirm::new("Include referee names on the scoresheet?")
+                        .with_default(true)
+                        .prompt()
+                        .unwrap_or(true);
+
+                    let csv_path = if include_referees {
+                        FileDialog::new()
+                            .add_filter("CSV files", &["csv"])
+                            .set_title("Select Referee Schedule CSV (optional)")
+                            .pick_file()
+                    } else {
+                        None
+                    };
+
+                    let prefer_officials = if csv_path.is_some() {
+                        Confirm::new(
+                            "Use portal display names instead of names from the Referee CSV?",
+                        )
+                        .with_default(true)
+                        .prompt()
+                        .unwrap_or(true)
+                    } else {
+                        false
+                    };
+
+                    (csv_path, prefer_officials)
+                };
+
+                let inputs = RenderInputs {
+                    left_logo,
+                    right_logo,
+                    output_dir,
+                    style,
+                    prefer_portal_officials,
+                };
+
+                if !portal_client.has_token() && style != SheetStyle::SimpleTeamRefs {
+                    if let Ok(true) =
+                        Confirm::new("Use display names for officials? (requires uwhportal login)")
+                            .with_default(true)
+                            .prompt()
+                    {
+                        #[allow(non_snake_case)]
+                        let emailOrusername =
+                            match Text::new("Enter your uwhportal emailOrusername:").prompt() {
+                                Ok(v) => v,
+                                Err(_) => {
+                                    error!(
+                                        "No emailOrusername provided. Proceeding without login."
+                                    );
+                                    String::new()
+                                }
+                            };
+                        if !emailOrusername.is_empty() {
+                            let password = Password::new("Enter your uwhportal password:")
+                                .with_display_mode(PasswordDisplayMode::Masked)
+                                .without_confirmation()
+                                .prompt()
+                                .unwrap_or_default();
+                            if !password.is_empty() {
+                                match portal_client
+                                    .login_with_email_and_password(&emailOrusername, &password)
+                                    .await
+                                {
+                                    Ok(token) => portal_client.set_token(&token),
+                                    Err(e) => error!(
+                                        "uwhportal login failed. Proceeding without login. \
+                                        Reason: {e}"
+                                    ),
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let csv_schedule_opt = Some(&schedule);
+                match generate_scoresheets_for_event(
+                    &mut portal_client,
+                    &event,
+                    inputs.clone(),
+                    csv_schedule_opt,
+                    ref_csv_path.as_deref(),
+                )
+                .await
+                {
+                    Ok(()) => info!("Score sheets generated."),
+                    Err(e) => {
+                        let msg = e.to_string();
+                        if msg.contains("authentication required for schedule") {
+                            info!("Public schedule not available; prompting for login...");
+                            #[allow(non_snake_case)]
+                            let emailOrusername =
+                                match Text::new("Enter your uwhportal emailOrusername:").prompt() {
+                                    Ok(v) => v,
+                                    Err(_) => {
+                                        error!("No emailOrusername provided.");
+                                        continue 'outer;
+                                    }
+                                };
+                            let password = match Password::new("Enter your uwhportal password:")
+                                .with_display_mode(PasswordDisplayMode::Masked)
+                                .without_confirmation()
+                                .prompt()
+                            {
+                                Ok(pass) => pass,
+                                Err(_) => {
+                                    error!("No password provided.");
+                                    continue 'outer;
+                                }
+                            };
+                            match portal_client
+                                .login_with_email_and_password(&emailOrusername, &password)
+                                .await
+                            {
+                                Ok(token) => portal_client.set_token(&token),
+                                Err(e) => {
+                                    error!("Login failed: {e}");
+                                    continue 'outer;
+                                }
+                            }
+                            let csv_schedule_opt = Some(&schedule);
+                            match generate_scoresheets_for_event(
+                                &mut portal_client,
+                                &event,
+                                inputs,
+                                csv_schedule_opt,
+                                ref_csv_path.as_deref(),
+                            )
+                            .await
+                            {
+                                Ok(()) => info!("Score sheets generated."),
+                                Err(e2) => error!("Failed to generate score sheets: {e2}"),
+                            }
+                        } else {
+                            error!("Failed to generate score sheets: {e}");
+                        }
+                    }
+                }
+            }
+            StepChoice::GenerateExampleSheets => {
+                let Some(output_dir) = FileDialog::new()
+                    .set_title("Select output folder for example sheets")
+                    .pick_folder()
+                else {
+                    error!("No output folder selected. Aborting.");
+                    continue 'outer;
+                };
+
+                let style = match Select::new("Sheet style:", vec!["Detailed", "Simple", "Col_3x3"])
+                    .prompt()
+                {
+                    Ok("Simple") => SheetStyle::Simple,
+                    Ok("Col_3x3") => SheetStyle::Col3x3,
+                    Ok(_) => SheetStyle::Detailed,
+                    Err(_) => SheetStyle::Detailed,
+                };
+
+                match generate_example_rule_sheets(&output_dir, style) {
+                    Ok(()) => info!("Example sheets generated in {}", output_dir.display()),
+                    Err(e) => error!("Failed to generate example sheets: {e}"),
+                }
             }
             StepChoice::Exit => {
                 info!("Exiting the application.");

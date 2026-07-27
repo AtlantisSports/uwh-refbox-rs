@@ -477,6 +477,37 @@ pub struct Group {
 
 pub type GameList = IndexMap<GameNumber, Game>;
 
+/// Basic team info for team referee assignments
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TeamRefInfo {
+    #[serde(default)]
+    pub id: Option<TeamId>,
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+/// Team referee assignment — which team provides referees for a role
+#[serde_with::skip_serializing_none]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TeamRefAssignment {
+    #[serde(default)]
+    pub team: Option<TeamRefInfo>,
+}
+
+/// Per-game team referee assignments (used when teams fill referee roles)
+#[serde_with::skip_serializing_none]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GameReferees {
+    #[serde(default, rename = "timeOrScoreKeeper")]
+    pub time_or_score_keeper: Option<TeamRefAssignment>,
+    #[serde(default, rename = "timeOrScoreHelper")]
+    pub time_or_score_helper: Option<TeamRefAssignment>,
+    #[serde(default)]
+    pub referees: Option<TeamRefAssignment>,
+}
+
+pub type RefereesByGameNumber = IndexMap<GameNumber, GameReferees>;
+
 #[serde_with::skip_serializing_none]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Schedule {
@@ -492,6 +523,8 @@ pub struct Schedule {
     pub standings_order: Option<Vec<GroupReference>>,
     #[serde(rename = "finalResultsOrder")]
     pub final_results_order: Option<Vec<GroupReference>>,
+    #[serde(default, rename = "refereesByGameNumber")]
+    pub referees_by_game_number: Option<RefereesByGameNumber>,
 }
 
 impl Schedule {
@@ -774,6 +807,28 @@ mod tests {
         env!("CARGO_MANIFEST_DIR"),
         "/resources/uwhportal_postman_schedule_example.json"
     );
+
+    #[test]
+    fn referees_by_game_number_deserializes() {
+        // `id` left null so the test is independent of TeamId's "teams/…" full-id
+        // format (that format is exercised by TeamId's own tests and verified live).
+        let json = r#"{
+            "1": {
+                "timeOrScoreKeeper": {"team": {"id": null, "name": "Team Alpha"}},
+                "referees": {"team": {"id": null, "name": "Team Bravo"}}
+            }
+        }"#;
+        let map: RefereesByGameNumber = serde_json::from_str(json).unwrap();
+        let g1 = map.get("1").expect("game 1 present");
+        assert_eq!(
+            g1.time_or_score_keeper
+                .as_ref()
+                .and_then(|a| a.team.as_ref())
+                .and_then(|t| t.name.as_deref()),
+            Some("Team Alpha")
+        );
+        assert!(g1.time_or_score_helper.is_none());
+    }
 
     #[test]
     fn test_serialize_winner() {
@@ -1413,6 +1468,7 @@ mod tests {
             }],
             standings_order: None,
             final_results_order: None,
+            referees_by_game_number: None,
         };
         let serialized = serde_json::to_string(&schedule).unwrap();
         let deserialized: serde_json::Value = serde_json::from_str(&serialized).unwrap();

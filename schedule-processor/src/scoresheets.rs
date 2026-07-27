@@ -253,10 +253,8 @@ pub async fn generate_scoresheets_for_event(
             ),
         };
 
-        let html_path = inputs
-            .output_dir
-            .join(format!("game-{}.html", sanitize(num)));
-        fs::write(&html_path, html.as_bytes())?;
+        // Per-game HTML is intermediate only (never read back); the PDF is built from the
+        // combined HTML below, so we don't write per-game files to the output folder.
 
         // Capture CSS from the first page and append this page fragment for combined output
         if combined_css.is_none() {
@@ -402,7 +400,18 @@ pub async fn generate_scoresheets_for_event(
             }
         }
 
-        if !printed {
+        if printed {
+            // Success: leave only the PDF. Remove the intermediate combined HTML and the
+            // copied logo images (already baked into the PDF).
+            let _ = fs::remove_file(&all_html_path);
+            if let Some(rel) = &left_logo_rel {
+                let _ = fs::remove_file(inputs.output_dir.join(rel));
+            }
+            if let Some(rel) = &right_logo_rel {
+                let _ = fs::remove_file(inputs.output_dir.join(rel));
+            }
+        } else {
+            // Keep the combined HTML on failure so there's something to inspect/recover.
             log::error!(
                 "Could not find or run a browser to produce combined PDF. Saved combined HTML at {}",
                 all_html_path.display()
@@ -411,12 +420,6 @@ pub async fn generate_scoresheets_for_event(
     }
 
     Ok(())
-}
-
-fn sanitize(s: &str) -> String {
-    s.chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
-        .collect()
 }
 
 fn copy_logo(

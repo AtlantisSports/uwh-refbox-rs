@@ -118,18 +118,68 @@ fn rename_corrupt(path: &Path) -> std::io::Result<()> {
     fs::rename(path, &new_path)
 }
 
-/// Atomically write the queue file to `dir/portal_queue.json`.
-/// Writes to a temp file, fsyncs, then renames over the target.
-pub fn save(dir: &Path, q: &QueueFile) -> std::io::Result<()> {
-    let tmp = tmp_path(dir);
+/// Atomically write a queue-file envelope to `target`: write to `tmp`,
+/// fsync, then rename over the target.
+fn write_atomic(target: &Path, tmp: &Path, q: &QueueFile) -> std::io::Result<()> {
     {
-        let mut f = fs::File::create(&tmp)?;
+        let mut f = fs::File::create(tmp)?;
         serde_json::to_writer(&f, q).map_err(std::io::Error::other)?;
         f.flush()?;
         f.sync_all()?;
     }
-    fs::rename(&tmp, queue_path(dir))?;
+    fs::rename(tmp, target)?;
     Ok(())
+}
+
+/// Atomically write the queue file to `dir/portal_queue.json`.
+pub fn save(dir: &Path, q: &QueueFile) -> std::io::Result<()> {
+    write_atomic(&queue_path(dir), &tmp_path(dir), q)
+}
+
+// --- Expired-item archive (Bug 2: portal_queue.expired.json) ---
+//
+// When a queued score passes the 120h expiry limit it is removed from the
+// active queue, but copied here first so nothing is ever silently lost. This
+// is a behind-the-scenes safety net, not surfaced in the UI.
+
+const ARCHIVE_FILE_NAME: &str = "portal_queue.expired.json";
+const ARCHIVE_TMP_FILE_NAME: &str = "portal_queue.expired.json.tmp";
+
+fn archive_path(dir: &Path) -> PathBuf {
+    dir.join(ARCHIVE_FILE_NAME)
+}
+
+fn archive_tmp_path(dir: &Path) -> PathBuf {
+    dir.join(ARCHIVE_TMP_FILE_NAME)
+}
+
+/// Load the archive of expired queue items. Missing → empty. Unparseable or
+/// unknown-version → logged and treated as empty (the archive is a
+/// best-effort safety net, so a corrupt archive must never block a sweep).
+pub fn load_archive_or_empty(dir: &Path) -> std::io::Result<QueueFile> {
+    let path = archive_path(dir);
+    if !path.exists() {
+        return Ok(QueueFile::empty());
+    }
+    let bytes = fs::read(&path)?;
+    match serde_json::from_slice::<QueueFile>(&bytes) {
+        Ok(q) if q.version == QueueFile::CURRENT_VERSION => Ok(q),
+        _ => {
+            log::error!("portal_queue.expired.json unreadable; starting a fresh archive");
+            Ok(QueueFile::empty())
+        }
+    }
+}
+
+/// Append expired items to the archive, atomically. No-op on empty input.
+/// Additive: items archived by earlier sweeps are preserved.
+pub fn append_to_archive(dir: &Path, items: &[QueuedItem]) -> std::io::Result<()> {
+    if items.is_empty() {
+        return Ok(());
+    }
+    let mut archive = load_archive_or_empty(dir)?;
+    archive.items.extend_from_slice(items);
+    write_atomic(&archive_path(dir), &archive_tmp_path(dir), &archive)
 }
 
 #[cfg(test)]
@@ -286,5 +336,64 @@ mod tests {
             !back.score_sent,
             "an item with no score_sent field must load as score-pending (false)"
         );
+    }
+}
+
+#[cfg(test)]
+mod archive_tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn sample_item(game: &str) -> QueuedItem {
+        QueuedItem {
+            id: ItemId {
+                event_id: "e1".into(),
+                game_number: game.into(),
+            },
+            black_score: 1,
+            white_score: 0,
+            stats: "{}".into(),
+            queued_at: OffsetDateTime::now_utc(),
+            attempts: 0,
+            last_attempt_at: None,
+            force: false,
+            score_sent: false,
+        }
+    }
+
+    #[test]
+    fn load_archive_missing_is_empty() {
+        let tmp = TempDir::new().unwrap();
+        assert_eq!(
+            load_archive_or_empty(tmp.path()).unwrap(),
+            QueueFile::empty()
+        );
+    }
+
+    #[test]
+    fn append_then_load_round_trips() {
+        let tmp = TempDir::new().unwrap();
+        let item = sample_item("G1");
+        append_to_archive(tmp.path(), std::slice::from_ref(&item)).unwrap();
+        let back = load_archive_or_empty(tmp.path()).unwrap();
+        assert_eq!(back.items, vec![item]);
+    }
+
+    #[test]
+    fn append_accumulates_across_calls() {
+        let tmp = TempDir::new().unwrap();
+        let a = sample_item("G1");
+        let b = sample_item("G2");
+        append_to_archive(tmp.path(), std::slice::from_ref(&a)).unwrap();
+        append_to_archive(tmp.path(), std::slice::from_ref(&b)).unwrap();
+        let back = load_archive_or_empty(tmp.path()).unwrap();
+        assert_eq!(back.items, vec![a, b]);
+    }
+
+    #[test]
+    fn append_empty_writes_no_file() {
+        let tmp = TempDir::new().unwrap();
+        append_to_archive(tmp.path(), &[]).unwrap();
+        assert!(!tmp.path().join("portal_queue.expired.json").exists());
     }
 }

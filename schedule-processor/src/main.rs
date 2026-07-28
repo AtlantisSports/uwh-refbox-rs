@@ -41,6 +41,29 @@ struct Args {
 
 const APP_NAME: &str = "schedule_processor";
 
+/// Apply an optional portal-URL override to the site chosen in the menu.
+///
+/// Mirrors the refbox's `UWH_PORTAL_URL_OVERRIDE` / `UWR_PORTAL_URL_OVERRIDE`
+/// behaviour: when the env var holds a non-empty value it replaces the
+/// menu-selected URL, letting the tool reach an environment not in the menu
+/// (e.g. sandbox). `require_https` follows the override's scheme, so an
+/// `http://` override (e.g. a local server) still works. An unset or blank
+/// override leaves the menu selection unchanged.
+fn apply_portal_override(
+    default_url: &str,
+    default_require_https: bool,
+    override_value: Option<String>,
+) -> (String, bool) {
+    match override_value {
+        Some(url) if !url.trim().is_empty() => {
+            let url = url.trim().to_string();
+            let require_https = url.starts_with("https://");
+            (url, require_https)
+        }
+        _ => (default_url.to_string(), default_require_https),
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
@@ -95,7 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::process::exit(1);
         });
 
-    let site_url = match (site_choice, sport_choice) {
+    let default_url = match (site_choice, sport_choice) {
         ("Production", "Underwater Hockey") => "https://api.uwhportal.com",
         ("Production", "Underwater Rugby") => "https://api.uwrportal.com",
         ("Development", "Underwater Hockey") => "https://api.dev.uwhportal.com",
@@ -104,13 +127,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => unreachable!(),
     };
 
+    // Optional portal-URL override, mirroring the refbox's
+    // `UWH_PORTAL_URL_OVERRIDE` / `UWR_PORTAL_URL_OVERRIDE` env vars. This lets
+    // the tool be pointed at an environment that is not in the site menu (e.g.
+    // sandbox) without exposing it as a normal menu choice. Unset or blank ->
+    // the menu selection is used unchanged.
+    let override_var = match sport_choice {
+        "Underwater Rugby" => "UWR_PORTAL_URL_OVERRIDE",
+        _ => "UWH_PORTAL_URL_OVERRIDE",
+    };
+    let default_require_https = !matches!(site_choice, "Local");
+    let (site_url, require_https) = apply_portal_override(
+        default_url,
+        default_require_https,
+        std::env::var(override_var).ok(),
+    );
+    if site_url != default_url {
+        info!("{override_var} active: using {site_url}");
+    }
+
     info!("Using URL: {}", site_url);
     info!("Fetching event list from uwhportal...");
 
     let mut portal_client = UwhPortalClient::new(
-        site_url,
+        &site_url,
         None,
-        !matches!(site_choice, "Local"),
+        require_https,
         std::time::Duration::from_secs(10),
     )?;
 
@@ -1105,4 +1147,49 @@ fn sendable_team_map(team_map: &[MappedTeam]) -> BTreeMap<&str, &str> {
         .iter()
         .map(|team| (team.unassigned_name.as_str(), team.event_team.id.full()))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::apply_portal_override;
+
+    #[test]
+    fn no_override_keeps_menu_selection() {
+        let (url, https) = apply_portal_override("https://api.dev.uwhportal.com", true, None);
+        assert_eq!(url, "https://api.dev.uwhportal.com");
+        assert!(https);
+    }
+
+    #[test]
+    fn blank_override_keeps_menu_selection() {
+        let (url, https) = apply_portal_override(
+            "https://api.dev.uwhportal.com",
+            true,
+            Some("   ".to_string()),
+        );
+        assert_eq!(url, "https://api.dev.uwhportal.com");
+        assert!(https);
+    }
+
+    #[test]
+    fn https_override_is_used_and_requires_https() {
+        let (url, https) = apply_portal_override(
+            "https://api.dev.uwhportal.com",
+            true,
+            Some("https://api.sandbox.uwhportal.com".to_string()),
+        );
+        assert_eq!(url, "https://api.sandbox.uwhportal.com");
+        assert!(https);
+    }
+
+    #[test]
+    fn http_override_disables_require_https() {
+        let (url, https) = apply_portal_override(
+            "https://api.dev.uwhportal.com",
+            true,
+            Some("http://localhost:9000".to_string()),
+        );
+        assert_eq!(url, "http://localhost:9000");
+        assert!(!https);
+    }
 }

@@ -449,7 +449,7 @@ mod test {
         let hw = Hardware::migrate(&old);
         assert_eq!(hw.screen_x, 123);
         assert_eq!(hw.screen_y, 456);
-        assert_eq!(hw.white_on_right, true);
+        assert!(hw.white_on_right);
     }
 
     #[test]
@@ -483,8 +483,10 @@ mod test {
 
     #[test]
     fn config_display_mode_round_trips() {
-        let mut config = Config::default();
-        config.display_mode = crate::app::theme::DisplayMode::HighContrast;
+        let config = Config {
+            display_mode: crate::app::theme::DisplayMode::HighContrast,
+            ..Default::default()
+        };
         let serialized = toml::to_string(&config).unwrap();
         let deser: Config = toml::from_str(&serialized).unwrap();
         assert_eq!(
@@ -511,8 +513,10 @@ mod test {
 
     #[test]
     fn config_front_display_layout_round_trips() {
-        let mut config = Config::default();
-        config.front_display_layout = crate::sim_frame::FrontDisplayLayout::Corners;
+        let config = Config {
+            front_display_layout: crate::sim_frame::FrontDisplayLayout::Corners,
+            ..Default::default()
+        };
         let serialized = toml::to_string(&config).unwrap();
         let deser: Config = toml::from_str(&serialized).unwrap();
         assert_eq!(
@@ -590,14 +594,14 @@ mod test {
         old.insert("sound".to_string(), toml::Value::Table(sound));
         let config = Config::migrate(&old);
         assert_eq!(config.mode, Mode::Rugby);
-        assert_eq!(config.hide_time, true);
-        assert_eq!(config.collect_scorer_cap_num, true);
+        assert!(config.hide_time);
+        assert!(config.collect_scorer_cap_num);
         assert_eq!(config.game.half_play_duration, Duration::from_secs(123));
         assert_eq!(config.hardware.screen_x, 123);
         assert_eq!(config.hardware.screen_y, 456);
-        assert_eq!(config.hardware.white_on_right, true);
+        assert!(config.hardware.white_on_right);
         assert_eq!(config.uwhportal.token, "token");
-        assert_eq!(config.sound.sound_enabled, false);
+        assert!(!config.sound.sound_enabled);
         assert_eq!(config.sound.whistle_vol, Volume::Max);
     }
 }

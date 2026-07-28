@@ -85,6 +85,26 @@ fn set_executable(path: &std::path::Path) -> std::io::Result<()> {
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
 }
 
+/// Fetch the text body of `url` (used to retrieve checksum files).
+pub async fn fetch_text(url: &str) -> Result<String, UpdateError> {
+    // Fresh client, no auth header — safe across the signed-redirect to the asset CDN.
+    let client = reqwest::ClientBuilder::new()
+        .https_only(true)
+        .timeout(std::time::Duration::from_secs(30))
+        .user_agent(UA)
+        .build()
+        .map_err(|e| UpdateError::Io(e.to_string()))?;
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|_| UpdateError::Network)?;
+    if !resp.status().is_success() {
+        return Err(UpdateError::Network);
+    }
+    resp.text().await.map_err(|_| UpdateError::Network)
+}
+
 #[cfg(not(unix))]
 fn set_executable(_path: &std::path::Path) -> std::io::Result<()> {
     Ok(())
@@ -113,24 +133,4 @@ mod tests {
             0
         );
     }
-}
-
-/// Fetch the text body of `url` (used to retrieve checksum files).
-pub async fn fetch_text(url: &str) -> Result<String, UpdateError> {
-    // Fresh client, no auth header — safe across the signed-redirect to the asset CDN.
-    let client = reqwest::ClientBuilder::new()
-        .https_only(true)
-        .timeout(std::time::Duration::from_secs(30))
-        .user_agent(UA)
-        .build()
-        .map_err(|e| UpdateError::Io(e.to_string()))?;
-    let resp = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|_| UpdateError::Network)?;
-    if !resp.status().is_success() {
-        return Err(UpdateError::Network);
-    }
-    resp.text().await.map_err(|_| UpdateError::Network)
 }

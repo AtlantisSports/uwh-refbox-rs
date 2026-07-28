@@ -1,4 +1,7 @@
-use super::{Color, Duration, GamePeriod, Instant, OffsetDateTime, Penalty, PenaltyKind};
+use super::{
+    Color, Duration, GamePeriod, Infraction, InfractionDetails, Instant, OffsetDateTime, Penalty,
+    PenaltyKind,
+};
 use serde::Serialize;
 use std::cmp::Ordering;
 use time::format_description::well_known::{Iso8601, iso8601};
@@ -78,11 +81,24 @@ impl GameStats {
         self.events.push(event);
     }
 
+    pub(crate) fn add_foul(&mut self, details: &InfractionDetails, color: Option<Color>) {
+        let event = Event::Foul {
+            player_cap_number: details.player_number,
+            side: color.map(side_str),
+            game_period: details.start_period,
+            period_time: details.start_time.as_secs_f32(),
+            occurred_on: calculate_timestamp(details.start_instant),
+            called: details.infraction,
+        };
+        self.events.push(event);
+    }
+
     pub(crate) fn as_json(&self) -> String {
         let mut events = self.events.clone();
         events.sort_unstable_by_key(|event| match event {
             Event::Goal { occurred_on, .. } => *occurred_on,
             Event::Penalty { occurred_on, .. } => *occurred_on,
+            Event::Foul { occurred_on, .. } => *occurred_on,
         });
         serde_json::to_string(&events).unwrap()
     }
@@ -120,6 +136,20 @@ enum Event {
         #[serde(rename = "isTotalDismissal")]
         is_total_dismissal: bool,
     },
+    #[serde(rename = "foul")]
+    Foul {
+        #[serde(rename = "playerCapNumber")]
+        player_cap_number: Option<u8>,
+        side: Option<String>,
+        #[serde(rename = "gamePeriod")]
+        game_period: GamePeriod,
+        #[serde(rename = "periodTime")]
+        period_time: f32,
+        #[serde(with = "iso8601_short_year")]
+        #[serde(rename = "occurredOn")]
+        occurred_on: OffsetDateTime,
+        called: Infraction,
+    },
 }
 
 fn calculate_timestamp(instant: Instant) -> OffsetDateTime {
@@ -138,4 +168,56 @@ fn calculate_timestamp(instant: Instant) -> OffsetDateTime {
         }
     }
     timestamp
+}
+
+fn side_str(color: Color) -> String {
+    match color {
+        Color::Black => "dark".to_string(),
+        Color::White => "light".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn details(player: Option<u8>, infraction: Infraction) -> InfractionDetails {
+        InfractionDetails {
+            player_number: player,
+            start_period: GamePeriod::FirstHalf,
+            start_time: Duration::from_secs(880),
+            start_instant: Instant::now(),
+            infraction,
+        }
+    }
+
+    fn events_of(stats: &GameStats) -> Vec<serde_json::Value> {
+        serde_json::from_str(&stats.as_json()).unwrap()
+    }
+
+    #[test]
+    fn foul_events_serialize_with_type_side_player_and_called() {
+        let mut stats = GameStats::new("1");
+        // Player foul against White.
+        stats.add_foul(
+            &details(Some(7), Infraction::Obstruction),
+            Some(Color::White),
+        );
+        // Team-level, neither-side foul ("both at fault"), no player.
+        stats.add_foul(&details(None, Infraction::DelayOfGame), None);
+
+        let events = events_of(&stats);
+        let fouls: Vec<&serde_json::Value> =
+            events.iter().filter(|e| e["$type"] == "foul").collect();
+        assert_eq!(fouls.len(), 2);
+
+        let white = fouls.iter().find(|e| e["side"] == "light").unwrap();
+        assert_eq!(white["playerCapNumber"], 7);
+        assert_eq!(white["called"], "Obstruction");
+        assert_eq!(white["gamePeriod"], "FirstHalf");
+
+        let neither = fouls.iter().find(|e| e["side"].is_null()).unwrap();
+        assert!(neither["playerCapNumber"].is_null());
+        assert_eq!(neither["called"], "DelayOfGame");
+    }
 }

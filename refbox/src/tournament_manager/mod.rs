@@ -1097,6 +1097,12 @@ impl TournamentManager {
             }
         }
 
+        for color in [Some(Color::Black), None, Some(Color::White)] {
+            for foul in self.fouls[color].iter() {
+                self.current_game_stats.add_foul(foul, color);
+            }
+        }
+
         self.current_game_stats.add_end_time(now);
         self.last_game_info = Some(LastGameInfo {
             scores: self.scores,
@@ -2644,6 +2650,46 @@ mod test {
         INIT.call_once(|| {
             env_logger::init();
         });
+    }
+
+    #[test]
+    fn end_game_records_fouls_but_not_warnings_in_stats() {
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(900),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let g = Instant::now();
+        tm.start_play_now(g).unwrap();
+
+        // A warning is tracked but must NOT reach the portal (deferred until the portal
+        // can carry a warning reason).
+        tm.add_warning(Color::Black, Some(5), Infraction::Unknown, g)
+            .unwrap();
+        tm.add_foul(Some(Color::White), Some(7), Infraction::Obstruction, g)
+            .unwrap();
+        tm.add_foul(None, None, Infraction::DelayOfGame, g).unwrap();
+
+        tm.stop_clock(g).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        tm.end_game(g);
+
+        let json = tm.last_game_info().unwrap().stats.as_json();
+        let events: Vec<serde_json::Value> = serde_json::from_str(&json).unwrap();
+
+        // Warnings intentionally excluded for now.
+        assert!(events.iter().all(|e| e["$type"] != "warning"));
+
+        let fouls: Vec<&serde_json::Value> =
+            events.iter().filter(|e| e["$type"] == "foul").collect();
+        assert_eq!(fouls.len(), 2);
+        assert!(fouls.iter().any(|e| e["side"] == "light"
+            && e["playerCapNumber"] == 7
+            && e["called"] == "Obstruction"));
+        assert!(fouls.iter().any(|e| e["side"].is_null()
+            && e["playerCapNumber"].is_null()
+            && e["called"] == "DelayOfGame"));
     }
 
     // TODO: test correct sending of time start/stop signals

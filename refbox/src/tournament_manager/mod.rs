@@ -1097,9 +1097,15 @@ impl TournamentManager {
             }
         }
 
-        for color in [Some(Color::Black), None, Some(Color::White)] {
-            for foul in self.fouls[color].iter() {
-                self.current_game_stats.add_foul(foul, color);
+        // Only fully-attributed fouls (a specific player AND a specific team) are sent to the
+        // portal: the portal currently rejects a foul with a null player or side, which 400s the
+        // whole upload. Team fouls (no player) and "both teams at fault" fouls (no team) are held
+        // back until the portal accepts them — see docs/backlog/portal-accept-team-and-equal-fouls.
+        for color in [Color::Black, Color::White] {
+            for foul in self.fouls[Some(color)].iter() {
+                if foul.player_number.is_some() {
+                    self.current_game_stats.add_foul(foul, Some(color));
+                }
             }
         }
 
@@ -2653,7 +2659,7 @@ mod test {
     }
 
     #[test]
-    fn end_game_records_fouls_but_not_warnings_in_stats() {
+    fn end_game_sends_only_fully_attributed_fouls() {
         initialize();
         let config = GameConfig {
             half_play_duration: Duration::from_secs(900),
@@ -2663,13 +2669,17 @@ mod test {
         let g = Instant::now();
         tm.start_play_now(g).unwrap();
 
-        // A warning is tracked but must NOT reach the portal (deferred until the portal
-        // can carry a warning reason).
+        // Warning: tracked, never sent to the portal.
         tm.add_warning(Color::Black, Some(5), Infraction::Unknown, g)
             .unwrap();
+        // Fully-attributed foul (player + team): SENT.
         tm.add_foul(Some(Color::White), Some(7), Infraction::Obstruction, g)
             .unwrap();
-        tm.add_foul(None, None, Infraction::DelayOfGame, g).unwrap();
+        // Team foul (team but no player): held back until the portal accepts it.
+        tm.add_foul(Some(Color::Black), None, Infraction::DelayOfGame, g)
+            .unwrap();
+        // "Both teams at fault" foul (no team): held back.
+        tm.add_foul(None, None, Infraction::FreeArm, g).unwrap();
 
         tm.stop_clock(g).unwrap();
         tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
@@ -2678,18 +2688,22 @@ mod test {
         let json = tm.last_game_info().unwrap().stats.as_json();
         let events: Vec<serde_json::Value> = serde_json::from_str(&json).unwrap();
 
-        // Warnings intentionally excluded for now.
+        // No warnings, and no foul with a null player or side reaches the portal.
         assert!(events.iter().all(|e| e["$type"] != "warning"));
+        assert!(
+            events
+                .iter()
+                .all(|e| !e["playerCapNumber"].is_null() && !e["side"].is_null()),
+            "only fully-attributed fouls should be sent"
+        );
 
+        // Exactly the one attributed foul is present.
         let fouls: Vec<&serde_json::Value> =
             events.iter().filter(|e| e["$type"] == "foul").collect();
-        assert_eq!(fouls.len(), 2);
-        assert!(fouls.iter().any(|e| e["side"] == "light"
-            && e["playerCapNumber"] == 7
-            && e["called"] == "Obstruction"));
-        assert!(fouls.iter().any(|e| e["side"].is_null()
-            && e["playerCapNumber"].is_null()
-            && e["called"] == "DelayOfGame"));
+        assert_eq!(fouls.len(), 1);
+        assert_eq!(fouls[0]["side"], "light");
+        assert_eq!(fouls[0]["playerCapNumber"], 7);
+        assert_eq!(fouls[0]["called"], "Obstruction");
     }
 
     // TODO: test correct sending of time start/stop signals

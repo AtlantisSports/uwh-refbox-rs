@@ -41,8 +41,14 @@ test:
 # RUSTSEC-2024-0388: derivative - unmaintained (no fix available)
 # RUSTSEC-2026-0009: time - fix (>=0.3.47) requires Rust 1.88+, above our MSRV of 1.85
 #                    tracked in docs/decisions/002-time-cve-msrv.md
+# RUSTSEC-2026-0194: quick-xml - reached only via build-time wayland-scanner XML parse (not exposed)
+# RUSTSEC-2026-0195: quick-xml - same DoS vector, not exposed here
+# RUSTSEC-2025-0052: async-std - unmaintained, transitively via iced_futures
+#                    all three locked behind an out-of-scope iced/winit upgrade;
+#                    tracked in docs/decisions/024-cargo-audit-iced-transitive-advisories.md
+# Keep this ignore list in sync with the audit step in .github/workflows/rust.yml.
 audit:
-    cargo audit --ignore RUSTSEC-2024-0384 --ignore RUSTSEC-2024-0388 --ignore RUSTSEC-2026-0009
+    cargo audit --ignore RUSTSEC-2024-0384 --ignore RUSTSEC-2024-0388 --ignore RUSTSEC-2026-0009 --ignore RUSTSEC-2026-0194 --ignore RUSTSEC-2026-0195 --ignore RUSTSEC-2025-0052
 
 # ── Building ──────────────────────────────────────────────────────────────────
 

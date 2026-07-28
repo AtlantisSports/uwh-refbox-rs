@@ -78,6 +78,15 @@ pub(super) enum Action {
     ///
     /// Cross-reference: `app/mod.rs` ~line 2907–2911.
     ConfirmScore(Color),
+    /// Operator confirms a game-ending score with NO pending goal to add — mirrors
+    /// `Message::ScoreConfirmation { correct: true }` (app/mod.rs ~3913) when the held
+    /// score is unchanged: `tm.set_scores(current, now)` then `tm.end_confirm_pause(now)`.
+    ///
+    /// Needed to finish a game-ending timeout's confirm pause, which the driver's tick loop
+    /// cannot auto-end because `end_game_ending_timeout` → `halt_clock` drops the start/stop
+    /// latch (so no tick fires to reach `pause_has_ended`). Distinct from [`Action::ConfirmScore`],
+    /// which *increments* the score for the sudden-death held-goal path.
+    ConfirmGameEnd,
     /// Start a timed penalty for `(color, player_number, kind)`.
     StartPenalty(Color, u8, PenaltyKind),
     /// Start a team timeout for the given colour.
@@ -184,12 +193,18 @@ fn tick(tm: &mut TournamentManager, now: Instant) {
 //                          hold score locally, pause_for_confirm(now)
 //   ConfirmScore         → Message::ScoreConfirmation { correct: true } (~line 2907–2911):
 //                          set_scores(held, now) + end_confirm_pause(now)
+//   ConfirmGameEnd       → Message::ScoreConfirmation { correct: true } with an UNCHANGED score
+//                          (~line 3913): set_scores(current) + end_confirm_pause(now). Finishes a
+//                          game-ending timeout's confirm pause (halt_clock stopped the latch, so
+//                          the tick loop cannot auto-confirm it).
 //   StartPenalty         → penalty_editor.rs add_to_tm → tm.start_penalty(...)
 //   StartTeamTimeout     → Message::TeamTimeout  (start_team_timeout)
 //   StartRefTimeout      → Message::RefTimeout   (start_ref_timeout)
 //   StartPenaltyShot     → Message::PenaltyShot  (start_penalty_shot, UWH mode)
 //   StartRugbyPenaltyShot→ Message::PenaltyShot  (start_rugby_penalty_shot, Rugby mode)
-//   EndTimeout           → Message::EndTimeout   (end_timeout + update; no game-ending branch here)
+//   EndTimeout           → Message::EndTimeout   (mirrors BOTH branches of the app handler:
+//                          timeout_end_would_end_game ? end_game_ending_timeout(now)  [R6, arms the
+//                          end-of-game confirm pause]  :  end_timeout(now) + update(now))
 //   SetGameClock         → Message::TimeEditComplete (set_game_clock_time). Models the
 //                          clock-stopped path only; the real handler additionally calls
 //                          start_clock(now)+update(now) when the clock was running. Scenarios
@@ -253,6 +268,16 @@ fn apply_action(tm: &mut TournamentManager, action: Action, now: Instant) {
             tm.set_scores(s, now);
             tm.end_confirm_pause(now).unwrap();
         }
+        Action::ConfirmGameEnd => {
+            // Mirrors Message::ScoreConfirmation { correct: true } with an unchanged held
+            // score (app/mod.rs ~3913): the score already reflects the game-ending shot's
+            // outcome, so confirmation re-sets the same scores and ends the pause, finishing
+            // the game. (The tick loop cannot do this: end_game_ending_timeout's halt_clock
+            // stops the latch, so no tick fires to reach pause_has_ended.)
+            let s = tm.get_scores();
+            tm.set_scores(s, now);
+            tm.end_confirm_pause(now).unwrap();
+        }
         Action::StartPenalty(color, player_number, kind) => {
             // Mirrors penalty_editor.rs add_to_tm (Infraction::Unknown is the
             // default when no specific infraction is tracked).
@@ -282,14 +307,16 @@ fn apply_action(tm: &mut TournamentManager, action: Action, now: Instant) {
             tm.start_rugby_penalty_shot(now).unwrap();
         }
         Action::EndTimeout => {
-            // Mirrors Message::EndTimeout (non-game-ending branch only):
-            //   tm.end_timeout(now).unwrap();
-            //   tm.update(now).unwrap();
-            // The game-ending branch (halt_clock) is not implemented here;
-            // scenarios that need to end the game during a timeout should use
-            // StopClock + the normal confirm flow.
-            tm.end_timeout(now).unwrap();
-            tm.update(now).unwrap();
+            // Mirrors Message::EndTimeout (app/mod.rs). A game-ending timeout (e.g. a
+            // game-ending rugby penalty shot at the end of the second half) arms the
+            // end-of-game confirm pause via end_game_ending_timeout so the confirm screen
+            // finishes the game cleanly (R6); otherwise the timeout ends and play resumes.
+            if tm.timeout_end_would_end_game(now).unwrap() {
+                tm.end_game_ending_timeout(now).unwrap();
+            } else {
+                tm.end_timeout(now).unwrap();
+                tm.update(now).unwrap();
+            }
         }
         Action::SetGameClock(duration) => {
             // Mirrors Message::TimeEditComplete (clock must already be stopped)
@@ -565,7 +592,7 @@ fn check_or_bless(name: &str, trace: &[String], bless: bool) -> std::result::Res
 mod tests {
     use super::*;
 
-    /// Permanent regression guard: runs all 30 scenarios, checks determinism,
+    /// Permanent regression guard: runs all 43 scenarios, checks determinism,
     /// then compares each trace against its saved golden file.
     ///
     /// To regenerate the golden files (e.g. after an intentional engine change):

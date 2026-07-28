@@ -17,9 +17,9 @@ use uwh_common::{color::Color, config::Game as GameConfig, game_snapshot::GamePe
 
 use crate::tournament_manager::{
     golden::Action::{
-        AddScore, ConfirmScore, EndTimeout, ResetGame, ScoreSuddenDeath, SetGameClock, SetupPeriod,
-        StartClock, StartPenalty, StartPenaltyShot, StartPlayNow, StartRefTimeout,
-        StartRugbyPenaltyShot, StartTeamTimeout, StopClock,
+        AddScore, ConfirmGameEnd, ConfirmScore, EndTimeout, ResetGame, ScoreSuddenDeath,
+        SetGameClock, SetupPeriod, StartClock, StartPenalty, StartPenaltyShot, StartPlayNow,
+        StartRefTimeout, StartRugbyPenaltyShot, StartTeamTimeout, StopClock,
     },
     penalty::PenaltyKind,
 };
@@ -631,6 +631,78 @@ static MANUAL_RESET_GAME_ACTIONS: &[(u64, Action)] = &[
     (2, ResetGame),
 ];
 
+// ── Family 11 — SD scoring & game-ending penalty shot (#1675 regression coverage) ──
+// These close the gap that let the #1675 confirm-flow crashes ship: no golden scenario
+// scored a deciding sudden-death goal while a timeout / stopped clock was active, and none
+// reached a game-ending penalty shot. Each mirrors one of the four tournament_manager
+// regression tests added in PR #1675.
+
+// A) Deciding SD goal scored while the game clock is STOPPED. Mirrors
+//    test_sd_score_confirm_with_clock_stopped_does_not_crash: SuddenDeath is entered with the
+//    clock never started (stopped), the held goal is scored (pause_for_confirm on a stopped
+//    clock — the R2 fix), then confirmed → deciding goal → BetweenGames. Before #1675 the
+//    ScoreSuddenDeath step's pause_for_confirm returned Err(ClockStopped) and the driver's
+//    unwrap would panic here.
+static SD_SCORE_CLOCK_STOPPED_ACTIONS: &[(u64, Action)] = &[
+    (
+        0,
+        SetupPeriod(GamePeriod::SuddenDeath, Duration::from_secs(30)),
+    ),
+    // No StartClock: the game clock stays stopped (latch false).
+    (2, ScoreSuddenDeath(Color::Black)), // pause_for_confirm with clock stopped (R2)
+    (4, ConfirmScore(Color::Black)),     // set_scores(B1/W0) + end_confirm_pause → game ends
+];
+
+// B) Deciding SD goal scored DURING a referee timeout. Mirrors
+//    test_sd_score_confirm_during_ref_timeout_does_not_crash: reach SuddenDeath organically,
+//    start a ref timeout, then score — pause_for_confirm must clear the timeout (R2) and open
+//    the confirm window; confirming ends the game. Before #1675 the ScoreSuddenDeath step
+//    returned Err(PausingDuringTimeout) and the driver's unwrap would panic.
+static SD_SCORE_DURING_REF_TIMEOUT_ACTIONS: &[(u64, Action)] = &[
+    (
+        0,
+        SetupPeriod(GamePeriod::OvertimeSecondHalf, Duration::from_secs(5)),
+    ),
+    (0, StartClock),
+    // ~t=5 OvertimeSecondHalf ends → PreSuddenDeath (5s) → SuddenDeath starts ~t=10.
+    (15, StartRefTimeout), // SD clock freezes; Ref timeout counts up
+    (17, ScoreSuddenDeath(Color::Black)), // pause_for_confirm clears the ref timeout (R2)
+    (19, ConfirmScore(Color::Black)), // deciding goal → BetweenGames
+];
+
+// C) Deciding SD goal scored DURING a penalty shot. Mirrors
+//    test_sd_score_confirm_during_penalty_shot_does_not_crash: same as (B) but a penalty shot
+//    is active when the goal is scored.
+static SD_SCORE_DURING_PENALTY_SHOT_ACTIONS: &[(u64, Action)] = &[
+    (
+        0,
+        SetupPeriod(GamePeriod::OvertimeSecondHalf, Duration::from_secs(5)),
+    ),
+    (0, StartClock),
+    (15, StartPenaltyShot), // SD clock freezes; penalty shot counts up
+    (17, ScoreSuddenDeath(Color::Black)), // pause_for_confirm clears the penalty shot (R2)
+    (19, ConfirmScore(Color::Black)), // deciding goal → BetweenGames
+];
+
+// D) Game-ending rugby penalty shot. Mirrors
+//    test_game_ending_rugby_penalty_shot_confirm_ends_game: the second half runs out with a
+//    rugby penalty shot still in progress (half extended, game clock at 0). A goal is scored
+//    on the shot, the operator ends the game-ending timeout (EndTimeout → end_game_ending_timeout
+//    arms the confirm pause, R6), and confirms → BetweenGames. No OT/SD, so the game ends here.
+//    Before #1675 EndTimeout armed no pause, so the confirm step's end_confirm_pause returned
+//    Err(NotPaused) and the driver's unwrap would panic.
+static GAME_ENDING_RUGBY_PENALTY_SHOT_ACTIONS: &[(u64, Action)] = &[
+    (
+        0,
+        SetupPeriod(GamePeriod::SecondHalf, Duration::from_secs(5)),
+    ),
+    (0, StartClock),
+    (1, StartRugbyPenaltyShot), // 15s shot; game clock hits 0 at ~t=5 → half extended
+    (6, AddScore(Color::Black)), // goal scored on the shot → B1/W0 (decisive)
+    (8, EndTimeout), // would-end-game → end_game_ending_timeout arms the confirm pause (R6)
+    (10, ConfirmGameEnd), // confirm the score → game ends → BetweenGames
+];
+
 // ── Public entry point ────────────────────────────────────────────────────────
 
 /// Return every scenario in the library.
@@ -989,6 +1061,58 @@ pub(super) fn all() -> Vec<Scenario> {
             config: between_games_config(),
             actions: MANUAL_RESET_GAME_ACTIONS,
             run_secs: 7,
+        },
+        // ── Family 11 — SD scoring & game-ending penalty shot (#1675) ─────────
+        Scenario {
+            name: "sudden_death_score_clock_stopped",
+            config: GameConfig {
+                overtime_allowed: false,
+                sudden_death_allowed: true,
+                minimum_break: Duration::from_secs(20),
+                ..reg_config()
+            },
+            actions: SD_SCORE_CLOCK_STOPPED_ACTIONS,
+            run_secs: 20,
+        },
+        Scenario {
+            name: "sudden_death_score_during_ref_timeout",
+            config: GameConfig {
+                overtime_allowed: true,
+                sudden_death_allowed: true,
+                pre_overtime_break: Duration::from_secs(5),
+                ot_half_play_duration: Duration::from_secs(5),
+                ot_half_time_duration: Duration::from_secs(3),
+                pre_sudden_death_duration: Duration::from_secs(5),
+                minimum_break: Duration::from_secs(20),
+                ..reg_config()
+            },
+            actions: SD_SCORE_DURING_REF_TIMEOUT_ACTIONS,
+            run_secs: 35,
+        },
+        Scenario {
+            name: "sudden_death_score_during_penalty_shot",
+            config: GameConfig {
+                overtime_allowed: true,
+                sudden_death_allowed: true,
+                pre_overtime_break: Duration::from_secs(5),
+                ot_half_play_duration: Duration::from_secs(5),
+                ot_half_time_duration: Duration::from_secs(3),
+                pre_sudden_death_duration: Duration::from_secs(5),
+                minimum_break: Duration::from_secs(20),
+                ..reg_config()
+            },
+            actions: SD_SCORE_DURING_PENALTY_SHOT_ACTIONS,
+            run_secs: 35,
+        },
+        Scenario {
+            name: "game_ending_rugby_penalty_shot",
+            config: GameConfig {
+                overtime_allowed: false,
+                sudden_death_allowed: false,
+                ..reg_config()
+            },
+            actions: GAME_ENDING_RUGBY_PENALTY_SHOT_ACTIONS,
+            run_secs: 20,
         },
     ]
 }

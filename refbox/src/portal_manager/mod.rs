@@ -355,6 +355,20 @@ pub fn is_item_stuck(item: &QueuedItem, now: OffsetDateTime) -> bool {
     !item.score_sent && (now - item.queued_at) >= STUCK_THRESHOLD
 }
 
+/// How long an unresolved item may sit in the queue before it is
+/// auto-expired: removed from the active queue (and archived to
+/// `portal_queue.expired.json`) so a stale, undeliverable score can't hold
+/// the indicator red forever. Mirrors the link-restore freshness window
+/// (`link_session::FRESHNESS_WINDOW`, also 120h).
+pub const EXPIRY_THRESHOLD: TimeDuration = TimeDuration::hours(120);
+
+/// An item is expired once it has sat in the queue for `EXPIRY_THRESHOLD`,
+/// regardless of `score_sent` — a stale stats-pending item is swept too so
+/// the whole leftover queue clears.
+fn is_item_expired(item: &QueuedItem, now: OffsetDateTime) -> bool {
+    (now - item.queued_at) >= EXPIRY_THRESHOLD
+}
+
 pub struct PortalManager {
     queue: QueueFile,
     check_in_flight: bool,
@@ -421,7 +435,40 @@ impl PortalManager {
     ///   indicator picks up anything that might have changed between
     ///   frames.
     pub fn ui_tick(&mut self) {
+        if let Err(e) = self.sweep_expired() {
+            log::warn!("portal queue expiry sweep failed: {e}");
+        }
         self.recompute_indicator();
+    }
+
+    /// Remove items past `EXPIRY_THRESHOLD` from the active queue, archiving
+    /// them first so nothing is silently lost. Runs at startup (in `new`) and
+    /// on every `ui_tick`; only touches disk when an item actually expires.
+    /// IO is ordered archive-then-remove so a failed write can never drop a
+    /// score without a saved copy.
+    fn sweep_expired(&mut self) -> std::io::Result<()> {
+        let now = OffsetDateTime::now_utc();
+        let (expired, kept): (Vec<QueuedItem>, Vec<QueuedItem>) = self
+            .queue
+            .items
+            .iter()
+            .cloned()
+            .partition(|it| is_item_expired(it, now));
+        if expired.is_empty() {
+            return Ok(());
+        }
+        // Archive BEFORE removing so a failed write never loses a score.
+        queue::append_to_archive(&self.config_dir, &expired)?;
+        let n = expired.len();
+        self.queue.items = kept;
+        queue::save(&self.config_dir, &self.queue)?;
+        self.recompute_indicator();
+        self.push_queue_snapshot();
+        log::info!(
+            "Expired {n} stale portal-queue item(s) (>{}h); archived to portal_queue.expired.json",
+            EXPIRY_THRESHOLD.whole_hours()
+        );
+        Ok(())
     }
 
     fn has_stuck_items(&self) -> bool {
@@ -500,6 +547,11 @@ impl PortalManager {
             config_dir: config_dir.to_path_buf(),
             recent_successes: VecDeque::new(),
         };
+        // Clear any items that already exceeded the expiry limit before this
+        // launch (e.g. leftovers carried across a portal switch or reboot).
+        if let Err(e) = m.sweep_expired() {
+            log::warn!("portal queue expiry sweep at startup failed: {e}");
+        }
         m.recompute_indicator();
         m.push_queue_snapshot();
         Ok((m, handle.event_rx))
@@ -1093,6 +1145,101 @@ mod tests {
 
         assert_eq!(m.indicator_state().health, HealthState::Green);
         assert!(m.queue.items.is_empty());
+    }
+
+    #[test]
+    fn item_under_120h_is_not_expired() {
+        let now = OffsetDateTime::now_utc();
+        let mut it = mk_young_item();
+        it.queued_at = now - TimeDuration::hours(119);
+        assert!(!is_item_expired(&it, now));
+    }
+
+    #[test]
+    fn item_over_120h_is_expired() {
+        let now = OffsetDateTime::now_utc();
+        let mut it = mk_young_item();
+        it.queued_at = now - TimeDuration::hours(121);
+        assert!(is_item_expired(&it, now));
+    }
+
+    #[test]
+    fn stats_pending_item_over_120h_is_expired() {
+        // A stats-pending item (score already accepted) doesn't drive the
+        // indicator, but a 5-day-old one should still be swept so the stale
+        // queue clears entirely.
+        let now = OffsetDateTime::now_utc();
+        let mut it = mk_young_item();
+        it.score_sent = true;
+        it.queued_at = now - TimeDuration::hours(121);
+        assert!(is_item_expired(&it, now));
+    }
+
+    #[tokio::test]
+    async fn sweep_removes_expired_item_archives_it_and_returns_to_green() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        m.enqueue_game_end("e1".into(), "G1".into(), 3, 2, "{}".into())
+            .unwrap();
+        // Backdate past the 120h limit.
+        m.queue.items[0].queued_at = OffsetDateTime::now_utc() - TimeDuration::hours(121);
+
+        m.sweep_expired().unwrap();
+
+        assert!(m.queue.items.is_empty(), "expired item should be removed");
+        let archive = crate::portal_manager::queue::load_archive_or_empty(tmp.path()).unwrap();
+        assert_eq!(archive.items.len(), 1);
+        assert_eq!(archive.items[0].id.game_number, "G1");
+        assert_eq!(m.indicator_state().health, HealthState::Green);
+    }
+
+    #[tokio::test]
+    async fn sweep_keeps_a_fresh_item() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        m.enqueue_game_end("e1".into(), "G1".into(), 0, 0, "{}".into())
+            .unwrap();
+
+        m.sweep_expired().unwrap();
+
+        assert_eq!(m.queue.items.len(), 1, "a fresh item must not be swept");
+        assert!(
+            crate::portal_manager::queue::load_archive_or_empty(tmp.path())
+                .unwrap()
+                .items
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn startup_sweep_clears_a_stale_queue_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // Pre-populate a queue file with an item older than 120h.
+        let mut old = mk_young_item();
+        old.queued_at = OffsetDateTime::now_utc() - TimeDuration::hours(200);
+        crate::portal_manager::queue::save(
+            tmp.path(),
+            &QueueFile {
+                version: 1,
+                items: vec![old],
+            },
+        )
+        .unwrap();
+
+        let (m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+
+        assert!(
+            m.queue.items.is_empty(),
+            "startup should sweep the stale queue item"
+        );
+        assert_eq!(
+            crate::portal_manager::queue::load_archive_or_empty(tmp.path())
+                .unwrap()
+                .items
+                .len(),
+            1
+        );
+        assert_eq!(m.indicator_state().health, HealthState::Green);
     }
 
     #[tokio::test]

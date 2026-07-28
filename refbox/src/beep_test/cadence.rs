@@ -393,6 +393,30 @@ impl std::default::Default for ClockState {
     }
 }
 
+impl ClockState {
+    fn is_running(&self) -> bool {
+        match self {
+            ClockState::CountingDown { .. } => true,
+            ClockState::Stopped { .. } => false,
+        }
+    }
+
+    /// Returns `None` if the clock time would be negative, or if `now` is before the start
+    /// of the clock
+    fn clock_time(&self, now: Instant) -> Option<Duration> {
+        match self {
+            ClockState::CountingDown {
+                start_time,
+                time_remaining_at_start,
+            } => now
+                .checked_duration_since(*start_time)
+                .and_then(|s| time_remaining_at_start.checked_sub(s)),
+
+            ClockState::Stopped { clock_time } => Some(*clock_time),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -538,29 +562,5 @@ mod tests {
         tm.reset_beep_test_now(now + Duration::from_millis(500));
         // After reset, time_in_next_lap should be levels[0].duration = 10s.
         assert_eq!(tm.time_in_next_lap, Duration::from_secs(10));
-    }
-}
-
-impl ClockState {
-    fn is_running(&self) -> bool {
-        match self {
-            ClockState::CountingDown { .. } => true,
-            ClockState::Stopped { .. } => false,
-        }
-    }
-
-    /// Returns `None` if the clock time would be negative, or if `now` is before the start
-    /// of the clock
-    fn clock_time(&self, now: Instant) -> Option<Duration> {
-        match self {
-            ClockState::CountingDown {
-                start_time,
-                time_remaining_at_start,
-            } => now
-                .checked_duration_since(*start_time)
-                .and_then(|s| time_remaining_at_start.checked_sub(s)),
-
-            ClockState::Stopped { clock_time } => Some(*clock_time),
-        }
     }
 }

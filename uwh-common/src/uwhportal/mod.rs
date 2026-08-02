@@ -63,6 +63,74 @@ pub struct CoinFlipResult {
     pub team: CoinFlipTeam,
 }
 
+/// One member of a team's roster as returned by the portal.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RosterPlayer {
+    pub number: Option<u8>,
+    pub name: String,
+    pub is_captain: bool,
+    pub is_vice_captain: bool,
+}
+
+/// Parse the `roster` array of an `/api/admin/get-event-team` response.
+///
+/// Display name preference: non-empty `rosterName`, else `username`. Entries with
+/// neither a name nor a cap number are skipped. Sorted ascending by cap number,
+/// with unnumbered players last (then alphabetical).
+fn parse_roster_json(body: &serde_json::Value) -> Vec<RosterPlayer> {
+    let mut players = Vec::new();
+
+    if let Some(roster) = body.get("roster").and_then(|v| v.as_array()) {
+        for member in roster {
+            let number = member
+                .get("capNumber")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as u8);
+            let roster_name = member
+                .get("rosterName")
+                .and_then(|v| v.as_str())
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty());
+            let username = member
+                .get("username")
+                .and_then(|v| v.as_str())
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty());
+            let name = roster_name.or(username).unwrap_or("").to_string();
+
+            let mut is_captain = false;
+            let mut is_vice_captain = false;
+            if let Some(roles) = member.get("roles").and_then(|v| v.as_array()) {
+                for role in roles {
+                    match role.as_str() {
+                        Some("Captain") => is_captain = true,
+                        Some("ViceCaptain") => is_vice_captain = true,
+                        _ => {}
+                    }
+                }
+            }
+
+            if !name.is_empty() || number.is_some() {
+                players.push(RosterPlayer {
+                    number,
+                    name,
+                    is_captain,
+                    is_vice_captain,
+                });
+            }
+        }
+    }
+
+    players.sort_by(|a, b| match (a.number, b.number) {
+        (Some(na), Some(nb)) => na.cmp(&nb),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => a.name.cmp(&b.name),
+    });
+
+    players
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct SetCoinFlipModel {
     #[serde(rename = "GroupIdentifier")]
@@ -588,13 +656,10 @@ impl UwhPortalClient {
         }
     }
 
-    #[allow(clippy::type_complexity)]
     pub fn get_team_roster(
         &self,
         team_id: &TeamId,
-    ) -> impl std::future::Future<
-        Output = Result<(Vec<(Option<u8>, String)>, Option<String>), Box<dyn Error>>,
-    > + use<> {
+    ) -> impl std::future::Future<Output = Result<Vec<RosterPlayer>, Box<dyn Error>>> + use<> {
         let url = format!("{}/api/admin/get-event-team", self.base_url);
         let team_id_full = team_id.full().to_string();
         let request = self
@@ -606,45 +671,7 @@ impl UwhPortalClient {
             let response = request.await?;
             if response.status() == StatusCode::OK {
                 let body = response.json::<serde_json::Value>().await?;
-                let mut players = Vec::new();
-                let mut captain_name: Option<String> = None;
-
-                if let Some(roster) = body.get("roster").and_then(|v| v.as_array()) {
-                    for member in roster {
-                        let number = member
-                            .get("capNumber")
-                            .and_then(|v| v.as_u64())
-                            .map(|n| n as u8);
-                        let roster_name = member
-                            .get("rosterName")
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.trim())
-                            .filter(|s| !s.is_empty());
-                        let username = member
-                            .get("username")
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.trim())
-                            .filter(|s| !s.is_empty());
-                        let name = roster_name.or(username).unwrap_or("").to_string();
-
-                        if let Some(roles) = member.get("roles").and_then(|v| v.as_array()) {
-                            if roles.iter().any(|r| r.as_str() == Some("Captain")) {
-                                captain_name = Some(name.clone());
-                            }
-                        }
-
-                        if !name.is_empty() || number.is_some() {
-                            players.push((number, name));
-                        }
-                    }
-                }
-                players.sort_by(|a, b| match (a.0, b.0) {
-                    (Some(na), Some(nb)) => na.cmp(&nb),
-                    (Some(_), None) => std::cmp::Ordering::Less,
-                    (None, Some(_)) => std::cmp::Ordering::Greater,
-                    (None, None) => a.1.cmp(&b.1),
-                });
-                Ok((players, captain_name))
+                Ok(parse_roster_json(&body))
             } else {
                 let body = response.text().await?;
                 Err(Box::new(ApiError::new(body)))?
@@ -890,5 +917,69 @@ mod coin_flip_tests {
         assert_eq!(v["CoinFlipIdentifier"], "cf1");
         assert_eq!(v["TeamIdOrPendingAssignmentName"], "1-A");
         assert_eq!(v["Kind"], "White");
+    }
+}
+
+#[cfg(test)]
+mod roster_tests {
+    use super::*;
+
+    #[test]
+    fn parses_numbers_names_and_both_captain_roles() {
+        let body: serde_json::Value = serde_json::from_str(
+            r#"{"roster":[
+                {"capNumber":7,"rosterName":"Blake RIVE","roles":["Player","Captain"]},
+                {"capNumber":8,"rosterName":"Keith LIN","roles":["Player","ViceCaptain"]},
+                {"capNumber":1,"rosterName":"Drake QUIEC","roles":["Player"]}
+            ]}"#,
+        )
+        .unwrap();
+
+        let players = parse_roster_json(&body);
+
+        assert_eq!(players.len(), 3, "all three members should be parsed");
+        // sorted ascending by cap number
+        assert_eq!(players[0].number, Some(1));
+        assert_eq!(players[0].name, "Drake QUIEC");
+        assert!(!players[0].is_captain && !players[0].is_vice_captain);
+
+        assert_eq!(players[1].number, Some(7));
+        assert!(players[1].is_captain, "Captain role must be surfaced");
+        assert!(!players[1].is_vice_captain);
+
+        assert_eq!(players[2].number, Some(8));
+        assert!(
+            players[2].is_vice_captain,
+            "ViceCaptain role must be surfaced, not discarded"
+        );
+        assert!(!players[2].is_captain);
+    }
+
+    #[test]
+    fn falls_back_to_username_and_sorts_unnumbered_last() {
+        let body: serde_json::Value = serde_json::from_str(
+            r#"{"roster":[
+                {"rosterName":"  ","username":"zoe99","roles":[]},
+                {"capNumber":3,"rosterName":"Taylor COETZEE","roles":[]}
+            ]}"#,
+        )
+        .unwrap();
+
+        let players = parse_roster_json(&body);
+
+        assert_eq!(players.len(), 2);
+        assert_eq!(players[0].number, Some(3));
+        assert_eq!(
+            players[1].name, "zoe99",
+            "blank rosterName should fall back to username"
+        );
+        assert_eq!(players[1].number, None, "unnumbered players sort last");
+    }
+
+    #[test]
+    fn skips_entries_with_neither_name_nor_number() {
+        let body: serde_json::Value =
+            serde_json::from_str(r#"{"roster":[{"rosterName":"","roles":[]}]}"#).unwrap();
+        assert!(parse_roster_json(&body).is_empty());
     }
 }

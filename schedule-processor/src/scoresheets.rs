@@ -13,15 +13,24 @@ use uwh_common::uwhportal::schedule::{
 };
 
 #[derive(Clone, Debug)]
-pub struct PlayerInfo {
-    pub number: Option<u8>,
-    pub name: String,
+pub struct TeamRosterInfo {
+    pub players: Vec<uwh_common::uwhportal::RosterPlayer>,
 }
 
-#[derive(Clone, Debug)]
-pub struct TeamRosterInfo {
-    pub players: Vec<PlayerInfo>,
-    pub captain: Option<String>,
+impl TeamRosterInfo {
+    pub fn empty() -> Self {
+        Self {
+            players: Vec::new(),
+        }
+    }
+
+    /// Name of the team's captain, if the roster marks one.
+    pub fn captain_name(&self) -> Option<&str> {
+        self.players
+            .iter()
+            .find(|p| p.is_captain)
+            .map(|p| p.name.as_str())
+    }
 }
 
 #[derive(Debug)]
@@ -174,29 +183,12 @@ pub async fn generate_scoresheets_for_event(
         let (black_roster, white_roster) = if matches!(inputs.style, SheetStyle::Col3x3) {
             log::info!("Fetching rosters for game {}", num);
             let black = fetch_team_roster(&*portal_client, game.dark.assigned()).await;
-            log::info!(
-                "Black team roster: {} players, captain: {:?}",
-                black.players.len(),
-                black.captain
-            );
+            log::info!("Black team roster: {} players", black.players.len());
             let white = fetch_team_roster(&*portal_client, game.light.assigned()).await;
-            log::info!(
-                "White team roster: {} players, captain: {:?}",
-                white.players.len(),
-                white.captain
-            );
+            log::info!("White team roster: {} players", white.players.len());
             (black, white)
         } else {
-            (
-                TeamRosterInfo {
-                    players: Vec::new(),
-                    captain: None,
-                },
-                TeamRosterInfo {
-                    players: Vec::new(),
-                    captain: None,
-                },
-            )
+            (TeamRosterInfo::empty(), TeamRosterInfo::empty())
         };
 
         let html = match inputs.style {
@@ -712,37 +704,20 @@ async fn fetch_team_roster(
     portal_client: &UwhPortalClient,
     team_id: Option<&TeamId>,
 ) -> TeamRosterInfo {
-    if let Some(id) = team_id {
-        log::debug!("fetch_team_roster: Fetching roster for team {}", id);
-        match portal_client.get_team_roster(id).await {
-            Ok((players, captain)) => {
-                log::debug!(
-                    "fetch_team_roster: Got {} players and captain: {:?}",
-                    players.len(),
-                    captain
-                );
-                let player_infos = players
-                    .into_iter()
-                    .map(|(number, name)| PlayerInfo { number, name })
-                    .collect();
-                TeamRosterInfo {
-                    players: player_infos,
-                    captain,
-                }
-            }
-            Err(e) => {
-                log::warn!("Failed to fetch roster for team {}: {}", id, e);
-                TeamRosterInfo {
-                    players: Vec::new(),
-                    captain: None,
-                }
-            }
-        }
-    } else {
+    let Some(id) = team_id else {
         log::debug!("fetch_team_roster: No team_id provided");
-        TeamRosterInfo {
-            players: Vec::new(),
-            captain: None,
+        return TeamRosterInfo::empty();
+    };
+
+    log::debug!("fetch_team_roster: Fetching roster for team {}", id);
+    match portal_client.get_team_roster(id).await {
+        Ok(players) => {
+            log::debug!("fetch_team_roster: Got {} players", players.len());
+            TeamRosterInfo { players }
+        }
+        Err(e) => {
+            log::warn!("Failed to fetch roster for team {}: {}", id, e);
+            TeamRosterInfo::empty()
         }
     }
 }
@@ -2125,10 +2100,10 @@ fn render_html_col3x3(
             }
 
             // Add captain names to A33 (black) and A36 (white)
-            if let Some(captain) = &black_roster.captain {
+            if let Some(captain) = black_roster.captain_name() {
                 content.insert((0, 33), html_escape(captain));
             }
-            if let Some(captain) = &white_roster.captain {
+            if let Some(captain) = white_roster.captain_name() {
                 content.insert((0, 36), html_escape(captain));
             }
 
@@ -2522,10 +2497,7 @@ pub fn generate_example_rule_sheets(
                 (html, "simple_team_refs")
             }
             SheetStyle::Col3x3 => {
-                let empty_roster = TeamRosterInfo {
-                    players: Vec::new(),
-                    captain: None,
-                };
+                let empty_roster = TeamRosterInfo::empty();
                 let html = render_html_col3x3(
                     &event,
                     &game.number,

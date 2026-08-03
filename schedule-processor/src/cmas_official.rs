@@ -94,6 +94,11 @@ pub fn division_label(div_short: &str, round_type: &str) -> String {
 
 /// Weekday on the first line, `05-Aug-2026` on the second. Caller supplies the
 /// time already converted to the event's timezone.
+///
+/// The returned string embeds a literal `<br>` line break. Unlike every other
+/// portal-sourced value placed into the sheet, this result must NOT be passed
+/// through `html_escape` — doing so would print a literal `&lt;br&gt;` instead
+/// of a line break.
 pub fn format_date_two_line(dt: OffsetDateTime) -> String {
     dt.format(&CMAS_DATE_FMT).unwrap_or_default()
 }

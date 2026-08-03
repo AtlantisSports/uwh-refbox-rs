@@ -6,6 +6,7 @@
 
 use std::path::Path;
 
+use time::{OffsetDateTime, format_description::FormatItem, macros::format_description};
 use uwh_common::uwhportal::RosterPlayer;
 
 /// Player rows printed per team. An official CMAS team is capped at 12 players.
@@ -58,6 +59,48 @@ pub const CMAS_LOGO_FILENAME: &str = "cmas-logo.png";
 pub fn write_cmas_logo(output_dir: &Path) -> Result<&'static str, std::io::Error> {
     std::fs::write(output_dir.join(CMAS_LOGO_FILENAME), CMAS_LOGO_BYTES)?;
     Ok(CMAS_LOGO_FILENAME)
+}
+
+const CMAS_DATE_FMT: &[FormatItem<'static>] =
+    format_description!("[weekday]<br>[day]-[month repr:short]-[year]");
+const CMAS_TIME_FMT: &[FormatItem<'static>] =
+    format_description!("[hour repr:12 padding:none]:[minute] [period case:upper]");
+
+/// Abbreviate a timing-rule name into the round type printed in the Division box.
+pub fn round_type_abbrev(timing_rule: &str) -> &'static str {
+    let up = timing_rule.to_ascii_uppercase();
+    if up.contains("RR") {
+        "RR"
+    } else if up.contains("XO") {
+        "XO"
+    } else if up.contains("PO") {
+        "PO"
+    } else if up.contains("MD") {
+        "MD"
+    } else {
+        ""
+    }
+}
+
+/// `U19W - RR`, or whichever half is available, or empty.
+pub fn division_label(div_short: &str, round_type: &str) -> String {
+    match (div_short.is_empty(), round_type.is_empty()) {
+        (false, false) => format!("{div_short} - {round_type}"),
+        (false, true) => div_short.to_string(),
+        (true, false) => round_type.to_string(),
+        (true, true) => String::new(),
+    }
+}
+
+/// Weekday on the first line, `05-Aug-2026` on the second. Caller supplies the
+/// time already converted to the event's timezone.
+pub fn format_date_two_line(dt: OffsetDateTime) -> String {
+    dt.format(&CMAS_DATE_FMT).unwrap_or_default()
+}
+
+/// `7:30 AM`. Caller supplies the time already converted to the event's timezone.
+pub fn format_start_time(dt: OffsetDateTime) -> String {
+    dt.format(&CMAS_TIME_FMT).unwrap_or_default()
 }
 
 /// Render one game's CMAS Official scoresheet page.
@@ -179,5 +222,38 @@ mod tests {
         let (rows, _) = roster_rows(&players);
         assert_eq!(rows[0].cap, "");
         assert_eq!(rows[0].name, "Unnumbered PLAYER");
+    }
+
+    #[test]
+    fn abbreviates_the_round_type() {
+        assert_eq!(round_type_abbrev("U19W RR"), "RR");
+        assert_eq!(round_type_abbrev("Elite XO"), "XO");
+        assert_eq!(round_type_abbrev("po bracket"), "PO");
+        assert_eq!(round_type_abbrev("MD Gold"), "MD");
+        assert_eq!(round_type_abbrev("Something Else"), "");
+    }
+
+    #[test]
+    fn builds_the_division_label() {
+        assert_eq!(division_label("U19W", "RR"), "U19W - RR");
+        // Either half missing: print what we have, never a stray dash.
+        assert_eq!(division_label("U19W", ""), "U19W");
+        assert_eq!(division_label("", "RR"), "RR");
+        assert_eq!(division_label("", ""), "");
+    }
+
+    #[test]
+    fn formats_date_on_two_lines_and_time_with_meridiem() {
+        use time::macros::datetime;
+        let dt = datetime!(2026-08-05 07:30:00 +00:00);
+        assert_eq!(format_date_two_line(dt), "Wednesday<br>05-Aug-2026");
+        assert_eq!(format_start_time(dt), "7:30 AM");
+    }
+
+    #[test]
+    fn formats_afternoon_times_as_pm() {
+        use time::macros::datetime;
+        let dt = datetime!(2026-08-05 14:06:00 +00:00);
+        assert_eq!(format_start_time(dt), "2:06 PM");
     }
 }

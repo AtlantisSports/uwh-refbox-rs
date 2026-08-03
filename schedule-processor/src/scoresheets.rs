@@ -108,6 +108,13 @@ pub async fn generate_scoresheets_for_event(
     let left_logo_rel = copy_logo(&inputs.output_dir, inputs.left_logo.as_deref(), "left")?;
     let right_logo_rel = copy_logo(&inputs.output_dir, inputs.right_logo.as_deref(), "right")?;
 
+    // CMAS Official ships its own left-hand logo; write it alongside the copied ones.
+    let cmas_logo_rel = if inputs.style == SheetStyle::CmasOfficial {
+        Some(crate::cmas_official::write_cmas_logo(&inputs.output_dir)?)
+    } else {
+        None
+    };
+
     // Load optional referee overrides from a CSV mapping (Game # -> names)
     let ref_overrides: HashMap<String, OfficialNames> = if let Some(p) = ref_csv_path {
         match parse_referee_csv(p) {
@@ -421,6 +428,9 @@ pub async fn generate_scoresheets_for_event(
                 let _ = fs::remove_file(inputs.output_dir.join(rel));
             }
             if let Some(rel) = &right_logo_rel {
+                let _ = fs::remove_file(inputs.output_dir.join(rel));
+            }
+            if let Some(rel) = cmas_logo_rel {
                 let _ = fs::remove_file(inputs.output_dir.join(rel));
             }
         } else {

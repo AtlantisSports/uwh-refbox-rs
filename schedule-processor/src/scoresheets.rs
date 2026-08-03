@@ -289,8 +289,8 @@ pub async fn generate_scoresheets_for_event(
                     format!("{} {}", black_name, black_suffix)
                 };
 
-                let black_rows = crate::cmas_official::roster_rows(&black_roster.players).0;
-                let white_rows = crate::cmas_official::roster_rows(&white_roster.players).0;
+                let black_rows = crate::cmas_official::roster_rows(&black_roster.players);
+                let white_rows = crate::cmas_official::roster_rows(&white_roster.players);
 
                 let cmas_input = crate::cmas_official::CmasSheetInput {
                     event_name: &event.name,
@@ -2593,7 +2593,7 @@ pub fn generate_example_rule_sheets(
                 let start_time_str = crate::cmas_official::format_start_time(local_dt);
                 let round_type = crate::cmas_official::round_type_abbrev(&game.timing_rule);
                 let division = crate::cmas_official::division_label("", round_type);
-                let empty_rows = crate::cmas_official::roster_rows(&[]).0;
+                let empty_rows = crate::cmas_official::roster_rows(&[]);
                 let cmas_input = crate::cmas_official::CmasSheetInput {
                     event_name: &event.name,
                     division: &division,

@@ -24,9 +24,8 @@ pub struct SheetRosterRow {
 /// Turn a portal roster into exactly [`ROSTER_ROWS`] printable rows.
 ///
 /// Players arrive already sorted by cap number. Captains are marked `(C)` and
-/// vice-captains `(VC)`; if a player somehow holds both, `(C)` wins. Returns the
-/// rows plus the names of any players beyond the twelfth, so the caller can warn.
-pub fn roster_rows(players: &[RosterPlayer]) -> (Vec<SheetRosterRow>, Vec<String>) {
+/// vice-captains `(VC)`; if a player somehow holds both, `(C)` wins.
+pub fn roster_rows(players: &[RosterPlayer]) -> Vec<SheetRosterRow> {
     let mut rows = vec![SheetRosterRow::default(); ROSTER_ROWS];
 
     for (row, player) in rows.iter_mut().zip(players.iter()) {
@@ -40,13 +39,7 @@ pub fn roster_rows(players: &[RosterPlayer]) -> (Vec<SheetRosterRow>, Vec<String
         };
     }
 
-    let dropped = players
-        .iter()
-        .skip(ROSTER_ROWS)
-        .map(|p| p.name.clone())
-        .collect();
-
-    (rows, dropped)
+    rows
 }
 
 /// The CMAS logo, compiled into the binary so the sheet needs no setup.
@@ -149,7 +142,7 @@ const CMAS_CSS: &str = r#"
           overflow:hidden; }
 
   .cmas .titleband { display:flex; align-items:center; gap:14px; }
-  .cmas .logobox { height:50px; width:50px; flex:0 0 50px; border:1px dashed #bbb;
+  .cmas .logobox { height:50px; width:50px; flex:0 0 50px;
                    display:flex; align-items:center; justify-content:center;
                    font-size:8px; color:#888; text-align:center; line-height:1.2; }
   .cmas .logobox img { max-width:100%; max-height:100%; object-fit:contain; }
@@ -370,12 +363,12 @@ pub fn render_html_cmas_official(input: &CmasSheetInput<'_>) -> String {
     </tr>
     <tr>
       <td></td><td></td><td class="gap"></td><td></td><td></td><td class="gap"></td><td></td><td></td>
-      <td class="nb" colspan="2"></td><td class="oflbl nb" colspan="2">Actual Game Start Time:</td><td></td>
+      <td class="nb" colspan="2"></td><td class="oflbl nb" colspan="2">Actual Game Finish Time:</td><td></td>
       <td class="nb"></td><td class="ofnm nb" colspan="7">{water1}</td>
     </tr>
     <tr>
       <td></td><td></td><td class="gap"></td><td></td><td></td><td class="gap"></td><td></td><td></td>
-      <td class="nb" colspan="2"></td><td class="oflbl nb" colspan="2">Actual Game Finish Time:</td><td></td>
+      <td class="nb" colspan="2"></td><td class="nb" colspan="3"></td>
       <td class="nb"></td><td class="ofnm nb" colspan="7">{water2}</td>
     </tr>
     <tr>
@@ -452,9 +445,8 @@ mod tests {
 
     #[test]
     fn always_returns_exactly_twelve_rows() {
-        let (rows, dropped) = roster_rows(&[]);
+        let rows = roster_rows(&[]);
         assert_eq!(rows.len(), ROSTER_ROWS);
-        assert!(dropped.is_empty());
         assert!(
             rows.iter().all(|r| r.cap.is_empty() && r.name.is_empty()),
             "an empty roster must produce twelve blank rows, not a panic"
@@ -467,7 +459,7 @@ mod tests {
             player(Some(1), "Drake QUIEC", false, false),
             player(Some(5), "Logan DUONG", false, false),
         ];
-        let (rows, dropped) = roster_rows(&players);
+        let rows = roster_rows(&players);
 
         assert_eq!(rows[0].cap, "1");
         assert_eq!(rows[0].name, "Drake QUIEC");
@@ -476,7 +468,6 @@ mod tests {
         assert_eq!(rows[2].cap, "");
         assert_eq!(rows[2].name, "");
         assert_eq!(rows.len(), ROSTER_ROWS);
-        assert!(dropped.is_empty());
     }
 
     #[test]
@@ -486,7 +477,7 @@ mod tests {
             player(Some(8), "Keith LIN", false, true),
             player(Some(9), "Levi COOK", false, false),
         ];
-        let (rows, _) = roster_rows(&players);
+        let rows = roster_rows(&players);
 
         assert_eq!(rows[0].name, "Blake RIVE (C)");
         assert_eq!(rows[1].name, "Keith LIN (VC)");
@@ -496,30 +487,14 @@ mod tests {
     #[test]
     fn captain_wins_if_a_player_somehow_holds_both_roles() {
         let players = vec![player(Some(4), "Ashley OOSTHUIZEN", true, true)];
-        let (rows, _) = roster_rows(&players);
+        let rows = roster_rows(&players);
         assert_eq!(rows[0].name, "Ashley OOSTHUIZEN (C)");
-    }
-
-    #[test]
-    fn reports_players_that_do_not_fit() {
-        let players: Vec<RosterPlayer> = (1..=14)
-            .map(|n| player(Some(n), &format!("Player {n}"), false, false))
-            .collect();
-        let (rows, dropped) = roster_rows(&players);
-
-        assert_eq!(rows.len(), ROSTER_ROWS);
-        assert_eq!(rows[11].name, "Player 12");
-        assert_eq!(
-            dropped,
-            vec!["Player 13".to_string(), "Player 14".to_string()],
-            "the operator must be told exactly who was left off"
-        );
     }
 
     #[test]
     fn blank_cap_number_prints_an_empty_cell_not_a_zero() {
         let players = vec![player(None, "Unnumbered PLAYER", false, false)];
-        let (rows, _) = roster_rows(&players);
+        let rows = roster_rows(&players);
         assert_eq!(rows[0].cap, "");
         assert_eq!(rows[0].name, "Unnumbered PLAYER");
     }
@@ -561,9 +536,8 @@ mod tests {
         let black = roster_rows(&[
             player(Some(7), "Blake RIVE", true, false),
             player(Some(8), "Keith LIN", false, true),
-        ])
-        .0;
-        let white = roster_rows(&[player(Some(1), "Chloe Jade PIETERSE", false, false)]).0;
+        ]);
+        let white = roster_rows(&[player(Some(1), "Chloe Jade PIETERSE", false, false)]);
         (black, white)
     }
 
@@ -653,6 +627,109 @@ mod tests {
         let html = render_html_cmas_official(&sample_cmas_input(&black, &white));
         assert_eq!(html.matches("<col ").count(), 25, "25 master columns");
         assert_eq!(html.matches("<tr>").count(), 35, "35 rows");
+
+        // The totals above would miss a row whose own cells add up to 24 or 26
+        // columns — exactly the defect that prints columns crooked. Walk each
+        // row and sum its effective column count instead (each cell counts for
+        // its `colspan`, defaulting to 1).
+        //
+        // One cell (the signature box) spans multiple *rows* via `rowspan`, so
+        // it occupies columns in the rows below it without a matching cell
+        // there. `carry` tracks that debt — the column width and how many
+        // more rows after the current one still owe it — so those later rows
+        // are credited for columns they don't literally contain a cell for.
+        // Only one rowspan cell exists in this sheet, so a single carry slot
+        // is enough.
+        let mut carry: Option<(usize, usize)> = None;
+        for (i, row) in html.split("<tr>").skip(1).enumerate() {
+            let row = row.split("</tr>").next().expect("row must close");
+
+            // Columns a rowspan cell from an earlier row still occupies here.
+            let inherited = carry.take();
+            let mut total = inherited.map_or(0, |(colspan, _)| colspan);
+
+            // A rowspan cell newly placed in this row (if any) isn't owed
+            // anything by this row — it's credited starting next row.
+            let mut started_here = None;
+            for cell in grid_cells(row) {
+                total += cell.colspan;
+                if cell.rowspan > 1 {
+                    assert!(
+                        started_here.is_none(),
+                        "row {i}: two rowspans starting in the same row are not \
+                         supported by this check"
+                    );
+                    started_here = Some((cell.colspan, cell.rowspan - 1));
+                }
+            }
+
+            assert_eq!(
+                total, 25,
+                "row {i} (0-indexed) totals {total} columns: {row}"
+            );
+
+            carry = match (inherited, started_here) {
+                (Some((colspan, remaining)), None) if remaining > 1 => {
+                    Some((colspan, remaining - 1))
+                }
+                (Some(_), None) | (None, None) => None,
+                (None, Some(span)) => Some(span),
+                (Some(_), Some(_)) => panic!(
+                    "row {i}: a new rowspan started while an earlier one was still \
+                     active; this check only supports one at a time"
+                ),
+            };
+        }
+        assert!(carry.is_none(), "a rowspan ran past the end of the table");
+    }
+
+    /// One `<td>`/`<th>` cell's effective width and height in the grid.
+    struct GridCell {
+        colspan: usize,
+        rowspan: usize,
+    }
+
+    /// Finds every `<td`/`<th` cell in one `<tr>...</tr>` row's inner HTML, in
+    /// document order, reading `colspan`/`rowspan` off each (defaulting to 1).
+    /// Plain string scanning only — this file's markup never nests a `<td`/`<th`
+    /// tag's own start inside another tag's attributes.
+    fn grid_cells(row: &str) -> Vec<GridCell> {
+        let mut cells = Vec::new();
+        let mut rest = row;
+        while let Some(start) = find_cell_start(rest) {
+            let tag_and_rest = &rest[start..];
+            let tag_end = tag_and_rest
+                .find('>')
+                .expect("cell's opening tag must close");
+            let tag = &tag_and_rest[..tag_end];
+            cells.push(GridCell {
+                colspan: tag_attr(tag, "colspan").unwrap_or(1),
+                rowspan: tag_attr(tag, "rowspan").unwrap_or(1),
+            });
+            rest = &tag_and_rest[tag_end + 1..];
+        }
+        cells
+    }
+
+    /// The byte offset of the next `<td` or `<th` tag start in `s`, if any.
+    fn find_cell_start(s: &str) -> Option<usize> {
+        let td = s.find("<td");
+        let th = s.find("<th");
+        match (td, th) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        }
+    }
+
+    /// Reads a `name="123"` attribute's numeric value out of an opening tag's
+    /// text (e.g. `<td class="cap" colspan="7"`).
+    fn tag_attr(tag: &str, name: &str) -> Option<usize> {
+        let needle = format!("{name}=\"");
+        let start = tag.find(&needle)? + needle.len();
+        let end = tag[start..].find('"')?;
+        tag[start..start + end].parse().ok()
     }
 
     #[test]
@@ -719,9 +796,19 @@ mod tests {
 
     // ---- A4 fit check ------------------------------------------------------
     //
-    // An earlier design revision was 41px too tall and printed as two pages,
-    // invisibly. This regresses the moment anyone adds a row, so it needs a
-    // command rather than an eyeball: `just check-cmas-sheet`.
+    // The `.cmas` box is pinned to exactly one A4-landscape page's height and
+    // hides anything that doesn't fit (`overflow: hidden` in `CMAS_CSS`), so
+    // content that grows too tall is trimmed off the bottom rather than
+    // pushed onto a second page. That means counting how many pages Chrome
+    // prints cannot catch it — the sheet always prints as one page, even
+    // when several rows' worth of content have silently fallen off the
+    // bottom. Instead, this loads the page and compares `.cmas`'s
+    // `scrollHeight` (how tall its content actually is) against its
+    // `clientHeight` (how tall the visible box is); if content is being
+    // clipped, `scrollHeight` exceeds `clientHeight`.
+    //
+    // This regresses the moment anyone adds a row, so it needs a command
+    // rather than an eyeball: `just check-cmas-sheet`.
     //
     // This started life (Task 9's plan) as a `tests/a4_fit.rs` integration test
     // reaching a `schedule-processor` library target. Adding a `[lib]` target
@@ -746,7 +833,7 @@ mod tests {
         let players: Vec<RosterPlayer> = (1..=12)
             .map(|n| long(n, "Gesje Maria PRETORIUS-VAN REENEN"))
             .collect();
-        let (black, white) = (roster_rows(&players).0, roster_rows(&players).0);
+        let (black, white) = (roster_rows(&players), roster_rows(&players));
 
         render_html_cmas_official(&CmasSheetInput {
             event_name: "2026 CMAS 7th World Championship Underwater Hockey Age Group",

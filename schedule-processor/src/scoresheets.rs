@@ -267,7 +267,51 @@ pub async fn generate_scoresheets_for_event(
                 &black_roster,
                 &white_roster,
             ),
-            SheetStyle::CmasOfficial => crate::cmas_official::render_html_cmas_official(),
+            SheetStyle::CmasOfficial => {
+                let offset = event.date_range.start.offset();
+                let local_dt = game.start_time.to_offset(offset);
+                let date_html = crate::cmas_official::format_date_two_line(local_dt);
+                let start_time_str = crate::cmas_official::format_start_time(local_dt);
+
+                let (div_short, _div_long, _pod_short) =
+                    div_pod_for_game(csv_schedule.or(Some(&schedule)), num).unwrap_or_default();
+                let round_type = crate::cmas_official::round_type_abbrev(&game.timing_rule);
+                let division = crate::cmas_official::division_label(&div_short, round_type);
+
+                let white_label = if white_suffix.is_empty() {
+                    white_name.clone()
+                } else {
+                    format!("{} {}", white_name, white_suffix)
+                };
+                let black_label = if black_suffix.is_empty() {
+                    black_name.clone()
+                } else {
+                    format!("{} {}", black_name, black_suffix)
+                };
+
+                let black_rows = crate::cmas_official::roster_rows(&black_roster.players).0;
+                let white_rows = crate::cmas_official::roster_rows(&white_roster.players).0;
+
+                let cmas_input = crate::cmas_official::CmasSheetInput {
+                    event_name: &event.name,
+                    division: &division,
+                    game_number: num,
+                    court: &game.court,
+                    black_team: &black_label,
+                    white_team: &white_label,
+                    date_html: &date_html,
+                    start_time: &start_time_str,
+                    black_roster: &black_rows,
+                    white_roster: &white_rows,
+                    chief: &officials.chief,
+                    water: [&officials.water1, &officials.water2, &officials.water3],
+                    timekeeper: &officials.ts_keeper,
+                    timekeeper_helper: &officials.ts_helper,
+                    cmas_logo_rel,
+                    tournament_logo_rel: right_logo_rel.as_deref(),
+                };
+                crate::cmas_official::render_html_cmas_official(&cmas_input)
+            }
         };
 
         // Capture CSS from the first page and append this page fragment for combined output
@@ -2543,7 +2587,32 @@ pub fn generate_example_rule_sheets(
                 (html, "col3x3")
             }
             SheetStyle::CmasOfficial => {
-                let html = crate::cmas_official::render_html_cmas_official();
+                let offset = event.date_range.start.offset();
+                let local_dt = game.start_time.to_offset(offset);
+                let date_html = crate::cmas_official::format_date_two_line(local_dt);
+                let start_time_str = crate::cmas_official::format_start_time(local_dt);
+                let round_type = crate::cmas_official::round_type_abbrev(&game.timing_rule);
+                let division = crate::cmas_official::division_label("", round_type);
+                let empty_rows = crate::cmas_official::roster_rows(&[]).0;
+                let cmas_input = crate::cmas_official::CmasSheetInput {
+                    event_name: &event.name,
+                    division: &division,
+                    game_number: &game.number,
+                    court: &game.court,
+                    black_team: "Example Black",
+                    white_team: "Example White",
+                    date_html: &date_html,
+                    start_time: &start_time_str,
+                    black_roster: &empty_rows,
+                    white_roster: &empty_rows,
+                    chief: "",
+                    water: ["", "", ""],
+                    timekeeper: "",
+                    timekeeper_helper: "",
+                    cmas_logo_rel: None,
+                    tournament_logo_rel: None,
+                };
+                let html = crate::cmas_official::render_html_cmas_official(&cmas_input);
                 (html, "cmas_official")
             }
         };
@@ -2632,7 +2701,7 @@ fn time_penalty_section_fixed() -> String {
     )
 }
 
-fn html_escape(s: &str) -> String {
+pub(crate) fn html_escape(s: &str) -> String {
     s.chars()
         .flat_map(|c| match c {
             '&' => "&amp;".chars().collect::<Vec<_>>(),

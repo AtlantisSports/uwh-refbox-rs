@@ -6,6 +6,46 @@
 
 use std::path::Path;
 
+use uwh_common::uwhportal::RosterPlayer;
+
+/// Player rows printed per team. An official CMAS team is capped at 12 players.
+pub const ROSTER_ROWS: usize = 12;
+
+/// One printed roster line. Empty strings mean a blank row for hand-writing.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SheetRosterRow {
+    pub cap: String,
+    pub name: String,
+}
+
+/// Turn a portal roster into exactly [`ROSTER_ROWS`] printable rows.
+///
+/// Players arrive already sorted by cap number. Captains are marked `(C)` and
+/// vice-captains `(VC)`; if a player somehow holds both, `(C)` wins. Returns the
+/// rows plus the names of any players beyond the twelfth, so the caller can warn.
+pub fn roster_rows(players: &[RosterPlayer]) -> (Vec<SheetRosterRow>, Vec<String>) {
+    let mut rows = vec![SheetRosterRow::default(); ROSTER_ROWS];
+
+    for (row, player) in rows.iter_mut().zip(players.iter()) {
+        row.cap = player.number.map(|n| n.to_string()).unwrap_or_default();
+        row.name = if player.is_captain {
+            format!("{} (C)", player.name)
+        } else if player.is_vice_captain {
+            format!("{} (VC)", player.name)
+        } else {
+            player.name.clone()
+        };
+    }
+
+    let dropped = players
+        .iter()
+        .skip(ROSTER_ROWS)
+        .map(|p| p.name.clone())
+        .collect();
+
+    (rows, dropped)
+}
+
 /// The CMAS logo, compiled into the binary so the sheet needs no setup.
 const CMAS_LOGO_BYTES: &[u8] = include_bytes!("../assets/cmas-logo.png");
 
@@ -56,5 +96,88 @@ mod tests {
         assert_eq!(&written[1..4], b"PNG", "must be a real PNG");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn player(number: Option<u8>, name: &str, cap: bool, vice: bool) -> RosterPlayer {
+        RosterPlayer {
+            number,
+            name: name.to_string(),
+            is_captain: cap,
+            is_vice_captain: vice,
+        }
+    }
+
+    #[test]
+    fn always_returns_exactly_twelve_rows() {
+        let (rows, dropped) = roster_rows(&[]);
+        assert_eq!(rows.len(), ROSTER_ROWS);
+        assert!(dropped.is_empty());
+        assert!(
+            rows.iter().all(|r| r.cap.is_empty() && r.name.is_empty()),
+            "an empty roster must produce twelve blank rows, not a panic"
+        );
+    }
+
+    #[test]
+    fn fills_from_the_top_and_leaves_the_rest_blank() {
+        let players = vec![
+            player(Some(1), "Drake QUIEC", false, false),
+            player(Some(5), "Logan DUONG", false, false),
+        ];
+        let (rows, dropped) = roster_rows(&players);
+
+        assert_eq!(rows[0].cap, "1");
+        assert_eq!(rows[0].name, "Drake QUIEC");
+        assert_eq!(rows[1].cap, "5");
+        assert_eq!(rows[1].name, "Logan DUONG");
+        assert_eq!(rows[2].cap, "");
+        assert_eq!(rows[2].name, "");
+        assert_eq!(rows.len(), ROSTER_ROWS);
+        assert!(dropped.is_empty());
+    }
+
+    #[test]
+    fn marks_captain_and_vice_captain_inline() {
+        let players = vec![
+            player(Some(7), "Blake RIVE", true, false),
+            player(Some(8), "Keith LIN", false, true),
+            player(Some(9), "Levi COOK", false, false),
+        ];
+        let (rows, _) = roster_rows(&players);
+
+        assert_eq!(rows[0].name, "Blake RIVE (C)");
+        assert_eq!(rows[1].name, "Keith LIN (VC)");
+        assert_eq!(rows[2].name, "Levi COOK");
+    }
+
+    #[test]
+    fn captain_wins_if_a_player_somehow_holds_both_roles() {
+        let players = vec![player(Some(4), "Ashley OOSTHUIZEN", true, true)];
+        let (rows, _) = roster_rows(&players);
+        assert_eq!(rows[0].name, "Ashley OOSTHUIZEN (C)");
+    }
+
+    #[test]
+    fn reports_players_that_do_not_fit() {
+        let players: Vec<RosterPlayer> = (1..=14)
+            .map(|n| player(Some(n), &format!("Player {n}"), false, false))
+            .collect();
+        let (rows, dropped) = roster_rows(&players);
+
+        assert_eq!(rows.len(), ROSTER_ROWS);
+        assert_eq!(rows[11].name, "Player 12");
+        assert_eq!(
+            dropped,
+            vec!["Player 13".to_string(), "Player 14".to_string()],
+            "the operator must be told exactly who was left off"
+        );
+    }
+
+    #[test]
+    fn blank_cap_number_prints_an_empty_cell_not_a_zero() {
+        let players = vec![player(None, "Unnumbered PLAYER", false, false)];
+        let (rows, _) = roster_rows(&players);
+        assert_eq!(rows[0].cap, "");
+        assert_eq!(rows[0].name, "Unnumbered PLAYER");
     }
 }

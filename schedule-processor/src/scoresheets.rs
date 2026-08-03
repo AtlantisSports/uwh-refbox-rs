@@ -49,6 +49,23 @@ pub enum SheetStyle {
     Simple,
     SimpleTeamRefs,
     Col3x3,
+    CmasOfficial,
+}
+
+/// Styles that print player names, and therefore need roster data fetched.
+pub fn style_needs_rosters(style: SheetStyle) -> bool {
+    matches!(style, SheetStyle::Col3x3 | SheetStyle::CmasOfficial)
+}
+
+/// Styles that prompt the operator for a right-hand tournament logo.
+pub fn style_needs_tournament_logo(style: SheetStyle) -> bool {
+    matches!(style, SheetStyle::Detailed | SheetStyle::CmasOfficial)
+}
+
+/// Styles that prompt the operator for a left-hand sanctioning-body logo.
+/// CMAS Official ships its own, so it is excluded.
+pub fn style_needs_sanctioning_logo(style: SheetStyle) -> bool {
+    matches!(style, SheetStyle::Detailed)
 }
 
 // Simple container for user inputs
@@ -179,8 +196,8 @@ pub async fn generate_scoresheets_for_event(
 
         let tr = find_timing_rule(game, csv_schedule, &schedule)?;
 
-        // Fetch rosters for Col3x3 scoresheet
-        let (black_roster, white_roster) = if matches!(inputs.style, SheetStyle::Col3x3) {
+        // Fetch rosters for styles that print player names
+        let (black_roster, white_roster) = if style_needs_rosters(inputs.style) {
             log::info!("Fetching rosters for game {}", num);
             let black = fetch_team_roster(&*portal_client, game.dark.assigned()).await;
             log::info!("Black team roster: {} players", black.players.len());
@@ -243,6 +260,7 @@ pub async fn generate_scoresheets_for_event(
                 &black_roster,
                 &white_roster,
             ),
+            SheetStyle::CmasOfficial => crate::cmas_official::render_html_cmas_official(),
         };
 
         // Capture CSS from the first page and append this page fragment for combined output
@@ -2514,6 +2532,10 @@ pub fn generate_example_rule_sheets(
                 );
                 (html, "col3x3")
             }
+            SheetStyle::CmasOfficial => {
+                let html = crate::cmas_official::render_html_cmas_official();
+                (html, "cmas_official")
+            }
         };
 
         let path = output_dir.join(format!("scoresheet_example_{}_{}.html", slug, style_name));
@@ -2615,7 +2637,32 @@ fn html_escape(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::browser_candidates;
+    use super::{
+        SheetStyle, browser_candidates, style_needs_rosters, style_needs_sanctioning_logo,
+        style_needs_tournament_logo,
+    };
+
+    #[test]
+    fn cmas_official_needs_rosters() {
+        assert!(style_needs_rosters(SheetStyle::CmasOfficial));
+        assert!(style_needs_rosters(SheetStyle::Col3x3));
+        assert!(!style_needs_rosters(SheetStyle::Detailed));
+        assert!(!style_needs_rosters(SheetStyle::Simple));
+        assert!(!style_needs_rosters(SheetStyle::SimpleTeamRefs));
+    }
+
+    #[test]
+    fn cmas_official_asks_only_for_the_tournament_logo() {
+        // CMAS supplies its own left-hand logo, so only the right one is prompted for.
+        assert!(style_needs_tournament_logo(SheetStyle::CmasOfficial));
+        assert!(!style_needs_sanctioning_logo(SheetStyle::CmasOfficial));
+        // Detailed still prompts for both.
+        assert!(style_needs_tournament_logo(SheetStyle::Detailed));
+        assert!(style_needs_sanctioning_logo(SheetStyle::Detailed));
+        // The rest prompt for neither.
+        assert!(!style_needs_tournament_logo(SheetStyle::Simple));
+        assert!(!style_needs_sanctioning_logo(SheetStyle::Simple));
+    }
 
     #[test]
     fn candidates_include_linux_names() {

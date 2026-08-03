@@ -16,6 +16,8 @@ use std::{
 };
 use uwh_common::uwhportal::{CoinFlipTeam, SetCoinFlipModel, UwhPortalClient, schedule::*};
 
+mod cmas_official;
+
 mod csv_parser;
 use csv_parser::parse_csv;
 
@@ -25,6 +27,7 @@ use schedule_checks::run_schedule_checks;
 mod scoresheets;
 use scoresheets::{
     RenderInputs, SheetStyle, generate_example_rule_sheets, generate_scoresheets_for_event,
+    style_needs_sanctioning_logo, style_needs_tournament_logo,
 };
 
 #[derive(Parser, Debug)]
@@ -872,19 +875,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 let style = match Select::new(
                     "Sheet style:",
-                    vec!["Detailed", "Simple", "Simple (Team Refs)", "Col_3x3"],
+                    vec![
+                        "Detailed",
+                        "Simple",
+                        "Simple (Team Refs)",
+                        "Col_3x3",
+                        "CMAS Official",
+                    ],
                 )
                 .prompt()
                 {
                     Ok("Simple") => SheetStyle::Simple,
                     Ok("Simple (Team Refs)") => SheetStyle::SimpleTeamRefs,
                     Ok("Col_3x3") => SheetStyle::Col3x3,
+                    Ok("CMAS Official") => SheetStyle::CmasOfficial,
                     Ok(_) => SheetStyle::Detailed,
                     Err(_) => SheetStyle::Detailed,
                 };
 
-                let (left_logo, right_logo) = if style == SheetStyle::Detailed {
-                    let left = loop {
+                let left_logo = if style_needs_sanctioning_logo(style) {
+                    loop {
                         let p = FileDialog::new()
                             .add_filter("Images", &["png", "jpg", "jpeg", "svg"])
                             .set_title("Select sanctioning body logo (left) — optional")
@@ -897,8 +907,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             _ => break None,
                         }
-                    };
-                    let right = loop {
+                    }
+                } else {
+                    None
+                };
+                let right_logo = if style_needs_tournament_logo(style) {
+                    loop {
                         let p = FileDialog::new()
                             .add_filter("Images", &["png", "jpg", "jpeg", "svg"])
                             .set_title("Select tournament logo (right) — optional")
@@ -911,10 +925,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             _ => break None,
                         }
-                    };
-                    (left, right)
+                    }
                 } else {
-                    (None, None)
+                    None
                 };
 
                 let (ref_csv_path, prefer_portal_officials, include_referees) = if style
@@ -1077,11 +1090,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     continue 'outer;
                 };
 
-                let style = match Select::new("Sheet style:", vec!["Detailed", "Simple", "Col_3x3"])
-                    .prompt()
+                let style = match Select::new(
+                    "Sheet style:",
+                    vec!["Detailed", "Simple", "Col_3x3", "CMAS Official"],
+                )
+                .prompt()
                 {
                     Ok("Simple") => SheetStyle::Simple,
                     Ok("Col_3x3") => SheetStyle::Col3x3,
+                    Ok("CMAS Official") => SheetStyle::CmasOfficial,
                     Ok(_) => SheetStyle::Detailed,
                     Err(_) => SheetStyle::Detailed,
                 };

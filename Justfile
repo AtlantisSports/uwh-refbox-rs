@@ -70,6 +70,13 @@ build-rpi:
 check-wireless:
     cd wireless-remote && cargo fmt -- --check && cargo clippy -- -D warnings
 
+# ── Scoresheets ───────────────────────────────────────────────────────────────
+
+# Verify the CMAS Official scoresheet still fits one A4 landscape page.
+# Requires Chrome/Chromium; set SCORESHEET_BROWSER to point at a specific one.
+check-cmas-sheet:
+    cargo test -p schedule-processor cmas_official::tests::cmas_official_sheet_is_one_a4_landscape_page -- --ignored --nocapture
+
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
 # Install the pre-commit hook (run once after cloning)

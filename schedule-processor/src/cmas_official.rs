@@ -716,4 +716,123 @@ mod tests {
             "no <img> tag should be emitted when no logo is supplied"
         );
     }
+
+    // ---- A4 fit check ------------------------------------------------------
+    //
+    // An earlier design revision was 41px too tall and printed as two pages,
+    // invisibly. This regresses the moment anyone adds a row, so it needs a
+    // command rather than an eyeball: `just check-cmas-sheet`.
+    //
+    // This started life (Task 9's plan) as a `tests/a4_fit.rs` integration test
+    // reaching a `schedule-processor` library target. Adding a `[lib]` target
+    // made `sample_page_for_fit_check` (needed by that external test, but by
+    // nothing else) dead code in the separate binary compilation of this same
+    // file, which `cargo clippy -- -D warnings` then rejected. Per the plan's
+    // documented fallback, the fit check instead lives here as an `#[ignore]`d
+    // unit test — both it and its helper only exist in test builds, so there is
+    // no unused-in-production code to warn about.
+
+    /// A representative worst-case page, used by the A4 fit check.
+    ///
+    /// Twelve players per side with long names, so the check fails if the
+    /// layout grows beyond one page for any realistic game.
+    fn sample_page_for_fit_check() -> String {
+        let long = |n: u8, s: &str| RosterPlayer {
+            number: Some(n),
+            name: s.to_string(),
+            is_captain: n == 7,
+            is_vice_captain: n == 8,
+        };
+        let players: Vec<RosterPlayer> = (1..=12)
+            .map(|n| long(n, "Gesje Maria PRETORIUS-VAN REENEN"))
+            .collect();
+        let (black, white) = (roster_rows(&players).0, roster_rows(&players).0);
+
+        render_html_cmas_official(&CmasSheetInput {
+            event_name: "2026 CMAS 7th World Championship Underwater Hockey Age Group",
+            division: "U19W - RR",
+            game_number: "2",
+            court: "B",
+            black_team: "SeaRIA Underwater Hockey (U15)",
+            white_team: "Cucut Underwater Hockey U19",
+            date_html: "Wednesday<br>05-Aug-2026",
+            start_time: "7:30 AM",
+            black_roster: &black,
+            white_roster: &white,
+            chief: "M. ALVAREZ",
+            water: ["J. SMITH", "A. CHEN", "R. PATEL"],
+            timekeeper: "K. ITO",
+            timekeeper_helper: "L. MOORE",
+            cmas_logo_rel: None,
+            tournament_logo_rel: None,
+        })
+    }
+
+    /// Confirms the CMAS Official sheet prints on exactly one A4 landscape page.
+    ///
+    /// Requires Chrome/Chromium. Ignored by default; run with:
+    ///   just check-cmas-sheet
+    #[test]
+    #[ignore = "requires a local Chrome/Chromium install"]
+    fn cmas_official_sheet_is_one_a4_landscape_page() {
+        use std::process::Command;
+
+        let dir = std::env::temp_dir().join("cmas-a4-fit");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+
+        let html_path = dir.join("sheet.html");
+        let pdf_path = dir.join("sheet.pdf");
+        std::fs::write(&html_path, sample_page_for_fit_check()).expect("write sample html");
+
+        let browser =
+            std::env::var("SCORESHEET_BROWSER").unwrap_or_else(|_| "google-chrome".to_string());
+        let status = Command::new(&browser)
+            .args([
+                "--headless",
+                "--disable-gpu",
+                "--no-sandbox",
+                "--no-pdf-header-footer",
+            ])
+            .arg(format!("--print-to-pdf={}", pdf_path.display()))
+            .arg(&html_path)
+            .status()
+            .unwrap_or_else(|e| panic!("could not run browser '{browser}': {e}"));
+        assert!(status.success(), "browser failed to print the sheet");
+
+        let pdf = std::fs::read(&pdf_path).expect("pdf should exist");
+        let pages = count_pdf_pages(&pdf);
+        assert_eq!(
+            pages, 1,
+            "the CMAS sheet must fit one A4 landscape page; it rendered {pages}. \
+             Something added height — remove a row or reduce margins."
+        );
+        assert!(
+            contains_a4_landscape_mediabox(&pdf),
+            "page must be A4 landscape (841.92 x 594.96 pt)"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn count_pdf_pages(pdf: &[u8]) -> usize {
+        // Count "/Type /Page" occurrences that are not "/Type /Pages".
+        let needle = b"/Type /Page";
+        let mut count = 0;
+        let mut i = 0;
+        while let Some(pos) = pdf[i..].windows(needle.len()).position(|w| w == needle) {
+            let at = i + pos;
+            let next = pdf.get(at + needle.len()).copied().unwrap_or(b' ');
+            if next != b's' {
+                count += 1;
+            }
+            i = at + needle.len();
+        }
+        count
+    }
+
+    fn contains_a4_landscape_mediabox(pdf: &[u8]) -> bool {
+        let text = String::from_utf8_lossy(pdf);
+        text.contains("841.9") && text.contains("594.9")
+    }
 }

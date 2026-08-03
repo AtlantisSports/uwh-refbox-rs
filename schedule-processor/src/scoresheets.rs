@@ -352,7 +352,7 @@ pub async fn generate_scoresheets_for_event(
         // Auto-fit: size each header field value's font to fill its fixed-width box on
         // one line, growing up to MAX and shrinking (down to MIN) when the text is too
         // long. Runs in headless Chrome before print-to-pdf, and in the saved HTML.
-        const FIT_SCRIPT: &str = "(function(){var MIN=7,MAX=16;var vs=document.querySelectorAll('.fields .val');for(var i=0;i<vs.length;i++){var el=vs[i];el.style.whiteSpace='nowrap';el.style.overflow='hidden';if(!el.textContent.trim())continue;var s=MIN;el.style.fontSize=s+'px';while(s<MAX){el.style.fontSize=(s+0.5)+'px';if(el.scrollWidth>el.clientWidth){el.style.fontSize=s+'px';break;}s+=0.5;}}})();";
+        const FIT_SCRIPT: &str = "(function(){var MIN=7,MAX=16;var vs=document.querySelectorAll('.fields .val');for(var i=0;i<vs.length;i++){var el=vs[i];el.style.whiteSpace='nowrap';el.style.overflow='hidden';if(!el.textContent.trim())continue;var s=MIN;el.style.fontSize=s+'px';while(s<MAX){el.style.fontSize=(s+0.5)+'px';if(el.scrollWidth>el.clientWidth){el.style.fontSize=s+'px';break;}s+=0.5;}}}var fs=document.querySelectorAll('.fit');for(var j=0;j<fs.length;j++){var f=fs[j];if(!f.textContent.trim())continue;f.style.whiteSpace='nowrap';f.style.overflow='hidden';var base=parseFloat(window.getComputedStyle(f).fontSize)||10;var t=base;while(t>6&&f.scrollWidth>f.clientWidth){t-=0.5;f.style.fontSize=t+'px';}}})();";
         let all_html = format!(
             r#"<!doctype html><html><head><meta charset='utf-8'/><style>{css}</style></head><body>{pages}<script>{fit}</script></body></html>"#,
             css = css,

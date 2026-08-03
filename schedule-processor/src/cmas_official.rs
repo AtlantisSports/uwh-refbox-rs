@@ -656,6 +656,20 @@ mod tests {
     }
 
     #[test]
+    fn marks_name_cells_for_shrink_to_fit() {
+        let (black, white) = sample_input();
+        let html = render_html_cmas_official(&sample_cmas_input(&black, &white));
+        // Both team-name cells and all 24 player-name cells opt into shrink-to-fit.
+        // Every such cell's class list ends in `fit` (e.g. `class="name blackfill
+        // fit"`), so match on the trailing `fit"` rather than a leading `class="fit`
+        // — the latter never occurs, since `fit` is always the last class token.
+        assert!(
+            html.matches("fit\"").count() >= 26,
+            "team and player name cells must carry the fit class"
+        );
+    }
+
+    #[test]
     fn team_and_player_names_get_the_fit_class() {
         // Porting rule 7: Task 8's shrink-to-fit script selects on class="fit".
         let (black, white) = sample_input();

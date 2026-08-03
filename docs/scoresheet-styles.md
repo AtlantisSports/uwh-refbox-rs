@@ -95,6 +95,7 @@ There is no code-level orientation setting — it is purely a CSS decision owned
 | `Simple` | Portrait | Clean single-page layout, minimal detail |
 | `SimpleTeamRefs` | Portrait | Same as Simple but uses team-assigned referee positions instead of portal names |
 | `Col3x3` | Landscape | Three-column layout for 3-a-side underwater hockey |
+| `CmasOfficial` | Landscape (A4) | CMAS World Championship form: 12 named players per team with captain markers, penalty grid, officials and signatures |
 
 ---
 

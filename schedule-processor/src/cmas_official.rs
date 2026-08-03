@@ -636,9 +636,15 @@ mod tests {
         let (black, white) = sample_input();
         let mut input = sample_cmas_input(&black, &white);
         input.black_team = "A & B <Club>";
+        input.chief = "Q & R <Ref>";
+        input.division = "U19W & <RR>";
         let html = render_html_cmas_official(&input);
         assert!(html.contains("A &amp; B &lt;Club&gt;"));
         assert!(!html.contains("A & B <Club>"));
+        assert!(html.contains("Q &amp; R &lt;Ref&gt;"));
+        assert!(!html.contains("Q & R <Ref>"));
+        assert!(html.contains("U19W &amp; &lt;RR&gt;"));
+        assert!(!html.contains("U19W & <RR>"));
     }
 
     #[test]
@@ -647,5 +653,53 @@ mod tests {
         let html = render_html_cmas_official(&sample_cmas_input(&black, &white));
         assert_eq!(html.matches("<col ").count(), 25, "25 master columns");
         assert_eq!(html.matches("<tr>").count(), 35, "35 rows");
+    }
+
+    #[test]
+    fn team_and_player_names_get_the_fit_class() {
+        // Porting rule 7: Task 8's shrink-to-fit script selects on class="fit".
+        let (black, white) = sample_input();
+        let html = render_html_cmas_official(&sample_cmas_input(&black, &white));
+
+        // Team-name header cells.
+        assert!(
+            html.contains("class=\"hdrval blackfill fit\""),
+            "black team-name header cell must carry the fit class"
+        );
+        assert!(
+            html.contains("class=\"hdrval fit\""),
+            "white team-name header cell must carry the fit class"
+        );
+
+        // Roster player-name cells (one per side, per row).
+        assert!(
+            html.contains("class=\"name blackfill fit\""),
+            "black roster name cells must carry the fit class"
+        );
+        assert!(
+            html.contains("class=\"name fit\""),
+            "white roster name cells must carry the fit class"
+        );
+    }
+
+    #[test]
+    fn renders_empty_logoboxes_when_no_logo_is_supplied() {
+        // Porting rule 5: the no-logo path is the one real games without a
+        // tournament logo will actually exercise.
+        let (black, white) = sample_input();
+        let mut input = sample_cmas_input(&black, &white);
+        input.cmas_logo_rel = None;
+        input.tournament_logo_rel = None;
+        let html = render_html_cmas_official(&input);
+
+        assert_eq!(
+            html.matches("<div class=\"logobox\"></div>").count(),
+            2,
+            "both logoboxes should be empty, fixed-size placeholders when no logo is supplied"
+        );
+        assert!(
+            !html.contains("<img"),
+            "no <img> tag should be emitted when no logo is supplied"
+        );
     }
 }

@@ -134,7 +134,16 @@ pub struct CmasSheetInput<'a> {
 /// The preview-only scaffolding (`.sheetwrap`, `.sheetscale`, the fixed-pixel size
 /// and border on `.cmas`) is replaced with print rules sized for A4 landscape. A
 /// rule sizing `<img>` tags inside `.logobox` is added, since the mockup only ever
-/// showed text placeholders there. Everything else is unchanged.
+/// showed text placeholders there.
+///
+/// Two later changes deliberately diverge from the committed mockup:
+/// - `.logobox` no longer has the mockup's `border:1px dashed #bbb`. That border
+///   marked a placeholder in the preview and printed on the real form. The 50px
+///   box size is retained, since it is load-bearing for the one-page A4 fit.
+/// - The "Actual Game Start Time" row was dropped and "Actual Game Finish Time"
+///   moved into its place; the vacated row's middle cells are blank.
+///
+/// Everything else matches the mockup.
 const CMAS_CSS: &str = r#"
   .cmas { background:#fff; color:#000;
           font-family: Arial, Helvetica, sans-serif; padding:24px;
@@ -870,10 +879,30 @@ mod tests {
 
         let html_path = dir.join("sheet.html");
         let pdf_path = dir.join("sheet.pdf");
-        std::fs::write(&html_path, sample_page_for_fit_check()).expect("write sample html");
+        let sample = sample_page_for_fit_check();
+        std::fs::write(&html_path, &sample).expect("write sample html");
 
         let browser =
             std::env::var("SCORESHEET_BROWSER").unwrap_or_else(|_| "google-chrome".to_string());
+
+        // Counting pages is NOT enough on its own. `.cmas` is pinned to exactly
+        // one page's height with `overflow: hidden`, so content that grows too
+        // tall is silently trimmed off the bottom instead of flowing onto a
+        // second page — the page count stays at 1 while the footer, part of the
+        // penalty grid and the bottom of the signature box quietly disappear.
+        // Measure the content box instead: `scrollHeight` (how tall the content
+        // actually is) must not exceed `clientHeight` (how tall the visible box
+        // is). The sheet ships with under one row of slack, so this matters.
+        let (content_height, visible_height) = measure_sheet_overflow(&dir, &browser, &sample);
+        assert!(
+            content_height <= visible_height,
+            "the CMAS sheet overflows its single A4 landscape page by {}px \
+             (content {content_height}px vs visible {visible_height}px). The \
+             overflowing part is NOT printed — it is silently cut off the bottom. \
+             Remove a row or reduce margins; do not shrink the fonts.",
+            content_height - visible_height
+        );
+
         let status = Command::new(&browser)
             .args([
                 "--headless",
@@ -900,6 +929,51 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Render the sample page in headless Chrome and report `.cmas`'s
+    /// `(scrollHeight, clientHeight)` in CSS pixels.
+    ///
+    /// A probe script appended to a throwaway copy of the page writes both
+    /// measurements into the document title; `--dump-dom` runs scripts before
+    /// dumping, so the values are present in the DOM Chrome prints to stdout.
+    /// The copy keeps the page used for the PDF assertions pristine.
+    fn measure_sheet_overflow(dir: &std::path::Path, browser: &str, sample: &str) -> (i64, i64) {
+        use std::process::Command;
+
+        const MARKER: &str = "CMASFIT";
+        let probe = format!(
+            "{}<script>(function(){{var e=document.querySelector('.cmas');\
+             document.title='{MARKER} '+e.scrollHeight+' '+e.clientHeight;}})();</script>",
+            sample
+        );
+        let probe_path = dir.join("probe.html");
+        std::fs::write(&probe_path, probe).expect("write probe html");
+
+        let out = Command::new(browser)
+            .args(["--headless", "--disable-gpu", "--no-sandbox", "--dump-dom"])
+            .arg(&probe_path)
+            .output()
+            .unwrap_or_else(|e| panic!("could not run browser '{browser}': {e}"));
+        assert!(
+            out.status.success(),
+            "browser failed to render the probe page"
+        );
+
+        let dom = String::from_utf8_lossy(&out.stdout);
+        let tail = dom
+            .split_once(MARKER)
+            .unwrap_or_else(|| {
+                panic!("probe marker '{MARKER}' missing from the dumped DOM — the probe script did not run")
+            })
+            .1;
+        let mut nums = tail
+            .split(|c: char| !c.is_ascii_digit())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.parse::<i64>().expect("probe emitted a non-number"));
+        let scroll = nums.next().expect("probe emitted no scrollHeight");
+        let client = nums.next().expect("probe emitted no clientHeight");
+        (scroll, client)
     }
 
     fn count_pdf_pages(pdf: &[u8]) -> usize {

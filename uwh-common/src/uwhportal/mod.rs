@@ -100,14 +100,26 @@ fn parse_roster_json(body: &serde_json::Value) -> Vec<RosterPlayer> {
 
             let mut is_captain = false;
             let mut is_vice_captain = false;
+            let mut is_player = false;
             if let Some(roles) = member.get("roles").and_then(|v| v.as_array()) {
                 for role in roles {
                     match role.as_str() {
+                        Some("Player") => is_player = true,
                         Some("Captain") => is_captain = true,
                         Some("ViceCaptain") => is_vice_captain = true,
                         _ => {}
                     }
                 }
+            }
+
+            // Only playing members belong on a scoresheet — a team's roster also
+            // carries `Manager`, `Coach` and `Official` entries, which would
+            // otherwise take up numbered player rows. `Captain`/`ViceCaptain` are
+            // modifiers layered on a base role rather than base roles themselves,
+            // but they are accepted here as well so that a captain can never be
+            // dropped from an official form if the portal omits their `Player` role.
+            if !(is_player || is_captain || is_vice_captain) {
+                continue;
             }
 
             if !name.is_empty() || number.is_some() {
@@ -959,8 +971,8 @@ mod roster_tests {
     fn falls_back_to_username_and_sorts_unnumbered_last() {
         let body: serde_json::Value = serde_json::from_str(
             r#"{"roster":[
-                {"rosterName":"  ","username":"zoe99","roles":[]},
-                {"capNumber":3,"rosterName":"Taylor COETZEE","roles":[]}
+                {"rosterName":"  ","username":"zoe99","roles":["Player"]},
+                {"capNumber":3,"rosterName":"Taylor COETZEE","roles":["Player"]}
             ]}"#,
         )
         .unwrap();
@@ -979,7 +991,33 @@ mod roster_tests {
     #[test]
     fn skips_entries_with_neither_name_nor_number() {
         let body: serde_json::Value =
-            serde_json::from_str(r#"{"roster":[{"rosterName":"","roles":[]}]}"#).unwrap();
+            serde_json::from_str(r#"{"roster":[{"rosterName":"","roles":["Player"]}]}"#).unwrap();
         assert!(parse_roster_json(&body).is_empty());
+    }
+
+    #[test]
+    fn keeps_only_playing_members() {
+        let body: serde_json::Value = serde_json::from_str(
+            r#"{"roster":[
+                {"capNumber":1,"rosterName":"Ana PLAYER","roles":["Player"]},
+                {"capNumber":2,"rosterName":"Ben MANAGER","roles":["Manager"]},
+                {"capNumber":3,"rosterName":"Cal COACH","roles":["Coach"]},
+                {"capNumber":4,"rosterName":"Dee OFFICIAL","roles":["Official"]},
+                {"capNumber":5,"rosterName":"Eve BOTH","roles":["Player","Manager"]},
+                {"capNumber":6,"rosterName":"Fay SKIPPER","roles":["Captain"]},
+                {"rosterName":"Gus NOROLE"}
+            ]}"#,
+        )
+        .unwrap();
+
+        let players = parse_roster_json(&body);
+        let names: Vec<&str> = players.iter().map(|p| p.name.as_str()).collect();
+
+        assert_eq!(
+            names,
+            vec!["Ana PLAYER", "Eve BOTH", "Fay SKIPPER"],
+            "managers, coaches and officials must not take up player rows, but a \
+             player-manager and a captain must be kept"
+        );
     }
 }

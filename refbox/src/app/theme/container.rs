@@ -224,6 +224,32 @@ pub fn transparent_container(theme: &Theme) -> Style {
     }
 }
 
+/// Backing panel painted behind the whole window in the active palette's
+/// window colour.
+///
+/// This exists so the window background is something iced *draws*, not merely
+/// the background clear it applies first. tiny-skia's damage tracking compares
+/// the fill colours of drawn quads, but remembers the clear colour only once
+/// for all buffers — so a palette-only change repaints one buffer and leaves
+/// stale background pixels in the other (the High-Contrast flicker). A real
+/// quad makes the change visible to damage tracking, so both buffers repaint
+/// on their own, with no window resize needed to force it.
+///
+/// Carries no padding, border or text colour: it must be incapable of moving
+/// anything or altering inherited text colour.
+pub fn window_background_container(_theme: &Theme) -> Style {
+    Style {
+        background: Some(Background::Color(window_background())),
+        text_color: None,
+        border: Border {
+            width: 0.0,
+            color: Color::TRANSPARENT,
+            radius: BORDER_RADIUS_ZERO,
+        },
+        shadow: Default::default(),
+    }
+}
+
 #[cfg(test)]
 mod high_contrast_container_tests {
     use super::*;
@@ -295,5 +321,44 @@ mod high_contrast_container_tests {
         let s = gray_container(&Theme::default());
         assert_eq!(s.background, Some(Background::Color(gray())));
         assert_eq!(s.border.width, 0.0);
+    }
+}
+
+#[cfg(test)]
+mod window_background_container_tests {
+    use super::*;
+    use crate::app::theme::{DISPLAY_MODE_TEST_LOCK, DisplayMode, set_display_mode};
+    use iced::{Background, Theme};
+
+    #[test]
+    fn follows_the_active_palette() {
+        let _guard = DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        for mode in [
+            DisplayMode::Light,
+            DisplayMode::Dark,
+            DisplayMode::HighContrast,
+        ] {
+            set_display_mode(mode);
+            let s = window_background_container(&Theme::default());
+            assert_eq!(
+                s.background,
+                Some(Background::Color(mode.palette().window_background)),
+                "{mode:?}"
+            );
+        }
+        set_display_mode(DisplayMode::Light);
+    }
+
+    /// This panel sits behind the entire UI, so any border width, corner radius
+    /// or inherited text colour would be visible on every screen. It must be a
+    /// pure fill, incapable of moving anything.
+    #[test]
+    fn is_layout_and_text_neutral() {
+        let s = window_background_container(&Theme::default());
+        assert_eq!(s.border.width, 0.0);
+        assert_eq!(s.border.radius, BORDER_RADIUS_ZERO);
+        assert_eq!(s.text_color, None);
     }
 }

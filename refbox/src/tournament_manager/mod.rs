@@ -1174,6 +1174,8 @@ impl TournamentManager {
             return Err(TournamentManagerError::GameInProgress);
         }
 
+        let was_running = self.clock_is_running();
+
         let next_game_info = if let Some(info) = self.next_game.as_ref() {
             info
         } else {
@@ -1197,6 +1199,13 @@ impl TournamentManager {
             start_time: now,
             time_remaining_at_start,
         };
+
+        // The break clock is held stopped at 0:00 when a court's schedule is finished.
+        // Applying a game restarts it, and the time updater only wakes on this
+        // notification — without it the clock would sit frozen on screen.
+        if !was_running {
+            self.send_clock_running(true);
+        }
 
         Ok(())
     }
@@ -1433,7 +1442,20 @@ impl TournamentManager {
                 let mut leave_game_clock_running = true;
                 match (self.current_period, unfinished_penalty_shot) {
                     (GamePeriod::BetweenGames, _) => {
-                        self.start_game(start_time + time_remaining_at_start);
+                        if self.no_next_game {
+                            // The selected court has no further games. Hold at 0:00
+                            // rather than start a game we cannot identify: a guessed
+                            // number is another court's game, and playing it out would
+                            // post a result against it.
+                            info!(
+                                "{} Between games time expired with no next game on this court; holding at 0:00",
+                                self.status_string(now)
+                            );
+                            leave_game_clock_running = false;
+                            self.send_clock_running(false);
+                        } else {
+                            self.start_game(start_time + time_remaining_at_start);
+                        }
                     }
                     (GamePeriod::FirstHalf, false) => {
                         self.end_first_half(now);
@@ -9344,5 +9366,90 @@ mod test {
         // which is the state the app immediately resolves via handle_game_start.
         assert_eq!(tm.game_number(), "9");
         assert_eq!(tm.next_game_number(), "10");
+    }
+
+    #[test]
+    fn between_games_expiry_starts_the_next_game_normally() {
+        initialize();
+        // Guard on the unchanged path: with a next game known, expiry starts it.
+        let config = GameConfig {
+            minimum_break: Duration::from_secs(60),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        tm.set_game_number("9");
+        tm.set_next_game(NextGameInfo {
+            number: "11".to_string(),
+            timing: None,
+            start_time: None,
+        });
+
+        let start = Instant::now();
+        tm.set_period_and_game_clock_time(GamePeriod::BetweenGames, Duration::from_secs(1));
+        tm.start_clock(start);
+        tm.update(start + Duration::from_secs(2)).unwrap();
+
+        assert_eq!(tm.current_period(), GamePeriod::FirstHalf);
+        assert_eq!(tm.game_number(), "11");
+    }
+
+    #[test]
+    fn between_games_expiry_starts_nothing_when_the_court_is_finished() {
+        initialize();
+        let config = GameConfig {
+            minimum_break: Duration::from_secs(60),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        tm.set_game_number("9");
+        tm.set_no_next_game();
+
+        let start = Instant::now();
+        tm.set_period_and_game_clock_time(GamePeriod::BetweenGames, Duration::from_secs(1));
+        tm.start_clock(start);
+        tm.update(start + Duration::from_secs(2)).unwrap();
+
+        // Still between games, holding at 0:00, still game 9 — no phantom game 10.
+        assert_eq!(tm.current_period(), GamePeriod::BetweenGames);
+        assert_eq!(tm.game_number(), "9");
+        assert_eq!(
+            tm.game_clock_time(start + Duration::from_secs(2)),
+            Some(Duration::ZERO)
+        );
+        assert!(!tm.clock_is_running());
+    }
+
+    #[test]
+    fn applying_a_game_restarts_the_held_clock() {
+        initialize();
+        let config = GameConfig {
+            minimum_break: Duration::from_secs(60),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        tm.set_game_number("9");
+        tm.set_no_next_game();
+
+        let start = Instant::now();
+        tm.set_period_and_game_clock_time(GamePeriod::BetweenGames, Duration::from_secs(1));
+        tm.start_clock(start);
+        let now = start + Duration::from_secs(2);
+        tm.update(now).unwrap();
+        assert!(!tm.clock_is_running());
+
+        // The operator picks a game that was added to this court after all.
+        let mut rx = tm.get_start_stop_rx();
+        rx.borrow_and_update();
+        tm.set_next_game(NextGameInfo {
+            number: "11".to_string(),
+            timing: None,
+            start_time: None,
+        });
+        tm.apply_next_game_start(now).unwrap();
+
+        // The clock runs again AND the updater is told, or the display would sit frozen.
+        assert!(tm.clock_is_running());
+        assert!(rx.has_changed().unwrap());
+        assert!(*rx.borrow_and_update());
     }
 }

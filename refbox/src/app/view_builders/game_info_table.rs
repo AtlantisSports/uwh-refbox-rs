@@ -12,6 +12,11 @@ use uwh_common::{
 
 const TEAM_NAME_LEN_LIMIT: usize = 40;
 
+/// Shown wherever the table has no value to give — the same hyphen the referee rows
+/// already use for an empty slot. Deliberately not a translated string: there is
+/// nothing to translate, and the grid keeps its shape either way.
+const NO_VALUE: &str = "-";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in super::super) enum GameRole {
     Last,
@@ -89,6 +94,17 @@ pub(in super::super) fn game_info_rows(
         &snapshot.game_number
     };
 
+    // A blank next-game number means the selected court has no further games
+    // (uwh-common's GameSnapshot::next_game_number reports None for it). Between
+    // games that empties the middle block; during a game it empties the Next block.
+    // This signal only ever arises from a remote schedule lookup (TournamentManager
+    // only reports a blank number after `set_no_next_game()`, itself only called from
+    // schedule-derived lookups); gate on `uses_remote` so a manual-mode snapshot, which
+    // has no schedule at all, is never misread as "no games left".
+    let no_game = uses_remote && snapshot.next_game_number.is_empty();
+    let no_current_game = between && no_game;
+    let no_next_game = !between && no_game;
+
     let mut rows = Vec::new();
 
     // The current game shows a live score only while a game is in progress; between
@@ -96,15 +112,19 @@ pub(in super::super) fn game_info_rows(
     let current_scores = if between { None } else { Some(snapshot.scores) };
 
     // --- Current game block ---
-    rows.push(game_block_row(
-        GameRole::Current,
-        current_game_num,
-        Some(time_string(config.game_block)),
-        current_scores,
-        uses_remote,
-        schedule,
-        teams,
-    ));
+    if no_current_game {
+        rows.push(empty_game_block_row(GameRole::Current));
+    } else {
+        rows.push(game_block_row(
+            GameRole::Current,
+            current_game_num,
+            Some(time_string(config.game_block)),
+            current_scores,
+            uses_remote,
+            schedule,
+            teams,
+        ));
+    }
 
     // --- Settings grid (belongs to the current game) ---
     // Six fixed rows in fixed left/right slots so the layout never reorders.
@@ -184,6 +204,19 @@ pub(in super::super) fn game_info_rows(
         ),
     });
 
+    if no_current_game {
+        // The settings grid describes whatever is in the middle block. With no game
+        // there, it describes nothing: dash the values, keep the labels and the shape.
+        for row in rows.iter_mut() {
+            if let Row::SettingPair { left, right } = row {
+                left.value = NO_VALUE.to_string();
+                left.grayed = false;
+                right.value = NO_VALUE.to_string();
+                right.grayed = false;
+            }
+        }
+    }
+
     // Context block BEFORE the current block, between games only: the last game that
     // actually finished. Number AND score both come from the recorded result — pairing the
     // clock's game number with an earlier game's score is exactly the fault this fixes,
@@ -207,20 +240,30 @@ pub(in super::super) fn game_info_rows(
     }
 
     if uses_remote {
-        rows.extend(referee_rows(current_game_num, schedule, teams));
+        if no_current_game {
+            // Keep the layout the finished game used so the table does not change
+            // height when the day ends; dash every name.
+            rows.extend(referee_rows_no_game(&snapshot.game_number, schedule));
+        } else {
+            rows.extend(referee_rows(current_game_num, schedule, teams));
+        }
     }
 
     // Context block AFTER the current block, in-game only: the upcoming game (no score).
     if !between {
-        rows.push(game_block_row(
-            GameRole::Next,
-            &snapshot.next_game_number,
-            Some(time_string(config.game_block)),
-            None,
-            uses_remote,
-            schedule,
-            teams,
-        ));
+        if no_next_game {
+            rows.push(empty_game_block_row(GameRole::Next));
+        } else {
+            rows.push(game_block_row(
+                GameRole::Next,
+                &snapshot.next_game_number,
+                Some(time_string(config.game_block)),
+                None,
+                uses_remote,
+                schedule,
+                teams,
+            ));
+        }
     }
     rows
 }
@@ -271,6 +314,24 @@ fn game_block_row(
     }
 }
 
+/// A game block with nothing to show: same role label and same shape, every value
+/// dashed. Used when the selected court has no further scheduled games.
+fn empty_game_block_row(role: GameRole) -> Row {
+    Row::GameBlock {
+        role,
+        number: NO_VALUE.to_string(),
+        game_block: Some(NO_VALUE.to_string()),
+        white: TeamLine {
+            name: Some(NO_VALUE.to_string()),
+            score: None,
+        },
+        black: TeamLine {
+            name: Some(NO_VALUE.to_string()),
+            score: None,
+        },
+    }
+}
+
 fn referee_rows(
     game_number: &GameNumber,
     schedule: Option<&Schedule>,
@@ -281,6 +342,25 @@ fn referee_rows(
         .and_then(|g| g.referee_assignments.as_deref())
         .unwrap_or(&[]);
     referee_layout_rows(assignments, teams)
+}
+
+/// Referee rows for a court whose schedule is finished: the layout the just-finished
+/// game used (roles kept, so a team-assignment event keeps its two-row shape) with
+/// every identity stripped, which resolves each name to "-".
+fn referee_rows_no_game(prior_game_number: &GameNumber, schedule: Option<&Schedule>) -> Vec<Row> {
+    let assignments: Vec<RefereeAssignment> = schedule
+        .and_then(|s| s.games.get(prior_game_number))
+        .and_then(|g| g.referee_assignments.as_deref())
+        .unwrap_or(&[])
+        .iter()
+        .map(|a| RefereeAssignment {
+            role: a.role.clone(),
+            user_id: None,
+            team_id: None,
+            display_name: None,
+        })
+        .collect();
+    referee_layout_rows(&assignments, None)
 }
 
 // Build the referee rows for a game. Two fixed layouts, all rows in the chosen
@@ -1170,5 +1250,183 @@ mod tests {
             })
             .unwrap();
         assert_eq!(current, (Some(3), Some(2)));
+    }
+
+    // A snapshot mid-game whose court has no further games: blank next-game number.
+    fn last_game_snapshot() -> GameSnapshot {
+        GameSnapshot {
+            current_period: GamePeriod::FirstHalf,
+            game_number: "9".to_string(),
+            next_game_number: String::new(),
+            ..Default::default()
+        }
+    }
+
+    // The same court after that game ends: between games, still nothing next.
+    fn finished_court_snapshot() -> GameSnapshot {
+        GameSnapshot {
+            current_period: GamePeriod::BetweenGames,
+            game_number: "9".to_string(),
+            next_game_number: String::new(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn next_block_dashes_when_the_court_has_no_further_games() {
+        let rows = game_info_rows(&last_game_snapshot(), &cfg_all_on(), true, None, None, None);
+        let next = rows
+            .iter()
+            .find_map(|r| match r {
+                Row::GameBlock {
+                    role: GameRole::Next,
+                    number,
+                    game_block,
+                    white,
+                    black,
+                } => Some((
+                    number.clone(),
+                    game_block.clone(),
+                    white.clone(),
+                    black.clone(),
+                )),
+                _ => None,
+            })
+            .expect("the Next block keeps its place");
+        assert_eq!(next.0, "-");
+        assert_eq!(next.1, Some("-".to_string()));
+        assert_eq!(next.2.name, Some("-".to_string()));
+        assert_eq!(next.3.name, Some("-".to_string()));
+        // The current game is real, so its settings are real.
+        assert!(setting_pairs(&rows).len() == 6);
+    }
+
+    #[test]
+    fn current_block_and_settings_dash_when_there_is_no_upcoming_game() {
+        let rows = game_info_rows(
+            &finished_court_snapshot(),
+            &cfg_all_on(),
+            true,
+            None,
+            None,
+            None,
+        );
+        let current = rows
+            .iter()
+            .find_map(|r| match r {
+                Row::GameBlock {
+                    role: GameRole::Current,
+                    number,
+                    game_block,
+                    ..
+                } => Some((number.clone(), game_block.clone())),
+                _ => None,
+            })
+            .expect("the Current block keeps its place");
+        assert_eq!(current.0, "-");
+        assert_eq!(current.1, Some("-".to_string()));
+
+        // Every settings value dashes; the labels stay so the grid keeps its shape.
+        for row in &rows {
+            if let Row::SettingPair { left, right } = row {
+                assert_eq!(left.value, "-", "left value for {}", left.label);
+                assert_eq!(right.value, "-", "right value for {}", right.label);
+                assert!(!left.grayed);
+                assert!(!right.grayed);
+            }
+        }
+        assert_eq!(setting_pairs(&rows).len(), 6);
+
+        // No Next block between games, and the Prior block is still drawn.
+        assert!(!rows.iter().any(|r| matches!(
+            r,
+            Row::GameBlock {
+                role: GameRole::Next,
+                ..
+            }
+        )));
+        assert!(rows.iter().any(|r| matches!(
+            r,
+            Row::GameBlock {
+                role: GameRole::Last,
+                ..
+            }
+        )));
+    }
+
+    fn make_schedule_with_referees(game_number: &str, court: &str) -> Schedule {
+        use uwh_common::uwhportal::schedule::{
+            EventId, Game, GameList, RefereeAssignment, ScheduledTeam,
+        };
+        let mut games = GameList::new();
+        games.insert(
+            game_number.to_string(),
+            Game {
+                number: game_number.to_string(),
+                dark: ScheduledTeam::new_pending_assignment_name("Dark"),
+                light: ScheduledTeam::new_pending_assignment_name("Light"),
+                start_time: time::macros::datetime!(2026-08-05 09:00 UTC),
+                court: court.to_string(),
+                timing_rule: "Standard".to_string(),
+                referee_assignments: Some(vec![RefereeAssignment {
+                    role: "Referees".to_string(),
+                    user_id: None,
+                    team_id: None,
+                    display_name: None,
+                }]),
+                description: None,
+            },
+        );
+        Schedule {
+            event_id: EventId::from_partial("1-A"),
+            games,
+            non_game_entries: vec![],
+            groups: vec![],
+            timing_rules: vec![],
+            standings_order: None,
+            final_results_order: None,
+            referees_by_game_number: None,
+        }
+    }
+
+    #[test]
+    fn referee_rows_keep_the_finished_games_layout_and_dash_the_names() {
+        // The finished game used team assignments: two rows, not six.
+        let mut schedule = make_schedule_with_referees("9", "Court 1");
+        let rows = game_info_rows(
+            &finished_court_snapshot(),
+            &cfg_all_on(),
+            true,
+            Some(&schedule),
+            None,
+            None,
+        );
+        let refs: Vec<_> = rows
+            .iter()
+            .filter_map(|r| match r {
+                Row::Referee { label, name } => Some((label.clone(), name.clone())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(refs.len(), 2, "team layout keeps its two rows");
+        assert_eq!(refs[0], (fl!("gi-ref-deck-referees"), "-".to_string()));
+        assert_eq!(refs[1], (fl!("gi-ref-water-referees"), "-".to_string()));
+
+        // With no assignments at all it falls back to the six-row individual layout.
+        schedule.games.get_mut("9").unwrap().referee_assignments = None;
+        let rows = game_info_rows(
+            &finished_court_snapshot(),
+            &cfg_all_on(),
+            true,
+            Some(&schedule),
+            None,
+            None,
+        );
+        assert_eq!(
+            rows.iter()
+                .filter(|r| matches!(r, Row::Referee { .. }))
+                .count(),
+            6
+        );
     }
 }

@@ -6289,23 +6289,30 @@ impl RefBoxApp {
                                     let restore_num = self.pending_restore_game.take();
                                     // Safety: `self.schedule` was assigned from `schedule` two lines above.
                                     let schedule = self.schedule.as_ref().unwrap();
+                                    // Only a refresh that could actually judge — anchor found,
+                                    // nothing later on this court — is the definite "day is
+                                    // done" answer.
+                                    let mut court_finished = false;
                                     let found = if let Some(ref num) = restore_num {
                                         schedule.get_game_and_timing(num)
                                     } else if let Some(ref court) = self.current_court {
-                                        let anchor = schedule
-                                            .games
-                                            .get(&tm.game_number())
-                                            .map(|g| g.start_time);
-                                        match anchor
-                                            .and_then(|a| schedule.next_game_on_court(court, a))
-                                        {
-                                            Some(game) => (
-                                                Some(game),
-                                                schedule.get_game_timing(&game.number),
-                                            ),
-                                            // Anchor game missing (schedule changed
-                                            // under us) or nothing later on this
-                                            // court: either way, nothing to adopt.
+                                        match schedule.games.get(&tm.game_number()) {
+                                            Some(anchor) => match schedule
+                                                .next_game_on_court(court, anchor.start_time)
+                                            {
+                                                Some(game) => (
+                                                    Some(game),
+                                                    schedule.get_game_timing(&game.number),
+                                                ),
+                                                None => {
+                                                    court_finished = true;
+                                                    (None, None)
+                                                }
+                                            },
+                                            // The game we are on is not in this schedule (it
+                                            // changed under us, or no game has started yet):
+                                            // we cannot judge what follows it, so leave the
+                                            // engine's state alone.
                                             None => (None, None),
                                         }
                                     } else {
@@ -6337,9 +6344,7 @@ impl RefBoxApp {
                                             roster_tasks.push(self.apply_snapshot(snapshot));
                                             return Task::batch(roster_tasks);
                                         }
-                                    } else if restore_num.is_none()
-                                        && self.current_court.is_some()
-                                    {
+                                    } else if court_finished {
                                         // A refresh that finds nothing later on this
                                         // court is the definite "day is done" answer.
                                         tm.set_no_next_game();

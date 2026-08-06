@@ -1111,6 +1111,7 @@ impl TournamentManager {
 
         self.current_game_stats.add_end_time(now);
         self.last_game_info = Some(LastGameInfo {
+            game_number: self.game_number.clone(),
             scores: self.scores,
             stats: self.current_game_stats.clone(),
         });
@@ -2552,6 +2553,11 @@ pub struct NextGameInfo {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LastGameInfo {
+    /// The game that produced this result. A recorded result belongs to exactly one game,
+    /// and only `end_game` writes one — abandoning a game (`reset_game`) records nothing.
+    /// Consumers compare this against the game they are reporting on, so a result can never
+    /// be submitted or displayed under another game's number.
+    pub game_number: GameNumber,
     pub scores: BlackWhiteBundle<u8>,
     pub stats: GameStats,
 }
@@ -2704,6 +2710,77 @@ mod test {
         assert_eq!(fouls[0]["side"], "light");
         assert_eq!(fouls[0]["playerCapNumber"], 7);
         assert_eq!(fouls[0]["called"], "Obstruction");
+    }
+
+    #[test]
+    fn end_game_labels_the_result_with_the_game_that_ended() {
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(900),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+        let g = Instant::now();
+        tm.set_next_game(NextGameInfo {
+            number: "16".to_string(),
+            timing: None,
+            start_time: None,
+        });
+        tm.start_play_now(g).unwrap();
+        assert_eq!(tm.game_number(), "16");
+
+        tm.add_score(Color::Black, 5, g);
+        tm.stop_clock(g).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        tm.end_game(g);
+
+        let info = tm.last_game_info().unwrap();
+        assert_eq!(info.game_number, "16");
+        assert_eq!(info.scores.black, 1);
+    }
+
+    #[test]
+    fn abandoning_a_game_leaves_the_result_labelled_with_the_earlier_game() {
+        // The forfeit incident: game 16 finishes normally, game 18 starts and is abandoned
+        // in the first half via END CURRENT GAME AND APPLY, which calls reset_game rather
+        // than end_game. No result is recorded for 18, so the newest recorded result must
+        // still belong to 16 — while the engine still reports 18 as the current game. That
+        // mismatch is what the app-side guard detects.
+        initialize();
+        let config = GameConfig {
+            half_play_duration: Duration::from_secs(900),
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let g16 = Instant::now();
+        tm.set_next_game(NextGameInfo {
+            number: "16".to_string(),
+            timing: None,
+            start_time: None,
+        });
+        tm.start_play_now(g16).unwrap();
+        tm.add_score(Color::White, 3, g16);
+        tm.stop_clock(g16).unwrap();
+        tm.set_period_and_game_clock_time(GamePeriod::SecondHalf, Duration::from_secs(0));
+        tm.end_game(g16);
+        assert_eq!(tm.last_game_info().unwrap().game_number, "16");
+
+        let g18 = g16 + Duration::from_secs(600);
+        tm.set_next_game(NextGameInfo {
+            number: "18".to_string(),
+            timing: None,
+            start_time: None,
+        });
+        tm.start_play_now(g18).unwrap();
+        assert_eq!(tm.game_number(), "18");
+
+        tm.reset_game(g18 + Duration::from_secs(60));
+
+        let info = tm.last_game_info().unwrap();
+        assert_eq!(info.game_number, "16", "no result was recorded for game 18");
+        assert_eq!(info.scores.white, 1, "game 16's score is untouched");
+        assert_eq!(tm.game_number(), "18", "the clock still reports game 18");
     }
 
     // TODO: test correct sending of time start/stop signals

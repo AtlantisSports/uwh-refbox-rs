@@ -132,11 +132,11 @@ impl GameSnapshot {
 
     /// The number of the game that follows the one in progress, when there is one.
     ///
-    /// `None` in three cases: between games (the upcoming game is what
-    /// `game_number()` reports then), an old-game snapshot, and a **blank**
-    /// number — which is how the refbox reports that the selected court has no
-    /// further scheduled games. Consumers must not look a game up for a blank
-    /// number; on a multi-court event any guess lands on another court's game.
+    /// `None` in two cases: between games and not itself an old-game snapshot (the
+    /// upcoming game is what `game_number()` reports then), or a **blank** number —
+    /// which is how the refbox reports that the selected court has no further
+    /// scheduled games. Consumers must not look a game up for a blank number; on a
+    /// multi-court event any guess lands on another court's game.
     pub fn next_game_number(&self) -> Option<&GameNumber> {
         if (!matches!(self.current_period, GamePeriod::BetweenGames) || self.is_old_game)
             && !self.next_game_number.is_empty()

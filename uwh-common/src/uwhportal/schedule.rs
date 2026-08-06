@@ -555,6 +555,20 @@ impl Schedule {
             .get(game_number)
             .and_then(|g| self.timing_rules.iter().find(|tr| tr.name == g.timing_rule))
     }
+
+    /// The next game on `court` after `after`, by scheduled start time. Games on
+    /// other courts are ignored, as are games starting at or before `after`.
+    ///
+    /// `None` means this court has no further games. Callers must treat that as
+    /// "this court's schedule is finished" and never fall back to guessing a game
+    /// number — on a multi-court event the next number belongs to another court.
+    pub fn next_game_on_court(&self, court: &str, after: OffsetDateTime) -> Option<&Game> {
+        self.games
+            .values()
+            .filter(|game| game.court == court)
+            .filter(|game| game.start_time > after)
+            .min_by_key(|game| game.start_time)
+    }
 }
 
 #[serde_with::skip_serializing_none]
@@ -1618,6 +1632,82 @@ mod tests {
         }"#;
         let rule: TimingRule = serde_json::from_str(json_with_field).unwrap();
         assert!(rule.last_2_min_stop_time);
+    }
+
+    fn game_at(number: &str, court: &str, start: OffsetDateTime) -> Game {
+        Game {
+            number: number.to_string(),
+            dark: ScheduledTeam::new_pending_assignment_name("Dark"),
+            light: ScheduledTeam::new_pending_assignment_name("Light"),
+            start_time: start,
+            court: court.to_string(),
+            timing_rule: "Standard".to_string(),
+            referee_assignments: None,
+            description: None,
+        }
+    }
+
+    // Two courts, alternating: court 1 holds games 1 and 3, court 2 holds 2 and 4.
+    fn two_court_schedule() -> Schedule {
+        let mut games = GameList::new();
+        for (number, court, start) in [
+            ("1", "Court 1", datetime!(2026-08-05 09:00 UTC)),
+            ("2", "Court 2", datetime!(2026-08-05 09:00 UTC)),
+            ("3", "Court 1", datetime!(2026-08-05 10:00 UTC)),
+            ("4", "Court 2", datetime!(2026-08-05 10:00 UTC)),
+        ] {
+            games.insert(number.to_string(), game_at(number, court, start));
+        }
+        Schedule {
+            event_id: EventId::from_partial("1-A"),
+            games,
+            non_game_entries: vec![],
+            groups: vec![],
+            timing_rules: vec![],
+            standings_order: None,
+            final_results_order: None,
+            referees_by_game_number: None,
+        }
+    }
+
+    #[test]
+    fn next_game_on_court_skips_other_courts() {
+        let schedule = two_court_schedule();
+        let next = schedule
+            .next_game_on_court("Court 1", datetime!(2026-08-05 09:00 UTC))
+            .expect("court 1 has a later game");
+        // Game 2 starts at the same moment on the other court and must be ignored.
+        assert_eq!(next.number, "3");
+    }
+
+    #[test]
+    fn next_game_on_court_is_none_after_the_last_game() {
+        let schedule = two_court_schedule();
+        assert!(
+            schedule
+                .next_game_on_court("Court 1", datetime!(2026-08-05 10:00 UTC))
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn next_game_on_court_ignores_games_at_or_before_the_anchor() {
+        let schedule = two_court_schedule();
+        // A game starting at exactly the anchor time is not "next".
+        let next = schedule
+            .next_game_on_court("Court 2", datetime!(2026-08-05 09:00 UTC))
+            .expect("court 2 has a later game");
+        assert_eq!(next.number, "4");
+    }
+
+    #[test]
+    fn next_game_on_court_unknown_court_has_nothing() {
+        let schedule = two_court_schedule();
+        assert!(
+            schedule
+                .next_game_on_court("Court 9", datetime!(2026-08-05 08:00 UTC))
+                .is_none()
+        );
     }
 
     #[test]

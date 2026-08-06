@@ -187,6 +187,19 @@ impl TournamentManager {
         Ok(())
     }
 
+    /// Replace the schedule and return to the idle state.
+    ///
+    /// The engine keeps its own copy of the config, so a config write in the
+    /// app (APPLY on Edit Levels, or a court-length preset) has no effect on a
+    /// running engine until this is called. Resetting is required as well as
+    /// swapping the config: the current period index and lap counters are only
+    /// meaningful against the schedule they were produced from.
+    pub fn set_config(&mut self, config: BeepTestConfig, now: Instant) {
+        info!("{} Replacing beep test schedule", self.status_string(now));
+        self.config = config;
+        self.reset_beep_test_now(now);
+    }
+
     pub fn reset_beep_test_now(&mut self, now: Instant) {
         info!("{} Resetting Beep Test", self.status_string(now));
 
@@ -633,5 +646,31 @@ mod tests {
         tm.update(t0 + Duration::from_secs(4)).unwrap();
         tm.reset_beep_test_now(t0 + Duration::from_secs(5));
         assert!(!tm.take_completed());
+    }
+
+    // The engine holds its own copy of the config. `set_config` must replace
+    // it AND return to idle, so an APPLY on the Edit Levels page actually
+    // changes what the next run counts down.
+    #[test]
+    fn set_config_replaces_schedule_and_resets() {
+        let mut tm = TournamentManager::new(test_config());
+        let t0 = Instant::now();
+        tm.start_beep_test_now(t0).unwrap();
+        assert!(tm.clock_is_running());
+
+        // tiny_config(): pre=1s, one level count=1 duration=1s.
+        tm.set_config(tiny_config(), t0 + Duration::from_millis(500));
+
+        assert!(
+            !tm.clock_is_running(),
+            "set_config returns the engine to idle"
+        );
+        assert_eq!(tm.current_period(), BeepTestPeriod::Level(0));
+        // The stopped clock now shows tiny_config's 1s warm-up, not 1s from
+        // test_config by coincidence — check the level durations too.
+        assert_eq!(
+            BeepTestPeriod::Level(1).duration(&tm.config),
+            Some(Duration::from_secs(1))
+        );
     }
 }

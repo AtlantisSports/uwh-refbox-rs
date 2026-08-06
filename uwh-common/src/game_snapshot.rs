@@ -130,8 +130,17 @@ impl GameSnapshot {
         }
     }
 
+    /// The number of the game that follows the one in progress, when there is one.
+    ///
+    /// `None` in three cases: between games (the upcoming game is what
+    /// `game_number()` reports then), an old-game snapshot, and a **blank**
+    /// number — which is how the refbox reports that the selected court has no
+    /// further scheduled games. Consumers must not look a game up for a blank
+    /// number; on a multi-court event any guess lands on another court's game.
     pub fn next_game_number(&self) -> Option<&GameNumber> {
-        if !matches!(self.current_period, GamePeriod::BetweenGames) || self.is_old_game {
+        if (!matches!(self.current_period, GamePeriod::BetweenGames) || self.is_old_game)
+            && !self.next_game_number.is_empty()
+        {
             Some(&self.next_game_number)
         } else {
             None
@@ -1169,5 +1178,38 @@ mod test {
             serde_json::from_value(value).expect("an unknown field must be ignored, not fatal");
 
         assert_eq!(snapshot, GameSnapshot::default());
+    }
+
+    #[test]
+    fn blank_next_game_number_reports_none() {
+        let snapshot = GameSnapshot {
+            current_period: GamePeriod::FirstHalf,
+            next_game_number: String::new(),
+            ..Default::default()
+        };
+        // Blank is how the refbox says "the selected court has no further games".
+        assert_eq!(snapshot.next_game_number(), None);
+    }
+
+    #[test]
+    fn populated_next_game_number_reports_some() {
+        let snapshot = GameSnapshot {
+            current_period: GamePeriod::FirstHalf,
+            next_game_number: "3".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(snapshot.next_game_number(), Some(&"3".to_string()));
+    }
+
+    #[test]
+    fn between_games_still_reports_no_next_game_number() {
+        // Unchanged behaviour: between games the upcoming game is `game_number()`,
+        // so `next_game_number()` is None regardless of the stored value.
+        let snapshot = GameSnapshot {
+            current_period: GamePeriod::BetweenGames,
+            next_game_number: "3".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(snapshot.next_game_number(), None);
     }
 }

@@ -14,7 +14,7 @@ pub(in super::super) fn build_game_info_page<'a>(
     using_uwhportal: bool,
     is_refreshing: bool,
     schedule: Option<&Schedule>,
-    last_game_scores: Option<BlackWhiteBundle<u8>>,
+    last_game: Option<(GameNumber, BlackWhiteBundle<u8>)>,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -56,7 +56,7 @@ pub(in super::super) fn build_game_info_page<'a>(
         using_uwhportal,
         schedule,
         teams,
-        last_game_scores,
+        last_game,
     ));
     // Pin the table to the top of the button via a transparent fill-height
     // wrapper, so the table's dark gridline backing only covers the grid and the

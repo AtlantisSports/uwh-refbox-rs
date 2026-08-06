@@ -4911,6 +4911,12 @@ impl RefBoxApp {
                     }
                 }
                 self.persist_config();
+                // The engine holds its own copy of the schedule — push the
+                // edited one in, or the next run counts down the old times.
+                let beep_test_config = self.config.beep_test.clone();
+                if let Some(ref mut bt_tm) = self.beep_test_tm {
+                    bt_tm.set_config(beep_test_config, Instant::now());
+                }
                 self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Main);
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()

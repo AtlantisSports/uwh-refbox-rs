@@ -3740,6 +3740,30 @@ mod tests {
         assert!(!edited.uwhportal_incomplete());
     }
 
+    #[test]
+    fn blank_game_number_leaves_portal_config_incomplete() {
+        // A court whose schedule is finished leaves the game number blank. APPLY must
+        // stay disabled until the operator picks a game, or an empty selection could
+        // be committed.
+        let event_id = EventId::from_partial("1-A");
+        let settings = EditableSettings {
+            source: GameSource::Portal,
+            current_event_id: Some(event_id.clone()),
+            current_court: Some("Court 1".to_string()),
+            schedule: Some(make_schedule_with_one_game(event_id, "1", "Court 1")),
+            game_number: String::new(),
+            ..Default::default()
+        };
+        assert!(settings.uwhportal_incomplete());
+
+        // Sanity check the same fixture with a real selection.
+        let settings = EditableSettings {
+            game_number: "1".to_string(),
+            ..settings
+        };
+        assert!(!settings.uwhportal_incomplete());
+    }
+
     /// A completed portal selection is applicable, as it always was. The
     /// client already serves the staged source; completeness and ownership
     /// decide alone.

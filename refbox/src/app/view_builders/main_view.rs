@@ -24,7 +24,7 @@ pub(in super::super) fn build_main_view<'a>(
     manual_alarm_enabled: bool,
     alarm_held: bool,
     behind_schedule: std::time::Duration,
-    last_game_scores: Option<BlackWhiteBundle<u8>>,
+    last_game: Option<(GameNumber, BlackWhiteBundle<u8>)>,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -261,7 +261,7 @@ pub(in super::super) fn build_main_view<'a>(
                         using_uwhportal,
                         schedule,
                         teams,
-                        last_game_scores,
+                        last_game,
                     )))
                     .align_y(Vertical::Top)
                     .height(Length::Fill)
@@ -288,7 +288,7 @@ pub(in super::super) fn build_main_view<'a>(
                     using_uwhportal,
                     schedule,
                     teams,
-                    last_game_scores,
+                    last_game,
                 )))
                 .align_y(Vertical::Top)
                 .height(Length::Fill)

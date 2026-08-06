@@ -5047,7 +5047,11 @@ impl RefBoxApp {
                     self.config.sound.sound_enabled && self.config.sound.manual_alarm_enabled,
                     self.mouse_alarm_held || self.spacebar_held,
                     behind_schedule,
-                    self.tm.lock().unwrap().last_game_info().map(|i| i.scores),
+                    self.tm
+                        .lock()
+                        .unwrap()
+                        .last_game_info()
+                        .map(|i| (i.game_number.clone(), i.scores)),
                 )
             }
             AppState::TimeEdit(_, time, timeout_time) => build_time_edit_view(
@@ -5096,7 +5100,11 @@ impl RefBoxApp {
                 self.using_uwhportal,
                 is_refreshing,
                 self.schedule.as_ref(),
-                self.tm.lock().unwrap().last_game_info().map(|i| i.scores),
+                self.tm
+                    .lock()
+                    .unwrap()
+                    .last_game_info()
+                    .map(|i| (i.game_number.clone(), i.scores)),
             ),
             AppState::WarningsSummaryPage => build_warnings_summary_page(data),
             AppState::PowerPage => build_power_page(data),

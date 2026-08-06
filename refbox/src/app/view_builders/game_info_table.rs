@@ -78,7 +78,7 @@ pub(in super::super) fn game_info_rows(
     using_uwhportal: bool,
     schedule: Option<&Schedule>,
     teams: Option<&TeamList>,
-    last_game_scores: Option<BlackWhiteBundle<u8>>,
+    last_game: Option<(GameNumber, BlackWhiteBundle<u8>)>,
 ) -> Vec<Row> {
     let between = snapshot.current_period == GamePeriod::BetweenGames;
     // The "current" game whose config + settings are displayed: the in-progress
@@ -184,13 +184,21 @@ pub(in super::super) fn game_info_rows(
         ),
     });
 
-    // Context block BEFORE the current block, between games only: the just-finished game.
+    // Context block BEFORE the current block, between games only: the last game that
+    // actually finished. Number AND score both come from the recorded result — pairing the
+    // clock's game number with an earlier game's score is exactly the fault this fixes,
+    // because an abandoned game leaves the clock reporting a game that has no result.
+    // With no recorded result at all, keep the pre-existing appearance.
     if between {
+        let (last_number, last_scores) = match last_game.as_ref() {
+            Some((number, scores)) => (number, Some(*scores)),
+            None => (&snapshot.game_number, None),
+        };
         let last = game_block_row(
             GameRole::Last,
-            &snapshot.game_number,
+            last_number,
             None, // prior game's Game Block is intentionally not shown
-            last_game_scores,
+            last_scores,
             using_uwhportal,
             schedule,
             teams,
@@ -874,7 +882,7 @@ mod tests {
             false,
             None,
             None,
-            Some(scores),
+            Some(("16".to_string(), scores)),
         );
         let last = rows
             .iter()
@@ -890,6 +898,67 @@ mod tests {
             })
             .unwrap();
         assert_eq!(last, (None, Some(3), Some(5)));
+    }
+
+    #[test]
+    fn last_block_uses_the_recorded_results_own_game_number() {
+        // Game 18 was abandoned, so the clock still reports 18 while the recorded result
+        // belongs to game 16. The Prior Game block must show 16 with 16's score — never
+        // 18's number paired with 16's score, which was the reported fault.
+        let snapshot = GameSnapshot {
+            current_period: GamePeriod::BetweenGames,
+            game_number: "18".to_string(),
+            ..GameSnapshot::default()
+        };
+        let scores = BlackWhiteBundle { black: 5, white: 3 };
+        let rows = game_info_rows(
+            &snapshot,
+            &cfg_all_on(),
+            false,
+            None,
+            None,
+            Some(("16".to_string(), scores)),
+        );
+        let last = rows
+            .iter()
+            .find_map(|r| match r {
+                Row::GameBlock {
+                    role: GameRole::Last,
+                    number,
+                    white,
+                    black,
+                    ..
+                } => Some((number.clone(), white.score, black.score)),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(last, ("16".to_string(), Some(3), Some(5)));
+    }
+
+    #[test]
+    fn last_block_without_a_recorded_result_keeps_todays_appearance() {
+        // No game has finished yet this session: the block keeps the clock's number and
+        // shows no score, exactly as before this change.
+        let snapshot = GameSnapshot {
+            current_period: GamePeriod::BetweenGames,
+            game_number: "18".to_string(),
+            ..GameSnapshot::default()
+        };
+        let rows = game_info_rows(&snapshot, &cfg_all_on(), false, None, None, None);
+        let last = rows
+            .iter()
+            .find_map(|r| match r {
+                Row::GameBlock {
+                    role: GameRole::Last,
+                    number,
+                    white,
+                    black,
+                    ..
+                } => Some((number.clone(), white.score, black.score)),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(last, ("18".to_string(), None, None));
     }
 
     fn ref_labels(rows: &[Row]) -> Vec<String> {

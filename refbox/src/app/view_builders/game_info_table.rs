@@ -97,11 +97,10 @@ pub(in super::super) fn game_info_rows(
     // A blank next-game number means the selected court has no further games
     // (uwh-common's GameSnapshot::next_game_number reports None for it). Between
     // games that empties the middle block; during a game it empties the Next block.
-    // This signal only ever arises from a remote schedule lookup (TournamentManager
-    // only reports a blank number after `set_no_next_game()`, itself only called from
-    // schedule-derived lookups); gate on `uses_remote` so a manual-mode snapshot, which
-    // has no schedule at all, is never misread as "no games left".
-    let no_game = uses_remote && snapshot.next_game_number.is_empty();
+    // Trust the blank number alone: the game source can go non-remote without the
+    // engine's portal next-game state being cleared (apply_app_options), so gating
+    // on it here would stop the table dashing exactly when it should.
+    let no_game = snapshot.next_game_number.is_empty();
     let no_current_game = between && no_game;
     let no_next_game = !between && no_game;
 
@@ -826,7 +825,13 @@ mod tests {
 
     #[test]
     fn overtime_off_grays_overtime_settings() {
-        let snapshot = GameSnapshot::default();
+        // A real manual-mode app never produces a blank next-game number (the engine
+        // falls back to a numeric guess); use a realistic non-blank one so this test
+        // exercises settings-greying, not the "no game left" dash path.
+        let snapshot = GameSnapshot {
+            next_game_number: "2".to_string(),
+            ..Default::default()
+        };
         let config = GameConfig {
             overtime_allowed: false,
             ..cfg_all_on()
@@ -860,7 +865,12 @@ mod tests {
 
     #[test]
     fn zero_timeouts_grays_duration() {
-        let snapshot = GameSnapshot::default();
+        // See overtime_off_grays_overtime_settings: a realistic non-blank next-game
+        // number keeps this test on the settings-greying path, not the dash path.
+        let snapshot = GameSnapshot {
+            next_game_number: "2".to_string(),
+            ..Default::default()
+        };
         let config = GameConfig {
             num_team_timeouts_allowed: 0,
             ..cfg_all_on()
@@ -872,7 +882,12 @@ mod tests {
 
     #[test]
     fn single_half_shows_game_length_grays_half_time() {
-        let snapshot = GameSnapshot::default();
+        // See overtime_off_grays_overtime_settings: a realistic non-blank next-game
+        // number keeps this test on the settings-greying path, not the dash path.
+        let snapshot = GameSnapshot {
+            next_game_number: "2".to_string(),
+            ..Default::default()
+        };
         let config = GameConfig {
             single_half: true,
             ..cfg_all_on()
@@ -1303,14 +1318,14 @@ mod tests {
 
     #[test]
     fn current_block_and_settings_dash_when_there_is_no_upcoming_game() {
-        let rows = game_info_rows(
-            &finished_court_snapshot(),
-            &cfg_all_on(),
-            true,
-            None,
-            None,
-            None,
-        );
+        // Some settings must be naturally dimmed here (overtime off) so the
+        // `!left.grayed` / `!right.grayed` assertions below actually prove the dash
+        // path clears `grayed` rather than passing because nothing was ever dimmed.
+        let config = GameConfig {
+            overtime_allowed: false,
+            ..cfg_all_on()
+        };
+        let rows = game_info_rows(&finished_court_snapshot(), &config, true, None, None, None);
         let current = rows
             .iter()
             .find_map(|r| match r {

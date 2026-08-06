@@ -2373,6 +2373,16 @@ impl RefBoxApp {
         // fields, so this mutable borrow and the immutable one above coexist.
         let hide_time_changed = commit_app_toggles(&mut self.config, edited);
 
+        // Switching to manual from this page must not leave the engine holding remote
+        // next-game state: it would keep reporting a blank next-game number, which greys
+        // START NOW and would strand the operator in manual mode. The Game page does this
+        // via reset_to_manual_break; here the minimal clear is enough, since manual mode
+        // resumes its own numbering from "unknown". Read the outgoing source before the
+        // commit below overwrites it.
+        if self.uses_remote() && matches!(source, GameSource::Manual) {
+            self.tm.lock().clear_portal_next_game();
+        }
+
         match commit_link {
             Some(link) => self.commit_link_selection(link),
             // Leave: commit the source, but do NOT touch the committed link.

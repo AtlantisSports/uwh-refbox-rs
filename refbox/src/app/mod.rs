@@ -2096,12 +2096,7 @@ impl RefBoxApp {
                     }
                 };
 
-                let next_game = schedule
-                    .games
-                    .values()
-                    .filter(|game| game.court == *pool)
-                    .filter(|game| game.start_time > this_game_start)
-                    .min_by_key(|game| game.start_time);
+                let next_game = schedule.next_game_on_court(pool, this_game_start);
 
                 let mut tm = self.tm.lock();
                 let next_game_number = if let Some(next_game) = next_game {
@@ -2114,7 +2109,10 @@ impl RefBoxApp {
                     tm.set_next_game(info);
                     Some(next_game.number.clone())
                 } else {
-                    error!("Couldn't find a next game");
+                    // Definite answer, not a failure: this court's schedule is finished.
+                    // Recording it stops the engine guessing another court's game.
+                    info!("No games scheduled on court {pool} after game {new_game_num}");
+                    tm.set_no_next_game();
                     None
                 };
                 self.config.game = tm.config().clone();
@@ -2173,7 +2171,9 @@ impl RefBoxApp {
                     if let Some(ref event_id) = self.current_event_id {
                         let event_id_str = event_id.full().to_string();
                         tasks.push(self.request_schedule(event_id.clone()));
-                        if let Err(e) = self.portal_manager.enqueue_game_end(
+                        if game_number.is_empty() {
+                            warn!("Game ended with no game number; not posting to the portal");
+                        } else if let Err(e) = self.portal_manager.enqueue_game_end(
                             event_id_str,
                             game_number.to_string(),
                             scores.black,
@@ -2279,7 +2279,9 @@ impl RefBoxApp {
                 // The game the operator is on: the upcoming game between games,
                 // otherwise the current game number from the live snapshot.
                 let game_number = if self.snapshot.current_period == GamePeriod::BetweenGames {
-                    Some(self.snapshot.next_game_number.clone())
+                    // Blank means this court's schedule is finished — remember the
+                    // court, but no game, so a restart comes back to the same state.
+                    Some(self.snapshot.next_game_number.clone()).filter(|n| !n.is_empty())
                 } else {
                     Some(self.snapshot.game_number.clone())
                 };
@@ -6279,18 +6281,38 @@ impl RefBoxApp {
                                 let mut tm = self.tm.lock();
                                 if tm.current_period() == GamePeriod::BetweenGames {
                                     // On a startup link restore, re-select the
-                                    // remembered game; otherwise pick the default
-                                    // next game by number.
+                                    // remembered game. Otherwise ask the same
+                                    // court-aware question `handle_game_start`
+                                    // asks: what follows the game we are on, on
+                                    // our court? Never "one number higher" — that
+                                    // is another court's game.
                                     let restore_num = self.pending_restore_game.take();
-                                    let lookup_num = restore_num
-                                        .clone()
-                                        .unwrap_or_else(|| tm.next_game_number());
-                                    if let (Some(game), Some(timing)) = self
-                                        .schedule
-                                        .as_ref()
-                                        .unwrap()
-                                        .get_game_and_timing(&lookup_num)
-                                    {
+                                    // Safety: `self.schedule` was assigned from `schedule` two lines above.
+                                    let schedule = self.schedule.as_ref().unwrap();
+                                    let found = if let Some(ref num) = restore_num {
+                                        schedule.get_game_and_timing(num)
+                                    } else if let Some(ref court) = self.current_court {
+                                        let anchor = schedule
+                                            .games
+                                            .get(&tm.game_number())
+                                            .map(|g| g.start_time);
+                                        match anchor
+                                            .and_then(|a| schedule.next_game_on_court(court, a))
+                                        {
+                                            Some(game) => (
+                                                Some(game),
+                                                schedule.get_game_timing(&game.number),
+                                            ),
+                                            // Anchor game missing (schedule changed
+                                            // under us) or nothing later on this
+                                            // court: either way, nothing to adopt.
+                                            None => (None, None),
+                                        }
+                                    } else {
+                                        (None, None)
+                                    };
+
+                                    if let (Some(game), Some(timing)) = found {
                                         info!(
                                             "Setting upcoming game info from received schedule: {game:?}"
                                         );
@@ -6315,6 +6337,12 @@ impl RefBoxApp {
                                             roster_tasks.push(self.apply_snapshot(snapshot));
                                             return Task::batch(roster_tasks);
                                         }
+                                    } else if restore_num.is_none()
+                                        && self.current_court.is_some()
+                                    {
+                                        // A refresh that finds nothing later on this
+                                        // court is the definite "day is done" answer.
+                                        tm.set_no_next_game();
                                     }
                                 }
                             }

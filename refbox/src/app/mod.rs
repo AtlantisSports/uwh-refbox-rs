@@ -508,6 +508,22 @@ fn should_play_countdown_beep(
         && (1..=10).contains(&new_secs)
 }
 
+/// Whether the result the refbox has on file may be submitted for the game the clock just
+/// left. A recorded result belongs to exactly one game and carries that game's number
+/// (`LastGameInfo::game_number`).
+///
+/// Ending a game normally records a result for it, so the two agree and the result is sent.
+/// Abandoning a game — END CURRENT GAME AND APPLY, which resets the game instead of ending
+/// it — records nothing, so the newest result on file belongs to an EARLIER game. Sending
+/// that under the abandoned game's number would post the previous game's score against a
+/// game that was never played.
+fn recorded_result_matches_ended_game(
+    recorded_game: Option<&GameNumber>,
+    ended_game: &GameNumber,
+) -> bool {
+    recorded_game == Some(ended_game)
+}
+
 impl RefBoxApp {
     fn apply_snapshot(&mut self, mut new_snapshot: GameSnapshot) -> Task<Message> {
         let mut task = Task::none();
@@ -868,33 +884,50 @@ impl RefBoxApp {
     fn handle_game_end(&mut self, game_number: &GameNumber) -> Task<Message> {
         let mut tasks = vec![];
         if self.using_uwhportal {
-            if let Some(info) = self.tm.lock().unwrap().last_game_info() {
-                let stats = info.stats.as_json();
-                let black_score = info.scores.black;
-                let white_score = info.scores.white;
+            // Copy everything needed out from under the lock: the recorded result's own
+            // game number, its scores, and its stats JSON.
+            let recorded = {
+                // Safety: Mutex poison only occurs if another thread already panicked; the refbox treats that as fatal (matches the 20+ identical sites in this file).
+                let tm = self.tm.lock().unwrap();
+                tm.last_game_info()
+                    .map(|info| (info.game_number.clone(), info.scores, info.stats.as_json()))
+            };
 
-                info!(
-                    "Game ended, scores: {:?} stats were: {:?}",
-                    info.scores, stats
-                );
+            match recorded {
+                Some((recorded_game, scores, stats))
+                    if recorded_result_matches_ended_game(Some(&recorded_game), game_number) =>
+                {
+                    info!("Game ended, scores: {scores:?} stats were: {stats:?}");
 
-                if let Some(ref event_id) = self.current_event_id {
-                    let event_id_str = event_id.full().to_string();
-                    tasks.push(self.request_schedule(event_id.clone()));
-                    if let Err(e) = self.portal_manager.enqueue_game_end(
-                        event_id_str,
-                        game_number.to_string(),
-                        black_score,
-                        white_score,
-                        stats,
-                    ) {
-                        error!("portal_manager.enqueue_game_end failed: {e}");
+                    if let Some(ref event_id) = self.current_event_id {
+                        let event_id_str = event_id.full().to_string();
+                        tasks.push(self.request_schedule(event_id.clone()));
+                        if let Err(e) = self.portal_manager.enqueue_game_end(
+                            event_id_str,
+                            game_number.to_string(),
+                            scores.black,
+                            scores.white,
+                            stats,
+                        ) {
+                            error!("portal_manager.enqueue_game_end failed: {e}");
+                        }
+                    } else {
+                        error!("Missing current event id to handle game end");
                     }
-                } else {
-                    error!("Missing current event id to handle game end");
                 }
-            } else {
-                warn!("Game ended, but no last game info was available");
+                Some((recorded_game, _, _)) => {
+                    warn!(
+                        "Clock left game {game_number} without a result being recorded for it \
+                         (the newest recorded result belongs to game {recorded_game}); nothing \
+                         sent to the portal"
+                    );
+                }
+                None => {
+                    warn!(
+                        "Clock left game {game_number} with no recorded result available; \
+                         nothing sent to the portal"
+                    );
+                }
             }
         }
 
@@ -5741,6 +5774,37 @@ mod countdown_beep_tests {
         ] {
             assert!(!should_play_countdown_beep(p, 5, 6, true), "{p:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod submission_gate_tests {
+    use super::recorded_result_matches_ended_game;
+
+    #[test]
+    fn result_for_the_same_game_is_submitted() {
+        let recorded = "16".to_string();
+        assert!(recorded_result_matches_ended_game(
+            Some(&recorded),
+            &"16".to_string()
+        ));
+    }
+
+    #[test]
+    fn result_for_an_earlier_game_is_not_submitted() {
+        // The forfeit incident: game 18 was abandoned mid-play, so the newest recorded
+        // result belongs to game 16 and must not be posted against 18.
+        let recorded = "16".to_string();
+        assert!(!recorded_result_matches_ended_game(
+            Some(&recorded),
+            &"18".to_string()
+        ));
+    }
+
+    #[test]
+    fn no_recorded_result_is_not_submitted() {
+        // First game of the session, or a fresh restart.
+        assert!(!recorded_result_matches_ended_game(None, &"18".to_string()));
     }
 }
 

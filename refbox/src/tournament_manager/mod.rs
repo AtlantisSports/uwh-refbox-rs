@@ -2035,6 +2035,11 @@ impl TournamentManager {
             | GamePeriod::OvertimeSecondHalf
             | GamePeriod::SuddenDeath => return Err(TournamentManagerError::AlreadyInPlayPeriod),
             GamePeriod::BetweenGames => {
+                if self.no_next_game {
+                    // Refuse rather than invent a game number. The main page greys
+                    // START NOW in this state, so this guard is the backstop.
+                    return Err(TournamentManagerError::NoNextGameOnCourt);
+                }
                 self.start_game(now);
             }
             GamePeriod::HalfTime => {
@@ -2804,6 +2809,8 @@ pub enum TournamentManagerError {
     ClockStopped,
     #[error("Could not build a game snapshot after {0} attempts")]
     SnapshotUnavailable(u32),
+    #[error("There is no next game scheduled on this court")]
+    NoNextGameOnCourt,
 }
 
 pub type Result<T> = std::result::Result<T, TournamentManagerError>;
@@ -9366,6 +9373,20 @@ mod test {
         // which is the state the app immediately resolves via handle_game_start.
         assert_eq!(tm.game_number(), "9");
         assert_eq!(tm.next_game_number(), "10");
+    }
+
+    #[test]
+    fn start_play_now_is_refused_when_the_court_is_finished() {
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        tm.set_game_number("9");
+        tm.set_no_next_game();
+
+        let now = Instant::now();
+        assert_eq!(tm.start_play_now(now), Err(TMErr::NoNextGameOnCourt));
+        // Nothing moved: no phantom game 10, still between games.
+        assert_eq!(tm.current_period(), GamePeriod::BetweenGames);
+        assert_eq!(tm.game_number(), "9");
     }
 
     #[test]

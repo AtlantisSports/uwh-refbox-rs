@@ -3688,7 +3688,13 @@ impl RefBoxApp {
             Message::StartPlayNow => {
                 let mut tm = self.tm.lock();
                 let now = Instant::now();
-                tm.start_play_now(now).unwrap();
+                if let Err(e) = tm.start_play_now(now) {
+                    // The only reachable error is a court whose schedule is finished,
+                    // where START NOW is greyed out anyway. Log and do nothing rather
+                    // than crash the refbox mid-tournament.
+                    warn!("Could not start play now: {e}");
+                    return Task::none();
+                }
                 let snapshot = tm.generate_snapshot(now).unwrap();
                 std::mem::drop(tm);
                 self.apply_snapshot(snapshot)

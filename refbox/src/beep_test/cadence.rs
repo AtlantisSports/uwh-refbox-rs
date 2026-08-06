@@ -618,9 +618,10 @@ mod tests {
     }
 
     // On completion the engine must also restore `time_in_next_lap` to the
-    // duration of the period that follows the warm-up. Without this the
-    // front display keeps advertising a stale "next lap" time after the
-    // test ends.
+    // duration of the period that follows the warm-up, so that its idle
+    // state after completion matches the state `reset_beep_test_now`
+    // produces. Without this the engine would be internally inconsistent
+    // even though nothing observable depends on this field today.
     #[test]
     fn completion_restores_time_in_next_lap() {
         let mut tm = TournamentManager::new(test_config());

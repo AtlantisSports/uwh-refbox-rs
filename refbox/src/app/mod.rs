@@ -4914,9 +4914,15 @@ impl RefBoxApp {
                 // The engine holds its own copy of the schedule — push the
                 // edited one in, or the next run counts down the old times.
                 let beep_test_config = self.config.beep_test.clone();
+                let now = Instant::now();
                 if let Some(ref mut bt_tm) = self.beep_test_tm {
-                    bt_tm.set_config(beep_test_config, Instant::now());
+                    bt_tm.set_config(beep_test_config, now);
                 }
+                // set_config() only resets the engine — bring the app-side
+                // has_run/snapshot state back to idle too, so this stays
+                // consistent if a future entry point (e.g. a court-length
+                // preset) reaches set_config() while has_run is true.
+                self.reset_beep_test_state(now);
                 self.app_state = AppState::BeepTestSettings(BeepTestConfigPage::Main);
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()

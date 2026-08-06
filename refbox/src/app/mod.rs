@@ -208,6 +208,12 @@ pub struct RefBoxApp {
     /// One-shot: the game number to re-select once the schedule arrives during
     /// a startup link restore; cleared on first use. `None` in normal operation.
     pending_restore_game: Option<GameNumber>,
+    /// One-shot: the restored session remembered a court but no game, which is how
+    /// a court whose schedule is finished is written down. Distinct from "no note at
+    /// all": it is a recorded fact, not an absence, and without it the fresh engine
+    /// would fall back to guessing game "1". Cleared on first use, exactly like
+    /// `pending_restore_game`.
+    pending_restore_court_finished: bool,
     /// One-shot: the event whose schedule to fetch once the event list lands
     /// during a startup link restore. Deferred (rather than fetched at startup)
     /// so the schedule arrives after the portal's event list is populated in
@@ -1139,6 +1145,17 @@ fn picker_roster_game(snapshot: &GameSnapshot) -> Option<&GameNumber> {
     }
 }
 
+/// `true` when the break now on screen will start nothing when it expires: we are
+/// between games and the next-game number is blank, which is how the refbox reports
+/// that the selected court has no further scheduled games.
+///
+/// Both the start-of-play buzzer and the audible countdown are gated on this. In this
+/// state the clock simply stops at 0:00, so counting the poolside down and sounding a
+/// start-of-play buzzer would announce a game that never begins.
+fn break_starts_nothing(period: GamePeriod, next_game_number: &str) -> bool {
+    period == GamePeriod::BetweenGames && next_game_number.is_empty()
+}
+
 impl RefBoxApp {
     fn apply_snapshot(&mut self, mut new_snapshot: GameSnapshot) -> Task<Message> {
         let mut task = Task::none();
@@ -1186,6 +1203,11 @@ impl RefBoxApp {
     }
 
     fn maybe_play_sound(&self, new_snapshot: &GameSnapshot) {
+        // A break that will start nothing must not be announced: no buzzer at 0:00
+        // and no countdown beeps on the way there.
+        let starts_nothing =
+            break_starts_nothing(new_snapshot.current_period, &new_snapshot.next_game_number);
+
         let (play_whistle, play_buzzer) = match new_snapshot.timeout {
             Some(TimeoutSnapshot::Black(time)) | Some(TimeoutSnapshot::White(time)) => {
                 match self.snapshot.timeout {
@@ -1233,12 +1255,16 @@ impl RefBoxApp {
 
                 (
                     prereqs && is_whistle_period && new_snapshot.secs_in_period == 30,
-                    prereqs && is_buzz_period && new_snapshot.secs_in_period == 0,
+                    prereqs
+                        && is_buzz_period
+                        && !starts_nothing
+                        && new_snapshot.secs_in_period == 0,
                 )
             }
         };
 
         let play_countdown = new_snapshot.timeout.is_none()
+            && !starts_nothing
             && should_play_countdown_beep(
                 new_snapshot.current_period,
                 new_snapshot.secs_in_period,
@@ -2380,7 +2406,30 @@ impl RefBoxApp {
         // resumes its own numbering from "unknown". Read the outgoing source before the
         // commit below overwrites it.
         if self.uses_remote() && matches!(source, GameSource::Manual) {
-            self.tm.lock().clear_portal_next_game();
+            let mut tm = self.tm.lock();
+            // In the finished state the break clock is held stopped at 0:00, so no
+            // snapshot is generated again on its own. Clearing the engine alone would
+            // leave the main page reading the stale blank number, with START NOW still
+            // greyed — the very trap the operator switched the portal off to escape.
+            let escaping_finished_state = tm.current_period() == GamePeriod::BetweenGames
+                && tm.next_game_number().is_empty()
+                && !tm.clock_is_running();
+            tm.clear_portal_next_game();
+            if escaping_finished_state {
+                let now = Instant::now();
+                let nominal_break = tm.config().nominal_break;
+                // why this cannot panic: `escaping_finished_state` requires a stopped
+                // clock, and `set_game_clock_time` only errors while it is running.
+                tm.set_game_clock_time(nominal_break).unwrap();
+                tm.start_clock(now);
+                let snapshot = tm.generate_snapshot(now);
+                std::mem::drop(tm);
+                if let Some(snapshot) = snapshot {
+                    // Between games before and after, so `apply_snapshot` returns an
+                    // empty task; this page's Apply has no task to carry in any case.
+                    let _ = self.apply_snapshot(snapshot);
+                }
+            }
         }
 
         match commit_link {
@@ -3487,6 +3536,7 @@ impl RefBoxApp {
             current_event_id: None,
             current_court: None,
             pending_restore_game: None,
+            pending_restore_court_finished: false,
             pending_restore_schedule: None,
             sound,
             sim_children,
@@ -3548,6 +3598,13 @@ impl RefBoxApp {
                     new.source = GameSource::Portal;
                     new.current_court = note.court.clone();
                     new.pending_restore_game = note.game_number.clone();
+                    // A note that remembers a court but no game was written in the
+                    // "this court's schedule is finished" state. Carry that fact
+                    // through to the schedule refresh, or the fresh engine would
+                    // resolve its own game number ("0") to a guessed game "1" and
+                    // auto-start it when the break ran out.
+                    new.pending_restore_court_finished =
+                        note.court.is_some() && note.game_number.is_none();
                     new.set_current_event_id(Some(note.event_id.clone()));
                     // Defer the schedule fetch to RecvEventList (after the event
                     // list populates self.events) so it can't race ahead of the
@@ -6290,43 +6347,34 @@ impl RefBoxApp {
                             if self.edited_settings.is_none() {
                                 let mut tm = self.tm.lock();
                                 if tm.current_period() == GamePeriod::BetweenGames {
-                                    // On a startup link restore, re-select the
-                                    // remembered game. Otherwise ask the same
-                                    // court-aware question `handle_game_start`
-                                    // asks: what follows the game we are on, on
-                                    // our court? Never "one number higher" — that
-                                    // is another court's game.
+                                    // Both one-shots are consumed here, whatever the
+                                    // outcome, so a restore applies exactly once.
                                     let restore_num = self.pending_restore_game.take();
+                                    let restore_court_finished = std::mem::take(
+                                        &mut self.pending_restore_court_finished,
+                                    );
                                     // Safety: `self.schedule` was assigned from `schedule` two lines above.
                                     let schedule = self.schedule.as_ref().unwrap();
-                                    // Only a refresh that could actually judge — anchor found,
-                                    // nothing later on this court — is the definite "day is
-                                    // done" answer.
-                                    let mut court_finished = false;
-                                    let found = if let Some(ref num) = restore_num {
-                                        schedule.get_game_and_timing(num)
-                                    } else if let Some(ref court) = self.current_court {
-                                        match schedule.games.get(&tm.game_number()) {
-                                            Some(anchor) => match schedule
-                                                .next_game_on_court(court, anchor.start_time)
-                                            {
-                                                Some(game) => (
-                                                    Some(game),
-                                                    schedule.get_game_timing(&game.number),
-                                                ),
-                                                None => {
-                                                    court_finished = true;
-                                                    (None, None)
-                                                }
-                                            },
-                                            // The game we are on is not in this schedule (it
-                                            // changed under us, or no game has started yet):
-                                            // we cannot judge what follows it, so leave the
-                                            // engine's state alone.
-                                            None => (None, None),
+                                    // A blank next-game number is the engine's
+                                    // "this court is finished" state, where the
+                                    // break clock is held stopped at 0:00. Noted
+                                    // before anything changes it, so that leaving
+                                    // that state can restart the clock below.
+                                    let was_court_finished = tm.next_game_number().is_empty();
+                                    let decision = next_game_from_schedule(
+                                        schedule,
+                                        restore_num.as_ref(),
+                                        restore_court_finished,
+                                        tm.next_game_info().as_ref().map(|info| &info.number),
+                                        &tm.game_number(),
+                                        self.current_court.as_deref(),
+                                    );
+                                    let found = match decision {
+                                        NextGameFromSchedule::Game(ref number) => {
+                                            schedule.get_game_and_timing(number)
                                         }
-                                    } else {
-                                        (None, None)
+                                        NextGameFromSchedule::CourtFinished
+                                        | NextGameFromSchedule::Unknown => (None, None),
                                     };
 
                                     if let (Some(game), Some(timing)) = found {
@@ -6338,11 +6386,19 @@ impl RefBoxApp {
                                             timing: Some(timing.clone()),
                                             start_time: Some(game.start_time),
                                         });
-                                        if restore_num.is_some() {
+                                        let leaving_finished_state =
+                                            was_court_finished && !tm.clock_is_running();
+                                        if restore_num.is_some() || leaving_finished_state {
                                             // Start the live countdown to the
                                             // scheduled start so a restored session
                                             // is ready to go (same path the normal
-                                            // between-games transition uses).
+                                            // between-games transition uses). A
+                                            // court coming back to life needs the
+                                            // same treatment: its break clock is
+                                            // held stopped at 0:00, which idles the
+                                            // time updater, so without this the
+                                            // table would stay dashed, START NOW
+                                            // greyed and the clock frozen.
                                             let now = Instant::now();
                                             // why this cannot panic: BetweenGames was
                                             // just checked and next_game was just set.
@@ -6354,7 +6410,7 @@ impl RefBoxApp {
                                             roster_tasks.push(self.apply_snapshot(snapshot));
                                             return Task::batch(roster_tasks);
                                         }
-                                    } else if court_finished {
+                                    } else if decision == NextGameFromSchedule::CourtFinished {
                                         // A refresh that finds nothing later on this
                                         // court is the definite "day is done" answer.
                                         tm.set_no_next_game();
@@ -8603,6 +8659,313 @@ mod restore_tests {
         let n = note(now, Mode::Hockey6V6);
         // Rugby uses the UWR portal → must NOT restore a UWH note
         assert!(!decide_restore(&n, now, Mode::Rugby));
+    }
+}
+
+/// What a freshly-received schedule says about the game that comes next.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum NextGameFromSchedule {
+    /// Install this game — looked up in the schedule — as the next game.
+    Game(GameNumber),
+    /// The selected court has no game after the one the refbox is on: this
+    /// court's schedule is finished.
+    CourtFinished,
+    /// Not enough is known to judge. Leave the engine's state alone.
+    Unknown,
+}
+
+/// Decide what a freshly-received schedule means for the upcoming game, in
+/// priority order:
+///
+/// 1. A startup link restore re-selects the remembered game.
+/// 2. The game the engine already holds wins over any search: the operator may
+///    have picked a game out of order, and a refresh must not silently replace
+///    that choice with the next game in schedule order.
+/// 3. With no game held, ask the same court-aware question `handle_game_start`
+///    asks: what follows the game we are on, on our court? Never "one number
+///    higher" — on a multi-court event that is another court's game.
+/// 4. If the game we are on is not in this schedule we cannot judge what follows
+///    it — except when the restored session was remembered as finished on this
+///    court. That is a recorded fact rather than a guess, so it is re-asserted,
+///    but only while the court itself is still in the schedule: a court that has
+///    gone cannot be judged at all.
+fn next_game_from_schedule(
+    schedule: &Schedule,
+    restore_num: Option<&GameNumber>,
+    restore_court_finished: bool,
+    engine_next: Option<&GameNumber>,
+    anchor_num: &GameNumber,
+    court: Option<&str>,
+) -> NextGameFromSchedule {
+    if let Some(num) = restore_num {
+        return NextGameFromSchedule::Game(num.clone());
+    }
+
+    if let Some(num) = engine_next {
+        return NextGameFromSchedule::Game(num.clone());
+    }
+
+    let Some(court) = court else {
+        return NextGameFromSchedule::Unknown;
+    };
+
+    match schedule.games.get(anchor_num) {
+        Some(anchor) => match schedule.next_game_on_court(court, anchor.start_time) {
+            Some(game) => NextGameFromSchedule::Game(game.number.clone()),
+            None => NextGameFromSchedule::CourtFinished,
+        },
+        None => {
+            let court_still_exists = schedule.games.values().any(|game| game.court == court);
+            if restore_court_finished && court_still_exists {
+                NextGameFromSchedule::CourtFinished
+            } else {
+                NextGameFromSchedule::Unknown
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod refresh_next_game_tests {
+    use super::*;
+    use uwh_common::uwhportal::schedule::{Game, GameList, ScheduledTeam};
+
+    fn game_at(number: &str, court: &str, start: time::OffsetDateTime) -> Game {
+        Game {
+            number: number.to_string(),
+            dark: ScheduledTeam::new_pending_assignment_name("Dark"),
+            light: ScheduledTeam::new_pending_assignment_name("Light"),
+            start_time: start,
+            court: court.to_string(),
+            timing_rule: "Standard".to_string(),
+            referee_assignments: None,
+            description: None,
+        }
+    }
+
+    /// Two courts, alternating: court 1 holds games 9 and 11, court 2 holds 10 and 12.
+    fn two_court_schedule() -> Schedule {
+        let mut games = GameList::new();
+        for (number, court, start) in [
+            (
+                "9",
+                "Court 1",
+                time::macros::datetime!(2026-08-05 09:00 UTC),
+            ),
+            (
+                "10",
+                "Court 2",
+                time::macros::datetime!(2026-08-05 09:00 UTC),
+            ),
+            (
+                "11",
+                "Court 1",
+                time::macros::datetime!(2026-08-05 10:00 UTC),
+            ),
+            (
+                "12",
+                "Court 2",
+                time::macros::datetime!(2026-08-05 10:00 UTC),
+            ),
+        ] {
+            games.insert(number.to_string(), game_at(number, court, start));
+        }
+        Schedule {
+            event_id: EventId::from_partial("1-A"),
+            games,
+            non_game_entries: vec![],
+            groups: vec![],
+            timing_rules: vec![],
+            standings_order: None,
+            final_results_order: None,
+            referees_by_game_number: None,
+        }
+    }
+
+    #[test]
+    fn a_restored_game_number_wins() {
+        let schedule = two_court_schedule();
+        assert_eq!(
+            next_game_from_schedule(
+                &schedule,
+                Some(&"12".to_string()),
+                false,
+                None,
+                &"0".to_string(),
+                Some("Court 1"),
+            ),
+            NextGameFromSchedule::Game("12".to_string())
+        );
+    }
+
+    #[test]
+    fn the_operators_out_of_order_pick_survives_a_refresh() {
+        // The operator finished game 9 and picked game 12 by hand. A refresh must
+        // re-resolve THAT game, not replace it with game 11.
+        let schedule = two_court_schedule();
+        assert_eq!(
+            next_game_from_schedule(
+                &schedule,
+                None,
+                false,
+                Some(&"12".to_string()),
+                &"9".to_string(),
+                Some("Court 1"),
+            ),
+            NextGameFromSchedule::Game("12".to_string())
+        );
+    }
+
+    #[test]
+    fn the_court_aware_search_runs_when_the_engine_holds_no_game() {
+        let schedule = two_court_schedule();
+        // Game 10 starts at the same moment on the other court and must be ignored.
+        assert_eq!(
+            next_game_from_schedule(
+                &schedule,
+                None,
+                false,
+                None,
+                &"9".to_string(),
+                Some("Court 1"),
+            ),
+            NextGameFromSchedule::Game("11".to_string())
+        );
+    }
+
+    #[test]
+    fn nothing_after_the_last_game_on_the_court_is_finished() {
+        let schedule = two_court_schedule();
+        assert_eq!(
+            next_game_from_schedule(
+                &schedule,
+                None,
+                false,
+                None,
+                &"11".to_string(),
+                Some("Court 1"),
+            ),
+            NextGameFromSchedule::CourtFinished
+        );
+    }
+
+    #[test]
+    fn an_anchor_outside_the_schedule_cannot_be_judged() {
+        // "0" is a fresh engine's game number: nothing can be said about what
+        // follows it, so the engine is left as it is.
+        let schedule = two_court_schedule();
+        assert_eq!(
+            next_game_from_schedule(
+                &schedule,
+                None,
+                false,
+                None,
+                &"0".to_string(),
+                Some("Court 1"),
+            ),
+            NextGameFromSchedule::Unknown
+        );
+    }
+
+    #[test]
+    fn no_court_selected_cannot_be_judged() {
+        let schedule = two_court_schedule();
+        assert_eq!(
+            next_game_from_schedule(&schedule, None, true, None, &"9".to_string(), None),
+            NextGameFromSchedule::Unknown
+        );
+    }
+
+    #[test]
+    fn a_session_remembered_as_finished_comes_back_finished() {
+        // Restart after the last game on court 1: the engine is fresh ("0"), but the
+        // note recorded a court and no game. Without this the guess would be game 1.
+        let schedule = two_court_schedule();
+        assert_eq!(
+            next_game_from_schedule(
+                &schedule,
+                None,
+                true,
+                None,
+                &"0".to_string(),
+                Some("Court 1"),
+            ),
+            NextGameFromSchedule::CourtFinished
+        );
+    }
+
+    #[test]
+    fn a_remembered_finished_court_that_has_gone_stays_unknown() {
+        // The court is no longer in the schedule at all: that is "cannot judge",
+        // not "finished".
+        let schedule = two_court_schedule();
+        assert_eq!(
+            next_game_from_schedule(
+                &schedule,
+                None,
+                true,
+                None,
+                &"0".to_string(),
+                Some("Court 9"),
+            ),
+            NextGameFromSchedule::Unknown
+        );
+    }
+
+    #[test]
+    fn a_new_game_on_a_remembered_finished_court_is_still_found_once_a_game_is_on() {
+        // The remembered-finished flag never overrides a judgeable anchor: with the
+        // engine on game 9, a game added later on the court is picked up normally.
+        let schedule = two_court_schedule();
+        assert_eq!(
+            next_game_from_schedule(
+                &schedule,
+                None,
+                true,
+                None,
+                &"9".to_string(),
+                Some("Court 1"),
+            ),
+            NextGameFromSchedule::Game("11".to_string())
+        );
+    }
+}
+
+#[cfg(test)]
+mod break_starts_nothing_tests {
+    use super::break_starts_nothing;
+    use uwh_common::game_snapshot::GamePeriod;
+
+    #[test]
+    fn blank_number_between_games_starts_nothing() {
+        assert!(break_starts_nothing(GamePeriod::BetweenGames, ""));
+    }
+
+    #[test]
+    fn a_real_upcoming_game_still_sounds() {
+        assert!(!break_starts_nothing(GamePeriod::BetweenGames, "11"));
+    }
+
+    #[test]
+    fn other_breaks_are_never_silenced() {
+        // A game is in progress in every other break, so they always start play
+        // again — whatever the next-game number says.
+        for period in [
+            GamePeriod::HalfTime,
+            GamePeriod::PreOvertime,
+            GamePeriod::OvertimeHalfTime,
+            GamePeriod::PreSuddenDeath,
+        ] {
+            assert!(!break_starts_nothing(period, ""), "{period:?}");
+        }
+    }
+}
+
+fn font_family_id(lang: Language) -> u8 {
+    match lang {
+        Language::Korean | Language::Japanese | Language::Mandarin => 1,
+        Language::Thai => 2,
+        _ => 0,
     }
 }
 

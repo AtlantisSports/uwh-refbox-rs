@@ -200,3 +200,23 @@ Feature: Portal health indicator
     # Operator confirmed tile visible at left of time banner with UWH Portal
     # compact logo above a green dot. B7.C2 (tile render) + B7.D1 (logo asset)
     # both live-confirmed.
+
+  # Added 2026-08-06 for branch fix/refbox/abandoned-game-portal-submission.
+  # Oracle: docs/superpowers/specs/2026-08-05-abandoned-game-portal-submission-design.md
+  # Reported from a live event: a team forfeited, the game had already started, and
+  # switching to the next game posted the PREVIOUS game's score against the forfeited
+  # game instead of leaving it unplayed.
+  Scenario: Abandoning an in-progress game submits nothing for it
+    Given a portal event is linked and a court is selected
+    And a game has already been played to a normal finish and its score has landed on the portal
+    And the next game is in progress in its first half
+    When the operator changes the game number in Settings and taps APPLY
+    And the operator chooses END CURRENT GAME AND APPLY CHANGE
+    Then the newly chosen game is selected and the correct time to its start is shown
+    And no score and no statistics are submitted for the abandoned game
+    And no new item appears in the portal queue or on the portal detail page
+    And the portal still shows the abandoned game as unplayed
+    And the Prior Game block shows the game that finished normally, with its own final score
+    And the log records that the clock left the abandoned game without a recorded result
+    When the newly chosen game is played to a normal finish
+    Then its result is submitted under its own game number

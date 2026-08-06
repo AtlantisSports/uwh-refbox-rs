@@ -145,6 +145,11 @@ pub struct TournamentManager {
     start_stop_tx: watch::Sender<bool>,
     start_stop_rx: watch::Receiver<bool>,
     next_game: Option<NextGameInfo>,
+    /// Set when the app has established that the selected court has no game after the
+    /// one in progress. Distinct from `next_game: None`, which only means "not known
+    /// yet" — this one is a definite answer, and it stops the engine both from
+    /// guessing a number and from starting a game it cannot identify.
+    no_next_game: bool,
     next_scheduled_start: Option<Instant>,
     /// Scheduled start of the game currently in progress (portal printed time when
     /// present, else the Game Block grid slot). Set at `start_game`. `None` before
@@ -177,6 +182,7 @@ impl TournamentManager {
             start_stop_tx,
             start_stop_rx,
             next_game: None,
+            no_next_game: false,
             next_scheduled_start: None,
             current_scheduled_start: None,
             reset_game_time: config.nominal_break,
@@ -270,6 +276,7 @@ impl TournamentManager {
     pub fn clear_portal_next_game(&mut self) {
         self.next_game = None;
         self.next_scheduled_start = None;
+        self.no_next_game = false;
     }
 
     /// Return to the fresh-manual-launch before-game state: forget any loaded next-game
@@ -299,6 +306,12 @@ impl TournamentManager {
             return info.number.clone();
         }
 
+        if self.no_next_game {
+            // Blank means "no next game on this court" — `GameSnapshot::next_game_number`
+            // reports `None` for it. Guessing here would name another court's game.
+            return GameNumber::new();
+        }
+
         match self.game_number.parse::<u32>() {
             Ok(num) => (num + 1).to_string(),
             Err(_) => {
@@ -319,6 +332,16 @@ impl TournamentManager {
     pub fn set_next_game(&mut self, info: NextGameInfo) {
         info!("Next Game Info set to {info:?}");
         self.next_game = Some(info);
+        self.no_next_game = false;
+    }
+
+    /// Record that the selected court has no game after the one in progress. Reported
+    /// as a blank next-game number, and honoured by the between-games countdown and by
+    /// `start_play_now`, neither of which will start a game in this state.
+    pub fn set_no_next_game(&mut self) {
+        info!("No further games scheduled on this court");
+        self.next_game = None;
+        self.no_next_game = true;
     }
 
     pub fn reset_game(&mut self, now: Instant) {
@@ -1274,6 +1297,7 @@ impl TournamentManager {
         );
 
         self.game_number = self.next_game_number();
+        self.no_next_game = false;
 
         if let Some(timing) = self.next_game.take().and_then(|info| info.timing) {
             self.config = timing.into();
@@ -9258,5 +9282,67 @@ mod test {
         assert_eq!(tm.current_period(), GamePeriod::BetweenGames);
         // No leftover grid/portal time: the break falls back to the nominal break (30s), not 40s.
         assert_eq!(tm.game_clock_time(now), Some(Duration::from_secs(30)));
+    }
+
+    #[test]
+    fn no_next_game_reports_a_blank_number() {
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        tm.set_game_number("9");
+
+        // Default: the old arithmetic guess.
+        assert_eq!(tm.next_game_number(), "10");
+
+        tm.set_no_next_game();
+        // Blank, never "10" — on a two-court event game 10 belongs to the other court.
+        assert_eq!(tm.next_game_number(), "");
+    }
+
+    #[test]
+    fn setting_a_next_game_clears_the_no_next_game_state() {
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        tm.set_game_number("9");
+        tm.set_no_next_game();
+
+        tm.set_next_game(NextGameInfo {
+            number: "11".to_string(),
+            timing: None,
+            start_time: None,
+        });
+
+        assert_eq!(tm.next_game_number(), "11");
+    }
+
+    #[test]
+    fn clearing_portal_next_game_clears_the_no_next_game_state() {
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        tm.set_game_number("9");
+        tm.set_no_next_game();
+
+        // Switching back to manual returns to "unknown", not "finished".
+        tm.clear_portal_next_game();
+
+        assert_eq!(tm.next_game_number(), "10");
+    }
+
+    #[test]
+    fn starting_a_game_returns_to_the_unknown_state() {
+        initialize();
+        let mut tm = TournamentManager::new(GameConfig::default());
+        tm.set_game_number("8");
+        tm.set_next_game(NextGameInfo {
+            number: "9".to_string(),
+            timing: None,
+            start_time: None,
+        });
+
+        tm.start_play_now(Instant::now()).unwrap();
+
+        // Game 9 is now in progress and nothing is known about what follows it,
+        // which is the state the app immediately resolves via handle_game_start.
+        assert_eq!(tm.game_number(), "9");
+        assert_eq!(tm.next_game_number(), "10");
     }
 }

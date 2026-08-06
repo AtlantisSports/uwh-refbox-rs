@@ -119,13 +119,20 @@ pub(in super::super) fn build_main_view<'a>(
             | GamePeriod::PreOvertime
             | GamePeriod::OvertimeHalfTime
             | GamePeriod::PreSuddenDeath => {
-                let mut start_warning_row = row![
-                    make_chrome_button(fl!("start-now"))
-                        .style(green_button)
-                        .width(Length::Fill)
-                        .on_press(Message::StartPlayNow)
-                ]
-                .spacing(SPACING);
+                // A blank next-game number means the selected court has no further
+                // games: there is nothing to start until the operator picks a game in
+                // Settings, so the button goes inactive (no on_press renders greyed).
+                let nothing_to_start = snapshot.current_period == GamePeriod::BetweenGames
+                    && snapshot.next_game_number.is_empty();
+                let start_btn = make_chrome_button(fl!("start-now"))
+                    .style(green_button)
+                    .width(Length::Fill);
+                let start_btn = if nothing_to_start {
+                    start_btn
+                } else {
+                    start_btn.on_press(Message::StartPlayNow)
+                };
+                let mut start_warning_row = row![start_btn].spacing(SPACING);
 
                 if track_fouls_and_warnings {
                     start_warning_row = start_warning_row.push(make_warn_button())

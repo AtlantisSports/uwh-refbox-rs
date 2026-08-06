@@ -44,6 +44,11 @@ pub struct TournamentManager {
     count: u8,
     lap_count: u8,
     time_in_next_lap: Duration,
+    /// Set exactly when the schedule runs off its end — the final lap of the
+    /// final level completes, or the sprint's single lap completes. Consumed
+    /// by `take_completed`, which the app polls each tick to return the page
+    /// to its idle state without the operator pressing RESET.
+    completed: bool,
 }
 
 impl TournamentManager {
@@ -64,11 +69,19 @@ impl TournamentManager {
             start_stop_rx,
             count: 1,
             lap_count: 0,
+            completed: false,
         }
     }
 
     pub fn current_period(&self) -> BeepTestPeriod {
         self.current_period
+    }
+
+    /// Returns `true` exactly once after the schedule completes, then clears
+    /// the flag. The app polls this each tick and, when it fires, returns the
+    /// BeepTest page to its idle (pre-START) state.
+    pub fn take_completed(&mut self) -> bool {
+        std::mem::take(&mut self.completed)
     }
 
     pub fn send_clock_running(&self, running: bool) {
@@ -141,6 +154,7 @@ impl TournamentManager {
 
     pub fn start_beep_test_now(&mut self, now: Instant) -> Result<()> {
         self.count = 1;
+        self.completed = false;
         if self.time_state != TimeState::None {
             return Err(TournamentManagerError::AlreadyStopped(
                 self.time_state.as_snapshot(),
@@ -187,6 +201,7 @@ impl TournamentManager {
         };
         self.count = 1;
         self.lap_count = 0;
+        self.completed = false;
         self.time_in_next_lap = self
             .current_period
             .next_test_period_dur(&self.config)
@@ -295,17 +310,22 @@ impl TournamentManager {
                 self.current_period
             );
 
-            // Detect wrap: next_period wraps to Level(0) when all levels are done.
-            // In that case, stop the clock — the test is complete.
+            // Detect wrap: next_period wraps to Level(0) when the schedule is
+            // done. Stop the clock, restore the idle "next lap" duration, and
+            // raise `completed` so the app resets the page.
             if next == BeepTestPeriod::Level(0) {
-                // Test complete — reset to the initial stopped state at Level(0).
                 self.lap_count = 0;
+                self.time_in_next_lap = self
+                    .current_period
+                    .next_test_period_dur(&self.config)
+                    .unwrap_or_default();
                 self.clock_state = ClockState::Stopped {
                     clock_time: self
                         .current_period
                         .duration(&self.config)
                         .unwrap_or_default(),
                 };
+                self.completed = true;
                 self.send_clock_running(false);
                 return;
             }
@@ -562,5 +582,56 @@ mod tests {
         tm.reset_beep_test_now(now + Duration::from_millis(500));
         // After reset, time_in_next_lap should be levels[0].duration = 10s.
         assert_eq!(tm.time_in_next_lap, Duration::from_secs(10));
+    }
+
+    // Completing the schedule sets the one-shot completed flag, and taking
+    // it clears it. `tiny_config()` is pre=1s + one level of count=1
+    // duration=1s, so the whole run is over 2s after start.
+    #[test]
+    fn completion_sets_one_shot_flag() {
+        let mut tm = TournamentManager::new(tiny_config());
+        let t0 = Instant::now();
+        tm.start_beep_test_now(t0).unwrap();
+        assert!(!tm.take_completed(), "not complete while the warm-up runs");
+
+        tm.update(t0 + Duration::from_secs(2)).unwrap();
+        assert_eq!(tm.current_period(), BeepTestPeriod::Level(1));
+        assert!(!tm.take_completed(), "not complete part-way through");
+
+        tm.update(t0 + Duration::from_secs(4)).unwrap();
+        assert!(!tm.clock_is_running());
+        assert!(tm.take_completed(), "completed after the final lap");
+        assert!(!tm.take_completed(), "flag is one-shot");
+    }
+
+    // On completion the engine must also restore `time_in_next_lap` to the
+    // duration of the period that follows the warm-up. Without this the
+    // front display keeps advertising a stale "next lap" time after the
+    // test ends.
+    #[test]
+    fn completion_restores_time_in_next_lap() {
+        let mut tm = TournamentManager::new(test_config());
+        let t0 = Instant::now();
+        tm.start_beep_test_now(t0).unwrap();
+        // test_config(): pre=1s, L1 count=2 dur=10s, L2 count=2 dur=8s.
+        // Warm-up (1s) + 2x10s + 2x8s = 37s covers the whole run.
+        for secs in [2, 12, 22, 31, 40] {
+            tm.update(t0 + Duration::from_secs(secs)).unwrap();
+        }
+        assert!(tm.take_completed());
+        assert_eq!(tm.time_in_next_lap, Duration::from_secs(10));
+    }
+
+    // Reset clears a pending completed flag so a stale completion can't
+    // fire an auto-reset after the operator has already reset by hand.
+    #[test]
+    fn reset_clears_completed_flag() {
+        let mut tm = TournamentManager::new(tiny_config());
+        let t0 = Instant::now();
+        tm.start_beep_test_now(t0).unwrap();
+        tm.update(t0 + Duration::from_secs(2)).unwrap();
+        tm.update(t0 + Duration::from_secs(4)).unwrap();
+        tm.reset_beep_test_now(t0 + Duration::from_secs(5));
+        assert!(!tm.take_completed());
     }
 }

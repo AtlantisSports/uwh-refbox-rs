@@ -647,6 +647,18 @@ impl RefBoxApp {
         }
     }
 
+    /// Return the BeepTest page and engine to the idle (pre-START) state:
+    /// green START, greyed RESET, LEVEL and LAP at 0, table cleared. Shared
+    /// by the operator's RESET button and the automatic reset that fires
+    /// when the schedule completes.
+    fn reset_beep_test_state(&mut self, now: Instant) {
+        if let Some(ref mut bt_tm) = self.beep_test_tm {
+            bt_tm.reset_beep_test_now(now);
+        }
+        self.beep_test_snapshot = BeepTestSnapshot::default();
+        self.beep_test_has_run = false;
+    }
+
     fn request_event_list(&self) -> Task<Message> {
         if let Some(client) = &self.uwhportal_client {
             // why this cannot panic: the `UwhPortalClient` is only mutated by
@@ -4453,54 +4465,62 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::BeepTestReset => {
-                if let Some(ref mut bt_tm) = self.beep_test_tm {
-                    bt_tm.reset_beep_test_now(Instant::now());
-                }
-                self.beep_test_snapshot = BeepTestSnapshot::default();
-                self.beep_test_has_run = false;
+                self.reset_beep_test_state(Instant::now());
                 Task::none()
             }
             Message::BeepTestTick => {
-                // Drives the cadence engine forward, ships the snapshot
-                // to the LED panel, and triggers any whistles/buzzers at
-                // the same boundaries the standalone beep-test would.
-                if let Some(ref mut bt_tm) = self.beep_test_tm {
-                    let now = Instant::now();
-                    if let Err(e) = bt_tm.update(now) {
-                        error!("Beep-test engine update failed: {e}");
+                // Drives the cadence engine forward, ships the snapshot to the
+                // LED panel, and triggers any whistles/buzzers at the same
+                // boundaries the standalone beep-test would.
+                let now = Instant::now();
+                let (completed, new_snapshot) = match self.beep_test_tm {
+                    Some(ref mut bt_tm) => {
+                        if let Err(e) = bt_tm.update(now) {
+                            error!("Beep-test engine update failed: {e}");
+                        }
+                        (bt_tm.take_completed(), bt_tm.generate_snapshot(now))
                     }
-                    let Some(new_snapshot) = bt_tm.generate_snapshot(now) else {
-                        // generate_snapshot returns None when the clock
-                        // time would be negative; nothing to ship this
-                        // tick. The next tick will recover.
-                        return Task::none();
-                    };
-                    self.maybe_play_beep_test_sound(&new_snapshot);
-                    // The LED panel pipeline accepts the full GameSnapshot;
-                    // synthesize one from the beep-test snapshot the same
-                    // way the existing `BeepTestSnapshot -> GameSnapshotNoHeap`
-                    // conversion does (BetweenGames + lap_count as white score).
-                    let game_snap = GameSnapshot {
-                        current_period: GamePeriod::BetweenGames,
-                        secs_in_period: new_snapshot.secs_in_period,
-                        scores: BlackWhiteBundle {
-                            black: 0,
-                            white: new_snapshot.lap_count,
-                        },
-                        ..Default::default()
-                    };
-                    if let Err(e) = self.update_sender.send_snapshot(
-                        game_snap,
-                        // Beep test has no sides control: lap count always on the left.
-                        false,
-                        self.config.hardware.brightness,
-                    ) {
-                        // Channel-full or closed: the next tick re-sends
-                        // a fresh snapshot, so dropping one is acceptable.
-                        warn!("Failed to send beep-test snapshot to LED panel: {e:?}");
-                    }
-                    self.beep_test_snapshot = new_snapshot;
+                    None => return Task::none(),
+                };
+
+                // The schedule ran off its end: return the page to idle so the
+                // next group can start without the operator pressing RESET.
+                if completed {
+                    info!("Beep test complete — resetting to idle");
+                    self.reset_beep_test_state(now);
+                    return Task::none();
                 }
+
+                // generate_snapshot returns None when the clock time would be
+                // negative; nothing to ship this tick. The next tick recovers.
+                let Some(new_snapshot) = new_snapshot else {
+                    return Task::none();
+                };
+                self.maybe_play_beep_test_sound(&new_snapshot);
+                // The LED panel pipeline accepts the full GameSnapshot;
+                // synthesize one from the beep-test snapshot the same way the
+                // existing `BeepTestSnapshot -> GameSnapshotNoHeap` conversion
+                // does (BetweenGames + lap_count as white score).
+                let game_snap = GameSnapshot {
+                    current_period: GamePeriod::BetweenGames,
+                    secs_in_period: new_snapshot.secs_in_period,
+                    scores: BlackWhiteBundle {
+                        black: 0,
+                        white: new_snapshot.lap_count,
+                    },
+                    ..Default::default()
+                };
+                if let Err(e) = self.update_sender.send_snapshot(
+                    game_snap,
+                    // Beep test has no sides control: lap count always on the left.
+                    false,
+                    self.config.hardware.brightness,
+                ) {
+                    // Channel-full or closed: the next tick re-sends a fresh
+                    // snapshot, so dropping one is acceptable.
+                    warn!("Failed to send beep-test snapshot to LED panel: {e:?}");
+                }
+                self.beep_test_snapshot = new_snapshot;
                 Task::none()
             }
             Message::BeepTestCycleDisplayLayout => {

@@ -10,9 +10,15 @@ use iced::{
 };
 
 /// In High Contrast only, restyle a filled button as an outline: dark `hc_fill`,
-/// the `accent` colour on the border + text, an always-visible `BORDER_WIDTH`
-/// border, and no hover/pressed darkening. Disabled buttons are left untouched.
-/// In Light/Dark the style is returned unchanged.
+/// the `accent` colour on the border + text, and an always-visible `BORDER_WIDTH`
+/// border. Light/Dark darken the fill while a button is held down, which a dark
+/// fill cannot show, so a pressed button takes the blue marker on its border
+/// instead. Disabled buttons are left untouched. In Light/Dark the style is
+/// returned unchanged.
+///
+/// No button passes `blue()` as its accent in this mode — blue is reserved for
+/// the selected/pressed marker, so it can never be mistaken for a button's own
+/// colour. `high_contrast_blue_button_uses_white_accent` pins that.
 fn outline_in_high_contrast(
     mut style: Style,
     accent: Color,
@@ -22,8 +28,27 @@ fn outline_in_high_contrast(
     if display_mode() == DisplayMode::HighContrast && !matches!(status, Status::Disabled) {
         style.background = Some(Background::Color(hc_fill));
         style.text_color = accent;
-        style.border.color = accent;
+        style.border.color = if matches!(status, Status::Pressed) {
+            blue()
+        } else {
+            accent
+        };
         style.border.width = BORDER_WIDTH;
+    }
+    style
+}
+
+/// In High Contrast only, mark a button as selected by recolouring its border to
+/// blue. `outline_in_high_contrast` has already given every non-disabled button a
+/// `BORDER_WIDTH` border in its own accent colour, so switching the border on —
+/// how Light and Dark signal selection — is a no-op here; the colour has to carry
+/// the signal instead.
+///
+/// A pressed button is already blue, so re-applying is harmless. Disabled buttons
+/// are left untouched. In Light/Dark the style is returned unchanged.
+fn select_in_high_contrast(mut style: Style, status: Status) -> Style {
+    if display_mode() == DisplayMode::HighContrast && !matches!(status, Status::Disabled) {
+        style.border.color = blue();
     }
     style
 }
@@ -83,7 +108,7 @@ pub fn light_gray_button(theme: &Theme, status: Status) -> Style {
 pub fn light_gray_selected_button(theme: &Theme, status: Status) -> Style {
     let mut style = light_gray_button(theme, status);
     style.border.width = BORDER_WIDTH;
-    style
+    select_in_high_contrast(style, status)
 }
 
 pub fn white_button(theme: &Theme, status: Status) -> Style {
@@ -109,7 +134,7 @@ pub fn white_button(theme: &Theme, status: Status) -> Style {
 pub fn white_selected_button(theme: &Theme, status: Status) -> Style {
     let mut style = white_button(theme, status);
     style.border.width = BORDER_WIDTH;
-    style
+    select_in_high_contrast(style, status)
 }
 
 pub fn black_button(theme: &Theme, status: Status) -> Style {
@@ -136,7 +161,7 @@ pub fn black_button(theme: &Theme, status: Status) -> Style {
 pub fn black_selected_button(theme: &Theme, status: Status) -> Style {
     let mut style = black_button(theme, status);
     style.border.width = BORDER_WIDTH;
-    style
+    select_in_high_contrast(style, status)
 }
 
 pub fn red_button(theme: &Theme, status: Status) -> Style {
@@ -164,7 +189,7 @@ pub fn red_button_armed(theme: &Theme, _status: Status) -> Style {
 pub fn red_selected_button(theme: &Theme, status: Status) -> Style {
     let mut style = red_button(theme, status);
     style.border.width = BORDER_WIDTH;
-    style
+    select_in_high_contrast(style, status)
 }
 
 pub fn orange_button(theme: &Theme, status: Status) -> Style {
@@ -184,7 +209,7 @@ pub fn orange_button(theme: &Theme, status: Status) -> Style {
 pub fn orange_selected_button(theme: &Theme, status: Status) -> Style {
     let mut style = orange_button(theme, status);
     style.border.width = BORDER_WIDTH;
-    style
+    select_in_high_contrast(style, status)
 }
 
 pub fn yellow_button(theme: &Theme, status: Status) -> Style {
@@ -212,7 +237,7 @@ pub fn yellow_button_armed(theme: &Theme, _status: Status) -> Style {
 pub fn yellow_selected_button(theme: &Theme, status: Status) -> Style {
     let mut style = yellow_button(theme, status);
     style.border.width = BORDER_WIDTH;
-    style
+    select_in_high_contrast(style, status)
 }
 
 pub fn green_button(theme: &Theme, status: Status) -> Style {
@@ -232,7 +257,7 @@ pub fn green_button(theme: &Theme, status: Status) -> Style {
 pub fn green_selected_button(theme: &Theme, status: Status) -> Style {
     let mut style = green_button(theme, status);
     style.border.width = BORDER_WIDTH;
-    style
+    select_in_high_contrast(style, status)
 }
 
 pub fn blue_button(theme: &Theme, status: Status) -> Style {
@@ -253,13 +278,15 @@ pub fn blue_button(theme: &Theme, status: Status) -> Style {
         text_color,
         ..gray_button(theme, status)
     };
-    outline_in_high_contrast(style, blue(), black(), status)
+    // White, not blue: in High Contrast blue is reserved for the selected/pressed
+    // marker, so no button may wear it as its own colour.
+    outline_in_high_contrast(style, white(), black(), status)
 }
 
 pub fn blue_selected_button(theme: &Theme, status: Status) -> Style {
     let mut style = blue_button(theme, status);
     style.border.width = BORDER_WIDTH;
-    style
+    select_in_high_contrast(style, status)
 }
 
 pub fn blue_with_border_button(theme: &Theme, status: Status) -> Style {
@@ -273,8 +300,8 @@ pub fn blue_with_border_button(theme: &Theme, status: Status) -> Style {
 mod high_contrast_tests {
     use super::*;
     use crate::app::theme::{
-        BORDER_WIDTH, DisplayMode, HC_DARK_GREY, HC_WHITE_DISABLED, black, light_gray_button, red,
-        set_display_mode, white, window_background,
+        BORDER_COLOR, BORDER_WIDTH, DisplayMode, HC_DARK_GREY, HC_WHITE_DISABLED, black,
+        light_gray_button, red, set_display_mode, white, window_background,
     };
     use iced::widget::button::Status;
     use iced::{Background, Theme};
@@ -350,5 +377,146 @@ mod high_contrast_tests {
         let s = white_button(&Theme::default(), Status::Disabled);
         assert_eq!(s.background, Some(Background::Color(HC_WHITE_DISABLED)));
         set_display_mode(DisplayMode::Light);
+    }
+
+    #[test]
+    fn high_contrast_selected_button_ring_is_blue() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        set_display_mode(DisplayMode::HighContrast);
+        let selected = white_selected_button(&Theme::default(), Status::Active);
+        let plain = white_button(&Theme::default(), Status::Active);
+        assert_eq!(selected.border.color, blue());
+        assert_ne!(selected.border.color, plain.border.color);
+        assert_eq!(selected.border.width, BORDER_WIDTH);
+        set_display_mode(DisplayMode::Light);
+    }
+
+    #[test]
+    fn high_contrast_yellow_selected_button_ring_is_blue() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        set_display_mode(DisplayMode::HighContrast);
+        let selected = yellow_selected_button(&Theme::default(), Status::Active);
+        let plain = yellow_button(&Theme::default(), Status::Active);
+        assert_eq!(selected.border.color, blue());
+        assert_ne!(selected.border.color, plain.border.color);
+        set_display_mode(DisplayMode::Light);
+    }
+
+    #[test]
+    fn high_contrast_blue_selected_button_ring_is_blue() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        set_display_mode(DisplayMode::HighContrast);
+        let selected = blue_selected_button(&Theme::default(), Status::Active);
+        let plain = blue_button(&Theme::default(), Status::Active);
+        assert_eq!(selected.border.color, blue());
+        assert_ne!(selected.border.color, plain.border.color);
+        set_display_mode(DisplayMode::Light);
+    }
+
+    /// Blue is reserved for the selected/pressed marker, so a blue button must
+    /// render with a white accent in High Contrast — otherwise an idle blue
+    /// button would be indistinguishable from a selected one.
+    #[test]
+    fn high_contrast_blue_button_uses_white_accent() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        set_display_mode(DisplayMode::HighContrast);
+        let s = blue_button(&Theme::default(), Status::Active);
+        assert_eq!(s.border.color, white());
+        assert_eq!(s.text_color, white());
+        assert_ne!(s.border.color, blue());
+        set_display_mode(DisplayMode::Light);
+    }
+
+    #[test]
+    fn light_mode_blue_button_unchanged() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        set_display_mode(DisplayMode::Light);
+        let s = blue_button(&Theme::default(), Status::Active);
+        assert_eq!(s.background, Some(Background::Color(blue())));
+        assert_eq!(s.border.width, 0.0);
+    }
+
+    #[test]
+    fn high_contrast_disabled_selected_button_is_not_recoloured() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        set_display_mode(DisplayMode::HighContrast);
+        let selected = blue_selected_button(&Theme::default(), Status::Disabled);
+        let plain = blue_button(&Theme::default(), Status::Disabled);
+        assert_eq!(selected.border.color, plain.border.color);
+        set_display_mode(DisplayMode::Light);
+    }
+
+    #[test]
+    fn high_contrast_pressed_button_ring_is_blue() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        set_display_mode(DisplayMode::HighContrast);
+        let pressed = white_button(&Theme::default(), Status::Pressed);
+        let idle = white_button(&Theme::default(), Status::Active);
+        assert_eq!(pressed.border.color, blue());
+        assert_ne!(pressed.border.color, idle.border.color);
+        set_display_mode(DisplayMode::Light);
+    }
+
+    #[test]
+    fn high_contrast_pressed_blue_button_ring_is_blue() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        set_display_mode(DisplayMode::HighContrast);
+        let pressed = blue_button(&Theme::default(), Status::Pressed);
+        let idle = blue_button(&Theme::default(), Status::Active);
+        assert_eq!(pressed.border.color, blue());
+        assert_ne!(pressed.border.color, idle.border.color);
+        set_display_mode(DisplayMode::Light);
+    }
+
+    /// A selected button that is also held down must not have the marker applied
+    /// twice — the second pass would read the blue border as "this is a blue
+    /// button" and flip it to yellow.
+    #[test]
+    fn high_contrast_pressed_selected_button_is_not_marked_twice() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        set_display_mode(DisplayMode::HighContrast);
+        let pressed = white_selected_button(&Theme::default(), Status::Pressed);
+        assert_eq!(pressed.border.color, blue());
+        set_display_mode(DisplayMode::Light);
+    }
+
+    #[test]
+    fn light_mode_pressed_button_ring_unchanged() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        set_display_mode(DisplayMode::Light);
+        let pressed = white_button(&Theme::default(), Status::Pressed);
+        assert_eq!(pressed.border.color, BORDER_COLOR);
+        assert_eq!(pressed.border.width, 0.0);
+    }
+
+    #[test]
+    fn light_mode_selected_button_ring_unchanged() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        set_display_mode(DisplayMode::Light);
+        let selected = white_selected_button(&Theme::default(), Status::Active);
+        assert_eq!(selected.border.color, BORDER_COLOR);
+        assert_eq!(selected.border.width, BORDER_WIDTH);
     }
 }

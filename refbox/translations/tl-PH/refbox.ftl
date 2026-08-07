@@ -326,6 +326,7 @@ ref-list = Punong Ref: { $chief_ref }
 team-ref-list = Mga Referee: { $ref_team }
     Tagapanatili ng Puntos: { $ts_keeper_team }
 unknown = Hindi Alam
+select-infraction = Pumili
 ## Pindutan ng oras ng laro
 next-game = SUSUNOD NA LARO
 first-half = UNANG KALAHATI

@@ -325,6 +325,7 @@ ref-list = หัวหน้าผู้ตัดสิน: { $chief_ref }
 team-ref-list = ผู้ตัดสิน: { $ref_team }
     กรรมการจับเวลา/บันทึกคะแนน: { $ts_keeper_team }
 unknown = ไม่ทราบ
+select-infraction = กรุณาเลือก
 ## ปุ่มเวลาเกม
 next-game = เกมถัดไป
 first-half = ครึ่งแรก

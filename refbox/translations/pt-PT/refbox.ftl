@@ -326,6 +326,7 @@ ref-list = Árbitro Principal: { $chief_ref }
 team-ref-list = Árbitros: { $ref_team }
     Controlador de Tempo/Pontuação: { $ts_keeper_team }
 unknown = Desconhecido
+select-infraction = Selecione uma opção
 ## Botão de tempo de jogo
 next-game = PRÓXIMO JOGO
 first-half = PRIMEIRO TEMPO

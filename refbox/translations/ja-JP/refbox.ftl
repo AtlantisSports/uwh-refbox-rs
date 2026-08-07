@@ -326,6 +326,7 @@ ref-list = 主審: { $chief_ref }
 team-ref-list = 審判員: { $ref_team }
     記録員: { $ts_keeper_team }
 unknown = 不明
+select-infraction = 選択してください
 ## 試合時間ボタン
 next-game = 次の試合
 first-half = 前半

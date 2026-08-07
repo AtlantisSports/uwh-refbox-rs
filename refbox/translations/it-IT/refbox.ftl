@@ -326,6 +326,7 @@ ref-list = Capo Arbitro: { $chief_ref }
 team-ref-list = Arbitri: { $ref_team }
     Cronometrista/Segnapunti: { $ts_keeper_team }
 unknown = Sconosciuto
+select-infraction = Effettua una scelta
 ## Pulsante tempo di gioco
 next-game = PROSSIMA PARTITA
 first-half = PRIMO TEMPO

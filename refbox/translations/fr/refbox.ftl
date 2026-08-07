@@ -328,6 +328,7 @@ ref-list = Arbitre en Chef: { $chief_ref }
 team-ref-list = Arbitres: { $ref_team }
     Chronométreur/Marqueur: { $ts_keeper_team }
 unknown = Inconnu
+select-infraction = Faire une sélection
 ## Game time button
 next-game = MATCH SUIVANT
 first-half = 1ere PÉRIODE

@@ -326,6 +326,7 @@ ref-list = Ketua Pengadil: { $chief_ref }
 team-ref-list = Pengadil: { $ref_team }
     Pencatat Masa/Markah: { $ts_keeper_team }
 unknown = Tidak Diketahui
+select-infraction = Sila pilih
 ## Butang masa perlawanan
 next-game = PERLAWANAN SETERUSNYA
 first-half = SEPARUH PERTAMA

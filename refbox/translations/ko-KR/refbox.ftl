@@ -328,6 +328,7 @@ ref-list = 주심: { $chief_ref }
 team-ref-list = 심판: { $ref_team }
     기록원/계시원: { $ts_keeper_team }
 unknown = 알 수 없음
+select-infraction = 선택하세요
 ## 경기 시간 버튼
 next-game = 다음 경기
 first-half = 전반

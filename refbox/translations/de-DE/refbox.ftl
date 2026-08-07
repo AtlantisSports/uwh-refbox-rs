@@ -326,6 +326,7 @@ ref-list = Hauptschiedsrichter: { $chief_ref }
 team-ref-list = Schiedsrichter: { $ref_team }
     Zeitnehmer/Anschreiber: { $ts_keeper_team }
 unknown = Unbekannt
+select-infraction = Bitte auswählen
 ## Spielzeit-Schaltfläche
 next-game = NÄCHSTES SPIEL
 first-half = ERSTE HALBZEIT

@@ -292,9 +292,12 @@ pub(in super::super) fn build_beep_test_sound_settings_page<'a>(
     .into()
 }
 
-/// Maximum number of levels a schedule may contain. The table reserves exactly
-/// this many columns, which leaves a fixed strip to the right of it for the
-/// court-length preset buttons. The presets themselves use 7.
+/// Maximum number of levels a schedule may contain. The table reserves
+/// exactly this many columns; the court-length preset strip is a separate,
+/// fixed-width column beside it (see `table_and_presets` in
+/// `build_beep_test_edit_levels_page`) and does not grow or shrink with this
+/// cap. This value matches the Full presets' level count (10) — see
+/// `BeepTestPreset::FULL_LAP_COUNTS` in `config.rs`.
 pub(in super::super) const MAX_LEVELS: usize = 10;
 
 /// Spacing between cells in the editor's transposed table. Matches the
@@ -319,11 +322,12 @@ const EDIT_TABLE_CELL_HEIGHT: f32 = (MIN_BUTTON_SIZE - SPACING) / 2.0;
 /// tappable: tapping any element in a column selects that level. The
 /// selected column is highlighted with a distinct (blue) style to
 /// distinguish it from the main view's yellow "active lap" highlight. The
-/// table reserves `MAX_LEVELS` columns but the presets use only 7, so a
-/// fixed strip to its right holds the six preset buttons (a referee and a
-/// full schedule per court length, in a 2-column by 3-row grid) — the one
-/// whose schedule matches the staged levels renders highlighted; see
-/// `build_preset_panel`.
+/// table reserves `MAX_LEVELS` columns (10, matching the Full presets),
+/// beside a fixed strip that holds the six preset buttons (a referee and a
+/// full schedule per court length — 8 and 10 levels respectively — in a
+/// 2-column by 3-row grid); that strip's width does not depend on
+/// `MAX_LEVELS`. The preset whose schedule matches the staged levels
+/// renders highlighted; see `build_preset_panel`.
 ///
 /// Bottom middle: a per-level edit panel showing the selected level's
 /// duration and count, each with `[-]` `[+]` buttons, and a `REMOVE
@@ -1117,4 +1121,29 @@ fn make_beep_test_cancel_apply_footer<'a>(
     row![cancel, horizontal_space(), apply]
         .spacing(SPACING)
         .into()
+}
+
+#[cfg(test)]
+mod test {
+    use super::MAX_LEVELS;
+    use crate::config::BeepTestPreset;
+
+    // BeepTestEditAddLevel enforces this cap at runtime (see
+    // Message::BeepTestEditAddLevel in app/mod.rs), but BeepTestEditSelectPreset
+    // does not — it stages a preset's levels wholesale and relies on every
+    // preset already fitting under the cap. That is safe only because Full is
+    // exactly MAX_LEVELS levels today; nothing else ties the two together, so
+    // this test is the guard against either constant changing out from under
+    // the other.
+    #[test]
+    fn every_preset_fits_within_max_levels() {
+        for preset in BeepTestPreset::ALL {
+            let levels = preset.config().levels;
+            assert!(
+                levels.len() <= MAX_LEVELS,
+                "{preset:?} has {} levels, which exceeds MAX_LEVELS ({MAX_LEVELS})",
+                levels.len()
+            );
+        }
+    }
 }

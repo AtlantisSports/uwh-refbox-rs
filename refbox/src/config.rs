@@ -120,6 +120,12 @@ pub struct BeepTest {
 /// it; every level after that one is dropped. General on purpose — it does
 /// not know or care which level index or lap count that turns out to be,
 /// so it works unchanged for any full schedule and any target.
+///
+/// Callers must pass a non-zero `target`: `target = 0` returns an empty
+/// `Vec<Level>` (nothing to keep), and downstream code does not accept an
+/// empty schedule — `TournamentManager::start_beep_test_now` in
+/// `beep_test/cadence.rs` expects `Level(0)` to have a duration precisely
+/// because it assumes `config.levels` is non-empty.
 fn truncate_at_laps(levels: &[Level], target: u8) -> Vec<Level> {
     let mut out = Vec::new();
     let mut total: u8 = 0;
@@ -595,6 +601,59 @@ mod test {
         }
     }
 
+    // truncate_at_laps is only ever called with PASSING_LAPS in production,
+    // so its general behaviour (documented above the function) is exercised
+    // directly here rather than only indirectly through the preset tests.
+    #[test]
+    fn truncate_at_laps_stops_exactly_on_a_level_boundary() {
+        let levels = vec![
+            Level {
+                count: 3,
+                duration: Duration::from_secs(10),
+            },
+            Level {
+                count: 4,
+                duration: Duration::from_secs(20),
+            },
+            Level {
+                count: 5,
+                duration: Duration::from_secs(30),
+            },
+        ];
+        // 3 + 4 = 7 lands exactly on the boundary between level 2 and level 3.
+        let truncated = truncate_at_laps(&levels, 7);
+        assert_eq!(truncated.len(), 2);
+        assert_eq!(truncated[0].count, 3);
+        assert_eq!(truncated[1].count, 4);
+    }
+
+    #[test]
+    fn truncate_at_laps_with_target_past_the_total_returns_everything() {
+        let levels = vec![
+            Level {
+                count: 3,
+                duration: Duration::from_secs(10),
+            },
+            Level {
+                count: 4,
+                duration: Duration::from_secs(20),
+            },
+        ];
+        // Total laps available is 7; ask for far more than that.
+        let truncated = truncate_at_laps(&levels, 100);
+        assert_eq!(truncated, levels);
+    }
+
+    #[test]
+    fn truncate_at_laps_with_zero_target_returns_an_empty_schedule() {
+        let levels = vec![Level {
+            count: 3,
+            duration: Duration::from_secs(10),
+        }];
+        let truncated = truncate_at_laps(&levels, 0);
+        assert_eq!(truncated, vec![]);
+    }
+
     // 23m has no official table — it is DEFINED as ceil(25m x 0.92), the same
     // method the official 21m table documents for itself (ceil(25m x 0.84)).
     // This test enforces the derivation across the whole 10-level full
@@ -681,6 +740,11 @@ mod test {
             total_secs(&BeepTestPreset::Ref25.config()),
             770,
             "Ref 25m run is 12:50 including the warm-up"
+        );
+        assert_eq!(
+            total_secs(&BeepTestPreset::Ref23.config()),
+            723,
+            "Ref 23m run is 12:03 including the warm-up"
         );
         // EXTERNAL CHECK: the official 21m sheet prints lap 27's start time
         // as 11:02 — the exact instant lap 26 (the pass mark) finishes.

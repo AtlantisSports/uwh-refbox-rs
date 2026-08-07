@@ -352,14 +352,19 @@ pub(in super::super) fn build_beep_test_edit_levels_page<'a>(
     // ----- Per-level edit panel -----
     let edit_panel = build_edit_panel(levels, selected);
 
+    // Content stacks at the top with the standard SPACING between every row;
+    // the slack sits below it so the footer stays pinned to the bottom. This
+    // mirrors `build_beep_test_sound_settings_page`. Putting the spacer between
+    // the table and the edit panel instead would widen that one seam to three
+    // times the spacing used everywhere else on the page.
     column![
         container(table_and_presets)
             .width(Length::Fill)
             .height(Length::Shrink),
-        row![horizontal_space()].height(Length::Fill),
         container(edit_panel)
             .width(Length::Fill)
             .height(Length::Shrink),
+        row![horizontal_space()].height(Length::Fill),
         make_beep_test_cancel_apply_footer(
             Message::BeepTestEditLevelsCancel,
             Message::BeepTestEditLevelsSave,

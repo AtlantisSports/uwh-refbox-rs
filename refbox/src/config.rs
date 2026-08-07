@@ -114,10 +114,11 @@ pub struct BeepTest {
 
 /// Court-length presets for the beep test.
 ///
-/// Each preset defines a whole schedule: the warm-up and seven levels
+/// Each preset defines a whole schedule: the warm-up and eight levels
 /// totalling 26 laps. 26 is the passing lap count, and the lap counts are
-/// arranged (3, 3, 4, 4, 4, 4, 4) so that lap 26 is the final lap of Level 7
-/// — the test ends exactly on the pass mark.
+/// arranged (3, 3, 3, 4, 4, 4, 4, 1) so that lap 26 is Level 8's single lap
+/// — the test ends exactly on the pass mark, on the first lap of a level
+/// rather than the last lap of one.
 ///
 /// The level times scale with court length: the 21m and 23m columns are the
 /// 25m times multiplied by 21/25 and 23/25 and rounded up, matching the
@@ -134,7 +135,7 @@ impl BeepTestPreset {
 
     /// Laps per level. Identical for every court length — only the times
     /// change. Sums to 26.
-    const LAP_COUNTS: [u8; 7] = [3, 3, 4, 4, 4, 4, 4];
+    const LAP_COUNTS: [u8; 8] = [3, 3, 3, 4, 4, 4, 4, 1];
 
     /// Court length in metres, used for the DISTANCE tile's label.
     pub fn metres(self) -> u8 {
@@ -145,12 +146,12 @@ impl BeepTestPreset {
         }
     }
 
-    /// The seven level durations in seconds, Level 1 first.
-    fn level_secs(self) -> [u64; 7] {
+    /// The eight level durations in seconds, Level 1 first.
+    fn level_secs(self) -> [u64; 8] {
         match self {
-            Self::M25 => [36, 34, 32, 30, 28, 26, 24],
-            Self::M23 => [34, 32, 30, 28, 26, 24, 23],
-            Self::M21 => [31, 29, 27, 26, 24, 22, 21],
+            Self::M25 => [36, 34, 32, 30, 28, 26, 24, 22],
+            Self::M23 => [34, 32, 30, 28, 26, 24, 23, 21],
+            Self::M21 => [31, 29, 27, 26, 24, 22, 21, 19],
         }
     }
 
@@ -466,13 +467,13 @@ mod test {
         );
     }
 
-    // Every preset ends on lap 26 — the passing lap — with lap 26 the final
-    // lap of Level 7. This is the invariant the whole feature rests on.
+    // Every preset ends on lap 26 — the passing lap — with lap 26 the single
+    // lap of Level 8. This is the invariant the whole feature rests on.
     #[test]
     fn every_preset_ends_on_lap_26() {
         for preset in BeepTestPreset::ALL {
             let config = preset.config();
-            assert_eq!(config.levels.len(), 7, "{preset:?} has 7 levels");
+            assert_eq!(config.levels.len(), 8, "{preset:?} has 8 levels");
             let laps: u32 = config.levels.iter().map(|l| u32::from(l.count)).sum();
             assert_eq!(laps, 26, "{preset:?} totals 26 laps");
         }
@@ -481,19 +482,19 @@ mod test {
     // Lap counts are identical across court lengths — only the times scale.
     #[test]
     fn preset_lap_counts_are_identical() {
-        let expected: Vec<u8> = vec![3, 3, 4, 4, 4, 4, 4];
+        let expected: Vec<u8> = vec![3, 3, 3, 4, 4, 4, 4, 1];
         for preset in BeepTestPreset::ALL {
             let counts: Vec<u8> = preset.config().levels.iter().map(|l| l.count).collect();
             assert_eq!(counts, expected, "{preset:?} lap counts");
         }
     }
 
-    // The confirmed 25m table, including its 13:00 total run time.
+    // The confirmed 25m table, including its total run time.
     #[test]
     fn preset_25m_matches_confirmed_table() {
         let config = BeepTestPreset::M25.config();
         let secs: Vec<u64> = config.levels.iter().map(|l| l.duration.as_secs()).collect();
-        assert_eq!(secs, vec![36, 34, 32, 30, 28, 26, 24]);
+        assert_eq!(secs, vec![36, 34, 32, 30, 28, 26, 24, 22]);
         assert_eq!(config.pre, std::time::Duration::from_secs(10));
 
         let total: u64 = config.pre.as_secs()
@@ -502,7 +503,7 @@ mod test {
                 .iter()
                 .map(|l| l.duration.as_secs() * u64::from(l.count))
                 .sum::<u64>();
-        assert_eq!(total, 780, "25m run is 13:00 including the warm-up");
+        assert_eq!(total, 770, "25m run is 12:50 including the warm-up");
     }
 
     // The confirmed 21m table, read off the operator's sheet.
@@ -510,7 +511,7 @@ mod test {
     fn preset_21m_matches_confirmed_table() {
         let config = BeepTestPreset::M21.config();
         let secs: Vec<u64> = config.levels.iter().map(|l| l.duration.as_secs()).collect();
-        assert_eq!(secs, vec![31, 29, 27, 26, 24, 22, 21]);
+        assert_eq!(secs, vec![31, 29, 27, 26, 24, 22, 21, 19]);
     }
 
     // 23m has no official table — it is DEFINED as ceil(25m x 0.92), the same

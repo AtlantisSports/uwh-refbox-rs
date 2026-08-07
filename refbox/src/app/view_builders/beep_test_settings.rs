@@ -292,6 +292,11 @@ pub(in super::super) fn build_beep_test_sound_settings_page<'a>(
     .into()
 }
 
+/// Maximum number of levels a schedule may contain. The table reserves exactly
+/// this many columns, which leaves a fixed strip to the right of it for the
+/// court-length preset buttons. The presets themselves use 7.
+pub(in super::super) const MAX_LEVELS: usize = 10;
+
 /// Spacing between cells in the editor's transposed table. Matches the
 /// main view's TABLE_CELL_SPACING so the editor reads as a tight grid.
 const EDIT_TABLE_CELL_SPACING: f32 = 2.0;
@@ -303,16 +308,21 @@ const EDIT_TABLE_CELL_HEIGHT: f32 = (MIN_BUTTON_SIZE - SPACING) / 2.0;
 
 /// Edit Levels sub-page.
 ///
-/// Standard refbox column layout: the transposed levels table + per-level
-/// edit panel in the middle (sized proportionally), and a Cancel / Apply
-/// footer at the bottom. Apply disables when the staged levels match the
-/// live config.
+/// Standard refbox column layout: the transposed levels table (with the
+/// court-length preset buttons in the strip to its right) + per-level edit
+/// panel in the middle (sized proportionally), and a Cancel / Apply footer
+/// at the bottom. Apply disables when the staged levels match the live
+/// config.
 ///
 /// Top middle: the same transposed level table from the main view, plus
 /// an extra `[+NEW]` header at the end. Every header and every cell is
 /// tappable: tapping any element in a column selects that level. The
 /// selected column is highlighted with a distinct (blue) style to
-/// distinguish it from the main view's yellow "active lap" highlight.
+/// distinguish it from the main view's yellow "active lap" highlight. The
+/// table reserves `MAX_LEVELS` columns but the presets use only 7, so a
+/// fixed strip to its right holds the three preset buttons — the one whose
+/// schedule matches the staged levels renders highlighted; see
+/// `build_preset_panel`.
 ///
 /// Bottom middle: a per-level edit panel showing the selected level's
 /// duration and count, each with `[-]` `[+]` buttons, and a `REMOVE
@@ -330,14 +340,22 @@ pub(in super::super) fn build_beep_test_edit_levels_page<'a>(
 
     let has_changes = config.beep_test.levels.as_slice() != levels;
 
-    // ----- Transposed table with tappable headers + cells -----
-    let table = build_editor_levels_table(levels, selected);
+    // ----- Transposed table, with the preset buttons in the strip to its right -----
+    let table_and_presets = row![
+        container(build_editor_levels_table(levels, selected)).width(Length::FillPortion(10)),
+        container(build_preset_panel(levels))
+            .width(Length::FillPortion(5))
+            .padding(EDIT_TABLE_CELL_SPACING),
+    ]
+    .spacing(SPACING);
 
     // ----- Per-level edit panel -----
     let edit_panel = build_edit_panel(levels, selected);
 
     column![
-        container(table).width(Length::Fill).height(Length::Shrink),
+        container(table_and_presets)
+            .width(Length::Fill)
+            .height(Length::Shrink),
         row![horizontal_space()].height(Length::Fill),
         container(edit_panel)
             .width(Length::Fill)
@@ -351,6 +369,36 @@ pub(in super::super) fn build_beep_test_edit_levels_page<'a>(
     .spacing(SPACING)
     .height(Length::Fill)
     .into()
+}
+
+/// The court-length preset buttons, stacked in the strip to the right of the
+/// levels table.
+///
+/// The preset whose schedule matches the staged levels is highlighted with the
+/// same blue the selected-level column uses, so the screen reads back which
+/// schedule is loaded. Hand-editing any time or lap count makes the staged
+/// levels stop matching, and the highlight drops on the next render — that is
+/// the whole mechanism, no separate "edited" flag is needed.
+fn build_preset_panel(levels: &[Level]) -> Element<'_, Message> {
+    let active = crate::config::BeepTestPreset::detect_levels(levels);
+
+    let mut col = Column::new().spacing(SPACING).width(Length::Fill);
+    for preset in crate::config::BeepTestPreset::ALL {
+        let style = if Some(preset) == active {
+            blue_selected_button
+        } else {
+            light_gray_button
+        };
+        col = col.push(
+            button(centered_text(format!("{}M", preset.metres())))
+                .style(style)
+                .padding(PADDING)
+                .width(Length::Fill)
+                .height(Length::Fixed(XS_BUTTON_SIZE))
+                .on_press(Message::BeepTestEditSelectPreset(preset)),
+        );
+    }
+    col.into()
 }
 
 /// Build the editor's transposed levels table. Mirrors the main view's
@@ -373,7 +421,7 @@ fn build_editor_levels_table(levels: &[Level], selected: usize) -> Element<'_, M
             is_selected,
         ));
     }
-    for _ in levels.len()..15 {
+    for _ in levels.len()..MAX_LEVELS {
         header_row = header_row.push(filler_cell());
     }
     rows = rows.push(header_row);
@@ -395,7 +443,7 @@ fn build_editor_levels_table(levels: &[Level], selected: usize) -> Element<'_, M
                 cell_row = cell_row.push(filler_cell());
             }
         }
-        for _ in levels.len()..15 {
+        for _ in levels.len()..MAX_LEVELS {
             cell_row = cell_row.push(filler_cell());
         }
         rows = rows.push(cell_row);
@@ -483,7 +531,7 @@ fn build_edit_panel(levels: &[Level], selected: usize) -> Element<'_, Message> {
     // already at the cap. Mirrors the existing remove_disabled +
     // count_inc_disabled patterns; defense-in-depth in the handler at
     // Message::BeepTestEditAddLevel.
-    let add_disabled = levels.len() >= 15;
+    let add_disabled = levels.len() >= MAX_LEVELS;
 
     // Safe to index because the caller already clamped `selected` to be
     // in range. If the list is empty we fall through to a placeholder

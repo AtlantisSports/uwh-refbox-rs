@@ -109,21 +109,31 @@ pub fn red_container(theme: &Theme) -> Style {
     outline_container_in_high_contrast(style, red(), Some(Background::Color(black())))
 }
 
+/// The buzzer face while it is held, during active play. In High Contrast the
+/// darkened fill that shows a press in Light/Dark is invisible against a dark
+/// panel, so the outline turns yellow instead. Yellow rather than the usual blue
+/// marker because the buzzer keeps its own red/blue identity — see
+/// `blue_pressed_container`.
 pub fn red_pressed_container(theme: &Theme) -> Style {
     let style = Style {
         background: Some(Background::Color(red_pressed())),
         ..gray_container_base(theme)
     };
-    outline_container_in_high_contrast(style, red(), Some(Background::Color(black())))
+    outline_container_in_high_contrast(style, yellow(), Some(Background::Color(black())))
 }
 
+/// The buzzer face while it is held, outside active play. The buzzer is the one
+/// control that keeps blue as its own colour in High Contrast, so the blue
+/// selected/pressed marker used everywhere else would be invisible on it; its
+/// held state is yellow instead. Used only by the buzzer, as is
+/// `red_pressed_container`.
 pub fn blue_pressed_container(theme: &Theme) -> Style {
     let style = Style {
         background: Some(Background::Color(blue_pressed())),
         text_color: Some(white()),
         ..gray_container_base(theme)
     };
-    outline_container_in_high_contrast(style, blue(), Some(Background::Color(black())))
+    outline_container_in_high_contrast(style, yellow(), Some(Background::Color(black())))
 }
 
 // ── Game-info table cells ───────────────────────────────────────────────────
@@ -258,6 +268,42 @@ mod high_contrast_container_tests {
         window_background, yellow,
     };
     use iced::{Background, Theme};
+
+    /// The buzzer is the one control that keeps blue in High Contrast, so its
+    /// held state must not use the blue marker — it would be invisible.
+    #[test]
+    fn high_contrast_held_buzzer_is_outlined_yellow() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        set_display_mode(DisplayMode::HighContrast);
+
+        let held = blue_pressed_container(&Theme::default());
+        let idle = blue_container(&Theme::default());
+        assert_eq!(held.border.color, yellow());
+        assert_ne!(held.border.color, idle.border.color);
+
+        let held_in_play = red_pressed_container(&Theme::default());
+        let idle_in_play = red_container(&Theme::default());
+        assert_eq!(held_in_play.border.color, yellow());
+        assert_ne!(held_in_play.border.color, idle_in_play.border.color);
+
+        set_display_mode(DisplayMode::Light);
+    }
+
+    #[test]
+    fn light_mode_held_buzzer_unchanged() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        set_display_mode(DisplayMode::Light);
+        let held = blue_pressed_container(&Theme::default());
+        assert_eq!(
+            held.background,
+            Some(Background::Color(crate::app::theme::blue_pressed()))
+        );
+        assert_eq!(held.border.width, 0.0);
+    }
 
     #[test]
     fn high_contrast_red_container_is_outlined() {

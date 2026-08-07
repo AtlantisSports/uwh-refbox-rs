@@ -1264,12 +1264,9 @@ pub(super) fn make_penalty_dropdown<'a>(
     });
 
     let name: Container<'_, Message> = container(
-        row![text(fl!(
-            "infraction",
-            infraction = inf_short_name(infraction)
-        ))]
-        .spacing(0)
-        .align_y(Alignment::Center),
+        row![text(infraction_bar_label(infraction))]
+            .spacing(0)
+            .align_y(Alignment::Center),
     )
     .style(blue_container)
     .width(Length::Fill);
@@ -1358,6 +1355,24 @@ pub fn inf_short_name(inf: Infraction) -> String {
     }
 }
 
+/// Text for the infraction picker's header bar. Until an infraction is chosen
+/// the bar prompts for one rather than naming `Unknown`, which would read as a
+/// real choice — the Add Foul and Add Warning pages are the only callers that
+/// show this bar, and both refuse to save without a selection (see
+/// `foul_add_can_commit` / `warning_add_can_commit`). `unknown` stays the
+/// wording for saved list rows, where a penalty legitimately can carry no
+/// infraction (fouls-and-warnings tracking off). The prompt is substituted into
+/// the same `infraction` template as a real name so the localized prefix always
+/// matches the populated state.
+fn infraction_bar_label(infraction: Infraction) -> String {
+    let value = if infraction == Infraction::Unknown {
+        fl!("select-infraction")
+    } else {
+        inf_short_name(infraction)
+    };
+    fl!("infraction", infraction = value)
+}
+
 /// Returns true when any of the given format hints represents a pending change
 /// (anything other than `NoChange`). Used to gray the Apply button on the
 /// penalty / warning / foul overview pages until a row is added, edited, or
@@ -1416,6 +1431,32 @@ mod tests {
         assert_eq!(cancel_or_back_label(true), fl!("cancel"));
         assert_eq!(cancel_or_back_label(false), fl!("back"));
         assert_ne!(cancel_or_back_label(true), cancel_or_back_label(false));
+    }
+
+    #[test]
+    fn infraction_bar_prompts_until_a_selection_is_made() {
+        // Nothing picked yet → the bar prompts for a choice instead of naming
+        // "Unknown" as though it were one. Compared against the same fl! keys so
+        // the assertion holds regardless of which locale the loader resolves to.
+        assert_eq!(
+            infraction_bar_label(Infraction::Unknown),
+            fl!("infraction", infraction = fl!("select-infraction"))
+        );
+        // Would have passed before this fix, and must not again.
+        assert_ne!(
+            infraction_bar_label(Infraction::Unknown),
+            fl!("infraction", infraction = fl!("unknown"))
+        );
+    }
+
+    #[test]
+    fn infraction_bar_names_a_chosen_infraction() {
+        for inf in all::<Infraction>().filter(|i| *i != Infraction::Unknown) {
+            assert_eq!(
+                infraction_bar_label(inf),
+                fl!("infraction", infraction = inf_short_name(inf))
+            );
+        }
     }
 
     #[test]

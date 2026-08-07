@@ -326,6 +326,7 @@ ref-list = Hoofdscheidsrechter: { $chief_ref }
 team-ref-list = Scheidsrechters: { $ref_team }
     Tijdwaarnemer/Scorer: { $ts_keeper_team }
 unknown = Onbekend
+select-infraction = Maak een keuze
 ## Wedstrijdtijdknop
 next-game = VOLGENDE WEDSTRIJD
 first-half = EERSTE HELFT

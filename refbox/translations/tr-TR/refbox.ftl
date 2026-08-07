@@ -326,6 +326,7 @@ ref-list = Başhakem: { $chief_ref }
 team-ref-list = Hakemler: { $ref_team }
     Zaman/Skor Tutanlar: { $ts_keeper_team }
 unknown = Bilinmiyor
+select-infraction = Seçim yapın
 ## Oyun zamanı düğmesi
 next-game = SONRAKİ OYUN
 first-half = İLK DEVRE

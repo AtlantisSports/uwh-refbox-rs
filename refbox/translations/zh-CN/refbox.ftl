@@ -325,6 +325,7 @@ ref-list = 主裁判：{ $chief_ref }
 team-ref-list = 裁判员：{ $ref_team }
     计时/记分员：{ $ts_keeper_team }
 unknown = 未知
+select-infraction = 请选择
 ## 比赛时间按钮
 next-game = 下一场
 first-half = 上半场

@@ -363,6 +363,7 @@ ref-list = Chief Ref: { $chief_ref }
 team-ref-list = Referees: { $ref_team }
     T/S Keeper: { $ts_keeper_team }
 unknown = Unknown
+select-infraction = Make selection
 ## Game time button
 next-game = NEXT GAME
 first-half = FIRST HALF

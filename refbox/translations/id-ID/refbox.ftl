@@ -326,6 +326,7 @@ ref-list = Wasit Kepala: { $chief_ref }
 team-ref-list = Wasit: { $ref_team }
     Pencatat Waktu/Skor: { $ts_keeper_team }
 unknown = Tidak Diketahui
+select-infraction = Pilih salah satu
 ## Tombol waktu pertandingan
 next-game = PERTANDINGAN BERIKUTNYA
 first-half = BABAK PERTAMA

@@ -199,7 +199,7 @@ fn build_levels_table(
             column_states[col_idx],
         ));
     }
-    for _ in levels.len()..15 {
+    for _ in levels.len()..MAX_LEVELS {
         header_row = header_row.push(filler_cell());
     }
     rows = rows.push(header_row);
@@ -232,7 +232,7 @@ fn build_levels_table(
                 cell_row = cell_row.push(filler_cell());
             }
         }
-        for _ in levels.len()..15 {
+        for _ in levels.len()..MAX_LEVELS {
             cell_row = cell_row.push(filler_cell());
         }
         rows = rows.push(cell_row);

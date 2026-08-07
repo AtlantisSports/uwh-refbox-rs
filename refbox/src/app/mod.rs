@@ -4876,7 +4876,7 @@ impl RefBoxApp {
             Message::BeepTestEditAddLevel => {
                 if let Some(ref mut edited) = self.edited_settings {
                     if let Some(ref mut levels) = edited.beep_test_levels {
-                        if levels.len() < 15 {
+                        if levels.len() < MAX_LEVELS {
                             let new_level = levels
                                 .get(edited.selected_level)
                                 .cloned()
@@ -4900,6 +4900,19 @@ impl RefBoxApp {
                             levels.remove(sel);
                             edited.selected_level = sel.saturating_sub(1);
                         }
+                    }
+                }
+                Task::none()
+            }
+            Message::BeepTestEditSelectPreset(preset) => {
+                // Replace the staged levels wholesale. This is a staged edit
+                // like any other on this page — the Apply footer commits it and
+                // Cancel discards it. Selection returns to the first level
+                // because the previously-selected index may no longer exist.
+                if let Some(ref mut edited) = self.edited_settings {
+                    if edited.beep_test_levels.is_some() {
+                        edited.beep_test_levels = Some(preset.config().levels);
+                        edited.selected_level = 0;
                     }
                 }
                 Task::none()

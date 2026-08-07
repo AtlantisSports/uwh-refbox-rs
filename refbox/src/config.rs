@@ -129,8 +129,6 @@ pub enum BeepTestPreset {
     M21,
 }
 
-// Wired up by the EDIT LEVELS preset buttons in the next task.
-#[allow(dead_code)]
 impl BeepTestPreset {
     pub const ALL: [Self; 3] = [Self::M25, Self::M23, Self::M21];
 

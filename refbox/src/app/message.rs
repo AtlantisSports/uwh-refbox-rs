@@ -1,5 +1,6 @@
 use super::{fl, languages::Language};
 use crate::{
+    config::BeepTestPreset,
     portal_manager::{ItemId, PortalEvent},
     sound_controller::{BuzzerSound, RemoteId},
     tournament_manager::{TournamentManager, penalty::PenaltyKind},
@@ -247,6 +248,10 @@ pub enum Message {
     /// Operator pressed `[REMOVE LEVEL]` on the Edit Levels page; removes
     /// the currently-selected level. No-op when only one level remains.
     BeepTestEditRemoveLevel,
+    /// Operator tapped a court-length preset on the BeepTest Edit Levels
+    /// sub-page. Replaces the staged levels with that preset's schedule; the
+    /// page's existing Apply footer commits it.
+    BeepTestEditSelectPreset(BeepTestPreset),
     /// Operator pressed Save on the Edit Levels page. Commits the staged
     /// level list to live config, persists to disk, and returns to the
     /// BeepTest Settings landing.
@@ -415,6 +420,7 @@ impl Message {
             | Self::BeepTestEditDurationDec
             | Self::BeepTestEditAddLevel
             | Self::BeepTestEditRemoveLevel
+            | Self::BeepTestEditSelectPreset(_)
             | Self::BeepTestEditLevelsSave
             | Self::BeepTestEditLevelsCancel
             | Self::BeepTestEditOpenBuzzer
@@ -646,6 +652,7 @@ impl PartialEq for Message {
             (Self::ConfirmationSelected(a), Self::ConfirmationSelected(b)) => a == b,
             (Self::PowerAction(a), Self::PowerAction(b)) => a == b,
             (Self::BeepTestEditSelectLevel(a), Self::BeepTestEditSelectLevel(b)) => a == b,
+            (Self::BeepTestEditSelectPreset(a), Self::BeepTestEditSelectPreset(b)) => a == b,
             (Self::TeamTimeout(a, b), Self::TeamTimeout(c, d)) => a == c && b == d,
             (Self::RefTimeout(a), Self::RefTimeout(b)) => a == b,
             (Self::PenaltyShot(a), Self::PenaltyShot(b)) => a == b,
@@ -759,6 +766,7 @@ impl PartialEq for Message {
             | (Self::BeepTestEditDurationDec, _)
             | (Self::BeepTestEditAddLevel, _)
             | (Self::BeepTestEditRemoveLevel, _)
+            | (Self::BeepTestEditSelectPreset(_), _)
             | (Self::BeepTestEditLevelsSave, _)
             | (Self::BeepTestEditLevelsCancel, _)
             | (Self::BeepTestEditOpenBuzzer, _)

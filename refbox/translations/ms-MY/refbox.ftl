@@ -406,6 +406,7 @@ beep-test-edit-time = MASA
 beep-test-edit-count = BILANGAN
 beep-test-edit-new = TAMBAH TAHAP
 beep-test-edit-remove = BUANG TAHAP
+beep-test-preset-ref = PENGADIL
 
 # Pelanggaran
 stick-foul = Kesalahan Kayu

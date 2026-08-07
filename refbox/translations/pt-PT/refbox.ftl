@@ -406,6 +406,7 @@ beep-test-edit-time = TEMPO
 beep-test-edit-count = CONT
 beep-test-edit-new = ADICIONAR NÍVEL
 beep-test-edit-remove = REMOVER NÍVEL
+beep-test-preset-ref = ÁRB
 
 # Infrações
 stick-foul = Falta de Taco

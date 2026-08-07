@@ -112,57 +112,110 @@ pub struct BeepTest {
     pub levels: Vec<Level>,
 }
 
+/// Court-length presets for the beep test.
+///
+/// Each preset defines a whole schedule: the warm-up and seven levels
+/// totalling 26 laps. 26 is the passing lap count, and the lap counts are
+/// arranged (3, 3, 4, 4, 4, 4, 4) so that lap 26 is the final lap of Level 7
+/// — the test ends exactly on the pass mark.
+///
+/// The level times scale with court length: the 21m and 23m columns are the
+/// 25m times multiplied by 21/25 and 23/25 and rounded up, matching the
+/// adjusted tables the tournament uses.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BeepTestPreset {
+    M25,
+    M23,
+    M21,
+}
+
+// Wired up by the EDIT LEVELS preset buttons in the next task.
+#[allow(dead_code)]
+impl BeepTestPreset {
+    pub const ALL: [Self; 3] = [Self::M25, Self::M23, Self::M21];
+
+    /// Laps per level. Identical for every court length — only the times
+    /// change. Sums to 26.
+    const LAP_COUNTS: [u8; 7] = [3, 3, 4, 4, 4, 4, 4];
+
+    /// Court length in metres, used for the DISTANCE tile's label.
+    pub fn metres(self) -> u8 {
+        match self {
+            Self::M25 => 25,
+            Self::M23 => 23,
+            Self::M21 => 21,
+        }
+    }
+
+    /// The seven level durations in seconds, Level 1 first.
+    fn level_secs(self) -> [u64; 7] {
+        match self {
+            Self::M25 => [36, 34, 32, 30, 28, 26, 24],
+            Self::M23 => [34, 32, 30, 28, 26, 24, 23],
+            Self::M21 => [31, 29, 27, 26, 24, 22, 21],
+        }
+    }
+
+    /// The complete beep-test configuration for this court length.
+    pub fn config(self) -> BeepTest {
+        BeepTest {
+            pre: std::time::Duration::from_secs(10),
+            levels: Self::LAP_COUNTS
+                .iter()
+                .zip(self.level_secs())
+                .map(|(&count, secs)| Level {
+                    count,
+                    duration: std::time::Duration::from_secs(secs),
+                })
+                .collect(),
+        }
+    }
+
+    /// Which preset the given staged level list matches, if any.
+    ///
+    /// The EDIT LEVELS screen stages only the levels — not the whole config —
+    /// so detection compares level lists rather than configs. `None` means the
+    /// operator has hand-edited the schedule, and the screen highlights no
+    /// preset.
+    pub fn detect_levels(levels: &[Level]) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|p| p.config().levels.as_slice() == levels)
+    }
+}
+
 impl Default for BeepTest {
     fn default() -> Self {
-        Self {
-            pre: std::time::Duration::from_secs(10),
-            levels: vec![
-                Level {
-                    count: 3,
-                    duration: std::time::Duration::from_secs(36),
-                },
-                Level {
-                    count: 3,
-                    duration: std::time::Duration::from_secs(34),
-                },
-                Level {
-                    count: 3,
-                    duration: std::time::Duration::from_secs(32),
-                },
-                Level {
-                    count: 4,
-                    duration: std::time::Duration::from_secs(30),
-                },
-                Level {
-                    count: 4,
-                    duration: std::time::Duration::from_secs(28),
-                },
-                Level {
-                    count: 4,
-                    duration: std::time::Duration::from_secs(26),
-                },
-                Level {
-                    count: 4,
-                    duration: std::time::Duration::from_secs(24),
-                },
-                Level {
-                    count: 4,
-                    duration: std::time::Duration::from_secs(22),
-                },
-                Level {
-                    count: 5,
-                    duration: std::time::Duration::from_secs(20),
-                },
-                Level {
-                    count: 4,
-                    duration: std::time::Duration::from_secs(18),
-                },
-            ],
-        }
+        BeepTestPreset::M25.config()
     }
 }
 
 impl BeepTest {
+    /// The incorrect 10-level table that shipped as the default before the
+    /// 26-lap correction: 5 laps at Level 9 and a 38-lap run. A config file
+    /// holding exactly this table is holding the old default rather than a
+    /// deliberate operator choice, so `migrate` replaces it.
+    fn legacy_default_levels() -> Vec<Level> {
+        [
+            (3u8, 36u64),
+            (3, 34),
+            (3, 32),
+            (4, 30),
+            (4, 28),
+            (4, 26),
+            (4, 24),
+            (4, 22),
+            (5, 20),
+            (4, 18),
+        ]
+        .iter()
+        .map(|&(count, secs)| Level {
+            count,
+            duration: std::time::Duration::from_secs(secs),
+        })
+        .collect()
+    }
+
     pub fn migrate(old: &Table) -> Self {
         let Self {
             mut pre,
@@ -183,6 +236,11 @@ impl BeepTest {
                     if let Some(table) = value.as_table() {
                         levels.push(Level::migrate(table))
                     }
+                }
+                // ...unless it is the old, incorrect shipped default, in which
+                // case carry the operator forward onto the corrected table.
+                if levels == Self::legacy_default_levels() {
+                    levels = BeepTestPreset::M25.config().levels;
                 }
             }
         }
@@ -437,6 +495,164 @@ mod test {
         assert_eq!(
             config.beep_test.levels[0].duration,
             std::time::Duration::from_secs(15)
+        );
+    }
+
+    // Every preset ends on lap 26 — the passing lap — with lap 26 the final
+    // lap of Level 7. This is the invariant the whole feature rests on.
+    #[test]
+    fn every_preset_ends_on_lap_26() {
+        for preset in BeepTestPreset::ALL {
+            let config = preset.config();
+            assert_eq!(config.levels.len(), 7, "{preset:?} has 7 levels");
+            let laps: u32 = config.levels.iter().map(|l| u32::from(l.count)).sum();
+            assert_eq!(laps, 26, "{preset:?} totals 26 laps");
+        }
+    }
+
+    // Lap counts are identical across court lengths — only the times scale.
+    #[test]
+    fn preset_lap_counts_are_identical() {
+        let expected: Vec<u8> = vec![3, 3, 4, 4, 4, 4, 4];
+        for preset in BeepTestPreset::ALL {
+            let counts: Vec<u8> = preset.config().levels.iter().map(|l| l.count).collect();
+            assert_eq!(counts, expected, "{preset:?} lap counts");
+        }
+    }
+
+    // The confirmed 25m table, including its 13:00 total run time.
+    #[test]
+    fn preset_25m_matches_confirmed_table() {
+        let config = BeepTestPreset::M25.config();
+        let secs: Vec<u64> = config.levels.iter().map(|l| l.duration.as_secs()).collect();
+        assert_eq!(secs, vec![36, 34, 32, 30, 28, 26, 24]);
+        assert_eq!(config.pre, std::time::Duration::from_secs(10));
+
+        let total: u64 = config.pre.as_secs()
+            + config
+                .levels
+                .iter()
+                .map(|l| l.duration.as_secs() * u64::from(l.count))
+                .sum::<u64>();
+        assert_eq!(total, 780, "25m run is 13:00 including the warm-up");
+    }
+
+    // The confirmed 21m table, read off the operator's sheet.
+    #[test]
+    fn preset_21m_matches_confirmed_table() {
+        let config = BeepTestPreset::M21.config();
+        let secs: Vec<u64> = config.levels.iter().map(|l| l.duration.as_secs()).collect();
+        assert_eq!(secs, vec![31, 29, 27, 26, 24, 22, 21]);
+    }
+
+    // 23m has no official table — it is DEFINED as ceil(25m x 0.92), the same
+    // method the official 21m table documents for itself (ceil(25m x 0.84)).
+    // This test enforces the derivation, so the numbers cannot drift away from
+    // the rule that produced them. 21m is included to prove the rule holds for
+    // the column we can check against a real sheet.
+    #[test]
+    fn shorter_court_durations_are_the_25m_table_scaled_and_rounded_up() {
+        let base = BeepTestPreset::M25;
+        for (preset, ratio) in [
+            (BeepTestPreset::M23, 0.92_f64),
+            (BeepTestPreset::M21, 0.84_f64),
+        ] {
+            for (i, (short, long)) in preset
+                .config()
+                .levels
+                .iter()
+                .zip(base.config().levels.iter())
+                .enumerate()
+            {
+                let expected = (long.duration.as_secs() as f64 * ratio).ceil() as u64;
+                assert_eq!(
+                    short.duration.as_secs(),
+                    expected,
+                    "{preset:?} level {} should be ceil({}s x {ratio})",
+                    i + 1,
+                    long.duration.as_secs()
+                );
+            }
+        }
+    }
+
+    // detect_levels is the inverse of config().levels: it recognises each
+    // preset exactly and returns None for a hand-edited schedule. This drives
+    // which preset button is highlighted on the EDIT LEVELS screen.
+    #[test]
+    fn detect_levels_round_trips_and_rejects_custom() {
+        for preset in BeepTestPreset::ALL {
+            assert_eq!(
+                BeepTestPreset::detect_levels(&preset.config().levels),
+                Some(preset)
+            );
+        }
+        let mut custom = BeepTestPreset::M25.config().levels;
+        custom[0].duration = std::time::Duration::from_secs(35);
+        assert_eq!(BeepTestPreset::detect_levels(&custom), None);
+
+        // A truncated list must not match — a prefix is not the schedule.
+        let short = &BeepTestPreset::M25.config().levels[..3];
+        assert_eq!(BeepTestPreset::detect_levels(short), None);
+    }
+
+    // The built-in default is the 25m preset.
+    #[test]
+    fn default_is_the_25m_preset() {
+        assert_eq!(BeepTest::default(), BeepTestPreset::M25.config());
+    }
+
+    // A config file still holding the old, incorrect 10-level default table
+    // (which had 5 laps at Level 9 and ran to 38 laps) is migrated to the
+    // corrected 25m preset. That exact table was never a deliberate operator
+    // choice — it was the shipped default — so replacing it is safe.
+    #[test]
+    fn migrate_replaces_legacy_default_table() {
+        let mut bt = toml::value::Table::new();
+        let legacy: Vec<toml::Value> = [
+            (3u8, 36u64),
+            (3, 34),
+            (3, 32),
+            (4, 30),
+            (4, 28),
+            (4, 26),
+            (4, 24),
+            (4, 22),
+            (5, 20),
+            (4, 18),
+        ]
+        .iter()
+        .map(|&(count, secs)| {
+            let mut t = toml::value::Table::new();
+            t.insert("count".to_string(), toml::Value::Integer(count.into()));
+            t.insert("duration".to_string(), toml::Value::Integer(secs as i64));
+            toml::Value::Table(t)
+        })
+        .collect();
+        bt.insert("levels".to_string(), toml::Value::Array(legacy));
+
+        let migrated = BeepTest::migrate(&bt);
+        assert_eq!(migrated.levels, BeepTestPreset::M25.config().levels);
+    }
+
+    // A genuinely hand-edited table is preserved untouched.
+    #[test]
+    fn migrate_preserves_custom_levels() {
+        let mut bt = toml::value::Table::new();
+        let mut lvl = toml::value::Table::new();
+        lvl.insert("count".to_string(), toml::Value::Integer(2));
+        lvl.insert("duration".to_string(), toml::Value::Integer(45));
+        bt.insert(
+            "levels".to_string(),
+            toml::Value::Array(vec![toml::Value::Table(lvl)]),
+        );
+
+        let migrated = BeepTest::migrate(&bt);
+        assert_eq!(migrated.levels.len(), 1);
+        assert_eq!(migrated.levels[0].count, 2);
+        assert_eq!(
+            migrated.levels[0].duration,
+            std::time::Duration::from_secs(45)
         );
     }
 

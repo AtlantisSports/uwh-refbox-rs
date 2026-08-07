@@ -45,9 +45,9 @@ pub struct TournamentManager {
     lap_count: u8,
     time_in_next_lap: Duration,
     /// Set exactly when the schedule runs off its end — the final lap of the
-    /// final level completes, or the sprint's single lap completes. Consumed
-    /// by `take_completed`, which the app polls each tick to return the page
-    /// to its idle state without the operator pressing RESET.
+    /// final level completes. Consumed by `take_completed`, which the app
+    /// polls each tick to return the page to its idle state without the
+    /// operator pressing RESET.
     completed: bool,
 }
 

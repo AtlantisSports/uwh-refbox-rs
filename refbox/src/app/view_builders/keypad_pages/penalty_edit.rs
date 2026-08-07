@@ -107,7 +107,7 @@ pub(super) fn make_penalty_edit_page<'a>(
             .style(green_button)
             .width(Length::Fill)
             .on_press_maybe(
-                penalty_edit_can_commit(infraction, track_fouls_and_warnings, player_num)
+                penalty_edit_can_commit(color, infraction, track_fouls_and_warnings, player_num)
                     .then_some(Message::PenaltyEditComplete {
                         canceled: false,
                         deleted: false,
@@ -163,45 +163,60 @@ pub(super) fn make_penalty_edit_page<'a>(
     content.into()
 }
 
-/// Returns true when the penalty entry can be saved: a player number is always
-/// required (penalties are always individual). The infraction is required only
-/// when "track fouls & warnings" is on — that is exactly when the infraction
-/// picker is shown on this screen.
+/// Returns true when the penalty entry can be saved. A player number is the
+/// only requirement — penalties are always individual, and a team is always
+/// selected on this page (`KeypadPage::Penalty` carries a plain `GameColor`,
+/// so one of Black/White is highlighted from the moment the page opens).
+///
+/// The infraction is deliberately optional, even with "track fouls & warnings"
+/// on and the picker visible. A penalty's essential content is the player and
+/// the duration — poolside the exclusion clock may need to start before the
+/// reason is settled — whereas a foul or warning is nothing but its infraction,
+/// so those pages do still require one (`foul_add_can_commit`,
+/// `warning_add_can_commit`). An infraction-less penalty is not a new state
+/// either: it is what this page has always produced with tracking off, and
+/// `Infraction::Unknown` is the enum's default, handled throughout.
+///
+/// The team, infraction, and tracking flag stay in the signature — the whole of
+/// the page's state that could plausibly gate saving — even though the rule
+/// ignores them. That is what lets `penalty_gate_depends_only_on_the_player_number`
+/// pin their irrelevance, so reintroducing any of them fails a test rather than
+/// silently re-blocking the operator.
 fn penalty_edit_can_commit(
-    infraction: Infraction,
-    track_fouls_and_warnings: bool,
+    _color: GameColor,
+    _infraction: Infraction,
+    _track_fouls_and_warnings: bool,
     player_num: u32,
 ) -> bool {
-    player_num > 0 && (!track_fouls_and_warnings || !matches!(infraction, Infraction::Unknown))
+    player_num > 0
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use enum_iterator::all;
 
     #[test]
-    fn penalty_needs_number() {
-        // Tracking off: only a number is required.
-        assert!(!penalty_edit_can_commit(Infraction::Unknown, false, 0));
-        assert!(penalty_edit_can_commit(Infraction::Unknown, false, 5));
-    }
-
-    #[test]
-    fn penalty_needs_infraction_when_tracking_on() {
-        assert!(!penalty_edit_can_commit(Infraction::Unknown, true, 5));
-        assert!(penalty_edit_can_commit(
-            Infraction::StickInfringement,
-            true,
-            5
-        ));
-    }
-
-    #[test]
-    fn penalty_tracking_on_still_needs_number() {
-        assert!(!penalty_edit_can_commit(
-            Infraction::StickInfringement,
-            true,
-            0
-        ));
+    fn penalty_gate_depends_only_on_the_player_number() {
+        // Across every combination of team, infraction (including one already
+        // picked, and every real infraction — not just Unknown), and the
+        // fouls-and-warnings toggle: a player number is sufficient on its own,
+        // and its absence is the only thing that blocks saving.
+        for color in [GameColor::Black, GameColor::White] {
+            for infraction in all::<Infraction>() {
+                for tracking in [false, true] {
+                    assert!(
+                        penalty_edit_can_commit(color, infraction, tracking, 5),
+                        "a player number must be enough: \
+                         {color:?}, {infraction:?}, tracking={tracking}"
+                    );
+                    assert!(
+                        !penalty_edit_can_commit(color, infraction, tracking, 0),
+                        "no player number must block saving: \
+                         {color:?}, {infraction:?}, tracking={tracking}"
+                    );
+                }
+            }
+        }
     }
 }

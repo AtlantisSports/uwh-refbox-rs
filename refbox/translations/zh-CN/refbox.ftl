@@ -405,6 +405,7 @@ beep-test-edit-time = 时间
 beep-test-edit-count = 次数
 beep-test-edit-new = 添加级别
 beep-test-edit-remove = 删除级别
+beep-test-preset-ref = 裁判
 
 # 违规类型
 stick-foul = 球棍犯规

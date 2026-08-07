@@ -406,6 +406,7 @@ beep-test-edit-time = 時間
 beep-test-edit-count = 回数
 beep-test-edit-new = レベル追加
 beep-test-edit-remove = レベル削除
+beep-test-preset-ref = 審判
 
 # 反則種別
 stick-foul = スティック反則

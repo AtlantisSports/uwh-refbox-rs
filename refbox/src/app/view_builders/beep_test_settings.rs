@@ -320,8 +320,9 @@ const EDIT_TABLE_CELL_HEIGHT: f32 = (MIN_BUTTON_SIZE - SPACING) / 2.0;
 /// selected column is highlighted with a distinct (blue) style to
 /// distinguish it from the main view's yellow "active lap" highlight. The
 /// table reserves `MAX_LEVELS` columns but the presets use only 7, so a
-/// fixed strip to its right holds the three preset buttons — the one whose
-/// schedule matches the staged levels renders highlighted; see
+/// fixed strip to its right holds the six preset buttons (a referee and a
+/// full schedule per court length, in a 2-column by 3-row grid) — the one
+/// whose schedule matches the staged levels renders highlighted; see
 /// `build_preset_panel`.
 ///
 /// Bottom middle: a per-level edit panel showing the selected level's
@@ -376,8 +377,10 @@ pub(in super::super) fn build_beep_test_edit_levels_page<'a>(
     .into()
 }
 
-/// The court-length preset buttons, stacked in the strip to the right of the
-/// levels table.
+/// The court-length preset buttons, arranged in a 2-column by 3-row grid in
+/// the strip to the right of the levels table: the referee (26-lap) preset
+/// on the left, the full (37-lap) preset on the right, one row per court
+/// length, ordered 25 / 23 / 21.
 ///
 /// The preset whose schedule matches the staged levels is highlighted with the
 /// same blue the selected-level column uses, so the screen reads back which
@@ -385,25 +388,49 @@ pub(in super::super) fn build_beep_test_edit_levels_page<'a>(
 /// levels stop matching, and the highlight drops on the next render — that is
 /// the whole mechanism, no separate "edited" flag is needed.
 fn build_preset_panel(levels: &[Level]) -> Element<'_, Message> {
-    let active = crate::config::BeepTestPreset::detect_levels(levels);
+    use crate::config::BeepTestPreset;
 
-    let mut col = Column::new().spacing(SPACING).width(Length::Fill);
-    for preset in crate::config::BeepTestPreset::ALL {
+    let active = BeepTestPreset::detect_levels(levels);
+
+    let preset_button = move |preset: BeepTestPreset| {
         let style = if Some(preset) == active {
             blue_selected_button
         } else {
             light_gray_button
         };
-        col = col.push(
-            button(centered_text(format!("{}M", preset.metres())))
-                .style(style)
-                .padding(PADDING)
-                .width(Length::Fill)
-                .height(Length::Fixed(XS_BUTTON_SIZE))
-                .on_press(Message::BeepTestEditSelectPreset(preset)),
-        );
-    }
-    col.into()
+        let label = if preset.is_ref() {
+            format!("{} {}M", fl!("beep-test-preset-ref"), preset.metres())
+        } else {
+            format!("{}M", preset.metres())
+        };
+        button(centered_text(label))
+            .style(style)
+            .padding(PADDING)
+            .width(Length::Fill)
+            .height(Length::Fixed(XS_BUTTON_SIZE))
+            .on_press(Message::BeepTestEditSelectPreset(preset))
+    };
+
+    column![
+        row![
+            preset_button(BeepTestPreset::Ref25),
+            preset_button(BeepTestPreset::Full25),
+        ]
+        .spacing(SPACING),
+        row![
+            preset_button(BeepTestPreset::Ref23),
+            preset_button(BeepTestPreset::Full23),
+        ]
+        .spacing(SPACING),
+        row![
+            preset_button(BeepTestPreset::Ref21),
+            preset_button(BeepTestPreset::Full21),
+        ]
+        .spacing(SPACING),
+    ]
+    .spacing(SPACING)
+    .width(Length::Fill)
+    .into()
 }
 
 /// Build the editor's transposed levels table. Mirrors the main view's

@@ -442,6 +442,7 @@ beep-test-edit-time = TIME
 beep-test-edit-count = COUNT
 beep-test-edit-new = ADD LEVEL
 beep-test-edit-remove = REMOVE LEVEL
+beep-test-preset-ref = REF
 
 # Infractions
 stick-foul = Stick Foul

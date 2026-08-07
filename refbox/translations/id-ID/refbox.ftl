@@ -405,6 +405,7 @@ beep-test-edit-time = WAKTU
 beep-test-edit-count = JUMLAH
 beep-test-edit-new = TAMBAH LEVEL
 beep-test-edit-remove = HAPUS LEVEL
+beep-test-preset-ref = WASIT
 
 # Pelanggaran
 stick-foul = Pelanggaran Stik

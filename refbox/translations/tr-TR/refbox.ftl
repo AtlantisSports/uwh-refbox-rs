@@ -405,6 +405,7 @@ beep-test-edit-time = SÜRE
 beep-test-edit-count = ADET
 beep-test-edit-new = SEVİYE EKLE
 beep-test-edit-remove = SEVİYE KALDIR
+beep-test-preset-ref = HKM
 
 # İhlaller
 stick-foul = Sopa Faulü

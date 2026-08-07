@@ -404,6 +404,7 @@ beep-test-edit-time = เวลา
 beep-test-edit-count = จำนวน
 beep-test-edit-new = เพิ่มระดับ
 beep-test-edit-remove = ลบระดับ
+beep-test-preset-ref = ผู้ตัดสิน
 
 # การฝ่าฝืน
 stick-foul = ฟาวล์ด้วยไม้

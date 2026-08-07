@@ -405,6 +405,7 @@ beep-test-edit-time = ORAS
 beep-test-edit-count = BILANG
 beep-test-edit-new = MAGDAGDAG NG ANTAS
 beep-test-edit-remove = ALISIN ANG ANTAS
+beep-test-preset-ref = REF
 
 # Mga Paglabag
 stick-foul = Poul sa Stick

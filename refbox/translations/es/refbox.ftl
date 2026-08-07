@@ -416,6 +416,7 @@ beep-test-edit-time = TIEMPO
 beep-test-edit-count = CANTIDAD
 beep-test-edit-new = AÑADIR NIVEL
 beep-test-edit-remove = ELIMINAR NIVEL
+beep-test-preset-ref = ÁRB
 
 # Infractions
 stick-foul = Infracción con el palo

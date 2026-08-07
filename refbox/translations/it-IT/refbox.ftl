@@ -405,6 +405,7 @@ beep-test-edit-time = TEMPO
 beep-test-edit-count = NUMERO
 beep-test-edit-new = AGGIUNGI LIVELLO
 beep-test-edit-remove = RIMUOVI LIVELLO
+beep-test-preset-ref = ARB
 
 # Infrazioni
 stick-foul = Fallo di Mazzetta

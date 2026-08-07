@@ -112,61 +112,122 @@ pub struct BeepTest {
     pub levels: Vec<Level>,
 }
 
-/// Court-length presets for the beep test.
+/// Truncates a full level schedule to `target` total laps.
 ///
-/// Each preset defines a whole schedule: the warm-up and eight levels
-/// totalling 26 laps. 26 is the passing lap count, and the lap counts are
-/// arranged (3, 3, 3, 4, 4, 4, 4, 1) so that lap 26 is Level 8's single lap
-/// — the test ends exactly on the pass mark, on the first lap of a level
-/// rather than the last lap of one.
+/// Whole levels are kept unchanged while the running lap total is still
+/// short of `target`. The level whose laps would push the total past
+/// `target` is kept but cut down to exactly the laps still needed to reach
+/// it; every level after that one is dropped. General on purpose — it does
+/// not know or care which level index or lap count that turns out to be,
+/// so it works unchanged for any full schedule and any target.
+fn truncate_at_laps(levels: &[Level], target: u8) -> Vec<Level> {
+    let mut out = Vec::new();
+    let mut total: u8 = 0;
+    for level in levels {
+        if total >= target {
+            break;
+        }
+        let count = level.count.min(target - total);
+        out.push(Level {
+            count,
+            duration: level.duration,
+        });
+        total += count;
+    }
+    out
+}
+
+/// Court-length and test-length presets for the beep test.
+///
+/// Each court length (25m / 23m / 21m) has two variants:
+/// - **Full** — the tournament's official table end to end: 10 levels, 37
+///   laps. Players run this.
+/// - **Ref** — the same table truncated to the passing lap count (26).
+///   Referees run this. The Ref levels are never typed out separately;
+///   `config` derives them from the Full table via `truncate_at_laps`, so
+///   they cannot drift from it.
 ///
 /// The level times scale with court length: the 21m and 23m columns are the
 /// 25m times multiplied by 21/25 and 23/25 and rounded up, matching the
 /// adjusted tables the tournament uses.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BeepTestPreset {
-    M25,
-    M23,
-    M21,
+    Ref25,
+    Ref23,
+    Ref21,
+    Full25,
+    Full23,
+    Full21,
 }
 
 impl BeepTestPreset {
-    pub const ALL: [Self; 3] = [Self::M25, Self::M23, Self::M21];
+    pub const ALL: [Self; 6] = [
+        Self::Ref25,
+        Self::Ref23,
+        Self::Ref21,
+        Self::Full25,
+        Self::Full23,
+        Self::Full21,
+    ];
 
-    /// Laps per level. Identical for every court length — only the times
-    /// change. Sums to 26.
-    const LAP_COUNTS: [u8; 8] = [3, 3, 3, 4, 4, 4, 4, 1];
+    /// Laps per level in the full schedule. Identical for every court
+    /// length — only the times change. Sums to 37.
+    const FULL_LAP_COUNTS: [u8; 10] = [3, 3, 3, 4, 4, 4, 4, 4, 4, 4];
+
+    /// The number of laps that passes the test. The Ref schedules are the
+    /// Full schedule truncated to exactly this many laps.
+    const PASSING_LAPS: u8 = 26;
 
     /// Court length in metres, used for the DISTANCE tile's label.
     pub fn metres(self) -> u8 {
         match self {
-            Self::M25 => 25,
-            Self::M23 => 23,
-            Self::M21 => 21,
+            Self::Ref25 | Self::Full25 => 25,
+            Self::Ref23 | Self::Full23 => 23,
+            Self::Ref21 | Self::Full21 => 21,
         }
     }
 
-    /// The eight level durations in seconds, Level 1 first.
-    fn level_secs(self) -> [u64; 8] {
+    /// Whether this is the shorter, 26-lap referee schedule, as opposed to
+    /// the full, 37-lap player schedule.
+    pub fn is_ref(self) -> bool {
+        matches!(self, Self::Ref25 | Self::Ref23 | Self::Ref21)
+    }
+
+    /// The ten full-schedule level durations in seconds, Level 1 first. Ref
+    /// and Full share the same table for a given court length — Ref is a
+    /// truncation of Full, not a separately-tracked table.
+    fn full_level_secs(self) -> [u64; 10] {
         match self {
-            Self::M25 => [36, 34, 32, 30, 28, 26, 24, 22],
-            Self::M23 => [34, 32, 30, 28, 26, 24, 23, 21],
-            Self::M21 => [31, 29, 27, 26, 24, 22, 21, 19],
+            Self::Ref25 | Self::Full25 => [36, 34, 32, 30, 28, 26, 24, 22, 20, 18],
+            Self::Ref23 | Self::Full23 => [34, 32, 30, 28, 26, 24, 23, 21, 19, 17],
+            Self::Ref21 | Self::Full21 => [31, 29, 27, 26, 24, 22, 21, 19, 17, 16],
         }
     }
 
-    /// The complete beep-test configuration for this court length.
+    /// The full (37-lap) schedule's ten levels for this preset's court
+    /// length.
+    fn full_levels(self) -> Vec<Level> {
+        Self::FULL_LAP_COUNTS
+            .iter()
+            .zip(self.full_level_secs())
+            .map(|(&count, secs)| Level {
+                count,
+                duration: std::time::Duration::from_secs(secs),
+            })
+            .collect()
+    }
+
+    /// The complete beep-test configuration for this preset.
     pub fn config(self) -> BeepTest {
+        let full = self.full_levels();
+        let levels = if self.is_ref() {
+            truncate_at_laps(&full, Self::PASSING_LAPS)
+        } else {
+            full
+        };
         BeepTest {
             pre: std::time::Duration::from_secs(10),
-            levels: Self::LAP_COUNTS
-                .iter()
-                .zip(self.level_secs())
-                .map(|(&count, secs)| Level {
-                    count,
-                    duration: std::time::Duration::from_secs(secs),
-                })
-                .collect(),
+            levels,
         }
     }
 
@@ -185,7 +246,7 @@ impl BeepTestPreset {
 
 impl Default for BeepTest {
     fn default() -> Self {
-        BeepTestPreset::M25.config()
+        BeepTestPreset::Ref25.config()
     }
 }
 
@@ -467,72 +528,87 @@ mod test {
         );
     }
 
-    // Every preset ends on lap 26 — the passing lap — with lap 26 the single
-    // lap of Level 8. This is the invariant the whole feature rests on.
+    // Every full preset covers the whole official table: 10 levels, 37
+    // laps, in the same lap-count shape regardless of court length.
     #[test]
-    fn every_preset_ends_on_lap_26() {
-        for preset in BeepTestPreset::ALL {
+    fn every_full_preset_has_37_laps_over_ten_levels() {
+        let expected_counts: Vec<u8> = vec![3, 3, 3, 4, 4, 4, 4, 4, 4, 4];
+        for preset in [
+            BeepTestPreset::Full25,
+            BeepTestPreset::Full23,
+            BeepTestPreset::Full21,
+        ] {
             let config = preset.config();
-            assert_eq!(config.levels.len(), 8, "{preset:?} has 8 levels");
+            assert_eq!(config.levels.len(), 10, "{preset:?} has 10 levels");
+            let counts: Vec<u8> = config.levels.iter().map(|l| l.count).collect();
+            assert_eq!(counts, expected_counts, "{preset:?} lap counts");
             let laps: u32 = config.levels.iter().map(|l| u32::from(l.count)).sum();
-            assert_eq!(laps, 26, "{preset:?} totals 26 laps");
+            assert_eq!(laps, 37, "{preset:?} totals 37 laps");
         }
     }
 
-    // Lap counts are identical across court lengths — only the times scale.
+    // Every ref preset is the first 26 laps of its full counterpart: the
+    // same durations level for level, with only the final level's count
+    // reduced to land exactly on the pass mark. Comparing against the full
+    // preset programmatically (rather than a typed-out expected list) is
+    // what proves the truncation, not a second copy of the data.
     #[test]
-    fn preset_lap_counts_are_identical() {
-        let expected: Vec<u8> = vec![3, 3, 3, 4, 4, 4, 4, 1];
-        for preset in BeepTestPreset::ALL {
-            let counts: Vec<u8> = preset.config().levels.iter().map(|l| l.count).collect();
-            assert_eq!(counts, expected, "{preset:?} lap counts");
+    fn every_ref_preset_is_a_26_lap_prefix_of_its_full_counterpart() {
+        for (ref_preset, full_preset) in [
+            (BeepTestPreset::Ref25, BeepTestPreset::Full25),
+            (BeepTestPreset::Ref23, BeepTestPreset::Full23),
+            (BeepTestPreset::Ref21, BeepTestPreset::Full21),
+        ] {
+            let ref_levels = ref_preset.config().levels;
+            let full_levels = full_preset.config().levels;
+
+            let laps: u32 = ref_levels.iter().map(|l| u32::from(l.count)).sum();
+            assert_eq!(laps, 26, "{ref_preset:?} totals 26 laps");
+            assert!(
+                ref_levels.len() <= full_levels.len(),
+                "{ref_preset:?} has more levels than {full_preset:?}"
+            );
+
+            for (i, (r, f)) in ref_levels.iter().zip(full_levels.iter()).enumerate() {
+                assert_eq!(
+                    r.duration,
+                    f.duration,
+                    "{ref_preset:?} level {} duration should match {full_preset:?}",
+                    i + 1
+                );
+                if i + 1 == ref_levels.len() {
+                    assert!(
+                        r.count <= f.count,
+                        "{ref_preset:?} level {} count should not exceed {full_preset:?}'s",
+                        i + 1
+                    );
+                } else {
+                    assert_eq!(
+                        r.count,
+                        f.count,
+                        "{ref_preset:?} level {} count should match {full_preset:?} \
+                         until the last level",
+                        i + 1
+                    );
+                }
+            }
         }
-    }
-
-    // The confirmed 25m table, including its total run time.
-    #[test]
-    fn preset_25m_matches_confirmed_table() {
-        let config = BeepTestPreset::M25.config();
-        let secs: Vec<u64> = config.levels.iter().map(|l| l.duration.as_secs()).collect();
-        assert_eq!(secs, vec![36, 34, 32, 30, 28, 26, 24, 22]);
-        assert_eq!(config.pre, std::time::Duration::from_secs(10));
-
-        let total: u64 = config.pre.as_secs()
-            + config
-                .levels
-                .iter()
-                .map(|l| l.duration.as_secs() * u64::from(l.count))
-                .sum::<u64>();
-        assert_eq!(total, 770, "25m run is 12:50 including the warm-up");
-    }
-
-    // The confirmed 21m table, read off the operator's sheet.
-    #[test]
-    fn preset_21m_matches_confirmed_table() {
-        let config = BeepTestPreset::M21.config();
-        let secs: Vec<u64> = config.levels.iter().map(|l| l.duration.as_secs()).collect();
-        assert_eq!(secs, vec![31, 29, 27, 26, 24, 22, 21, 19]);
     }
 
     // 23m has no official table — it is DEFINED as ceil(25m x 0.92), the same
     // method the official 21m table documents for itself (ceil(25m x 0.84)).
-    // This test enforces the derivation, so the numbers cannot drift away from
-    // the rule that produced them. 21m is included to prove the rule holds for
-    // the column we can check against a real sheet.
+    // This test enforces the derivation across the whole 10-level full
+    // table, so the numbers cannot drift away from the rule that produced
+    // them. 21m is included to prove the rule holds for the column we can
+    // check against a real sheet.
     #[test]
     fn shorter_court_durations_are_the_25m_table_scaled_and_rounded_up() {
-        let base = BeepTestPreset::M25;
+        let base = BeepTestPreset::Full25.config().levels;
         for (preset, ratio) in [
-            (BeepTestPreset::M23, 0.92_f64),
-            (BeepTestPreset::M21, 0.84_f64),
+            (BeepTestPreset::Full23, 0.92_f64),
+            (BeepTestPreset::Full21, 0.84_f64),
         ] {
-            for (i, (short, long)) in preset
-                .config()
-                .levels
-                .iter()
-                .zip(base.config().levels.iter())
-                .enumerate()
-            {
+            for (i, (short, long)) in preset.config().levels.iter().zip(base.iter()).enumerate() {
                 let expected = (long.duration.as_secs() as f64 * ratio).ceil() as u64;
                 assert_eq!(
                     short.duration.as_secs(),
@@ -546,8 +622,9 @@ mod test {
     }
 
     // detect_levels is the inverse of config().levels: it recognises each
-    // preset exactly and returns None for a hand-edited schedule. This drives
-    // which preset button is highlighted on the EDIT LEVELS screen.
+    // of the six presets exactly and returns None for a hand-edited
+    // schedule. This drives which preset button is highlighted on the EDIT
+    // LEVELS screen.
     #[test]
     fn detect_levels_round_trips_and_rejects_custom() {
         for preset in BeepTestPreset::ALL {
@@ -556,19 +633,70 @@ mod test {
                 Some(preset)
             );
         }
-        let mut custom = BeepTestPreset::M25.config().levels;
+        let mut custom = BeepTestPreset::Full25.config().levels;
         custom[0].duration = std::time::Duration::from_secs(35);
         assert_eq!(BeepTestPreset::detect_levels(&custom), None);
 
         // A truncated list must not match — a prefix is not the schedule.
-        let short = &BeepTestPreset::M25.config().levels[..3];
+        let short = &BeepTestPreset::Full25.config().levels[..3];
         assert_eq!(BeepTestPreset::detect_levels(short), None);
     }
 
-    // The built-in default is the 25m preset.
+    // Totals including the 10s warm-up, checked against the two numbers
+    // printed on the tournament's own paper 21m schedule. These two
+    // assertions are checks against a real external document, not
+    // incidental restatements of the lap-count/derivation tests above —
+    // do not "simplify" them away as redundant.
     #[test]
-    fn default_is_the_25m_preset() {
-        assert_eq!(BeepTest::default(), BeepTestPreset::M25.config());
+    fn preset_totals_match_the_official_sheets() {
+        fn total_secs(config: &BeepTest) -> u64 {
+            config.pre.as_secs()
+                + config
+                    .levels
+                    .iter()
+                    .map(|l| l.duration.as_secs() * u64::from(l.count))
+                    .sum::<u64>()
+        }
+
+        assert_eq!(
+            total_secs(&BeepTestPreset::Full25.config()),
+            988,
+            "Full 25m run is 16:28 including the warm-up"
+        );
+        assert_eq!(
+            total_secs(&BeepTestPreset::Full23.config()),
+            930,
+            "Full 23m run is 15:30 including the warm-up"
+        );
+        // EXTERNAL CHECK: the official 21m sheet prints "End 14:11" at the
+        // foot of the full table. This validates the full 10-level schedule
+        // end to end against that real document.
+        assert_eq!(
+            total_secs(&BeepTestPreset::Full21.config()),
+            851,
+            "Full 21m run is 14:11, matching the official sheet's End time"
+        );
+
+        assert_eq!(
+            total_secs(&BeepTestPreset::Ref25.config()),
+            770,
+            "Ref 25m run is 12:50 including the warm-up"
+        );
+        // EXTERNAL CHECK: the official 21m sheet prints lap 27's start time
+        // as 11:02 — the exact instant lap 26 (the pass mark) finishes.
+        // This validates the referee truncation end to end against that
+        // real document.
+        assert_eq!(
+            total_secs(&BeepTestPreset::Ref21.config()),
+            662,
+            "Ref 21m run is 11:02, matching the official sheet's lap-27 start time"
+        );
+    }
+
+    // The built-in default is the referee 25m preset.
+    #[test]
+    fn default_is_the_ref_25m_preset() {
+        assert_eq!(BeepTest::default(), BeepTestPreset::Ref25.config());
     }
 
     // A genuinely hand-edited table is preserved untouched.

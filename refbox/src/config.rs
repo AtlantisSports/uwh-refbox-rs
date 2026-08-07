@@ -122,7 +122,7 @@ pub struct BeepTest {
 /// The level times scale with court length: the 21m and 23m columns are the
 /// 25m times multiplied by 21/25 and 23/25 and rounded up, matching the
 /// adjusted tables the tournament uses.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BeepTestPreset {
     M25,
     M23,
@@ -189,31 +189,6 @@ impl Default for BeepTest {
 }
 
 impl BeepTest {
-    /// The incorrect 10-level table that shipped as the default before the
-    /// 26-lap correction: 5 laps at Level 9 and a 38-lap run. A config file
-    /// holding exactly this table is holding the old default rather than a
-    /// deliberate operator choice, so `migrate` replaces it.
-    fn legacy_default_levels() -> Vec<Level> {
-        [
-            (3u8, 36u64),
-            (3, 34),
-            (3, 32),
-            (4, 30),
-            (4, 28),
-            (4, 26),
-            (4, 24),
-            (4, 22),
-            (5, 20),
-            (4, 18),
-        ]
-        .iter()
-        .map(|&(count, secs)| Level {
-            count,
-            duration: std::time::Duration::from_secs(secs),
-        })
-        .collect()
-    }
-
     pub fn migrate(old: &Table) -> Self {
         let Self {
             mut pre,
@@ -234,11 +209,6 @@ impl BeepTest {
                     if let Some(table) = value.as_table() {
                         levels.push(Level::migrate(table))
                     }
-                }
-                // ...unless it is the old, incorrect shipped default, in which
-                // case carry the operator forward onto the corrected table.
-                if levels == Self::legacy_default_levels() {
-                    levels = BeepTestPreset::M25.config().levels;
                 }
             }
         }
@@ -598,39 +568,6 @@ mod test {
     #[test]
     fn default_is_the_25m_preset() {
         assert_eq!(BeepTest::default(), BeepTestPreset::M25.config());
-    }
-
-    // A config file still holding the old, incorrect 10-level default table
-    // (which had 5 laps at Level 9 and ran to 38 laps) is migrated to the
-    // corrected 25m preset. That exact table was never a deliberate operator
-    // choice — it was the shipped default — so replacing it is safe.
-    #[test]
-    fn migrate_replaces_legacy_default_table() {
-        let mut bt = toml::value::Table::new();
-        let legacy: Vec<toml::Value> = [
-            (3u8, 36u64),
-            (3, 34),
-            (3, 32),
-            (4, 30),
-            (4, 28),
-            (4, 26),
-            (4, 24),
-            (4, 22),
-            (5, 20),
-            (4, 18),
-        ]
-        .iter()
-        .map(|&(count, secs)| {
-            let mut t = toml::value::Table::new();
-            t.insert("count".to_string(), toml::Value::Integer(count.into()));
-            t.insert("duration".to_string(), toml::Value::Integer(secs as i64));
-            toml::Value::Table(t)
-        })
-        .collect();
-        bt.insert("levels".to_string(), toml::Value::Array(legacy));
-
-        let migrated = BeepTest::migrate(&bt);
-        assert_eq!(migrated.levels, BeepTestPreset::M25.config().levels);
     }
 
     // A genuinely hand-edited table is preserved untouched.

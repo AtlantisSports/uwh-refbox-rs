@@ -4909,6 +4909,9 @@ impl RefBoxApp {
                 // like any other on this page — the Apply footer commits it and
                 // Cancel discards it. Selection returns to the first level
                 // because the previously-selected index may no longer exist.
+                // preset.config() also returns `pre` (the warm-up), which is
+                // discarded here: `pre` isn't operator-editable anywhere and is
+                // 10 seconds for all three presets, so only `levels` is staged.
                 if let Some(ref mut edited) = self.edited_settings {
                     if edited.beep_test_levels.is_some() {
                         edited.beep_test_levels = Some(preset.config().levels);

@@ -278,8 +278,15 @@ describes what already exists, so it costs care rather than invention.
 ### The 17 endpoints / 18 operations
 
 Seventeen live in `uwh-common/src/uwhportal/mod.rs`, shared by refbox and
-schedule-processor; one more is overlay-only, made by the overlay's own code. Coin
-flips share a path between read and write, hence 17 paths for 18 operations.
+schedule-processor; one more is overlay-only, made by the overlay's own code. Two
+paths carry two operations each — coin flips are read and written on the same path,
+and the schedule path serves both a public read and an upload — so 18 operations sit
+on 16 distinct paths.
+
+**A third party who only wants refbox needs eight of them.** The other ten belong to
+schedule-processor (pre-tournament admin) and the overlay (stream graphics). This is
+the single most important fact in the document and belongs at the top of it: the
+burden is eight calls, not eighteen, for anyone who just wants the timing app.
 
 | Operation | Path |
 |---|---|

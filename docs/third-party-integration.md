@@ -389,7 +389,284 @@ the same 120-hour archive-and-drop as any other queued item.
 
 ## Data formats
 
-_(To be filled in.)_
+This section gives the exact field-by-field shape of everything the calls above only summarised:
+the two ways an ID can be written, the schedule the refbox downloads, the two timestamp formats,
+and the stats records refbox uploads after a game.
+
+### The two ID forms
+
+Every event ID and team ID in this API can be written two ways: a **short form** (just the ID
+itself, e.g. `1234-A`) and a **long form** (the ID with its type prefixed, e.g. `events/1234-A` or
+`teams/5678-B`). Which one appears follows a single rule, true everywhere in this API:
+
+- An ID that appears in a URL **path** is always the **short form**.
+- An ID that appears in a **query parameter** is always the **long form**.
+
+That's the whole rule — the "long form" is just the short form with `events/` or `teams/` stuck on
+the front, or removed. In the code, `EventId::partial()` strips the `events/` prefix and
+`EventId::full()` keeps it (`uwh-common/src/uwhportal/schedule.rs:714` and `:718`); `TeamId` has the
+identical pair of methods (`schedule.rs:762` and `:766`).
+
+Worked example, using the event and teams from the schedule example below:
+- Short form, in a path: `GET /api/events/{eventId}/schedule/privileged` with `eventId` = `1234-A`
+- Long form, in a query parameter: `POST /api/admin/events/stats?eventId=events/1234-A&gameNumber=1`
+
+Across the full eighteen-call inventory, exactly three calls put an ID in a query parameter, and
+so are the only three that use the long form:
+- Push stats — `eventId` (`uwh-common/src/uwhportal/mod.rs:334`) — one of the refbox eight, call 8
+  above.
+- Team roster fetch — `teamId` (`mod.rs:676`) — part of the other ten, used by schedule-processor.
+- Game referees fetch — `eventId` (`mod.rs:779`) — also part of the other ten.
+
+Every other ID in this API — including every `{eventId}` in the path tables above — is the short
+form.
+
+### The schedule payload
+
+This is the body returned by call 5 (`GET /api/events/{eventId}/schedule/privileged`). The whole
+shape is deserialised as one Rust structure, so every field described below as "required" must be
+present in the response — as an empty array or object where that's all there is — or the whole
+schedule fails to load. Fields described as "optional" may be left out of the JSON entirely.
+
+#### Top level: `Schedule` (`uwh-common/src/uwhportal/schedule.rs:513`)
+
+| Field | Required? | Contents |
+|---|---|---|
+| `eventId` | required | The event ID, long form (`events/1234-A`) |
+| `games` | required (may be `{}`) | **An object**, not an array — keys are game numbers as strings, values are `Game` objects (see below). The key string and the `Game`'s own `number` field should match. |
+| `nonGameEntries` | required (may be `[]`) | Calendar entries (breaks, ceremonies) that aren't games. Not needed to run a game — a stub can always send `[]`. |
+| `groups` | required (may be `[]`) | Pool/division structure and standings rules. Not needed to run a game — a stub can always send `[]`. |
+| `timingRules` | required | Array of `TimingRule` objects (see below). Every game's `timingRule.name` must match one of these by name, or refbox can't find that game's timing. |
+| `standingsOrder` | optional — may be omitted | Not needed to run a game |
+| `finalResultsOrder` | optional — may be omitted | Not needed to run a game |
+| `refereesByGameNumber` | optional — may be omitted | Team-supplied referee assignments, separate from the per-game `refereeAssignments` field below |
+
+#### `Game` (`schedule.rs:226`) — what refbox needs to run a game
+
+| JSON field | Rust type | Required? | Meaning |
+|---|---|---|---|
+| `number` | string | required | The game's number, as text (e.g. `"1"`) |
+| `dark` | `ScheduledTeam` | required | The black-capped team |
+| `light` | `ScheduledTeam` | required | The white-capped team |
+| `startsOn` | timestamp | required | Scheduled start time — see [timestamp formats](#the-two-timestamp-formats) below |
+| `court` | string | required | Court name, e.g. `"A"` |
+| `timingRule` | object | required | **Not a bare string** — it's `{"name": "<string>"}`, matched by name against the schedule's top-level `timingRules` array |
+| `refereeAssignments` | array of `RefereeAssignment` | optional — may be omitted | See below |
+| `description` | string | optional — may be omitted | Free-text note shown on the game-info screen |
+
+#### `ScheduledTeam` (`schedule.rs:36`)
+
+All four fields are optional; in practice exactly one is populated per team. For a stub server,
+only `teamId` matters — the other three describe teams not yet decided (winner-of, loser-of,
+seeded-by-group, or a placeholder name), which a stand-in site can ignore:
+
+| JSON field | Contents |
+|---|---|
+| `teamId` | The team ID, long form (`teams/5678-B`) |
+| `pendingAssignmentName` | A placeholder name, when no team is assigned yet |
+| `resultOf` | `{"type": "Winner"\|"Loser", "gameNumber": "<string>"}` |
+| `seededBy` | `{"number": <int>, "group": {"name": "<string>"}}` (`group` itself is optional) |
+
+#### `RefereeAssignment` (`schedule.rs:210`)
+
+| JSON field | Required? | Contents |
+|---|---|---|
+| `role` | required | Free-text role name, e.g. `"Head Referee"` — refbox doesn't validate this against a fixed list |
+| `userId` | optional | Portal user ID, matched against call 6's response to show a name |
+| `teamId` | optional | Set instead of `userId` when a team (not an individual) supplies the referee, long form |
+
+#### `TimingRule` (`schedule.rs:241`) — all fifteen fields
+
+**Every duration here is a whole number of seconds — not milliseconds.** The code enforces this
+with a custom `secs_only_duration` serializer (`schedule.rs:576-615`); a fractional or
+millisecond value will not parse.
+
+| # | JSON field | Type | Required? | Meaning |
+|---|---|---|---|---|
+| 1 | `name` | string | required | Matched by name from a `Game.timingRule.name` |
+| 2 | `teamTimeoutCount` | integer | required | Team timeouts allowed per team |
+| 3 | `teamTimeoutsCountedPerHalf` | bool | required | Whether the count in #2 resets each half |
+| 4 | `overtimeAllowed` | bool | required | |
+| 5 | `suddenDeathAllowed` | bool | required | |
+| 6 | `last2minStopTime` | bool | optional, defaults to `false` | |
+| 7 | `halfPlayDuration` | integer seconds | required | |
+| 8 | `halfTimeDuration` | integer seconds | required | `0` signals a single-half game |
+| 9 | `teamTimeoutDuration` | integer seconds | required | |
+| 10 | `overtimeHalfPlayDuration` | integer seconds | required | |
+| 11 | `overtimeHalfTimeDuration` | integer seconds | required | |
+| 12 | `preOvertimeBreak` | integer seconds | required | |
+| 13 | `preSuddenDeathDuration` | integer seconds | required | |
+| 14 | `minimumBreak` | integer seconds | required | Minimum gap the schedule packs between games |
+| 15 | `gameBlock` | integer seconds | optional | Total scheduled slot length for the game. If omitted, refbox works one out itself from the other durations (`schedule.rs:322-335`) — a stub server can simply leave it out. |
+
+#### Worked example: a complete two-game schedule
+
+Event `events/1234-A` ("Example Open 2026"), teams `teams/1234-A` ("Black Sheep"),
+`teams/5678-B` ("White Knights"), and `teams/9012-C` ("Reef Sharks") — the same event and the
+first two teams used in the stats example below, so the two examples describe one consistent
+tournament:
+
+```json
+{
+  "eventId": "events/1234-A",
+  "games": {
+    "1": {
+      "number": "1",
+      "dark": { "teamId": "teams/1234-A" },
+      "light": { "teamId": "teams/5678-B" },
+      "startsOn": "2026-08-08T09:00:00Z",
+      "court": "A",
+      "timingRule": { "name": "RR" },
+      "refereeAssignments": [
+        { "role": "Head Referee", "userId": "user-abc123" }
+      ],
+      "description": "Pool A opener"
+    },
+    "2": {
+      "number": "2",
+      "dark": { "teamId": "teams/9012-C" },
+      "light": { "teamId": "teams/5678-B" },
+      "startsOn": "2026-08-08T10:00:00Z",
+      "court": "B",
+      "timingRule": { "name": "RR" }
+    }
+  },
+  "nonGameEntries": [],
+  "groups": [],
+  "timingRules": [
+    {
+      "name": "RR",
+      "teamTimeoutCount": 1,
+      "teamTimeoutsCountedPerHalf": true,
+      "overtimeAllowed": true,
+      "suddenDeathAllowed": true,
+      "last2minStopTime": false,
+      "halfPlayDuration": 900,
+      "halfTimeDuration": 180,
+      "teamTimeoutDuration": 60,
+      "overtimeHalfPlayDuration": 300,
+      "overtimeHalfTimeDuration": 180,
+      "preOvertimeBreak": 180,
+      "preSuddenDeathDuration": 60,
+      "minimumBreak": 240
+    }
+  ]
+}
+```
+
+Game 2 shows what's genuinely optional in practice: no `refereeAssignments`, no `description`, and
+it reuses the same `"RR"` timing rule as game 1 rather than needing its own entry in `timingRules`.
+
+### The two timestamp formats
+
+There are two different timestamp formats in this API, and **they are not interchangeable** —
+using one where the other is expected is a silent failure, not a rejected request, because both
+happen to parse successfully even when the digits after the seconds don't match what the field
+normally contains.
+
+- **Schedule times** (`startsOn` / `endsOn`, anywhere they appear) always use whole seconds, never
+  a fractional part: `iso8601_4dig_year_no_subsecs`, defined at `schedule.rs:13-20`.
+- **Stats event times** (`occurredOn`, inside the stats records below) always include exactly nine
+  fractional digits (nanoseconds), even when the value happens to fall on a whole second:
+  `iso8601_short_year`, defined at `refbox/src/tournament_manager/game_stats.rs:10-14`.
+
+(The name `iso8601_short_year` in the code is misleading — both formats use a full four-digit year
+and both write UTC as `Z`. The only real difference between them is whether fractional seconds are
+present.)
+
+Side by side, for the same instant:
+
+| Field | Format name in code | Example |
+|---|---|---|
+| `startsOn` (schedule) | `iso8601_4dig_year_no_subsecs` | `2026-08-08T09:00:00Z` |
+| `occurredOn` (stats) | `iso8601_short_year` | `2026-08-08T09:00:00.000000000Z` |
+
+A stub server building a schedule response should always write `startsOn` without a fractional
+part. A stub server reading or storing the stats push (call 8) should expect `occurredOn` to
+always carry nine fractional digits, even for round-second timestamps.
+
+### The stats records
+
+This is the request body for call 8 (`POST /api/admin/events/stats`) — see that call's entry
+above for its query parameters (`eventId`, long form, and `gameNumber`). The body is **a bare JSON
+array** of event objects, with no wrapping object — refbox builds it by serialising the array
+directly (`game_stats.rs:96-104`) and sends those exact bytes as the request body
+(`uwh-common/src/uwhportal/mod.rs:325-337`). refbox sorts the events by `occurredOn` before
+sending, so a stub server can rely on chronological order.
+
+Every element has a `"$type"` field naming which of three kinds it is: `"goal"`, `"penalty"`, or
+`"foul"` (`game_stats.rs:107-153`). This is the most Portal-shaped part of the whole surface — it's
+detailed data meant for the Portal's own statistics pages, not information refbox itself needs
+back. **A site that only wants final scores can accept this call and discard the body entirely —
+refbox only requires a `200` response and never reads anything back from it.**
+
+All three kinds share five fields, then each adds its own:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `playerCapNumber` | integer (`foul`: integer or `null`) | The player's cap number. `null` on a `foul` only, for a team-level infraction ("both at fault") with no specific player. |
+| `side` | string (`foul`: string or `null`) | `"dark"` or `"light"` — same black/white convention as push-scores. `null` on a `foul` only, alongside a `null` `playerCapNumber`. |
+| `gamePeriod` | string | refbox's internal period name — one of `BetweenGames`, `FirstHalf`, `HalfTime`, `SecondHalf`, `PreOvertime`, `OvertimeFirstHalf`, `OvertimeHalfTime`, `OvertimeSecondHalf`, `PreSuddenDeath`, `SuddenDeath` (`uwh-common/src/game_snapshot.rs:129-141`) |
+| `periodTime` | number (seconds, may have a fractional part) | The game clock's value the instant the event was recorded. During a timed half (regulation or overtime) this counts **down** — time remaining in the period. During Sudden Death, which has no fixed length, the clock instead counts **up** from zero — so `periodTime` there is time *elapsed*, not remaining (`refbox/src/tournament_manager/mod.rs:1873-1886`, `:2200-2206`). |
+| `occurredOn` | timestamp | See [the two timestamp formats](#the-two-timestamp-formats) — this is always the `occurredOn` (fractional) form, never the `startsOn` form |
+
+Fields specific to each kind:
+
+**`goal`** — no extra fields beyond the five above.
+
+**`penalty`** adds:
+| Field | Type | Meaning |
+|---|---|---|
+| `duration` | integer seconds, or `null` | Whole seconds: `30`, `60`, `120`, `240`, or `300`, depending on the penalty's length. `null` only when `isTotalDismissal` is `true`. |
+| `isTotalDismissal` | bool | `true` for a Total Dismissal (no fixed duration — the player is out for the rest of the game) |
+
+**`foul`** adds:
+| Field | Type | Meaning |
+|---|---|---|
+| `called` | string | refbox's internal infraction name — one of `Unknown`, `StickInfringement`, `IllegalAdvancement`, `IllegalSubstitution`, `IllegallyStoppingThePuck`, `OutOfBounds`, `GrabbingTheBarrier`, `Obstruction`, `DelayOfGame`, `UnsportsmanlikeConduct`, `FreeArm`, `FalseStart` (`uwh-common/src/game_snapshot.rs:336-350`) |
+
+#### Worked example: one goal, one penalty, one foul
+
+For game `"1"` of the schedule above (Black Sheep, `dark`, vs. White Knights, `light`), sent as
+the body of `POST /api/admin/events/stats?eventId=events/1234-A&gameNumber=1`:
+
+```json
+[
+  {
+    "$type": "goal",
+    "playerCapNumber": 7,
+    "side": "dark",
+    "gamePeriod": "FirstHalf",
+    "periodTime": 507.0,
+    "occurredOn": "2026-08-08T09:06:33.000000000Z"
+  },
+  {
+    "$type": "penalty",
+    "playerCapNumber": 12,
+    "side": "light",
+    "gamePeriod": "FirstHalf",
+    "periodTime": 200.0,
+    "occurredOn": "2026-08-08T09:11:40.000000000Z",
+    "duration": 60,
+    "isTotalDismissal": false
+  },
+  {
+    "$type": "foul",
+    "playerCapNumber": 4,
+    "side": "dark",
+    "gamePeriod": "SecondHalf",
+    "periodTime": 812.0,
+    "occurredOn": "2026-08-08T09:19:28.000000000Z",
+    "called": "Obstruction"
+  }
+]
+```
+
+This is internally consistent with the schedule above: game 1's first half is 900 seconds
+(`halfPlayDuration`) starting at `startsOn` (09:00:00), so a `periodTime` of `507.0` (seconds
+*remaining*) during `FirstHalf` corresponds to a goal 6 minutes 33 seconds after kickoff — matching
+the `occurredOn` timestamp. The same arithmetic carries through the penalty and, after the 180-second
+half-time, the foul in the second half.
 
 ## The other ten
 

@@ -56,6 +56,11 @@ pub(in super::super) fn build_keypad_page<'a>(
         ..
     } = data;
 
+    // Today these are exactly the two cases where `panel_team` (below) returns
+    // `None`, so a grid is never actually rendered while disabled. That
+    // agreement is not enforced by the type system, so `enabled` is passed
+    // into `make_player_grid`/`make_grid_cell` too — if a future disabling
+    // condition is ever added here alone, the grid still cannot be tapped.
     let enabled = match page {
         KeypadPage::WarningAdd { team_warning, .. } => !team_warning,
         KeypadPage::FoulAdd { color, .. } => color.is_some(),
@@ -105,7 +110,7 @@ pub(in super::super) fn build_keypad_page<'a>(
         ),
         row![
             container(if show_grid(panel_numbers, mode, player_num) {
-                make_player_grid(panel_numbers, mode, player_num)
+                make_player_grid(panel_numbers, mode, player_num, enabled)
             } else {
                 make_number_pad(&page, player_num, enabled)
             })
@@ -114,7 +119,15 @@ pub(in super::super) fn build_keypad_page<'a>(
             } else {
                 disabled_container
             })
-            .padding(PADDING),
+            .padding(PADDING)
+            // Fixed to the pad's own width (3 columns of MIN_BUTTON_SIZE) so the
+            // panel is the same box whichever child it holds — the grid is
+            // narrower, so it gets centred inside this box instead of shifting
+            // DONE/CANCEL sideways when a page shows a grid for one team and the
+            // pad for the other.
+            .width(Length::Fixed(
+                3.0 * MIN_BUTTON_SIZE + 2.0 * SPACING + 2.0 * PADDING
+            )),
             match page {
                 KeypadPage::AddScore(color) => make_score_add_page(color),
                 KeypadPage::Penalty(origin, color, kind, foul) => {

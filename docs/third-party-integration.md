@@ -47,16 +47,20 @@ All eighteen calls the refbox ecosystem makes to the Portal today, across all th
 | 10 | POST | `/api/events/{eventSlug}/schedule` | schedule-processor | bearer | `uwh-common/src/uwhportal/mod.rs:580` |
 | 11 | POST | `/api/events/{eventSlug}/schedule/map-teams` | schedule-processor | bearer | `uwh-common/src/uwhportal/mod.rs:614` |
 | 12 | GET | `/api/events/{eventId}/schedule` | schedule-processor | none | `uwh-common/src/uwhportal/mod.rs:647` |
-| 13 | GET | `/api/admin/get-event-team` | schedule-processor | bearer | `uwh-common/src/uwhportal/mod.rs:671` |
-| 14 | GET | `/api/events/{eventSlug}/schedule/coin-flips` | schedule-processor | none | `uwh-common/src/uwhportal/mod.rs:694` |
+| 13 | GET | `/api/admin/get-event-team` | schedule-processor | none | `uwh-common/src/uwhportal/mod.rs:671` |
+| 14 | GET | `/api/events/{eventSlug}/schedule/coin-flips` | schedule-processor | bearer | `uwh-common/src/uwhportal/mod.rs:694` |
 | 15 | GET | `/api/events/{eventId}/participants` | schedule-processor | bearer | `uwh-common/src/uwhportal/mod.rs:726` |
 | 16 | GET | `/api/admin/events/game-referees` | schedule-processor | bearer | `uwh-common/src/uwhportal/mod.rs:772` |
 | 17 | POST | `/api/events/{eventSlug}/schedule/coin-flips` | schedule-processor | bearer | `uwh-common/src/uwhportal/mod.rs:816` |
-| 18 | GET | `/api/admin/events/{eventId}/overlay-attachments` | overlay | bearer | `overlay/src/network.rs:174` |
+| 18 | GET | `/api/admin/events/{eventId}/overlay-attachments` | overlay | none | `overlay/src/network.rs:174` |
 
 These eighteen operations sit on sixteen distinct paths: the coin-flips endpoint serves both
 a read and a write, and the schedule endpoint serves both a public read and an upload, each
 under the same path with a different HTTP method.
+
+The `/admin/` segment in a path is not a reliable signal for whether a call needs a token:
+two `/admin/` paths need none (`get-event-team`, `overlay-attachments`) and two do
+(`events/stats`, `events/game-referees`). Go by the "Auth" column, not the path.
 
 ## The refbox eight
 

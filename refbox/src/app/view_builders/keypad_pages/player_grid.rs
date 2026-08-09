@@ -3,7 +3,7 @@
 use super::*;
 use iced::{
     Length,
-    widget::{column, row},
+    widget::{column, row, text, vertical_space},
 };
 
 /// Columns in the player-number grid. The grid is read left to right, then
@@ -24,6 +24,24 @@ pub(super) const GRID_COLUMNS: usize = 3;
 /// only four pixels, so a shorter screen or a larger text scale needs this
 /// checked again on the target display.
 pub(super) const GRID_BUTTON_SIZE: f32 = MIN_BUTTON_SIZE;
+
+/// Whether this mode's grid stretches to fill the panel's height.
+///
+/// Rugby's five rows leave only a few pixels spare, so the rows share the
+/// height between them and the buttons go very slightly off square rather than
+/// leaving an odd gap. The hockey modes have a whole row's worth of slack, so
+/// they keep square buttons, sit at the bottom of the panel, and carry the
+/// page's title above them.
+/// Exhaustive rather than a `matches!`, to match `grid_cells` below: a new mode
+/// should not silently inherit a layout nobody chose for it.
+fn grid_fills_height(mode: Mode) -> bool {
+    match mode {
+        Mode::Rugby => true,
+        Mode::Hockey6V6 | Mode::Hockey3V3 => false,
+        // No grid at all, so this is never read.
+        Mode::BeepTest => false,
+    }
+}
 
 /// Cells the grid shows for a mode: the rules maximum roster size. `BeepTest`
 /// has no player attribution at all, so it has no grid.
@@ -156,6 +174,31 @@ mod tests {
     fn number_off_the_roster_falls_back_to_the_pad() {
         assert!(!show_grid(&[1, 7, 12], Mode::Hockey6V6, 23));
     }
+
+    #[test]
+    fn only_rugby_stretches_its_rows() {
+        assert!(grid_fills_height(Mode::Rugby));
+        assert!(!grid_fills_height(Mode::Hockey6V6));
+        assert!(!grid_fills_height(Mode::Hockey3V3));
+    }
+
+    /// Rugby stretches its rows because five of them already fill the panel.
+    /// That reasoning is only sound while Rugby's grid is five rows, so this
+    /// fails if the cell count moves — a prompt to re-check the layout, not a
+    /// rule about the rules.
+    #[test]
+    fn rugby_still_fits_the_five_rows_its_layout_assumes() {
+        let rows = grid_cells(Mode::Rugby).div_ceil(GRID_COLUMNS);
+        assert_eq!(
+            rows, 5,
+            "Rugby's grid changed size; re-check that stretched rows still fit \
+             the panel before updating this number"
+        );
+        assert!(
+            grid_cells(Mode::Rugby) >= grid_cells(Mode::Hockey6V6),
+            "Rugby is assumed to be the tallest grid"
+        );
+    }
 }
 
 /// One row of three cells per grid row. A cell with a number is tappable
@@ -169,28 +212,50 @@ pub(super) fn make_player_grid<'a>(
     selected: u32,
     enabled: bool,
 ) -> Element<'a, Message> {
-    // Centred, not left-aligned: the grid (3 * GRID_BUTTON_SIZE wide) sits
-    // inside a panel box sized for the wider number pad, so without this it
-    // would hug the box's left edge instead of sitting in the middle of it.
     // No horizontal alignment needed: the rows fill the panel's content width
     // exactly, so there is no slack to distribute.
+    let fills_height = grid_fills_height(mode);
+
     let mut grid = column![].spacing(SPACING);
+    if fills_height {
+        grid = grid.height(Length::Fill);
+    }
 
     for cells in grid_rows(numbers, mode) {
         let mut line = row![].spacing(SPACING);
+        if fills_height {
+            // Every row takes an equal share of the panel, so the buttons end
+            // up the same height as each other rather than each keeping the
+            // square height and leaving a gap at the bottom.
+            line = line.height(Length::Fill);
+        }
         for cell in cells {
-            line = line.push(make_grid_cell(cell, selected, enabled));
+            line = line.push(make_grid_cell(cell, selected, enabled, fills_height));
         }
         grid = grid.push(line);
     }
 
-    grid.into()
+    if fills_height {
+        return grid.into();
+    }
+
+    // The hockey modes have vertical slack, so the page's own title sits at the
+    // top of the panel and the square buttons are pushed to the bottom of it.
+    column![text(fl!("player-number")), vertical_space(), grid]
+        .spacing(SPACING)
+        .height(Length::Fill)
+        .into()
 }
 
 /// Reuses `make_small_button` from `shared_elements.rs` (text centred inside
 /// a filled container inside a fixed-size button), overriding its size to
 /// `GRID_BUTTON_SIZE`.
-fn make_grid_cell<'a>(cell: Option<u8>, selected: u32, enabled: bool) -> Element<'a, Message> {
+fn make_grid_cell<'a>(
+    cell: Option<u8>,
+    selected: u32,
+    enabled: bool,
+    fills_height: bool,
+) -> Element<'a, Message> {
     let label = match cell {
         Some(number) => number.to_string(),
         None => String::new(),
@@ -198,7 +263,11 @@ fn make_grid_cell<'a>(cell: Option<u8>, selected: u32, enabled: bool) -> Element
 
     let cell_button = make_small_button(label, MEDIUM_TEXT)
         .width(Length::Fixed(GRID_BUTTON_SIZE))
-        .height(Length::Fixed(GRID_BUTTON_SIZE));
+        .height(if fills_height {
+            Length::Fill
+        } else {
+            Length::Fixed(GRID_BUTTON_SIZE)
+        });
 
     match cell {
         Some(number) => {

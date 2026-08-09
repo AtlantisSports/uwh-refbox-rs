@@ -56,16 +56,9 @@ pub(in super::super) fn build_keypad_page<'a>(
         ..
     } = data;
 
-    // Today these are exactly the two cases where `panel_team` (below) returns
-    // `None`, so a grid is never actually rendered while disabled. That
-    // agreement is not enforced by the type system, so `enabled` is passed
-    // into `make_player_grid`/`make_grid_cell` too — if a future disabling
-    // condition is ever added here alone, the grid still cannot be tapped.
-    let enabled = match page {
-        KeypadPage::WarningAdd { team_warning, .. } => !team_warning,
-        KeypadPage::FoulAdd { color, .. } => color.is_some(),
-        _ => true,
-    };
+    // Single source of truth for every question the panel asks about this page.
+    let role = panel_role(&page);
+    let enabled = role.is_enabled();
 
     // The team-timeout settings page does not use the shared number pad; it
     // renders as a full-width panel below the game-time bar.
@@ -90,12 +83,12 @@ pub(in super::super) fn build_keypad_page<'a>(
 
     // An empty slice means "no usable roster": the number pad is shown, exactly
     // as it is today. That covers the portal being off, an unassigned team slot,
-    // a fetch that never succeeded, a roster with no cap numbers — and the pages
-    // that are not about players at all, since `panel_team` returns `None`.
+    // a fetch that never succeeded, a roster with no cap numbers — and every
+    // page that names no team, since those roles carry no colour.
     const NO_ROSTER: &[u8] = &[];
-    let panel_numbers: &[u8] = match panel_team(&page) {
-        Some(color) => &rosters[color],
-        None => NO_ROSTER,
+    let panel_numbers: &[u8] = match role {
+        PanelRole::Player(color) => &rosters[color],
+        PanelRole::TeamEntry | PanelRole::NotPlayer => NO_ROSTER,
     };
 
     column![
@@ -112,7 +105,7 @@ pub(in super::super) fn build_keypad_page<'a>(
             container(if show_grid(panel_numbers, mode, player_num) {
                 make_player_grid(panel_numbers, mode, player_num, enabled)
             } else {
-                make_number_pad(&page, player_num, enabled)
+                make_number_pad(&page, player_num, enabled, role.is_player_page())
             })
             .style(if enabled {
                 light_gray_container
@@ -121,13 +114,21 @@ pub(in super::super) fn build_keypad_page<'a>(
             })
             .padding(PADDING)
             // Fixed to the pad's own width (3 columns of MIN_BUTTON_SIZE) so the
-            // panel is the same box whichever child it holds — the grid is
-            // narrower, so it gets centred inside this box instead of shifting
-            // DONE/CANCEL sideways when a page shows a grid for one team and the
-            // pad for the other.
+            // panel is the same box whichever child it holds, and DONE/CANCEL
+            // cannot shift sideways when a page shows a grid for one team and
+            // the pad for the other.
             .width(Length::Fixed(
                 3.0 * MIN_BUTTON_SIZE + 2.0 * SPACING + 2.0 * PADDING
-            )),
+            ))
+            // The player pages get a full-height panel so grid and pad can both
+            // bottom-justify against it (and, in Rugby, so the grid's rows can
+            // share it). The pad-only pages stay content-sized, exactly as they
+            // are today.
+            .height(if role.is_player_page() {
+                Length::Fill
+            } else {
+                Length::Shrink
+            }),
             match page {
                 KeypadPage::AddScore(color) => make_score_add_page(color),
                 KeypadPage::Penalty(origin, color, kind, foul) => {
@@ -179,31 +180,72 @@ pub(in super::super) fn build_keypad_page<'a>(
     .into()
 }
 
-/// The team whose roster the left-hand panel should show. `None` where the page
-/// has no team selected — an "equal" foul or a team warning — and where the page
-/// is not about a player at all.
-fn panel_team(page: &KeypadPage) -> Option<GameColor> {
+/// What the left-hand panel is being asked for on a page.
+///
+/// Everything the panel needs to decide — whether it is enabled, whose roster
+/// it shows, and whether it is full height with its buttons at the bottom —
+/// derives from this one value. Keeping them separate let them drift: three
+/// places each re-deriving "is this a player page" from the page variants is
+/// three places to update when a variant is added.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PanelRole {
+    /// Asks which player, with a team selected. Shows that team's grid, or the
+    /// pad when there is no usable roster for them.
+    Player(GameColor),
+    /// Asks which player, but this entry belongs to no player — an "equal"
+    /// foul, or a team warning. The panel is greyed out.
+    TeamEntry,
+    /// Not about a player at all: game number, timeouts per half, portal login.
+    /// Free digit entry, always enabled, panel sized to its contents.
+    NotPlayer,
+}
+
+impl PanelRole {
+    /// A page that asks which player, whether or not one is currently named.
+    /// These panels are full height with their buttons pinned to the bottom, so
+    /// the grid and the pad cannot disagree about where the buttons sit.
+    fn is_player_page(self) -> bool {
+        matches!(self, Self::Player(_) | Self::TeamEntry)
+    }
+
+    /// The panel greys out only where the entry has no player to name.
+    fn is_enabled(self) -> bool {
+        !matches!(self, Self::TeamEntry)
+    }
+}
+
+fn panel_role(page: &KeypadPage) -> PanelRole {
     match page {
-        KeypadPage::AddScore(color) | KeypadPage::Penalty(_, color, _, _) => Some(*color),
-        KeypadPage::FoulAdd { color, .. } => *color,
+        KeypadPage::AddScore(color) | KeypadPage::Penalty(_, color, _, _) => {
+            PanelRole::Player(*color)
+        }
+        KeypadPage::FoulAdd { color, .. } => match color {
+            Some(color) => PanelRole::Player(*color),
+            None => PanelRole::TeamEntry,
+        },
         KeypadPage::WarningAdd {
             color,
             team_warning,
             ..
         } => {
             if *team_warning {
-                None
+                PanelRole::TeamEntry
             } else {
-                Some(*color)
+                PanelRole::Player(*color)
             }
         }
         KeypadPage::GameNumber | KeypadPage::TeamTimeouts(_, _) | KeypadPage::PortalLogin(_, _) => {
-            None
+            PanelRole::NotPlayer
         }
     }
 }
 
-fn make_number_pad<'a>(page: &KeypadPage, player_num: u32, enabled: bool) -> Element<'a, Message> {
+fn make_number_pad<'a>(
+    page: &KeypadPage,
+    player_num: u32,
+    enabled: bool,
+    bottom_justified: bool,
+) -> Element<'a, Message> {
     let setup_keypad_button =
         |button: Button<'a, Message>, message: Message| -> Button<'a, Message> {
             let button = if enabled {
@@ -244,13 +286,14 @@ fn make_number_pad<'a>(page: &KeypadPage, player_num: u32, enabled: bool) -> Ele
 
     let text_size = MEDIUM_TEXT;
 
-    column![
-        row![
-            text(page.text()).align_x(Horizontal::Left),
-            Space::with_width(Length::Fill),
-            text(text_displayed).size(text_size),
-        ]
-        .width(Length::Fixed(3.0 * MIN_BUTTON_SIZE + 2.0 * SPACING)),
+    let label = row![
+        text(page.text()).align_x(Horizontal::Left),
+        Space::with_width(Length::Fill),
+        text(text_displayed).size(text_size),
+    ]
+    .width(Length::Fixed(3.0 * MIN_BUTTON_SIZE + 2.0 * SPACING));
+
+    let digits = column![
         row![
             setup_keypad_button(
                 make_small_button("7", MEDIUM_TEXT),
@@ -320,6 +363,20 @@ fn make_number_pad<'a>(page: &KeypadPage, player_num: u32, enabled: bool) -> Ele
         ]
         .spacing(SPACING),
     ]
-    .spacing(SPACING)
-    .into()
+    .spacing(SPACING);
+
+    if bottom_justified {
+        // On the four player pages the panel swaps between this pad and the
+        // number grid as the operator toggles teams, so both are pinned to the
+        // bottom of a full-height panel. The button block then lands in exactly
+        // the same place either way and nothing moves under their finger.
+        column![label, Space::with_height(Length::Fill), digits]
+            .spacing(SPACING)
+            .height(Length::Fill)
+            .into()
+    } else {
+        // The pages that only ever show the pad — game number, timeouts per
+        // half, portal login — keep their content-sized panel unchanged.
+        column![label, digits].spacing(SPACING).into()
+    }
 }

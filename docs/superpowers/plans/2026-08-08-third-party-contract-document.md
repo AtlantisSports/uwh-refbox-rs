@@ -95,9 +95,9 @@ the document claims, normalising placeholder names on both sides:
 
 ```bash
 diff \
-  <(rg -o -N '/api/[A-Za-z0-9/{}_-]*' uwh-common/src/uwhportal/mod.rs overlay/src/network.rs \
+  <(rg -o -N '/api/[A-Za-z0-9/{}_-]+' uwh-common/src/uwhportal/mod.rs overlay/src/network.rs \
      | sed 's/^[^:]*://; s/{[^}]*}/{}/g' | sort -u) \
-  <(rg -o '/api/[A-Za-z0-9/{}_-]*' docs/third-party-integration.md \
+  <(rg -o '/api/[A-Za-z0-9/{}_-]+' docs/third-party-integration.md \
      | sed 's/{[^}]*}/{}/g' | sort -u) \
   && echo "IN SYNC"
 ```
@@ -470,3 +470,13 @@ git commit -m "docs(workspace): verify contract with a full game against the stu
 ## Deviations
 
 _(Record here if execution diverges from the plan.)_
+
+- **Task 1, Step 1 command fixed:** the original drift check used `/api/[A-Za-z0-9/{}_-]*`
+  (a `*` quantifier). Once the check's own text was pasted verbatim into the document's
+  "Keeping this document honest" section (Step 5), that literal text self-matched: `/api/`
+  followed by `[` (not in the character class) still counts as a zero-length match under
+  `*`, producing one spurious `/api/` entry on the document side with no counterpart in the
+  source files. Changed the quantifier to `+` in both extractions (code side and doc side),
+  which requires at least one trailing path character and no longer matches the check's own
+  quoted regex text. Verified against the final committed document: `IN SYNC`, no extra
+  lines. Tasks 2, 3, and 4 should use the `+` version when they re-run this check.

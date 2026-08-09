@@ -670,7 +670,401 @@ half-time, the foul in the second half.
 
 ## The other ten
 
-_(To be filled in.)_
+**None of the ten calls in this section are needed to run a game.** Nine of them belong to
+`schedule-processor`, the command-line tool a tournament admin runs before the event — to upload
+the schedule, resolve coin tosses (the coin toss UWH uses to break a tie or decide a seeding when
+teams finish level), and generate printed scoresheets. The tenth belongs to the stream overlay,
+and only matters to a site that wants to serve the overlay's on-screen graphics. If you only want
+something for the refbox to talk to during a game, you're done — [The refbox eight](#the-refbox-eight)
+is the whole contract you need, and you can skip the rest of this section entirely.
+
+Full detail on all ten below, using the same headings as the eight above so all eighteen entries
+in this document can be skimmed the same way. Two things already established still apply here:
+
+- Two of these ten put an ID in a query parameter and so use the long form described under
+  [the two ID forms](#the-two-id-forms): team roster (call 3 below) and game referees (call 5
+  below).
+- "Fields [caller] actually reads" lists only what the deserialising code actually pulls out of
+  the response — a stand-in site can return an object with only those fields (plus whatever the
+  shape requires just to parse) and the real program will work correctly.
+
+#### 1. Log in with email and password
+
+`POST /api/authentication`  ·  source: `uwh-common/src/uwhportal/mod.rs:264`
+
+**When schedule-processor calls it:** schedule-processor doesn't log in up front. Each of its
+privileged menu actions — Upload Schedule, Resolve Coin Tosses, and Generate Score Sheets (twice:
+once for an optional "show portal display names" step, and again if a call partway through
+Generate Score Sheets comes back saying it needs authentication) — checks whether it already has
+a token and only prompts for a login here if it doesn't. Once one action logs in successfully,
+every later action in the same run reuses that token, until a push fails and clears it (see calls
+8 and 9 below). Credentials are always typed interactively — an email prompt, then a masked
+password prompt — there is no command-line flag or environment variable for them.
+
+**Authentication:** none
+
+**Query parameters:** none
+
+**Request body:** `{"email": "<string>", "password": "<string>"}`
+
+**Successful response:** `200` with `{"accessToken": "<token>"}`. Note the field name:
+`accessToken`, not the `accessKey` that the refbox login (call 1 of the refbox eight) returns —
+these are two unrelated login flows that happen to both hand back a bearer token, under
+differently-named fields.
+
+**Fields schedule-processor actually reads:** `accessToken` on success. Nothing else in the
+response is read.
+
+**On failure:** Any non-`200` response: logged, and schedule-processor returns to its main menu
+without exiting — the operator can just try the action again. The exception is the optional
+"show portal display names" login: a failure there just means generation proceeds without those
+names, rather than sending the operator back to the menu. There's no equivalent of refbox's two
+specific `400` reasons; every failure here is treated the same way.
+
+#### 2. Public event schedule
+
+`GET /api/events/{eventId}/schedule`  ·  source: `uwh-common/src/uwhportal/mod.rs:647`
+
+**When schedule-processor calls it:** When generating scoresheets, if schedule-processor doesn't
+already have a login token — this is the unauthenticated alternative to the privileged schedule
+call (call 5 of the refbox eight, `/schedule/privileged`). A comment on this call in the source
+warns that for some events the public endpoint returns `games` as a plain JSON array rather than
+the object shape the parser expects; when that happens this call fails to parse, and
+schedule-processor falls back to logging in and using the privileged schedule instead.
+
+**Authentication:** none
+
+**Query parameters:** none
+
+**Request body:** none
+
+**Successful response:** `200` with the same shape documented under
+[the schedule payload](#the-schedule-payload) for the privileged call — this endpoint and the
+privileged one return the same shape, just gated differently.
+
+**Fields schedule-processor actually reads:** Same as the privileged schedule — see Data
+formats; the whole shape is deserialised.
+
+**On failure:** Any non-`200` response, or a body that doesn't parse (including the
+array-vs-object mismatch above): logged, then schedule-processor automatically prompts for a
+login and retries with the privileged call instead. If that also fails, the action ends there.
+
+#### 3. Team roster
+
+`GET /api/admin/get-event-team`  ·  source: `uwh-common/src/uwhportal/mod.rs:671`
+
+**When schedule-processor calls it:** While generating scoresheets, once per team, only for the
+scoresheet styles that print a roster.
+
+**Authentication:** none
+
+**Query parameters:** `teamId` — the team ID, **long form** (`teams/5678-B`), per the
+query-parameter rule under [the two ID forms](#the-two-id-forms).
+
+**Request body:** none
+
+**Successful response:** `200` with a `roster` array. Example:
+```json
+{
+  "roster": [
+    { "rosterName": "Casey", "capNumber": 7, "roles": ["Player", "Captain"] },
+    { "rosterName": "", "username": "reef_ref", "capNumber": 12, "roles": ["Player"] }
+  ]
+}
+```
+
+**Fields schedule-processor actually reads:** Per roster entry: `capNumber` (optional); a display
+name (`rosterName` if it's non-empty, otherwise `username`, otherwise a blank string); and
+`roles`, used two ways — an entry is dropped entirely unless its `roles` include `"Player"`,
+`"Captain"`, or `"ViceCaptain"` (so `"Manager"`, `"Coach"`, and `"Official"` roster entries never
+appear on a printed roster), and `"Captain"` / `"ViceCaptain"` in `roles` sets that flag on the
+entry for the scoresheet to mark. An entry with neither a name nor a cap number is also dropped.
+The kept entries are sorted numbered-first (ascending), then unnumbered entries alphabetically by
+name.
+
+**On failure:** Any non-`200` response: logged as a warning, and the team is treated as having an
+empty roster — scoresheet generation continues with a blank roster for that team rather than
+stopping.
+
+#### 4. Event referee name map
+
+`GET /api/events/{eventId}/participants`  ·  source: `uwh-common/src/uwhportal/mod.rs:726`
+
+**When schedule-processor calls it:** Every time it generates scoresheets, to attach display
+names to officials — the same purpose as call 6 of the refbox eight, but reading a different
+endpoint.
+
+**Authentication:** `Authorization: Bearer <token>`
+
+**Query parameters:** none
+
+**Request body:** none
+
+**Successful response:** `200` with participant entries, accepted in any of three shapes: a bare
+JSON array, `{"participants": [...]}`, or `{"items": [...]}`. Example:
+```json
+{ "participants": [ { "user": { "id": "user-abc123", "username": "reef_ref" }, "rosterName": "Casey" } ] }
+```
+
+**Fields schedule-processor actually reads:** Per entry, an ID (`user.id`, falling back to
+`userId`, falling back to `id`) and a display name (`rosterName` if non-empty, otherwise
+`user.name`, otherwise `user.username`). An entry missing either is skipped.
+
+**On failure:** Any non-`200` response: logged at debug level and skipped — scoresheet generation
+proceeds without adding any names from this call.
+
+#### 5. Game referee name map
+
+`GET /api/admin/events/game-referees`  ·  source: `uwh-common/src/uwhportal/mod.rs:772`
+
+**When schedule-processor calls it:** While generating scoresheets, at most once per game, the
+first time that game's officials need a name looked up.
+
+**Authentication:** `Authorization: Bearer <token>`
+
+**Query parameters:** `eventId` — the event ID, **long form** (`events/1234-A`), per the
+query-parameter rule under [the two ID forms](#the-two-id-forms) — and `gameNumber` (plain
+string, e.g. `"3"`).
+
+**Request body:** none
+
+**Successful response:** `200` with referee entries, accepted either as `{"referees": [...]}` or
+a bare array. Example:
+```json
+{ "referees": [ { "user": { "id": "user-abc123", "name": "Casey Referee", "username": "reef_ref" } } ] }
+```
+
+**Fields schedule-processor actually reads:** Per entry, an ID (`user.id`, falling back to
+`userId`, falling back to `id`) and a display name (`user.name` if present, otherwise
+`user.username`, otherwise `rosterName`). An entry missing either is skipped.
+
+**On failure:** Any non-`200` response: silently skipped, with no log message. The scoresheet
+falls back to showing the raw user ID's suffix in place of a name for that game's officials.
+
+#### 6. Get coin flips
+
+`GET /api/events/{eventSlug}/schedule/coin-flips`  ·  source: `uwh-common/src/uwhportal/mod.rs:694`
+
+**When schedule-processor calls it:** When the operator picks "Resolve Coin Tosses" from the
+menu, after logging in if needed.
+
+**Authentication:** `Authorization: Bearer <token>`
+
+**Query parameters:** none
+
+**Request body:** none
+
+**Successful response:** `200` with `groups` and `games`, each a list of coin-flip records. A
+record not yet decided has no `result`; one that's been called has a `result` naming which team
+it favoured. Every field on this response accepts either `PascalCase` or `camelCase` — the
+portal may send either. Example:
+```json
+{
+  "groups": [],
+  "games": [
+    {
+      "identifier": "1",
+      "tiedTeams": [
+        { "teamId": "teams/1234-A" },
+        { "teamId": "teams/5678-B" }
+      ],
+      "result": null
+    }
+  ]
+}
+```
+
+**Fields schedule-processor actually reads:** Everything shown above. Per tied-team entry,
+exactly one of `teamId` (long form) or `pendingAssignmentName` is expected to be populated —
+whichever is present is used to label the choice presented to the operator. A `result`, when
+present, names which of the tied teams or groups won the toss.
+
+**On failure:** Any non-`200` response, or a body that doesn't match this shape: logged, and
+schedule-processor returns to its main menu — no retry.
+
+#### 7. Set coin flip result
+
+`POST /api/events/{eventSlug}/schedule/coin-flips`  ·  source: `uwh-common/src/uwhportal/mod.rs:816`
+
+**When schedule-processor calls it:** Immediately after the operator picks a tied game (or group)
+and a winning team from the menu populated by call 6.
+
+**Authentication:** `Authorization: Bearer <token>`
+
+**Query parameters:** `force` (boolean, `true` or `false`) — set when the operator confirms
+overwriting an already-decided result; ordinarily `false`.
+
+**Request body:** identifies which toss is being recorded and its outcome. Unlike every other
+JSON body in this document, the field names here are **`PascalCase` only** — there is no
+`camelCase` form accepted, since this shape is only ever sent, never received. Example:
+```json
+{
+  "GroupIdentifier": null,
+  "CoinFlipIdentifier": "1",
+  "TeamIdOrPendingAssignmentName": "teams/1234-A",
+  "Kind": "Favor"
+}
+```
+`GroupIdentifier` is `null` for a tied-game toss (as opposed to a group-seeding toss).
+`TeamIdOrPendingAssignmentName` carries whichever of the two the chosen team had — the long-form
+team ID once a team is resolved, or its placeholder name otherwise.
+
+**Successful response:** `200`. The body is never parsed — only the status code matters.
+
+**Fields schedule-processor actually reads:** none.
+
+**On failure:** Any non-`200` response: logged, but schedule-processor doesn't return to the menu
+or clear anything — the operator sees the error and can retry the same choice.
+
+#### 8. Push schedule
+
+`POST /api/events/{eventSlug}/schedule`  ·  source: `uwh-common/src/uwhportal/mod.rs:580`
+
+**When schedule-processor calls it:** When the operator picks "Upload Schedule" and confirms,
+after loading a schedule from a local CSV file and logging in if needed.
+
+**Authentication:** `Authorization: Bearer <token>`
+
+**Query parameters:** `force` (boolean, `true` or `false`) — set only when the operator confirms
+overwriting a schedule the site already has for that event.
+
+**Request body:** the schedule to upload — the same shape as
+[the schedule payload](#the-schedule-payload) documented for the privileged response, with two
+differences: `eventId` is left out (the event is already identified by the slug in the URL), and
+`refereesByGameNumber` is left out entirely. `games` is sent as a plain JSON array of `Game`
+objects, not an object keyed by game number.
+
+**Successful response:** `200`. The body is never parsed — only the status code matters.
+
+**Fields schedule-processor actually reads:** none.
+
+**On failure:** Any non-`200` response: logged, and schedule-processor clears its saved login
+token — forcing a fresh login on the next attempt — before returning to the main menu.
+
+#### 9. Push team map
+
+`POST /api/events/{eventSlug}/schedule/map-teams`  ·  source: `uwh-common/src/uwhportal/mod.rs:614`
+
+**When schedule-processor calls it:** Immediately after call 8 succeeds, in the same "Upload
+Schedule" action — the two are always sent as a pair.
+
+**Authentication:** `Authorization: Bearer <token>`
+
+**Query parameters:** none
+
+**Request body:** a flat JSON object mapping each placeholder team name used in the uploaded
+schedule to the real team's ID, long form. Example:
+```json
+{ "Pool A Winner": "teams/1234-A", "Pool B Runner-up": "teams/5678-B" }
+```
+
+**Successful response:** `200`. The body is never parsed — only the status code matters.
+
+**Fields schedule-processor actually reads:** none.
+
+**On failure:** Same as call 8: logged, saved login token cleared, back to the main menu.
+
+#### 10. Overlay attachments
+
+`GET /api/admin/events/{eventId}/overlay-attachments`  ·  source: `overlay/src/network.rs:174`
+
+**When the overlay calls it:** Once per event, the first time the overlay sees a snapshot naming
+that event, and again whenever the linked event changes — fetching the event logo and sponsor
+images shown on the video overlay.
+
+**Authentication:** none
+
+**Query parameters:** none
+
+**Request body:** none
+
+**Successful response:** `200` with an `overlayAttachments` array. Example:
+```json
+{
+  "overlayAttachments": [
+    { "type": "Overlay", "url": "https://example.com/event-logo.png" },
+    { "type": "Sponsor", "url": "https://example.com/sponsor.png" }
+  ]
+}
+```
+
+**Fields the overlay actually reads:** Per entry, `type` (only `"Overlay"` and `"Sponsor"` are
+recognised — anything else is ignored) and `url`. The overlay then makes a second, separate
+request to that `url`, expecting raw image bytes back. A missing `overlayAttachments` array, or
+one with no recognised `type`, just means no logo or sponsor image is shown.
+
+**On failure:** Unlike every other call in this document, the overlay never checks the response's
+status code — it always tries to parse the body as JSON regardless. A body that isn't valid JSON
+makes that attempt panic (`overlay/src/network.rs:171-184`). Because this runs in its own
+background task, the panic doesn't crash the overlay itself, but no further attempt is made for
+that event unless the linked event changes again. A stand-in site should always return a JSON
+body on this path, even `{}`, to avoid triggering this.
+
+#### The overlay's other calls (same paths, different code)
+
+The overlay does not use the shared portal client in `uwh-common` that every other call in this
+document goes through — it has its own, separate networking code in `overlay/src/network.rs`,
+and that code makes three more calls beyond the one above. Each hits a path already documented
+elsewhere in this file, but a site that only implements the behaviour expected by the *other*
+caller of that path will miss the overlay's own requests to it if it isn't watching for them:
+
+| Path | Source | Also documented as | Auth the overlay sends |
+|---|---|---|---|
+| `GET /api/admin/get-event-team` | `overlay/src/network.rs:96` | Call 3 above (team roster) | none |
+| `GET /api/admin/events/game-referees` | `overlay/src/network.rs:240` | Call 5 above (game referee name map) | none |
+| `GET /api/events/{eventId}/schedule` | `overlay/src/network.rs:320` | Call 2 above (public event schedule) | none |
+
+The first and third rows behave the same for the overlay as for schedule-processor: neither call
+ever needs a token. **The middle row does not** — schedule-processor's call to the same path
+(call 5 above) sends a bearer token, but the overlay's own call to that identical path never
+attaches one (no `Authorization` header is set anywhere in `overlay/src/network.rs`). A site that
+requires a bearer token on `/api/admin/events/game-referees` because schedule-processor sends one
+will reject the overlay's request to the exact same path.
+
+The overlay reads different fields out of these three responses than schedule-processor does,
+because it's serving on-screen graphics rather than scoresheets:
+
+- **Team roster** (`:96`): reads a top-level `name` (the team's display name, falling back to the
+  literal `BLACK`/`WHITE` colour label if missing) and `logoUrl` (fetched as an image, for the
+  team's flag graphic). Per roster entry it reads `rosterName` (falling back to the literal text
+  `"Player"`), `capNumber`, one entry from `roles` that isn't the literal string `"Player"` (kept
+  as free text — unlike call 3 above, there is no filtering: every roster entry is included here,
+  not just Players, Captains, and Vice-Captains), and two photo URLs under `photos` (`uniform`,
+  and `darkGear` or `lightGear` depending on which side the team is on), each fetched separately
+  as an image.
+- **Game referees** (`:240`): reads `referees[].role`, mapped to one of three on-screen labels —
+  `"Water1"` / `"Water2"` / `"Water3"` all become "Water", `"Chief"` becomes "Chief",
+  `"TimeOrScoreKeeper"` becomes "Timekeeper"; any other value is dropped with a logged warning.
+  Also reads `referees[].user.name` and a photo URL under `referees[].user.photos` (`uniform` and
+  `inGear`). An entry missing `user.name` is dropped.
+- **Public schedule** (`:320`): expects a shape that diverges from
+  [the schedule payload](#the-schedule-payload) documented above in two ways. It reads a
+  top-level `court` and `startsOn` directly off the whole response body, not per-game. And it
+  treats `games` as a plain JSON **array** to search through by matching `number`, not the
+  object-keyed-by-game-number shape the schedule calls document elsewhere — the same
+  array-vs-object ambiguity flagged under call 2's own description above. Per matching game it
+  then reads `dark.assignment.teamId` / `light.assignment.teamId` — note the extra `.assignment`
+  nesting, compared to the `dark.teamId` / `light.teamId` shape used everywhere else in this
+  document. A site serving both the overlay and schedule-processor/refbox from the same schedule
+  response needs to satisfy both shapes at once, or one of the callers won't find what it needs.
+
+The overlay's failure handling for these three calls also differs, call by call, from every other
+call in this document — none of them check the response status code before deciding what to do
+with the body:
+
+- **Team roster** (`:96`): same as call 10 above — a connection failure, or a body that isn't
+  valid JSON, panics the background task fetching that team's information
+  (`overlay/src/network.rs:94-105`). The panic doesn't crash the overlay, but that game's team
+  shows no roster, photos, or flag until a later game or event change triggers a fresh fetch.
+- **Game referees** (`:240`): the only one of the three handled gracefully — a connection failure
+  or an unparseable body is caught and logged as a warning, and the game simply shows no referee
+  information (`overlay/src/network.rs:239-245`).
+- **Public schedule** (`:320`): a connection failure is retried automatically every 5 seconds,
+  indefinitely, until it succeeds (`overlay/src/network.rs:317-423`) — the most forgiving failure
+  handling of any call in this document. Once a response does arrive, though, a body that isn't
+  valid JSON, or one where the requested game number can't be found in it, ends that attempt with
+  a logged error and no further retry — the overlay only tries again the next time refbox reports
+  a different game or event.
 
 ## Keeping this document honest
 

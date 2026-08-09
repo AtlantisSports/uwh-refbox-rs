@@ -40,7 +40,7 @@ use uwh_common::{
     drawing_support::*,
     game_snapshot::{GamePeriod, GameSnapshot, Infraction, TimeoutSnapshot},
     uwhportal::{
-        PortalTokenResponse, UwhPortalClient,
+        PortalTokenResponse, RosterPlayer, UwhPortalClient,
         schedule::{Event, EventId, GameNumber, Schedule, TeamId},
     },
 };
@@ -764,7 +764,7 @@ impl RefBoxApp {
             Task::future(async move {
                 match request.await {
                     Ok(players) => {
-                        let numbers: Vec<u8> = players.iter().filter_map(|p| p.number).collect();
+                        let numbers = usable_cap_numbers(&players);
                         info!(
                             "Got roster for team {}: {} numbered players",
                             team_id.full(),
@@ -1200,6 +1200,14 @@ impl RefBoxApp {
         self.set_current_event_id(None);
         self.current_court = None;
         self.schedule = None;
+        // The Using-UWH-Portal setting is now off, which the player-grid design
+        // spec lists as an unconditional number-pad condition. `game_rosters` is
+        // otherwise only written at kickoff, so without this the grid would keep
+        // showing the previous event's numbers until the next kickoff.
+        self.game_rosters = BlackWhiteBundle {
+            black: Vec::new(),
+            white: Vec::new(),
+        };
         self.config.game = manual_config;
         self.persist_config();
         // Delete the saved portal-link note now that the portal is off, so a
@@ -4292,21 +4300,25 @@ impl RefBoxApp {
 
                 // Pre-load every team in the schedule while there is time and
                 // network, so the grid is available from the first game of the
-                // day and no game start depends on a live fetch.
+                // day and no game start depends on a live fetch. `RecvSchedule`
+                // is not once-per-link: handle_game_end requests a fresh
+                // schedule at the end of every portal-linked game, and REFRESH,
+                // event selection and startup restore all trigger it too. Skip
+                // teams already in the roster cache so a 40-team event does not
+                // re-fire ~40 concurrent GETs at the end of every game, right
+                // when that game's score/stats POST is being enqueued.
                 let mut roster_tasks: Vec<Task<Message>> = Vec::new();
                 let mut seen_teams = BTreeSet::new();
+                let mut courts = BTreeSet::new();
                 for game in schedule.games.values() {
                     for team in [&game.dark, &game.light] {
                         if let Some(id) = team.assigned() {
-                            if seen_teams.insert(id.clone()) {
+                            if seen_teams.insert(id.clone()) && !self.team_rosters.contains_key(id)
+                            {
                                 roster_tasks.push(self.request_team_roster(id.clone()));
                             }
                         }
                     }
-                }
-
-                let mut courts = BTreeSet::new();
-                for game in schedule.games.values() {
                     if !courts.contains(&game.court) {
                         courts.insert(game.court.clone());
                     }
@@ -5594,6 +5606,69 @@ impl RefBoxApp {
             background_color: window_background(),
             text_color,
         }
+    }
+}
+
+/// Cap numbers from a roster that are usable on the player grid.
+///
+/// Entries with no cap number are skipped — there is nothing to tap. Entries
+/// outside `1..=99` are skipped too: every player-attribution page gates
+/// `SelectPlayerNumber` on `page.max_val()`, which is 99, so a cap of 100+
+/// would render a tappable cell that silently does nothing, and a cap of 0
+/// would render a cell that can never highlight (0 already means "no player
+/// selected" everywhere in the app — a team goal, on the goal page).
+fn usable_cap_numbers(players: &[RosterPlayer]) -> Vec<u8> {
+    players
+        .iter()
+        .filter_map(|p| p.number)
+        .filter(|n| (1..=99).contains(n))
+        .collect()
+}
+
+#[cfg(test)]
+mod usable_cap_numbers_tests {
+    use super::*;
+
+    fn player(number: Option<u8>) -> RosterPlayer {
+        RosterPlayer {
+            number,
+            name: String::new(),
+            is_captain: false,
+            is_vice_captain: false,
+        }
+    }
+
+    #[test]
+    fn unnumbered_players_are_skipped() {
+        assert_eq!(usable_cap_numbers(&[player(None)]), Vec::<u8>::new());
+    }
+
+    #[test]
+    fn in_range_numbers_pass_through() {
+        assert_eq!(
+            usable_cap_numbers(&[player(Some(1)), player(Some(7)), player(Some(99))]),
+            vec![1, 7, 99]
+        );
+    }
+
+    #[test]
+    fn zero_is_filtered_out() {
+        // 0 means "no player selected" (a team goal on the goal page); a
+        // roster entry of 0 must not become a tappable, never-highlighting cell.
+        assert_eq!(
+            usable_cap_numbers(&[player(Some(0)), player(Some(5))]),
+            vec![5]
+        );
+    }
+
+    #[test]
+    fn caps_above_ninety_nine_are_filtered_out() {
+        // Every player page gates SelectPlayerNumber on max_val() == 99; a
+        // cap of 100+ would be a dead cell.
+        assert_eq!(
+            usable_cap_numbers(&[player(Some(100)), player(Some(255)), player(Some(50))]),
+            vec![50]
+        );
     }
 }
 

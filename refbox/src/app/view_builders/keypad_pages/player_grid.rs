@@ -3,8 +3,7 @@
 use super::*;
 use iced::{
     Length,
-    alignment::{Horizontal, Vertical},
-    widget::{button, column, container, row, text},
+    widget::{column, row},
 };
 
 /// Columns in the player-number grid. The grid is read left to right, then
@@ -156,21 +155,26 @@ mod tests {
     }
 }
 
-/// One row of three cells per grid row. A cell with a number is tappable; a
-/// leftover cell has no `on_press`, which iced renders in `Status::Disabled`
-/// and `blue_button` paints as window background with grayed text — the
+/// One row of three cells per grid row. A cell with a number is tappable
+/// unless the panel is disabled; a leftover cell (`None`), or any cell while
+/// disabled, has no `on_press`, which iced renders in `Status::Disabled` and
+/// `blue_button` paints as window background with grayed text — the
 /// greyed-out look, with no extra style needed.
 pub(super) fn make_player_grid<'a>(
     numbers: &[u8],
     mode: Mode,
     selected: u32,
+    enabled: bool,
 ) -> Element<'a, Message> {
-    let mut grid = column![].spacing(SPACING);
+    // Centred, not left-aligned: the grid (3 * GRID_BUTTON_SIZE wide) sits
+    // inside a panel box sized for the wider number pad, so without this it
+    // would hug the box's left edge instead of sitting in the middle of it.
+    let mut grid = column![].spacing(SPACING).align_x(iced::Alignment::Center);
 
     for cells in grid_rows(numbers, mode) {
         let mut line = row![].spacing(SPACING);
         for cell in cells {
-            line = line.push(make_grid_cell(cell, selected));
+            line = line.push(make_grid_cell(cell, selected, enabled));
         }
         grid = grid.push(line);
     }
@@ -178,21 +182,16 @@ pub(super) fn make_player_grid<'a>(
     grid.into()
 }
 
-/// Mirrors `make_small_button` in `shared_elements.rs` (text centred inside a
-/// filled container inside a fixed-size button), but at `GRID_BUTTON_SIZE`.
-fn make_grid_cell<'a>(cell: Option<u8>, selected: u32) -> Element<'a, Message> {
+/// Reuses `make_small_button` from `shared_elements.rs` (text centred inside
+/// a filled container inside a fixed-size button), overriding its size to
+/// `GRID_BUTTON_SIZE`.
+fn make_grid_cell<'a>(cell: Option<u8>, selected: u32, enabled: bool) -> Element<'a, Message> {
     let label = match cell {
         Some(number) => number.to_string(),
         None => String::new(),
     };
 
-    let content = text(label)
-        .align_x(Horizontal::Center)
-        .align_y(Vertical::Center)
-        .width(Length::Shrink)
-        .size(MEDIUM_TEXT);
-
-    let cell_button = button(container(content).center(Length::Fill))
+    let cell_button = make_small_button(label, MEDIUM_TEXT)
         .width(Length::Fixed(GRID_BUTTON_SIZE))
         .height(Length::Fixed(GRID_BUTTON_SIZE));
 
@@ -202,8 +201,18 @@ fn make_grid_cell<'a>(cell: Option<u8>, selected: u32) -> Element<'a, Message> {
             // Tapping the selected cell again clears the selection, which on
             // the goal page returns to a team goal.
             let target = if is_selected { 0 } else { u32::from(number) };
+            let cell_button = if enabled {
+                cell_button.on_press(Message::SelectPlayerNumber(target))
+            } else {
+                // A disabled panel (team warning, equal foul) must not offer a
+                // tappable cell. `panel_team` returning `None` already empties
+                // the roster for these two cases, so this is currently
+                // unreachable — it stays as a deliberate guard against a
+                // future disabling condition being added to `enabled` alone
+                // (see the doc comment on `enabled` in keypad_pages/mod.rs).
+                cell_button
+            };
             cell_button
-                .on_press(Message::SelectPlayerNumber(target))
                 .style(if is_selected {
                     blue_selected_button
                 } else {

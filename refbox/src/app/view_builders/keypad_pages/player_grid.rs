@@ -10,17 +10,20 @@ use iced::{
 /// top to bottom, so this is fixed rather than derived from the roster.
 pub(super) const GRID_COLUMNS: usize = 3;
 
-/// Side length of one grid button. Smaller than `MIN_BUTTON_SIZE` (89) so the
-/// worst case — five rows in Rugby — fits with margin.
+/// Side length of one grid button: the same size the number pad's own buttons
+/// use, so three of them plus two `SPACING` gaps fill the panel's content width
+/// exactly (`3 * 89 + 2 * 8 = 283`). Grid and pad are therefore the same width,
+/// and toggling between a team with a roster and one without cannot shift the
+/// CANCEL and DONE buttons beside them.
 ///
-/// In the default 691px window a keypad page spends 89 on the time banner, 89
-/// on the timeout ribbon, `SPACING` above and below the panel, and `PADDING`
-/// inside its container top and bottom:
-/// `691 - 89 - 8 - 89 - 8 - 16 = 481` px of usable panel height. Five rows at
-/// `MIN_BUTTON_SIZE` need `5 * 89 + 4 * SPACING = 477` — a four-pixel margin,
-/// too fine to rely on across DPI and text scaling. At 80 they need
-/// `5 * 80 + 4 * SPACING = 432`, which leaves real headroom.
-pub(super) const GRID_BUTTON_SIZE: f32 = 80.0;
+/// The binding constraint is height, not width. In the default 691px window a
+/// keypad page spends 89 on the time banner, 89 on the timeout ribbon,
+/// `SPACING` above and below the panel, and `PADDING` inside its container top
+/// and bottom: `691 - 89 - 8 - 89 - 8 - 16 = 481` px of usable panel height.
+/// Rugby's five rows need `5 * 89 + 4 * SPACING = 477`, which fits — but by
+/// only four pixels, so a shorter screen or a larger text scale needs this
+/// checked again on the target display.
+pub(super) const GRID_BUTTON_SIZE: f32 = MIN_BUTTON_SIZE;
 
 /// Cells the grid shows for a mode: the rules maximum roster size. `BeepTest`
 /// has no player attribution at all, so it has no grid.
@@ -169,7 +172,9 @@ pub(super) fn make_player_grid<'a>(
     // Centred, not left-aligned: the grid (3 * GRID_BUTTON_SIZE wide) sits
     // inside a panel box sized for the wider number pad, so without this it
     // would hug the box's left edge instead of sitting in the middle of it.
-    let mut grid = column![].spacing(SPACING).align_x(iced::Alignment::Center);
+    // No horizontal alignment needed: the rows fill the panel's content width
+    // exactly, so there is no slack to distribute.
+    let mut grid = column![].spacing(SPACING);
 
     for cells in grid_rows(numbers, mode) {
         let mut line = row![].spacing(SPACING);

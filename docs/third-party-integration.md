@@ -80,9 +80,9 @@ alarms:
 
 ```bash
 diff \
-  <(rg -o -N '/api/[A-Za-z0-9/{}_-]*' uwh-common/src/uwhportal/mod.rs overlay/src/network.rs \
+  <(rg -o -N '/api/[A-Za-z0-9/{}_-]+' uwh-common/src/uwhportal/mod.rs overlay/src/network.rs \
      | sed 's/^[^:]*://; s/{[^}]*}/{}/g' | sort -u) \
-  <(rg -o '/api/[A-Za-z0-9/{}_-]*' docs/third-party-integration.md \
+  <(rg -o '/api/[A-Za-z0-9/{}_-]+' docs/third-party-integration.md \
      | sed 's/{[^}]*}/{}/g' | sort -u) \
   && echo "IN SYNC"
 ```
@@ -91,9 +91,3 @@ This only proves the *paths* still match — it says nothing about whether the r
 response bodies documented here still match what the code sends and expects. The real test
 of that is rebuilding a working stub server from this document alone (Task 5) and confirming
 it actually stands in for the Portal.
-
-Note: because this command's own text is pasted verbatim above, running it against the
-final version of this file will report one spurious extra path (`/api/`) on the document
-side — the check's own literal regex text contains `/api/` and matches itself. This is a
-known artifact of quoting the check inside the file it checks, not a real drift. Any later
-task that re-runs this check should expect that one line and not treat it as a failure.

@@ -72,6 +72,10 @@ pub enum Message {
     },
     KeypadPage(KeypadPage),
     KeypadButtonPress(KeypadButton),
+    /// A cell in the player-number grid was tapped. Sets the value outright,
+    /// unlike `KeypadButtonPress`, which appends a digit. `0` clears the
+    /// selection — and on the goal page that means a team goal.
+    SelectPlayerNumber(u32),
     ChangeColor(Option<GameColor>),
     AddScoreComplete {
         canceled: bool,
@@ -324,6 +328,7 @@ impl Message {
             | Self::ChangeScore { .. }
             | Self::Scroll { .. }
             | Self::KeypadButtonPress(_)
+            | Self::SelectPlayerNumber(_)
             | Self::ToggleBoolParameter(_)
             | Self::CycleParameter(_)
             | Self::RecvEventList(_)
@@ -612,6 +617,7 @@ impl PartialEq for Message {
             ) => a == d && b == e && c == f,
             (Self::KeypadPage(a), Self::KeypadPage(b)) => a == b,
             (Self::KeypadButtonPress(a), Self::KeypadButtonPress(b)) => a == b,
+            (Self::SelectPlayerNumber(a), Self::SelectPlayerNumber(b)) => a == b,
             (Self::ChangeColor(a), Self::ChangeColor(b)) => a == b,
             (Self::AddScoreComplete { canceled: a }, Self::AddScoreComplete { canceled: b }) => {
                 a == b
@@ -692,6 +698,7 @@ impl PartialEq for Message {
             | (Self::FoulEditComplete { .. }, _)
             | (Self::KeypadPage(_), _)
             | (Self::KeypadButtonPress(_), _)
+            | (Self::SelectPlayerNumber(_), _)
             | (Self::ChangeColor(_), _)
             | (Self::AddScoreComplete { .. }, _)
             | (Self::ShowGameDetails, _)

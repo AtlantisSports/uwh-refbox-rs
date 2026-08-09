@@ -12,10 +12,15 @@ use iced::{
 pub(super) const GRID_COLUMNS: usize = 3;
 
 /// Side length of one grid button. Smaller than `MIN_BUTTON_SIZE` (89) so the
-/// worst case fits with margin: the keypad pages render a time banner (89) and
-/// a timeout ribbon (89) in a 691px window, leaving roughly 481px of usable
-/// panel height. Five rows at 89 comes to 477 — a four-pixel margin. At 80 it
-/// comes to 5 * 80 + 4 * SPACING = 432, which has real headroom.
+/// worst case — five rows in Rugby — fits with margin.
+///
+/// In the default 691px window a keypad page spends 89 on the time banner, 89
+/// on the timeout ribbon, `SPACING` above and below the panel, and `PADDING`
+/// inside its container top and bottom:
+/// `691 - 89 - 8 - 89 - 8 - 16 = 481` px of usable panel height. Five rows at
+/// `MIN_BUTTON_SIZE` need `5 * 89 + 4 * SPACING = 477` — a four-pixel margin,
+/// too fine to rely on across DPI and text scaling. At 80 they need
+/// `5 * 80 + 4 * SPACING = 432`, which leaves real headroom.
 pub(super) const GRID_BUTTON_SIZE: f32 = 80.0;
 
 /// Cells the grid shows for a mode: the rules maximum roster size. `BeepTest`

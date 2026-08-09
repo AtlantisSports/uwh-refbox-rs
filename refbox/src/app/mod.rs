@@ -168,6 +168,10 @@ pub struct RefBoxApp {
     using_uwhportal: bool,
     events: Option<BTreeMap<EventId, Event>>,
     schedule: Option<Schedule>,
+    /// The running game's copy of both teams' cap numbers, taken at kickoff so
+    /// a mid-game REFRESH cannot move the grid under the operator's hand. Empty
+    /// vectors mean "no usable roster" and the number pad is shown.
+    game_rosters: BlackWhiteBundle<Vec<u8>>,
     current_event_id: Option<EventId>,
     current_court: Option<String>,
     /// One-shot: the game number to re-select once the schedule arrives during
@@ -1918,6 +1922,10 @@ impl RefBoxApp {
             using_uwhportal: false,
             events: None,
             schedule: None,
+            game_rosters: BlackWhiteBundle {
+                black: Vec::new(),
+                white: Vec::new(),
+            },
             current_event_id: None,
             current_court: None,
             pending_restore_game: None,
@@ -2646,6 +2654,17 @@ impl RefBoxApp {
                 trace!("AppState changed to {:?}", self.app_state);
                 Task::none()
             }
+            Message::SelectPlayerNumber(number) => {
+                if let AppState::KeypadPage(ref page, ref mut val) = self.app_state {
+                    if number <= page.max_val() {
+                        *val = number;
+                    }
+                } else {
+                    unreachable!()
+                }
+                trace!("AppState changed to {:?}", self.app_state);
+                Task::none()
+            }
             Message::SetTeamTimeoutCount(count) => {
                 if let AppState::KeypadPage(KeypadPage::TeamTimeouts(_, _), ref mut val) =
                     self.app_state
@@ -2670,13 +2689,29 @@ impl RefBoxApp {
             }
             Message::ChangeColor(new_color) => {
                 match self.app_state {
-                    AppState::KeypadPage(KeypadPage::AddScore(ref mut color), _)
-                    | AppState::KeypadPage(KeypadPage::Penalty(_, ref mut color, _, _), _)
-                    | AppState::KeypadPage(KeypadPage::WarningAdd { ref mut color, .. }, _) => {
+                    AppState::KeypadPage(
+                        KeypadPage::AddScore(ref mut color),
+                        ref mut player_num,
+                    )
+                    | AppState::KeypadPage(
+                        KeypadPage::Penalty(_, ref mut color, _, _),
+                        ref mut player_num,
+                    )
+                    | AppState::KeypadPage(
+                        KeypadPage::WarningAdd { ref mut color, .. },
+                        ref mut player_num,
+                    ) => {
                         *color = new_color.expect("Invalid color value");
+                        // A number chosen for one team means nothing on the
+                        // other — #7 is a different person on each roster.
+                        *player_num = 0;
                     }
-                    AppState::KeypadPage(KeypadPage::FoulAdd { ref mut color, .. }, _) => {
+                    AppState::KeypadPage(
+                        KeypadPage::FoulAdd { ref mut color, .. },
+                        ref mut player_num,
+                    ) => {
                         *color = new_color;
+                        *player_num = 0;
                     }
                     _ => {
                         unreachable!()
@@ -5144,6 +5179,7 @@ impl RefBoxApp {
                     player_num,
                     self.config.track_fouls_and_warnings,
                     self.edited_settings.as_ref().map(|e| e.game_number.clone()),
+                    &self.game_rosters,
                 ),
             AppState::GameDetailsPage(is_refreshing) => build_game_info_page(
                 data,

@@ -41,7 +41,7 @@ use uwh_common::{
     game_snapshot::{GamePeriod, GameSnapshot, Infraction, TimeoutSnapshot},
     uwhportal::{
         PortalTokenResponse, UwhPortalClient,
-        schedule::{Event, EventId, GameNumber, Schedule},
+        schedule::{Event, EventId, GameNumber, Schedule, TeamId},
     },
 };
 
@@ -172,6 +172,10 @@ pub struct RefBoxApp {
     /// a mid-game REFRESH cannot move the grid under the operator's hand. Empty
     /// vectors mean "no usable roster" and the number pad is shown.
     game_rosters: BlackWhiteBundle<Vec<u8>>,
+    /// Cap numbers for every team the portal has told us about, keyed by portal
+    /// team id. Session-only: never written to disk, so a restart with no
+    /// network falls back to the number pad until a fetch succeeds.
+    team_rosters: BTreeMap<TeamId, Vec<u8>>,
     current_event_id: Option<EventId>,
     current_court: Option<String>,
     /// One-shot: the game number to re-select once the schedule arrives during
@@ -531,7 +535,7 @@ impl RefBoxApp {
             if new_snapshot.current_period == GamePeriod::BetweenGames {
                 task = self.handle_game_end(&new_snapshot.game_number);
             } else if self.snapshot.current_period == GamePeriod::BetweenGames {
-                self.handle_game_start(&new_snapshot.game_number);
+                task = self.handle_game_start(&new_snapshot.game_number);
             }
         }
 
@@ -753,6 +757,34 @@ impl RefBoxApp {
         }
     }
 
+    fn request_team_roster(&self, team_id: TeamId) -> Task<Message> {
+        if let Some(client) = &self.uwhportal_client {
+            // why this cannot panic: see `request_event_list` above.
+            let request = client.lock().unwrap().get_team_roster(&team_id);
+            Task::future(async move {
+                match request.await {
+                    Ok(players) => {
+                        let numbers: Vec<u8> = players.iter().filter_map(|p| p.number).collect();
+                        info!(
+                            "Got roster for team {}: {} numbered players",
+                            team_id.full(),
+                            numbers.len()
+                        );
+                        Message::RecvTeamRoster(team_id, numbers)
+                    }
+                    Err(e) => {
+                        // A failure must leave whatever is cached untouched, so
+                        // this reports nothing rather than an empty roster.
+                        error!("Failed to get roster for team {}: {e}", team_id.full());
+                        Message::NoAction
+                    }
+                }
+            })
+        } else {
+            Task::none()
+        }
+    }
+
     fn request_schedule(&self, event_id: EventId) -> Task<Message> {
         if let Some(client) = &self.uwhportal_client {
             // why this cannot panic: see `request_event_list` above.
@@ -843,7 +875,38 @@ impl RefBoxApp {
         }
     }
 
-    fn handle_game_start(&mut self, new_game_num: &GameNumber) {
+    /// Both teams' cap numbers for a scheduled game, read from the session
+    /// cache. Empty vectors where the slot has no portal team assigned (a
+    /// placeholder such as "winner of A") or no roster has arrived — those
+    /// teams get the number pad.
+    fn rosters_for_game(&self, game_num: &GameNumber) -> BlackWhiteBundle<Vec<u8>> {
+        let mut out = BlackWhiteBundle {
+            black: Vec::new(),
+            white: Vec::new(),
+        };
+
+        if let Some(schedule) = &self.schedule {
+            if let Some(game) = schedule.games.get(game_num) {
+                for (color, team) in [(Color::Black, &game.dark), (Color::White, &game.light)] {
+                    if let Some(numbers) = team.assigned().and_then(|id| self.team_rosters.get(id))
+                    {
+                        out[color] = numbers.clone();
+                    }
+                }
+            }
+        }
+
+        out
+    }
+
+    fn handle_game_start(&mut self, new_game_num: &GameNumber) -> Task<Message> {
+        // Fix this game's rosters now. From here until the next kickoff they do
+        // not change: a REFRESH mid-game re-pulls the event, but must not move
+        // the grid under the operator's hand.
+        self.game_rosters = self.rosters_for_game(new_game_num);
+
+        let mut tasks: Vec<Task<Message>> = Vec::new();
+
         if self.using_uwhportal {
             debug!("Searching for next game info after game {new_game_num}");
             if let (Some(schedule), Some(pool)) = (&self.schedule, &self.current_court) {
@@ -851,7 +914,7 @@ impl RefBoxApp {
                     Some(g) => g.start_time,
                     None => {
                         error!("Could not find new game's start time (game {new_game_num}");
-                        return;
+                        return Task::batch(tasks);
                     }
                 };
 
@@ -863,7 +926,7 @@ impl RefBoxApp {
                     .min_by_key(|game| game.start_time);
 
                 let mut tm = self.tm.lock().unwrap();
-                if let Some(next_game) = next_game {
+                let next_game_number = if let Some(next_game) = next_game {
                     let timing = schedule.get_game_timing(&next_game.number).cloned();
                     let info = NextGameInfo {
                         number: next_game.number.clone(),
@@ -871,14 +934,45 @@ impl RefBoxApp {
                         start_time: Some(next_game.start_time),
                     };
                     tm.set_next_game(info);
+                    Some(next_game.number.clone())
                 } else {
                     error!("Couldn't find a next game");
-                }
+                    None
+                };
                 self.config.game = tm.config().clone();
+                // `roster_refresh_tasks` borrows `self`, so the `tm` lock (a
+                // borrow of `self.tm`) must be released first.
+                drop(tm);
+
+                if let Some(next_game_number) = next_game_number {
+                    tasks.extend(self.roster_refresh_tasks(&next_game_number));
+                }
             }
         } else {
             debug!("Skipped next game info search after game {new_game_num}");
         }
+
+        Task::batch(tasks)
+    }
+
+    /// Re-pull both teams' rosters for an upcoming game. Fired at the kickoff of
+    /// the previous game so the fetch has the whole break to land rather than
+    /// the instant of the next start. A failure changes nothing: the fetch
+    /// reports `NoAction` and the cached copy stands.
+    fn roster_refresh_tasks(&self, game_num: &GameNumber) -> Vec<Task<Message>> {
+        let mut tasks = Vec::new();
+
+        if let Some(schedule) = &self.schedule {
+            if let Some(game) = schedule.games.get(game_num) {
+                for team in [&game.dark, &game.light] {
+                    if let Some(id) = team.assigned() {
+                        tasks.push(self.request_team_roster(id.clone()));
+                    }
+                }
+            }
+        }
+
+        tasks
     }
 
     fn handle_game_end(&mut self, game_number: &GameNumber) -> Task<Message> {
@@ -1926,6 +2020,7 @@ impl RefBoxApp {
                 black: Vec::new(),
                 white: Vec::new(),
             },
+            team_rosters: BTreeMap::new(),
             current_event_id: None,
             current_court: None,
             pending_restore_game: None,
@@ -4165,6 +4260,10 @@ impl RefBoxApp {
                 }
                 Task::none()
             }
+            Message::RecvTeamRoster(team_id, numbers) => {
+                self.team_rosters.insert(team_id, numbers);
+                Task::none()
+            }
             Message::RecvSchedule(event_id, mut schedule) => {
                 // A manual REFRESH (RequestPortalRefresh) spins the Game Info
                 // button until a schedule arrives. Clear it for every success
@@ -4190,6 +4289,21 @@ impl RefBoxApp {
                 schedule
                     .games
                     .sort_by(|_, v1, _, v2| v1.start_time.cmp(&v2.start_time));
+
+                // Pre-load every team in the schedule while there is time and
+                // network, so the grid is available from the first game of the
+                // day and no game start depends on a live fetch.
+                let mut roster_tasks: Vec<Task<Message>> = Vec::new();
+                let mut seen_teams = BTreeSet::new();
+                for game in schedule.games.values() {
+                    for team in [&game.dark, &game.light] {
+                        if let Some(id) = team.assigned() {
+                            if seen_teams.insert(id.clone()) {
+                                roster_tasks.push(self.request_team_roster(id.clone()));
+                            }
+                        }
+                    }
+                }
 
                 let mut courts = BTreeSet::new();
                 for game in schedule.games.values() {
@@ -4256,7 +4370,8 @@ impl RefBoxApp {
                                                 let snapshot = tm.generate_snapshot(now).unwrap();
                                                 std::mem::drop(tm);
                                                 self.config.game = new_game_config;
-                                                return self.apply_snapshot(snapshot);
+                                                roster_tasks.push(self.apply_snapshot(snapshot));
+                                                return Task::batch(roster_tasks);
                                             }
                                         }
                                     }
@@ -4275,7 +4390,7 @@ impl RefBoxApp {
                         event_id.full()
                     );
                 }
-                Task::none()
+                Task::batch(roster_tasks)
             }
             Message::RecvPortalToken(token_response) => {
                 let mut task = Task::none();

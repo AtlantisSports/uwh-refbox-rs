@@ -12,7 +12,7 @@ use uwh_common::{
     game_snapshot::{GameSnapshot, Infraction},
     uwhportal::{
         PortalTokenResponse,
-        schedule::{Event, EventId, Schedule, TeamList},
+        schedule::{Event, EventId, Schedule, TeamId, TeamList},
     },
 };
 
@@ -179,6 +179,10 @@ pub enum Message {
     AutoConfirmScores(GameSnapshot),
     RecvEventList(Vec<Event>),
     RecvTeamsList(EventId, TeamList),
+    /// A team's roster arrived from the portal, reduced to the cap numbers on
+    /// it. Players with no cap number are dropped at the fetch — there is
+    /// nothing to tap for them.
+    RecvTeamRoster(TeamId, Vec<u8>),
     RecvSchedule(EventId, Schedule),
     RecvPortalToken(PortalTokenResponse),
     /// Result of a portal token-validity check for a specific event. Carries
@@ -333,6 +337,7 @@ impl Message {
             | Self::CycleParameter(_)
             | Self::RecvEventList(_)
             | Self::RecvTeamsList(_, _)
+            | Self::RecvTeamRoster(_, _)
             | Self::RecvSchedule(_, _)
             | Self::RecvPortalToken(_)
             | Self::RecvTokenValid(_, _)
@@ -665,6 +670,7 @@ impl PartialEq for Message {
             (Self::TimeUpdaterStarted(a), Self::TimeUpdaterStarted(b)) => a.same_channel(b),
             (Self::RecvEventList(a), Self::RecvEventList(b)) => a == b,
             (Self::RecvTeamsList(a, b), Self::RecvTeamsList(c, d)) => a == c && b == d,
+            (Self::RecvTeamRoster(a, b), Self::RecvTeamRoster(c, d)) => a == c && b == d,
             (Self::RecvSchedule(a, b), Self::RecvSchedule(c, d)) => a == c && b == d,
             (Self::RecvPortalToken(a), Self::RecvPortalToken(b)) => a == b,
             (Self::RecvTokenValid(a, b), Self::RecvTokenValid(c, d)) => a == c && b == d,
@@ -748,6 +754,7 @@ impl PartialEq for Message {
             | (Self::AutoConfirmScores(_), _)
             | (Self::RecvEventList(_), _)
             | (Self::RecvTeamsList(_, _), _)
+            | (Self::RecvTeamRoster(_, _), _)
             | (Self::RecvSchedule(_, _), _)
             | (Self::RecvPortalToken(_), _)
             | (Self::RecvTokenValid(_, _), _)

@@ -102,9 +102,12 @@ ot-half-time-length = 延長ハーフ
     タイム時間
 using-portal = { $portal }PORTAL使用:
 manual-games = 手動試合:
-source-portal = { $portal }PORTAL
+source-portal = { $portal } PORTAL
 source-custom = カスタム
 access-token = アクセストークン:
+custom-site = サイト:
+custom-site-url-title = サイトURL
+custom-site-invalid = このアドレスは使用できません。http://your-site/api/events/1234-A の形式にしてください
 starting-sides = 開始サイド
 sound-enabled = サウンド
     有効:

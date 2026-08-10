@@ -102,9 +102,12 @@ ot-half-time-length = RUST
     VERLENGING
 using-portal = { $portal }PORTAL GEBRUIKEN:
 manual-games = HANDMATIGE WEDSTRIJDEN:
-source-portal = { $portal }PORTAL
+source-portal = { $portal } PORTAL
 source-custom = AANGEPAST
 access-token = TOEGANGSTOKEN:
+custom-site = SITE:
+custom-site-url-title = SITE-URL
+custom-site-invalid = Dit adres is niet bruikbaar. Het moet lijken op http://uw-site/api/events/1234-A
 starting-sides = STARTZIJDEN
 sound-enabled = GELUID
     INGESCHAKELD:

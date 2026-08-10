@@ -2,7 +2,7 @@ use self::infraction::InfractionDetails;
 use super::{APP_NAME, fl};
 use crate::{
     beep_test::{cadence::TournamentManager as BeepTestManager, snapshot::BeepTestSnapshot},
-    config::{Config, GameSource, Mode, RemoteSource},
+    config::{Config, CustomSite, GameSource, Mode, RemoteSource},
     penalty_editor::*,
     portal_manager::{ItemId, PortalEvent, PortalManager, SelectedEventId, UwhPortalIo},
     sound_controller::*,
@@ -413,6 +413,9 @@ pub(crate) enum PageEntrySnapshot {
     Buzzer {
         buzzer_sound: BuzzerSound,
     },
+    CustomSite {
+        custom_site: CustomSite,
+    },
 }
 
 impl PageEntrySnapshot {
@@ -485,6 +488,9 @@ impl PageEntrySnapshot {
             }
             PageEntrySnapshot::Buzzer { buzzer_sound } => {
                 edited.sound.buzzer_sound = buzzer_sound;
+            }
+            PageEntrySnapshot::CustomSite { custom_site } => {
+                edited.custom_site = custom_site;
             }
         }
     }
@@ -1682,6 +1688,9 @@ impl RefBoxApp {
             return;
         };
         let snapshot = match page {
+            ConfigPage::CustomSite(_) => PageEntrySnapshot::CustomSite {
+                custom_site: edited.custom_site.clone(),
+            },
             ConfigPage::Game => PageEntrySnapshot::Game {
                 config: edited.config.clone(),
                 game_number: edited.game_number.clone(),
@@ -1781,6 +1790,7 @@ impl RefBoxApp {
             front_display_layout: self.config.front_display_layout,
             source: self.source,
             remembered_remote: self.config.remembered_remote,
+            custom_site: self.config.custom_site.clone(),
             uwhportal_token_valid,
             current_event_id: self.current_event_id.clone(),
             current_court: self.current_court.clone(),
@@ -1820,6 +1830,7 @@ impl RefBoxApp {
             ConfigPage::Display | ConfigPage::Sound => ConfigPage::User,
             ConfigPage::Remotes(_, _) => ConfigPage::Sound,
             ConfigPage::Buzzer => ConfigPage::Sound,
+            ConfigPage::CustomSite(_) => ConfigPage::Game,
             ConfigPage::Main => ConfigPage::Main,
         };
         self.app_state = AppState::EditGameConfig(parent);
@@ -3200,6 +3211,26 @@ impl RefBoxApp {
                         }
                         self.sound.update_settings(self.config.sound.clone());
                     }
+                    ConfigPage::CustomSite(_) => {
+                        let typed = self
+                            .edited_settings
+                            .as_ref()
+                            .map(|e| e.custom_site.url.clone())
+                            .unwrap_or_default();
+                        // Reject a bad address here rather than let it fail
+                        // later: an operator on the pool deck cannot debug a
+                        // URL mid-game. The page stays open with the message.
+                        if custom_site::parse_custom_site(&typed).is_err() {
+                            self.app_state = AppState::EditGameConfig(ConfigPage::CustomSite(true));
+                            trace!("AppState changed to {:?}", self.app_state);
+                            return Task::none();
+                        }
+                        self.config.custom_site = self
+                            .edited_settings
+                            .as_ref()
+                            .map(|e| e.custom_site.clone())
+                            .unwrap_or_default();
+                    }
                 }
                 self.page_entry_snapshot = None;
                 self.persist_config();
@@ -3947,6 +3978,18 @@ impl RefBoxApp {
                 };
                 // No boolean parameter triggers a fetch any more: the only one
                 // that did was the portal toggle, now Message::SelectGameSource.
+                Task::none()
+            }
+            Message::CustomSiteUrlChanged(url) => {
+                // why this cannot panic: the URL editor is only reachable from
+                // the Game Options editor, which populates `edited_settings`
+                // before it can be drawn.
+                self.edited_settings.as_mut().unwrap().custom_site.url = url;
+                // Typing clears a previous rejection: the operator is already
+                // acting on it, so leaving the message up would be nagging.
+                if let AppState::EditGameConfig(ConfigPage::CustomSite(true)) = self.app_state {
+                    self.app_state = AppState::EditGameConfig(ConfigPage::CustomSite(false));
+                }
                 Task::none()
             }
             Message::SelectGameSource(new_source) => {
@@ -4835,6 +4878,7 @@ impl RefBoxApp {
                     front_display_layout: self.config.front_display_layout,
                     source: self.source,
                     remembered_remote: self.config.remembered_remote,
+                    custom_site: self.config.custom_site.clone(),
                     uwhportal_token_valid: None,
                     current_event_id: self.current_event_id.clone(),
                     current_court: self.current_court.clone(),
@@ -4885,6 +4929,7 @@ impl RefBoxApp {
                     front_display_layout: self.config.front_display_layout,
                     source: self.source,
                     remembered_remote: self.config.remembered_remote,
+                    custom_site: self.config.custom_site.clone(),
                     uwhportal_token_valid: None,
                     current_event_id: self.current_event_id.clone(),
                     current_court: self.current_court.clone(),
@@ -4974,6 +5019,7 @@ impl RefBoxApp {
                     front_display_layout: self.config.front_display_layout,
                     source: self.source,
                     remembered_remote: self.config.remembered_remote,
+                    custom_site: self.config.custom_site.clone(),
                     uwhportal_token_valid: None,
                     current_event_id: self.current_event_id.clone(),
                     current_court: self.current_court.clone(),
@@ -5071,6 +5117,7 @@ impl RefBoxApp {
                     front_display_layout: self.config.front_display_layout,
                     source: self.source,
                     remembered_remote: self.config.remembered_remote,
+                    custom_site: self.config.custom_site.clone(),
                     uwhportal_token_valid: None,
                     current_event_id: self.current_event_id.clone(),
                     current_court: self.current_court.clone(),

@@ -7,14 +7,6 @@
 //!
 //! Pure by design — no I/O and no app state — so the rules are unit-testable.
 
-// TEMPORARY, REMOVE IN TASK 5. Nothing calls this parser until the SITE row's
-// edit page exists (Task 5 of the game-source-selection plan), and the crate is
-// linted with warnings as errors, so the unused items below would fail CI.
-// Approved by the human specifically as a staging exception rather than as a way
-// of silencing a real warning. Delete this attribute the moment Task 5 wires the
-// parser to Apply — if it is still here after that, the wiring is missing.
-#![allow(dead_code)]
-
 use uwh_common::uwhportal::schedule::EventId;
 
 /// The site half and the event half of what the operator typed, once

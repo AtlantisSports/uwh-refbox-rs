@@ -102,9 +102,12 @@ ot-half-time-length = HABA NG PAHINGA
     SA OVERTIME
 using-portal = GUMAGAMIT NG { $portal }PORTAL:
 manual-games = MANUAL NA LARO:
-source-portal = { $portal }PORTAL
+source-portal = { $portal } PORTAL
 source-custom = PASADYA
 access-token = ACCESS TOKEN:
+custom-site = SITE:
+custom-site-url-title = SITE URL
+custom-site-invalid = Hindi magagamit ang address na ito. Dapat itong kagaya ng http://your-site/api/events/1234-A
 starting-sides = MGA PANIG SA SIMULA
 sound-enabled = TUNOG
     PINAGANA:

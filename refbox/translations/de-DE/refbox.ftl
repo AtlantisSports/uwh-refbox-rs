@@ -102,9 +102,12 @@ ot-half-time-length = VERLÄNGERUNGS-
     PAUSENDAUER
 using-portal = { $portal }PORTAL VERWENDEN:
 manual-games = MANUELLE SPIELE:
-source-portal = { $portal }PORTAL
+source-portal = { $portal } PORTAL
 source-custom = EIGENE
 access-token = ZUGRIFFSTOKEN:
+custom-site = SERVER:
+custom-site-url-title = SERVER-URL
+custom-site-invalid = Diese Adresse ist nicht verwendbar. Sie muss so aussehen: http://ihre-seite/api/events/1234-A
 starting-sides = STARTSEITEN
 sound-enabled = TON
     AKTIVIERT:

@@ -202,6 +202,24 @@ treated as "the token itself is bad": the indicator goes red *and* the operator 
 log in again. This distinction is unique to this call; calls 7 and 8 below treat both kinds of
 failure the same way.
 
+**What your site must do — the one obligation you cannot delegate to refbox.** Reject a missing
+or unknown token here with any non-`200`. Your site is the only thing in the system that enforces
+whether a given refbox is authorised for an event, and this call is the only place that
+enforcement is visible to refbox.
+
+A site that answers `200` to everything — including a request carrying no token at all — tells
+every refbox pointed at it that its token is already valid. refbox then behaves as though it were
+already paired: the portal status shows `UWHPORTAL TOKEN: OK` in green, the privileged schedule
+loads, the court fills itself in, and **the operator is never offered the link flow at all**.
+Pairing is bypassed completely, and nothing anywhere reports a problem — not the screen, not the
+log. This was observed live on 2026-08-10 against a deliberately permissive stand-in site, and it
+is the failure mode that reading refbox's source cannot reveal, because the source only shows what
+refbox *sends*, never what a site is obliged to *refuse*.
+
+Note that this is not a case of refbox omitting the call when it has nothing to send: see the
+fourth rule under "Rules that apply to every call" below, which explains why an unauthenticated
+request will arrive on this endpoint and why you must treat it as a failure rather than serve it.
+
 #### 3. Event list
 
 `GET /api/events`  ·  source: `uwh-common/src/uwhportal/mod.rs:537`
@@ -442,7 +460,7 @@ refbox downloads, the two timestamp formats, and the stats records refbox upload
 
 ### Rules that apply to every call
 
-Three rules hold across the whole API and are invisible from the individual call descriptions
+Four rules hold across the whole API and are invisible from the individual call descriptions
 above, because each one only becomes apparent when you compare all of them.
 
 **Exactly `200` counts as success.** Every call made through the shared Portal client — that is,
@@ -477,6 +495,20 @@ refbox does not require any particular `Content-Type` on your responses. Every r
 read as text and then parsed as JSON regardless of how you labelled it. A hand-written server
 reading the request body straight off the socket can rely on `Content-Length` being present and
 accurate.
+
+**refbox still makes the authenticated calls when it holds no token.** Having no token does not
+stop refbox from calling 2, 5, 7 and 8 — it makes them anyway, with the `Authorization` header
+**omitted entirely**, not sent as an empty `Bearer `. An empty token in its configuration is
+turned into "no token" (`refbox/src/app/mod.rs:1743`), and the request builder attaches the header
+only when a token is actually present (`uwh-common/src/uwhportal/mod.rs:849`). Nothing checks in
+between: refbox consults "do I have a token?" only when drawing the portal settings screen
+(`refbox/src/app/mod.rs:1615`), never before sending. schedule-processor is the opposite — it
+checks for a token first and stops (`schedule-processor/src/main.rs:515`) — but that guard is not
+part of the refbox eight.
+
+So your site will see unauthenticated requests arriving on the four endpoints the inventory marks
+`bearer`, and it must treat them as failures rather than serve them. For call 2 this is not merely
+tidy — serving it is what silently disables pairing, as described there.
 
 ### The two ID forms
 

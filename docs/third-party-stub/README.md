@@ -18,7 +18,8 @@ actually stand up a site from the document. Every question the document failed t
 finding, and those findings were fixed in the document rather than worked around here.
 
 For the same reason, **finding zero gaps would have meant the exercise failed**, not that the
-document was perfect. It found nine.
+document was perfect. The blind build found nine; a desk check of the stub against the real client
+found three more, and running a real refbox against the stub found a thirteenth.
 
 ## Running it
 
@@ -52,15 +53,22 @@ first and restore it afterwards:
 cp -a ~/.config/refbox ~/.config/refbox.backup
 ```
 
-To exercise the link flow at all, the run has to start unlinked — otherwise the saved token
-verifies successfully against the stub (it accepts any token) and refbox skips linking entirely.
-Clear `uwhportal.token` in `default-config.toml` and delete `portal_link.json` before starting.
+Start the run unlinked: clear `uwhportal.token` in `default-config.toml` and delete
+`portal_link.json` first. A saved link points at whichever event was last used, which this stub
+does not serve, and starting clean is what puts the link flow at the front of the run.
 
 ## What it serves
 
 One hardcoded event: two teams of six players, one court, two games sharing one timing rule. It
-accepts any bearer token, ignores `force`, `filter` and `limit`, and answers `200` to everything —
-which is deliberate, since `200` is the only status refbox treats as success.
+ignores `force`, `filter` and `limit`, and answers `200` to every call it accepts — which is
+deliberate, since `200` is the only status refbox treats as success.
+
+**It does not accept any bearer token, and that is the point.** On the four authenticated calls it
+accepts only the access key it handed out itself during linking, and answers `401` to anything
+else — including a request with no `Authorization` header, which is exactly what refbox sends when
+it holds no token. An earlier version accepted everything, and the result was that refbox decided
+it was already paired, showed the token as `OK`, and never offered to link. That is gap 13 in the
+document, and refusing is what makes the link flow reachable.
 
 ## Scope
 

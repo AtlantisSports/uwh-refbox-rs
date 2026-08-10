@@ -69,6 +69,8 @@ use languages::*;
 
 mod power_control;
 
+mod custom_site;
+
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long the operator must hold a used-up team timeout button to revive
 /// (give back) one team timeout. Long enough to confirm the hold was intentional.

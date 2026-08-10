@@ -2239,7 +2239,16 @@ impl RefBoxApp {
             }
             Message::AddNewScore(color) => {
                 let task = if self.config.collect_scorer_cap_num {
-                    self.app_state = AppState::KeypadPage(KeypadPage::AddScore(color), 0);
+                    // Opens with `team_score` off: naming the scorer is the
+                    // normal case, so the grid stays live and the operator taps
+                    // TEAM SCORE only when there is no individual to credit.
+                    self.app_state = AppState::KeypadPage(
+                        KeypadPage::AddScore {
+                            color,
+                            team_score: false,
+                        },
+                        0,
+                    );
                     Task::none()
                 } else {
                     let mut tm = self.tm.lock().unwrap();
@@ -2682,7 +2691,7 @@ impl RefBoxApp {
             }
             Message::KeypadPage(mut page) => {
                 let init_val = match page {
-                    KeypadPage::AddScore(_)
+                    KeypadPage::AddScore { .. }
                     | KeypadPage::Penalty(None, _, _, _)
                     | KeypadPage::FoulAdd { origin: None, .. }
                     | KeypadPage::WarningAdd { origin: None, .. } => 0,
@@ -2793,7 +2802,7 @@ impl RefBoxApp {
             Message::ChangeColor(new_color) => {
                 match self.app_state {
                     AppState::KeypadPage(
-                        KeypadPage::AddScore(ref mut color),
+                        KeypadPage::AddScore { ref mut color, .. },
                         ref mut player_num,
                     )
                     | AppState::KeypadPage(
@@ -2826,7 +2835,7 @@ impl RefBoxApp {
             Message::AddScoreComplete { canceled } => {
                 let mut task = Task::none();
                 self.app_state = if !canceled {
-                    if let AppState::KeypadPage(KeypadPage::AddScore(color), player) =
+                    if let AppState::KeypadPage(KeypadPage::AddScore { color, .. }, player) =
                         self.app_state
                     {
                         let mut tm = self.tm.lock().unwrap();
@@ -3800,6 +3809,27 @@ impl RefBoxApp {
                         trace!("AppState changed to {:?}", self.app_state)
                     }
 
+                    BoolGameParameter::TeamScore => {
+                        if let AppState::KeypadPage(
+                            KeypadPage::AddScore {
+                                ref mut team_score, ..
+                            },
+                            ref mut player_num,
+                        ) = self.app_state
+                        {
+                            *team_score ^= true;
+                            if *team_score {
+                                // The goal is the team's, so no player number
+                                // may linger: the readout, the greyed panel and
+                                // the score that gets recorded must agree.
+                                *player_num = 0;
+                            }
+                        } else {
+                            unreachable!()
+                        }
+                        trace!("AppState changed to {:?}", self.app_state)
+                    }
+
                     BoolGameParameter::TimeoutsCountedPerHalf => {
                         if let AppState::KeypadPage(
                             KeypadPage::TeamTimeouts(_, ref mut per_half),
@@ -3892,6 +3922,7 @@ impl RefBoxApp {
                                 edited_settings.show_behind_schedule_time ^= true
                             }
                             BoolGameParameter::TeamWarning
+                            | BoolGameParameter::TeamScore
                             | BoolGameParameter::TimeoutsCountedPerHalf
                             | BoolGameParameter::SingleHalf => {
                                 unreachable!()

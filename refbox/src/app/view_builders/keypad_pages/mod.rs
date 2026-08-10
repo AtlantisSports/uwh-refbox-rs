@@ -136,7 +136,8 @@ pub(in super::super) fn build_keypad_page<'a>(
                 Length::Shrink
             }),
             match page {
-                KeypadPage::AddScore(color) => make_score_add_page(color),
+                KeypadPage::AddScore { color, team_score } =>
+                    make_score_add_page(color, team_score, player_num),
                 KeypadPage::Penalty(origin, color, kind, foul) => {
                     make_penalty_edit_page(
                         origin,
@@ -247,9 +248,16 @@ fn panel_value(role: PanelRole, player_num: u32) -> String {
 
 fn panel_role(page: &KeypadPage) -> PanelRole {
     match page {
-        KeypadPage::AddScore(color) | KeypadPage::Penalty(_, color, _, _) => {
-            PanelRole::Player(*color)
+        // A team goal names no individual, so it takes the same greyed panel an
+        // equal foul and a team warning do.
+        KeypadPage::AddScore { color, team_score } => {
+            if *team_score {
+                PanelRole::TeamEntry
+            } else {
+                PanelRole::Player(*color)
+            }
         }
+        KeypadPage::Penalty(_, color, _, _) => PanelRole::Player(*color),
         KeypadPage::FoulAdd { color, .. } => match color {
             Some(color) => PanelRole::Player(*color),
             None => PanelRole::TeamEntry,
@@ -414,8 +422,20 @@ mod tests {
     fn panel_role_per_page() {
         let cases: &[(KeypadPage, PanelRole)] = &[
             (
-                KeypadPage::AddScore(GameColor::Black),
+                KeypadPage::AddScore {
+                    color: GameColor::Black,
+                    team_score: false,
+                },
                 PanelRole::Player(GameColor::Black),
+            ),
+            // A team goal names nobody, so it greys the panel like a team
+            // warning does.
+            (
+                KeypadPage::AddScore {
+                    color: GameColor::Black,
+                    team_score: true,
+                },
+                PanelRole::TeamEntry,
             ),
             (
                 KeypadPage::Penalty(

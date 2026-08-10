@@ -39,6 +39,8 @@ team-warning = 队伍
     警告
 team-warning-line-1 = 队伍
 team-warning-line-2 = 警告
+team-score-line-1 = 队伍
+team-score-line-2 = 比分
 
 # 设置
 none-selected = 未选择

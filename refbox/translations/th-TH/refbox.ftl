@@ -39,6 +39,8 @@ team-warning = การเตือน
     ทีม
 team-warning-line-1 = การเตือน
 team-warning-line-2 = ทีม
+team-score-line-1 = คะแนน
+team-score-line-2 = ทีม
 
 # การตั้งค่า
 none-selected = ไม่ได้เลือก

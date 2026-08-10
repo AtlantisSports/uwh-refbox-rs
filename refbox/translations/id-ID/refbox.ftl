@@ -39,6 +39,8 @@ team-warning = PERINGATAN
     TIM
 team-warning-line-1 = PERINGATAN
 team-warning-line-2 = TIM
+team-score-line-1 = SKOR
+team-score-line-2 = TIM
 
 # Konfigurasi
 none-selected = Tidak Ada Dipilih

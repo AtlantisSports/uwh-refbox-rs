@@ -39,6 +39,8 @@ team-warning = チーム
     警告
 team-warning-line-1 = チーム
 team-warning-line-2 = 警告
+team-score-line-1 = チーム
+team-score-line-2 = 得点
 
 # 設定
 none-selected = 未選択

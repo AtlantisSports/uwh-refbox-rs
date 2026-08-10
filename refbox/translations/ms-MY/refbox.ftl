@@ -39,6 +39,8 @@ team-warning = AMARAN
     PASUKAN
 team-warning-line-1 = AMARAN
 team-warning-line-2 = PASUKAN
+team-score-line-1 = MARKAH
+team-score-line-2 = PASUKAN
 
 # Konfigurasi
 none-selected = Tiada Dipilih

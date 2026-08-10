@@ -107,6 +107,7 @@ source-custom = AANGEPAST
 access-token = TOEGANGSTOKEN:
 custom-site = SITE:
 custom-site-url-title = SITE-URL
+custom-site-placeholder = http://uw-site/api/events/1234-A
 custom-site-invalid = Dit adres is niet bruikbaar. Het moet lijken op http://uw-site/api/events/1234-A
 starting-sides = STARTZIJDEN
 sound-enabled = GELUID

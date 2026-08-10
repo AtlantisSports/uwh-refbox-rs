@@ -107,6 +107,7 @@ source-custom = PERSONALIZZATO
 access-token = TOKEN DI ACCESSO:
 custom-site = SITO:
 custom-site-url-title = URL DEL SITO
+custom-site-placeholder = http://tuo-sito/api/events/1234-A
 custom-site-invalid = Questo indirizzo non è utilizzabile. Deve essere come http://tuo-sito/api/events/1234-A
 starting-sides = LATI DI PARTENZA
 sound-enabled = AUDIO

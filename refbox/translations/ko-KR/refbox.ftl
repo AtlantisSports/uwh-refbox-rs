@@ -109,6 +109,7 @@ source-custom = 사용자 지정
 access-token = 액세스 토큰:
 custom-site = 사이트:
 custom-site-url-title = 사이트 URL
+custom-site-placeholder = http://your-site/api/events/1234-A
 custom-site-invalid = 이 주소는 사용할 수 없습니다. http://your-site/api/events/1234-A 형식이어야 합니다
 starting-sides = 시작 진영
 sound-enabled = 소리

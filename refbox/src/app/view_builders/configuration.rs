@@ -2021,14 +2021,11 @@ fn make_custom_site_page<'a>(
     col = col.push(centered_text(fl!("custom-site-url-title")));
 
     col = col.push(
-        text_input(
-            "http://scoreboard.local:8099/api/events/1234-A",
-            &settings.custom_site.url,
-        )
-        .on_input(Message::CustomSiteUrlChanged)
-        .padding(PADDING)
-        .size(MEDIUM_TEXT)
-        .width(Length::Fill),
+        text_input(&fl!("custom-site-placeholder"), &settings.custom_site.url)
+            .on_input(Message::CustomSiteUrlChanged)
+            .padding(PADDING)
+            .size(MEDIUM_TEXT)
+            .width(Length::Fill),
     );
 
     // The rejection message replaces empty space rather than appearing above the

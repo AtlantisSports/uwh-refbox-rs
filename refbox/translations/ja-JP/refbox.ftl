@@ -107,6 +107,7 @@ source-custom = カスタム
 access-token = アクセストークン:
 custom-site = サイト:
 custom-site-url-title = サイトURL
+custom-site-placeholder = http://your-site/api/events/1234-A
 custom-site-invalid = このアドレスは使用できません。http://your-site/api/events/1234-A の形式にしてください
 starting-sides = 開始サイド
 sound-enabled = サウンド

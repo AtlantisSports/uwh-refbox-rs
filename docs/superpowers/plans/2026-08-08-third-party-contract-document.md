@@ -480,3 +480,37 @@ _(Record here if execution diverges from the plan.)_
   which requires at least one trailing path character and no longer matches the check's own
   quoted regex text. Verified against the final committed document: `IN SYNC`, no extra
   lines. Tasks 2, 3, and 4 should use the `+` version when they re-run this check.
+
+- **Task 5, Step 1 "Accept any bearer token" was overridden by the user.** The instruction is
+  self-defeating alongside Step 3's requirement to exercise the link flow: a site that accepts
+  any token — including a request with no `Authorization` header, which is what refbox sends
+  when it holds no token — tells refbox its token is already valid, so refbox never learns it
+  needs to link and the link flow is unreachable. The first live attempt hit exactly this and
+  produced a green `TOKEN: OK` with no link offer (gap 13). The user ruled that the stub must
+  refuse an absent or unknown token. Enforcement was applied to all four bearer calls of the
+  eight (2, 5, 7, 8), not only the token check, because the document's own rule now tells every
+  site to refuse unauthenticated requests on bearer endpoints — a stub enforcing only call 2
+  would contradict the document it exists to test.
+
+- **Task 5, Step 3's stated order is impossible.** The step says to "link with any code the stub
+  accepts, then select the event". refbox only makes the link screen reachable once an event has
+  been selected, so the run was performed in the reverse order: select the event (which produces
+  `TOKEN: FAILED`), then link from that screen. The gate is in the view code, not something the
+  run worked around.
+
+- **Task 6, Step 1's penalty and foul were spread across two games.** The first game carried the
+  penalty, the second the foul. This was incidental rather than deliberate, and it turned out
+  better than one game would have: it gave two independent score-and-stats uploads to compare,
+  and both matched the documented shapes.
+
+- **Per-step UI verification was dropped partway through Task 6, at the user's direction** ("why
+  are we running through established UI?"). Correct call — refbox's scoring and penalty screens
+  are not what this plan tests, and stepping through them screen by screen added nothing. The
+  document's claims are tested by the *uploads*, which were inspected in full.
+
+- **Not exercised, and not claimed:** a team-level ("both at fault") foul, which the document says
+  is the only record where `playerCapNumber` and `side` may be `null`. `add_foul` takes
+  `Option<Color>` and `Option<u8>` (`refbox/src/tournament_manager/mod.rs:847-853`), and
+  `player_number` is optional *only* for fouls, so the document's claim is structurally supported
+  by the signature. Chasing it live would have cost another game for a claim the type already
+  makes.

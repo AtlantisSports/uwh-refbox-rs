@@ -102,9 +102,12 @@ ot-half-time-length = UZATMA DEVRE
     ARASI SÜRESİ
 using-portal = { $portal }PORTAL KULLANILIYOR:
 manual-games = MANUEL MAÇLAR:
-source-portal = { $portal }PORTAL
+source-portal = { $portal } PORTAL
 source-custom = ÖZEL
 access-token = ERİŞİM TOKENİ:
+custom-site = SİTE:
+custom-site-url-title = SİTE URL
+custom-site-invalid = Bu adres kullanılamaz. Şu biçimde olmalı: http://siteniz/api/events/1234-A
 starting-sides = BAŞLANGIÇ TARAFLARI
 sound-enabled = SES
     AKTİF:

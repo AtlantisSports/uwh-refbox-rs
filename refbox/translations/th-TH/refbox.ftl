@@ -102,9 +102,12 @@ ot-half-time-length = พักครึ่ง
     ต่อเวลาพิเศษ
 using-portal = ใช้ { $portal }PORTAL:
 manual-games = เกมด้วยตนเอง:
-source-portal = { $portal }PORTAL
+source-portal = { $portal } PORTAL
 source-custom = กำหนดเอง
 access-token = โทเค็นการเข้าถึง:
+custom-site = ไซต์:
+custom-site-url-title = URL ไซต์
+custom-site-invalid = ที่อยู่นี้ใช้ไม่ได้ ต้องอยู่ในรูปแบบ http://your-site/api/events/1234-A
 starting-sides = ด้านเริ่มต้น
 sound-enabled = เปิดใช้
     เสียง:

@@ -102,9 +102,12 @@ ot-half-time-length = DURASI JEDA
     PERPANJANGAN WAKTU
 using-portal = MENGGUNAKAN { $portal }PORTAL:
 manual-games = PERTANDINGAN MANUAL:
-source-portal = { $portal }PORTAL
+source-portal = { $portal } PORTAL
 source-custom = KUSTOM
 access-token = TOKEN AKSES:
+custom-site = SITUS:
+custom-site-url-title = URL SITUS
+custom-site-invalid = Alamat itu tidak dapat digunakan. Harus seperti http://situs-anda/api/events/1234-A
 starting-sides = SISI AWAL
 sound-enabled = SUARA
     DIAKTIFKAN:

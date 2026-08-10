@@ -102,9 +102,12 @@ ot-half-time-length = 加时中场
     时长
 using-portal = 使用{ $portal }PORTAL：
 manual-games = 手动比赛：
-source-portal = { $portal }PORTAL
+source-portal = { $portal } PORTAL
 source-custom = 自定义
 access-token = 访问令牌：
+custom-site = 站点：
+custom-site-url-title = 站点 URL
+custom-site-invalid = 该地址无法使用。格式应为 http://your-site/api/events/1234-A
 starting-sides = 起始位置
 sound-enabled = 声音
     启用：

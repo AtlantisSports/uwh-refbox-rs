@@ -103,9 +103,12 @@ ot-half-time-length = DUR. MEDIO
     TIEMPO DEL T/E
 using-portal = USANDO { $portal }PORTAL:
 manual-games = PARTIDOS MANUALES:
-source-portal = { $portal }PORTAL
+source-portal = { $portal } PORTAL
 source-custom = PERSONALIZADO
 access-token = TOKEN DE ACCESO:
+custom-site = SITIO:
+custom-site-url-title = URL DEL SITIO
+custom-site-invalid = Esa dirección no es válida. Debe tener este formato: http://su-sitio/api/events/1234-A
 starting-sides = LADOS INICIALES
 sound-enabled = SONIDO
     HABILITADO:

@@ -102,9 +102,12 @@ ot-half-time-length = DURÉE DE LA PAUSE
     A LA PROLONGATION
 using-portal = UTILISATION DU { $portal }PORTAL:
 manual-games = MATCHS MANUELS:
-source-portal = { $portal }PORTAL
+source-portal = { $portal } PORTAL
 source-custom = PERSONNALISÉ
 access-token = JETON D'ACCÈS:
+custom-site = SITE:
+custom-site-url-title = URL DU SITE
+custom-site-invalid = Cette adresse n'est pas utilisable. Elle doit ressembler à http://votre-site/api/events/1234-A
 starting-sides = CÔTÉS DE DÉPART
 sound-enabled = SON
     ACTIVÉ:

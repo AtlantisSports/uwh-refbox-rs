@@ -1,7 +1,7 @@
 use super::{ViewData, fl, message::*, shared_elements::*, theme::*};
 use crate::app::PageEntrySnapshot;
 use crate::app::languages::Language;
-use crate::config::{GameSource, Level, Mode, RemoteSource};
+use crate::config::{CustomSite, GameSource, Level, Mode, RemoteSource};
 use crate::portal_manager::PortalIndicatorState;
 use crate::sim_frame::FrontDisplayLayout;
 use crate::sound_controller::*;
@@ -11,7 +11,7 @@ use iced::{
     alignment::{Horizontal, Vertical},
     widget::{
         Image, Row, button, column, container, horizontal_space, image, row, svg, svg::Svg, text,
-        vertical_space,
+        text_input, vertical_space,
     },
 };
 use matrix_drawing::transmitted_data::Brightness;
@@ -45,6 +45,9 @@ pub(in super::super) struct EditableSettings {
     /// rather than a page setting: deliberately not part of the Cancel/revert
     /// snapshot, so it does not count as a visible edit.
     pub remembered_remote: RemoteSource,
+    /// The custom site as staged by the editor. Unlike `remembered_remote` this
+    /// IS snapshotted, so Cancel discards a half-typed URL.
+    pub custom_site: CustomSite,
     pub uwhportal_token_valid: Option<bool>,
     pub current_event_id: Option<EventId>,
     pub current_court: Option<String>,
@@ -286,6 +289,9 @@ pub(in super::super) fn page_has_changes(
         (ConfigPage::Buzzer, PageEntrySnapshot::Buzzer { buzzer_sound }) => {
             edited.sound.buzzer_sound != *buzzer_sound
         }
+        (ConfigPage::CustomSite(_), PageEntrySnapshot::CustomSite { custom_site }) => {
+            edited.custom_site != *custom_site
+        }
         _ => false,
     }
 }
@@ -377,6 +383,15 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
         ConfigPage::Buzzer => make_buzzer_select_page(
             snapshot,
             settings,
+            mode,
+            clock_running,
+            page_entry_snapshot,
+            portal_indicator,
+        ),
+        ConfigPage::CustomSite(show_invalid) => make_custom_site_page(
+            snapshot,
+            settings,
+            show_invalid,
             mode,
             clock_running,
             page_entry_snapshot,
@@ -830,10 +845,26 @@ fn make_event_config_page<'a>(
                     .spacing(SPACING)
                     .height(Length::Fill),
             )
-            .push(
+            // Under CUSTOM the event is named inside the URL, so there is
+            // nothing to pick: the SITE row takes the EVENT row's slot and the
+            // page stays at four rows either way.
+            .push(if *source == GameSource::Custom {
+                let shown = if settings.custom_site.url.is_empty() {
+                    fl!("none-selected")
+                } else {
+                    settings.custom_site.url.clone()
+                };
+                make_value_button(
+                    fl!("custom-site"),
+                    shown,
+                    (true, true),
+                    Some(Message::ChangeConfigPage(ConfigPage::CustomSite(false))),
+                )
+                .height(Length::Fill)
+            } else {
                 make_value_button(fl!("event"), event_label, (true, true), event_btn_msg)
-                    .height(Length::Fill),
-            )
+                    .height(Length::Fill)
+            })
             .push(auth_state_button)
             .push(
                 make_value_button(fl!("court"), pool_label, (true, true), pool_btn_msg)
@@ -1951,6 +1982,86 @@ fn make_buzzer_select_page<'a>(
     };
 
     grid.push(row![cancel, test, apply].spacing(SPACING)).into()
+}
+
+/// The custom site's URL editor, reached from the SITE row.
+///
+/// This holds the only text input in the application. The spacebar buzzer
+/// handler is already gated to the main screen (`mod.rs`, with a comment saying
+/// the gate exists so text inputs are unaffected), so typing a space here does
+/// not sound the buzzer.
+#[allow(clippy::too_many_arguments)]
+fn make_custom_site_page<'a>(
+    snapshot: &GameSnapshot,
+    settings: &EditableSettings,
+    show_invalid: bool,
+    mode: Mode,
+    clock_running: bool,
+    page_entry_snapshot: Option<&PageEntrySnapshot>,
+    portal_indicator: Option<PortalIndicatorState>,
+) -> Element<'a, Message> {
+    let has_changes = page_has_changes(
+        ConfigPage::CustomSite(show_invalid),
+        settings,
+        page_entry_snapshot,
+    );
+
+    let mut col = column![make_game_time_button(
+        snapshot,
+        false,
+        false,
+        mode,
+        clock_running,
+        portal_indicator,
+        None
+    )]
+    .spacing(SPACING)
+    .height(Length::Fill);
+
+    col = col.push(centered_text(fl!("custom-site-url-title")));
+
+    col = col.push(
+        text_input(
+            "http://scoreboard.local:8099/api/events/1234-A",
+            &settings.custom_site.url,
+        )
+        .on_input(Message::CustomSiteUrlChanged)
+        .padding(PADDING)
+        .size(MEDIUM_TEXT)
+        .width(Length::Fill),
+    );
+
+    // The rejection message replaces empty space rather than appearing above the
+    // footer, so the buttons never move under the operator's finger.
+    col = col.push(
+        container(if show_invalid {
+            centered_text(fl!("custom-site-invalid"))
+        } else {
+            centered_text(String::new())
+        })
+        .height(Length::Fill),
+    );
+
+    let cancel = make_button(fl!("cancel"))
+        .style(red_button)
+        .width(Length::Fill)
+        .on_press(Message::CancelConfigPage(ConfigPage::CustomSite(
+            show_invalid,
+        )));
+    let apply = {
+        let b = make_button(fl!("apply"))
+            .style(green_button)
+            .width(Length::Fill);
+        if has_changes {
+            b.on_press(Message::ApplyConfigPage(ConfigPage::CustomSite(
+                show_invalid,
+            )))
+        } else {
+            b
+        }
+    };
+
+    col.push(row![cancel, apply].spacing(SPACING)).into()
 }
 
 fn make_language_select_page<'a>(

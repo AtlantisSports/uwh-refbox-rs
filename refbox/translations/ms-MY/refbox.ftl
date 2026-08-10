@@ -102,9 +102,12 @@ ot-half-time-length = PANJANG REHAT SEPARUH
     MASA TAMBAHAN
 using-portal = MENGGUNAKAN { $portal }PORTAL:
 manual-games = PERLAWANAN MANUAL:
-source-portal = { $portal }PORTAL
+source-portal = { $portal } PORTAL
 source-custom = TERSUAI
 access-token = TOKEN AKSES:
+custom-site = LAMAN:
+custom-site-url-title = URL LAMAN
+custom-site-invalid = Alamat itu tidak boleh digunakan. Ia mesti seperti http://laman-anda/api/events/1234-A
 starting-sides = SISI PERMULAAN
 sound-enabled = BUNYI
     DIAKTIFKAN:

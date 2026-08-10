@@ -598,6 +598,31 @@ code commit or record them here.)_
   toggle was its only setter, so once that moved to `Message::SelectGameSource` the variable and its
   trailing `if` were dead and clippy rejected the unused `mut`. Deleted rather than silenced.
 
+- **Task 5: the SITE row shows the TYPED URL, not the effective one — deferred to Task 6.** The plan
+  requires the row to display "the URL actually in use", so that a typed value is never silently
+  ignored while the environment override really points elsewhere. That safety property needs the
+  effective URL, which is decided by the client swap in Task 6; the view has no access to it today.
+  **Task 6 must complete this**, or the failure this feature exists to remove survives in the one
+  place an operator would look.
+
+- **Task 5: `custom_site` had to be plumbed onto `EditableSettings`** — the same omission as Task 4's
+  `remembered_remote`. Seeded from the config at all five construction sites.
+
+- **Task 5: added `PageEntrySnapshot::CustomSite`.** Needed for two things the plan assumes without
+  saying: Cancel discarding a half-typed URL, and the APPLY gate greying until the URL actually
+  changes. Unlike `remembered_remote` this one *is* snapshotted, because the typed URL is a visible
+  edit rather than a hidden preference.
+
+- **Task 5: one rejection message rather than five, on the human's decision.** Task 2 produces five
+  distinct errors; the plan's Step 1 defines a single message naming the correct shape, and that was
+  chosen deliberately over five specific messages (which would have cost 75 translations). The
+  parser's distinctions are still there for a later pass if operators struggle. Typing clears the
+  message, so a rejection never nags.
+
+- **Task 4 follow-up folded into Task 5's commit:** the portal source button read `UWHPORTAL` because
+  it reused the existing tenant wording verbatim. Changed to `{ $portal } PORTAL` in all 15 locales,
+  so it reads `UWH PORTAL`, matching the spec's sketch. Decided at the Task 4 visual check.
+
 - **Task 3: the ON/OFF toggle preserves today's meaning rather than using `remembered_remote`.**
   `BoolGameParameter::UsingUwhPortal` now sets `Manual` or `Portal` explicitly instead of flipping a
   boolean. Routing OFF->ON through `remembered_remote` would be a behaviour change and belongs to

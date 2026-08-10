@@ -102,9 +102,12 @@ ot-half-time-length = INTERVALO DA
     PRORROGAÇÃO
 using-portal = USAR { $portal }PORTAL:
 manual-games = JOGOS MANUAIS:
-source-portal = { $portal }PORTAL
+source-portal = { $portal } PORTAL
 source-custom = PERSONALIZADO
 access-token = TOKEN DE ACESSO:
+custom-site = SITE:
+custom-site-url-title = URL DO SITE
+custom-site-invalid = Esse endereço não é utilizável. Deve ser como http://o-seu-site/api/events/1234-A
 starting-sides = LADOS INICIAIS
 sound-enabled = SOM
     ATIVADO:

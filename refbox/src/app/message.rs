@@ -146,6 +146,9 @@ pub enum Message {
     /// cannot express three states, and naming the target source removes any
     /// question about which one a toggle would land on.
     SelectGameSource(GameSource),
+    /// Every keystroke in the custom site's URL field. Stages the text in
+    /// `edited_settings` so Cancel discards it like any other pending edit.
+    CustomSiteUrlChanged(String),
     CycleParameter(CyclingParameter),
     /// Set the team-timeout count directly (team-timeout edit page 0/1 toggle).
     SetTeamTimeoutCount(u32),
@@ -339,6 +342,7 @@ impl Message {
             | Self::SelectPlayerNumber(_)
             | Self::ToggleBoolParameter(_)
             | Self::SelectGameSource(_)
+            | Self::CustomSiteUrlChanged(_)
             | Self::CycleParameter(_)
             | Self::RecvEventList(_)
             | Self::RecvTeamsList(_, _)
@@ -646,6 +650,7 @@ impl PartialEq for Message {
             (Self::ParameterSelected(a, b), Self::ParameterSelected(c, d)) => a == c && b == d,
             (Self::ToggleBoolParameter(a), Self::ToggleBoolParameter(b)) => a == b,
             (Self::SelectGameSource(a), Self::SelectGameSource(b)) => a == b,
+            (Self::CustomSiteUrlChanged(a), Self::CustomSiteUrlChanged(b)) => a == b,
             (Self::CycleParameter(a), Self::CycleParameter(b)) => a == b,
             (Self::EditGameConfigPage(a), Self::EditGameConfigPage(b)) => a == b,
             (Self::ApplyConfigPage(a), Self::ApplyConfigPage(b)) => a == b,
@@ -741,6 +746,7 @@ impl PartialEq for Message {
             | (Self::ParameterSelected(_, _), _)
             | (Self::ToggleBoolParameter(_), _)
             | (Self::SelectGameSource(_), _)
+            | (Self::CustomSiteUrlChanged(_), _)
             | (Self::CycleParameter(_), _)
             | (Self::SelectLanguage(_), _)
             | (Self::LanguageSelectComplete { .. }, _)
@@ -864,6 +870,10 @@ pub enum ConfigPage {
     Remotes(usize, bool),
     Language,
     Buzzer,
+    /// The custom site's URL editor, reached from the SITE row. The flag is
+    /// whether the "that address is not usable" message is showing: Apply
+    /// validates and, when it fails, keeps the page open with the flag set.
+    CustomSite(bool),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

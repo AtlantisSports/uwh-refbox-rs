@@ -1,7 +1,7 @@
 use super::{ViewData, fl, message::*, shared_elements::*, theme::*};
 use crate::app::PageEntrySnapshot;
 use crate::app::languages::Language;
-use crate::config::{Level, Mode};
+use crate::config::{GameSource, Level, Mode};
 use crate::portal_manager::PortalIndicatorState;
 use crate::sim_frame::FrontDisplayLayout;
 use crate::sound_controller::*;
@@ -23,6 +23,16 @@ use uwh_common::{
     uwhportal::schedule::{Event, EventId, GameNumber, Schedule},
 };
 
+impl EditableSettings {
+    /// Whether games come from a remote site at all, as opposed to being
+    /// entered by hand. Most callers only need this question; only the few
+    /// that must tell the official Portal from a third-party site match on
+    /// `source` directly.
+    pub fn uses_remote(&self) -> bool {
+        !matches!(self.source, GameSource::Manual)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(in super::super) struct EditableSettings {
     pub config: GameConfig,
@@ -30,7 +40,7 @@ pub(in super::super) struct EditableSettings {
     pub white_on_right: bool,
     pub brightness: Brightness,
     pub front_display_layout: FrontDisplayLayout,
-    pub using_uwhportal: bool,
+    pub source: GameSource,
     pub uwhportal_token_valid: Option<bool>,
     pub current_event_id: Option<EventId>,
     pub current_court: Option<String>,
@@ -64,7 +74,7 @@ impl EditableSettings {
     /// action row in `make_event_config_page` (disabling Apply when nothing is
     /// committable) rely on this predicate, so they stay in sync.
     pub(in super::super) fn uwhportal_incomplete(&self) -> bool {
-        if !self.using_uwhportal {
+        if !self.uses_remote() {
             return false;
         }
         if self.current_event_id.is_none()
@@ -202,7 +212,7 @@ pub(in super::super) fn page_has_changes(
             PageEntrySnapshot::Game {
                 config,
                 game_number,
-                using_uwhportal,
+                source,
                 current_event_id,
                 current_court,
                 schedule,
@@ -210,7 +220,7 @@ pub(in super::super) fn page_has_changes(
         ) => {
             edited.config != *config
                 || edited.game_number != *game_number
-                || edited.using_uwhportal != *using_uwhportal
+                || edited.source != *source
                 || edited.current_event_id != *current_event_id
                 || edited.current_court != *current_court
                 || edited.schedule != *schedule
@@ -218,7 +228,7 @@ pub(in super::super) fn page_has_changes(
         (
             ConfigPage::App,
             PageEntrySnapshot::App {
-                using_uwhportal,
+                source,
                 current_event_id,
                 current_court,
                 schedule,
@@ -231,7 +241,7 @@ pub(in super::super) fn page_has_changes(
                 audible_countdown,
             },
         ) => {
-            edited.using_uwhportal != *using_uwhportal
+            edited.source != *source
                 || edited.current_event_id != *current_event_id
                 || edited.current_court != *current_court
                 || edited.schedule != *schedule
@@ -600,18 +610,18 @@ fn make_event_config_page<'a>(
     let EditableSettings {
         config,
         game_number,
-        using_uwhportal,
+        source,
         current_event_id,
         current_court,
         schedule,
         ..
     } = settings;
 
-    let using_uwhportal = *using_uwhportal;
+    let uses_remote = *source != GameSource::Manual;
 
     // Game-number picker — placed in the centre cell of the action row
     // (Cancel | Game | Apply) in both portal modes per ADR-009 Task 14 layout.
-    let game_btn_msg = if using_uwhportal {
+    let game_btn_msg = if uses_remote {
         if current_event_id.is_some() && current_court.is_some() && schedule.is_some() {
             Some(Message::SelectParameter(ListableParameter::Game))
         } else {
@@ -622,7 +632,7 @@ fn make_event_config_page<'a>(
     };
 
     let mut game_large_text = true;
-    let game_label = if using_uwhportal {
+    let game_label = if uses_remote {
         if let (Some(_), Some(cur_court)) = (current_event_id, current_court) {
             if let Some(schedule) = schedule {
                 match schedule.games.get(game_number) {
@@ -645,7 +655,7 @@ fn make_event_config_page<'a>(
     // Using portal toggle — row 1 left cell in both portal modes.
     let using_uwh_portal_btn = make_value_button(
         fl!("using-portal", portal = portal_name_for_mode(mode)),
-        bool_string(using_uwhportal),
+        bool_string(uses_remote),
         (false, true),
         Some(Message::ToggleBoolParameter(
             BoolGameParameter::UsingUwhPortal,
@@ -670,7 +680,7 @@ fn make_event_config_page<'a>(
     .spacing(SPACING)
     .height(Length::Fill);
 
-    if using_uwhportal {
+    if uses_remote {
         // Portal mode ON: row 1 = UWH Portal + 2 blanks; rows 2–4 = full-width
         // Event / Token / Court single-button rows.
         let event_label = if let Some(events) = events {
@@ -930,7 +940,7 @@ fn make_event_config_page<'a>(
     // red button explaining it. Yellow ("tight") is a caution, not invalid, and
     // does not block.
     let game_block_too_short =
-        !using_uwhportal && matches!(game_block_validity(config), GameBlockValidity::TooShort);
+        !uses_remote && matches!(game_block_validity(config), GameBlockValidity::TooShort);
     let has_changes = page_has_changes(ConfigPage::Game, settings, page_entry_snapshot);
     let apply_enabled = has_changes && !apply_blocked && !game_block_too_short;
 
@@ -2472,7 +2482,7 @@ mod tests {
     fn app_detects_hide_time_change() {
         // hide_time moved from Display to App; dirty-check must fire on App page.
         let snap = PageEntrySnapshot::App {
-            using_uwhportal: false,
+            source: GameSource::Manual,
             current_event_id: None,
             current_court: None,
             schedule: None,
@@ -2494,7 +2504,7 @@ mod tests {
     #[test]
     fn app_detects_audible_countdown_change() {
         let snap = PageEntrySnapshot::App {
-            using_uwhportal: false,
+            source: GameSource::Manual,
             current_event_id: None,
             current_court: None,
             schedule: None,
@@ -2531,7 +2541,7 @@ mod tests {
         let mut edited = EditableSettings {
             config: original_config.clone(),
             game_number: "1".to_string(),
-            using_uwhportal: true,
+            source: GameSource::Portal,
             current_event_id: Some(event_id.clone()),
             current_court: Some("CourtA".to_string()),
             schedule: Some(make_schedule_with_one_game(event_id.clone(), "1", "CourtA")),
@@ -2540,7 +2550,7 @@ mod tests {
         let snap = PageEntrySnapshot::Game {
             config: edited.config.clone(),
             game_number: edited.game_number.clone(),
-            using_uwhportal: edited.using_uwhportal,
+            source: edited.source,
             current_event_id: edited.current_event_id.clone(),
             current_court: edited.current_court.clone(),
             schedule: edited.schedule.clone(),
@@ -2549,7 +2559,7 @@ mod tests {
         // Operator mutates every Game-slice field after entering Game Options.
         edited.config = bumped_config;
         edited.game_number = "99".to_string();
-        edited.using_uwhportal = false;
+        edited.source = GameSource::Manual;
         edited.current_event_id = Some(EventId::from_partial("evt-B"));
         edited.current_court = Some("CourtB".to_string());
         edited.schedule = None;
@@ -2558,7 +2568,7 @@ mod tests {
 
         assert_eq!(edited.config, original_config);
         assert_eq!(edited.game_number, "1");
-        assert!(edited.using_uwhportal);
+        assert!(edited.uses_remote());
         assert_eq!(edited.current_event_id, Some(event_id.clone()));
         assert_eq!(edited.current_court.as_deref(), Some("CourtA"));
         assert!(edited.schedule.is_some());
@@ -2575,7 +2585,7 @@ mod tests {
         let snap = PageEntrySnapshot::Game {
             config: edited.config.clone(),
             game_number: edited.game_number.clone(),
-            using_uwhportal: edited.using_uwhportal,
+            source: edited.source,
             current_event_id: edited.current_event_id.clone(),
             current_court: edited.current_court.clone(),
             schedule: edited.schedule.clone(),
@@ -2617,7 +2627,7 @@ mod tests {
         let original_event = EventId::from_partial("evt-A");
 
         let mut edited = EditableSettings {
-            using_uwhportal: true,
+            source: GameSource::Portal,
             current_event_id: Some(original_event.clone()),
             current_court: Some("CourtA".to_string()),
             mode: Mode::Hockey6V6,
@@ -2629,7 +2639,7 @@ mod tests {
             ..Default::default()
         };
         let snap = PageEntrySnapshot::App {
-            using_uwhportal: edited.using_uwhportal,
+            source: edited.source,
             current_event_id: edited.current_event_id.clone(),
             current_court: edited.current_court.clone(),
             schedule: edited.schedule.clone(),
@@ -2642,7 +2652,7 @@ mod tests {
             audible_countdown: false,
         };
 
-        edited.using_uwhportal = false;
+        edited.source = GameSource::Manual;
         edited.current_event_id = Some(EventId::from_partial("evt-B"));
         edited.current_court = Some("CourtB".to_string());
         edited.mode = Mode::Rugby;
@@ -2656,7 +2666,7 @@ mod tests {
         snap.revert_into(&mut edited);
 
         // App-slice fields restored.
-        assert!(edited.using_uwhportal);
+        assert!(edited.uses_remote());
         assert_eq!(edited.current_event_id, Some(original_event));
         assert_eq!(edited.current_court.as_deref(), Some("CourtA"));
         assert_eq!(edited.mode, Mode::Hockey6V6);
@@ -2682,7 +2692,7 @@ mod tests {
     #[test]
     fn uwhportal_incomplete_false_when_portal_off() {
         let edited = EditableSettings {
-            using_uwhportal: false,
+            source: GameSource::Manual,
             current_event_id: None,
             current_court: None,
             schedule: None,
@@ -2694,7 +2704,7 @@ mod tests {
     #[test]
     fn uwhportal_incomplete_true_when_event_missing() {
         let edited = EditableSettings {
-            using_uwhportal: true,
+            source: GameSource::Portal,
             current_event_id: None,
             current_court: Some("CourtA".to_string()),
             schedule: Some(make_schedule_with_one_game(
@@ -2712,7 +2722,7 @@ mod tests {
     fn uwhportal_incomplete_true_when_court_missing() {
         let event_id = EventId::from_partial("evt-A");
         let edited = EditableSettings {
-            using_uwhportal: true,
+            source: GameSource::Portal,
             current_event_id: Some(event_id.clone()),
             current_court: None,
             schedule: Some(make_schedule_with_one_game(event_id, "1", "CourtA")),
@@ -2725,7 +2735,7 @@ mod tests {
     #[test]
     fn uwhportal_incomplete_true_when_schedule_missing() {
         let edited = EditableSettings {
-            using_uwhportal: true,
+            source: GameSource::Portal,
             current_event_id: Some(EventId::from_partial("evt-A")),
             current_court: Some("CourtA".to_string()),
             schedule: None,
@@ -2739,7 +2749,7 @@ mod tests {
     fn uwhportal_incomplete_true_when_game_not_in_schedule() {
         let event_id = EventId::from_partial("evt-A");
         let edited = EditableSettings {
-            using_uwhportal: true,
+            source: GameSource::Portal,
             current_event_id: Some(event_id.clone()),
             current_court: Some("CourtA".to_string()),
             schedule: Some(make_schedule_with_one_game(event_id, "1", "CourtA")),
@@ -2753,7 +2763,7 @@ mod tests {
     fn uwhportal_incomplete_true_when_game_court_mismatches_current_court() {
         let event_id = EventId::from_partial("evt-A");
         let edited = EditableSettings {
-            using_uwhportal: true,
+            source: GameSource::Portal,
             current_event_id: Some(event_id.clone()),
             current_court: Some("CourtB".to_string()),
             schedule: Some(make_schedule_with_one_game(event_id, "1", "CourtA")),
@@ -2767,7 +2777,7 @@ mod tests {
     fn uwhportal_incomplete_false_when_all_present_and_matching() {
         let event_id = EventId::from_partial("evt-A");
         let edited = EditableSettings {
-            using_uwhportal: true,
+            source: GameSource::Portal,
             current_event_id: Some(event_id.clone()),
             current_court: Some("CourtA".to_string()),
             schedule: Some(make_schedule_with_one_game(event_id, "1", "CourtA")),
@@ -2800,7 +2810,7 @@ mod tests {
         let snapshot = PageEntrySnapshot::Game {
             config: entry.config.clone(),
             game_number: entry.game_number.clone(),
-            using_uwhportal: entry.using_uwhportal,
+            source: entry.source,
             current_event_id: entry.current_event_id.clone(),
             current_court: entry.current_court.clone(),
             schedule: entry.schedule.clone(),
@@ -2808,7 +2818,7 @@ mod tests {
 
         // Operator switched the portal on and completed every pick.
         let edited = EditableSettings {
-            using_uwhportal: true,
+            source: GameSource::Portal,
             current_event_id: Some(event_id.clone()),
             current_court: Some("CourtA".to_string()),
             schedule: Some(make_schedule_with_one_game(event_id, "1", "CourtA")),
@@ -2831,7 +2841,7 @@ mod tests {
         let snapshot = PageEntrySnapshot::Game {
             config: entry.config.clone(),
             game_number: entry.game_number.clone(),
-            using_uwhportal: entry.using_uwhportal,
+            source: entry.source,
             current_event_id: entry.current_event_id.clone(),
             current_court: entry.current_court.clone(),
             schedule: entry.schedule.clone(),
@@ -2839,7 +2849,7 @@ mod tests {
 
         // Operator switched the portal on but has not picked event/court/game.
         let edited = EditableSettings {
-            using_uwhportal: true,
+            source: GameSource::Portal,
             ..Default::default()
         };
 

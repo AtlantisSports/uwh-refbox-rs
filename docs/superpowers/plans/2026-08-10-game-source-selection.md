@@ -545,6 +545,33 @@ code commit or record them here.)_
   Future plans that introduce a pure helper ahead of its caller should either say how the lint gate
   will be satisfied, or order the caller into the same task.
 
+- **Task 3: one file missing from the plan's list.** `refbox/src/app/view_builders/main_view.rs`
+  also threaded the boolean (4 sites) and had to be included. 96 occurrences across 6 files, not 5.
+
+- **Task 3: `PageEntrySnapshot` had to become three-way, not just renamed.** The Cancel/revert
+  snapshot (`mod.rs`) stored `using_uwhportal: bool` and restored it onto `edited`. Left as a
+  boolean it would have silently collapsed `Custom` to `Portal` on revert once Task 4 can select a
+  custom site — a real defect rather than a naming one. Both variants now carry
+  `source: GameSource`.
+
+- **Task 3: the four view files were renamed as well, on the human's decision.** `main_view.rs`,
+  `game_info.rs`, `game_info_table.rs` and `shared_elements.rs` never held the field — they only
+  receive the yes/no answer — so the compiler did not require touching them (about a fifth of the
+  96 sites). Renaming their parameter `using_uwhportal` -> `uses_remote` was chosen because after
+  this change the value is `true` for a third-party site, which is emphatically not the UWH Portal,
+  and a future reader trusting the old name would branch the wrong way.
+
+- **Task 3: the portal-login and event-list sites were left as `uses_remote()` deliberately.** The
+  plan lists them as needing an explicit `GameSource` match. They do not yet: `Portal` is currently
+  the only remote, so `uses_remote()` is exactly behaviour-preserving, and narrowing them now would
+  be the behaviour change this task is required not to make. Task 7 narrows the event list; the
+  login flow narrows when a custom site can actually be selected.
+
+- **Task 3: the ON/OFF toggle preserves today's meaning rather than using `remembered_remote`.**
+  `BoolGameParameter::UsingUwhPortal` now sets `Manual` or `Portal` explicitly instead of flipping a
+  boolean. Routing OFF->ON through `remembered_remote` would be a behaviour change and belongs to
+  Task 4, which replaces this control.
+
 ## Out of scope
 
 - Changing the verification stub's token handling.

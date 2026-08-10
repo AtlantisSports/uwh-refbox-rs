@@ -75,7 +75,7 @@ pub(in super::super) enum Row {
 pub(in super::super) fn game_info_rows(
     snapshot: &GameSnapshot,
     config: &GameConfig,
-    using_uwhportal: bool,
+    uses_remote: bool,
     schedule: Option<&Schedule>,
     teams: Option<&TeamList>,
     last_game: Option<(GameNumber, BlackWhiteBundle<u8>)>,
@@ -101,7 +101,7 @@ pub(in super::super) fn game_info_rows(
         current_game_num,
         Some(time_string(config.game_block)),
         current_scores,
-        using_uwhportal,
+        uses_remote,
         schedule,
         teams,
     ));
@@ -199,14 +199,14 @@ pub(in super::super) fn game_info_rows(
             last_number,
             None, // prior game's Game Block is intentionally not shown
             last_scores,
-            using_uwhportal,
+            uses_remote,
             schedule,
             teams,
         );
         rows.insert(0, last);
     }
 
-    if using_uwhportal {
+    if uses_remote {
         rows.extend(referee_rows(current_game_num, schedule, teams));
     }
 
@@ -217,7 +217,7 @@ pub(in super::super) fn game_info_rows(
             &snapshot.next_game_number,
             Some(time_string(config.game_block)),
             None,
-            using_uwhportal,
+            uses_remote,
             schedule,
             teams,
         ));
@@ -251,12 +251,11 @@ fn game_block_row(
     game_number: &GameNumber,
     game_block: Option<String>,
     scores: Option<BlackWhiteBundle<u8>>,
-    using_uwhportal: bool,
+    uses_remote: bool,
     schedule: Option<&Schedule>,
     teams: Option<&TeamList>,
 ) -> Row {
-    let (white_name, black_name, number) =
-        resolve_game(game_number, using_uwhportal, schedule, teams);
+    let (white_name, black_name, number) = resolve_game(game_number, uses_remote, schedule, teams);
     Row::GameBlock {
         role,
         number,
@@ -384,11 +383,11 @@ fn referee_layout_rows(assignments: &[RefereeAssignment], teams: Option<&TeamLis
 // portal schedule has the game; the display number falls back to the raw number.
 fn resolve_game(
     game_number: &GameNumber,
-    using_uwhportal: bool,
+    uses_remote: bool,
     schedule: Option<&Schedule>,
     teams: Option<&TeamList>,
 ) -> (Option<String>, Option<String>, String) {
-    if using_uwhportal {
+    if uses_remote {
         if let Some(game) = schedule.and_then(|s| s.games.get(game_number)) {
             let black = limit_team_name_len(&get_team_name(&game.dark, teams), TEAM_NAME_LEN_LIMIT);
             let white =

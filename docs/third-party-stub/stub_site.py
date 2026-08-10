@@ -22,6 +22,11 @@ from urllib.parse import parse_qs, urlsplit
 
 PORT = 8099
 
+# The one access key this stub hands out (call 1) and the only bearer token it
+# accepts afterwards (calls 2, 5, 7, 8). See _require_bearer for why it is not
+# simply "any token".
+ACCESS_KEY = "stub-access-token"
+
 # ---------------------------------------------------------------------------
 # Hardcoded fake event: one court, two games, two teams of six players each.
 # ---------------------------------------------------------------------------
@@ -119,18 +124,48 @@ GAMES = {
 # ---------------------------------------------------------------------------
 
 
+def _require_bearer(h):
+    """Refuse the call unless it carries this stub's own access key.
+
+    All four bearer calls of the refbox eight go through here: 2 (verify
+    token), 5 (privileged schedule), 7 (push scores) and 8 (push stats).
+
+    Why this is NOT "accept any bearer token", which is what the plan for this
+    stub originally asked for: a site that accepts anything -- including a
+    request carrying no Authorization header at all -- tells refbox its token is
+    already fine. refbox then believes it is paired, shows UWHPORTAL TOKEN: OK
+    in green, and never offers the link flow. The site is the only thing
+    enforcing that a refbox is authorised for an event, so a permissive site
+    silently disables pairing altogether, with no error surfaced anywhere.
+    Refusing here is what makes the link flow reachable at all. Recorded in the
+    integration document as gap 13.
+    """
+    header = h.headers.get("Authorization")
+    if header == f"Bearer {ACCESS_KEY}":
+        return True
+    reason = "no Authorization header at all" if header is None else f"unknown token {header!r}"
+    print(
+        f"    -> 401 ({reason}) -- a real site must refuse this, "
+        "or refbox never learns it needs to link",
+        flush=True,
+    )
+    h._send_json(401, {"error": "unauthorized"})
+    return False
+
+
 def handle_link_refbox(h, m, query, raw_body):
     # The document explicitly says a stand-in site is free to skip the real
     # NoPendingLink/InvalidCode negotiation and just hand back a token that
     # works afterwards -- "Nothing about calls 2-8 depends on the token
-    # having been produced by call 1." So: always succeed.
-    h._send_json(200, {"accessKey": "stub-access-token"})
+    # having been produced by call 1." So: always succeed. This call is
+    # unauthenticated by design -- it is how a refbox obtains its token.
+    h._send_json(200, {"accessKey": ACCESS_KEY})
 
 
 def handle_verify_token(h, m, query, raw_body):
-    # "Accepts any bearer token" (per BRIEF.md) -- accept unconditionally,
-    # whether or not an Authorization header was even sent. Body is never
-    # parsed by refbox, so an empty 200 is enough.
+    if not _require_bearer(h):
+        return
+    # Body is never parsed by refbox, so an empty 200 is enough.
     h._send_empty(200)
 
 
@@ -175,6 +210,8 @@ def handle_event_teams(h, m, query, raw_body):
 
 
 def handle_schedule(h, m, query, raw_body):
+    if not _require_bearer(h):
+        return
     payload = {
         "eventId": EVENT_ID_LONG,
         "games": GAMES,
@@ -203,6 +240,8 @@ def handle_referees(h, m, query, raw_body):
 
 
 def handle_push_scores(h, m, query, raw_body):
+    if not _require_bearer(h):
+        return
     game_number = m.group(2)
     if game_number not in GAMES:
         print(
@@ -215,6 +254,8 @@ def handle_push_scores(h, m, query, raw_body):
 
 
 def handle_push_stats(h, m, query, raw_body):
+    if not _require_bearer(h):
+        return
     try:
         events = json.loads(raw_body) if raw_body else []
     except json.JSONDecodeError:

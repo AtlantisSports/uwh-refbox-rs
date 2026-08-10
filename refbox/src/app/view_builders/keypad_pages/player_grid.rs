@@ -16,22 +16,26 @@ pub(super) const GRID_COLUMNS: usize = 3;
 /// and toggling between a team with a roster and one without cannot shift the
 /// CANCEL and DONE buttons beside them.
 ///
-/// The binding constraint is height, not width. In the default 691px window a
-/// keypad page spends 89 on the time banner, 89 on the timeout ribbon,
-/// `SPACING` above and below the panel, and `PADDING` inside its container top
-/// and bottom: `691 - 89 - 8 - 89 - 8 - 16 = 481` px of usable panel height.
-/// Rugby's five rows need `5 * 89 + 4 * SPACING = 477`, which fits — but by
-/// only four pixels, so a shorter screen or a larger text scale needs this
-/// checked again on the target display.
+/// This is not a side length in every mode, though: in Rugby
+/// `GRID_BUTTON_SIZE` is a button *width* only. The height there comes from
+/// `Length::Fill` (see `grid_fills_height` below), which divides up whatever
+/// height the panel has rather than needing five rows to fit at a fixed size.
+///
+/// In the default 691px window a keypad page has `691` window height, minus
+/// `16` for `main_view`'s own top-and-bottom `.padding(PADDING)`, minus `89`
+/// for the timeout ribbon, minus `8` spacing, minus `89` for the game-time
+/// banner, minus `8` spacing, minus `16` for the panel container's own
+/// top-and-bottom `.padding(PADDING)`: `691 - 16 - 89 - 8 - 89 - 8 - 16 = 465`
+/// px of usable panel content height.
 pub(super) const GRID_BUTTON_SIZE: f32 = MIN_BUTTON_SIZE;
 
 /// Whether this mode's grid stretches to fill the panel's height.
 ///
 /// Rugby's five rows leave only a few pixels spare, so the rows share the
 /// height between them and the buttons go very slightly off square rather than
-/// leaving an odd gap. The hockey modes have a whole row's worth of slack, so
-/// they keep square buttons, sit at the bottom of the panel, and carry the
-/// page's title above them.
+/// leaving an odd gap. The hockey modes have enough slack to keep square
+/// buttons and still fit the page's title above them, so they sit at the
+/// bottom of the panel instead of stretching.
 /// Exhaustive rather than a `matches!`, to match `grid_cells` below: a new mode
 /// should not silently inherit a layout nobody chose for it.
 fn grid_fills_height(mode: Mode) -> bool {
@@ -212,8 +216,6 @@ pub(super) fn make_player_grid<'a>(
     selected: u32,
     enabled: bool,
 ) -> Element<'a, Message> {
-    // No horizontal alignment needed: the rows fill the panel's content width
-    // exactly, so there is no slack to distribute.
     let fills_height = grid_fills_height(mode);
 
     let mut grid = column![].spacing(SPACING);
@@ -241,8 +243,12 @@ pub(super) fn make_player_grid<'a>(
 
     // The hockey modes have vertical slack, so the page's own title sits at the
     // top of the panel and the square buttons are pushed to the bottom of it.
+    //
+    // No `.spacing()` here: the fill spacer already supplies all the
+    // separation there is slack for, so an outer spacing would only add two
+    // dead gaps this column never uses (see `GRID_BUTTON_SIZE`'s doc comment
+    // for the height budget that makes those gaps costly).
     column![text(fl!("player-number")), vertical_space(), grid]
-        .spacing(SPACING)
         .height(Length::Fill)
         .into()
 }

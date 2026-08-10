@@ -10,7 +10,7 @@ use iced::{
         button::Button,
         column, container, row,
         svg::{self, Svg},
-        text,
+        text, vertical_space,
     },
 };
 use uwh_common::bundles::BlackWhiteBundle;
@@ -370,8 +370,12 @@ fn make_number_pad<'a>(
         // number grid as the operator toggles teams, so both are pinned to the
         // bottom of a full-height panel. The button block then lands in exactly
         // the same place either way and nothing moves under their finger.
-        column![label, Space::with_height(Length::Fill), digits]
-            .spacing(SPACING)
+        //
+        // No `.spacing()` here: the fill spacer already supplies all the
+        // separation there is slack for, so an outer spacing would only add
+        // two dead gaps this column never uses (see `GRID_BUTTON_SIZE` in
+        // `player_grid.rs` for the height budget that makes those gaps costly).
+        column![label, vertical_space(), digits]
             .height(Length::Fill)
             .into()
     } else {

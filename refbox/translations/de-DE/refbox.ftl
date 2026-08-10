@@ -39,6 +39,8 @@ team-warning = MANNSCHAFT
     VERWARNUNG
 team-warning-line-1 = MANNSCHAFT
 team-warning-line-2 = VERWARNUNG
+team-score-line-1 = MANNSCHAFT
+team-score-line-2 = TORE
 
 # Konfiguration
 none-selected = Nichts ausgewählt

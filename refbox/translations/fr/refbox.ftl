@@ -36,6 +36,8 @@ team-timeout-count = NOMBRE DE
 team-warning = AVERT. D'ÉQUIPE
 team-warning-line-1 = AVERT.
 team-warning-line-2 = D'ÉQUIPE
+team-score-line-1 = SCORE
+team-score-line-2 = D'ÉQUIPE
 
 # Configuration
 none-selected = Aucun Sélectionné

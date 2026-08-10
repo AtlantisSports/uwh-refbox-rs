@@ -39,6 +39,8 @@ team-warning = TAKIM
     UYARISI
 team-warning-line-1 = TAKIM
 team-warning-line-2 = UYARISI
+team-score-line-1 = TAKIM
+team-score-line-2 = SKORU
 
 # Yapılandırma
 none-selected = Seçim Yok

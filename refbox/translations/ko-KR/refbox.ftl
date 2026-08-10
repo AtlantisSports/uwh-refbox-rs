@@ -41,6 +41,8 @@ team-warning = 팀
     경고
 team-warning-line-1 = 팀
 team-warning-line-2 = 경고
+team-score-line-1 = 팀
+team-score-line-2 = 점수
 
 # 설정
 none-selected = 선택 없음

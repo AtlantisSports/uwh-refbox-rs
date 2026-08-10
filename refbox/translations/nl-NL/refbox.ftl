@@ -39,6 +39,8 @@ team-warning = TEAM-
     WAARSCHUWING
 team-warning-line-1 = TEAM-
 team-warning-line-2 = WAARSCHUWING
+team-score-line-1 = TEAM-
+team-score-line-2 = SCORE
 
 # Configuratie
 none-selected = Niets Geselecteerd

@@ -39,6 +39,8 @@ team-warning = BABALA NG
     KOPONAN
 team-warning-line-1 = BABALA NG
 team-warning-line-2 = KOPONAN
+team-score-line-1 = PUNTOS NG
+team-score-line-2 = KOPONAN
 
 # Configuration
 none-selected = Wala na Pinili

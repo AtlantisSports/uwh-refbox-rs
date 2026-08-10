@@ -38,6 +38,8 @@ team-warning = AVISO
     DE EQUIPO
 team-warning-line-1 = AVISO
 team-warning-line-2 = DE EQUIPO
+team-score-line-1 = PUNTUACIÓN
+team-score-line-2 = DE EQUIPO
 
 # Configuration
 none-selected = Ninguno seleccionado

@@ -886,6 +886,9 @@ pub enum BoolGameParameter {
     // editor (surfaced per the former ADR-009 Task 14 TODO). Toggles the staged
     // `single_half` choice held in AppState::ParameterEditor.
     SingleHalf,
+    /// Emitted by the TEAM SCORE button on the goal page. Toggles
+    /// `KeypadPage::AddScore`'s `team_score`, mirroring `TeamWarning`.
+    TeamScore,
     WhiteOnRight,
     UsingUwhPortal,
     SoundEnabled,
@@ -925,7 +928,15 @@ pub enum ScrollOption {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeypadPage {
-    AddScore(GameColor),
+    AddScore {
+        color: GameColor,
+        /// Set when the operator has explicitly attributed the goal to the team
+        /// rather than to a player — an unknown scorer, or a penalty goal where
+        /// no individual is credited. Mirrors `WarningAdd`'s `team_warning`: it
+        /// greys the number panel, and it is what lets DONE tell "the team
+        /// scored" apart from "nobody chosen yet".
+        team_score: bool,
+    },
     Penalty(
         Option<(GameColor, usize)>,
         GameColor,
@@ -953,7 +964,7 @@ pub enum KeypadPage {
 impl KeypadPage {
     pub fn max_val(&self) -> u32 {
         match self {
-            Self::AddScore(_)
+            Self::AddScore { .. }
             | Self::Penalty(_, _, _, _)
             | Self::FoulAdd { .. }
             | Self::WarningAdd { .. } => 99,
@@ -965,7 +976,7 @@ impl KeypadPage {
 
     pub fn text(&self) -> String {
         match self {
-            Self::AddScore(_)
+            Self::AddScore { .. }
             | Self::Penalty(_, _, _, _)
             | Self::FoulAdd { .. }
             | Self::WarningAdd { .. } => fl!("player-number"),

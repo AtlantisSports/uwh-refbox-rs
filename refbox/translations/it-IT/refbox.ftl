@@ -39,6 +39,8 @@ team-warning = AMMONIZIONE
     DI SQUADRA
 team-warning-line-1 = AMMONIZIONE
 team-warning-line-2 = DI SQUADRA
+team-score-line-1 = PUNTEGGIO
+team-score-line-2 = DI SQUADRA
 
 # Configurazione
 none-selected = Nessuno Selezionato

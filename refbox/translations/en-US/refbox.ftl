@@ -38,6 +38,8 @@ team-warning = TEAM
     WARNING
 team-warning-line-1 = TEAM
 team-warning-line-2 = WARNING
+team-score-line-1 = TEAM
+team-score-line-2 = SCORE
 
 # Configuration
 none-selected = None Selected

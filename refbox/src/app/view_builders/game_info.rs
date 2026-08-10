@@ -11,7 +11,7 @@ use uwh_common::{
 pub(in super::super) fn build_game_info_page<'a>(
     data: ViewData<'_, '_>,
     config: &GameConfig,
-    using_uwhportal: bool,
+    uses_remote: bool,
     is_refreshing: bool,
     schedule: Option<&Schedule>,
     last_game: Option<(GameNumber, BlackWhiteBundle<u8>)>,
@@ -32,7 +32,7 @@ pub(in super::super) fn build_game_info_page<'a>(
     // leaves `token_expired` false and keeps refresh usable.
     let token_expired = portal_indicator.is_some_and(|s| s.token_expired);
 
-    let middle_item: Element<_> = if using_uwhportal {
+    let middle_item: Element<_> = if uses_remote {
         if is_refreshing {
             make_button(fl!("refreshing"))
                 .style(blue_button)
@@ -53,7 +53,7 @@ pub(in super::super) fn build_game_info_page<'a>(
     let table = render_game_info_table(game_info_rows(
         snapshot,
         config,
-        using_uwhportal,
+        uses_remote,
         schedule,
         teams,
         last_game,

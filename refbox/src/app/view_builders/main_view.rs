@@ -19,7 +19,7 @@ use uwh_common::{
 pub(in super::super) fn build_main_view<'a>(
     data: ViewData<'_, '_>,
     game_config: &GameConfig,
-    using_uwhportal: bool,
+    uses_remote: bool,
     schedule: Option<&Schedule>,
     track_fouls_and_warnings: bool,
     manual_alarm_enabled: bool,
@@ -256,7 +256,7 @@ pub(in super::super) fn build_main_view<'a>(
                     container(render_game_info_table(game_info_rows(
                         snapshot,
                         game_config,
-                        using_uwhportal,
+                        uses_remote,
                         schedule,
                         teams,
                         last_game,
@@ -283,7 +283,7 @@ pub(in super::super) fn build_main_view<'a>(
                 container(render_game_info_table(game_info_rows(
                     snapshot,
                     game_config,
-                    using_uwhportal,
+                    uses_remote,
                     schedule,
                     teams,
                     last_game,
@@ -301,12 +301,7 @@ pub(in super::super) fn build_main_view<'a>(
             button(
                 container(
                     text(
-                        config_string_game_num(
-                            snapshot,
-                            using_uwhportal,
-                            schedule.map(|s| &s.games),
-                        )
-                        .0,
+                        config_string_game_num(snapshot, uses_remote, schedule.map(|s| &s.games)).0,
                     )
                     .size(SMALL_TEXT)
                     .align_x(Horizontal::Left)

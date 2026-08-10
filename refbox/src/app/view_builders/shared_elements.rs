@@ -1102,14 +1102,14 @@ pub(super) fn limit_team_name_len(name: &str, len_limit: usize) -> String {
 
 pub(super) fn config_string_game_num(
     snapshot: &GameSnapshot,
-    using_uwhportal: bool,
+    uses_remote: bool,
     games: Option<&GameList>,
 ) -> (String, GameNumber) {
     let mut result = String::new();
     let game_number = if snapshot.current_period == GamePeriod::BetweenGames {
         let prev_game;
         let next_game;
-        if using_uwhportal {
+        if uses_remote {
             if let Some(games) = games {
                 prev_game = match games.get(&snapshot.game_number) {
                     Some(game) => game.number.to_string(),
@@ -1142,7 +1142,7 @@ pub(super) fn config_string_game_num(
         snapshot.next_game_number.clone()
     } else {
         let game;
-        if using_uwhportal {
+        if uses_remote {
             if let Some(games) = games {
                 game = match games.get(&snapshot.game_number) {
                     Some(game) => game.number.to_string(),

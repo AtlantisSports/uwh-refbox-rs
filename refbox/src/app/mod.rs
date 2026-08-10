@@ -2,7 +2,7 @@ use self::infraction::InfractionDetails;
 use super::{APP_NAME, fl};
 use crate::{
     beep_test::{cadence::TournamentManager as BeepTestManager, snapshot::BeepTestSnapshot},
-    config::{Config, Mode},
+    config::{Config, GameSource, Mode},
     penalty_editor::*,
     portal_manager::{ItemId, PortalEvent, PortalManager, SelectedEventId, UwhPortalIo},
     sound_controller::*,
@@ -167,7 +167,7 @@ pub struct RefBoxApp {
     /// go through that helper so the background task sees the latest
     /// selection.
     portal_event_id: SelectedEventId,
-    using_uwhportal: bool,
+    source: GameSource,
     events: Option<BTreeMap<EventId, Event>>,
     schedule: Option<Schedule>,
     /// The running game's copy of both teams' cap numbers, taken at kickoff so
@@ -377,13 +377,13 @@ pub(crate) enum PageEntrySnapshot {
     Game {
         config: GameConfig,
         game_number: GameNumber,
-        using_uwhportal: bool,
+        source: GameSource,
         current_event_id: Option<EventId>,
         current_court: Option<String>,
         schedule: Option<Schedule>,
     },
     App {
-        using_uwhportal: bool,
+        source: GameSource,
         current_event_id: Option<EventId>,
         current_court: Option<String>,
         schedule: Option<Schedule>,
@@ -424,20 +424,20 @@ impl PageEntrySnapshot {
             PageEntrySnapshot::Game {
                 config,
                 game_number,
-                using_uwhportal,
+                source,
                 current_event_id,
                 current_court,
                 schedule,
             } => {
                 edited.config = config;
                 edited.game_number = game_number;
-                edited.using_uwhportal = using_uwhportal;
+                edited.source = source;
                 edited.current_event_id = current_event_id;
                 edited.current_court = current_court;
                 edited.schedule = schedule;
             }
             PageEntrySnapshot::App {
-                using_uwhportal,
+                source,
                 current_event_id,
                 current_court,
                 schedule,
@@ -449,7 +449,7 @@ impl PageEntrySnapshot {
                 hide_time,
                 audible_countdown,
             } => {
-                edited.using_uwhportal = using_uwhportal;
+                edited.source = source;
                 edited.current_event_id = current_event_id;
                 edited.current_court = current_court;
                 edited.schedule = schedule;
@@ -853,6 +853,13 @@ impl RefBoxApp {
         }
     }
 
+    /// Whether games come from a remote site at all, as opposed to being
+    /// entered by hand. Most callers only need this question; the few that must
+    /// tell the official Portal from a third-party site match on `source`.
+    fn uses_remote(&self) -> bool {
+        !matches!(self.source, GameSource::Manual)
+    }
+
     fn check_uwhportal_auth(&self, event_id: &EventId) -> Task<Message> {
         if let Some(client) = &self.uwhportal_client {
             // why this cannot panic: see `request_event_list` above.
@@ -909,7 +916,7 @@ impl RefBoxApp {
 
         let mut tasks: Vec<Task<Message>> = Vec::new();
 
-        if self.using_uwhportal {
+        if self.uses_remote() {
             debug!("Searching for next game info after game {new_game_num}");
             if let (Some(schedule), Some(pool)) = (&self.schedule, &self.current_court) {
                 let this_game_start = match schedule.games.get(new_game_num) {
@@ -979,7 +986,7 @@ impl RefBoxApp {
 
     fn handle_game_end(&mut self, game_number: &GameNumber) -> Task<Message> {
         let mut tasks = vec![];
-        if self.using_uwhportal {
+        if self.uses_remote() {
             // Copy everything needed out from under the lock: the recorded result's own
             // game number, its scores, and its stats JSON.
             let recorded = {
@@ -1069,7 +1076,7 @@ impl RefBoxApp {
     /// write only means a future restart won't auto-relink.
     fn persist_link_session(&self) {
         use crate::portal_manager::link_session::{self, LinkSessionFile};
-        if self.using_uwhportal {
+        if self.uses_remote() {
             if let Some(event_id) = self.current_event_id.clone() {
                 // The game the operator is on: the upcoming game between games,
                 // otherwise the current game number from the live snapshot.
@@ -1102,7 +1109,7 @@ impl RefBoxApp {
         // Snapshot the fields we need so the immutable borrow on
         // `edited_settings` ends before we call `set_current_event_id`
         // (which takes `&mut self`).
-        let using_uwhportal = edited.using_uwhportal;
+        let source = edited.source;
         let event_id = edited.current_event_id.clone();
         let current_court = edited.current_court.clone();
         let schedule = edited.schedule.clone();
@@ -1126,7 +1133,7 @@ impl RefBoxApp {
             });
         }
 
-        self.using_uwhportal = using_uwhportal;
+        self.source = source;
         // Route through set_current_event_id so portal_event_id stays in
         // sync (ADR 011 amendment 2026-04-23 dormant-until-linked).
         self.set_current_event_id(event_id);
@@ -1197,7 +1204,7 @@ impl RefBoxApp {
     /// active game config; pass it in as a snapshot captured before the `edited` borrow
     /// ends (mirrors the borrow choreography of the config-change branch).
     fn clear_portal_selections_to_manual(&mut self, manual_config: GameConfig) {
-        self.using_uwhportal = false;
+        self.source = GameSource::Manual;
         // Route through set_current_event_id so portal_event_id stays in sync (ADR 011).
         self.set_current_event_id(None);
         self.current_court = None;
@@ -1243,10 +1250,10 @@ impl RefBoxApp {
         // Safety: Mutex poison only occurs if another thread already panicked; the refbox treats that as fatal (matches the 20+ identical sites in this file).
         let mut tm = self.tm.lock().unwrap();
 
-        // Detect the ON→OFF portal transition.  At function entry `self.using_uwhportal`
+        // Detect the ON→OFF portal transition.  At function entry `self.uses_remote()`
         // still holds the prior committed value, so a true→false change means the
         // operator just switched the portal toggle off.
-        let switching_to_manual = self.using_uwhportal && !edited.using_uwhportal;
+        let switching_to_manual = self.uses_remote() && !edited.uses_remote();
         if switching_to_manual {
             if tm.current_period() != GamePeriod::BetweenGames {
                 // Mid-game: surface the confirmation page; Task 4 will handle the actions.
@@ -1267,7 +1274,7 @@ impl RefBoxApp {
             return None;
         }
 
-        let new_config = if edited.using_uwhportal {
+        let new_config = if edited.uses_remote() {
             edited
                 .schedule
                 .as_ref()
@@ -1299,7 +1306,7 @@ impl RefBoxApp {
                 start_time,
             });
 
-            if edited.using_uwhportal {
+            if edited.uses_remote() {
                 // Safety: precondition checked above (period != BetweenGames / next-game info just set); error path is unreachable in this control flow.
                 tm.apply_next_game_start(Instant::now()).unwrap();
             } else {
@@ -1310,13 +1317,13 @@ impl RefBoxApp {
             // Snapshot the fields we need so the immutable borrow on
             // `edited` ends before we call `set_current_event_id`
             // (which takes `&mut self`).
-            let using_uwhportal = edited.using_uwhportal;
+            let source = edited.source;
             let event_id = edited.current_event_id.clone();
             let current_court = edited.current_court.clone();
             let schedule = edited.schedule.clone();
 
             self.config.game = new_config;
-            self.using_uwhportal = using_uwhportal;
+            self.source = source;
             // Route through set_current_event_id so portal_event_id stays in
             // sync (ADR 011 amendment 2026-04-23 dormant-until-linked).
             self.set_current_event_id(event_id);
@@ -1329,7 +1336,7 @@ impl RefBoxApp {
             if tm.current_period() != GamePeriod::BetweenGames {
                 return Some(ConfirmationKind::GameNumberChangedFromApply);
             }
-            let next_game_info = if edited.using_uwhportal {
+            let next_game_info = if edited.uses_remote() {
                 let (game, timing) = edited
                     .schedule
                     .as_ref()
@@ -1350,7 +1357,7 @@ impl RefBoxApp {
 
             tm.set_next_game(next_game_info);
 
-            if edited.using_uwhportal {
+            if edited.uses_remote() {
                 // Safety: precondition checked above (period != BetweenGames / next-game info just set); error path is unreachable in this control flow.
                 tm.apply_next_game_start(Instant::now()).unwrap();
             }
@@ -1359,12 +1366,12 @@ impl RefBoxApp {
         std::mem::drop(tm);
         // Snapshot the fields we need so the immutable borrow on `edited` ends
         // before we call `set_current_event_id` (which takes `&mut self`).
-        let using_uwhportal = edited.using_uwhportal;
+        let source = edited.source;
         let event_id = edited.current_event_id.clone();
         let current_court = edited.current_court.clone();
         let schedule = edited.schedule.clone();
 
-        self.using_uwhportal = using_uwhportal;
+        self.source = source;
         // Route through set_current_event_id so portal_event_id stays in sync
         // for the background health check (ADR 011 amendment 2026-04-23).
         self.set_current_event_id(event_id);
@@ -1448,7 +1455,7 @@ impl RefBoxApp {
                     start_time,
                 });
 
-                if edited.using_uwhportal {
+                if edited.uses_remote() {
                     // Safety: precondition checked above (period != BetweenGames / next-game info just set); error path is unreachable in this control flow.
                     tm.apply_next_game_start(now).unwrap();
                 } else {
@@ -1651,13 +1658,13 @@ impl RefBoxApp {
             ConfigPage::Game => PageEntrySnapshot::Game {
                 config: edited.config.clone(),
                 game_number: edited.game_number.clone(),
-                using_uwhportal: edited.using_uwhportal,
+                source: edited.source,
                 current_event_id: edited.current_event_id.clone(),
                 current_court: edited.current_court.clone(),
                 schedule: edited.schedule.clone(),
             },
             ConfigPage::App => PageEntrySnapshot::App {
-                using_uwhportal: edited.using_uwhportal,
+                source: edited.source,
                 current_event_id: edited.current_event_id.clone(),
                 current_court: edited.current_court.clone(),
                 schedule: edited.schedule.clone(),
@@ -1745,7 +1752,7 @@ impl RefBoxApp {
             white_on_right: self.config.hardware.white_on_right,
             brightness: self.config.hardware.brightness,
             front_display_layout: self.config.front_display_layout,
-            using_uwhportal: self.using_uwhportal,
+            source: self.source,
             uwhportal_token_valid,
             current_event_id: self.current_event_id.clone(),
             current_court: self.current_court.clone(),
@@ -2023,7 +2030,7 @@ impl RefBoxApp {
             update_sender,
             uwhportal_client,
             portal_event_id,
-            using_uwhportal: false,
+            source: GameSource::Manual,
             events: None,
             schedule: None,
             game_rosters: BlackWhiteBundle {
@@ -2079,7 +2086,7 @@ impl RefBoxApp {
                         note.court,
                         note.game_number
                     );
-                    new.using_uwhportal = true;
+                    new.source = GameSource::Portal;
                     new.current_court = note.court.clone();
                     new.pending_restore_game = note.game_number.clone();
                     new.set_current_event_id(Some(note.event_id.clone()));
@@ -2106,7 +2113,7 @@ impl RefBoxApp {
         } else {
             Task::none()
         }];
-        if new.using_uwhportal {
+        if new.uses_remote() {
             startup_tasks.push(new.request_event_list());
         }
         // Arm a one-shot ~20s timer. If the app is still running when it fires,
@@ -2992,7 +2999,7 @@ impl RefBoxApp {
                 // (~5 min when healthy). Use that heartbeat to refresh the link
                 // note's last-active timestamp (and current game number) so the
                 // 48h restore window tracks real usage, not just first link.
-                if self.using_uwhportal && self.current_event_id.is_some() {
+                if self.uses_remote() && self.current_event_id.is_some() {
                     self.persist_link_session();
                 }
                 Task::none()
@@ -3872,8 +3879,18 @@ impl RefBoxApp {
                                 edited_settings.white_on_right ^= true
                             }
                             BoolGameParameter::UsingUwhPortal => {
-                                let was_using = edited_settings.using_uwhportal;
-                                edited_settings.using_uwhportal ^= true;
+                                let was_using = edited_settings.uses_remote();
+                                // Representation change only: this toggle still
+                                // means "official Portal or manual", exactly as
+                                // it did as a boolean. Task 4 replaces it with a
+                                // control that can also choose a custom site, at
+                                // which point `remembered_remote` decides where
+                                // turning it back on should land.
+                                edited_settings.source = if was_using {
+                                    GameSource::Manual
+                                } else {
+                                    GameSource::Portal
+                                };
                                 // Per ADR 017 (Portal Data Lifecycle): on OFF -> ON,
                                 // start the event / court / game / schedule pickers
                                 // from a blank slate (don't pre-fill with the
@@ -3884,7 +3901,7 @@ impl RefBoxApp {
                                 // itself is kept in `config.uwhportal.token`; only
                                 // its validity cache is reset so the portal
                                 // re-verifies on next interaction.
-                                if !was_using && edited_settings.using_uwhportal {
+                                if !was_using && edited_settings.uses_remote() {
                                     edited_settings.current_event_id = None;
                                     edited_settings.current_court = None;
                                     edited_settings.schedule = None;
@@ -3892,7 +3909,7 @@ impl RefBoxApp {
                                     edited_settings.uwhportal_token_valid = None;
                                     trigger_event_list_fetch = true;
                                 }
-                                if was_using && !edited_settings.using_uwhportal {
+                                if was_using && !edited_settings.uses_remote() {
                                     // ON -> OFF: switching to manual is a clean slate
                                     // (reverses ADR 017's "no proactive clearing").
                                     edited_settings.current_event_id = None;
@@ -4786,7 +4803,7 @@ impl RefBoxApp {
                     white_on_right: self.config.hardware.white_on_right,
                     brightness: self.config.hardware.brightness,
                     front_display_layout: self.config.front_display_layout,
-                    using_uwhportal: self.using_uwhportal,
+                    source: self.source,
                     uwhportal_token_valid: None,
                     current_event_id: self.current_event_id.clone(),
                     current_court: self.current_court.clone(),
@@ -4835,7 +4852,7 @@ impl RefBoxApp {
                     white_on_right: self.config.hardware.white_on_right,
                     brightness: self.config.hardware.brightness,
                     front_display_layout: self.config.front_display_layout,
-                    using_uwhportal: self.using_uwhportal,
+                    source: self.source,
                     uwhportal_token_valid: None,
                     current_event_id: self.current_event_id.clone(),
                     current_court: self.current_court.clone(),
@@ -4923,7 +4940,7 @@ impl RefBoxApp {
                     white_on_right: self.config.hardware.white_on_right,
                     brightness: self.config.hardware.brightness,
                     front_display_layout: self.config.front_display_layout,
-                    using_uwhportal: self.using_uwhportal,
+                    source: self.source,
                     uwhportal_token_valid: None,
                     current_event_id: self.current_event_id.clone(),
                     current_court: self.current_court.clone(),
@@ -5019,7 +5036,7 @@ impl RefBoxApp {
                     white_on_right: self.config.hardware.white_on_right,
                     brightness: self.config.hardware.brightness,
                     front_display_layout: self.config.front_display_layout,
-                    using_uwhportal: self.using_uwhportal,
+                    source: self.source,
                     uwhportal_token_valid: None,
                     current_event_id: self.current_event_id.clone(),
                     current_court: self.current_court.clone(),
@@ -5251,7 +5268,7 @@ impl RefBoxApp {
             // AND an event is linked; otherwise `None` and the time banner
             // falls back to the pre-feature layout. See ADR 011 amendments
             // 2026-04-23 (event-linked gate) and 2026-05-16 (using-uwh-portal gate).
-            portal_indicator: if self.using_uwhportal {
+            portal_indicator: if self.uses_remote() {
                 self.current_event_id
                     .as_ref()
                     .map(|_| self.portal_manager.indicator_state())
@@ -5287,7 +5304,7 @@ impl RefBoxApp {
                 build_main_view(
                     data,
                     game_config,
-                    self.using_uwhportal,
+                    self.uses_remote(),
                     self.schedule.as_ref(),
                     self.config.track_fouls_and_warnings,
                     self.config.sound.sound_enabled && self.config.sound.manual_alarm_enabled,
@@ -5344,7 +5361,7 @@ impl RefBoxApp {
             AppState::GameDetailsPage(is_refreshing) => build_game_info_page(
                 data,
                 &self.config.game,
-                self.using_uwhportal,
+                self.uses_remote(),
                 is_refreshing,
                 self.schedule.as_ref(),
                 self.tm

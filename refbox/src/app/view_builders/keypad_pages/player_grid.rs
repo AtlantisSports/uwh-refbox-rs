@@ -31,12 +31,18 @@ pub(super) const GRID_BUTTON_SIZE: f32 = MIN_BUTTON_SIZE;
 
 /// Whether this mode's grid stretches to fill the panel's height.
 ///
-/// Every mode carries the panel's title row (about 70px of the 465px budget).
-/// Rugby's five rows cannot keep their square 89px height under that — five
-/// squares plus their gaps need 477 — so the rows share what is left and the
-/// buttons come out visibly shorter than they are wide, rather than the grid
-/// overflowing the panel. The hockey modes have slack even with the title, so
-/// they keep square buttons and sit at the bottom of the panel.
+/// Every mode carries the panel's title row, which measures about 75px of the
+/// 465px budget (two lines of 29px text at iced's 1.3 line height).
+///
+/// Rugby's five square rows do not fit the panel even with no title at all:
+/// `5 * 89 + 4 * SPACING = 477` against 465. The title is not what tips it
+/// over. So its rows share whatever height is left below the title instead, and
+/// the buttons come out visibly shorter than they are wide rather than the grid
+/// overflowing. The hockey modes are at most four rows
+/// (`4 * 89 + 3 * SPACING = 380`), which fits below the title with about 10px
+/// to spare, so they keep square buttons and sit at the bottom of the panel —
+/// see `fixed_height_modes_fit_four_rows_at_most` below, which guards that
+/// margin.
 /// Exhaustive rather than a `matches!`, to match `grid_cells` below: a new mode
 /// should not silently inherit a layout nobody chose for it.
 fn grid_fills_height(mode: Mode) -> bool {
@@ -188,6 +194,28 @@ mod tests {
         // No grid at all, so the value is never read — pinned so the exhaustive
         // match keeps an answer for every mode.
         assert!(!grid_fills_height(Mode::BeepTest));
+    }
+
+    /// The modes that do not stretch keep fixed `GRID_BUTTON_SIZE` rows, and
+    /// four of those plus the title leave only about 10px spare in the panel. A
+    /// fifth fixed row would overflow it while every other test stayed green, so
+    /// the row count is pinned: a mode that grows past four rows has to move to
+    /// `Length::Fill` the way Rugby did, or have the height budget re-checked on
+    /// the display.
+    #[test]
+    fn fixed_height_modes_fit_four_rows_at_most() {
+        for mode in [Mode::Hockey6V6, Mode::Hockey3V3] {
+            assert!(
+                !grid_fills_height(mode),
+                "{mode:?} stretches, so it is exempt"
+            );
+            let rows = grid_cells(mode).div_ceil(GRID_COLUMNS);
+            assert!(
+                rows <= 4,
+                "{mode:?} needs {rows} rows at a fixed {GRID_BUTTON_SIZE}px; the panel \
+                 fits four below the title — stretch this mode or re-check the budget"
+            );
+        }
     }
 }
 

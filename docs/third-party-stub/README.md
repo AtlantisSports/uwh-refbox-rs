@@ -18,8 +18,10 @@ actually stand up a site from the document. Every question the document failed t
 finding, and those findings were fixed in the document rather than worked around here.
 
 For the same reason, **finding zero gaps would have meant the exercise failed**, not that the
-document was perfect. The blind build found nine; a desk check of the stub against the real client
-found three more, and running a real refbox against the stub found a thirteenth.
+document was perfect. Seventeen gaps came out of it: nine from the blind build, three from a desk
+check of the stub against the real client, and five more from actually running a real refbox against
+the stub — including the two most damaging, which no amount of source reading could have surfaced,
+because they concern what a site must *refuse* and what refbox tells the operator on screen.
 
 ## Running it
 

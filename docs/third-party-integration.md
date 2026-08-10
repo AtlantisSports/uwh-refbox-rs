@@ -165,11 +165,37 @@ This is the only one of the eight that's a conversation instead of a single call
    `reason`, or a `400` with no `reason` field at all, is reported as an unknown error rather
    than shown as either of the two known messages.
 
-A custom site is free to skip this whole exchange. Since refbox only ever checks the token by
-sending it as a bearer header (call 2) and never re-derives it from the login response, an
-operator can type any string directly into refbox as if it were the `accessKey`, and a custom
-site only has to accept that string as a valid bearer token afterwards. Nothing about calls 2–8
-depends on the token having been produced by call 1.
+A custom site is free to skip the *negotiation* — but not the call. Since refbox only ever checks
+the token by sending it as a bearer header (call 2) and never re-derives it from the login response,
+your site can answer call 1 with any string at all as the `accessKey` and simply accept that string
+as a valid bearer token afterwards. Nothing about calls 2–8 depends on the token having been
+produced by a genuine pairing.
+
+What you cannot do is bypass call 1 altogether by having the operator type a token in. **refbox has
+no way to enter a token.** The linking screen offers a numeric keypad only, and the field it fills
+is the six-digit-style `code` — not the `accessKey`. A token can only be installed by editing
+`uwhportal.token` in refbox's own configuration file on disk, which is not something an operator
+does mid-tournament. Plan on answering call 1.
+
+Two further things about this exchange that are invisible from the request and response alone, and
+that both showed up the first time a real refbox was pointed at a stand-in site:
+
+**Your site cannot change what the operator is told to do.** refbox's on-screen linking
+instructions are fixed text: they tell the operator to go to "Portal >> Event Management >> Referee
+Management, click on the + button to add a new Refbox", and to expect a confirmation code back
+(`refbox/translations/en-US/refbox.ftl:181-184`). Only the product word — "UWH" or "UWR" — varies,
+and it varies with refbox's game mode, not with the site it is talking to. An operator pointed at
+your site is therefore given a menu path that does not exist for them. You cannot override this
+text, so whatever admin flow you build for issuing codes, expect to document it yourself and expect
+operators to arrive confused. Note also that refbox only lets the operator reach this screen once an
+event has been selected, so a code has to be obtainable for an event the operator has already
+chosen.
+
+**A successful call 1 is trusted without being verified.** On receiving an `accessKey`, refbox
+marks the token valid immediately (`refbox/src/app/mod.rs:4256-4258`) rather than confirming it with
+call 2. The portal indicator turns green on the strength of your response alone. If your site issues
+a key it will not subsequently honour, refbox will show a healthy green portal until the standing
+health check notices — up to five minutes later.
 
 #### 2. Verify token
 
@@ -760,7 +786,7 @@ All three kinds share five fields, then each adds its own:
 
 | Field | Type | Meaning |
 |---|---|---|
-| `playerCapNumber` | integer (`foul`: integer or `null`) | The player's cap number. `null` on a `foul` only, for a team-level infraction ("both at fault") with no specific player. |
+| `playerCapNumber` | integer (`foul`: integer or `null`) | The player's cap number. `null` on a `foul` only, for a team-level infraction ("both at fault") with no specific player. **On a `goal` or `penalty`, `0` means "the operator did not record a number"** — see the warning below. |
 | `side` | string (`foul`: string or `null`) | `"dark"` or `"light"` — same black/white convention as push-scores. `null` on a `foul` only, alongside a `null` `playerCapNumber`. |
 | `gamePeriod` | string | refbox's internal period name — one of `BetweenGames`, `FirstHalf`, `HalfTime`, `SecondHalf`, `PreOvertime`, `OvertimeFirstHalf`, `OvertimeHalfTime`, `OvertimeSecondHalf`, `PreSuddenDeath`, `SuddenDeath` (`uwh-common/src/game_snapshot.rs:129-141`) |
 | `periodTime` | number (seconds, may have a fractional part) | The game clock's value the instant the event was recorded. During a timed half (regulation or overtime) this counts **down** — time remaining in the period. During Sudden Death, which has no fixed length, the clock instead counts **up** from zero — so `periodTime` there is time *elapsed*, not remaining (`refbox/src/tournament_manager/mod.rs:1873-1886`, `:2200-2206`). |
@@ -780,6 +806,14 @@ Fields specific to each kind:
 | Field | Type | Meaning |
 |---|---|---|
 | `called` | string | refbox's internal infraction name — one of `Unknown`, `StickInfringement`, `IllegalAdvancement`, `IllegalSubstitution`, `IllegallyStoppingThePuck`, `OutOfBounds`, `GrabbingTheBarrier`, `Obstruction`, `DelayOfGame`, `UnsportsmanlikeConduct`, `FreeArm`, `FalseStart` (`uwh-common/src/game_snapshot.rs:336-350`) |
+
+> **Do not treat `playerCapNumber: 0` as a real player.** On a goal or a penalty, refbox's
+> cap-number keypad starts at `0` and its confirm button is available at that default, so an operator
+> who records a goal without entering a number produces a record with `playerCapNumber: 0`. It is
+> indistinguishable on the wire from a genuine cap number 0, and refbox itself logs it as "player
+> #0". Observed live on 2026-08-10. Fouls are the exception: there the field is genuinely nullable,
+> so an unattributed foul arrives as `null` rather than `0`. If you are attributing statistics to
+> players, treat `0` on a goal or penalty as "unattributed" rather than creating a player for it.
 
 #### Worked example: one goal, one penalty, one foul
 

@@ -72,6 +72,24 @@ impl UwhPortal {
     }
 }
 
+/// A third-party site standing in for the UWH Portal. Keeps its own
+/// credential: the Portal's token stays in `UwhPortal`, so switching
+/// sources never overwrites the other one's login.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CustomSite {
+    pub url: String,
+    pub token: String,
+}
+
+impl CustomSite {
+    pub fn migrate(old: &Table) -> Self {
+        let Self { mut url, mut token } = Default::default();
+        get_string_value(old, "url", &mut url);
+        get_string_value(old, "token", &mut token);
+        Self { url, token }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct Level {
     pub count: u8,
@@ -318,10 +336,16 @@ pub struct Config {
     pub confirm_score: bool,
     #[serde(default)]
     pub audible_countdown: bool,
+    #[serde(default)]
+    pub source: GameSource,
+    #[serde(default)]
+    pub remembered_remote: RemoteSource,
     pub game: Game,
     pub beep_test: BeepTest,
     pub hardware: Hardware,
     pub uwhportal: UwhPortal,
+    #[serde(default)]
+    pub custom_site: CustomSite,
     pub sound: SoundSettings,
     pub language: Option<Language>,
     #[serde(default)]
@@ -340,10 +364,13 @@ impl Config {
             mut show_behind_schedule_time,
             confirm_score,
             mut audible_countdown,
+            mut source,
+            mut remembered_remote,
             mut game,
             mut beep_test,
             mut hardware,
             mut uwhportal,
+            mut custom_site,
             mut sound,
             language,
             display_mode,
@@ -370,6 +397,20 @@ impl Config {
             &mut show_behind_schedule_time,
         );
         get_boolean_value(old, "audible_countdown", &mut audible_countdown);
+        if let Some(old_source) = old.get("source") {
+            if let Some(old_source) = old_source.as_str() {
+                if let Ok(old_source) = old_source.parse() {
+                    source = old_source;
+                }
+            }
+        }
+        if let Some(old_remembered_remote) = old.get("remembered_remote") {
+            if let Some(old_remembered_remote) = old_remembered_remote.as_str() {
+                if let Ok(old_remembered_remote) = old_remembered_remote.parse() {
+                    remembered_remote = old_remembered_remote;
+                }
+            }
+        }
         if let Some(old_game) = old.get("game") {
             if let Some(old_game) = old_game.as_table() {
                 game = Game::migrate(old_game);
@@ -390,6 +431,11 @@ impl Config {
                 uwhportal = UwhPortal::migrate(old_uwhportal);
             }
         }
+        if let Some(old_custom_site) = old.get("custom_site") {
+            if let Some(old_custom_site) = old_custom_site.as_table() {
+                custom_site = CustomSite::migrate(old_custom_site);
+            }
+        }
         if let Some(old_sound) = old.get("sound") {
             if let Some(old_sound) = old_sound.as_table() {
                 sound = SoundSettings::migrate(old_sound);
@@ -404,10 +450,13 @@ impl Config {
             show_behind_schedule_time,
             confirm_score,
             audible_countdown,
+            source,
+            remembered_remote,
             game,
             beep_test,
             hardware,
             uwhportal,
+            custom_site,
             sound,
             language,
             display_mode,
@@ -436,6 +485,32 @@ impl Display for Mode {
             Self::Rugby => f.write_str(&fl!("rugby")),
             Self::BeepTest => f.write_str(&fl!("beep-test")),
         }
+    }
+}
+
+macro_attr! {
+    /// Where this refbox gets its games. `Manual` means the operator enters
+    /// everything by hand; the other two are remote sources.
+    #[derive(Debug, Clone, Copy, Derivative, PartialEq, Eq, Serialize, Deserialize, EnumFromStr!)]
+    #[derivative(Default)]
+    pub enum GameSource {
+        #[derivative(Default)]
+        Manual,
+        Portal,
+        Custom,
+    }
+}
+
+macro_attr! {
+    /// Which remote source to return to when leaving `Manual`. Kept separately
+    /// from `GameSource` so that switching to manual and back does not lose the
+    /// operator's choice of remote.
+    #[derive(Debug, Clone, Copy, Derivative, PartialEq, Eq, Serialize, Deserialize, EnumFromStr!)]
+    #[derivative(Default)]
+    pub enum RemoteSource {
+        #[derivative(Default)]
+        Portal,
+        Custom,
     }
 }
 
@@ -810,6 +885,146 @@ mod test {
         // url field is no longer persisted; migrate should silently ignore it
         let u = UwhPortal::migrate(&old);
         assert_eq!(u.token, "token");
+    }
+
+    #[test]
+    fn test_ser_custom_site() {
+        let c: CustomSite = Default::default();
+        let serialized = toml::to_string(&c).unwrap();
+        let deser = toml::from_str(&serialized);
+        assert_eq!(deser, Ok(c));
+    }
+
+    #[test]
+    fn test_migrate_custom_site() {
+        let mut old: Table = Default::default();
+        old.insert(
+            "url".to_string(),
+            toml::Value::String("http://scoreboard.local:8099/api/events/1234-A".to_string()),
+        );
+        old.insert(
+            "token".to_string(),
+            toml::Value::String("custom-token".to_string()),
+        );
+        let c = CustomSite::migrate(&old);
+        assert_eq!(c.url, "http://scoreboard.local:8099/api/events/1234-A");
+        assert_eq!(c.token, "custom-token");
+    }
+
+    /// A config file written before a key existed: serialise today's default,
+    /// then drop the key, so parsing has to fall back to the field's default.
+    /// Every installation in the field is missing all three of the new keys.
+    fn config_toml_without(key: &str) -> String {
+        let serialized = toml::to_string(&Config::default()).unwrap();
+        let mut table: Table = toml::from_str(&serialized).unwrap();
+        assert!(
+            table.remove(key).is_some(),
+            "key {key:?} was not present in a serialised default Config, so removing it proves nothing"
+        );
+        toml::to_string(&table).unwrap()
+    }
+
+    #[test]
+    fn config_source_round_trips() {
+        for source in [GameSource::Manual, GameSource::Portal, GameSource::Custom] {
+            let config = Config {
+                source,
+                ..Default::default()
+            };
+            let serialized = toml::to_string(&config).unwrap();
+            let parsed: Config = toml::from_str(&serialized).unwrap();
+            assert_eq!(parsed.source, source);
+        }
+    }
+
+    #[test]
+    fn config_remembered_remote_round_trips() {
+        for remote in [RemoteSource::Portal, RemoteSource::Custom] {
+            let config = Config {
+                remembered_remote: remote,
+                ..Default::default()
+            };
+            let serialized = toml::to_string(&config).unwrap();
+            let parsed: Config = toml::from_str(&serialized).unwrap();
+            assert_eq!(parsed.remembered_remote, remote);
+        }
+    }
+
+    #[test]
+    fn config_custom_site_round_trips() {
+        let config = Config {
+            custom_site: CustomSite {
+                url: "http://scoreboard.local:8099/api/events/1234-A".to_string(),
+                token: "custom-token".to_string(),
+            },
+            ..Default::default()
+        };
+        let serialized = toml::to_string(&config).unwrap();
+        let parsed: Config = toml::from_str(&serialized).unwrap();
+        assert_eq!(parsed.custom_site, config.custom_site);
+    }
+
+    #[test]
+    fn config_missing_source_defaults_to_manual() {
+        let parsed: Config = toml::from_str(&config_toml_without("source")).unwrap();
+        assert_eq!(parsed.source, GameSource::Manual);
+    }
+
+    #[test]
+    fn config_missing_remembered_remote_defaults_to_portal() {
+        let parsed: Config = toml::from_str(&config_toml_without("remembered_remote")).unwrap();
+        assert_eq!(parsed.remembered_remote, RemoteSource::Portal);
+    }
+
+    #[test]
+    fn config_missing_custom_site_defaults_to_empty() {
+        let parsed: Config = toml::from_str(&config_toml_without("custom_site")).unwrap();
+        assert_eq!(parsed.custom_site, CustomSite::default());
+        assert!(parsed.custom_site.url.is_empty());
+        assert!(parsed.custom_site.token.is_empty());
+    }
+
+    #[test]
+    fn migrate_without_new_keys_uses_defaults() {
+        // The migrate path, as distinct from serde defaults: an old table that
+        // predates all three keys must still produce a usable config.
+        let old: Table = Default::default();
+        let config = Config::migrate(&old);
+        assert_eq!(config.source, GameSource::Manual);
+        assert_eq!(config.remembered_remote, RemoteSource::Portal);
+        assert_eq!(config.custom_site, CustomSite::default());
+    }
+
+    #[test]
+    fn migrate_reads_the_new_keys_when_present() {
+        let mut old: Table = Default::default();
+        old.insert(
+            "source".to_string(),
+            toml::Value::String("Custom".to_string()),
+        );
+        old.insert(
+            "remembered_remote".to_string(),
+            toml::Value::String("Custom".to_string()),
+        );
+        let mut site: Table = Default::default();
+        site.insert(
+            "url".to_string(),
+            toml::Value::String("http://scoreboard.local:8099/api/events/1234-A".to_string()),
+        );
+        site.insert(
+            "token".to_string(),
+            toml::Value::String("custom-token".to_string()),
+        );
+        old.insert("custom_site".to_string(), toml::Value::Table(site));
+
+        let config = Config::migrate(&old);
+        assert_eq!(config.source, GameSource::Custom);
+        assert_eq!(config.remembered_remote, RemoteSource::Custom);
+        assert_eq!(
+            config.custom_site.url,
+            "http://scoreboard.local:8099/api/events/1234-A"
+        );
+        assert_eq!(config.custom_site.token, "custom-token");
     }
 
     #[test]

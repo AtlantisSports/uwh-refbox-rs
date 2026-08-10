@@ -224,8 +224,15 @@ async fn run_task(
                                     .send(PortalEvent::ItemResolved(item.id.clone()))
                                     .await;
                             }
-                            Err(_) => {
+                            Err(e) => {
                                 // Stays stats-pending; no escalation, no loop.
+                                // Logged for the same reason as the first
+                                // attempt: a manual retry that fails again
+                                // otherwise reports nothing at all.
+                                log::warn!(
+                                    "stats retry for game {}: {e}",
+                                    item.id.game_number
+                                );
                                 let _ = event_tx.send(PortalEvent::ItemUpdated).await;
                             }
                         }
@@ -255,7 +262,15 @@ async fn attempt_item(
     event_tx: &mpsc::Sender<PortalEvent>,
 ) -> bool {
     let score_result = io.post_scores(item).await;
-    if score_result.is_err() {
+    if let Err(e) = score_result {
+        // The portal's own words are the only thing separating a rejected
+        // upload from an unreachable one, and the error already carries them
+        // (`classify_error` puts the response body in `Failed`). Discarding it
+        // here left the operator with a red item and nothing to diagnose from.
+        // Wording note: `PortalCallError` already renders its own
+        // "portal call failed:" / "portal unreachable:" prefix, so this message
+        // supplies only what was being sent and for which game.
+        log::warn!("score upload for game {}: {e}", item.id.game_number);
         let _ = event_tx.send(PortalEvent::ItemUpdated).await;
         return false;
     }
@@ -266,11 +281,19 @@ async fn attempt_item(
                 .await;
             true
         }
-        Err(_) => {
+        Err(e) => {
             // Score is up but stats failed (e.g. an event that does not
             // require unique cap numbers rejects all stats). Mark the
             // item stats-pending; the portal is reachable, so return
             // `true` to suppress the cadence `verify_token`.
+            //
+            // Logged because the reason is not otherwise recoverable: the row
+            // only ever says "Stats not sent", and the several causes the
+            // portal distinguishes are indistinguishable from the UI.
+            log::warn!(
+                "stats upload for game {} (score already accepted): {e}",
+                item.id.game_number
+            );
             let _ = event_tx
                 .send(PortalEvent::ScoreSentStatsPending(item.id.clone()))
                 .await;
@@ -283,6 +306,28 @@ async fn attempt_item(
 mod tests {
     use super::super::ItemId;
     use super::*;
+
+    /// The reason the portal gave reaches the log only through this error's own
+    /// text, which the upload-failure `warn!`s print verbatim. Nothing else
+    /// asserts that, so if `Display` ever stopped including `msg` the logs would
+    /// go quiet again — the exact defect those `warn!`s were added to fix — with
+    /// every other test still green.
+    #[test]
+    fn error_text_carries_the_reason_the_portal_gave() {
+        let reason = r#"{"reason":"This event does not require unique cap numbers."}"#;
+        assert!(
+            PortalCallError::Failed(reason.to_string())
+                .to_string()
+                .contains(reason),
+            "a rejected upload must keep the portal's wording"
+        );
+        assert!(
+            PortalCallError::Unreachable("dns failure".to_string())
+                .to_string()
+                .contains("dns failure"),
+            "an unreachable portal must keep the transport detail"
+        );
+    }
 
     fn mk_queue_item(attempts: u32) -> QueuedItem {
         QueuedItem {

@@ -521,6 +521,30 @@ _(Record deviations from this plan here as execution proceeds. Per
 `.claude/rules/plan-execution.md`, do not create standalone deviation commits — fold notes into the
 code commit or record them here.)_
 
+- **Task 1: followed `Mode`, not the plan's `#[default]` shorthand.** The plan says `GameSource`
+  takes `Manual` as `#[default]`, but the neighbouring config enums use `Derivative`'s
+  `#[derivative(Default)]` on the variant. The plan's own instruction is to "look at how `Mode` is
+  declared and copy it", so `Mode` won. Both new enums also derive `EnumFromStr!` for the same
+  reason `Mode` does: `Config::migrate` reads them back from strings.
+
+- **Task 2: PLAN DEFECT — a parser with no caller fails the lint gate.** `just lint` runs
+  `cargo clippy --all -- -D warnings`, and `refbox` is a binary crate, so `parse_custom_site`,
+  `ParsedSite`, `CustomSiteError` and `EVENTS_SEGMENT` are all `dead_code` until Task 5 calls them.
+  Verified: `just lint` exits 101 with four errors. Task 1 escaped this only because its new types
+  are `Config` fields, which serde's derived code counts as reading.
+
+  Resolved with the human's explicit approval (required by `.claude/rules/rust.md`, which forbids
+  silencing warnings without discussion) by a module-level `#![allow(dead_code)]` in
+  `custom_site.rs`, carrying a comment that names Task 5 as the point of deletion. The two
+  alternatives considered and rejected were leaving Task 2 uncommitted until Task 5 (uncommitted
+  work has been lost twice in this project) and reordering Task 3 ahead of Task 2 (throws away
+  working tested code).
+
+  **Task 5 must delete that attribute.** If it survives Task 5, the parser was never wired up.
+
+  Future plans that introduce a pure helper ahead of its caller should either say how the lint gate
+  will be satisfied, or order the caller into the same task.
+
 ## Out of scope
 
 - Changing the verification stub's token handling.

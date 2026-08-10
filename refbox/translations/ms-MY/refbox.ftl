@@ -101,6 +101,10 @@ minimum-brk-btwn-games = REHAT MINIMUM
 ot-half-time-length = PANJANG REHAT SEPARUH
     MASA TAMBAHAN
 using-portal = MENGGUNAKAN { $portal }PORTAL:
+manual-games = PERLAWANAN MANUAL:
+source-portal = { $portal }PORTAL
+source-custom = TERSUAI
+access-token = TOKEN AKSES:
 starting-sides = SISI PERMULAAN
 sound-enabled = BUNYI
     DIAKTIFKAN:

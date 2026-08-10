@@ -101,6 +101,10 @@ minimum-brk-btwn-games = พักระหว่างเกม
 ot-half-time-length = พักครึ่ง
     ต่อเวลาพิเศษ
 using-portal = ใช้ { $portal }PORTAL:
+manual-games = เกมด้วยตนเอง:
+source-portal = { $portal }PORTAL
+source-custom = กำหนดเอง
+access-token = โทเค็นการเข้าถึง:
 starting-sides = ด้านเริ่มต้น
 sound-enabled = เปิดใช้
     เสียง:

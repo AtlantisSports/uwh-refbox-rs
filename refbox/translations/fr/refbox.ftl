@@ -101,6 +101,10 @@ minimum-brk-btwn-games = PAUSE MIN. ENTRE
 ot-half-time-length = DURÉE DE LA PAUSE
     A LA PROLONGATION
 using-portal = UTILISATION DU { $portal }PORTAL:
+manual-games = MATCHS MANUELS:
+source-portal = { $portal }PORTAL
+source-custom = PERSONNALISÉ
+access-token = JETON D'ACCÈS:
 starting-sides = CÔTÉS DE DÉPART
 sound-enabled = SON
     ACTIVÉ:

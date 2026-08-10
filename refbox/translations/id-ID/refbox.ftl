@@ -101,6 +101,10 @@ minimum-brk-btwn-games = JEDA MINIMUM
 ot-half-time-length = DURASI JEDA
     PERPANJANGAN WAKTU
 using-portal = MENGGUNAKAN { $portal }PORTAL:
+manual-games = PERTANDINGAN MANUAL:
+source-portal = { $portal }PORTAL
+source-custom = KUSTOM
+access-token = TOKEN AKSES:
 starting-sides = SISI AWAL
 sound-enabled = SUARA
     DIAKTIFKAN:

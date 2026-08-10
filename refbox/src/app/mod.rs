@@ -2,7 +2,7 @@ use self::infraction::InfractionDetails;
 use super::{APP_NAME, fl};
 use crate::{
     beep_test::{cadence::TournamentManager as BeepTestManager, snapshot::BeepTestSnapshot},
-    config::{Config, GameSource, Mode},
+    config::{Config, GameSource, Mode, RemoteSource},
     penalty_editor::*,
     portal_manager::{ItemId, PortalEvent, PortalManager, SelectedEventId, UwhPortalIo},
     sound_controller::*,
@@ -1134,6 +1134,15 @@ impl RefBoxApp {
         }
 
         self.source = source;
+        // Record the remote actually applied, so leaving MANUAL later
+        // returns to it. Only a real remote is remembered: applying
+        // MANUAL leaves the previous choice standing, which is the whole
+        // point of keeping it separately.
+        match source {
+            GameSource::Portal => self.config.remembered_remote = RemoteSource::Portal,
+            GameSource::Custom => self.config.remembered_remote = RemoteSource::Custom,
+            GameSource::Manual => {}
+        }
         // Route through set_current_event_id so portal_event_id stays in
         // sync (ADR 011 amendment 2026-04-23 dormant-until-linked).
         self.set_current_event_id(event_id);
@@ -1324,6 +1333,15 @@ impl RefBoxApp {
 
             self.config.game = new_config;
             self.source = source;
+            // Record the remote actually applied, so leaving MANUAL later
+            // returns to it. Only a real remote is remembered: applying MANUAL
+            // leaves the previous choice standing, which is the whole point of
+            // keeping it separately.
+            match source {
+                GameSource::Portal => self.config.remembered_remote = RemoteSource::Portal,
+                GameSource::Custom => self.config.remembered_remote = RemoteSource::Custom,
+                GameSource::Manual => {}
+            }
             // Route through set_current_event_id so portal_event_id stays in
             // sync (ADR 011 amendment 2026-04-23 dormant-until-linked).
             self.set_current_event_id(event_id);
@@ -1372,6 +1390,15 @@ impl RefBoxApp {
         let schedule = edited.schedule.clone();
 
         self.source = source;
+        // Record the remote actually applied, so leaving MANUAL later
+        // returns to it. Only a real remote is remembered: applying
+        // MANUAL leaves the previous choice standing, which is the whole
+        // point of keeping it separately.
+        match source {
+            GameSource::Portal => self.config.remembered_remote = RemoteSource::Portal,
+            GameSource::Custom => self.config.remembered_remote = RemoteSource::Custom,
+            GameSource::Manual => {}
+        }
         // Route through set_current_event_id so portal_event_id stays in sync
         // for the background health check (ADR 011 amendment 2026-04-23).
         self.set_current_event_id(event_id);
@@ -1753,6 +1780,7 @@ impl RefBoxApp {
             brightness: self.config.hardware.brightness,
             front_display_layout: self.config.front_display_layout,
             source: self.source,
+            remembered_remote: self.config.remembered_remote,
             uwhportal_token_valid,
             current_event_id: self.current_event_id.clone(),
             current_court: self.current_court.clone(),
@@ -3800,7 +3828,6 @@ impl RefBoxApp {
                 task
             }
             Message::ToggleBoolParameter(param) => {
-                let mut trigger_event_list_fetch = false;
                 match param {
                     BoolGameParameter::TeamWarning => {
                         if let AppState::KeypadPage(
@@ -3878,46 +3905,6 @@ impl RefBoxApp {
                             BoolGameParameter::WhiteOnRight => {
                                 edited_settings.white_on_right ^= true
                             }
-                            BoolGameParameter::UsingUwhPortal => {
-                                let was_using = edited_settings.uses_remote();
-                                // Representation change only: this toggle still
-                                // means "official Portal or manual", exactly as
-                                // it did as a boolean. Task 4 replaces it with a
-                                // control that can also choose a custom site, at
-                                // which point `remembered_remote` decides where
-                                // turning it back on should land.
-                                edited_settings.source = if was_using {
-                                    GameSource::Manual
-                                } else {
-                                    GameSource::Portal
-                                };
-                                // Per ADR 017 (Portal Data Lifecycle): on OFF -> ON,
-                                // start the event / court / game / schedule pickers
-                                // from a blank slate (don't pre-fill with the
-                                // last-known values from a previous session or
-                                // toggle) and kick off the event-list fetch
-                                // immediately so the picker has data ready when the
-                                // operator navigates to it. The token credential
-                                // itself is kept in `config.uwhportal.token`; only
-                                // its validity cache is reset so the portal
-                                // re-verifies on next interaction.
-                                if !was_using && edited_settings.uses_remote() {
-                                    edited_settings.current_event_id = None;
-                                    edited_settings.current_court = None;
-                                    edited_settings.schedule = None;
-                                    edited_settings.game_number = String::new();
-                                    edited_settings.uwhportal_token_valid = None;
-                                    trigger_event_list_fetch = true;
-                                }
-                                if was_using && !edited_settings.uses_remote() {
-                                    // ON -> OFF: switching to manual is a clean slate
-                                    // (reverses ADR 017's "no proactive clearing").
-                                    edited_settings.current_event_id = None;
-                                    edited_settings.current_court = None;
-                                    edited_settings.schedule = None;
-                                    edited_settings.game_number = String::new();
-                                }
-                            }
                             BoolGameParameter::SoundEnabled => {
                                 edited_settings.sound.sound_enabled ^= true
                             }
@@ -3958,6 +3945,49 @@ impl RefBoxApp {
                         }
                     }
                 };
+                // No boolean parameter triggers a fetch any more: the only one
+                // that did was the portal toggle, now Message::SelectGameSource.
+                Task::none()
+            }
+            Message::SelectGameSource(new_source) => {
+                // why this cannot panic: the source control is only reachable
+                // from the Game Options editor, which populates
+                // `edited_settings` before it can be drawn.
+                let edited_settings = self.edited_settings.as_mut().unwrap();
+                let was_using = edited_settings.uses_remote();
+                edited_settings.source = new_source;
+
+                // `remembered_remote` is deliberately NOT updated here. It is
+                // recorded on Apply instead, from the source actually applied,
+                // so a choice the operator cancels cannot survive as a hidden
+                // preference. See the plan's deviation note.
+
+                let mut trigger_event_list_fetch = false;
+                // Per ADR 017 (Portal Data Lifecycle): on manual -> remote,
+                // start the event / court / game / schedule pickers from a
+                // blank slate (don't pre-fill with the last-known values from a
+                // previous session or toggle) and kick off the event-list fetch
+                // immediately so the picker has data ready when the operator
+                // navigates to it. The token credential itself is kept in the
+                // config; only its validity cache is reset so the source
+                // re-verifies on next interaction.
+                if !was_using && edited_settings.uses_remote() {
+                    edited_settings.current_event_id = None;
+                    edited_settings.current_court = None;
+                    edited_settings.schedule = None;
+                    edited_settings.game_number = String::new();
+                    edited_settings.uwhportal_token_valid = None;
+                    trigger_event_list_fetch = true;
+                }
+                if was_using && !edited_settings.uses_remote() {
+                    // remote -> manual is a clean slate (reverses ADR 017's
+                    // "no proactive clearing").
+                    edited_settings.current_event_id = None;
+                    edited_settings.current_court = None;
+                    edited_settings.schedule = None;
+                    edited_settings.game_number = String::new();
+                }
+
                 if trigger_event_list_fetch {
                     self.request_event_list()
                 } else {
@@ -4804,6 +4834,7 @@ impl RefBoxApp {
                     brightness: self.config.hardware.brightness,
                     front_display_layout: self.config.front_display_layout,
                     source: self.source,
+                    remembered_remote: self.config.remembered_remote,
                     uwhportal_token_valid: None,
                     current_event_id: self.current_event_id.clone(),
                     current_court: self.current_court.clone(),
@@ -4853,6 +4884,7 @@ impl RefBoxApp {
                     brightness: self.config.hardware.brightness,
                     front_display_layout: self.config.front_display_layout,
                     source: self.source,
+                    remembered_remote: self.config.remembered_remote,
                     uwhportal_token_valid: None,
                     current_event_id: self.current_event_id.clone(),
                     current_court: self.current_court.clone(),
@@ -4941,6 +4973,7 @@ impl RefBoxApp {
                     brightness: self.config.hardware.brightness,
                     front_display_layout: self.config.front_display_layout,
                     source: self.source,
+                    remembered_remote: self.config.remembered_remote,
                     uwhportal_token_valid: None,
                     current_event_id: self.current_event_id.clone(),
                     current_court: self.current_court.clone(),
@@ -5037,6 +5070,7 @@ impl RefBoxApp {
                     brightness: self.config.hardware.brightness,
                     front_display_layout: self.config.front_display_layout,
                     source: self.source,
+                    remembered_remote: self.config.remembered_remote,
                     uwhportal_token_valid: None,
                     current_event_id: self.current_event_id.clone(),
                     current_court: self.current_court.clone(),

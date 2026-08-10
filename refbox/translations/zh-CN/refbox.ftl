@@ -101,6 +101,10 @@ minimum-brk-btwn-games = 场间最短
 ot-half-time-length = 加时中场
     时长
 using-portal = 使用{ $portal }PORTAL：
+manual-games = 手动比赛：
+source-portal = { $portal }PORTAL
+source-custom = 自定义
+access-token = 访问令牌：
 starting-sides = 起始位置
 sound-enabled = 声音
     启用：

@@ -101,6 +101,10 @@ minimum-brk-btwn-games = MIN PAUZE
 ot-half-time-length = RUST
     VERLENGING
 using-portal = { $portal }PORTAL GEBRUIKEN:
+manual-games = HANDMATIGE WEDSTRIJDEN:
+source-portal = { $portal }PORTAL
+source-custom = AANGEPAST
+access-token = TOEGANGSTOKEN:
 starting-sides = STARTZIJDEN
 sound-enabled = GELUID
     INGESCHAKELD:

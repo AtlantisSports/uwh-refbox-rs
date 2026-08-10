@@ -104,14 +104,14 @@ pub(in super::super) fn build_keypad_page<'a>(
         row![
             container(if show_grid(panel_numbers, mode, player_num) {
                 make_player_grid(
-                    make_panel_label(&page, player_num),
+                    make_panel_label(&page, role, player_num),
                     panel_numbers,
                     mode,
                     player_num,
                     enabled,
                 )
             } else {
-                make_number_pad(&page, player_num, enabled, role.is_player_page())
+                make_number_pad(&page, role, player_num, enabled)
             })
             .style(if enabled {
                 light_gray_container
@@ -220,6 +220,31 @@ impl PanelRole {
     }
 }
 
+/// The title row's value when no individual player is named. Deliberately a
+/// glyph rather than a translated word — see `panel_value`.
+const NO_PLAYER_VALUE: &str = "-";
+
+/// Shown at the right of the panel's title row: the player's number, or
+/// `NO_PLAYER_VALUE` where no individual player is named.
+///
+/// A glyph rather than a word for two reasons. It needs no translation, and one
+/// narrow character cannot overflow the fixed-width title row — a translated
+/// "TEAM" could, since German "MANNSCHAFT" at `MEDIUM_TEXT` is most of the row
+/// on its own.
+///
+/// Derived from `PanelRole` rather than matched per page, so it cannot drift
+/// from `panel_role`, which is already the single source of truth for which
+/// pages name a player. The non-player pages keep their real digits, including
+/// `0`: zero timeouts per half is a legitimate setting, and a portal login code
+/// may begin with `0`.
+fn panel_value(role: PanelRole, player_num: u32) -> String {
+    if role.is_player_page() && player_num == 0 {
+        NO_PLAYER_VALUE.to_string()
+    } else {
+        player_num.to_string()
+    }
+}
+
 fn panel_role(page: &KeypadPage) -> PanelRole {
     match page {
         KeypadPage::AddScore(color) | KeypadPage::Penalty(_, color, _, _) => {
@@ -254,39 +279,15 @@ fn panel_role(page: &KeypadPage) -> PanelRole {
 /// every locale, so it only reads correctly with the value beside it; and a
 /// shared row is the same box whichever child the panel holds, so no text moves
 /// when the operator toggles to a team the grid cannot be shown for.
-fn make_panel_label<'a>(page: &KeypadPage, player_num: u32) -> Element<'a, Message> {
-    let text_displayed = match *page {
-        KeypadPage::WarningAdd { team_warning, .. } => {
-            if team_warning {
-                "TEAM".to_string()
-            } else {
-                player_num.to_string()
-            }
-        }
-        KeypadPage::AddScore(_) => {
-            if player_num == 0 {
-                "TEAM".to_string()
-            } else {
-                player_num.to_string()
-            }
-        }
-        KeypadPage::FoulAdd { color, .. } => {
-            if color.is_none() {
-                "TEAM".to_string()
-            } else {
-                player_num.to_string()
-            }
-        }
-        KeypadPage::GameNumber
-        | KeypadPage::Penalty(_, _, _, _)
-        | KeypadPage::TeamTimeouts(_, _)
-        | KeypadPage::PortalLogin(_, _) => player_num.to_string(),
-    };
-
+fn make_panel_label<'a>(
+    page: &KeypadPage,
+    role: PanelRole,
+    player_num: u32,
+) -> Element<'a, Message> {
     row![
         text(page.text()).align_x(Horizontal::Left),
         Space::with_width(Length::Fill),
-        text(text_displayed).size(MEDIUM_TEXT),
+        text(panel_value(role, player_num)).size(MEDIUM_TEXT),
     ]
     .width(Length::Fixed(3.0 * MIN_BUTTON_SIZE + 2.0 * SPACING))
     .into()
@@ -294,9 +295,9 @@ fn make_panel_label<'a>(page: &KeypadPage, player_num: u32) -> Element<'a, Messa
 
 fn make_number_pad<'a>(
     page: &KeypadPage,
+    role: PanelRole,
     player_num: u32,
     enabled: bool,
-    bottom_justified: bool,
 ) -> Element<'a, Message> {
     let setup_keypad_button =
         |button: Button<'a, Message>, message: Message| -> Button<'a, Message> {
@@ -308,7 +309,7 @@ fn make_number_pad<'a>(
             button.style(blue_button)
         };
 
-    let label = make_panel_label(page, player_num);
+    let label = make_panel_label(page, role, player_num);
 
     let digits = column![
         row![
@@ -382,7 +383,7 @@ fn make_number_pad<'a>(
     ]
     .spacing(SPACING);
 
-    if bottom_justified {
+    if role.is_player_page() {
         // On the four player pages the panel swaps between this pad and the
         // number grid as the operator toggles teams, so both are pinned to the
         // bottom of a full-height panel. The button block then lands in exactly
@@ -492,5 +493,32 @@ mod tests {
 
         assert!(PanelRole::NotPlayer.is_enabled());
         assert!(!PanelRole::NotPlayer.is_player_page());
+    }
+
+    /// `-` means "no individual player named". It replaces both the old English
+    /// `"TEAM"` (which no locale had a key for, and whose translations would
+    /// overflow the fixed-width row) and the bare `0` the penalty/foul/warning
+    /// pages showed before a number was entered — `0` is not a value on those
+    /// pages, since all three commit gates require `player_num > 0`.
+    #[test]
+    fn panel_value_shows_a_dash_where_no_player_is_named() {
+        // Team entry — an equal foul or a team warning names nobody, ever.
+        assert_eq!(panel_value(PanelRole::TeamEntry, 0), "-");
+
+        // A player page with nothing entered yet.
+        assert_eq!(panel_value(PanelRole::Player(GameColor::Black), 0), "-");
+
+        // A player page with a number: the number, unchanged.
+        assert_eq!(panel_value(PanelRole::Player(GameColor::Black), 7), "7");
+        assert_eq!(panel_value(PanelRole::Player(GameColor::White), 99), "99");
+    }
+
+    /// The pages that are not about a player keep showing real digits, including
+    /// `0`: timeouts-per-half of 0 is a legitimate setting, and a portal login
+    /// code may legitimately begin with 0.
+    #[test]
+    fn panel_value_keeps_zero_on_the_non_player_pages() {
+        assert_eq!(panel_value(PanelRole::NotPlayer, 0), "0");
+        assert_eq!(panel_value(PanelRole::NotPlayer, 42), "42");
     }
 }

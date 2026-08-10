@@ -115,7 +115,7 @@ pub(super) fn show_grid(numbers: &[u8], mode: Mode, current: u32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::theme::{DisplayMode, black, blue, set_display_mode, white};
+    use crate::app::theme::{BORDER_WIDTH, DisplayMode, black, blue, set_display_mode, white};
     use iced::Background;
 
     #[test]
@@ -283,12 +283,44 @@ mod tests {
 
         set_display_mode(DisplayMode::Light);
     }
+
+    /// `*_selected_button` differs from its base only in border width, so the
+    /// border is what pins the `selected` half of the table. Without this test,
+    /// code that dropped the `if selected` in `cell_style` and returned the base
+    /// style for every arm would leave every other test in this module green —
+    /// and would remove the operator's only indication of which number they had
+    /// tapped.
+    #[test]
+    fn selection_is_pinned_by_the_border_not_the_fill() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        set_display_mode(DisplayMode::Light);
+
+        for (role, fill) in [
+            (PanelRole::Player(GameColor::Black), black()),
+            (PanelRole::Player(GameColor::White), white()),
+            (PanelRole::TeamEntry, blue()),
+        ] {
+            let plain = cell_style(role, false)(&Theme::default(), Status::Active);
+            let picked = cell_style(role, true)(&Theme::default(), Status::Active);
+            assert_eq!(plain.background, Some(Background::Color(fill)));
+            assert_eq!(picked.background, Some(Background::Color(fill)));
+            assert_eq!(plain.border.width, 0.0, "{role:?} unselected: no border");
+            assert_eq!(
+                picked.border.width, BORDER_WIDTH,
+                "{role:?} selected: bordered"
+            );
+        }
+
+        set_display_mode(DisplayMode::Light);
+    }
 }
 
 /// One row of three cells per grid row. A cell with a number is tappable
 /// unless the panel is disabled; a leftover cell (`None`), or any cell while
 /// disabled, has no `on_press`, which iced renders in `Status::Disabled` and
-/// `blue_button` paints as window background with grayed text — the
+/// the cell's own style paints as window background with grayed text — the
 /// greyed-out look, with no extra style needed.
 ///
 /// `label` is the panel's title row, built by `make_panel_label` and identical
@@ -430,8 +462,10 @@ fn make_grid_cell<'a>(
             cell_button.style(cell_style(role, is_selected)).into()
         }
         // A leftover cell has no `on_press`, so iced renders it
-        // `Status::Disabled`, which every one of these styles paints as window
-        // background — the same grey as today, whichever team it belongs to.
+        // `Status::Disabled`, where no team colour shows through: Light and Dark
+        // paint all three of these styles as window background, and in High
+        // Contrast the light team's take `HC_WHITE_DISABLED` — a deliberately
+        // distinguishable dark grey (see its doc comment), not the team's white.
         None => cell_button.style(cell_style(role, false)).into(),
     }
 }

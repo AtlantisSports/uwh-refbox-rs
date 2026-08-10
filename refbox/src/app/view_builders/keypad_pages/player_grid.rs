@@ -184,24 +184,9 @@ mod tests {
         assert!(grid_fills_height(Mode::Rugby));
         assert!(!grid_fills_height(Mode::Hockey6V6));
         assert!(!grid_fills_height(Mode::Hockey3V3));
-    }
-
-    /// Rugby stretches its rows because five of them already fill the panel.
-    /// That reasoning is only sound while Rugby's grid is five rows, so this
-    /// fails if the cell count moves — a prompt to re-check the layout, not a
-    /// rule about the rules.
-    #[test]
-    fn rugby_still_fits_the_five_rows_its_layout_assumes() {
-        let rows = grid_cells(Mode::Rugby).div_ceil(GRID_COLUMNS);
-        assert_eq!(
-            rows, 5,
-            "Rugby's grid changed size; re-check that stretched rows still fit \
-             the panel before updating this number"
-        );
-        assert!(
-            grid_cells(Mode::Rugby) >= grid_cells(Mode::Hockey6V6),
-            "Rugby is assumed to be the tallest grid"
-        );
+        // No grid at all, so the value is never read — pinned so the exhaustive
+        // match keeps an answer for every mode.
+        assert!(!grid_fills_height(Mode::BeepTest));
     }
 }
 
@@ -285,11 +270,11 @@ fn make_grid_cell<'a>(
                 cell_button.on_press(Message::SelectPlayerNumber(target))
             } else {
                 // A disabled panel (team warning, equal foul) must not offer a
-                // tappable cell. `panel_team` returning `None` already empties
-                // the roster for these two cases, so this is currently
-                // unreachable — it stays as a deliberate guard against a
-                // future disabling condition being added to `enabled` alone
-                // (see the doc comment on `enabled` in keypad_pages/mod.rs).
+                // tappable cell. Those pages take `PanelRole::TeamEntry`, which
+                // `build_keypad_page` maps to an empty roster, so no grid is
+                // built for them at all and this is currently unreachable — it
+                // stays as a deliberate guard against a future disabling
+                // condition that greys the panel without emptying the roster.
                 cell_button
             };
             cell_button

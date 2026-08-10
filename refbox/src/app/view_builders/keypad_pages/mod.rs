@@ -384,3 +384,96 @@ fn make_number_pad<'a>(
         column![label, digits].spacing(SPACING).into()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The three questions the panel asks, for every page variant. `panel_role`
+    /// is the single source of truth for all of them, so a wrong arm here greys
+    /// the wrong panel or shows the wrong team's roster.
+    #[test]
+    fn panel_role_per_page() {
+        let cases: &[(KeypadPage, PanelRole)] = &[
+            (
+                KeypadPage::AddScore(GameColor::Black),
+                PanelRole::Player(GameColor::Black),
+            ),
+            (
+                KeypadPage::Penalty(
+                    None,
+                    GameColor::White,
+                    PenaltyKind::OneMinute,
+                    Infraction::Unknown,
+                ),
+                PanelRole::Player(GameColor::White),
+            ),
+            // An individual foul names a team; an "equal" foul names none.
+            (
+                KeypadPage::FoulAdd {
+                    origin: None,
+                    color: Some(GameColor::Black),
+                    infraction: Infraction::Unknown,
+                    ret_to_overview: false,
+                },
+                PanelRole::Player(GameColor::Black),
+            ),
+            (
+                KeypadPage::FoulAdd {
+                    origin: None,
+                    color: None,
+                    infraction: Infraction::Unknown,
+                    ret_to_overview: false,
+                },
+                PanelRole::TeamEntry,
+            ),
+            // A warning carries a colour either way, so it is `team_warning`
+            // that decides whether a player is being named.
+            (
+                KeypadPage::WarningAdd {
+                    origin: None,
+                    color: GameColor::White,
+                    infraction: Infraction::Unknown,
+                    team_warning: false,
+                    ret_to_overview: false,
+                },
+                PanelRole::Player(GameColor::White),
+            ),
+            (
+                KeypadPage::WarningAdd {
+                    origin: None,
+                    color: GameColor::White,
+                    infraction: Infraction::Unknown,
+                    team_warning: true,
+                    ret_to_overview: false,
+                },
+                PanelRole::TeamEntry,
+            ),
+            (KeypadPage::GameNumber, PanelRole::NotPlayer),
+            (
+                KeypadPage::TeamTimeouts(std::time::Duration::from_secs(60), true),
+                PanelRole::NotPlayer,
+            ),
+            (KeypadPage::PortalLogin(0, false), PanelRole::NotPlayer),
+        ];
+
+        for (page, expected) in cases {
+            assert_eq!(panel_role(page), *expected, "wrong role for {page:?}");
+        }
+    }
+
+    /// Greying and full-height are separate questions: the two team-entry pages
+    /// are greyed but still full height, so the panel does not resize when the
+    /// operator switches an individual foul to an equal one.
+    #[test]
+    fn team_entry_is_greyed_but_still_full_height() {
+        assert!(!PanelRole::TeamEntry.is_enabled());
+        assert!(PanelRole::TeamEntry.is_player_page());
+
+        assert!(PanelRole::Player(GameColor::Black).is_enabled());
+        assert!(PanelRole::Player(GameColor::Black).is_player_page());
+
+        assert!(PanelRole::NotPlayer.is_enabled());
+        assert!(!PanelRole::NotPlayer.is_player_page());
+    }
+}

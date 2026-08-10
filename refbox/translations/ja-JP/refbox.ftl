@@ -101,6 +101,10 @@ minimum-brk-btwn-games = 試合間
 ot-half-time-length = 延長ハーフ
     タイム時間
 using-portal = { $portal }PORTAL使用:
+manual-games = 手動試合:
+source-portal = { $portal }PORTAL
+source-custom = カスタム
+access-token = アクセストークン:
 starting-sides = 開始サイド
 sound-enabled = サウンド
     有効:

@@ -1,7 +1,7 @@
 use super::{ViewData, fl, message::*, shared_elements::*, theme::*};
 use crate::app::PageEntrySnapshot;
 use crate::app::languages::Language;
-use crate::config::{GameSource, Level, Mode};
+use crate::config::{GameSource, Level, Mode, RemoteSource};
 use crate::portal_manager::PortalIndicatorState;
 use crate::sim_frame::FrontDisplayLayout;
 use crate::sound_controller::*;
@@ -41,6 +41,10 @@ pub(in super::super) struct EditableSettings {
     pub brightness: Brightness,
     pub front_display_layout: FrontDisplayLayout,
     pub source: GameSource,
+    /// Which remote to return to when leaving MANUAL. A sticky preference
+    /// rather than a page setting: deliberately not part of the Cancel/revert
+    /// snapshot, so it does not count as a visible edit.
+    pub remembered_remote: RemoteSource,
     pub uwhportal_token_valid: Option<bool>,
     pub current_event_id: Option<EventId>,
     pub current_court: Option<String>,
@@ -611,6 +615,7 @@ fn make_event_config_page<'a>(
         config,
         game_number,
         source,
+        remembered_remote,
         current_event_id,
         current_court,
         schedule,
@@ -652,14 +657,21 @@ fn make_event_config_page<'a>(
         game_number.to_string()
     };
 
-    // Using portal toggle — row 1 left cell in both portal modes.
-    let using_uwh_portal_btn = make_value_button(
-        fl!("using-portal", portal = portal_name_for_mode(mode)),
-        bool_string(uses_remote),
+    // MANUAL GAMES — row 1 left cell in both modes. Two states, but set
+    // explicitly rather than toggled: turning it off lands on whichever remote
+    // was last applied, which a toggle could not express.
+    let manual_games_btn = make_value_button(
+        fl!("manual-games"),
+        bool_string(!uses_remote),
         (false, true),
-        Some(Message::ToggleBoolParameter(
-            BoolGameParameter::UsingUwhPortal,
-        )),
+        Some(Message::SelectGameSource(if uses_remote {
+            GameSource::Manual
+        } else {
+            match remembered_remote {
+                RemoteSource::Portal => GameSource::Portal,
+                RemoteSource::Custom => GameSource::Custom,
+            }
+        })),
     );
 
     // Column layout: page_content fills available height between the top
@@ -746,7 +758,7 @@ fn make_event_config_page<'a>(
                 .style(style)
         };
 
-        let uwhportal_auth_text = text("UWHPORTAL TOKEN:")
+        let uwhportal_auth_text = text(fl!("access-token"))
             .size(MEDIUM_TEXT)
             .align_y(Vertical::Center)
             .align_x(Horizontal::Right)
@@ -775,9 +787,46 @@ fn make_event_config_page<'a>(
         .style(light_gray_button)
         .on_press_maybe(auth_state_message);
 
+        // Row 1's second and third cells are blank in remote mode, so the two
+        // source buttons cost no layout change. The active one is marked with
+        // the existing selected-button style rather than a new treatment.
+        let portal_source_btn = button(
+            text(fl!("source-portal", portal = portal_name_for_mode(mode)))
+                .size(MEDIUM_TEXT)
+                .align_x(Horizontal::Center)
+                .align_y(Vertical::Center)
+                .width(Length::Fill)
+                .height(Length::Fill),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(if settings.source == GameSource::Portal {
+            light_gray_selected_button
+        } else {
+            light_gray_button
+        })
+        .on_press(Message::SelectGameSource(GameSource::Portal));
+
+        let custom_source_btn = button(
+            text(fl!("source-custom"))
+                .size(MEDIUM_TEXT)
+                .align_x(Horizontal::Center)
+                .align_y(Vertical::Center)
+                .width(Length::Fill)
+                .height(Length::Fill),
+        )
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(if settings.source == GameSource::Custom {
+            light_gray_selected_button
+        } else {
+            light_gray_button
+        })
+        .on_press(Message::SelectGameSource(GameSource::Custom));
+
         col = col
             .push(
-                row![using_uwh_portal_btn, horizontal_space(), horizontal_space()]
+                row![manual_games_btn, portal_source_btn, custom_source_btn]
                     .spacing(SPACING)
                     .height(Length::Fill),
             )
@@ -795,7 +844,7 @@ fn make_event_config_page<'a>(
         col = col
             .push(
                 row![
-                    using_uwh_portal_btn,
+                    manual_games_btn,
                     make_value_button(
                         fl!("overtime-allowed"),
                         bool_string(config.overtime_allowed),

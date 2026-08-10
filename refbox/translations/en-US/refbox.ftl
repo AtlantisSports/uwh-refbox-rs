@@ -100,6 +100,10 @@ minimum-brk-btwn-games = MINIMUM BRK
 ot-half-time-length = OT HALF
     TIME LENGTH
 using-portal = USING { $portal }PORTAL:
+manual-games = MANUAL GAMES:
+source-portal = { $portal }PORTAL
+source-custom = CUSTOM
+access-token = ACCESS TOKEN:
 starting-sides = STARTING SIDES 
 sound-enabled = SOUND
     ENABLED:

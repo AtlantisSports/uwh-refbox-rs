@@ -101,6 +101,10 @@ minimum-brk-btwn-games = PINAKAMALIIT NA PAHINGA
 ot-half-time-length = HABA NG PAHINGA
     SA OVERTIME
 using-portal = GUMAGAMIT NG { $portal }PORTAL:
+manual-games = MANUAL NA LARO:
+source-portal = { $portal }PORTAL
+source-custom = PASADYA
+access-token = ACCESS TOKEN:
 starting-sides = MGA PANIG SA SIMULA
 sound-enabled = TUNOG
     PINAGANA:

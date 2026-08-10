@@ -101,6 +101,10 @@ minimum-brk-btwn-games = PAUSA MÍN
 ot-half-time-length = INTERVALO DA
     PRORROGAÇÃO
 using-portal = USAR { $portal }PORTAL:
+manual-games = JOGOS MANUAIS:
+source-portal = { $portal }PORTAL
+source-custom = PERSONALIZADO
+access-token = TOKEN DE ACESSO:
 starting-sides = LADOS INICIAIS
 sound-enabled = SOM
     ATIVADO:

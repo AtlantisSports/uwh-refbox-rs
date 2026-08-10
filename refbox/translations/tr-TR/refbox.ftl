@@ -101,6 +101,10 @@ minimum-brk-btwn-games = OYUNLAR ARASI
 ot-half-time-length = UZATMA DEVRE
     ARASI SÜRESİ
 using-portal = { $portal }PORTAL KULLANILIYOR:
+manual-games = MANUEL MAÇLAR:
+source-portal = { $portal }PORTAL
+source-custom = ÖZEL
+access-token = ERİŞİM TOKENİ:
 starting-sides = BAŞLANGIÇ TARAFLARI
 sound-enabled = SES
     AKTİF:

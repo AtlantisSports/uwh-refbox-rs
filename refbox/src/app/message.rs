@@ -1,6 +1,6 @@
 use super::{fl, languages::Language};
 use crate::{
-    config::BeepTestPreset,
+    config::{BeepTestPreset, GameSource},
     portal_manager::{ItemId, PortalEvent},
     sound_controller::{BuzzerSound, RemoteId},
     tournament_manager::{TournamentManager, penalty::PenaltyKind},
@@ -142,6 +142,10 @@ pub enum Message {
     },
     ParameterSelected(ListableParameter, String),
     ToggleBoolParameter(BoolGameParameter),
+    /// Set where games come from, explicitly rather than by toggling. A toggle
+    /// cannot express three states, and naming the target source removes any
+    /// question about which one a toggle would land on.
+    SelectGameSource(GameSource),
     CycleParameter(CyclingParameter),
     /// Set the team-timeout count directly (team-timeout edit page 0/1 toggle).
     SetTeamTimeoutCount(u32),
@@ -334,6 +338,7 @@ impl Message {
             | Self::KeypadButtonPress(_)
             | Self::SelectPlayerNumber(_)
             | Self::ToggleBoolParameter(_)
+            | Self::SelectGameSource(_)
             | Self::CycleParameter(_)
             | Self::RecvEventList(_)
             | Self::RecvTeamsList(_, _)
@@ -640,6 +645,7 @@ impl PartialEq for Message {
             ) => a == b,
             (Self::ParameterSelected(a, b), Self::ParameterSelected(c, d)) => a == c && b == d,
             (Self::ToggleBoolParameter(a), Self::ToggleBoolParameter(b)) => a == b,
+            (Self::SelectGameSource(a), Self::SelectGameSource(b)) => a == b,
             (Self::CycleParameter(a), Self::CycleParameter(b)) => a == b,
             (Self::EditGameConfigPage(a), Self::EditGameConfigPage(b)) => a == b,
             (Self::ApplyConfigPage(a), Self::ApplyConfigPage(b)) => a == b,
@@ -734,6 +740,7 @@ impl PartialEq for Message {
             | (Self::ParameterEditComplete { .. }, _)
             | (Self::ParameterSelected(_, _), _)
             | (Self::ToggleBoolParameter(_), _)
+            | (Self::SelectGameSource(_), _)
             | (Self::CycleParameter(_), _)
             | (Self::SelectLanguage(_), _)
             | (Self::LanguageSelectComplete { .. }, _)
@@ -890,7 +897,6 @@ pub enum BoolGameParameter {
     /// `KeypadPage::AddScore`'s `team_score`, mirroring `TeamWarning`.
     TeamScore,
     WhiteOnRight,
-    UsingUwhPortal,
     SoundEnabled,
     RefAlertEnabled,
     AutoSoundStartPlay,

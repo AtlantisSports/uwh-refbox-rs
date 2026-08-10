@@ -567,6 +567,37 @@ code commit or record them here.)_
   be the behaviour change this task is required not to make. Task 7 narrows the event list; the
   login flow narrows when a custom site can actually be selected.
 
+- **Task 4: `remembered_remote` is recorded on Apply, not when a source button is tapped.** The plan
+  (Step 3) says choosing a source "sets both `source` and `remembered_remote` together". Implemented
+  instead as: the button sets only `source`, and the *apply* path records the remote actually
+  applied. Two reasons. First, updating it on tap lets a choice the operator then **cancels** survive
+  as a hidden preference. Second, avoiding that would mean adding the field to `PageEntrySnapshot`,
+  whose `page_has_changes` comparison would then treat an invisible preference as a visible edit and
+  could wrongly enable APPLY. The plan's stated goal still holds: an operator who *applies* CUSTOM,
+  switches to manual, and switches back lands on CUSTOM. Only an un-applied, same-session sequence
+  differs, which is a corner case.
+
+- **Task 4: `remembered_remote` had to be plumbed onto `EditableSettings`.** The plan's file list
+  omitted this. Task 1 put the field on `Config` only, so Task 4 added it to `EditableSettings`,
+  seeded it from the config at all five real construction sites, and wrote it back at all four apply
+  sites. Cheap in the end because the ~24 test literals use `..Default::default()`.
+
+- **Task 4: also relabelled the token row, at the human's request.** `UWHPORTAL TOKEN:` became
+  `ACCESS TOKEN:` — it is wrong for a custom site, and the spec's own sketch had already dropped
+  "UWHPORTAL" without flagging it as a step. This uncovered a **pre-existing bug**: that label was
+  `text("UWHPORTAL TOKEN:")`, the *only* hardcoded English string in `configuration.rs`, so it
+  appeared untranslated in all 14 non-English locales. It is now the Fluent key `access-token`.
+
+- **Task 4: the "cells 2 and 3 are blank" claim holds only in remote mode.** In manual mode row 1's
+  other two cells already carry game settings (overtime allowed, etc.). That does not affect the
+  design — the source buttons appear only when MANUAL GAMES is NO, which is exactly the branch with
+  the blank cells — but the plan's wording ("stay blank exactly as they are today" under YES) is
+  wrong about the manual branch.
+
+- **Task 4: `trigger_event_list_fetch` removed from the `ToggleBoolParameter` handler.** The portal
+  toggle was its only setter, so once that moved to `Message::SelectGameSource` the variable and its
+  trailing `if` were dead and clippy rejected the unused `mut`. Deleted rather than silenced.
+
 - **Task 3: the ON/OFF toggle preserves today's meaning rather than using `remembered_remote`.**
   `BoolGameParameter::UsingUwhPortal` now sets `Manual` or `Portal` explicitly instead of flipping a
   boolean. Routing OFF->ON through `remembered_remote` would be a behaviour change and belongs to

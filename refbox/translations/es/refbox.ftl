@@ -102,6 +102,10 @@ minimum-brk-btwn-games = DESCANSO MÍNIMO
 ot-half-time-length = DUR. MEDIO
     TIEMPO DEL T/E
 using-portal = USANDO { $portal }PORTAL:
+manual-games = PARTIDOS MANUALES:
+source-portal = { $portal }PORTAL
+source-custom = PERSONALIZADO
+access-token = TOKEN DE ACCESO:
 starting-sides = LADOS INICIALES
 sound-enabled = SONIDO
     HABILITADO:

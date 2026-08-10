@@ -3,6 +3,38 @@
 Accurate as of refbox v0.4.9. This is a best-effort description of what the software does
 today. It carries no stability promise; a future release may change any of it without notice.
 
+## Pointing refbox at your site
+
+None of what follows matters until refbox is actually talking to your site, and that is not
+something you can set from inside the app. Set an environment variable before launching it:
+
+| refbox mode | Variable |
+|---|---|
+| Underwater hockey (6v6, 3v3, Beep Test) | `UWH_PORTAL_URL_OVERRIDE` |
+| Underwater rugby | `UWR_PORTAL_URL_OVERRIDE` |
+
+Set it to your site's base URL with no trailing slash — every path in this document is appended
+to it directly. It is read once, during startup, so changing it later has no effect until refbox
+is restarted (`refbox/src/app/mod.rs:1751`). Which of the two variables applies depends on the
+mode refbox is configured for, so setting the hockey variable while refbox is in rugby mode
+leaves it pointed at the real Portal, with nothing to indicate the override was ignored.
+
+**If your site serves plain `http://`, refbox refuses to send it anything** unless it is also
+started with the `--allow-http` flag. Without that flag no request is attempted at all, and the
+failure is indistinguishable from your server being unreachable — nothing names the scheme as the
+cause (`refbox/src/main.rs:665` sets it; `uwh-common/src/uwhportal/mod.rs:173` enforces it). A
+site without a TLS certificate therefore needs both:
+
+```bash
+UWH_PORTAL_URL_OVERRIDE=http://localhost:8099 refbox --allow-http
+```
+
+One further startup condition, easy to lose an afternoon to: refbox must be in one of the two game
+modes — 6v6 or 3v3 — for any of this to happen at all. Beep Test mode uses the same `UWH_`
+variable and still constructs the Portal client during startup, but nothing on that screen ever
+calls it, so no request ever arrives and there is nothing to link. Mode is set in refbox's
+configuration file; there is no command-line option for it.
+
 ## You probably need eight calls, not eighteen
 
 The refbox application, the pre-tournament schedule tool, and the stream overlay together
@@ -184,6 +216,12 @@ whenever the operator turns "Use UWH Portal" on from off in Game Options.
 `isSchedulePublished` (always `"true"` — refbox only ever asks for events whose schedule has
 been published).
 
+Your site is expected to apply all three of those itself. refbox does no filtering of its own —
+it displays every entry you return, exactly as returned — so an unfiltered list puts every past
+tournament in the operator's event picker. It also never asks for a second page: there is no
+offset, page, or cursor parameter anywhere in this call, and `totalCount` is read but never acted
+on. If more than 100 of your events match, the remainder are simply unreachable from the picker.
+
 **Request body:** none
 
 **Successful response:** `200` with `{"totalCount": <number>, "items": [ <event>, ... ]}`.
@@ -314,6 +352,12 @@ category it came from) into a single lookup from user ID to display name. Per en
 name is silently skipped rather than causing an error — and a missing category (or a missing
 `referees` object entirely) just means fewer names, not a failure.
 
+Note what is **not** read: `user.name` is never used, even when it is the only name an entry
+carries. That is deliberate — it holds the official's real name, and refbox prefers a chosen
+handle for an operator-facing screen. So a site that returns `user.name` and nothing else will
+show no referee names at all, and nothing will be logged to explain why. Populate `rosterName`
+or `user.username`.
+
 **On failure:** Any non-`200` response or transport failure: refbox logs a warning (not an
 error) and proceeds without any referee names — the schedule still loads normally, and referee
 rows show a placeholder ("-") instead of a name.
@@ -333,7 +377,10 @@ which is shared with call 8.
 **Query parameters:** `force` (boolean, `true` or `false`). Ordinarily `false`. It's set to
 `true` only when the operator taps "FORCE THIS GAME RESULT" on the portal attention screen after
 a submission was rejected — telling the site to overwrite whatever score it currently has for
-that game instead of rejecting the mismatch. A plain RETRY does not set `force`.
+that game instead of rejecting the mismatch. A plain RETRY does not set `force`. On this call
+`force` is **always present**, as the literal `true` or `false` — never omitted
+(`uwh-common/src/uwhportal/mod.rs:367`). One of the other-ten calls that also takes `force`
+behaves differently; see call 8 of the other ten.
 
 **Request body:** `{"dark": {"value": <0-255>}, "light": {"value": <0-255>}}`. Note the naming:
 **`dark` is the black team's score, `light` is the white team's score** — not "home/away" or
@@ -390,8 +437,46 @@ the same 120-hour archive-and-drop as any other queued item.
 ## Data formats
 
 This section gives the exact field-by-field shape of everything the calls above only summarised:
-the two ways an ID can be written, the schedule the refbox downloads, the two timestamp formats,
-and the stats records refbox uploads after a game.
+the rules every response has to satisfy, the two ways an ID can be written, the schedule the
+refbox downloads, the two timestamp formats, and the stats records refbox uploads after a game.
+
+### Rules that apply to every call
+
+Three rules hold across the whole API and are invisible from the individual call descriptions
+above, because each one only becomes apparent when you compare all of them.
+
+**Exactly `200` counts as success.** Every call made through the shared Portal client — that is,
+every call in this document except the overlay's own — compares the response status against
+`200 OK` itself, never against the `2xx` range. There is no `is_success()` check anywhere in it,
+and `201`, `202` and `204` are not recognised as success. A site that answers a score push with
+`204 No Content` has that push treated as a **failure**: it goes back on the local queue and is
+retried about every 15 seconds until it eventually archives, with nothing on screen explaining
+why. Return `200` with a body — an empty JSON object is fine — rather than `204`.
+
+Exactly one call reads any other status: call 1 of the refbox eight treats `400` as "that code was
+wrong" and surfaces it to the operator as an invalid code
+(`uwh-common/src/uwhportal/mod.rs:239`). Everywhere else, every non-`200` means the same single
+thing, so the status you choose for "no such event" carries no meaning to refbox — `404`, `400`
+and `500` are indistinguishable to it. The overlay is the opposite extreme: it never inspects the
+status code at all, and simply attempts to parse whatever body comes back.
+
+**Unknown fields are ignored, everywhere.** No type in this API sets serde's
+`deny_unknown_fields`, so extra fields you include in a response are discarded silently —
+including inside the large schedule shape, where a hard parse failure would otherwise cost you a
+schedule that never loads. You can extend responses freely. What you cannot do is rename or omit
+anything a shape marks as required.
+
+**refbox always sends a fixed `Content-Length`, never a chunked body,** and always sets
+`Content-Type: application/json` on requests that have one. Two different mechanisms produce that,
+and both are worth knowing if you are debugging raw traffic: most bodies go through reqwest's
+`.json()` helper, which sets the header and the length together (for example
+`uwh-common/src/uwhportal/mod.rs:221`), while push stats serialises its body itself and sets the
+header explicitly (`mod.rs:335`). What arrives on the wire is the same either way.
+
+refbox does not require any particular `Content-Type` on your responses. Every response body is
+read as text and then parsed as JSON regardless of how you labelled it. A hand-written server
+reading the request body straight off the socket can rely on `Content-Length` being present and
+accurate.
 
 ### The two ID forms
 
@@ -406,6 +491,30 @@ That's the whole rule — the "long form" is just the short form with `events/` 
 the front, or removed. In the code, `EventId::partial()` strips the `events/` prefix and
 `EventId::full()` keeps it (`uwh-common/src/uwhportal/schedule.rs:714` and `:718`); `TeamId` has the
 identical pair of methods (`schedule.rs:762` and `:766`).
+
+**IDs inside response bodies are always the long form, and that is enforced.** The two rules above
+govern paths and query parameters — the things refbox *sends*. Every ID your site *returns* in a
+JSON body (`Schedule.eventId`, `ScheduledTeam.teamId`, and the `id` of each entry in the event
+list) goes through a custom deserialiser that checks it: `schedule.rs:690` for event IDs,
+`schedule.rs:738` for team IDs.
+
+It checks exactly two things:
+
+- The value starts with exactly `events/` or `teams/`. The comparison is case-sensitive, so
+  `Events/1234-A` is rejected, and a bare short form like `1234-A` is rejected in a body.
+- At least three characters follow the prefix. `events/1234-A` and `events/ABC` are accepted;
+  `events/AB` and `events/A` are not.
+
+Beyond those two checks the value is opaque: it is never split on the hyphen and never matched
+against a pattern, so `events/my-own-identifier` is perfectly valid. The `1234-A` shape used
+throughout these examples is the Portal's convention, not a requirement your site has to imitate.
+
+Getting this wrong fails hard, and the error message will lie to you. A rejected ID is a
+deserialisation failure that discards the **entire** response, not just the offending entry — so
+one malformed ID in an event list costs you the whole list. And the message is always `Invalid
+format for full_id. It should start with 'events/'`, even when the prefix was perfectly fine and
+the length was the real problem. If you see that error against an ID that plainly starts with
+`events/`, count the characters after the slash.
 
 Worked example, using the event and teams from the schedule example below:
 - Short form, in a path: `GET /api/events/{eventId}/schedule/privileged` with `eventId` = `1234-A`
@@ -467,12 +576,27 @@ seeded-by-group, or a placeholder name), which a stand-in site can ignore:
 | `resultOf` | `{"type": "Winner"\|"Loser", "gameNumber": "<string>"}` |
 | `seededBy` | `{"number": <int>, "group": {"name": "<string>"}}` (`group` itself is optional) |
 
+**A `teamId` here only becomes a team *name* if call 4 returned that same ID.** This is the one
+place in the contract where two separate calls have to agree with each other, and there is no
+error path when they don't: refbox looks the ID up in the map it built from call 4's `teams`
+array, and simply falls back if it misses. What the operator sees tells you which half is wrong:
+
+- **The raw ID** (`teams/5678-B`) where a name should be — call 4 succeeded, but its `teams`
+  array did not contain this ID. Your schedule and your team list disagree.
+- **`Unknown`** — call 4 never returned successfully for this event, so there is no map to look
+  in at all. Call 4's own failure path is silent (see its "On failure" above), so this may be the
+  only visible symptom you get.
+
+Neither case logs an error, and the game stays selectable and playable either way — so an ID
+mismatch between your schedule and your team list is easy to ship without noticing.
+
 #### `RefereeAssignment` (`schedule.rs:210`)
 
 | JSON field | Required? | Contents |
 |---|---|---|
 | `role` | required | Free-text role name, e.g. `"Head Referee"` — refbox doesn't validate this against a fixed list |
 | `userId` | optional | Portal user ID, matched against call 6's response to show a name |
+| `teamId` | optional | Team ID, **long form** — used when an official is assigned by team rather than by person, in which case `userId` is absent. It is validated exactly like any other team ID, so a malformed one fails the entire schedule parse, not just this assignment. If it can't be resolved to a team name, the raw ID is displayed. |
 | `teamId` | optional | Set instead of `userId` when a team (not an individual) supplies the referee, long form |
 
 #### `TimingRule` (`schedule.rs:241`) — all fifteen fields
@@ -892,7 +1016,8 @@ and a winning team from the menu populated by call 6.
 **Authentication:** `Authorization: Bearer <token>`
 
 **Query parameters:** `force` (boolean, `true` or `false`) — set when the operator confirms
-overwriting an already-decided result; ordinarily `false`.
+overwriting an already-decided result; ordinarily `false`. Always present, as the literal `true`
+or `false` (`uwh-common/src/uwhportal/mod.rs:827`) — unlike the schedule upload in call 8 below.
 
 **Request body:** identifies which toss is being recorded and its outcome. Unlike every other
 JSON body in this document, the field names here are **`PascalCase` only** — there is no
@@ -925,8 +1050,11 @@ after loading a schedule from a local CSV file and logging in if needed.
 
 **Authentication:** `Authorization: Bearer <token>`
 
-**Query parameters:** `force` (boolean, `true` or `false`) — set only when the operator confirms
-overwriting a schedule the site already has for that event.
+**Query parameters:** `force` — set only when the operator confirms overwriting a schedule the
+site already has for that event. This call is the **one exception** to how `force` is sent
+everywhere else in this document: it appears as `force=true` only when forcing, and is **omitted
+from the query string entirely** otherwise (`uwh-common/src/uwhportal/mod.rs:592`). A site that
+requires the parameter to be present will reject every ordinary schedule upload.
 
 **Request body:** the schedule to upload — the same shape as
 [the schedule payload](#the-schedule-payload) documented for the privileged response, with two

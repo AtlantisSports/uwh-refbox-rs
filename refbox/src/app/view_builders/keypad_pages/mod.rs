@@ -105,6 +105,7 @@ pub(in super::super) fn build_keypad_page<'a>(
             container(if show_grid(panel_numbers, mode, player_num) {
                 make_player_grid(
                     make_panel_label(&page, role, player_num),
+                    role,
                     panel_numbers,
                     mode,
                     player_num,

@@ -2,9 +2,17 @@
 // constants, styles and `Message` — mirror `foul_add.rs`, do not re-import them.
 use super::*;
 use iced::{
-    Length,
-    widget::{column, row, vertical_space},
+    Length, Theme,
+    widget::{
+        button::{Status, Style},
+        column, row, vertical_space,
+    },
 };
+use uwh_common::color::Color as GameColor;
+
+/// A button style function, as iced's `.style()` takes. Mirrors the alias in
+/// `score_add.rs`.
+type StyleFn = fn(&Theme, Status) -> Style;
 
 /// Columns in the player-number grid. The grid is read left to right, then
 /// top to bottom, so this is fixed rather than derived from the roster.
@@ -107,6 +115,8 @@ pub(super) fn show_grid(numbers: &[u8], mode: Mode, current: u32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::theme::{DisplayMode, black, blue, set_display_mode, white};
+    use iced::Background;
 
     #[test]
     fn cells_per_mode() {
@@ -217,6 +227,62 @@ mod tests {
             );
         }
     }
+
+    /// A cell wears its team's colour, so the operator can see whose roster is on
+    /// screen without checking the team buttons.
+    ///
+    /// The display mode is pinned to Light: in High Contrast `white_button`
+    /// renders as dark grey with white text, which is deliberate (see the spec)
+    /// but would make these assertions fail. The mode is global state shared
+    /// across tests, hence the lock.
+    #[test]
+    fn grid_cells_wear_their_team_colour() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        set_display_mode(DisplayMode::Light);
+
+        let dark = cell_style(PanelRole::Player(GameColor::Black), false)(
+            &Theme::default(),
+            Status::Active,
+        );
+        assert_eq!(dark.background, Some(Background::Color(black())));
+        assert_eq!(dark.text_color, white());
+
+        let light = cell_style(PanelRole::Player(GameColor::White), false)(
+            &Theme::default(),
+            Status::Active,
+        );
+        assert_eq!(light.background, Some(Background::Color(white())));
+        assert_eq!(light.text_color, black());
+
+        set_display_mode(DisplayMode::Light);
+    }
+
+    /// A page that names no team keeps the digit keypad's blue and must never
+    /// wear a team's colour. Currently unreachable — those roles get an empty
+    /// roster, so no grid is built — but it is the invariant the fallback exists
+    /// for, so it is pinned rather than left to a future caller to rediscover.
+    #[test]
+    fn a_page_naming_no_team_stays_blue() {
+        let _guard = crate::app::theme::DISPLAY_MODE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        set_display_mode(DisplayMode::Light);
+
+        for role in [PanelRole::TeamEntry, PanelRole::NotPlayer] {
+            for selected in [false, true] {
+                let style = cell_style(role, selected)(&Theme::default(), Status::Active);
+                assert_eq!(
+                    style.background,
+                    Some(Background::Color(blue())),
+                    "{role:?} selected={selected} must stay blue"
+                );
+            }
+        }
+
+        set_display_mode(DisplayMode::Light);
+    }
 }
 
 /// One row of three cells per grid row. A cell with a number is tappable
@@ -230,6 +296,7 @@ mod tests {
 /// vanishes when the operator toggles to a team whose grid cannot be shown.
 pub(super) fn make_player_grid<'a>(
     label: Element<'a, Message>,
+    role: PanelRole,
     numbers: &[u8],
     mode: Mode,
     selected: u32,
@@ -251,7 +318,7 @@ pub(super) fn make_player_grid<'a>(
             line = line.height(Length::Fill);
         }
         for cell in cells {
-            line = line.push(make_grid_cell(cell, selected, enabled, fills_height));
+            line = line.push(make_grid_cell(cell, role, selected, enabled, fills_height));
         }
         grid = grid.push(line);
     }
@@ -279,11 +346,53 @@ pub(super) fn make_player_grid<'a>(
         .into()
 }
 
+/// The style a grid cell wears: its team's colour, or the keypad's blue where the
+/// panel names no team. `selected` picks the bordered variant.
+///
+/// Colouring by team lets the operator see whose roster is on screen without
+/// checking the team buttons, and keeps a team that has a roster visibly distinct
+/// from one that falls back to the blue digit keypad.
+///
+/// Selection stays legible on every fill because it is drawn as a border, not a
+/// fill: each `*_selected_button` is its base style plus `BORDER_WIDTH`, and
+/// `BORDER_COLOR` is blue.
+///
+/// The `TeamEntry` / `NotPlayer` arm is currently unreachable — `build_keypad_page`
+/// maps those roles to an empty roster, so `show_grid` is false and no grid is
+/// built. It is kept and tested rather than made a panic: a page that names no
+/// team must never wear a team's colour.
+fn cell_style(role: PanelRole, selected: bool) -> StyleFn {
+    match role {
+        PanelRole::Player(GameColor::Black) => {
+            if selected {
+                black_selected_button
+            } else {
+                black_button
+            }
+        }
+        PanelRole::Player(GameColor::White) => {
+            if selected {
+                white_selected_button
+            } else {
+                white_button
+            }
+        }
+        PanelRole::TeamEntry | PanelRole::NotPlayer => {
+            if selected {
+                blue_selected_button
+            } else {
+                blue_button
+            }
+        }
+    }
+}
+
 /// Reuses `make_small_button` from `shared_elements.rs` (text centred inside
 /// a filled container inside a fixed-size button), overriding its size to
 /// `GRID_BUTTON_SIZE`.
 fn make_grid_cell<'a>(
     cell: Option<u8>,
+    role: PanelRole,
     selected: u32,
     enabled: bool,
     fills_height: bool,
@@ -318,14 +427,11 @@ fn make_grid_cell<'a>(
                 // condition that greys the panel without emptying the roster.
                 cell_button
             };
-            cell_button
-                .style(if is_selected {
-                    blue_selected_button
-                } else {
-                    blue_button
-                })
-                .into()
+            cell_button.style(cell_style(role, is_selected)).into()
         }
-        None => cell_button.style(blue_button).into(),
+        // A leftover cell has no `on_press`, so iced renders it
+        // `Status::Disabled`, which every one of these styles paints as window
+        // background — the same grey as today, whichever team it belongs to.
+        None => cell_button.style(cell_style(role, false)).into(),
     }
 }

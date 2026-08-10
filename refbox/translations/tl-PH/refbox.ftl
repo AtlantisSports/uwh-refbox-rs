@@ -107,6 +107,7 @@ source-custom = PASADYA
 access-token = ACCESS TOKEN:
 custom-site = SITE:
 custom-site-url-title = SITE URL
+custom-site-placeholder = http://your-site/api/events/1234-A
 custom-site-invalid = Hindi magagamit ang address na ito. Dapat itong kagaya ng http://your-site/api/events/1234-A
 starting-sides = MGA PANIG SA SIMULA
 sound-enabled = TUNOG

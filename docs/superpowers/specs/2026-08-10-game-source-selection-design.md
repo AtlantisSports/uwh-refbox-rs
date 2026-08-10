@@ -115,8 +115,11 @@ Trailing slashes need no handling — the client already trims them (`uwh-common
 2. **The event picker disappears under CUSTOM.** With the event named in the URL, the event-list
    call is not made at all on this path.
 
-3. **Switching to MANUAL = YES preserves the configured source.** Nothing is erased; switching
-   back restores it.
+3. **Switching to MANUAL = YES preserves the configured source, including which one.** Nothing is
+   erased. The custom URL and both tokens persist independently, and the last remote choice is
+   remembered separately from the active source, so turning manual off returns the operator to the
+   source they were using rather than bouncing them to the portal. An installation that has never
+   chosen a source defaults to the portal, so today's behaviour is unchanged.
 
 4. **Each source keeps its own credentials.** The Portal link and the custom site's token are
    stored separately, so moving between them never forces re-linking. This deliberately avoids

@@ -103,7 +103,13 @@ pub(in super::super) fn build_keypad_page<'a>(
         ),
         row![
             container(if show_grid(panel_numbers, mode, player_num) {
-                make_player_grid(panel_numbers, mode, player_num, enabled)
+                make_player_grid(
+                    make_panel_label(&page, player_num),
+                    panel_numbers,
+                    mode,
+                    player_num,
+                    enabled,
+                )
             } else {
                 make_number_pad(&page, player_num, enabled, role.is_player_page())
             })
@@ -240,22 +246,15 @@ fn panel_role(page: &KeypadPage) -> PanelRole {
     }
 }
 
-fn make_number_pad<'a>(
-    page: &KeypadPage,
-    player_num: u32,
-    enabled: bool,
-    bottom_justified: bool,
-) -> Element<'a, Message> {
-    let setup_keypad_button =
-        |button: Button<'a, Message>, message: Message| -> Button<'a, Message> {
-            let button = if enabled {
-                button.on_press(message)
-            } else {
-                button
-            };
-            button.style(blue_button)
-        };
-
+/// The panel's title row: the page's own label on the left, the value being
+/// entered or selected on the right.
+///
+/// The grid and the pad share it rather than each wording their own title. Two
+/// reasons: the `player-number` label is a two-line phrase ending in a colon in
+/// every locale, so it only reads correctly with the value beside it; and a
+/// shared row is the same box whichever child the panel holds, so no text moves
+/// when the operator toggles to a team the grid cannot be shown for.
+fn make_panel_label<'a>(page: &KeypadPage, player_num: u32) -> Element<'a, Message> {
     let text_displayed = match *page {
         KeypadPage::WarningAdd { team_warning, .. } => {
             if team_warning {
@@ -284,14 +283,32 @@ fn make_number_pad<'a>(
         | KeypadPage::PortalLogin(_, _) => player_num.to_string(),
     };
 
-    let text_size = MEDIUM_TEXT;
-
-    let label = row![
+    row![
         text(page.text()).align_x(Horizontal::Left),
         Space::with_width(Length::Fill),
-        text(text_displayed).size(text_size),
+        text(text_displayed).size(MEDIUM_TEXT),
     ]
-    .width(Length::Fixed(3.0 * MIN_BUTTON_SIZE + 2.0 * SPACING));
+    .width(Length::Fixed(3.0 * MIN_BUTTON_SIZE + 2.0 * SPACING))
+    .into()
+}
+
+fn make_number_pad<'a>(
+    page: &KeypadPage,
+    player_num: u32,
+    enabled: bool,
+    bottom_justified: bool,
+) -> Element<'a, Message> {
+    let setup_keypad_button =
+        |button: Button<'a, Message>, message: Message| -> Button<'a, Message> {
+            let button = if enabled {
+                button.on_press(message)
+            } else {
+                button
+            };
+            button.style(blue_button)
+        };
+
+    let label = make_panel_label(page, player_num);
 
     let digits = column![
         row![

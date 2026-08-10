@@ -3,7 +3,7 @@
 use super::*;
 use iced::{
     Length,
-    widget::{column, row, text, vertical_space},
+    widget::{column, row, vertical_space},
 };
 
 /// Columns in the player-number grid. The grid is read left to right, then
@@ -31,11 +31,12 @@ pub(super) const GRID_BUTTON_SIZE: f32 = MIN_BUTTON_SIZE;
 
 /// Whether this mode's grid stretches to fill the panel's height.
 ///
-/// Rugby's five rows leave only a few pixels spare, so the rows share the
-/// height between them and the buttons go very slightly off square rather than
-/// leaving an odd gap. The hockey modes have enough slack to keep square
-/// buttons and still fit the page's title above them, so they sit at the
-/// bottom of the panel instead of stretching.
+/// Every mode carries the panel's title row (about 70px of the 465px budget).
+/// Rugby's five rows cannot keep their square 89px height under that — five
+/// squares plus their gaps need 477 — so the rows share what is left and the
+/// buttons come out visibly shorter than they are wide, rather than the grid
+/// overflowing the panel. The hockey modes have slack even with the title, so
+/// they keep square buttons and sit at the bottom of the panel.
 /// Exhaustive rather than a `matches!`, to match `grid_cells` below: a new mode
 /// should not silently inherit a layout nobody chose for it.
 fn grid_fills_height(mode: Mode) -> bool {
@@ -195,7 +196,12 @@ mod tests {
 /// disabled, has no `on_press`, which iced renders in `Status::Disabled` and
 /// `blue_button` paints as window background with grayed text — the
 /// greyed-out look, with no extra style needed.
+///
+/// `label` is the panel's title row, built by `make_panel_label` and identical
+/// to the one the number pad carries. Every mode gets it, so no text appears or
+/// vanishes when the operator toggles to a team whose grid cannot be shown.
 pub(super) fn make_player_grid<'a>(
+    label: Element<'a, Message>,
     numbers: &[u8],
     mode: Mode,
     selected: u32,
@@ -223,17 +229,24 @@ pub(super) fn make_player_grid<'a>(
     }
 
     if fills_height {
-        return grid.into();
+        // Rugby's rows already claim every pixel below the title, so there is
+        // no spacer to separate the two — one `SPACING` gap is spent here
+        // instead, and the rows divide what is left. A two-element column takes
+        // exactly one gap, which the height budget can afford.
+        return column![label, grid]
+            .spacing(SPACING)
+            .height(Length::Fill)
+            .into();
     }
 
-    // The hockey modes have vertical slack, so the page's own title sits at the
-    // top of the panel and the square buttons are pushed to the bottom of it.
+    // The hockey modes have vertical slack, so the title sits at the top of the
+    // panel and the square buttons are pushed to the bottom of it.
     //
     // No `.spacing()` here: the fill spacer already supplies all the
     // separation there is slack for, so an outer spacing would only add two
     // dead gaps this column never uses (see `GRID_BUTTON_SIZE`'s doc comment
     // for the height budget that makes those gaps costly).
-    column![text(fl!("player-number")), vertical_space(), grid]
+    column![label, vertical_space(), grid]
         .height(Length::Fill)
         .into()
 }

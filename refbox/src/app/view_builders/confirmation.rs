@@ -38,10 +38,18 @@ pub(in super::super) fn build_confirmation_page<'a>(
         }
         ConfirmationKind::UwhPortalLinkFailed(PortalTokenResponse::Success(_)) => unreachable!(),
         ConfirmationKind::SwitchToManualFromApply => fl!("apply-switch-to-manual"),
-        ConfirmationKind::PortalTenantSwitch { from_mode, to_mode } => fl!(
+        // A custom site survives the restart with its address and token intact,
+        // so it gets a message that says so rather than one promising a lost
+        // link. Manual keeps the portal wording: a dormant link note is still
+        // invalidated by the tenant change.
+        ConfirmationKind::PortalTenantSwitch {
+            source: GameSource::Custom,
+            ..
+        } => fl!("mode-switch-custom-site"),
+        ConfirmationKind::PortalTenantSwitch {
+            from_mode, to_mode, ..
+        } => fl!(
             "mode-switch-portal-tenant",
-            from_mode = format!("{from_mode}"),
-            to_mode = format!("{to_mode}"),
             from_portal = portal_name_for_mode(*from_mode),
             to_portal = portal_name_for_mode(*to_mode)
         ),

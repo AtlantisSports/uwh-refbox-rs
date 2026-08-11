@@ -832,6 +832,24 @@ code commit or record them here.)_
   implies a probe within ~2s of an event being selected, yet no verify call reached the stub during
   today's runs. Unresolved, and deliberately not asserted anywhere in the document.
 
+- **The mode-switch warning was not merely cosmetic under CUSTOM — it was false.** Task 6 recorded
+  keeping the portal wording as a "known cosmetic consequence" on Eric's decision. Criterion 7's run
+  disproved that: the custom site and its token both survive a mode switch, so a message promising
+  the link would be disabled and must be re-connected was telling the operator something untrue about
+  their own setup. Eric reopened it on seeing it (2026-08-11) and it is now two messages, chosen by a
+  `source` field added to `ConfirmationKind::PortalTenantSwitch`. Manual is grouped with Portal
+  deliberately: a dormant portal link note *is* invalidated by the tenant change, so that wording
+  stays right there.
+
+  Two smaller things fixed in the same sentence. `{ $from_portal }PORTAL` rendered as `UWHPORTAL`
+  and is now `UWH Portal`. And the mode names came out entirely: they are `fl!("hockey6v6")` &c. via
+  `Display for Mode`, which are the **uppercase value-button labels** shared with the APP MODE
+  buttons on two settings pages — so "HOCKEY6V6" could not be made readable without making those
+  buttons mixed-case against every other value button in the app. Offered Eric a separate set of
+  prose labels (4 keys × 15 locales) versus dropping the names; he chose dropping them, so the
+  sentence now says "the app mode" and costs no new translation surface. All 15 locales re-worded
+  by hand for both messages.
+
 ## Out of scope
 
 - Changing the verification stub's token handling.

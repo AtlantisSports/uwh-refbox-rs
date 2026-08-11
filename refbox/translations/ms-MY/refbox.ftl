@@ -12,7 +12,6 @@ cancel = BATAL
 delete = PADAM
 back = KEMBALI
 apply = GUNA
-save = SIMPAN
 user-options = PILIHAN PENGGUNA
 new = BARU
 
@@ -35,8 +34,6 @@ team-timeout-count = BILANGAN
     MASA REHAT:
 
 # Tambah Amaran
-team-warning = AMARAN
-    PASUKAN
 team-warning-line-1 = AMARAN
 team-warning-line-2 = PASUKAN
 team-score-line-1 = MARKAH
@@ -81,8 +78,6 @@ audible-countdown-for-last-10-seconds = KIRA DETIK BUNYI
     10 SAAT
 delay = LEWAT
 court = GELANGGANG:
-single-half = SEPARUH
-    TUNGGAL:
 half-length-full = PANJANG SEPARUH:
 game-length = PANJANG PERLAWANAN:
 overtime-allowed = MASA TAMBAHAN
@@ -95,8 +90,6 @@ pre-ot-break-length = PANJANG REHAT
     PRA-MASA TAMBAHAN:
 pre-sd-break-length = PANJANG REHAT
     PRA-SUDDEN DEATH:
-nominal-break-between-games = REHAT NOMINAL
-    ANTARA PERLAWANAN:
 ot-half-length = PANJANG SEPARUH
     MASA TAMBAHAN:
 timeouts-counted-per = MASA REHAT
@@ -151,13 +144,11 @@ half-length = PANJANG SEPARUH
 length-of-half-during-regular-play = Panjang separuh semasa permainan biasa
 half-time-lenght = PANJANG REHAT SEPARUH MASA
 length-of-half-time-period = Panjang tempoh rehat separuh masa
-nom-break = REHAT NOMINAL
 game-block = BLOK PERLAWANAN
 game-block-full = BLOK PERLAWANAN:
 game-block-help = Masa dari permulaan satu perlawanan hingga permulaan perlawanan berikutnya
 game-block-too-short = Terlalu singkat untuk memuatkan perlawanan ditambah rehat minimum
 game-block-tight = Ketat — masa rehat pasukan boleh menyebabkan perlawanan melebihi slot mereka
-system-will-keep-game-times-spaced = Sistem akan cuba mengekalkan masa mula perlawanan secara sekata, dengan jumlah masa dari satu permulaan ke permulaan berikutnya ialah 2 × [Panjang Separuh] + [Panjang Rehat Separuh Masa] + [Masa Nominal Antara Perlawanan] (contoh: jika perlawanan mempunyai [Panjang Separuh] = 15m, [Panjang Rehat Separuh Masa] = 3m, dan [Masa Nominal Antara Perlawanan] = 12m, masa dari mula satu perlawanan ke perlawanan berikutnya ialah 45m. Sebarang masa rehat yang diambil, atau penghentian jam yang lain, akan mengurangkan masa 12m itu sehingga nilai masa minimum antara perlawanan dicapai).
 min-break = REHAT MINIMUM
 min-time-btwn-games = Jika perlawanan berjalan lebih lama daripada yang dijadualkan, ini adalah masa minimum antara perlawanan yang akan diperuntukkan oleh sistem. Jika perlawanan tertangguh, sistem akan cuba mengejar secara automatik selepas perlawanan seterusnya, sentiasa mematuhi masa minimum antara perlawanan ini.
 pre-ot-break-abreviated = REHAT PRA-MASA TAMBAHAN
@@ -169,7 +160,6 @@ len-of-overtime-halftime = Panjang rehat separuh masa tambahan
 pre-sd-break = REHAT PRA-SUDDEN DEATH
 pre-sd-len = Panjang rehat antara tempoh permainan sebelumnya dan Sudden Death
 language = BAHASA
-this-language = BAHASA MELAYU
 portal-login-code = KOD
 portal-login-instructions = Sila pergi ke { $portal } Portal >> Pengurusan Acara >> Pengurusan Pengadil, klik butang + untuk menambah Refbox baharu, dan masukkan ID Refbox ini:
     { $id }
@@ -177,7 +167,6 @@ portal-login-instructions = Sila pergi ke { $portal } Portal >> Pengurusan Acara
     { $portal } Portal kemudiannya akan memberikan kod pengesahan untuk anda masukkan di sebelah kiri menggunakan pad nombor.
     Tekan selesai setelah anda memasukkan kod
 
-help = BANTUAN:
 
 # Pengesahan
 game-configuration-can-not-be-changed = Konfigurasi perlawanan tidak boleh diubah semasa perlawanan sedang berlangsung.
@@ -214,24 +203,6 @@ refresh = MUAT SEMULA
 refreshing = MEMUAT SEMULA...
 settings = TETAPAN
 none = Tiada
-game-number-error = Ralat ({ $game_number })
-next-game-number-error = Ralat ({ $next_game_number })
-last-game-next-game = Perlawanan Lepas: { $prev_game },
-    Perlawanan Seterusnya: { $next_game }
-black-team-white-team = Pasukan Hitam: { $black_team }
-    Pasukan Putih: { $white_team }
-game-length-ot-allowed = Panjang Separuh: { $half_length }
-         Panjang Rehat Separuh Masa: { $half_time_length }
-         Masa Tambahan Dibenarkan: { $overtime }
-overtime-details = Panjang Rehat Pra-Masa Tambahan: { $pre_overtime }
-             Panjang Separuh Masa Tambahan: { $overtime_len }
-             Panjang Rehat Separuh Masa Tambahan: { $overtime_half_time_len }
-sd-allowed = Sudden Death Dibenarkan: { $sd }
-pre-sd = Panjang Rehat Pra-Sudden Death: { $pre_sd_len }
-team-to-len = Tempoh Masa Rehat Pasukan: { $to_len }
-time-btwn-games = Masa Nominal Antara Perlawanan: { $time_btwn }
-game-block-info = Blok Permainan: { $game_block }
-min-brk-btwn-games = Masa Minimum Antara Perlawanan: { $min_brk_time }
 
 
 # Pemilih Senarai
@@ -312,21 +283,8 @@ infraction = Pelanggaran: {$infraction}
 error = Ralat ({ $number })
 two-games = Perlawanan Lepas: { $prev_game },  Perlawanan Seterusnya: { $next_game }
 one-game = Perlawanan: { $game }
-teams = Pasukan { -dark-team-name }: { $dark_team }
-    Pasukan { -light-team-name }: { $light_team }
-game-config = Panjang Separuh: { $half_len },  Panjang Rehat Separuh Masa: { $half_time_len }
-    Sudden Death Dibenarkan: { $sd_allowed },  Masa Tambahan Dibenarkan: { $ot_allowed }
-team-timeouts = Masa Rehat Pasukan: { $value }
 team-timeouts-label = MASA REHAT
     PASUKAN:
-stop-clock-last-2 = Hentikan Jam 2 Minit Terakhir: { $stop_clock }
-ref-list = Ketua Pengadil: { $chief_ref }
-    Pencatat Masa: { $timer }
-    Pengadil Air 1: { $water_ref_1 }
-    Pengadil Air 2: { $water_ref_2 }
-    Pengadil Air 3: { $water_ref_3 }
-team-ref-list = Pengadil: { $ref_team }
-    Pencatat Masa/Markah: { $ts_keeper_team }
 unknown = Tidak Diketahui
 select-infraction = Sila pilih
 ## Butang masa perlawanan
@@ -392,7 +350,6 @@ rugby = RAGBI
 beep-test = BEEP TEST
 
 # Beep-test screen
-beep-test-pre = PRA
 beep-test-top-time-label = MASA
 beep-test-top-level-label = TAHAP
 beep-test-top-lap-label = PUSINGAN
@@ -400,9 +357,6 @@ beep-test-start = MULA
 beep-test-pause = JEDA
 beep-test-resume = SAMBUNG
 beep-test-reset = SET SEMULA
-beep-test-column-level = TAHAP
-beep-test-column-count = BILANGAN
-beep-test-column-duration = TEMPOH
 beep-test-edit-selected = Tahap { $level }
 beep-test-edit-time = MASA
 beep-test-edit-count = BILANGAN
@@ -447,12 +401,6 @@ two-halves = 2 SEPARUH
 one-period = 1 PERIOD
 game-len = PANJANG PERLAWANAN
 length-of-game-during-regular-play = Panjang perlawanan semasa permainan biasa
-
-# Single-period (1 Period) info variants — Game Length, no half-time line
-game-config-single-half = Panjang Perlawanan: { $half_len }
-    Sudden Death Dibenarkan: { $sd_allowed },  Masa Tambahan Dibenarkan: { $ot_allowed }
-game-length-ot-allowed-single-half = Panjang Perlawanan: { $half_length }
-         Masa Tambahan Dibenarkan: { $overtime }
 
 # Self-update / Updates page
 check-version = Semak Versi

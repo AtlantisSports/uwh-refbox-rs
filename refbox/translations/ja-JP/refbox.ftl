@@ -12,7 +12,6 @@ cancel = キャンセル
 delete = 削除
 back = 戻る
 apply = 適用
-save = 保存
 user-options = ユーザー設定
 new = 新規
 
@@ -35,8 +34,6 @@ team-timeout-count = チームタイムアウト
     回数:
 
 # 警告追加
-team-warning = チーム
-    警告
 team-warning-line-1 = チーム
 team-warning-line-2 = 警告
 team-score-line-1 = チーム
@@ -81,8 +78,6 @@ audible-countdown-for-last-10-seconds = 残り10秒の音声
     カウントダウン
 delay = 遅延
 court = コート:
-single-half = 単一
-    ハーフ:
 half-length-full = ハーフ時間:
 game-length = 試合時間:
 overtime-allowed = 延長戦
@@ -95,8 +90,6 @@ pre-ot-break-length = 延長前
     休憩時間:
 pre-sd-break-length = SD前
     休憩時間:
-nominal-break-between-games = 試合間
-    基準休憩:
 ot-half-length = 延長ハーフ
     時間:
 timeouts-counted-per = タイムアウト
@@ -151,13 +144,11 @@ half-length = ハーフ時間
 length-of-half-during-regular-play = 通常試合中のハーフの長さ
 half-time-lenght = ハーフタイム時間
 length-of-half-time-period = ハーフタイムの長さ
-nom-break = 基準休憩
 game-block = ゲームブロック
 game-block-full = ゲームブロック:
 game-block-help = ある試合の開始から次の試合の開始までの時間
 game-block-too-short = 試合と最短休憩を収めるには短すぎます
 game-block-tight = タイト — チームタイムアウトにより試合が枠を超える可能性があります
-system-will-keep-game-times-spaced = システムは試合開始時刻を均等に保つよう努めます。1試合の開始から次の試合の開始までの合計時間は、2 × [ハーフ時間] + [ハーフタイム時間] + [試合間基準時間] となります（例：[ハーフ時間] = 15分、[ハーフタイム時間] = 3分、[試合間基準時間] = 12分の場合、1試合の開始から次の試合まで45分。タイムアウトやその他のクロック停止があると、最小試合間時間に達するまで12分が短縮されます）。
 min-break = 最小休憩
 min-time-btwn-games = 試合が予定より長引いた場合、システムが確保する試合間の最小時間です。試合が遅れた場合、システムは後続の試合で自動的に追いつきを試みますが、常にこの最小試合間時間を守ります。
 pre-ot-break-abreviated = 延長前休憩
@@ -169,7 +160,6 @@ len-of-overtime-halftime = 延長ハーフタイムの長さ
 pre-sd-break = SD前休憩
 pre-sd-len = 直前のプレー期間とサドンデスの間の休憩時間
 language = 言語
-this-language = 日本語
 portal-login-code = コード
 portal-login-instructions = { $portal }ポータル >> 大会管理 >> 審判管理 へ進み、＋ボタンをクリックして新しいRefboxを追加し、このRefbox IDを入力してください:
     { $id }
@@ -177,7 +167,6 @@ portal-login-instructions = { $portal }ポータル >> 大会管理 >> 審判管
     { $portal }ポータルから確認コードが発行されますので、左の数字パッドで入力してください。
     コードを入力したら完了を押してください
 
-help = ヘルプ:
 
 # 確認
 game-configuration-can-not-be-changed = 試合進行中は試合設定を変更できません。
@@ -214,24 +203,6 @@ refresh = 更新
 refreshing = 更新中...
 settings = 設定
 none = なし
-game-number-error = エラー ({ $game_number })
-next-game-number-error = エラー ({ $next_game_number })
-last-game-next-game = 前の試合: { $prev_game },
-    次の試合: { $next_game }
-black-team-white-team = 黒チーム: { $black_team }
-    白チーム: { $white_team }
-game-length-ot-allowed = ハーフ時間: { $half_length }
-         ハーフタイム時間: { $half_time_length }
-         延長戦許可: { $overtime }
-overtime-details = 延長前休憩時間: { $pre_overtime }
-             延長ハーフ時間: { $overtime_len }
-             延長ハーフタイム時間: { $overtime_half_time_len }
-sd-allowed = サドンデス許可: { $sd }
-pre-sd = サドンデス前休憩時間: { $pre_sd_len }
-team-to-len = チームタイムアウト時間: { $to_len }
-time-btwn-games = 試合間基準時間: { $time_btwn }
-game-block-info = ゲームブロック: { $game_block }
-min-brk-btwn-games = 試合間最小時間: { $min_brk_time }
 
 
 # リスト選択
@@ -312,21 +283,8 @@ infraction = 反則: {$infraction}
 error = エラー ({ $number })
 two-games = 前の試合: { $prev_game },  次の試合: { $next_game }
 one-game = 試合: { $game }
-teams = { -dark-team-name }チーム: { $dark_team }
-    { -light-team-name }チーム: { $light_team }
-game-config = ハーフ時間: { $half_len },  ハーフタイム時間: { $half_time_len }
-    サドンデス許可: { $sd_allowed },  延長戦許可: { $ot_allowed }
-team-timeouts = チームタイムアウト: { $value }
 team-timeouts-label = チーム
     タイムアウト:
-stop-clock-last-2 = 残り2分でクロック停止: { $stop_clock }
-ref-list = 主審: { $chief_ref }
-    タイムキーパー: { $timer }
-    水中審判1: { $water_ref_1 }
-    水中審判2: { $water_ref_2 }
-    水中審判3: { $water_ref_3 }
-team-ref-list = 審判員: { $ref_team }
-    記録員: { $ts_keeper_team }
 unknown = 不明
 select-infraction = 選択してください
 ## 試合時間ボタン
@@ -392,7 +350,6 @@ rugby = ラグビー
 beep-test = ビープテスト
 
 # Beep-test screen
-beep-test-pre = 準備
 beep-test-top-time-label = 時間
 beep-test-top-level-label = レベル
 beep-test-top-lap-label = 周回
@@ -400,9 +357,6 @@ beep-test-start = スタート
 beep-test-pause = 一時停止
 beep-test-resume = 再開
 beep-test-reset = リセット
-beep-test-column-level = レベル
-beep-test-column-count = 回数
-beep-test-column-duration = 時間
 beep-test-edit-selected = レベル { $level }
 beep-test-edit-time = 時間
 beep-test-edit-count = 回数
@@ -447,12 +401,6 @@ two-halves = 2ハーフ
 one-period = 1ピリオド
 game-len = 試合時間
 length-of-game-during-regular-play = 通常試合中の試合全体の長さ
-
-# Single-period (1 Period) info variants — Game Length, no half-time line
-game-config-single-half = 試合時間: { $half_len }
-    サドンデス許可: { $sd_allowed },  延長戦許可: { $ot_allowed }
-game-length-ot-allowed-single-half = 試合時間: { $half_length }
-         延長戦許可: { $overtime }
 
 # Self-update / Updates page
 check-version = バージョン確認

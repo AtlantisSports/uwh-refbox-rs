@@ -11,7 +11,6 @@ cancel = CANCEL
 delete = DELETE
 back = BACK
 apply = APPLY
-save = SAVE
 user-options = USER OPTIONS
 new = NEW
 
@@ -34,8 +33,6 @@ team-timeout-count = TEAM TIMEOUT
     COUNT:
 
 # Warning Add
-team-warning = TEAM
-    WARNING
 team-warning-line-1 = TEAM
 team-warning-line-2 = WARNING
 team-score-line-1 = TEAM
@@ -80,8 +77,6 @@ audible-countdown-for-last-10-seconds = AUDIBLE COUNTDOWN
     FOR LAST 10 SECONDS
 delay = DELAY
 court = COURT:
-single-half = SINGLE
-    HALF:
 half-length-full = HALF LENGTH:
 game-length = GAME LENGTH:
 overtime-allowed = OVERTIME 
@@ -94,8 +89,6 @@ pre-ot-break-length = PRE OT
     BREAK LENGTH:
 pre-sd-break-length = PRE SD
     BREAK LENGTH:
-nominal-break-between-games = NOMINAL BRK
-    BTWN GAMES:
 ot-half-length = OT HALF
     LENGTH:
 timeouts-counted-per = TIMEOUTS
@@ -150,19 +143,11 @@ half-length = HALF LEN
 length-of-half-during-regular-play = The length of a half during regular play
 half-time-lenght = HALF TIME LEN
 length-of-half-time-period = The length of the Half Time period
-nom-break = NOM BREAK
 game-block = GAME BLOCK
 game-block-full = GAME BLOCK:
 game-block-help = Time from the start of one game to the start of the next
 game-block-too-short = Too short to fit the game plus the minimum break
 game-block-tight = Tight — team timeouts could push games past their slot
-system-will-keep-game-times-spaced = The system will try to keep the game start times evenly spaced, with the
-    total time from one start to the next being 2 * [Half Length] + [Half Time
-    Length] + [Nominal Time Between Games] (example: if games have [Half
-    Length] = 15m, [Half Time Length] = 3m, and [Nominal Time Between Games] =
-    12m, the time from the start of one game to the next will be 45m. Any
-    timeouts taken, or other clock stoppages, will reduce the 12m time down
-    until the minimum time between game value is reached).
 min-break = MIN BREAK
 min-time-btwn-games = If a game runs longer than scheduled, this is the minimum time between
             games that the system will allot. If the games fall behind, the system will
@@ -178,7 +163,6 @@ len-of-overtime-halftime = The length of Overtime Half Time
 pre-sd-break = PRE SD BREAK
 pre-sd-len = The length of the break between the preceeding play period and Sudden Death
 language = LANGUAGE
-this-language = ENGLISH
 portal-login-code = CODE
 portal-login-instructions = Please go to the { $portal } Portal >> Event Management >> Referee Management, click on the + button to add a new Refbox, and enter this Refbox ID:
     { $id }
@@ -186,7 +170,6 @@ portal-login-instructions = Please go to the { $portal } Portal >> Event Managem
     The { $portal } Portal will then provide a confirmation code for you to enter to the left using the number pad.
     Press done once you have entered the code
 
-help = HELP: 
 
 # Confirmation
 game-configuration-can-not-be-changed = The game configuration can not be changed while a game is in progress.
@@ -223,24 +206,6 @@ refresh = REFRESH
 refreshing = REFRESHING...
 settings = SETTINGS 
 none = None
-game-number-error = Error ({ $game_number })
-next-game-number-error = Error ({ $next_game_number })
-last-game-next-game = Last Game: { $prev_game },
-    Next Game: { $next_game }
-black-team-white-team = Black Team: { $black_team }
-    White Team: { $white_team }
-game-length-ot-allowed = Half Length: { $half_length }
-         Half Time Length: { $half_time_length }
-         Overtime Allowed: { $overtime }
-overtime-details = Pre-Overtime Break Length: { $pre_overtime }
-             Overtime Half Length: { $overtime_len }
-             Overtime Half Time Length: { $overtime_half_time_len }
-sd-allowed = Sudden Death Allowed: { $sd }
-pre-sd = Pre-Sudden-Death Break Length: { $pre_sd_len }
-team-to-len = Team Timeout Duration: { $to_len }
-time-btwn-games = Nominal Time Between Games: { $time_btwn }
-game-block-info = Game Block: { $game_block }
-min-brk-btwn-games = Minimum Time Between Games: { $min_brk_time }
 
 # Game-info table labels
 gi-prior-game = Prior Game
@@ -349,21 +314,8 @@ infraction = Infraction: {$infraction}
 error = Error ({ $number })
 two-games = Last Game: { $prev_game },  Next Game: { $next_game }
 one-game = Game: { $game }
-teams = { -dark-team-name } Team: { $dark_team }
-    { -light-team-name } Team: { $light_team }
-game-config = Half Length: { $half_len },  Half Time Length: { $half_time_len }
-    Sudden Death Allowed: { $sd_allowed },  Overtime Allowed: { $ot_allowed }
-team-timeouts = Team Timeouts: { $value }
 team-timeouts-label = TEAM
     TIMEOUTS:
-stop-clock-last-2 = Stop Clock in Last 2 Minutes: { $stop_clock }
-ref-list = Chief Ref: { $chief_ref }
-    Timer: { $timer }
-    Water Ref 1: { $water_ref_1 }
-    Water Ref 2: { $water_ref_2 }
-    Water Ref 3: { $water_ref_3 }
-team-ref-list = Referees: { $ref_team }
-    T/S Keeper: { $ts_keeper_team }
 unknown = Unknown
 select-infraction = Make selection
 ## Game time button
@@ -429,7 +381,6 @@ rugby = RUGBY
 beep-test = BEEP TEST
 
 # Beep-test screen
-beep-test-pre = PRE
 beep-test-top-time-label = TIME
 beep-test-top-level-label = LEVEL
 beep-test-top-lap-label = LAP
@@ -437,9 +388,6 @@ beep-test-start = START
 beep-test-pause = PAUSE
 beep-test-resume = RESUME
 beep-test-reset = RESET
-beep-test-column-level = LEVEL
-beep-test-column-count = COUNT
-beep-test-column-duration = DURATION
 beep-test-edit-selected = Level { $level }
 beep-test-edit-time = TIME
 beep-test-edit-count = COUNT
@@ -483,12 +431,6 @@ two-halves = 2 HALVES
 one-period = 1 PERIOD
 game-len = GAME LEN
 length-of-game-during-regular-play = The length of the game during regular play
-
-# Single-period (1 Period) info variants — Game Length, no half-time line
-game-config-single-half = Game Length: { $half_len }
-    Sudden Death Allowed: { $sd_allowed },  Overtime Allowed: { $ot_allowed }
-game-length-ot-allowed-single-half = Game Length: { $half_length }
-         Overtime Allowed: { $overtime }
 
 # Self-update / Updates page
 check-version = Check Version

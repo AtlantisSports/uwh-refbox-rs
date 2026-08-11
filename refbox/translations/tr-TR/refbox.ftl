@@ -12,7 +12,6 @@ cancel = İPTAL
 delete = SİL
 back = GERİ
 apply = UYGULA
-save = KAYDET
 user-options = KULLANICI SEÇENEKLERİ
 new = YENİ
 
@@ -35,8 +34,6 @@ team-timeout-count = TAKIM MOLASI
     SAYISI:
 
 # Uyarı Ekleme
-team-warning = TAKIM
-    UYARISI
 team-warning-line-1 = TAKIM
 team-warning-line-2 = UYARISI
 team-score-line-1 = TAKIM
@@ -81,8 +78,6 @@ audible-countdown-for-last-10-seconds = SESLİ GERİ SAYIM
     SON 10 SANİYE
 delay = GECİKME
 court = SAHA:
-single-half = TEK
-    DEVRE:
 half-length-full = DEVRE SÜRESİ:
 game-length = OYUN SÜRESİ:
 overtime-allowed = UZATMA
@@ -95,8 +90,6 @@ pre-ot-break-length = UZATMA ÖNCESİ
     ARA SÜRESİ:
 pre-sd-break-length = ANİ ÖLÜM ÖNCESİ
     ARA SÜRESİ:
-nominal-break-between-games = OYUNLAR ARASI
-    NOMİNAL ARA:
 ot-half-length = UZATMA DEVRESİ
     SÜRESİ:
 timeouts-counted-per = MOLALAR
@@ -151,13 +144,11 @@ half-length = DEVRE SÜRESİ
 length-of-half-during-regular-play = Normal oyun sırasında bir devrenin süresi
 half-time-lenght = DEVRE ARASI SÜRESİ
 length-of-half-time-period = Devre arası süresinin uzunluğu
-nom-break = NOMİNAL ARA
 game-block = OYUN BLOĞU
 game-block-full = OYUN BLOĞU:
 game-block-help = Bir oyunun başlangıcından bir sonraki oyunun başlangıcına kadar geçen süre
 game-block-too-short = Oyunu ve minimum arayı sığdırmak için çok kısa
 game-block-tight = Dar — takım molaları oyunları zamanlamasının dışına itebilir
-system-will-keep-game-times-spaced = Sistem, oyun başlangıç zamanlarını eşit aralıklı tutmaya çalışır. Bir başlangıçtan diğerine toplam süre 2 × [Devre Uzunluğu] + [Devre Arası Uzunluğu] + [Oyunlar Arası Nominal Süre] şeklindedir (örnek: [Devre Uzunluğu] = 15dk, [Devre Arası Uzunluğu] = 3dk ve [Oyunlar Arası Nominal Süre] = 12dk ise, bir oyunun başlangıcından diğerine kadar geçen süre 45dk olacaktır. Alınan molalar veya diğer saat duraklamaları, oyunlar arası minimum süreye ulaşılana kadar 12dk'yı kısaltacaktır).
 min-break = MİNİMUM ARA
 min-time-btwn-games = Bir oyun planlanandan uzun sürerse, bu sistemin izin vereceği oyunlar arasındaki minimum süredir. Oyunlar geride kalırsa sistem, her zaman bu minimum süreye saygı göstererek sonraki oyunlarda yakalamaya otomatik olarak çalışacaktır.
 pre-ot-break-abreviated = UZATMA ÖNCESİ ARA
@@ -169,7 +160,6 @@ len-of-overtime-halftime = Uzatma devre arasının süresi
 pre-sd-break = ANİ ÖLÜM ÖNCESİ ARA
 pre-sd-len = Önceki oyun dönemi ile Ani Ölüm arasındaki ara süresinin uzunluğu
 language = DİL
-this-language = TÜRKÇE
 portal-login-code = KOD
 portal-login-instructions = Lütfen { $portal } Portal >> Event Management >> Referee Management bölümüne gidin, yeni bir Refbox eklemek için + düğmesine tıklayın ve bu Refbox kimliğini girin:
     { $id }
@@ -177,7 +167,6 @@ portal-login-instructions = Lütfen { $portal } Portal >> Event Management >> Re
     { $portal } Portal bunun üzerine sol taraftaki sayı tuş takımını kullanarak girmeniz için bir onay kodu sağlayacaktır.
     Kodu girdikten sonra Tamam'a basın
 
-help = YARDIM:
 
 # Onay
 game-configuration-can-not-be-changed = Oyun yapılandırması, bir oyun devam ederken değiştirilemez.
@@ -214,24 +203,6 @@ refresh = YENİLE
 refreshing = YENİLENİYOR...
 settings = AYARLAR
 none = Yok
-game-number-error = Hata ({ $game_number })
-next-game-number-error = Hata ({ $next_game_number })
-last-game-next-game = Önceki Oyun: { $prev_game },
-    Sonraki Oyun: { $next_game }
-black-team-white-team = Siyah Takım: { $black_team }
-    Beyaz Takım: { $white_team }
-game-length-ot-allowed = Devre Süresi: { $half_length }
-         Devre Arası Süresi: { $half_time_length }
-         Uzatma İzin Verildi: { $overtime }
-overtime-details = Uzatma Öncesi Ara Süresi: { $pre_overtime }
-             Uzatma Devre Süresi: { $overtime_len }
-             Uzatma Devre Arası Süresi: { $overtime_half_time_len }
-sd-allowed = Ani Ölüm İzin Verildi: { $sd }
-pre-sd = Ani Ölüm Öncesi Ara Süresi: { $pre_sd_len }
-team-to-len = Takım Molası Süresi: { $to_len }
-time-btwn-games = Oyunlar Arası Nominal Süre: { $time_btwn }
-game-block-info = Oyun Bloğu: { $game_block }
-min-brk-btwn-games = Oyunlar Arası Minimum Süre: { $min_brk_time }
 
 
 # Liste Seçiciler
@@ -312,21 +283,8 @@ infraction = İhlal: {$infraction}
 error = Hata ({ $number })
 two-games = Önceki Oyun: { $prev_game },  Sonraki Oyun: { $next_game }
 one-game = Oyun: { $game }
-teams = { -dark-team-name } Takım: { $dark_team }
-    { -light-team-name } Takım: { $light_team }
-game-config = Devre Süresi: { $half_len },  Devre Arası Süresi: { $half_time_len }
-    Ani Ölüm İzin Verildi: { $sd_allowed },  Uzatma İzin Verildi: { $ot_allowed }
-team-timeouts = Takım Molaları: { $value }
 team-timeouts-label = TAKIM
     MOLALARI:
-stop-clock-last-2 = Son 2 Dakikada Saati Durdur: { $stop_clock }
-ref-list = Başhakem: { $chief_ref }
-    Zaman Ayarlayıcı: { $timer }
-    Su Hakemi 1: { $water_ref_1 }
-    Su Hakemi 2: { $water_ref_2 }
-    Su Hakemi 3: { $water_ref_3 }
-team-ref-list = Hakemler: { $ref_team }
-    Zaman/Skor Tutanlar: { $ts_keeper_team }
 unknown = Bilinmiyor
 select-infraction = Seçim yapın
 ## Oyun zamanı düğmesi
@@ -392,7 +350,6 @@ rugby = RAGBİ
 beep-test = BEEP TEST
 
 # Beep-test screen
-beep-test-pre = ÖN
 beep-test-top-time-label = SÜRE
 beep-test-top-level-label = SEVİYE
 beep-test-top-lap-label = TUR
@@ -400,9 +357,6 @@ beep-test-start = BAŞLAT
 beep-test-pause = DURAKLAT
 beep-test-resume = DEVAM ET
 beep-test-reset = SIFIRLA
-beep-test-column-level = SEVİYE
-beep-test-column-count = ADET
-beep-test-column-duration = SÜRE
 beep-test-edit-selected = Seviye { $level }
 beep-test-edit-time = SÜRE
 beep-test-edit-count = ADET
@@ -447,12 +401,6 @@ two-halves = 2 DEVRE
 one-period = 1 PERİYOT
 game-len = OYUN SÜRESİ
 length-of-game-during-regular-play = Normal oyun sırasında oyunun süresi
-
-# Single-period (1 Period) info variants — Game Length, no half-time line
-game-config-single-half = Oyun Süresi: { $half_len }
-    Ani Ölüm İzin Verildi: { $sd_allowed },  Uzatma İzin Verildi: { $ot_allowed }
-game-length-ot-allowed-single-half = Oyun Süresi: { $half_length }
-         Uzatma İzin Verildi: { $overtime }
 
 # Self-update / Updates page
 check-version = Sürümü Denetle

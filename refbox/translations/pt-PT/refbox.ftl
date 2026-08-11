@@ -12,7 +12,6 @@ cancel = CANCELAR
 delete = ELIMINAR
 back = VOLTAR
 apply = APLICAR
-save = GUARDAR
 user-options = OPÇÕES DO UTILIZADOR
 new = NOVO
 
@@ -35,8 +34,6 @@ team-timeout-count = NÚMERO DE
     TEMPOS DE EQUIPA:
 
 # Adicionar Aviso
-team-warning = AVISO DE
-    EQUIPA
 team-warning-line-1 = AVISO DE
 team-warning-line-2 = EQUIPA
 team-score-line-1 = RESULTADO DE
@@ -81,8 +78,6 @@ audible-countdown-for-last-10-seconds = CONTAGEM DECRESCENTE
     SONORA 10 S
 delay = ATRASO
 court = CAMPO:
-single-half = TEMPO
-    ÚNICO:
 half-length-full = DURAÇÃO DO TEMPO:
 game-length = DURAÇÃO DO JOGO:
 overtime-allowed = PRORROGAÇÃO
@@ -95,8 +90,6 @@ pre-ot-break-length = PAUSA PRÉ
     PRORROGAÇÃO:
 pre-sd-break-length = PAUSA PRÉ
     MORTE SÚBITA:
-nominal-break-between-games = PAUSA NOMINAL
-    ENTRE JOGOS:
 ot-half-length = DURAÇÃO TEMPO
     PRORROGAÇÃO:
 timeouts-counted-per = TEMPOS DE EQUIPA
@@ -151,13 +144,11 @@ half-length = DUR TEMPO
 length-of-half-during-regular-play = A duração de um tempo durante o jogo regular
 half-time-lenght = DUR INTERVALO
 length-of-half-time-period = A duração do período de intervalo
-nom-break = PAUSA NOM
 game-block = BLOCO DE JOGO
 game-block-full = BLOCO DE JOGO:
 game-block-help = Tempo desde o início de um jogo até ao início do seguinte
 game-block-too-short = Demasiado curto para o jogo mais a pausa mínima
 game-block-tight = Apertado — os tempos mortos podem fazer os jogos ultrapassar o seu slot
-system-will-keep-game-times-spaced = O sistema tentará manter os horários de início dos jogos espaçados de forma uniforme, sendo o tempo total de um início ao seguinte igual a 2 × [Duração do Tempo] + [Duração do Intervalo] + [Tempo Nominal Entre Jogos] (exemplo: se [Duração do Tempo] = 15 min, [Duração do Intervalo] = 3 min e [Tempo Nominal Entre Jogos] = 12 min, o tempo de início a início será de 45 min. Os tempos de equipa ou outras paragens reduzirão os 12 min até ser atingido o tempo mínimo entre jogos).
 min-break = PAUSA MÍN
 min-time-btwn-games = Se um jogo durar mais do que o previsto, este é o tempo mínimo entre jogos que o sistema atribuirá. Se os jogos ficarem atrasados, o sistema tentará recuperar nos jogos seguintes, respeitando sempre este tempo mínimo.
 pre-ot-break-abreviated = PAUSA PRÉ PRORR
@@ -169,7 +160,6 @@ len-of-overtime-halftime = A duração do intervalo da prorrogação
 pre-sd-break = PAUSA PRÉ MS
 pre-sd-len = A duração da pausa entre o período de jogo anterior e a Morte Súbita
 language = IDIOMA
-this-language = PORTUGUÊS
 portal-login-code = CÓDIGO
 portal-login-instructions = Aceda ao Portal { $portal } >> Gestão de Eventos >> Gestão de Árbitros, clique no botão + para adicionar um novo Refbox e introduza este ID de Refbox:
     { $id }
@@ -177,7 +167,6 @@ portal-login-instructions = Aceda ao Portal { $portal } >> Gestão de Eventos >>
     O Portal { $portal } fornecerá então um código de confirmação para introduzir à esquerda através do teclado numérico.
     Prima Concluído depois de ter introduzido o código
 
-help = AJUDA:
 
 # Confirmação
 game-configuration-can-not-be-changed = A configuração do jogo não pode ser alterada enquanto um jogo está em curso.
@@ -214,24 +203,6 @@ refresh = ATUALIZAR
 refreshing = A ATUALIZAR...
 settings = DEFINIÇÕES
 none = Nenhum
-game-number-error = Erro ({ $game_number })
-next-game-number-error = Erro ({ $next_game_number })
-last-game-next-game = Último Jogo: { $prev_game },
-    Próximo Jogo: { $next_game }
-black-team-white-team = Equipa Preta: { $black_team }
-    Equipa Branca: { $white_team }
-game-length-ot-allowed = Duração do Tempo: { $half_length }
-         Duração do Intervalo: { $half_time_length }
-         Prorrogação Permitida: { $overtime }
-overtime-details = Duração da Pausa Pré-Prorrogação: { $pre_overtime }
-             Duração do Tempo de Prorrogação: { $overtime_len }
-             Duração do Intervalo de Prorrogação: { $overtime_half_time_len }
-sd-allowed = Morte Súbita Permitida: { $sd }
-pre-sd = Duração da Pausa Pré-Morte Súbita: { $pre_sd_len }
-team-to-len = Duração do Tempo de Equipa: { $to_len }
-time-btwn-games = Tempo Nominal Entre Jogos: { $time_btwn }
-game-block-info = Bloco de Jogo: { $game_block }
-min-brk-btwn-games = Tempo Mínimo Entre Jogos: { $min_brk_time }
 
 
 # Seletores de Lista
@@ -312,21 +283,8 @@ infraction = Infração: {$infraction}
 error = Erro ({ $number })
 two-games = Último Jogo: { $prev_game },  Próximo Jogo: { $next_game }
 one-game = Jogo: { $game }
-teams = Equipa { -dark-team-name }: { $dark_team }
-    Equipa { -light-team-name }: { $light_team }
-game-config = Duração do Tempo: { $half_len },  Duração do Intervalo: { $half_time_len }
-    Morte Súbita Permitida: { $sd_allowed },  Prorrogação Permitida: { $ot_allowed }
-team-timeouts = Tempos de Equipa: { $value }
 team-timeouts-label = TEMPOS DE
     EQUIPA:
-stop-clock-last-2 = Parar Relógio nos Últimos 2 Minutos: { $stop_clock }
-ref-list = Árbitro Principal: { $chief_ref }
-    Controlador de Tempo: { $timer }
-    Árbitro Aquático 1: { $water_ref_1 }
-    Árbitro Aquático 2: { $water_ref_2 }
-    Árbitro Aquático 3: { $water_ref_3 }
-team-ref-list = Árbitros: { $ref_team }
-    Controlador de Tempo/Pontuação: { $ts_keeper_team }
 unknown = Desconhecido
 select-infraction = Selecione uma opção
 ## Botão de tempo de jogo
@@ -392,7 +350,6 @@ rugby = RÂGUEBI
 beep-test = BEEP TEST
 
 # Beep-test screen
-beep-test-pre = PRÉ
 beep-test-top-time-label = TEMPO
 beep-test-top-level-label = NÍVEL
 beep-test-top-lap-label = VOLTA
@@ -400,9 +357,6 @@ beep-test-start = INICIAR
 beep-test-pause = PAUSA
 beep-test-resume = RETOMAR
 beep-test-reset = REINICIAR
-beep-test-column-level = NÍVEL
-beep-test-column-count = CONT
-beep-test-column-duration = DURAÇÃO
 beep-test-edit-selected = Nível { $level }
 beep-test-edit-time = TEMPO
 beep-test-edit-count = CONT
@@ -447,12 +401,6 @@ two-halves = 2 TEMPOS
 one-period = 1 PERÍODO
 game-len = DURAÇÃO DO JOGO
 length-of-game-during-regular-play = A duração total do jogo durante o jogo regular
-
-# Single-period (1 Period) info variants — Game Length, no half-time line
-game-config-single-half = Duração do Jogo: { $half_len }
-    Morte Súbita Permitida: { $sd_allowed },  Prorrogação Permitida: { $ot_allowed }
-game-length-ot-allowed-single-half = Duração do Jogo: { $half_length }
-         Prorrogação Permitida: { $overtime }
 
 # Self-update / Updates page
 check-version = Verificar versão

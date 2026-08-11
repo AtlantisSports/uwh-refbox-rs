@@ -11,7 +11,6 @@ cancel = CANCELAR
 delete = ELIMINAR
 back = ATRÁS
 apply = APLICAR
-save = GUARDAR
 user-options = OPCIONES DE USUARIO
 new = NUEVO
 
@@ -34,8 +33,6 @@ team-timeout-count = NÚMERO DE
     TIEMPOS DE ESPERA:
 
 # Warning Add
-team-warning = AVISO
-    DE EQUIPO
 team-warning-line-1 = AVISO
 team-warning-line-2 = DE EQUIPO
 team-score-line-1 = PUNTUACIÓN
@@ -80,7 +77,6 @@ audible-countdown-for-last-10-seconds = CUENTA ATRÁS SONORA
 delay = RETRASO
 event = EVENTO:
 court = CANCHA:
-single-half = UNA SOLA MITAD:
 half-length-full = DURACIÓN DE
     UNA MITAD:
 game-length = DURACIÓN DEL
@@ -95,8 +91,6 @@ pre-ot-break-length = DURACIÓN
     PREVIA AL T/E:
 pre-sd-break-length = DURACIÓN PREVIA
     A LA M/S:
-nominal-break-between-games = DESCANSO
-    ENTRE JUEGOS:
 ot-half-length = DURACIÓN DE LA
     MITAD DEL T/M:
 timeouts-counted-per = TIEMPOS MUERTOS
@@ -153,13 +147,11 @@ length-of-half-during-regular-play = La duración de una mitad durante el juego 
 half-time-lenght = DURACIÓN DEL
     MEDIO TIEMPO
 length-of-half-time-period = La duración del período de medio tiempo
-nom-break = DESCANSO NOMINAL
 game-block = BLOQUE DE JUEGO
 game-block-full = BLOQUE DE JUEGO:
 game-block-help = Tiempo desde el inicio de un partido hasta el inicio del siguiente
 game-block-too-short = Demasiado corto para el partido más la pausa mínima
 game-block-tight = Ajustado — los tiempos muertos podrían retrasar los partidos fuera de su franja
-system-will-keep-game-times-spaced = El sistema intentará mantener los tiempos de inicio de los juegos espaciados uniformemente, con el tiempo total de un juego al siguiente siendo 2 * [Duración de la Mitad] + [Duración del Medio Tiempo] + [Tiempo Nominal Entre Juegos] (ejemplo: si los juegos tienen [Duración de la Mitad] = 15m, [Duración del Medio Tiempo] = 3m, y [Tiempo Nominal Entre Juegos] = 12m, el tiempo desde el inicio de un juego al siguiente será de 45m. Cualquier tiempo de espera tomado, u otras paradas de reloj, reducirán el tiempo de 12m hasta alcanzar el tiempo mínimo entre juegos).
 min-break = DESCANSO MÍNIMO
 min-time-btwn-games = Si un juego dura más de lo programado, este es el tiempo mínimo entre juegos que el sistema asignará. Si los juegos se retrasan, el sistema intentará automáticamente reajustarse después de los juegos subsecuentes, siempre respetando este tiempo mínimo entre juegos.
 pre-ot-break-abreviated = DESCANSO PREVIO
@@ -175,7 +167,6 @@ pre-sd-break = DESCANSO PREVIO
     A MUERTE SÚBITA
 pre-sd-len = La duración del descanso entre el período de juego precedente y la muerte súbita
 language = IDIOMA
-this-language = ESPAÑOL
 ### Check
 portal-login-code = Código de inicio de sesión
 ### Check
@@ -185,7 +176,6 @@ portal-login-instructions = Por favor, vaya a { $portal } Portal >> Gestión de 
     El { $portal } Portal proporcionará un código de confirmación que deberá introducir a la izquierda utilizando el teclado numérico.
     Presione HECHO una vez que haya introducido el código.
 
-help = AYUDA:
 
 # Confirmation
 game-configuration-can-not-be-changed = La configuración del juego no se puede cambiar mientras un juego está en progreso.
@@ -224,24 +214,6 @@ refresh = RECARGAR
 refreshing = RECARGANDO...
 settings = CONFIGURACIÓN
 none = Ninguno
-game-number-error = Error ({ $game_number })
-next-game-number-error = Error ({ $next_game_number })
-last-game-next-game = Último partido: { $prev_game },
-    Próximo Juego: { $next_game }
-black-team-white-team = Equipo Negro: { $black_team }
-    Equipo Blanco: { $white_team }
-game-length-ot-allowed = Duración de una mitad: { $half_length }
-         Duración del medio tiempo: { $half_time_length }
-         Tiempo extra habilitado: { $overtime }
-overtime-details = Duración del descanso previo al tiempo extra: { $pre_overtime }
-             Duración de la mitad del tiempo extra: { $overtime_len }
-             Duración del medio tiempo extra: { $overtime_half_time_len }
-sd-allowed = Muerte súbita habilitada: { $sd }
-pre-sd = Duración del descanso previo a la muerte súbita: { $pre_sd_len }
-team-to-len = Duración del tiempo muerto de equipo: { $to_len }
-time-btwn-games = Tiempo nominal entre partidos: { $time_btwn }
-game-block-info = Bloque de Juego: { $game_block }
-min-brk-btwn-games = Tiempo mínimo entre partidos: { $min_brk_time }
 
 
 # List Selecters
@@ -323,21 +295,8 @@ infraction = Infracción: {$infraction}
 error = Error ({ $number })
 two-games = Último partido: { $prev_game }, Próximo partido: { $next_game }
 one-game = Juego: { $game }
-teams = { -dark-team-name } Equipo: { $dark_team }
-    { -light-team-name } Equipo: { $light_team }
-game-config = Duración de la mitad: { $half_len },  Duración del medio tiempo: { $half_time_len }
-    Muerte súbita permitida: { $sd_allowed },  Tiempo Extra Permitido: { $ot_allowed }
-team-timeouts = Tiempos muertos de equipo: { $value }
 team-timeouts-label = TIEMPOS MUERTOS
     DE EQUIPO:
-stop-clock-last-2 = Detener reloj en los Últimos 2 minutos: { $stop_clock }
-ref-list = Árbitro principal: { $chief_ref }
-    Timer: { $timer }
-    Árbitro de agua 1: { $water_ref_1 }
-    Árbitro de agua 2: { $water_ref_2 }
-    Árbitro de agua 3: { $water_ref_3 }
-team-ref-list = Árbitros: { $ref_team }
-    Cronometrador/Marcador: { $ts_keeper_team }
 unknown = Desconocido
 select-infraction = Seleccione una opción
 ## Game time button
@@ -403,7 +362,6 @@ rugby = RUGBY
 beep-test = PRUEBA DE PITIDOS
 
 # Pantalla de prueba de pitidos
-beep-test-pre = PRE
 beep-test-top-time-label = TIEMPO
 beep-test-top-level-label = NIVEL
 beep-test-top-lap-label = VUELTA
@@ -411,9 +369,6 @@ beep-test-start = INICIAR
 beep-test-pause = PAUSAR
 beep-test-resume = REANUDAR
 beep-test-reset = REINICIAR
-beep-test-column-level = NIVEL
-beep-test-column-count = CANTIDAD
-beep-test-column-duration = DURACIÓN
 beep-test-edit-selected = Nivel { $level }
 beep-test-edit-time = TIEMPO
 beep-test-edit-count = CANTIDAD
@@ -458,12 +413,6 @@ two-halves = 2 MITADES
 one-period = 1 PERIODO
 game-len = DURACIÓN DEL JUEGO
 length-of-game-during-regular-play = La duración del juego durante el juego regular
-
-# Single-period (1 Period) info variants — Game Length, no half-time line
-game-config-single-half = Duración del juego: { $half_len }
-    Muerte súbita permitida: { $sd_allowed },  Tiempo Extra Permitido: { $ot_allowed }
-game-length-ot-allowed-single-half = Duración del juego: { $half_length }
-         Tiempo extra habilitado: { $overtime }
 
 # Self-update / Updates page
 check-version = Comprobar versión

@@ -167,6 +167,13 @@ pub struct RefBoxApp {
     /// go through that helper so the background task sees the latest
     /// selection.
     portal_event_id: SelectedEventId,
+    /// Where `uwhportal_client` actually points, kept in step with every
+    /// rebuild. Read to decide whether an Apply would repoint the refbox at a
+    /// different site (and so needs the clock and queue guards).
+    current_site: SiteTarget,
+    /// `--allow-http` inverted, as passed at launch. Governs the built-in
+    /// portal only — a custom site derives TLS from the scheme that was typed.
+    require_https: bool,
     source: GameSource,
     events: Option<BTreeMap<EventId, Event>>,
     schedule: Option<Schedule>,
@@ -365,6 +372,136 @@ enum ConfirmationKind {
     // describe what will change. Raised in apply_app_options (Task 9); rendered
     // in Task 7 view builder; committed via RestartAndApply handler (Task 8).
     PortalTenantSwitch { from_mode: Mode, to_mode: Mode },
+    // Raised when an Apply would point the refbox at a different site while it
+    // is unsafe to do so. Each carries the page to return to, so the operator
+    // lands back where they were with their edit still staged rather than being
+    // thrown out of settings.
+    SiteLockedByGame(ConfigPage),
+    SiteLockedByQueue(ConfigPage),
+}
+
+/// Which of the two kinds of site an address belongs to. Decides which saved
+/// credential is used: the operator's Portal login must never be sent to a
+/// third-party site, which would hand that site a working Portal credential.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SiteKind {
+    Portal,
+    Custom,
+}
+
+/// Where the portal client points, resolved from the config.
+///
+/// One type, produced by one function ([`site_target`]), used both to build the
+/// client and to decide whether an Apply repoints it. The SITE row shows the
+/// committed address that this is derived from, so what the operator reads and
+/// what the refbox talks to cannot drift apart — the drift this whole feature
+/// exists to remove.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SiteTarget {
+    kind: SiteKind,
+    /// Base URL with no trailing slash — every request formats its path onto this.
+    base_url: String,
+    /// `https_only` on the HTTP client. Fixed when the client is built, so a
+    /// change here means building a new client rather than editing the old one.
+    require_https: bool,
+    /// The whole address this came from, which for a custom site includes the
+    /// event. Carried so that comparing two targets asks "is this a different
+    /// address?" rather than only "is this a different host?" — editing just
+    /// the event in the URL must meet the same guards as editing the host.
+    address: String,
+}
+
+/// The site `source` calls for, or `None` when it asks for no change.
+///
+/// `Manual` returns `None` deliberately: with manual games nothing is fetched,
+/// but results already queued must keep going to the site they were queued for
+/// rather than following the operator back to the built-in portal.
+///
+/// `Custom` returns `None` when the saved address is empty or unusable, which
+/// leaves the client where it is instead of pointing it at nothing.
+fn site_target(
+    source: GameSource,
+    mode: Mode,
+    custom_site: &CustomSite,
+    portal_require_https: bool,
+) -> Option<SiteTarget> {
+    match source {
+        GameSource::Manual => None,
+        GameSource::Portal => Some(portal_target(mode, portal_require_https)),
+        GameSource::Custom => {
+            custom_site::parse_custom_site(&custom_site.url)
+                .ok()
+                .map(|parsed| SiteTarget {
+                    kind: SiteKind::Custom,
+                    // TLS follows the scheme the operator typed, which is what
+                    // lets a plain-http site work without the `--allow-http`
+                    // launch flag. Mirrors schedule-processor/src/main.rs:63.
+                    require_https: parsed.base_url.starts_with("https://"),
+                    base_url: parsed.base_url,
+                    address: custom_site.url.trim().to_string(),
+                })
+        }
+    }
+}
+
+/// The built-in portal's address for `mode`, honouring the developer override
+/// environment variable.
+///
+/// The override is deliberately consulted only here, never for a custom site:
+/// there the operator has typed an address, and quietly sending the requests
+/// somewhere else is exactly the failure the source picker removes.
+fn portal_target(mode: Mode, require_https: bool) -> SiteTarget {
+    // BeepTest reuses the UWH defaults: the client is built during startup in
+    // every mode, but the BeepTest UI never makes a portal call, so it sits idle.
+    let (default_url, override_var) = match mode {
+        Mode::Rugby => ("https://api.uwrportal.com", "UWR_PORTAL_URL_OVERRIDE"),
+        Mode::Hockey6V6 | Mode::Hockey3V3 | Mode::BeepTest => {
+            ("https://api.uwhportal.com", "UWH_PORTAL_URL_OVERRIDE")
+        }
+    };
+    let url_override = std::env::var(override_var).ok();
+    let base_url = url_override
+        .as_deref()
+        .unwrap_or(default_url)
+        .trim_end_matches('/')
+        .to_string();
+    if url_override.is_some() {
+        info!(
+            "{override_var} active for {} Portal: using {base_url}",
+            portal_name_for_mode(mode)
+        );
+    }
+    SiteTarget {
+        kind: SiteKind::Portal,
+        address: base_url.clone(),
+        base_url,
+        require_https,
+    }
+}
+
+/// Build a client for `target`, using the credential that belongs to that site.
+///
+/// `None` when the client cannot be built at all, which leaves the refbox in
+/// its existing degraded mode (red indicator, nothing sent) rather than holding
+/// a client pointed somewhere unintended.
+fn build_site_client(target: &SiteTarget, config: &Config) -> Option<UwhPortalClient> {
+    let token = match target.kind {
+        SiteKind::Portal => config.uwhportal.token.as_str(),
+        SiteKind::Custom => config.custom_site.token.as_str(),
+    };
+    let token = (!token.is_empty()).then_some(token);
+    match UwhPortalClient::new(
+        &target.base_url,
+        token,
+        target.require_https,
+        REQUEST_TIMEOUT,
+    ) {
+        Ok(c) => Some(c),
+        Err(e) => {
+            error!("Failed to start the client for {}: {e}", target.base_url);
+            None
+        }
+    }
 }
 
 // PageEntrySnapshot is a singleton — `RefBoxApp.page_entry_snapshot` holds at most
@@ -866,6 +1003,141 @@ impl RefBoxApp {
         !matches!(self.source, GameSource::Manual)
     }
 
+    /// Commit an applied source: the live field, the saved field so a relaunch
+    /// comes back on the same source, and — for a real remote — the one to
+    /// return to when MANUAL is switched off again.
+    ///
+    /// Only a real remote is remembered: applying MANUAL leaves the previous
+    /// choice standing, which is the whole point of keeping it separately.
+    fn commit_source(&mut self, source: GameSource) {
+        self.source = source;
+        self.config.source = source;
+        match source {
+            GameSource::Portal => self.config.remembered_remote = RemoteSource::Portal,
+            GameSource::Custom => self.config.remembered_remote = RemoteSource::Custom,
+            GameSource::Manual => {}
+        }
+    }
+
+    /// The site an Apply would leave the refbox pointed at, given the source
+    /// and saved address it is about to commit. `None` means "no change".
+    fn target_after_apply(
+        &self,
+        source: GameSource,
+        mode: Mode,
+        custom_site: &CustomSite,
+    ) -> Option<SiteTarget> {
+        site_target(source, mode, custom_site, self.require_https)
+            .filter(|target| *target != self.current_site)
+    }
+
+    /// The different site this page's APPLY would move to, if it moves at all.
+    ///
+    /// Both controls that can repoint the refbox are covered: the source
+    /// buttons, and the SITE address itself. The SITE editor is only reachable
+    /// with CUSTOM chosen, so the address it commits is the one about to be
+    /// used whether or not CUSTOM has been applied on the Game page yet —
+    /// which is what lets the schedule and teams be fetched from it.
+    fn pending_site_change(&self, page: ConfigPage) -> Option<SiteTarget> {
+        let edited = self.edited_settings.as_ref()?;
+        match page {
+            ConfigPage::CustomSite(_) => {
+                self.target_after_apply(GameSource::Custom, edited.mode, &edited.custom_site)
+            }
+            ConfigPage::Game | ConfigPage::App => {
+                self.target_after_apply(edited.source, edited.mode, &edited.custom_site)
+            }
+            _ => None,
+        }
+    }
+
+    /// Refuse a repoint that would strand the operator or their results, saying
+    /// which of the two reasons applies. A silent refusal is indistinguishable
+    /// from a broken button, so both cases produce a message rather than a
+    /// greyed-out control.
+    ///
+    /// `page` is where to return to, so the refused edit stays staged and the
+    /// operator can stop the clock (or send the results) and press APPLY again.
+    fn refuse_repoint(&self, page: ConfigPage) -> Option<ConfirmationKind> {
+        // A game in progress, not merely a running clock: between games the
+        // clock counts down to the next game and is running by default, which
+        // is exactly when an operator sets the source up. This matches the rule
+        // the game-config and switch-to-manual gates already use.
+        // Safety: Mutex poison only occurs if another thread already panicked; the refbox treats that as fatal (matches the 20+ identical sites in this file).
+        if self.tm.lock().unwrap().current_period() != GamePeriod::BetweenGames {
+            return Some(ConfirmationKind::SiteLockedByGame(page));
+        }
+        if self.portal_manager.has_queued_items() {
+            return Some(ConfirmationKind::SiteLockedByQueue(page));
+        }
+        None
+    }
+
+    /// Point the live client at `target`, with no restart.
+    ///
+    /// Building a fresh client rather than editing the old one is required, not
+    /// stylistic: whether TLS is demanded is fixed on the HTTP client when it is
+    /// created. The new client is assigned *through* the existing shared handle
+    /// rather than replacing it, so the background retry task — which holds a
+    /// clone of that handle — sends to the new site too. A request already in
+    /// flight is unaffected: every call locks, builds its request, releases the
+    /// lock and only then awaits, so it completes against the site it was
+    /// addressed to.
+    fn repoint_client(&mut self, target: SiteTarget) {
+        let Some(shared) = self.uwhportal_client.as_ref() else {
+            // No client at all means the refbox started in degraded mode (only
+            // reachable from a bad https-only config). There is no background
+            // task to hand a new client to, so this needs a restart, not a swap.
+            error!(
+                "Cannot point the refbox at {}: no client was started",
+                target.base_url
+            );
+            return;
+        };
+        let Some(new_client) = build_site_client(&target, &self.config) else {
+            return;
+        };
+        // Logs the whole address, not just the host: a custom site and the
+        // developer override can share a host, and "which site am I on?" is the
+        // first question asked of this line.
+        let kind = match target.kind {
+            SiteKind::Portal => "portal",
+            SiteKind::Custom => "custom site",
+        };
+        info!("Pointing the refbox at the {kind}: {}", target.address);
+        // why this cannot panic: the guard is held only for the assignment
+        // below, which cannot panic, so the mutex is never poisoned here.
+        *shared.lock().unwrap() = new_client;
+        self.current_site = target;
+    }
+
+    /// Re-seed the ACCESS TOKEN indicator after the refbox has been pointed at
+    /// a different site.
+    ///
+    /// Without this the row keeps the verdict it reached about the *previous*
+    /// site, which is worse than saying nothing: the credential is per-site, so
+    /// an OK earned from the portal would sit above a third-party site the
+    /// refbox has never authenticated to. Mirrors the seeding done when the
+    /// settings editor is opened.
+    fn refresh_token_indicator(&mut self) -> Task<Message> {
+        let has_token = match self.uwhportal_client.as_ref() {
+            // why this cannot panic: the guard is held only for a synchronous
+            // `has_token()` call and dropped immediately.
+            Some(client) => client.lock().unwrap().has_token(),
+            None => false,
+        };
+        let (valid, task) = match (has_token, self.current_event_id.clone()) {
+            (true, Some(id)) => (None, self.check_uwhportal_auth(&id)),
+            // No credential for this site, or no event to check it against:
+            // the resting state, same as opening the editor in that condition.
+            _ => (Some(false), Task::none()),
+        };
+        if let Some(ref mut settings) = self.edited_settings {
+            settings.uwhportal_token_valid = valid;
+        }
+        task
+    }
+
     fn check_uwhportal_auth(&self, event_id: &EventId) -> Task<Message> {
         if let Some(client) = &self.uwhportal_client {
             // why this cannot panic: see `request_event_list` above.
@@ -1139,16 +1411,7 @@ impl RefBoxApp {
             });
         }
 
-        self.source = source;
-        // Record the remote actually applied, so leaving MANUAL later
-        // returns to it. Only a real remote is remembered: applying
-        // MANUAL leaves the previous choice standing, which is the whole
-        // point of keeping it separately.
-        match source {
-            GameSource::Portal => self.config.remembered_remote = RemoteSource::Portal,
-            GameSource::Custom => self.config.remembered_remote = RemoteSource::Custom,
-            GameSource::Manual => {}
-        }
+        self.commit_source(source);
         // Route through set_current_event_id so portal_event_id stays in
         // sync (ADR 011 amendment 2026-04-23 dormant-until-linked).
         self.set_current_event_id(event_id);
@@ -1219,7 +1482,7 @@ impl RefBoxApp {
     /// active game config; pass it in as a snapshot captured before the `edited` borrow
     /// ends (mirrors the borrow choreography of the config-change branch).
     fn clear_portal_selections_to_manual(&mut self, manual_config: GameConfig) {
-        self.source = GameSource::Manual;
+        self.commit_source(GameSource::Manual);
         // Route through set_current_event_id so portal_event_id stays in sync (ADR 011).
         self.set_current_event_id(None);
         self.current_court = None;
@@ -1338,16 +1601,7 @@ impl RefBoxApp {
             let schedule = edited.schedule.clone();
 
             self.config.game = new_config;
-            self.source = source;
-            // Record the remote actually applied, so leaving MANUAL later
-            // returns to it. Only a real remote is remembered: applying MANUAL
-            // leaves the previous choice standing, which is the whole point of
-            // keeping it separately.
-            match source {
-                GameSource::Portal => self.config.remembered_remote = RemoteSource::Portal,
-                GameSource::Custom => self.config.remembered_remote = RemoteSource::Custom,
-                GameSource::Manual => {}
-            }
+            self.commit_source(source);
             // Route through set_current_event_id so portal_event_id stays in
             // sync (ADR 011 amendment 2026-04-23 dormant-until-linked).
             self.set_current_event_id(event_id);
@@ -1395,16 +1649,7 @@ impl RefBoxApp {
         let current_court = edited.current_court.clone();
         let schedule = edited.schedule.clone();
 
-        self.source = source;
-        // Record the remote actually applied, so leaving MANUAL later
-        // returns to it. Only a real remote is remembered: applying
-        // MANUAL leaves the previous choice standing, which is the whole
-        // point of keeping it separately.
-        match source {
-            GameSource::Portal => self.config.remembered_remote = RemoteSource::Portal,
-            GameSource::Custom => self.config.remembered_remote = RemoteSource::Custom,
-            GameSource::Manual => {}
-        }
+        self.commit_source(source);
         // Route through set_current_event_id so portal_event_id stays in sync
         // for the background health check (ADR 011 amendment 2026-04-23).
         self.set_current_event_id(event_id);
@@ -1547,14 +1792,21 @@ impl RefBoxApp {
                 // Flush the portal retry queue. Items queued under the old portal
                 // tenant cannot be delivered to the new tenant — discard them so the
                 // restarted app starts with a clean queue.
-                if let Err(e) = crate::portal_manager::queue::save(
-                    self.portal_manager.queue_dir(),
-                    &crate::portal_manager::queue::QueueFile::empty(),
-                ) {
-                    error!("Failed to flush portal queue before restart: {e}");
-                    // Continue with restart — the operator pressed Restart and we
-                    // must not block. The queue will be treated as stale items for
-                    // the new tenant, which the retry logic will eventually discard.
+                //
+                // Only for the built-in portal. A custom site is one address the
+                // operator typed and it does not change with the mode, so results
+                // queued for it are still deliverable to exactly that site after
+                // the restart; flushing them would destroy real game results.
+                if self.source == GameSource::Portal {
+                    if let Err(e) = crate::portal_manager::queue::save(
+                        self.portal_manager.queue_dir(),
+                        &crate::portal_manager::queue::QueueFile::empty(),
+                    ) {
+                        error!("Failed to flush portal queue before restart: {e}");
+                        // Continue with restart — the operator pressed Restart and we
+                        // must not block. The queue will be treated as stale items for
+                        // the new tenant, which the retry logic will eventually discard.
+                    }
                 }
 
                 // Persist the new mode to disk so the restarted exe reads it.
@@ -1894,29 +2146,42 @@ impl RefBoxApp {
             None
         };
 
-        let portal_token = if !config.uwhportal.token.is_empty() {
-            Some(config.uwhportal.token.as_str())
-        } else {
-            None
-        };
-        // BeepTest mode reuses the UWH defaults: the portal client is constructed
-        // unconditionally during startup, but the BeepTest UI never triggers any
-        // portal calls, so the client sits idle. Picking UWH here is harmless.
-        let (default_url, override_var) = match config.mode {
-            Mode::Rugby => ("https://api.uwrportal.com", "UWR_PORTAL_URL_OVERRIDE"),
-            Mode::Hockey6V6 | Mode::Hockey3V3 | Mode::BeepTest => {
-                ("https://api.uwhportal.com", "UWH_PORTAL_URL_OVERRIDE")
+        // A custom site is the one source that comes back on its own after a
+        // relaunch: the event it uses is written inside the saved URL, so there
+        // is nothing to restore from the portal link note. Portal mode is still
+        // decided by that note further down, exactly as before.
+        let startup_source = if config.source == GameSource::Custom {
+            if site_target(
+                GameSource::Custom,
+                config.mode,
+                &config.custom_site,
+                require_https,
+            )
+            .is_some()
+            {
+                GameSource::Custom
+            } else {
+                error!(
+                    "Saved custom site address is not usable ({:?}); starting with manual games",
+                    config.custom_site.url
+                );
+                GameSource::Manual
             }
+        } else {
+            GameSource::Manual
         };
-        let url_override = std::env::var(override_var).ok();
-        let portal_url = url_override.as_deref().unwrap_or(default_url).to_string();
-        if url_override.is_some() {
-            let portal_name = match config.mode {
-                Mode::Rugby => "UWR",
-                Mode::Hockey6V6 | Mode::Hockey3V3 | Mode::BeepTest => "UWH",
-            };
-            info!("{override_var} active for {portal_name} Portal: using {portal_url}");
-        }
+
+        // Falls back to the built-in portal for Manual and Portal alike: the
+        // client always exists, and which games the operator gets is decided by
+        // `source`, not by which site the idle client happens to hold.
+        let current_site = site_target(
+            startup_source,
+            config.mode,
+            &config.custom_site,
+            require_https,
+        )
+        .unwrap_or_else(|| portal_target(config.mode, require_https));
+
         #[cfg(debug_assertions)]
         let scramble_token_pending = std::env::var("UWH_PORTAL_SCRAMBLE_TOKEN").is_ok();
         #[cfg(debug_assertions)]
@@ -1926,16 +2191,7 @@ impl RefBoxApp {
             );
         }
         let uwhportal_client =
-            match UwhPortalClient::new(&portal_url, portal_token, require_https, REQUEST_TIMEOUT) {
-                Ok(c) => Some(Arc::new(Mutex::new(c))),
-                Err(e) => {
-                    error!(
-                        "Failed to start {} Portal Client: {e}",
-                        portal_name_for_mode(config.mode)
-                    );
-                    None
-                }
-            };
+            build_site_client(&current_site, &config).map(|c| Arc::new(Mutex::new(c)));
 
         // Shared event id the background portal task consults for its
         // periodic `verify_token` check. Mirrors `current_event_id` on
@@ -2069,7 +2325,9 @@ impl RefBoxApp {
             update_sender,
             uwhportal_client,
             portal_event_id,
-            source: GameSource::Manual,
+            current_site,
+            require_https,
+            source: startup_source,
             events: None,
             schedule: None,
             game_rosters: BlackWhiteBundle {
@@ -2116,7 +2374,14 @@ impl RefBoxApp {
         // heartbeat, deleted when the portal is switched off or no event is linked).
         // See ADR 011/017 amendment and
         // docs/superpowers/specs/2026-06-25-portal-link-restore-resilience-design.md.
+        //
+        // Skipped entirely when a custom site was restored above: the note
+        // records a *portal* link, and applying it would silently move the
+        // operator off the site they configured.
         match crate::portal_manager::link_session::load_or_none(&new.config_dir) {
+            Ok(Some(_)) if new.source == GameSource::Custom => {
+                info!("Custom site restored from config; portal link note ignored");
+            }
             Ok(Some(note)) => {
                 if decide_restore(&note, time::OffsetDateTime::now_utc(), new.config.mode) {
                     info!(
@@ -3180,6 +3445,17 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::ApplyConfigPage(page) => {
+                // Decide up front whether this APPLY moves the refbox to a
+                // different site, and refuse before anything is committed, so a
+                // refusal leaves every edit staged exactly as it was left.
+                let new_site = self.pending_site_change(page);
+                if new_site.is_some() {
+                    if let Some(refusal) = self.refuse_repoint(page) {
+                        self.app_state = AppState::ConfirmationPage(refusal);
+                        trace!("AppState changed to {:?}", self.app_state);
+                        return Task::none();
+                    }
+                }
                 match page {
                     ConfigPage::App => {
                         if let Some(kind) = self.apply_app_options() {
@@ -3232,6 +3508,13 @@ impl RefBoxApp {
                             .unwrap_or_default();
                     }
                 }
+                // Committed without a refusal, so the site the operator just
+                // chose becomes the one the refbox talks to — no restart.
+                let mut task = Task::none();
+                if let Some(target) = new_site {
+                    self.repoint_client(target);
+                    task = self.refresh_token_indicator();
+                }
                 self.page_entry_snapshot = None;
                 self.persist_config();
                 // Keep the link note in step with the committed portal fields
@@ -3239,7 +3522,7 @@ impl RefBoxApp {
                 // state — or deletes the note when the portal was switched off.
                 self.persist_link_session();
                 self.navigate_to_parent(page);
-                Task::none()
+                task
             }
             Message::CancelConfigPage(page) => {
                 self.revert_from_snapshot();
@@ -4153,6 +4436,20 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::ConfirmationSelected(selection) => {
+                // The site-locked refusals carry the page they were raised
+                // from and offer one button, which returns the operator there
+                // with their edit still staged — nothing was committed and
+                // nothing is discarded.
+                if let AppState::ConfirmationPage(
+                    ConfirmationKind::SiteLockedByGame(page)
+                    | ConfirmationKind::SiteLockedByQueue(page),
+                ) = self.app_state
+                {
+                    self.app_state = AppState::EditGameConfig(page);
+                    trace!("AppState changed to {:?}", self.app_state);
+                    return Task::none();
+                }
+
                 if matches!(
                     self.app_state,
                     AppState::ConfirmationPage(
@@ -4537,7 +4834,14 @@ impl RefBoxApp {
                             // synchronous `set_token()` call and dropped immediately.
                             client.lock().unwrap().set_token(&token);
                         }
-                        self.config.uwhportal.token = token;
+                        // Save it against the site it was issued by. Writing it
+                        // to the portal's slot regardless would both destroy the
+                        // operator's real Portal login and leave the custom site
+                        // with no saved credential for the next launch.
+                        match self.current_site.kind {
+                            SiteKind::Portal => self.config.uwhportal.token = token,
+                            SiteKind::Custom => self.config.custom_site.token = token,
+                        }
                         if let Some(ref mut settings) = self.edited_settings {
                             settings.uwhportal_token_valid = Some(true);
                         }
@@ -5299,11 +5603,16 @@ impl RefBoxApp {
                 if new_mode != self.config.mode {
                     self.config.mode = new_mode;
                     self.set_current_event_id(None);
-                    if let Err(e) = crate::portal_manager::queue::save(
-                        self.portal_manager.queue_dir(),
-                        &crate::portal_manager::queue::QueueFile::empty(),
-                    ) {
-                        error!("Failed to flush portal queue before restart: {e}");
+                    // Portal only, for the reason given in the RestartAndApply
+                    // arm: a custom site is the same address either side of a
+                    // mode change, so its queued results stay deliverable.
+                    if self.source == GameSource::Portal {
+                        if let Err(e) = crate::portal_manager::queue::save(
+                            self.portal_manager.queue_dir(),
+                            &crate::portal_manager::queue::QueueFile::empty(),
+                        ) {
+                            error!("Failed to flush portal queue before restart: {e}");
+                        }
                     }
                     if let Err(e) = confy::store(APP_NAME, None, &self.config) {
                         error!("Failed to persist config before restart: {e}");
@@ -5350,13 +5659,19 @@ impl RefBoxApp {
             // falls back to the pre-feature layout. See ADR 011 amendments
             // 2026-04-23 (event-linked gate) and 2026-05-16 (using-uwh-portal gate).
             portal_indicator: if self.uses_remote() {
-                self.current_event_id
-                    .as_ref()
-                    .map(|_| self.portal_manager.indicator_state())
+                self.current_event_id.as_ref().map(|_| {
+                    let mut state = self.portal_manager.indicator_state();
+                    // The committed source, not the one staged in the editor:
+                    // the tile reports the live connection, so choosing CUSTOM
+                    // must not change the emblem until APPLY.
+                    state.site_is_custom = self.source == GameSource::Custom;
+                    state
+                })
             } else {
                 None
             },
             has_led_panel: self.has_led_panel,
+            committed_site_url: &self.config.custom_site.url,
         };
 
         let mut main_view = column![match self.app_state {
@@ -5828,6 +6143,119 @@ fn decide_restore(
     }
     // Trustworthy clock: restore only while the link is within the window.
     is_fresh(note.last_active, now, FRESHNESS_WINDOW)
+}
+
+#[cfg(test)]
+mod site_target_tests {
+    use super::*;
+
+    fn custom(url: &str) -> CustomSite {
+        CustomSite {
+            url: url.to_string(),
+            token: String::new(),
+        }
+    }
+
+    /// The typed scheme decides whether TLS is demanded — this is what removes
+    /// the `--allow-http` launch flag for a third-party site. The launch flag
+    /// passed here is `true` (https demanded) precisely to prove it is ignored
+    /// for a custom address.
+    #[test]
+    fn custom_http_site_does_not_demand_tls() {
+        let target = site_target(
+            GameSource::Custom,
+            Mode::Hockey6V6,
+            &custom("http://scoreboard.local:8099/api/events/1234-A"),
+            true,
+        )
+        .unwrap();
+        assert_eq!(target.kind, SiteKind::Custom);
+        assert_eq!(target.base_url, "http://scoreboard.local:8099");
+        assert!(!target.require_https);
+    }
+
+    #[test]
+    fn custom_https_site_demands_tls() {
+        let target = site_target(
+            GameSource::Custom,
+            Mode::Hockey6V6,
+            &custom("https://scoreboard.example/api/events/1234-A"),
+            false,
+        )
+        .unwrap();
+        assert_eq!(target.base_url, "https://scoreboard.example");
+        assert!(target.require_https);
+    }
+
+    /// An address that cannot be used asks for no change, leaving the client
+    /// where it is rather than pointing it at nothing.
+    #[test]
+    fn unusable_custom_address_asks_for_no_change() {
+        for url in [
+            "",
+            "   ",
+            "scoreboard.local/api/events/1234-A",
+            "http://x/api",
+        ] {
+            assert!(
+                site_target(GameSource::Custom, Mode::Hockey6V6, &custom(url), false).is_none(),
+                "{url:?} should not produce a target"
+            );
+        }
+    }
+
+    /// Changing only the event inside the address still counts as a different
+    /// target, so editing it meets the same guards as changing the host. The
+    /// client itself is unaffected — both share a base URL.
+    #[test]
+    fn a_different_event_is_a_different_target() {
+        let a = site_target(
+            GameSource::Custom,
+            Mode::Hockey6V6,
+            &custom("http://scoreboard.local:8099/api/events/1234-A"),
+            false,
+        )
+        .unwrap();
+        let b = site_target(
+            GameSource::Custom,
+            Mode::Hockey6V6,
+            &custom("http://scoreboard.local:8099/api/events/1234-B"),
+            false,
+        )
+        .unwrap();
+        assert_eq!(a.base_url, b.base_url);
+        assert_ne!(a, b);
+    }
+
+    /// Manual never repoints: results already queued must keep going to the
+    /// site they were queued for, not follow the operator to the portal.
+    #[test]
+    fn manual_asks_for_no_change() {
+        assert!(
+            site_target(
+                GameSource::Manual,
+                Mode::Hockey6V6,
+                &custom("http://scoreboard.local:8099/api/events/1234-A"),
+                false,
+            )
+            .is_none()
+        );
+    }
+
+    /// The portal keeps taking its TLS requirement from the launch flag, and
+    /// never from a custom address. (The address itself is not asserted: it can
+    /// legitimately come from the developer override environment variable.)
+    #[test]
+    fn portal_takes_tls_from_the_launch_flag() {
+        let site = custom("http://scoreboard.local:8099/api/events/1234-A");
+        for require_https in [true, false] {
+            let target =
+                site_target(GameSource::Portal, Mode::Hockey6V6, &site, require_https).unwrap();
+            assert_eq!(target.kind, SiteKind::Portal);
+            assert_eq!(target.require_https, require_https);
+            assert!(!target.base_url.contains("scoreboard.local"));
+        }
+    }
 }
 
 #[cfg(test)]

@@ -184,6 +184,8 @@ apply-this-game-number-change = Come vuoi applicare questa modifica al numero di
 apply-switch-to-manual = Il passaggio alla modalità manuale eliminerà il calendario caricato e resetterà il tempo prima della prossima partita. Una partita è in corso.
 portal-enabled = Quando { $portal }PORTAL è abilitato, tutti i campi devono essere compilati.
 mode-switch-portal-tenant = Cambiare modalità da { $from_mode } a { $to_mode } disabiliterà il collegamento a { $from_portal }PORTAL e sarà necessario ricollegarsi a { $to_portal }PORTAL.
+source-locked-game = L'origine delle partite non può essere modificata mentre una partita è in corso.
+source-locked-queue = Ci sono ancora risultati di partite in attesa di essere inviati. Inviali o eliminali prima di procedere.
 uwhportal-token-invalid-code = Codice inserito non valido.
     Riprova.
 uwhportal-token-no-pending-link = Il portale non si aspetta una connessione.

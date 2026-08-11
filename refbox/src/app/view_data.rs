@@ -18,4 +18,10 @@ pub(super) struct ViewData<'a, 'b> {
     /// panel connected). Used to gray out controls that only make sense
     /// without a real panel — currently just "Open New Display".
     pub(super) has_led_panel: bool,
+    /// The custom site address as committed, which is the one the refbox
+    /// actually talks to. The SITE row shows this rather than whatever is
+    /// currently typed into the editor, so an address that has not been
+    /// applied — or whose APPLY was refused — can never be mistaken for the
+    /// address in use.
+    pub(super) committed_site_url: &'a str,
 }

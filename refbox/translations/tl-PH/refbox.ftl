@@ -184,6 +184,8 @@ apply-this-game-number-change = Paano mo nais ilapat ang pagbabago ng numero ng 
 apply-switch-to-manual = Ang paglipat sa manual ay magtatanggal ng na-load na iskedyul at ire-reset ang oras bago ang susunod na laro. May laro na nagaganap.
 portal-enabled = Kapag pinagana ang { $portal }PORTAL, dapat mapunan ang lahat ng field.
 mode-switch-portal-tenant = Ang pagbabago ng mode mula { $from_mode } patungong { $to_mode } ay magpapatay ng koneksyon sa { $from_portal }PORTAL at kailangan mong muling kumonekta sa { $to_portal }PORTAL.
+source-locked-game = Hindi mababago ang pinagkukunan ng laro habang nagaganap ang laro.
+source-locked-queue = May mga resulta ng laro na naghihintay pang maipadala. Ipadala o itapon muna ang mga ito.
 uwhportal-token-invalid-code = Maling code ang naipasok.
     Pakisubukan muli.
 uwhportal-token-no-pending-link = Hindi inaasahan ng Portal ang isang koneksyon.

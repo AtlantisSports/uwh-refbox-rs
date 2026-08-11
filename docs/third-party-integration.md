@@ -10,9 +10,18 @@ promise, and a future release may change any of it without notice.
 ## Pointing refbox at your site
 
 None of what follows matters until refbox is actually talking to your site. There are two routes,
-and they behave differently. The first is the one to use.
+they behave differently, and which one is open to you depends on which build you have:
 
-### The operator selects your site in the app
+- **A downloaded release** — the only thing available today. Use
+  [The environment override](#the-environment-override-built-in-portal-only) below. The in-app
+  route does not exist in your build, so skip the next section until it ships.
+- **The unreleased custom-source branch** — use
+  [The operator selects your site in the app](#the-operator-selects-your-site-in-the-app-unreleased),
+  next. This is the route to prefer once it is released, which is why it is described first.
+
+Everything after this section applies to both routes unless it says otherwise.
+
+### The operator selects your site in the app (UNRELEASED)
 
 In refbox's settings: set **MANUAL GAMES** to **NO**, choose **CUSTOM** as the source, tap the
 **SITE:** row, type your address, and press **APPLY**. Nothing has to be set before launch, and
@@ -104,16 +113,20 @@ make eighteen different calls to the UWH Portal. If you only want to run a site 
 in for the Portal on the day of the tournament — the thing the referee's box actually talks
 to at poolside — you only need to support eight of them:
 
-| # | Operation | Path | Auth |
-|---|---|---|---|
-| 1 | Link a refbox | `POST /api/events/{eventId}/access-keys/ref-box` | none |
-| 2 | Verify token | `GET /api/events/{eventId}/access-keys/verify` | bearer |
-| 3 | Event list | `GET /api/events` | none |
-| 4 | Event teams | `GET /api/events/{eventId}/teams` | none |
-| 5 | Schedule (privileged) | `GET /api/events/{eventId}/schedule/privileged` | bearer |
-| 6 | Referees | `GET /api/events/{eventId}/referees` | none |
-| 7 | Push scores | `POST /api/events/{eventId}/schedule/games/{gameNumber}/scores` | bearer |
-| 8 | Push stats | `POST /api/admin/events/stats` | bearer |
+| # | Operation | Path | Auth | Inventory # |
+|---|---|---|---|---|
+| 1 | Link a refbox | `POST /api/events/{eventId}/access-keys/ref-box` | none | 1 |
+| 2 | Verify token | `GET /api/events/{eventId}/access-keys/verify` | bearer | 3 |
+| 3 | Event list | `GET /api/events` | none | 9 |
+| 4 | Event teams | `GET /api/events/{eventId}/teams` | none | 8 |
+| 5 | Schedule (privileged) | `GET /api/events/{eventId}/schedule/privileged` | bearer | 6 |
+| 6 | Referees | `GET /api/events/{eventId}/referees` | none | 7 |
+| 7 | Push scores | `POST /api/events/{eventId}/schedule/games/{gameNumber}/scores` | bearer | 5 |
+| 8 | Push stats | `POST /api/admin/events/stats` | bearer | 4 |
+
+**These eight numbers are the ones this document uses.** Every later reference to "call 5" and
+the like means this table. The Full inventory below numbers all eighteen calls in source order
+instead, so its numbers do not match — the last column above is the bridge between the two.
 
 The other ten calls serve two separate programs that are not the refbox itself: the
 pre-tournament admin tool (`schedule-processor`), which uploads and manages a schedule before
@@ -126,6 +139,10 @@ those ten.
 All eighteen calls the refbox ecosystem makes to the Portal today, across all three programs.
 "Auth" is "bearer" when the call requires a bearer token in the `Authorization` header, and
 "none" when it does not.
+
+**The numbers in this table are source order and are used nowhere else in this document.** When
+the text says "call 2" it means the eight-call table above, not this one. Match rows by path, or
+use the "Inventory #" column above.
 
 | # | Method | Path | Caller(s) | Auth | Source |
 |---|---|---|---|---|---|
@@ -433,7 +450,14 @@ operator unless they try to use that event's teams.
 successful login (call 1), when refbox restarts with a previously-linked event remembered from
 last time, and whenever the operator taps REFRESH on the game-info screen.
 
-**Authentication:** `Authorization: Bearer <token>`
+**Authentication:** `Authorization: Bearer <token>` — **and refusing it when that header is
+absent or carries a token you did not issue is your obligation, not a formality.** refbox sends
+this call unauthenticated as a matter of course: the operator points it at your site, refbox
+adopts the event and asks for the schedule immediately, before any pairing has happened. Answer
+that with `200` and the operator can pick a court and run games on your data without ever
+linking, and nothing anywhere on their screen will say so. Return `401`; refbox recovers by
+itself once the operator links and re-requests the schedule. See
+[Rules that apply to every call](#rules-that-apply-to-every-call).
 
 **Query parameters:** none
 
@@ -760,7 +784,6 @@ mismatch between your schedule and your team list is easy to ship without notici
 | `role` | required | Free-text role name, e.g. `"Head Referee"` — refbox doesn't validate this against a fixed list |
 | `userId` | optional | Portal user ID, matched against call 6's response to show a name |
 | `teamId` | optional | Team ID, **long form** — used when an official is assigned by team rather than by person, in which case `userId` is absent. It is validated exactly like any other team ID, so a malformed one fails the entire schedule parse, not just this assignment. If it can't be resolved to a team name, the raw ID is displayed. |
-| `teamId` | optional | Set instead of `userId` when a team (not an individual) supplies the referee, long form |
 
 #### `TimingRule` (`schedule.rs:241`) — all fifteen fields
 

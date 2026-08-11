@@ -11,6 +11,15 @@ work. A few other standard-library modules (re, sys, urllib.parse, datetime)
 are used for routing/logging plumbing -- none of them are third-party
 packages, and the document's ban is specifically on frameworks like flask/
 fastapi/requests, not on the rest of the standard library.
+
+THIS IS NOT A REFERENCE IMPLEMENTATION. It is an executable check of the
+message formats and the call sequence a real refbox will exercise -- nothing
+more. It deliberately does NOT implement the security policy the document
+requires of a real site, and the one place that matters is call 1: this stub
+hands its access key to anyone who asks, while the document requires a real
+site to bind a code to an admin-entered refBoxId and refuse everything else.
+Copy the shapes from here; take the security rules from the document, not
+from this file. See handle_link_refbox.
 """
 
 import http.server
@@ -154,11 +163,37 @@ def _require_bearer(h):
 
 
 def handle_link_refbox(h, m, query, raw_body):
-    # The document explicitly says a stand-in site is free to skip the real
-    # NoPendingLink/InvalidCode negotiation and just hand back a token that
-    # works afterwards -- "Nothing about calls 2-8 depends on the token
-    # having been produced by call 1." So: always succeed. This call is
-    # unauthenticated by design -- it is how a refbox obtains its token.
+    # DELIBERATELY WRONG, and the only place this stub knowingly diverges from
+    # the document. It ignores the request body and hands the key to anyone.
+    #
+    # The document REQUIRES the negotiation: record the refBoxId an admin
+    # entered so a pending link exists, issue a code bound only to that
+    # refBoxId, reject anything else with the exact 400 reason strings
+    # NoPendingLink / InvalidCode, expire codes, and keep every issued
+    # accessKey revocable. An earlier revision of the document said a stand-in
+    # site was free to skip that; it no longer does, and this stub was not
+    # changed to follow, on purpose:
+    #
+    #   - refbox cannot tell the difference. It accepts whatever call 1
+    #     returns, so implementing the negotiation here would verify nothing
+    #     about refbox -- the only thing this stub exists to verify.
+    #   - the negotiation would add a manual pairing step to every walkthrough,
+    #     which is the one thing that makes the stub usable at the screen.
+    #
+    # So this is a happy-path fixture, not an example to copy. A site that
+    # ships this behaviour is an open token dispenser: it hands a working
+    # credential to any client that can reach it, which hollows out the
+    # document's own "reject a token you did not issue" rule on call 2.
+    #
+    # This call is unauthenticated by design -- it is how a refbox obtains its
+    # token in the first place.
+    print(
+        "    -> 200, key issued to ANY caller -- this stub skips the pairing "
+        "negotiation on purpose. A real site MUST bind the code to an "
+        "admin-entered refBoxId and reject the rest with NoPendingLink / "
+        "InvalidCode. Do not copy this handler.",
+        flush=True,
+    )
     h._send_json(200, {"accessKey": ACCESS_KEY})
 
 

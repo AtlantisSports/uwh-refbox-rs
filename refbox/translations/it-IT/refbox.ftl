@@ -12,7 +12,6 @@ cancel = ANNULLA
 delete = ELIMINA
 back = INDIETRO
 apply = APPLICA
-save = SALVA
 user-options = OPZIONI UTENTE
 new = NUOVO
 
@@ -35,8 +34,6 @@ team-timeout-count = NUMERO DI
     TIME-OUT:
 
 # Aggiunta Ammonizione
-team-warning = AMMONIZIONE
-    DI SQUADRA
 team-warning-line-1 = AMMONIZIONE
 team-warning-line-2 = DI SQUADRA
 team-score-line-1 = PUNTEGGIO
@@ -81,8 +78,6 @@ audible-countdown-for-last-10-seconds = CONTO ALLA ROVESCIA
     SONORO 10 S
 delay = RITARDO
 court = CAMPO:
-single-half = SINGOLO
-    TEMPO:
 half-length-full = DURATA TEMPO:
 game-length = DURATA PARTITA:
 overtime-allowed = TEMPI SUPPL.
@@ -95,8 +90,6 @@ pre-ot-break-length = PAUSA PRE
     SUPPLEMENTARI:
 pre-sd-break-length = PAUSA PRE
     MORTE IMPROVVISA:
-nominal-break-between-games = PAUSA NOMINALE
-    FRA PARTITE:
 ot-half-length = DURATA TEMPO
     SUPPLEMENTARE:
 timeouts-counted-per = TIME-OUT
@@ -151,13 +144,11 @@ half-length = DUR TEMPO
 length-of-half-during-regular-play = La durata di un tempo durante il gioco regolare
 half-time-lenght = DUR INTERVALLO
 length-of-half-time-period = La durata del periodo di intervallo
-nom-break = PAUSA NOM
 game-block = BLOCCO PARTITA
 game-block-full = BLOCCO PARTITA:
 game-block-help = Tempo dall'inizio di una partita all'inizio della successiva
 game-block-too-short = Troppo breve per contenere la partita più la pausa minima
 game-block-tight = Stretto — i timeout potrebbero far sforare le partite dal loro slot
-system-will-keep-game-times-spaced = Il sistema cercherà di mantenere i tempi di inizio partita equamente distanziati, con il tempo totale da un inizio all'altro pari a 2 × [Durata Tempo] + [Durata Intervallo] + [Tempo Nominale fra Partite] (esempio: se [Durata Tempo] = 15 min, [Durata Intervallo] = 3 min e [Tempo Nominale fra Partite] = 12 min, il tempo da inizio a inizio sarà 45 min. Eventuali time-out o altre interruzioni ridurranno i 12 min fino al raggiungimento del tempo minimo fra partite).
 min-break = PAUSA MIN
 min-time-btwn-games = Se una partita dura più del previsto, questo è il tempo minimo fra le partite che il sistema assegnerà. Se le partite accumulano ritardo, il sistema cercherà di recuperare nelle partite successive, rispettando sempre questo tempo minimo.
 pre-ot-break-abreviated = PAUSA PRE SUPPL.
@@ -169,7 +160,6 @@ len-of-overtime-halftime = La durata dell'intervallo supplementare
 pre-sd-break = PAUSA PRE MORTE IMM.
 pre-sd-len = La durata della pausa fra il periodo di gioco precedente e la Morte Improvvisa
 language = LINGUA
-this-language = ITALIANO
 portal-login-code = CODICE
 portal-login-instructions = Vai su { $portal } Portal >> Gestione Evento >> Gestione Arbitri, clicca sul pulsante + per aggiungere un nuovo Refbox e inserisci questo ID Refbox:
     { $id }
@@ -177,7 +167,6 @@ portal-login-instructions = Vai su { $portal } Portal >> Gestione Evento >> Gest
     Il Portale { $portal } fornirà quindi un codice di conferma da inserire a sinistra usando il tastierino numerico.
     Premi Fine una volta inserito il codice
 
-help = AIUTO:
 
 # Conferma
 game-configuration-can-not-be-changed = La configurazione della partita non può essere modificata mentre una partita è in corso.
@@ -214,24 +203,6 @@ refresh = AGGIORNA
 refreshing = AGGIORNAMENTO...
 settings = IMPOSTAZIONI
 none = Nessuno
-game-number-error = Errore ({ $game_number })
-next-game-number-error = Errore ({ $next_game_number })
-last-game-next-game = Ultima Partita: { $prev_game },
-    Prossima Partita: { $next_game }
-black-team-white-team = Squadra Nera: { $black_team }
-    Squadra Bianca: { $white_team }
-game-length-ot-allowed = Durata Tempo: { $half_length }
-         Durata Intervallo: { $half_time_length }
-         Tempi Suppl. Consentiti: { $overtime }
-overtime-details = Durata Pausa Pre-Supplementari: { $pre_overtime }
-             Durata Tempo Supplementare: { $overtime_len }
-             Durata Intervallo Supplementare: { $overtime_half_time_len }
-sd-allowed = Morte Improvvisa Consentita: { $sd }
-pre-sd = Durata Pausa Pre-Morte Improvvisa: { $pre_sd_len }
-team-to-len = Durata Time-out di Squadra: { $to_len }
-time-btwn-games = Tempo Nominale fra Partite: { $time_btwn }
-game-block-info = Blocco di Gioco: { $game_block }
-min-brk-btwn-games = Tempo Minimo fra Partite: { $min_brk_time }
 
 
 # Selettori Lista
@@ -312,21 +283,8 @@ infraction = Infrazione: {$infraction}
 error = Errore ({ $number })
 two-games = Ultima Partita: { $prev_game },  Prossima Partita: { $next_game }
 one-game = Partita: { $game }
-teams = Squadra { -dark-team-name }: { $dark_team }
-    Squadra { -light-team-name }: { $light_team }
-game-config = Durata Tempo: { $half_len },  Durata Intervallo: { $half_time_len }
-    Morte Improvvisa Consentita: { $sd_allowed },  Tempi Suppl. Consentiti: { $ot_allowed }
-team-timeouts = Time-out di Squadra: { $value }
 team-timeouts-label = TIME-OUT DI
     SQUADRA:
-stop-clock-last-2 = Ferma Orologio negli Ultimi 2 Minuti: { $stop_clock }
-ref-list = Capo Arbitro: { $chief_ref }
-    Cronometrista: { $timer }
-    Arbitro di Vasca 1: { $water_ref_1 }
-    Arbitro di Vasca 2: { $water_ref_2 }
-    Arbitro di Vasca 3: { $water_ref_3 }
-team-ref-list = Arbitri: { $ref_team }
-    Cronometrista/Segnapunti: { $ts_keeper_team }
 unknown = Sconosciuto
 select-infraction = Effettua una scelta
 ## Pulsante tempo di gioco
@@ -392,7 +350,6 @@ rugby = RUGBY
 beep-test = BEEP TEST
 
 # Beep-test screen
-beep-test-pre = PRE
 beep-test-top-time-label = TEMPO
 beep-test-top-level-label = LIVELLO
 beep-test-top-lap-label = GIRO
@@ -400,9 +357,6 @@ beep-test-start = AVVIA
 beep-test-pause = PAUSA
 beep-test-resume = RIPRENDI
 beep-test-reset = AZZERA
-beep-test-column-level = LIVELLO
-beep-test-column-count = NUMERO
-beep-test-column-duration = DURATA
 beep-test-edit-selected = Livello { $level }
 beep-test-edit-time = TEMPO
 beep-test-edit-count = NUMERO
@@ -447,12 +401,6 @@ two-halves = 2 TEMPI
 one-period = 1 PERIODO
 game-len = DURATA PARTITA
 length-of-game-during-regular-play = La durata della partita durante il gioco regolare
-
-# Single-period (1 Period) info variants — Game Length, no half-time line
-game-config-single-half = Durata Partita: { $half_len }
-    Morte Improvvisa Consentita: { $sd_allowed },  Tempi Suppl. Consentiti: { $ot_allowed }
-game-length-ot-allowed-single-half = Durata Partita: { $half_length }
-         Tempi Suppl. Consentiti: { $overtime }
 
 # Self-update / Updates page
 check-version = Controlla versione

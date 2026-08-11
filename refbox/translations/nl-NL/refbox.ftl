@@ -12,7 +12,6 @@ cancel = ANNULEREN
 delete = VERWIJDEREN
 back = TERUG
 apply = TOEPASSEN
-save = OPSLAAN
 user-options = GEBRUIKERSOPTIES
 new = NIEUW
 
@@ -35,8 +34,6 @@ team-timeout-count = AANTAL
     TEAM TIME-OUTS:
 
 # Waarschuwing toevoegen
-team-warning = TEAM-
-    WAARSCHUWING
 team-warning-line-1 = TEAM-
 team-warning-line-2 = WAARSCHUWING
 team-score-line-1 = TEAM-
@@ -81,8 +78,6 @@ audible-countdown-for-last-10-seconds = HOORBARE AFTELLING
     10 SECONDEN
 delay = VERTRAGING
 court = BAAN:
-single-half = ENKELE
-    HELFT:
 half-length-full = DUUR HELFT:
 game-length = WEDSTRIJDDUUR:
 overtime-allowed = VERLENGING
@@ -95,8 +90,6 @@ pre-ot-break-length = PAUZE VOOR
     VERLENGING:
 pre-sd-break-length = PAUZE VOOR
     PLTS DOOD:
-nominal-break-between-games = NOMINALE PAUZE
-    TUSSEN WEDSTR.:
 ot-half-length = DUUR HELFT
     VERLENGING:
 timeouts-counted-per = TIME-OUTS
@@ -151,13 +144,11 @@ half-length = DUUR HELFT
 length-of-half-during-regular-play = De duur van een helft tijdens regulier spel
 half-time-lenght = DUUR RUST
 length-of-half-time-period = De duur van de rustperiode
-nom-break = NOM PAUZE
 game-block = SPELBLOK
 game-block-full = SPELBLOK:
 game-block-help = Tijd van het begin van één wedstrijd tot het begin van de volgende
 game-block-too-short = Te kort voor de wedstrijd plus de minimale pauze
 game-block-tight = Krap — teamtime-outs kunnen wedstrijden buiten hun tijdslot duwen
-system-will-keep-game-times-spaced = Het systeem probeert de starttijden van wedstrijden gelijkmatig te verdelen. De totale tijd van de ene start tot de volgende is 2 × [Duur Helft] + [Duur Rust] + [Nominale Tijd Tussen Wedstrijden] (voorbeeld: als [Duur Helft] = 15 min, [Duur Rust] = 3 min en [Nominale Tijd] = 12 min, dan is de tijd van start tot start 45 min. Genomen time-outs of andere onderbrekingen verkorten de 12 min tot de minimale tijd tussen wedstrijden is bereikt).
 min-break = MIN PAUZE
 min-time-btwn-games = Als een wedstrijd langer duurt dan gepland, is dit de minimale tijd tussen wedstrijden die het systeem toestaat. Als wedstrijden uitlopen, probeert het systeem bij volgende wedstrijden in te halen, waarbij altijd deze minimale tijd wordt gerespecteerd.
 pre-ot-break-abreviated = PAUZE VOOR VERLENGING
@@ -169,7 +160,6 @@ len-of-overtime-halftime = De duur van de rust tijdens de verlenging
 pre-sd-break = PAUZE VOOR PLTS DOOD
 pre-sd-len = De duur van de pauze tussen het voorgaande speelgedeelte en Plotselinge Dood
 language = TAAL
-this-language = NEDERLANDS
 portal-login-code = CODE
 portal-login-instructions = Ga naar het { $portal }-portaal >> Evenementbeheer >> Scheidsrechterbeheer, klik op de + knop om een nieuwe Refbox toe te voegen en voer dit Refbox-ID in:
     { $id }
@@ -177,7 +167,6 @@ portal-login-instructions = Ga naar het { $portal }-portaal >> Evenementbeheer >
     Het { $portal }-portaal geeft vervolgens een bevestigingscode die u links via het nummerveld kunt invoeren.
     Druk op Klaar nadat u de code hebt ingevoerd
 
-help = HELP:
 
 # Bevestiging
 game-configuration-can-not-be-changed = De wedstrijdconfiguratie kan niet worden gewijzigd terwijl een wedstrijd bezig is.
@@ -214,24 +203,6 @@ refresh = VERNIEUWEN
 refreshing = VERNIEUWEN...
 settings = INSTELLINGEN
 none = Geen
-game-number-error = Fout ({ $game_number })
-next-game-number-error = Fout ({ $next_game_number })
-last-game-next-game = Vorige Wedstrijd: { $prev_game },
-    Volgende Wedstrijd: { $next_game }
-black-team-white-team = Donker Team: { $black_team }
-    Licht Team: { $white_team }
-game-length-ot-allowed = Duur Helft: { $half_length }
-         Duur Rust: { $half_time_length }
-         Verlenging Toegestaan: { $overtime }
-overtime-details = Duur Pauze Voor Verlenging: { $pre_overtime }
-             Duur Helft Verlenging: { $overtime_len }
-             Duur Rust Verlenging: { $overtime_half_time_len }
-sd-allowed = Plotselinge Dood Toegestaan: { $sd }
-pre-sd = Duur Pauze Voor Plotselinge Dood: { $pre_sd_len }
-team-to-len = Duur Team Time-out: { $to_len }
-time-btwn-games = Nominale Tijd Tussen Wedstrijden: { $time_btwn }
-game-block-info = Spelblok: { $game_block }
-min-brk-btwn-games = Minimale Tijd Tussen Wedstrijden: { $min_brk_time }
 
 
 # Lijstselecties
@@ -312,21 +283,8 @@ infraction = Overtreding: {$infraction}
 error = Fout ({ $number })
 two-games = Vorige Wedstrijd: { $prev_game },  Volgende Wedstrijd: { $next_game }
 one-game = Wedstrijd: { $game }
-teams = { -dark-team-name } Team: { $dark_team }
-    { -light-team-name } Team: { $light_team }
-game-config = Duur Helft: { $half_len },  Duur Rust: { $half_time_len }
-    Plotselinge Dood Toegestaan: { $sd_allowed },  Verlenging Toegestaan: { $ot_allowed }
-team-timeouts = Team Time-outs: { $value }
 team-timeouts-label = TEAM
     TIME-OUTS:
-stop-clock-last-2 = Klok Stoppen in Laatste 2 Minuten: { $stop_clock }
-ref-list = Hoofdscheidsrechter: { $chief_ref }
-    Tijdwaarnemer: { $timer }
-    Waterscheidsrechter 1: { $water_ref_1 }
-    Waterscheidsrechter 2: { $water_ref_2 }
-    Waterscheidsrechter 3: { $water_ref_3 }
-team-ref-list = Scheidsrechters: { $ref_team }
-    Tijdwaarnemer/Scorer: { $ts_keeper_team }
 unknown = Onbekend
 select-infraction = Maak een keuze
 ## Wedstrijdtijdknop
@@ -392,7 +350,6 @@ rugby = RUGBY
 beep-test = PIEPTEST
 
 # Beep-test screen
-beep-test-pre = PRE
 beep-test-top-time-label = TIJD
 beep-test-top-level-label = NIVEAU
 beep-test-top-lap-label = RONDE
@@ -400,9 +357,6 @@ beep-test-start = START
 beep-test-pause = PAUZE
 beep-test-resume = HERVATTEN
 beep-test-reset = RESET
-beep-test-column-level = NIVEAU
-beep-test-column-count = AANTAL
-beep-test-column-duration = DUUR
 beep-test-edit-selected = Niveau { $level }
 beep-test-edit-time = TIJD
 beep-test-edit-count = AANTAL
@@ -447,12 +401,6 @@ two-halves = 2 HELFTEN
 one-period = 1 PERIODE
 game-len = WEDSTRIJDDUUR
 length-of-game-during-regular-play = De duur van de wedstrijd tijdens regulier spel
-
-# Single-period (1 Period) info variants — Game Length, no half-time line
-game-config-single-half = Wedstrijdduur: { $half_len }
-    Plotselinge Dood Toegestaan: { $sd_allowed },  Verlenging Toegestaan: { $ot_allowed }
-game-length-ot-allowed-single-half = Wedstrijdduur: { $half_length }
-         Verlenging Toegestaan: { $overtime }
 
 # Self-update / Updates page
 check-version = Versie controleren

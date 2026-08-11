@@ -12,7 +12,6 @@ cancel = KANSELAHIN
 delete = BURAHIN
 back = BUMALIK
 apply = ILAPAT
-save = ITAGO
 user-options = MGA OPSYON NG USER
 new = BAGO
 
@@ -35,8 +34,6 @@ team-timeout-count = BILANG NG
     TIMEOUT:
 
 # Pagdagdag ng Babala
-team-warning = BABALA NG
-    KOPONAN
 team-warning-line-1 = BABALA NG
 team-warning-line-2 = KOPONAN
 team-score-line-1 = PUNTOS NG
@@ -81,8 +78,6 @@ audible-countdown-for-last-10-seconds = COUNTDOWN NA TUNOG
     HULING 10 SEGUNDO
 delay = ANTALA
 court = KORTE:
-single-half = ISANG
-    KALAHATI:
 half-length-full = HABA NG KALAHATI:
 game-length = HABA NG LARO:
 overtime-allowed = OVERTIME
@@ -95,8 +90,6 @@ pre-ot-break-length = HABA NG PAHINGA
     BAGO OT:
 pre-sd-break-length = HABA NG PAHINGA
     BAGO SD:
-nominal-break-between-games = NOMINAL NA PAHINGA
-    SA PAGITAN NG MGA LARO:
 ot-half-length = HABA NG
     KALAHATI SA OT:
 timeouts-counted-per = MGA TIMEOUT
@@ -151,13 +144,11 @@ half-length = HABA NG KALAHATI
 length-of-half-during-regular-play = Ang haba ng isang kalahati sa panahon ng regular na laro
 half-time-lenght = HABA NG PAHINGA
 length-of-half-time-period = Ang haba ng panahon ng pahinga
-nom-break = NOMINAL NA PAHINGA
 game-block = BLOKE NG LARO
 game-block-full = BLOKE NG LARO:
 game-block-help = Oras mula sa simula ng isang laro hanggang sa simula ng susunod
 game-block-too-short = Masyadong maikli para sa laro kasama ang pinakamaliit na pahinga
 game-block-tight = Masikip — ang mga timeout ng koponan ay maaaring itulak ang mga laro lampas sa kanilang slot
-system-will-keep-game-times-spaced = Susubukan ng sistema na panatilihing pantay ang mga oras ng simula ng laro, na ang kabuuang oras mula sa isang simula hanggang sa susunod ay 2 × [Haba ng Kalahati] + [Haba ng Pahinga] + [Nominal na Oras sa Pagitan ng mga Laro] (halimbawa: kung ang [Haba ng Kalahati] = 15 min, [Haba ng Pahinga] = 3 min at [Nominal na Oras sa Pagitan ng mga Laro] = 12 min, ang oras mula simula hanggang simula ay magiging 45 min. Ang anumang mga timeout o iba pang paghinto ng orasan ay magbabawas ng 12 min hanggang maabot ang pinakamaliit na oras sa pagitan ng mga laro).
 min-break = PINAKAMALIIT NA PAHINGA
 min-time-btwn-games = Kung ang isang laro ay mas matagal kaysa sa nakatakda, ito ang pinakamaliit na oras sa pagitan ng mga larong itatalaga ng sistema. Kung nahuhuli ang mga laro, awtomatikong susubukan ng sistema na makahabol sa mga susunod na laro, palaging iginagalang ang pinakamaliit na oras na ito sa pagitan ng mga laro.
 pre-ot-break-abreviated = PAHINGA BAGO OT
@@ -169,7 +160,6 @@ len-of-overtime-halftime = Ang haba ng pahinga sa Overtime
 pre-sd-break = PAHINGA BAGO SD
 pre-sd-len = Ang haba ng pahinga sa pagitan ng nakaraang panahon ng laro at Sudden Death
 language = WIKA
-this-language = FILIPINO
 portal-login-code = KODIGO
 portal-login-instructions = Pumunta sa { $portal } Portal >> Pamamahala ng Kaganapan >> Pamamahala ng Referee, i-click ang + na pindutan upang magdagdag ng bagong Refbox, at ilagay ang Refbox ID na ito:
     { $id }
@@ -177,7 +167,6 @@ portal-login-instructions = Pumunta sa { $portal } Portal >> Pamamahala ng Kagan
     Ang { $portal } Portal ay magbibigay ng confirmation code na ilalagay sa kaliwa gamit ang number pad.
     Pindutin ang Tapos kapag naipasok mo na ang code
 
-help = TULONG:
 
 # Kumpirmasyon
 game-configuration-can-not-be-changed = Hindi mababago ang configuration ng laro habang nagaganap ang laro.
@@ -214,24 +203,6 @@ refresh = I-REFRESH
 refreshing = NIRI-REFRESH...
 settings = MGA SETTING
 none = Wala
-game-number-error = Mali ({ $game_number })
-next-game-number-error = Mali ({ $next_game_number })
-last-game-next-game = Huling Laro: { $prev_game },
-    Susunod na Laro: { $next_game }
-black-team-white-team = Koponan ng Itim: { $black_team }
-    Koponan ng Puti: { $white_team }
-game-length-ot-allowed = Haba ng Kalahati: { $half_length }
-         Haba ng Pahinga: { $half_time_length }
-         Overtime Pinahintulutan: { $overtime }
-overtime-details = Haba ng Pahinga Bago Overtime: { $pre_overtime }
-             Haba ng Kalahati sa Overtime: { $overtime_len }
-             Haba ng Pahinga sa Overtime: { $overtime_half_time_len }
-sd-allowed = Sudden Death Pinahintulutan: { $sd }
-pre-sd = Haba ng Pahinga Bago Sudden Death: { $pre_sd_len }
-team-to-len = Tagal ng Timeout ng Koponan: { $to_len }
-time-btwn-games = Nominal na Oras sa Pagitan ng mga Laro: { $time_btwn }
-game-block-info = Bloke ng Laro: { $game_block }
-min-brk-btwn-games = Pinakamaliit na Oras sa Pagitan ng mga Laro: { $min_brk_time }
 
 
 # Mga Listahan
@@ -312,21 +283,8 @@ infraction = Paglabag: {$infraction}
 error = Mali ({ $number })
 two-games = Huling Laro: { $prev_game },  Susunod na Laro: { $next_game }
 one-game = Laro: { $game }
-teams = Koponan ng { -dark-team-name }: { $dark_team }
-    Koponan ng { -light-team-name }: { $light_team }
-game-config = Haba ng Kalahati: { $half_len },  Haba ng Pahinga: { $half_time_len }
-    Sudden Death Pinahintulutan: { $sd_allowed },  Overtime Pinahintulutan: { $ot_allowed }
-team-timeouts = Mga Timeout ng Koponan: { $value }
 team-timeouts-label = MGA TIMEOUT
     NG KOPONAN:
-stop-clock-last-2 = Ihinto ang Orasan sa Huling 2 Minuto: { $stop_clock }
-ref-list = Punong Ref: { $chief_ref }
-    Timer: { $timer }
-    Water Ref 1: { $water_ref_1 }
-    Water Ref 2: { $water_ref_2 }
-    Water Ref 3: { $water_ref_3 }
-team-ref-list = Mga Referee: { $ref_team }
-    Tagapanatili ng Puntos: { $ts_keeper_team }
 unknown = Hindi Alam
 select-infraction = Pumili
 ## Pindutan ng oras ng laro
@@ -392,7 +350,6 @@ rugby = RUGBY
 beep-test = BEEP TEST
 
 # Beep-test screen
-beep-test-pre = PAUNA
 beep-test-top-time-label = ORAS
 beep-test-top-level-label = ANTAS
 beep-test-top-lap-label = IKOT
@@ -400,9 +357,6 @@ beep-test-start = SIMULAN
 beep-test-pause = IHINTO
 beep-test-resume = IPAGPATULOY
 beep-test-reset = IBALIK
-beep-test-column-level = ANTAS
-beep-test-column-count = BILANG
-beep-test-column-duration = TAGAL
 beep-test-edit-selected = Antas { $level }
 beep-test-edit-time = ORAS
 beep-test-edit-count = BILANG
@@ -447,12 +401,6 @@ two-halves = 2 KALAHATI
 one-period = 1 YUGTO
 game-len = HABA NG LARO
 length-of-game-during-regular-play = Ang haba ng buong laro sa panahon ng regular na laro
-
-# Single-period (1 Period) info variants — Game Length, no half-time line
-game-config-single-half = Haba ng Laro: { $half_len }
-    Sudden Death Pinahintulutan: { $sd_allowed },  Overtime Pinahintulutan: { $ot_allowed }
-game-length-ot-allowed-single-half = Haba ng Laro: { $half_length }
-         Overtime Pinahintulutan: { $overtime }
 
 # Self-update / Updates page
 check-version = Tingnan ang Bersyon

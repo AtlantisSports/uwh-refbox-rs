@@ -12,7 +12,6 @@ cancel = 取消
 delete = 删除
 back = 返回
 apply = 应用
-save = 保存
 user-options = 用户选项
 new = 新建
 
@@ -35,8 +34,6 @@ team-timeout-count = 队伍暂停
     次数:
 
 # 警告添加
-team-warning = 队伍
-    警告
 team-warning-line-1 = 队伍
 team-warning-line-2 = 警告
 team-score-line-1 = 队伍
@@ -81,8 +78,6 @@ audible-countdown-for-last-10-seconds = 最后10秒
     声音倒计时
 delay = 延误
 court = 球场：
-single-half = 单节
-    比赛：
 half-length-full = 半场时长：
 game-length = 比赛时长：
 overtime-allowed = 允许
@@ -95,8 +90,6 @@ pre-ot-break-length = 加时前
     休息时长：
 pre-sd-break-length = 突然死亡前
     休息时长：
-nominal-break-between-games = 场间名义
-    休息时间：
 ot-half-length = 加时半场
     时长：
 timeouts-counted-per = 暂停
@@ -151,13 +144,11 @@ half-length = 半场时长
 length-of-half-during-regular-play = 常规比赛中每半场的时长
 half-time-lenght = 中场时长
 length-of-half-time-period = 中场休息阶段的时长
-nom-break = 名义休息
 game-block = 赛程块
 game-block-full = 赛程块：
 game-block-help = 从一场比赛开始到下一场比赛开始所经过的时间
 game-block-too-short = 时间太短，无法容纳比赛加上最短休息
 game-block-tight = 紧张 — 队伍暂停可能导致比赛超出其时段
-system-will-keep-game-times-spaced = 系统将尽量保持比赛开始时间均匀分布，从一场比赛开始到下一场比赛开始的总时间为 2 × [半场时长] + [中场时长] + [名义场间时间]（例如：若[半场时长] = 15分钟、[中场时长] = 3分钟、[名义场间时间] = 12分钟，则从一场比赛开始到下一场的时间为45分钟。任何暂停或其他停钟操作都会缩短这12分钟，直到达到最短场间时间为止）。
 min-break = 最短休息
 min-time-btwn-games = 若比赛超出预定时长，这是系统分配的场间最短时间。若比赛落后于计划，系统将在后续比赛中自动追赶，始终遵守此最短场间时间。
 pre-ot-break-abreviated = 加时前休息
@@ -169,7 +160,6 @@ len-of-overtime-halftime = 加时赛中场休息的时长
 pre-sd-break = 突然死亡前休息
 pre-sd-len = 前一比赛阶段到突然死亡赛之间的休息时长
 language = 语言
-this-language = 中文（简体）
 portal-login-code = 代码
 portal-login-instructions = 请前往{ $portal } Portal >> 赛事管理 >> 裁判管理，点击+按钮添加新的Refbox，并输入此Refbox ID：
     { $id }
@@ -177,7 +167,6 @@ portal-login-instructions = 请前往{ $portal } Portal >> 赛事管理 >> 裁�
     { $portal } Portal随后将提供一个确认码，请使用左侧数字键盘输入。
     输入完成后请按"完成"
 
-help = 帮助：
 
 # 确认
 game-configuration-can-not-be-changed = 比赛进行中无法更改比赛配置。
@@ -214,24 +203,6 @@ refresh = 刷新
 refreshing = 刷新中...
 settings = 设置
 none = 无
-game-number-error = 错误（{ $game_number }）
-next-game-number-error = 错误（{ $next_game_number }）
-last-game-next-game = 上场：{ $prev_game }，
-    下场：{ $next_game }
-black-team-white-team = 黑队：{ $black_team }
-    白队：{ $white_team }
-game-length-ot-allowed = 半场时长：{ $half_length }
-         中场时长：{ $half_time_length }
-         允许加时赛：{ $overtime }
-overtime-details = 加时前休息时长：{ $pre_overtime }
-             加时赛半场时长：{ $overtime_len }
-             加时赛中场时长：{ $overtime_half_time_len }
-sd-allowed = 允许突然死亡：{ $sd }
-pre-sd = 突然死亡前休息时长：{ $pre_sd_len }
-team-to-len = 队伍暂停时长：{ $to_len }
-time-btwn-games = 名义场间时间：{ $time_btwn }
-game-block-info = 比赛块：{ $game_block }
-min-brk-btwn-games = 最短场间时间：{ $min_brk_time }
 
 
 # 列表选择
@@ -312,20 +283,7 @@ infraction = 犯规类型：{$infraction}
 error = 错误（{ $number }）
 two-games = 上场：{ $prev_game }，  下场：{ $next_game }
 one-game = 比赛：{ $game }
-teams = { -dark-team-name }：{ $dark_team }
-    { -light-team-name }：{ $light_team }
-game-config = 半场时长：{ $half_len }，  中场时长：{ $half_time_len }
-    允许突然死亡：{ $sd_allowed }，  允许加时赛：{ $ot_allowed }
-team-timeouts = 队伍暂停：{ $value }
 team-timeouts-label = 队伍暂停：
-stop-clock-last-2 = 最后2分钟停钟：{ $stop_clock }
-ref-list = 主裁判：{ $chief_ref }
-    计时员：{ $timer }
-    水下裁判1：{ $water_ref_1 }
-    水下裁判2：{ $water_ref_2 }
-    水下裁判3：{ $water_ref_3 }
-team-ref-list = 裁判员：{ $ref_team }
-    计时/记分员：{ $ts_keeper_team }
 unknown = 未知
 select-infraction = 请选择
 ## 比赛时间按钮
@@ -391,7 +349,6 @@ rugby = 橄榄球
 beep-test = 蜂鸣测试
 
 # Beep-test screen
-beep-test-pre = 准备
 beep-test-top-time-label = 时间
 beep-test-top-level-label = 级别
 beep-test-top-lap-label = 圈数
@@ -399,9 +356,6 @@ beep-test-start = 开始
 beep-test-pause = 暂停
 beep-test-resume = 继续
 beep-test-reset = 重置
-beep-test-column-level = 级别
-beep-test-column-count = 次数
-beep-test-column-duration = 时长
 beep-test-edit-selected = 级别 { $level }
 beep-test-edit-time = 时间
 beep-test-edit-count = 次数
@@ -446,12 +400,6 @@ two-halves = 2 个半场
 one-period = 1 节
 game-len = 比赛时长
 length-of-game-during-regular-play = 常规比赛中整场比赛的时长
-
-# Single-period (1 Period) info variants — Game Length, no half-time line
-game-config-single-half = 比赛时长：{ $half_len }
-    允许突然死亡：{ $sd_allowed }，  允许加时赛：{ $ot_allowed }
-game-length-ot-allowed-single-half = 比赛时长：{ $half_length }
-         允许加时赛：{ $overtime }
 
 # Self-update / Updates page
 check-version = 检查版本

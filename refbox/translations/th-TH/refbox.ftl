@@ -12,7 +12,6 @@ cancel = ยกเลิก
 delete = ลบ
 back = กลับ
 apply = ใช้
-save = บันทึก
 user-options = ตัวเลือกผู้ใช้
 new = ใหม่
 
@@ -35,8 +34,6 @@ team-timeout-count = จำนวน
     พักทีม:
 
 # เพิ่มการเตือน
-team-warning = การเตือน
-    ทีม
 team-warning-line-1 = การเตือน
 team-warning-line-2 = ทีม
 team-score-line-1 = คะแนน
@@ -81,8 +78,6 @@ audible-countdown-for-last-10-seconds = นับถอยหลังด้ว�
     10 วินาที
 delay = ล่าช้า
 court = สนาม:
-single-half = ครึ่ง
-    เดียว:
 half-length-full = ความยาวครึ่งเวลา:
 game-length = ความยาวเกม:
 overtime-allowed = อนุญาต
@@ -95,8 +90,6 @@ pre-ot-break-length = พักก่อน
     ต่อเวลาพิเศษ:
 pre-sd-break-length = พักก่อน
     ตายกะทันหัน:
-nominal-break-between-games = พักระหว่างเกม
-    ตามกำหนด:
 ot-half-length = ครึ่งเวลา
     ต่อเวลาพิเศษ:
 timeouts-counted-per = นับพักทีม
@@ -151,13 +144,11 @@ half-length = ความยาวครึ่ง
 length-of-half-during-regular-play = ความยาวของครึ่งเวลาระหว่างการเล่นปกติ
 half-time-lenght = ความยาวพักครึ่ง
 length-of-half-time-period = ความยาวของช่วงพักครึ่งเวลา
-nom-break = พักตามกำหนด
 game-block = บล็อกเกม
 game-block-full = บล็อกเกม:
 game-block-help = เวลาจากการเริ่มต้นของเกมหนึ่งถึงการเริ่มต้นของเกมถัดไป
 game-block-too-short = สั้นเกินไปสำหรับเกมรวมกับช่วงพักขั้นต่ำ
 game-block-tight = ตึง — การพักทีมอาจทำให้เกมเกินช่วงเวลาของตน
-system-will-keep-game-times-spaced = ระบบจะพยายามรักษาเวลาเริ่มเกมให้เท่ากัน โดยเวลารวมจากการเริ่มหนึ่งไปอีกการเริ่มหนึ่งคือ 2 × [ความยาวครึ่ง] + [ความยาวพักครึ่ง] + [เวลาระหว่างเกมตามกำหนด] (ตัวอย่าง: ถ้า [ความยาวครึ่ง] = 15 นาที, [ความยาวพักครึ่ง] = 3 นาที และ [เวลาระหว่างเกมตามกำหนด] = 12 นาที เวลาจากการเริ่มเกมหนึ่งไปอีกเกมหนึ่งจะเป็น 45 นาที การพักทีมหรือการหยุดนาฬิกาอื่นๆ จะลดเวลา 12 นาทีลงจนถึงค่าเวลาระหว่างเกมขั้นต่ำ)
 min-break = พักขั้นต่ำ
 min-time-btwn-games = หากเกมดำเนินนานกว่ากำหนด นี่คือเวลาระหว่างเกมขั้นต่ำที่ระบบจะจัดสรร หากเกมล่าช้า ระบบจะพยายามตามทันในเกมถัดไป โดยเคารพเวลาระหว่างเกมขั้นต่ำนี้เสมอ
 pre-ot-break-abreviated = พักก่อนต่อเวลาพิเศษ
@@ -169,7 +160,6 @@ len-of-overtime-halftime = ความยาวของพักครึ่�
 pre-sd-break = พักก่อนตายกะทันหัน
 pre-sd-len = ความยาวของการพักระหว่างช่วงเล่นก่อนหน้าและตายกะทันหัน
 language = ภาษา
-this-language = ภาษาไทย
 portal-login-code = รหัส
 portal-login-instructions = กรุณาไปที่ { $portal } Portal >> การจัดการกิจกรรม >> การจัดการผู้ตัดสิน คลิกปุ่ม + เพื่อเพิ่ม Refbox ใหม่ และป้อน Refbox ID นี้:
     { $id }
@@ -177,7 +167,6 @@ portal-login-instructions = กรุณาไปที่ { $portal } Portal >>
     { $portal } Portal จะให้รหัสยืนยันสำหรับป้อนทางซ้ายโดยใช้แป้นตัวเลข
     กดเสร็จสิ้นเมื่อป้อนรหัสแล้ว
 
-help = ช่วยเหลือ:
 
 # การยืนยัน
 game-configuration-can-not-be-changed = ไม่สามารถเปลี่ยนการตั้งค่าเกมได้ขณะที่เกมกำลังดำเนินอยู่
@@ -214,24 +203,6 @@ refresh = รีเฟรช
 refreshing = กำลังรีเฟรช...
 settings = การตั้งค่า
 none = ไม่มี
-game-number-error = ข้อผิดพลาด ({ $game_number })
-next-game-number-error = ข้อผิดพลาด ({ $next_game_number })
-last-game-next-game = เกมที่แล้ว: { $prev_game },
-    เกมถัดไป: { $next_game }
-black-team-white-team = ทีมดำ: { $black_team }
-    ทีมขาว: { $white_team }
-game-length-ot-allowed = ความยาวครึ่ง: { $half_length }
-         ความยาวพักครึ่ง: { $half_time_length }
-         อนุญาตต่อเวลาพิเศษ: { $overtime }
-overtime-details = ความยาวพักก่อนต่อเวลาพิเศษ: { $pre_overtime }
-             ความยาวครึ่งต่อเวลาพิเศษ: { $overtime_len }
-             ความยาวพักครึ่งต่อเวลาพิเศษ: { $overtime_half_time_len }
-sd-allowed = อนุญาตตายกะทันหัน: { $sd }
-pre-sd = ความยาวพักก่อนตายกะทันหัน: { $pre_sd_len }
-team-to-len = ระยะเวลาพักทีม: { $to_len }
-time-btwn-games = เวลาระหว่างเกมตามกำหนด: { $time_btwn }
-game-block-info = บล็อกเกม: { $game_block }
-min-brk-btwn-games = เวลาระหว่างเกมขั้นต่ำ: { $min_brk_time }
 
 
 # ตัวเลือกรายการ
@@ -312,20 +283,7 @@ infraction = การฝ่าฝืน: {$infraction}
 error = ข้อผิดพลาด ({ $number })
 two-games = เกมที่แล้ว: { $prev_game },  เกมถัดไป: { $next_game }
 one-game = เกม: { $game }
-teams = { -dark-team-name }: { $dark_team }
-    { -light-team-name }: { $light_team }
-game-config = ความยาวครึ่ง: { $half_len },  ความยาวพักครึ่ง: { $half_time_len }
-    อนุญาตตายกะทันหัน: { $sd_allowed },  อนุญาตต่อเวลาพิเศษ: { $ot_allowed }
-team-timeouts = พักทีม: { $value }
 team-timeouts-label = พักทีม:
-stop-clock-last-2 = หยุดนาฬิกาใน 2 นาทีสุดท้าย: { $stop_clock }
-ref-list = หัวหน้าผู้ตัดสิน: { $chief_ref }
-    กรรมการจับเวลา: { $timer }
-    ผู้ตัดสินในน้ำ 1: { $water_ref_1 }
-    ผู้ตัดสินในน้ำ 2: { $water_ref_2 }
-    ผู้ตัดสินในน้ำ 3: { $water_ref_3 }
-team-ref-list = ผู้ตัดสิน: { $ref_team }
-    กรรมการจับเวลา/บันทึกคะแนน: { $ts_keeper_team }
 unknown = ไม่ทราบ
 select-infraction = กรุณาเลือก
 ## ปุ่มเวลาเกม
@@ -391,7 +349,6 @@ rugby = รักบี้
 beep-test = ทดสอบบี๊พ
 
 # Beep-test screen
-beep-test-pre = เตรียม
 beep-test-top-time-label = เวลา
 beep-test-top-level-label = ระดับ
 beep-test-top-lap-label = รอบ
@@ -399,9 +356,6 @@ beep-test-start = เริ่ม
 beep-test-pause = หยุดชั่วคราว
 beep-test-resume = เล่นต่อ
 beep-test-reset = รีเซ็ต
-beep-test-column-level = ระดับ
-beep-test-column-count = จำนวน
-beep-test-column-duration = ระยะเวลา
 beep-test-edit-selected = ระดับ { $level }
 beep-test-edit-time = เวลา
 beep-test-edit-count = จำนวน
@@ -446,12 +400,6 @@ two-halves = 2 ครึ่ง
 one-period = 1 พีเรียด
 game-len = ความยาวเกม
 length-of-game-during-regular-play = ความยาวของเกมระหว่างการเล่นปกติ
-
-# Single-period (1 Period) info variants — Game Length, no half-time line
-game-config-single-half = ความยาวเกม: { $half_len }
-    อนุญาตตายกะทันหัน: { $sd_allowed },  อนุญาตต่อเวลาพิเศษ: { $ot_allowed }
-game-length-ot-allowed-single-half = ความยาวเกม: { $half_length }
-         อนุญาตต่อเวลาพิเศษ: { $overtime }
 
 # Self-update / Updates page
 check-version = ตรวจสอบเวอร์ชัน

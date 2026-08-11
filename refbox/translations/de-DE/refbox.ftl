@@ -12,7 +12,6 @@ cancel = ABBRECHEN
 delete = LÖSCHEN
 back = ZURÜCK
 apply = ANWENDEN
-save = SPEICHERN
 user-options = BENUTZEROPTIONEN
 new = NEU
 
@@ -35,8 +34,6 @@ team-timeout-count = AUSZEIT
     ANZAHL:
 
 # Verwarnung hinzufügen
-team-warning = MANNSCHAFT
-    VERWARNUNG
 team-warning-line-1 = MANNSCHAFT
 team-warning-line-2 = VERWARNUNG
 team-score-line-1 = MANNSCHAFT
@@ -81,8 +78,6 @@ audible-countdown-for-last-10-seconds = AKUSTISCHER COUNTDOWN
     10 SEKUNDEN
 delay = VERZÖGERUNG
 court = FELD:
-single-half = EINZELNE
-    HALBZEIT:
 half-length-full = HALBZEITDAUER:
 game-length = SPIELDAUER:
 overtime-allowed = VERLÄNGERUNG
@@ -95,8 +90,6 @@ pre-ot-break-length = PAUSE VOR
     VERLÄNGERUNG:
 pre-sd-break-length = PAUSE VOR
     PLÖTZL. TOD:
-nominal-break-between-games = NOMINALE PAUSE
-    ZWISCHEN SPIELEN:
 ot-half-length = VERLÄNGERUNGS-
     HALBZEITDAUER:
 timeouts-counted-per = AUSZEITEN
@@ -151,13 +144,11 @@ half-length = HALBZ. DAUER
 length-of-half-during-regular-play = Die Dauer einer Halbzeit während des regulären Spiels
 half-time-lenght = HALBZEITPAUSE DAUER
 length-of-half-time-period = Die Dauer der Halbzeitpause
-nom-break = NOM. PAUSE
 game-block = SPIELBLOCK
 game-block-full = SPIELBLOCK:
 game-block-help = Zeit vom Beginn eines Spiels bis zum Beginn des nächsten
 game-block-too-short = Zu kurz für das Spiel plus die Mindestpause
 game-block-tight = Knapp — Auszeiten könnten die Spiele über ihren Zeitslot hinausschieben
-system-will-keep-game-times-spaced = Das System versucht, die Spielstartzeiten gleichmäßig zu verteilen. Die Gesamtzeit von einem Start zum nächsten beträgt 2 × [Halbzeitdauer] + [Halbzeitpausendauer] + [Nominale Spielpause] (Beispiel: bei [Halbzeitdauer] = 15 Min, [Halbzeitpausendauer] = 3 Min und [Nominale Spielpause] = 12 Min beträgt die Zeit von Spielstart zu Spielstart 45 Min. Auszeiten oder andere Spielunterbrechungen verkürzen die 12 Min bis zur minimalen Pause zwischen Spielen).
 min-break = MIN. PAUSE
 min-time-btwn-games = Wenn ein Spiel länger dauert als geplant, ist dies die minimale Pause zwischen Spielen, die das System einplant. Bei Rückstand holt das System bei nachfolgenden Spielen auf und hält dabei stets diese Mindestpause ein.
 pre-ot-break-abreviated = PAUSE VOR VERLÄNGERUNG
@@ -169,7 +160,6 @@ len-of-overtime-halftime = Die Dauer der Verlängerungspause
 pre-sd-break = PAUSE VOR PLÖTZL. TOD
 pre-sd-len = Die Dauer der Pause zwischen dem vorherigen Spielabschnitt und dem Plötzlichen Tod
 language = SPRACHE
-this-language = DEUTSCH
 portal-login-code = CODE
 portal-login-instructions = Gehen Sie zu { $portal } Portal >> Veranstaltungsverwaltung >> Schiedsrichterverwaltung, klicken Sie auf die + Schaltfläche, um eine neue Refbox hinzuzufügen, und geben Sie diese Refbox-ID ein:
     { $id }
@@ -177,7 +167,6 @@ portal-login-instructions = Gehen Sie zu { $portal } Portal >> Veranstaltungsver
     Das { $portal } Portal stellt Ihnen dann einen Bestätigungscode bereit, den Sie links über das Nummernfeld eingeben.
     Drücken Sie Fertig, sobald Sie den Code eingegeben haben
 
-help = HILFE:
 
 # Bestätigung
 game-configuration-can-not-be-changed = Die Spielkonfiguration kann während eines laufenden Spiels nicht geändert werden.
@@ -214,24 +203,6 @@ refresh = AKTUALISIEREN
 refreshing = WIRD AKTUALISIERT...
 settings = EINSTELLUNGEN
 none = Keine
-game-number-error = Fehler ({ $game_number })
-next-game-number-error = Fehler ({ $next_game_number })
-last-game-next-game = Letztes Spiel: { $prev_game },
-    Nächstes Spiel: { $next_game }
-black-team-white-team = Schwarze Mannschaft: { $black_team }
-    Weiße Mannschaft: { $white_team }
-game-length-ot-allowed = Halbzeitdauer: { $half_length }
-         Halbzeitpausendauer: { $half_time_length }
-         Verlängerung Erlaubt: { $overtime }
-overtime-details = Pause vor Verlängerung: { $pre_overtime }
-             Halbzeitdauer Verlängerung: { $overtime_len }
-             Halbzeitpausendauer Verlängerung: { $overtime_half_time_len }
-sd-allowed = Plötzlicher Tod Erlaubt: { $sd }
-pre-sd = Pause vor Plötzlichem Tod: { $pre_sd_len }
-team-to-len = Mannschafts-Auszeit Dauer: { $to_len }
-time-btwn-games = Nominale Spielpause: { $time_btwn }
-game-block-info = Spielblock: { $game_block }
-min-brk-btwn-games = Minimale Spielpause: { $min_brk_time }
 
 
 # Listenauswahl
@@ -312,21 +283,8 @@ infraction = Verstoß: {$infraction}
 error = Fehler ({ $number })
 two-games = Letztes Spiel: { $prev_game },  Nächstes Spiel: { $next_game }
 one-game = Spiel: { $game }
-teams = { -dark-team-name } Mannschaft: { $dark_team }
-    { -light-team-name } Mannschaft: { $light_team }
-game-config = Halbzeitdauer: { $half_len },  Halbzeitpausendauer: { $half_time_len }
-    Plötzlicher Tod Erlaubt: { $sd_allowed },  Verlängerung Erlaubt: { $ot_allowed }
-team-timeouts = Mannschafts-Auszeiten: { $value }
 team-timeouts-label = MANNSCHAFTS-
     AUSZEITEN:
-stop-clock-last-2 = Uhr in den letzten 2 Minuten stoppen: { $stop_clock }
-ref-list = Hauptschiedsrichter: { $chief_ref }
-    Zeitnehmer: { $timer }
-    Wasserschiedsrichter 1: { $water_ref_1 }
-    Wasserschiedsrichter 2: { $water_ref_2 }
-    Wasserschiedsrichter 3: { $water_ref_3 }
-team-ref-list = Schiedsrichter: { $ref_team }
-    Zeitnehmer/Anschreiber: { $ts_keeper_team }
 unknown = Unbekannt
 select-infraction = Bitte auswählen
 ## Spielzeit-Schaltfläche
@@ -392,7 +350,6 @@ rugby = RUGBY
 beep-test = BEEP TEST
 
 # Beep-test screen
-beep-test-pre = VOR
 beep-test-top-time-label = ZEIT
 beep-test-top-level-label = STUFE
 beep-test-top-lap-label = RUNDE
@@ -400,9 +357,6 @@ beep-test-start = START
 beep-test-pause = PAUSE
 beep-test-resume = FORTSETZEN
 beep-test-reset = ZURÜCKSETZEN
-beep-test-column-level = STUFE
-beep-test-column-count = ANZAHL
-beep-test-column-duration = DAUER
 beep-test-edit-selected = Stufe { $level }
 beep-test-edit-time = ZEIT
 beep-test-edit-count = ANZAHL
@@ -447,12 +401,6 @@ two-halves = 2 HALBZEITEN
 one-period = 1 PERIODE
 game-len = SPIELDAUER
 length-of-game-during-regular-play = Die Spieldauer während des regulären Spiels
-
-# Single-period (1 Period) info variants — Game Length, no half-time line
-game-config-single-half = Spieldauer: { $half_len }
-    Plötzlicher Tod Erlaubt: { $sd_allowed },  Verlängerung Erlaubt: { $ot_allowed }
-game-length-ot-allowed-single-half = Spieldauer: { $half_length }
-         Verlängerung Erlaubt: { $overtime }
 
 # Self-update / Updates page
 check-version = Version prüfen

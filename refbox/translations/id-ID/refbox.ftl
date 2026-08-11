@@ -12,7 +12,6 @@ cancel = BATAL
 delete = HAPUS
 back = KEMBALI
 apply = TERAPKAN
-save = SIMPAN
 user-options = OPSI PENGGUNA
 new = BARU
 
@@ -35,8 +34,6 @@ team-timeout-count = JUMLAH
     TIME-OUT TIM:
 
 # Tambah Peringatan
-team-warning = PERINGATAN
-    TIM
 team-warning-line-1 = PERINGATAN
 team-warning-line-2 = TIM
 team-score-line-1 = SKOR
@@ -81,8 +78,6 @@ audible-countdown-for-last-10-seconds = HITUNG MUNDUR SUARA
     10 DETIK
 delay = TERLAMBAT
 court = LAPANGAN:
-single-half = BABAK
-    TUNGGAL:
 half-length-full = DURASI BABAK:
 game-length = DURASI PERTANDINGAN:
 overtime-allowed = PERPANJANGAN WAKTU
@@ -95,8 +90,6 @@ pre-ot-break-length = DURASI JEDA
     SEBELUM PW:
 pre-sd-break-length = DURASI JEDA
     SEBELUM SD:
-nominal-break-between-games = JEDA NOMINAL
-    ANTAR PERTANDINGAN:
 ot-half-length = DURASI BABAK
     PERPANJANGAN:
 timeouts-counted-per = TIME-OUT
@@ -151,13 +144,11 @@ half-length = DUR BABAK
 length-of-half-during-regular-play = Durasi satu babak selama pertandingan reguler
 half-time-lenght = DUR JEDA BABAK
 length-of-half-time-period = Durasi periode jeda babak
-nom-break = JEDA NOMINAL
 game-block = BLOK PERTANDINGAN
 game-block-full = BLOK PERTANDINGAN:
 game-block-help = Waktu dari awal satu pertandingan hingga awal pertandingan berikutnya
 game-block-too-short = Terlalu singkat untuk pertandingan ditambah jeda minimum
 game-block-tight = Terlalu ketat — time-out tim bisa membuat pertandingan melewati slot mereka
-system-will-keep-game-times-spaced = Sistem akan mencoba menjaga waktu mulai pertandingan agar merata, dengan total waktu dari satu mulai ke mulai berikutnya adalah 2 × [Durasi Babak] + [Durasi Jeda Babak] + [Waktu Nominal Antar Pertandingan] (contoh: jika [Durasi Babak] = 15 menit, [Durasi Jeda Babak] = 3 menit, dan [Waktu Nominal Antar Pertandingan] = 12 menit, waktu dari mulai satu pertandingan ke berikutnya adalah 45 menit. Setiap time-out yang diambil, atau penghentian jam lainnya, akan mengurangi waktu 12 menit tersebut hingga mencapai nilai waktu minimum antar pertandingan).
 min-break = JEDA MINIMUM
 min-time-btwn-games = Jika suatu pertandingan berjalan lebih lama dari jadwal, ini adalah waktu minimum antar pertandingan yang akan dialokasikan oleh sistem. Jika pertandingan tertunda, sistem akan secara otomatis mencoba mengejar pada pertandingan berikutnya, selalu menghormati waktu minimum antar pertandingan ini.
 pre-ot-break-abreviated = JEDA SEBELUM PW
@@ -169,7 +160,6 @@ len-of-overtime-halftime = Durasi jeda babak perpanjangan waktu
 pre-sd-break = JEDA SEBELUM SD
 pre-sd-len = Durasi jeda antara periode permainan sebelumnya dan Sudden Death
 language = BAHASA
-this-language = INDONESIA
 portal-login-code = KODE
 portal-login-instructions = Silakan buka { $portal } Portal >> Manajemen Acara >> Manajemen Wasit, klik tombol + untuk menambahkan Refbox baru, dan masukkan ID Refbox ini:
     { $id }
@@ -177,7 +167,6 @@ portal-login-instructions = Silakan buka { $portal } Portal >> Manajemen Acara >
     { $portal } Portal kemudian akan memberikan kode konfirmasi untuk dimasukkan di sebelah kiri menggunakan papan angka.
     Tekan Selesai setelah Anda memasukkan kode
 
-help = BANTUAN:
 
 # Konfirmasi
 game-configuration-can-not-be-changed = Konfigurasi pertandingan tidak dapat diubah saat pertandingan sedang berlangsung.
@@ -214,24 +203,6 @@ refresh = SEGARKAN
 refreshing = MENYEGARKAN...
 settings = PENGATURAN
 none = Tidak Ada
-game-number-error = Galat ({ $game_number })
-next-game-number-error = Galat ({ $next_game_number })
-last-game-next-game = Pertandingan Terakhir: { $prev_game },
-    Pertandingan Berikutnya: { $next_game }
-black-team-white-team = Tim Hitam: { $black_team }
-    Tim Putih: { $white_team }
-game-length-ot-allowed = Durasi Babak: { $half_length }
-         Durasi Jeda Babak: { $half_time_length }
-         Perpanjangan Waktu Diizinkan: { $overtime }
-overtime-details = Durasi Jeda Sebelum Perpanjangan Waktu: { $pre_overtime }
-             Durasi Babak Perpanjangan Waktu: { $overtime_len }
-             Durasi Jeda Perpanjangan Waktu: { $overtime_half_time_len }
-sd-allowed = Sudden Death Diizinkan: { $sd }
-pre-sd = Durasi Jeda Sebelum Sudden Death: { $pre_sd_len }
-team-to-len = Durasi Time-out Tim: { $to_len }
-time-btwn-games = Waktu Nominal Antar Pertandingan: { $time_btwn }
-game-block-info = Blok Permainan: { $game_block }
-min-brk-btwn-games = Waktu Minimum Antar Pertandingan: { $min_brk_time }
 
 
 # Pemilih Daftar
@@ -312,21 +283,8 @@ infraction = Pelanggaran: {$infraction}
 error = Galat ({ $number })
 two-games = Pertandingan Terakhir: { $prev_game },  Pertandingan Berikutnya: { $next_game }
 one-game = Pertandingan: { $game }
-teams = Tim { -dark-team-name }: { $dark_team }
-    Tim { -light-team-name }: { $light_team }
-game-config = Durasi Babak: { $half_len },  Durasi Jeda Babak: { $half_time_len }
-    Sudden Death Diizinkan: { $sd_allowed },  Perpanjangan Waktu Diizinkan: { $ot_allowed }
-team-timeouts = Time-out Tim: { $value }
 team-timeouts-label = TIME-OUT
     TIM:
-stop-clock-last-2 = Hentikan Jam di 2 Menit Terakhir: { $stop_clock }
-ref-list = Wasit Kepala: { $chief_ref }
-    Pencatat Waktu: { $timer }
-    Wasit Air 1: { $water_ref_1 }
-    Wasit Air 2: { $water_ref_2 }
-    Wasit Air 3: { $water_ref_3 }
-team-ref-list = Wasit: { $ref_team }
-    Pencatat Waktu/Skor: { $ts_keeper_team }
 unknown = Tidak Diketahui
 select-infraction = Pilih salah satu
 ## Tombol waktu pertandingan
@@ -392,7 +350,6 @@ rugby = RUGBY
 beep-test = BEEP TEST
 
 # Beep-test screen
-beep-test-pre = PRA
 beep-test-top-time-label = WAKTU
 beep-test-top-level-label = LEVEL
 beep-test-top-lap-label = PUTARAN
@@ -400,9 +357,6 @@ beep-test-start = MULAI
 beep-test-pause = JEDA
 beep-test-resume = LANJUTKAN
 beep-test-reset = ATUR ULANG
-beep-test-column-level = LEVEL
-beep-test-column-count = JUMLAH
-beep-test-column-duration = DURASI
 beep-test-edit-selected = Level { $level }
 beep-test-edit-time = WAKTU
 beep-test-edit-count = JUMLAH
@@ -447,12 +401,6 @@ two-halves = 2 BABAK
 one-period = 1 PERIODE
 game-len = DURASI PERTANDINGAN
 length-of-game-during-regular-play = Durasi permainan selama pertandingan reguler
-
-# Single-period (1 Period) info variants — Game Length, no half-time line
-game-config-single-half = Durasi Pertandingan: { $half_len }
-    Sudden Death Diizinkan: { $sd_allowed },  Perpanjangan Waktu Diizinkan: { $ot_allowed }
-game-length-ot-allowed-single-half = Durasi Pertandingan: { $half_length }
-         Perpanjangan Waktu Diizinkan: { $overtime }
 
 # Self-update / Updates page
 check-version = Periksa Versi

@@ -14,7 +14,6 @@ cancel = 취소
 delete = 삭제
 back = 뒤로
 apply = 적용
-save = 저장
 user-options = 사용자 옵션
 new = 새로
 
@@ -37,8 +36,6 @@ team-timeout-count = 팀 타임아웃
     횟수:
 
 # 경고 추가
-team-warning = 팀
-    경고
 team-warning-line-1 = 팀
 team-warning-line-2 = 경고
 team-score-line-1 = 팀
@@ -83,8 +80,6 @@ audible-countdown-for-last-10-seconds = 마지막 10초 음성
     카운트다운
 delay = 지연
 court = 코트:
-single-half = 단일
-    전반:
 half-length-full = 전반 시간:
 game-length = 경기 시간:
 overtime-allowed = 연장전
@@ -97,8 +92,6 @@ pre-ot-break-length = 연장전 전
     휴식 시간:
 pre-sd-break-length = 서든 데스 전
     휴식 시간:
-nominal-break-between-games = 경기 간
-    기준 휴식:
 ot-half-length = 연장 전반
     시간:
 timeouts-counted-per = 타임아웃
@@ -153,13 +146,11 @@ half-length = 전반 시간
 length-of-half-during-regular-play = 정규 경기 중 전반의 시간
 half-time-lenght = 하프타임 시간
 length-of-half-time-period = 하프타임 기간의 시간
-nom-break = 기준 휴식
 game-block = 게임 블록
 game-block-full = 게임 블록:
 game-block-help = 한 경기 시작부터 다음 경기 시작까지의 시간
 game-block-too-short = 경기와 최소 휴식을 담기에 너무 짧습니다
 game-block-tight = 빡빡함 — 팀 타임아웃으로 경기가 슬롯을 초과할 수 있습니다
-system-will-keep-game-times-spaced = 시스템은 경기 시작 시간을 균등하게 유지하려 합니다. 한 경기 시작부터 다음 경기 시작까지의 총 시간은 2 × [전반 시간] + [하프타임 시간] + [경기 간 기준 시간]입니다 (예: [전반 시간] = 15분, [하프타임 시간] = 3분, [경기 간 기준 시간] = 12분이면 한 경기 시작부터 다음 경기까지 45분. 타임아웃이나 기타 시계 정지 시 최소 경기 간 시간에 도달할 때까지 12분이 줄어듭니다).
 min-break = 최소 휴식
 min-time-btwn-games = 경기가 예정보다 길어질 경우, 시스템이 할당하는 경기 간 최소 시간입니다. 경기가 지연되면 시스템이 이후 경기에서 자동으로 따라잡으며 항상 이 최소 경기 간 시간을 준수합니다.
 pre-ot-break-abreviated = 연장전 전 휴식
@@ -171,7 +162,6 @@ len-of-overtime-halftime = 연장전 하프타임의 시간
 pre-sd-break = 서든 데스 전 휴식
 pre-sd-len = 이전 경기 기간과 서든 데스 사이의 휴식 시간
 language = 언어
-this-language = 한국어
 portal-login-code = 코드
 portal-login-instructions = { $portal } Portal >> 대회 관리 >> 심판 관리로 이동하여 + 버튼을 클릭해 새 Refbox를 추가하고 이 Refbox ID를 입력하세요:
     { $id }
@@ -179,7 +169,6 @@ portal-login-instructions = { $portal } Portal >> 대회 관리 >> 심판 관리
     그러면 { $portal } Portal에서 확인 코드를 제공합니다. 왼쪽 숫자 패드로 코드를 입력하세요.
     코드를 입력한 후 완료를 누르세요
 
-help = 도움말:
 
 # 확인
 game-configuration-can-not-be-changed = 경기 진행 중에는 경기 설정을 변경할 수 없습니다.
@@ -216,24 +205,6 @@ refresh = 새로고침
 refreshing = 새로고침 중...
 settings = 설정
 none = 없음
-game-number-error = 오류 ({ $game_number })
-next-game-number-error = 오류 ({ $next_game_number })
-last-game-next-game = 이전 경기: { $prev_game },
-    다음 경기: { $next_game }
-black-team-white-team = 검정 팀: { $black_team }
-    흰 팀: { $white_team }
-game-length-ot-allowed = 전반 시간: { $half_length }
-         하프타임 시간: { $half_time_length }
-         연장전 허용: { $overtime }
-overtime-details = 연장전 전 휴식 시간: { $pre_overtime }
-             연장 전반 시간: { $overtime_len }
-             연장 하프타임 시간: { $overtime_half_time_len }
-sd-allowed = 서든 데스 허용: { $sd }
-pre-sd = 서든 데스 전 휴식 시간: { $pre_sd_len }
-team-to-len = 팀 타임아웃 시간: { $to_len }
-time-btwn-games = 경기 간 기준 시간: { $time_btwn }
-game-block-info = 게임 블록: { $game_block }
-min-brk-btwn-games = 경기 간 최소 시간: { $min_brk_time }
 
 
 # 목록 선택기
@@ -314,21 +285,8 @@ infraction = 위반: {$infraction}
 error = 오류 ({ $number })
 two-games = 이전 경기: { $prev_game },  다음 경기: { $next_game }
 one-game = 경기: { $game }
-teams = { -dark-team-name } 팀: { $dark_team }
-    { -light-team-name } 팀: { $light_team }
-game-config = 전반 시간: { $half_len },  하프타임 시간: { $half_time_len }
-    서든 데스 허용: { $sd_allowed },  연장전 허용: { $ot_allowed }
-team-timeouts = 팀 타임아웃: { $value }
 team-timeouts-label = 팀
     타임아웃:
-stop-clock-last-2 = 마지막 2분 시계 정지: { $stop_clock }
-ref-list = 주심: { $chief_ref }
-    계시원: { $timer }
-    수중 심판 1: { $water_ref_1 }
-    수중 심판 2: { $water_ref_2 }
-    수중 심판 3: { $water_ref_3 }
-team-ref-list = 심판: { $ref_team }
-    기록원/계시원: { $ts_keeper_team }
 unknown = 알 수 없음
 select-infraction = 선택하세요
 ## 경기 시간 버튼
@@ -394,7 +352,6 @@ rugby = 럭비
 beep-test = 비프 테스트
 
 # Beep-test screen
-beep-test-pre = 준비
 beep-test-top-time-label = 시간
 beep-test-top-level-label = 레벨
 beep-test-top-lap-label = 랩
@@ -402,9 +359,6 @@ beep-test-start = 시작
 beep-test-pause = 일시정지
 beep-test-resume = 재개
 beep-test-reset = 리셋
-beep-test-column-level = 레벨
-beep-test-column-count = 카운트
-beep-test-column-duration = 시간
 beep-test-edit-selected = 레벨 { $level }
 beep-test-edit-time = 시간
 beep-test-edit-count = 카운트
@@ -449,12 +403,6 @@ two-halves = 2 하프
 one-period = 1 피리어드
 game-len = 경기 시간
 length-of-game-during-regular-play = 정규 경기 중 전체 경기 시간
-
-# Single-period (1 Period) info variants — Game Length, no half-time line
-game-config-single-half = 경기 시간: { $half_len }
-    서든 데스 허용: { $sd_allowed },  연장전 허용: { $ot_allowed }
-game-length-ot-allowed-single-half = 경기 시간: { $half_length }
-         연장전 허용: { $overtime }
 
 # Self-update / Updates page
 check-version = 버전 확인

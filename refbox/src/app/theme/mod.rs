@@ -368,7 +368,7 @@ pub mod text;
 pub use text::{black_text, green_text, orange_text, red_text, white_text, yellow_text};
 
 pub mod svg;
-pub use svg::{black_svg, disabled_svg, white_svg};
+pub use svg::{black_svg, blue_svg, disabled_svg, white_svg};
 
 pub fn scrollable_style(_theme: &Theme, _status: scrollable::Status) -> scrollable::Style {
     let container = ContainerStyle {

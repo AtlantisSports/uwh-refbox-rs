@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" id="vector">
+    <g id="globe" fill="none" stroke="#000000" stroke-width="1.0" stroke-linecap="round">
+        <circle cx="12" cy="12" r="9.5"/>
+        <path d="M12 2.5v19"/>
+        <ellipse cx="12" cy="12" rx="4.45" ry="9.5"/>
+        <path d="M2.5 12h19"/>
+        <path d="M3.92 7Q12 10.2 20.08 7"/>
+        <path d="M3.92 17Q12 13.8 20.08 17"/>
+    </g>
+</svg>

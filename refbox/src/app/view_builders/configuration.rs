@@ -114,6 +114,26 @@ impl EditableSettings {
         self.game_number = String::new();
     }
 
+    /// Start the remote pickers from a blank slate when manual games are
+    /// switched off, per ADR 017 (Portal Data Lifecycle). The saved credential
+    /// itself is untouched — only the pickers and the validity cache reset.
+    ///
+    /// The indicator resets to FAILED rather than `None`. `None` renders as
+    /// "CHECKING…", which promises a check that cannot happen: this same reset
+    /// clears the event id, and a token is only ever verified against an event.
+    /// The portal path recovers once the operator picks one from the event
+    /// list; a custom site has no such list — its event is adopted only when
+    /// the site is applied — so the row would sit on "CHECKING…" permanently,
+    /// looking like a hang. FAILED is the resting state the other two seeding
+    /// sites already use when there is no event to check against.
+    pub(in super::super) fn clear_for_remote_switch(&mut self) {
+        self.current_event_id = None;
+        self.current_court = None;
+        self.schedule = None;
+        self.game_number = String::new();
+        self.uwhportal_token_valid = Some(false);
+    }
+
     /// Whether a freshly-arrived schedule should auto-select its court for the
     /// current edit session. True only when the schedule is for the event the
     /// operator currently has selected, that event has exactly one court, and no
@@ -646,10 +666,23 @@ fn make_event_config_page<'a>(
 
     let uses_remote = *source != GameSource::Manual;
 
+    // A rejected access token greys out the schedule-derived pickers. The site
+    // is normally the only thing enforcing the token, so against a site that
+    // hands its schedule to an unauthenticated request the operator would
+    // otherwise be offered courts and games we were never authorised to have.
+    // EVENT is deliberately exempt: it has to be selectable before a token can
+    // be obtained at all. `None` (still checking) does not grey anything —
+    // only an outright rejection does.
+    let token_rejected = settings.uwhportal_token_valid == Some(false);
+
     // Game-number picker — placed in the centre cell of the action row
     // (Cancel | Game | Apply) in both portal modes per ADR-009 Task 14 layout.
     let game_btn_msg = if uses_remote {
-        if current_event_id.is_some() && current_court.is_some() && schedule.is_some() {
+        if !token_rejected
+            && current_event_id.is_some()
+            && current_court.is_some()
+            && schedule.is_some()
+        {
             Some(Message::SelectParameter(ListableParameter::Game))
         } else {
             None
@@ -757,11 +790,16 @@ fn make_event_config_page<'a>(
         // court. A single-court event auto-selects that court (see RecvSchedule
         // and ParameterSelected::Event), so there is nothing to choose: the tile
         // is greyed (no on_press) while still showing the court via pool_label.
-        let pool_btn_msg = events
-            .as_ref()
-            .and_then(|tourns| tourns.get(current_event_id.as_ref()?)?.courts.as_ref())
-            .filter(|courts| courts.len() > 1)
-            .map(|_| Message::SelectParameter(ListableParameter::Court));
+        // A rejected token greys it for the separate reason above.
+        let pool_btn_msg = if token_rejected {
+            None
+        } else {
+            events
+                .as_ref()
+                .and_then(|tourns| tourns.get(current_event_id.as_ref()?)?.courts.as_ref())
+                .filter(|courts| courts.len() > 1)
+                .map(|_| Message::SelectParameter(ListableParameter::Court))
+        };
 
         let auth_container = |auth| {
             let txt = match auth {
@@ -2855,6 +2893,36 @@ mod tests {
     // must stay in sync because uwhportal_incomplete() is the only source of
     // truth — these tests lock its branches.
     // ---------------------------------------------------------------------
+
+    /// Switching manual games off must leave the ACCESS TOKEN row on FAILED,
+    /// never on "CHECKING…". The same reset clears the event id, and a token is
+    /// only ever verified against an event, so a `None` here promises a check
+    /// that can never be made. Under a custom site nothing else resolves it —
+    /// its event is adopted only when the site is applied — so the row would
+    /// read "CHECKING…" for as long as the operator left it there.
+    #[test]
+    fn remote_switch_leaves_token_indicator_failed_not_checking() {
+        let mut edited = EditableSettings {
+            source: GameSource::Custom,
+            current_event_id: Some(EventId::from_partial("evt-A")),
+            current_court: Some("CourtA".to_string()),
+            game_number: "7".to_string(),
+            uwhportal_token_valid: None,
+            ..Default::default()
+        };
+
+        edited.clear_for_remote_switch();
+
+        assert_eq!(
+            edited.uwhportal_token_valid,
+            Some(false),
+            "an indicator with no event to check against must rest on FAILED"
+        );
+        assert!(edited.current_event_id.is_none());
+        assert!(edited.current_court.is_none());
+        assert!(edited.schedule.is_none());
+        assert!(edited.game_number.is_empty());
+    }
 
     #[test]
     fn uwhportal_incomplete_false_when_portal_off() {

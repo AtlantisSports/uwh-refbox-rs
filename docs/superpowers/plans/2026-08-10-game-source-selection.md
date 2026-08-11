@@ -730,6 +730,59 @@ code commit or record them here.)_
   on success. Verified end to end against the stub: teams load, schedule 401s, operator links,
   schedule arrives, court auto-adopts, game list populates with both team names.
 
+- **Task 8: gated inside `check_uwhportal_auth`, and it reports FAILED rather than staying silent.**
+  The plan's Step 1 says to not send the call and "leave the indicator at `Some(false)`". A `&self`
+  helper returning a `Task` cannot set the indicator, so the no-token branch returns
+  `Task::done(Message::RecvTokenValid(event_id, false))` instead — the row lands on FAILED no matter
+  which caller asked. Gating inside the helper rather than at the caller also matters because only
+  **one of its three callers was ungated**: `refresh_token_indicator` and `enter_game_config` both
+  check `has_token()` already, but the event-picker arm
+  (`ParameterSelected(ListableParameter::Event)`) set the indicator to `Some(false)` and then fired
+  the check anyway. That is the exact path that produced the observed false green: the site's `200`
+  arrived and overwrote it. Putting the gate in the helper stops a fourth caller reintroducing it.
+
+- **Task 8: the verification needed a stub that lies, which the real one does not.** Acceptance
+  criterion 9 says "even against a site that answers every request with `200`. Verifiable with the
+  existing stub" — no longer true: the stub was deliberately made strict (its own gap-13 note), so
+  it answers an unauthenticated verify with `401` and refbox reaches FAILED either way. The criterion
+  was verified against a permissive **scratch copy** of the stub, outside the repo, leaving the
+  tracked stub untouched (it is listed as out of scope below). The on-screen result is identical
+  with or without the fix; the evidence is the stub's request log, which contains no
+  `access-keys/verify` line at all. Verified on both paths with Eric (2026-08-11).
+
+  The whole walkthrough ran under `XDG_CONFIG_HOME` pointed at a scratch directory. That isolates
+  `default-config.toml`, `portal_link.json` and the queue in one go (confy → `directories` → XDG,
+  and `config_dir` is derived from the config path), so the operator's real dev-portal login is
+  never at risk and "no token held" is guaranteed rather than arranged by hand. Worth reusing.
+
+- **Task 8 addition — COURT and GAME grey out whenever the token reads FAILED. Eric's decision
+  (2026-08-11), taken against my recommendation.** Seeing the pickers populated while ACCESS TOKEN
+  read FAILED, he ruled that neither should be reachable until the site has accepted the credential.
+  I put the counter-case first: a token also reads FAILED when it *expires* mid-tournament, with the
+  schedule already loaded, so gating on it can stop an operator selecting the next game exactly when
+  they cannot afford it (there is an existing REFRESH-on-expired-token flow for that state). He
+  chose the strict reading anyway. Implemented as one `token_rejected` flag in the config view
+  feeding both `game_btn_msg` and `pool_btn_msg`. Two limits, both deliberate: `EVENT` is exempt
+  (a token cannot be obtained for an event that has not been selected, so gating it would make
+  linking impossible), and `None`/"CHECKING…" does not grey anything — only an outright rejection
+  does, or the pickers would flicker unavailable on every settings entry. Note this is not in the
+  spec's acceptance criteria; it postdates them.
+
+- **PLAN GAP found during Task 9 — the ACCESS TOKEN row hung on "CHECKING…", and it is a
+  pre-existing master bug.** Switching MANUAL GAMES to NO ran a reset that cleared
+  `current_event_id` and set `uwhportal_token_valid = None` in the same breath. `None` renders as
+  "CHECKING…", but a token is only ever verified against an event, so the reset promised a check it
+  had just made impossible. The portal path recovers when the operator picks an event from the list;
+  a custom site has no list — its event is adopted only on apply — so the row sat there indefinitely
+  and read as a hang, with the row itself correctly un-tappable (linking needs an event). The
+  identical assignment is on `origin/master` in the old `UsingUwhPortal` toggle handler, so this
+  branch did not introduce it; CUSTOM only turned a transient confusion into a permanent one.
+  Fixed by moving the reset into `EditableSettings::clear_for_remote_switch` — mirroring the
+  existing `select_event` / `select_court` transition methods, which is also what made it
+  unit-testable — and resting the indicator on `Some(false)`, matching what the other two seeding
+  sites already do when there is no event to check against. Test asserted failing against the old
+  value (`left: None, right: Some(false)`) before passing. 477 tests, up from 476.
+
 ## Out of scope
 
 - Changing the verification stub's token handling.

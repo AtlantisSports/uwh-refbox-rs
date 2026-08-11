@@ -1214,6 +1214,16 @@ impl RefBoxApp {
     fn check_uwhportal_auth(&self, event_id: &EventId) -> Task<Message> {
         if let Some(client) = &self.uwhportal_client {
             // why this cannot panic: see `request_event_list` above.
+            let has_token = client.lock().unwrap().has_token();
+            if !has_token {
+                // Never ask a site to vouch for a credential we do not hold.
+                // Only the site can enforce a token, and a permissive one
+                // answers an unauthenticated probe with `200` — which arrives
+                // as a green OK painted over nothing. Report FAILED here
+                // instead, without sending the request.
+                return Task::done(Message::RecvTokenValid(event_id.clone(), false));
+            }
+            // why this cannot panic: see `request_event_list` above.
             let request = client.lock().unwrap().verify_token(event_id);
             // Tag the result with the event it was checked for so the handler
             // can drop a late reply for a previously-selected event.
@@ -4381,19 +4391,12 @@ impl RefBoxApp {
 
                 let mut trigger_event_list_fetch = false;
                 // Per ADR 017 (Portal Data Lifecycle): on manual -> remote,
-                // start the event / court / game / schedule pickers from a
-                // blank slate (don't pre-fill with the last-known values from a
-                // previous session or toggle) and kick off the event-list fetch
+                // start the pickers from a blank slate (see
+                // `clear_for_remote_switch`) and kick off the event-list fetch
                 // immediately so the picker has data ready when the operator
-                // navigates to it. The token credential itself is kept in the
-                // config; only its validity cache is reset so the source
-                // re-verifies on next interaction.
+                // navigates to it.
                 if !was_using && edited_settings.uses_remote() {
-                    edited_settings.current_event_id = None;
-                    edited_settings.current_court = None;
-                    edited_settings.schedule = None;
-                    edited_settings.game_number = String::new();
-                    edited_settings.uwhportal_token_valid = None;
+                    edited_settings.clear_for_remote_switch();
                     // Only the portal has a list to fetch. A custom site names
                     // its event in the URL and adopts it when the source is
                     // applied, so asking a third-party site for an event list

@@ -107,8 +107,10 @@ source-custom = KUSTOM
 access-token = TOKEN AKSES:
 custom-site = SITUS:
 custom-site-url-title = URL SITUS
-custom-site-placeholder = http://situs-anda/api/events/1234-A
-custom-site-invalid = Alamat itu tidak dapat digunakan. Harus seperti http://situs-anda/api/events/1234-A
+custom-site-placeholder = https://situs-anda/api/1234-A
+custom-site-invalid =
+    Alamat itu tidak dapat digunakan. Harus seperti:
+    https://situs-anda/api/1234-A
 starting-sides = SISI AWAL
 sound-enabled = SUARA
     DIAKTIFKAN:

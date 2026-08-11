@@ -1,9 +1,20 @@
 //! Parsing of the single URL an operator types for a custom game source.
 //!
 //! The operator types one string carrying both the site and the event, e.g.
-//! `http://scoreboard.local:8099/api/events/1234-A`. refbox needs the two
-//! halves separately: the base URL for the client, and the event ID for every
-//! call that names an event.
+//! `https://scoreboard.local:8099/api/1234-A`. refbox needs the two halves
+//! separately: the base URL for the client, and the event ID for every call
+//! that names an event.
+//!
+//! Only those two things are asked for. The rest of each address —
+//! `/api/events/{id}/teams` and the other seven calls — is refbox's own path
+//! convention, which a third-party site implements to match and which the
+//! client appends itself, so requiring the operator to type it would be
+//! requiring them to type what the software already knows.
+//!
+//! The `/api/` marker is still required, and that is deliberate: with no fixed
+//! segment there would be nothing separating the site from the event ID, so any
+//! three-character path segment — a homepage, a login page — would parse as a
+//! valid event and only fail later, on the first call.
 //!
 //! Pure by design — no I/O and no app state — so the rules are unit-testable.
 
@@ -27,9 +38,10 @@ pub enum CustomSiteError {
     /// A scheme other than `http` or `https`. refbox derives whether TLS is
     /// required from this scheme, so no other scheme has a meaning here.
     UnsupportedScheme,
-    /// No `/api/events/` anywhere in the path, so there is no event to find.
-    MissingEventsSegment,
-    /// `/api/events/` is present but nothing follows it.
+    /// No `/api/` anywhere in the path, so nothing marks where the site ends
+    /// and the event ID begins.
+    MissingApiSegment,
+    /// The marker is present but no event ID follows it.
     MissingEventId,
     /// An event ID too short for `uwh-common` to accept. Catching this at
     /// entry is the whole point of this function: `uwh-common` validates event
@@ -38,7 +50,13 @@ pub enum CustomSiteError {
     EventIdTooShort,
 }
 
-const EVENTS_SEGMENT: &str = "/api/events/";
+const API_SEGMENT: &str = "/api/";
+
+/// The shape the address had before it was shortened. Still accepted, so that an
+/// address already typed into a config — and the examples in the integration
+/// document — keep working. Tried first: splitting `/api/events/1234-A` on the
+/// shorter marker alone would take `events` for the event ID.
+const LEGACY_EVENTS_SEGMENT: &str = "/api/events/";
 
 pub fn parse_custom_site(input: &str) -> Result<ParsedSite, CustomSiteError> {
     let input = input.trim();
@@ -50,8 +68,9 @@ pub fn parse_custom_site(input: &str) -> Result<ParsedSite, CustomSiteError> {
     }
 
     let (base, rest) = input
-        .rsplit_once(EVENTS_SEGMENT)
-        .ok_or(CustomSiteError::MissingEventsSegment)?;
+        .rsplit_once(LEGACY_EVENTS_SEGMENT)
+        .or_else(|| input.rsplit_once(API_SEGMENT))
+        .ok_or(CustomSiteError::MissingApiSegment)?;
 
     let partial = rest.split_once('/').map_or(rest, |(id, _)| id);
     if partial.is_empty() {
@@ -76,6 +95,33 @@ mod test {
     use super::*;
 
     // ---- Accepted ----
+
+    /// The shape the operator is asked for: their site, then the event ID. The
+    /// `events/` segment is refbox's own convention and is not typed.
+    #[test]
+    fn parses_the_short_form_into_base_and_event() {
+        let parsed = parse_custom_site("https://scoreboard.local:8099/api/1234-A").unwrap();
+        assert_eq!(parsed.base_url, "https://scoreboard.local:8099");
+        assert_eq!(parsed.event_id.partial(), "1234-A");
+    }
+
+    /// A site reached through a path prefix keeps that prefix in its base.
+    #[test]
+    fn parses_a_site_behind_a_path_prefix() {
+        let parsed = parse_custom_site("https://club.example/scoreboard/api/1234-A").unwrap();
+        assert_eq!(parsed.base_url, "https://club.example/scoreboard");
+        assert_eq!(parsed.event_id.partial(), "1234-A");
+    }
+
+    /// The longer form must keep working: it is what already-configured
+    /// refboxes hold and what the integration document's examples show. Split on
+    /// the short marker alone it would yield `events` as the event ID.
+    #[test]
+    fn the_longer_events_form_is_still_accepted() {
+        let parsed = parse_custom_site("https://scoreboard.local:8099/api/events/1234-A").unwrap();
+        assert_eq!(parsed.base_url, "https://scoreboard.local:8099");
+        assert_eq!(parsed.event_id.partial(), "1234-A");
+    }
 
     #[test]
     fn parses_http_url_into_base_and_event() {
@@ -116,16 +162,30 @@ mod test {
 
     // ---- Rejected, each with its own error ----
 
+    /// Without the marker there is nothing separating site from event, so an
+    /// ordinary page on the same site must not be mistaken for an event address.
     #[test]
-    fn rejects_a_url_with_no_events_segment() {
-        assert_eq!(
-            parse_custom_site("http://scoreboard.local:8099/"),
-            Err(CustomSiteError::MissingEventsSegment)
-        );
+    fn rejects_a_url_with_no_api_segment() {
+        for url in [
+            "http://scoreboard.local:8099/",
+            "http://scoreboard.local:8099/1234-A",
+            "http://scoreboard.local:8099/login",
+            "http://scoreboard.local:8099/api",
+        ] {
+            assert_eq!(
+                parse_custom_site(url),
+                Err(CustomSiteError::MissingApiSegment),
+                "{url:?} should be refused"
+            );
+        }
     }
 
     #[test]
-    fn rejects_nothing_after_the_events_segment() {
+    fn rejects_nothing_after_the_marker() {
+        assert_eq!(
+            parse_custom_site("http://scoreboard.local:8099/api/"),
+            Err(CustomSiteError::MissingEventId)
+        );
         assert_eq!(
             parse_custom_site("http://scoreboard.local:8099/api/events/"),
             Err(CustomSiteError::MissingEventId)

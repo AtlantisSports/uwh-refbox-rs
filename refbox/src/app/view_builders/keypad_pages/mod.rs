@@ -1,4 +1,5 @@
 use super::{
+    fit_text::fit_text,
     theme::{MEDIUM_TEXT, MIN_BUTTON_SIZE, PADDING, SPACING},
     *,
 };
@@ -6,7 +7,7 @@ use iced::{
     Length,
     alignment::{Horizontal, Vertical},
     widget::{
-        Space, button,
+        button,
         button::Button,
         column, container, row,
         svg::{self, Svg},
@@ -294,9 +295,19 @@ fn make_panel_label<'a>(
     player_num: u32,
 ) -> Element<'a, Message> {
     row![
-        text(page.text()).align_x(Horizontal::Left),
-        Space::with_width(Length::Fill),
-        text(panel_value(role, player_num)).size(MEDIUM_TEXT),
+        // Label and value each get a guaranteed share of the fixed 283px width.
+        // Letting either take what it wants first starves the other, and this row
+        // is one line tall (`MEDIUM_TEXT * 1.2`), so an overflowing plain `text()`
+        // wraps and is then clipped -- shrinking is the only thing that helps.
+        fit_text(page.text())
+            .align_x(Horizontal::Left)
+            .width(Length::FillPortion(3))
+            .height(Length::Shrink),
+        fit_text(panel_value(role, player_num))
+            .size(MEDIUM_TEXT)
+            .align_x(Horizontal::Right)
+            .width(Length::FillPortion(2))
+            .height(Length::Shrink),
     ]
     .width(Length::Fixed(3.0 * MIN_BUTTON_SIZE + 2.0 * SPACING))
     .into()

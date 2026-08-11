@@ -536,6 +536,29 @@ pub(super) fn make_health_tile<'a>(
     .into()
 }
 
+/// Floor for the banner's own text, below the `MIN_FIT_TEXT` that suits buttons.
+///
+/// The period label and the clock share a box with no spare height, so the label
+/// must shrink rather than wrap. In the tightest configuration -- UWR with both
+/// side tiles and a timeout, leaving the column about 103px wide -- a long
+/// German period name needs to come down this far to stay on one line. A small
+/// label is a much better outcome than a missing clock.
+const BANNER_MIN_TEXT: f32 = 14.0;
+
+/// Largest time size to use when two readouts share the banner.
+///
+/// Derived from the vertical budget rather than picked by eye. The banner button
+/// leaves 126 - 2*PADDING = 110px inside. A label wrapped onto two lines at
+/// `SMALL_TEXT` takes 2 * 19 * 1.3 = 49.4px of that, leaving 60.6px, which allows
+/// a time of 60.6 / 1.3 = 46px. Larger than that and a wrapped label would push
+/// the time out of the banner -- which is exactly how the clock used to vanish.
+///
+/// The times are fitted rather than pinned to this, because the two modes do not
+/// give the banner the same width: UWR carries a play/pause button as well as the
+/// portal tile, so its halves are narrower. Pinning one size would render UWH at
+/// the size UWR needs.
+const BANNER_TWO_TIME_TEXT: f32 = 46.0;
+
 pub(super) fn make_game_time_button<'a>(
     snapshot: &GameSnapshot,
     tall: bool,
@@ -614,48 +637,97 @@ pub(super) fn make_game_time_button<'a>(
         };
     }
 
-    let make_time_view_row = |period_text, time_text, style: fn(&Theme) -> TextStyle| {
-        // Wrap period text in a right-aligned container so the text widget uses
-        // width(Shrink). This ensures iced's damage region starts from the text's
-        // actual left edge, preventing old glyph pixels from bleeding through when
-        // the period name changes (iced 0.13 damage tracking bug with aligned text).
-        let per = container(
-            text(period_text)
-                .style(style)
-                .width(Length::Shrink)
-                .align_y(Vertical::Center),
-        )
-        .width(Length::Fill)
-        .align_x(Horizontal::Right)
-        .align_y(Vertical::Center);
-        let time = text(time_text)
+    // Neither banner text may wrap. The period label sits above (or beside) the
+    // clock in a box with no spare height, so a second line pushes the clock out
+    // of the banner and it is not drawn at all -- the clock simply vanishes. They
+    // shrink to fit instead.
+    //
+    // This replaces a hand-tuned `compact` rule that dropped both to fixed
+    // smaller sizes. It fired only in UWR + portal mode *and* during a timeout,
+    // so every other crowded configuration lost the clock: Hockey with a timeout,
+    // UWR without the portal tile, and UWR with both side tiles even with no
+    // timeout at all. Crowding does not depend on the mode or on which side tiles
+    // happen to be present, so nothing is triggered on state any more.
+    //
+    // `FitText` anchors its paragraphs top-left and places each line itself,
+    // which is also why the right-aligned `container` workaround this row used to
+    // need (for the iced 0.13 repaint bug with aligned text) is gone.
+    // How a readout is sized depends on whether it has the banner to itself.
+    //
+    // One readout (the game clock alone) keeps the full width and the big clock,
+    // and its label stays on one line -- a second line there would push the clock
+    // out of the banner, which is how the clock used to vanish entirely.
+    //
+    // Two readouts split the width equally. The time then has a known space, so
+    // its size is fixed rather than fitted; the label is the part that varies by
+    // language, so it may wrap to two lines and shrinks to fit its half. Starting
+    // the label at the smaller size is what guarantees two wrapped lines still fit
+    // beside the time.
+    //
+    // `labels` lists every label across the banner so both settle on one size:
+    // otherwise a short timeout label renders full-size beside a shrunken period
+    // name and the two stop looking like a pair.
+    struct Sizes {
+        label: f32,
+        time: f32,
+    }
+    let sizes = if snapshot.timeout.is_some() {
+        Sizes {
+            label: SMALL_TEXT,
+            time: BANNER_TWO_TIME_TEXT,
+        }
+    } else {
+        Sizes {
+            label: SMALL_PLUS_TEXT,
+            time: LARGE_TEXT,
+        }
+    };
+    let wraps = snapshot.timeout.is_some();
+
+    let make_time_view_row = |period_text,
+                              time_text,
+                              style: fn(&Theme) -> TextStyle,
+                              labels: &[String],
+                              times: &[String]| {
+        let per = fit_text(period_text)
+            .size(sizes.label)
+            .min_size(BANNER_MIN_TEXT)
+            .shared_with(labels.to_vec())
             .style(style)
-            .size(LARGE_TEXT)
-            .width(Length::Fill)
-            .align_y(Vertical::Center)
-            .align_x(Horizontal::Left);
+            .align_x(Horizontal::Right)
+            .height(Length::Shrink);
+        let per = if wraps { per } else { per.no_wrap() };
+        let time = fit_text(time_text)
+            .no_wrap()
+            .size(sizes.time)
+            .min_size(BANNER_MIN_TEXT)
+            .shared_with(times.to_vec())
+            .style(style)
+            .align_x(Horizontal::Left)
+            .height(Length::Shrink);
         let r = row![].spacing(SPACING);
         make_time_view!(r, per, time).align_y(Alignment::Center)
     };
 
-    // The banner is "tight" only in UWR + portal mode (both side tiles present)
-    // AND when a timeout column is also competing for width. In that case the
-    // period label and clock shrink so everything fits; every other banner keeps
-    // the big full-size clock for poolside readability. The behind-schedule DELAY
-    // figure no longer competes for width here -- when it shows it drops to its
-    // own line below the clock (see the `overrun_label` branch further down).
-    let compact = portal_indicator.is_some() && mode == Mode::Rugby && snapshot.timeout.is_some();
-
-    let make_time_view_col = |period_text, time_text, style| {
-        let per = if compact {
-            text(period_text).style(style).size(SMALL_TEXT)
-        } else {
-            text(period_text).style(style)
-        };
-        let time =
-            text(time_text)
-                .style(style)
-                .size(if compact { MEDIUM_TEXT } else { LARGE_TEXT });
+    let make_time_view_col = |period_text,
+                              time_text,
+                              style: fn(&Theme) -> TextStyle,
+                              labels: &[String],
+                              times: &[String]| {
+        let per = fit_text(period_text)
+            .size(sizes.label)
+            .min_size(BANNER_MIN_TEXT)
+            .shared_with(labels.to_vec())
+            .style(style)
+            .height(Length::Shrink);
+        let per = if wraps { per } else { per.no_wrap() };
+        let time = fit_text(time_text)
+            .no_wrap()
+            .size(sizes.time)
+            .min_size(BANNER_MIN_TEXT)
+            .shared_with(times.to_vec())
+            .style(style)
+            .height(Length::Shrink);
         let c = column![];
         make_time_view!(c, per, time).align_x(Alignment::Center)
     };
@@ -737,23 +809,59 @@ pub(super) fn make_game_time_button<'a>(
         .spacing(SPACING)
         .align_x(Alignment::Center);
         content = content.push(block);
-    } else if tall {
-        content = content.push(make_time_view_col(period_text, time_text, period_color));
-        if let Some((timeout_text, timeout_color)) = timeout_info {
-            content = content.push(make_time_view_col(
-                timeout_text,
-                timeout_time_string(snapshot),
-                timeout_color,
-            ));
-        }
     } else {
-        content = content.push(make_time_view_row(period_text, time_text, period_color));
-        if let Some((timeout_text, timeout_color)) = timeout_info {
-            content = content.push(make_time_view_row(
-                timeout_text,
-                timeout_time_string(snapshot),
-                timeout_color,
+        // Collect every label and every time the banner is about to show, so both
+        // readouts are fitted against the same strings and come out matching.
+        let timeout_time = timeout_info.as_ref().map(|_| timeout_time_string(snapshot));
+        let times: Vec<String> = [Some(time_text.clone()), timeout_time.clone()]
+            .into_iter()
+            .flatten()
+            .collect();
+        let labels: Vec<String> = [
+            Some(period_text.clone()),
+            timeout_info.as_ref().map(|(t, _)| t.clone()),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        if tall {
+            content = content.push(make_time_view_col(
+                period_text,
+                time_text,
+                period_color,
+                &labels,
+                &times,
             ));
+            if let Some(((timeout_text, timeout_color), timeout_time)) =
+                timeout_info.zip(timeout_time)
+            {
+                content = content.push(make_time_view_col(
+                    timeout_text,
+                    timeout_time,
+                    timeout_color,
+                    &labels,
+                    &times,
+                ));
+            }
+        } else {
+            content = content.push(make_time_view_row(
+                period_text,
+                time_text,
+                period_color,
+                &labels,
+                &times,
+            ));
+            if let Some(((timeout_text, timeout_color), timeout_time)) =
+                timeout_info.zip(timeout_time)
+            {
+                content = content.push(make_time_view_row(
+                    timeout_text,
+                    timeout_time,
+                    timeout_color,
+                    &labels,
+                    &times,
+                ));
+            }
         }
     }
 

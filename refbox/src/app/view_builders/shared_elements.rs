@@ -497,19 +497,35 @@ pub(super) fn make_health_tile<'a>(
     // broader UWR mode portal-routing work (pre-existing issue where
     // the URL itself is not mode-aware; this file handles the visual
     // side only).
-    let logo_bytes: &[u8] = match mode {
-        Mode::Rugby => &include_bytes!("../../../resources/UWR_Compact_Logo.png")[..],
-        Mode::Hockey6V6 | Mode::Hockey3V3 => {
-            &include_bytes!("../../../resources/UWH_Portal_Compact_Logo.png")[..]
-        }
-        Mode::BeepTest => &include_bytes!("../../../resources/UWH_Portal_Compact_Logo.png")[..],
-    };
-    let logo = Image::new(image::Handle::from_bytes(logo_bytes))
+    // A third-party site gets a generic globe: showing the official Portal's
+    // emblem above a connection to somebody else's server would be a false
+    // statement in the one place an operator looks to see what they are
+    // connected to. Blue is taken from the palette, so it follows the display
+    // mode like every other themed colour.
+    let emblem: Element<'a, Message> = if state.site_is_custom {
+        Svg::new(svg::Handle::from_memory(
+            &include_bytes!("../../../resources/globe.svg")[..],
+        ))
+        .style(blue_svg)
         .width(Length::Fill)
-        .height(Length::Fill);
+        .height(Length::Fill)
+        .into()
+    } else {
+        let logo_bytes: &[u8] = match mode {
+            Mode::Rugby => &include_bytes!("../../../resources/UWR_Compact_Logo.png")[..],
+            Mode::Hockey6V6 | Mode::Hockey3V3 => {
+                &include_bytes!("../../../resources/UWH_Portal_Compact_Logo.png")[..]
+            }
+            Mode::BeepTest => &include_bytes!("../../../resources/UWH_Portal_Compact_Logo.png")[..],
+        };
+        Image::new(image::Handle::from_bytes(logo_bytes))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+    };
 
     let tile_contents = column![
-        container(logo)
+        container(emblem)
             .width(Length::Fill)
             .height(Length::Fill)
             .center_x(Length::Fill)

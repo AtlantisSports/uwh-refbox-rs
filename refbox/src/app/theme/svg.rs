@@ -1,4 +1,4 @@
-use super::{black, disabled_color, white};
+use super::{black, blue, disabled_color, white};
 use iced::{
     Theme,
     widget::svg::{Status, Style},
@@ -7,6 +7,14 @@ use iced::{
 pub fn white_svg(_theme: &Theme, _status: Status) -> Style {
     Style {
         color: Some(white()),
+    }
+}
+
+/// Blue line art, taken from the palette so it follows the display mode.
+/// Used for the globe that marks a third-party game source.
+pub fn blue_svg(_theme: &Theme, _status: Status) -> Style {
+    Style {
+        color: Some(blue()),
     }
 }
 

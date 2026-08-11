@@ -362,7 +362,7 @@ impl Config {
             mut collect_scorer_cap_num,
             mut track_fouls_and_warnings,
             mut show_behind_schedule_time,
-            confirm_score,
+            mut confirm_score,
             mut audible_countdown,
             mut source,
             mut remembered_remote,
@@ -372,9 +372,9 @@ impl Config {
             mut uwhportal,
             mut custom_site,
             mut sound,
-            language,
-            display_mode,
-            front_display_layout,
+            mut language,
+            mut display_mode,
+            mut front_display_layout,
         } = Default::default();
 
         if let Some(old_mode) = old.get("mode") {
@@ -396,6 +396,7 @@ impl Config {
             "show_behind_schedule_time",
             &mut show_behind_schedule_time,
         );
+        get_boolean_value(old, "confirm_score", &mut confirm_score);
         get_boolean_value(old, "audible_countdown", &mut audible_countdown);
         if let Some(old_source) = old.get("source") {
             if let Some(old_source) = old_source.as_str() {
@@ -441,6 +442,9 @@ impl Config {
                 sound = SoundSettings::migrate(old_sound);
             }
         }
+        get_serde_value(old, "language", &mut language);
+        get_serde_value(old, "display_mode", &mut display_mode);
+        get_serde_value(old, "front_display_layout", &mut front_display_layout);
 
         Self {
             mode,
@@ -536,6 +540,17 @@ fn get_string_value(table: &Table, key: &str, save: &mut String) {
     if let Some(value) = table.get(key) {
         if let Some(value) = value.as_str() {
             *save = value.to_string();
+        }
+    }
+}
+
+/// Reads a value that `Config` stores through serde rather than as a bare TOML scalar —
+/// the unit-variant enums, and `Option`s of them. `save` is left at its default if the
+/// key is absent or holds something that will not deserialize.
+fn get_serde_value<T: DeserializeOwned>(table: &Table, key: &str, save: &mut T) {
+    if let Some(value) = table.get(key) {
+        if let Ok(value) = value.clone().try_into() {
+            *save = value;
         }
     }
 }
@@ -1115,6 +1130,116 @@ mod test {
         );
         let config = Config::migrate(&old);
         assert!(!config.show_behind_schedule_time);
+    }
+
+    // The four settings below were dropped by `migrate` until 2026-08-11: they were
+    // destructured out of the defaults without `mut` and never read back from the old
+    // table, so any config file that needed migrating silently lost them and the reset
+    // was then written back over the file. `language` is the one that bites in practice,
+    // because a v0.4.0/v0.4.1 file always needs migrating (it has no
+    // `show_behind_schedule_time` key).
+
+    #[test]
+    fn test_migrate_confirm_score_defaults_true_when_absent() {
+        let old: Table = Default::default();
+        let config = Config::migrate(&old);
+        assert!(config.confirm_score);
+    }
+
+    #[test]
+    fn test_migrate_confirm_score_respects_present_false() {
+        let mut old: Table = Default::default();
+        old.insert("confirm_score".to_string(), toml::Value::Boolean(false));
+        let config = Config::migrate(&old);
+        assert!(
+            !config.confirm_score,
+            "an operator who turned score confirmation off must not get it back on"
+        );
+    }
+
+    #[test]
+    fn test_migrate_language_stays_unset_when_absent() {
+        let old: Table = Default::default();
+        let config = Config::migrate(&old);
+        assert_eq!(config.language, None);
+    }
+
+    #[test]
+    fn test_migrate_language_is_preserved() {
+        let mut old: Table = Default::default();
+        old.insert(
+            "language".to_string(),
+            toml::Value::String("German".to_string()),
+        );
+        let config = Config::migrate(&old);
+        assert_eq!(
+            config.language,
+            Some(Language::German),
+            "a chosen interface language must survive migration"
+        );
+    }
+
+    #[test]
+    fn test_migrate_display_mode_is_preserved() {
+        let mut old: Table = Default::default();
+        old.insert(
+            "display_mode".to_string(),
+            toml::Value::String("HighContrast".to_string()),
+        );
+        let config = Config::migrate(&old);
+        assert_eq!(
+            config.display_mode,
+            crate::app::theme::DisplayMode::HighContrast,
+            "High Contrast is chosen for poolside readability and must survive migration"
+        );
+    }
+
+    #[test]
+    fn test_migrate_front_display_layout_is_preserved() {
+        let mut old: Table = Default::default();
+        old.insert(
+            "front_display_layout".to_string(),
+            toml::Value::String("Corners".to_string()),
+        );
+        let config = Config::migrate(&old);
+        assert_eq!(
+            config.front_display_layout,
+            crate::sim_frame::FrontDisplayLayout::Corners
+        );
+    }
+
+    /// The realistic path: a config file written by v0.4.0/v0.4.1 has `confirm_score`
+    /// and `language` but no `show_behind_schedule_time`, so it fails to deserialize
+    /// against the current `Config` and `main.rs` falls back to `migrate`. Both
+    /// operator-set values must survive, and the key that did not exist yet must fall
+    /// back to its default.
+    #[test]
+    fn test_migrate_v041_shaped_config_keeps_operator_settings() {
+        let mut old: Table = Default::default();
+        old.insert("mode".to_string(), toml::Value::String("Rugby".to_string()));
+        old.insert("hide_time".to_string(), toml::Value::Boolean(true));
+        old.insert("confirm_score".to_string(), toml::Value::Boolean(false));
+        old.insert(
+            "language".to_string(),
+            toml::Value::String("German".to_string()),
+        );
+        // deliberately absent: show_behind_schedule_time, display_mode,
+        // front_display_layout — none of them existed in v0.4.1
+
+        let config = Config::migrate(&old);
+
+        assert!(!config.confirm_score, "confirm_score must survive");
+        assert_eq!(
+            config.language,
+            Some(Language::German),
+            "language must survive"
+        );
+        assert_eq!(config.mode, Mode::Rugby);
+        assert!(config.hide_time);
+        assert!(
+            config.show_behind_schedule_time,
+            "a key absent from the old format falls back to its default"
+        );
     }
 
     #[test]

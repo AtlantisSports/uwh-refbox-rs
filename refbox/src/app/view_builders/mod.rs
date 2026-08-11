@@ -46,6 +46,8 @@ pub(super) use warnings::*;
 pub mod fouls;
 pub(super) use fouls::*;
 
+pub mod fit_text;
+
 pub mod score_edit;
 pub(super) use score_edit::*;
 

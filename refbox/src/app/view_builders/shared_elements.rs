@@ -1,3 +1,4 @@
+use super::fit_text::{fit_text, fit_text_lines};
 use super::*;
 use crate::app::RevivePhase;
 use crate::portal_manager::{HealthState, PortalIndicatorState};
@@ -1073,8 +1074,7 @@ pub(super) fn cancel_or_back_label(has_changes: bool) -> String {
 pub(super) fn make_button<'a, Message: 'a + Clone, T: IntoFragment<'a>>(
     label: T,
 ) -> Button<'a, Message> {
-    let t = text(label).width(Length::Shrink);
-    button(container(t).center(Length::Fill))
+    button(fit_text(label))
         .padding(PADDING)
         .height(Length::Fixed(MIN_BUTTON_SIZE))
         .width(Length::Fill)
@@ -1083,8 +1083,7 @@ pub(super) fn make_button<'a, Message: 'a + Clone, T: IntoFragment<'a>>(
 pub(super) fn make_smaller_button<'a, Message: 'a + Clone, T: IntoFragment<'a>>(
     label: T,
 ) -> Button<'a, Message> {
-    let t = text(label).width(Length::Shrink);
-    button(container(t).center(Length::Fill))
+    button(fit_text(label))
         .padding(PADDING)
         .height(Length::Fixed(XS_BUTTON_SIZE))
         .width(Length::Fill)
@@ -1093,25 +1092,10 @@ pub(super) fn make_smaller_button<'a, Message: 'a + Clone, T: IntoFragment<'a>>(
 pub(super) fn make_multi_label_button<'a, Message: 'a + Clone, T: IntoFragment<'a>>(
     labels: (T, T),
 ) -> Button<'a, Message> {
-    let t0 = text(labels.0)
-        .align_x(Horizontal::Left)
-        .width(Length::Shrink);
-    let t1 = text(labels.1)
-        .align_x(Horizontal::Left)
-        .width(Length::Shrink);
-    button(
-        container(
-            column![
-                container(t0).center_x(Length::Fill),
-                container(t1).center_x(Length::Fill),
-            ]
-            .width(Length::Fill),
-        )
-        .center(Length::Fill),
-    )
-    .padding(PADDING)
-    .height(Length::Fixed(MIN_BUTTON_SIZE))
-    .width(Length::Fill)
+    button(fit_text_lines(labels.0, labels.1))
+        .padding(PADDING)
+        .height(Length::Fixed(MIN_BUTTON_SIZE))
+        .width(Length::Fill)
 }
 
 pub(super) enum NameLines<T> {
@@ -1171,12 +1155,7 @@ pub(super) fn make_small_button<'a, Message: 'a + Clone, T: IntoFragment<'a>>(
     label: T,
     size: f32,
 ) -> Button<'a, Message> {
-    let t = text(label)
-        .align_x(Horizontal::Left)
-        .align_y(Vertical::Center)
-        .width(Length::Shrink)
-        .size(size);
-    button(container(t).center(Length::Fill))
+    button(fit_text(label).size(size))
         .width(Length::Fixed(MIN_BUTTON_SIZE))
         .height(Length::Fixed(MIN_BUTTON_SIZE))
 }
@@ -1194,22 +1173,35 @@ where
 {
     let mut button = button(
         row![
-            // Do NOT pair `align_y(Center)` with `height(Fill)` on these text
-            // widgets: that caches a paragraph-position anchor that bleeds
-            // across renders (iced 0.13 bug; see portal_detail::row_text_centered
-            // and the time-view fix in this file). The row's `.align_y(Center)`
-            // below handles the vertical centering instead.
-            text(first_label).size(if large_text.0 {
-                MEDIUM_TEXT
-            } else {
-                SMALL_TEXT
-            }),
-            horizontal_space(),
-            text(second_label).size(if large_text.1 {
-                MEDIUM_TEXT
-            } else {
-                SMALL_TEXT
-            }),
+            // Label and value each get a guaranteed share of the width and
+            // wrap or shrink inside it. Letting either take what it wants first
+            // starves the other: the value used to be clipped to "1/" because
+            // the label claimed the row, and giving the value priority instead
+            // let "1/HALBZEIT" at the large size crowd out the label.
+            //
+            // Do NOT pair `align_y(Center)` with `height(Fill)` here: that caches
+            // a paragraph-position anchor that bleeds across renders (iced 0.13
+            // bug; see portal_detail::row_text_centered and the time-view fix in
+            // this file). The row's `.align_y(Center)` handles the vertical
+            // centering instead.
+            fit_text(first_label)
+                .size(if large_text.0 {
+                    MEDIUM_TEXT
+                } else {
+                    SMALL_TEXT
+                })
+                .align_x(Horizontal::Left)
+                .width(Length::FillPortion(3))
+                .height(Length::Shrink),
+            fit_text(second_label)
+                .size(if large_text.1 {
+                    MEDIUM_TEXT
+                } else {
+                    SMALL_TEXT
+                })
+                .align_x(Horizontal::Right)
+                .width(Length::FillPortion(2))
+                .height(Length::Shrink),
         ]
         .spacing(SPACING)
         .align_y(Alignment::Center)

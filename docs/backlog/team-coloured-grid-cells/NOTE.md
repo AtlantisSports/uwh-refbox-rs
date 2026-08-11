@@ -15,8 +15,9 @@ Outcomes that settled the open questions in this note:
   `blue_button` produce an identical style in that mode, and `white_button` gives `HC_DARK_GREY`. High
   Contrast discards button colour by design, so the dark team's grid is unchanged there and the light
   team's is slightly lighter grey. Nothing was special-cased, so #1912's selection work is untouched.
-- **Dark display mode was never viewed** — the one visual gap left. Lower risk than Light, because
-  Dark's `white()` is `rgb8(207,207,207)` rather than pure white.
+- **Dark display mode was checked and approved** on 2026-08-10, after this note merged saying it
+  had never been viewed. No visual gap remains. Lower risk than Light in any case, because Dark's
+  `white()` is `rgb8(207,207,207)` rather than pure white.
 
 The estimate held: the change is `cell_style` plus a threaded `PanelRole`, in one file.
 **Surfaced:** 2026-08-10, during the TEAM SCORE walkthrough.

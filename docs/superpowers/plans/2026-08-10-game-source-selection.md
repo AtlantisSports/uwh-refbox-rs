@@ -949,6 +949,28 @@ code commit or record them here.)_
   live on the Game page, but the edits are shared, and the App page's APPLY is not gated by
   `uwhportal_incomplete()` — and that path does repoint and adopt correctly.
 
+- **Code review round 2 closed everything; no further changes requested (2026-08-11).** The reviewer
+  could not break the finding-3 closure ("compiler-enforced for the path that matters"), agreed the
+  early-exit inventory is complete including the `PortalTenantSwitch` cancel path, and withdrew the
+  extraction suggestion on the stated reason. Their verdict: "the remaining risk is documentation
+  (already accepted) rather than unaddressed correctness defects."
+
+  **Worth keeping — their recipe for the change this branch's guard is holding back.** If a site
+  change during a game is ever allowed behind a confirmation, the minimal correct shape is: a new
+  `ConfirmationKind` that *carries the pending `SiteTarget`* (or page + edited source/URL snapshot),
+  raised at the current `refuse_repoint` site before any commit; the confirmation's affirmative
+  handler then performs the whole post-match sequence itself (repoint -> token re-seed -> adopt ->
+  second re-seed); and `ApplyConfigPage` must not also fall through to the repoint block. Removing the
+  guard, or raising a confirmation that does not carry the target, leaves the resolution handler with
+  no reliable way to know what to repoint to.
+
+  **One correction to their round-2 text, for the record.** They describe a cancel on
+  `PortalTenantSwitch` as returning to the editor "with the staged edits intact". It does not: that
+  confirmation offers only `DiscardChanges` and `RestartAndApply` (`confirmation.rs` ~142), and
+  `DiscardChanges` runs `revert_from_snapshot()` and lands on `ConfigPage::App`. The edits are thrown
+  away, not preserved for a retry. Their safety conclusion is unaffected — the live client is
+  untouched on both resolutions — but do not rely on "cancel keeps my edits" here.
+
 - **Eric's decision on finding 1 (2026-08-11): no user-facing explanation. "We don't need anything
   user facing to explain why they are grayed out, the big red FAILED is enough."** He first chose an
   explanatory line and reversed it when shown the placement options, so decision 6 ships exactly as

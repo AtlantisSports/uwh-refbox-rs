@@ -1073,6 +1073,15 @@ impl RefBoxApp {
         // clock counts down to the next game and is running by default, which
         // is exactly when an operator sets the source up. This matches the rule
         // the game-config and switch-to-manual gates already use.
+        //
+        // This refusal carries more than its own message. `apply_game_options`
+        // returns early — before the repoint block in `ApplyConfigPage` ever
+        // runs — on three confirmations that each require exactly this
+        // condition: `GameConfigChangedFromApply`, `GameNumberChangedFromApply`
+        // and `SwitchToManualFromApply`. Refusing here is the only thing
+        // keeping a pending repoint from reaching them. Allowing a site change
+        // during a game, even behind a confirmation, means repointing on those
+        // paths too, or the new source is committed and the client never moves.
         // Safety: Mutex poison only occurs if another thread already panicked; the refbox treats that as fatal (matches the 20+ identical sites in this file).
         if self.tm.lock().unwrap().current_period() != GamePeriod::BetweenGames {
             return Some(ConfirmationKind::SiteLockedByGame(page));
@@ -3627,6 +3636,38 @@ impl RefBoxApp {
                 }
                 // Committed without a refusal, so the site the operator just
                 // chose becomes the one the refbox talks to — no restart.
+                //
+                // Three things about the order below are load-bearing, and the
+                // compiler enforces none of them:
+                //
+                // 1. The repoint must come before the adoption.
+                //    `adopt_custom_event` fetches teams and the schedule
+                //    through the live client, so adopting first would pull the
+                //    new event's data from the *previous* site — the silent
+                //    mismatch this feature exists to remove — or 401 against it.
+                // 2. `commit_source` must come before the adoption test, which
+                //    reads the committed `self.source`. The other way round it
+                //    sees the pre-apply value and skips adoption, which is the
+                //    MANUAL -> CUSTOM dead end that left the operator with a
+                //    valid address on screen and no usable control.
+                // 3. Every early return in the match above skips this block
+                //    entirely, and three unrelated mechanisms are all that keep
+                //    a pending repoint from reaching one:
+                //    - The Game arm's four confirmations. Three require a game
+                //      in progress, which `refuse_repoint` has already turned
+                //      back; the fourth requires the incomplete remote state
+                //      that leaves the Game page's APPLY with no press action.
+                //    - The App arm's `PortalTenantSwitch`, which commits
+                //      nothing itself and is safe only because it always ends
+                //      in a restart, and the restart rebuilds the client from
+                //      the committed config.
+                //    - Language/Main/User and the unusable-address exit, where
+                //      no repoint can be pending at all: `pending_site_change`
+                //      answers `None` for those pages, and `site_target`
+                //      answers `None` for an address that will not parse.
+                //    Weaken any of the three and an APPLY can commit a new
+                //    source while the refbox goes on talking to the old site.
+                //    See `refuse_repoint`.
                 let mut task = Task::none();
                 let moved_to_custom = new_site
                     .as_ref()

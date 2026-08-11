@@ -897,6 +897,68 @@ code commit or record them here.)_
   because the repoint precedes the adoption. An "adopt on selection" fix (considered, not built)
   would have fetched from the wrong site there.
 
+- **Third-party code review received and worked through (2026-08-11). Five findings; one produced a
+  change, and it is comments only.** Verdicts, each checked against the code rather than accepted:
+
+  | # | Claim | Outcome |
+  |---|---|---|
+  | 1 | Token-FAILED greying COURT/GAME is a mid-tournament dead end | Accurate; Eric's decision stands |
+  | 2 | The Apply ordering is load-bearing and fragile | Accurate and understated — see below |
+  | 3 | The client-swap concurrency claim is not fully evidenced | Closed: compiler-enforced |
+  | 4 | Game-page CUSTOM -> Apply may skip the repoint/adoption | Not reachable |
+  | 5 | An unchanged SITE Apply still runs adoption + two token checks | Not reproducible |
+
+  **Finding 3 is closed with stronger evidence than the review asked for.** All three background
+  calls in `UwhPortalIo` build the request inside a block that ends before the `.await`, and this is
+  not a convention the code happens to follow: `health::spawn` takes `impl PortalTaskIo + Send` and
+  hands it to `tokio::spawn`, and `#[async_trait]` boxes each method as a `Send` future — so a
+  `std::sync::MutexGuard` (which is `!Send`) held across the await would fail to compile. No site
+  address is cached either: `base_url` does not appear anywhere in `portal_manager`. And
+  `UwhPortalIo::new(Arc::clone(client), …)` is the *same* handle `repoint_client` assigns through,
+  which is what makes the swap reach queued results at all.
+
+  **Finding 4's path cannot be entered.** Selecting CUSTOM clears the event, so
+  `uwhportal_incomplete()` is true and the Game page's APPLY has no press action at all (both
+  footers gate it: `configuration.rs` ~526 and ~1068). Nothing is silently skipped.
+
+  **Finding 5 is wrong on the facts.** Adoption is guarded by `self.current_event_id.is_none()`, so
+  pressing APPLY on an unchanged SITE page with a valid event already adopted runs no adoption and
+  no token refresh — there is no second round-trip to be surprised by.
+
+  **Finding 2 was right, and the coupling that matters is one the reviewer did not name.** The Game
+  arm can return early in four ways *before* the repoint block. Three require a game in progress and
+  the fourth requires the incomplete state that kills the button — so a pending repoint can never
+  reach an early exit, but *only* because `refuse_repoint` refuses on exactly the condition those
+  three confirmations require. Relaxing the mid-game refusal (e.g. allowing a site change behind a
+  confirmation) would commit the new source and leave the client on the old site. The reviewer's
+  suggested fix — gathering the apply steps into one helper — would not have covered this, because
+  the coupling spans `refuse_repoint` and `apply_game_options`, two different functions. Eric chose
+  comments over the restructure for that reason: notes warn the person who would break it, moving
+  code does not. Both spots in `refbox/src/app/mod.rs` now name the constraint and its consequence.
+
+  **Writing that note turned up a wider version of the same risk than the review found.** The Game
+  arm is not the only early exit that skips the repoint block. `ConfigPage::App` can carry a pending
+  site change too (`pending_site_change` matches `Game | App`), and `apply_app_options` returns early
+  on `PortalTenantSwitch` — so an App-page APPLY that crosses portals skips the repoint. That is safe
+  for a **different** reason than the Game arm: it commits nothing and always ends in a restart, and
+  the restart rebuilds the client from the committed config. Two further exits (Language/Main/User,
+  and the unusable-address rejection) are safe for a **third** reason: no repoint can be pending,
+  because `pending_site_change` answers `None` for those pages and `site_target` answers `None` for
+  an address that will not parse. So three unrelated mechanisms hold this together, not one. Worth
+  knowing that the App page *can* legitimately apply a source change to CUSTOM — the source buttons
+  live on the Game page, but the edits are shared, and the App page's APPLY is not gated by
+  `uwhportal_incomplete()` — and that path does repoint and adopt correctly.
+
+- **Eric's decision on finding 1 (2026-08-11): no user-facing explanation. "We don't need anything
+  user facing to explain why they are grayed out, the big red FAILED is enough."** He first chose an
+  explanatory line and reversed it when shown the placement options, so decision 6 ships exactly as
+  built, with nothing added to the screen. The three placements offered were words in the FAILED chip,
+  a sentence above the action row (costing a fifth row on a four-row page), and routing the dead
+  COURT/GAME buttons to the re-link screen. **Do not add an on-screen explanation later without
+  asking him again.** What survives is documentation only: the PR body and release notes must say
+  that if ACCESS TOKEN goes red during a tournament, the operator must re-link before they can
+  change court or game.
+
 ## Out of scope
 
 - Changing the verification stub's token handling.

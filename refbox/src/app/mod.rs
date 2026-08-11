@@ -371,7 +371,17 @@ enum ConfirmationKind {
     // Rugby). Carries the current and proposed modes so the confirmation page can
     // describe what will change. Raised in apply_app_options (Task 9); rendered
     // in Task 7 view builder; committed via RestartAndApply handler (Task 8).
-    PortalTenantSwitch { from_mode: Mode, to_mode: Mode },
+    //
+    // `source` decides which of two messages is shown. A custom site keeps both
+    // its address and its token across the restart, so telling that operator the
+    // link will be disabled is simply untrue. Manual is grouped with Portal
+    // deliberately: a dormant portal link note is still invalidated by the tenant
+    // change, so the portal wording remains correct there.
+    PortalTenantSwitch {
+        from_mode: Mode,
+        to_mode: Mode,
+        source: GameSource,
+    },
     // Raised when an Apply would point the refbox at a different site while it
     // is unsafe to do so. Each carries the page to return to, so the operator
     // lands back where they were with their edit still staged rather than being
@@ -1491,6 +1501,7 @@ impl RefBoxApp {
             return Some(ConfirmationKind::PortalTenantSwitch {
                 from_mode: self.config.mode,
                 to_mode: mode,
+                source,
             });
         }
 

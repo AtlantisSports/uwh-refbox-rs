@@ -850,6 +850,53 @@ code commit or record them here.)_
   sentence now says "the app mode" and costs no new translation surface. All 15 locales re-worded
   by hand for both messages.
 
+- **Task 9 outcome: 8 of 9 acceptance criteria verified on screen with Eric (2026-08-11).**
+
+  | # | Criterion | Result |
+  |---|---|---|
+  | 1 | Manual behaves as today | PASS |
+  | 2 | Portal event/link/court/game behave as today | PASS (with 5) |
+  | 3 | Custom site loads court, game, both team names | PASS — `Black Sheep vs White Knights` |
+  | 4 | Bad address refused at Apply with a message | PASS (message rendering fixed first) |
+  | 5 | PORTAL -> CUSTOM -> PORTAL with no re-linking | PASS — one link call in the stub log, zero 401s after |
+  | 6 | Site change refused while clock runs / result pending | Clock half PASS; **queued half NOT RUN** |
+  | 7 | Mode switch leaves a custom site intact | PASS — site and token both survived |
+  | 8 | SITE row shows the address actually used | PASS |
+  | 9 | Token FAILED and stays FAILED, even against a permissive site | PASS both paths, no verify request sent |
+
+  Criterion 6's queued half needs a deliberately stranded result (finish a game, stop the site) and
+  was judged not worth arranging: both halves run through `refuse_repoint`, differing only in which
+  message is returned, and the clock half is confirmed.
+
+- **PLAN GAP found by criterion 1 — MANUAL -> CUSTOM stranded the operator, and the first two fixes
+  were wrong.** Switching MANUAL GAMES to YES and back left CUSTOM selected with the address on
+  screen and **no usable control**: the switch clears the event, only Apply can produce one for a
+  custom site, and the SITE editor's Apply was greyed because the address had not changed.
+  `config.source` was never committed either, so a restart came back in Manual — retyping the address
+  was the only way out. Reachable by any operator who tries manual for one game.
+
+  Attempt 1 exempted Custom-with-no-event from `uwhportal_incomplete()` so the Game page's Apply lit
+  up. Eric rejected it: "the Apply should not be accessible if the token is failed, you are
+  regressing." Attempt 2 would have gated that Apply on the token instead — which **recreates the
+  dead end one step along**, because the ACCESS TOKEN row is only tappable once an event exists. Both
+  reverted.
+
+  **Eric's fix, and it is better than mine: make the SITE editor's APPLY always available.** It needed
+  two additions to work. That Apply now also commits the *source* — without it neither adoption
+  condition fires, since coming back from MANUAL it is the committed source that is still Manual, so
+  the button would have re-saved an identical address and changed nothing. And the mid-game/queued
+  guard is now asked for explicitly, because an Apply that commits a source change with no repoint
+  attached would otherwise skip a check keyed on `new_site.is_some()`. The token indicator is also
+  re-seeded right after adoption: it rests on FAILED from the source switch with a perfectly good
+  saved token, which would otherwise keep the pickers greyed and block the Game page's Apply for an
+  artifact.
+
+  Verified end to end: one press restored the repoint, adoption, teams, schedule and a successful
+  token validation. That run also happened to cover the case where refbox had been restarted in
+  Manual, so its client was pointed at the *portal* — Eric's approach handles it by construction,
+  because the repoint precedes the adoption. An "adopt on selection" fix (considered, not built)
+  would have fetched from the wrong site there.
+
 ## Out of scope
 
 - Changing the verification stub's token handling.

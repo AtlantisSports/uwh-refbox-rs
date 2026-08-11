@@ -1,12 +1,65 @@
 # Third-Party Integration: Running Your Own Site Instead of the UWH Portal
 
-Accurate as of refbox v0.4.9. This is a best-effort description of what the software does
-today. It carries no stability promise; a future release may change any of it without notice.
+Accurate as of refbox v0.4.9, plus the custom-source work that follows it and is **not yet in a
+released build** — selecting a site inside the app, the per-site credential, and the narrowing of
+call 2. Those parts are marked "unreleased" where they appear, and describe a branch that has not
+shipped, so treat them as the intended shape rather than something you can test against a download
+today. This is a best-effort description of what the software does; it carries no stability
+promise, and a future release may change any of it without notice.
 
 ## Pointing refbox at your site
 
-None of what follows matters until refbox is actually talking to your site, and that is not
-something you can set from inside the app. Set an environment variable before launching it:
+None of what follows matters until refbox is actually talking to your site. There are two routes,
+and they behave differently. The first is the one to use.
+
+### The operator selects your site in the app
+
+In refbox's settings: set **MANUAL GAMES** to **NO**, choose **CUSTOM** as the source, tap the
+**SITE:** row, type your address, and press **APPLY**. Nothing has to be set before launch, and
+refbox is pointed at your site immediately — no restart.
+
+The one address the operator types carries both halves refbox needs:
+
+```
+https://your-site/api/1234-A
+```
+
+| Half | Taken from | Used for |
+|---|---|---|
+| Base URL | everything before `/api/` | every path in this document is appended to it directly |
+| Event ID | the segment after `/api/` | every call that names an event |
+
+The longer form `https://your-site/api/events/1234-A` is also accepted, and is what earlier builds
+required. A `/api/` segment is mandatory in either form: without a fixed marker there is nothing
+separating your site from the event ID, and an address like `https://your-site/login` would parse
+as an event called `login`.
+
+**That address is a refbox-side convention, not an endpoint you implement.** Nothing ever requests
+`/api/1234-A`. It exists only so the operator can give refbox a site and an event in one field.
+Your endpoints are the ones in this document — `/api/events/{id}/teams` and the rest — and they do
+**not** move to `/api/{id}/…` just because that is what the operator typed.
+
+**No `--allow-http` flag is needed for a site selected this way.** Whether TLS is demanded comes
+from the scheme in the typed address, so a site on `http://` works by typing `http://`. This is the
+practical reason to prefer this route for a box on the pool LAN.
+
+Applying the address is not the end of the setup. refbox adopts the event named in it and
+immediately requests your teams and your schedule — and the schedule is one of the calls that
+needs a token, which it does not have yet. So expect the operator's first attempt to fail on your
+side, then expect them to link (call 1, below) via the **ACCESS TOKEN** row, at which point refbox
+re-requests the schedule by itself. **Refuse that first unauthenticated schedule request.** Serving
+it is what lets the operator get as far as picking a game without ever pairing.
+
+Two things refbox will refuse. Changing the address is rejected while a game is in progress, and
+while any result is still queued and unsent — each with a message saying which, and the edit is
+kept so it can be applied once the condition clears. And the credential is per-site: a token
+issued by your site is stored against your site and is never sent to the UWH Portal, nor the
+reverse.
+
+### The environment override (built-in Portal only)
+
+The older route replaces the address of the *built-in Portal*. Set an environment variable before
+launching:
 
 | refbox mode | Variable |
 |---|---|
@@ -14,26 +67,35 @@ something you can set from inside the app. Set an environment variable before la
 | Underwater rugby | `UWR_PORTAL_URL_OVERRIDE` |
 
 Set it to your site's base URL with no trailing slash — every path in this document is appended
-to it directly. It is read once, during startup, so changing it later has no effect until refbox
-is restarted (`refbox/src/app/mod.rs:1751`). Which of the two variables applies depends on the
-mode refbox is configured for, so setting the hockey variable while refbox is in rugby mode
-leaves it pointed at the real Portal, with nothing to indicate the override was ignored.
+to it directly. Which of the two variables applies depends on the mode refbox is configured for,
+so setting the hockey variable while refbox is in rugby mode leaves it pointed at the real Portal,
+with nothing to indicate the override was ignored.
 
-**If your site serves plain `http://`, refbox refuses to send it anything** unless it is also
-started with the `--allow-http` flag. Without that flag no request is attempted at all, and the
-failure is indistinguishable from your server being unreachable — nothing names the scheme as the
-cause (`refbox/src/main.rs:665` sets it; `uwh-common/src/uwhportal/mod.rs:173` enforces it). A
+**This override applies only when the selected source is the UWH or UWR Portal.** An address typed
+into the SITE row is never redirected by it, which is deliberate: a typed address that was silently
+ignored in favour of an environment variable is the failure the in-app route exists to remove.
+
+**If your site serves plain `http://`, refbox refuses to send it anything by this route** unless it
+is also started with the `--allow-http` flag. Without that flag no request is attempted at all, and
+the failure is indistinguishable from your server being unreachable — nothing names the scheme as
+the cause (`refbox/src/main.rs:665` sets it; `uwh-common/src/uwhportal/mod.rs:173` enforces it). A
 site without a TLS certificate therefore needs both:
 
 ```bash
 UWH_PORTAL_URL_OVERRIDE=http://localhost:8099 refbox --allow-http
 ```
 
-One further startup condition, easy to lose an afternoon to: refbox must be in one of the two game
-modes — 6v6 or 3v3 — for any of this to happen at all. Beep Test mode uses the same `UWH_`
-variable and still constructs the Portal client during startup, but nothing on that screen ever
-calls it, so no request ever arrives and there is nothing to link. Mode is set in refbox's
-configuration file; there is no command-line option for it.
+### One condition that applies to both routes
+
+Easy to lose an afternoon to: refbox must be in one of its **game** modes — 6v6, 3v3 or Rugby — for
+any of this to happen at all. Beep Test mode still constructs the Portal client during startup, but
+nothing on that screen ever calls it, so no request arrives and there is nothing to link.
+
+The mode is changed on the **APP MODE** button in refbox's settings, which restarts the app; there
+is no command-line option for it. Moving between hockey and rugby moves refbox between the two
+Portal tenants and invalidates a link to the built-in Portal, so an operator on the Portal has to
+link again afterwards. A site selected in the app is unaffected — it keeps both its address and its
+token across that restart, and needs no re-linking.
 
 ## You probably need eight calls, not eighteen
 
@@ -165,17 +227,35 @@ This is the only one of the eight that's a conversation instead of a single call
    `reason`, or a `400` with no `reason` field at all, is reported as an unknown error rather
    than shown as either of the two known messages.
 
-A custom site is free to skip the *negotiation* — but not the call. Since refbox only ever checks
-the token by sending it as a bearer header (call 2) and never re-derives it from the login response,
-your site can answer call 1 with any string at all as the `accessKey` and simply accept that string
-as a valid bearer token afterwards. Nothing about calls 2–8 depends on the token having been
-produced by a genuine pairing.
+**Implement the negotiation. Do not shortcut it.** refbox cannot make you: it only ever checks a
+token by sending it as a bearer header (call 2) and never re-derives it from the login response, so
+a site *could* answer call 1 with any string at all and accept that string as a bearer token
+afterwards. Nothing in calls 2–8 would notice. That is a description of refbox's limits, not
+permission — a site that hands a working token to anyone who posts to call 1 is an open token
+dispenser, and it hollows out the requirement in call 2 that you reject tokens you did not issue.
+Since refbox enforces nothing here, your site is the only thing standing between an event's results
+and whoever can reach it.
+
+Concretely, what implementing it means:
+
+- Record the `refBoxId` an admin entered, so a pending link exists before any code is issued.
+- Issue a code bound to that `refBoxId`, and accept it only for that `refBoxId`.
+- Reject anything else with `400` and one of the two exact `reason` strings from step 6 above —
+  `NoPendingLink` when no admin has entered that `refBoxId`, `InvalidCode` when the code does not
+  match.
+- Expire codes, and keep every `accessKey` revocable on your side. **refbox never gives one up.**
+  Nothing in the app clears a stored token — the only caller of the client's `clear_token` in the
+  whole workspace is schedule-processor, not refbox — so a key you issue stays in that refbox until
+  a fresh login overwrites it or somebody edits the configuration file. If a refbox is lost or
+  retired, revoking your side is the only way to end its access.
 
 What you cannot do is bypass call 1 altogether by having the operator type a token in. **refbox has
-no way to enter a token.** The linking screen offers a numeric keypad only, and the field it fills
-is the six-digit-style `code` — not the `accessKey`. A token can only be installed by editing
-`uwhportal.token` in refbox's own configuration file on disk, which is not something an operator
-does mid-tournament. Plan on answering call 1.
+no way to enter a token.** The custom-site row (unreleased) takes a site *address*, not a
+credential; the linking screen still offers a numeric keypad only, and the field it fills is the
+six-digit-style `code` — not the `accessKey`. A token can only be installed by editing refbox's
+configuration file on disk — `custom_site.token` for a site selected in the app, `uwhportal.token`
+for the built-in Portal — which is not something an operator does mid-tournament. Plan on answering
+call 1.
 
 Two further things about this exchange that are invisible from the request and response alone, and
 that both showed up the first time a real refbox was pointed at a stand-in site:
@@ -201,12 +281,19 @@ health check notices — up to five minutes later.
 
 `GET /api/events/{eventId}/access-keys/verify`  ·  source: `uwh-common/src/uwhportal/mod.rs:300`
 
-**When refbox calls it:** Twice, for different reasons. First, whenever the operator opens Game
-Options with a token already saved, or picks/changes the event there — refbox checks the token
-before showing the portal settings as usable. Second, automatically in the background as a
-standing health check, for as long as an event is selected: every 5 minutes while everything is
-healthy, dropping to every 15 seconds once a problem is detected (so it notices a recovery
-quickly).
+**When refbox calls it:** Twice, for different reasons, and **only ever while it holds a token**
+(narrowed in the unreleased custom-source work — see below). First, whenever the operator opens
+Game Options with a token
+already saved, or picks/changes the event there — refbox checks the token before showing the portal
+settings as usable. Second, automatically in the background as a standing health check, for as long
+as an event is selected: every 5 minutes while everything is healthy, dropping to every 15 seconds
+once a problem is detected (so it notices a recovery quickly).
+
+Holding no token, refbox now reports the credential as failed without sending anything, on both
+paths (`refbox/src/app/mod.rs` for the settings row, `refbox/src/portal_manager/mod.rs` for the
+health check). This is the one endpoint of the four bearer calls that behaves this way; the other
+three still arrive unauthenticated, as described in the fourth rule under "Rules that apply to
+every call".
 
 **Authentication:** `Authorization: Bearer <token>`
 
@@ -228,23 +315,32 @@ treated as "the token itself is bad": the indicator goes red *and* the operator 
 log in again. This distinction is unique to this call; calls 7 and 8 below treat both kinds of
 failure the same way.
 
-**What your site must do — the one obligation you cannot delegate to refbox.** Reject a missing
-or unknown token here with any non-`200`. Your site is the only thing in the system that enforces
+**What your site must do — the one obligation you cannot delegate to refbox.** Reject any token
+you did not issue, with any non-`200`. Your site is the only thing in the system that enforces
 whether a given refbox is authorised for an event, and this call is the only place that
 enforcement is visible to refbox.
 
-A site that answers `200` to everything — including a request carrying no token at all — tells
+The reason this is stated as an obligation rather than a suggestion was observed live on 2026-08-10
+against a deliberately permissive stand-in site. A site that answers `200` to everything tells
 every refbox pointed at it that its token is already valid. refbox then behaves as though it were
-already paired: the portal status shows `UWHPORTAL TOKEN: OK` in green, the privileged schedule
-loads, the court fills itself in, and **the operator is never offered the link flow at all**.
-Pairing is bypassed completely, and nothing anywhere reports a problem — not the screen, not the
-log. This was observed live on 2026-08-10 against a deliberately permissive stand-in site, and it
-is the failure mode that reading refbox's source cannot reveal, because the source only shows what
-refbox *sends*, never what a site is obliged to *refuse*.
+already paired: the token row shows `OK` in green, the privileged schedule loads, the court fills
+itself in, and **the operator is never offered the link flow at all**. Pairing is bypassed
+completely, and nothing anywhere reports a problem — not the screen, not the log. That is the
+failure mode reading refbox's source cannot reveal, because the source shows only what refbox
+*sends*, never what a site is obliged to *refuse*.
 
-Note that this is not a case of refbox omitting the call when it has nothing to send: see the
-fourth rule under "Rules that apply to every call" below, which explains why an unauthenticated
-request will arrive on this endpoint and why you must treat it as a failure rather than serve it.
+**Unreleased: refbox has closed the worst version of that, and only the worst version.** It no longer
+asks you to vouch for a credential it does not have, so the specific case above — a bypass achieved
+with no token at all — is no longer reachable through this call: refbox reports the credential as
+failed itself rather than believing your `200`. Verified against a permissive stand-in site on
+2026-08-11, which received no verify request whatsoever.
+
+What that does **not** cover is a token you never issued: a stale one from another site, an expired
+one you have since revoked, or a fabricated one. refbox holds such a token and will send it, and if
+you answer `200` it is authorised for the event on your say-so. The obligation is unchanged, and so
+is its consequence — you are still the only thing enforcing it. Note also that refbox marks a token
+valid the moment call 1 returns it, without confirming it here, so a key you issue and then decline
+to honour shows a healthy green until the standing health check catches up.
 
 #### 3. Event list
 
@@ -522,19 +618,28 @@ read as text and then parsed as JSON regardless of how you labelled it. A hand-w
 reading the request body straight off the socket can rely on `Content-Length` being present and
 accurate.
 
-**refbox still makes the authenticated calls when it holds no token.** Having no token does not
-stop refbox from calling 2, 5, 7 and 8 — it makes them anyway, with the `Authorization` header
-**omitted entirely**, not sent as an empty `Bearer `. An empty token in its configuration is
-turned into "no token" (`refbox/src/app/mod.rs:1743`), and the request builder attaches the header
-only when a token is actually present (`uwh-common/src/uwhportal/mod.rs:849`). Nothing checks in
-between: refbox consults "do I have a token?" only when drawing the portal settings screen
-(`refbox/src/app/mod.rs:1615`), never before sending. schedule-processor is the opposite — it
-checks for a token first and stops (`schedule-processor/src/main.rs:515`) — but that guard is not
-part of the refbox eight.
+**refbox still makes three of the four authenticated calls when it holds no token.** Having no
+token does not stop refbox from calling 5, 7 and 8 — it makes them anyway, with the `Authorization`
+header **omitted entirely**, not sent as an empty `Bearer `. An empty token in its configuration is
+turned into "no token" (`refbox/src/app/mod.rs`), and the request builder attaches the header only
+when a token is actually present (`uwh-common/src/uwhportal/mod.rs:849`). Nothing checks in between
+on those three paths.
 
-So your site will see unauthenticated requests arriving on the four endpoints the inventory marks
-`bearer`, and it must treat them as failures rather than serve them. For call 2 this is not merely
-tidy — serving it is what silently disables pairing, as described there.
+**Call 2 is the exception, in the unreleased custom-source work:** it is sent only while refbox
+holds a token. Both places
+that make it — the settings row and the background health check — now check first and report the
+credential as failed themselves rather than asking your site to rule on a credential refbox does
+not have. Do not read that as refbox having become careful on your behalf; it is the one call whose
+whole purpose is to ask "is my token good?", and asking that with no token was meaningless.
+
+schedule-processor checks for a token first and stops (`schedule-processor/src/main.rs:515`), but
+that guard is not part of the refbox eight.
+
+So your site will see unauthenticated requests arriving on three of the four endpoints the inventory
+marks `bearer`, and it must treat them as failures rather than serve them. Serving an unauthenticated
+call 5 hands your privileged schedule to anyone who asks, which — as the walkthrough on 2026-08-11
+showed — is enough for refbox to fill its court and game pickers from data it was never authorised
+to have.
 
 ### The two ID forms
 

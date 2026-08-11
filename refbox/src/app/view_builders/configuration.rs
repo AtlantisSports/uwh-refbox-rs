@@ -2078,13 +2078,32 @@ fn make_custom_site_page<'a>(
 
     // The rejection message replaces empty space rather than appearing above the
     // footer, so the buttons never move under the operator's finger.
+    //
+    // This paragraph must stay anchored LEFT, and that is not a style choice.
+    //
+    // iced 0.13 computes a paragraph's visible bounds by applying the alignment
+    // offset with the clipped width, while drawing applies it with the full
+    // width. A centre-anchored paragraph is therefore clipped half a text-width
+    // from where it draws: measured on screen, this sentence showed only its
+    // middle ~476px of ~950px and lost both ends. It is not a transient repaint
+    // — it survives a window resize — and it is not the box, which was proved
+    // large enough by giving it a temporary background. Only removing
+    // `align_x(Center)` fixed it. `centered_text` is avoided here for the same
+    // reason plus the `align_y(Center)` + `height(Fill)` artifact it carries, so
+    // the container does the vertical centring. Every other label on this page
+    // is short enough to fit its own half and so never showed this.
     col = col.push(
-        container(if show_invalid {
-            centered_text(fl!("custom-site-invalid"))
-        } else {
-            centered_text(String::new())
-        })
-        .height(Length::Fill),
+        container(
+            text(if show_invalid {
+                fl!("custom-site-invalid")
+            } else {
+                String::new()
+            })
+            .width(Length::Fill),
+        )
+        .width(Length::Fill)
+        .center_y(Length::Fill)
+        .padding(PADDING),
     );
 
     let cancel = make_button(fl!("cancel"))

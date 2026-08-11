@@ -176,6 +176,18 @@ impl health::PortalTaskIo for UwhPortalIo {
                 .client
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if !guard.has_token() {
+                // Never ask a site to vouch for a credential we do not hold.
+                // Only the site can enforce a token, so a site that answers an
+                // unauthenticated probe with `200` would hold this indicator
+                // green over nothing — the same false reassurance the settings
+                // row used to give before it was gated. Reporting a token
+                // problem is honest, and it is what a correctly-refusing site
+                // would have produced anyway.
+                return Err(health::PortalCallError::Failed(
+                    "no access token held for this site".to_string(),
+                ));
+            }
             guard.verify_token(&event_id)
             // guard drops here so token mutations from the UI thread can
             // land while the network call is in flight.

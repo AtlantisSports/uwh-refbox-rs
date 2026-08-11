@@ -3605,24 +3605,22 @@ impl RefBoxApp {
                         self.sound.update_settings(self.config.sound.clone());
                     }
                     ConfigPage::CustomSite(_) => {
-                        let typed = self
-                            .edited_settings
-                            .as_ref()
-                            .map(|e| e.custom_site.url.clone())
-                            .unwrap_or_default();
+                        // why this cannot panic: the SITE editor is only
+                        // reachable from the Game Options editor, which
+                        // populates `edited_settings` before it can be drawn.
+                        // This is the idiom the rest of this file uses for the
+                        // same value; defaulting an absent one instead would
+                        // mean saving a blank site over the operator's address.
+                        let site = self.edited_settings.as_ref().unwrap().custom_site.clone();
                         // Reject a bad address here rather than let it fail
                         // later: an operator on the pool deck cannot debug a
                         // URL mid-game. The page stays open with the message.
-                        if custom_site::parse_custom_site(&typed).is_err() {
+                        if custom_site::parse_custom_site(&site.url).is_err() {
                             self.app_state = AppState::EditGameConfig(ConfigPage::CustomSite(true));
                             trace!("AppState changed to {:?}", self.app_state);
                             return Task::none();
                         }
-                        self.config.custom_site = self
-                            .edited_settings
-                            .as_ref()
-                            .map(|e| e.custom_site.clone())
-                            .unwrap_or_default();
+                        self.config.custom_site = site;
                         // This page is only reachable with CUSTOM chosen, so
                         // applying an address here is an unambiguous "use this
                         // site" — `pending_site_change` already says as much. The

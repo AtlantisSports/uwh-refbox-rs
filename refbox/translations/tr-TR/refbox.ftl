@@ -107,8 +107,10 @@ source-custom = ÖZEL
 access-token = ERİŞİM TOKENİ:
 custom-site = SİTE:
 custom-site-url-title = SİTE URL
-custom-site-placeholder = http://siteniz/api/events/1234-A
-custom-site-invalid = Bu adres kullanılamaz. Şu biçimde olmalı: http://siteniz/api/events/1234-A
+custom-site-placeholder = https://siteniz/api/1234-A
+custom-site-invalid =
+    Bu adres kullanılamaz. Şu biçimde olmalı:
+    https://siteniz/api/1234-A
 starting-sides = BAŞLANGIÇ TARAFLARI
 sound-enabled = SES
     AKTİF:

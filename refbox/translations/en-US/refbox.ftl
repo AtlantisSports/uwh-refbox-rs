@@ -106,8 +106,10 @@ source-custom = CUSTOM
 access-token = ACCESS TOKEN:
 custom-site = SITE:
 custom-site-url-title = SITE URL
-custom-site-placeholder = http://your-site/api/events/1234-A
-custom-site-invalid = That address is not usable. It must look like http://your-site/api/events/1234-A
+custom-site-placeholder = https://your-site/api/1234-A
+custom-site-invalid =
+    That address is not usable. It must look like:
+    https://your-site/api/1234-A
 starting-sides = STARTING SIDES 
 sound-enabled = SOUND
     ENABLED:

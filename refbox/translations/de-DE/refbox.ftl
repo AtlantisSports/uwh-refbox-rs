@@ -107,8 +107,10 @@ source-custom = EIGENE
 access-token = ZUGRIFFSTOKEN:
 custom-site = SERVER:
 custom-site-url-title = SERVER-URL
-custom-site-placeholder = http://ihre-seite/api/events/1234-A
-custom-site-invalid = Diese Adresse ist nicht verwendbar. Sie muss so aussehen: http://ihre-seite/api/events/1234-A
+custom-site-placeholder = https://ihre-seite/api/1234-A
+custom-site-invalid =
+    Diese Adresse ist nicht verwendbar. Sie muss so aussehen:
+    https://ihre-seite/api/1234-A
 starting-sides = STARTSEITEN
 sound-enabled = TON
     AKTIVIERT:

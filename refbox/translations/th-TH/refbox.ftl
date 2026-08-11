@@ -184,6 +184,8 @@ apply-this-game-number-change = คุณต้องการใช้การ
 apply-switch-to-manual = การเปลี่ยนเป็นโหมดแมนวลจะล้างตารางเวลาที่โหลดและรีเซ็ตเวลาก่อนเกมถัดไป กำลังมีเกมดำเนินอยู่
 portal-enabled = เมื่อเปิดใช้ { $portal }PORTAL ต้องกรอกข้อมูลทุกช่อง
 mode-switch-portal-tenant = การเปลี่ยนโหมดจาก { $from_mode } เป็น { $to_mode } จะปิดใช้งานการเชื่อมต่อกับ { $from_portal }PORTAL และคุณต้องเชื่อมต่อใหม่กับ { $to_portal }PORTAL
+source-locked-game = ไม่สามารถเปลี่ยนแหล่งที่มาของเกมได้ขณะที่เกมกำลังดำเนินอยู่
+source-locked-queue = ยังมีผลการแข่งขันที่รอส่งอยู่ ส่งหรือทิ้งผลเหล่านั้นก่อน
 uwhportal-token-invalid-code = รหัสที่ป้อนไม่ถูกต้อง
     โปรดลองอีกครั้ง
 uwhportal-token-no-pending-link = พอร์ทัลไม่รอการเชื่อมต่อ

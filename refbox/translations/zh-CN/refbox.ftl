@@ -184,6 +184,8 @@ apply-this-game-number-change = 您希望如何应用此比赛编号更改？
 apply-switch-to-manual = 切换到手动模式将清除已加载的赛程并重置下一场比赛前的时间。当前比赛正在进行中。
 portal-enabled = 启用{ $portal }PORTAL时，所有字段必须填写。
 mode-switch-portal-tenant = 将模式从{ $from_mode }更改为{ $to_mode }将断开与{ $from_portal }PORTAL的连接，您需要重新连接到{ $to_portal }PORTAL。
+source-locked-game = 比赛进行中无法更改比赛来源。
+source-locked-queue = 仍有比赛结果等待发送。请先发送或丢弃它们。
 uwhportal-token-invalid-code = 输入的代码无效。
     请重试。
 uwhportal-token-no-pending-link = Portal未等待连接。

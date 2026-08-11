@@ -184,6 +184,8 @@ apply-this-game-number-change = Bagaimana anda ingin menerapkan perubahan nombor
 apply-switch-to-manual = Bertukar ke mod manual akan memadam jadual yang dimuatkan dan menetapkan semula masa sebelum perlawanan seterusnya. Perlawanan sedang berlangsung.
 portal-enabled = Apabila { $portal }PORTAL diaktifkan, semua medan mesti diisi.
 mode-switch-portal-tenant = Menukar mod daripada { $from_mode } kepada { $to_mode } akan menyahaktifkan pautan ke { $from_portal }PORTAL dan anda perlu menyambung semula ke { $to_portal }PORTAL.
+source-locked-game = Sumber perlawanan tidak boleh diubah semasa perlawanan sedang berlangsung.
+source-locked-queue = Masih ada keputusan perlawanan yang menunggu untuk dihantar. Hantar atau buang dahulu.
 uwhportal-token-invalid-code = Kod yang dimasukkan tidak sah.
     Sila cuba lagi.
 uwhportal-token-no-pending-link = Portal tidak menjangka sambungan.

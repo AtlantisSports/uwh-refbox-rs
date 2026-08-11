@@ -310,6 +310,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
         clock_running,
         portal_indicator,
         has_led_panel,
+        committed_site_url,
         ..
     } = data;
 
@@ -326,6 +327,7 @@ pub(in super::super) fn build_game_config_edit_page<'a>(
             show_power_button,
         ),
         ConfigPage::Game => make_event_config_page(
+            committed_site_url,
             snapshot,
             settings,
             events,
@@ -617,7 +619,12 @@ fn game_block_validity(cfg: &GameConfig) -> GameBlockValidity {
 }
 
 // View builder takes app-state slices; grouping into a context struct is a separate refactor across all view_builders. Filed as a Findings-Backlog item in AUDIT-PLAN.md (Unit 3, 2026-05-13).
+#[allow(clippy::too_many_arguments)]
+/// `committed_site_url` is the custom site address as committed — see
+/// `ViewData::committed_site_url` for why the SITE row shows that rather than
+/// the address currently typed into the editor.
 fn make_event_config_page<'a>(
+    committed_site_url: &str,
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
     events: Option<&BTreeMap<EventId, Event>>,
@@ -849,10 +856,13 @@ fn make_event_config_page<'a>(
             // nothing to pick: the SITE row takes the EVENT row's slot and the
             // page stays at four rows either way.
             .push(if *source == GameSource::Custom {
-                let shown = if settings.custom_site.url.is_empty() {
+                // The committed address, never the one being typed: an address
+                // that has not been applied is not the address in use, and
+                // showing it here would hide exactly that difference.
+                let shown = if committed_site_url.is_empty() {
                     fl!("none-selected")
                 } else {
-                    settings.custom_site.url.clone()
+                    committed_site_url.to_string()
                 };
                 make_value_button(
                     fl!("custom-site"),

@@ -184,6 +184,8 @@ apply-this-game-number-change = Bu oyun numarası değişikliğini nasıl uygula
 apply-switch-to-manual = Manuel moda geçmek yüklenen programı temizleyecek ve bir sonraki oyun öncesi süreyi sıfırlayacaktır. Bir oyun devam etmektedir.
 portal-enabled = { $portal }PORTAL etkinleştirildiğinde, tüm alanlar doldurulmalıdır.
 mode-switch-portal-tenant = Modu { $from_mode } yerine { $to_mode } olarak değiştirmek { $from_portal }PORTAL bağlantısını devre dışı bırakacak ve { $to_portal }PORTAL'a yeniden bağlanmanız gerekecektir.
+source-locked-game = Oyun kaynağı, bir oyun devam ederken değiştirilemez.
+source-locked-queue = Gönderilmeyi bekleyen oyun sonuçları var. Önce bunları gönderin veya silin.
 uwhportal-token-invalid-code = Geçersiz kod girildi.
     Lütfen tekrar deneyin.
 uwhportal-token-no-pending-link = Portal bir bağlantı beklemiyordur.

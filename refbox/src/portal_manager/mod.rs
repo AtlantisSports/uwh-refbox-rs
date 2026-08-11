@@ -240,6 +240,11 @@ pub struct PortalIndicatorState {
     /// by a stuck queue item — or by a connectivity problem (the portal
     /// is unreachable, but the login may be fine) — leaves this `false`.
     pub token_expired: bool,
+    /// True when this indicator is reporting on a third-party site rather than
+    /// the built-in portal. Set by the view layer from the committed game
+    /// source; the manager itself has no notion of which site is configured.
+    /// Drives which emblem the health tile draws, nothing else.
+    pub site_is_custom: bool,
 }
 
 impl Default for PortalIndicatorState {
@@ -247,6 +252,7 @@ impl Default for PortalIndicatorState {
         Self {
             health: HealthState::Green,
             token_expired: false,
+            site_is_custom: false,
         }
     }
 }
@@ -426,6 +432,14 @@ impl PortalManager {
         &self.config_dir
     }
 
+    /// True while any game result is still waiting to reach the site it was
+    /// queued for. Pointing the refbox at a different site would strand those
+    /// results — the new site knows nothing about that event — so the source
+    /// and site-address controls refuse to change while this holds.
+    pub fn has_queued_items(&self) -> bool {
+        !self.queue.items.is_empty()
+    }
+
     /// Recompute the cached indicator state from current inputs.
     /// Called from the iced UI layer:
     /// - on every pure UI-layer tick so the 30-minute stuck-item
@@ -496,6 +510,9 @@ impl PortalManager {
         self.indicator_state = PortalIndicatorState {
             health,
             token_expired: self.token_known_problem,
+            // Left false: the view sets this on the copy it takes, because
+            // which site is configured is not something the manager knows.
+            site_is_custom: false,
         };
     }
 

@@ -186,6 +186,8 @@ apply-this-game-number-change = Comment souhaitez-vous appliquer ce changement d
 apply-switch-to-manual = Passer en mode manuel effacera le calendrier chargé et réinitialisera le temps avant le prochain match. Un match est en cours.
 portal-enabled = Lorsque { $portal }PORTAL est activé, tous les champs doivent être remplis.
 mode-switch-portal-tenant = Changer le mode de { $from_mode } à { $to_mode } désactivera le lien vers { $from_portal }PORTAL et vous devrez vous reconnecter à { $to_portal }PORTAL.
+source-locked-game = La source des matchs ne peut pas être modifiée pendant qu'un match est en cours.
+source-locked-queue = Des résultats de match attendent encore d'être envoyés. Envoyez-les ou supprimez-les d'abord.
 ### Check
 uwhportal-token-invalid-code = Code invalide.
     Veuillez réessayer.

@@ -184,6 +184,8 @@ apply-this-game-number-change = Bagaimana Anda ingin menerapkan perubahan nomor 
 apply-switch-to-manual = Beralih ke mode manual akan menghapus jadwal yang dimuat dan mereset waktu sebelum pertandingan berikutnya. Pertandingan sedang berlangsung.
 portal-enabled = Saat { $portal }PORTAL diaktifkan, semua kolom harus diisi.
 mode-switch-portal-tenant = Mengubah mode dari { $from_mode } ke { $to_mode } akan menonaktifkan tautan ke { $from_portal }PORTAL dan Anda harus menghubungkan kembali ke { $to_portal }PORTAL.
+source-locked-game = Sumber pertandingan tidak dapat diubah saat pertandingan sedang berlangsung.
+source-locked-queue = Masih ada hasil pertandingan yang menunggu untuk dikirim. Kirim atau buang terlebih dahulu.
 uwhportal-token-invalid-code = Kode yang dimasukkan tidak valid.
     Silakan coba lagi.
 uwhportal-token-no-pending-link = Portal tidak mengharapkan koneksi.

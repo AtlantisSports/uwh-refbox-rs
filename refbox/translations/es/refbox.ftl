@@ -193,6 +193,8 @@ apply-this-game-number-change = ¿Cómo te gustaría aplicar este cambio de núm
 apply-switch-to-manual = Cambiar al modo manual borrará el calendario cargado y restablecerá el tiempo antes del próximo juego. Un juego está en progreso.
 portal-enabled = Cuando { $portal }PORTAL está habilitado, todos los campos deben ser completados.
 mode-switch-portal-tenant = Cambiar el modo de { $from_mode } a { $to_mode } desactivará el enlace a { $from_portal }PORTAL y deberás volver a conectarte a { $to_portal }PORTAL.
+source-locked-game = La fuente de juegos no se puede cambiar mientras un juego está en progreso.
+source-locked-queue = Todavía hay resultados de juegos esperando a ser enviados. Envíalos o descártalos primero.
 ### Check
 uwhportal-token-invalid-code = Código inválido.
     Por favor, inténtelo de nuevo.

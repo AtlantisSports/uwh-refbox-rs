@@ -354,14 +354,14 @@ git commit -m "feat(refbox): add custom site row and URL edit page"
 - Consumes: `ParsedSite` from Task 2; `GameSource` from Task 3.
 - Produces: the repoint path used by Task 7.
 
-- [ ] **Step 1: Add the refusal messages, all 15 locales**
+- [x] **Step 1: Add the refusal messages, all 15 locales**
 
 ```
 source-locked-clock = The game clock is running. Stop the clock before changing this.
 source-locked-queue = Game results are still waiting to be sent. Send or discard them first.
 ```
 
-- [ ] **Step 2: Guard the change**
+- [x] **Step 2: Guard the change**
 
 Repointing is refused while the clock runs, and while any result is pending in the outbound queue.
 `clock_running` is already a parameter of the settings view builder, so the first gate needs no new
@@ -370,7 +370,7 @@ because a silent refusal is indistinguishable from a broken button.
 
 Both guards cover switching source **and** editing the URL: either repoints the live client.
 
-- [ ] **Step 3: Swap the client on Apply**
+- [x] **Step 3: Swap the client on Apply**
 
 Assign a freshly constructed `UwhPortalClient` through the existing mutex guard. The client is held
 as `Option<Arc<Mutex<UwhPortalClient>>>` (`mod.rs:160`) and every request formats its address from
@@ -384,7 +384,7 @@ the sibling `schedule-processor/src/main.rs:63` already does exactly this.
 In-flight requests need no handling: the existing pattern locks, builds the request, releases the
 lock, then awaits, so a request already in flight completes against the site it was addressed to.
 
-- [ ] **Step 4: Leave a custom site alone across a mode switch**
+- [x] **Step 4: Leave a custom site alone across a mode switch**
 
 Switching hockey/rugby mode currently discards the portal link and tells the operator to reconnect
 — there is an existing message for it, `mode-switch-portal-tenant`. That must keep happening for
@@ -627,6 +627,83 @@ code commit or record them here.)_
   `BoolGameParameter::UsingUwhPortal` now sets `Manual` or `Portal` explicitly instead of flipping a
   boolean. Routing OFF->ON through `remembered_remote` would be a behaviour change and belongs to
   Task 4, which replaces this control.
+
+- **Task 6: PLAN DEFECT — `config.source` was never written or read, so CUSTOM could not survive a
+  restart.** Task 1 added the persisted field; nothing has ever written it and nothing has ever read
+  it (`self.source` was initialised `Manual` at startup and set `Portal` only by the link restore).
+  Step 4 requires the selected source to survive a mode switch, and a mode switch restarts the app,
+  so the step was not deliverable as written. Task 6 now writes it at all three apply sites — via a
+  new `commit_source` helper that replaced three verbatim copies of the same block — and restores it
+  at startup **only for `Custom`**. Restoring `Portal` from config as well would change existing
+  behaviour: portal mode is decided by the freshness and tenant checks on `portal_link.json`, and a
+  stale note deliberately starts the app dormant in Manual. That is untouched. The link-note restore
+  is skipped entirely when a custom site was restored, so a portal note cannot move the operator off
+  the site they configured.
+
+- **Task 6: the environment override applies to the built-in portal only.** The Task 5 deviation
+  implied the SITE row must *reveal* an override pointing elsewhere. Implemented the other way round:
+  `UWH_PORTAL_URL_OVERRIDE` / `UWR_PORTAL_URL_OVERRIDE` is consulted only for `GameSource::Portal`,
+  so a typed custom address is never redirected and there is nothing to reveal. Two reasons. A typed
+  value quietly redirected *is* the failure this feature exists to remove. And if the override won,
+  the custom path could not be tested in the one environment where it must be — the stub walkthrough
+  (Task 9) requires the override to be set so that Portal mode stays off production.
+
+- **Task 6: the SITE row shows the COMMITTED address, not the live client's URL.** "The URL actually
+  in use" is implemented as committed `config.custom_site.url`, threaded through a new
+  `ViewData::committed_site_url`. A typed address reaches the row only by being applied, and applying
+  it repoints the client in the same action or is refused with a message — so the row cannot
+  advertise an address that is not in use. Showing the client's own URL instead would print the
+  *portal* address in the SITE row whenever CUSTOM was selected but not yet applied.
+
+- **Task 6: the new client is assigned through the shared mutex, not by replacing the handle.**
+  Replacing `Option<Arc<Mutex<UwhPortalClient>>>` would leave the background retry task holding a
+  clone of the *old* client, so queued results would keep going to the previous site while the UI
+  talked to the new one. Assigning through the guard (`*shared.lock().unwrap() = new_client`) is what
+  makes the repoint reach both.
+
+- **Task 6: the two guards live in one place, keyed on whether the address actually changes.** Rather
+  than a guard per control, `Message::ApplyConfigPage` asks `pending_site_change(page)` before
+  anything commits, which covers the source buttons and the SITE editor alike. Worth stating because
+  it is behaviour-preserving where it matters: switching MANUAL <-> PORTAL is *not* refused while the
+  clock runs, because it repoints nothing. Only a real change of address is guarded.
+
+- **Task 6: MANUAL never repoints.** `site_target(Manual)` returns `None` deliberately. Otherwise
+  turning manual games on would send results already queued for a third-party site to the UWH Portal
+  instead.
+
+- **Task 6: the credential follows the site, not the source.** A custom site's client is built with
+  `custom_site.token`, the portal's with `uwhportal.token`. Sending the operator's Portal login to a
+  third-party server would hand that server a working Portal credential.
+
+- **Task 6: there are two mode-switch handlers, not one.** The same queue flush also lives in
+  `Message::BeepTestRestartToApply`; both are now conditional on the source being `Portal`.
+
+- **Task 6: the mode-switch warning keeps its portal wording under CUSTOM — the human's decision
+  (2026-08-11).** Asked whether a mode switch under CUSTOM should skip the restart, keep it, or get
+  its own message; the answer was to keep today's restart and message unchanged. Known cosmetic
+  consequence: the message names the UWH/UWR portals even when a custom site is selected. The
+  *linked event* is still cleared (harmless under CUSTOM — the event is re-derived from the URL); the
+  *queue flush* is what became conditional, because those results are still deliverable to the same
+  address after the restart and flushing them would destroy real game results.
+
+- **Task 6: a target carries the whole address, not just the host.** Comparing only host + TLS would
+  have let an edit that changes just the event (`.../events/1234-A` -> `.../events/1234-B`) past both
+  guards, because the client needs no rebuild for it — but Step 2 requires the guards to cover
+  editing the URL, and that is an edit to the URL. `SiteTarget::address` makes the comparison ask "is
+  this a different address?" rather than "is this a different host?".
+
+- **Task 6: six unit tests added, against the plan's "the rest are verified by `just check` plus the
+  GUI walkthrough".** `site_target` is pure and decides both the TLS requirement and which address
+  wins, so it is worth testing directly. The portal test asserts the TLS passthrough and that a
+  custom address never leaks in, but not the portal URL itself, which can legitimately come from the
+  override variable.
+
+- **Task 6: two corners knowingly left for later.** Applying CUSTOM on the Game page is still blocked
+  by `uwhportal_incomplete()` until an event, court and schedule exist — Task 7 supplies them, and
+  until then the SITE editor's APPLY is what repoints the client. And a custom site + queued results
+  + switch to MANUAL + restart comes back pointed at the portal, since MANUAL restores no site;
+  the queued items are then rejected as an unknown event rather than mis-delivered. Fixing that
+  properly would mean branching on `remembered_remote`, which the Global Constraints forbid.
 
 ## Out of scope
 

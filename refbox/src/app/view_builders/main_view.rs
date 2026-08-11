@@ -1,3 +1,4 @@
+use super::fit_text::fit_text;
 use super::game_info_table::{game_info_rows, render_game_info_table};
 use super::*;
 use iced::{
@@ -178,14 +179,14 @@ pub(in super::super) fn build_main_view<'a>(
         };
         let alarm_face_container = container(
             column![
-                text(alarm_label)
+                // The two lines are deliberately different sizes, so each fits
+                // on its own rather than sharing one size.
+                fit_text(alarm_label)
                     .size(SMALL_PLUS_TEXT)
-                    .align_x(Horizontal::Center)
-                    .width(Length::Fill),
-                text(spacebar_label)
+                    .height(Length::Shrink),
+                fit_text(spacebar_label)
                     .size(SMALL_TEXT)
-                    .align_x(Horizontal::Center)
-                    .width(Length::Fill),
+                    .height(Length::Shrink),
             ]
             .align_x(Alignment::Center)
             .width(Length::Fill),
@@ -218,10 +219,7 @@ pub(in super::super) fn build_main_view<'a>(
 
             let warnings_zone = button(
                 column![
-                    text(fl!("warnings"))
-                        .align_y(Vertical::Top)
-                        .align_x(Horizontal::Center)
-                        .width(Length::Fill),
+                    fit_text(fl!("warnings")).height(Length::Shrink),
                     row(snapshot.warnings.iter().map(|(color, warns)| column(
                         warns
                             .iter()

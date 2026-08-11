@@ -421,21 +421,21 @@ git commit -m "feat(refbox): repoint the portal client on apply, with guards"
 - Consumes: the repoint path from Task 6; `ParsedSite` from Task 2.
 - Produces: a populated events-map entry, schedule and teams for the embedded event.
 
-- [ ] **Step 1: Create the synthetic events-map entry**
+- [x] **Step 1: Create the synthetic events-map entry**
 
 Team data is stored into an entry in the events map, and the court picker reads its court list from
 that same entry. Custom therefore needs one entry for the embedded event ID or teams and court data
 have nowhere to land and the court picker stays permanently empty. This is a required step, not a
 tidy-up.
 
-- [ ] **Step 2: Trigger the fetches directly**
+- [x] **Step 2: Trigger the fetches directly**
 
 On applying a custom site, call the two existing per-event helpers for the embedded event:
 `request_teams_list(event_id)` (`mod.rs:731`) and `request_schedule(event_id)` (`mod.rs:752`, which
 fetches the privileged schedule and the referee names together). No new fetching machinery — Custom
 simply becomes another caller of the functions the event-list path already loops over.
 
-- [ ] **Step 3: Skip the event-list call under Custom**
+- [x] **Step 3: Skip the event-list call under Custom**
 
 The event is named in the URL, so the list is not needed. `RecvEventList` (`mod.rs:4089`) remains
 the portal path's trigger and is untouched.
@@ -704,6 +704,31 @@ code commit or record them here.)_
   + switch to MANUAL + restart comes back pointed at the portal, since MANUAL restores no site;
   the queued items are then rejected as an unknown event rather than mis-delivered. Fixing that
   properly would mean branching on `remembered_remote`, which the Global Constraints forbid.
+
+- **Task 7: adopting also happens at startup.** The plan says "on applying a custom site", but
+  `config.source` is restored for `Custom` (Task 6), so without a startup adoption a relaunch comes
+  back on a custom site with no schedule, no teams and a court picker that can never fill. Adoption
+  is also re-run when CUSTOM is in use with no event — the path back from MANUAL, which clears the
+  event while leaving the site address alone.
+
+- **Task 7: PLAN GAP — adopting an event must clear the previous event's court.** Found on screen:
+  a court restored from a portal link note (`"1"`) survived into the custom event, whose games are
+  all on court `"A"`, so the game list filtered to nothing and SELECT GAME was silently empty with
+  no error anywhere. `EditableSettings::select_event` clears court, game and schedule for exactly
+  this reason and the plan's Step 1 does not mention it. Now cleared only when the event actually
+  changes, so a restart on the same site keeps the operator's court — and clearing is also what lets
+  the single-court auto-adopt fire, since it requires `current_court` to be `None`.
+
+- **Task 7: the event-list skip belongs in two places, not one.** Step 3 names startup; the
+  `SelectGameSource` manual -> remote branch also triggers a fetch and needed the same condition.
+
+- **Task 7 answers the token question with no new UI, and it was not obvious.** The ACCESS TOKEN row
+  is gated on `current_event_id.is_some()`, so it was unreachable under CUSTOM — which looked like a
+  blocker, since the privileged schedule call needs a bearer token. Adopting the event unlocks the
+  row, the existing login flow runs against the custom site, Task 6's per-site credential change
+  files the result under `custom_site.token`, and `RecvPortalToken` already re-requests the schedule
+  on success. Verified end to end against the stub: teams load, schedule 401s, operator links,
+  schedule arrives, court auto-adopts, game list populates with both team names.
 
 ## Out of scope
 

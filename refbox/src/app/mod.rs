@@ -41,7 +41,7 @@ use uwh_common::{
     game_snapshot::{GamePeriod, GameSnapshot, Infraction, TimeoutSnapshot},
     uwhportal::{
         PortalTokenResponse, RosterPlayer, UwhPortalClient,
-        schedule::{Event, EventId, GameNumber, Schedule, TeamId},
+        schedule::{DateRange, Event, EventId, GameNumber, Schedule, TeamId},
     },
 };
 
@@ -1136,6 +1136,79 @@ impl RefBoxApp {
             settings.uwhportal_token_valid = valid;
         }
         task
+    }
+
+    /// Adopt the event named inside the custom site's URL and pull its teams
+    /// and schedule.
+    ///
+    /// A custom site never calls the event list — its event is named in the URL
+    /// — so the events-map entry the portal path gets from that list has to be
+    /// made here. That entry is not bookkeeping: `RecvTeamsList` and
+    /// `RecvSchedule` both store *into* it and log an error when it is missing,
+    /// and the court picker reads its court list from it, so without one the
+    /// court list stays permanently empty.
+    ///
+    /// Safe to call more than once: the entry is only created when absent, so
+    /// re-adopting refreshes the data without discarding what has arrived.
+    fn adopt_custom_event(&mut self) -> Task<Message> {
+        let parsed = match custom_site::parse_custom_site(&self.config.custom_site.url) {
+            Ok(parsed) => parsed,
+            Err(e) => {
+                // Only reachable from a hand-edited config file: every path that
+                // commits a URL validates it first.
+                error!("Saved custom site address is not usable ({e:?}); no event adopted");
+                return Task::none();
+            }
+        };
+        let event_id = parsed.event_id;
+        let event_changed = self.current_event_id.as_ref() != Some(&event_id);
+
+        let events = self.events.get_or_insert_with(BTreeMap::new);
+        events.entry(event_id.clone()).or_insert_with(|| Event {
+            id: event_id.clone(),
+            // Only ever shown in the event picker, which a custom site never
+            // opens. The id keeps it recognisable in a log rather than blank.
+            name: event_id.partial().to_string(),
+            slug: String::new(),
+            // A custom site serves no event-level date range, and the only
+            // reader sorts the event picker — unreachable here. Both ends are
+            // set to now rather than invented.
+            date_range: DateRange {
+                start: time::OffsetDateTime::now_utc(),
+                end: time::OffsetDateTime::now_utc(),
+            },
+            teams: None,
+            schedule: None,
+            courts: None,
+        });
+
+        // Route through set_current_event_id so portal_event_id stays in sync
+        // for the background health check (ADR 011 amendment 2026-04-23).
+        self.set_current_event_id(Some(event_id.clone()));
+        // A different event invalidates the court and game chosen against the
+        // previous one — the portal's event picker clears them for exactly this
+        // reason (`EditableSettings::select_event`). Left in place, a court from
+        // the old event filters the new event's game list down to nothing, and
+        // the operator is left staring at an empty SELECT GAME with no
+        // explanation. Clearing also lets the single-court auto-adopt fire,
+        // which needs `current_court` to be `None`.
+        if event_changed {
+            self.current_court = None;
+            self.schedule = None;
+        }
+        if let Some(ref mut edits) = self.edited_settings {
+            if event_changed {
+                edits.select_event(event_id.clone());
+            } else {
+                edits.current_event_id = Some(event_id.clone());
+            }
+        }
+
+        info!("Adopted custom site event {}", event_id.full());
+        Task::batch(vec![
+            self.request_teams_list(event_id.clone()),
+            self.request_schedule(event_id),
+        ])
     }
 
     fn check_uwhportal_auth(&self, event_id: &EventId) -> Task<Message> {
@@ -2417,7 +2490,13 @@ impl RefBoxApp {
         } else {
             Task::none()
         }];
-        if new.uses_remote() {
+        // A custom site names its event in the URL, so the event list is not
+        // needed — and would be answered by a third-party site that has no
+        // reason to serve one. It adopts its own event instead, which is also
+        // what brings its schedule and teams back after a restart.
+        if new.source == GameSource::Custom {
+            startup_tasks.push(new.adopt_custom_event());
+        } else if new.uses_remote() {
             startup_tasks.push(new.request_event_list());
         }
         // Arm a one-shot ~20s timer. If the app is still running when it fires,
@@ -3511,9 +3590,21 @@ impl RefBoxApp {
                 // Committed without a refusal, so the site the operator just
                 // chose becomes the one the refbox talks to — no restart.
                 let mut task = Task::none();
+                let moved_to_custom = new_site
+                    .as_ref()
+                    .is_some_and(|t| t.kind == SiteKind::Custom);
                 if let Some(target) = new_site {
                     self.repoint_client(target);
                     task = self.refresh_token_indicator();
+                }
+                // Adopt the custom site's event either when the site itself just
+                // changed, or when CUSTOM is in use with no event yet — the
+                // second covers coming back from MANUAL, which clears the event
+                // while leaving the site address untouched.
+                if moved_to_custom
+                    || (self.source == GameSource::Custom && self.current_event_id.is_none())
+                {
+                    task = Task::batch(vec![task, self.adopt_custom_event()]);
                 }
                 self.page_entry_snapshot = None;
                 self.persist_config();
@@ -4303,7 +4394,11 @@ impl RefBoxApp {
                     edited_settings.schedule = None;
                     edited_settings.game_number = String::new();
                     edited_settings.uwhportal_token_valid = None;
-                    trigger_event_list_fetch = true;
+                    // Only the portal has a list to fetch. A custom site names
+                    // its event in the URL and adopts it when the source is
+                    // applied, so asking a third-party site for an event list
+                    // would be a call it has no reason to answer.
+                    trigger_event_list_fetch = new_source == GameSource::Portal;
                 }
                 if was_using && !edited_settings.uses_remote() {
                     // remote -> manual is a clean slate (reverses ADR 017's

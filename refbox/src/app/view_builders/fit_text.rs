@@ -41,6 +41,48 @@ use std::borrow::Cow;
 /// legible on the refbox screen.
 pub(super) const MIN_FIT_TEXT: f32 = 19.0;
 
+/// Whether a line may end after this character.
+///
+/// True for the CJK scripts, where breaking between characters is how wrapping
+/// normally works. Kana, ideographs, Hangul syllables and full-width forms all
+/// qualify; anything else (Latin, Thai, digits, punctuation) does not, so those
+/// still break only at spaces.
+fn breaks_after(character: char) -> bool {
+    matches!(
+        character as u32,
+        0x3040..=0x30FF     // hiragana and katakana
+        | 0x3400..=0x4DBF   // CJK extension A
+        | 0x4E00..=0x9FFF   // CJK unified ideographs
+        | 0xF900..=0xFAFF   // CJK compatibility ideographs
+        | 0xAC00..=0xD7AF   // Hangul syllables
+        | 0xFF00..=0xFF60 // full-width forms
+    )
+}
+
+/// Whether a line may begin with this character.
+///
+/// An abridged form of the Japanese kinsoku rules: a line must not start with
+/// closing punctuation or a long-vowel mark, which would read as a typo.
+fn breaks_before(character: char) -> bool {
+    breaks_after(character)
+        && !matches!(
+            character,
+            '、' | '。'
+                | '，'
+                | '．'
+                | '）'
+                | '」'
+                | '』'
+                | '】'
+                | '〕'
+                | '！'
+                | '？'
+                | 'ー'
+                | '・'
+                | 'ｰ'
+        )
+}
+
 /// Splits `line` in two at the break point that leaves the wider half as narrow
 /// as possible. `None` when there is nowhere to break, i.e. a single long word,
 /// which can only be shrunk.
@@ -52,14 +94,27 @@ pub(super) const MIN_FIT_TEXT: f32 = 19.0;
 /// like `15:00` must stay whole.
 fn best_split(measure: impl Fn(&str) -> f32, line: &str) -> Option<(String, String)> {
     let mut best: Option<(f32, &str, &str)> = None;
+    let mut previous: Option<char> = None;
 
     for (index, character) in line.char_indices() {
-        // Both are single-byte, so these slice boundaries are always valid.
+        // ' ', '\t' and '/' are single-byte, so those boundaries are valid; the
+        // CJK case slices at `index`, which is a char boundary by construction.
         let (first, second) = match character {
             ' ' | '\t' => (&line[..index], &line[index + 1..]),
             '/' => (&line[..index + 1], &line[index + 1..]),
-            _ => continue,
+            // Between two CJK characters, which is how those scripts are broken:
+            // they have no spaces, so without this a long Japanese or Chinese
+            // label has nowhere to wrap and can only shrink -- to the floor and
+            // then to clipping.
+            _ if previous.is_some_and(breaks_after) && breaks_before(character) => {
+                (&line[..index], &line[index..])
+            }
+            _ => {
+                previous = Some(character);
+                continue;
+            }
         };
+        previous = Some(character);
 
         let (first, second) = (first.trim(), second.trim());
         if first.is_empty() || second.is_empty() {
@@ -120,29 +175,72 @@ fn line_left(align: Horizontal, box_width: f32, line_width: f32) -> f32 {
     }
 }
 
-/// Sizes to try, largest first: whole pixels from `max_size` down to the floor.
-fn size_ladder(max_size: f32) -> Vec<f32> {
-    let min = MIN_FIT_TEXT as i32;
+/// Index of the first (largest) candidate at which **every** string in `shared`
+/// fits `max_width`.
+///
+/// This is how separate widgets agree on one size. The game-time banner draws the
+/// period label and the timeout label in different columns, but they must look
+/// like a pair, so each is fitted against both strings and the longer one governs.
+/// Returns the last index when nothing fits, so the caller still gets a ladder.
+fn shared_start(
+    measure: impl Fn(&str, f32) -> f32,
+    max_width: f32,
+    candidates: &[f32],
+    shared: &[String],
+    wrap: bool,
+) -> usize {
+    // A shared string "fits" on the same terms the drawn one does: on one line,
+    // or -- when wrapping is allowed -- split in two with its wider half fitting.
+    // Judging shared strings as single lines only would force everything down to
+    // the size the longest one needs unsplit, which is not what it will be drawn at.
+    let fits = |line: &str, size: f32| {
+        if measure(line, size) <= max_width {
+            return true;
+        }
+        wrap && best_split(|part| measure(part, size), line).is_some_and(|(first, second)| {
+            measure(&first, size).max(measure(&second, size)) <= max_width
+        })
+    };
+
+    candidates
+        .iter()
+        .position(|&size| shared.iter().all(|line| fits(line, size)))
+        .unwrap_or(candidates.len().saturating_sub(1))
+}
+
+/// Sizes to try, largest first: whole pixels from `max_size` down to `min_size`.
+fn size_ladder(max_size: f32, min_size: f32) -> Vec<f32> {
+    let min = min_size.round().max(1.0) as i32;
     let max = (max_size.round() as i32).max(min);
     (min..=max).rev().map(|size| size as f32).collect()
 }
 
 /// A label drawn centred, wrapped at word gaps if needed, and shrunk only if
 /// wrapping still leaves it too wide. Every line shares one size.
-pub(super) struct FitText<'a> {
+pub(super) struct FitText<'a, Theme> {
     lines: Vec<Cow<'a, str>>,
     /// `None` means "the app's default text size", matching what a plain
     /// `text()` widget would use.
     max_size: Option<f32>,
+    /// Smallest size to shrink to. Defaults to `MIN_FIT_TEXT`, which suits
+    /// buttons; the game-time banner sets its own, lower, floor because losing
+    /// the clock is far worse than a small period label.
+    min_size: f32,
     /// Whether a single line may be re-wrapped at word gaps. Off when the caller
-    /// supplied the line break itself, so its choice is never second-guessed.
+    /// supplied the line break itself, or where a second line would push a
+    /// neighbouring readout out of its box.
     wrap: bool,
     width: Length,
     height: Length,
     align: Horizontal,
+    /// Optional state-dependent colour. `None` inherits, as a plain `text()` does.
+    style: Option<fn(&Theme) -> TextStyle>,
+    /// Strings that are measured but not drawn, so that several widgets showing
+    /// related values settle on one size instead of each fitting alone.
+    shared: Vec<String>,
 }
 
-impl FitText<'_> {
+impl<Theme> FitText<'_, Theme> {
     /// Sets the size the label starts at before any shrinking.
     pub(super) fn size(mut self, max_size: f32) -> Self {
         self.max_size = Some(max_size);
@@ -172,6 +270,42 @@ impl FitText<'_> {
         self.align = align;
         self
     }
+
+    /// Shrinks rather than wrapping at word gaps.
+    ///
+    /// The default suits buttons, which have room for a second line. It is wrong
+    /// in the game-time banner, where the period label sits above the clock in a
+    /// box with no spare height: a second line there pushes the clock out of the
+    /// banner and it is not drawn at all.
+    pub(super) fn no_wrap(mut self) -> Self {
+        self.wrap = false;
+        self
+    }
+
+    /// Sets the smallest size to shrink to, overriding `MIN_FIT_TEXT`.
+    pub(super) fn min_size(mut self, min_size: f32) -> Self {
+        self.min_size = min_size;
+        self
+    }
+
+    /// Sets a state-dependent colour, as the game-time banner needs: the period
+    /// and clock are green, yellow or red depending on the state of play.
+    pub(super) fn style(mut self, style: fn(&Theme) -> TextStyle) -> Self {
+        self.style = Some(style);
+        self
+    }
+
+    /// Sizes this label so that every string in `shared` would also fit, then
+    /// draws only its own text.
+    ///
+    /// Use it to keep related readouts consistent: the game-time banner's period
+    /// label and timeout label live in separate columns of equal width, and
+    /// without this the short one renders at full size next to a shrunken long
+    /// one, so the two stop looking like a pair. The longest string governs.
+    pub(super) fn shared_with(mut self, shared: Vec<String>) -> Self {
+        self.shared = shared;
+        self
+    }
 }
 
 /// A label that shrinks to fit, wrapping at word gaps first.
@@ -179,7 +313,7 @@ impl FitText<'_> {
 /// A translation may carry its own line breaks — several `.ftl` entries are
 /// written across two lines deliberately. Those win: the label is split on them
 /// and never re-wrapped, so a translator's choice is not second-guessed.
-pub(super) fn fit_text<'a>(line: impl IntoFragment<'a>) -> FitText<'a> {
+pub(super) fn fit_text<'a, Theme>(line: impl IntoFragment<'a>) -> FitText<'a, Theme> {
     let fragment = line.into_fragment();
     let lines: Vec<Cow<'a, str>> = if fragment.contains('\n') {
         fragment
@@ -194,26 +328,32 @@ pub(super) fn fit_text<'a>(line: impl IntoFragment<'a>) -> FitText<'a> {
     FitText {
         lines,
         max_size: None,
+        min_size: MIN_FIT_TEXT,
         wrap,
         width: Length::Fill,
         height: Length::Fill,
         align: Horizontal::Center,
+        style: None,
+        shared: Vec::new(),
     }
 }
 
 /// Two caller-chosen lines that shrink together, both at the same size. The
 /// split is the caller's and is never re-wrapped.
-pub(super) fn fit_text_lines<'a>(
+pub(super) fn fit_text_lines<'a, Theme>(
     first: impl IntoFragment<'a>,
     second: impl IntoFragment<'a>,
-) -> FitText<'a> {
+) -> FitText<'a, Theme> {
     FitText {
         lines: vec![first.into_fragment(), second.into_fragment()],
         max_size: None,
+        min_size: MIN_FIT_TEXT,
         wrap: false,
         width: Length::Fill,
         height: Length::Fill,
         align: Horizontal::Center,
+        style: None,
+        shared: Vec::new(),
     }
 }
 
@@ -233,11 +373,12 @@ struct State<P: Paragraph> {
 #[derive(PartialEq)]
 struct CacheKey {
     lines: Vec<String>,
+    shared: Vec<String>,
     available_width: f32,
     max_size: f32,
 }
 
-impl<Message, Theme, Renderer> Widget<Message, Theme, Renderer> for FitText<'_>
+impl<Message, Theme, Renderer> Widget<Message, Theme, Renderer> for FitText<'_, Theme>
 where
     Renderer: text::Renderer,
 {
@@ -274,6 +415,7 @@ where
 
         let key = CacheKey {
             lines: self.lines.iter().map(|line| line.to_string()).collect(),
+            shared: self.shared.clone(),
             available_width: available.width,
             max_size,
         };
@@ -305,8 +447,13 @@ where
                 }
             }
 
-            let (index, size) =
-                fit_layout(measure, available.width, &size_ladder(max_size), &line_sets);
+            // Begin the ladder at the largest size where every shared string
+            // fits, so related readouts settle on one size rather than each
+            // fitting alone.
+            let ladder = size_ladder(max_size, self.min_size);
+            let start = shared_start(measure, available.width, &ladder, &key.shared, self.wrap);
+
+            let (index, size) = fit_layout(measure, available.width, &ladder[start..], &line_sets);
 
             state.lines = line_sets.swap_remove(index);
             state.chosen = size;
@@ -386,13 +533,20 @@ where
         &self,
         tree: &Tree,
         renderer: &mut Renderer,
-        _theme: &Theme,
+        theme: &Theme,
         defaults: &renderer::Style,
         layout: Layout<'_>,
         _cursor: mouse::Cursor,
         viewport: &Rectangle,
     ) {
         let state = tree.state.downcast_ref::<State<Renderer::Paragraph>>();
+
+        // No style set means inherit, which is what a plain `text()` inside a
+        // button does and what keeps every button's own colours working.
+        let appearance = match self.style {
+            Some(style) => style(theme),
+            None => TextStyle { color: None },
+        };
 
         // Clip to our own bounds so a label still too wide at the floor is
         // trimmed rather than spilling onto the neighbouring button.
@@ -401,25 +555,19 @@ where
         };
 
         for (paragraph, line) in state.paragraphs.iter().zip(layout.children()) {
-            draw_text(
-                renderer,
-                defaults,
-                line,
-                paragraph.raw(),
-                TextStyle { color: None },
-                &clip,
-            );
+            draw_text(renderer, defaults, line, paragraph.raw(), appearance, &clip);
         }
     }
 }
 
-impl<'a, Message, Theme, Renderer> From<FitText<'a>> for Element<'a, Message, Theme, Renderer>
+impl<'a, Message, Theme, Renderer> From<FitText<'a, Theme>>
+    for Element<'a, Message, Theme, Renderer>
 where
     Message: 'a,
     Theme: 'a,
     Renderer: text::Renderer + 'a,
 {
-    fn from(widget: FitText<'a>) -> Self {
+    fn from(widget: FitText<'a, Theme>) -> Self {
         Self::new(widget)
     }
 }
@@ -430,7 +578,7 @@ mod tests {
 
     /// The ladder used by the full-width buttons: 29px down to 19px.
     fn candidates() -> Vec<f32> {
-        size_ladder(29.0)
+        size_ladder(29.0, MIN_FIT_TEXT)
     }
 
     /// A fake ruler: every character is half the font size wide. Real
@@ -445,7 +593,7 @@ mod tests {
 
     #[test]
     fn ladder_runs_from_the_starting_size_down_to_the_floor() {
-        let ladder = size_ladder(29.0);
+        let ladder = size_ladder(29.0, MIN_FIT_TEXT);
         assert_eq!(ladder.first(), Some(&29.0));
         assert_eq!(ladder.last(), Some(&MIN_FIT_TEXT));
         assert_eq!(ladder.len(), 11);
@@ -453,7 +601,7 @@ mod tests {
 
     #[test]
     fn a_starting_size_below_the_floor_still_yields_one_candidate() {
-        assert_eq!(size_ladder(10.0), vec![MIN_FIT_TEXT]);
+        assert_eq!(size_ladder(10.0, MIN_FIT_TEXT), vec![MIN_FIT_TEXT]);
     }
 
     #[test]
@@ -571,9 +719,58 @@ mod tests {
     }
 
     #[test]
+    fn a_lower_floor_lets_a_label_shrink_further_rather_than_stop() {
+        // The game-time banner needs this: on one line, "ERSTE HALBZEIT" (14
+        // characters) needs 7 * size, so 100px of width demands ~14px — below the
+        // 19px floor that suits buttons. With the button floor it would stop at 19
+        // and overflow; with a lower floor it shrinks and fits.
+        let sets = vec![vec!["ERSTE HALBZEIT".to_string()]];
+        assert_eq!(
+            fit_layout(ruler, 100.0, &size_ladder(29.0, MIN_FIT_TEXT), &sets),
+            (0, MIN_FIT_TEXT)
+        );
+        assert_eq!(
+            fit_layout(ruler, 100.0, &size_ladder(29.0, 12.0), &sets),
+            (0, 14.0)
+        );
+    }
+
+    #[test]
     fn a_time_is_never_split_at_its_colon() {
         let measure = |line: &str| line.chars().count() as f32;
         assert_eq!(best_split(measure, "15:00"), None);
+    }
+
+    #[test]
+    fn japanese_splits_between_characters_having_no_spaces() {
+        // The alarm hint. Thirteen full-width glyphs with nowhere to wrap could
+        // only shrink, and at its starting size it was wider than its button, so
+        // it clipped at both ends. Breaking between characters is how these
+        // scripts wrap.
+        let measure = |line: &str| line.chars().count() as f32;
+        assert_eq!(
+            best_split(measure, "またはスペースキーを長押し"),
+            Some(("またはスペー".to_string(), "スキーを長押し".to_string()))
+        );
+    }
+
+    #[test]
+    fn a_line_never_begins_with_closing_punctuation() {
+        // Abridged kinsoku: breaking before 。 would strand it at the start of a
+        // line, which reads as a typo. The only other gap here is before 気.
+        let measure = |line: &str| line.chars().count() as f32;
+        assert_eq!(
+            best_split(measure, "元気。"),
+            Some(("元".to_string(), "気。".to_string()))
+        );
+    }
+
+    #[test]
+    fn latin_still_breaks_only_at_spaces() {
+        // The CJK rule must not leak into Latin: "HALBZEIT" has no space, so it
+        // stays unsplittable and shrinks instead.
+        let measure = |line: &str| line.chars().count() as f32;
+        assert_eq!(best_split(measure, "HALBZEIT"), None);
     }
 
     #[test]

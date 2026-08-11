@@ -28,9 +28,13 @@ pub struct ParsedSite {
     pub event_id: EventId,
 }
 
-/// Why a typed URL cannot be used. Each variant is a separate thing to tell
-/// the operator, so the UI can name what is actually wrong rather than
-/// reporting a generic failure.
+/// Why a typed URL cannot be used.
+///
+/// **The UI does not distinguish these.** It shows one message naming the shape
+/// an address must have, because five specific messages would have cost 75
+/// translations for a field the operator retypes anyway. The variants are kept
+/// separate so that decision can be revisited without re-deriving the rules,
+/// and because the tests assert against them individually.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CustomSiteError {
     /// Nothing typed.
@@ -38,6 +42,10 @@ pub enum CustomSiteError {
     /// A scheme other than `http` or `https`. refbox derives whether TLS is
     /// required from this scheme, so no other scheme has a meaning here.
     UnsupportedScheme,
+    /// A scheme but no host, e.g. `https:///api/1234-A`. Left unchecked this
+    /// yields a base URL of `https:`, which no request can reach — and the SITE
+    /// row would then show that as the address in use.
+    MissingHost,
     /// No `/api/` anywhere in the path, so nothing marks where the site ends
     /// and the event ID begins.
     MissingApiSegment,
@@ -63,13 +71,32 @@ pub fn parse_custom_site(input: &str) -> Result<ParsedSite, CustomSiteError> {
     if input.is_empty() {
         return Err(CustomSiteError::Empty);
     }
-    if !input.starts_with("http://") && !input.starts_with("https://") {
+    let (scheme, after_scheme) = if let Some(rest) = input.strip_prefix("https://") {
+        ("https://", rest)
+    } else if let Some(rest) = input.strip_prefix("http://") {
+        ("http://", rest)
+    } else {
         return Err(CustomSiteError::UnsupportedScheme);
-    }
+    };
 
-    let (base, rest) = input
+    // Separate the host from the path *before* looking for the marker, and look
+    // only in the path. Searching the whole address let the `//api/` belonging to
+    // the authority match: in `https://api/1234-A` the host was taken for the
+    // marker and thrown away, leaving a base URL of `https:` that no request can
+    // reach — and the address was accepted rather than refused, so APPLY
+    // repointed the refbox at it and the SITE row displayed it as the address in
+    // use. That is the silent misdirection this whole parser exists to prevent.
+    let (authority, path) = after_scheme.split_once('/').unwrap_or((after_scheme, ""));
+    if authority.is_empty() {
+        return Err(CustomSiteError::MissingHost);
+    }
+    // Restore the leading slash the split consumed, so a marker at the very
+    // start of the path (`/api/1234-A`, the common case) is still found.
+    let path = format!("/{path}");
+
+    let (path_prefix, rest) = path
         .rsplit_once(LEGACY_EVENTS_SEGMENT)
-        .or_else(|| input.rsplit_once(API_SEGMENT))
+        .or_else(|| path.rsplit_once(API_SEGMENT))
         .ok_or(CustomSiteError::MissingApiSegment)?;
 
     let partial = rest.split_once('/').map_or(rest, |(id, _)| id);
@@ -85,7 +112,9 @@ pub fn parse_custom_site(input: &str) -> Result<ParsedSite, CustomSiteError> {
     // The client trims a trailing slash too, but the SITE row displays this
     // string, so normalise it once, here.
     Ok(ParsedSite {
-        base_url: base.trim_end_matches('/').to_string(),
+        base_url: format!("{scheme}{authority}{path_prefix}")
+            .trim_end_matches('/')
+            .to_string(),
         event_id,
     })
 }
@@ -212,5 +241,41 @@ mod test {
     fn rejects_empty_input() {
         assert_eq!(parse_custom_site(""), Err(CustomSiteError::Empty));
         assert_eq!(parse_custom_site("   "), Err(CustomSiteError::Empty));
+    }
+
+    /// An address with no host at all must be refused rather than yielding a
+    /// base URL of `https:`, which cannot be reached and which the SITE row
+    /// would then display as the address in use.
+    #[test]
+    fn rejects_an_address_with_no_host() {
+        assert_eq!(
+            parse_custom_site("https:///api/ABC"),
+            Err(CustomSiteError::MissingHost)
+        );
+        assert_eq!(
+            parse_custom_site("http:///api/events/1234-A"),
+            Err(CustomSiteError::MissingHost)
+        );
+    }
+
+    /// The marker must be looked for in the path, never in the authority. This
+    /// address has no `/api/` of its own — the only candidate is the `//api/`
+    /// belonging to the host — so it must be refused for the missing marker.
+    /// It used to be accepted, with the host silently eaten and the base URL
+    /// left as `https:`.
+    #[test]
+    fn a_host_called_api_is_not_mistaken_for_the_marker() {
+        assert_eq!(
+            parse_custom_site("https://api/1234-A"),
+            Err(CustomSiteError::MissingApiSegment)
+        );
+    }
+
+    /// And with a real marker present, a host called `api` works normally.
+    #[test]
+    fn a_host_called_api_works_when_the_marker_is_there() {
+        let parsed = parse_custom_site("https://api/api/1234-A").unwrap();
+        assert_eq!(parsed.base_url, "https://api");
+        assert_eq!(parsed.event_id.partial(), "1234-A");
     }
 }

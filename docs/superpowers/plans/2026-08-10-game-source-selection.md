@@ -981,6 +981,64 @@ code commit or record them here.)_
   that if ACCESS TOKEN goes red during a tournament, the operator must re-link before they can
   change court or game.
 
+- **Decision 6 applies to UWH PORTAL operators too, and Eric affirmed it a third time knowing that
+  (2026-08-11).** Asked what would actually change for existing users if this merged before any
+  third party exists, the honest answer surfaced something neither review had framed this way: the
+  `token_rejected` gate sits inside the `uses_remote` branch, which is true for `Portal` as well as
+  `Custom`, so greying COURT and GAME on a rejected token lands on every ordinary tournament — not
+  only on sites that do not exist yet. He was offered scoping it to `Custom` only (recommended, on
+  the grounds that the portal has already accepted this operator and an expiry is a refresh problem
+  rather than an authorisation one), holding the merge to test it live, or keeping it uniform. He
+  chose **keep it for both, merge as is**: no remote source may offer a court or game while its
+  credential is being refused. Do not narrow it later without asking him again.
+
+  **Consequence for the release notes, which is now wider than finding 1 implied:** the warning is
+  for UWH Portal operators, not just third-party ones.
+
+- **What merging actually changes for an operator with no third party in sight, established
+  2026-08-11.** Useful for the PR body and for judging risk. Every changed file is inside `refbox/` —
+  no `uwh-common`, `overlay`, `matrix-drawing` or `wireless-remote` — so the LED panel, the wireless
+  remote and the stream overlay carry no wire-format risk. Four visible changes land immediately:
+  the token gate above; two new source buttons filling row 1's cells 2 and 3, which were blank in
+  portal mode; the token row relabelled `UWHPORTAL TOKEN:` -> `ACCESS TOKEN:` and translated for the
+  first time (it had been the only hardcoded English string on that page); and the reworded
+  mode-switch warning. Two further changes should be invisible against the real portal: the
+  "CHECKING…" hang after switching MANUAL GAMES to NO is fixed (a pre-existing master bug), and the
+  two no-token verify calls are no longer sent — the real portal's `401` produced the same red.
+
+- **Branch slop audit, 2026-08-11 — one real defect found and fixed.** Ran the canonical 13-item
+  checklist from `AUDIT-PLAN.md` over all 19 commits, the same instrument as the workspace-wide
+  inventory. Full report: `docs/audit-archive/2026-08-11-game-source-branch-slop-audit.md`
+  (untracked, on disk only — the record that matters is here). Nine of thirteen probes found nothing;
+  notably clean on untranslated strings (the branch *removed* the page's only hardcoded English
+  literal), magic numbers, invented retries, dead helpers, and assert-nothing tests — all 30 new
+  tests assert, checked by brace-matching each body rather than slicing between `fn` markers.
+
+  **The defect, found by running the parser rather than reading it: `parse_custom_site` accepted an
+  address with no host, and mistook a host called `api` for the marker.** `https:///api/ABC` and
+  `https://api/1234-A` both parsed successfully with a base URL of `https:`. The cause was searching
+  the *whole* address for the last `/api/`, so the `//api/` of the authority could match, taking the
+  host for the marker and discarding it. APPLY then accepted the address, repointed the client at an
+  unreachable base, and the SITE row displayed an address the operator never typed — the exact silent
+  misdirection this feature exists to remove, and a direct breach of the design promise that a bad
+  address is refused *at APPLY, with a message*. Fixed by splitting the authority off first and
+  searching only the path, with a new `CustomSiteError::MissingHost`. Two tests were written failing
+  first; a third pins that a host called `api` still works when a real marker is present. No accepted
+  address changed meaning — all 17 pre-existing parser tests pass untouched. 480 -> 483 tests.
+
+  Two tidy-ups in the same pass: the second `unwrap_or_default()` in the `CustomSite` apply arm was
+  unreachable (the first one's empty string already failed the address check), and the pair was a
+  third policy for absent `edited_settings` in a file where `.as_mut().unwrap()` with a justifying
+  comment is the house style — now one clone through that idiom. And `CustomSiteError`'s doc comment
+  claimed the UI names which error occurred; it does not, and now says so.
+
+  **Logged, not fixed, both outside this branch:** nothing lints test code anywhere —
+  `Justfile:28-29` and `.github/workflows/rust.yml:37-38` both omit `--all-targets` — and `CLAUDE.md`
+  misstates the CI lint command as `--workspace --all-targets --all-features`, overstating how much
+  is actually verified. **Not run:** mutation testing, which was the highest-value probe in the
+  workspace inventory. These 30 tests are known to assert; whether they would catch a regression is
+  unmeasured.
+
 ## Out of scope
 
 - Changing the verification stub's token handling.

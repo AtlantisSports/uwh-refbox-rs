@@ -783,6 +783,55 @@ code commit or record them here.)_
   sites already do when there is no event to check against. Test asserted failing against the old
   value (`left: None, right: Some(false)`) before passing. 477 tests, up from 476.
 
+- **Task 9 found the rejection message rendering as its middle third, and it cost three failed
+  fixes.** Task 5's message was built with `centered_text`, and on screen a ~950px sentence in a
+  ~925px box showed only ~476px of itself with both ends absent. Root cause: iced 0.13 computes a
+  paragraph's visible bounds by applying the alignment offset with the *clipped* width while drawing
+  applies it with the *full* width, so a centre-anchored paragraph is clipped half a text-width from
+  where it draws. Deleting `align_x(Horizontal::Center)` is the only thing that fixed it — container
+  width, `padding`, and removing the `align_y(Center)`+`height(Fill)` pair each changed nothing,
+  pixel for pixel. What settled it was a throwaway build with a `red_container` behind the text,
+  which proved in one screenshot that the box was full-size and the *text* was being clipped;
+  three rounds of inferring geometry from where the letters landed had proved nothing. Lesson for
+  any future text-clipping report here: colour the container first. `centered_text` carries both
+  landmines and must not be used for a sentence that wraps.
+
+- **The address an operator types was shortened to `https://your-site/api/1234-A` — Eric's call
+  (2026-08-11), reasoning from the contract rather than the code.** The original form required
+  `/api/events/<id>`. His argument: a third-party site is adapting to *our* API, so `/api/events/`
+  is refbox's own path convention — the client appends it to every call anyway — and requiring the
+  operator to type it is requiring them to type what the software already knows. Confirmed against
+  the parser: only the base URL and the event ID are ever used; the segment served purely as a
+  separator. His first suggestion was to drop the path entirely (`https://your-site/1234-A`); I
+  flagged that with no fixed marker any three-character segment — a homepage, a login page — parses
+  as a valid event and only fails on the first call, and he settled on keeping `/api/` as the
+  marker. The longer form is tried first and still accepted, because his config, the stub URL and
+  the drafted integration document all use it, and splitting `/api/events/1234-A` on `/api/` alone
+  would take `events` for the event ID. Three parser tests added; all 15 locales re-worded, with
+  ja/ko/th/zh restructured because they carried the URL mid-sentence with words after it.
+
+  **This changes what the contract document must say** and belongs in the queued pass: the address
+  an operator types is a refbox-side convention, not a real endpoint on the third-party site, so the
+  document must state plainly that endpoints still live at `/api/events/{id}/…` and must not be
+  built at `/api/{id}/…`.
+
+- **Task 8's gate had to be applied twice: the background health check sends the same call.** The
+  plan scoped Task 8 to `refbox/src/app/mod.rs`, which covers the ACCESS TOKEN row only. The
+  periodic probe in `UwhPortalIo::verify_token` (`portal_manager/mod.rs`) had no `has_token` guard
+  either, so against a permissive site the *main-screen* health indicator — the one an operator
+  watches during a game — could read healthy with no credential at all. Raised as a separate
+  decision rather than folded in silently; Eric chose to fix it (2026-08-11). No token now reports
+  `PortalCallError::Failed`, which the health layer already maps to a token problem, so the operator
+  is prompted to link. Against a correctly-refusing site the visible result is unchanged, since its
+  `401` produced the same red. The "no event selected" early return is untouched, so a freshly
+  started refbox still does not flash red before a tournament has been picked.
+
+  This is what lets the contract document state one unconditional rule — call 2 is sent only when
+  refbox holds a token — instead of a conditional that depends on which internal path made it.
+  Note the cadence of that probe was NOT established: `is_health_check_due(None)` is `true`, which
+  implies a probe within ~2s of an event being selected, yet no verify call reached the stub during
+  today's runs. Unresolved, and deliberately not asserted anywhere in the document.
+
 ## Out of scope
 
 - Changing the verification stub's token handling.

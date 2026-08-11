@@ -3549,7 +3549,15 @@ impl RefBoxApp {
                 // different site, and refuse before anything is committed, so a
                 // refusal leaves every edit staged exactly as it was left.
                 let new_site = self.pending_site_change(page);
-                if new_site.is_some() {
+                // The SITE editor's APPLY is offered whether or not the address
+                // was edited, so an operator whose event was cleared — the path
+                // back from MANUAL — can get onto their site again. That means
+                // this APPLY can commit a source change with no repoint attached,
+                // which the `new_site` test alone would wave through, so ask for
+                // the guard explicitly.
+                let commits_custom_source =
+                    matches!(page, ConfigPage::CustomSite(_)) && self.source != GameSource::Custom;
+                if new_site.is_some() || commits_custom_source {
                     if let Some(refusal) = self.refuse_repoint(page) {
                         self.app_state = AppState::ConfirmationPage(refusal);
                         trace!("AppState changed to {:?}", self.app_state);
@@ -3606,6 +3614,15 @@ impl RefBoxApp {
                             .as_ref()
                             .map(|e| e.custom_site.clone())
                             .unwrap_or_default();
+                        // This page is only reachable with CUSTOM chosen, so
+                        // applying an address here is an unambiguous "use this
+                        // site" — `pending_site_change` already says as much. The
+                        // source has to be committed with it, or the adoption
+                        // below cannot fire: coming back from MANUAL it is the
+                        // committed source that is still Manual, which left the
+                        // operator with a valid address on screen, a greyed APPLY
+                        // on the Game page, and no way back to their own site.
+                        self.commit_source(GameSource::Custom);
                     }
                 }
                 // Committed without a refusal, so the site the operator just
@@ -3626,6 +3643,13 @@ impl RefBoxApp {
                     || (self.source == GameSource::Custom && self.current_event_id.is_none())
                 {
                     task = Task::batch(vec![task, self.adopt_custom_event()]);
+                    // Re-seed the token indicator now that an event exists to
+                    // check against. Changing source resets it to FAILED, and
+                    // until this line there was nothing to verify it with, so it
+                    // would have sat on FAILED with a perfectly good saved token
+                    // — keeping the court and game pickers greyed and the Game
+                    // page's APPLY blocked for a reason that was an artifact.
+                    task = Task::batch(vec![task, self.refresh_token_indicator()]);
                 }
                 self.page_entry_snapshot = None;
                 self.persist_config();

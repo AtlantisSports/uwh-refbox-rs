@@ -2045,15 +2045,11 @@ fn make_custom_site_page<'a>(
     show_invalid: bool,
     mode: Mode,
     clock_running: bool,
-    page_entry_snapshot: Option<&PageEntrySnapshot>,
+    // Kept, though this page's APPLY no longer consults it: the snapshot is what
+    // CANCEL reverts to, and the Cancel/Back label rollout will want it here.
+    _page_entry_snapshot: Option<&PageEntrySnapshot>,
     portal_indicator: Option<PortalIndicatorState>,
 ) -> Element<'a, Message> {
-    let has_changes = page_has_changes(
-        ConfigPage::CustomSite(show_invalid),
-        settings,
-        page_entry_snapshot,
-    );
-
     let mut col = column![make_game_time_button(
         snapshot,
         false,
@@ -2112,18 +2108,19 @@ fn make_custom_site_page<'a>(
         .on_press(Message::CancelConfigPage(ConfigPage::CustomSite(
             show_invalid,
         )));
-    let apply = {
-        let b = make_button(fl!("apply"))
-            .style(green_button)
-            .width(Length::Fill);
-        if has_changes {
-            b.on_press(Message::ApplyConfigPage(ConfigPage::CustomSite(
-                show_invalid,
-            )))
-        } else {
-            b
-        }
-    };
+    // Deliberately always available, unlike every other page's APPLY, which
+    // greys until something is edited. Re-applying an unchanged address is how an
+    // operator gets back onto their site after the event was cleared — the path
+    // back from MANUAL — and greying it there left them stranded with the address
+    // they wanted sitting on screen and no control that would act on it. Applying
+    // an unchanged address is idempotent: it re-validates, re-commits the same
+    // value, and repoints nothing, so offering it always costs nothing.
+    let apply = make_button(fl!("apply"))
+        .style(green_button)
+        .width(Length::Fill)
+        .on_press(Message::ApplyConfigPage(ConfigPage::CustomSite(
+            show_invalid,
+        )));
 
     col.push(row![cancel, apply].spacing(SPACING)).into()
 }

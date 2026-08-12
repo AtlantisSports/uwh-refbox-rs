@@ -326,7 +326,7 @@ async fn fetch_game_data(
             let text = data
                 .text()
                 .await
-                .expect("Response body could not be recieved!");
+                .expect("Response body could not be received!");
             let data: Value = match serde_json::from_str(text.as_str()) {
                 Ok(d) => d,
                 _ => {
@@ -481,7 +481,7 @@ pub async fn networking_thread(
                     Ok(snapshot) => {
                         debug!("Got snapshot from refbox!");
                         snapshot_tx.send(snapshot.clone()).unwrap_or_else(|e| {
-                            error!("Frontend could not recieve snapshot!: {e}")
+                            error!("Frontend could not receive snapshot!: {e}")
                         });
                     }
                     Err(e) => {
@@ -507,7 +507,7 @@ pub async fn networking_thread(
 
                 state_tx
                     .send(StateUpdate::Snapshot(new_snapshot.clone()))
-                    .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
+                    .unwrap_or_else(|e| error!("Frontend could not receive snapshot!: {e}"));
 
                 // initial case when no data is initialised
                 if last_snapshot.is_none() {
@@ -558,7 +558,7 @@ pub async fn networking_thread(
                             state_tx
                                 .send(StateUpdate::GameData(next_game_data))
                                 .unwrap_or_else(|e| {
-                                    error!("Frontend could not recieve snapshot!: {e}")
+                                    error!("Frontend could not receive snapshot!: {e}")
                                 });
                         } else if let Some(ref event_id) = new_snapshot.event_id {
                             let game_number = new_snapshot.game_number().clone();
@@ -612,7 +612,7 @@ pub async fn networking_thread(
                                     info!("Sending game data for event: {:?}, game: {}", event_id, game_data.game_number);
                                     state_tx
                                         .send(StateUpdate::GameData(game_data))
-                                        .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
+                                        .unwrap_or_else(|e| error!("Frontend could not receive snapshot!: {e}"));
                                 } else if let Some(next_game_number) = snapshot.next_game_number() {
                                     if game_data.game_number == *next_game_number {
                                         info!("Saving game data for next game: {} / event: {:?}", next_game_number, event_id);
@@ -645,7 +645,7 @@ pub async fn networking_thread(
                             if event_logos.event_id == *event_id {
                                 state_tx
                                     .send(StateUpdate::EventLogos(event_id.clone(), event_logos))
-                                    .unwrap_or_else(|e| error!("Frontend could not recieve snapshot!: {e}"));
+                                    .unwrap_or_else(|e| error!("Frontend could not receive snapshot!: {e}"));
                             } else {
                                 warn!("Received event logos for event {:?}, but current snapshot is for event {:?}, discarding!", event_logos.event_id, snapshot.event_id);
                             }

@@ -196,7 +196,7 @@ link-locked-game = You can not connect to the game source while a game is in pro
 source-locked-queue = Game results are still waiting to be sent. Send or discard them first.
 uwhportal-token-invalid-code = Invalid code entered.
     Please try again.
-uwhportal-token-no-pending-link = Portal not expecting a connection.
+uwhportal-token-no-pending-link = The connection is not expecting communication.
     Please try again.
 go-back-to-editor = GO BACK TO EDITOR
 discard-changes = DISCARD CHANGES
@@ -424,9 +424,9 @@ free-arm = Free Arm
 false-start = False Start
 
 # Portal Health Indicator
-portal-summary-title = { $portal } PORTAL STATUS
+portal-summary-title = CONNECTION STATUS
 portal-retry-all = RETRY ALL
-portal-row-token-expired = Portal login expired — tap to re-login
+portal-row-token-expired = Access token expired — tap to re-login
 portal-row-stuck = Game { $game } Score send error, tap to fix
 portal-row-pending = Game { $game } Score not sent, tap to retry
 portal-row-stats-pending = Game { $game } Stats not sent, tap to retry
@@ -436,10 +436,10 @@ portal-action-force-submit = Retry this game result
 portal-action-discard = Discard this game result
 portal-action-discard-confirm = TAP AGAIN TO CONFIRM DISCARD
 portal-page-title-attention = Game { $game } submission error
-portal-page-attention-info = The game result has not been accepted on { $portal } Portal
+portal-page-attention-info = The game result has not been accepted
 portal-page-attention-score = Stored game result: Light { $white } - Dark { $black }
 portal-page-attention-remediation = You can Retry if connection is verified, or discard to clear the error
-portal-advisory-at-game-end = Portal issue detected. Score will still be queued — find an admin to resolve.
+portal-advisory-at-game-end = Connection issue detected. Score will still be queued — find an admin to resolve.
 
 # 2 Halves / 1 Period selector (Half Length editor)
 two-halves = 2 HALVES

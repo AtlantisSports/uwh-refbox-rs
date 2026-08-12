@@ -41,6 +41,7 @@ team-score-line-2 = SCORE
 
 # Configuratie
 none-selected = Niets Geselecteerd
+none-provided = Niets Opgegeven
 loading = Laden...
 game-select = WEDSTRIJD:
 game-options = WEDSTRIJDOPTIES

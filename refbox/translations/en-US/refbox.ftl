@@ -40,6 +40,7 @@ team-score-line-2 = SCORE
 
 # Configuration
 none-selected = None Selected
+none-provided = None Provided
 loading = Loading...
 game-select = GAME:
 game-options = GAME OPTIONS

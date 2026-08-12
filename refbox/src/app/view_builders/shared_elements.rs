@@ -1341,6 +1341,61 @@ where
     button
 }
 
+/// A value row whose value is long and whose label is short — the custom site's
+/// address is the only one so far.
+///
+/// Two differences from `make_value_button`, both of which a web address needs:
+///
+/// * The shares are reversed, so the value gets the larger one. The 3:2 split
+///   there suits a long label beside a short value (`OT HALF TIME LENGTH: 5:00`);
+///   a four-letter label beside a URL is the same row backwards, and it left
+///   half the row empty while the address wrapped in the remaining third.
+/// * The value shrinks rather than wrapping, because `best_split` breaks after a
+///   `/`. That is right for `1/HALBZEIT` and wrong for an address, where a break
+///   mid-path reads as a character that is not there.
+///
+/// Shares rather than `Shrink` for the value: `FitText::layout` fits to
+/// `limits.max()`, so a `Shrink` value is measured against the whole row and a
+/// long enough address would crowd the label out entirely — the failure the
+/// comment in `make_value_button` records.
+pub(super) fn make_long_value_button<'a, T, U>(
+    first_label: T,
+    second_label: U,
+    message: Option<Message>,
+) -> Button<'a, Message>
+where
+    Message: 'a + Clone,
+    T: IntoFragment<'a>,
+    U: IntoFragment<'a>,
+{
+    let mut button = button(
+        row![
+            fit_text(first_label)
+                .size(MEDIUM_TEXT)
+                .align_x(Horizontal::Left)
+                .width(Length::FillPortion(2))
+                .height(Length::Shrink),
+            fit_text(second_label)
+                .size(MEDIUM_TEXT)
+                .no_wrap()
+                .align_x(Horizontal::Right)
+                .width(Length::FillPortion(3))
+                .height(Length::Shrink),
+        ]
+        .spacing(SPACING)
+        .align_y(Alignment::Center)
+        .padding(PADDING),
+    )
+    .height(Length::Fixed(MIN_BUTTON_SIZE))
+    .width(Length::Fill)
+    .style(light_gray_button);
+
+    if let Some(message) = message {
+        button = button.on_press(message);
+    }
+    button
+}
+
 pub(super) fn make_penalty_dropdown<'a>(
     infraction: Infraction,
     display_infraction_name: bool,

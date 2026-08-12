@@ -41,6 +41,7 @@ team-score-line-2 = 得点
 
 # 設定
 none-selected = 未選択
+none-provided = 未入力
 loading = 読込中...
 game-select = 試合:
 game-options = 試合オプション

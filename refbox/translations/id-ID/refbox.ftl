@@ -41,6 +41,7 @@ team-score-line-2 = TIM
 
 # Konfigurasi
 none-selected = Tidak Ada Dipilih
+none-provided = Belum Diisi
 loading = Memuat...
 game-select = PERTANDINGAN:
 game-options = OPSI PERTANDINGAN

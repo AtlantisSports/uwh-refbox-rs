@@ -41,6 +41,7 @@ team-score-line-2 = SKORU
 
 # Yapılandırma
 none-selected = Seçim Yok
+none-provided = Belirtilmedi
 loading = Yükleniyor...
 game-select = OYUN:
 game-options = OYUN SEÇENEKLERİ

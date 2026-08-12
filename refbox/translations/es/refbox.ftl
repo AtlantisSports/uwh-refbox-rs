@@ -40,6 +40,7 @@ team-score-line-2 = DE EQUIPO
 
 # Configuration
 none-selected = Ninguno seleccionado
+none-provided = Ninguno proporcionado
 loading = Cargando...
 game-select = JUEGO:
 game-options = OPCIONES DE JUEGO

@@ -41,6 +41,7 @@ team-score-line-2 = TORE
 
 # Konfiguration
 none-selected = Nichts ausgewählt
+none-provided = Nichts angegeben
 loading = Wird geladen...
 game-select = SPIEL:
 game-options = SPIELOPTIONEN

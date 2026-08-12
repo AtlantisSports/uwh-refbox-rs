@@ -39,6 +39,7 @@ team-score-line-2 = D'ÉQUIPE
 
 # Configuration
 none-selected = Aucun Sélectionné
+none-provided = Aucun Fourni
 loading = Chargement...
 game-select = MATCH:
 game-options = OPTIONS DU MATCH

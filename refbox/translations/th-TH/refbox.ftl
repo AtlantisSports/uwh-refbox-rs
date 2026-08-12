@@ -41,6 +41,7 @@ team-score-line-2 = ทีม
 
 # การตั้งค่า
 none-selected = ไม่ได้เลือก
+none-provided = ไม่ได้ระบุ
 loading = กำลังโหลด...
 game-select = เกม:
 game-options = ตัวเลือกเกม

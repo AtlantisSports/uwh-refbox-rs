@@ -181,3 +181,34 @@ fn every_reference_key_exists_in_every_locale() {
         problems.join("\n")
     );
 }
+
+#[test]
+fn every_key_uses_the_same_variables_as_the_reference() {
+    let reference = load_catalog(REFERENCE);
+    let mut problems: Vec<String> = Vec::new();
+
+    for locale in locales() {
+        if locale == REFERENCE {
+            continue;
+        }
+        let catalog = load_catalog(&locale);
+        for (key, expected) in &reference.messages {
+            let Some(actual) = catalog.messages.get(key) else {
+                continue; // absence is the other test's job to report
+            };
+            if actual != expected {
+                problems.push(format!(
+                    "  {locale}  {key}\n      {REFERENCE} uses: {expected:?}\n      {locale} uses: {actual:?}"
+                ));
+            }
+        }
+    }
+
+    assert!(
+        problems.is_empty(),
+        "these translations do not use the same variables as {REFERENCE}.\n\
+         A missing variable renders a sentence with a hole in it; a misspelled \
+         one renders the placeholder literally.\n{}",
+        problems.join("\n")
+    );
+}

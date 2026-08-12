@@ -26,7 +26,7 @@
 
 This plan departs from the usual test-first cycle, and the reason is recorded so a reviewer does not read it as an oversight:
 
-- The repository has **no translation-coverage test at all** — nothing asserts that a key exists in every locale. This was checked, not assumed.
+- **Key coverage was already checked, in `refbox/build.rs`** — it parses every `.ftl` with `fluent-syntax` and reports keys missing from a file. (An earlier revision of this plan claimed no check existed; that was wrong, and came from grepping `src/` for test functions rather than reading the build script, where the check actually lives.) What it does *not* check is whether a translation still uses the same `{ $variables }` as the English original — the gap that produced `docs/superpowers/specs/2026-08-12-translation-consistency-test-design.md`.
 - A test that asserts a literal piece of display copy would fail on every future wording tweak while catching nothing a human would not see instantly on screen.
 
 The verification that replaces it is mechanical and is spelled out in each task: a `grep` count that proves every locale was edited and that the word "Portal" is gone from exactly the five keys, plus `just check`, plus an on-screen pass.

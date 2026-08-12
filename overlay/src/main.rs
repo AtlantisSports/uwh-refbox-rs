@@ -80,8 +80,8 @@ fn texture_from_image_result(image: network::Image) -> Result<Texture, Box<dyn s
 }
 
 impl State {
-    fn update_state(&mut self, recieved_update: StateUpdate) {
-        match recieved_update {
+    fn update_state(&mut self, received_update: StateUpdate) {
+        match received_update {
             StateUpdate::Snapshot(snapshot) => {
                 if self.snapshot.event_id != snapshot.event_id {
                     info!("Snapshot for new event received: {:?}", snapshot.event_id);
@@ -278,8 +278,8 @@ async fn main() {
         assert!(!net_worker.is_finished(), "Networking thread panikd!");
         clear_background(BLACK);
 
-        if let Ok(recieved_state) = rx.try_recv() {
-            local_state.update_state(recieved_state);
+        if let Ok(received_state) = rx.try_recv() {
+            local_state.update_state(received_state);
             // sync local penalty list
             flag_renderer.synchronize_flags(&local_state);
         }

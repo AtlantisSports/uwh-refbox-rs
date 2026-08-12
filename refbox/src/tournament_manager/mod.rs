@@ -1375,7 +1375,7 @@ impl TournamentManager {
                         leave_game_clock_running = false;
                     }
                     (GamePeriod::OvertimeHalfTime, _) => {
-                        info!("{} Entering ovetime second half", self.status_string(now));
+                        info!("{} Entering overtime second half", self.status_string(now));
                         self.current_period = GamePeriod::OvertimeSecondHalf;
                         need_cull = true;
                     }
@@ -1860,7 +1860,7 @@ impl TournamentManager {
                 need_cull = true;
             }
             GamePeriod::OvertimeHalfTime => {
-                info!("{} Entering ovetime second half", self.status_string(now));
+                info!("{} Entering overtime second half", self.status_string(now));
                 self.current_period = GamePeriod::OvertimeSecondHalf;
                 need_cull = true;
             }

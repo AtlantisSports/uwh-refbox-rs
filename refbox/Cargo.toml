@@ -30,7 +30,6 @@ i18n-embed-fl = "0.10.0"
 # Already present transitively via iced; pinned to the same major to avoid a new version.
 image = { version = "0.25", default-features = false, features = ["png"] }
 iced_core = "0.13"
-iced_futures = { version = "0.13", features = ["async-std"] }
 iced_graphics = "0.13"
 led-panel-sim = { version = "0.4.9", path = "../led-panel-sim" }
 log = "0.4"

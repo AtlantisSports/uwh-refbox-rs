@@ -43,6 +43,7 @@ team-score-line-2 = 점수
 
 # 설정
 none-selected = 선택 없음
+none-provided = 입력 없음
 loading = 불러오는 중...
 game-select = 경기:
 game-options = 경기 옵션

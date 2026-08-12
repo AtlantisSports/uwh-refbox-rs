@@ -897,15 +897,17 @@ fn make_event_config_page<'a>(
                 // The committed address, never the one being typed: an address
                 // that has not been applied is not the address in use, and
                 // showing it here would hide exactly that difference.
+                // "None provided" rather than the "None selected" the rows below
+                // use: those offer a list refbox fetched, while an address is
+                // typed in, so "selected" describes the wrong action.
                 let shown = if committed_site_url.is_empty() {
-                    fl!("none-selected")
+                    fl!("none-provided")
                 } else {
                     committed_site_url.to_string()
                 };
-                make_value_button(
+                make_long_value_button(
                     fl!("custom-site"),
                     shown,
-                    (true, true),
                     Some(Message::ChangeConfigPage(ConfigPage::CustomSite(false))),
                 )
                 .height(Length::Fill)

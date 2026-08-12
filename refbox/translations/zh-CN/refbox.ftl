@@ -41,6 +41,7 @@ team-score-line-2 = 比分
 
 # 设置
 none-selected = 未选择
+none-provided = 未填写
 loading = 加载中...
 game-select = 比赛：
 game-options = 比赛选项

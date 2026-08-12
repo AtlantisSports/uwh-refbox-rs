@@ -41,6 +41,7 @@ team-score-line-2 = KOPONAN
 
 # Configuration
 none-selected = Wala na Pinili
+none-provided = Walang Ibinigay
 loading = Naglo-load...
 game-select = LARO:
 game-options = MGA OPSYON SA LARO

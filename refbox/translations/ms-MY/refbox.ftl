@@ -41,6 +41,7 @@ team-score-line-2 = PASUKAN
 
 # Konfigurasi
 none-selected = Tiada Dipilih
+none-provided = Belum Diisi
 loading = Memuatkan...
 game-select = PERLAWANAN:
 game-options = PILIHAN PERLAWANAN

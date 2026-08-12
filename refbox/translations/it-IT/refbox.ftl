@@ -41,6 +41,7 @@ team-score-line-2 = DI SQUADRA
 
 # Configurazione
 none-selected = Nessuno Selezionato
+none-provided = Nessuno Fornito
 loading = Caricamento...
 game-select = PARTITA:
 game-options = OPZIONI PARTITA

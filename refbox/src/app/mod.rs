@@ -1498,18 +1498,13 @@ impl RefBoxApp {
         let current_court = edited.current_court.clone();
         let schedule = edited.schedule.clone();
         let mode = edited.mode;
-        let collect_scorer_cap_num = edited.collect_scorer_cap_num;
-        let track_fouls_and_warnings = edited.track_fouls_and_warnings;
-        let show_behind_schedule_time = edited.show_behind_schedule_time;
-        let confirm_score = edited.confirm_score;
-        let audible_countdown = edited.audible_countdown;
-        let hide_time = edited.hide_time;
 
         // Cross-portal Mode change requires explicit confirmation and an app
         // restart. Raise the confirmation before committing any fields so that
         // cancelling rolls back the entire Apply (Option A semantics, matching
         // GameConfigChangedFromApply). The commit happens in the RestartAndApply
-        // branch of the confirmation handler (Task 8 path).
+        // branch of the confirmation handler, which calls the same
+        // `commit_app_toggles` used below so the two cannot drift.
         if crosses_portal(self.config.mode, mode) {
             return Some(ConfirmationKind::PortalTenantSwitch {
                 from_mode: self.config.mode,
@@ -1518,6 +1513,11 @@ impl RefBoxApp {
             });
         }
 
+        // Committed here, while `edited` is still borrowed, so the six toggles
+        // need no per-field locals. `config` and `edited_settings` are disjoint
+        // fields, so this mutable borrow and the immutable one above coexist.
+        let hide_time_changed = commit_app_toggles(&mut self.config, edited);
+
         self.commit_source(source);
         // Route through set_current_event_id so portal_event_id stays in
         // sync (ADR 011 amendment 2026-04-23 dormant-until-linked).
@@ -1525,18 +1525,12 @@ impl RefBoxApp {
         self.current_court = current_court;
         self.schedule = schedule;
         self.config.mode = mode;
-        self.config.collect_scorer_cap_num = collect_scorer_cap_num;
-        self.config.track_fouls_and_warnings = track_fouls_and_warnings;
-        self.config.show_behind_schedule_time = show_behind_schedule_time;
-        self.config.confirm_score = confirm_score;
-        self.config.audible_countdown = audible_countdown;
-        // The "show countdown for last 10 seconds" toggle lives on this App page,
-        // so its commit must happen here. Notify the update server only when it
-        // actually changed. Bounded channel with one message per Apply from the
-        // GUI loop, so it cannot be full; Closed means the update-server task is
-        // gone (application-fatal), matching the other unwrap sites.
-        if self.config.hide_time != hide_time {
-            self.config.hide_time = hide_time;
+        // `hide_time` is mirrored to the update server, which the pure helper
+        // cannot do — so notify here, and only when it actually changed.
+        // Bounded channel with one message per Apply from the GUI loop, so it
+        // cannot be full; Closed means the update-server task is gone
+        // (application-fatal), matching the other unwrap sites.
+        if hide_time_changed {
             self.update_sender
                 .set_hide_time(self.config.hide_time)
                 .unwrap();
@@ -6316,6 +6310,151 @@ mod usable_cap_numbers_tests {
             usable_cap_numbers(&[player(Some(100)), player(Some(255)), player(Some(50))]),
             vec![50]
         );
+    }
+}
+
+/// Copy the six plain `Config` toggles owned by the App Options page out of the
+/// staged edits. Returns `true` when `hide_time` changed, which the live Apply
+/// path has to report to the update server.
+///
+/// A free function shared by both commit paths, rather than a method or two
+/// copies of the field list, because the two paths drifting apart *is* the
+/// defect this exists to prevent: the App page's Apply commits directly, while a
+/// Hockey ↔ Rugby change defers its commit to the `RestartAndApply` confirmation
+/// arm, which for a long time committed only the mode and silently dropped the
+/// rest.
+///
+/// `source`, `mode` and the portal selections are deliberately NOT handled here.
+/// Each carries side effects that differ between the two paths — `commit_source`,
+/// `set_current_event_id`, the portal-queue flush — and needs `&mut self`.
+fn commit_app_toggles(config: &mut Config, edited: &EditableSettings) -> bool {
+    config.collect_scorer_cap_num = edited.collect_scorer_cap_num;
+    config.track_fouls_and_warnings = edited.track_fouls_and_warnings;
+    config.show_behind_schedule_time = edited.show_behind_schedule_time;
+    config.confirm_score = edited.confirm_score;
+    config.audible_countdown = edited.audible_countdown;
+    let hide_time_changed = config.hide_time != edited.hide_time;
+    config.hide_time = edited.hide_time;
+    hide_time_changed
+}
+
+#[cfg(test)]
+mod commit_app_toggles_tests {
+    use super::*;
+
+    /// All six toggles set to the opposite of their `Config` default, so a
+    /// missing assignment cannot pass by coincidence.
+    fn all_flipped() -> EditableSettings {
+        EditableSettings {
+            collect_scorer_cap_num: false,
+            track_fouls_and_warnings: true,
+            show_behind_schedule_time: false,
+            confirm_score: false,
+            audible_countdown: true,
+            hide_time: true,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn all_six_toggles_are_copied() {
+        let mut config = Config::default();
+
+        commit_app_toggles(&mut config, &all_flipped());
+
+        assert!(!config.collect_scorer_cap_num);
+        assert!(config.track_fouls_and_warnings);
+        assert!(!config.show_behind_schedule_time);
+        assert!(!config.confirm_score);
+        assert!(config.audible_countdown);
+        assert!(config.hide_time);
+    }
+
+    #[test]
+    fn all_six_toggles_are_copied_the_other_way() {
+        // Guards against a hardcoded assignment rather than a copy: the same six
+        // fields driven back in the opposite direction.
+        let mut config = Config::default();
+        commit_app_toggles(&mut config, &all_flipped());
+        let edited = EditableSettings::default();
+
+        commit_app_toggles(&mut config, &edited);
+
+        assert_eq!(config.collect_scorer_cap_num, edited.collect_scorer_cap_num);
+        assert_eq!(
+            config.track_fouls_and_warnings,
+            edited.track_fouls_and_warnings
+        );
+        assert_eq!(
+            config.show_behind_schedule_time,
+            edited.show_behind_schedule_time
+        );
+        assert_eq!(config.confirm_score, edited.confirm_score);
+        assert_eq!(config.audible_countdown, edited.audible_countdown);
+        assert_eq!(config.hide_time, edited.hide_time);
+    }
+
+    #[test]
+    fn hide_time_change_is_reported() {
+        let mut config = Config::default();
+        assert!(!config.hide_time, "test assumes the default is off");
+        let edited = EditableSettings {
+            hide_time: true,
+            ..Default::default()
+        };
+
+        assert!(commit_app_toggles(&mut config, &edited));
+    }
+
+    #[test]
+    fn unchanged_hide_time_is_not_reported() {
+        // The live Apply path messages the update server only on a real change.
+        let mut config = Config::default();
+        let edited = EditableSettings {
+            hide_time: config.hide_time,
+            ..Default::default()
+        };
+        assert!(!commit_app_toggles(&mut config, &edited));
+
+        config.hide_time = true;
+        let edited = EditableSettings {
+            hide_time: true,
+            ..Default::default()
+        };
+        assert!(!commit_app_toggles(&mut config, &edited));
+    }
+
+    #[test]
+    fn fields_owned_by_other_paths_are_untouched() {
+        // `mode` and `source` must NOT be committed by this helper. Both have
+        // side effects that differ between the two commit paths — the mode
+        // confirmation and the portal-queue flush — so they stay with the
+        // callers. Adding them here would bypass both.
+        let mut config = Config::default();
+        let mode_before = config.mode;
+        let source_before = config.source;
+        let remembered_before = config.remembered_remote;
+        assert_ne!(
+            mode_before,
+            Mode::Rugby,
+            "test needs an edited mode that differs from the default"
+        );
+        assert_ne!(
+            source_before,
+            GameSource::Portal,
+            "test needs an edited source that differs from the default"
+        );
+        let edited = EditableSettings {
+            mode: Mode::Rugby,
+            source: GameSource::Portal,
+            ..all_flipped()
+        };
+
+        commit_app_toggles(&mut config, &edited);
+
+        assert_eq!(config.mode, mode_before);
+        assert_eq!(config.source, source_before);
+        assert_eq!(config.remembered_remote, remembered_before);
     }
 }
 

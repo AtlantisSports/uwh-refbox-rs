@@ -190,6 +190,7 @@ portal-enabled = { $portal }PORTAL이 활성화된 경우 모든 필드를 입�
 mode-switch-portal-tenant = 앱 모드를 변경하면 { $from_portal } Portal 연결이 끊어지며 { $to_portal } Portal에 다시 연결해야 합니다.
 mode-switch-custom-site = 앱 모드를 변경하려면 재시작이 필요합니다. 사용자 지정 사이트 연결은 유지됩니다.
 source-locked-game = 경기 진행 중에는 경기 출처를 변경할 수 없습니다.
+link-locked-game = 경기 진행 중에는 경기 출처에 연결할 수 없습니다.
 source-locked-queue = 아직 전송되지 않은 경기 결과가 있습니다. 먼저 전송하거나 삭제하세요.
 uwhportal-token-invalid-code = 잘못된 코드가 입력되었습니다.
     다시 시도하세요.

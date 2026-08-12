@@ -1039,6 +1039,37 @@ code commit or record them here.)_
   workspace inventory. These 30 tests are known to assert; whether they would catch a regression is
   unmeasured.
 
+- **Linking is now refused while a game is in progress — Eric's request, 2026-08-12, and it is an
+  addition beyond the nine tasks.** Tapping ACCESS TOKEN during a game raises
+  `ConfirmationKind::LinkLockedByGame` instead of opening the code keypad, with one button back to
+  Game Options. Three things worth not re-deriving:
+
+  - **The guard is on the period, not the clock** (`current_period() != BetweenGames`), for the same
+    reason the site-change guard is: the between-games countdown always runs, so a clock-based test
+    would have banned linking in exactly the state operators set up in. See
+    [[reference_refbox_gate_on_period_not_clock]].
+  - **The row stays tappable and refuses with a message** rather than greying out, chosen against the
+    precedent of decision 6. The existing `refuse_repoint` comment gives the reason — "a silent
+    refusal is indistinguishable from a broken button" — and this row has no other affordance
+    telling the operator why it died.
+  - **Why it matters beyond tidiness:** a successful link immediately re-requests the schedule, which
+    would replace the loaded schedule under a running game.
+
+  New key `link-locked-game` in all 15 locales, reusing each language's own term for "game source"
+  from the neighbouring `source-locked-game` so the two read as a pair. **Verified on screen with
+  Eric (2026-08-12)**: FIRST HALF running, refusal shown with the right wording and the right
+  return button.
+
+  **This narrowed the `accessKey` crash defect but did not close it.** Tracing it for that question
+  corrected an earlier overstatement of mine: `RecvPortalToken` re-requests the schedule in the same
+  handler that stores the token, and `request_schedule` builds the request synchronously on the UI
+  thread — so a malformed token detonates within seconds of linking, at setup, not mid-game, and the
+  config is never persisted before the crash so there is no crash loop across restarts. With linking
+  now confined to between games, the normal path is confined too. **The residual path is the
+  background health probe**, which would hit the same unchecked `HeaderValue::from_str(...).unwrap()`
+  in a spawned task, poison the shared client lock, and take the UI thread down on its next
+  `lock().unwrap()`. Still worth the one-line fix; not yet done, and not on this branch.
+
 ## Out of scope
 
 - Changing the verification stub's token handling.

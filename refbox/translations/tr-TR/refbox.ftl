@@ -188,6 +188,7 @@ portal-enabled = { $portal }PORTAL etkinleştirildiğinde, tüm alanlar doldurul
 mode-switch-portal-tenant = Uygulama modunu değiştirmek { $from_portal } Portal bağlantısını devre dışı bırakacak ve { $to_portal } Portal'a yeniden bağlanmanız gerekecektir.
 mode-switch-custom-site = Uygulama modunu değiştirmek yeniden başlatma gerektirir. Özel siteniz bağlı kalır.
 source-locked-game = Oyun kaynağı, bir oyun devam ederken değiştirilemez.
+link-locked-game = Bir oyun devam ederken oyun kaynağına bağlanılamaz.
 source-locked-queue = Gönderilmeyi bekleyen oyun sonuçları var. Önce bunları gönderin veya silin.
 uwhportal-token-invalid-code = Geçersiz kod girildi.
     Lütfen tekrar deneyin.

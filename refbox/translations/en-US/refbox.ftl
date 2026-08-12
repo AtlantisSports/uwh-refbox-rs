@@ -191,6 +191,7 @@ portal-enabled = When { $portal }PORTAL is enabled, all fields must be filled ou
 mode-switch-portal-tenant = Changing the app mode will disable the link to { $from_portal } Portal and you must re-connect to { $to_portal } Portal.
 mode-switch-custom-site = Changing the app mode needs a restart. Your custom site stays connected.
 source-locked-game = The game source can not be changed while a game is in progress.
+link-locked-game = You can not connect to the game source while a game is in progress.
 source-locked-queue = Game results are still waiting to be sent. Send or discard them first.
 uwhportal-token-invalid-code = Invalid code entered.
     Please try again.

@@ -188,6 +188,7 @@ portal-enabled = 启用{ $portal }PORTAL时，所有字段必须填写。
 mode-switch-portal-tenant = 更改应用模式将断开与 { $from_portal } Portal 的连接，您需要重新连接到 { $to_portal } Portal。
 mode-switch-custom-site = 更改应用模式需要重启。您的自定义站点将保持连接。
 source-locked-game = 比赛进行中无法更改比赛来源。
+link-locked-game = 比赛进行中无法连接到比赛来源。
 source-locked-queue = 仍有比赛结果等待发送。请先发送或丢弃它们。
 uwhportal-token-invalid-code = 输入的代码无效。
     请重试。

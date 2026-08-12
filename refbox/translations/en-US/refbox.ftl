@@ -100,7 +100,6 @@ minimum-brk-btwn-games = MINIMUM BRK
     BTWN GAMES:
 ot-half-time-length = OT HALF
     TIME LENGTH
-using-portal = USING { $portal }PORTAL:
 manual-games = MANUAL GAMES:
 source-portal = { $portal } PORTAL
 source-custom = CUSTOM

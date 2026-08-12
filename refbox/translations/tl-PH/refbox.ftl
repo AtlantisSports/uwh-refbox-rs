@@ -101,7 +101,6 @@ minimum-brk-btwn-games = PINAKAMALIIT NA PAHINGA
     SA PAGITAN NG MGA LARO:
 ot-half-time-length = HABA NG PAHINGA
     SA OVERTIME
-using-portal = GUMAGAMIT NG { $portal }PORTAL:
 manual-games = MANUAL NA LARO:
 source-portal = { $portal } PORTAL
 source-custom = PASADYA

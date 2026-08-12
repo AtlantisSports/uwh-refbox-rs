@@ -154,6 +154,23 @@ fn walk_inline(
     }
 }
 
+/// Every `.rs` file under `src/`, concatenated.
+fn all_source() -> String {
+    fn visit(dir: &Path, out: &mut String) {
+        for entry in std::fs::read_dir(dir).expect("readable source dir") {
+            let path = entry.expect("readable dir entry").path();
+            if path.is_dir() {
+                visit(&path, out);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                out.push_str(&std::fs::read_to_string(&path).expect("readable source file"));
+            }
+        }
+    }
+    let mut out = String::new();
+    visit(&Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut out);
+    out
+}
+
 #[test]
 fn every_reference_key_exists_in_every_locale() {
     let reference = load_catalog(REFERENCE);
@@ -210,5 +227,31 @@ fn every_key_uses_the_same_variables_as_the_reference() {
          A missing variable renders a sentence with a hole in it; a misspelled \
          one renders the placeholder literally.\n{}",
         problems.join("\n")
+    );
+}
+
+#[test]
+fn every_reference_key_is_used() {
+    let reference = load_catalog(REFERENCE);
+    let source = all_source();
+
+    // Every call site passes a string literal -- the only non-literal
+    // occurrences of `fl!(` are the macro's own definition in main.rs. If a
+    // dynamically-keyed call is ever added, this test becomes unsound and the
+    // key it builds must be allowed for explicitly.
+    let unused: Vec<&str> = reference
+        .messages
+        .keys()
+        .filter(|key| !source.contains(&format!("\"{key}\"")))
+        .filter(|key| !reference.references.contains(*key))
+        .map(String::as_str)
+        .collect();
+
+    assert!(
+        unused.is_empty(),
+        "these {REFERENCE} keys are not used by any fl!() call and are not \
+         referenced from another message, so all 15 locales are carrying dead \
+         text:\n  {}",
+        unused.join("\n  ")
     );
 }

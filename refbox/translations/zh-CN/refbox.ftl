@@ -101,7 +101,6 @@ minimum-brk-btwn-games = 场间最短
     休息时间：
 ot-half-time-length = 加时中场
     时长
-using-portal = 使用{ $portal }PORTAL：
 manual-games = 手动比赛：
 source-portal = { $portal } PORTAL
 source-custom = 自定义

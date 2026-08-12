@@ -101,7 +101,6 @@ minimum-brk-btwn-games = MIN PAUZE
     TUSSEN WEDSTR.:
 ot-half-time-length = RUST
     VERLENGING
-using-portal = { $portal }PORTAL GEBRUIKEN:
 manual-games = HANDMATIGE WEDSTRIJDEN:
 source-portal = { $portal } PORTAL
 source-custom = AANGEPAST

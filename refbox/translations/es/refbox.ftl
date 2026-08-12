@@ -102,7 +102,6 @@ minimum-brk-btwn-games = DESCANSO MÍNIMO
     ENTRE JUEGOS:
 ot-half-time-length = DUR. MEDIO
     TIEMPO DEL T/E
-using-portal = USANDO { $portal }PORTAL:
 manual-games = PARTIDOS MANUALES:
 source-portal = { $portal } PORTAL
 source-custom = PERSONALIZADO

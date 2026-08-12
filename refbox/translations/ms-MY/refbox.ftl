@@ -101,7 +101,6 @@ minimum-brk-btwn-games = REHAT MINIMUM
     ANTARA PERLAWANAN:
 ot-half-time-length = PANJANG REHAT SEPARUH
     MASA TAMBAHAN
-using-portal = MENGGUNAKAN { $portal }PORTAL:
 manual-games = PERLAWANAN MANUAL:
 source-portal = { $portal } PORTAL
 source-custom = TERSUAI

@@ -101,7 +101,6 @@ minimum-brk-btwn-games = MIN. PAUSE
     ZWISCHEN SPIELEN:
 ot-half-time-length = VERLÄNGERUNGS-
     PAUSENDAUER
-using-portal = { $portal }PORTAL VERWENDEN:
 manual-games = MANUELLE SPIELE:
 source-portal = { $portal } PORTAL
 source-custom = EIGENE

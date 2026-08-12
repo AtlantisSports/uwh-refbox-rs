@@ -101,7 +101,6 @@ minimum-brk-btwn-games = OYUNLAR ARASI
     MİNİMUM ARA:
 ot-half-time-length = UZATMA DEVRE
     ARASI SÜRESİ
-using-portal = { $portal }PORTAL KULLANILIYOR:
 manual-games = MANUEL MAÇLAR:
 source-portal = { $portal } PORTAL
 source-custom = ÖZEL

@@ -193,7 +193,7 @@ link-locked-game = Während eines laufenden Spiels kann keine Verbindung zur Spi
 source-locked-queue = Es warten noch Spielergebnisse auf den Versand. Senden oder verwerfen Sie diese zuerst.
 uwhportal-token-invalid-code = Ungültiger Code eingegeben.
     Bitte erneut versuchen.
-uwhportal-token-no-pending-link = Portal erwartet keine Verbindung.
+uwhportal-token-no-pending-link = Die Verbindung erwartet keine Kommunikation.
     Bitte erneut versuchen.
 go-back-to-editor = ZURÜCK ZUM EDITOR
 discard-changes = ÄNDERUNGEN VERWERFEN
@@ -394,9 +394,9 @@ false-start = Fehlstart
 
 
 # Portal Health Indicator
-portal-summary-title = { $portal } PORTAL STATUS
+portal-summary-title = VERBINDUNGSSTATUS
 portal-retry-all = ALLE WIEDERHOLEN
-portal-row-token-expired = Portal-Anmeldung abgelaufen — zum erneuten Anmelden tippen
+portal-row-token-expired = Zugriffstoken abgelaufen — zum erneuten Anmelden tippen
 portal-row-stuck = Spiel { $game } Übermittlungsfehler, zum Beheben tippen
 portal-row-pending = Spiel { $game } Spielstand nicht gesendet, zum erneuten Versuch tippen
 portal-row-stats-pending = Spiel { $game } Statistik nicht gesendet, zum erneuten Versuch tippen
@@ -406,10 +406,10 @@ portal-action-force-submit = Dieses Spielergebnis erneut senden
 portal-action-discard = Dieses Spielergebnis verwerfen
 portal-action-discard-confirm = ZUM BESTÄTIGEN DES VERWERFENS ERNEUT TIPPEN
 portal-page-title-attention = Übermittlungsfehler Spiel { $game }
-portal-page-attention-info = Das Spielergebnis wurde vom { $portal } Portal nicht angenommen
+portal-page-attention-info = Das Spielergebnis wurde nicht angenommen
 portal-page-attention-score = Gespeichertes Spielergebnis: Weiß { $white } - Schwarz { $black }
 portal-page-attention-remediation = Sie können erneut versuchen, wenn die Verbindung bestätigt ist, oder verwerfen, um den Fehler zu löschen
-portal-advisory-at-game-end = Portal-Problem erkannt. Spielstand wird trotzdem in die Warteschlange gestellt — bitte einen Administrator zur Lösung kontaktieren.
+portal-advisory-at-game-end = Verbindungsproblem erkannt. Spielstand wird trotzdem in die Warteschlange gestellt — bitte einen Administrator zur Lösung kontaktieren.
 
 # 2 Halves / 1 Period selector (Half Length editor)
 two-halves = 2 HALBZEITEN

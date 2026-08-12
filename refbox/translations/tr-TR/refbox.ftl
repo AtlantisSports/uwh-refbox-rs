@@ -193,7 +193,7 @@ link-locked-game = Bir oyun devam ederken oyun kaynağına bağlanılamaz.
 source-locked-queue = Gönderilmeyi bekleyen oyun sonuçları var. Önce bunları gönderin veya silin.
 uwhportal-token-invalid-code = Geçersiz kod girildi.
     Lütfen tekrar deneyin.
-uwhportal-token-no-pending-link = Portal bir bağlantı beklemiyordur.
+uwhportal-token-no-pending-link = Bağlantı iletişim beklemiyor.
     Lütfen tekrar deneyin.
 go-back-to-editor = DÜZENLEYICIYE GERİ DÖN
 discard-changes = DEĞİŞİKLİKLERİ İPTAL ET
@@ -394,9 +394,9 @@ false-start = Hatalı Başlangıç
 
 
 # Portal Health Indicator
-portal-summary-title = { $portal } PORTAL DURUMU
+portal-summary-title = BAĞLANTI DURUMU
 portal-retry-all = TÜMÜNÜ TEKRAR DENE
-portal-row-token-expired = Portal oturumu sona erdi — yeniden giriş için dokunun
+portal-row-token-expired = Erişim tokeni sona erdi — yeniden giriş için dokunun
 portal-row-stuck = Oyun { $game } Skor gönderme hatası, düzeltmek için dokunun
 portal-row-pending = Oyun { $game } Skor gönderilmedi, tekrar denemek için dokunun
 portal-row-stats-pending = Oyun { $game } İstatistikler gönderilmedi, tekrar denemek için dokunun
@@ -406,10 +406,10 @@ portal-action-force-submit = Bu oyun sonucunu tekrar dene
 portal-action-discard = Bu oyun sonucunu iptal et
 portal-action-discard-confirm = İPTALİ ONAYLAMAK İÇİN TEKRAR DOKUN
 portal-page-title-attention = Oyun { $game } gönderim hatası
-portal-page-attention-info = Oyun sonucu { $portal } Portal'da kabul edilmedi
+portal-page-attention-info = Oyun sonucu kabul edilmedi
 portal-page-attention-score = Saklanan oyun sonucu: Beyaz { $white } - Siyah { $black }
 portal-page-attention-remediation = Bağlantı doğrulandıysa Tekrar Dene'yi seçebilir veya hatayı temizlemek için iptal edebilirsiniz
-portal-advisory-at-game-end = Portal sorunu algılandı. Skor yine de sıraya alınacak — çözmek için bir yöneticiye başvurun.
+portal-advisory-at-game-end = Bağlantı sorunu algılandı. Skor yine de sıraya alınacak — çözmek için bir yöneticiye başvurun.
 
 # 2 Halves / 1 Period selector (Half Length editor)
 two-halves = 2 DEVRE

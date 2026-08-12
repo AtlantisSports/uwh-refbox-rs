@@ -193,7 +193,7 @@ link-locked-game = Hindi makakakonekta sa pinagkukunan ng laro habang nagaganap 
 source-locked-queue = May mga resulta ng laro na naghihintay pang maipadala. Ipadala o itapon muna ang mga ito.
 uwhportal-token-invalid-code = Maling code ang naipasok.
     Pakisubukan muli.
-uwhportal-token-no-pending-link = Hindi inaasahan ng Portal ang isang koneksyon.
+uwhportal-token-no-pending-link = Hindi inaasahan ng koneksyon ang komunikasyon.
     Pakisubukan muli.
 go-back-to-editor = BUMALIK SA EDITOR
 discard-changes = ITAPON ANG MGA PAGBABAGO
@@ -394,9 +394,9 @@ false-start = Maling Simula
 
 
 # Portal Health Indicator
-portal-summary-title = STATUS NG { $portal } PORTAL
+portal-summary-title = STATUS NG KONEKSYON
 portal-retry-all = ULITIN LAHAT
-portal-row-token-expired = Nag-expire ang Portal login — pindutin para mag-login muli
+portal-row-token-expired = Nag-expire ang access token — pindutin para mag-login muli
 portal-row-stuck = Laro { $game } Error sa pagpapadala ng puntos, pindutin para ayusin
 portal-row-pending = Laro { $game } Hindi naipadala ang puntos, pindutin para subukan muli
 portal-row-stats-pending = Laro { $game } Hindi naipadala ang estadistika, pindutin para subukan muli
@@ -406,10 +406,10 @@ portal-action-force-submit = Subukang muli ang resulta ng larong ito
 portal-action-discard = Itapon ang resulta ng larong ito
 portal-action-discard-confirm = PINDUTIN MULI UPANG KUMPIRMAHIN ANG PAGTAPON
 portal-page-title-attention = Error sa pagsumite ng Laro { $game }
-portal-page-attention-info = Hindi pa tinatanggap ang resulta ng laro sa { $portal } Portal
+portal-page-attention-info = Hindi pa tinatanggap ang resulta ng laro
 portal-page-attention-score = Naka-imbak na resulta: Puti { $white } - Itim { $black }
 portal-page-attention-remediation = Maaari kang Subukang Muli kung naberipika ang koneksyon, o itapon upang alisin ang error
-portal-advisory-at-game-end = May problema sa Portal. Ipipila pa rin ang puntos — humanap ng admin para ayusin.
+portal-advisory-at-game-end = May problema sa koneksyon. Ipipila pa rin ang puntos — humanap ng admin para ayusin.
 
 # 2 Halves / 1 Period selector (Half Length editor)
 two-halves = 2 KALAHATI

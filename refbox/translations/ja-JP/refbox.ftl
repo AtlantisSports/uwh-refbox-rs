@@ -193,7 +193,7 @@ link-locked-game = 試合進行中は試合データの取得元に接続でき�
 source-locked-queue = 送信待ちの試合結果があります。先に送信するか破棄してください。
 uwhportal-token-invalid-code = 無効なコードが入力されました。
     もう一度試してください。
-uwhportal-token-no-pending-link = ポータルは接続を待っていません。
+uwhportal-token-no-pending-link = 接続は通信を待っていません。
     もう一度試してください。
 go-back-to-editor = 編集画面に戻る
 discard-changes = 変更を破棄
@@ -394,9 +394,9 @@ false-start = 不正スタート
 
 
 # Portal Health Indicator
-portal-summary-title = { $portal } PORTAL 状態
+portal-summary-title = 接続状態
 portal-retry-all = すべて再試行
-portal-row-token-expired = ポータルのログインが期限切れです — タップして再ログイン
+portal-row-token-expired = アクセストークンの有効期限が切れました — タップして再ログイン
 portal-row-stuck = 試合 { $game } のスコア送信エラー、タップして修正
 portal-row-pending = 試合 { $game } のスコアが未送信、タップして再試行
 portal-row-stats-pending = 試合 { $game } の統計が未送信、タップして再試行
@@ -406,10 +406,10 @@ portal-action-force-submit = この試合結果を再送信
 portal-action-discard = この試合結果を破棄
 portal-action-discard-confirm = もう一度タップして破棄を確定
 portal-page-title-attention = 試合 { $game } の送信エラー
-portal-page-attention-info = 試合結果が { $portal } ポータルに受理されていません
+portal-page-attention-info = 試合結果が受理されていません
 portal-page-attention-score = 保存された試合結果: 白 { $white } - 黒 { $black }
 portal-page-attention-remediation = 接続が確認できれば再送信、またはエラーをクリアするには破棄してください
-portal-advisory-at-game-end = ポータルの問題を検出しました。スコアはキューに残ります — 管理者に解決を依頼してください。
+portal-advisory-at-game-end = 接続の問題を検出しました。スコアはキューに残ります — 管理者に解決を依頼してください。
 
 # 2 Halves / 1 Period selector (Half Length editor)
 two-halves = 2ハーフ

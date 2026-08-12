@@ -197,7 +197,7 @@ source-locked-queue = Des résultats de match attendent encore d'être envoyés.
 uwhportal-token-invalid-code = Code invalide.
     Veuillez réessayer.
 ### Check
-uwhportal-token-no-pending-link = Aucun lien en attente trouvé.
+uwhportal-token-no-pending-link = La connexion n'attend aucune communication.
     Veuillez réessayer.
 go-back-to-editor = RETOURNER À L'ÉDITEUR
 discard-changes = ANNULER LES MODIFICATIONS
@@ -398,9 +398,9 @@ false-start = Faux départs
 
 
 # Portal Health Indicator
-portal-summary-title = STATUT { $portal } PORTAL
+portal-summary-title = STATUT DE CONNEXION
 portal-retry-all = TOUT RÉESSAYER
-portal-row-token-expired = Session du portail expirée — touchez pour vous reconnecter
+portal-row-token-expired = Jeton d'accès expiré — touchez pour vous reconnecter
 portal-row-stuck = Match { $game } · Erreur d'envoi du résultat, touchez pour corriger
 portal-row-pending = Match { $game } · Résultat non envoyé, touchez pour réessayer
 portal-row-stats-pending = Match { $game } · Statistiques non envoyées, touchez pour réessayer
@@ -410,10 +410,10 @@ portal-action-force-submit = Réessayer ce résultat
 portal-action-discard = Supprimer ce résultat
 portal-action-discard-confirm = TOUCHEZ À NOUVEAU POUR CONFIRMER LA SUPPRESSION
 portal-page-title-attention = Match { $game } · Erreur d'envoi
-portal-page-attention-info = Le résultat du match n.a pas été accepté par { $portal } Portal
+portal-page-attention-info = Le résultat du match n'a pas été accepté
 portal-page-attention-score = Résultat stocké : Clair { $white } - Foncé { $black }
 portal-page-attention-remediation = Vous pouvez Réessayer si la connexion est vérifiée, ou supprimer pour effacer l'erreur
-portal-advisory-at-game-end = Problème du portail détecté. Le résultat sera tout de même mis en file d'attente — trouvez un administrateur pour le résoudre.
+portal-advisory-at-game-end = Problème de connexion détecté. Le résultat sera tout de même mis en file d'attente — trouvez un administrateur pour le résoudre.
 
 # 2 Halves / 1 Period selector (Half Length editor)
 two-halves = 2 PÉRIODES

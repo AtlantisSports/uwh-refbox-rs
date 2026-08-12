@@ -69,8 +69,13 @@ fn main() {
 
     if missing_keys != HashMap::new() {
         for (file, missing) in &missing_keys {
+            // Two colons, not one. `cargo:error=` is not a recognised
+            // directive: cargo silently ignores it, so the release branch above
+            // reported nothing at all and this check was warning-only in every
+            // build. `cargo::error=` does fail the build, and both spellings
+            // work for `warning`. Verified on rustc 1.85, the MSRV.
             println!(
-                "cargo:{}=Missing keys in {}: {}",
+                "cargo::{}=Missing keys in {}: {}",
                 msg_type,
                 file,
                 missing.join(", ")

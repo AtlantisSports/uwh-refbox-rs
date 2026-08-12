@@ -103,7 +103,6 @@ minimum-brk-btwn-games = 최소 경기 간
     휴식:
 ot-half-time-length = 연장 하프타임
     시간
-using-portal = { $portal }PORTAL 사용:
 manual-games = 수동 경기:
 source-portal = { $portal } PORTAL
 source-custom = 사용자 지정

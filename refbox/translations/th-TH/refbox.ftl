@@ -101,7 +101,6 @@ minimum-brk-btwn-games = พักระหว่างเกม
     ขั้นต่ำ:
 ot-half-time-length = พักครึ่ง
     ต่อเวลาพิเศษ
-using-portal = ใช้ { $portal }PORTAL:
 manual-games = เกมด้วยตนเอง:
 source-portal = { $portal } PORTAL
 source-custom = กำหนดเอง

@@ -101,7 +101,6 @@ minimum-brk-btwn-games = PAUSE MIN. ENTRE
     LES MATCHS:
 ot-half-time-length = DURÉE DE LA PAUSE
     A LA PROLONGATION
-using-portal = UTILISATION DU { $portal }PORTAL:
 manual-games = MATCHS MANUELS:
 source-portal = { $portal } PORTAL
 source-custom = PERSONNALISÉ

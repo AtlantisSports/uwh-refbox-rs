@@ -101,7 +101,6 @@ minimum-brk-btwn-games = PAUSA MIN
     FRA PARTITE:
 ot-half-time-length = INTERVALLO
     SUPPLEMENTARE
-using-portal = USA { $portal }PORTAL:
 manual-games = PARTITE MANUALI:
 source-portal = { $portal } PORTAL
 source-custom = PERSONALIZZATO

@@ -101,7 +101,6 @@ minimum-brk-btwn-games = JEDA MINIMUM
     ANTAR PERTANDINGAN:
 ot-half-time-length = DURASI JEDA
     PERPANJANGAN WAKTU
-using-portal = MENGGUNAKAN { $portal }PORTAL:
 manual-games = PERTANDINGAN MANUAL:
 source-portal = { $portal } PORTAL
 source-custom = KUSTOM

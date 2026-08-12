@@ -60,9 +60,9 @@ impl EditableSettings {
     /// isn't in the schedule, or the chosen game's court doesn't match the
     /// currently-selected court.
     ///
-    /// Both `apply_game_options` (gating the actual commit) and
-    /// `make_cancel_apply_footer` (disabling Apply when nothing is committable)
-    /// rely on this predicate, so they stay in sync.
+    /// Both `apply_game_options` (gating the actual commit) and the Game page's
+    /// action row in `make_event_config_page` (disabling Apply when nothing is
+    /// committable) rely on this predicate, so they stay in sync.
     pub(in super::super) fn uwhportal_incomplete(&self) -> bool {
         if !self.using_uwhportal {
             return false;
@@ -467,14 +467,11 @@ fn make_cancel_apply_footer<'a>(
     snapshot: Option<&PageEntrySnapshot>,
     game_in_progress: bool,
 ) -> Element<'a, Message> {
-    // Apply is enabled when there are pending changes AND the resulting state is
-    // committable. For Game Options in portal mode, "committable" requires a
-    // complete portal selection (event + court + schedule + game-in-schedule);
-    // otherwise pressing Apply would only open a wasteful "fix something and try
-    // again" dialog. Other pages have no committability gate.
-    let apply_blocked = matches!(page, ConfigPage::Game) && edited.uwhportal_incomplete();
+    // Apply is enabled when there are pending changes. The pages that use this
+    // footer (App, Display, Sound, Remotes) have no committability gate; the
+    // Game page has one but builds its own action row rather than using this.
     let has_changes = page_has_changes(page, edited, snapshot);
-    let apply_enabled = has_changes && !apply_blocked;
+    let apply_enabled = has_changes;
 
     let cancel = make_button(cancel_or_back_label(has_changes))
         .style(red_button)
@@ -591,7 +588,6 @@ fn game_block_validity(cfg: &GameConfig) -> GameBlockValidity {
 }
 
 // View builder takes app-state slices; grouping into a context struct is a separate refactor across all view_builders. Filed as a Findings-Backlog item in AUDIT-PLAN.md (Unit 3, 2026-05-13).
-#[allow(clippy::too_many_arguments)]
 fn make_event_config_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
@@ -925,9 +921,8 @@ fn make_event_config_page<'a>(
     }
 
     // Action row: Cancel | Game-number picker | Apply.
-    // Apply is blocked when the portal state is incomplete (carried over from
-    // make_cancel_apply_footer's gate so a click on Apply can't reach a
-    // wasteful confirmation dialog).
+    // Apply is blocked when the portal state is incomplete, so a click on Apply
+    // can't reach a wasteful "fix something and try again" dialog.
     let apply_blocked = settings.uwhportal_incomplete();
     // A red (too-short) Game Block is invalid, so APPLY must be disabled until it
     // is widened. Only gate this in portal-OFF mode — that is the only mode that
@@ -965,7 +960,6 @@ fn make_event_config_page<'a>(
     col.into()
 }
 
-#[allow(clippy::too_many_arguments)]
 fn make_app_config_page<'a>(
     mode: Mode,
     snapshot: &GameSnapshot,
@@ -1110,7 +1104,6 @@ fn layout_preview_handle(layout: FrontDisplayLayout, white_on_right: bool) -> im
     image::Handle::from_bytes(bytes)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn make_display_config_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
@@ -1253,7 +1246,6 @@ fn make_display_config_page<'a>(
     .into()
 }
 
-#[allow(clippy::too_many_arguments)]
 fn make_sound_config_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,
@@ -1819,7 +1811,6 @@ fn font_family_id(lang: Language) -> u8 {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn make_buzzer_select_page<'a>(
     snapshot: &GameSnapshot,
     settings: &EditableSettings,

@@ -1233,29 +1233,11 @@ impl TournamentManager {
             {
                 self.check_time_remaining(now, start_time, time_remaining_at_start)
             } else {
-                if let Some(TimeoutState::RugbyPenaltyShot(ClockState::CountingDown {
-                    start_time,
-                    time_remaining_at_start,
-                })) = self.timeout_state
-                {
-                    if !self.check_time_remaining(now, start_time, time_remaining_at_start)? {
-                        return Ok(false);
-                    } else if let ClockState::Stopped { clock_time } = self.clock_state {
-                        if clock_time.is_zero() {
-                            return Ok(true);
-                        }
-                    }
-                };
-
-                if let ClockState::CountingDown {
-                    start_time,
-                    time_remaining_at_start,
-                } = self.clock_state
-                {
-                    self.check_time_remaining(now, start_time, time_remaining_at_start)
-                } else {
-                    Ok(false)
-                }
+                // The clock is neither counting up (handled above, which always returns) nor
+                // counting down, so it is stopped. The rugby-penalty-shot check above has
+                // already run against this same unchanged state, so repeating it here could
+                // only reach the same non-returning outcome.
+                Ok(false)
             }
         }
     }
@@ -2476,14 +2458,6 @@ enum ClockState {
         start_time: Instant,
         time_at_start: Duration,
     },
-}
-
-impl std::default::Default for ClockState {
-    fn default() -> Self {
-        ClockState::Stopped {
-            clock_time: Duration::default(),
-        }
-    }
 }
 
 impl ClockState {
@@ -7666,6 +7640,45 @@ mod test {
         };
         tm.set_scores(BlackWhiteBundle { black: 4, white: 5 }, start_time);
         assert_eq!(Ok(false), tm.could_end_game(next_time));
+    }
+
+    // Pins the path where the game clock is stopped and a rugby penalty shot's time HAS
+    // elapsed. The assertions above cover the not-yet-elapsed case, which returns early;
+    // this one falls past every early return, so it characterises the tail of
+    // could_end_game.
+    #[test]
+    fn test_could_end_game_stopped_clock_with_elapsed_rugby_penalty_shot() {
+        initialize();
+        let config = GameConfig {
+            overtime_allowed: false,
+            sudden_death_allowed: false,
+            ..Default::default()
+        };
+        let mut tm = TournamentManager::new(config);
+
+        let start_time = Instant::now();
+        let now = start_time + Duration::from_secs(10);
+
+        // SecondHalf so that check_time_remaining can return true at all.
+        tm.current_period = GamePeriod::SecondHalf;
+        tm.set_timeout_state(Some(TimeoutState::RugbyPenaltyShot(
+            ClockState::CountingDown {
+                start_time,
+                time_remaining_at_start: Duration::from_secs(5),
+            },
+        )));
+
+        // Stopped but NOT at zero: the shot's time has elapsed, yet the game cannot end.
+        tm.clock_state = ClockState::Stopped {
+            clock_time: Duration::from_secs(5),
+        };
+        assert_eq!(Ok(false), tm.could_end_game(now));
+
+        // Stopped AT zero is the boundary, and returns true from the earlier check.
+        tm.clock_state = ClockState::Stopped {
+            clock_time: Duration::ZERO,
+        };
+        assert_eq!(Ok(true), tm.could_end_game(now));
     }
 
     #[test]

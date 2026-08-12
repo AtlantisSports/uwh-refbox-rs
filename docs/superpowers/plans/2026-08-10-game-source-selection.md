@@ -1070,6 +1070,28 @@ code commit or record them here.)_
   in a spawned task, poison the shared client lock, and take the UI thread down on its next
   `lock().unwrap()`. Still worth the one-line fix; not yet done, and not on this branch.
 
+- **Rebased onto master 2026-08-12 (`f7a6205a`, 26 commits of drift). Three conflicts, all
+  mechanical — recorded so a redo does not re-derive them:**
+
+  1. `mod.rs`, `handle_game_start` — master had gained the player-number-grid work (a new
+     `rosters_for_game`, a `Task<Message>` return, a `tasks` vec) around the one line our refactor
+     changes. Resolution: keep master's function wholesale, change only `self.using_uwhportal` to
+     `self.uses_remote()`.
+  2. `configuration.rs`, `make_event_config_page` — master had removed
+     `#[allow(clippy::too_many_arguments)]`; our commit adds an eighth parameter, which puts it back
+     over clippy's threshold of seven. Resolution: keep ours.
+  3. `mod.rs` imports — union. Master added `RosterPlayer` and `TeamId`, we add `DateRange`.
+
+  Verified after: `just check` exit 0, **532 tests**, and zero occurrences of `using_uwhportal`
+  anywhere in `refbox/src` — the three-way refactor survived the replay intact. Safety branch
+  `pre-rebase-backup-20260812` points at the pre-rebase tip (`9fdde7b1`) and can be deleted once the
+  PR merges.
+
+  **Not re-verified on screen after the rebase.** The walkthrough evidence (8 of 9 criteria, plus
+  the mid-game link refusal) was gathered before master's 26 commits landed underneath. The
+  conflicts were adjacency rather than behavioural overlap, and the tests pass, but nobody has
+  driven the rebased binary.
+
 ## Out of scope
 
 - Changing the verification stub's token handling.

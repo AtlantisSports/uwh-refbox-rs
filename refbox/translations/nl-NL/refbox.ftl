@@ -188,6 +188,7 @@ portal-enabled = Als { $portal }PORTAL is ingeschakeld, moeten alle velden worde
 mode-switch-portal-tenant = Het wijzigen van de app-modus verbreekt de verbinding met { $from_portal } Portal en u moet opnieuw verbinding maken met { $to_portal } Portal.
 mode-switch-custom-site = Het wijzigen van de app-modus vereist opnieuw opstarten. Uw eigen site blijft verbonden.
 source-locked-game = De wedstrijdbron kan niet worden gewijzigd terwijl een wedstrijd bezig is.
+link-locked-game = Er kan geen verbinding met de wedstrijdbron worden gemaakt terwijl een wedstrijd bezig is.
 source-locked-queue = Er wachten nog wedstrijduitslagen om verzonden te worden. Verzend of verwijder deze eerst.
 uwhportal-token-invalid-code = Ongeldige code ingevoerd.
     Probeer het opnieuw.

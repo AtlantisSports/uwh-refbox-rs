@@ -197,6 +197,7 @@ portal-enabled = Cuando { $portal }PORTAL está habilitado, todos los campos deb
 mode-switch-portal-tenant = Cambiar el modo de la aplicación desactivará el enlace a { $from_portal } Portal y deberás volver a conectarte a { $to_portal } Portal.
 mode-switch-custom-site = Cambiar el modo de la aplicación requiere reiniciar. Tu sitio personalizado seguirá conectado.
 source-locked-game = La fuente de juegos no se puede cambiar mientras un juego está en progreso.
+link-locked-game = No se puede conectar con la fuente de juegos mientras un juego está en progreso.
 source-locked-queue = Todavía hay resultados de juegos esperando a ser enviados. Envíalos o descártalos primero.
 ### Check
 uwhportal-token-invalid-code = Código inválido.

@@ -188,6 +188,7 @@ portal-enabled = Quando o { $portal }PORTAL está ativado, todos os campos têm 
 mode-switch-portal-tenant = Alterar o modo da aplicação desativará a ligação ao { $from_portal } Portal e terá de se ligar novamente ao { $to_portal } Portal.
 mode-switch-custom-site = Alterar o modo da aplicação exige reiniciar. O seu site personalizado permanece ligado.
 source-locked-game = A origem dos jogos não pode ser alterada enquanto um jogo está em curso.
+link-locked-game = Não é possível ligar à origem dos jogos enquanto um jogo está em curso.
 source-locked-queue = Ainda há resultados de jogos à espera de serem enviados. Envie-os ou elimine-os primeiro.
 uwhportal-token-invalid-code = Código introduzido inválido.
     Tente novamente.

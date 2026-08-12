@@ -188,6 +188,7 @@ portal-enabled = Saat { $portal }PORTAL diaktifkan, semua kolom harus diisi.
 mode-switch-portal-tenant = Mengubah mode aplikasi akan menonaktifkan tautan ke { $from_portal } Portal dan Anda harus menghubungkan kembali ke { $to_portal } Portal.
 mode-switch-custom-site = Mengubah mode aplikasi memerlukan mulai ulang. Situs khusus Anda tetap terhubung.
 source-locked-game = Sumber pertandingan tidak dapat diubah saat pertandingan sedang berlangsung.
+link-locked-game = Tidak dapat terhubung ke sumber pertandingan saat pertandingan sedang berlangsung.
 source-locked-queue = Masih ada hasil pertandingan yang menunggu untuk dikirim. Kirim atau buang terlebih dahulu.
 uwhportal-token-invalid-code = Kode yang dimasukkan tidak valid.
     Silakan coba lagi.

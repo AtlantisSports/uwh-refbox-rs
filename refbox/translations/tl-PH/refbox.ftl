@@ -188,6 +188,7 @@ portal-enabled = Kapag pinagana ang { $portal }PORTAL, dapat mapunan ang lahat n
 mode-switch-portal-tenant = Ang pagbabago ng mode ng app ay magpapatay ng koneksyon sa { $from_portal } Portal at kailangan mong muling kumonekta sa { $to_portal } Portal.
 mode-switch-custom-site = Ang pagbabago ng mode ng app ay nangangailangan ng restart. Mananatiling nakakonekta ang sarili mong site.
 source-locked-game = Hindi mababago ang pinagkukunan ng laro habang nagaganap ang laro.
+link-locked-game = Hindi makakakonekta sa pinagkukunan ng laro habang nagaganap ang laro.
 source-locked-queue = May mga resulta ng laro na naghihintay pang maipadala. Ipadala o itapon muna ang mga ito.
 uwhportal-token-invalid-code = Maling code ang naipasok.
     Pakisubukan muli.

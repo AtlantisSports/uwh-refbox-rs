@@ -190,6 +190,7 @@ portal-enabled = Lorsque { $portal }PORTAL est activé, tous les champs doivent 
 mode-switch-portal-tenant = Changer le mode de l'application désactivera le lien vers { $from_portal } Portal et vous devrez vous reconnecter à { $to_portal } Portal.
 mode-switch-custom-site = Changer le mode de l'application nécessite un redémarrage. Votre site personnalisé reste connecté.
 source-locked-game = La source des matchs ne peut pas être modifiée pendant qu'un match est en cours.
+link-locked-game = Il n'est pas possible de se connecter à la source des matchs pendant qu'un match est en cours.
 source-locked-queue = Des résultats de match attendent encore d'être envoyés. Envoyez-les ou supprimez-les d'abord.
 ### Check
 uwhportal-token-invalid-code = Code invalide.

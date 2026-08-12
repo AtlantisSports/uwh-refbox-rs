@@ -55,6 +55,7 @@ pub(in super::super) fn build_confirmation_page<'a>(
         ),
         ConfirmationKind::SiteLockedByGame(_) => fl!("source-locked-game"),
         ConfirmationKind::SiteLockedByQueue(_) => fl!("source-locked-queue"),
+        ConfirmationKind::LinkLockedByGame => fl!("link-locked-game"),
     };
 
     type ButtonStyleFn = fn(&Theme, Status) -> Style;
@@ -153,7 +154,9 @@ pub(in super::super) fn build_confirmation_page<'a>(
         ],
         // Nothing was committed and nothing is discarded: the single button
         // returns to the page the operator was on, edit still staged.
-        ConfirmationKind::SiteLockedByGame(_) | ConfirmationKind::SiteLockedByQueue(_) => {
+        ConfirmationKind::SiteLockedByGame(_)
+        | ConfirmationKind::SiteLockedByQueue(_)
+        | ConfirmationKind::LinkLockedByGame => {
             vec![(
                 fl!("go-back-to-editor"),
                 green_button,

@@ -388,6 +388,10 @@ enum ConfirmationKind {
     // thrown out of settings.
     SiteLockedByGame(ConfigPage),
     SiteLockedByQueue(ConfigPage),
+    /// Linking was attempted while a game is in progress. Carries no page: the
+    /// ACCESS TOKEN row lives only on the Game config page, so there is one
+    /// place to return to.
+    LinkLockedByGame,
 }
 
 /// Which of the two kinds of site an address belongs to. Decides which saved
@@ -3153,6 +3157,20 @@ impl RefBoxApp {
                         .parse()
                         .unwrap_or(0),
                     KeypadPage::PortalLogin(ref mut id, _) => {
+                        // Linking is refused while a game is in progress. A
+                        // successful link immediately re-requests the schedule,
+                        // which would replace the loaded schedule under a
+                        // running game — and the operator has no reason to be
+                        // linking then. Same rule as the site-change guard:
+                        // a game in progress, not merely a running clock,
+                        // because the between-games clock always runs.
+                        // Safety: Mutex poison only occurs if another thread already panicked; the refbox treats that as fatal (matches the 20+ identical sites in this file).
+                        if self.tm.lock().unwrap().current_period() != GamePeriod::BetweenGames {
+                            self.app_state =
+                                AppState::ConfirmationPage(ConfirmationKind::LinkLockedByGame);
+                            trace!("AppState changed to {:?}", self.app_state);
+                            return Task::none();
+                        }
                         // why this cannot panic: this branch only runs when the
                         // portal client was successfully constructed at startup,
                         // and the guard is held only for a synchronous `id()` call.
@@ -4618,6 +4636,17 @@ impl RefBoxApp {
                 ) = self.app_state
                 {
                     self.app_state = AppState::EditGameConfig(page);
+                    trace!("AppState changed to {:?}", self.app_state);
+                    return Task::none();
+                }
+
+                // The link refusal carries no page: the ACCESS TOKEN row exists
+                // only on the Game config page, so that is where it returns.
+                if matches!(
+                    self.app_state,
+                    AppState::ConfirmationPage(ConfirmationKind::LinkLockedByGame)
+                ) {
+                    self.app_state = AppState::EditGameConfig(ConfigPage::Game);
                     trace!("AppState changed to {:?}", self.app_state);
                     return Task::none();
                 }

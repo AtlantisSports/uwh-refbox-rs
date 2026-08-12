@@ -188,6 +188,7 @@ portal-enabled = { $portal }Portalが有効な場合、すべての項目を入�
 mode-switch-portal-tenant = アプリのモードを変更すると、{ $from_portal } Portalへのリンクが無効になり、{ $to_portal } Portalに再接続する必要があります。
 mode-switch-custom-site = アプリのモードを変更するには再起動が必要です。カスタムサイトの接続は維持されます。
 source-locked-game = 試合進行中は試合データの取得元を変更できません。
+link-locked-game = 試合進行中は試合データの取得元に接続できません。
 source-locked-queue = 送信待ちの試合結果があります。先に送信するか破棄してください。
 uwhportal-token-invalid-code = 無効なコードが入力されました。
     もう一度試してください。

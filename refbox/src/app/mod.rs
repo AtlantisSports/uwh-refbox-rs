@@ -1867,24 +1867,74 @@ impl RefBoxApp {
                 AppState::EditGameConfig(ConfigPage::Main)
             }
             ConfirmationOption::RestartAndApply => {
-                // Extract the proposed mode from the in-flight PortalTenantSwitch state.
-                // This arm is only reachable when the app_state is PortalTenantSwitch
-                // (the view builder only offers RestartAndApply for that kind).
-                let to_mode =
+                // Extract the proposed mode and source from the in-flight
+                // PortalTenantSwitch state. This arm is only reachable when the
+                // app_state is PortalTenantSwitch (the view builder only offers
+                // RestartAndApply for that kind).
+                let (to_mode, new_source) =
                     if let AppState::ConfirmationPage(ConfirmationKind::PortalTenantSwitch {
                         to_mode,
+                        source,
                         ..
                     }) = self.app_state
                     {
-                        to_mode
+                        (to_mode, source)
                     } else {
                         unreachable!("RestartAndApply is only offered by PortalTenantSwitch pages")
                     };
+
+                // Capture the committed source BEFORE anything below overwrites
+                // it. The queue flush must be decided on the source the queued
+                // items were created under, not the one being applied — see the
+                // flush comment below.
+                let old_source = self.source;
+
+                // apply_app_options raised this confirmation *before* committing
+                // any field, so that Cancel rolls back the whole Apply. That
+                // makes this arm the only place the operator's App-page edits can
+                // be written, and the restart re-reads config from disk — so
+                // anything skipped here is silently lost. The shared helper is
+                // what keeps this list from drifting from the live Apply path.
+                //
+                // Safety: PortalTenantSwitch is only raised by apply_app_options,
+                // which returns early unless edited_settings is Some, and the
+                // confirmation page offers no action that clears it. Same
+                // invariant as the KeepGameAndApply arm above.
+                let edited = self.edited_settings.as_ref().unwrap();
+                // The "hide_time changed" flag is deliberately dropped: the
+                // update server is told at startup, and this process is about to
+                // be replaced by a fresh one.
+                let _ = commit_app_toggles(&mut self.config, edited);
 
                 // Commit the new mode. The proposed mode was held only in the
                 // ConfirmationKind variant and was never written to self.config, so
                 // this is the first and only write.
                 self.config.mode = to_mode;
+
+                // Commit the source too, mirroring apply_app_options exactly.
+                //
+                // This is a no-op in every state reachable today: the source can
+                // only be changed on the Game page, `edited.source` is seeded
+                // from the committed source on entry, and every exit from a page
+                // either commits it (the Apply path) or reverts it
+                // (CancelConfigPage -> revert_from_snapshot, and the Game
+                // snapshot carries `source`). So it always already equals
+                // `self.source` here. Kept anyway, because dropping it restores
+                // the very asymmetry between the two commit paths that this
+                // helper pairing exists to remove — and it becomes a real loss
+                // the day a source control appears on the App page.
+                //
+                // Safe without repointing the live client for the same reason
+                // the mode is: this arm always ends in a restart, and the restart
+                // rebuilds the client from the committed config. See the repoint
+                // invariant in the ApplyConfigPage handler.
+                //
+                // Read from the confirmation variant rather than from `edited`
+                // above, because that is the value the operator was shown and
+                // confirmed. The two are equal in any case: the confirmation page
+                // offers only Cancel and Restart, so nothing can edit
+                // `edited_settings` while it is up.
+                self.commit_source(new_source);
 
                 // Clear the current event id. This unpins the portal-health background
                 // task from the old tenant's event so it stops probing after restart.
@@ -1894,11 +1944,13 @@ impl RefBoxApp {
                 // tenant cannot be delivered to the new tenant — discard them so the
                 // restarted app starts with a clean queue.
                 //
-                // Only for the built-in portal. A custom site is one address the
-                // operator typed and it does not change with the mode, so results
-                // queued for it are still deliverable to exactly that site after
-                // the restart; flushing them would destroy real game results.
-                if self.source == GameSource::Portal {
+                // Only for the built-in portal, and only for the source the items
+                // were queued under, which is why `old_source` is captured above.
+                // A custom site is one address the operator typed and it does not
+                // change with the mode, so results queued for it are still
+                // deliverable to exactly that site after the restart; flushing
+                // them would destroy real game results.
+                if old_source == GameSource::Portal {
                     if let Err(e) = crate::portal_manager::queue::save(
                         self.portal_manager.queue_dir(),
                         &crate::portal_manager::queue::QueueFile::empty(),
@@ -3667,10 +3719,11 @@ impl RefBoxApp {
                 //      in progress, which `refuse_repoint` has already turned
                 //      back; the fourth requires the incomplete remote state
                 //      that leaves the Game page's APPLY with no press action.
-                //    - The App arm's `PortalTenantSwitch`, which commits
-                //      nothing itself and is safe only because it always ends
-                //      in a restart, and the restart rebuilds the client from
-                //      the committed config.
+                //    - The App arm's `PortalTenantSwitch`, whose
+                //      `RestartAndApply` handler commits the new source without
+                //      repointing the live client, and is safe only because it
+                //      always ends in a restart, and the restart rebuilds the
+                //      client from the committed config.
                 //    - Language/Main/User and the unusable-address exit, where
                 //      no repoint can be pending at all: `pending_site_change`
                 //      answers `None` for those pages, and `site_target`
@@ -6373,9 +6426,18 @@ mod commit_app_toggles_tests {
     #[test]
     fn all_six_toggles_are_copied_the_other_way() {
         // Guards against a hardcoded assignment rather than a copy: the same six
-        // fields driven back in the opposite direction.
+        // fields driven back in the opposite direction. All six start `true` so
+        // that committing an all-default (all-false) EditableSettings has to
+        // change every one of them — starting from `all_flipped()` would leave
+        // three already false, and their assertions would then pass even with
+        // the assignment deleted.
         let mut config = Config::default();
-        commit_app_toggles(&mut config, &all_flipped());
+        config.collect_scorer_cap_num = true;
+        config.track_fouls_and_warnings = true;
+        config.show_behind_schedule_time = true;
+        config.confirm_score = true;
+        config.audible_countdown = true;
+        config.hide_time = true;
         let edited = EditableSettings::default();
 
         commit_app_toggles(&mut config, &edited);
@@ -6425,36 +6487,44 @@ mod commit_app_toggles_tests {
     }
 
     #[test]
-    fn fields_owned_by_other_paths_are_untouched() {
+    fn only_the_six_toggles_are_written() {
         // `mode` and `source` must NOT be committed by this helper. Both have
         // side effects that differ between the two commit paths — the mode
         // confirmation and the portal-queue flush — so they stay with the
         // callers. Adding them here would bypass both.
+        //
+        // Compared whole-struct rather than field by field, so this also fails
+        // if a field is dropped from the helper, or if any other Config field
+        // (game, sound, custom_site, display_mode, ...) is written. Drift
+        // between the two commit paths is the defect the helper exists to
+        // prevent, so the guard is deliberately exhaustive rather than a list
+        // of the fields someone thought to name.
         let mut config = Config::default();
-        let mode_before = config.mode;
-        let source_before = config.source;
-        let remembered_before = config.remembered_remote;
-        assert_ne!(
-            mode_before,
-            Mode::Rugby,
-            "test needs an edited mode that differs from the default"
-        );
-        assert_ne!(
-            source_before,
-            GameSource::Portal,
-            "test needs an edited source that differs from the default"
-        );
         let edited = EditableSettings {
             mode: Mode::Rugby,
             source: GameSource::Portal,
             ..all_flipped()
         };
+        assert_ne!(
+            config.mode, edited.mode,
+            "test needs an edited mode that differs from the default"
+        );
+        assert_ne!(
+            config.source, edited.source,
+            "test needs an edited source that differs from the default"
+        );
+
+        let mut expected = config.clone();
+        expected.collect_scorer_cap_num = edited.collect_scorer_cap_num;
+        expected.track_fouls_and_warnings = edited.track_fouls_and_warnings;
+        expected.show_behind_schedule_time = edited.show_behind_schedule_time;
+        expected.confirm_score = edited.confirm_score;
+        expected.audible_countdown = edited.audible_countdown;
+        expected.hide_time = edited.hide_time;
 
         commit_app_toggles(&mut config, &edited);
 
-        assert_eq!(config.mode, mode_before);
-        assert_eq!(config.source, source_before);
-        assert_eq!(config.remembered_remote, remembered_before);
+        assert_eq!(config, expected);
     }
 }
 

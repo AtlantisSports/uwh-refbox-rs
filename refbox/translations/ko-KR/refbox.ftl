@@ -194,7 +194,7 @@ link-locked-game = 경기 진행 중에는 경기 출처에 연결할 수 없습
 source-locked-queue = 아직 전송되지 않은 경기 결과가 있습니다. 먼저 전송하거나 삭제하세요.
 uwhportal-token-invalid-code = 잘못된 코드가 입력되었습니다.
     다시 시도하세요.
-uwhportal-token-no-pending-link = Portal이 연결을 기다리지 않습니다.
+uwhportal-token-no-pending-link = 연결이 통신을 기다리지 않습니다.
     다시 시도하세요.
 go-back-to-editor = 편집기로 돌아가기
 discard-changes = 변경 사항 버리기
@@ -395,9 +395,9 @@ false-start = 부정 출발
 
 
 # Portal Health Indicator
-portal-summary-title = { $portal } PORTAL 상태
+portal-summary-title = 연결 상태
 portal-retry-all = 모두 재시도
-portal-row-token-expired = Portal 로그인 만료됨 — 탭하여 다시 로그인
+portal-row-token-expired = 액세스 토큰 만료됨 — 탭하여 다시 로그인
 portal-row-stuck = 경기 { $game } 점수 전송 오류, 탭하여 수정
 portal-row-pending = 경기 { $game } 점수 전송 안 됨, 탭하여 재시도
 portal-row-stats-pending = 경기 { $game } 통계 전송 안 됨, 탭하여 재시도
@@ -407,10 +407,10 @@ portal-action-force-submit = 이 경기 결과 재시도
 portal-action-discard = 이 경기 결과 버리기
 portal-action-discard-confirm = 버리기 확인을 위해 다시 탭하세요
 portal-page-title-attention = 경기 { $game } 전송 오류
-portal-page-attention-info = 경기 결과가 { $portal } Portal에서 수락되지 않았습니다
+portal-page-attention-info = 경기 결과가 수락되지 않았습니다
 portal-page-attention-score = 저장된 경기 결과: 흰 { $white } - 검정 { $black }
 portal-page-attention-remediation = 연결이 확인되면 재시도하거나, 오류를 지우려면 버리기를 선택하세요
-portal-advisory-at-game-end = Portal 문제가 감지되었습니다. 점수는 계속 대기열에 있습니다 — 관리자에게 문의하세요.
+portal-advisory-at-game-end = 연결 문제가 감지되었습니다. 점수는 계속 대기열에 있습니다 — 관리자에게 문의하세요.
 
 # 2 Halves / 1 Period selector (Half Length editor)
 two-halves = 2 하프

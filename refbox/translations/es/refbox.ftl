@@ -203,7 +203,7 @@ source-locked-queue = Todavía hay resultados de juegos esperando a ser enviados
 uwhportal-token-invalid-code = Código inválido.
     Por favor, inténtelo de nuevo.
 ### Check
-uwhportal-token-no-pending-link = No se encontró ningún enlace pendiente.
+uwhportal-token-no-pending-link = La conexión no espera comunicación.
     Por favor, inténtelo de nuevo.
 go-back-to-editor = VOLVER AL EDITOR
 discard-changes = DESCARTAR CAMBIOS
@@ -405,9 +405,9 @@ false-start = Saque nulo
 
 
 # Portal Health Indicator
-portal-summary-title = ESTADO DE { $portal } PORTAL
+portal-summary-title = ESTADO DE CONEXIÓN
 portal-retry-all = REINTENTAR TODO
-portal-row-token-expired = Sesión del portal expirada — toca para iniciar sesión
+portal-row-token-expired = Token de acceso expirado — toca para iniciar sesión
 portal-row-stuck = Juego { $game } · Error al enviar resultado, toca para corregir
 portal-row-pending = Juego { $game } · Resultado no enviado, toca para reintentar
 portal-row-stats-pending = Juego { $game } · Estadísticas no enviadas, toca para reintentar
@@ -417,10 +417,10 @@ portal-action-force-submit = Reintentar este resultado
 portal-action-discard = Descartar este resultado
 portal-action-discard-confirm = TOCA DE NUEVO PARA CONFIRMAR DESCARTE
 portal-page-title-attention = Juego { $game } · Error de envío
-portal-page-attention-info = El resultado del juego no ha sido aceptado por { $portal } Portal
+portal-page-attention-info = El resultado del juego no ha sido aceptado
 portal-page-attention-score = Resultado almacenado: Claro { $white } - Oscuro { $black }
 portal-page-attention-remediation = Puedes Reintentar si la conexión está verificada, o descartar para borrar el error
-portal-advisory-at-game-end = Problema del portal detectado. El resultado se encolará igualmente — busca a un administrador para resolverlo.
+portal-advisory-at-game-end = Problema de conexión detectado. El resultado se encolará igualmente — busca a un administrador para resolverlo.
 
 # 2 Halves / 1 Period selector (Half Length editor)
 two-halves = 2 MITADES

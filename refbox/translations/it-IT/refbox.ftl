@@ -192,7 +192,7 @@ link-locked-game = Non è possibile connettersi all'origine delle partite mentre
 source-locked-queue = Ci sono ancora risultati di partite in attesa di essere inviati. Inviali o eliminali prima di procedere.
 uwhportal-token-invalid-code = Codice inserito non valido.
     Riprova.
-uwhportal-token-no-pending-link = Il portale non si aspetta una connessione.
+uwhportal-token-no-pending-link = La connessione non si aspetta comunicazioni.
     Riprova.
 go-back-to-editor = TORNA ALL'EDITOR
 discard-changes = SCARTA MODIFICHE
@@ -393,9 +393,9 @@ false-start = Falsa Partenza
 
 
 # Portal Health Indicator
-portal-summary-title = STATO PORTALE { $portal }
+portal-summary-title = STATO CONNESSIONE
 portal-retry-all = RIPROVA TUTTO
-portal-row-token-expired = Sessione Portale scaduta — tocca per accedere di nuovo
+portal-row-token-expired = Token di accesso scaduto — tocca per accedere di nuovo
 portal-row-stuck = Partita { $game } Errore invio punteggio, tocca per correggere
 portal-row-pending = Partita { $game } Punteggio non inviato, tocca per riprovare
 portal-row-stats-pending = Partita { $game } Statistiche non inviate, tocca per riprovare
@@ -405,10 +405,10 @@ portal-action-force-submit = Riprova questo risultato
 portal-action-discard = Scarta questo risultato
 portal-action-discard-confirm = TOCCA DI NUOVO PER CONFERMARE LO SCARTO
 portal-page-title-attention = Errore invio Partita { $game }
-portal-page-attention-info = Il risultato della partita non è stato accettato dal Portale { $portal }
+portal-page-attention-info = Il risultato della partita non è stato accettato
 portal-page-attention-score = Risultato memorizzato: Bianco { $white } - Nero { $black }
 portal-page-attention-remediation = Puoi Riprovare se la connessione è verificata, oppure scartare per annullare l'errore
-portal-advisory-at-game-end = Rilevato problema con il Portale. Il punteggio sarà comunque accodato — contatta un amministratore.
+portal-advisory-at-game-end = Rilevato problema di connessione. Il punteggio sarà comunque accodato — contatta un amministratore.
 
 # 2 Halves / 1 Period selector (Half Length editor)
 two-halves = 2 TEMPI

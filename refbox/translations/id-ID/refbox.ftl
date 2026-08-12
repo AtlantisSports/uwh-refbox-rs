@@ -192,7 +192,7 @@ link-locked-game = Tidak dapat terhubung ke sumber pertandingan saat pertandinga
 source-locked-queue = Masih ada hasil pertandingan yang menunggu untuk dikirim. Kirim atau buang terlebih dahulu.
 uwhportal-token-invalid-code = Kode yang dimasukkan tidak valid.
     Silakan coba lagi.
-uwhportal-token-no-pending-link = Portal tidak mengharapkan koneksi.
+uwhportal-token-no-pending-link = Koneksi tidak mengharapkan komunikasi.
     Silakan coba lagi.
 go-back-to-editor = KEMBALI KE EDITOR
 discard-changes = BUANG PERUBAHAN
@@ -393,9 +393,9 @@ false-start = Start Curang
 
 
 # Portal Health Indicator
-portal-summary-title = STATUS { $portal } PORTAL
+portal-summary-title = STATUS KONEKSI
 portal-retry-all = ULANGI SEMUA
-portal-row-token-expired = Login Portal kedaluwarsa — ketuk untuk login ulang
+portal-row-token-expired = Token akses kedaluwarsa — ketuk untuk login ulang
 portal-row-stuck = Pertandingan { $game } Galat kirim skor, ketuk untuk perbaiki
 portal-row-pending = Pertandingan { $game } Skor belum terkirim, ketuk untuk coba lagi
 portal-row-stats-pending = Pertandingan { $game } Statistik belum terkirim, ketuk untuk coba lagi
@@ -405,10 +405,10 @@ portal-action-force-submit = Coba lagi kirim hasil pertandingan ini
 portal-action-discard = Buang hasil pertandingan ini
 portal-action-discard-confirm = KETUK LAGI UNTUK KONFIRMASI BUANG
 portal-page-title-attention = Galat pengiriman Pertandingan { $game }
-portal-page-attention-info = Hasil pertandingan belum diterima oleh { $portal } Portal
+portal-page-attention-info = Hasil pertandingan belum diterima
 portal-page-attention-score = Hasil pertandingan tersimpan: Putih { $white } - Hitam { $black }
 portal-page-attention-remediation = Anda dapat Coba Lagi jika koneksi sudah terverifikasi, atau buang untuk menghapus galat
-portal-advisory-at-game-end = Masalah Portal terdeteksi. Skor tetap akan diantrekan — temui admin untuk menyelesaikan.
+portal-advisory-at-game-end = Masalah koneksi terdeteksi. Skor tetap akan diantrekan — temui admin untuk menyelesaikan.
 
 # 2 Halves / 1 Period selector (Half Length editor)
 two-halves = 2 BABAK

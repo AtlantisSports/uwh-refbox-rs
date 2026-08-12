@@ -192,7 +192,7 @@ link-locked-game = Tidak boleh menyambung ke sumber perlawanan semasa perlawanan
 source-locked-queue = Masih ada keputusan perlawanan yang menunggu untuk dihantar. Hantar atau buang dahulu.
 uwhportal-token-invalid-code = Kod yang dimasukkan tidak sah.
     Sila cuba lagi.
-uwhportal-token-no-pending-link = Portal tidak menjangka sambungan.
+uwhportal-token-no-pending-link = Sambungan tidak menjangka komunikasi.
     Sila cuba lagi.
 go-back-to-editor = KEMBALI KE EDITOR
 discard-changes = BUANG PERUBAHAN
@@ -393,9 +393,9 @@ false-start = Permulaan Palsu
 
 
 # Portal Health Indicator
-portal-summary-title = STATUS PORTAL { $portal }
+portal-summary-title = STATUS SAMBUNGAN
 portal-retry-all = CUBA SEMULA SEMUA
-portal-row-token-expired = Log masuk portal tamat tempoh — ketik untuk log masuk semula
+portal-row-token-expired = Token akses tamat tempoh — ketik untuk log masuk semula
 portal-row-stuck = Perlawanan { $game } Ralat hantar markah, ketik untuk perbaiki
 portal-row-pending = Perlawanan { $game } Markah belum dihantar, ketik untuk cuba semula
 portal-row-stats-pending = Perlawanan { $game } Statistik belum dihantar, ketik untuk cuba semula
@@ -405,10 +405,10 @@ portal-action-force-submit = Cuba semula keputusan perlawanan ini
 portal-action-discard = Buang keputusan perlawanan ini
 portal-action-discard-confirm = KETIK SEKALI LAGI UNTUK SAHKAN BUANG
 portal-page-title-attention = Ralat penghantaran perlawanan { $game }
-portal-page-attention-info = Keputusan perlawanan tidak diterima di Portal { $portal }
+portal-page-attention-info = Keputusan perlawanan tidak diterima
 portal-page-attention-score = Keputusan perlawanan disimpan: Putih { $white } - Hitam { $black }
 portal-page-attention-remediation = Anda boleh Cuba Semula jika sambungan disahkan, atau buang untuk membersihkan ralat
-portal-advisory-at-game-end = Masalah portal dikesan. Markah masih akan dibariskan — cari admin untuk selesaikan.
+portal-advisory-at-game-end = Masalah sambungan dikesan. Markah masih akan dibariskan — cari admin untuk selesaikan.
 
 # 2 Halves / 1 Period selector (Half Length editor)
 two-halves = 2 SEPARUH

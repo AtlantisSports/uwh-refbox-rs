@@ -192,7 +192,7 @@ link-locked-game = ไม่สามารถเชื่อมต่อกั�
 source-locked-queue = ยังมีผลการแข่งขันที่รอส่งอยู่ ส่งหรือทิ้งผลเหล่านั้นก่อน
 uwhportal-token-invalid-code = รหัสที่ป้อนไม่ถูกต้อง
     โปรดลองอีกครั้ง
-uwhportal-token-no-pending-link = พอร์ทัลไม่รอการเชื่อมต่อ
+uwhportal-token-no-pending-link = การเชื่อมต่อไม่รอการสื่อสาร
     โปรดลองอีกครั้ง
 go-back-to-editor = กลับไปยังตัวแก้ไข
 discard-changes = ยกเลิกการเปลี่ยนแปลง
@@ -392,9 +392,9 @@ false-start = การออกตัวผิด
 
 
 # Portal Health Indicator
-portal-summary-title = สถานะ { $portal } PORTAL
+portal-summary-title = สถานะการเชื่อมต่อ
 portal-retry-all = ลองใหม่ทั้งหมด
-portal-row-token-expired = การเข้าสู่ระบบพอร์ทัลหมดอายุ — แตะเพื่อเข้าสู่ระบบใหม่
+portal-row-token-expired = โทเค็นการเข้าถึงหมดอายุ — แตะเพื่อเข้าสู่ระบบใหม่
 portal-row-stuck = เกม { $game } ส่งคะแนนผิดพลาด แตะเพื่อแก้ไข
 portal-row-pending = เกม { $game } ยังไม่ส่งคะแนน แตะเพื่อลองอีกครั้ง
 portal-row-stats-pending = เกม { $game } ยังไม่ส่งสถิติ แตะเพื่อลองอีกครั้ง
@@ -404,10 +404,10 @@ portal-action-force-submit = ลองส่งผลเกมอีกครั
 portal-action-discard = ทิ้งผลเกมนี้
 portal-action-discard-confirm = แตะอีกครั้งเพื่อยืนยันการทิ้ง
 portal-page-title-attention = ข้อผิดพลาดในการส่งเกม { $game }
-portal-page-attention-info = ผลเกมยังไม่ได้รับการยอมรับบน { $portal } Portal
+portal-page-attention-info = ผลเกมยังไม่ได้รับการยอมรับ
 portal-page-attention-score = ผลเกมที่จัดเก็บไว้: ขาว { $white } - ดำ { $black }
 portal-page-attention-remediation = คุณสามารถลองอีกครั้งหากการเชื่อมต่อได้รับการยืนยัน หรือทิ้งเพื่อล้างข้อผิดพลาด
-portal-advisory-at-game-end = ตรวจพบปัญหาพอร์ทัล คะแนนจะยังคงอยู่ในคิว — ติดต่อผู้ดูแลเพื่อแก้ไข
+portal-advisory-at-game-end = ตรวจพบปัญหาการเชื่อมต่อ คะแนนจะยังคงอยู่ในคิว — ติดต่อผู้ดูแลเพื่อแก้ไข
 
 # 2 Halves / 1 Period selector (Half Length editor)
 two-halves = 2 ครึ่ง

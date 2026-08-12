@@ -192,7 +192,7 @@ link-locked-game = Er kan geen verbinding met de wedstrijdbron worden gemaakt te
 source-locked-queue = Er wachten nog wedstrijduitslagen om verzonden te worden. Verzend of verwijder deze eerst.
 uwhportal-token-invalid-code = Ongeldige code ingevoerd.
     Probeer het opnieuw.
-uwhportal-token-no-pending-link = Portaal verwacht geen verbinding.
+uwhportal-token-no-pending-link = De verbinding verwacht geen communicatie.
     Probeer het opnieuw.
 go-back-to-editor = TERUG NAAR EDITOR
 discard-changes = WIJZIGINGEN VERWERPEN
@@ -393,9 +393,9 @@ false-start = Vals Vertrek
 
 
 # Portal Health Indicator
-portal-summary-title = { $portal } PORTAALSTATUS
+portal-summary-title = VERBINDINGSSTATUS
 portal-retry-all = ALLES OPNIEUW
-portal-row-token-expired = Portaal-login verlopen — tik om opnieuw in te loggen
+portal-row-token-expired = Toegangstoken verlopen — tik om opnieuw in te loggen
 portal-row-stuck = Wedstrijd { $game } Fout bij verzenden score, tik om te herstellen
 portal-row-pending = Wedstrijd { $game } Score niet verzonden, tik om opnieuw te proberen
 portal-row-stats-pending = Wedstrijd { $game } Statistieken niet verzonden, tik om opnieuw te proberen
@@ -405,10 +405,10 @@ portal-action-force-submit = Deze wedstrijduitslag opnieuw proberen
 portal-action-discard = Deze wedstrijduitslag verwerpen
 portal-action-discard-confirm = TIK NOGMAALS OM VERWERPEN TE BEVESTIGEN
 portal-page-title-attention = Wedstrijd { $game } verzendfout
-portal-page-attention-info = De wedstrijduitslag is niet geaccepteerd op { $portal } Portaal
+portal-page-attention-info = De wedstrijduitslag is niet geaccepteerd
 portal-page-attention-score = Opgeslagen wedstrijduitslag: Licht { $white } - Donker { $black }
 portal-page-attention-remediation = U kunt Opnieuw proberen als de verbinding is geverifieerd, of verwerpen om de fout te wissen
-portal-advisory-at-game-end = Portaalprobleem gedetecteerd. Score blijft in wachtrij — zoek een beheerder om het op te lossen.
+portal-advisory-at-game-end = Verbindingsprobleem gedetecteerd. Score blijft in wachtrij — zoek een beheerder om het op te lossen.
 
 # 2 Halves / 1 Period selector (Half Length editor)
 two-halves = 2 HELFTEN

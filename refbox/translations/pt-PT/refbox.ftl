@@ -192,7 +192,7 @@ link-locked-game = Não é possível ligar à origem dos jogos enquanto um jogo 
 source-locked-queue = Ainda há resultados de jogos à espera de serem enviados. Envie-os ou elimine-os primeiro.
 uwhportal-token-invalid-code = Código introduzido inválido.
     Tente novamente.
-uwhportal-token-no-pending-link = O portal não está à espera de uma ligação.
+uwhportal-token-no-pending-link = A ligação não está à espera de comunicação.
     Tente novamente.
 go-back-to-editor = VOLTAR AO EDITOR
 discard-changes = DESCARTAR ALTERAÇÕES
@@ -393,9 +393,9 @@ false-start = Saída Falsa
 
 
 # Portal Health Indicator
-portal-summary-title = ESTADO DO PORTAL { $portal }
+portal-summary-title = ESTADO DA LIGAÇÃO
 portal-retry-all = REPETIR TUDO
-portal-row-token-expired = Sessão do portal expirou — toque para iniciar sessão novamente
+portal-row-token-expired = Token de acesso expirou — toque para iniciar sessão novamente
 portal-row-stuck = Jogo { $game } Erro no envio do resultado, toque para corrigir
 portal-row-pending = Jogo { $game } Resultado não enviado, toque para tentar novamente
 portal-row-stats-pending = Jogo { $game } Estatísticas não enviadas, toque para tentar novamente
@@ -405,10 +405,10 @@ portal-action-force-submit = Tentar novamente este resultado
 portal-action-discard = Descartar este resultado
 portal-action-discard-confirm = TOQUE NOVAMENTE PARA CONFIRMAR DESCARTE
 portal-page-title-attention = Erro no envio do Jogo { $game }
-portal-page-attention-info = O resultado do jogo não foi aceite no Portal { $portal }
+portal-page-attention-info = O resultado do jogo não foi aceite
 portal-page-attention-score = Resultado guardado: Branca { $white } - Preta { $black }
 portal-page-attention-remediation = Pode Tentar Novamente se a ligação estiver verificada, ou descartar para limpar o erro
-portal-advisory-at-game-end = Problema detetado no portal. O resultado será mantido em fila — contacte um administrador para resolver.
+portal-advisory-at-game-end = Problema de ligação detetado. O resultado será mantido em fila — contacte um administrador para resolver.
 
 # 2 Halves / 1 Period selector (Half Length editor)
 two-halves = 2 TEMPOS

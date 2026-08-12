@@ -192,7 +192,7 @@ link-locked-game = 比赛进行中无法连接到比赛来源。
 source-locked-queue = 仍有比赛结果等待发送。请先发送或丢弃它们。
 uwhportal-token-invalid-code = 输入的代码无效。
     请重试。
-uwhportal-token-no-pending-link = Portal未等待连接。
+uwhportal-token-no-pending-link = 连接未等待通信。
     请重试。
 go-back-to-editor = 返回编辑器
 discard-changes = 放弃更改
@@ -392,9 +392,9 @@ false-start = 抢跑
 
 
 # Portal Health Indicator
-portal-summary-title = { $portal } PORTAL 状态
+portal-summary-title = 连接状态
 portal-retry-all = 全部重试
-portal-row-token-expired = Portal 登录已过期 — 点击重新登录
+portal-row-token-expired = 访问令牌已过期 — 点击重新登录
 portal-row-stuck = 比赛 { $game } 比分发送错误，点击修复
 portal-row-pending = 比赛 { $game } 比分未发送，点击重试
 portal-row-stats-pending = 比赛 { $game } 统计未发送，点击重试
@@ -404,10 +404,10 @@ portal-action-force-submit = 重试此比赛结果
 portal-action-discard = 放弃此比赛结果
 portal-action-discard-confirm = 再次点击以确认放弃
 portal-page-title-attention = 比赛 { $game } 提交错误
-portal-page-attention-info = 比赛结果尚未被 { $portal } Portal 接受
+portal-page-attention-info = 比赛结果尚未被接受
 portal-page-attention-score = 已存储比赛结果：白队 { $white } - 黑队 { $black }
 portal-page-attention-remediation = 若连接已确认，可重试；或放弃以清除错误
-portal-advisory-at-game-end = 检测到 Portal 问题。比分仍会排队 — 请联系管理员解决。
+portal-advisory-at-game-end = 检测到连接问题。比分仍会排队 — 请联系管理员解决。
 
 # 2 Halves / 1 Period selector (Half Length editor)
 two-halves = 2 个半场

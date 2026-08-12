@@ -36,7 +36,14 @@ https://your-site/api/1234-A
 | Half | Taken from | Used for |
 |---|---|---|
 | Base URL | everything before `/api/` | every path in this document is appended to it directly |
-| Event ID | the segment after `/api/` | every call that names an event |
+| Event ID | the segment after the **last** `/api/` in the path | every call that names an event |
+
+The exact rule, because the short description above is not enough to predict every case: refbox
+splits the scheme and host off first, then searches only what remains for `/api/events/` and, failing
+that, `/api/`. The longer form is tried first, which is why `https://your-site/api/events/1234-A`
+yields `1234-A` rather than `events`. Anything before the marker is kept as the base URL, so a site
+under a path prefix works — `https://club.example/scoreboard/api/1234-A` gives a base of
+`https://club.example/scoreboard`. An address with no host at all is refused rather than accepted.
 
 The longer form `https://your-site/api/events/1234-A` is also accepted, and is what earlier builds
 required. A `/api/` segment is mandatory in either form: without a fixed marker there is nothing
@@ -207,13 +214,35 @@ call in the eight that's a back-and-forth conversation rather than a single requ
 **Request body:** `{"refBoxId": "<string>", "code": "<string>"}` — note both values are sent
 as JSON strings, not numbers, even though both are made of digits. Example:
 ```json
-{ "refBoxId": "482913", "code": "7419" }
+{ "refBoxId": "482913", "code": "731904" }
 ```
+
+**The `code` you issue must obey three rules.** The operator types it on refbox's numeric keypad,
+which holds the value as a *number* and only then sends it as text — so:
+
+- **Digits only.** There are no letters on the keypad.
+- **At most six digits.** The keypad refuses input above `999999`.
+- **No leading zeros.** A code of `042913` is typed as a number and reaches you as `"42913"`, which
+  will not match what you issued. This is the trap: zero-padding to a fixed width is the most
+  natural way to mint a six-digit code, and it makes linking impossible rather than merely
+  awkward — the operator gets `InvalidCode` every time, with no other way to install a credential.
 
 **Successful response:** `200` with `{"accessKey": "<token>"}`. Example:
 ```json
 { "accessKey": "a1b2c3d4e5f6" }
 ```
+
+**Keep the `accessKey` to printable ASCII, with no whitespace and no control characters.** refbox
+puts it directly into an HTTP header without checking it, so a character that is illegal there
+**crashes the application** rather than being reported as a bad token. It happens almost
+immediately: refbox requests the schedule as soon as a link succeeds, so the crash follows the
+link within seconds, in front of the operator who just linked. There is no length limit.
+
+**One credential per site, honoured for every event.** The event id in this path names the event the
+operator was on when they linked; it does not scope the key. refbox stores exactly one credential
+per site and presents it again for every other event on that site — switching event does not
+re-link. **A site that binds a key to the event it was issued under will start refusing everything
+the moment an operator changes event**, mid-tournament, with results possibly still queued.
 
 **Fields refbox actually reads:** `accessKey` on success; `reason` on a `400`. Nothing else in
 the response is read.
@@ -227,11 +256,13 @@ screen with no visible message — there is no third error state shown in the UI
 
 This is the only one of the eight that's a conversation instead of a single call:
 
-1. refbox generates a random six-digit number once, the first time it's needed, and reuses it
-   for the rest of that run (`mod.rs:199`). This is the `refBoxId` — it identifies *this
-   physical refbox*, not the operator or the event.
-2. An admin on the tournament site enters that six-digit number into the site, which issues a
-   short code.
+1. refbox generates a random number between 1 and 999999 once, the first time it's needed, and
+   reuses it for the rest of that run (`mod.rs:199`). This is the `refBoxId`. **It may be shorter
+   than six digits** — a real refbox can show the admin `42` — and it is never zero-padded, so do
+   not validate it as a six-digit string. **It is also regenerated every time refbox restarts**, so
+   treat it as a one-time pairing number, not a device identity: you cannot pre-register boxes the
+   night before, and you cannot use it to trace which box pushed which result.
+2. An admin on the tournament site enters that number into the site, which issues a short code.
 3. The admin reads (or otherwise gives) that code to the operator, who types it into refbox.
 4. refbox posts `{"refBoxId": "<six digits>", "code": "<code>"}` to call 1.
 5. Success is `200` with `{"accessKey": "<token>"}`. refbox stores this token and uses it as
@@ -243,6 +274,62 @@ This is the only one of the eight that's a conversation instead of a single call
    shows a different on-screen message for each (`mod.rs:236-248`). Any other value of
    `reason`, or a `400` with no `reason` field at all, is reported as an unknown error rather
    than shown as either of the two known messages.
+
+##### The whole exchange, end to end
+
+Every other non-trivial shape in this document has a worked example; this one is a conversation, so
+here it is in full. `1234-A` is the event, `482913` is what the operator reads off the refbox
+screen, and `731904` is the code your site mints.
+
+**Step A — the admin registers the box.** Your own screen, your own shapes; refbox is not involved
+and this document does not specify it. You record a pending link for `482913` and show the admin
+a code:
+
+```
+refBoxId 482913  →  code 731904   (six digits, no leading zero, expires when you decide)
+```
+
+**Step B — the operator types `731904` into refbox, which posts:**
+
+```http
+POST /api/events/1234-A/access-keys/ref-box
+Content-Type: application/json
+
+{ "refBoxId": "482913", "code": "731904" }
+```
+
+**Step C — you answer.** Success, consuming the pending link:
+
+```http
+200 OK
+Content-Type: application/json
+
+{ "accessKey": "a1b2c3d4e5f6" }
+```
+
+Wrong code, right box:
+
+```http
+400 Bad Request
+
+{ "reason": "InvalidCode" }
+```
+
+No admin ever registered that box — or the code expired and you dropped the pending link:
+
+```http
+400 Bad Request
+
+{ "reason": "NoPendingLink" }
+```
+
+Those two strings are matched literally and each shows the operator a different message. Anything
+else — a third `reason`, a missing `reason`, a `401`, a `500` — leaves them on the code-entry
+screen with no message at all.
+
+**Step D — from here on**, refbox sends `Authorization: Bearer a1b2c3d4e5f6` on every call marked
+"bearer", **including for other events on your site**. It will not link again unless the operator
+asks it to.
 
 **Implement the negotiation. Do not shortcut it.** refbox cannot make you: it only ever checks a
 token by sending it as a bearer header (call 2) and never re-derives it from the login response, so
@@ -260,7 +347,18 @@ Concretely, what implementing it means:
 - Reject anything else with `400` and one of the two exact `reason` strings from step 6 above —
   `NoPendingLink` when no admin has entered that `refBoxId`, `InvalidCode` when the code does not
   match.
-- Expire codes, and keep every `accessKey` revocable on your side. **refbox never gives one up.**
+- Expire codes, and make a code single-use — consume the pending link when it is redeemed. A
+  replayable code is a smaller version of the open token dispenser above. **How long a code lives
+  is your choice** (long enough for an admin to walk the pool deck and read it out), and so is
+  what you do when the code and `refBoxId` are right but the admin registered them against a
+  different event. Only two `reason` strings exist, so an expired or lapsed code has to be one of
+  them: use `NoPendingLink`, which matches its own definition and tells the operator to ask for a
+  fresh registration.
+- **The admin half of this handshake is yours entirely** — how an admin enters a `refBoxId`,
+  what that screen looks like, who may reach it, how it authenticates. refbox never touches it, so
+  nothing here constrains it and nothing can verify it. This document deliberately says nothing
+  more about it; that silence is not an omission.
+- Keep every `accessKey` revocable on your side. **refbox never gives one up.**
   Nothing in the app clears a stored token — the only caller of the client's `clear_token` in the
   whole workspace is schedule-processor, not refbox — so a key you issue stays in that refbox until
   a fresh login overwrites it or somebody edits the configuration file. If a refbox is lost or
@@ -401,8 +499,14 @@ Example, with everything an entry needs to parse:
 never used — `0` is fine even if `items` isn't empty. Per entry: `id` and `name` (shown in the
 event picker), `slug` (must be present to parse successfully, but refbox never displays or acts
 on it), and `dateRange.startsOn` / `dateRange.endsOn` (used only to sort the picker, earliest
-tournament first — never displayed). `teams`, `schedule`, and `courts` may be omitted entirely:
-refbox fills those in itself via calls 4 and 5, per event, right after this call returns.
+tournament first — never displayed). **`dateRange` itself is required, with both fields** — unlike
+the three below it is not optional, and `null` or a missing key fails that entry, which costs you
+the whole event list rather than the one event. `teams`, `schedule`, and `courts` may be omitted
+entirely:
+refbox fills those in itself via calls 4 and 5, per event, right after this call returns. **There
+is no court list to serve anywhere** — refbox builds one by collecting the distinct `court` values
+across the games in call 5's schedule, sorted. A court with no games scheduled on it therefore
+cannot be offered to the operator, and an event whose games are all on one court auto-selects it.
 
 **On failure:** Any non-`200` response or transport failure: refbox logs the error and the
 event list stays whatever it was before (empty, on a first run). There's no retry — the
@@ -494,7 +598,7 @@ together, to attach display names to the schedule's referee assignments.
 **Request body:** none
 
 **Successful response:** `200` with an object holding referee-like entries under
-`tournamentReferee` (a single object or absent) and `referees.dedicated` /
+`tournamentReferee` (a single object, `null`, or absent — all three parse) and `referees.dedicated` /
 `referees.hybrid` / `referees.timeOrScoreKeeper` (each an array, or absent). Example:
 ```json
 {
@@ -541,10 +645,22 @@ which is shared with call 8.
 **Query parameters:** `force` (boolean, `true` or `false`). Ordinarily `false`. It's set to
 `true` only when the operator taps "FORCE THIS GAME RESULT" on the portal attention screen after
 a submission was rejected — telling the site to overwrite whatever score it currently has for
-that game instead of rejecting the mismatch. A plain RETRY does not set `force`. On this call
+that game instead of rejecting the mismatch. A plain RETRY does not set `force`.
+
+**Store whatever score arrives, and refuse only when you genuinely cannot save it.** It is tempting
+to reject a re-pushed score that differs from one you already hold, and to make the operator use
+FORCE — but refbox cannot tell your rejection from your site being unreachable. A result you refuse
+goes onto the local queue, retries every 15 seconds, is flagged to the operator after 30 minutes,
+and is **archived and dropped after 120 hours**. Being wrong in the permissive direction costs an
+overwritten score, which somebody can see and correct; being wrong in the strict direction costs the
+result entirely, quietly, while the operator is turning to the next game. The same reasoning applies
+to a score for a game number you do not recognise: store it rather than refuse it.
+
+On this call
 `force` is **always present**, as the literal `true` or `false` — never omitted
 (`uwh-common/src/uwhportal/mod.rs:367`). One of the other-ten calls that also takes `force`
-behaves differently; see call 8 of the other ten.
+behaves differently; see the coin-flips upload in [Full inventory](#full-inventory) (inventory #17)
+— not "call 8" of the refbox eight, which is push stats.
 
 **Request body:** `{"dark": {"value": <0-255>}, "light": {"value": <0-255>}}`. Note the naming:
 **`dark` is the black team's score, `light` is the white team's score** — not "home/away" or
@@ -608,6 +724,14 @@ refbox downloads, the two timestamp formats, and the stats records refbox upload
 
 Four rules hold across the whole API and are invisible from the individual call descriptions
 above, because each one only becomes apparent when you compare all of them.
+
+**The HTTP-level facts, in one place.** refbox gives every request **10 seconds** before treating it
+as a transport failure, so a site that takes longer to answer is indistinguishable from a site that
+is down. Redirects, keep-alive and connection reuse are whatever the underlying HTTP client does by
+default — nothing is configured, so do not build a site that depends on a particular behaviour
+there. Requests are not serialised: selecting an event triggers a burst (teams and schedule
+together), so a single-threaded stand-in can stall its own startup. Answer promptly, and answer
+concurrently.
 
 **Exactly `200` counts as success.** Every call made through the shared Portal client — that is,
 every call in this document except the overlay's own — compares the response status against
@@ -732,7 +856,7 @@ schedule fails to load. Fields described as "optional" may be left out of the JS
 | `games` | required (may be `{}`) | **An object**, not an array — keys are game numbers as strings, values are `Game` objects (see below). The key string and the `Game`'s own `number` field should match. |
 | `nonGameEntries` | required (may be `[]`) | Calendar entries (breaks, ceremonies) that aren't games. Not needed to run a game — a stub can always send `[]`. |
 | `groups` | required (may be `[]`) | Pool/division structure and standings rules. Not needed to run a game — a stub can always send `[]`. |
-| `timingRules` | required | Array of `TimingRule` objects (see below). Every game's `timingRule.name` must match one of these by name, or refbox can't find that game's timing. |
+| `timingRules` | required | Array of `TimingRule` objects (see below). Every game's `timingRule.name` must match one of these by name. **A name that matches nothing is not a parse failure and produces no error** — refbox simply runs that game on whatever timing configuration it already had loaded, silently. A typo here costs the right period lengths at a real game, and says nothing to the operator. |
 | `standingsOrder` | optional — may be omitted | Not needed to run a game |
 | `finalResultsOrder` | optional — may be omitted | Not needed to run a game |
 | `refereesByGameNumber` | optional — may be omitted | Team-supplied referee assignments, separate from the per-game `refereeAssignments` field below |
@@ -782,7 +906,7 @@ mismatch between your schedule and your team list is easy to ship without notici
 | JSON field | Required? | Contents |
 |---|---|---|
 | `role` | required | Free-text role name, e.g. `"Head Referee"` — refbox doesn't validate this against a fixed list |
-| `userId` | optional | Portal user ID, matched against call 6's response to show a name |
+| `userId` | optional | Portal user ID, matched against call 6's response to show a name. **Opaque and unvalidated** — unlike event and team IDs it is a plain string with no prefix rule and no length rule, so any value parses. A value that matches nothing in call 6 just means no name is shown. |
 | `teamId` | optional | Team ID, **long form** — used when an official is assigned by team rather than by person, in which case `userId` is absent. It is validated exactly like any other team ID, so a malformed one fails the entire schedule parse, not just this assignment. If it can't be resolved to a team name, the raw ID is displayed. |
 
 #### `TimingRule` (`schedule.rs:241`) — all fifteen fields

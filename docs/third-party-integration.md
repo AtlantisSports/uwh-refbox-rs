@@ -36,12 +36,16 @@ https://your-site/api/1234-A
 | Half | Taken from | Used for |
 |---|---|---|
 | Base URL | everything before `/api/` | every path in this document is appended to it directly |
-| Event ID | the segment after the **last** `/api/` in the path | every call that names an event |
+| Event ID | the segment after the marker — exact rule below | every call that names an event |
 
-The exact rule, because the short description above is not enough to predict every case: refbox
-splits the scheme and host off first, then searches only what remains for `/api/events/` and, failing
-that, `/api/`. The longer form is tried first, which is why `https://your-site/api/events/1234-A`
-yields `1234-A` rather than `events`. Anything before the marker is kept as the base URL, so a site
+The exact rule, in order, because no one-line description predicts every case:
+
+1. Split off the scheme and host. Everything after them is the path; the marker is only ever looked
+   for there, never in the host.
+2. In that path, find the **rightmost `/api/events/`**. If there is one, the event ID is what follows
+   it. This is why `https://your-site/api/events/1234-A` yields `1234-A` and not `events`.
+3. Only if there is no `/api/events/` at all, find the **rightmost `/api/`**, and the event ID is
+   what follows that. Anything before the marker is kept as the base URL, so a site
 under a path prefix works — `https://club.example/scoreboard/api/1234-A` gives a base of
 `https://club.example/scoreboard`. An address with no host at all is refused rather than accepted.
 
@@ -435,6 +439,12 @@ you did not issue, with any non-`200`. Your site is the only thing in the system
 whether a given refbox is authorised for an event, and this call is the only place that
 enforcement is visible to refbox.
 
+**"A token you did not issue" means exactly that, and nothing more.** The event ID in this path is
+not a scope: a key you issued under one event must still be accepted here for every other event on
+your site. refbox holds one credential per site and re-presents it whenever the operator changes
+event — see call 1. Rejecting on the event rather than on the key is the single easiest way to build
+a site that passes every test and then fails mid-tournament.
+
 The reason this is stated as an obligation rather than a suggestion was observed live on 2026-08-10
 against a deliberately permissive stand-in site. A site that answers `200` to everything tells
 every refbox pointed at it that its token is already valid. refbox then behaves as though it were
@@ -647,6 +657,12 @@ which is shared with call 8.
 a submission was rejected — telling the site to overwrite whatever score it currently has for
 that game instead of rejecting the mismatch. A plain RETRY does not set `force`.
 
+**The UWH Portal does reject a mismatch — that is why the FORCE button exists.** The paragraph above
+describes what `force` means to a site that rejects. **A third-party site is advised not to be such
+a site**, for the reasons below. If you take that advice, `force` carries no extra meaning against
+your site and FORCE behaves exactly like RETRY, which is the intended outcome: there is nothing for
+the operator to force past.
+
 **Store whatever score arrives, and refuse only when you genuinely cannot save it.** It is tempting
 to reject a re-pushed score that differs from one you already hold, and to make the operator use
 FORCE — but refbox cannot tell your rejection from your site being unreachable. A result you refuse
@@ -849,6 +865,14 @@ present in the response — as an empty array or object where that's all there i
 schedule fails to load. Fields described as "optional" may be left out of the JSON entirely.
 
 #### Top level: `Schedule` (`uwh-common/src/uwhportal/schedule.rs:513`)
+
+**Five of these fields have no shape documented here, deliberately.** `nonGameEntries` and `groups`
+are required but an empty array satisfies them; `standingsOrder`, `finalResultsOrder` and
+`refereesByGameNumber` may be omitted entirely. They carry Portal-internal features — standings
+tables, ceremonies, referee rosters by game — that a stand-in site running a tournament does not
+need, and refbox does not use them to run a game. Send `[]` for the two required ones, omit the
+other three, and you lose nothing. **This is a limit of this document, not an oversight:** if you
+ever want those features, their shapes are not described anywhere here and you would have to ask.
 
 | Field | Required? | Contents |
 |---|---|---|

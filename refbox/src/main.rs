@@ -43,6 +43,8 @@ mod sim_app;
 mod sim_frame;
 mod sound_controller;
 mod tournament_manager;
+#[cfg(test)]
+mod translation_consistency;
 pub mod updater;
 
 mod config;

@@ -56,6 +56,7 @@ uwh-common = { version = "0.4.9", path = "../uwh-common"}
 web-audio-api = { version = "1.2", default-features = false, features = ["cpal"] }
 
 [dev-dependencies]
+fluent-syntax = "0.12.0"
 tempfile = "3"
 tokio = { version = "1", features = ["test-util"] }
 

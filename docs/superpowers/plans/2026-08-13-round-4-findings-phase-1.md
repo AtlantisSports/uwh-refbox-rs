@@ -424,4 +424,68 @@ on something this plan cannot supply.
 
 ## Deviations
 
-_Record anything that diverged from this plan here, rather than in standalone commits._
+**Executed subagent-driven, six tasks, five clean reviews, no fix rounds.** Every task passed its
+review first time. The defects that mattered were found by the two passes that read *across* tasks,
+not by per-task review.
+
+**Two errors this branch introduced were caught and fixed**, both the same shape — a claim whose
+citations were individually correct but which said something the cited code does not support:
+
+- "Fired at the end of the previous game" → **kickoff**. `roster_refresh_tasks` is called only from
+  `handle_game_start`. Caught by Task 4's reviewer when asked to adjudicate it directly.
+- The `games`-key claim was **inverted**: the document came to say a schedule's map keys need not
+  match each `Game.number`. A mismatch makes `uwhportal_incomplete()` fail its key lookup, which
+  greys out APPLY — the operator cannot start a single game all tournament. The pre-branch text
+  ("should match") was correct. Caught only by the final whole-branch review.
+
+**The lesson for any round 5:** `check_citations.py` verifies that a citation *resolves*. It cannot
+verify that the cited line *supports* the claim attached to it, and says so in its own docstring.
+Both errors above passed every automated check and one or more human-style reviews. For every
+sentence telling a site it *may* do something, re-derive the permission from source.
+
+**Cross-edit defects invisible to per-task review.** After five agents edited one document, the
+rules section still said "Four rules hold across the whole API" while containing eleven, and "the
+four calls marked `none`" omitted a fifth call meeting its own criterion. No task reviewer could
+see these; each saw only its own diff.
+
+**The plan deliberately did not script replacement prose** — a departure from the writing-plans
+template. Each step gave the exact question, the command to answer it, and the required content.
+This held up: no task needed a clarification round.
+
+**Task 1 Step 5's verification command was too broad** (`git diff … -- docs/` picks up master's own
+docs changes; 277KB of noise). Corrected to the five files the branch actually touches.
+
+**Task 2 Step 2's "expect 49 citations" check was circular** — 49 came from the same regex being
+validated. Extending the checker to resolve the document's two shorthand citation forms
+(`schedule.rs:762`, and bare `:718`) revealed 20 more citations, a third of the total, that nothing
+had been checking.
+
+**The fix wave crashed on an API 529 after editing but before committing.** Work was intact and
+uncommitted; recovered by inspecting `git status`, not by assumption. Controller verification then
+produced a false negative — an item was reported outstanding because its old citation string was
+still present, when the agent had in fact split it into two correct citations.
+
+### Rulings made during execution
+
+Recorded here because the SDD ledger they were written in is gitignored.
+
+1. Tasks 3 and 5 must read call 9's entry in its current on-disk state before editing — five agents
+   edited that one entry. *If wrong:* repetitive prose, no factual harm.
+2. Finding 18 may state a labelled recommendation (key on `(eventId, gameNumber)`, replace) — refbox
+   cannot require it, but the document may advise. *If wrong:* prescribes where it should describe.
+3. The plan need not script replacement prose. *If wrong:* extra clarification rounds.
+4. `ROUND-4-FINDINGS.md` keeps the sealed-room reviewer's original wording, including "discards the
+   whole roster", which overstates it — the ledger is a record of what was reported; the *document*
+   is what must be exact, and it is. *If wrong:* a later round argues from an overstated premise.
+5. The kickoff correction was folded into Task 5 rather than left to the final review. *If wrong:*
+   fixed one task earlier than strictly needed.
+6. The final review was scoped to today's 5 commits, not the full 27 (327KB) — the other 16 have had
+   three sealed-room rounds, an outside review, and round 4 itself. *If wrong:* a defect in the
+   original commits reaches PR review unseen by this pass.
+7. **Finding 7 (`filter=Past`) was re-triaged out of the human-decision set** and closed with a
+   labelled recommendation: refbox's own `--all-events` help text ("including past ones") answers it.
+   *If wrong and the real Portal is exclusive:* the recommendation is revisited at no cost. **This is
+   the ruling most worth a second opinion — it removes a question previously flagged as the human's.**
+8. The `capNumber` truncation error was fixed although it predates the plan — above 255 the value
+   wraps (`300` → cap `44`) and attributes a goal to the wrong player. *If wrong:* one extra sentence
+   in an entry this branch had already rewritten.

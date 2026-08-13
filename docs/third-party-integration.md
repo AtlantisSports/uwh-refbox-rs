@@ -98,7 +98,7 @@ ignored in favour of an environment variable is the failure the in-app route exi
 **If your site serves plain `http://`, refbox refuses to send it anything by this route** unless it
 is also started with the `--allow-http` flag. Without that flag no request is attempted at all, and
 the failure is indistinguishable from your server being unreachable — nothing names the scheme as
-the cause (`refbox/src/main.rs:665` sets it; `uwh-common/src/uwhportal/mod.rs:173` enforces it). A
+the cause (`refbox/src/main.rs:667` sets it; `uwh-common/src/uwhportal/mod.rs:173` enforces it). A
 site without a TLS certificate therefore needs both:
 
 ```bash
@@ -389,7 +389,7 @@ that both showed up the first time a real refbox was pointed at a stand-in site:
 **Your site cannot change what the operator is told to do.** refbox's on-screen linking
 instructions are fixed text: they tell the operator to go to "Portal >> Event Management >> Referee
 Management, click on the + button to add a new Refbox", and to expect a confirmation code back
-(`refbox/translations/en-US/refbox.ftl:181-184`). Only the product word — "UWH" or "UWR" — varies,
+(`refbox/translations/en-US/refbox.ftl:177-181`). Only the product word — "UWH" or "UWR" — varies,
 and it varies with refbox's game mode, not with the site it is talking to. An operator pointed at
 your site is therefore given a menu path that does not exist for them. You cannot override this
 text, so whatever admin flow you build for issuing codes, expect to document it yourself and expect
@@ -398,7 +398,7 @@ event has been selected, so a code has to be obtainable for an event the operato
 chosen.
 
 **A successful call 1 is trusted without being verified.** On receiving an `accessKey`, refbox
-marks the token valid immediately (`refbox/src/app/mod.rs:4256-4258`) rather than confirming it with
+marks the token valid immediately (`refbox/src/app/mod.rs:5110-5112`) rather than confirming it with
 call 2. The portal indicator turns green on the strength of your response alone. If your site issues
 a key it will not subsequently honour, refbox will show a healthy green portal until the standing
 health check notices — up to five minutes later.
@@ -746,7 +746,7 @@ the same 120-hour archive-and-drop as any other queued item.
 this call and never sees it happen. First, whenever a schedule arrives: once for every distinct
 team assigned anywhere in that schedule, skipping any team whose roster is already cached. On a
 full tournament schedule that is a burst — a comment on the call warns against re-firing "~40
-concurrent GETs" (`refbox/src/app/mod.rs:4976`), so expect a few dozen near-simultaneous requests
+concurrent GETs" (`refbox/src/app/mod.rs:4993`), so expect a few dozen near-simultaneous requests
 on first load and size your site accordingly. Second, a refresh for the two teams of the upcoming
 game, fired at the end of the previous game so the fetch has the whole break to land rather than
 the instant of the next start (`refbox/src/app/mod.rs:1355`).
@@ -781,7 +781,7 @@ grid — someone who coaches and plays is still a player. Only a member with no 
 
 The second filter is on the number: of the entries that survive the role test, refbox keeps only
 cap numbers in the range **1 to 99**; a `capNumber` of `0`, or of `100` or more, is silently
-discarded (`refbox/src/app/mod.rs:6315`). Names are parsed but refbox itself ignores them — a
+discarded (`refbox/src/app/mod.rs:6332`). Names are parsed but refbox itself ignores them — a
 site serving only refbox can return `capNumber` and `roles` alone.
 
 **On failure:** **nothing visible happens.** Any non-`200` response, or a body that doesn't parse,
@@ -1146,7 +1146,7 @@ All three kinds share five fields, then each adds its own:
 | `playerCapNumber` | integer (`foul`: integer or `null`) | The player's cap number. `null` on a `foul` only, for a team-level infraction ("both at fault") with no specific player. **On a `goal` or `penalty`, `0` means "the operator did not record a number"** — see the warning below. |
 | `side` | string (`foul`: string or `null`) | `"dark"` or `"light"` — same black/white convention as push-scores. `null` on a `foul` only, alongside a `null` `playerCapNumber`. |
 | `gamePeriod` | string | refbox's internal period name — one of `BetweenGames`, `FirstHalf`, `HalfTime`, `SecondHalf`, `PreOvertime`, `OvertimeFirstHalf`, `OvertimeHalfTime`, `OvertimeSecondHalf`, `PreSuddenDeath`, `SuddenDeath` (`uwh-common/src/game_snapshot.rs:129-141`) |
-| `periodTime` | number (seconds, may have a fractional part) | The game clock's value the instant the event was recorded. During a timed half (regulation or overtime) this counts **down** — time remaining in the period. During Sudden Death, which has no fixed length, the clock instead counts **up** from zero — so `periodTime` there is time *elapsed*, not remaining (`refbox/src/tournament_manager/mod.rs:1873-1886`, `:2200-2206`). |
+| `periodTime` | number (seconds, may have a fractional part) | The game clock's value the instant the event was recorded. During a timed half (regulation or overtime) this counts **down** — time remaining in the period. During Sudden Death, which has no fixed length, the clock instead counts **up** from zero — so `periodTime` there is time *elapsed*, not remaining (`refbox/src/tournament_manager/mod.rs:1855-1868`, `:2182-2188`). |
 | `occurredOn` | timestamp | See [the two timestamp formats](#the-two-timestamp-formats) — this is always the `occurredOn` (fractional) form, never the `startsOn` form |
 
 Fields specific to each kind:

@@ -6078,7 +6078,12 @@ impl RefBoxApp {
             AppState::ConfirmScores(scores) =>
                 build_score_confirmation_page(data, scores, self.snapshot.conf_pause_time),
             AppState::PortalDetailPage { scroll_index } =>
-                build_portal_detail_page(data, self.portal_manager.detail_rows(), scroll_index,),
+                build_portal_detail_page(
+                    data,
+                    self.portal_manager.detail_rows(),
+                    scroll_index,
+                    !self.portal_manager.has_startup_problem(),
+                ),
             AppState::PortalAttentionAction {
                 ref item_id,
                 discard_armed,
@@ -6096,7 +6101,12 @@ impl RefBoxApp {
                     // Item was resolved or discarded while the operator
                     // was on this page. Fall back to the detail page so
                     // the operator sees the actual queue state.
-                    build_portal_detail_page(data, self.portal_manager.detail_rows(), 0)
+                    build_portal_detail_page(
+                        data,
+                        self.portal_manager.detail_rows(),
+                        0,
+                        !self.portal_manager.has_startup_problem(),
+                    )
                 }
             }
             AppState::BeepTestPage => {

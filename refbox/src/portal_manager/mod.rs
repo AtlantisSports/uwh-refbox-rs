@@ -811,6 +811,16 @@ impl PortalManager {
     /// `token_refreshed`/`force_submit`: the in-memory reset stands even
     /// if the disk write fails (the error propagates for logging).
     pub fn retry_all(&mut self) -> std::io::Result<()> {
+        // Inert while the portal subsystem failed to start. There is no
+        // background task, so nothing can be retried — but the unguarded
+        // version still reset every item's `queued_at`, which flips red
+        // "Score send error" rows to yellow "attempt 0". That reports a
+        // success that cannot happen, and destroys the only record of when
+        // each game ended: the input to both the 30-minute stuck escalation
+        // and the 120-hour expiry.
+        if self.startup_problem {
+            return Ok(());
+        }
         let now = OffsetDateTime::now_utc();
         // Reset every item; touching a stats-pending item's attempt/queued_at
         // fields is harmless (they are unused while score_sent == true) and
@@ -1547,6 +1557,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn degraded_retry_all_is_inert_and_does_not_rewrite_ageing() {
+        // RETRY ALL greys out only when nothing is unsent, so while the
+        // degraded queue was always empty it could never be pressed. Now that
+        // a degraded session adopts the queue, the button goes live — and
+        // `retry_all` resets `queued_at`, flipping red "Score send error" rows
+        // to yellow "attempt 0". Nothing is retried (no background task), so
+        // the operator gets confirmation of a success that cannot happen, and
+        // the record of when each game ended is destroyed.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut item = mk_stuck_item();
+        item.queued_at = OffsetDateTime::now_utc() - TimeDuration::hours(100);
+        queue::save(
+            tmp.path(),
+            &QueueFile {
+                version: 1,
+                items: vec![item],
+            },
+        )
+        .unwrap();
+
+        let (mut m, _rx) = PortalManager::new_degraded(tmp.path());
+        let before = m.queue.items[0].queued_at;
+
+        m.retry_all().unwrap();
+
+        assert_eq!(
+            m.queue.items[0].queued_at, before,
+            "RETRY ALL must not rewrite the queue's ageing in degraded mode"
+        );
+        assert!(
+            matches!(m.detail_rows().get(1), Some(DetailRow::Stuck { .. })),
+            "the row must stay stuck, not flip to pending, got {:?}",
+            m.detail_rows()
+        );
+    }
+
+    #[tokio::test]
     async fn degraded_ui_tick_does_not_archive_expired_items() {
         // The 1 Hz UI tick runs regardless of health, so without a guard a
         // degraded session would sweep expired items into
@@ -1607,6 +1654,16 @@ mod tests {
         let before = std::fs::read(&path).unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
 
+        // This test drives the failed-load fallback, whose write target is the
+        // shared system temp dir — which is also the healthy path's SECOND
+        // choice of queue directory (see `RefBoxApp::new`). Writing there would
+        // leave a fabricated result that a real fallback session would adopt
+        // and try to upload, so note whether a queue file was already there and
+        // remove only one we created ourselves. Never delete a pre-existing
+        // file: on a developer's machine it could hold real results.
+        let shared = std::env::temp_dir().join("portal_queue.json");
+        let shared_existed = shared.exists();
+
         // Degraded session cannot read it, then records a game of its own.
         {
             let (mut degraded, _rx) = PortalManager::new_degraded(tmp.path());
@@ -1616,6 +1673,10 @@ mod tests {
                 "a queue that could not be read must not stay the write target"
             );
             let _ = degraded.enqueue_game_end("event".into(), "G3".into(), 3, 0, "{}".into());
+        }
+
+        if !shared_existed {
+            std::fs::remove_file(&shared).ok();
         }
 
         // Restore access and prove the original results are untouched.

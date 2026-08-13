@@ -3576,6 +3576,14 @@ impl RefBoxApp {
                             other => other,
                         })
                     }
+                    (Some(_), false) => {
+                        // Degraded mode: the button is live (the login is not
+                        // the problem) but there is nothing to fetch with. Log
+                        // it — a press that does nothing is otherwise invisible
+                        // in a support log.
+                        warn!("REFRESH pressed but no portal client was started; nothing to fetch");
+                        Task::none()
+                    }
                     _ => Task::none(),
                 }
             }

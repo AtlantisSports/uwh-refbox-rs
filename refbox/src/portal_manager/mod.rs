@@ -248,9 +248,10 @@ pub struct PortalIndicatorState {
     /// True when the saved login token is known to be expired/rejected.
     /// This is the specific Red cause that makes a schedule refresh
     /// pointless (it can only fail until the operator re-logs-in), so
-    /// the game-info REFRESH button greys out on it. A Red caused only
-    /// by a stuck queue item — or by a connectivity problem (the portal
-    /// is unreachable, but the login may be fine) — leaves this `false`.
+    /// the game-info REFRESH button greys out on it. Every other Red cause
+    /// leaves this `false`, because the login may be fine: a stuck queue
+    /// item, a connectivity problem (the portal is unreachable), or a
+    /// startup failure (the portal subsystem never started at all).
     pub token_expired: bool,
     /// True when this indicator is reporting on a third-party site rather than
     /// the built-in portal. Set by the view layer from the committed game
@@ -314,10 +315,11 @@ pub enum PortalEvent {
 }
 
 /// One row rendered on the portal detail page. The ordering of the
-/// returned `Vec<DetailRow>` is the on-screen order: token-expired
-/// banner first (if present), then stuck items (oldest first), then
-/// young pending items (oldest first), then recent successes (newest
-/// first, capped at `RECENT_SUCCESS_CAP`).
+/// returned `Vec<DetailRow>` is the on-screen order: startup-failure
+/// banner first, then the token-expired banner (only one of the two can
+/// occur), then stuck items (oldest first), then young pending items
+/// (oldest first), then recent successes (newest first, capped at
+/// `RECENT_SUCCESS_CAP`).
 #[derive(Debug, Clone)]
 pub enum DetailRow {
     /// Shown at the top when the portal subsystem could not start at all

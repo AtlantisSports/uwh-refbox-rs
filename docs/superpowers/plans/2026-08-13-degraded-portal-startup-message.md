@@ -15,7 +15,7 @@
 - **Clippy:** `cargo clippy --workspace --all-features -- -D warnings` must be clean. No new `#[allow]`.
 - **No `unwrap()`/`expect()`** in non-test code without a comment explaining why it cannot panic.
 - **Translations:** every new key must exist in **all 15** locales (`de-DE en-US es fr id-ID it-IT ja-JP ko-KR ms-MY nl-NL pt-PT th-TH tl-PH tr-TR zh-CN`). No placeholders, no English left in a non-English file. A missing key is caught by `refbox/build.rs`, not by a test.
-- **Literal copy, exactly:** English row text is `Portal unavailable — results will not upload`. Use the spaced em-dash `—`, matching the neighbouring `portal-row-token-expired` key in every locale.
+- **Literal copy, exactly:** English row text is `Connection unavailable — results will not upload`. Use the spaced em-dash `—`, matching the neighbouring `portal-row-token-expired` key in every locale.
 - **Do NOT fix** the two misleading "https-only config" comments at `app/mod.rs:2389` and `:1112`. They are wrong, they are recorded in `docs/backlog/portal-login-silent-when-no-client/NOTE.md`, and they are out of scope for this branch.
 - **Branch:** `fix/refbox/degraded-portal-startup-message`. Ask the human before creating it and before every commit.
 
@@ -302,28 +302,28 @@ In `render_row`, add an arm. Model it on the existing `RecentSuccess` arm (~`:18
 In `refbox/translations/en-US/refbox.ftl`, in the `# Portal Health Indicator` section, directly after the `portal-row-token-expired` line:
 
 ```
-portal-row-startup-failed = Portal unavailable — results will not upload
+portal-row-startup-failed = Connection unavailable — results will not upload
 ```
 
 - [ ] **Step 3: Add the other 14 translations**
 
-Same position in each file — immediately after that locale's `portal-row-token-expired` line, so the section order stays identical across locales. Use exactly these:
+Same position in each file — immediately after that locale's `portal-row-token-expired` line, so the section order stays identical across locales. Each reuses its own locale's established word for "connection", taken from `portal-advisory-at-game-end`, so the health block reads as one vocabulary. Use exactly these:
 
 ```
-de-DE   portal-row-startup-failed = Portal nicht verfügbar — Ergebnisse werden nicht hochgeladen
-es      portal-row-startup-failed = Portal no disponible — los resultados no se subirán
-fr      portal-row-startup-failed = Portail indisponible — les résultats ne seront pas envoyés
-id-ID   portal-row-startup-failed = Portal tidak tersedia — hasil tidak akan diunggah
-it-IT   portal-row-startup-failed = Portale non disponibile — i risultati non verranno caricati
-ja-JP   portal-row-startup-failed = ポータルを利用できません — 結果はアップロードされません
-ko-KR   portal-row-startup-failed = 포털을 사용할 수 없습니다 — 결과가 업로드되지 않습니다
-ms-MY   portal-row-startup-failed = Portal tidak tersedia — keputusan tidak akan dimuat naik
-nl-NL   portal-row-startup-failed = Portaal niet beschikbaar — resultaten worden niet geüpload
-pt-PT   portal-row-startup-failed = Portal indisponível — os resultados não serão enviados
-th-TH   portal-row-startup-failed = ไม่สามารถใช้พอร์ทัลได้ — ผลการแข่งขันจะไม่ถูกอัปโหลด
-tl-PH   portal-row-startup-failed = Hindi available ang portal — hindi mai-a-upload ang mga resulta
-tr-TR   portal-row-startup-failed = Portal kullanılamıyor — sonuçlar yüklenmeyecek
-zh-CN   portal-row-startup-failed = 无法使用门户 — 成绩将不会上传
+de-DE   portal-row-startup-failed = Keine Verbindung — Ergebnisse werden nicht hochgeladen
+es      portal-row-startup-failed = Conexión no disponible — los resultados no se subirán
+fr      portal-row-startup-failed = Connexion indisponible — les résultats ne seront pas envoyés
+id-ID   portal-row-startup-failed = Koneksi tidak tersedia — hasil tidak akan diunggah
+it-IT   portal-row-startup-failed = Connessione non disponibile — i risultati non verranno caricati
+ja-JP   portal-row-startup-failed = 接続できません — 結果はアップロードされません
+ko-KR   portal-row-startup-failed = 연결할 수 없습니다 — 결과가 업로드되지 않습니다
+ms-MY   portal-row-startup-failed = Sambungan tidak tersedia — keputusan tidak akan dimuat naik
+nl-NL   portal-row-startup-failed = Geen verbinding — resultaten worden niet geüpload
+pt-PT   portal-row-startup-failed = Ligação indisponível — os resultados não serão enviados
+th-TH   portal-row-startup-failed = ไม่สามารถเชื่อมต่อได้ — ผลการแข่งขันจะไม่ถูกอัปโหลด
+tl-PH   portal-row-startup-failed = Walang koneksyon — hindi mai-a-upload ang mga resulta
+tr-TR   portal-row-startup-failed = Bağlantı yok — sonuçlar yüklenmeyecek
+zh-CN   portal-row-startup-failed = 无法连接 — 成绩将不会上传
 ```
 
 (The locale name is a label showing which file each line belongs in — write only the `portal-row-startup-failed = …` line into each `.ftl`.)
@@ -444,7 +444,7 @@ XDG_CONFIG_HOME=/tmp/refbox-walkthrough WAYLAND_DISPLAY= ./target/debug/refbox
 The config file created there is `default-config.toml`. A linked event is required for the portal dot to appear at all, so seed the throwaway config accordingly.
 
 Compare `master` against the branch and capture, for the human:
-1. The detail page row — was *"Access token expired — tap to re-login"*, now *"Portal unavailable — results will not upload"*.
+1. The detail page row — was *"Access token expired — tap to re-login"*, now *"Connection unavailable — results will not upload"*.
 2. The game-info REFRESH button — was greyed out, now live; pressing it must NOT leave it stuck on "Refreshing…".
 3. The new row rendered in **German and Japanese**, checking the text fits the row without clipping. Translation fit has bitten this repo before and cannot be settled by reading code.
 

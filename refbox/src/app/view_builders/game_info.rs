@@ -25,11 +25,14 @@ pub(in super::super) fn build_game_info_page<'a>(
         ..
     } = data;
 
-    // A refresh re-fetches the schedule from the portal, which can only
-    // fail while the saved login token is expired — so grey the button out
-    // in that one case and leave the operator to re-login via the
-    // connection indicator. A Red caused merely by a stuck submission
-    // leaves `token_expired` false and keeps refresh usable.
+    // A refresh re-fetches the schedule from the portal. Grey the button out
+    // only when the saved login token is expired — the one case a re-login
+    // fixes — and leave the operator to re-login via the connection
+    // indicator. Every other Red cause leaves `token_expired` false and keeps
+    // refresh usable: a stuck submission, a connectivity drop, or a startup
+    // failure. In that last case there is no client to fetch with, so the
+    // button stays live but its handler declines to spin (see
+    // `Message::RequestPortalRefresh`).
     let token_expired = portal_indicator.is_some_and(|s| s.token_expired);
 
     let middle_item: Element<_> = if uses_remote {

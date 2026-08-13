@@ -182,6 +182,52 @@ pub fn append_to_archive(dir: &Path, items: &[QueuedItem]) -> std::io::Result<()
     write_atomic(&archive_path(dir), &archive_tmp_path(dir), &archive)
 }
 
+/// A directory this session successfully read the portal queue from, and is
+/// therefore allowed to write back to.
+///
+/// `open` is the only constructor, and it returns the loaded queue along with
+/// the store — so a `QueueStore` cannot exist for a directory we could not
+/// read. That is the entire safety property: a session with no readable queue
+/// holds no store, and a store is the only route to a queue write, so it
+/// cannot destroy a file it never saw. `save` renames over the target, and a
+/// rename needs write permission on the *directory* rather than the file, so
+/// an unreadable-but-replaceable queue is exactly the case this prevents.
+///
+/// See `docs/superpowers/specs/2026-08-13-degraded-no-write-target-design.md`.
+#[derive(Debug)]
+pub(super) struct QueueStore {
+    dir: PathBuf,
+}
+
+impl QueueStore {
+    /// Read `dir`'s queue and, on success, return the write target for it.
+    /// A missing file is a successful read of an empty queue (a first run),
+    /// and a corrupt one is rotated aside by `load_or_empty` and also
+    /// succeeds. Only an I/O or permission failure yields `Err` — and
+    /// therefore no write target at all.
+    pub(super) fn open(dir: &Path) -> std::io::Result<(Self, QueueFile)> {
+        let queue = load_or_empty(dir)?;
+        Ok((
+            Self {
+                dir: dir.to_path_buf(),
+            },
+            queue,
+        ))
+    }
+
+    pub(super) fn dir(&self) -> &Path {
+        &self.dir
+    }
+
+    pub(super) fn save(&self, q: &QueueFile) -> std::io::Result<()> {
+        save(&self.dir, q)
+    }
+
+    pub(super) fn append_to_archive(&self, items: &[QueuedItem]) -> std::io::Result<()> {
+        append_to_archive(&self.dir, items)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,6 +271,82 @@ mod tests {
     mod load_save_tests {
         use super::*;
         use tempfile::TempDir;
+
+        fn one_item_queue(game: &str, black: u8, white: u8) -> QueueFile {
+            QueueFile {
+                version: 1,
+                items: vec![QueuedItem {
+                    id: ItemId {
+                        event_id: "event".into(),
+                        game_number: game.into(),
+                    },
+                    black_score: black,
+                    white_score: white,
+                    stats: "{}".into(),
+                    queued_at: datetime!(2026-08-13 10:00 UTC),
+                    attempts: 0,
+                    last_attempt_at: None,
+                    force: false,
+                    score_sent: false,
+                }],
+            }
+        }
+
+        #[test]
+        fn store_open_hands_back_the_queue_it_loaded() {
+            let tmp = TempDir::new().unwrap();
+            let q = one_item_queue("G1", 3, 2);
+            save(tmp.path(), &q).unwrap();
+
+            let (_store, loaded) = QueueStore::open(tmp.path()).unwrap();
+            assert_eq!(
+                loaded, q,
+                "open must return the queue it read, not an empty one"
+            );
+        }
+
+        #[test]
+        fn store_open_on_a_missing_file_is_an_empty_queue() {
+            let tmp = TempDir::new().unwrap();
+            let (_store, loaded) = QueueStore::open(tmp.path()).unwrap();
+            assert!(loaded.items.is_empty());
+        }
+
+        #[test]
+        fn store_writes_where_it_read() {
+            let tmp = TempDir::new().unwrap();
+            let (store, _) = QueueStore::open(tmp.path()).unwrap();
+            let q = one_item_queue("G2", 1, 0);
+
+            store.save(&q).unwrap();
+            assert_eq!(
+                load_or_empty(tmp.path()).unwrap(),
+                q,
+                "a store must write back to the directory it was opened on"
+            );
+        }
+
+        #[cfg(unix)]
+        #[test]
+        fn no_store_exists_for_a_queue_that_cannot_be_read() {
+            // THE safety property: a directory whose queue file we cannot read
+            // yields no write target at all, so nothing can overwrite it.
+            use std::os::unix::fs::PermissionsExt;
+            let tmp = TempDir::new().unwrap();
+            save(tmp.path(), &QueueFile::empty()).unwrap();
+            let path = queue_path(tmp.path());
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+            let result = QueueStore::open(tmp.path());
+
+            // Restore before asserting so a failure cannot leave an unreadable
+            // file behind for the rest of the suite.
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+            assert!(
+                result.is_err(),
+                "an unreadable queue file must not produce a write target"
+            );
+        }
 
         #[test]
         fn loads_empty_when_file_missing() {

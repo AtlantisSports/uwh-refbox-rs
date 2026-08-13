@@ -425,11 +425,19 @@ pub struct PortalManager {
     startup_problem: bool,
     indicator_state: PortalIndicatorState,
     command_tx: mpsc::Sender<health::PortalCommand>,
-    config_dir: std::path::PathBuf,
     /// In-memory ring of the most recent successful submissions,
     /// newest at the front, capped at `RECENT_SUCCESS_CAP`. Used only
     /// for the detail-page strip; not persisted across restarts.
     recent_successes: VecDeque<RecentSuccess>,
+    /// Where this session may write the queue — or `None` when it may not.
+    ///
+    /// A `QueueStore` can only be obtained by successfully reading a directory
+    /// (`QueueStore::open`), so `None` means "we could not read the queue file,
+    /// therefore we must never write over it". That absence is the safety
+    /// property, and it replaces guarding each mutating method one at a time.
+    /// There is deliberately no second-choice directory: see
+    /// `docs/superpowers/specs/2026-08-13-degraded-no-write-target-design.md`.
+    store: Option<queue::QueueStore>,
 }
 
 impl PortalManager {
@@ -449,16 +457,14 @@ impl PortalManager {
             startup_problem: false,
             indicator_state: PortalIndicatorState::default(),
             command_tx: tx,
-            // Deliberately a path that does not exist. `queue::save` creates no
-            // directories, so any mutator called on a manager built here fails
-            // its write loudly instead of quietly landing a fabricated result in
-            // the shared system temp dir — which is the healthy path's second
-            // choice of queue directory (see `RefBoxApp::new`), so a real
-            // session would adopt it and try to upload it. A test that needs a
-            // save to succeed should build the manager over its own `TempDir`
-            // (see `enqueue_game_end_appends_item_and_turns_yellow`).
-            config_dir: std::env::temp_dir().join("uwh-refbox-new-for-test-must-not-write"),
             recent_successes: VecDeque::new(),
+            // No write target: these managers exist for indicator and
+            // row-ordering assertions, none of which persists. A test that
+            // needs a save to succeed builds the manager over its own
+            // `TempDir` (see `enqueue_game_end_appends_item_and_turns_yellow`)
+            // — never a path in the shared system temp dir, which is the
+            // healthy path's second-choice queue directory.
+            store: None,
         };
         m.recompute_indicator();
         m
@@ -468,11 +474,27 @@ impl PortalManager {
         self.indicator_state
     }
 
-    /// Return the directory used for the on-disk queue file.
-    /// Used by the portal-tenant-switch restart handler to flush the queue
-    /// (items queued for the old tenant cannot be delivered to the new one).
-    pub fn queue_dir(&self) -> &std::path::Path {
-        &self.config_dir
+    /// Return the directory used for the on-disk queue file, or `None` when
+    /// this session has no write target. Used by the portal-tenant-switch
+    /// restart handler to flush the queue (items queued for the old tenant
+    /// cannot be delivered to the new one).
+    pub fn queue_dir(&self) -> Option<&std::path::Path> {
+        self.store.as_ref().map(|s| s.dir())
+    }
+
+    /// Write the queue back, if this session has anywhere to write it.
+    ///
+    /// NOT a guard: a session without a store holds no directory at all, so
+    /// there is nothing to guard against. This is only the shared funnel for
+    /// the mutating methods — the safety comes from `Option<QueueStore>`,
+    /// because the sole way to obtain a store is a successful read. A future
+    /// mutator cannot bypass this the way it could bypass a boolean check:
+    /// without a store in hand there is no path to a write at all.
+    fn persist(&self) -> std::io::Result<()> {
+        match &self.store {
+            Some(store) => store.save(&self.queue),
+            None => Ok(()),
+        }
     }
 
     /// True while any game result is still waiting to reach the site it was
@@ -532,11 +554,17 @@ impl PortalManager {
         if expired.is_empty() {
             return Ok(());
         }
-        // Archive BEFORE removing so a failed write never loses a score.
-        queue::append_to_archive(&self.config_dir, &expired)?;
+        // Archive BEFORE removing so a failed write never loses a score. With
+        // no write target there is nothing to archive to and nothing on disk to
+        // shrink, so leave the queue alone entirely: dropping items from memory
+        // would lose them with no on-disk copy anywhere.
+        let Some(store) = &self.store else {
+            return Ok(());
+        };
+        store.append_to_archive(&expired)?;
         let n = expired.len();
         self.queue.items = kept;
-        queue::save(&self.config_dir, &self.queue)?;
+        store.save(&self.queue)?;
         self.recompute_indicator();
         self.push_queue_snapshot();
         log::info!(
@@ -611,7 +639,10 @@ impl PortalManager {
         config_dir: &std::path::Path,
         io: impl health::PortalTaskIo + Send + Sync + 'static,
     ) -> std::io::Result<(Self, mpsc::Receiver<PortalEvent>)> {
-        let queue = queue::load_or_empty(config_dir)?;
+        // Reading and gaining the right to write are the same step: a healthy
+        // session owns the directory it just read, and a read failure
+        // propagates so `RefBoxApp::new` can try its second-choice directory.
+        let (store, queue) = queue::QueueStore::open(config_dir)?;
         let handle = health::spawn(io);
         let command_tx = handle.command_tx.clone();
 
@@ -623,8 +654,8 @@ impl PortalManager {
             startup_problem: false,
             indicator_state: PortalIndicatorState::default(),
             command_tx,
-            config_dir: config_dir.to_path_buf(),
             recent_successes: VecDeque::new(),
+            store: Some(store),
         };
         // Clear any items that already exceeded the expiry limit before this
         // launch (e.g. leftovers carried across a portal switch or reboot).
@@ -651,28 +682,12 @@ impl PortalManager {
     /// Results are still queued in this mode — `enqueue_game_end` runs
     /// whenever an event is linked — so they have to land where the next
     /// healthy launch will look for them, or they are silently abandoned.
-    /// Writing them elsewhere is what this constructor used to do, from when
-    /// its only caller was the both-directories-failed case.
+    /// "Cannot send" is not "cannot save": in the no-client route the disk is
+    /// perfectly fine and this session persists exactly as a healthy one does.
     ///
     /// The returned receiver is a dummy that never emits events.
     pub(crate) fn new_degraded(
         config_dir: &std::path::Path,
-    ) -> (Self, mpsc::Receiver<PortalEvent>) {
-        Self::new_degraded_with_fallback(config_dir, &std::env::temp_dir())
-    }
-
-    /// `new_degraded` with the failed-load fallback directory injected.
-    ///
-    /// Production always passes `std::env::temp_dir()` (via `new_degraded`).
-    /// Tests pass a directory of their own: the fallback is the *shared*
-    /// system temp dir, which is also the healthy path's second choice of
-    /// queue directory (see `RefBoxApp::new`), so a test that let an enqueue
-    /// land there would overwrite a real queue file on the machine running it
-    /// — and leave a fabricated result for a real fallback session to adopt
-    /// and try to upload.
-    fn new_degraded_with_fallback(
-        config_dir: &std::path::Path,
-        fallback_dir: &std::path::Path,
     ) -> (Self, mpsc::Receiver<PortalEvent>) {
         // Build (sender, receiver) pairs where the senders go nowhere:
         // the event-channel sender is discarded so the returned receiver
@@ -682,28 +697,27 @@ impl PortalManager {
         let (_, rx) = mpsc::channel(1);
         let (command_tx, _command_rx) = mpsc::channel(1);
 
-        // Adopt whatever is already queued, best-effort. This must never fail
-        // the construction: one trigger for degraded mode IS an unreadable
-        // queue file, and the game has to keep running regardless.
+        // Adopt whatever is already queued, and take a write target only if
+        // that read succeeded. This must never fail the construction: one
+        // trigger for degraded mode IS an unreadable queue file, and the game
+        // has to keep running regardless.
         //
-        // Skipping this load would NOT be the safe option: `queue::save`
-        // rewrites the whole file, so an empty starting queue means the first
-        // enqueue overwrites — and destroys — results already waiting.
-        // Adopt whatever is already queued, and only write where we could
-        // read. If the load fails we must NOT keep `config_dir` as the write
-        // target: `queue::save` renames over the file, and a rename needs
-        // write permission on the *directory*, not on the file — so an
-        // unreadable-but-replaceable queue would be silently destroyed by the
-        // first enqueue. That is the exact failure this fallback exists for,
-        // and the healthy path already handles it by moving to the temp dir.
-        let (queue, queue_dir) = match queue::load_or_empty(config_dir) {
-            Ok(q) => (q, config_dir.to_path_buf()),
+        // A failed read leaves this session with no write target at all.
+        // `save` renames over the file and a rename needs write permission on
+        // the *directory* rather than the file, so an unreadable-but-
+        // replaceable queue would otherwise be destroyed by the first enqueue.
+        // There is deliberately no second-choice directory: the system temp dir
+        // is the healthy path's own fallback, so writing a fabricated queue
+        // there is how a real session ends up adopting one.
+        let (queue, store) = match queue::QueueStore::open(config_dir) {
+            Ok((store, queue)) => (queue, Some(store)),
             Err(e) => {
                 log::warn!(
-                    "could not read the portal queue ({e}); this session will not write to it, \
-                     so the existing file is left intact"
+                    "could not read the portal queue ({e}); this session has no write target, so \
+                     the existing file is left untouched and any result recorded now is held in \
+                     memory only"
                 );
-                (QueueFile::empty(), fallback_dir.to_path_buf())
+                (QueueFile::empty(), None)
             }
         };
 
@@ -718,8 +732,8 @@ impl PortalManager {
             startup_problem: true,
             indicator_state: PortalIndicatorState::default(),
             command_tx,
-            config_dir: queue_dir,
             recent_successes: VecDeque::new(),
+            store,
         };
         m.recompute_indicator();
         (m, rx)
@@ -793,7 +807,7 @@ impl PortalManager {
             score_sent: false,
         };
         self.queue.items.push(item);
-        queue::save(&self.config_dir, &self.queue)?;
+        self.persist()?;
         self.recompute_indicator();
         self.push_queue_snapshot();
         Ok(())
@@ -811,7 +825,7 @@ impl PortalManager {
             item.attempts = 0;
             item.last_attempt_at = None;
             item.queued_at = OffsetDateTime::now_utc();
-            queue::save(&self.config_dir, &self.queue)?;
+            self.persist()?;
         }
         self.recompute_indicator();
         self.push_queue_snapshot();
@@ -866,7 +880,7 @@ impl PortalManager {
             item.last_attempt_at = None;
             item.queued_at = now;
         }
-        queue::save(&self.config_dir, &self.queue)?;
+        self.persist()?;
         self.recompute_indicator();
         self.push_queue_snapshot();
         // Stats-pending games are not on the auto-retry cadence; give
@@ -891,7 +905,7 @@ impl PortalManager {
     pub fn force_immediate_retry(&mut self, id: &ItemId) -> std::io::Result<()> {
         if let Some(item) = self.find_mut(id) {
             item.last_attempt_at = None;
-            queue::save(&self.config_dir, &self.queue)?;
+            self.persist()?;
             self.push_queue_snapshot();
         }
         Ok(())
@@ -902,7 +916,7 @@ impl PortalManager {
     /// portal currently has for that game stands.
     pub fn discard(&mut self, id: &ItemId) -> std::io::Result<()> {
         self.queue.items.retain(|it| it.id != *id);
-        queue::save(&self.config_dir, &self.queue)?;
+        self.persist()?;
         self.recompute_indicator();
         self.push_queue_snapshot();
         Ok(())
@@ -944,7 +958,7 @@ impl PortalManager {
             item.attempts = 0;
             item.last_attempt_at = None;
         }
-        queue::save(&self.config_dir, &self.queue)?;
+        self.persist()?;
         self.recompute_indicator();
         self.push_queue_snapshot();
         Ok(())
@@ -964,7 +978,7 @@ impl PortalManager {
             return; // Already stats-pending; nothing to do.
         }
         item.score_sent = true;
-        if let Err(e) = queue::save(&self.config_dir, &self.queue) {
+        if let Err(e) = self.persist() {
             log::warn!("portal queue save after score-sent/stats-pending failed: {e}");
         }
         self.recompute_indicator();
@@ -1039,7 +1053,7 @@ impl PortalManager {
             self.recent_successes.pop_back();
         }
 
-        if let Err(e) = queue::save(&self.config_dir, &self.queue) {
+        if let Err(e) = self.persist() {
             log::warn!("portal queue save after item resolution failed: {e}");
         }
         self.recompute_indicator();
@@ -1564,7 +1578,7 @@ mod tests {
         // replace one that is already there.
         let empty_dir = tempfile::TempDir::new().unwrap();
         let (manager, _rx) = PortalManager::new_degraded(empty_dir.path());
-        assert_eq!(manager.config_dir.as_path(), empty_dir.path());
+        assert_eq!(manager.queue_dir(), Some(empty_dir.path()));
         assert!(
             !empty_dir.path().join("portal_queue.json").exists(),
             "degraded construction must not create a queue file"
@@ -1691,11 +1705,10 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
-    async fn degraded_never_overwrites_a_queue_it_could_not_read() {
-        // A queue file we cannot READ can still be REPLACED: `queue::save`
-        // renames over it, and rename needs permission on the directory, not
-        // on the file. So if the load fails, this session must not write here
-        // at all — otherwise the first enqueue destroys real results.
+    async fn a_session_that_could_not_read_its_queue_writes_nothing_anywhere() {
+        // The write target is the directory we read from, or there is none.
+        // This session cannot read, so it must leave the file byte-identical,
+        // create nothing beside it, and touch no other directory either.
         use std::os::unix::fs::PermissionsExt;
 
         let tmp = tempfile::TempDir::new().unwrap();
@@ -1712,40 +1725,73 @@ mod tests {
         let before = std::fs::read(&path).unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
 
-        // This test drives the failed-load fallback, whose production write
-        // target is the shared system temp dir — which is also the healthy
-        // path's SECOND choice of queue directory (see `RefBoxApp::new`).
-        // Letting the enqueue below land there would overwrite a real queue
-        // file on the machine running the test suite, and leave a fabricated
-        // result for a real fallback session to adopt and try to upload. So
-        // inject a fallback of our own: the test never touches the shared path.
-        let fallback = tempfile::TempDir::new().unwrap();
+        // The shared temp dir is the healthy path's SECOND-choice queue dir,
+        // so prove we do not fall back to it. Comparing `Option` covers both
+        // "a file was there and is unchanged" and "none was there and none is".
+        let shared = std::env::temp_dir().join("portal_queue.json");
+        let shared_before = std::fs::read(&shared).ok();
 
-        // Degraded session cannot read it, then records a game of its own.
         {
-            let (mut degraded, _rx) =
-                PortalManager::new_degraded_with_fallback(tmp.path(), fallback.path());
-            assert_ne!(
-                degraded.config_dir.as_path(),
-                tmp.path(),
-                "a queue that could not be read must not stay the write target"
+            let (mut degraded, _rx) = PortalManager::new_degraded(tmp.path());
+            assert!(
+                degraded.store.is_none(),
+                "a queue we could not read must leave this session with no write target"
             );
             let _ = degraded.enqueue_game_end("event".into(), "G3".into(), 3, 0, "{}".into());
+            assert_eq!(
+                degraded.queue.items.len(),
+                1,
+                "the result is still held in memory for the operator to read off the screen"
+            );
         }
 
-        // The result went to the fallback, so it is not silently dropped.
-        assert!(
-            fallback.path().join("portal_queue.json").exists(),
-            "the degraded session's own result must land in the fallback dir"
-        );
-
-        // Restore access and prove the original results are untouched.
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
         assert_eq!(
             std::fs::read(&path).unwrap(),
             before,
             "the unreadable queue file must be left byte-identical"
         );
+        assert_eq!(
+            std::fs::read(&shared).ok(),
+            shared_before,
+            "the shared system temp dir must not be used as a fallback"
+        );
+        let mut names: Vec<_> = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        names.sort();
+        assert_eq!(
+            names.len(),
+            1,
+            "no new file may appear beside the queue we could not read, got {names:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_session_that_cannot_send_still_saves_when_the_disk_is_fine() {
+        // The no-client route: nothing can be uploaded, but the disk is
+        // perfect, so results MUST still be recorded where a later healthy
+        // start finds them. "Cannot send" is not "cannot save".
+        let tmp = tempfile::TempDir::new().unwrap();
+        {
+            let (mut degraded, _rx) = PortalManager::new_degraded(tmp.path());
+            assert!(
+                degraded.store.is_some(),
+                "a readable queue must still give this session a write target"
+            );
+            degraded
+                .enqueue_game_end("event".into(), "G7".into(), 5, 4, "{}".into())
+                .unwrap();
+        }
+
+        let (later, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        assert_eq!(
+            later.queue.items.len(),
+            1,
+            "a later healthy start must find it"
+        );
+        assert_eq!(later.queue.items[0].id.game_number, "G7");
     }
 
     #[tokio::test]

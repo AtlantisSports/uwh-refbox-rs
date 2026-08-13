@@ -813,11 +813,6 @@ Record anything that diverged from this plan here rather than in separate commit
   tenant-switch flush is exactly `self.persist()`, so Task 3 uses the funnel instead of a second
   write method. Its test became `store_writes_where_it_read`. Task 3 below is amended accordingly —
   ignore its `store.flush()` step and use `self.persist()?`.
-- **Task 4's second test was dropped, not written.** `resolving_a_re_ended_game_leaves_nothing_behind`
-  passed on the UNFIXED code: `retain` removes every id match, so "nothing behind" was already true
-  with duplicates queued. A test that passes before and after proves nothing. Replaced with on-disk
-  assertions on the dedupe test — the persisted queue holds one entry and it carries the corrected
-  score, which does discriminate (the old code persisted two).
 - **Mutation-proofed both layers of the safety test.** Reintroducing the temp-dir fallback in
   `new_degraded` fails `a_session_that_could_not_read_its_queue_writes_nothing_anywhere` on the
   `store.is_none()` assertion; with that assertion temporarily removed it then fails on "the shared

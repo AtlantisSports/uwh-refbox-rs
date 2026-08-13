@@ -176,6 +176,10 @@ portal-login-instructions = Sila pergi ke { $portal } Portal >> Pengurusan Acara
 
     { $portal } Portal kemudiannya akan memberikan kod pengesahan untuk anda masukkan di sebelah kiri menggunakan pad nombor.
     Tekan selesai setelah anda memasukkan kod
+custom-login-instructions = Sila berikan ID Refbox ini kepada tapak anda:
+    { $id }
+
+    Kemudian masukkan kod pengesahan yang diberikan tapak anda menggunakan papan nombor dan tekan SELESAI
 
 
 # Pengesahan

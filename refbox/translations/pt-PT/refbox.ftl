@@ -176,6 +176,10 @@ portal-login-instructions = Aceda ao Portal { $portal } >> Gestão de Eventos >>
 
     O Portal { $portal } fornecerá então um código de confirmação para introduzir à esquerda através do teclado numérico.
     Prima Concluído depois de ter introduzido o código
+custom-login-instructions = Forneça este ID de Refbox ao seu site:
+    { $id }
+
+    Depois introduza o código de confirmação fornecido pelo seu site no teclado numérico e prima CONCLUÍDO
 
 
 # Confirmação

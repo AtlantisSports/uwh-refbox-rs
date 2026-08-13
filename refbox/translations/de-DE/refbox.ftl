@@ -176,6 +176,10 @@ portal-login-instructions = Gehen Sie zu { $portal } Portal >> Veranstaltungsver
 
     Das { $portal } Portal stellt Ihnen dann einen Bestätigungscode bereit, den Sie links über das Nummernfeld eingeben.
     Drücken Sie Fertig, sobald Sie den Code eingegeben haben
+custom-login-instructions = Bitte geben Sie diese Refbox-ID an Ihre Website weiter:
+    { $id }
+
+    Geben Sie dann den Bestätigungscode Ihrer Website über das Nummernfeld ein und drücken Sie FERTIG
 
 
 # Bestätigung

@@ -176,6 +176,10 @@ portal-login-instructions = Silakan buka { $portal } Portal >> Manajemen Acara >
 
     { $portal } Portal kemudian akan memberikan kode konfirmasi untuk dimasukkan di sebelah kiri menggunakan papan angka.
     Tekan Selesai setelah Anda memasukkan kode
+custom-login-instructions = Harap berikan ID Refbox ini ke situs Anda:
+    { $id }
+
+    Lalu masukkan kode konfirmasi yang diberikan situs Anda menggunakan papan angka dan tekan SELESAI
 
 
 # Konfirmasi

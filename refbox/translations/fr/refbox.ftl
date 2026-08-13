@@ -178,6 +178,10 @@ portal-login-instructions = Veuillez aller sur le Portail { $portal } >> Gestion
 
     Le Portail { $portal } fournira ensuite un code de confirmation que vous devrez entrer à gauche en utilisant le pavé numérique.
     Appuyez sur Terminé une fois que vous avez entré le code.
+custom-login-instructions = Veuillez fournir cet identifiant Refbox à votre site :
+    { $id }
+
+    Saisissez ensuite le code de confirmation fourni par votre site à l'aide du pavé numérique et appuyez sur TERMINÉ
 
 
 # Confirmation

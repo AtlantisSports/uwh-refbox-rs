@@ -610,18 +610,28 @@ impl PortalManager {
         Ok((m, handle.event_rx))
     }
 
-    /// Constructs a `PortalManager` that does not attempt any disk or
-    /// network I/O. Used as a last-resort fallback when both the user
-    /// config dir and the system temp dir reject I/O — the refbox's
-    /// core game functions still work, and the portal indicator shows
-    /// Red so the operator sees there's a problem.
+    /// Constructs a `PortalManager` with no background task, for when the
+    /// portal subsystem cannot start: either the HTTP client failed to
+    /// build, or the retry queue was unreadable in both the user config dir
+    /// and the system temp dir. The refbox's core game functions still work,
+    /// and the portal indicator shows Red so the operator sees there's a
+    /// problem.
     ///
     /// No background task is spawned: there's nothing for it to do,
     /// and spawning one with `NullIo` would cause `verify_token` to
     /// succeed and clear the red state, hiding the problem.
     ///
+    /// `config_dir` must be the real config directory, not a scratch path.
+    /// Results are still queued in this mode — `enqueue_game_end` runs
+    /// whenever an event is linked — so they have to land where the next
+    /// healthy launch will look for them, or they are silently abandoned.
+    /// Writing them elsewhere is what this constructor used to do, from when
+    /// its only caller was the both-directories-failed case.
+    ///
     /// The returned receiver is a dummy that never emits events.
-    pub(crate) fn new_degraded() -> (Self, mpsc::Receiver<PortalEvent>) {
+    pub(crate) fn new_degraded(
+        config_dir: &std::path::Path,
+    ) -> (Self, mpsc::Receiver<PortalEvent>) {
         // Build (sender, receiver) pairs where the senders go nowhere:
         // the event-channel sender is discarded so the returned receiver
         // never emits, and the command-channel sender is kept on the
@@ -630,8 +640,22 @@ impl PortalManager {
         let (_, rx) = mpsc::channel(1);
         let (command_tx, _command_rx) = mpsc::channel(1);
 
+        // Adopt whatever is already queued, best-effort. This must never fail
+        // the construction: one trigger for degraded mode IS an unreadable
+        // queue file, and the game has to keep running regardless.
+        //
+        // Skipping this load would NOT be the safe option: `queue::save`
+        // rewrites the whole file, so an empty starting queue means the first
+        // enqueue overwrites — and destroys — results already waiting.
+        let queue = queue::load_or_empty(config_dir).unwrap_or_else(|e| {
+            log::warn!(
+                "could not read the portal queue in degraded mode ({e}); starting with an empty queue"
+            );
+            QueueFile::empty()
+        });
+
         let mut m = Self {
-            queue: QueueFile::empty(),
+            queue,
             check_in_flight: false,
             // The portal subsystem never started. Red so the operator sees
             // the problem — but NOT `token_known_problem`: nothing here is
@@ -641,7 +665,7 @@ impl PortalManager {
             startup_problem: true,
             indicator_state: PortalIndicatorState::default(),
             command_tx,
-            config_dir: std::env::temp_dir(),
+            config_dir: config_dir.to_path_buf(),
             recent_successes: VecDeque::new(),
         };
         m.recompute_indicator();
@@ -1114,7 +1138,8 @@ mod tests {
 
     #[test]
     fn degraded_startup_is_red() {
-        let (m, _rx) = PortalManager::new_degraded();
+        let dir = tempfile::TempDir::new().unwrap();
+        let (m, _rx) = PortalManager::new_degraded(dir.path());
         assert_eq!(
             m.indicator_state().health,
             HealthState::Red,
@@ -1130,7 +1155,8 @@ mod tests {
         // Reporting token_expired greys out the schedule REFRESH button and
         // shows a "tap to re-login" row — and with no client a re-login
         // cannot even send a request, so the operator is sent nowhere.
-        let (m, _rx) = PortalManager::new_degraded();
+        let dir = tempfile::TempDir::new().unwrap();
+        let (m, _rx) = PortalManager::new_degraded(dir.path());
         assert!(
             !m.indicator_state().token_expired,
             "degraded startup must not blame the operator's access token"
@@ -1139,7 +1165,8 @@ mod tests {
 
     #[test]
     fn degraded_startup_shows_startup_failed_row_not_token_expired() {
-        let (m, _rx) = PortalManager::new_degraded();
+        let dir = tempfile::TempDir::new().unwrap();
+        let (m, _rx) = PortalManager::new_degraded(dir.path());
         let rows = m.detail_rows();
         assert!(
             matches!(rows.first(), Some(DetailRow::StartupFailed)),
@@ -1431,7 +1458,8 @@ mod tests {
 
     #[test]
     fn new_degraded_is_red_with_no_spawned_task() {
-        let (manager, mut rx) = PortalManager::new_degraded();
+        let dir = tempfile::TempDir::new().unwrap();
+        let (manager, mut rx) = PortalManager::new_degraded(dir.path());
 
         // Red so the operator sees the problem — via `startup_problem`,
         // not by claiming the access token expired.
@@ -1455,13 +1483,100 @@ mod tests {
     }
 
     #[test]
-    fn new_degraded_does_not_touch_disk() {
-        // Smoke test: constructing a degraded manager must not perform
-        // any filesystem I/O. We can't easily intercept I/O, but we can
-        // verify the config_dir field points at temp_dir (a safe
-        // non-persistent default) rather than any user-supplied path.
-        let (manager, _rx) = PortalManager::new_degraded();
-        assert_eq!(manager.config_dir, std::env::temp_dir());
+    fn degraded_construction_neither_invents_nor_replaces_a_queue() {
+        // Degraded construction may now READ the queue — that is the change.
+        // What it must not do is create a queue file where none existed, or
+        // replace one that is already there.
+        let empty_dir = tempfile::TempDir::new().unwrap();
+        let (manager, _rx) = PortalManager::new_degraded(empty_dir.path());
+        assert_eq!(manager.config_dir.as_path(), empty_dir.path());
+        assert!(
+            !empty_dir.path().join("portal_queue.json").exists(),
+            "degraded construction must not create a queue file"
+        );
+
+        let seeded_dir = tempfile::TempDir::new().unwrap();
+        queue::save(
+            seeded_dir.path(),
+            &QueueFile {
+                version: 1,
+                items: vec![mk_stuck_item()],
+            },
+        )
+        .unwrap();
+        let (adopted, _rx) = PortalManager::new_degraded(seeded_dir.path());
+        assert_eq!(
+            adopted.queue.items.len(),
+            1,
+            "degraded construction must adopt the queue that is already there"
+        );
+        assert_eq!(
+            queue::load_or_empty(seeded_dir.path()).unwrap().items.len(),
+            1,
+            "and must leave it on disk untouched"
+        );
+    }
+
+    #[tokio::test]
+    async fn degraded_queue_is_found_by_a_later_healthy_start() {
+        let tmp = tempfile::TempDir::new().unwrap();
+
+        // A degraded session records a result.
+        {
+            let (mut degraded, _rx) = PortalManager::new_degraded(tmp.path());
+            degraded
+                .enqueue_game_end("event".into(), "G1".into(), 3, 2, "{}".into())
+                .unwrap();
+        }
+
+        // Once the fault is fixed, the next healthy launch must find it.
+        let (healthy, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        assert_eq!(
+            healthy.queue.items.len(),
+            1,
+            "a result queued in degraded mode must survive into the next healthy session"
+        );
+        assert_eq!(healthy.queue.items[0].id.game_number, "G1");
+    }
+
+    #[tokio::test]
+    async fn degraded_enqueue_does_not_clobber_results_already_queued() {
+        // THE TRAP. `queue::save` rewrites the whole file, so a degraded
+        // manager that starts from an empty queue would overwrite results
+        // already waiting. This test fails on that naive version.
+        let tmp = tempfile::TempDir::new().unwrap();
+
+        // Two results are already waiting from an earlier healthy session.
+        {
+            let (mut healthy, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+            healthy
+                .enqueue_game_end("event".into(), "G1".into(), 1, 0, "{}".into())
+                .unwrap();
+            healthy
+                .enqueue_game_end("event".into(), "G2".into(), 2, 0, "{}".into())
+                .unwrap();
+        }
+
+        // The refbox restarts into degraded mode and a third game finishes.
+        {
+            let (mut degraded, _rx) = PortalManager::new_degraded(tmp.path());
+            degraded
+                .enqueue_game_end("event".into(), "G3".into(), 3, 0, "{}".into())
+                .unwrap();
+        }
+
+        let on_disk = queue::load_or_empty(tmp.path()).unwrap();
+        let mut games: Vec<&str> = on_disk
+            .items
+            .iter()
+            .map(|i| i.id.game_number.as_str())
+            .collect();
+        games.sort_unstable();
+        assert_eq!(
+            games,
+            vec!["G1", "G2", "G3"],
+            "a degraded session must never destroy results already queued"
+        );
     }
 
     #[tokio::test]

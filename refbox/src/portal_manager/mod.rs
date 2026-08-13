@@ -449,7 +449,15 @@ impl PortalManager {
             startup_problem: false,
             indicator_state: PortalIndicatorState::default(),
             command_tx: tx,
-            config_dir: std::env::temp_dir(),
+            // Deliberately a path that does not exist. `queue::save` creates no
+            // directories, so any mutator called on a manager built here fails
+            // its write loudly instead of quietly landing a fabricated result in
+            // the shared system temp dir — which is the healthy path's second
+            // choice of queue directory (see `RefBoxApp::new`), so a real
+            // session would adopt it and try to upload it. A test that needs a
+            // save to succeed should build the manager over its own `TempDir`
+            // (see `enqueue_game_end_appends_item_and_turns_yellow`).
+            config_dir: std::env::temp_dir().join("uwh-refbox-new-for-test-must-not-write"),
             recent_successes: VecDeque::new(),
         };
         m.recompute_indicator();
@@ -650,6 +658,22 @@ impl PortalManager {
     pub(crate) fn new_degraded(
         config_dir: &std::path::Path,
     ) -> (Self, mpsc::Receiver<PortalEvent>) {
+        Self::new_degraded_with_fallback(config_dir, &std::env::temp_dir())
+    }
+
+    /// `new_degraded` with the failed-load fallback directory injected.
+    ///
+    /// Production always passes `std::env::temp_dir()` (via `new_degraded`).
+    /// Tests pass a directory of their own: the fallback is the *shared*
+    /// system temp dir, which is also the healthy path's second choice of
+    /// queue directory (see `RefBoxApp::new`), so a test that let an enqueue
+    /// land there would overwrite a real queue file on the machine running it
+    /// — and leave a fabricated result for a real fallback session to adopt
+    /// and try to upload.
+    fn new_degraded_with_fallback(
+        config_dir: &std::path::Path,
+        fallback_dir: &std::path::Path,
+    ) -> (Self, mpsc::Receiver<PortalEvent>) {
         // Build (sender, receiver) pairs where the senders go nowhere:
         // the event-channel sender is discarded so the returned receiver
         // never emits, and the command-channel sender is kept on the
@@ -679,7 +703,7 @@ impl PortalManager {
                     "could not read the portal queue ({e}); this session will not write to it, \
                      so the existing file is left intact"
                 );
-                (QueueFile::empty(), std::env::temp_dir())
+                (QueueFile::empty(), fallback_dir.to_path_buf())
             }
         };
 
@@ -810,6 +834,11 @@ impl PortalManager {
     /// No-op-safe on an empty queue. Persistence is best-effort, matching
     /// `token_refreshed`/`force_submit`: the in-memory reset stands even
     /// if the disk write fails (the error propagates for logging).
+    ///
+    /// Refuses outright — returning `Ok(())` having changed nothing — when the
+    /// portal subsystem failed to start. See the guard below for why. The UI
+    /// greys RETRY ALL out in that state, so this is the second line of
+    /// defence, not the visible one.
     pub fn retry_all(&mut self) -> std::io::Result<()> {
         // Inert while the portal subsystem failed to start. There is no
         // background task, so nothing can be retried — but the unguarded
@@ -819,6 +848,13 @@ impl PortalManager {
         // each game ended: the input to both the 30-minute stuck escalation
         // and the 120-hour expiry.
         if self.startup_problem {
+            // Logged so "I pressed RETRY ALL and nothing happened" is
+            // diagnosable from the log: the caller only reports `Err`, and this
+            // path deliberately returns `Ok`.
+            log::warn!(
+                "RETRY ALL ignored: the portal subsystem failed to start, so there is no \
+                 background task to retry with"
+            );
             return Ok(());
         }
         let now = OffsetDateTime::now_utc();
@@ -1568,6 +1604,10 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let mut item = mk_stuck_item();
         item.queued_at = OffsetDateTime::now_utc() - TimeDuration::hours(100);
+        // A prior session's attempt history, which must also survive: it drives
+        // the "(attempt N)" counter the next healthy session shows.
+        item.attempts = 4;
+        item.last_attempt_at = Some(OffsetDateTime::now_utc() - TimeDuration::hours(1));
         queue::save(
             tmp.path(),
             &QueueFile {
@@ -1576,20 +1616,38 @@ mod tests {
             },
         )
         .unwrap();
+        // Catches a guard that leaves the on-disk queue holding CHANGED values.
+        // A rewrite with byte-identical content is invisible to this (verified
+        // by mutation), which is acceptable: the field assertions below prove
+        // nothing changed, and re-writing the same bytes loses nothing.
+        let on_disk_before = std::fs::read(tmp.path().join("portal_queue.json")).unwrap();
 
         let (mut m, _rx) = PortalManager::new_degraded(tmp.path());
-        let before = m.queue.items[0].queued_at;
+        let before = m.queue.items[0].clone();
 
         m.retry_all().unwrap();
 
         assert_eq!(
-            m.queue.items[0].queued_at, before,
+            m.queue.items[0].queued_at, before.queued_at,
             "RETRY ALL must not rewrite the queue's ageing in degraded mode"
+        );
+        assert_eq!(
+            m.queue.items[0].attempts, before.attempts,
+            "RETRY ALL must not clear the attempt counter in degraded mode"
+        );
+        assert_eq!(
+            m.queue.items[0].last_attempt_at, before.last_attempt_at,
+            "RETRY ALL must not clear the last-attempt time in degraded mode"
         );
         assert!(
             matches!(m.detail_rows().get(1), Some(DetailRow::Stuck { .. })),
             "the row must stay stuck, not flip to pending, got {:?}",
             m.detail_rows()
+        );
+        assert_eq!(
+            std::fs::read(tmp.path().join("portal_queue.json")).unwrap(),
+            on_disk_before,
+            "RETRY ALL must not rewrite the queue file in degraded mode"
         );
     }
 
@@ -1654,19 +1712,19 @@ mod tests {
         let before = std::fs::read(&path).unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
 
-        // This test drives the failed-load fallback, whose write target is the
-        // shared system temp dir — which is also the healthy path's SECOND
-        // choice of queue directory (see `RefBoxApp::new`). Writing there would
-        // leave a fabricated result that a real fallback session would adopt
-        // and try to upload, so note whether a queue file was already there and
-        // remove only one we created ourselves. Never delete a pre-existing
-        // file: on a developer's machine it could hold real results.
-        let shared = std::env::temp_dir().join("portal_queue.json");
-        let shared_existed = shared.exists();
+        // This test drives the failed-load fallback, whose production write
+        // target is the shared system temp dir — which is also the healthy
+        // path's SECOND choice of queue directory (see `RefBoxApp::new`).
+        // Letting the enqueue below land there would overwrite a real queue
+        // file on the machine running the test suite, and leave a fabricated
+        // result for a real fallback session to adopt and try to upload. So
+        // inject a fallback of our own: the test never touches the shared path.
+        let fallback = tempfile::TempDir::new().unwrap();
 
         // Degraded session cannot read it, then records a game of its own.
         {
-            let (mut degraded, _rx) = PortalManager::new_degraded(tmp.path());
+            let (mut degraded, _rx) =
+                PortalManager::new_degraded_with_fallback(tmp.path(), fallback.path());
             assert_ne!(
                 degraded.config_dir.as_path(),
                 tmp.path(),
@@ -1675,9 +1733,11 @@ mod tests {
             let _ = degraded.enqueue_game_end("event".into(), "G3".into(), 3, 0, "{}".into());
         }
 
-        if !shared_existed {
-            std::fs::remove_file(&shared).ok();
-        }
+        // The result went to the fallback, so it is not silently dropped.
+        assert!(
+            fallback.path().join("portal_queue.json").exists(),
+            "the degraded session's own result must land in the fallback dir"
+        );
 
         // Restore access and prove the original results are untouched.
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();

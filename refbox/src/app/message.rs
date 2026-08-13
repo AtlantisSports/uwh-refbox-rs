@@ -122,6 +122,10 @@ pub enum Message {
     /// every queued game (including stuck ones) so the background task
     /// re-attempts them all on its next tick. A plain resend — never a
     /// force-overwrite.
+    ///
+    /// Not emitted when the portal subsystem failed to start: there is no
+    /// background task to retry with, so the button is greyed out (and
+    /// `retry_all` refuses as well).
     PortalRetryAll,
     ShowWarnings,
     ShowParameterHelp,

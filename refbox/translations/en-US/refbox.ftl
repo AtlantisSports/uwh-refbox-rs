@@ -430,6 +430,7 @@ false-start = False Start
 portal-summary-title = CONNECTION STATUS
 portal-retry-all = RETRY ALL
 portal-row-token-expired = Access token expired — tap to re-login
+portal-row-startup-failed = Connection unavailable — results will not upload
 portal-row-stuck = Game { $game } Score send error, tap to fix
 portal-row-pending = Game { $game } Score not sent, tap to retry
 portal-row-stats-pending = Game { $game } Stats not sent, tap to retry

@@ -399,6 +399,7 @@ false-start = 抢跑
 portal-summary-title = 连接状态
 portal-retry-all = 全部重试
 portal-row-token-expired = 访问令牌已过期 — 点击重新登录
+portal-row-startup-failed = 无法连接 — 成绩将不会上传
 portal-row-stuck = 比赛 { $game } 比分发送错误，点击修复
 portal-row-pending = 比赛 { $game } 比分未发送，点击重试
 portal-row-stats-pending = 比赛 { $game } 统计未发送，点击重试

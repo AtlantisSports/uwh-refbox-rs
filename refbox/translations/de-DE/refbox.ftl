@@ -400,6 +400,7 @@ false-start = Fehlstart
 portal-summary-title = VERBINDUNGSSTATUS
 portal-retry-all = ALLE WIEDERHOLEN
 portal-row-token-expired = Zugriffstoken abgelaufen — zum erneuten Anmelden tippen
+portal-row-startup-failed = Keine Verbindung — Ergebnisse werden nicht hochgeladen
 portal-row-stuck = Spiel { $game } Übermittlungsfehler, zum Beheben tippen
 portal-row-pending = Spiel { $game } Spielstand nicht gesendet, zum erneuten Versuch tippen
 portal-row-stats-pending = Spiel { $game } Statistik nicht gesendet, zum erneuten Versuch tippen

@@ -404,6 +404,7 @@ false-start = Faux départs
 portal-summary-title = STATUT DE CONNEXION
 portal-retry-all = TOUT RÉESSAYER
 portal-row-token-expired = Jeton d'accès expiré — touchez pour vous reconnecter
+portal-row-startup-failed = Connexion indisponible — les résultats ne seront pas envoyés
 portal-row-stuck = Match { $game } · Erreur d'envoi du résultat, touchez pour corriger
 portal-row-pending = Match { $game } · Résultat non envoyé, touchez pour réessayer
 portal-row-stats-pending = Match { $game } · Statistiques non envoyées, touchez pour réessayer

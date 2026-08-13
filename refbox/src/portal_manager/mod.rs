@@ -320,6 +320,11 @@ pub enum PortalEvent {
 /// first, capped at `RECENT_SUCCESS_CAP`).
 #[derive(Debug, Clone)]
 pub enum DetailRow {
+    /// Shown at the top when the portal subsystem could not start at all
+    /// (`startup_problem`). Deliberately NOT tappable: there is nothing
+    /// the operator can do from the refbox, and the fault cannot heal
+    /// without a restart.
+    StartupFailed,
     /// Shown at the top when `token_known_problem` is true. Tapping
     /// drives the operator through the portal re-login flow.
     TokenExpired,
@@ -401,6 +406,21 @@ pub struct PortalManager {
     /// nor shows the re-login row. Cleared by the next probe that reaches
     /// the portal (whether it accepts or rejects the token).
     connection_problem: bool,
+    /// Set true only by `new_degraded()`: the portal subsystem could not
+    /// start at all. Either the HTTP client failed to build (realistically
+    /// a TLS/certificate-store fault) or the retry queue was unreadable in
+    /// both the config dir and the system temp dir.
+    ///
+    /// Drives the Red indicator like the other two problem flags, but
+    /// deliberately leaves `token_expired` false: neither trigger is
+    /// evidence about the operator's login, and claiming otherwise sends
+    /// them into a re-login that — with no client — cannot even send a
+    /// request.
+    ///
+    /// There is deliberately no setter. Neither trigger can heal without a
+    /// restart (no client can appear mid-session — see `repoint_client` in
+    /// `app/mod.rs`), so this stays true for the life of the process.
+    startup_problem: bool,
     indicator_state: PortalIndicatorState,
     command_tx: mpsc::Sender<health::PortalCommand>,
     config_dir: std::path::PathBuf,
@@ -424,6 +444,7 @@ impl PortalManager {
             check_in_flight,
             token_known_problem,
             connection_problem: false,
+            startup_problem: false,
             indicator_state: PortalIndicatorState::default(),
             command_tx: tx,
             config_dir: std::env::temp_dir(),
@@ -511,7 +532,7 @@ impl PortalManager {
     }
 
     fn recompute_indicator(&mut self) {
-        let health = if self.needs_attention() || self.connection_problem {
+        let health = if self.needs_attention() || self.connection_problem || self.startup_problem {
             HealthState::Red
         } else if self.check_in_flight || self.has_score_pending_items() {
             HealthState::Yellow
@@ -571,6 +592,7 @@ impl PortalManager {
             check_in_flight: false,
             token_known_problem: false,
             connection_problem: false,
+            startup_problem: false,
             indicator_state: PortalIndicatorState::default(),
             command_tx,
             config_dir: config_dir.to_path_buf(),
@@ -609,9 +631,12 @@ impl PortalManager {
         let mut m = Self {
             queue: QueueFile::empty(),
             check_in_flight: false,
-            // Key: indicator will show Red so the operator sees the problem.
-            token_known_problem: true,
+            // The portal subsystem never started. Red so the operator sees
+            // the problem — but NOT `token_known_problem`: nothing here is
+            // evidence the login expired.
+            token_known_problem: false,
             connection_problem: false,
+            startup_problem: true,
             indicator_state: PortalIndicatorState::default(),
             command_tx,
             config_dir: std::env::temp_dir(),
@@ -922,13 +947,20 @@ impl PortalManager {
 
     /// Compute the ordered list of rows displayed on the portal detail
     /// page. Ordering:
-    /// 1. `TokenExpired` banner, if a token problem is flagged.
+    /// 1. `StartupFailed`, if the portal subsystem never started; then the
+    ///    `TokenExpired` banner, if a token problem is flagged. In practice
+    ///    only one can occur — degraded startup no longer sets the token
+    ///    flag — but the order is defined so the page is deterministic.
     /// 2. `Stuck` items (queued ≥ 30 min ago), oldest first.
     /// 3. `Pending` items (queued < 30 min ago), oldest first.
     /// 4. `RecentSuccess` rows, newest first, capped at
     ///    `RECENT_SUCCESS_CAP`.
     pub fn detail_rows(&self) -> Vec<DetailRow> {
         let mut out: Vec<DetailRow> = Vec::new();
+
+        if self.startup_problem {
+            out.push(DetailRow::StartupFailed);
+        }
 
         if self.token_known_problem {
             out.push(DetailRow::TokenExpired);
@@ -1076,6 +1108,55 @@ mod tests {
         m.on_token_unreachable();
         assert_eq!(m.indicator_state().health, HealthState::Red);
         assert!(!m.indicator_state().token_expired);
+    }
+
+    #[test]
+    fn degraded_startup_is_red() {
+        let (m, _rx) = PortalManager::new_degraded();
+        assert_eq!(
+            m.indicator_state().health,
+            HealthState::Red,
+            "a portal subsystem that never started must show red"
+        );
+    }
+
+    #[test]
+    fn degraded_startup_does_not_report_token_expired() {
+        // The triggers are a system fault (the HTTP client failed to build,
+        // realistically a TLS/certificate-store problem) or an unreadable
+        // queue file. Neither is evidence about the operator's login.
+        // Reporting token_expired greys out the schedule REFRESH button and
+        // shows a "tap to re-login" row — and with no client a re-login
+        // cannot even send a request, so the operator is sent nowhere.
+        let (m, _rx) = PortalManager::new_degraded();
+        assert!(
+            !m.indicator_state().token_expired,
+            "degraded startup must not blame the operator's access token"
+        );
+    }
+
+    #[test]
+    fn degraded_startup_shows_startup_failed_row_not_token_expired() {
+        let (m, _rx) = PortalManager::new_degraded();
+        let rows = m.detail_rows();
+        assert!(
+            matches!(rows.first(), Some(DetailRow::StartupFailed)),
+            "the degraded detail page must lead with the startup-failure row, got {rows:?}"
+        );
+        assert!(
+            !rows.iter().any(|r| matches!(r, DetailRow::TokenExpired)),
+            "degraded startup must never offer a re-login that cannot send a request"
+        );
+    }
+
+    #[test]
+    fn genuine_token_rejection_still_reports_token_expired() {
+        // Guard the path this change must NOT disturb: a real rejection
+        // from the portal still greys REFRESH and still offers re-login.
+        let mut m = PortalManager::new_for_test(QueueFile::empty(), false, false);
+        m.on_token_status(false);
+        assert_eq!(m.indicator_state().health, HealthState::Red);
+        assert!(m.indicator_state().token_expired);
     }
 
     #[test]
@@ -1347,10 +1428,11 @@ mod tests {
     }
 
     #[test]
-    fn new_degraded_indicator_has_token_known_problem_and_no_spawned_task() {
+    fn new_degraded_is_red_with_no_spawned_task() {
         let (manager, mut rx) = PortalManager::new_degraded();
 
-        // The indicator should reflect token_known_problem (Red state).
+        // Red so the operator sees the problem — via `startup_problem`,
+        // not by claiming the access token expired.
         let state = manager.indicator_state();
         assert_eq!(
             state.health,

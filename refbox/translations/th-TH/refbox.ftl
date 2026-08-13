@@ -399,6 +399,7 @@ false-start = การออกตัวผิด
 portal-summary-title = สถานะการเชื่อมต่อ
 portal-retry-all = ลองใหม่ทั้งหมด
 portal-row-token-expired = โทเค็นการเข้าถึงหมดอายุ — แตะเพื่อเข้าสู่ระบบใหม่
+portal-row-startup-failed = ไม่สามารถเชื่อมต่อได้ — ผลการแข่งขันจะไม่ถูกอัปโหลด
 portal-row-stuck = เกม { $game } ส่งคะแนนผิดพลาด แตะเพื่อแก้ไข
 portal-row-pending = เกม { $game } ยังไม่ส่งคะแนน แตะเพื่อลองอีกครั้ง
 portal-row-stats-pending = เกม { $game } ยังไม่ส่งสถิติ แตะเพื่อลองอีกครั้ง

@@ -400,6 +400,7 @@ false-start = 不正スタート
 portal-summary-title = 接続状態
 portal-retry-all = すべて再試行
 portal-row-token-expired = アクセストークンの有効期限が切れました — タップして再ログイン
+portal-row-startup-failed = 接続できません — 結果はアップロードされません
 portal-row-stuck = 試合 { $game } のスコア送信エラー、タップして修正
 portal-row-pending = 試合 { $game } のスコアが未送信、タップして再試行
 portal-row-stats-pending = 試合 { $game } の統計が未送信、タップして再試行

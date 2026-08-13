@@ -400,6 +400,7 @@ false-start = Permulaan Palsu
 portal-summary-title = STATUS SAMBUNGAN
 portal-retry-all = CUBA SEMULA SEMUA
 portal-row-token-expired = Token akses tamat tempoh — ketik untuk log masuk semula
+portal-row-startup-failed = Sambungan tidak tersedia — keputusan tidak akan dimuat naik
 portal-row-stuck = Perlawanan { $game } Ralat hantar markah, ketik untuk perbaiki
 portal-row-pending = Perlawanan { $game } Markah belum dihantar, ketik untuk cuba semula
 portal-row-stats-pending = Perlawanan { $game } Statistik belum dihantar, ketik untuk cuba semula

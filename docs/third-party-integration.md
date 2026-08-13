@@ -519,6 +519,14 @@ tournament in the operator's event picker. It also never asks for a second page:
 offset, page, or cursor parameter anywhere in this call, and `totalCount` is read but never acted
 on. If more than 100 of your events match, the remainder are simply unreachable from the picker.
 
+**Which 100 to return, if you have more:** prefer whichever events are most relevant to the
+operator right now — in progress, or starting soonest — over truncating in an arbitrary order
+such as raw database or insertion order. refbox never re-asks with a different page or offset, so
+whatever you leave out of this response is invisible in the picker for the rest of the session.
+Truncating in insertion order risks placing the tournament that is actually running today outside
+the first 100, with no indicator, no error, and no log line telling anyone it happened — it just
+never appears in the list.
+
 **Request body:** none
 
 **Successful response:** `200` with `{"totalCount": <number>, "items": [ <event>, ... ]}`.
@@ -565,6 +573,13 @@ attempt.
 **When refbox calls it:** Automatically, once per event, immediately after call 3 returns —
 refbox fetches every listed event's teams right away, not just the event the operator ends up
 picking.
+
+**Size this the same way you size call 9's roster burst.** Call 3's `limit` is fixed at `100` (see
+that call's query parameters), and every event in the returned list gets its own concurrent request
+here (`refbox/src/app/mod.rs:4912-4918`) — so an event list at its cap means up to 100 of these
+requests can be in flight at once, right after Portal mode turns on and before the operator has
+picked a tournament at all. Call 9's entry below covers the comparable burst its roster fetch
+produces; this one is sized by the event list instead of a single event's schedule.
 
 **Authentication:** none
 
@@ -776,6 +791,20 @@ retried when the operator explicitly taps that item (or uses RETRY ALL) on the p
 page; there is no automatic retry loop for stats alone. A stats-pending item is still subject to
 the same 120-hour archive-and-drop as any other queued item.
 
+**Recommendation for the site, not a refbox guarantee: key on `(eventId, gameNumber)` and
+replace, don't append.** refbox has no notion of "this is a retry" on the wire, and cannot tell
+you whether a given push is the first attempt or a repeat: RETRY and RETRY ALL both resend the
+same stats body for the same game unchanged — `retry_all` only resets retry bookkeeping such as
+`attempts` and `last_attempt_at`, never the queued `stats` payload itself
+(`refbox/src/portal_manager/mod.rs:760-780`) — and a stats-pending item can be retried an
+arbitrary number of times before it is ever resolved. A site that appends every push it receives
+double-counts every goal, penalty, and foul in any game that needed more than one attempt, and has
+no way to notice it is doing so. The double-count doesn't show up when it happens; it surfaces
+later, to whoever reads a statistics page and finds a scoreline that doesn't match the goals
+tallied against it. Storing the latest push per `(eventId, gameNumber)` in place of whatever came
+before avoids this, and costs nothing refbox needs back — it never reads anything from this
+call's response, as above.
+
 #### 9. Team roster
 
 `GET /api/admin/get-event-team`  ·  source: `uwh-common/src/uwhportal/mod.rs:671`
@@ -785,9 +814,10 @@ this call and never sees it happen. First, whenever a schedule arrives: once for
 team assigned anywhere in that schedule, skipping any team whose roster is already cached. On a
 full tournament schedule that is a burst — a comment on the call warns against re-firing "~40
 concurrent GETs" (`refbox/src/app/mod.rs:4993`), so expect a few dozen near-simultaneous requests
-on first load and size your site accordingly. Second, a refresh for the two teams of the upcoming
-game, fired at the end of the previous game so the fetch has the whole break to land rather than
-the instant of the next start (`refbox/src/app/mod.rs:1355`).
+on first load and size your site accordingly. (Call 4's teams fetch, above, produces a comparable
+burst at startup, sized by the event list instead.) Second, a refresh for the two teams of the
+upcoming game, fired at the kickoff of the previous game so the fetch has the whole game plus the
+break to land rather than the instant of the next start (`refbox/src/app/mod.rs:1351-1354`).
 
 **"Upcoming" is decided by schedule position, not by game number.** refbox takes the game that
 just started, restricts the search to games on that same court, and picks whichever of those has
@@ -894,6 +924,23 @@ there. Requests are not serialised: selecting an event triggers a burst (teams a
 together), so a single-threaded stand-in can stall its own startup. Answer promptly, and answer
 concurrently.
 
+**What refbox will accept in a reply is a separate question from what it sends, and just as
+undocumented until now.** The client is built with only a timeout and an HTTPS-only toggle
+(`uwh-common/src/uwhportal/mod.rs:172-175`) — nothing there requires a minimum HTTP version,
+forbids the connection closing after every reply, or asks for compression. Concretely, this build
+of reqwest has no `gzip` feature enabled (`uwh-common/Cargo.toml:24`), so a response sent with
+`Content-Encoding: gzip` is handed to the JSON parser as raw, undecompressed bytes and fails to
+parse — indistinguishable from any other malformed body, with nothing naming compression as the
+cause. An HTTP/1.0 response, and a server that closes its TCP connection after every reply, both
+work; refbox simply opens a new connection for its next request. That combination is exactly what
+Python's `http.server` does by default — `BaseHTTPRequestHandler.protocol_version` defaults to
+`"HTTP/1.0"` — and against the bursts described above (up to ~40 concurrent roster GETs, plus up
+to 100 concurrent teams requests at startup — see calls 9 and 4) that turns into dozens of full TCP
+handshakes competing for the same 10-second-per-request budget, instead of a handful of
+connections reused. This is why the reference stand-in in this repository sets
+`protocol_version = "HTTP/1.1"` and serves on `ThreadingHTTPServer` rather than the library
+defaults (`docs/third-party-stub/stub_site.py:365-366`).
+
 **Exactly `200` counts as success.** Every call made through the shared Portal client — that is,
 every call in this document except the overlay's own — compares the response status against
 `200 OK` itself, never against the `2xx` range. There is no `is_success()` check anywhere in it,
@@ -957,6 +1004,30 @@ marks `bearer`, and it must treat them as failures rather than serve them. Servi
 call 5 hands your privileged schedule to anyone who asks, which — as the walkthrough on 2026-08-11
 showed — is enough for refbox to fill its court and game pickers from data it was never authorised
 to have.
+
+**A queued score or stats push re-reads the token at send time, not at the moment it was first
+attempted.** `QueuedItem` itself carries no credential of its own
+(`refbox/src/portal_manager/queue.rs:44-70`): every send — the first attempt and every later
+automatic retry alike — locks the same shared portal client the rest of the app uses and reads
+whatever token is set on it at that instant (`refbox/src/portal_manager/mod.rs:198-230`,
+`uwh-common/src/uwhportal/mod.rs:849`). That is what makes an unauthenticated first push
+recoverable rather than permanently lost: if the first game of a tournament ends before the
+operator links (so calls 7 and 8 go out with the `Authorization` header omitted, and your site
+correctly refuses them per the rule above), the failed push joins the local queue exactly like any
+other failure, and the very next retry — automatic, 15 seconds later, or an operator-triggered
+RETRY/RETRY ALL — carries whatever token has been set by then. Nothing needs to replay the game or
+re-key anything by hand; only the credential attached to the request changes between attempts. The
+30-minute stuck flag and the 120-hour archive window described under call 7 apply exactly as
+documented either way.
+
+**Nothing in any request says which sport is asking.** UWH (6v6, 3v3) and UWR (rugby) are told
+apart only by which base URL refbox is pointed at — a different environment variable and a
+different real-Portal tenant per mode (`refbox/src/app/mod.rs:470-475`) — never by a header, a
+query parameter, or a path segment on any of the eighteen calls. A site standing in for both
+sports at the same address has no way to tell which is asking, even if it wanted to serve them
+differently: the fifteen `TimingRule` fields under [Data formats](#data-formats)
+(`schedule.rs:241-276`) are the entire timing-rule shape for either sport, and nothing in this
+document, or in the wire format itself, ever discusses a rugby-specific variant of them.
 
 **The four calls marked `none` — event list (3), event teams (4), referees (6), and team roster
 (9) — never carry an `Authorization` header, in any state.** Unlike the bearer calls above, which

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """A stand-in for the UWH Portal, built ONLY from third-party-integration.md.
 
-Serves the eight HTTP calls that document says the refbox itself makes
-during a tournament. Deliberately does not implement the other ten calls
+Serves the nine HTTP calls that document says the refbox itself makes
+during a tournament. Deliberately does not implement the other nine calls
 (schedule-processor / overlay), since the document says those aren't needed
 to run a game.
 
@@ -49,32 +49,45 @@ TEAM_A_ID = "1234-A"
 TEAM_A_LONG = "teams/1234-A"
 TEAM_A_NAME = "Black Sheep"
 TEAM_A_ROSTER = [
-    {"rosterName": "Alice", "capNumber": 1},
-    {"rosterName": "Bailey", "capNumber": 2},
-    {"rosterName": "Casey", "capNumber": 3},
-    {"rosterName": "Drew", "capNumber": 4},
-    {"rosterName": "Emerson", "capNumber": 5},
-    {"rosterName": "Finley", "capNumber": 6},
+    {"rosterName": "Alice", "capNumber": 1, "roles": ["Player", "Captain"]},
+    {"rosterName": "Bailey", "capNumber": 2, "roles": ["Player"]},
+    {"rosterName": "Casey", "capNumber": 3, "roles": ["Player"]},
+    {"rosterName": "Drew", "capNumber": 4, "roles": ["Player"]},
+    {"rosterName": "Emerson", "capNumber": 5, "roles": ["Player"]},
+    {"rosterName": "Finley", "capNumber": 6, "roles": ["Player"]},
 ]
 
 TEAM_B_ID = "5678-B"
 TEAM_B_LONG = "teams/5678-B"
 TEAM_B_NAME = "White Knights"
 TEAM_B_ROSTER = [
-    {"rosterName": "Ashley", "capNumber": 1},
-    {"rosterName": "Blair", "capNumber": 2},
-    {"rosterName": "Cameron", "capNumber": 3},
-    {"rosterName": "Dakota", "capNumber": 4},
-    {"rosterName": "Elliot", "capNumber": 5},
-    {"rosterName": "Frankie", "capNumber": 6},
+    {"rosterName": "Ashley", "capNumber": 1, "roles": ["Player", "Captain"]},
+    {"rosterName": "Blair", "capNumber": 2, "roles": ["Player"]},
+    {"rosterName": "Cameron", "capNumber": 3, "roles": ["Player"]},
+    {"rosterName": "Dakota", "capNumber": 4, "roles": ["Player"]},
+    {"rosterName": "Elliot", "capNumber": 5, "roles": ["Player"]},
+    # Plays AND coaches. The role test is an INCLUSION test, so the extra
+    # "Coach" label changes nothing and cap 6 MUST still appear on the grid --
+    # someone who coaches and plays is still a player. A site that implements
+    # the filter as "exclude anyone labelled Coach" would wrongly hide this
+    # player, so the stub carries this case deliberately.
+    {"rosterName": "Frankie", "capNumber": 6, "roles": ["Player", "Coach"]},
+    # No playing role at all, and deliberately carrying a cap number: refbox
+    # drops this entry on the role filter before the number is ever looked at,
+    # so cap 7 must NOT appear on the grid.
+    {"rosterName": "Gabriel", "capNumber": 7, "roles": ["Coach"]},
 ]
-# NOTE: none of the eight refbox calls documented in third-party-integration.md
-# ever return player-level roster data (the roster-fetch call is one of the
-# "other ten" and is explicitly out of scope for a refbox-only stand-in). The
-# rosters above exist to satisfy the "two teams of six players each" fake-data
-# requirement; they are surfaced as an extra, unread field on each team entry
-# in the /teams response (the document says extra fields there are harmless),
-# but a real refbox never looks at them.
+# The `roles` field above is load-bearing, and is the easiest thing to get
+# wrong when standing up a site: refbox keeps a roster entry whose `roles`
+# includes any of "Player", "Captain" or "ViceCaptain", and drops it otherwise.
+# That is an inclusion test -- other roles alongside a playing one are ignored,
+# so a Player+Coach stays on the grid and only a member with no playing role at
+# all is dropped. A roster returned without `roles` at all parses perfectly and
+# yields zero usable players -- the operator simply gets no player-number grid,
+# with nothing on screen to say so.
+# These rosters are served two ways: as an extra, unread field on each team
+# entry in the /teams response, and as the real payload of call 9
+# (/api/admin/get-event-team), which refbox fetches per team on schedule load.
 
 COURT = "A"
 
@@ -136,8 +149,9 @@ GAMES = {
 def _require_bearer(h):
     """Refuse the call unless it carries this stub's own access key.
 
-    All four bearer calls of the refbox eight go through here: 2 (verify
+    All four bearer calls of the refbox nine go through here: 2 (verify
     token), 5 (privileged schedule), 7 (push scores) and 8 (push stats).
+    Call 9 (team roster) is deliberately not among them -- it needs no token.
 
     Why this is NOT "accept any bearer token", which is what the plan for this
     stub originally asked for: a site that accepts anything -- including a
@@ -312,6 +326,25 @@ def handle_push_stats(h, m, query, raw_body):
     h._send_empty(200)
 
 
+def handle_team_roster(h, m, query, raw_body):
+    team_id = query.get("teamId", [""])[0]
+    rosters = {TEAM_A_LONG: TEAM_A_ROSTER, TEAM_B_LONG: TEAM_B_ROSTER}
+    roster = rosters.get(team_id)
+    if roster is None:
+        # refbox sends the LONG form ("teams/5678-B") because the ID travels in
+        # a query parameter. A site that matches only the short form lands here
+        # and answers 404 — which refbox accepts without a word to the operator,
+        # so this note is the only warning anyone gets.
+        print(
+            f"    NOTE: no roster for teamId {team_id!r} — refbox will show no "
+            "player-number grid for this team, and will not report it",
+            flush=True,
+        )
+        h._send_json(404, {"error": f"unknown teamId {team_id}"})
+        return
+    h._send_json(200, {"roster": roster})
+
+
 ROUTES = [
     ("POST", re.compile(r"^/api/events/([^/]+)/access-keys/ref-box$"), handle_link_refbox),
     ("GET", re.compile(r"^/api/events/([^/]+)/access-keys/verify$"), handle_verify_token),
@@ -325,6 +358,7 @@ ROUTES = [
         handle_push_scores,
     ),
     ("POST", re.compile(r"^/api/admin/events/stats$"), handle_push_stats),
+    ("GET", re.compile(r"^/api/admin/get-event-team$"), handle_team_roster),
 ]
 
 
@@ -391,7 +425,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 handler(self, match, query, raw_body)
                 return
 
-        print("    -> 404 (no route in the refbox eight matched)", flush=True)
+        print("    -> 404 (no route in the refbox nine matched)", flush=True)
         self._send_json(404, {"error": "not found"})
 
 

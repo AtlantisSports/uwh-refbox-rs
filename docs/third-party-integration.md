@@ -117,12 +117,12 @@ Portal tenants and invalidates a link to the built-in Portal, so an operator on 
 link again afterwards. A site selected in the app is unaffected — it keeps both its address and its
 token across that restart, and needs no re-linking.
 
-## You probably need eight calls, not eighteen
+## You probably need nine calls, not eighteen
 
 The refbox application, the pre-tournament schedule tool, and the stream overlay together
 make eighteen different calls to the UWH Portal. If you only want to run a site that stands
 in for the Portal on the day of the tournament — the thing the referee's box actually talks
-to at poolside — you only need to support eight of them:
+to at poolside — you only need to support nine of them:
 
 | # | Operation | Path | Auth | Inventory # |
 |---|---|---|---|---|
@@ -134,16 +134,22 @@ to at poolside — you only need to support eight of them:
 | 6 | Referees | `GET /api/events/{eventId}/referees` | none | 7 |
 | 7 | Push scores | `POST /api/events/{eventId}/schedule/games/{gameNumber}/scores` | bearer | 5 |
 | 8 | Push stats | `POST /api/admin/events/stats` | bearer | 4 |
+| 9 | Team roster | `GET /api/admin/get-event-team` | none | 13 |
 
-**These eight numbers are the ones this document uses.** Every later reference to "call 5" and
+**These nine numbers are the ones this document uses.** Every later reference to "call 5" and
 the like means this table. The Full inventory below numbers all eighteen calls in source order
 instead, so its numbers do not match — the last column above is the bridge between the two.
 
-The other ten calls serve two separate programs that are not the refbox itself: the
+The other nine calls serve two separate programs that are not the refbox itself: the
 pre-tournament admin tool (`schedule-processor`), which uploads and manages a schedule before
 the tournament starts, and the stream overlay, which pulls attachments for the video overlay.
 If you're only standing up something for the refbox to talk to during a game, you can ignore
-those ten.
+those nine.
+
+Call 9 is the one to watch. The other eight announce themselves when they fail — a refusal, a
+red indicator, a queued result that will not send. Call 9 fails silently: the refbox carries on
+as though nothing is wrong, and the only sign is a feature the operator quietly does not get.
+Its entry below spells out exactly what is lost.
 
 ## Full inventory
 
@@ -152,7 +158,7 @@ All eighteen calls the refbox ecosystem makes to the Portal today, across all th
 "none" when it does not.
 
 **The numbers in this table are source order and are used nowhere else in this document.** When
-the text says "call 2" it means the eight-call table above, not this one. Match rows by path, or
+the text says "call 2" it means the nine-call table above, not this one. Match rows by path, or
 use the "Inventory #" column above.
 
 | # | Method | Path | Caller(s) | Auth | Source |
@@ -169,7 +175,7 @@ use the "Inventory #" column above.
 | 10 | POST | `/api/events/{eventSlug}/schedule` | schedule-processor | bearer | `uwh-common/src/uwhportal/mod.rs:580` |
 | 11 | POST | `/api/events/{eventSlug}/schedule/map-teams` | schedule-processor | bearer | `uwh-common/src/uwhportal/mod.rs:614` |
 | 12 | GET | `/api/events/{eventId}/schedule` | schedule-processor | none | `uwh-common/src/uwhportal/mod.rs:647` |
-| 13 | GET | `/api/admin/get-event-team` | schedule-processor | none | `uwh-common/src/uwhportal/mod.rs:671` |
+| 13 | GET | `/api/admin/get-event-team` | refbox + schedule-processor + overlay | none | `uwh-common/src/uwhportal/mod.rs:671` |
 | 14 | GET | `/api/events/{eventSlug}/schedule/coin-flips` | schedule-processor | bearer | `uwh-common/src/uwhportal/mod.rs:694` |
 | 15 | GET | `/api/events/{eventId}/participants` | schedule-processor | bearer | `uwh-common/src/uwhportal/mod.rs:726` |
 | 16 | GET | `/api/admin/events/game-referees` | schedule-processor | bearer | `uwh-common/src/uwhportal/mod.rs:772` |
@@ -184,17 +190,18 @@ The `/admin/` segment in a path is not a reliable signal for whether a call need
 two `/admin/` paths need none (`get-event-team`, `overlay-attachments`) and two do
 (`events/stats`, `events/game-referees`). Go by the "Auth" column, not the path.
 
-## The refbox eight
+## The refbox nine
 
-Full detail on the eight calls a stand-in site must answer, in the same order as the table
+Full detail on the nine calls a stand-in site must answer, in the same order as the table
 above. Every entry uses the same headings so you can skim them side by side. Two general rules
-that apply across all eight, spelled out here because they matter more than any single field:
+that apply across all nine, spelled out here because they matter more than any single field:
 
 - An event ID in a URL **path** is always the short form (`1234-A`). An event or team ID in a
-  **query parameter** is always the long form (`events/1234-A` or `teams/5678-B`). Only one of
-  the eight — push stats — uses the long form, and only because it's a query parameter. The
+  **query parameter** is always the long form (`events/1234-A` or `teams/5678-B`). Two of the
+  nine use the long form, and both only because the ID is a query parameter: push stats
+  (`eventId`) and team roster (`teamId`). The
   [Data formats](#data-formats) section documents this in full; it's mentioned here because it
-  affects call 8 below.
+  affects calls 8 and 9 below.
 - "Fields refbox actually reads" lists only what the deserialising code in
   `uwh-common/src/uwhportal/mod.rs` actually pulls out of the response. A stand-in site can
   return an object containing only those fields (plus anything else the shape requires just to
@@ -209,7 +216,7 @@ that apply across all eight, spelled out here because they matter more than any 
 **When refbox calls it:** When the operator opens the portal login screen (from Game Options →
 UWH Portal, or from the portal status page's GO TO LOGIN button) and types in the numeric code
 given to them by the tournament site's admin. See the worked example below — this is the one
-call in the eight that's a back-and-forth conversation rather than a single request.
+call in the nine that's a back-and-forth conversation rather than a single request.
 
 **Authentication:** none
 
@@ -258,7 +265,7 @@ screen with no visible message — there is no third error state shown in the UI
 
 ##### The login flow, step by step
 
-This is the only one of the eight that's a conversation instead of a single call:
+This is the only one of the nine that's a conversation instead of a single call:
 
 1. refbox generates a random number between 1 and 999999 once, the first time it's needed, and
    reuses it for the rest of that run (`mod.rs:199`). This is the `refBoxId`. **It may be shorter
@@ -674,9 +681,9 @@ to a score for a game number you do not recognise: store it rather than refuse i
 
 On this call
 `force` is **always present**, as the literal `true` or `false` — never omitted
-(`uwh-common/src/uwhportal/mod.rs:367`). One of the other-ten calls that also takes `force`
+(`uwh-common/src/uwhportal/mod.rs:367`). One of the other-nine calls that also takes `force`
 behaves differently; see the coin-flips upload in [Full inventory](#full-inventory) (inventory #17)
-— not "call 8" of the refbox eight, which is push stats.
+— not "call 8" of the refbox nine, which is push stats.
 
 **Request body:** `{"dark": {"value": <0-255>}, "light": {"value": <0-255>}}`. Note the naming:
 **`dark` is the black team's score, `light` is the white team's score** — not "home/away" or
@@ -708,9 +715,10 @@ described under call 7.
 
 **Authentication:** `Authorization: Bearer <token>`
 
-**Query parameters:** `eventId` (the event ID, **long form** — `events/1234-A` — the one
-exception among these eight to the short-form-in-path rule, since this is a query parameter,
-not a path segment) and `gameNumber` (the game's number as a plain string, e.g. `"3"`).
+**Query parameters:** `eventId` (the event ID, **long form** — `events/1234-A` — one of the two
+exceptions among these nine to the short-form-in-path rule, the other being call 9's `teamId`,
+since this is a query parameter, not a path segment) and `gameNumber` (the game's number as a
+plain string, e.g. `"3"`).
 
 **Request body:** A JSON object of per-team, per-player statistics for the game that just
 ended. This is the other large, shared response shape — see [Data formats](#data-formats) for
@@ -729,6 +737,78 @@ the stats and never escalates the indicator to red over it. Stats-pending items 
 retried when the operator explicitly taps that item (or uses RETRY ALL) on the portal detail
 page; there is no automatic retry loop for stats alone. A stats-pending item is still subject to
 the same 120-hour archive-and-drop as any other queued item.
+
+#### 9. Team roster
+
+`GET /api/admin/get-event-team`  ·  source: `uwh-common/src/uwhportal/mod.rs:671`
+
+**When refbox calls it:** Twice, both times on its own initiative — the operator never asks for
+this call and never sees it happen. First, whenever a schedule arrives: once for every distinct
+team assigned anywhere in that schedule, skipping any team whose roster is already cached. On a
+full tournament schedule that is a burst — a comment on the call warns against re-firing "~40
+concurrent GETs" (`refbox/src/app/mod.rs:4976`), so expect a few dozen near-simultaneous requests
+on first load and size your site accordingly. Second, a refresh for the two teams of the upcoming
+game, fired at the end of the previous game so the fetch has the whole break to land rather than
+the instant of the next start (`refbox/src/app/mod.rs:1355`).
+
+**Authentication:** none
+
+**Query parameters:** `teamId` — the team ID, **long form** (`teams/5678-B`), per the
+query-parameter rule under [the two ID forms](#the-two-id-forms).
+
+**Request body:** none
+
+**Successful response:** `200` with a `roster` array. Example:
+```json
+{
+  "roster": [
+    { "rosterName": "Casey", "capNumber": 7, "roles": ["Player", "Captain"] },
+    { "rosterName": "", "username": "reef_ref", "capNumber": 12, "roles": ["Player"] }
+  ]
+}
+```
+
+**Fields refbox actually reads:** in effect only `capNumber` — but two filters decide which
+entries survive to be read at all.
+
+The first is on `roles`, and it is an **inclusion** test, not an exclusion one: an entry is kept
+if its `roles` array contains any of `"Player"`, `"Captain"` or `"ViceCaptain"`, and dropped
+otherwise (`uwh-common/src/uwhportal/mod.rs:121`). Any other role sitting alongside a playing one
+is simply ignored, so a team member listed as both `"Player"` and `"Coach"` **does** appear on the
+grid — someone who coaches and plays is still a player. Only a member with no playing role at all
+— a `"Coach"`, `"Manager"` or `"Official"` and nothing else — is dropped. Do not implement this as
+"exclude anyone labelled Coach"; that would hide playing coaches from the operator.
+
+The second filter is on the number: of the entries that survive the role test, refbox keeps only
+cap numbers in the range **1 to 99**; a `capNumber` of `0`, or of `100` or more, is silently
+discarded (`refbox/src/app/mod.rs:6315`). Names are parsed but refbox itself ignores them — a
+site serving only refbox can return `capNumber` and `roles` alone.
+
+**On failure:** **nothing visible happens.** Any non-`200` response, or a body that doesn't parse,
+is written to the log and otherwise discarded, and the failure deliberately leaves any previously
+cached roster untouched rather than replacing it with an empty one
+(`refbox/src/app/mod.rs:935`). There is no retry, no queued item, no indicator change, and no
+message to the operator.
+
+What the operator loses is the **player-number grid**. Given a roster, the pages that attribute an
+action to a player — goals, penalties, fouls, warnings — show that team's cap numbers as a grid of
+tappable buttons. Given no roster, they fall back to a plain number pad and the operator types
+each cap number by hand. Both routes work, which is exactly the problem: a site that never answers
+this call produces a refbox that looks entirely healthy, and is simply slower to operate for the
+whole tournament, with the only evidence a log line nobody is reading. Of these nine calls, this
+is the one whose absence nothing will tell you about.
+
+**What the other two callers read:** the same response serves schedule-processor and the overlay,
+and both read more of it than refbox does. `schedule-processor` calls it while generating
+scoresheets, once per team, and only for the scoresheet styles that print a roster; per entry it
+reads `capNumber`, a display name (`rosterName` when non-empty, otherwise `username`, otherwise
+blank), and `roles` — applying the same playing-role filter as above, and additionally marking
+`"Captain"` / `"ViceCaptain"` on the printed form. It drops any entry with neither a name nor a
+cap number, and sorts numbered entries first by ascending number, then unnumbered ones
+alphabetically. On failure it logs a warning and treats the team as having an empty roster,
+continuing with a blank roster rather than stopping. The overlay reads different fields again,
+including top-level `name` and `logoUrl`; see
+[The overlay's other calls](#the-overlays-other-calls-same-paths-different-code).
 
 ## Data formats
 
@@ -757,7 +837,7 @@ and `201`, `202` and `204` are not recognised as success. A site that answers a 
 retried about every 15 seconds until it eventually archives, with nothing on screen explaining
 why. Return `200` with a body — an empty JSON object is fine — rather than `204`.
 
-Exactly one call reads any other status: call 1 of the refbox eight treats `400` as "that code was
+Exactly one call reads any other status: call 1 of the refbox nine treats `400` as "that code was
 wrong" and surfaces it to the operator as an invalid code
 (`uwh-common/src/uwhportal/mod.rs:239`). Everywhere else, every non-`200` means the same single
 thing, so the status you choose for "no such event" carries no meaning to refbox — `404`, `400`
@@ -797,7 +877,7 @@ not have. Do not read that as refbox having become careful on your behalf; it is
 whole purpose is to ask "is my token good?", and asking that with no token was meaningless.
 
 schedule-processor checks for a token first and stops (`schedule-processor/src/main.rs:515`), but
-that guard is not part of the refbox eight.
+that guard is not part of the refbox nine.
 
 So your site will see unauthenticated requests arriving on three of the four endpoints the inventory
 marks `bearer`, and it must treat them as failures rather than serve them. Serving an unauthenticated
@@ -849,10 +929,11 @@ Worked example, using the event and teams from the schedule example below:
 
 Across the full eighteen-call inventory, exactly three calls put an ID in a query parameter, and
 so are the only three that use the long form:
-- Push stats — `eventId` (`uwh-common/src/uwhportal/mod.rs:334`) — one of the refbox eight, call 8
+- Push stats — `eventId` (`uwh-common/src/uwhportal/mod.rs:334`) — one of the refbox nine, call 8
   above.
-- Team roster fetch — `teamId` (`mod.rs:676`) — part of the other ten, used by schedule-processor.
-- Game referees fetch — `eventId` (`mod.rs:779`) — also part of the other ten.
+- Team roster fetch — `teamId` (`mod.rs:676`) — one of the refbox nine, call 9 above; also used by
+  schedule-processor and the overlay.
+- Game referees fetch — `eventId` (`mod.rs:779`) — part of the other nine.
 
 Every other ID in this API — including every `{eventId}` in the path tables above — is the short
 form.
@@ -1134,22 +1215,21 @@ This is internally consistent with the schedule above: game 1's first half is 90
 the `occurredOn` timestamp. The same arithmetic carries through the penalty and, after the 180-second
 half-time, the foul in the second half.
 
-## The other ten
+## The other nine
 
-**None of the ten calls in this section are needed to run a game.** Nine of them belong to
+**None of the nine calls in this section are needed to run a game.** Eight of them belong to
 `schedule-processor`, the command-line tool a tournament admin runs before the event — to upload
 the schedule, resolve coin tosses (the coin toss UWH uses to break a tie or decide a seeding when
-teams finish level), and generate printed scoresheets. The tenth belongs to the stream overlay,
+teams finish level), and generate printed scoresheets. The ninth belongs to the stream overlay,
 and only matters to a site that wants to serve the overlay's on-screen graphics. If you only want
-something for the refbox to talk to during a game, you're done — [The refbox eight](#the-refbox-eight)
+something for the refbox to talk to during a game, you're done — [The refbox nine](#the-refbox-nine)
 is the whole contract you need, and you can skip the rest of this section entirely.
 
-Full detail on all ten below, using the same headings as the eight above so all eighteen entries
+Full detail on all nine below, using the same headings as the nine above so all eighteen entries
 in this document can be skimmed the same way. Two things already established still apply here:
 
-- Two of these ten put an ID in a query parameter and so use the long form described under
-  [the two ID forms](#the-two-id-forms): team roster (call 3 below) and game referees (call 5
-  below).
+- One of these nine puts an ID in a query parameter and so uses the long form described under
+  [the two ID forms](#the-two-id-forms): game referees (call 4 below).
 - "Fields [caller] actually reads" lists only what the deserialising code actually pulls out of
   the response — a stand-in site can return an object with only those fields (plus whatever the
   shape requires just to parse) and the real program will work correctly.
@@ -1174,7 +1254,7 @@ password prompt — there is no command-line flag or environment variable for th
 **Request body:** `{"email": "<string>", "password": "<string>"}`
 
 **Successful response:** `200` with `{"accessToken": "<token>"}`. Note the field name:
-`accessToken`, not the `accessKey` that the refbox login (call 1 of the refbox eight) returns —
+`accessToken`, not the `accessKey` that the refbox login (call 1 of the refbox nine) returns —
 these are two unrelated login flows that happen to both hand back a bearer token, under
 differently-named fields.
 
@@ -1193,7 +1273,7 @@ specific `400` reasons; every failure here is treated the same way.
 
 **When schedule-processor calls it:** When generating scoresheets, if schedule-processor doesn't
 already have a login token — this is the unauthenticated alternative to the privileged schedule
-call (call 5 of the refbox eight, `/schedule/privileged`). A comment on this call in the source
+call (call 5 of the refbox nine, `/schedule/privileged`). A comment on this call in the source
 warns that for some events the public endpoint returns `games` as a plain JSON array rather than
 the object shape the parser expects; when that happens this call fails to parse, and
 schedule-processor falls back to logging in and using the privileged schedule instead.
@@ -1215,49 +1295,12 @@ formats; the whole shape is deserialised.
 array-vs-object mismatch above): logged, then schedule-processor automatically prompts for a
 login and retries with the privileged call instead. If that also fails, the action ends there.
 
-#### 3. Team roster
-
-`GET /api/admin/get-event-team`  ·  source: `uwh-common/src/uwhportal/mod.rs:671`
-
-**When schedule-processor calls it:** While generating scoresheets, once per team, only for the
-scoresheet styles that print a roster.
-
-**Authentication:** none
-
-**Query parameters:** `teamId` — the team ID, **long form** (`teams/5678-B`), per the
-query-parameter rule under [the two ID forms](#the-two-id-forms).
-
-**Request body:** none
-
-**Successful response:** `200` with a `roster` array. Example:
-```json
-{
-  "roster": [
-    { "rosterName": "Casey", "capNumber": 7, "roles": ["Player", "Captain"] },
-    { "rosterName": "", "username": "reef_ref", "capNumber": 12, "roles": ["Player"] }
-  ]
-}
-```
-
-**Fields schedule-processor actually reads:** Per roster entry: `capNumber` (optional); a display
-name (`rosterName` if it's non-empty, otherwise `username`, otherwise a blank string); and
-`roles`, used two ways — an entry is dropped entirely unless its `roles` include `"Player"`,
-`"Captain"`, or `"ViceCaptain"` (so `"Manager"`, `"Coach"`, and `"Official"` roster entries never
-appear on a printed roster), and `"Captain"` / `"ViceCaptain"` in `roles` sets that flag on the
-entry for the scoresheet to mark. An entry with neither a name nor a cap number is also dropped.
-The kept entries are sorted numbered-first (ascending), then unnumbered entries alphabetically by
-name.
-
-**On failure:** Any non-`200` response: logged as a warning, and the team is treated as having an
-empty roster — scoresheet generation continues with a blank roster for that team rather than
-stopping.
-
-#### 4. Event referee name map
+#### 3. Event referee name map
 
 `GET /api/events/{eventId}/participants`  ·  source: `uwh-common/src/uwhportal/mod.rs:726`
 
 **When schedule-processor calls it:** Every time it generates scoresheets, to attach display
-names to officials — the same purpose as call 6 of the refbox eight, but reading a different
+names to officials — the same purpose as call 6 of the refbox nine, but reading a different
 endpoint.
 
 **Authentication:** `Authorization: Bearer <token>`
@@ -1279,7 +1322,7 @@ JSON array, `{"participants": [...]}`, or `{"items": [...]}`. Example:
 **On failure:** Any non-`200` response: logged at debug level and skipped — scoresheet generation
 proceeds without adding any names from this call.
 
-#### 5. Game referee name map
+#### 4. Game referee name map
 
 `GET /api/admin/events/game-referees`  ·  source: `uwh-common/src/uwhportal/mod.rs:772`
 
@@ -1307,7 +1350,7 @@ a bare array. Example:
 **On failure:** Any non-`200` response: silently skipped, with no log message. The scoresheet
 falls back to showing the raw user ID's suffix in place of a name for that game's officials.
 
-#### 6. Get coin flips
+#### 5. Get coin flips
 
 `GET /api/events/{eventSlug}/schedule/coin-flips`  ·  source: `uwh-common/src/uwhportal/mod.rs:694`
 
@@ -1348,7 +1391,7 @@ present, names which of the tied teams or groups won the toss.
 **On failure:** Any non-`200` response, or a body that doesn't match this shape: logged, and
 schedule-processor returns to its main menu — no retry.
 
-#### 7. Set coin flip result
+#### 6. Set coin flip result
 
 `POST /api/events/{eventSlug}/schedule/coin-flips`  ·  source: `uwh-common/src/uwhportal/mod.rs:816`
 
@@ -1359,7 +1402,7 @@ and a winning team from the menu populated by call 6.
 
 **Query parameters:** `force` (boolean, `true` or `false`) — set when the operator confirms
 overwriting an already-decided result; ordinarily `false`. Always present, as the literal `true`
-or `false` (`uwh-common/src/uwhportal/mod.rs:827`) — unlike the schedule upload in call 8 below.
+or `false` (`uwh-common/src/uwhportal/mod.rs:827`) — unlike the schedule upload in call 7 below.
 
 **Request body:** identifies which toss is being recorded and its outcome. Unlike every other
 JSON body in this document, the field names here are **`PascalCase` only** — there is no
@@ -1383,7 +1426,7 @@ team ID once a team is resolved, or its placeholder name otherwise.
 **On failure:** Any non-`200` response: logged, but schedule-processor doesn't return to the menu
 or clear anything — the operator sees the error and can retry the same choice.
 
-#### 8. Push schedule
+#### 7. Push schedule
 
 `POST /api/events/{eventSlug}/schedule`  ·  source: `uwh-common/src/uwhportal/mod.rs:580`
 
@@ -1411,7 +1454,7 @@ objects, not an object keyed by game number.
 **On failure:** Any non-`200` response: logged, and schedule-processor clears its saved login
 token — forcing a fresh login on the next attempt — before returning to the main menu.
 
-#### 9. Push team map
+#### 8. Push team map
 
 `POST /api/events/{eventSlug}/schedule/map-teams`  ·  source: `uwh-common/src/uwhportal/mod.rs:614`
 
@@ -1434,7 +1477,7 @@ schedule to the real team's ID, long form. Example:
 
 **On failure:** Same as call 8: logged, saved login token cleared, back to the main menu.
 
-#### 10. Overlay attachments
+#### 9. Overlay attachments
 
 `GET /api/admin/events/{eventId}/overlay-attachments`  ·  source: `overlay/src/network.rs:174`
 
@@ -1480,13 +1523,13 @@ caller of that path will miss the overlay's own requests to it if it isn't watch
 
 | Path | Source | Also documented as | Auth the overlay sends |
 |---|---|---|---|
-| `GET /api/admin/get-event-team` | `overlay/src/network.rs:96` | Call 3 above (team roster) | none |
-| `GET /api/admin/events/game-referees` | `overlay/src/network.rs:240` | Call 5 above (game referee name map) | none |
+| `GET /api/admin/get-event-team` | `overlay/src/network.rs:96` | Call 9 of [the refbox nine](#the-refbox-nine) (team roster) | none |
+| `GET /api/admin/events/game-referees` | `overlay/src/network.rs:240` | Call 4 above (game referee name map) | none |
 | `GET /api/events/{eventId}/schedule` | `overlay/src/network.rs:320` | Call 2 above (public event schedule) | none |
 
 The first and third rows behave the same for the overlay as for schedule-processor: neither call
 ever needs a token. **The middle row does not** — schedule-processor's call to the same path
-(call 5 above) sends a bearer token, but the overlay's own call to that identical path never
+(call 4 above) sends a bearer token, but the overlay's own call to that identical path never
 attaches one (no `Authorization` header is set anywhere in `overlay/src/network.rs`). A site that
 requires a bearer token on `/api/admin/events/game-referees` because schedule-processor sends one
 will reject the overlay's request to the exact same path.
@@ -1498,8 +1541,9 @@ because it's serving on-screen graphics rather than scoresheets:
   literal `BLACK`/`WHITE` colour label if missing) and `logoUrl` (fetched as an image, for the
   team's flag graphic). Per roster entry it reads `rosterName` (falling back to the literal text
   `"Player"`), `capNumber`, one entry from `roles` that isn't the literal string `"Player"` (kept
-  as free text — unlike call 3 above, there is no filtering: every roster entry is included here,
-  not just Players, Captains, and Vice-Captains), and two photo URLs under `photos` (`uniform`,
+  as free text — unlike call 9 of [the refbox nine](#the-refbox-nine), there is no filtering: every
+  roster entry is included here, not just Players, Captains, and Vice-Captains), and two photo
+  URLs under `photos` (`uniform`,
   and `darkGear` or `lightGear` depending on which side the team is on), each fetched separately
   as an image.
 - **Game referees** (`:240`): reads `referees[].role`, mapped to one of three on-screen labels —
@@ -1522,7 +1566,7 @@ The overlay's failure handling for these three calls also differs, call by call,
 call in this document — none of them check the response status code before deciding what to do
 with the body:
 
-- **Team roster** (`:96`): same as call 10 above — a connection failure, or a body that isn't
+- **Team roster** (`:96`): same as call 9 above — a connection failure, or a body that isn't
   valid JSON, panics the background task fetching that team's information
   (`overlay/src/network.rs:94-105`). The panic doesn't crash the overlay, but that game's team
   shows no roster, photos, or flag until a later game or event change triggers a fresh fetch.

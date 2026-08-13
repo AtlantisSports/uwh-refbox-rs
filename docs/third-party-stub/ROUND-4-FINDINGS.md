@@ -145,13 +145,16 @@ inconsistent hex case, and that a hand-rolled parser must unquote before compari
 No header, query parameter or path segment carries hockey-vs-rugby, so a stand-in cannot tell UWH
 from UWR even if it wanted to, and the fifteen `TimingRule` fields are never discussed for rugby.
 
-### 13. The document's own worked examples are mutually inconsistent — MODERATE — OPEN
+### 13. The document's own worked examples are mutually inconsistent — MODERATE — FIXED
 
 Call 4's example lists only two teams; the schedule example uses a third for game 2's dark team,
 while claiming the examples "describe one consistent tournament". The document elsewhere explains
 that a `teamId` missing from call 4 renders as a raw ID with nothing logged. Copying both examples
 verbatim — the single most likely thing a stranger does — ships the exact defect the document
 describes.
+
+Fixed: call 4's example now includes the third team (`teams/9012-C`, "Reef Sharks"), with a line
+stating why — every ID in the schedule example now appears in the call 4 example, and vice versa.
 
 ### 14. Redirects are undefined behaviour, colliding with "exactly 200 counts as success" — MODERATE — OPEN
 
@@ -180,11 +183,16 @@ Fixed: the rules section now states that calls 3, 4, 6 and 9 are built from the 
 valid token — a site may reject one on sight. Call 9's own entry now says so too, and both note
 that requiring a token on `get-event-team` because of its `/admin/` segment silently breaks it.
 
-### 17. Which value lands in the score-push path: the `games` key or `Game.number`? — MINOR — OPEN
+### 17. Which value lands in the score-push path: the `games` key or `Game.number`? — MINOR — FIXED
 
 The document says the key and `number` "should" match — not must. A site whose display number
 differs from its internal key files results under a game that does not exist, silently, because the
 document rightly forbids rejecting.
+
+Fixed: the `games` field entry now states plainly that refbox always uses `Game.number`, never the
+key, as the game's identity — in the game picker, the auto-advance to the next game, and the value
+sent as `{gameNumber}` on a score push — and names the consequence of a mismatch: a score filed
+against a `{gameNumber}` that may not match any key in the schedule the site served.
 
 ### 18. Stats idempotency is never addressed — MINOR — OPEN
 
@@ -214,17 +222,26 @@ work as well as `{}` does; the other six require whatever fields their own entry
 Call 2's entry now says the same thing, pointing back at the recommendation instead of repeating
 it in different words.
 
-### 22. Timestamp offsets other than `Z` are never ruled in or out — MINOR — OPEN
+### 22. Timestamp offsets other than `Z` are never ruled in or out — MINOR — FIXED
 
 What refbox *writes* is documented; whether `2026-08-08T09:00:00+02:00` parses on `startsOn` is
 not, and the format names imply strictness. A site serving local-time offsets could lose the entire
 schedule, and this failure family reports itself misleadingly.
 
-### 23. How refbox decides which game is "upcoming" is never stated — MINOR — OPEN
+Fixed: the two-timestamp-formats section now states that a numeric offset other than `Z` parses
+fine on `startsOn`, and that the actual trap is a timestamp with no zone designator at all — which
+fails the entire schedule load (one Rust structure) and reports itself exactly like any other
+schedule-fetch failure, with no distinguishing message.
+
+### 23. How refbox decides which game is "upcoming" is never stated — MINOR — FIXED
 
 Call 9 refires "for the two teams of the upcoming game". By `startsOn`? By number? Restricted to
 the selected court? A schedule with duplicate start times or non-monotonic numbers behaves
 unpredictably, with no rule to test against.
+
+Fixed: call 9's entry now states the rule — same court as the game that just started, soonest
+`startsOn` strictly after it, game number never considered — and names the tie-break (whichever
+game appears first in the `games` object) for duplicate start times on the same court.
 
 ### 24. Status codes carry no meaning, so the site cannot signal anything — MINOR — FIXED
 
@@ -265,16 +282,26 @@ reads is optional and the generic JSON parse it runs succeeds on any valid JSON.
 ~40 concurrent roster GETs are warned about; teams are fetched for **every listed event** — up to
 100 more concurrent requests with `limit=100` — unmentioned.
 
-### 29. The `timingRule` name-mismatch trap is unverifiable from the site side — MINOR — OPEN
+### 29. The `timingRule` name-mismatch trap is unverifiable from the site side — MINOR — FIXED
 
 A non-matching name runs the game "on whatever timing configuration it already had loaded",
 silently. A site operator cannot distinguish "my rule applied" from "a stale one did" except by
 watching a real game run with wrong period lengths.
 
-### 30. SITE-row parsing: the base URL for the `/api/events/` branch is implied — MINOR — OPEN
+Fixed: the `timingRules` field entry now states plainly that this is not verifiable from the site's
+side of the contract — nothing in any response or on the operator's screen reveals which
+configuration is in effect — and that watching a real game run is the only way anyone finds out.
+This is stated as an admission, not a fix; no verification method exists to document.
+
+### 30. SITE-row parsing: the base URL for the `/api/events/` branch is implied — MINOR — FIXED
 
 Trailing slashes are addressed for the environment variable but not for the typed address, so
 `https://site/api/1234-A/` presumably yields an event called `1234-A/`.
+
+Fixed: established that the presumption is wrong — a typed address already handles a trailing
+slash on both halves (the event ID stops at the next `/`; the base URL is trimmed of one too, the
+same as the environment-variable route). The SITE-row parsing rule now states this as step 4,
+citing both code paths.
 
 ### 31. No documented way to check the site is reachable before a game — MINOR — OPEN
 

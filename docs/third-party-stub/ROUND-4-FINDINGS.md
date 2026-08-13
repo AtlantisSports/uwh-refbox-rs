@@ -140,10 +140,14 @@ loss of the player-number grid.
 Fixed: the two-ID-forms section now states that these values arrive percent-encoded with
 inconsistent hex case, and that a hand-rolled parser must unquote before comparing prefixes.
 
-### 12. Nothing identifies which game mode a request comes from — MODERATE — OPEN
+### 12. Nothing identifies which game mode a request comes from — MODERATE — FIXED
 
 No header, query parameter or path segment carries hockey-vs-rugby, so a stand-in cannot tell UWH
 from UWR even if it wanted to, and the fifteen `TimingRule` fields are never discussed for rugby.
+
+Fixed: the rules section now states that hockey and rugby are told apart only by which base URL
+refbox is pointed at, never by anything in a request, and that the fifteen `TimingRule` fields are
+the entire timing-rule shape for either sport.
 
 ### 13. The document's own worked examples are mutually inconsistent — MODERATE — FIXED
 
@@ -165,12 +169,17 @@ not follow, every call fails, including score pushes that then queue for 120 hou
 on a particular behaviour" is not actionable when the two behaviours are "works" and "loses every
 result".
 
-### 15. HTTP version and connection handling have no stated requirement — MINOR — OPEN
+### 15. HTTP version and connection handling have no stated requirement — MINOR — FIXED
 
 What refbox *sends* is documented; what it will *accept* is not — HTTP/1.0 with `Connection:
 close`, chunked responses, gzip. Python's `http.server` **defaults to HTTP/1.0 and closes after
 each response**; with ~40 concurrent roster GETs plus the teams and schedule burst, that is 40+
 handshakes against a 10-second budget, and nothing tells you to change it.
+
+Fixed: the rules section now states that the client forces no minimum HTTP version and is built
+without reqwest's `gzip` feature (so an unrequested `Content-Encoding: gzip` body fails to parse),
+and calls out `http.server`'s HTTP/1.0-and-close default as the reason the reference stub sets
+`protocol_version = "HTTP/1.1"` and uses `ThreadingHTTPServer`.
 
 ### 16. Whether the "auth: none" calls may still carry an `Authorization` header — MINOR — FIXED
 
@@ -194,22 +203,35 @@ key, as the game's identity — in the game picker, the auto-advance to the next
 sent as `{gameNumber}` on a score push — and names the consequence of a mismatch: a score filed
 against a `{gameNumber}` that may not match any key in the schedule the site served.
 
-### 18. Stats idempotency is never addressed — MINOR — OPEN
+### 18. Stats idempotency is never addressed — MINOR — FIXED
 
 Retry and RETRY ALL make duplicate pushes routine; nothing says replace vs append. Appending
 double-counts every retried game, invisible until someone reads a statistics page.
 
-### 19. No guidance on which 100 events to return — MINOR — OPEN
+Fixed: call 8's entry now recommends, clearly labelled as a recommendation rather than refbox
+behaviour, keying on `(eventId, gameNumber)` and replacing rather than appending, since RETRY and
+RETRY ALL resend the same stats body unchanged and refbox cannot tell a site which push is a
+repeat.
+
+### 19. No guidance on which 100 events to return — MINOR — FIXED
 
 The site applies `limit`, refbox never paginates, the remainder are "simply unreachable".
 Truncating in database order can put the operator's current event outside the first 100, and
 nothing reports it.
 
-### 20. An unauthenticated score push has no documented resolution — MINOR — OPEN
+Fixed: call 3's entry now advises returning whichever events are most relevant right now
+(in-progress or soonest-starting) rather than truncating in insertion order, since anything left
+out is invisible for the rest of the session with no error or log line.
+
+### 20. An unauthenticated score push has no documented resolution — MINOR — FIXED
 
 The queue retries for 120 hours, but nothing says a queued item picks up a token acquired later. If
 it does not, the first game of every tournament on the in-app route is lost, and the document as
 written would not reveal it.
+
+Fixed: the rules section now states that a queued item carries no credential of its own and every
+send re-reads whatever token the shared client currently holds, so an unauthenticated first push is
+recovered by the very next retry once the operator links, rather than lost.
 
 ### 21. `204` is a failure — but is a zero-length `200` safe? — MINOR — FIXED
 
@@ -277,10 +299,14 @@ Three separate optionality statements from which `{}` *should* follow, never sta
 Fixed: call 6's entry now says directly that the minimal valid body is `{}`, since every field it
 reads is optional and the generic JSON parse it runs succeeds on any valid JSON.
 
-### 28. Sizing guidance covers call 9 but not call 4 — MINOR — OPEN
+### 28. Sizing guidance covers call 9 but not call 4 — MINOR — FIXED
 
 ~40 concurrent roster GETs are warned about; teams are fetched for **every listed event** — up to
 100 more concurrent requests with `limit=100` — unmentioned.
+
+Fixed: call 4's entry now states that every listed event gets its own concurrent teams request, so
+an event list at the `limit=100` cap means up to 100 in flight at startup, before any tournament is
+picked — cross-referenced from call 9's own burst warning.
 
 ### 29. The `timingRule` name-mismatch trap is unverifiable from the site side — MINOR — FIXED
 

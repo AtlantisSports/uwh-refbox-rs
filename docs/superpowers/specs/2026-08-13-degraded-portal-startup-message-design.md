@@ -29,9 +29,8 @@ credential problem it has no evidence for.
 Degraded mode is entered from exactly two places:
 
 1. **The portal client could not be built** (`app/mod.rs:2404`). Every failure path inside the HTTP
-   client's constructor is TLS-related — certificate-store and TLS-version problems, e.g. *"zero
-   valid certificates found in native root store"*. A Raspberry Pi with a broken system
-   certificate store is exactly this. **This is the realistic trigger.**
+   client's constructor is TLS-related — certificate-store and TLS-version problems. **This is the
+   likelier of the two routes, but "realistic" overstates it — see the correction below.**
 2. **The retry-queue file could not be read** in the config directory *and* in the system temp
    directory (`app/mod.rs:2433`). Both must fail. Near-unreachable.
 
@@ -40,6 +39,20 @@ Note for future readers: two comments in `app/mod.rs` (at `:2389` and `:1112`) c
 flag enforced per request, so such a configuration builds a client successfully and fails each
 call instead. Those comments are **not** corrected by this work; they are recorded here so the
 next reader is not misled.
+
+### CORRECTION (2026-08-13, after this branch merged): the trigger is rarer than stated above
+
+Re-examined while designing the follow-up
+(`2026-08-13-degraded-queue-persistence-design.md`). Certificate *verification* happens per request,
+not at client construction, so a broken or missing certificate store almost certainly produces
+**per-request** failures — which take the `TokenUnreachable` path that already reports an honest red
+without blaming the token. Every *construction* failure path is TLS-**configuration** related, and
+this call site sets none of those options (only `https_only` and `timeout`). **No concrete field
+scenario reaching degraded mode has been identified**, and neither route into it has ever been
+observed at a tournament — both were added by reviews imagining failures (`07466789`, `04eac281`).
+
+This does not undermine the fix: it removes a false instruction from a state the code *can* enter,
+and it is cheap to keep. But the word "realistic" above was stronger than the evidence supports.
 
 ### How narrow is this?
 

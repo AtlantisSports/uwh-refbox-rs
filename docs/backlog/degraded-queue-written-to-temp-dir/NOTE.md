@@ -1,6 +1,13 @@
 # Backlog: results queued in degraded mode are written somewhere nothing reads
 
-**Status:** NOT FILED, not started. Local note only.
+**Status: BEING BUILT — superseded by
+`docs/superpowers/specs/2026-08-13-degraded-queue-persistence-design.md`.** Read the spec, not this
+note: the spec corrects two things below. Option 2 ("check the temp dir on a healthy start") is
+**unworkable** — fixing the underlying fault on the Pi requires a reboot, which likely clears the
+temp file first. And the chosen fix is one this note never listed: keep persisting to the real config
+directory, which is fine in the reachable case because the disk was never the problem. The spec also
+records a trap that would make a naive fix **destroy** results, and an honest reachability
+assessment (LOW — no concrete field scenario identified; built anyway as insurance, Eric's call).
 **Surfaced:** 2026-08-13, by the code review of
 `fix/refbox/degraded-portal-startup-message`. **Pre-existing — identical before and after that
 branch**, and squarely inside that spec's stated non-goals, so it was deliberately left alone.

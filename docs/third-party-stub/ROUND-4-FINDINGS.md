@@ -112,12 +112,16 @@ that does not exist in the build a stranger can download."** An implementer who 
 current fact, and who has absorbed the permissive tone of the score-push advice, answers `200` —
 reproducing the documented disaster of a green token row over an unlinked refbox.
 
-### 9. `roles` and `capNumber` are never declared required or optional — SEVERE — OPEN
+### 9. `roles` and `capNumber` are never declared required or optional — SEVERE — FIXED
 
 Call 9 describes two filters but never the required field set; it gives a *sufficient* set
 ("`capNumber` and `roles` alone"), not a necessary one. Unanswered: an entry with no `roles`, no
 `capNumber`, or `"capNumber": "7"` as a string. Omitting `roles` for an all-players team, or string
 cap numbers from a CSV import, discards the whole roster — the document's own named silent failure.
+
+Fixed: call 9's entry now states that `roles` is required unconditionally (a missing key drops the
+entry outright) while `capNumber` is not, and that a string `capNumber` is read as absent rather
+than causing a parse error, silently costing that one player their button on the grid.
 
 ### 10. TLS certificate requirements are never stated — SEVERE for a real deployment — OPEN
 
@@ -126,12 +130,15 @@ verification and pinning are not. A security-minded implementer puts the stand-i
 with a self-signed cert — the obvious pool-LAN choice — and if refbox rejects it, the document says
 the failure is indistinguishable from unreachable. No documented diagnosis, no documented fix.
 
-### 11. Query-parameter encoding is never specified — MODERATE — OPEN
+### 11. Query-parameter encoding is never specified — MODERATE — FIXED
 
 Every example shows `teamId=teams/5678-B` with a raw slash; nothing says whether refbox
 percent-encodes it. The document's own recommended validation route is a hand-written server, and a
 hand-rolled query parser that splits on `&`/`=` without unquoting 404s every roster fetch. Silent
 loss of the player-number grid.
+
+Fixed: the two-ID-forms section now states that these values arrive percent-encoded with
+inconsistent hex case, and that a hand-rolled parser must unquote before comparing prefixes.
 
 ### 12. Nothing identifies which game mode a request comes from — MODERATE — OPEN
 

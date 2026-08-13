@@ -784,6 +784,23 @@ cap numbers in the range **1 to 99**; a `capNumber` of `0`, or of `100` or more,
 discarded (`refbox/src/app/mod.rs:6332`). Names are parsed but refbox itself ignores them — a
 site serving only refbox can return `capNumber` and `roles` alone.
 
+That's the *sufficient* field set, not the *required* one, and the two differ in a way worth
+knowing precisely. `roles` is required unconditionally: an entry with no `roles` key at all never
+sets any of the three role flags — `member.get("roles")` simply returns `None`
+(`uwh-common/src/uwhportal/mod.rs:104`) — so it fails the role test above and is dropped, no
+matter what else it carries, including a perfectly good `capNumber`. `capNumber` is not required
+in that same unconditional way: an entry that clears the role test is kept if it has *either* a
+non-empty display name *or* a numeric `capNumber` — only an entry with neither is dropped
+(`uwh-common/src/uwhportal/mod.rs:125`). That's also what a **string** `capNumber` costs you.
+`"capNumber": "7"` is not read as `7`: `.as_u64()` returns `None` for a JSON string exactly as it
+would for a field that's absent (`uwh-common/src/uwhportal/mod.rs:87`), so nothing errors and
+nothing is logged. If the entry still has a name, it's kept — but as an **unnumbered** player,
+sorted after every numbered one — and an unnumbered player never becomes a button: refbox skips
+any roster entry with no cap number when it builds the grid, because there is nothing to tap
+(`refbox/src/app/mod.rs:6332`). A string `capNumber` — the shape a naive CSV export produces by
+default — therefore never surfaces as an error. It quietly removes one player from the grid, the
+same way the whole call failing removes all of them.
+
 **On failure:** **nothing visible happens.** Any non-`200` response, or a body that doesn't parse,
 is written to the log and otherwise discarded, and the failure deliberately leaves any previously
 cached roster untouched rather than replacing it with an empty one
@@ -926,6 +943,18 @@ the length was the real problem. If you see that error against an ID that plainl
 Worked example, using the event and teams from the schedule example below:
 - Short form, in a path: `GET /api/events/{eventId}/schedule/privileged` with `eventId` = `1234-A`
 - Long form, in a query parameter: `POST /api/admin/events/stats?eventId=events/1234-A&gameNumber=1`
+
+**The long form shown above is the value's logical shape, not the literal bytes on the wire.**
+refbox builds every long-form-in-a-query-parameter value — this one, team roster's `teamId`, and
+game referees' `eventId` — through reqwest's `.query()` helper, which percent-encodes it before
+sending (`uwh-common/src/uwhportal/mod.rs:680`, `:334`, `:782`). So a `teamId` of `teams/5678-B`
+does not arrive as `teamId=teams/5678-B`; it arrives as `teamId=teams%2F5678-B`, with the slash
+replaced by its percent-encoded form. Hex case is not guaranteed either: a live capture had refbox
+send the uppercase `%2F` for the same slash that `curl --data-urlencode` encoded as lowercase
+`%2f` for an equivalent request. A hand-written server that reads the request line straight off
+the socket — an approach this document assumes elsewhere is a live option — cannot compare the raw
+query bytes against `teams/` or `events/`; it has to percent-decode the value first and match hex
+case-insensitively, or every long-form ID lookup will 404.
 
 Across the full eighteen-call inventory, exactly three calls put an ID in a query parameter, and
 so are the only three that use the long form:

@@ -474,12 +474,21 @@ impl PortalManager {
         self.indicator_state
     }
 
-    /// Return the directory used for the on-disk queue file, or `None` when
-    /// this session has no write target. Used by the portal-tenant-switch
-    /// restart handler to flush the queue (items queued for the old tenant
-    /// cannot be delivered to the new one).
-    pub fn queue_dir(&self) -> Option<&std::path::Path> {
-        self.store.as_ref().map(|s| s.dir())
+    /// Clear the retry queue for a portal-tenant switch: results queued under
+    /// the old tenant cannot be delivered to the new one, so the restarted app
+    /// must not carry them over. Only ever called for the built-in portal — a
+    /// custom site is one address the operator typed, and results queued for it
+    /// stay deliverable to exactly that site after a restart.
+    ///
+    /// A session with no write target does nothing on disk: it never owned a
+    /// queue file, so it has nothing of its own to clear, and clearing someone
+    /// else's would destroy real results. The caller used to reach for the
+    /// directory and write it directly, which bypassed the manager entirely.
+    pub fn flush_queue_for_tenant_switch(&mut self) -> std::io::Result<()> {
+        self.queue.items.clear();
+        self.persist()?;
+        self.recompute_indicator();
+        Ok(())
     }
 
     /// Write the queue back, if this session has anywhere to write it.
@@ -1578,7 +1587,10 @@ mod tests {
         // replace one that is already there.
         let empty_dir = tempfile::TempDir::new().unwrap();
         let (manager, _rx) = PortalManager::new_degraded(empty_dir.path());
-        assert_eq!(manager.queue_dir(), Some(empty_dir.path()));
+        assert!(
+            manager.store.is_some(),
+            "a readable (here: absent) queue means this session owns the directory it read"
+        );
         assert!(
             !empty_dir.path().join("portal_queue.json").exists(),
             "degraded construction must not create a queue file"
@@ -1792,6 +1804,63 @@ mod tests {
             "a later healthy start must find it"
         );
         assert_eq!(later.queue.items[0].id.game_number, "G7");
+    }
+
+    #[tokio::test]
+    async fn tenant_switch_flush_clears_a_queue_this_session_owns() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        m.enqueue_game_end("old-tenant".into(), "G1".into(), 1, 0, "{}".into())
+            .unwrap();
+
+        m.flush_queue_for_tenant_switch().unwrap();
+
+        assert!(m.queue.items.is_empty(), "in memory too, not just on disk");
+        let (_store, on_disk) = queue::QueueStore::open(tmp.path()).unwrap();
+        assert!(
+            on_disk.items.is_empty(),
+            "the on-disk queue must be cleared"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn tenant_switch_flush_writes_nothing_without_a_write_target() {
+        // The old code flushed through `queue_dir()`, bypassing the manager
+        // entirely — in the fallback state that wrote to the shared temp dir,
+        // clearing a queue belonging to a different session and a different
+        // tenant.
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        {
+            let (mut healthy, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+            healthy
+                .enqueue_game_end("event".into(), "G1".into(), 1, 0, "{}".into())
+                .unwrap();
+        }
+        let path = tmp.path().join("portal_queue.json");
+        let before = std::fs::read(&path).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let shared = std::env::temp_dir().join("portal_queue.json");
+        let shared_before = std::fs::read(&shared).ok();
+
+        {
+            let (mut degraded, _rx) = PortalManager::new_degraded(tmp.path());
+            degraded.flush_queue_for_tenant_switch().unwrap();
+        }
+
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            before,
+            "a session with no write target must not clear a queue it never owned"
+        );
+        assert_eq!(
+            std::fs::read(&shared).ok(),
+            shared_before,
+            "and must not clear one in the shared temp dir either"
+        );
     }
 
     #[tokio::test]

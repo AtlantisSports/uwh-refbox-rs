@@ -1951,16 +1951,11 @@ impl RefBoxApp {
                 // deliverable to exactly that site after the restart; flushing
                 // them would destroy real game results.
                 if old_source == GameSource::Portal {
-                    if let Some(dir) = self.portal_manager.queue_dir() {
-                        if let Err(e) = crate::portal_manager::queue::save(
-                            dir,
-                            &crate::portal_manager::queue::QueueFile::empty(),
-                        ) {
-                            error!("Failed to flush portal queue before restart: {e}");
-                            // Continue with restart — the operator pressed Restart and we
-                            // must not block. The queue will be treated as stale items for
-                            // the new tenant, which the retry logic will eventually discard.
-                        }
+                    if let Err(e) = self.portal_manager.flush_queue_for_tenant_switch() {
+                        error!("Failed to flush portal queue before restart: {e}");
+                        // Continue with restart — the operator pressed Restart and we
+                        // must not block. The queue will be treated as stale items for
+                        // the new tenant, which the retry logic will eventually discard.
                     }
                 }
 
@@ -5885,13 +5880,8 @@ impl RefBoxApp {
                     // arm: a custom site is the same address either side of a
                     // mode change, so its queued results stay deliverable.
                     if self.source == GameSource::Portal {
-                        if let Some(dir) = self.portal_manager.queue_dir() {
-                            if let Err(e) = crate::portal_manager::queue::save(
-                                dir,
-                                &crate::portal_manager::queue::QueueFile::empty(),
-                            ) {
-                                error!("Failed to flush portal queue before restart: {e}");
-                            }
+                        if let Err(e) = self.portal_manager.flush_queue_for_tenant_switch() {
+                            error!("Failed to flush portal queue before restart: {e}");
                         }
                     }
                     if let Err(e) = confy::store(APP_NAME, None, &self.config) {

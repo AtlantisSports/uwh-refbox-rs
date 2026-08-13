@@ -488,6 +488,14 @@ impl PortalManager {
         self.queue.items.clear();
         self.persist()?;
         self.recompute_indicator();
+        // Tell the background task too. It works from its own clone of the
+        // queue (see `health::spawn`), so without this it would keep the old
+        // tenant's items and could still post them — while `has_queued_items()`
+        // reports an empty queue, which is what unblocks the source and
+        // site-address controls. Both current callers restart the process
+        // immediately afterwards, so the window is short today, but this method
+        // is public and its name carries no restart precondition.
+        self.push_queue_snapshot();
         Ok(())
     }
 
@@ -502,7 +510,19 @@ impl PortalManager {
     fn persist(&self) -> std::io::Result<()> {
         match &self.store {
             Some(store) => store.save(&self.queue),
-            None => Ok(()),
+            None => {
+                // Logged, not silent. `Ok` is honest about this call — nothing
+                // failed — but the caller cannot tell a completed write from a
+                // skipped one, and callers only report `Err`. Without this line
+                // a result recorded in a session with no write target leaves no
+                // trace at all, which is the false-success class #2349 fixed for
+                // RETRY ALL.
+                log::warn!(
+                    "portal queue not persisted: this session has no write target (its queue \
+                     file could not be read), so results are held in memory only"
+                );
+                Ok(())
+            }
         }
     }
 
@@ -688,11 +708,16 @@ impl PortalManager {
     /// succeed and clear the red state, hiding the problem.
     ///
     /// `config_dir` must be the real config directory, not a scratch path.
-    /// Results are still queued in this mode — `enqueue_game_end` runs
-    /// whenever an event is linked — so they have to land where the next
-    /// healthy launch will look for them, or they are silently abandoned.
-    /// "Cannot send" is not "cannot save": in the no-client route the disk is
-    /// perfectly fine and this session persists exactly as a healthy one does.
+    /// Results are still queued in this mode — `enqueue_game_end` runs whenever
+    /// an event is linked — so where they land matters.
+    ///
+    /// "Cannot send" is not "cannot save". If the queue reads cleanly (the
+    /// no-client route, where the disk is perfectly fine) this session persists
+    /// exactly as a healthy one does, and the next healthy launch finds the
+    /// results. If the read FAILED there is no write target and no second
+    /// choice, so results recorded this session are held in memory only and are
+    /// lost when the process exits — the deliberate trade for never overwriting
+    /// a queue we could not read. See the 2026-08-13 spec.
     ///
     /// The returned receiver is a dummy that never emits events.
     pub(crate) fn new_degraded(
@@ -787,12 +812,17 @@ impl PortalManager {
     }
 
     /// Enqueue a game-end submission and trigger an immediate attempt.
-    /// Persistence is best-effort: the in-memory queue is updated
-    /// before disk write, so an I/O failure leaves the score queued in
-    /// memory for the rest of the session but not on disk. The corrupt-
-    /// or-missing-file rotation in `queue::load` is the recovery path
-    /// across restarts; subsequent successful mutations will re-persist
-    /// the queue including this item.
+    ///
+    /// Persistence is best-effort: the in-memory queue is updated before the
+    /// disk write, so an I/O failure leaves the score queued in memory for the
+    /// rest of the session but not on disk, and a later successful mutation
+    /// re-persists it including this item. The corrupt-or-unknown-version
+    /// rotation in `queue::load_or_empty` is the recovery path across restarts.
+    ///
+    /// A session with **no write target** is different: no mutation can ever
+    /// persist, so results recorded here live only as long as the process. They
+    /// still appear on the portal detail page, which is all the operator has to
+    /// go on. `persist` logs each skipped write.
     pub fn enqueue_game_end(
         &mut self,
         event_id: String,
@@ -1454,7 +1484,7 @@ mod tests {
         // Pre-populate a queue file with an item older than 120h.
         let mut old = mk_young_item();
         old.queued_at = OffsetDateTime::now_utc() - TimeDuration::hours(200);
-        crate::portal_manager::queue::save(
+        crate::portal_manager::queue::seed_for_test(
             tmp.path(),
             &QueueFile {
                 version: 1,
@@ -1597,7 +1627,7 @@ mod tests {
         );
 
         let seeded_dir = tempfile::TempDir::new().unwrap();
-        queue::save(
+        queue::seed_for_test(
             seeded_dir.path(),
             &QueueFile {
                 version: 1,
@@ -1634,7 +1664,7 @@ mod tests {
         // the "(attempt N)" counter the next healthy session shows.
         item.attempts = 4;
         item.last_attempt_at = Some(OffsetDateTime::now_utc() - TimeDuration::hours(1));
-        queue::save(
+        queue::seed_for_test(
             tmp.path(),
             &QueueFile {
                 version: 1,
@@ -1687,7 +1717,7 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
         let mut expired = mk_stuck_item();
         expired.queued_at = OffsetDateTime::now_utc() - TimeDuration::hours(200);
-        queue::save(
+        queue::seed_for_test(
             tmp.path(),
             &QueueFile {
                 version: 1,
@@ -1737,11 +1767,13 @@ mod tests {
         let before = std::fs::read(&path).unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
 
-        // The shared temp dir is the healthy path's SECOND-choice queue dir,
-        // so prove we do not fall back to it. Comparing `Option` covers both
-        // "a file was there and is unchanged" and "none was there and none is".
+        // The shared temp dir is the healthy path's SECOND-choice queue dir, so
+        // prove we do not fall back to it. Assert on OUR OWN game number rather
+        // than comparing the whole file before and after: a real refbox on this
+        // machine may legitimately be using that dir as its second choice while
+        // the suite runs, and a byte comparison would fail on its writes, which
+        // have nothing to do with this test.
         let shared = std::env::temp_dir().join("portal_queue.json");
-        let shared_before = std::fs::read(&shared).ok();
 
         {
             let (mut degraded, _rx) = PortalManager::new_degraded(tmp.path());
@@ -1763,10 +1795,11 @@ mod tests {
             before,
             "the unreadable queue file must be left byte-identical"
         );
-        assert_eq!(
-            std::fs::read(&shared).ok(),
-            shared_before,
-            "the shared system temp dir must not be used as a fallback"
+        let shared_text = std::fs::read_to_string(&shared).unwrap_or_default();
+        assert!(
+            !shared_text.contains("G3"),
+            "the shared system temp dir must not be used as a fallback, but it now holds \
+             this test's game: {shared_text}"
         );
         let mut names: Vec<_> = std::fs::read_dir(tmp.path())
             .unwrap()
@@ -1842,24 +1875,28 @@ mod tests {
         let path = tmp.path().join("portal_queue.json");
         let before = std::fs::read(&path).unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
-        let shared = std::env::temp_dir().join("portal_queue.json");
-        let shared_before = std::fs::read(&shared).ok();
 
+        let degraded_had_no_store;
         {
             let (mut degraded, _rx) = PortalManager::new_degraded(tmp.path());
+            degraded_had_no_store = degraded.store.is_none();
             degraded.flush_queue_for_tenant_switch().unwrap();
         }
 
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(
+            degraded_had_no_store,
+            "precondition: this session must have no write target"
+        );
+        // A flush writes an EMPTY queue, so there is no content marker that
+        // could identify it in the shared temp dir the way the fallback test
+        // does. Asserting the shared file is unchanged would be flaky — a real
+        // refbox may be using that dir as its legitimate second choice while the
+        // suite runs — so rely on the structural check above plus this one.
         assert_eq!(
             std::fs::read(&path).unwrap(),
             before,
             "a session with no write target must not clear a queue it never owned"
-        );
-        assert_eq!(
-            std::fs::read(&shared).ok(),
-            shared_before,
-            "and must not clear one in the shared temp dir either"
         );
     }
 

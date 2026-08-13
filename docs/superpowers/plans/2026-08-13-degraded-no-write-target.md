@@ -813,6 +813,20 @@ Record anything that diverged from this plan here rather than in separate commit
   tenant-switch flush is exactly `self.persist()`, so Task 3 uses the funnel instead of a second
   write method. Its test became `store_writes_where_it_read`. Task 3 below is amended accordingly —
   ignore its `store.flush()` step and use `self.persist()?`.
+- **Task 4 was REVERTED after review** (`1239df99`, reverted by `4b0212e3`). The one-line "replace
+  instead of append" introduces three failure modes in the HEALTHY path — an in-flight upload's
+  success deletes the corrected result by id; resetting `score_sent` re-posts a score the portal
+  already accepted, stranding the row red forever; and a re-ended game that already succeeded can
+  never leave the queue because of the idempotence guard in `on_item_resolved`. It also does not fix
+  the lossy removal it claimed to fix. Full analysis and design constraints:
+  `docs/backlog/re-ended-game-queue-entry/NOTE.md`. The spec still lists the dedupe as in scope;
+  that judgement was reversed on review, and it needs its own spec under the heavy process.
+- **Task 5's sealing was tightened beyond `pub(super)`.** As first implemented, the read/write
+  functions were `pub(super)`, which leaves them reachable from `portal_manager/mod.rs` — where all
+  four previous regressions were born. Now `save` and `append_to_archive` are private to `queue.rs`
+  so a store is the only route to a write, with a `#[cfg(test)] seed_for_test` bypass for tests that
+  arrange on-disk state. Reads (`load_or_empty`, `load_archive_or_empty`) stay `pub(super)`: a read
+  cannot destroy anything, so sealing them would be churn without safety.
 - **Mutation-proofed both layers of the safety test.** Reintroducing the temp-dir fallback in
   `new_degraded` fails `a_session_that_could_not_read_its_queue_writes_nothing_anywhere` on the
   `store.is_none()` assertion; with that assertion temporarily removed it then fails on "the shared

@@ -132,8 +132,25 @@ fn write_atomic(target: &Path, tmp: &Path, q: &QueueFile) -> std::io::Result<()>
 }
 
 /// Atomically write the queue file to `dir/portal_queue.json`.
-pub(super) fn save(dir: &Path, q: &QueueFile) -> std::io::Result<()> {
+///
+/// Private to this file on purpose: `QueueStore` is the only way to reach it,
+/// and a store can only be obtained by reading the directory first. Reads stay
+/// visible to the rest of `portal_manager` — a read cannot destroy anything —
+/// but every write must come through a store. All four previous regressions in
+/// this area were introduced in `mod.rs`, so `pub(super)` here would leave the
+/// door open in exactly the place it has always been walked through.
+fn save(dir: &Path, q: &QueueFile) -> std::io::Result<()> {
     write_atomic(&queue_path(dir), &tmp_path(dir), q)
+}
+
+/// Seed a queue file directly, for tests that need to arrange on-disk state.
+///
+/// The one deliberate bypass of the rule above, and it is `#[cfg(test)]` so it
+/// cannot exist in a shipped binary. Production code has no route to a write
+/// except `QueueStore`.
+#[cfg(test)]
+pub(super) fn seed_for_test(dir: &Path, q: &QueueFile) -> std::io::Result<()> {
+    save(dir, q)
 }
 
 // --- Expired-item archive (Bug 2: portal_queue.expired.json) ---
@@ -173,7 +190,7 @@ pub(super) fn load_archive_or_empty(dir: &Path) -> std::io::Result<QueueFile> {
 
 /// Append expired items to the archive, atomically. No-op on empty input.
 /// Additive: items archived by earlier sweeps are preserved.
-pub(super) fn append_to_archive(dir: &Path, items: &[QueuedItem]) -> std::io::Result<()> {
+fn append_to_archive(dir: &Path, items: &[QueuedItem]) -> std::io::Result<()> {
     if items.is_empty() {
         return Ok(());
     }
@@ -192,6 +209,13 @@ pub(super) fn append_to_archive(dir: &Path, items: &[QueuedItem]) -> std::io::Re
 /// cannot destroy a file it never saw. `save` renames over the target, and a
 /// rename needs write permission on the *directory* rather than the file, so
 /// an unreadable-but-replaceable queue is exactly the case this prevents.
+///
+/// What holding a store does NOT prove is that writing will succeed. When the
+/// queue file is absent, `load_or_empty` returns success without touching the
+/// disk, so an unwritable directory still yields a store and its first write
+/// fails at `write_atomic`. That hole predates this type — see
+/// `docs/backlog/unwritable-config-dir-looks-healthy/NOTE.md`. The guarantee
+/// here is narrow and exact: we never write where a read *failed*.
 ///
 /// See `docs/superpowers/specs/2026-08-13-degraded-no-write-target-design.md`.
 #[derive(Debug)]

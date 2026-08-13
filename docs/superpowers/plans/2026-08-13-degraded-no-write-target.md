@@ -800,3 +800,21 @@ Map each spec criterion to where it is proven, and confirm before opening the PR
 
 Record anything that diverged from this plan here rather than in separate commits, per
 `.claude/rules/plan-execution.md`.
+
+- **Tasks 1 and 2 share one commit.** Task 1 as written cannot be committed on its own: nothing in
+  the non-test build constructs `QueueStore`, so `cargo clippy -p refbox --bins` reports
+  `struct QueueStore is never constructed` and `associated items open, save, append_to_archive and
+  flush are never used`. With `-D warnings` in CI that is a red commit, and silencing it with
+  `#[allow(dead_code)]` needs explicit discussion under `.claude/rules/rust.md`. Folding the two
+  tasks into one commit was the only option that violates neither. Task 1's tests and Task 2's
+  tests both ran and were seen to fail before their implementations landed.
+- **`QueueStore::flush` was dropped.** It hit the same dead-code wall (no production caller until
+  Task 3), which was the signal that it should not exist: after `self.queue.items.clear()` the
+  tenant-switch flush is exactly `self.persist()`, so Task 3 uses the funnel instead of a second
+  write method. Its test became `store_writes_where_it_read`. Task 3 below is amended accordingly —
+  ignore its `store.flush()` step and use `self.persist()?`.
+- **Mutation-proofed both layers of the safety test.** Reintroducing the temp-dir fallback in
+  `new_degraded` fails `a_session_that_could_not_read_its_queue_writes_nothing_anywhere` on the
+  `store.is_none()` assertion; with that assertion temporarily removed it then fails on "the shared
+  system temp dir must not be used as a fallback". So the test catches the regression both
+  structurally and by observed effect.

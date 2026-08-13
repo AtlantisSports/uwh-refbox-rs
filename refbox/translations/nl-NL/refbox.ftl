@@ -396,6 +396,7 @@ false-start = Vals Vertrek
 portal-summary-title = VERBINDINGSSTATUS
 portal-retry-all = ALLES OPNIEUW
 portal-row-token-expired = Toegangstoken verlopen — tik om opnieuw in te loggen
+portal-row-startup-failed = Geen verbinding — resultaten worden niet geüpload
 portal-row-stuck = Wedstrijd { $game } Fout bij verzenden score, tik om te herstellen
 portal-row-pending = Wedstrijd { $game } Score niet verzonden, tik om opnieuw te proberen
 portal-row-stats-pending = Wedstrijd { $game } Statistieken niet verzonden, tik om opnieuw te proberen

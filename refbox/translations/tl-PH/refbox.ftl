@@ -396,6 +396,7 @@ false-start = Maling Simula
 portal-summary-title = STATUS NG KONEKSYON
 portal-retry-all = ULITIN LAHAT
 portal-row-token-expired = Nag-expire ang access token — pindutin para mag-login muli
+portal-row-startup-failed = Walang koneksyon — hindi mai-a-upload ang mga resulta
 portal-row-stuck = Laro { $game } Error sa pagpapadala ng puntos, pindutin para ayusin
 portal-row-pending = Laro { $game } Hindi naipadala ang puntos, pindutin para subukan muli
 portal-row-stats-pending = Laro { $game } Hindi naipadala ang estadistika, pindutin para subukan muli

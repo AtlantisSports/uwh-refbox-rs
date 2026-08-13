@@ -396,6 +396,7 @@ false-start = Falsa Partenza
 portal-summary-title = STATO CONNESSIONE
 portal-retry-all = RIPROVA TUTTO
 portal-row-token-expired = Token di accesso scaduto — tocca per accedere di nuovo
+portal-row-startup-failed = Connessione non disponibile — i risultati non verranno caricati
 portal-row-stuck = Partita { $game } Errore invio punteggio, tocca per correggere
 portal-row-pending = Partita { $game } Punteggio non inviato, tocca per riprovare
 portal-row-stats-pending = Partita { $game } Statistiche non inviate, tocca per riprovare

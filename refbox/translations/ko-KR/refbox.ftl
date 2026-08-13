@@ -398,6 +398,7 @@ false-start = 부정 출발
 portal-summary-title = 연결 상태
 portal-retry-all = 모두 재시도
 portal-row-token-expired = 액세스 토큰 만료됨 — 탭하여 다시 로그인
+portal-row-startup-failed = 연결할 수 없습니다 — 결과가 업로드되지 않습니다
 portal-row-stuck = 경기 { $game } 점수 전송 오류, 탭하여 수정
 portal-row-pending = 경기 { $game } 점수 전송 안 됨, 탭하여 재시도
 portal-row-stats-pending = 경기 { $game } 통계 전송 안 됨, 탭하여 재시도

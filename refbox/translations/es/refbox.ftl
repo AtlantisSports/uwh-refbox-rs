@@ -408,6 +408,7 @@ false-start = Saque nulo
 portal-summary-title = ESTADO DE CONEXIÓN
 portal-retry-all = REINTENTAR TODO
 portal-row-token-expired = Token de acceso expirado — toca para iniciar sesión
+portal-row-startup-failed = Conexión no disponible — los resultados no se subirán
 portal-row-stuck = Juego { $game } · Error al enviar resultado, toca para corregir
 portal-row-pending = Juego { $game } · Resultado no enviado, toca para reintentar
 portal-row-stats-pending = Juego { $game } · Estadísticas no enviadas, toca para reintentar

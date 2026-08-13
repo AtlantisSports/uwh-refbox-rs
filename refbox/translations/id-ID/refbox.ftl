@@ -396,6 +396,7 @@ false-start = Start Curang
 portal-summary-title = STATUS KONEKSI
 portal-retry-all = ULANGI SEMUA
 portal-row-token-expired = Token akses kedaluwarsa — ketuk untuk login ulang
+portal-row-startup-failed = Koneksi tidak tersedia — hasil tidak akan diunggah
 portal-row-stuck = Pertandingan { $game } Galat kirim skor, ketuk untuk perbaiki
 portal-row-pending = Pertandingan { $game } Skor belum terkirim, ketuk untuk coba lagi
 portal-row-stats-pending = Pertandingan { $game } Statistik belum terkirim, ketuk untuk coba lagi

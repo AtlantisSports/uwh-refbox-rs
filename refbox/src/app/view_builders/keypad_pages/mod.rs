@@ -52,6 +52,7 @@ pub(in super::super) fn build_keypad_page<'a>(
     let ViewData {
         snapshot,
         mode,
+        source,
         clock_running,
         portal_indicator,
         ..
@@ -177,7 +178,7 @@ pub(in super::super) fn build_keypad_page<'a>(
                     player_num,
                 ),
                 KeypadPage::PortalLogin(id, requested) => {
-                    make_portal_login_page(id, requested, mode)
+                    make_portal_login_page(id, requested, mode, source)
                 }
             }
         ]

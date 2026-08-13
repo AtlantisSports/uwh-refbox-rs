@@ -9,14 +9,24 @@ pub(super) fn make_portal_login_page<'a>(
     id: u32,
     requested: bool,
     mode: Mode,
+    source: GameSource,
 ) -> Element<'a, Message> {
-    column![
-        text(fl!(
+    // A custom site gets generic wording. The Portal's own instructions name
+    // its menus — Event Management, Referee Management, the + button — and
+    // refbox knows only the address the operator typed, never what a
+    // third-party site calls its admin screens. Manual never reaches this page.
+    let instructions = if source == GameSource::Custom {
+        fl!("custom-login-instructions", id = id)
+    } else {
+        fl!(
             "portal-login-instructions",
             id = id,
             portal = portal_name_for_mode(mode)
-        ))
-        .width(Length::Fill),
+        )
+    };
+
+    column![
+        text(instructions).width(Length::Fill),
         vertical_space(),
         row![
             make_button(fl!("cancel"))

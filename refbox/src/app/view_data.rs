@@ -1,4 +1,5 @@
 use super::Mode;
+use crate::config::GameSource;
 use crate::portal_manager::PortalIndicatorState;
 use uwh_common::{game_snapshot::GameSnapshot, uwhportal::schedule::TeamList};
 
@@ -6,6 +7,11 @@ use uwh_common::{game_snapshot::GameSnapshot, uwhportal::schedule::TeamList};
 pub(super) struct ViewData<'a, 'b> {
     pub(super) snapshot: &'a GameSnapshot,
     pub(super) mode: Mode,
+    /// Which game source is selected. The access-token page needs it to choose
+    /// between the UWH Portal's menu directions and the generic wording a
+    /// third-party site needs — refbox cannot know a custom site's admin
+    /// screens, so the two cannot be merged into one string.
+    pub(super) source: GameSource,
     pub(super) clock_running: bool,
     pub(super) teams: Option<&'b TeamList>,
     /// `Some` when a portal event is currently linked — the health tile

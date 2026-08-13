@@ -5895,6 +5895,7 @@ impl RefBoxApp {
         let data = ViewData {
             snapshot: &self.snapshot,
             mode: self.config.mode,
+            source: self.source,
             clock_running: self.tm.lock().unwrap().clock_is_running(),
             teams: active_event_id.and_then(|id| {
                 self.events

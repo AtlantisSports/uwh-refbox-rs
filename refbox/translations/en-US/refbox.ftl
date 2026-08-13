@@ -179,6 +179,10 @@ portal-login-instructions = Please go to the { $portal } Portal >> Event Managem
 
     The { $portal } Portal will then provide a confirmation code for you to enter to the left using the number pad.
     Press done once you have entered the code
+custom-login-instructions = Please provide this Refbox ID to your site:
+    { $id }
+
+    Then enter the confirmation code that your site provides using the number pad and press DONE
 
 
 # Confirmation

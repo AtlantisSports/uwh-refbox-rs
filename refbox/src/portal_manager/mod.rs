@@ -815,7 +815,24 @@ impl PortalManager {
             force: false,
             score_sent: false,
         };
-        self.queue.items.push(item);
+        // A game can legitimately be re-ended: a corrected score, or an
+        // operator re-running the same game number. Replace the existing entry
+        // rather than stacking a second one. Two reasons this matters: a
+        // session that cannot send never drains its queue, so duplicates
+        // accumulate unbounded; and `discard`/`on_item_resolved` remove by id
+        // with `retain`, which drops every match at once — so resolving one
+        // copy silently discarded the other, unsent. The later result wins,
+        // which is correct for a game re-ended with a corrected score.
+        //
+        // Replacing resets the whole entry, including `attempts`, `force` and
+        // `score_sent` — right for a genuinely new result: it has not been
+        // attempted, and an operator who had armed FORCE for the superseded
+        // score should decide again for the new one.
+        if let Some(existing) = self.queue.items.iter_mut().find(|it| it.id == item.id) {
+            *existing = item;
+        } else {
+            self.queue.items.push(item);
+        }
         self.persist()?;
         self.recompute_indicator();
         self.push_queue_snapshot();
@@ -1804,6 +1821,44 @@ mod tests {
             "a later healthy start must find it"
         );
         assert_eq!(later.queue.items[0].id.game_number, "G7");
+    }
+
+    #[tokio::test]
+    async fn re_ending_a_game_replaces_its_queued_result() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+        m.enqueue_game_end("event".into(), "G1".into(), 1, 0, "{}".into())
+            .unwrap();
+        m.enqueue_game_end("event".into(), "G1".into(), 2, 1, "{}".into())
+            .unwrap();
+
+        assert_eq!(
+            m.queue.items.len(),
+            1,
+            "a re-ended game must replace its entry, not stack a second one"
+        );
+        assert_eq!(
+            (m.queue.items[0].black_score, m.queue.items[0].white_score),
+            (2, 1),
+            "the later result wins — it is the corrected score"
+        );
+
+        // On disk too: a duplicate pair here is what made removal lossy.
+        // `discard`/`on_item_resolved` remove by id with `retain`, which drops
+        // EVERY match, so resolving one copy silently discarded the other,
+        // unsent — and a session that cannot send never drains the queue, so
+        // the copies accumulated unbounded.
+        let (_store, on_disk) = queue::QueueStore::open(tmp.path()).unwrap();
+        assert_eq!(
+            on_disk.items.len(),
+            1,
+            "the persisted queue must hold one entry for the game, not two"
+        );
+        assert_eq!(
+            (on_disk.items[0].black_score, on_disk.items[0].white_score),
+            (2, 1),
+            "and it must be the corrected score that survives a restart"
+        );
     }
 
     #[tokio::test]

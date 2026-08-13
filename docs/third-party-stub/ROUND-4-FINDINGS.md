@@ -169,11 +169,16 @@ close`, chunked responses, gzip. Python's `http.server` **defaults to HTTP/1.0 a
 each response**; with ~40 concurrent roster GETs plus the teams and schedule burst, that is 40+
 handshakes against a 10-second budget, and nothing tells you to change it.
 
-### 16. Whether the "auth: none" calls may still carry an `Authorization` header — MINOR — OPEN
+### 16. Whether the "auth: none" calls may still carry an `Authorization` header — MINOR — FIXED
 
 Documented for calls 5/7/8; silent for 3/4/6/9. A strict site would reject a header that rides
 along — or, the other direction, would *require* one on `get-event-team` because the path says
 `/admin/`, which the document warns about.
+
+Fixed: the rules section now states that calls 3, 4, 6 and 9 are built from the bare client, never
+`authenticated_request`, so none of the four ever carries an `Authorization` header, even with a
+valid token — a site may reject one on sight. Call 9's own entry now says so too, and both note
+that requiring a token on `get-event-team` because of its `/admin/` segment silently breaks it.
 
 ### 17. Which value lands in the score-push path: the `games` key or `Game.number`? — MINOR — OPEN
 
@@ -198,10 +203,16 @@ The queue retries for 120 hours, but nothing says a queued item picks up a token
 it does not, the first game of every tournament on the in-app route is lost, and the document as
 written would not reveal it.
 
-### 21. `204` is a failure — but is a zero-length `200` safe? — MINOR — OPEN
+### 21. `204` is a failure — but is a zero-length `200` safe? — MINOR — FIXED
 
 Verify's entry says "the body can be empty"; the rules section says "Return `200` with a body — an
 empty JSON object is fine". The softer statement comes first, in the call entry.
+
+Fixed: the rules section now recommends `{}` as the safe default and states plainly that only
+three calls (2, 7, 8) never parse the body at all, so only for those does a genuinely empty body
+work as well as `{}` does; the other six require whatever fields their own entry marks required.
+Call 2's entry now says the same thing, pointing back at the recommendation instead of repeating
+it in different words.
 
 ### 22. Timestamp offsets other than `Z` are never ruled in or out — MINOR — OPEN
 
@@ -215,24 +226,39 @@ Call 9 refires "for the two teams of the upcoming game". By `startsOn`? By numbe
 the selected court? A schedule with duplicate start times or non-monotonic numbers behaves
 unpredictably, with no rule to test against.
 
-### 24. Status codes carry no meaning, so the site cannot signal anything — MINOR — OPEN
+### 24. Status codes carry no meaning, so the site cannot signal anything — MINOR — FIXED
 
 `404`/`400`/`500` are indistinguishable. Stated plainly: an event deleted on the site is presented
 to the operator identically to a site that is down.
 
-### 25. Revoked-token behaviour is asserted but not specified — MINOR — OPEN
+Fixed: the rules section now states this consequence directly, next to the `404`/`400`/`500`
+indistinguishability it already documented.
+
+### 25. Revoked-token behaviour is asserted but not specified — MINOR — FIXED
 
 The document demands revocability but never says what a revoked key returns or how the operator
 recovers. An HTTP response prompts re-login while a dropped connection does not — so a site that
 revokes by closing the socket strands the operator with a red indicator and no route back.
 
-### 26. `slug` "must be present to parse" — is `""` acceptable? — MINOR — OPEN
+Fixed: call 2's entry now states that any non-`200` status revokes identically (a `403` or `500`
+works exactly like a `401`), that revoking by dropping the connection instead is classified
+"unreachable" and does not prompt re-login, and that recovery never actually depends on this call
+succeeding — the event picker (call 3) and the login call (call 1) both need no token, so the
+operator can always get back to the login screen and re-link.
+
+### 26. `slug` "must be present to parse" — is `""` acceptable? — MINOR — FIXED
 
 "Present" is not "non-empty"; being wrong costs the whole event list.
 
-### 27. Call 6's minimal valid body is inferred, not stated — MINOR — OPEN
+Fixed: call 3's entry now states that `slug` is a plain `String` field with no length or format
+check, unlike `EventId`/`TeamId`, so `""` parses exactly as well as any other value.
+
+### 27. Call 6's minimal valid body is inferred, not stated — MINOR — FIXED
 
 Three separate optionality statements from which `{}` *should* follow, never stated directly.
+
+Fixed: call 6's entry now says directly that the minimal valid body is `{}`, since every field it
+reads is optional and the generic JSON parse it runs succeeds on any valid JSON.
 
 ### 28. Sizing guidance covers call 9 but not call 4 — MINOR — OPEN
 

@@ -427,8 +427,10 @@ every call".
 
 **Request body:** none
 
-**Successful response:** `200`. The body is never parsed — refbox only checks the status code,
-so the body can be empty.
+**Successful response:** `200`. The body is never parsed — refbox only checks the status code, so
+a genuinely empty body works, and so does `{}` (the safe default recommended under
+[Rules that apply to every call](#rules-that-apply-to-every-call)) — nothing here ever looks at it
+either way.
 
 **Fields refbox actually reads:** none.
 
@@ -474,6 +476,22 @@ is its consequence — you are still the only thing enforcing it. Note also that
 valid the moment call 1 returns it, without confirming it here, so a key you issue and then decline
 to honour shows a healthy green until the standing health check catches up.
 
+**What a revoked key should return, and how the operator gets back in.** Revoking a key on your
+side just means this call starts returning something other than `200` for that token — the status
+check above (`uwh-common/src/uwhportal/mod.rs:314`) does not distinguish a `401` from any other
+non-`200` code, so a `403` or a `500` produces the identical result to a textbook `401`: per "On
+failure" above, the indicator goes red and the operator is prompted to log in again. What does
+**not** work is revoking by dropping the connection instead of answering it — refusing the socket,
+or simply not listening — because that is indistinguishable from your site being down, and refbox
+classifies it as **unreachable** rather than as a rejected token: red, but without the re-login
+prompt. The operator can still recover either way, because getting back in doesn't depend on this
+call at all: the event picker (call 3) and the login call (call 1) both need no token, so the
+operator can still select an event and reach the login screen with a fully revoked credential in
+hand, and re-link exactly as on first setup — the button that opens it is gated on nothing but a
+selected event (`refbox/src/app/view_builders/configuration.rs:828-832`). Answer a revocation with
+an HTTP status, not a closed socket, so the operator is actively told to log in again rather than
+left to notice the red indicator on their own.
+
 #### 3. Event list
 
 `GET /api/events`  ·  source: `uwh-common/src/uwhportal/mod.rs:537`
@@ -514,8 +532,11 @@ Example, with everything an entry needs to parse:
 
 **Fields refbox actually reads:** `totalCount` must be present as a number, but its value is
 never used — `0` is fine even if `items` isn't empty. Per entry: `id` and `name` (shown in the
-event picker), `slug` (must be present to parse successfully, but refbox never displays or acts
-on it), and `dateRange.startsOn` / `dateRange.endsOn` (used only to sort the picker, earliest
+event picker), `slug` (must be present as a JSON string to parse successfully, but nothing requires
+it to be non-empty — `"slug": ""` parses exactly as well as any other value, since it's a plain
+`String` field with no length or format check, unlike `EventId`/`TeamId`
+(`uwh-common/src/uwhportal/schedule.rs:791`) — and refbox never displays or acts on it either way),
+and `dateRange.startsOn` / `dateRange.endsOn` (used only to sort the picker, earliest
 tournament first — never displayed). **`dateRange` itself is required, with both fields** — unlike
 the three below it is not optional, and `null` or a missing key fails that entry, which costs you
 the whole event list rather than the one event. `teams`, `schedule`, and `courts` may be omitted
@@ -637,6 +658,12 @@ category it came from) into a single lookup from user ID to display name. Per en
 name is silently skipped rather than causing an error — and a missing category (or a missing
 `referees` object entirely) just means fewer names, not a failure.
 
+**Put plainly, the minimal valid body is `{}`.** Every field above is optional — `tournamentReferee`
+and all three `referees.*` arrays alike — and the parse this call runs is a generic
+`serde_json::Value` parse that succeeds on any valid JSON at all (`uwh-common/src/uwhportal/mod.rs:468`).
+An empty object satisfies every requirement here at once; it just means refbox finds no referees to
+name.
+
 Note what is **not** read: `user.name` is never used, even when it is the only name an entry
 carries. That is deliberate — it holds the official's real name, and refbox prefers a chosen
 handle for an operator-facing screen. So a site that returns `user.name` and nothing else will
@@ -751,7 +778,9 @@ on first load and size your site accordingly. Second, a refresh for the two team
 game, fired at the end of the previous game so the fetch has the whole break to land rather than
 the instant of the next start (`refbox/src/app/mod.rs:1355`).
 
-**Authentication:** none
+**Authentication:** none — and genuinely so, not merely "no token required": this call never
+carries an `Authorization` header at all, even when refbox holds a valid one (see
+[Rules that apply to every call](#rules-that-apply-to-every-call)).
 
 **Query parameters:** `teamId` — the team ID, **long form** (`teams/5678-B`), per the
 query-parameter rule under [the two ID forms](#the-two-id-forms).
@@ -852,13 +881,21 @@ every call in this document except the overlay's own — compares the response s
 and `201`, `202` and `204` are not recognised as success. A site that answers a score push with
 `204 No Content` has that push treated as a **failure**: it goes back on the local queue and is
 retried about every 15 seconds until it eventually archives, with nothing on screen explaining
-why. Return `200` with a body — an empty JSON object is fine — rather than `204`.
+why. Return `200` — `{}` is the safe default body — rather than `204`.
+
+**Whether the body's content matters at all depends on the call.** Three calls never parse the
+response body on success, at all: verify token (call 2), push scores (call 7), and push stats
+(call 8) — see their own entries. For those three, a genuinely empty body works exactly as well
+as `{}` does. The other six calls do parse the body and need whatever fields their own entry
+marks required; `{}` alone will not satisfy those.
 
 Exactly one call reads any other status: call 1 of the refbox nine treats `400` as "that code was
 wrong" and surfaces it to the operator as an invalid code
 (`uwh-common/src/uwhportal/mod.rs:239`). Everywhere else, every non-`200` means the same single
 thing, so the status you choose for "no such event" carries no meaning to refbox — `404`, `400`
-and `500` are indistinguishable to it. The overlay is the opposite extreme: it never inspects the
+and `500` are indistinguishable to it. An event deleted from your site therefore looks, to the
+operator, identical to your site being down — same red indicator, no update, no way to tell "it
+was removed" from "it can't be reached." The overlay is the opposite extreme: it never inspects the
 status code at all, and simply attempts to parse whatever body comes back.
 
 **Unknown fields are ignored, everywhere.** No type in this API sets serde's
@@ -901,6 +938,22 @@ marks `bearer`, and it must treat them as failures rather than serve them. Servi
 call 5 hands your privileged schedule to anyone who asks, which — as the walkthrough on 2026-08-11
 showed — is enough for refbox to fill its court and game pickers from data it was never authorised
 to have.
+
+**The four calls marked `none` — event list (3), event teams (4), referees (6), and team roster
+(9) — never carry an `Authorization` header, in any state.** Unlike the bearer calls above, which
+route through `authenticated_request` and omit the header only when refbox holds no token, these
+four are built directly from the bare client and never pass through that function at all: event
+list (`uwh-common/src/uwhportal/mod.rs:548-556`), event teams (`mod.rs:507`), referees (`mod.rs:459`),
+team roster (`mod.rs:677-681`). This holds even when refbox is fully linked and holding a valid
+token — the header is unconditionally absent on these four paths, not merely absent because there
+was nothing to send. A site may safely reject any request to these four paths that arrives carrying
+an `Authorization` header: refbox is never the one sending it, so refusing it costs nothing. Team
+roster's path (`/api/admin/get-event-team`) is the one most likely to tempt an implementer into
+requiring a token anyway, on the strength of its `/admin/` segment — see the note above under
+[Full inventory](#full-inventory). Doing so does not fail loudly: refbox has no way to supply a
+header this call will never carry, so requiring one here reproduces exactly the silent failure
+call 9's own entry describes — the player-number grid quietly stops working, with nothing on
+screen or in the log to explain why.
 
 ### The two ID forms
 

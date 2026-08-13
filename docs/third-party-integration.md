@@ -1396,7 +1396,7 @@ schedule-processor returns to its main menu — no retry.
 `POST /api/events/{eventSlug}/schedule/coin-flips`  ·  source: `uwh-common/src/uwhportal/mod.rs:816`
 
 **When schedule-processor calls it:** Immediately after the operator picks a tied game (or group)
-and a winning team from the menu populated by call 6.
+and a winning team from the menu populated by call 5.
 
 **Authentication:** `Authorization: Bearer <token>`
 
@@ -1458,7 +1458,7 @@ token — forcing a fresh login on the next attempt — before returning to the 
 
 `POST /api/events/{eventSlug}/schedule/map-teams`  ·  source: `uwh-common/src/uwhportal/mod.rs:614`
 
-**When schedule-processor calls it:** Immediately after call 8 succeeds, in the same "Upload
+**When schedule-processor calls it:** Immediately after call 7 succeeds, in the same "Upload
 Schedule" action — the two are always sent as a pair.
 
 **Authentication:** `Authorization: Bearer <token>`
@@ -1475,7 +1475,7 @@ schedule to the real team's ID, long form. Example:
 
 **Fields schedule-processor actually reads:** none.
 
-**On failure:** Same as call 8: logged, saved login token cleared, back to the main menu.
+**On failure:** Same as call 7: logged, saved login token cleared, back to the main menu.
 
 #### 9. Overlay attachments
 

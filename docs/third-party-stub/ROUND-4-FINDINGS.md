@@ -25,7 +25,7 @@ the class only a live refbox can settle.
 
 ## A. Contradictions — the document disagreeing with itself
 
-### 1. Call 8's request body is described two ways — SEVERE — OPEN
+### 1. Call 8's request body is described two ways — SEVERE — FIXED
 
 Call 8's own entry says "**Request body:** A JSON object of per-team, per-player statistics", and
 calls it "the other large, shared **response** shape". Data formats says "The body is **a bare JSON
@@ -35,13 +35,19 @@ An implementer who reads only the call entry writes a dict-shaped model and reje
 array — *after* the score push has already succeeded. The item goes stats-pending, is not
 auto-retried, and the indicator never reddens. The quietest failure mode the document describes.
 
-### 2. The `force`-is-omitted cross-reference names the wrong call — SEVERE — OPEN
+Fixed: call 8's entry now says "a bare JSON array of event objects" and calls it "the other large,
+shared **request** shape", agreeing with Data formats.
+
+### 2. The `force`-is-omitted cross-reference names the wrong call — SEVERE — FIXED
 
 The push-scores entry points at "the coin-flips upload … (inventory #17)" as the call that behaves
 differently. But the coin-flips upload entry says it **always** sends `force`, "unlike the schedule
 upload", and the schedule-upload entry calls itself "the one exception". Followed literally, an
 implementer makes `force` mandatory on schedule upload — which the document itself says "will
 reject every ordinary schedule upload".
+
+Fixed: the push-scores entry now points at the schedule upload (inventory #10), not the coin-flips
+upload (#17).
 
 ### 3. The public schedule must return two mutually exclusive shapes — SEVERE — CODE?
 

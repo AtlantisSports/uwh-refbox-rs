@@ -682,7 +682,7 @@ to a score for a game number you do not recognise: store it rather than refuse i
 On this call
 `force` is **always present**, as the literal `true` or `false` — never omitted
 (`uwh-common/src/uwhportal/mod.rs:367`). One of the other-nine calls that also takes `force`
-behaves differently; see the coin-flips upload in [Full inventory](#full-inventory) (inventory #17)
+behaves differently; see the schedule upload in [Full inventory](#full-inventory) (inventory #10)
 — not "call 8" of the refbox nine, which is push stats.
 
 **Request body:** `{"dark": {"value": <0-255>}, "light": {"value": <0-255>}}`. Note the naming:
@@ -720,9 +720,9 @@ exceptions among these nine to the short-form-in-path rule, the other being call
 since this is a query parameter, not a path segment) and `gameNumber` (the game's number as a
 plain string, e.g. `"3"`).
 
-**Request body:** A JSON object of per-team, per-player statistics for the game that just
-ended. This is the other large, shared response shape — see [Data formats](#data-formats) for
-the exact fields.
+**Request body:** A bare JSON array of event objects — the game's goals, penalties, and fouls —
+for the game that just ended. This is the other large, shared request shape — see
+[Data formats](#data-formats) for the exact fields.
 
 **Successful response:** `200`. The body is never parsed — only the status code matters.
 

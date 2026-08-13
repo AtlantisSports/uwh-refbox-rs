@@ -91,9 +91,10 @@ real results, with no `portal_queue.corrupt.*` backup, and reports success.
 
 That made the first implementation *more* destructive than the healthy path, which already handles
 this case correctly: `new()` returns `Err`, and `app/mod.rs` falls back to the temp directory,
-leaving the file intact. **Fix:** on a failed load, the write target falls back to
-`std::env::temp_dir()` — no worse than today for that case, and the unreadable file is preserved
-byte-for-byte.
+leaving the file intact. **Fix:** on a failed load the write target moves elsewhere and the
+unreadable file is preserved byte-for-byte. The first attempt used `std::env::temp_dir()`, which a
+second review showed was the same bug one branch over — see "the guards were positional" below. It is
+now a fresh per-process directory.
 
 ---
 
@@ -148,6 +149,43 @@ tappable and REFRESH declines to spin. This deliberately does **not** touch `is_
 
 **No unit test:** the guard lives in `update()`, which this crate does not exercise directly. Stated
 here rather than covered by a test that only looks like coverage.
+
+### Second review: the guards were positional, so the class was not closed
+
+A second adversarial pass (after PR #2336 merged) found that each earlier fix closed the case it was
+pointed at and left a sibling of the same class:
+
+| Round | Closed | Sibling left open |
+| --- | --- | --- |
+| 1 | Row taps blocked in `update()` | **RETRY ALL still live** — its own button, no guard |
+| 2 | `config_dir` clobber on a failed read | **`temp_dir` clobber** — the fallback wrote to a queue it never read |
+
+**RETRY ALL was a genuine regression** introduced by adopting the queue. The button greys out unless
+something is unsent, so with the old always-empty degraded queue it was inert. Adopted results make
+it live — and `retry_all` resets `queued_at`, so red "Score send error" rows turn yellow with
+"attempt 0". The operator gets *positive confirmation of a success that cannot happen* (no background
+task exists), and the only record of when each game ended is destroyed — the input to both the
+30-minute escalation and the 120-hour expiry. It also contradicted the sweep gate added in the same
+commit, which exists precisely to stop a degraded session ageing the queue.
+
+**The structural fix: gate at the chokepoint, not at the routes.** `retry_all`, `discard`,
+`force_submit`, `force_immediate_retry` and `request_stats_retry` now return early while
+`startup_problem` is set. That closes every present *and future* UI route by construction, and — the
+reason it matters beyond tidiness — it is **unit-testable**, unlike the `update()` guard. The view
+additionally greys RETRY ALL and stops rendering pressable rows, so the operator sees inert controls
+rather than buttons that depress and do nothing.
+
+**The temp-dir fallback now uses a fresh per-process directory** (`refbox-degraded-<pid>`) rather
+than the bare temp dir, because `std::env::temp_dir()` is the healthy path's own second choice and can
+hold real undelivered results. A per-process directory is empty by construction, so there is nothing
+to destroy. This also stopped the test suite overwriting the real shared `/tmp/portal_queue.json` —
+which it had been doing, leaving a plausible fake result that a later fallback session would have
+adopted and tried to upload.
+
+**Correction to the sweep-gate rationale above:** "the next healthy session sweeps" is true but not
+harmless. A healthy session sweeps inside `new()`, *before* the background task attempts anything, so
+an adopted result already past 120 hours is archived **unattempted**, with the indicator Green. The
+gate is a real improvement while an outage is under 120 hours; past that, this promise ends quietly.
 
 ### What this delivers — stated precisely, not optimistically
 

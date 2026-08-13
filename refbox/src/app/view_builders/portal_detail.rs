@@ -22,10 +22,17 @@ const PORTAL_DETAIL_LIST_LEN: usize = 4;
 /// (only one of the two can occur), then stuck items (oldest first), then
 /// young pending items (oldest first), then recent successes (newest
 /// first, capped at RECENT_SUCCESS_CAP).
+///
+/// `actionable` is false when the portal subsystem failed to start. Every row
+/// action is refused by `PortalManager` in that state, so the rows must not
+/// look pressable either — a button that visibly depresses and does nothing is
+/// worse than a plainly inert one. RETRY ALL greys out for the same reason: it
+/// would turn red rows yellow and report a success that cannot happen.
 pub(in super::super) fn build_portal_detail_page<'a>(
     data: ViewData<'_, '_>,
     rows: Vec<DetailRow>,
     scroll_index: usize,
+    actionable: bool,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -66,7 +73,7 @@ pub(in super::super) fn build_portal_detail_page<'a>(
         .chain([None].into_iter().cycle())
         .take(PORTAL_DETAIL_LIST_LEN)
         .map(|slot| match slot {
-            Some(row_data) => render_row(row_data),
+            Some(row_data) => render_row(row_data, actionable),
             None => container(horizontal_space())
                 .width(Length::Fill)
                 .height(Length::Fixed(MIN_BUTTON_SIZE))
@@ -93,7 +100,7 @@ pub(in super::super) fn build_portal_detail_page<'a>(
     // Blue safe-action button, anchored bottom-right opposite BACK.
     // Grayed (no on_press) when there is nothing unsent to retry.
     let retry_all = make_button(fl!("portal-retry-all"))
-        .on_press_maybe(has_unsent.then_some(Message::PortalRetryAll))
+        .on_press_maybe((has_unsent && actionable).then_some(Message::PortalRetryAll))
         .style(blue_button);
 
     column![
@@ -132,7 +139,7 @@ fn row_text_centered<'a>(label: String) -> Element<'a, Message> {
     .into()
 }
 
-fn render_row<'a>(r: DetailRow) -> Element<'a, Message> {
+fn render_row<'a>(r: DetailRow, actionable: bool) -> Element<'a, Message> {
     match r {
         DetailRow::StartupFailed => container(row_text_centered(fl!("portal-row-startup-failed")))
             .style(red_container)
@@ -153,7 +160,7 @@ fn render_row<'a>(r: DetailRow) -> Element<'a, Message> {
             "portal-row-stuck",
             game = game_number
         )))
-        .on_press(Message::PortalRowTapped(id))
+        .on_press_maybe(actionable.then_some(Message::PortalRowTapped(id)))
         .style(red_button)
         .padding(PADDING)
         .width(Length::Fill)
@@ -174,7 +181,7 @@ fn render_row<'a>(r: DetailRow) -> Element<'a, Message> {
                 fl!("portal-row-attempt-suffix", attempts = attempts),
             );
             button(row_text_centered(label))
-                .on_press(Message::PortalRowTapped(id))
+                .on_press_maybe(actionable.then_some(Message::PortalRowTapped(id)))
                 .style(yellow_button)
                 .padding(PADDING)
                 .width(Length::Fill)
@@ -185,7 +192,7 @@ fn render_row<'a>(r: DetailRow) -> Element<'a, Message> {
             "portal-row-stats-pending",
             game = game_number
         )))
-        .on_press(Message::PortalRowTapped(id))
+        .on_press_maybe(actionable.then_some(Message::PortalRowTapped(id)))
         .style(yellow_button)
         .padding(PADDING)
         .width(Length::Fill)

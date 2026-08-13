@@ -10,6 +10,7 @@ pub mod queue;
 
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
+use std::process;
 use std::time::Instant;
 use time::{Duration as TimeDuration, OffsetDateTime};
 use tokio::sync::mpsc;
@@ -509,8 +510,10 @@ impl PortalManager {
     }
 
     /// Remove items past `EXPIRY_THRESHOLD` from the active queue, archiving
-    /// them first so nothing is silently lost. Runs at startup (in `new`) and
-    /// on every `ui_tick`; only touches disk when an item actually expires.
+    /// them first so nothing is silently lost. Runs at startup (in `new`) and on
+    /// every `ui_tick` EXCEPT while `startup_problem` is set — see `ui_tick` for
+    /// why a degraded session must not age the queue. Only touches disk when an
+    /// item actually expires.
     /// IO is ordered archive-then-remove so a failed write can never drop a
     /// score without a saved copy.
     fn sweep_expired(&mut self) -> std::io::Result<()> {
@@ -646,6 +649,12 @@ impl PortalManager {
     /// Writing them elsewhere is what this constructor used to do, from when
     /// its only caller was the both-directories-failed case.
     ///
+    /// If `config_dir`'s queue cannot be READ, this session writes to a fresh
+    /// per-process directory under the system temp dir instead, and the
+    /// unreadable file is left untouched. So a caller cannot assume results
+    /// always land in `config_dir` — only that nothing is ever overwritten
+    /// unread.
+    ///
     /// The returned receiver is a dummy that never emits events.
     pub(crate) fn new_degraded(
         config_dir: &std::path::Path,
@@ -658,28 +667,38 @@ impl PortalManager {
         let (_, rx) = mpsc::channel(1);
         let (command_tx, _command_rx) = mpsc::channel(1);
 
-        // Adopt whatever is already queued, best-effort. This must never fail
-        // the construction: one trigger for degraded mode IS an unreadable
-        // queue file, and the game has to keep running regardless.
+        // Adopt whatever is already queued, and only ever write where we could
+        // read. Best-effort by design: one trigger for degraded mode IS an
+        // unreadable queue file, and construction must never fail because the
+        // game has to keep running regardless.
         //
-        // Skipping this load would NOT be the safe option: `queue::save`
-        // rewrites the whole file, so an empty starting queue means the first
-        // enqueue overwrites — and destroys — results already waiting.
-        // Adopt whatever is already queued, and only write where we could
-        // read. If the load fails we must NOT keep `config_dir` as the write
-        // target: `queue::save` renames over the file, and a rename needs
-        // write permission on the *directory*, not on the file — so an
-        // unreadable-but-replaceable queue would be silently destroyed by the
-        // first enqueue. That is the exact failure this fallback exists for,
-        // and the healthy path already handles it by moving to the temp dir.
+        // The invariant matters in both directions. Skipping the load is not
+        // safe — `queue::save` rewrites the whole file, so an empty starting
+        // queue would mean the first enqueue destroys results already waiting.
+        // And on a FAILED load we must not keep writing here either: `save`
+        // renames over the target, and rename needs write permission on the
+        // *directory*, not on the file, so an unreadable-but-replaceable queue
+        // would be silently destroyed.
+        //
+        // The fallback is a fresh per-process directory, never the bare temp
+        // dir: `std::env::temp_dir()` is the healthy path's own second choice
+        // (see `RefBoxApp::new`), so real undelivered results can be sitting in
+        // a queue file there. Writing into it unread would reproduce this very
+        // bug one branch over. A per-process directory is empty by
+        // construction, so there is nothing there to destroy.
         let (queue, queue_dir) = match queue::load_or_empty(config_dir) {
             Ok(q) => (q, config_dir.to_path_buf()),
             Err(e) => {
+                let own = std::env::temp_dir().join(format!("refbox-degraded-{}", process::id()));
                 log::warn!(
-                    "could not read the portal queue ({e}); this session will not write to it, \
-                     so the existing file is left intact"
+                    "could not read the portal queue ({e}); leaving that file untouched and \
+                     using {} for this session instead",
+                    own.display()
                 );
-                (QueueFile::empty(), std::env::temp_dir())
+                // Best-effort: if this fails, saves fail and are logged. It
+                // must not stop the refbox starting.
+                std::fs::create_dir_all(&own).ok();
+                (QueueFile::empty(), own)
             }
         };
 
@@ -717,6 +736,15 @@ impl PortalManager {
     /// (tapped its row). Sends exactly one `RetryStats`. No-op if the id
     /// is not in the queue.
     pub fn request_stats_retry(&self, id: &ItemId) {
+        // Inert while the portal subsystem failed to start. There is no
+        // background task, so nothing here can actually reach the portal —
+        // and every one of these either destroys a result the operator was
+        // never able to send, or rewrites the queue's ageing and reports a
+        // success that did not happen. Gated here, at the one chokepoint, so
+        // no present or future UI route can reach them in that state.
+        if self.startup_problem {
+            return;
+        }
         if let Some(item) = self.find(id) {
             self.send_stats_retry(item);
         }
@@ -782,6 +810,15 @@ impl PortalManager {
     /// "now" so the item is no longer considered stuck (the operator
     /// has restarted its 30-minute clock by making a decision).
     pub fn force_submit(&mut self, id: &ItemId) -> std::io::Result<()> {
+        // Inert while the portal subsystem failed to start. There is no
+        // background task, so nothing here can actually reach the portal —
+        // and every one of these either destroys a result the operator was
+        // never able to send, or rewrites the queue's ageing and reports a
+        // success that did not happen. Gated here, at the one chokepoint, so
+        // no present or future UI route can reach them in that state.
+        if self.startup_problem {
+            return Ok(());
+        }
         if let Some(item) = self.find_mut(id) {
             item.force = true;
             item.attempts = 0;
@@ -811,6 +848,15 @@ impl PortalManager {
     /// `token_refreshed`/`force_submit`: the in-memory reset stands even
     /// if the disk write fails (the error propagates for logging).
     pub fn retry_all(&mut self) -> std::io::Result<()> {
+        // Inert while the portal subsystem failed to start. There is no
+        // background task, so nothing here can actually reach the portal —
+        // and every one of these either destroys a result the operator was
+        // never able to send, or rewrites the queue's ageing and reports a
+        // success that did not happen. Gated here, at the one chokepoint, so
+        // no present or future UI route can reach them in that state.
+        if self.startup_problem {
+            return Ok(());
+        }
         let now = OffsetDateTime::now_utc();
         // Reset every item; touching a stats-pending item's attempt/queued_at
         // fields is harmless (they are unused while score_sent == true) and
@@ -843,6 +889,15 @@ impl PortalManager {
     /// nothing. The item stays young-pending, so no indicator recompute
     /// is needed.
     pub fn force_immediate_retry(&mut self, id: &ItemId) -> std::io::Result<()> {
+        // Inert while the portal subsystem failed to start. There is no
+        // background task, so nothing here can actually reach the portal —
+        // and every one of these either destroys a result the operator was
+        // never able to send, or rewrites the queue's ageing and reports a
+        // success that did not happen. Gated here, at the one chokepoint, so
+        // no present or future UI route can reach them in that state.
+        if self.startup_problem {
+            return Ok(());
+        }
         if let Some(item) = self.find_mut(id) {
             item.last_attempt_at = None;
             queue::save(&self.config_dir, &self.queue)?;
@@ -855,6 +910,15 @@ impl PortalManager {
     /// Removes the item from the queue without submitting. Whatever the
     /// portal currently has for that game stands.
     pub fn discard(&mut self, id: &ItemId) -> std::io::Result<()> {
+        // Inert while the portal subsystem failed to start. There is no
+        // background task, so nothing here can actually reach the portal —
+        // and every one of these either destroys a result the operator was
+        // never able to send, or rewrites the queue's ageing and reports a
+        // success that did not happen. Gated here, at the one chokepoint, so
+        // no present or future UI route can reach them in that state.
+        if self.startup_problem {
+            return Ok(());
+        }
         self.queue.items.retain(|it| it.id != *id);
         queue::save(&self.config_dir, &self.queue)?;
         self.recompute_indicator();
@@ -1546,6 +1610,88 @@ mod tests {
         );
     }
 
+    /// Build a degraded manager over `dir` holding one long-stuck result, as a
+    /// session that adopted a previous session's queue would.
+    async fn degraded_with_one_stuck_item(
+        dir: &std::path::Path,
+    ) -> (PortalManager, mpsc::Receiver<PortalEvent>) {
+        let mut item = mk_stuck_item();
+        item.queued_at = OffsetDateTime::now_utc() - TimeDuration::hours(100);
+        queue::save(
+            dir,
+            &QueueFile {
+                version: 1,
+                items: vec![item],
+            },
+        )
+        .unwrap();
+        PortalManager::new_degraded(dir)
+    }
+
+    #[tokio::test]
+    async fn degraded_retry_all_is_inert_and_does_not_rewrite_ageing() {
+        // RETRY ALL was the sibling left open when row taps were blocked. With
+        // no background task nothing can be retried, but `retry_all` would
+        // reset queued_at — turning red rows yellow with "attempt 0", giving
+        // the operator positive confirmation of a success that never happened,
+        // and destroying the only record of when each game ended (which drives
+        // both the 30-minute escalation and the 120-hour expiry).
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = degraded_with_one_stuck_item(tmp.path()).await;
+        let before = m.queue.items[0].queued_at;
+
+        m.retry_all().unwrap();
+
+        assert_eq!(
+            m.queue.items[0].queued_at, before,
+            "RETRY ALL must not rewrite the queue's ageing in degraded mode"
+        );
+        assert!(
+            matches!(m.detail_rows().get(1), Some(DetailRow::Stuck { .. })),
+            "the row must stay stuck, not flip to pending, got {:?}",
+            m.detail_rows()
+        );
+    }
+
+    #[tokio::test]
+    async fn degraded_discard_cannot_delete_an_adopted_result() {
+        // Discard is permanent and does not archive. In degraded mode the
+        // operator has had no chance to send these results, so the one action
+        // that always "works" must not be deletion.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = degraded_with_one_stuck_item(tmp.path()).await;
+        let id = m.queue.items[0].id.clone();
+
+        m.discard(&id).unwrap();
+
+        assert_eq!(
+            m.queue.items.len(),
+            1,
+            "discard must be inert in degraded mode"
+        );
+        assert_eq!(
+            queue::load_or_empty(tmp.path()).unwrap().items.len(),
+            1,
+            "and must leave the result on disk"
+        );
+    }
+
+    #[tokio::test]
+    async fn degraded_force_submit_is_inert() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let (mut m, _rx) = degraded_with_one_stuck_item(tmp.path()).await;
+        let id = m.queue.items[0].id.clone();
+        let before = m.queue.items[0].queued_at;
+
+        m.force_submit(&id).unwrap();
+
+        assert!(
+            !m.queue.items[0].force,
+            "force must not be set with no task to honour it"
+        );
+        assert_eq!(m.queue.items[0].queued_at, before);
+    }
+
     #[tokio::test]
     async fn degraded_ui_tick_does_not_archive_expired_items() {
         // The 1 Hz UI tick runs regardless of health, so without a guard a
@@ -1606,6 +1752,11 @@ mod tests {
         let path = tmp.path().join("portal_queue.json");
         let before = std::fs::read(&path).unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::read(&path).is_ok() {
+            // Running as root: permissions do not deny us, so the unreadable
+            // premise cannot be set up. Skip rather than fail spuriously.
+            return;
+        }
 
         // Degraded session cannot read it, then records a game of its own.
         {
@@ -1615,7 +1766,26 @@ mod tests {
                 tmp.path(),
                 "a queue that could not be read must not stay the write target"
             );
+            // Nor may the fallback be the bare temp dir: that is the healthy
+            // path's own second choice, so real undelivered results can live
+            // there — and writing into it unread would reproduce this very bug
+            // one branch over. It must be a fresh per-process directory.
+            assert_ne!(
+                degraded.config_dir.as_path(),
+                std::env::temp_dir().as_path(),
+                "the fallback must not be the shared temp dir"
+            );
+            assert!(
+                degraded
+                    .config_dir
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.starts_with("refbox-degraded-")),
+                "expected a per-process fallback dir, got {:?}",
+                degraded.config_dir
+            );
             let _ = degraded.enqueue_game_end("event".into(), "G3".into(), 3, 0, "{}".into());
+            std::fs::remove_dir_all(&degraded.config_dir).ok();
         }
 
         // Restore access and prove the original results are untouched.

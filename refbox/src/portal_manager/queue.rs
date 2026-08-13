@@ -83,7 +83,7 @@ fn tmp_path(dir: &Path) -> PathBuf {
 /// Load the queue file from `dir`. If missing, return an empty queue. If
 /// present but unparseable, rename to `portal_queue.corrupt.<ts>.json`,
 /// log an error, and return an empty queue.
-pub fn load_or_empty(dir: &Path) -> std::io::Result<QueueFile> {
+pub(super) fn load_or_empty(dir: &Path) -> std::io::Result<QueueFile> {
     let path = queue_path(dir);
     if !path.exists() {
         return Ok(QueueFile::empty());
@@ -132,7 +132,7 @@ fn write_atomic(target: &Path, tmp: &Path, q: &QueueFile) -> std::io::Result<()>
 }
 
 /// Atomically write the queue file to `dir/portal_queue.json`.
-pub fn save(dir: &Path, q: &QueueFile) -> std::io::Result<()> {
+pub(super) fn save(dir: &Path, q: &QueueFile) -> std::io::Result<()> {
     write_atomic(&queue_path(dir), &tmp_path(dir), q)
 }
 
@@ -156,7 +156,7 @@ fn archive_tmp_path(dir: &Path) -> PathBuf {
 /// Load the archive of expired queue items. Missing → empty. Unparseable or
 /// unknown-version → logged and treated as empty (the archive is a
 /// best-effort safety net, so a corrupt archive must never block a sweep).
-pub fn load_archive_or_empty(dir: &Path) -> std::io::Result<QueueFile> {
+pub(super) fn load_archive_or_empty(dir: &Path) -> std::io::Result<QueueFile> {
     let path = archive_path(dir);
     if !path.exists() {
         return Ok(QueueFile::empty());
@@ -173,7 +173,7 @@ pub fn load_archive_or_empty(dir: &Path) -> std::io::Result<QueueFile> {
 
 /// Append expired items to the archive, atomically. No-op on empty input.
 /// Additive: items archived by earlier sweeps are preserved.
-pub fn append_to_archive(dir: &Path, items: &[QueuedItem]) -> std::io::Result<()> {
+pub(super) fn append_to_archive(dir: &Path, items: &[QueuedItem]) -> std::io::Result<()> {
     if items.is_empty() {
         return Ok(());
     }

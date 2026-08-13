@@ -6,7 +6,7 @@
 
 pub mod health;
 pub mod link_session;
-pub mod queue;
+mod queue;
 
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;

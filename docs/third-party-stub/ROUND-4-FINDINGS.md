@@ -93,12 +93,22 @@ at most 900,000, the `refBoxId` is on the refbox screen, and each wrong guess ju
 `InvalidCode`. A diligent implementer following the list ships an unthrottled oracle believing the
 security section satisfied.
 
-### 7. `filter=Past` is undefined — exclusive or additive? — SEVERE — OPEN
+### 7. `filter=Past` is undefined — exclusive or additive? — SEVERE — FIXED
 
 The parameter is described as "from an operator setting for whether to include past events", which
 describes a checkbox (past **and** current), while the value name reads as an exclusive enum. The
 site applies it and refbox displays exactly what comes back. Guess wrong and an operator ticking
 "include past events" mid-tournament watches their live event vanish from the picker.
+
+Fixed, after re-triage. This was deferred as needing a product decision; refbox's own source answers
+it. There is no checkbox — the value comes from the launch flag `--all-events` / `-a`, whose help
+text reads "List all events from uwhportal, including past ones", and refbox sends exactly one of
+the two values on every request, never both. Call 3's entry now corrects the description of where
+`filter` comes from, and adds a recommendation in the same labelled form finding 18 uses
+("Recommendation for the site, not a refbox guarantee"): read `Past` as *past and current*, because
+the flag's own help text says "including", not "instead of". The consequence of the exclusive
+reading is named — an operator who launches with `--all-events` mid-tournament watches the event
+they are running vanish from the picker, with no error anywhere.
 
 ### 8. Whether a tokenless call 2 must be refused, in the build you can download — SEVERE — OPEN
 
@@ -176,10 +186,19 @@ close`, chunked responses, gzip. Python's `http.server` **defaults to HTTP/1.0 a
 each response**; with ~40 concurrent roster GETs plus the teams and schedule burst, that is 40+
 handshakes against a 10-second budget, and nothing tells you to change it.
 
-Fixed: the rules section now states that the client forces no minimum HTTP version and is built
-without reqwest's `gzip` feature (so an unrequested `Content-Encoding: gzip` body fails to parse),
-and calls out `http.server`'s HTTP/1.0-and-close default as the reason the reference stub sets
-`protocol_version = "HTTP/1.1"` and uses `ThreadingHTTPServer`.
+Fixed: the rules section now states that the client forces no minimum HTTP version and that the
+**released** refbox binary is built without reqwest's `gzip` feature (so an unrequested
+`Content-Encoding: gzip` body fails to parse), and calls out `http.server`'s HTTP/1.0-and-close
+default as the reason the reference stub sets `protocol_version = "HTTP/1.1"` and uses
+`ThreadingHTTPServer`.
+
+Scoped afterwards: the gzip half was originally written as if it were true of every refbox. It is
+true of the download, but the overlay enables reqwest's `gzip` feature and Cargo unifies features
+across a workspace build, so a refbox built by `cargo build --workspace --release` does have gzip.
+The advice ("do not compress a reply refbox did not ask for") is safe either way; the reason for it
+is now scoped to the released binary, cited to `refbox/Cargo.toml:43`, with the overlay named as the
+counter-example. The `ThreadingHTTPServer` half of the stub citation was also missing and has been
+added.
 
 ### 16. Whether the "auth: none" calls may still carry an `Authorization` header — MINOR — FIXED
 
@@ -188,9 +207,15 @@ along — or, the other direction, would *require* one on `get-event-team` becau
 `/admin/`, which the document warns about.
 
 Fixed: the rules section now states that calls 3, 4, 6 and 9 are built from the bare client, never
-`authenticated_request`, so none of the four ever carries an `Authorization` header, even with a
+`authenticated_request`, so none of them ever carries an `Authorization` header, even with a
 valid token — a site may reject one on sight. Call 9's own entry now says so too, and both note
 that requiring a token on `get-event-team` because of its `/admin/` segment silently breaks it.
+
+Corrected afterwards: the rule listed four calls but omitted call 1 (link a refbox), which meets
+the same stated criterion — it is built from the bare client at
+`uwh-common/src/uwhportal/mod.rs:218-224` and is marked `none` in both of the document's own tables.
+A reader counting `none` rows found five and would have read the paragraph as narrower than it
+says. The rule now names all five calls and cites call 1 alongside the rest.
 
 ### 17. Which value lands in the score-push path: the `games` key or `Game.number`? — MINOR — FIXED
 
@@ -198,10 +223,25 @@ The document says the key and `number` "should" match — not must. A site whose
 differs from its internal key files results under a game that does not exist, silently, because the
 document rightly forbids rejecting.
 
-Fixed: the `games` field entry now states plainly that refbox always uses `Game.number`, never the
-key, as the game's identity — in the game picker, the auto-advance to the next game, and the value
-sent as `{gameNumber}` on a score push — and names the consequence of a mismatch: a score filed
-against a `{gameNumber}` that may not match any key in the schedule the site served.
+Fixed: the `games` field entry now states plainly that each key **must** equal its `Game`'s own
+`number`. `Game.number` is the value refbox carries around — in the game picker, in the
+auto-advance to the next game, and as the `{gameNumber}` it sends back on a score push — but every
+use refbox makes of that value is a lookup back into the `games` object *by key*, so the number it
+holds and the key it looks up are the same only if the site made them the same.
+
+The stated consequence is now the real one, and it is not a misfiled score: with a mismatch the
+operator cannot start any game at all. Picking a game stores `Game.number`, the settings screen
+looks that value up as a key, finds nothing, and calls the portal configuration incomplete — which
+greys out APPLY and refuses the commit, for every game in the tournament, with nothing on screen
+naming the key as the cause. The entry also names the three things that fail behind the same
+lookup: the timing rule (so a game that did start would run on stale timing), the player-number
+grid, and the auto-advance to the next game.
+
+An intermediate version of this fix asserted the opposite — that the key and `number` need not
+match, because refbox "never treats the key as the game's identity" — which inverted the
+requirement and was a regression on the pre-branch text. That is what this correction reverses. The
+`schedule.rs:478` citation that accompanied it was dropped: that line is the `GameList` type alias
+and never supported the claim.
 
 ### 18. Stats idempotency is never addressed — MINOR — FIXED
 
@@ -325,9 +365,16 @@ Trailing slashes are addressed for the environment variable but not for the type
 `https://site/api/1234-A/` presumably yields an event called `1234-A/`.
 
 Fixed: established that the presumption is wrong — a typed address already handles a trailing
-slash on both halves (the event ID stops at the next `/`; the base URL is trimmed of one too, the
+slash on both halves (the event ID stops at the next `/`; the base URL is trimmed too, the
 same as the environment-variable route). The SITE-row parsing rule now states this as step 4,
 citing both code paths.
+
+Corrected afterwards: the comparison to the environment-variable route was cited only to
+`custom_site.rs`, which proves the typed-address half alone; the environment-variable trim
+(`refbox/src/app/mod.rs:480`) and the client's own second trim
+(`uwh-common/src/uwhportal/mod.rs:177`) are now cited as well. `trim_end_matches('/')` also strips
+*every* trailing slash rather than one, which the text now says. The environment-override section's
+"with no trailing slash" was softened from a requirement to advice for the same reason.
 
 ### 31. No documented way to check the site is reachable before a game — MINOR — OPEN
 

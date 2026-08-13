@@ -51,10 +51,14 @@ under a path prefix works — `https://club.example/scoreboard/api/1234-A` gives
 4. Whatever follows the marker stops at the next `/`, or at the end of the string if there is none.
    A trailing slash after the event ID — `https://your-site/api/1234-A/` — does not become part of
    it: this is the same rule that would also cut off a real path segment after the ID, and it yields
-   `1234-A`, not `1234-A/` (`refbox/src/app/custom_site.rs:102`). The base URL half is trimmed of a
-   trailing slash too, the same way the environment-variable route is below
-   (`refbox/src/app/custom_site.rs:112-117`). A typed address is not actually a gap here — both
-   halves already handle a trailing slash, wherever it lands.
+   `1234-A`, not `1234-A/` (`refbox/src/app/custom_site.rs:102`). The base URL half is trimmed of
+   trailing slashes too, the same way the environment-variable route is below: the typed address is
+   trimmed where it is parsed (`refbox/src/app/custom_site.rs:112-117`), the environment variable's
+   value is trimmed where it is read (`refbox/src/app/mod.rs:480`), and the client trims whatever it
+   is handed a second time either way (`uwh-common/src/uwhportal/mod.rs:177`). All three use
+   `trim_end_matches('/')`, which removes *every* trailing slash rather than just one, so
+   `https://your-site///` is as safe as `https://your-site/`. A typed address is not actually a gap
+   here — both halves already handle a trailing slash, wherever it lands.
 
 The longer form `https://your-site/api/events/1234-A` is also accepted, and is what earlier builds
 required. A `/api/` segment is mandatory in either form: without a fixed marker there is nothing
@@ -93,8 +97,10 @@ launching:
 | Underwater hockey (6v6, 3v3, Beep Test) | `UWH_PORTAL_URL_OVERRIDE` |
 | Underwater rugby | `UWR_PORTAL_URL_OVERRIDE` |
 
-Set it to your site's base URL with no trailing slash — every path in this document is appended
-to it directly. Which of the two variables applies depends on the mode refbox is configured for,
+Set it to your site's base URL — every path in this document is appended
+to it directly. A trailing slash is fine rather than forbidden: refbox trims any it finds
+(`refbox/src/app/mod.rs:480`), so leaving one off is tidiness, not a requirement. Which of the two
+variables applies depends on the mode refbox is configured for,
 so setting the hockey variable while refbox is in rugby mode leaves it pointed at the real Portal,
 with nothing to indicate the override was ignored.
 
@@ -425,8 +431,9 @@ once a problem is detected (so it notices a recovery quickly).
 Holding no token, refbox now reports the credential as failed without sending anything, on both
 paths (`refbox/src/app/mod.rs` for the settings row, `refbox/src/portal_manager/mod.rs` for the
 health check). This is the one endpoint of the four bearer calls that behaves this way; the other
-three still arrive unauthenticated, as described in the fourth rule under "Rules that apply to
-every call".
+three still arrive unauthenticated, as described in the rule "refbox still makes three of the four
+authenticated calls when it holds no token" under
+[Rules that apply to every call](#rules-that-apply-to-every-call).
 
 **Authentication:** `Authorization: Bearer <token>`
 
@@ -509,7 +516,10 @@ whenever the operator turns "Use UWH Portal" on from off in Game Options.
 **Authentication:** none
 
 **Query parameters:** `limit` (always the literal string `"100"`), `filter` (`"Past"` or
-`"InProgressOrUpcoming"`, from an operator setting for whether to include past events), and
+`"InProgressOrUpcoming"` — **not** an in-app setting: it comes from the `--all-events` / `-a` flag
+given on the command line when refbox is launched (`refbox/src/main.rs:158-160`), carried through
+startup (`main.rs:669`) to the call itself (`refbox/src/app/mod.rs:849`), so there is nothing in
+Game Options to switch it with and an operator who wants `Past` has to relaunch refbox), and
 `isSchedulePublished` (always `"true"` — refbox only ever asks for events whose schedule has
 been published).
 
@@ -518,6 +528,17 @@ it displays every entry you return, exactly as returned — so an unfiltered lis
 tournament in the operator's event picker. It also never asks for a second page: there is no
 offset, page, or cursor parameter anywhere in this call, and `totalCount` is read but never acted
 on. If more than 100 of your events match, the remainder are simply unreachable from the picker.
+
+**Recommendation for the site, not a refbox guarantee: read `filter=Past` as "past *and* current",
+not "past only".** refbox sends exactly one of the two values on every request and never both
+(`uwh-common/src/uwhportal/mod.rs:545`), so whichever way you read it, that single response is the
+operator's entire event list. Nothing in the request says which reading is expected, and nothing
+checks your answer. The flag that produces `Past` describes itself as "List all events from
+uwhportal, including past ones" (`refbox/src/main.rs:158-160`) — *including*, not *instead of* —
+so the additive reading is the one that matches what the operator asked for. Choose the exclusive
+reading instead and an operator who launches with `--all-events` in the middle of a tournament
+watches the event they are actually running vanish from the picker, with no error on screen, no
+error in the log, and nothing anywhere pointing at the filter.
 
 **Which 100 to return, if you have more:** prefer whichever events are most relevant to the
 operator right now — in progress, or starting soonest — over truncating in an arbitrary order
@@ -858,8 +879,12 @@ grid — someone who coaches and plays is still a player. Only a member with no 
 "exclude anyone labelled Coach"; that would hide playing coaches from the operator.
 
 The second filter is on the number: of the entries that survive the role test, refbox keeps only
-cap numbers in the range **1 to 99**; a `capNumber` of `0`, or of `100` or more, is silently
-discarded (`refbox/src/app/mod.rs:6332`). Names are parsed but refbox itself ignores them — a
+cap numbers in the range **1 to 99**; a `capNumber` of `0`, or of `100` up to `255`, is silently
+discarded (`refbox/src/app/mod.rs:6332`). Above `255` it is worse than discarded: the number is cut
+down to a single byte before that filter ever sees it
+(`uwh-common/src/uwhportal/mod.rs:87-88`), so a `capNumber` of `300` becomes `44` and appears on
+the grid as cap 44 — a goal tapped there is credited to the wrong player rather than to nobody.
+Names are parsed but refbox itself ignores them — a
 site serving only refbox can return `capNumber` and `roles` alone.
 
 That's the *sufficient* field set, not the *required* one, and the two differ in a way worth
@@ -913,7 +938,7 @@ refbox downloads, the two timestamp formats, and the stats records refbox upload
 
 ### Rules that apply to every call
 
-Four rules hold across the whole API and are invisible from the individual call descriptions
+The rules below hold across the whole API and are invisible from the individual call descriptions
 above, because each one only becomes apparent when you compare all of them.
 
 **The HTTP-level facts, in one place.** refbox gives every request **10 seconds** before treating it
@@ -927,19 +952,29 @@ concurrently.
 **What refbox will accept in a reply is a separate question from what it sends, and just as
 undocumented until now.** The client is built with only a timeout and an HTTPS-only toggle
 (`uwh-common/src/uwhportal/mod.rs:172-175`) — nothing there requires a minimum HTTP version,
-forbids the connection closing after every reply, or asks for compression. Concretely, this build
-of reqwest has no `gzip` feature enabled (`uwh-common/Cargo.toml:24`), so a response sent with
-`Content-Encoding: gzip` is handed to the JSON parser as raw, undecompressed bytes and fails to
-parse — indistinguishable from any other malformed body, with nothing naming compression as the
-cause. An HTTP/1.0 response, and a server that closes its TCP connection after every reply, both
+forbids the connection closing after every reply, or asks for compression. Concretely, the
+**released** refbox binary is built without reqwest's `gzip` feature (`refbox/Cargo.toml:43` asks
+for `json` and nothing else), so a response sent with `Content-Encoding: gzip` is handed to the
+JSON parser as raw, undecompressed bytes and fails to parse — indistinguishable from any other
+malformed body, with nothing naming compression as the cause. Do not compress a reply refbox did
+not ask for. That advice is safe against any build; the reason for it is only true of the download.
+The stream overlay *does* ask for `gzip` (`overlay/Cargo.toml:22`), and Cargo turns a feature on
+for every crate in a build as soon as one of them wants it — so a refbox compiled together with the
+overlay in a single command (`cargo build --workspace --release`, which is this repository's own
+`just build-release` — `Justfile:60-61`) has gzip, advertises `Accept-Encoding: gzip`, and
+decompresses your reply happily. The released artifacts are built alone
+(`.github/workflows/release.yml:18` builds `--bin refbox`; the Raspberry Pi build is `-p refbox` —
+`Justfile:65`) and so do not. If you are testing against a refbox you built yourself from the
+workspace, expect the opposite of what an operator's downloaded copy will do. An HTTP/1.0
+response, and a server that closes its TCP connection after every reply, both
 work; refbox simply opens a new connection for its next request. That combination is exactly what
 Python's `http.server` does by default — `BaseHTTPRequestHandler.protocol_version` defaults to
 `"HTTP/1.0"` — and against the bursts described above (up to ~40 concurrent roster GETs, plus up
 to 100 concurrent teams requests at startup — see calls 9 and 4) that turns into dozens of full TCP
 handshakes competing for the same 10-second-per-request budget, instead of a handful of
 connections reused. This is why the reference stand-in in this repository sets
-`protocol_version = "HTTP/1.1"` and serves on `ThreadingHTTPServer` rather than the library
-defaults (`docs/third-party-stub/stub_site.py:365-366`).
+`protocol_version = "HTTP/1.1"` (`docs/third-party-stub/stub_site.py:365-366`) and serves on
+`ThreadingHTTPServer` (`stub_site.py:436`) rather than the library defaults.
 
 **Exactly `200` counts as success.** Every call made through the shared Portal client — that is,
 every call in this document except the overlay's own — compares the response status against
@@ -1029,14 +1064,15 @@ differently: the fifteen `TimingRule` fields under [Data formats](#data-formats)
 (`schedule.rs:241-276`) are the entire timing-rule shape for either sport, and nothing in this
 document, or in the wire format itself, ever discusses a rugby-specific variant of them.
 
-**The four calls marked `none` — event list (3), event teams (4), referees (6), and team roster
-(9) — never carry an `Authorization` header, in any state.** Unlike the bearer calls above, which
-route through `authenticated_request` and omit the header only when refbox holds no token, these
-four are built directly from the bare client and never pass through that function at all: event
-list (`uwh-common/src/uwhportal/mod.rs:548-556`), event teams (`mod.rs:507`), referees (`mod.rs:459`),
+**The calls marked `none` — link a refbox (1), event list (3), event teams (4), referees (6) and
+team roster (9) — never carry an `Authorization` header, in any state.** Unlike the bearer calls
+above, which route through `authenticated_request` and omit the header only when refbox holds no
+token, each of these is built directly from the bare client and never passes through that function
+at all: link a refbox (`uwh-common/src/uwhportal/mod.rs:218-224`), event list (`mod.rs:548-556`),
+event teams (`mod.rs:507`), referees (`mod.rs:459`),
 team roster (`mod.rs:677-681`). This holds even when refbox is fully linked and holding a valid
-token — the header is unconditionally absent on these four paths, not merely absent because there
-was nothing to send. A site may safely reject any request to these four paths that arrives carrying
+token — the header is unconditionally absent on these paths, not merely absent because there
+was nothing to send. A site may safely reject any request to these paths that arrives carrying
 an `Authorization` header: refbox is never the one sending it, so refusing it costs nothing. Team
 roster's path (`/api/admin/get-event-team`) is the one most likely to tempt an implementer into
 requiring a token anyway, on the strength of its `/admin/` segment — see the note above under
@@ -1130,7 +1166,7 @@ ever want those features, their shapes are not described anywhere here and you w
 | Field | Required? | Contents |
 |---|---|---|
 | `eventId` | required | The event ID, long form (`events/1234-A`) |
-| `games` | required (may be `{}`) | **An object**, not an array — keys are game numbers as strings, values are `Game` objects (see below). **These do not have to match, and refbox never treats the key as the game's identity — it always uses the `Game`'s own `number` field instead.** The game picker shown to the operator stores `Game.number`, not the key (`refbox/src/app/view_builders/list_selector.rs:124`); refbox's auto-advance to the next game carries `Game.number` forward as that game's number (`refbox/src/app/mod.rs:1325`, `refbox/src/tournament_manager/mod.rs:201-203`); and that same value is what later gets sent back to you as `{gameNumber}` when a score is pushed (`refbox/src/tournament_manager/mod.rs:1177`, `uwh-common/src/uwhportal/mod.rs:361`). The key is used only to fetch a `Game` once its number is already known (`schedule.rs:478`). So if your key and your `number` disagree, the score for that game arrives at a `{gameNumber}` that may not equal any key in the schedule you served — and because this document rightly forbids rejecting an unrecognised game number, that mismatch fails exactly as silently as every other one here: a result filed against a game that, by your own key, does not exist. |
+| `games` | required (may be `{}`) | **An object**, not an array — keys are game numbers as strings, values are `Game` objects (see below). **Each key must be exactly the `number` of the `Game` it points at.** refbox does carry `Game.number` around as the game's number: the game picker shown to the operator stores `Game.number`, not the key (`refbox/src/app/view_builders/list_selector.rs:124`); refbox's auto-advance to the next game carries `Game.number` forward as that game's number (`refbox/src/app/mod.rs:1325`, `refbox/src/tournament_manager/mod.rs:201-203`); and that same value is what later gets sent back to you as `{gameNumber}` when a score is pushed (`refbox/src/tournament_manager/mod.rs:1177`, `uwh-common/src/uwhportal/mod.rs:361`). But every use refbox makes of that number is a lookup straight back into this object, **by key** — so the number it holds and the key it looks up are the same value only if you made them the same. Get that wrong and the operator cannot start a single game: picking a game from the list stores `Game.number` (`refbox/src/app/mod.rs:4385-4386`), the settings screen looks that value up as a key, finds nothing, and declares the whole portal configuration incomplete (`refbox/src/app/view_builders/configuration.rs:94-97`) — which greys out **APPLY** (`configuration.rs:1066`) and refuses the commit even if it is reached another way (`refbox/src/app/mod.rs:1625-1627`). That is every game in the tournament, every time, with nothing on screen naming the key as the cause. Three more things fail behind the same lookup: the game's timing rule is never found (`uwh-common/src/uwhportal/schedule.rs:535`, `:542`), so a game that did start would run on whatever timing configuration was already loaded — exactly the silent failure the `timingRules` row below describes; the player-number grid comes up empty (`refbox/src/app/mod.rs:1282`); and the auto-advance to the next game returns early, leaving no next game at all (`refbox/src/app/mod.rs:1306`). |
 | `nonGameEntries` | required (may be `[]`) | Calendar entries (breaks, ceremonies) that aren't games. Not needed to run a game — a stub can always send `[]`. |
 | `groups` | required (may be `[]`) | Pool/division structure and standings rules. Not needed to run a game — a stub can always send `[]`. |
 | `timingRules` | required | Array of `TimingRule` objects (see below). Every game's `timingRule.name` must match one of these by name. **A name that matches nothing is not a parse failure and produces no error** — refbox simply runs that game on whatever timing configuration it already had loaded, silently. A typo here costs the right period lengths at a real game, and says nothing to the operator. **This is not verifiable from your side of the contract.** Nothing in any response refbox sends you, and nothing on the operator's screen, distinguishes "your `timingRule` applied" from "a stale one did" — there is no verification method to reach for here. The only way anyone finds out is watching a real game run and noticing the period lengths are wrong. |

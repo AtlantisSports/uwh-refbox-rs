@@ -22,10 +22,16 @@ const PORTAL_DETAIL_LIST_LEN: usize = 4;
 /// (only one of the two can occur), then stuck items (oldest first), then
 /// young pending items (oldest first), then recent successes (newest
 /// first, capped at RECENT_SUCCESS_CAP).
+///
+/// `can_retry` is false when the portal subsystem failed to start. RETRY ALL
+/// greys out in that state: with no background task it cannot retry anything,
+/// and pressing it would flip red rows to yellow "attempt 0" — reporting a
+/// success that cannot happen.
 pub(in super::super) fn build_portal_detail_page<'a>(
     data: ViewData<'_, '_>,
     rows: Vec<DetailRow>,
     scroll_index: usize,
+    can_retry: bool,
 ) -> Element<'a, Message> {
     let ViewData {
         snapshot,
@@ -93,7 +99,7 @@ pub(in super::super) fn build_portal_detail_page<'a>(
     // Blue safe-action button, anchored bottom-right opposite BACK.
     // Grayed (no on_press) when there is nothing unsent to retry.
     let retry_all = make_button(fl!("portal-retry-all"))
-        .on_press_maybe(has_unsent.then_some(Message::PortalRetryAll))
+        .on_press_maybe((has_unsent && can_retry).then_some(Message::PortalRetryAll))
         .style(blue_button);
 
     column![

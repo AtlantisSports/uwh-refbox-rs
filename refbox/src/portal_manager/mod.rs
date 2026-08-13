@@ -484,10 +484,28 @@ impl PortalManager {
     ///   indicator picks up anything that might have changed between
     ///   frames.
     pub fn ui_tick(&mut self) {
-        if let Err(e) = self.sweep_expired() {
-            log::warn!("portal queue expiry sweep failed: {e}");
+        // Never sweep while the portal subsystem failed to start. Sweeping
+        // writes, and it moves results into `portal_queue.expired.json`, which
+        // the UI never shows — so an operator would have no way to get them
+        // back once the fault is fixed. This tick runs at 1 Hz regardless of
+        // health, so without this guard a refbox with a clock reading days
+        // ahead (a known Pi failure mode) would archive still-pending results
+        // within a second of launching. The next healthy session sweeps; it is
+        // the only one that could have uploaded them anyway.
+        if !self.startup_problem {
+            if let Err(e) = self.sweep_expired() {
+                log::warn!("portal queue expiry sweep failed: {e}");
+            }
         }
         self.recompute_indicator();
+    }
+
+    /// True when the portal subsystem could not start at all. The UI uses this
+    /// to keep the detail page's rows non-actionable: with no background task
+    /// there is nothing to retry with, and Discard would permanently delete
+    /// results the operator was never given a chance to send.
+    pub fn has_startup_problem(&self) -> bool {
+        self.startup_problem
     }
 
     /// Remove items past `EXPIRY_THRESHOLD` from the active queue, archiving
@@ -647,12 +665,23 @@ impl PortalManager {
         // Skipping this load would NOT be the safe option: `queue::save`
         // rewrites the whole file, so an empty starting queue means the first
         // enqueue overwrites — and destroys — results already waiting.
-        let queue = queue::load_or_empty(config_dir).unwrap_or_else(|e| {
-            log::warn!(
-                "could not read the portal queue in degraded mode ({e}); starting with an empty queue"
-            );
-            QueueFile::empty()
-        });
+        // Adopt whatever is already queued, and only write where we could
+        // read. If the load fails we must NOT keep `config_dir` as the write
+        // target: `queue::save` renames over the file, and a rename needs
+        // write permission on the *directory*, not on the file — so an
+        // unreadable-but-replaceable queue would be silently destroyed by the
+        // first enqueue. That is the exact failure this fallback exists for,
+        // and the healthy path already handles it by moving to the temp dir.
+        let (queue, queue_dir) = match queue::load_or_empty(config_dir) {
+            Ok(q) => (q, config_dir.to_path_buf()),
+            Err(e) => {
+                log::warn!(
+                    "could not read the portal queue ({e}); this session will not write to it, \
+                     so the existing file is left intact"
+                );
+                (QueueFile::empty(), std::env::temp_dir())
+            }
+        };
 
         let mut m = Self {
             queue,
@@ -665,7 +694,7 @@ impl PortalManager {
             startup_problem: true,
             indicator_state: PortalIndicatorState::default(),
             command_tx,
-            config_dir: config_dir.to_path_buf(),
+            config_dir: queue_dir,
             recent_successes: VecDeque::new(),
         };
         m.recompute_indicator();
@@ -1514,6 +1543,87 @@ mod tests {
             queue::load_or_empty(seeded_dir.path()).unwrap().items.len(),
             1,
             "and must leave it on disk untouched"
+        );
+    }
+
+    #[tokio::test]
+    async fn degraded_ui_tick_does_not_archive_expired_items() {
+        // The 1 Hz UI tick runs regardless of health, so without a guard a
+        // degraded session would sweep expired items into
+        // portal_queue.expired.json — a file the UI never shows — within a
+        // second of launching. With a clock reading days ahead (a known Pi
+        // failure mode) that would silently archive still-pending results.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut expired = mk_stuck_item();
+        expired.queued_at = OffsetDateTime::now_utc() - TimeDuration::hours(200);
+        queue::save(
+            tmp.path(),
+            &QueueFile {
+                version: 1,
+                items: vec![expired],
+            },
+        )
+        .unwrap();
+
+        let (mut degraded, _rx) = PortalManager::new_degraded(tmp.path());
+        degraded.ui_tick();
+
+        assert_eq!(
+            degraded.queue.items.len(),
+            1,
+            "a degraded session must not sweep expired items"
+        );
+        assert_eq!(
+            queue::load_or_empty(tmp.path()).unwrap().items.len(),
+            1,
+            "and must leave them on disk for the next healthy session"
+        );
+        assert!(
+            !tmp.path().join("portal_queue.expired.json").exists(),
+            "nothing may be archived into a file the operator cannot see"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn degraded_never_overwrites_a_queue_it_could_not_read() {
+        // A queue file we cannot READ can still be REPLACED: `queue::save`
+        // renames over it, and rename needs permission on the directory, not
+        // on the file. So if the load fails, this session must not write here
+        // at all — otherwise the first enqueue destroys real results.
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        {
+            let (mut healthy, _rx) = PortalManager::new(tmp.path(), NullIo).unwrap();
+            healthy
+                .enqueue_game_end("event".into(), "G1".into(), 1, 0, "{}".into())
+                .unwrap();
+            healthy
+                .enqueue_game_end("event".into(), "G2".into(), 2, 0, "{}".into())
+                .unwrap();
+        }
+        let path = tmp.path().join("portal_queue.json");
+        let before = std::fs::read(&path).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+        // Degraded session cannot read it, then records a game of its own.
+        {
+            let (mut degraded, _rx) = PortalManager::new_degraded(tmp.path());
+            assert_ne!(
+                degraded.config_dir.as_path(),
+                tmp.path(),
+                "a queue that could not be read must not stay the write target"
+            );
+            let _ = degraded.enqueue_game_end("event".into(), "G3".into(), 3, 0, "{}".into());
+        }
+
+        // Restore access and prove the original results are untouched.
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            before,
+            "the unreadable queue file must be left byte-identical"
         );
     }
 

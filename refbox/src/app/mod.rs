@@ -3489,6 +3489,17 @@ impl RefBoxApp {
                 Task::none()
             }
             Message::PortalRowTapped(id) => {
+                if self.portal_manager.has_startup_problem() {
+                    // The portal subsystem never started, so no row here is
+                    // actionable and every route out of a tap is misleading:
+                    // there is no background task to retry with (a retry would
+                    // silently reset the timer and look like it worked), and
+                    // Discard would permanently delete — unarchived — results
+                    // the operator was never given a chance to send. Consistent
+                    // with the rest of this state: the startup-failure row is
+                    // not tappable and REFRESH declines to spin.
+                    return Task::none();
+                }
                 if self.portal_manager.is_stuck(&id) {
                     self.app_state = AppState::PortalAttentionAction {
                         item_id: id,

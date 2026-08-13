@@ -2401,7 +2401,7 @@ impl RefBoxApp {
                     "portal client unavailable; portal subsystem starting in degraded \
                      (red, not-sending) mode — no results will be uploaded this session"
                 );
-                PortalManager::new_degraded()
+                PortalManager::new_degraded(&config_dir)
             }
             // Have a client: build the real uploader, trying `config_dir` first,
             // then `std::env::temp_dir()`, then falling back to degraded mode if
@@ -2430,7 +2430,7 @@ impl RefBoxApp {
                                      portal indicator will show red",
                                     secondary_err
                                 );
-                                PortalManager::new_degraded()
+                                PortalManager::new_degraded(&config_dir)
                             }
                         }
                     }

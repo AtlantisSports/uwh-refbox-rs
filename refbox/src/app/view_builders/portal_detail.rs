@@ -18,9 +18,10 @@ const PORTAL_DETAIL_LIST_LEN: usize = 4;
 /// the bottom row left blank.
 ///
 /// Rows produced by `PortalManager::detail_rows()` come in
-/// fixed order: the token-expired row first (if present), then stuck
-/// items (oldest first), then young pending items (oldest first),
-/// then recent successes (newest first, capped at RECENT_SUCCESS_CAP).
+/// fixed order: the startup-failure row first, then the token-expired row
+/// (only one of the two can occur), then stuck items (oldest first), then
+/// young pending items (oldest first), then recent successes (newest
+/// first, capped at RECENT_SUCCESS_CAP).
 pub(in super::super) fn build_portal_detail_page<'a>(
     data: ViewData<'_, '_>,
     rows: Vec<DetailRow>,

@@ -211,7 +211,7 @@ passes both ways is worthless here, and that is precisely how the original defec
 **Observable at the machine:**
 
 5. Start the refbox so that the portal client cannot be built, with an event linked. The portal
-   dot is red; the detail page reads "Portal unavailable — results will not upload"; there is no
+   dot is red; the detail page reads "Connection unavailable — results will not upload"; there is no
    "tap to re-login" row; the REFRESH button on game info is **not** greyed out; pressing REFRESH
    does not leave the button stuck on "Refreshing…".
 6. Normal operation is unchanged: with a working portal, the dot behaves exactly as before.

@@ -215,10 +215,6 @@ impl QueueStore {
         ))
     }
 
-    pub(super) fn dir(&self) -> &Path {
-        &self.dir
-    }
-
     pub(super) fn save(&self, q: &QueueFile) -> std::io::Result<()> {
         save(&self.dir, q)
     }

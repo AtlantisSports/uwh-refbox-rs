@@ -82,6 +82,19 @@ So simply pointing degraded mode at the real config directory produces this:
 Today's behaviour is *safe* precisely because it writes somewhere useless. Any fix must therefore
 load the existing queue before it can be allowed to write.
 
+**And the corollary, missed in the first draft and caught by code review: if the load FAILED, it must
+not write either.** A queue file that cannot be *read* can still be *replaced* — `queue::save`
+renames over it, and rename needs write permission on the **directory**, not on the target file.
+Verified: a `chmod 000` queue file is unreadable to `cat` yet a rename over it succeeds and the
+contents are gone. So falling back to an empty queue while keeping the same write target destroys
+real results, with no `portal_queue.corrupt.*` backup, and reports success.
+
+That made the first implementation *more* destructive than the healthy path, which already handles
+this case correctly: `new()` returns `Err`, and `app/mod.rs` falls back to the temp directory,
+leaving the file intact. **Fix:** on a failed load, the write target falls back to
+`std::env::temp_dir()` — no worse than today for that case, and the unreadable file is preserved
+byte-for-byte.
+
 ---
 
 ## Design
@@ -96,11 +109,45 @@ load the existing queue before it can be allowed to write.
 Best-effort is deliberate throughout: a degraded manager must never fail to construct, because the
 whole point of degraded mode is that the game can still run.
 
-**Deliberately NOT copied from `new()`: the startup expiry sweep.** `PortalManager::new` calls
-`sweep_expired()`, which archives and removes items older than 120 hours — and that writes. Degraded
-construction must stay as close to read-only as possible, so it does not sweep. Any genuinely
-expired item is swept by the next healthy start instead, which is the only session that could upload
-it anyway. This keeps construction free of avoidable writes and keeps the change small.
+**Deliberately NOT copied from `new()`: the expiry sweep.** `PortalManager::new` calls
+`sweep_expired()`, which archives and removes items older than 120 hours — and that writes.
+
+**Corrected after code review:** the first draft of this spec said degraded construction simply
+omits the sweep and "the next healthy start sweeps instead". That was **false**. `ui_tick()` also
+sweeps, and `Message::PortalUiTick` is an unconditional 1 Hz subscription with no health gate — so a
+degraded session was sweeping the real config directory within a second of launch. Skipping it at
+construction bought nothing.
+
+The sweep is therefore **gated on `!startup_problem` inside `ui_tick()`**, which makes the intent
+real. Two reasons it matters: `portal_queue.expired.json` is surfaced nowhere in the UI, so an
+archived result is unrecoverable by the operator; and a refbox whose clock reads days ahead (a
+documented Pi failure mode) would otherwise archive still-pending results in the first second. The
+next healthy session sweeps — the only session that could have uploaded them anyway.
+
+### Found in review: adopting results makes them destroyable, so the rows are made inert
+
+Closing the trap above created a second one, caught by code review rather than by this design.
+
+Once a degraded session **adopts** the queue, those results become visible on the detail page. Any
+item older than 30 minutes renders as *"Game X Score send error, tap to fix"*, whose attention page
+says *"You can Retry if connection is verified, or discard to clear the error"*. In degraded mode:
+
+- **Retry cannot work.** `force_submit` writes and pushes a queue snapshot, but `new_degraded` drops
+  the command receiver and no background task exists, so the send goes nowhere. It *does* reset
+  `queued_at`, so the row disappears for 30 minutes and looks like it succeeded.
+- **Discard deletes permanently and does not archive**, unlike the expiry sweep.
+
+Before this change the degraded queue was always empty, so no pre-existing result could be reached
+this way. Adopting them without this guard would mean the branch written to protect results instead
+hands the operator an on-screen path to destroying them.
+
+**Fix:** `Message::PortalRowTapped` returns immediately when `has_startup_problem()`. Rows stay
+visible but inert, which matches everything else in that state — the startup-failure row is not
+tappable and REFRESH declines to spin. This deliberately does **not** touch `is_item_stuck`, so the
+"stuck" rule is unchanged as required.
+
+**No unit test:** the guard lives in `update()`, which this crate does not exercise directly. Stated
+here rather than covered by a test that only looks like coverage.
 
 ### What this delivers — stated precisely, not optimistically
 
@@ -136,7 +183,23 @@ That is still the difference between "recoverable in one tap" and "silently gone
    startup-failure row, and still spawns no background task — i.e. PR #2319's behaviour is intact.
 5. `just check` green.
 
-Each new guard must be mutation-tested: break the fix, confirm the test fails, restore.
+6. **A queue that could not be read is left byte-identical**, and is not the write target.
+7. **A degraded session does not archive expired items** — they stay on disk for the next healthy
+   session, and no `portal_queue.expired.json` is created.
+
+Each new guard must be mutation-tested: break the fix, confirm the test fails, restore. All five
+guards were: restoring each defect made exactly the intended test fail.
+
+### Also noted by review, accepted rather than fixed
+
+- **Two refbox processes sharing one config directory now interfere across the degraded/healthy pair,
+  where a degraded instance used to be inert.** Two *healthy* processes already do this, and the
+  repo's standing rule is one refbox at a time, so this widens a documented hazard rather than
+  creating a new class of bug.
+- **`queue_dir()` now points at the real queue, so the cross-tenant flush empties it** on a mode
+  change — unarchived. This is arguably a net improvement: previously the flush hit the temp
+  directory and left old-tenant results in the config directory for the next healthy launch to adopt.
+  It now matches healthy behaviour. Recorded so nobody rediscovers it as a surprise.
 
 ---
 

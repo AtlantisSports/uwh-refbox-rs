@@ -48,6 +48,13 @@ The exact rule, in order, because no one-line description predicts every case:
    what follows that. Anything before the marker is kept as the base URL, so a site
 under a path prefix works — `https://club.example/scoreboard/api/1234-A` gives a base of
 `https://club.example/scoreboard`. An address with no host at all is refused rather than accepted.
+4. Whatever follows the marker stops at the next `/`, or at the end of the string if there is none.
+   A trailing slash after the event ID — `https://your-site/api/1234-A/` — does not become part of
+   it: this is the same rule that would also cut off a real path segment after the ID, and it yields
+   `1234-A`, not `1234-A/` (`refbox/src/app/custom_site.rs:102`). The base URL half is trimmed of a
+   trailing slash too, the same way the environment-variable route is below
+   (`refbox/src/app/custom_site.rs:112-117`). A typed address is not actually a gap here — both
+   halves already handle a trailing slash, wherever it lands.
 
 The longer form `https://your-site/api/events/1234-A` is also accepted, and is what earlier builds
 required. A `/api/` segment is mandatory in either form: without a fixed marker there is nothing
@@ -570,10 +577,14 @@ picking.
 {
   "teams": [
     { "team": { "id": "teams/1234-A", "name": "Black Sheep" } },
-    { "team": { "id": "teams/5678-B", "name": "White Knights" } }
+    { "team": { "id": "teams/5678-B", "name": "White Knights" } },
+    { "team": { "id": "teams/9012-C", "name": "Reef Sharks" } }
   ]
 }
 ```
+All three teams are here because the worked schedule example below uses all three, including
+`teams/9012-C` as game 2's dark team — a stub built from both examples verbatim must not trigger
+the raw-ID fallback (see `ScheduledTeam` below) for a team the schedule itself refers to.
 
 **Fields refbox actually reads:** The top-level `teams` array must be present (an empty array
 is fine). Per entry: `team.id` (must start with `"teams/"` and have at least 3 characters after
@@ -777,6 +788,14 @@ concurrent GETs" (`refbox/src/app/mod.rs:4993`), so expect a few dozen near-simu
 on first load and size your site accordingly. Second, a refresh for the two teams of the upcoming
 game, fired at the end of the previous game so the fetch has the whole break to land rather than
 the instant of the next start (`refbox/src/app/mod.rs:1355`).
+
+**"Upcoming" is decided by schedule position, not by game number.** refbox takes the game that
+just started, restricts the search to games on that same court, and picks whichever of those has
+the soonest `startsOn` strictly after it (`refbox/src/app/mod.rs:1314-1319`) — game numbers never
+enter the comparison, so a non-monotonic numbering scheme has no effect on this. Two games on the
+same court sharing an identical `startsOn` are resolved by whichever one appears first in your
+`games` object, an ordering with no rule of its own documented anywhere else in this contract. A
+game on a different court is never "upcoming" by this rule, however soon it starts.
 
 **Authentication:** none — and genuinely so, not merely "no token required": this call never
 carries an `Authorization` header at all, even when refbox holds a valid one (see
@@ -1040,10 +1059,10 @@ ever want those features, their shapes are not described anywhere here and you w
 | Field | Required? | Contents |
 |---|---|---|
 | `eventId` | required | The event ID, long form (`events/1234-A`) |
-| `games` | required (may be `{}`) | **An object**, not an array — keys are game numbers as strings, values are `Game` objects (see below). The key string and the `Game`'s own `number` field should match. |
+| `games` | required (may be `{}`) | **An object**, not an array — keys are game numbers as strings, values are `Game` objects (see below). **These do not have to match, and refbox never treats the key as the game's identity — it always uses the `Game`'s own `number` field instead.** The game picker shown to the operator stores `Game.number`, not the key (`refbox/src/app/view_builders/list_selector.rs:124`); refbox's auto-advance to the next game carries `Game.number` forward as that game's number (`refbox/src/app/mod.rs:1325`, `refbox/src/tournament_manager/mod.rs:201-203`); and that same value is what later gets sent back to you as `{gameNumber}` when a score is pushed (`refbox/src/tournament_manager/mod.rs:1177`, `uwh-common/src/uwhportal/mod.rs:361`). The key is used only to fetch a `Game` once its number is already known (`schedule.rs:478`). So if your key and your `number` disagree, the score for that game arrives at a `{gameNumber}` that may not equal any key in the schedule you served — and because this document rightly forbids rejecting an unrecognised game number, that mismatch fails exactly as silently as every other one here: a result filed against a game that, by your own key, does not exist. |
 | `nonGameEntries` | required (may be `[]`) | Calendar entries (breaks, ceremonies) that aren't games. Not needed to run a game — a stub can always send `[]`. |
 | `groups` | required (may be `[]`) | Pool/division structure and standings rules. Not needed to run a game — a stub can always send `[]`. |
-| `timingRules` | required | Array of `TimingRule` objects (see below). Every game's `timingRule.name` must match one of these by name. **A name that matches nothing is not a parse failure and produces no error** — refbox simply runs that game on whatever timing configuration it already had loaded, silently. A typo here costs the right period lengths at a real game, and says nothing to the operator. |
+| `timingRules` | required | Array of `TimingRule` objects (see below). Every game's `timingRule.name` must match one of these by name. **A name that matches nothing is not a parse failure and produces no error** — refbox simply runs that game on whatever timing configuration it already had loaded, silently. A typo here costs the right period lengths at a real game, and says nothing to the operator. **This is not verifiable from your side of the contract.** Nothing in any response refbox sends you, and nothing on the operator's screen, distinguishes "your `timingRule` applied" from "a stale one did" — there is no verification method to reach for here. The only way anyone finds out is watching a real game run and noticing the period lengths are wrong. |
 | `standingsOrder` | optional — may be omitted | Not needed to run a game |
 | `finalResultsOrder` | optional — may be omitted | Not needed to run a game |
 | `refereesByGameNumber` | optional — may be omitted | Team-supplied referee assignments, separate from the per-game `refereeAssignments` field below |
@@ -1205,6 +1224,18 @@ Side by side, for the same instant:
 A stub server building a schedule response should always write `startsOn` without a fractional
 part. A stub server reading or storing the stats push (call 8) should expect `occurredOn` to
 always carry nine fractional digits, even for round-second timestamps.
+
+**What refbox accepts when it *reads* `startsOn` is a separate question from what it writes.**
+The ISO 8601 parser behind it, configured at `schedule.rs:13-20`, is not strict about the zone
+designator despite the format name: a `startsOn` value carrying a numeric offset other than `Z` — `2026-08-08T09:00:00+02:00`, with or without the
+colon — parses without error and keeps that offset; a site does not have to normalise every
+timestamp to UTC before sending it. What does **not** parse is a timestamp with no zone designator
+at all — neither `Z` nor a numeric offset, e.g. `2026-08-08T09:00:00` — which is exactly what a
+"just emit local time" implementation could produce. Because the whole schedule is deserialised as
+one structure (see [the schedule payload](#the-schedule-payload) above), one game with a zoneless
+`startsOn` fails the *entire* schedule load, not just that game — and it reports itself exactly
+like any other schedule-fetch failure (call 5's entry above): logged, the previous schedule left
+in place unchanged, and the REFRESH spinner clearing as if nothing were wrong.
 
 ### The stats records
 

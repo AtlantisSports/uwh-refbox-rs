@@ -176,6 +176,10 @@ portal-login-instructions = 请前往{ $portal } Portal >> 赛事管理 >> 裁�
 
     { $portal } Portal随后将提供一个确认码，请使用左侧数字键盘输入。
     输入完成后请按"完成"
+custom-login-instructions = 请将此 Refbox ID 提供给您的站点:
+    { $id }
+
+    然后使用数字键盘输入您的站点提供的确认码，并按 完成
 
 
 # 确认

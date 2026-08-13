@@ -176,6 +176,10 @@ portal-login-instructions = Ga naar het { $portal }-portaal >> Evenementbeheer >
 
     Het { $portal }-portaal geeft vervolgens een bevestigingscode die u links via het nummerveld kunt invoeren.
     Druk op Klaar nadat u de code hebt ingevoerd
+custom-login-instructions = Geef dit Refbox-ID door aan uw site:
+    { $id }
+
+    Voer daarna de bevestigingscode van uw site in met het cijferblok en druk op KLAAR
 
 
 # Bevestiging

@@ -176,6 +176,10 @@ portal-login-instructions = Vai su { $portal } Portal >> Gestione Evento >> Gest
 
     Il Portale { $portal } fornirà quindi un codice di conferma da inserire a sinistra usando il tastierino numerico.
     Premi Fine una volta inserito il codice
+custom-login-instructions = Fornisci questo ID Refbox al tuo sito:
+    { $id }
+
+    Poi inserisci il codice di conferma fornito dal tuo sito usando il tastierino numerico e premi FATTO
 
 
 # Conferma

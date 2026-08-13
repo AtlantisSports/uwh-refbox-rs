@@ -176,6 +176,10 @@ portal-login-instructions = Pumunta sa { $portal } Portal >> Pamamahala ng Kagan
 
     Ang { $portal } Portal ay magbibigay ng confirmation code na ilalagay sa kaliwa gamit ang number pad.
     Pindutin ang Tapos kapag naipasok mo na ang code
+custom-login-instructions = Pakibigay ang Refbox ID na ito sa inyong site:
+    { $id }
+
+    Pagkatapos ay ilagay ang confirmation code na ibinigay ng inyong site gamit ang number pad at pindutin ang TAPOS
 
 
 # Kumpirmasyon

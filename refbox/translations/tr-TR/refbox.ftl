@@ -176,6 +176,10 @@ portal-login-instructions = Lütfen { $portal } Portal >> Event Management >> Re
 
     { $portal } Portal bunun üzerine sol taraftaki sayı tuş takımını kullanarak girmeniz için bir onay kodu sağlayacaktır.
     Kodu girdikten sonra Tamam'a basın
+custom-login-instructions = Lütfen bu Refbox kimliğini sitenize iletin:
+    { $id }
+
+    Ardından sitenizin verdiği onay kodunu sayı tuşlarıyla girin ve TAMAM tuşuna basın
 
 
 # Onay

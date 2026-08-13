@@ -178,6 +178,10 @@ portal-login-instructions = { $portal } Portal >> 대회 관리 >> 심판 관리
 
     그러면 { $portal } Portal에서 확인 코드를 제공합니다. 왼쪽 숫자 패드로 코드를 입력하세요.
     코드를 입력한 후 완료를 누르세요
+custom-login-instructions = 이 Refbox ID를 사용 중인 사이트에 알려주세요:
+    { $id }
+
+    그런 다음 사이트에서 제공한 확인 코드를 숫자판으로 입력하고 완료 를 누르세요
 
 
 # 확인

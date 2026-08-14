@@ -570,7 +570,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 // The client keeps the token from here on; the
                                 // startup key is not held separately, so a
                                 // later `clear_token` asks for it again.
-                                Ok(Some(key)) => portal_client.set_token(&key),
+                                Ok(Some(key)) => {
+                                    if let Err(why) = portal_client.set_token(&key) {
+                                        error!("{why}");
+                                        continue 'outer;
+                                    }
+                                }
                                 Ok(None) => {
                                     error!("An access key is needed for this step.");
                                     continue 'outer;
@@ -612,7 +617,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             };
 
-                            portal_client.set_token(&token);
+                            if let Err(why) = portal_client.set_token(&token) {
+                                error!(
+                                    "The site returned an access key that cannot be used: {why}"
+                                );
+                                continue 'outer;
+                            }
                         }
                     }
                 }
@@ -767,7 +777,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .login_with_email_and_password(&emailOrusername, &password)
                         .await
                     {
-                        Ok(token) => portal_client.set_token(&token),
+                        Ok(token) => {
+                            if let Err(why) = portal_client.set_token(&token) {
+                                error!(
+                                    "The site returned an access key that cannot be used: {why}"
+                                );
+                                continue 'outer;
+                            }
+                        }
                         Err(e) => {
                             error!("uwhportal login failed. Please try again. Reason: {e}");
                             continue 'outer;
@@ -1077,7 +1094,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     .login_with_email_and_password(&emailOrusername, &password)
                                     .await
                                 {
-                                    Ok(token) => portal_client.set_token(&token),
+                                    Ok(token) => {
+                                        if let Err(why) = portal_client.set_token(&token) {
+                                            error!(
+                                                "The site returned an access key that cannot be \
+                                                 used. Proceeding without login. Reason: {why}"
+                                            );
+                                        }
+                                    }
                                     Err(e) => error!(
                                         "uwhportal login failed. Proceeding without login. \
                                         Reason: {e}"
@@ -1127,7 +1151,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .login_with_email_and_password(&emailOrusername, &password)
                                 .await
                             {
-                                Ok(token) => portal_client.set_token(&token),
+                                Ok(token) => {
+                                    if let Err(why) = portal_client.set_token(&token) {
+                                        error!(
+                                            "The site returned an access key that cannot be used: {why}"
+                                        );
+                                        continue 'outer;
+                                    }
+                                }
                                 Err(e) => {
                                     error!("Login failed: {e}");
                                     continue 'outer;

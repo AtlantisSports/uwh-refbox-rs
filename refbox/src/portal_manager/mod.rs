@@ -119,8 +119,8 @@ impl UwhPortalIo {
 /// amendment (2026-04-21).
 fn classify_error(e: Box<dyn std::error::Error>) -> health::PortalCallError {
     if let Some(req_err) = e.downcast_ref::<reqwest::Error>() {
-        if let Some(url) = refused_scheme(req_err) {
-            return health::PortalCallError::Blocked(format!("{url} is not an https address"));
+        if let Some(detail) = never_sent(req_err) {
+            return health::PortalCallError::NotSent(detail);
         }
         health::PortalCallError::Unreachable(e.to_string())
     } else {
@@ -128,17 +128,32 @@ fn classify_error(e: Box<dyn std::error::Error>) -> health::PortalCallError {
     }
 }
 
-/// The URL `https_only` refused, or `None` when this is some other error.
+/// Why the request never left the machine, or `None` if it did leave.
 ///
-/// `reqwest` rejects a non-https URL inside `Client::execute`, before any
-/// socket is opened, and reports it as a builder-kind error carrying that URL.
-/// Nothing in its public API names that case, so it is recognised by its two
-/// observable marks: builder kind, plus a URL whose scheme is not https. A
-/// builder error on an https URL is something else entirely and is left alone,
-/// so this cannot swallow a genuine transport failure.
-fn refused_scheme(e: &reqwest::Error) -> Option<&reqwest::Url> {
-    let url = e.url()?;
-    (e.is_builder() && url.scheme() != "https").then_some(url)
+/// A builder-kind `reqwest` error is raised inside `Client::execute` before
+/// any socket is opened. `https_only` refusing a plain-http address is the
+/// case this exists for, but the same kind covers an address with no host and
+/// a scheme that is not http or https. They are treated together on purpose:
+/// what matters downstream is that nothing reached the network, which is what
+/// separates all of them from a real transport failure.
+///
+/// The detail deliberately states what is true of the address rather than
+/// naming a cause. Whether https is required is not knowable here — the client
+/// may since have been repointed at another site — and claiming it would let
+/// the log tell an operator who already passed `--allow-http` to pass
+/// `--allow-http`. The launch-time check owns that advice.
+fn never_sent(e: &reqwest::Error) -> Option<String> {
+    if !e.is_builder() {
+        return None;
+    }
+    // An address malformed enough to fail parsing carries no URL to quote, so
+    // that case falls back to the error's own text. Keying off the kind alone
+    // is what keeps the class intact: the request did not go out either way.
+    Some(match e.url() {
+        Some(url) if url.scheme() != "https" => format!("{url} is not an https address"),
+        Some(url) => format!("{url} could not be sent as written"),
+        None => format!("the address could not be used ({e})"),
+    })
 }
 
 /// Parse an `event_id` string (from a `QueuedItem`) into an `EventId`.
@@ -1188,12 +1203,30 @@ mod tests {
     use crate::portal_manager::queue::{QueueFile, QueuedItem};
     use time::{Duration as TimeDuration, OffsetDateTime};
 
+    /// A client for one test to use. Deliberately built per test rather than
+    /// shared: a `reqwest` client carries timers belonging to the runtime that
+    /// built it, and each `#[tokio::test]` gets its own runtime, so a shared
+    /// client's timeout silently fails to fire and the tests get slower, not
+    /// faster.
+    ///
+    /// The timeout bounds the one test that opens a real socket: a closed
+    /// loopback port is refused at once on some hosts but silently dropped on
+    /// others (WSL among them), where without it the test would hang rather
+    /// than fail. A timeout is still the connectivity failure that test
+    /// asserts, so the assertion is not weakened.
+    fn test_client(require_https: bool) -> reqwest::Client {
+        reqwest::Client::builder()
+            .https_only(require_https)
+            .timeout(std::time::Duration::from_millis(500))
+            .build()
+            .unwrap()
+    }
+
     /// Produce the exact error `reqwest` raises when `https_only` refuses a
     /// plain-http URL. It is raised inside `execute`, before any socket is
     /// opened, so this reaches no network at all.
     async fn https_only_refusal(url: &str) -> Box<dyn std::error::Error> {
-        let client = reqwest::Client::builder().https_only(true).build().unwrap();
-        Box::new(client.get(url).send().await.unwrap_err())
+        Box::new(test_client(true).get(url).send().await.unwrap_err())
     }
 
     /// The refbox refusing to send is a configuration choice, not a broken
@@ -1204,21 +1237,49 @@ mod tests {
     async fn a_refusal_to_send_is_not_reported_as_a_connectivity_failure() {
         let err = https_only_refusal("http://127.0.0.1:9099/api/events").await;
         match classify_error(err) {
-            health::PortalCallError::Blocked(msg) => {
+            health::PortalCallError::NotSent(msg) => {
                 assert!(msg.contains("http://127.0.0.1:9099"), "{msg}");
             }
             other => panic!("an https-only refusal must not be classified as {other:?}"),
         }
     }
 
+    /// `https_only` is not the only reason a request never leaves. A scheme
+    /// that is not http or https, an address with no host, and one that cannot
+    /// be parsed at all are all rejected the same way — and here with
+    /// `https_only` switched OFF, which is the case that would expose a
+    /// detection keyed to the https rule. All three are realistic overrides:
+    /// the wrong scheme, and a host:port with the scheme forgotten.
+    ///
+    /// What they share is what matters — nothing reached the network — so they
+    /// must classify together. Sorting them by cause instead would let the log
+    /// tell an operator who already passed `--allow-http` to pass
+    /// `--allow-http`.
+    #[tokio::test]
+    async fn an_unusable_address_is_also_not_a_connectivity_failure() {
+        for url in ["ftp://example.test/api", "localhost:9099", "127.0.0.1:9099"] {
+            let err: Box<dyn std::error::Error> =
+                Box::new(test_client(false).get(url).send().await.unwrap_err());
+            let classified = classify_error(err);
+            assert!(
+                matches!(classified, health::PortalCallError::NotSent(_)),
+                "{url} never reaches the network, got {classified:?}"
+            );
+        }
+    }
+
     /// Guards the detection against over-reach: a genuine transport failure
-    /// must keep its existing meaning. Loopback port 1 is never bound, so the
-    /// connection is refused at once without leaving the machine.
+    /// must keep its existing meaning. Loopback port 1 is never bound, so this
+    /// fails without leaving the machine.
     #[tokio::test]
     async fn a_genuine_transport_failure_is_still_a_connectivity_failure() {
-        let client = reqwest::Client::builder().build().unwrap();
-        let err: Box<dyn std::error::Error> =
-            Box::new(client.get("http://127.0.0.1:1/").send().await.unwrap_err());
+        let err: Box<dyn std::error::Error> = Box::new(
+            test_client(false)
+                .get("http://127.0.0.1:1/")
+                .send()
+                .await
+                .unwrap_err(),
+        );
         assert!(matches!(
             classify_error(err),
             health::PortalCallError::Unreachable(_)

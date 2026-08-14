@@ -30,6 +30,8 @@ use scoresheets::{
     style_needs_sanctioning_logo, style_needs_tournament_logo,
 };
 
+mod site;
+
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {

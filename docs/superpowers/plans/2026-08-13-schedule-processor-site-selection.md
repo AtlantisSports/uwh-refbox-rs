@@ -62,7 +62,7 @@ direction. No other file changes.
   `pub fn portal_default_url(environment: &str, sport: &str) -> &'static str`,
   `pub fn override_var_name(sport: &str) -> &'static str`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `schedule-processor/src/site.rs` containing only this test module for now:
 
@@ -101,13 +101,13 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cargo test -p schedule-processor site:: 2>&1 | tail -20`
 Expected: FAIL — `cannot find function portal_default_url in this scope`. (If instead it reports
 `file not found for module site`, add `mod site;` to `main.rs` first — see Step 3.)
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Add `mod site;` to `main.rs` alongside the other module declarations (lines 19–27), then put this
 above the test module in `site.rs`:
@@ -164,12 +164,12 @@ pub fn override_var_name(sport: &str) -> &'static str {
 Note the fallbacks replace the current `unreachable!()`: an unknown menu string now resolves to
 production hockey instead of aborting the tool mid-run.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `cargo test -p schedule-processor site:: 2>&1 | tail -10`
 Expected: PASS, both tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add schedule-processor/src/site.rs schedule-processor/src/main.rs
@@ -187,7 +187,7 @@ git commit -m "refactor(schedule-processor): move portal address derivation into
 - Consumes: `SiteKind`, `SiteTarget` from Task 1.
 - Produces: `pub fn custom_target(typed_url: &str) -> Result<SiteTarget, String>`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```rust
     #[test]
@@ -227,12 +227,12 @@ git commit -m "refactor(schedule-processor): move portal address derivation into
     }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cargo test -p schedule-processor site:: 2>&1 | tail -20`
 Expected: FAIL — `cannot find function custom_target in this scope`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```rust
 /// Turn an address the operator typed into a target, or explain why it cannot
@@ -261,12 +261,12 @@ pub fn custom_target(typed_url: &str) -> Result<SiteTarget, String> {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `cargo test -p schedule-processor site:: 2>&1 | tail -10`
 Expected: PASS, all seven tests so far.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add schedule-processor/src/site.rs
@@ -285,7 +285,7 @@ git commit -m "feat(schedule-processor): turn a typed address into a site target
 - Produces: `pub fn validate_access_key(raw: &str) -> Result<Option<String>, String>` —
   `Ok(None)` means "no key given, connect anonymously".
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```rust
     #[test]
@@ -332,12 +332,12 @@ git commit -m "feat(schedule-processor): turn a typed address into a site target
     }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cargo test -p schedule-processor site:: 2>&1 | tail -20`
 Expected: FAIL — `cannot find function validate_access_key in this scope`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```rust
 /// Clean up and check an access key the operator pasted.
@@ -368,12 +368,12 @@ pub fn validate_access_key(raw: &str) -> Result<Option<String>, String> {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `cargo test -p schedule-processor site:: 2>&1 | tail -10`
 Expected: PASS, all eleven tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add schedule-processor/src/site.rs
@@ -396,7 +396,7 @@ terminal — so it ends with a run of the tool instead.
   validate_access_key}` from Tasks 1–3, and the existing `apply_portal_override`.
 - Produces: a `SiteTarget` and an `Option<String>` access key, both used to build the client.
 
-- [ ] **Step 1: Replace the site prompts**
+- [x] **Step 1: Replace the site prompts**
 
 In `main.rs`, replace the sport and site `Select` blocks (currently lines 108–131, ending with the
 `default_url` match) with:
@@ -492,7 +492,7 @@ Note the client is now built **with** the pasted key, so a custom site is authen
 first request. `pasted_key` stays in scope for Step 2. Add `Text` to the `inquire` imports if it is
 not already there, and drop any import left unused by the removed code.
 
-- [ ] **Step 2: Send the right credential prompt**
+- [x] **Step 2: Send the right credential prompt**
 
 At `main.rs:515`, the `if !portal_client.has_token()` block asks for an email and password. That is
 the portal's login and means nothing to a custom site, so branch on the site kind:
@@ -539,14 +539,14 @@ the portal's login and means nothing to a custom site, so branch on the site kin
 
 Move the existing email/password block verbatim into the `Portal` arm. Do not change it.
 
-- [ ] **Step 3: Check it builds and the suite is green**
+- [x] **Step 3: Check it builds and the suite is green**
 
 Run: `cargo test -p schedule-processor 2>&1 | tail -5`
 Expected: PASS. If `pasted_key` is reported as never read, keep it: it is assigned in Step 2 so the
 key survives a later `clear_token`, which is behaviour, not dead code. If the compiler is right that
 nothing reads it, delete the field rather than silencing the warning.
 
-- [ ] **Step 4: Run the tool down both paths**
+- [x] **Step 4: Run the tool down both paths**
 
 This is the verification that replaces a unit test.
 
@@ -565,7 +565,7 @@ real `\u{2019}` character and confirm it is refused with a message telling you t
 
 Record what you saw in the Deviations section below.
 
-- [ ] **Step 5: Full gate and commit**
+- [x] **Step 5: Full gate and commit**
 
 ```bash
 just check
@@ -594,3 +594,71 @@ Confirm each before opening the PR:
 
 Record anything that diverged from this plan here rather than in separate commits, per
 `.claude/rules/plan-execution.md`.
+
+**1. `pasted_key` is not kept after the client is built (Task 4, Steps 1–3).**
+The plan kept it `mut` and reassigned it in Step 2 "so the key survives a later `clear_token`".
+The compiler's `value assigned to pasted_key is never read` warning was correct: the token lives
+inside `UwhPortalClient` (`set_token` / `has_token` / `clear_token` all read `self.access_token`),
+and nothing reads the local back. Per this plan's own instruction, the assignment was deleted
+rather than silenced, and the binding is no longer `mut`. Observable behaviour: after an upload
+failure calls `clear_token`, the operator is asked for the access key again — which is exactly
+what the Portal path already does with email and password.
+
+**2. Task 1's commit carries two transient warnings.** `SiteKind` and `SiteTarget` are defined in
+Task 1 but not used until Task 2's tests construct them, so that one commit reports
+`enum SiteKind is never used`. Gone from Task 2 onward; the branch as a whole is warning-free and
+`just check` exits 0.
+
+**3. The literal trailing-newline paste is not reachable through a terminal (Task 4, Step 4).**
+Pressing Enter after pasting a key *is* the submit, so `inquire` never delivers a trailing `\n`
+to the program — the case cannot be reproduced interactively by construction. The reachable
+equivalent was verified instead: `   goodkey123   ` was accepted and trimmed. The trailing- and
+embedded-newline cases remain covered by
+`a_pasted_key_with_a_trailing_newline_is_cleaned_up_not_refused` and
+`a_key_with_a_character_that_cannot_be_sent_is_refused_in_plain_words`.
+
+**4. Verification order matters.** The bad key must be entered *before* the good one: the key
+prompt loops until a key validates, so a valid key ends the prompt and there is no second chance
+to test a refusal.
+
+**5. Driven through a pseudo-terminal.** The session had no keyboard attached, so both runs used
+`printf '<keystrokes>' | script -qec './target/debug/schedule-processor' /dev/null`.
+
+**6. Extra check not in the plan — mutation of the access-key guard.** Before trusting the Task 3
+tests, the character check was disabled (range widened to accept every `char`) and the suite
+re-run: exactly one test failed
+(`a_key_with_a_character_that_cannot_be_sent_is_refused_in_plain_words`), and the guard was then
+restored. This confirms the test fails for the reason it claims to.
+
+### What the run actually showed
+
+Portal path — the new question comes first, then the two original questions unchanged:
+
+```
+? Select the site to connect to: UWH Portal
+? Select the sport for the schedule: Underwater Hockey
+? Select the uwhportal site to connect to: Production
+[INFO] Using URL: https://api.uwhportal.com
+? Select the event to process:            <- event list fetched successfully
+```
+
+Custom path — no sport question anywhere:
+
+```
+? Select the site to connect to: Custom site
+? Enter the web address of your site: scores.example.org
+[ERROR] "scores.example.org" does not look like a web address. It needs to start with
+        https:// (or http:// for a site on your own network).
+? Enter the web address of your site: http://localhost:9000
+? Paste your access key (leave blank if your site needs none): abc’123
+[ERROR] That access key contains a character that cannot be sent to the site ('’').
+        Copy the key again, straight from where your site shows it.
+? Paste your access key (leave blank if your site needs none):    goodkey123
+[INFO] Using URL: http://localhost:9000
+```
+
+The smart quote produced a sentence and a fresh prompt, not a crash — the whole point of Task 3.
+
+**Cosmetic note, not changed:** the refusal renders the offending character as `('’')` because
+`{bad:?}` adds its own quotes inside the parentheses. It is legible and it does show the
+character, but the doubled punctuation is slightly awkward if a plainer `’` is preferred.

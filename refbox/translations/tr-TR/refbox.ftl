@@ -198,6 +198,8 @@ uwhportal-token-invalid-code = Geçersiz kod girildi.
     Lütfen tekrar deneyin.
 uwhportal-token-no-pending-link = Bağlantı iletişim beklemiyor.
     Lütfen tekrar deneyin.
+uwhportal-token-unusable-key = Site, bu Refbox'ın kullanamayacağı bir erişim anahtarı gönderdi.
+    Anahtarı siteden tekrar isteyin.
 go-back-to-editor = DÜZENLEYICIYE GERİ DÖN
 discard-changes = DEĞİŞİKLİKLERİ İPTAL ET
 end-current-game-and-apply-changes = MEVCUT OYUNU BİTİR VE DEĞİŞİKLİKLERİ UYGULA

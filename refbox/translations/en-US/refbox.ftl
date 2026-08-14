@@ -201,6 +201,8 @@ uwhportal-token-invalid-code = Invalid code entered.
     Please try again.
 uwhportal-token-no-pending-link = The connection is not expecting communication.
     Please try again.
+uwhportal-token-unusable-key = The site sent an access key this refbox cannot use.
+    Ask the site for the key again.
 go-back-to-editor = GO BACK TO EDITOR
 discard-changes = DISCARD CHANGES
 end-current-game-and-apply-changes = END CURRENT GAME AND APPLY CHANGES

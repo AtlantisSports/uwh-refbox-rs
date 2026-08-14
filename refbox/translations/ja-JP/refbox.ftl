@@ -198,6 +198,8 @@ uwhportal-token-invalid-code = 無効なコードが入力されました。
     もう一度試してください。
 uwhportal-token-no-pending-link = 接続は通信を待っていません。
     もう一度試してください。
+uwhportal-token-unusable-key = サイトから送られたアクセスキーは、この Refbox では使用できません。
+    サイトにキーをもう一度要求してください。
 go-back-to-editor = 編集画面に戻る
 discard-changes = 変更を破棄
 end-current-game-and-apply-changes = 現在の試合を終了して変更を適用

@@ -198,6 +198,8 @@ uwhportal-token-invalid-code = Ongeldige code ingevoerd.
     Probeer het opnieuw.
 uwhportal-token-no-pending-link = De verbinding verwacht geen communicatie.
     Probeer het opnieuw.
+uwhportal-token-unusable-key = De site heeft een toegangssleutel gestuurd die deze Refbox niet kan gebruiken.
+    Vraag de sleutel opnieuw op bij de site.
 go-back-to-editor = TERUG NAAR EDITOR
 discard-changes = WIJZIGINGEN VERWERPEN
 end-current-game-and-apply-changes = HUIDIGE WEDSTRIJD BEËINDIGEN EN WIJZIGINGEN TOEPASSEN

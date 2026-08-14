@@ -198,6 +198,8 @@ uwhportal-token-invalid-code = Maling code ang naipasok.
     Pakisubukan muli.
 uwhportal-token-no-pending-link = Hindi inaasahan ng koneksyon ang komunikasyon.
     Pakisubukan muli.
+uwhportal-token-unusable-key = Nagpadala ang site ng access key na hindi magagamit ng Refbox na ito.
+    Hilingin muli ang key sa site.
 go-back-to-editor = BUMALIK SA EDITOR
 discard-changes = ITAPON ANG MGA PAGBABAGO
 end-current-game-and-apply-changes = TAPUSIN ANG KASALUKUYANG LARO AT ILAPAT ANG MGA PAGBABAGO

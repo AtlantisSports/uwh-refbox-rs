@@ -198,6 +198,8 @@ uwhportal-token-invalid-code = Ungültiger Code eingegeben.
     Bitte erneut versuchen.
 uwhportal-token-no-pending-link = Die Verbindung erwartet keine Kommunikation.
     Bitte erneut versuchen.
+uwhportal-token-unusable-key = Die Website hat einen Zugangsschlüssel gesendet, den diese Refbox nicht verwenden kann.
+    Fordern Sie den Schlüssel erneut bei der Website an.
 go-back-to-editor = ZURÜCK ZUM EDITOR
 discard-changes = ÄNDERUNGEN VERWERFEN
 end-current-game-and-apply-changes = AKTUELLES SPIEL BEENDEN UND ÄNDERUNGEN ÜBERNEHMEN

@@ -198,6 +198,8 @@ uwhportal-token-invalid-code = รหัสที่ป้อนไม่ถู�
     โปรดลองอีกครั้ง
 uwhportal-token-no-pending-link = การเชื่อมต่อไม่รอการสื่อสาร
     โปรดลองอีกครั้ง
+uwhportal-token-unusable-key = เว็บไซต์ส่งคีย์การเข้าถึงที่ Refbox นี้ใช้ไม่ได้
+    โปรดขอคีย์จากเว็บไซต์อีกครั้ง
 go-back-to-editor = กลับไปยังตัวแก้ไข
 discard-changes = ยกเลิกการเปลี่ยนแปลง
 end-current-game-and-apply-changes = สิ้นสุดเกมปัจจุบันและใช้การเปลี่ยนแปลง

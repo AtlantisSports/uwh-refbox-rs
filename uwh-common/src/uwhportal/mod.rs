@@ -874,6 +874,43 @@ impl std::fmt::Display for ApiError {
 
 impl Error for ApiError {}
 
+/// A character an access key must not contain, because an HTTP header cannot
+/// carry it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UnsendableAccessKey {
+    /// The first character in the key that cannot be sent.
+    pub character: char,
+}
+
+impl std::fmt::Display for UnsendableAccessKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "the access key contains a character that cannot be sent to the site ({:?})",
+            self.character
+        )
+    }
+}
+
+impl Error for UnsendableAccessKey {}
+
+/// Check that `key` can be carried in an `Authorization` header.
+///
+/// Printable ASCII only. Everything a real access key contains — letters,
+/// digits, and the punctuation used by base64 and JWTs — is in this range, and
+/// everything outside it is what a header cannot carry: a newline, a tab, a
+/// curly quote left by a chat app or a word processor.
+///
+/// Whitespace around the key is *not* trimmed here; callers that accept a
+/// pasted key trim first, so that this reports only characters that are
+/// genuinely part of the key.
+pub fn check_access_key(key: &str) -> Result<(), UnsendableAccessKey> {
+    match key.chars().find(|c| !matches!(c, ' '..='~')) {
+        Some(character) => Err(UnsendableAccessKey { character }),
+        None => Ok(()),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PortalTokenResponse {
     Success(String),
@@ -1019,5 +1056,31 @@ mod roster_tests {
             "managers, coaches and officials must not take up player rows, but a \
              player-manager and a captain must be kept"
         );
+    }
+}
+
+#[cfg(test)]
+mod access_key_tests {
+    use super::*;
+
+    #[test]
+    fn a_curly_quote_is_refused_and_named() {
+        // The case this exists for: a key copied through a chat app or a word
+        // processor, where a straight quote has been turned into a curly one.
+        let err = check_access_key("abc\u{2019}123").unwrap_err();
+        assert_eq!(err.character, '\u{2019}');
+    }
+
+    #[test]
+    fn a_newline_or_tab_is_refused() {
+        assert_eq!(check_access_key("abc\n123").unwrap_err().character, '\n');
+        assert_eq!(check_access_key("abc\t123").unwrap_err().character, '\t');
+    }
+
+    #[test]
+    fn a_normal_key_is_accepted() {
+        // Letters, digits, and the punctuation base64 and JWTs use.
+        let key = "eyJhbGciOiJI.UzI1NiIs-InR5cCI6_IkpXVCJ9~abc+/=";
+        assert_eq!(check_access_key(key), Ok(()));
     }
 }

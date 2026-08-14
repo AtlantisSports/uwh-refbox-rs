@@ -192,12 +192,20 @@ async fn run_task(
                             current_health = HealthState::Green;
                             let _ = event_tx.send(PortalEvent::TokenStatus(true)).await;
                         }
-                        Err(PortalCallError::Unreachable(_)) => {
+                        Err(PortalCallError::Unreachable(e)) => {
                             // Couldn't reach the portal (wifi blip / outage).
                             // Degrade the indicator, but do NOT report a token
                             // problem: the login may be fine, so the UI must
                             // not push the operator to re-login or grey out the
                             // schedule REFRESH button.
+                            //
+                            // Log it: the indicator turning red is the only
+                            // other signal, and it cannot say WHY or when it
+                            // started. Every failed check is logged rather than
+                            // just the first, so the log shows how long the
+                            // outage ran — at the 15s degraded cadence that is
+                            // roughly 30KB an hour against a rolling log.
+                            log::warn!("portal health check could not reach the portal: {e}");
                             current_health = HealthState::Red;
                             let _ = event_tx.send(PortalEvent::TokenUnreachable).await;
                         }

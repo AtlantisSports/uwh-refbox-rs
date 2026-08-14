@@ -539,3 +539,17 @@ is already used in shorthand nearby will hijack the next shorthand. Diff the che
 paths against a baseline rather than trusting the `0 unresolvable` count — that count cannot see
 this class of error, which is the same "resolves but does not support" failure the branch already
 recorded once.
+
+**Tasks 2 and 4 — four lines were reflowed to the file's ~100-character prose wrap.** The
+replacement text in this plan produced lines of 111–114 characters, against a file whose prose lines
+are overwhelmingly 97–100. The reflow covers only lines this pass touched. One sentence also had to
+be re-wrapped so `So` did not sit alone at the end of a line.
+
+**Task 7 Step 3 — "update every reference" was applied narrowly, on purpose.** Step 1 found 13
+references, all in `docs/superpowers/plans/2026-08-13-round-4-findings-phase-1.md`, a plan whose
+tasks are already complete. Eleven of them are `git add` commands and `Modify:` paths inside finished
+task steps — a record of commands that really were run against the old path. Rewriting those would
+falsify the record to fix a link, so only the live navigational pointer (that plan's `**Spec:**`
+line) was repointed, with a dated note explaining that the paths below it are historical. The
+review's actual goal — that a reader browsing the deliverable does not land in an internal ledger —
+is met either way.

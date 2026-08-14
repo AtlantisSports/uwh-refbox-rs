@@ -67,23 +67,20 @@ pub fn custom_target(typed_url: &str) -> Result<SiteTarget, String> {
 /// `Ok(None)` means no key was given, which is allowed — an open site can be
 /// read without one, and anything that later needs a key asks for it then.
 ///
-/// This check is not decoration. `uwh-common` builds its authorization header
-/// with `HeaderValue::from_str(...).unwrap()`, which panics on any character a
-/// header cannot carry. Until that is fixed on its own branch, a pasted key is
-/// the one place a person's typing reaches it, so it is checked here first: a
-/// bad paste has to produce a sentence, never a crash.
+/// The character rule lives in `uwh-common`, which owns the header this key
+/// ends up in, so the two cannot drift apart. `uwh-common` refuses a bad key
+/// too; this check exists so the operator gets a sentence about their paste at
+/// the moment they paste it, rather than a failure later.
 pub fn validate_access_key(raw: &str) -> Result<Option<String>, String> {
     let key = raw.trim();
     if key.is_empty() {
         return Ok(None);
     }
-    // Printable ASCII only. Everything a key normally contains — letters,
-    // digits, and the punctuation used by base64 and JWTs — is in this range,
-    // and everything outside it is what a header cannot carry.
-    if let Some(bad) = key.chars().find(|c| !matches!(c, ' '..='~')) {
+    if let Err(why) = uwh_common::uwhportal::check_access_key(key) {
         return Err(format!(
-            "That access key contains a character that cannot be sent to the site ({bad:?}). \
-             Copy the key again, straight from where your site shows it."
+            "That access key contains a character that cannot be sent to the site \
+             ({:?}). Copy the key again, straight from where your site shows it.",
+            why.character
         ));
     }
     Ok(Some(key.to_string()))

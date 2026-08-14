@@ -62,6 +62,33 @@ pub fn custom_target(typed_url: &str) -> Result<SiteTarget, String> {
     })
 }
 
+/// Clean up and check an access key the operator pasted.
+///
+/// `Ok(None)` means no key was given, which is allowed — an open site can be
+/// read without one, and anything that later needs a key asks for it then.
+///
+/// This check is not decoration. `uwh-common` builds its authorization header
+/// with `HeaderValue::from_str(...).unwrap()`, which panics on any character a
+/// header cannot carry. Until that is fixed on its own branch, a pasted key is
+/// the one place a person's typing reaches it, so it is checked here first: a
+/// bad paste has to produce a sentence, never a crash.
+pub fn validate_access_key(raw: &str) -> Result<Option<String>, String> {
+    let key = raw.trim();
+    if key.is_empty() {
+        return Ok(None);
+    }
+    // Printable ASCII only. Everything a key normally contains — letters,
+    // digits, and the punctuation used by base64 and JWTs — is in this range,
+    // and everything outside it is what a header cannot carry.
+    if let Some(bad) = key.chars().find(|c| !matches!(c, ' '..='~')) {
+        return Err(format!(
+            "That access key contains a character that cannot be sent to the site ({bad:?}). \
+             Copy the key again, straight from where your site shows it."
+        ));
+    }
+    Ok(Some(key.to_string()))
+}
+
 /// The environment variable that can replace the menu-selected address.
 pub fn override_var_name(sport: &str) -> &'static str {
     match sport {
@@ -139,6 +166,49 @@ mod tests {
     fn a_trailing_slash_is_dropped_so_paths_do_not_double_up() {
         let t = custom_target("https://scores.example.org/").unwrap();
         assert_eq!(t.base_url, "https://scores.example.org");
+    }
+
+    #[test]
+    fn a_pasted_key_with_a_trailing_newline_is_cleaned_up_not_refused() {
+        // THE case this function exists for. uwh-common builds its
+        // authorization header with an unwrap that panics on a newline, and a
+        // trailing newline is what copying from a web page gives you.
+        assert_eq!(
+            validate_access_key("abc123XYZ\n").unwrap(),
+            Some("abc123XYZ".to_string())
+        );
+        assert_eq!(
+            validate_access_key("  abc123XYZ \r\n").unwrap(),
+            Some("abc123XYZ".to_string())
+        );
+    }
+
+    #[test]
+    fn a_blank_key_means_connect_without_one() {
+        assert_eq!(validate_access_key("").unwrap(), None);
+        assert_eq!(validate_access_key("   \n").unwrap(), None);
+    }
+
+    #[test]
+    fn a_key_with_a_character_that_cannot_be_sent_is_refused_in_plain_words() {
+        // A smart quote is what you get when a key is pasted through a word
+        // processor or a chat app.
+        let err = validate_access_key("abc\u{2019}123").unwrap_err();
+        assert!(
+            err.to_lowercase().contains("copy"),
+            "the message must tell the operator to copy it again; got: {err}"
+        );
+
+        // An embedded newline would reach the header builder and panic.
+        assert!(validate_access_key("abc\n123").is_err());
+        // A tab likewise.
+        assert!(validate_access_key("abc\t123").is_err());
+    }
+
+    #[test]
+    fn an_ordinary_key_passes_through_unchanged() {
+        let key = "eyJhbGciOi.JIUzI1NiIs-InR5cCI6_IkpXVCJ9";
+        assert_eq!(validate_access_key(key).unwrap(), Some(key.to_string()));
     }
 
     #[test]

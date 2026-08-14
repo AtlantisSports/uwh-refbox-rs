@@ -493,6 +493,31 @@ fn portal_target(mode: Mode, require_https: bool) -> SiteTarget {
     }
 }
 
+/// The message to log when `target` names an address that `https_only` will
+/// refuse, or `None` when nothing will be refused.
+///
+/// `https_only` does not fail when the client is built — it rejects each
+/// request inside `reqwest`, which reports it as `builder error for url (...)`.
+/// That wording names neither the cause nor the remedy, and it reappears on
+/// every call: the periodic health check, the event-list fetch, every upload.
+/// Saying it once here, where the address is chosen, explains all of them —
+/// and this is the only place that knows both halves of the conflict, the
+/// address and the policy.
+///
+/// Deliberately only reports: the refusal itself is the intended behaviour of
+/// the `--allow-http` flag, and the client is still built so that pointing the
+/// refbox at a workable site later (a plain-http custom site, say) keeps
+/// working without a restart.
+fn https_policy_conflict(target: &SiteTarget) -> Option<String> {
+    (target.require_https && !target.base_url.starts_with("https://")).then(|| {
+        format!(
+            "Portal requests to {} will all fail: the address is not https and this refbox \
+             requires https. Restart with --allow-http to use a plain-http address.",
+            target.base_url
+        )
+    })
+}
+
 /// Build a client for `target`, using the credential that belongs to that site.
 ///
 /// `None` when the client cannot be built at all, which leaves the refbox in
@@ -504,6 +529,9 @@ fn build_site_client(target: &SiteTarget, config: &Config) -> Option<UwhPortalCl
         SiteKind::Custom => config.custom_site.token.as_str(),
     };
     let token = (!token.is_empty()).then_some(token);
+    if let Some(msg) = https_policy_conflict(target) {
+        error!("{msg}");
+    }
     match UwhPortalClient::new(
         &target.base_url,
         token,
@@ -6683,6 +6711,37 @@ mod site_target_tests {
             )
             .is_none()
         );
+    }
+
+    fn target(base_url: &str, require_https: bool) -> SiteTarget {
+        SiteTarget {
+            kind: SiteKind::Portal,
+            base_url: base_url.to_string(),
+            require_https,
+            address: base_url.to_string(),
+        }
+    }
+
+    /// `https_only` refuses a plain-http address inside `reqwest`, which reports
+    /// it as "builder error for url" — wording that names neither the cause nor
+    /// the remedy, and that repeats on every call. This is the one line that
+    /// says both, so both must be in it: the address that will be refused, and
+    /// the flag that would allow it.
+    #[test]
+    fn a_plain_http_address_under_the_https_rule_is_explained() {
+        let msg = https_policy_conflict(&target("http://127.0.0.1:9099", true))
+            .expect("a plain-http address under the https rule must be explained");
+        assert!(msg.contains("http://127.0.0.1:9099"), "{msg}");
+        assert!(msg.contains("--allow-http"), "{msg}");
+    }
+
+    /// Nothing to explain when nothing will be refused. An https address always
+    /// works, and a plain-http address is fine once the rule is off — which is
+    /// how every plain-http custom site already runs, with no flag.
+    #[test]
+    fn an_address_that_will_work_is_not_explained() {
+        assert!(https_policy_conflict(&target("https://api.uwhportal.com", true)).is_none());
+        assert!(https_policy_conflict(&target("http://scoreboard.local:8099", false)).is_none());
     }
 
     /// The portal keeps taking its TLS requirement from the launch flag, and

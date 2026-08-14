@@ -113,6 +113,15 @@ pub enum PortalCallError {
     /// Produced by `classify_error` downcasting the underlying `reqwest`
     /// transport error.
     Unreachable(String),
+    /// The refbox refused to send the request itself: the address is not
+    /// https and this refbox requires https (no `--allow-http`). Nothing
+    /// left the machine, so this is neither a connectivity failure nor a
+    /// token problem — it is a configuration choice, and reporting it as
+    /// `Unreachable` sends the operator hunting a network fault that does
+    /// not exist. Handled exactly like `Unreachable` downstream (indicator
+    /// red, no re-login prompt); only the wording differs. Produced by
+    /// `classify_error` recognising `reqwest`'s `https_only` rejection.
+    Blocked(String),
 }
 
 impl std::fmt::Display for PortalCallError {
@@ -120,6 +129,9 @@ impl std::fmt::Display for PortalCallError {
         match self {
             Self::Failed(msg) => write!(f, "portal call failed: {msg}"),
             Self::Unreachable(msg) => write!(f, "portal unreachable: {msg}"),
+            Self::Blocked(msg) => {
+                write!(f, "portal request blocked by the https-only setting: {msg}")
+            }
         }
     }
 }
@@ -206,6 +218,19 @@ async fn run_task(
                             // outage ran — at the 15s degraded cadence that is
                             // roughly 30KB an hour against a rolling log.
                             log::warn!("portal health check could not reach the portal: {e}");
+                            current_health = HealthState::Red;
+                            let _ = event_tx.send(PortalEvent::TokenUnreachable).await;
+                        }
+                        Err(PortalCallError::Blocked(e)) => {
+                            // The refbox refused to send this itself, so no
+                            // request reached the network. Degrade exactly as
+                            // an outage does — red, and no token verdict, since
+                            // the token was never offered to anyone — but say
+                            // what actually happened instead of blaming the
+                            // network for a configuration choice. Logged on
+                            // every check for the same reason the unreachable
+                            // arm is: the red indicator cannot say why.
+                            log::warn!("portal health check was blocked before sending: {e}");
                             current_health = HealthState::Red;
                             let _ = event_tx.send(PortalEvent::TokenUnreachable).await;
                         }
@@ -334,6 +359,12 @@ mod tests {
                 .to_string()
                 .contains("dns failure"),
             "an unreachable portal must keep the transport detail"
+        );
+        assert!(
+            PortalCallError::Blocked("http://127.0.0.1:9099 is not an https address".to_string())
+                .to_string()
+                .contains("http://127.0.0.1:9099"),
+            "a blocked request must keep the address that was refused"
         );
     }
 
@@ -544,6 +575,48 @@ mod tests {
                 .iter()
                 .any(|ev| matches!(ev, PortalEvent::TokenStatus(_))),
             "unreachable verify must NOT emit TokenStatus, got {events:?}"
+        );
+        drop(handle);
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn blocked_verify_emits_token_unreachable_not_token_status() {
+        // A verify_token the refbox refused to send is not evidence the login
+        // expired — the token was never offered to anyone. It must degrade the
+        // indicator exactly like an outage does (TokenUnreachable) and must NOT
+        // emit TokenStatus(false), which the UI reads as "login expired" and
+        // uses to push a pointless re-login.
+        let io = FakeIo {
+            verify_results: Mutex::new(vec![Err(PortalCallError::Blocked(
+                "http://127.0.0.1:9099 is not an https address".into(),
+            ))]),
+            verify_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            scores_results: Mutex::new(vec![]),
+            scores_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+            stats_results: Mutex::new(vec![]),
+            stats_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+        };
+        let mut handle = spawn(io);
+
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(3)).await;
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_millis(500)).await;
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+
+        let events = drain_events(&mut handle.event_rx);
+        assert!(
+            events
+                .iter()
+                .any(|ev| matches!(ev, PortalEvent::TokenUnreachable)),
+            "blocked verify must emit TokenUnreachable, got {events:?}"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|ev| matches!(ev, PortalEvent::TokenStatus(_))),
+            "blocked verify must NOT emit TokenStatus, got {events:?}"
         );
         drop(handle);
     }

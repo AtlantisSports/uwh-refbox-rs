@@ -118,11 +118,27 @@ impl UwhPortalIo {
 /// `verify_token` token-status path acts on the distinction. See ADR 011
 /// amendment (2026-04-21).
 fn classify_error(e: Box<dyn std::error::Error>) -> health::PortalCallError {
-    if e.downcast_ref::<reqwest::Error>().is_some() {
+    if let Some(req_err) = e.downcast_ref::<reqwest::Error>() {
+        if let Some(url) = refused_scheme(req_err) {
+            return health::PortalCallError::Blocked(format!("{url} is not an https address"));
+        }
         health::PortalCallError::Unreachable(e.to_string())
     } else {
         health::PortalCallError::Failed(e.to_string())
     }
+}
+
+/// The URL `https_only` refused, or `None` when this is some other error.
+///
+/// `reqwest` rejects a non-https URL inside `Client::execute`, before any
+/// socket is opened, and reports it as a builder-kind error carrying that URL.
+/// Nothing in its public API names that case, so it is recognised by its two
+/// observable marks: builder kind, plus a URL whose scheme is not https. A
+/// builder error on an https URL is something else entirely and is left alone,
+/// so this cannot swallow a genuine transport failure.
+fn refused_scheme(e: &reqwest::Error) -> Option<&reqwest::Url> {
+    let url = e.url()?;
+    (e.is_builder() && url.scheme() != "https").then_some(url)
 }
 
 /// Parse an `event_id` string (from a `QueuedItem`) into an `EventId`.
@@ -1171,6 +1187,43 @@ mod tests {
     use super::*;
     use crate::portal_manager::queue::{QueueFile, QueuedItem};
     use time::{Duration as TimeDuration, OffsetDateTime};
+
+    /// Produce the exact error `reqwest` raises when `https_only` refuses a
+    /// plain-http URL. It is raised inside `execute`, before any socket is
+    /// opened, so this reaches no network at all.
+    async fn https_only_refusal(url: &str) -> Box<dyn std::error::Error> {
+        let client = reqwest::Client::builder().https_only(true).build().unwrap();
+        Box::new(client.get(url).send().await.unwrap_err())
+    }
+
+    /// The refbox refusing to send is a configuration choice, not a broken
+    /// network. Classifying it as `Unreachable` makes the log say "could not
+    /// reach the portal", which sends the operator hunting a wifi fault that
+    /// does not exist.
+    #[tokio::test]
+    async fn a_refusal_to_send_is_not_reported_as_a_connectivity_failure() {
+        let err = https_only_refusal("http://127.0.0.1:9099/api/events").await;
+        match classify_error(err) {
+            health::PortalCallError::Blocked(msg) => {
+                assert!(msg.contains("http://127.0.0.1:9099"), "{msg}");
+            }
+            other => panic!("an https-only refusal must not be classified as {other:?}"),
+        }
+    }
+
+    /// Guards the detection against over-reach: a genuine transport failure
+    /// must keep its existing meaning. Loopback port 1 is never bound, so the
+    /// connection is refused at once without leaving the machine.
+    #[tokio::test]
+    async fn a_genuine_transport_failure_is_still_a_connectivity_failure() {
+        let client = reqwest::Client::builder().build().unwrap();
+        let err: Box<dyn std::error::Error> =
+            Box::new(client.get("http://127.0.0.1:1/").send().await.unwrap_err());
+        assert!(matches!(
+            classify_error(err),
+            health::PortalCallError::Unreachable(_)
+        ));
+    }
 
     fn mk_young_item() -> QueuedItem {
         QueuedItem {

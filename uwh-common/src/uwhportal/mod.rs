@@ -157,7 +157,9 @@ pub struct SetCoinFlipModel {
 
 pub struct UwhPortalClient {
     base_url: String,
-    access_token: Option<String>,
+    // The finished header, not the raw key. Building it here, once, is what
+    // keeps a key that cannot be sent out of the 11 calls that use it.
+    auth_header: Option<HeaderValue>,
     client: Client,
     id: OnceCell<u32>,
 }
@@ -176,24 +178,35 @@ impl UwhPortalClient {
 
         let base_url = base_url.trim_end_matches('/').to_string();
 
+        let auth_header = match access_token {
+            Some(token) => Some(build_auth_header(token)?),
+            None => None,
+        };
+
         Ok(Self {
             base_url,
-            access_token: access_token.map(|s| s.to_string()),
+            auth_header,
             client,
             id: OnceCell::new(),
         })
     }
 
-    pub fn set_token(&mut self, token: &str) {
-        self.access_token = Some(token.to_string());
+    /// Replace the access key.
+    ///
+    /// The key is checked and converted before it is stored, so a key that
+    /// cannot be sent is refused here — the previous key is kept and the
+    /// client is never left half-updated.
+    pub fn set_token(&mut self, token: &str) -> Result<(), UnsendableAccessKey> {
+        self.auth_header = Some(build_auth_header(token)?);
+        Ok(())
     }
 
     pub fn clear_token(&mut self) {
-        self.access_token = None;
+        self.auth_header = None;
     }
 
     pub fn has_token(&self) -> bool {
-        self.access_token.is_some()
+        self.auth_header.is_some()
     }
 
     pub fn id(&self) -> u32 {
@@ -306,7 +319,7 @@ impl UwhPortalClient {
             self.base_url,
             event.partial()
         );
-        let request = authenticated_request(&self.client, Method::GET, &url, &self.access_token);
+        let request = authenticated_request(&self.client, Method::GET, &url, &self.auth_header);
 
         async move {
             let response = request.send().await?;
@@ -330,7 +343,7 @@ impl UwhPortalClient {
     ) -> impl std::future::Future<Output = Result<(), Box<dyn Error>>> + use<> {
         let url = format!("{}/api/admin/events/stats", self.base_url);
 
-        let request = authenticated_request(&self.client, Method::POST, &url, &self.access_token)
+        let request = authenticated_request(&self.client, Method::POST, &url, &self.auth_header)
             .query(&[("eventId", event_id.full()), ("gameNumber", game_number)])
             .body(stats_json.clone())
             .header("Content-Type", "application/json")
@@ -363,7 +376,7 @@ impl UwhPortalClient {
             event_id.partial(),
         );
 
-        let request = authenticated_request(&self.client, Method::POST, &url, &self.access_token)
+        let request = authenticated_request(&self.client, Method::POST, &url, &self.auth_header)
             .query(&[("force", force)])
             .json(&serde_json::json!({
             "dark": {
@@ -407,7 +420,7 @@ impl UwhPortalClient {
         );
 
         let request =
-            authenticated_request(&self.client, Method::GET, &url, &self.access_token).send();
+            authenticated_request(&self.client, Method::GET, &url, &self.auth_header).send();
 
         async move {
             let response = request.await?;
@@ -586,7 +599,7 @@ impl UwhPortalClient {
         let url = format!("{}/api/events/{event_slug}/schedule", self.base_url);
 
         let mut request =
-            authenticated_request(&self.client, Method::POST, &url, &self.access_token)
+            authenticated_request(&self.client, Method::POST, &url, &self.auth_header)
                 .json(schedule);
 
         if force {
@@ -621,7 +634,7 @@ impl UwhPortalClient {
             self.base_url
         );
 
-        let request = authenticated_request(&self.client, Method::POST, &url, &self.access_token)
+        let request = authenticated_request(&self.client, Method::POST, &url, &self.auth_header)
             .json(&team_map);
 
         async move {
@@ -700,7 +713,7 @@ impl UwhPortalClient {
             self.base_url
         );
         let request =
-            authenticated_request(&self.client, Method::GET, &url, &self.access_token).send();
+            authenticated_request(&self.client, Method::GET, &url, &self.auth_header).send();
         async move {
             let response = request.await?;
             let status = response.status();
@@ -734,7 +747,7 @@ impl UwhPortalClient {
             event_id.partial()
         );
         let request =
-            authenticated_request(&self.client, Method::GET, &url, &self.access_token).send();
+            authenticated_request(&self.client, Method::GET, &url, &self.auth_header).send();
         async move {
             let response = request.await?;
             if response.status() != StatusCode::OK {
@@ -778,7 +791,7 @@ impl UwhPortalClient {
         let url = format!("{}/api/admin/events/game-referees", self.base_url);
         let event_id_full = event_id.full().to_string();
         let game_number = game_number.clone();
-        let request = authenticated_request(&self.client, Method::GET, &url, &self.access_token)
+        let request = authenticated_request(&self.client, Method::GET, &url, &self.auth_header)
             .query(&[("eventId", &event_id_full), ("gameNumber", &game_number)])
             .send();
         async move {
@@ -823,7 +836,7 @@ impl UwhPortalClient {
             "{}/api/events/{event_slug}/schedule/coin-flips",
             self.base_url
         );
-        let request = authenticated_request(&self.client, Method::POST, &url, &self.access_token)
+        let request = authenticated_request(&self.client, Method::POST, &url, &self.auth_header)
             .query(&[("force", force)])
             .json(model)
             .send();
@@ -843,16 +856,29 @@ fn authenticated_request(
     client: &Client,
     method: Method,
     url: &str,
-    access_token: &Option<String>,
+    auth_header: &Option<HeaderValue>,
 ) -> RequestBuilder {
     let mut request = client.request(method, url);
-    if let Some(token) = access_token {
-        request = request.header(
-            AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
-        );
+    if let Some(value) = auth_header {
+        request = request.header(AUTHORIZATION, value.clone());
     }
     request
+}
+
+/// Turn an access key into the `Authorization` header value, or say which
+/// character stops it.
+///
+/// Surrounding whitespace is dropped first: a key copied out of a web page
+/// arrives with a trailing newline, and that is worth accepting rather than
+/// refusing.
+fn build_auth_header(token: &str) -> Result<HeaderValue, UnsendableAccessKey> {
+    let token = token.trim();
+    check_access_key(token)?;
+    // why this cannot panic: `check_access_key` has just proved every
+    // character is in `' '..='~'` (0x20..=0x7E), which is exactly the range
+    // `from_str` accepts, and "Bearer " is itself in that range.
+    Ok(HeaderValue::from_str(&format!("Bearer {token}"))
+        .expect("a printable-ASCII key always makes a valid header value"))
 }
 
 #[derive(Debug)]
@@ -1082,5 +1108,68 @@ mod access_key_tests {
         // Letters, digits, and the punctuation base64 and JWTs use.
         let key = "eyJhbGciOiJI.UzI1NiIs-InR5cCI6_IkpXVCJ9~abc+/=";
         assert_eq!(check_access_key(key), Ok(()));
+    }
+
+    fn test_client(key: Option<&str>) -> Result<UwhPortalClient, Box<dyn Error>> {
+        UwhPortalClient::new("https://example.test", key, true, Duration::from_secs(5))
+    }
+
+    #[test]
+    fn a_good_key_becomes_exactly_one_bearer_header() {
+        let client = test_client(Some("good-key")).unwrap();
+        let request = authenticated_request(
+            &client.client,
+            Method::GET,
+            "https://example.test/thing",
+            &client.auth_header,
+        )
+        .build()
+        .unwrap();
+        assert_eq!(
+            request.headers().get(AUTHORIZATION).unwrap(),
+            "Bearer good-key"
+        );
+    }
+
+    #[test]
+    fn a_client_cannot_be_built_with_a_key_that_cannot_be_sent() {
+        // On master this succeeded, and the panic waited until the first call.
+        assert!(test_client(Some("abc\u{2019}123")).is_err());
+    }
+
+    #[test]
+    fn a_refused_key_leaves_the_previous_key_in_place() {
+        // A half-updated client would be worse than a refused one: it would
+        // start sending calls with no credential at all.
+        let mut client = test_client(Some("good-key")).unwrap();
+        assert!(client.set_token("abc\u{2019}123").is_err());
+        assert_eq!(
+            client.auth_header,
+            Some(HeaderValue::from_static("Bearer good-key"))
+        );
+        assert!(client.has_token());
+    }
+
+    #[test]
+    fn a_key_copied_with_a_trailing_newline_is_trimmed_not_refused() {
+        // Copying a key out of a web page is how the newline gets there.
+        let mut client = test_client(None).unwrap();
+        assert_eq!(client.set_token("  good-key \r\n"), Ok(()));
+        assert_eq!(
+            client.auth_header,
+            Some(HeaderValue::from_static("Bearer good-key"))
+        );
+    }
+
+    #[test]
+    fn a_key_with_a_newline_inside_it_is_refused() {
+        // THE original crash. A trailing newline is trimmed and forgiven, but
+        // one in the middle of the key is not, and this is the character
+        // `HeaderValue::from_str` actually rejects — a curly quote it would
+        // have carried. Delete the check in `build_auth_header` and this test
+        // panics rather than fails, which is the crash it exists to prevent.
+        let mut client = test_client(None).unwrap();
+        assert_eq!(client.set_token("abc\n123").unwrap_err().character, '\n');
+        assert!(!client.has_token());
     }
 }

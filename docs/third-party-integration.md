@@ -4,7 +4,11 @@ Accurate as of refbox v0.4.9, plus the custom-source work that follows it and is
 released build** — selecting a site inside the app, the per-site credential, and the narrowing of
 call 2. Those parts are marked "unreleased" where they appear, and describe a branch that has not
 shipped, so treat them as the intended shape rather than something you can test against a download
-today. This is a best-effort description of what the software does; it carries no stability
+today. **"Unreleased" here means exactly one thing: the behaviour exists only on an unmerged
+development branch.** There is no build flag, cargo feature, or setting that switches it on — a
+downloaded release does not contain it, and there is nothing to enable.
+
+This is a best-effort description of what the software does; it carries no stability
 promise, and a future release may change any of it without notice.
 
 ## Pointing refbox at your site
@@ -283,19 +287,25 @@ This is the only one of the nine that's a conversation instead of a single call:
 1. refbox generates a random number between 1 and 999999 once, the first time it's needed, and
    reuses it for the rest of that run (`mod.rs:199`). This is the `refBoxId`. **It may be shorter
    than six digits** — a real refbox can show the admin `42` — and it is never zero-padded, so do
-   not validate it as a six-digit string. **It is also regenerated every time refbox restarts**, so
-   treat it as a one-time pairing number, not a device identity: you cannot pre-register boxes the
-   night before, and you cannot use it to trace which box pushed which result.
+   not validate it as a six-digit string. **It is also regenerated every time refbox restarts — and,
+   on the in-app route, every time the operator presses APPLY on the SITE row**, because the number
+   lives on the portal client and applying an address builds a fresh one
+   (`refbox/src/app/mod.rs:1120`). If an admin has already registered a pending link and the operator
+   then re-applies the address, the number the admin was given is stale and call 1 answers
+   `NoPendingLink`. So treat it as a one-time pairing number, not a device identity: you cannot
+   pre-register boxes the night before, and you cannot use it to trace which box pushed which
+   result.
 2. An admin on the tournament site enters that number into the site, which issues a short code.
 3. The admin reads (or otherwise gives) that code to the operator, who types it into refbox.
-4. refbox posts `{"refBoxId": "<six digits>", "code": "<code>"}` to call 1.
+4. refbox posts `{"refBoxId": "<the number from step 1>", "code": "<code>"}` to call 1.
 5. Success is `200` with `{"accessKey": "<token>"}`. refbox stores this token and uses it as
    the bearer token for every call marked "bearer" in the table above.
 6. Failure is `400` with `{"reason": "NoPendingLink"}` (the site has no record of that
    `refBoxId` waiting to be linked — e.g. the admin never entered it, or entered a different
    number) or `{"reason": "InvalidCode"}` (the code typed into refbox doesn't match). These two
    strings must be spelled **exactly** this way — refbox matches on the literal string and
-   shows a different on-screen message for each (`mod.rs:236-248`). Any other value of
+   shows a different on-screen message for each
+   (`uwh-common/src/uwhportal/mod.rs:236-248`). Any other value of
    `reason`, or a `400` with no `reason` field at all, is reported as an unknown error rather
    than shown as either of the two known messages.
 
@@ -310,7 +320,7 @@ and this document does not specify it. You record a pending link for `482913` an
 a code:
 
 ```
-refBoxId 482913  →  code 731904   (six digits, no leading zero, expires when you decide)
+refBoxId 482913  →  code 731904   (at most six digits, no leading zero, expires when you decide)
 ```
 
 **Step B — the operator types `731904` into refbox, which posts:**
@@ -1010,7 +1020,7 @@ anything a shape marks as required.
 and both are worth knowing if you are debugging raw traffic: most bodies go through reqwest's
 `.json()` helper, which sets the header and the length together (for example
 `uwh-common/src/uwhportal/mod.rs:221`), while push stats serialises its body itself and sets the
-header explicitly (`mod.rs:335`). What arrives on the wire is the same either way.
+header explicitly (`mod.rs:335-336`). What arrives on the wire is the same either way.
 
 refbox does not require any particular `Content-Type` on your responses. Every response body is
 read as text and then parsed as JSON regardless of how you labelled it. A hand-written server
@@ -1114,10 +1124,12 @@ throughout these examples is the Portal's convention, not a requirement your sit
 
 Getting this wrong fails hard, and the error message will lie to you. A rejected ID is a
 deserialisation failure that discards the **entire** response, not just the offending entry — so
-one malformed ID in an event list costs you the whole list. And the message is always `Invalid
-format for full_id. It should start with 'events/'`, even when the prefix was perfectly fine and
-the length was the real problem. If you see that error against an ID that plainly starts with
-`events/`, count the characters after the slash.
+one malformed ID in an event list costs you the whole list. And the message names only the prefix,
+never the length: `Invalid format for full_id. It should start with 'events/'` for an event ID
+(`schedule.rs:706`) and the same sentence ending `'teams/'` for a team ID (`schedule.rs:754`). You
+get that message even when the prefix was perfectly fine and the length was the real problem, so if
+you see it against an ID that plainly starts with the right prefix, count the characters after the
+slash.
 
 Worked example, using the event and teams from the schedule example below:
 - Short form, in a path: `GET /api/events/{eventId}/schedule/privileged` with `eventId` = `1234-A`
@@ -1366,7 +1378,7 @@ All three kinds share five fields, then each adds its own:
 | `playerCapNumber` | integer (`foul`: integer or `null`) | The player's cap number. `null` on a `foul` only, for a team-level infraction ("both at fault") with no specific player. **On a `goal` or `penalty`, `0` means "the operator did not record a number"** — see the warning below. |
 | `side` | string (`foul`: string or `null`) | `"dark"` or `"light"` — same black/white convention as push-scores. `null` on a `foul` only, alongside a `null` `playerCapNumber`. |
 | `gamePeriod` | string | refbox's internal period name — one of `BetweenGames`, `FirstHalf`, `HalfTime`, `SecondHalf`, `PreOvertime`, `OvertimeFirstHalf`, `OvertimeHalfTime`, `OvertimeSecondHalf`, `PreSuddenDeath`, `SuddenDeath` (`uwh-common/src/game_snapshot.rs:129-141`) |
-| `periodTime` | number (seconds, may have a fractional part) | The game clock's value the instant the event was recorded. During a timed half (regulation or overtime) this counts **down** — time remaining in the period. During Sudden Death, which has no fixed length, the clock instead counts **up** from zero — so `periodTime` there is time *elapsed*, not remaining (`refbox/src/tournament_manager/mod.rs:1855-1868`, `:2182-2188`). |
+| `periodTime` | number (seconds, may have a fractional part) | The game clock's value the instant the event was recorded. During a timed half (regulation or overtime) this counts **down** — time remaining in the period. During Sudden Death, which has no fixed length, the clock instead counts **up** from zero — so `periodTime` there is time *elapsed*, not remaining (`refbox/src/tournament_manager/mod.rs:1855-1868`). |
 | `occurredOn` | timestamp | See [the two timestamp formats](#the-two-timestamp-formats) — this is always the `occurredOn` (fractional) form, never the `startsOn` form |
 
 Fields specific to each kind:
@@ -1616,7 +1628,7 @@ schedule-processor returns to its main menu — no retry.
 `POST /api/events/{eventSlug}/schedule/coin-flips`  ·  source: `uwh-common/src/uwhportal/mod.rs:816`
 
 **When schedule-processor calls it:** Immediately after the operator picks a tied game (or group)
-and a winning team from the menu populated by call 5.
+and a winning team from the menu populated by call 5 above (get coin flips).
 
 **Authentication:** `Authorization: Bearer <token>`
 
@@ -1678,8 +1690,8 @@ token — forcing a fresh login on the next attempt — before returning to the 
 
 `POST /api/events/{eventSlug}/schedule/map-teams`  ·  source: `uwh-common/src/uwhportal/mod.rs:614`
 
-**When schedule-processor calls it:** Immediately after call 7 succeeds, in the same "Upload
-Schedule" action — the two are always sent as a pair.
+**When schedule-processor calls it:** Immediately after call 7 above (push schedule) succeeds, in
+the same "Upload Schedule" action — the two are always sent as a pair.
 
 **Authentication:** `Authorization: Bearer <token>`
 
@@ -1695,7 +1707,8 @@ schedule to the real team's ID, long form. Example:
 
 **Fields schedule-processor actually reads:** none.
 
-**On failure:** Same as call 7: logged, saved login token cleared, back to the main menu.
+**On failure:** Same as call 7 above (push schedule): logged, saved login token cleared, back to
+the main menu.
 
 #### 9. Overlay attachments
 
@@ -1779,15 +1792,19 @@ because it's serving on-screen graphics rather than scoresheets:
   array-vs-object ambiguity flagged under call 2's own description above. Per matching game it
   then reads `dark.assignment.teamId` / `light.assignment.teamId` — note the extra `.assignment`
   nesting, compared to the `dark.teamId` / `light.teamId` shape used everywhere else in this
-  document. A site serving both the overlay and schedule-processor/refbox from the same schedule
-  response needs to satisfy both shapes at once, or one of the callers won't find what it needs.
+  document. **These two shapes are mutually exclusive — `games` cannot be both an object keyed by
+  game number and a plain array — so one schedule response cannot satisfy both the overlay and
+  schedule-processor/refbox.** This is a divergence inside refbox's own code, not a shape a site is
+  expected to reconcile: treat the overlay's schedule reading as a separate, incompatible consumer,
+  and serve it from its own response if you need it at all. A site that only stands in for the
+  refbox during a game never has to resolve this.
 
 The overlay's failure handling for these three calls also differs, call by call, from every other
 call in this document — none of them check the response status code before deciding what to do
 with the body:
 
-- **Team roster** (`:96`): same as call 9 above — a connection failure, or a body that isn't
-  valid JSON, panics the background task fetching that team's information
+- **Team roster** (`:96`): same as call 9 above (overlay attachments) — a connection failure, or a
+  body that isn't valid JSON, panics the background task fetching that team's information
   (`overlay/src/network.rs:94-105`). The panic doesn't crash the overlay, but that game's team
   shows no roster, photos, or flag until a later game or event change triggers a fresh fetch.
 - **Game referees** (`:240`): the only one of the three handled gracefully — a connection failure
@@ -1804,20 +1821,27 @@ with the body:
 
 This document can drift from the code. The check below catches one specific kind of drift —
 the set of paths — by comparing every `/api/...` path found in the source files against every
-`/api/...` path found in this document, after normalising placeholder names (like
-`{eventId}`) to a common `{}` on both sides so that naming differences don't cause false
-alarms:
+`/api/...` path found in this document. Both sides normalise placeholder names (like
+`{eventId}`) to a common `{}` so naming differences don't cause false alarms, and the document
+side additionally normalises the example event ID `1234-A` to `{}` so a worked example matches
+the endpoint it illustrates. Four forms are excluded because they are not endpoints at all —
+they are the typed-address convention from
+[Pointing refbox at your site](#pointing-refbox-at-your-site), which no site implements:
 
 ```bash
 diff \
   <(rg -o -N '/api/[A-Za-z0-9/{}_-]+' uwh-common/src/uwhportal/mod.rs overlay/src/network.rs \
      | sed 's/^[^:]*://; s/{[^}]*}/{}/g' | sort -u) \
   <(rg -o '/api/[A-Za-z0-9/{}_-]+' docs/third-party-integration.md \
-     | sed 's/{[^}]*}/{}/g' | sort -u) \
+     | sed 's/1234-A/{}/g; s/{[^}]*}/{}/g' | sort -u \
+     | grep -vxF -e '/api/{}' -e '/api/{}/' -e '/api/events/' -e '/api/events/{}') \
   && echo "IN SYNC"
 ```
 
+It needs [ripgrep](https://github.com/BurntSushi/ripgrep) on the path, and must be run from the
+repository root. It should print `IN SYNC` and exit `0`; anything else is real drift.
+
 This only proves the *paths* still match — it says nothing about whether the request or
 response bodies documented here still match what the code sends and expects. The real test
-of that is rebuilding a working stub server from this document alone (Task 5) and confirming
-it actually stands in for the Portal.
+of that is rebuilding a working stub server from this document alone and confirming it
+actually stands in for the Portal.

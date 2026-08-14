@@ -107,57 +107,94 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         log_panics::init();
     }
 
-    let options = vec!["Underwater Hockey", "Underwater Rugby"];
-    let sport_choice = Select::new("Select the sport for the schedule:", options)
-        .prompt()
-        .unwrap_or_else(|_| {
-            error!("No sport selected. Exiting.");
-            std::process::exit(1);
-        });
-
-    let options = vec!["Production", "Development", "Local"];
-    let site_choice = Select::new("Select the uwhportal site to connect to:", options)
+    let options = vec!["UWH Portal", "Custom site"];
+    let site_kind_choice = Select::new("Select the site to connect to:", options)
         .prompt()
         .unwrap_or_else(|_| {
             error!("No site selected. Exiting.");
             std::process::exit(1);
         });
 
-    let default_url = match (site_choice, sport_choice) {
-        ("Production", "Underwater Hockey") => "https://api.uwhportal.com",
-        ("Production", "Underwater Rugby") => "https://api.uwrportal.com",
-        ("Development", "Underwater Hockey") => "https://api.dev.uwhportal.com",
-        ("Development", "Underwater Rugby") => "https://api.dev.uwrportal.com",
-        ("Local", _) => "http://localhost:9000",
-        _ => unreachable!(),
+    // A custom site is one address the operator types, so the sport question is
+    // skipped there: its only job is to pick between the hockey and rugby
+    // portal addresses, which a typed address replaces.
+    let (target, pasted_key) = if site_kind_choice == "Custom site" {
+        let target = loop {
+            let typed = Text::new("Enter the web address of your site:")
+                .prompt()
+                .unwrap_or_else(|_| {
+                    error!("No address entered. Exiting.");
+                    std::process::exit(1);
+                });
+            match site::custom_target(&typed) {
+                Ok(t) => break t,
+                Err(why) => error!("{why}"),
+            }
+        };
+        let key = loop {
+            let typed = Text::new("Paste your access key (leave blank if your site needs none):")
+                .prompt()
+                .unwrap_or_else(|_| {
+                    error!("No access key entered. Exiting.");
+                    std::process::exit(1);
+                });
+            match site::validate_access_key(&typed) {
+                Ok(k) => break k,
+                Err(why) => error!("{why}"),
+            }
+        };
+        (target, key)
+    } else {
+        let options = vec!["Underwater Hockey", "Underwater Rugby"];
+        let sport_choice = Select::new("Select the sport for the schedule:", options)
+            .prompt()
+            .unwrap_or_else(|_| {
+                error!("No sport selected. Exiting.");
+                std::process::exit(1);
+            });
+
+        let options = vec!["Production", "Development", "Local"];
+        let site_choice = Select::new("Select the uwhportal site to connect to:", options)
+            .prompt()
+            .unwrap_or_else(|_| {
+                error!("No site selected. Exiting.");
+                std::process::exit(1);
+            });
+
+        let default_url = site::portal_default_url(site_choice, sport_choice);
+
+        // Optional portal-URL override, mirroring the refbox's
+        // `UWH_PORTAL_URL_OVERRIDE` / `UWR_PORTAL_URL_OVERRIDE` env vars. This
+        // lets the tool be pointed at an environment that is not in the site
+        // menu (e.g. sandbox) without exposing it as a normal menu choice.
+        // Unset or blank -> the menu selection is used unchanged.
+        let override_var = site::override_var_name(sport_choice);
+        let default_require_https = !matches!(site_choice, "Local");
+        let (site_url, require_https) = apply_portal_override(
+            default_url,
+            default_require_https,
+            std::env::var(override_var).ok(),
+        );
+        if site_url != default_url {
+            info!("{override_var} active: using {site_url}");
+        }
+        (
+            site::SiteTarget {
+                kind: site::SiteKind::Portal,
+                base_url: site_url,
+                require_https,
+            },
+            None,
+        )
     };
 
-    // Optional portal-URL override, mirroring the refbox's
-    // `UWH_PORTAL_URL_OVERRIDE` / `UWR_PORTAL_URL_OVERRIDE` env vars. This lets
-    // the tool be pointed at an environment that is not in the site menu (e.g.
-    // sandbox) without exposing it as a normal menu choice. Unset or blank ->
-    // the menu selection is used unchanged.
-    let override_var = match sport_choice {
-        "Underwater Rugby" => "UWR_PORTAL_URL_OVERRIDE",
-        _ => "UWH_PORTAL_URL_OVERRIDE",
-    };
-    let default_require_https = !matches!(site_choice, "Local");
-    let (site_url, require_https) = apply_portal_override(
-        default_url,
-        default_require_https,
-        std::env::var(override_var).ok(),
-    );
-    if site_url != default_url {
-        info!("{override_var} active: using {site_url}");
-    }
-
-    info!("Using URL: {}", site_url);
+    info!("Using URL: {}", target.base_url);
     info!("Fetching event list from uwhportal...");
 
     let mut portal_client = UwhPortalClient::new(
-        &site_url,
-        None,
-        require_https,
+        &target.base_url,
+        pasted_key.as_deref(),
+        target.require_https,
         std::time::Duration::from_secs(10),
     )?;
 
@@ -515,37 +552,69 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .into();
 
                 if !portal_client.has_token() {
-                    let email = match Text::new("Enter your uwhportal email:").prompt() {
-                        Ok(email) => email,
-                        Err(_) => {
-                            error!("No email provided. Please try again.");
-                            continue 'outer;
+                    match target.kind {
+                        site::SiteKind::Custom => {
+                            // Custom sites have no organiser login — the access
+                            // key is the only credential they issued.
+                            let typed =
+                                match Text::new("This step needs an access key. Paste it now:")
+                                    .prompt()
+                                {
+                                    Ok(t) => t,
+                                    Err(_) => {
+                                        error!("No access key provided. Please try again.");
+                                        continue 'outer;
+                                    }
+                                };
+                            match site::validate_access_key(&typed) {
+                                // The client keeps the token from here on; the
+                                // startup key is not held separately, so a
+                                // later `clear_token` asks for it again.
+                                Ok(Some(key)) => portal_client.set_token(&key),
+                                Ok(None) => {
+                                    error!("An access key is needed for this step.");
+                                    continue 'outer;
+                                }
+                                Err(why) => {
+                                    error!("{why}");
+                                    continue 'outer;
+                                }
+                            }
                         }
-                    };
-                    let password = match Password::new("Enter your uwhportal password:")
-                        .with_display_mode(PasswordDisplayMode::Masked)
-                        .without_confirmation()
-                        .prompt()
-                    {
-                        Ok(pass) => pass,
-                        Err(_) => {
-                            error!("No password provided. Please try again.");
-                            continue 'outer;
-                        }
-                    };
+                        site::SiteKind::Portal => {
+                            let email = match Text::new("Enter your uwhportal email:").prompt() {
+                                Ok(email) => email,
+                                Err(_) => {
+                                    error!("No email provided. Please try again.");
+                                    continue 'outer;
+                                }
+                            };
+                            let password = match Password::new("Enter your uwhportal password:")
+                                .with_display_mode(PasswordDisplayMode::Masked)
+                                .without_confirmation()
+                                .prompt()
+                            {
+                                Ok(pass) => pass,
+                                Err(_) => {
+                                    error!("No password provided. Please try again.");
+                                    continue 'outer;
+                                }
+                            };
 
-                    let token = match portal_client
-                        .login_with_email_and_password(&email, &password)
-                        .await
-                    {
-                        Ok(token) => token,
-                        Err(e) => {
-                            error!("uwhportal login failed. Please try again. Reason: {e}");
-                            continue 'outer;
-                        }
-                    };
+                            let token = match portal_client
+                                .login_with_email_and_password(&email, &password)
+                                .await
+                            {
+                                Ok(token) => token,
+                                Err(e) => {
+                                    error!("uwhportal login failed. Please try again. Reason: {e}");
+                                    continue 'outer;
+                                }
+                            };
 
-                    portal_client.set_token(&token);
+                            portal_client.set_token(&token);
+                        }
+                    }
                 }
 
                 let force = match Confirm::new(

@@ -5148,24 +5148,27 @@ impl RefBoxApp {
                         // The site's reply is not trusted text. A custom site is
                         // somebody else's server, and a key carrying a character a
                         // header cannot hold used to take the refbox down on the
-                        // next call. Refusing it here also keeps it out of the
-                        // config file, so it cannot come back at the next launch.
+                        // next call. One decision point, not two: the client itself
+                        // refuses the key, so there is no way for the check and the
+                        // store to disagree and let a request go out with no
+                        // credential attached. Refusing here also keeps the key out
+                        // of the config file, so it cannot come back at the next
+                        // launch.
                         let token = token.trim().to_string();
-                        if let Err(why) = check_access_key(&token) {
+                        let refused = match self.uwhportal_client.as_ref() {
+                            // why this cannot panic: the guard is held only for a
+                            // synchronous `set_token()` call and dropped immediately.
+                            Some(client) => client.lock().unwrap().set_token(&token).err(),
+                            // No client to hold the key, so the same rule is applied
+                            // directly — a key that cannot be sent must never reach
+                            // the config file.
+                            None => check_access_key(&token).err(),
+                        };
+                        if let Some(why) = refused {
                             warn!("The site returned an access key that cannot be sent: {why}");
                             AppState::ConfirmationPage(ConfirmationKind::UwhPortalKeyUnusable)
                         } else {
                             info!("Portal token request succeeded");
-                            if let Some(client) = self.uwhportal_client.as_ref() {
-                                // why this cannot panic: the guard is held only for a
-                                // synchronous `set_token()` call and dropped immediately.
-                                if let Err(why) = client.lock().unwrap().set_token(&token) {
-                                    // Cannot happen: the key was just checked with the
-                                    // same rule `set_token` applies. Logged rather than
-                                    // ignored so a future divergence is not silent.
-                                    error!("Client refused a key that passed the check: {why}");
-                                }
-                            }
                             // Save it against the site it was issued by. Writing it
                             // to the portal's slot regardless would both destroy the
                             // operator's real Portal login and leave the custom site

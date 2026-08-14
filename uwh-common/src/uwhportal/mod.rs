@@ -1138,7 +1138,8 @@ mod access_key_tests {
 
     #[test]
     fn a_client_cannot_be_built_with_a_key_that_cannot_be_sent() {
-        // On master this succeeded, and the panic waited until the first call.
+        // On master this succeeded and the key was stored unchecked; a control
+        // character in that position would then have panicked on the first call.
         assert!(test_client(Some("abc\u{2019}123")).is_err());
     }
 

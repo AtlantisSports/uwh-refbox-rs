@@ -35,7 +35,7 @@ quote as equally fatal. Only the newline (and its control-character siblings)
 ever panicked — which is the likeliest of them anyway, since a key copied from
 a web page or a chat message carries a trailing newline.
 
-All 11 authenticated portal calls build their request through this one
+All 10 authenticated portal calls build their request through this one
 function, so every one of them inherits the panic.
 
 ## Why it is reachable
@@ -74,15 +74,15 @@ wrong answer. Not an option at any layer of this design.
 ## Approach
 
 Refuse an unusable key **once, where the key arrives**, rather than at each of
-the 11 places it is used.
+the 10 places it is used.
 
 Considered and rejected:
 
 - *Check at every call* — `authenticated_request` returns a result and each of
-  the 11 methods propagates it. The refbox survives, but the operator gets the
+  the 10 methods propagates it. The refbox survives, but the operator gets the
   same failure repeatedly and forever (retrying can never fix a bad key), and
   the message arrives detached from the thing that caused it. It also leaves
-  eleven places that must each remember to handle the fault.
+  ten places that must each remember to handle the fault.
 - *Let reqwest carry the error* — hand the header value to reqwest as text and
   let it report a build error at send time. One line, no signature changes, but
   the message is generic ("builder error"), it still fails on every call
@@ -134,8 +134,8 @@ arrives**, and store the finished header value.
   caller anything.
 
 The point of this shape: after it, `authenticated_request` performs no
-conversion at all, so the 11 calls *cannot* fail this way again. This is a
-structural guarantee, not eleven remembered checks.
+conversion at all, so the 10 calls *cannot* fail this way again. This is a
+structural guarantee, not ten remembered checks.
 
 ### 3. What the operator sees
 

@@ -923,9 +923,14 @@ impl Error for UnsendableAccessKey {}
 /// Check that `key` can be carried in an `Authorization` header.
 ///
 /// Printable ASCII only. Everything a real access key contains — letters,
-/// digits, and the punctuation used by base64 and JWTs — is in this range, and
-/// everything outside it is what a header cannot carry: a newline, a tab, a
-/// curly quote left by a chat app or a word processor.
+/// digits, and the punctuation used by base64 and JWTs — is in this range.
+/// This rule is stricter than what a header actually rejects: headers refuse
+/// only control characters (newline, carriage return, NUL, and DEL), and would
+/// accept curly quotes and accented letters. But an access key is base64 or a
+/// JWT and must be ASCII. Rejecting anything outside printable ASCII means an
+/// invalid key is caught here with a clear message about the offending
+/// character, instead of being sent to the site and returning an unexplained
+/// permission error.
 ///
 /// Whitespace around the key is *not* trimmed here; callers that accept a
 /// pasted key trim first, so that this reports only characters that are

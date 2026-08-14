@@ -14,10 +14,26 @@
 HeaderValue::from_str(&format!("Bearer {}", token)).unwrap()
 ```
 
-`HeaderValue::from_str` rejects any character an HTTP header cannot carry — a
-newline, a tab, a curly quote. The `unwrap` turns that rejection into a panic,
-which takes the whole refbox down mid-tournament with no message the operator
-can act on.
+`HeaderValue::from_str` rejects any character an HTTP header cannot carry. The
+`unwrap` turns that rejection into a panic, which takes the whole refbox down
+mid-tournament with no message the operator can act on.
+
+**Which characters actually panic** (measured, not assumed — a `reqwest` probe
+over `Bearer <key>`):
+
+| Character | `HeaderValue::from_str` |
+|---|---|
+| newline `\n` | **rejected — panics** |
+| carriage return `\r` | **rejected — panics** |
+| NUL, DEL | **rejected — panics** |
+| curly quote `’` (U+2019) | accepted |
+| `é` (U+00E9) | accepted |
+| tab | accepted |
+
+This corrects the original brief, which named a newline, a tab and a curly
+quote as equally fatal. Only the newline (and its control-character siblings)
+ever panicked — which is the likeliest of them anyway, since a key copied from
+a web page or a chat message carries a trailing newline.
 
 All 11 authenticated portal calls build their request through this one
 function, so every one of them inherits the panic.
@@ -83,9 +99,16 @@ A public check in `uwh-common::uwhportal` answers one question: *can this key be
 carried in a request header?* The rule is the one `schedule-processor` already
 uses — printable ASCII only (`' '..='~'`). Everything a real access key
 contains (letters, digits, and the punctuation used by base64 and JWTs) is in
-that range; everything outside it is what a header cannot carry. The failure
-names the offending character so the log line and the operator message can both
-be specific.
+that range. The failure names the offending character so the log line and the
+operator message can both be specific.
+
+This rule is deliberately **stricter** than the set of characters that actually
+panic. It refuses a curly quote and an accented letter too, which `HeaderValue`
+would have carried. That is kept on purpose: an access key is base64 or a JWT
+and is ASCII by construction, so nothing legitimate is refused, and a key with a
+curly quote in it would otherwise be sent and come back as a mystifying
+permission error rather than a sentence naming the character. It is also the
+rule `schedule-processor` already ships and its tests already assert.
 
 `schedule-processor::site::validate_access_key` keeps its own operator-facing
 wording, its own trimming, and its own `Ok(None)` "no key is fine" behaviour,
@@ -149,8 +172,9 @@ refbox UI.
 
 ## Acceptance criteria
 
-1. A refbox launched with a curly quote in its saved access key **does not
-   crash**. On master it does.
+1. A refbox launched with a newline in its saved access key **does not crash**.
+   On master it does. (A curly quote is refused too, but it never crashed —
+   see the table above.)
 2. The refbox with a bad key never sends an authenticated call without the
    header — it sends nothing at all and shows the red indicator.
 3. A key copied with a trailing newline is accepted, not refused.
@@ -173,10 +197,15 @@ goes red. No new test is trusted until it has been seen to fail.
 (`uwhportal` is already `std`-gated, so no-std is not expected to be affected —
 the check confirms it.)
 
-**Live, in the refbox:** put a key containing `U+2019` into
-`~/.config/refbox/config.toml`, launch, and trigger a portal call. On master:
-panic. With the fix: a log line naming the character, red indicator, refbox
-still running.
+**Live, in the refbox:** put a key containing a newline into
+`~/.config/refbox/config.toml` (`token = "abc\n123"` — TOML turns that escape
+into a real newline), launch, and trigger an authenticated portal call. On
+master: panic. With the fix: a log line naming the character, red indicator,
+refbox still running.
+
+The event-list request at startup is **unauthenticated**, so it does not
+trigger the crash. Selecting an event does — that requests the schedule, which
+is authenticated and is built on the UI thread.
 
 **Known limit:** the config-file route exercises the *startup* path, so the
 live run proves the crash is gone but does not display the new dialog. The

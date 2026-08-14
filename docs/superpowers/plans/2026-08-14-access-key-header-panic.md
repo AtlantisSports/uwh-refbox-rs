@@ -751,12 +751,14 @@ Ask the human before launching — they drive the refbox UI. Two things matter a
 - **Never launch bare.** Without the override the refbox talks to the *production* portal and rewrites `portal_link.json`. Always:
   `UWH_PORTAL_URL_OVERRIDE=https://api.dev.uwhportal.com WAYLAND_DISPLAY= ./target/debug/refbox`
 
-Put a curly quote into the saved key in `~/.config/refbox/config.toml` — the real character `’`, not an escape:
+Put a **newline** into the saved key in `~/.config/refbox/config.toml`. TOML turns the `\n` escape into a real newline:
 
 ```toml
 [uwhportal]
-token = "abc’123"
+token = "abc\n123"
 ```
+
+**Use a newline, not a curly quote.** Measured with a `reqwest` probe over `Bearer <key>`: `HeaderValue::from_str` rejects a newline, a carriage return, NUL and DEL — and *accepts* a curly quote, `é` and a tab. Only the control characters ever panicked. A curly quote here would produce a false "master didn't crash". A trailing newline is the likeliest bad character in real life anyway: it is what copying a key out of a web page gives you.
 
 Then, from a separate checkout at `origin/master`, `cargo build -p refbox` and launch as above. The event list loads (that call carries no authorization header, so it survives) — then **select an event**, which requests the schedule. That is an authenticated call, and it is built synchronously on the UI thread.
 
@@ -768,7 +770,7 @@ Same config, same launch line, this branch's build.
 
 Expected:
 - The refbox starts and stays up. Selecting an event is impossible because there is no client, which is the point: nothing is sent, and nothing is sent unauthenticated either.
-- The log contains `Failed to start the client for ...` naming the character `'\u{2019}'` — that message comes from `UnsendableAccessKey`'s `Display` through the existing `build_site_client` error path, which needed no code change.
+- The log contains `Failed to start the client for ...` naming the character `'\n'` — that message comes from `UnsendableAccessKey`'s `Display` through the existing `build_site_client` error path, which needed no code change.
 - The portal indicator is red.
 - Everything unrelated to the portal works normally.
 
@@ -791,4 +793,8 @@ Run `superpowers:requesting-code-review` for the whole branch. Then write the PR
 Record anything that diverged from this plan here, and fold the note into the
 relevant code commit rather than making a standalone commit for it.
 
-- (none yet)
+- **The brief's three example characters were wrong in two of three cases.** Measured with a throwaway `reqwest` probe over `Bearer <key>`: `HeaderValue::from_str` **rejects** newline, carriage return, NUL and DEL; it **accepts** a curly quote (U+2019), `é` and a tab. Only the control characters ever panicked. Consequences, all folded into the tasks they affect rather than committed separately:
+  - The printable-ASCII rule is kept as specified, which makes it deliberately stricter than the panic set. An access key is base64 or a JWT and is ASCII by construction, so nothing legitimate is refused, and a curly-quoted key would otherwise come back as a mystifying permission error instead of a sentence naming the character. It is also the rule `schedule-processor` already ships and its tests assert.
+  - Task 2 gained a newline-based client test in fix round 1, so that deleting the guard reproduces the original panic rather than a plain assertion failure.
+  - Task 5's live run uses `token = "abc\n123"`, not a curly quote, which would otherwise have produced a false "master didn't crash".
+  - The spec was corrected in place with the measured table.

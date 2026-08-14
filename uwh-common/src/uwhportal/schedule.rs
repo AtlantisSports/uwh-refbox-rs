@@ -284,6 +284,18 @@ impl Into<GameConfig> for TimingRule {
             team_timeouts_counted_per_half,
             overtime_allowed,
             sudden_death_allowed,
+            // Discarded on purpose, and this is NOT a bug to fix by wiring it
+            // to the clock. The setting is carried for DISPLAY only: the
+            // game-info screen shows it so the operator can see the rule
+            // before a game, while the clock's actual stop-time behaviour
+            // lives in the tournament manager and is deliberately not coupled
+            // to this field. Weighed and accepted in
+            // `docs/decisions/022-referee-names-display.md`, because the
+            // operator confirmed the value is always Yes/No in practice and
+            // the display is useful for game preparation.
+            //
+            // Connecting it here would silently change stop-clock timing at a
+            // tournament and overturn that decision.
             last_2_min_stop_time: _,
             half_play_duration,
             half_time_duration,

@@ -37,6 +37,31 @@ pub fn portal_default_url(environment: &str, sport: &str) -> &'static str {
     }
 }
 
+/// Turn an address the operator typed into a target, or explain why it cannot
+/// be used. Surrounding spaces and a trailing `/` are cleaned up silently —
+/// both are ordinary copy-paste artefacts, not mistakes worth a message.
+pub fn custom_target(typed_url: &str) -> Result<SiteTarget, String> {
+    let url = typed_url.trim().trim_end_matches('/');
+    if url.is_empty() {
+        return Err("No address entered. Type the full web address of your site.".to_string());
+    }
+    let require_https = if url.starts_with("https://") {
+        true
+    } else if url.starts_with("http://") {
+        false
+    } else {
+        return Err(format!(
+            "\"{url}\" does not look like a web address. It needs to start with https:// \
+             (or http:// for a site on your own network)."
+        ));
+    };
+    Ok(SiteTarget {
+        kind: SiteKind::Custom,
+        base_url: url.to_string(),
+        require_https,
+    })
+}
+
 /// The environment variable that can replace the menu-selected address.
 pub fn override_var_name(sport: &str) -> &'static str {
     match sport {
@@ -75,6 +100,45 @@ mod tests {
             portal_default_url("Local", "Underwater Rugby"),
             "http://localhost:9000"
         );
+    }
+
+    #[test]
+    fn a_typed_https_address_requires_a_certificate() {
+        let t = custom_target("  https://scores.example.org  ").unwrap();
+        assert_eq!(t.kind, SiteKind::Custom);
+        assert_eq!(
+            t.base_url, "https://scores.example.org",
+            "surrounding spaces are trimmed"
+        );
+        assert!(t.require_https);
+    }
+
+    #[test]
+    fn a_typed_http_address_does_not_require_a_certificate() {
+        // A club server on the local network is a real case; refusing it
+        // would make the custom option useless there.
+        let t = custom_target("http://192.168.1.50:9000").unwrap();
+        assert!(!t.require_https);
+    }
+
+    #[test]
+    fn an_address_without_a_scheme_is_refused_in_plain_words() {
+        let err = custom_target("scores.example.org").unwrap_err();
+        assert!(
+            err.contains("http://") && err.contains("https://"),
+            "the message must tell the operator what to type; got: {err}"
+        );
+    }
+
+    #[test]
+    fn a_blank_address_is_refused() {
+        assert!(custom_target("   ").is_err());
+    }
+
+    #[test]
+    fn a_trailing_slash_is_dropped_so_paths_do_not_double_up() {
+        let t = custom_target("https://scores.example.org/").unwrap();
+        assert_eq!(t.base_url, "https://scores.example.org");
     }
 
     #[test]

@@ -113,15 +113,22 @@ pub enum PortalCallError {
     /// Produced by `classify_error` downcasting the underlying `reqwest`
     /// transport error.
     Unreachable(String),
-    /// The refbox refused to send the request itself: the address is not
-    /// https and this refbox requires https (no `--allow-http`). Nothing
-    /// left the machine, so this is neither a connectivity failure nor a
-    /// token problem — it is a configuration choice, and reporting it as
-    /// `Unreachable` sends the operator hunting a network fault that does
-    /// not exist. Handled exactly like `Unreachable` downstream (indicator
-    /// red, no re-login prompt); only the wording differs. Produced by
-    /// `classify_error` recognising `reqwest`'s `https_only` rejection.
-    Blocked(String),
+    /// The request was rejected before any socket was opened, so nothing
+    /// ever left the machine. The case this exists for is `https_only`
+    /// refusing a plain-http address, but an address that cannot be used at
+    /// all (no host, or a scheme that is not http or https) lands here too.
+    ///
+    /// Deliberately classified by that shared fact — never sent — rather
+    /// than by cause: only the launch-time check knows whether https is
+    /// required, so naming a cause here would let the log tell an operator
+    /// who already passed `--allow-http` to go and pass `--allow-http`.
+    ///
+    /// This is neither a connectivity failure nor a token problem, and
+    /// reporting it as `Unreachable` sends the operator hunting a network
+    /// fault that does not exist. Handled exactly like `Unreachable`
+    /// downstream (indicator red, no re-login prompt); only the wording
+    /// differs. Produced by `classify_error`.
+    NotSent(String),
 }
 
 impl std::fmt::Display for PortalCallError {
@@ -129,9 +136,7 @@ impl std::fmt::Display for PortalCallError {
         match self {
             Self::Failed(msg) => write!(f, "portal call failed: {msg}"),
             Self::Unreachable(msg) => write!(f, "portal unreachable: {msg}"),
-            Self::Blocked(msg) => {
-                write!(f, "portal request blocked by the https-only setting: {msg}")
-            }
+            Self::NotSent(msg) => write!(f, "portal request was never sent: {msg}"),
         }
     }
 }
@@ -153,6 +158,10 @@ async fn run_task(
     // `last_success` never advances.
     let mut last_check_at: Option<TokioInstant> = None;
     let mut current_health = HealthState::Green;
+    // Whether the "never sent" warning has already been logged for the run of
+    // checks we are in. Cleared by any check that produces a different
+    // outcome, so the warning returns if the condition returns.
+    let mut not_sent_logged = false;
     let mut queue_snapshot = QueueFile::empty();
 
     loop {
@@ -202,6 +211,7 @@ async fn run_task(
                         Ok(()) => {
                             last_success = Some(TokioInstant::now());
                             current_health = HealthState::Green;
+                            not_sent_logged = false;
                             let _ = event_tx.send(PortalEvent::TokenStatus(true)).await;
                         }
                         Err(PortalCallError::Unreachable(e)) => {
@@ -219,18 +229,28 @@ async fn run_task(
                             // roughly 30KB an hour against a rolling log.
                             log::warn!("portal health check could not reach the portal: {e}");
                             current_health = HealthState::Red;
+                            not_sent_logged = false;
                             let _ = event_tx.send(PortalEvent::TokenUnreachable).await;
                         }
-                        Err(PortalCallError::Blocked(e)) => {
-                            // The refbox refused to send this itself, so no
-                            // request reached the network. Degrade exactly as
-                            // an outage does — red, and no token verdict, since
-                            // the token was never offered to anyone — but say
-                            // what actually happened instead of blaming the
-                            // network for a configuration choice. Logged on
-                            // every check for the same reason the unreachable
-                            // arm is: the red indicator cannot say why.
-                            log::warn!("portal health check was blocked before sending: {e}");
+                        Err(PortalCallError::NotSent(e)) => {
+                            // Nothing reached the network, so degrade exactly
+                            // as an outage does — red, and no token verdict,
+                            // since the token was never offered to anyone —
+                            // but say what happened instead of blaming the
+                            // network for a configuration choice.
+                            //
+                            // Logged once, unlike the unreachable arm above.
+                            // That arm repeats deliberately, because how long
+                            // an outage ran is worth knowing; here the address
+                            // is fixed at launch and cannot start working
+                            // mid-session, so repeating would add ~240
+                            // identical lines an hour and say nothing new. The
+                            // flag clears on any other outcome, so a later
+                            // recurrence is logged again.
+                            if !not_sent_logged {
+                                log::warn!("portal health check was never sent: {e}");
+                                not_sent_logged = true;
+                            }
                             current_health = HealthState::Red;
                             let _ = event_tx.send(PortalEvent::TokenUnreachable).await;
                         }
@@ -239,6 +259,7 @@ async fn run_task(
                             // returned a server error). Treat as a token
                             // problem so the operator is prompted to re-login.
                             current_health = HealthState::Red;
+                            not_sent_logged = false;
                             let _ = event_tx.send(PortalEvent::TokenStatus(false)).await;
                         }
                     }
@@ -361,7 +382,7 @@ mod tests {
             "an unreachable portal must keep the transport detail"
         );
         assert!(
-            PortalCallError::Blocked("http://127.0.0.1:9099 is not an https address".to_string())
+            PortalCallError::NotSent("http://127.0.0.1:9099 is not an https address".to_string())
                 .to_string()
                 .contains("http://127.0.0.1:9099"),
             "a blocked request must keep the address that was refused"
@@ -580,14 +601,14 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread", start_paused = true)]
-    async fn blocked_verify_emits_token_unreachable_not_token_status() {
+    async fn unsent_verify_emits_token_unreachable_not_token_status() {
         // A verify_token the refbox refused to send is not evidence the login
         // expired — the token was never offered to anyone. It must degrade the
         // indicator exactly like an outage does (TokenUnreachable) and must NOT
         // emit TokenStatus(false), which the UI reads as "login expired" and
         // uses to push a pointless re-login.
         let io = FakeIo {
-            verify_results: Mutex::new(vec![Err(PortalCallError::Blocked(
+            verify_results: Mutex::new(vec![Err(PortalCallError::NotSent(
                 "http://127.0.0.1:9099 is not an https address".into(),
             ))]),
             verify_count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
@@ -610,13 +631,13 @@ mod tests {
             events
                 .iter()
                 .any(|ev| matches!(ev, PortalEvent::TokenUnreachable)),
-            "blocked verify must emit TokenUnreachable, got {events:?}"
+            "unsent verify must emit TokenUnreachable, got {events:?}"
         );
         assert!(
             !events
                 .iter()
                 .any(|ev| matches!(ev, PortalEvent::TokenStatus(_))),
-            "blocked verify must NOT emit TokenStatus, got {events:?}"
+            "unsent verify must NOT emit TokenStatus, got {events:?}"
         );
         drop(handle);
     }

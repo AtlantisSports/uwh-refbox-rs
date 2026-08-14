@@ -509,7 +509,15 @@ fn portal_target(mode: Mode, require_https: bool) -> SiteTarget {
 /// refbox at a workable site later (a plain-http custom site, say) keeps
 /// working without a restart.
 fn https_policy_conflict(target: &SiteTarget) -> Option<String> {
-    (target.require_https && !target.base_url.starts_with("https://")).then(|| {
+    // Compared without case because a URL scheme is case-insensitive and
+    // `reqwest` lowercases it before its own check: `HTTPS://…` works fine, so
+    // matching it case-sensitively here would log "will all fail" over an
+    // address that in fact succeeds.
+    let is_https = target
+        .base_url
+        .get(..8)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("https://"));
+    (target.require_https && !is_https).then(|| {
         format!(
             "Portal requests to {} will all fail: the address is not https and this refbox \
              requires https. Restart with --allow-http to use a plain-http address.",
@@ -6742,6 +6750,15 @@ mod site_target_tests {
     fn an_address_that_will_work_is_not_explained() {
         assert!(https_policy_conflict(&target("https://api.uwhportal.com", true)).is_none());
         assert!(https_policy_conflict(&target("http://scoreboard.local:8099", false)).is_none());
+    }
+
+    /// A URL scheme is case-insensitive and `reqwest` lowercases it before
+    /// deciding, so `HTTPS://…` is sent normally. Announcing that every request
+    /// "will all fail" over an address that in fact works would be a worse
+    /// error than the opaque one this replaced.
+    #[test]
+    fn an_uppercase_scheme_that_will_work_is_not_explained() {
+        assert!(https_policy_conflict(&target("HTTPS://api.uwhportal.com", true)).is_none());
     }
 
     /// The portal keeps taking its TLS requirement from the launch flag, and

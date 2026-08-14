@@ -200,6 +200,8 @@ uwhportal-token-invalid-code = 잘못된 코드가 입력되었습니다.
     다시 시도하세요.
 uwhportal-token-no-pending-link = 연결이 통신을 기다리지 않습니다.
     다시 시도하세요.
+uwhportal-token-unusable-key = 사이트에서 보낸 액세스 키를 이 Refbox에서 사용할 수 없습니다.
+    사이트에 키를 다시 요청하세요.
 go-back-to-editor = 편집기로 돌아가기
 discard-changes = 변경 사항 버리기
 end-current-game-and-apply-changes = 현재 경기 종료 및 변경 사항 적용

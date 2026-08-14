@@ -198,6 +198,8 @@ uwhportal-token-invalid-code = 输入的代码无效。
     请重试。
 uwhportal-token-no-pending-link = 连接未等待通信。
     请重试。
+uwhportal-token-unusable-key = 站点发送的访问密钥无法在此 Refbox 上使用。
+    请再次向站点索取密钥。
 go-back-to-editor = 返回编辑器
 discard-changes = 放弃更改
 end-current-game-and-apply-changes = 结束当前比赛并应用所有更改

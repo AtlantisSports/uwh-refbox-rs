@@ -198,6 +198,8 @@ uwhportal-token-invalid-code = Kod yang dimasukkan tidak sah.
     Sila cuba lagi.
 uwhportal-token-no-pending-link = Sambungan tidak menjangka komunikasi.
     Sila cuba lagi.
+uwhportal-token-unusable-key = Tapak ini menghantar kunci akses yang tidak boleh digunakan oleh Refbox ini.
+    Minta kunci itu semula daripada tapak anda.
 go-back-to-editor = KEMBALI KE EDITOR
 discard-changes = BUANG PERUBAHAN
 end-current-game-and-apply-changes = TAMATKAN PERLAWANAN SEMASA DAN GUNA PERUBAHAN

@@ -40,7 +40,7 @@ use uwh_common::{
     drawing_support::*,
     game_snapshot::{GamePeriod, GameSnapshot, Infraction, TimeoutSnapshot},
     uwhportal::{
-        PortalTokenResponse, RosterPlayer, UwhPortalClient,
+        PortalTokenResponse, RosterPlayer, UwhPortalClient, check_access_key,
         schedule::{DateRange, Event, EventId, GameNumber, Schedule, TeamId},
     },
 };
@@ -357,6 +357,11 @@ pub enum BeepTestConfigPage {
 enum ConfirmationKind {
     Error(String),
     UwhPortalLinkFailed(PortalTokenResponse),
+    // Raised when the site's reply carried an access key this refbox cannot
+    // put in a header. Not a `PortalTokenResponse` variant: the server never
+    // says this, the refbox concludes it, and that type should keep meaning
+    // "what the server replied".
+    UwhPortalKeyUnusable,
     // The *FromApply variants are raised by per-page Apply on Game Options. They
     // commit only the Game slice and navigate back to settings (not out to MainPage).
     GameNumberChangedFromApply,
@@ -1482,7 +1487,9 @@ impl RefBoxApp {
                 let mut guard = client
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
-                guard.set_token("invalid-debug-token");
+                // A literal printable-ASCII key, so the check cannot refuse it;
+                // this is the debug scramble path, not an operator's key.
+                let _ = guard.set_token("invalid-debug-token");
                 warn!("UWH_PORTAL_SCRAMBLE_TOKEN: in-memory token replaced after event linked");
             }
             self.scramble_token_pending = false;
@@ -4774,7 +4781,8 @@ impl RefBoxApp {
 
                 // After ADR 009 Task 13 retired the global apply path, only
                 // `ConfirmationKind::Error` (which offers DiscardChanges) and
-                // `ConfirmationKind::UwhPortalLinkFailed` (which offers GoBack)
+                // `ConfirmationKind::UwhPortalLinkFailed` /
+                // `ConfirmationKind::UwhPortalKeyUnusable` (which offer GoBack)
                 // reach this match. The Game-related and PortalTenantSwitch
                 // confirmations are dispatched to apply_game_confirmation above.
                 self.app_state = match selection {
@@ -5137,49 +5145,65 @@ impl RefBoxApp {
                 let mut task = Task::none();
                 self.app_state = match token_response {
                     PortalTokenResponse::Success(token) => {
-                        info!("Portal token request succeeded");
-                        if let Some(client) = self.uwhportal_client.as_ref() {
-                            // why this cannot panic: the guard is held only for a
-                            // synchronous `set_token()` call and dropped immediately.
-                            client.lock().unwrap().set_token(&token);
-                        }
-                        // Save it against the site it was issued by. Writing it
-                        // to the portal's slot regardless would both destroy the
-                        // operator's real Portal login and leave the custom site
-                        // with no saved credential for the next launch.
-                        match self.current_site.kind {
-                            SiteKind::Portal => self.config.uwhportal.token = token,
-                            SiteKind::Custom => self.config.custom_site.token = token,
-                        }
-                        if let Some(ref mut settings) = self.edited_settings {
-                            settings.uwhportal_token_valid = Some(true);
-                        }
+                        // The site's reply is not trusted text. A custom site is
+                        // somebody else's server, and a key carrying a character a
+                        // header cannot hold used to take the refbox down on the
+                        // next call. Refusing it here also keeps it out of the
+                        // config file, so it cannot come back at the next launch.
+                        let token = token.trim().to_string();
+                        if let Err(why) = check_access_key(&token) {
+                            warn!("The site returned an access key that cannot be sent: {why}");
+                            AppState::ConfirmationPage(ConfirmationKind::UwhPortalKeyUnusable)
+                        } else {
+                            info!("Portal token request succeeded");
+                            if let Some(client) = self.uwhportal_client.as_ref() {
+                                // why this cannot panic: the guard is held only for a
+                                // synchronous `set_token()` call and dropped immediately.
+                                if let Err(why) = client.lock().unwrap().set_token(&token) {
+                                    // Cannot happen: the key was just checked with the
+                                    // same rule `set_token` applies. Logged rather than
+                                    // ignored so a future divergence is not silent.
+                                    error!("Client refused a key that passed the check: {why}");
+                                }
+                            }
+                            // Save it against the site it was issued by. Writing it
+                            // to the portal's slot regardless would both destroy the
+                            // operator's real Portal login and leave the custom site
+                            // with no saved credential for the next launch.
+                            match self.current_site.kind {
+                                SiteKind::Portal => self.config.uwhportal.token = token,
+                                SiteKind::Custom => self.config.custom_site.token = token,
+                            }
+                            if let Some(ref mut settings) = self.edited_settings {
+                                settings.uwhportal_token_valid = Some(true);
+                            }
 
-                        // Tell the portal manager the token is healthy
-                        // again: clears the token-known-problem flag and
-                        // resets queue-item attempt counters so pending
-                        // items resume retrying on the next background
-                        // tick. Errors here are logged but not
-                        // propagated — the in-memory state is already
-                        // correct and the operator has no actionable
-                        // recovery from an I/O failure at this point.
-                        if let Err(e) = self.portal_manager.token_refreshed() {
-                            error!("portal_manager.token_refreshed failed: {e}");
-                        }
+                            // Tell the portal manager the token is healthy
+                            // again: clears the token-known-problem flag and
+                            // resets queue-item attempt counters so pending
+                            // items resume retrying on the next background
+                            // tick. Errors here are logged but not
+                            // propagated — the in-memory state is already
+                            // correct and the operator has no actionable
+                            // recovery from an I/O failure at this point.
+                            if let Err(e) = self.portal_manager.token_refreshed() {
+                                error!("portal_manager.token_refreshed failed: {e}");
+                            }
 
-                        if let Some(event_id) = self
-                            .edited_settings
-                            .as_ref()
-                            .and_then(|settings| settings.current_event_id.as_ref())
-                            .or(self.current_event_id.as_ref())
-                        {
-                            info!("Requesting schedule for event_id: {}", event_id.full());
-                            task = self.request_schedule(event_id.clone())
-                        }
+                            if let Some(event_id) = self
+                                .edited_settings
+                                .as_ref()
+                                .and_then(|settings| settings.current_event_id.as_ref())
+                                .or(self.current_event_id.as_ref())
+                            {
+                                info!("Requesting schedule for event_id: {}", event_id.full());
+                                task = self.request_schedule(event_id.clone())
+                            }
 
-                        // A successful re-login lands on the edit-config
-                        // Game page (the portal parameters page).
-                        AppState::EditGameConfig(ConfigPage::Game)
+                            // A successful re-login lands on the edit-config
+                            // Game page (the portal parameters page).
+                            AppState::EditGameConfig(ConfigPage::Game)
+                        }
                     }
                     r @ PortalTokenResponse::NoPendingLink
                     | r @ PortalTokenResponse::InvalidCode => {

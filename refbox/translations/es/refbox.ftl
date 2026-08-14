@@ -209,6 +209,8 @@ uwhportal-token-invalid-code = Código inválido.
 ### Check
 uwhportal-token-no-pending-link = La conexión no espera comunicación.
     Por favor, inténtelo de nuevo.
+uwhportal-token-unusable-key = El sitio envió una clave de acceso que esta Refbox no puede usar.
+    Solicite la clave al sitio de nuevo.
 go-back-to-editor = VOLVER AL EDITOR
 discard-changes = DESCARTAR CAMBIOS
 end-current-game-and-apply-changes = TERMINAR EL JUEGO ACTUAL Y APLICAR CAMBIOS

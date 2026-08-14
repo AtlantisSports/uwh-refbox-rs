@@ -37,6 +37,7 @@ pub(in super::super) fn build_confirmation_page<'a>(
             fl!("uwhportal-token-no-pending-link")
         }
         ConfirmationKind::UwhPortalLinkFailed(PortalTokenResponse::Success(_)) => unreachable!(),
+        ConfirmationKind::UwhPortalKeyUnusable => fl!("uwhportal-token-unusable-key"),
         ConfirmationKind::SwitchToManualFromApply => fl!("apply-switch-to-manual"),
         // A custom site survives the restart with its address and token intact,
         // so it gets a message that says so rather than one promising a lost
@@ -115,7 +116,7 @@ pub(in super::super) fn build_confirmation_page<'a>(
                 ConfirmationOption::DiscardChanges,
             ),
         ],
-        ConfirmationKind::UwhPortalLinkFailed(_) => {
+        ConfirmationKind::UwhPortalLinkFailed(_) | ConfirmationKind::UwhPortalKeyUnusable => {
             vec![(fl!("ok"), green_button, ConfirmationOption::GoBack)]
         }
         ConfirmationKind::SwitchToManualFromApply => vec![

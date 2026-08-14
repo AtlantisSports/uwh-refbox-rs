@@ -8,7 +8,12 @@
 
 **Tech Stack:** Markdown; `rg`/`grep` over the Rust workspace; Python 3 for the existing checkers.
 
-**Spec:** `docs/third-party-stub/ROUND-4-FINDINGS.md` — the full ledger, with severity and the reviewer's reasoning for each finding. Read it alongside this plan; the plan cites finding numbers and does not repeat their rationale.
+**Spec:** `docs/superpowers/plans/2026-08-13-round-4-findings.md` — the full ledger, with severity and the reviewer's reasoning for each finding. Read it alongside this plan; the plan cites finding numbers and does not repeat their rationale.
+
+> **Moved 2026-08-14.** The ledger was at `docs/third-party-stub/ROUND-4-FINDINGS.md` while this plan
+> was executed, and was moved out of the stub directory so a reader browsing the deliverable does not
+> land in an internal review record. The `git add` commands and `Modify:` paths in the completed task
+> steps below still name the old path, deliberately: they record what was actually run at the time.
 
 ## Global Constraints
 

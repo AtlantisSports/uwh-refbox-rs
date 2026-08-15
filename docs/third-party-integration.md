@@ -1507,9 +1507,12 @@ specific `400` reasons; every failure here is treated the same way.
 **When schedule-processor calls it:** When generating scoresheets, if schedule-processor doesn't
 already have a login token — this is the unauthenticated alternative to the privileged schedule
 call (call 5 of the refbox nine, `/schedule/privileged`). A comment on this call in the source
-warns that for some events the public endpoint returns `games` as a plain JSON array rather than
-the object shape the parser expects; when that happens this call fails to parse, and
-schedule-processor falls back to logging in and using the privileged schedule instead.
+warns that for *some* events the public endpoint returns `games` as a plain JSON array rather than
+the object shape the parser expects. **Measured against the live Portal on 2026-08-15, it is not
+some events — it is every one:** all 67 events with a published schedule on the production API, and
+all 33 on the dev API, returned an array. So this call fails to parse every time and
+schedule-processor always falls through to logging in and using the privileged schedule. The
+unauthenticated route is documentation of an intent, not a path that currently works.
 
 **Authentication:** none
 
@@ -1517,12 +1520,25 @@ schedule-processor falls back to logging in and using the privileged schedule in
 
 **Request body:** none
 
-**Successful response:** `200` with the same shape documented under
-[the schedule payload](#the-schedule-payload) for the privileged call — this endpoint and the
-privileged one return the same shape, just gated differently.
+**Successful response:** `200`, and **not** the shape documented under
+[the schedule payload](#the-schedule-payload) for the privileged call. Measured on 2026-08-15
+across 100 events on the production and dev APIs, this endpoint returned a different structure every
+single time:
 
-**Fields schedule-processor actually reads:** Same as the privileged schedule — see Data
-formats; the whole shape is deserialised.
+- `games` is a **JSON array**, never an object keyed by game number.
+- A game's teams sit one level deeper — `dark.assignment.teamId`, not `dark.teamId`.
+- There is no top-level `eventId` and no `groups`. The top level carries `event`, `divisions`,
+  `pods`, `courtNames`, `teams`, `nonGameEntries`, `refereesByGameNumber` and `timingRules`.
+- `startsOn` carries a numeric UTC offset (`2026-08-01T09:30:00+10:00`), not `Z`.
+
+The privileged endpoint could not be measured the same way — it needs a token — but refbox
+deserialises it into the object-keyed shape and runs tournaments on it, so the two endpoints do
+**not** return the same thing despite sharing a path. Treat the privileged shape in
+[Data formats](#data-formats) as describing the privileged call only.
+
+**Fields schedule-processor actually reads:** in principle the whole `Schedule` shape, exactly as
+for the privileged call; in practice none, because against the real Portal the parse never
+succeeds.
 
 **On failure:** Any non-`200` response, or a body that doesn't parse (including the
 array-vs-object mismatch above): logged, then schedule-processor automatically prompts for a
@@ -1789,19 +1805,21 @@ because it's serving on-screen graphics rather than scoresheets:
   [the schedule payload](#the-schedule-payload) documented above in two ways. It reads a
   top-level `court` and `startsOn` directly off the whole response body, not per-game. And it
   treats `games` as a plain JSON **array** to search through by matching `number`, not the
-  object-keyed-by-game-number shape the schedule calls document elsewhere — the same
-  array-vs-object ambiguity flagged under call 2's own description above. Per matching game it
+  object-keyed-by-game-number shape the schedule calls document elsewhere. Per matching game it
   then reads `dark.assignment.teamId` / `light.assignment.teamId` — note the extra `.assignment`
   nesting, compared to the `dark.teamId` / `light.teamId` shape used everywhere else in this
-  document. **These two shapes are mutually exclusive — `games` cannot be both an object keyed by
-  game number and a plain array — so one response on this path cannot satisfy both the overlay and
-  schedule-processor.** refbox is not involved either way: it only ever reads the privileged
-  schedule (call 5 of the refbox nine), never this public path. What a site can do is serve the
-  array shape here, for the overlay, and the object shape on `/schedule/privileged`.
-  schedule-processor reaches this path only when it holds no token, and treats a parse failure here
-  as "log in and use the privileged schedule instead", exactly as call 2's own entry above describes
-  (`schedule-processor/src/scoresheets.rs:92-101`) — so the array shape costs it a login, not a
-  scoresheet. A site that only stands in for the refbox during a game never has to resolve this.
+  document. **Measured on 2026-08-15, the overlay's array reading is the correct one for this
+  endpoint** — see call 2 above, where all 100 events checked returned an array with exactly that
+  nesting. **Its top-level `court` and `startsOn` reads are not.** Neither key exists at the top
+  level of any response the real Portal returned; both fall back to an empty string, so the
+  overlay's COURT and START lines are blank whenever they come from this source. A stand-in site
+  *can* populate them by serving `court` and `startsOn` at the top level — that is simply a shape
+  the Portal itself does not produce. refbox is not involved either way: it only ever reads the
+  privileged schedule (call 5 of the refbox nine), never this public path. And schedule-processor
+  reaches this path only when it holds no token, then treats the parse failure as "log in and use
+  the privileged schedule instead" (`schedule-processor/src/scoresheets.rs:92-101`) — which is what
+  it does against the real Portal too, so serving the array shape costs it a login, not a
+  scoresheet. A site that only stands in for the refbox during a game never serves this path at all.
 
 The overlay's failure handling for these three calls also differs, call by call, from every other
 call in this document — none of them check the response status code before deciding what to do

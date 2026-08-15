@@ -315,6 +315,7 @@ unknown = Tidak Diketahui
 select-infraction = Pilih salah satu
 ## Tombol waktu pertandingan
 next-game = PERTANDINGAN BERIKUTNYA
+schedule-end = SELESAI
 first-half = BABAK PERTAMA
 half-time = JEDA BABAK
 second-half = BABAK KEDUA

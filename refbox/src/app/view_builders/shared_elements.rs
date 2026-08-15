@@ -587,6 +587,11 @@ const BANNER_MIN_TEXT: f32 = 14.0;
 /// the size UWR needs.
 const BANNER_TWO_TIME_TEXT: f32 = 46.0;
 
+/// Shown in place of the clock when the selected court's schedule is finished. Not a
+/// translated string -- it is punctuation, the same "nothing here" signal the game info
+/// table draws with a hyphen.
+const NO_TIME: &str = "--:--";
+
 pub(super) fn make_game_time_button<'a>(
     snapshot: &GameSnapshot,
     tall: bool,
@@ -627,9 +632,23 @@ pub(super) fn make_game_time_button<'a>(
         }
     };
 
+    // A blank next-game number between games means the selected court has no further
+    // games (uwh-common's GameSnapshot::next_game_number reports None for it). The
+    // banner says so rather than promising a game that is not coming: the label reads
+    // END and the time reads dashes, keeping the banner's two-readout shape so nothing
+    // around it changes size.
+    let schedule_ended =
+        snapshot.current_period == GamePeriod::BetweenGames && snapshot.next_game_number.is_empty();
+
     let (mut period_text, period_color): (_, fn(&Theme) -> TextStyle) = {
         let (text, color): (_, fn(&Theme) -> TextStyle) = match snapshot.current_period {
-            GamePeriod::BetweenGames => (fl!("next-game"), yellow_text),
+            GamePeriod::BetweenGames => {
+                if schedule_ended {
+                    (fl!("schedule-end"), yellow_text)
+                } else {
+                    (fl!("next-game"), yellow_text)
+                }
+            }
             GamePeriod::FirstHalf => (fl!("first-half"), green_text),
             GamePeriod::HalfTime => (fl!("half-time"), yellow_text),
             GamePeriod::SecondHalf => (fl!("second-half"), green_text),
@@ -819,7 +838,11 @@ pub(super) fn make_game_time_button<'a>(
         }
     });
 
-    let time_text = secs_to_long_time_string(snapshot.secs_in_period);
+    let time_text = if schedule_ended {
+        NO_TIME.to_string()
+    } else {
+        secs_to_long_time_string(snapshot.secs_in_period).to_string()
+    };
 
     let time_text = time_text.trim().to_owned();
 

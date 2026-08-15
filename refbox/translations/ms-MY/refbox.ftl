@@ -316,6 +316,7 @@ unknown = Tidak Diketahui
 select-infraction = Sila pilih
 ## Butang masa perlawanan
 next-game = PERLAWANAN SETERUSNYA
+schedule-end = TAMAT
 first-half = SEPARUH PERTAMA
 half-time = REHAT SEPARUH MASA
 second-half = SEPARUH KEDUA

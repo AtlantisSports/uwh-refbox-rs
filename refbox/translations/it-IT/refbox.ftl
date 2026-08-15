@@ -316,6 +316,7 @@ unknown = Sconosciuto
 select-infraction = Effettua una scelta
 ## Pulsante tempo di gioco
 next-game = PROSSIMA PARTITA
+schedule-end = FINE
 first-half = PRIMO TEMPO
 half-time = INTERVALLO
 second-half = SECONDO TEMPO

@@ -316,6 +316,7 @@ unknown = 不明
 select-infraction = 選択してください
 ## 試合時間ボタン
 next-game = 次の試合
+schedule-end = 終了
 first-half = 前半
 half-time = ハーフタイム
 second-half = 後半

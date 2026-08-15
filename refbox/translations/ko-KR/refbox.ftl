@@ -318,6 +318,7 @@ unknown = 알 수 없음
 select-infraction = 선택하세요
 ## 경기 시간 버튼
 next-game = 다음 경기
+schedule-end = 종료
 first-half = 전반
 half-time = 하프타임
 second-half = 후반

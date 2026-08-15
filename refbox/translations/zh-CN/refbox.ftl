@@ -315,6 +315,7 @@ unknown = 未知
 select-infraction = 请选择
 ## 比赛时间按钮
 next-game = 下一场
+schedule-end = 结束
 first-half = 上半场
 half-time = 中场休息
 second-half = 下半场

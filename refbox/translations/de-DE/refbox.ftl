@@ -316,6 +316,7 @@ unknown = Unbekannt
 select-infraction = Bitte auswählen
 ## Spielzeit-Schaltfläche
 next-game = NÄCHSTES SPIEL
+schedule-end = ENDE
 first-half = ERSTE HALBZEIT
 half-time = HALBZEITPAUSE
 second-half = ZWEITE HALBZEIT

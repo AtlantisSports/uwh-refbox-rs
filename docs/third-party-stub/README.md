@@ -18,10 +18,22 @@ actually stand up a site from the document. Every question the document failed t
 finding, and those findings were fixed in the document rather than worked around here.
 
 For the same reason, **finding zero gaps would have meant the exercise failed**, not that the
-document was perfect. Seventeen gaps came out of it: nine from the blind build, three from a desk
-check of the stub against the real client, and five more from actually running a real refbox against
-the stub — including the two most damaging, which no amount of source reading could have surfaced,
-because they concern what a site must *refuse* and what refbox tells the operator on screen.
+document was perfect. Four rounds have been run, the later ones against a corrected document and
+by agents who had not seen the earlier attempts, plus two runs of a real refbox against a live
+stub. Every round found something. The most recent round's ledger — what was found, what was
+fixed, and what is still open — is `docs/superpowers/plans/2026-08-13-round-4-findings.md`.
+
+## One thing this stub deliberately gets wrong
+
+**It does not implement call 1's pairing negotiation.** It hands its access key to any caller that
+asks for one. The document requires a real site to record an admin-entered `refBoxId`, bind a code
+to it, and refuse everything else — and refbox cannot tell the difference, which is precisely why
+the stub skips it: implementing the negotiation here would verify nothing about refbox, and would
+add a manual pairing step to every walkthrough. `stub_site.py`'s module banner and
+`handle_link_refbox` both say so at length.
+
+Copy the message shapes from this file. Take the security rules from the document. Do not copy
+that handler.
 
 ## Running it
 
@@ -61,16 +73,30 @@ does not serve, and starting clean is what puts the link flow at the front of th
 
 ## What it serves
 
-One hardcoded event: two teams of six players, one court, two games sharing one timing rule. It
-ignores `force`, `filter` and `limit`, and answers `200` to every call it accepts — which is
-deliberate, since `200` is the only status refbox treats as success.
+All nine calls the document says a stand-in site must answer for the refbox itself — including the
+team roster (`GET /api/admin/get-event-team`), which fills the player-number grid and whose absence
+is the one failure the operator gets no warning about.
 
-**It does not accept any bearer token, and that is the point.** On the four authenticated calls it
-accepts only the access key it handed out itself during linking, and answers `401` to anything
-else — including a request with no `Authorization` header, which is exactly what refbox sends when
-it holds no token. An earlier version accepted everything, and the result was that refbox decided
-it was already paired, showed the token as `OK`, and never offered to link. That is gap 13 in the
-document, and refusing is what makes the link flow reachable.
+One hardcoded event: one court, two games sharing one timing rule, two teams of six playing
+members. The rosters are deliberately awkward, because `roles` is the easiest field to get wrong:
+
+- one member of the second team is **both** `Player` and `Coach`, and **must** still reach the grid.
+  The role test is an inclusion test, so a site that implements it as "exclude anyone labelled
+  Coach" wrongly hides a playing coach.
+- one member is `Coach` only, and carries a cap number anyway. It must **not** reach the grid —
+  refbox drops the entry on the role filter before it ever looks at the number.
+
+It ignores `force`, `filter` and `limit`, which a real site is expected to apply itself. Where it
+does serve a call it answers `200` and never `204`, deliberately, since `200` is the only status
+refbox treats as success. It refuses with `401` on a bad or absent token and `404` for a team or
+route it does not know.
+
+**It accepts exactly one bearer token — the access key it issued itself — and refuses everything
+else, including a request carrying no `Authorization` header at all.** That refusal is the point.
+An earlier version accepted anything, and the result was that refbox decided it was already
+paired, showed the token row as `OK` in green, and never offered to link. Your site is the only
+thing enforcing that a refbox is authorised for an event, so a permissive stand-in silently
+disables pairing altogether, with nothing reported anywhere.
 
 ## Scope
 
@@ -78,5 +104,5 @@ Not part of the cargo workspace. Never built, run, or checked in CI. Nothing in 
 imports it, and no test depends on it. It has no dependencies beyond the Python 3 standard
 library, so it needs no install step.
 
-Expect it to rot. It is a snapshot of what the document described on 2026-08-10; the document is
-the artefact under maintenance, not this.
+Expect it to rot. It was last rebuilt against the document on 2026-08-13; the document is the
+artefact under maintenance, not this file.

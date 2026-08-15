@@ -8716,6 +8716,12 @@ enum NextGameFromSchedule {
 ///    court. That is a recorded fact rather than a guess, so it is re-asserted,
 ///    but only while the court itself is still in the schedule: a court that has
 ///    gone cannot be judged at all.
+/// 5. A fresh launch is the one missing anchor that is not a mystery: the
+///    engine's game number is still "0" because nothing has started this
+///    session, so the earliest game on the selected court is offered rather than
+///    nothing at all. A court with no games at all stays `Unknown`, never
+///    `CourtFinished` — nothing has been played, so the day cannot be done. A
+///    session remembered as finished (4 above) still wins over this.
 fn next_game_from_schedule(
     schedule: &Schedule,
     restore_num: Option<&GameNumber>,
@@ -8745,6 +8751,20 @@ fn next_game_from_schedule(
             let court_still_exists = schedule.games.values().any(|game| game.court == court);
             if restore_court_finished && court_still_exists {
                 NextGameFromSchedule::CourtFinished
+            } else if anchor_num == "0" {
+                // Fresh launch: no game has started yet, so there is no anchor to
+                // search from. Offer the earliest game on the selected court —
+                // never game "1" by arithmetic, which on a multi-court event
+                // belongs to another court. Searching from the epoch makes the
+                // window "everything on this court".
+                //
+                // This deliberately never answers CourtFinished: a fresh launch
+                // onto a court with no games at all is "nothing to offer", not
+                // "the day is done" — nothing has been played yet.
+                match schedule.next_game_on_court(court, time::OffsetDateTime::UNIX_EPOCH) {
+                    Some(game) => NextGameFromSchedule::Game(game.number.clone()),
+                    None => NextGameFromSchedule::Unknown,
+                }
             } else {
                 NextGameFromSchedule::Unknown
             }
@@ -8878,8 +8898,29 @@ mod refresh_next_game_tests {
 
     #[test]
     fn an_anchor_outside_the_schedule_cannot_be_judged() {
-        // "0" is a fresh engine's game number: nothing can be said about what
-        // follows it, so the engine is left as it is.
+        // The game the refbox is on has gone from the schedule — it changed under
+        // us. Nothing can be said about what follows it, so the engine is left as
+        // it is.
+        let schedule = two_court_schedule();
+        assert_eq!(
+            next_game_from_schedule(
+                &schedule,
+                None,
+                false,
+                None,
+                &"77".to_string(),
+                Some("Court 1"),
+            ),
+            NextGameFromSchedule::Unknown
+        );
+    }
+
+    #[test]
+    fn a_fresh_launch_is_offered_the_earliest_game_on_its_own_court() {
+        // "0" is a fresh engine's game number: nothing has started this session,
+        // so there is no anchor to search from. Offer the earliest game on the
+        // SELECTED court — game 10, not the lowest number in the schedule, which
+        // belongs to the other court.
         let schedule = two_court_schedule();
         assert_eq!(
             next_game_from_schedule(
@@ -8888,7 +8929,25 @@ mod refresh_next_game_tests {
                 false,
                 None,
                 &"0".to_string(),
-                Some("Court 1"),
+                Some("Court 2"),
+            ),
+            NextGameFromSchedule::Game("10".to_string())
+        );
+    }
+
+    #[test]
+    fn a_fresh_launch_onto_a_court_with_no_games_is_not_finished() {
+        // "Nothing to offer" is not "the day is done": nothing has been played,
+        // so this must never record the court as finished.
+        let schedule = two_court_schedule();
+        assert_eq!(
+            next_game_from_schedule(
+                &schedule,
+                None,
+                false,
+                None,
+                &"0".to_string(),
+                Some("Court 9"),
             ),
             NextGameFromSchedule::Unknown
         );

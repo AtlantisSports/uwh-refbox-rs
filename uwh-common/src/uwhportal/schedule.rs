@@ -1701,6 +1701,17 @@ mod tests {
     }
 
     #[test]
+    fn next_game_on_court_from_the_epoch_finds_the_earliest_game() {
+        // A fresh launch has no anchor game, so it searches from the beginning of time to
+        // offer the first game on the selected court.
+        let schedule = two_court_schedule();
+        let first = schedule
+            .next_game_on_court("Court 2", OffsetDateTime::UNIX_EPOCH)
+            .expect("court 2 has games");
+        assert_eq!(first.number, "2");
+    }
+
+    #[test]
     fn next_game_on_court_unknown_court_has_nothing() {
         let schedule = two_court_schedule();
         assert!(

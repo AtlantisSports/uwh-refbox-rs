@@ -37,7 +37,7 @@ PORT = 8099
 ACCESS_KEY = "stub-access-token"
 
 # ---------------------------------------------------------------------------
-# Hardcoded fake event: one court, two games, two teams of six players each.
+# Hardcoded fake event: one court, two games, two teams of six playing members.
 # ---------------------------------------------------------------------------
 
 EVENT_ID = "1234-A"
@@ -160,8 +160,8 @@ def _require_bearer(h):
     in green, and never offers the link flow. The site is the only thing
     enforcing that a refbox is authorised for an event, so a permissive site
     silently disables pairing altogether, with no error surfaced anywhere.
-    Refusing here is what makes the link flow reachable at all. Recorded in the
-    integration document as gap 13.
+    Refusing here is what makes the link flow reachable at all. The document
+    states this obligation under call 2, "What your site must do".
     """
     header = h.headers.get("Authorization")
     if header == f"Bearer {ACCESS_KEY}":

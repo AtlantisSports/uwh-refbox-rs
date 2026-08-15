@@ -1000,28 +1000,31 @@ impl TournamentManager {
 
     fn calc_time_to_next_game(&self, now: Instant, from_time: Instant) -> Duration {
         info!("Next game info is: {:?}", self.next_game);
-        let scheduled_start =
-            if let Some(start_time) = self.next_game.as_ref().and_then(|info| info.start_time) {
-                let cur_time = OffsetDateTime::now_utc();
-                info!("Current time is: {cur_time}");
-                info!("Start time is: {start_time}");
+        let scheduled_start = if let Some(start_time) =
+            self.next_game.as_ref().and_then(|info| info.start_time)
+        {
+            let cur_time = OffsetDateTime::now_utc();
+            info!("Current time is: {cur_time}");
+            info!("Start time is: {start_time}");
 
-                let time_to_game = start_time - cur_time;
-                info!("Calculated time to next game: {time_to_game}");
+            let time_to_game = start_time - cur_time;
+            info!("Calculated time to next game: {time_to_game}");
 
-                match time_to_game.try_into() {
-                    // Guard against Instant overflow on an absurd scheduled time;
-                    // fall back to `now` (matching the conversion-error arm below).
-                    Ok(dur) => Instant::now().checked_add(dur).unwrap_or(now),
-                    Err(e) => {
-                        error!("Failed to calculate time to next game start: {e}");
-                        now
-                    }
+            match time_to_game.try_into() {
+                // Guard against Instant overflow on an absurd scheduled time;
+                // fall back to `now` (matching the conversion-error arm below).
+                Ok(dur) => Instant::now().checked_add(dur).unwrap_or(now),
+                Err(e) => {
+                    warn!(
+                        "Next game start time is in the past ({e}); using current time as anchor"
+                    );
+                    now
                 }
-            } else {
-                self.next_scheduled_start
-                    .unwrap_or(now + self.config.nominal_break)
-            };
+            }
+        } else {
+            self.next_scheduled_start
+                .unwrap_or(now + self.config.nominal_break)
+        };
 
         let time_remaining_at_start =
             if let Some(time_until_start) = scheduled_start.checked_duration_since(from_time) {
